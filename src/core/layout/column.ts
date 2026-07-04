@@ -2,32 +2,49 @@ import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "../typ
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { baselineNode, categorySlots, chromeNodes, computeFrame, valueScale } from "./frame";
+import {
+  baselineNode,
+  categorySlots,
+  chromeNodes,
+  computeFrame,
+  computeFrameHorizontal,
+  valueScale,
+  type Frame,
+  type ValueScale,
+} from "./frame";
 
 export interface LayoutResult {
   nodes: SceneNode[];
   anchors: LayoutAnchors;
 }
 
-/** Minimum segment height (relative to font size) before its label is hidden. */
+/** Minimum segment thickness (relative to font size) before its label is hidden. */
 const LABEL_FIT = 1.25;
 
 /**
- * Stacked / clustered / 100% column charts.
- * Stacking follows think-cell: positives build up from the baseline,
- * negatives build down, category labels sit below the plot.
+ * Stacked / clustered / 100% column charts — and, following think-cell's
+ * "a bar chart is a rotated column chart" model, the same layouts in
+ * horizontal orientation when cfg.horizontal is set.
  */
 export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data, kind } = cfg;
   const n = data.categories.length;
   const stacked = kind !== "clustered";
   const pct = kind === "stacked100";
+  const H = !!cfg.horizontal;
 
-  const { frame } = computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []);
-  const slots = categorySlots(frame, n);
+  const frame = H
+    ? computeFrameHorizontal(cfg, style, decor)
+    : computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []).frame;
   const fs = style.fontSize;
 
-  // Column totals (sum of positives / negatives separately for stacking extents).
+  // Category slots run along x (vertical) or y (horizontal).
+  const catStart = H ? frame.y : frame.x;
+  const catLen = H ? frame.h : frame.w;
+  const slotLen = catLen / Math.max(1, n);
+  const colThick = slotLen * (2 / 3);
+  const centers = Array.from({ length: n }, (_, i) => catStart + slotLen * (i + 0.5));
+
   const posTotals = data.categories.map((_, c) =>
     data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0),
   );
@@ -37,6 +54,11 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const signedTotals = data.categories.map((_, c) =>
     data.series.reduce((a, s) => a + (s.values[c] ?? 0), 0),
   );
+  // Per-category denominator for 100% charts (think-cell's "100%=" row).
+  const denominators = data.categories.map((_, c) => {
+    const d = data.hundredPercent?.[c];
+    return d != null && d > 0 ? d : posTotals[c];
+  });
   const fmt = resolveFormat(
     [...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)), ...signedTotals],
     cfg.numberFormat,
@@ -54,69 +76,85 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     dataMin = Math.min(0, ...all);
     dataMax = Math.max(0, ...all);
   }
-  const scale = pct
+  const scale: ValueScale = pct
     ? { min: 0, max: 1, ticks: [0, 0.25, 0.5, 0.75, 1], toY: (v: number) => frame.y + frame.h - v * frame.h }
     : valueScale(frame, dataMin, dataMax);
 
-  const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, slots.centers, scale);
-  const y0 = scale.toY(0);
+  // Value coordinate: distance along the value axis from the scale minimum.
+  const valLen = H ? frame.w : frame.h;
+  const qOf = (v: number) => ((v - scale.min) / (scale.max - scale.min || 1)) * valLen;
+  /** Rect spanning [v0, v1] on the value axis at category position/thickness. */
+  const segRect = (catPos: number, thick: number, v0: number, v1: number) => {
+    const q0 = Math.min(qOf(v0), qOf(v1));
+    const q1 = Math.max(qOf(v0), qOf(v1));
+    return H
+      ? { x: frame.x + q0, y: catPos - thick / 2, w: q1 - q0, h: thick }
+      : { x: catPos - thick / 2, y: frame.y + frame.h - q1, w: thick, h: q1 - q0 };
+  };
+
+  const nodes: SceneNode[] = H
+    ? horizontalChrome(cfg, style, decor, frame, centers, scale, qOf)
+    : chromeNodes(cfg, style, decor, frame, centers, scale);
+  const zeroQ = qOf(0);
+  const y0 = H ? frame.x + zeroQ : frame.y + frame.h - zeroQ;
   const columnTop: number[] = [];
-  /** Segment mid-y of the last category per series, for right-hand series labels. */
+  const seriesLevels: number[][] = [];
+  /** Segment mid-position of the last category per series, for series labels. */
   const lastSegMid: (number | null)[] = data.series.map(() => null);
 
   for (let c = 0; c < n; c++) {
-    let upY = y0;
-    let downY = y0;
-    const cx = slots.centers[c];
-    const total = pct ? posTotals[c] : 0;
-    const barW = stacked ? slots.colWidth : slots.colWidth / Math.max(1, data.series.length);
+    let up = 0; // running positive stack (value units)
+    let down = 0;
+    const levels: number[] = [];
+    const barThick = stacked ? colThick : colThick / Math.max(1, data.series.length);
 
     data.series.forEach((s, si) => {
-      let v = s.values[c];
-      if (v == null || v === 0) return;
-      if (pct) {
-        if (total <= 0) return;
-        v = Math.max(0, v) / total;
-      }
+      const raw = s.values[c];
+      let v = raw ?? 0;
+      if (pct) v = denominators[c] > 0 ? Math.max(0, v) / denominators[c] : 0;
+      let r: { x: number; y: number; w: number; h: number } | null = null;
       const fill = seriesColor(style, si, s.color);
-      let x: number, y: number, h: number;
-      if (stacked) {
-        x = cx - slots.colWidth / 2;
-        const hh = (Math.abs(v) / (scale.max - scale.min || 1)) * frame.h;
-        if (v >= 0) {
-          y = upY - hh;
-          upY = y;
+
+      if (raw != null && v !== 0) {
+        if (stacked) {
+          if (v >= 0) {
+            r = segRect(centers[c], colThick, up, up + v);
+            up += v;
+          } else {
+            r = segRect(centers[c], colThick, down + v, down);
+            down += v;
+          }
         } else {
-          y = downY;
-          downY = y + hh;
+          const pos = centers[c] - colThick / 2 + (si + 0.5) * barThick;
+          r = segRect(pos, barThick - 1, 0, v);
         }
-        h = hh;
-      } else {
-        x = cx - slots.colWidth / 2 + si * barW;
-        const vy = scale.toY(v);
-        y = Math.min(vy, y0);
-        h = Math.abs(vy - y0);
       }
+      levels.push(up + down);
+      if (!r) return;
+
       nodes.push({
         kind: "rect",
-        x,
-        y,
-        w: stacked ? slots.colWidth : barW - 1,
-        h,
+        ...r,
         fill,
         stroke: style.background,
         strokeWidth: stacked ? 0.75 : 0,
         name: `seg-${si}-${c}`,
       });
-      if (c === n - 1) lastSegMid[si] = y + h / 2;
-      if (decor.segmentLabels && h >= fs * LABEL_FIT) {
-        const label = pct ? formatPercent(v) : formatNumber(s.values[c]!, fmt);
-        if (textWidth(label, fs) <= (stacked ? slots.colWidth : barW) + 2) {
+      if (c === n - 1) lastSegMid[si] = H ? r.x + r.w : r.y + r.h / 2;
+
+      if (decor.segmentLabels) {
+        const label = pct ? formatPercent(v) : formatNumber(raw!, fmt);
+        const along = H ? r.w : r.h; // extent along the value axis
+        const across = H ? r.h : r.w;
+        const fits = H
+          ? along >= textWidth(label, fs) + 2 && across >= fs * LABEL_FIT
+          : along >= fs * LABEL_FIT && textWidth(label, fs) <= across + 2;
+        if (fits) {
           nodes.push({
             kind: "text",
-            x: x - 4,
-            y: y + h / 2 - fs * 0.75,
-            w: (stacked ? slots.colWidth : barW - 1) + 8,
+            x: r.x - 4,
+            y: r.y + r.h / 2 - fs * 0.75,
+            w: r.w + 8,
             h: fs * 1.5,
             text: label,
             fontSize: fs,
@@ -128,44 +166,166 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         }
       }
     });
-    columnTop.push(Math.min(upY, y0));
+    seriesLevels.push(levels);
+
+    const topV = pct ? (denominators[c] > 0 ? posTotals[c] / denominators[c] : 0) : stacked ? up : Math.max(0, ...data.series.map((s) => s.values[c] ?? 0));
+    const topQ = qOf(Math.max(0, topV));
+    columnTop.push(H ? frame.x + topQ : frame.y + frame.h - topQ);
 
     if (decor.totals && !pct) {
-      nodes.push({
-        kind: "text",
-        x: cx - slots.slotWidth / 2,
-        y: Math.min(upY, y0) - fs * 1.45,
-        w: slots.slotWidth,
-        h: fs * 1.4,
-        text: formatNumber(signedTotals[c], fmt),
-        fontSize: fs,
-        bold: true,
-        color: style.text,
-        align: "center",
-        valign: "bottom",
-        name: `total-${c}`,
-      });
+      if (H) {
+        nodes.push({
+          kind: "text",
+          x: frame.x + topQ + 3,
+          y: centers[c] - fs * 0.75,
+          w: cfg.width - (frame.x + topQ) - 3,
+          h: fs * 1.5,
+          text: formatNumber(signedTotals[c], fmt),
+          fontSize: fs,
+          bold: true,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `total-${c}`,
+        });
+      } else {
+        nodes.push({
+          kind: "text",
+          x: centers[c] - slotLen / 2,
+          y: frame.y + frame.h - topQ - fs * 1.45,
+          w: slotLen,
+          h: fs * 1.4,
+          text: formatNumber(signedTotals[c], fmt),
+          fontSize: fs,
+          bold: true,
+          color: style.text,
+          align: "center",
+          valign: "bottom",
+          name: `total-${c}`,
+        });
+      }
     }
   }
 
-  nodes.push(baselineNode(frame, y0, style));
+  // Zero baseline: horizontal line (vertical charts) or vertical line (bars).
+  if (H) {
+    nodes.push({ kind: "line", x1: y0, y1: frame.y, x2: y0, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+  } else {
+    nodes.push(baselineNode(frame, y0, style));
+  }
 
-  if (decor.seriesLabels) {
-    nodes.push(...seriesLabelNodes(cfg, style, frame, lastSegMid));
+  if (decor.seriesLabels && !H) {
+    nodes.push(...seriesLabelNodes(cfg, style, frame, lastSegMid as (number | null)[]));
   }
 
   return {
     nodes,
     anchors: {
-      categoryX: slots.centers,
-      categoryWidth: data.categories.map(() => slots.colWidth),
+      categoryX: centers,
+      categoryWidth: data.categories.map(() => colThick),
       columnTop,
       columnValue: pct ? posTotals : signedTotals,
+      seriesLevels,
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
-      valueToY: pct ? undefined : scale.toY,
+      valueToY: pct || H ? undefined : scale.toY,
     },
   };
+}
+
+/** Chrome for horizontal (bar) orientation: title, legend, left category labels, bottom axis. */
+function horizontalChrome(
+  cfg: ChartConfig,
+  style: ChartStyle,
+  decor: Decorations,
+  frame: Frame,
+  centers: number[],
+  scale: ValueScale,
+  qOf: (v: number) => number,
+): SceneNode[] {
+  const nodes: SceneNode[] = chromeNodes(
+    cfg,
+    style,
+    { ...decor, categoryAxis: false, valueAxis: false, gridlines: false },
+    frame,
+    centers,
+  );
+  const fs = style.fontSize;
+  if (decor.gridlines) {
+    for (const t of scale.ticks) {
+      if (t === 0) continue;
+      const x = frame.x + qOf(t);
+      nodes.push({ kind: "line", x1: x, y1: frame.y, x2: x, y2: frame.y + frame.h, stroke: style.gridline, strokeWidth: 0.75, name: "gridline" });
+    }
+  }
+  if (decor.valueAxis) {
+    const axisFmt = resolveFormat(scale.ticks, cfg.numberFormat);
+    for (const t of scale.ticks) {
+      const x = frame.x + qOf(t);
+      nodes.push({
+        kind: "text",
+        x: x - 24,
+        y: frame.y + frame.h + 2,
+        w: 48,
+        h: fs * 1.4,
+        text: formatNumber(t, axisFmt),
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "center",
+        valign: "top",
+        name: "value-axis",
+      });
+    }
+  }
+  if (decor.categoryAxis) {
+    cfg.data.categories.forEach((cat, i) => {
+      nodes.push({
+        kind: "text",
+        x: 0,
+        y: centers[i] - fs * 0.75,
+        w: frame.x - 4,
+        h: fs * 1.5,
+        text: cat,
+        fontSize: fs,
+        color: style.text,
+        align: "right",
+        valign: "middle",
+        name: `category-${i}`,
+      });
+    });
+  }
+  if (decor.seriesLabels && cfg.data.series.length > 1) {
+    nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2));
+  }
+  return nodes;
+}
+
+/** Horizontal legend row: color chip + series name, left to right. */
+export function legendRow(cfg: ChartConfig, style: ChartStyle, x0: number, y: number): SceneNode[] {
+  const fs = style.fontSize;
+  const nodes: SceneNode[] = [];
+  let x = x0;
+  cfg.data.series.forEach((s, si) => {
+    const chip = fs * 0.7;
+    nodes.push(
+      { kind: "rect", x, y: y + fs * 0.35, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
+      {
+        kind: "text",
+        x: x + chip + 3,
+        y,
+        w: textWidth(s.name, fs) + 6,
+        h: fs * 1.4,
+        text: s.name,
+        fontSize: fs,
+        color: style.text,
+        align: "left",
+        valign: "middle",
+        name: `legend-${si}`,
+      },
+    );
+    x += chip + 3 + textWidth(s.name, fs) + 12;
+  });
+  return nodes;
 }
 
 /**

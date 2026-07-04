@@ -33,40 +33,96 @@ export const CHART_TAG = "POWERCHART_CONFIG";
 
 const DEFAULT_FONT = "Segoe UI";
 
+/** Where an existing PowerChart lives on the deck, for in-place update. */
+export interface EditTarget {
+  slideId: string;
+  shapeId: string;
+  left: number;
+  top: number;
+}
+
 export async function insertSceneIntoSlide(scene: Scene, opts: InsertOptions = {}): Promise<void> {
-  const left = opts.left ?? 60;
-  const top = opts.top ?? 90;
-
   await PowerPoint.run(async (context) => {
-    const slide = getTargetSlide(context);
-    const shapes = slide.shapes;
-    const created: PowerPoint.Shape[] = [];
-
-    for (const n of scene.nodes) {
-      const shape = addNode(shapes, n, left, top, opts);
-      if (shape) created.push(shape);
-    }
-
-    let tagTarget: PowerPoint.Shape | undefined = created[0];
-    if (opts.group !== false && created.length > 1) {
-      try {
-        // PowerPointApi 1.8+. On older hosts the shapes are simply left ungrouped.
-        tagTarget = (shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(created);
-        tagTarget.name = "PowerChart";
-      } catch {
-        /* grouping unavailable — leave shapes ungrouped */
-      }
-    }
-    if (opts.tagData && tagTarget) {
-      try {
-        // PowerPointApi 1.3+ — persists the data model in the document.
-        tagTarget.tags.add(CHART_TAG, opts.tagData);
-      } catch {
-        /* tags unavailable — chart is inserted but not re-editable */
-      }
-    }
+    renderScene(getTargetSlide(context), scene, opts);
     await context.sync();
   });
+}
+
+/** Replace an existing PowerChart group with a re-rendered scene, in place. */
+export async function updateChartInSlide(scene: Scene, target: EditTarget, opts: InsertOptions = {}): Promise<void> {
+  await PowerPoint.run(async (context) => {
+    const slide = context.presentation.slides.getItem(target.slideId);
+    const old = slide.shapes.getItemOrNullObject(target.shapeId);
+    await context.sync();
+    if (!old.isNullObject) old.delete();
+    renderScene(slide, scene, { ...opts, left: target.left, top: target.top });
+    await context.sync();
+  });
+}
+
+/**
+ * Read the PowerChart config back from the current selection (the tag written
+ * at insert time). Returns null when the selection is not a PowerChart.
+ * Requires PowerPointApi 1.5 (getSelectedShapes).
+ */
+export async function loadChartFromSelection(): Promise<{ configJson: string; target: EditTarget } | null> {
+  return PowerPoint.run(async (context) => {
+    const slides = context.presentation.getSelectedSlides();
+    const slide = slides.getItemAt(0);
+    slide.load("id");
+    const shapes = context.presentation.getSelectedShapes();
+    shapes.load("items/id,items/left,items/top");
+    await context.sync();
+
+    const tags = shapes.items.map((s) => {
+      const tag = s.tags.getItemOrNullObject(CHART_TAG);
+      tag.load("value");
+      return tag;
+    });
+    await context.sync();
+
+    for (let i = 0; i < shapes.items.length; i++) {
+      if (!tags[i].isNullObject && tags[i].value) {
+        const s = shapes.items[i];
+        return {
+          configJson: tags[i].value,
+          target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top },
+        };
+      }
+    }
+    return null;
+  });
+}
+
+function renderScene(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions): void {
+  const left = opts.left ?? 60;
+  const top = opts.top ?? 90;
+  const shapes = slide.shapes;
+  const created: PowerPoint.Shape[] = [];
+
+  for (const n of scene.nodes) {
+    const shape = addNode(shapes, n, left, top, opts);
+    if (shape) created.push(shape);
+  }
+
+  let tagTarget: PowerPoint.Shape | undefined = created[0];
+  if (opts.group !== false && created.length > 1) {
+    try {
+      // PowerPointApi 1.8+. On older hosts the shapes are simply left ungrouped.
+      tagTarget = (shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(created);
+      tagTarget.name = "PowerChart";
+    } catch {
+      /* grouping unavailable — leave shapes ungrouped */
+    }
+  }
+  if (opts.tagData && tagTarget) {
+    try {
+      // PowerPointApi 1.3+ — persists the data model in the document.
+      tagTarget.tags.add(CHART_TAG, opts.tagData);
+    } catch {
+      /* tags unavailable — chart is inserted but not re-editable */
+    }
+  }
 }
 
 function getTargetSlide(context: PowerPoint.RequestContext): PowerPoint.Slide {

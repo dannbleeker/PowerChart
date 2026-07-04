@@ -6,19 +6,26 @@ import { chromeNodes, computeFrame } from "./frame";
 import { seriesLabelNodes, type LayoutResult } from "./column";
 
 /**
- * Mekko (Marimekko) chart with %-axis, think-cell style:
- * column widths are proportional to column totals, each column is normalized
- * to 100% height, and column totals ride on top of the columns.
+ * Mekko (Marimekko) chart, think-cell style. Two variants:
+ * - %-axis (default): column widths proportional to column totals, columns
+ *   normalized to full height, so segment area ∝ absolute value.
+ * - "Mekko with units": explicit column widths from the datasheet's
+ *   `X extent` row; column heights represent absolute totals on a value scale.
  */
 export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const n = data.categories.length;
   const fs = style.fontSize;
+  const units = !!data.xExtent?.some((v) => v != null && v > 0);
 
   const totals = data.categories.map((_, c) =>
     data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0),
   );
-  const grand = totals.reduce((a, b) => a + b, 0) || 1;
+  const extents = units
+    ? data.categories.map((_, c) => Math.max(0, data.xExtent?.[c] ?? 0))
+    : totals;
+  const maxTotal = Math.max(1e-9, ...totals);
+  const grand = extents.reduce((a, b) => a + b, 0) || 1;
   const fmt = resolveFormat(
     [...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)), ...totals],
     cfg.numberFormat,
@@ -37,16 +44,19 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   let x = frame.x;
   const usableW = frame.w - gap * (n - 1);
   for (let c = 0; c < n; c++) {
-    const w = (totals[c] / grand) * usableW;
+    const w = (extents[c] / grand) * usableW;
     const cx = x + w / 2;
     centers.push(cx);
     widths.push(w);
+    // %-variant: every column fills the plot; units variant: height ∝ total.
+    const colH = units ? (totals[c] / maxTotal) * frame.h : frame.h;
+    const colTop = frame.y + frame.h - colH;
 
     let y = frame.y + frame.h;
     data.series.forEach((s, si) => {
       const v = Math.max(0, s.values[c] ?? 0);
       if (v === 0 || totals[c] === 0) return;
-      const h = (v / totals[c]) * frame.h;
+      const h = (v / totals[c]) * colH;
       y -= h;
       const fill = seriesColor(style, si, s.color);
       nodes.push({ kind: "rect", x, y, w, h, fill, stroke: style.background, strokeWidth: 0.75, name: `seg-${si}-${c}` });
@@ -70,13 +80,13 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         }
       }
     });
-    columnTop.push(frame.y);
+    columnTop.push(colTop);
 
     // Column total (absolute) and width share on top — the Mekko signature.
     nodes.push({
       kind: "text",
       x: x - 4,
-      y: frame.y - fs * 1.45,
+      y: colTop - fs * 1.45,
       w: w + 8,
       h: fs * 1.4,
       text: formatNumber(totals[c], fmt),
@@ -102,7 +112,9 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         y: frame.y + frame.h + 3,
         w: widths[c] + 8,
         h: fs * 1.4,
-        text: `${data.categories[c]} (${formatPercent(totals[c] / grand)})`,
+        text: units
+          ? data.categories[c]
+          : `${data.categories[c]} (${formatPercent(extents[c] / grand)})`,
         fontSize: fs,
         color: style.text,
         align: "center",

@@ -6,8 +6,18 @@ export interface SheetModel {
   cells: string[][];
 }
 
+/** think-cell's special datasheet rows, matched by row name. */
+const HUNDRED_ROW = /^100\s*%\s*=?$/i;
+const XEXTENT_ROW = /^x(\s*extent)?$/i;
+
 export function dataToSheet(data: ChartData): SheetModel {
   const cells: string[][] = [["", ...data.categories]];
+  const numRow = (name: string, values: (number | null)[]) => [
+    name,
+    ...data.categories.map((_, i) => (values[i] == null ? "" : String(values[i]))),
+  ];
+  if (data.hundredPercent) cells.push(numRow("100%=", data.hundredPercent));
+  if (data.xExtent) cells.push(numRow("X extent", data.xExtent));
   for (const s of data.series) {
     cells.push([s.name, ...s.values.map((v) => (v == null ? "" : String(v)))]);
   }
@@ -18,22 +28,44 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
   const [head = [], ...rows] = sheet.cells;
   const nCats = Math.max(0, head.length - 1);
   const categories = Array.from({ length: nCats }, (_, i) => head[i + 1] ?? `Cat ${i + 1}`);
-  const series = rows
+  const parseRow = (r: string[], catIdxTotals?: Set<number>) =>
+    Array.from({ length: nCats }, (_, i) => {
+      const raw = (r[i + 1] ?? "").trim();
+      if (raw === "") return null;
+      if (catIdxTotals && isTotalToken(raw)) {
+        catIdxTotals.add(i);
+        return 0;
+      }
+      const num = Number(raw.replace(/,/g, ""));
+      return Number.isFinite(num) ? num : null;
+    });
+
+  let hundredPercent: (number | null)[] | undefined;
+  let xExtent: (number | null)[] | undefined;
+  const series: ChartData["series"] = [];
+  rows
     .filter((r) => r.some((c, i) => i > 0 && c.trim() !== "") || (r[0] ?? "").trim() !== "")
-    .map((r, ri) => ({
-      name: (r[0] ?? "").trim() || `Series ${ri + 1}`,
-      values: Array.from({ length: nCats }, (_, i) => {
-        const raw = (r[i + 1] ?? "").trim();
-        if (raw === "") return null;
-        if (waterfallTotals && isTotalToken(raw)) {
-          waterfallTotals.add(i);
-          return 0;
-        }
-        const num = Number(raw.replace(/,/g, ""));
-        return Number.isFinite(num) ? num : null;
-      }),
-    }));
-  return { categories, series };
+    .forEach((r) => {
+      const name = (r[0] ?? "").trim();
+      if (HUNDRED_ROW.test(name)) {
+        hundredPercent = parseRow(r);
+      } else if (XEXTENT_ROW.test(name)) {
+        xExtent = parseRow(r);
+      } else {
+        series.push({ name: name || `Series ${series.length + 1}`, values: parseRow(r, waterfallTotals) });
+      }
+    });
+  return { categories, series, hundredPercent, xExtent };
+}
+
+/** Swap rows and columns (think-cell's Transpose): series become categories. */
+export function transposeSheet(sheet: SheetModel): SheetModel {
+  const rows = sheet.cells.length;
+  const cols = Math.max(0, ...sheet.cells.map((r) => r.length));
+  const cells = Array.from({ length: cols }, (_, c) =>
+    Array.from({ length: rows }, (_, r) => sheet.cells[r][c] ?? ""),
+  );
+  return { cells };
 }
 
 /**
@@ -93,6 +125,11 @@ export function mountDatasheet(
       }),
       button("− Column", () => {
         if (model.cells[0].length > 2) model.cells.forEach((r) => r.pop());
+        render();
+        onChange(model);
+      }),
+      button("⇄ Transpose", () => {
+        model = transposeSheet(model);
         render();
         onChange(model);
       }),
