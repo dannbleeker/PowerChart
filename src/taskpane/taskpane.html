@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PowerChart</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <link rel="stylesheet" href="./taskpane.css" />
+  </head>
+  <body>
+    <header class="pane-header">
+      <h1>PowerChart</h1>
+      <p class="tagline">think-cell-style charts as native PowerPoint shapes</p>
+    </header>
+
+    <section class="section">
+      <h2>1 · Chart type</h2>
+      <div id="gallery" class="gallery"></div>
+    </section>
+
+    <section class="section">
+      <h2>2 · Data</h2>
+      <p class="hint" id="sheet-hint">
+        Paste straight from Excel. In waterfalls, type <code>e</code> in a cell for a computed total.
+      </p>
+      <div id="datasheet"></div>
+    </section>
+
+    <section class="section">
+      <h2>3 · Decorations</h2>
+      <div id="options" class="options"></div>
+    </section>
+
+    <section class="section">
+      <h2>Preview</h2>
+      <div id="preview" class="preview"></div>
+      <div class="actions">
+        <button id="insert" class="primary">Insert into slide</button>
+        <button id="download">Download SVG</button>
+      </div>
+      <p class="hint" id="host-note"></p>
+    </section>
+
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>
