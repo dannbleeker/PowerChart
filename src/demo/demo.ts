@@ -8,6 +8,42 @@ const gallery = document.getElementById("gallery")!;
 const extras: ChartConfig[] = [
   {
     ...sampleConfig("stacked"),
+    title: "Stacked bar (rotated column)",
+    horizontal: true,
+    decorations: { totals: true, seriesLabels: true, segmentLabels: true, categoryAxis: true },
+  },
+  {
+    ...sampleConfig("mekko"),
+    title: "Mekko with units (X extent row)",
+    data: {
+      categories: ["EMEA", "Americas", "APAC"],
+      series: [
+        { name: "Enterprise", values: [42, 55, 18] },
+        { name: "SMB", values: [28, 30, 22] },
+        { name: "Consumer", values: [14, 25, 30] },
+      ],
+      xExtent: [50, 30, 20],
+    },
+  },
+  {
+    ...sampleConfig("stacked100"),
+    title: "100% with 100%= row (short columns)",
+    data: {
+      categories: ["2023", "2024", "2025"],
+      series: [
+        { name: "Won", values: [40, 55, 70] },
+        { name: "Lost", values: [30, 25, 20] },
+      ],
+      hundredPercent: [100, 100, 100],
+    },
+  },
+  {
+    ...sampleConfig("stacked"),
+    title: "Level difference arrow (series 1)",
+    decorations: { difference: { from: 0, to: 3, series: 0 }, segmentLabels: true },
+  },
+  {
+    ...sampleConfig("stacked"),
     title: "Stacked with difference arrow + value line",
     decorations: {
       totals: true,

@@ -85,6 +85,32 @@ export function computeFrame(
   return { frame, res: { titleH, totalsH, categoryAxisH, valueAxisW, seriesLabelsW } };
 }
 
+/**
+ * Plot rectangle for horizontal (bar) orientation: category labels on the
+ * left, value axis at the bottom, totals to the right of the bar ends,
+ * series legend row at the top.
+ */
+export function computeFrameHorizontal(
+  cfg: ChartConfig,
+  style: ChartStyle,
+  decor: Decorations,
+): Frame {
+  const fs = style.fontSize;
+  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const legendH = decor.seriesLabels && cfg.data.series.length > 1 ? fs * 1.6 + 4 : fs * 0.6;
+  const catW = decor.categoryAxis
+    ? Math.min(cfg.width * 0.3, Math.max(0, ...cfg.data.categories.map((c) => textWidth(c, fs))) + 8)
+    : 2;
+  const valueAxisH = decor.valueAxis ? fs * 1.6 : 4;
+  const totalsW = decor.totals ? fs * 4 : fs * 0.8;
+  return {
+    x: catW,
+    y: titleH + legendH,
+    w: cfg.width - catW - totalsW - 2,
+    h: cfg.height - titleH - legendH - valueAxisH,
+  };
+}
+
 /** Title, category labels, value axis, gridlines — shared chrome for all cartesian charts. */
 export function chromeNodes(
   cfg: ChartConfig,

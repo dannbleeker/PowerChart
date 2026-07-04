@@ -6,7 +6,8 @@ export type ChartKind =
   | "waterfall" // "Waterfall" (build up/down, "e" totals)
   | "mekko" // "Mekko" / Marimekko with %-axis
   | "line" // "Line"
-  | "area"; // "Area"
+  | "area" // "Area"
+  | "butterfly"; // two back-to-back bar charts sharing one scale
 
 export interface Series {
   name: string;
@@ -19,6 +20,17 @@ export interface Series {
 export interface ChartData {
   categories: string[];
   series: Series[];
+  /**
+   * think-cell's "100%=" datasheet row: per-category denominators for 100%
+   * charts. When set, columns whose series sum to less than this stay short
+   * of full height. Defaults to the column sum.
+   */
+  hundredPercent?: (number | null)[];
+  /**
+   * think-cell's "X extent" row (Mekko with units): explicit column widths,
+   * scaled so the total matches the chart width.
+   */
+  xExtent?: (number | null)[];
 }
 
 export interface WaterfallOptions {
@@ -45,9 +57,15 @@ export interface Decorations {
   gridlines: boolean;
   /** Compound annual growth rate arrow between two category indices. */
   cagr?: { from: number; to: number };
-  /** Total difference arrow between two category indices (level difference). */
-  difference?: { from: number; to: number; percent?: boolean };
-  /** Horizontal value line: at a fixed value or at the mean of column totals. */
+  /**
+   * Difference arrow between two category indices. Without `series` it is a
+   * total difference arrow (column totals); with `series` it is a level
+   * difference arrow comparing the cumulative level at that series.
+   */
+  difference?: { from: number; to: number; percent?: boolean; series?: number };
+  /** Value lines: at fixed values or at the mean of column totals. */
+  valueLines?: ({ mode: "mean" } | { mode: "value"; value: number })[];
+  /** @deprecated legacy single value line; normalized into valueLines. */
   valueLine?: { mode: "mean" } | { mode: "value"; value: number };
 }
 
@@ -80,6 +98,12 @@ export interface ChartStyle {
 export interface ChartConfig {
   kind: ChartKind;
   data: ChartData;
+  /**
+   * Rotate column charts into bar charts (think-cell's rotation handle).
+   * Applies to stacked/clustered/100%; decorations that assume a vertical
+   * value axis are skipped in horizontal orientation.
+   */
+  horizontal?: boolean;
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;
@@ -100,6 +124,8 @@ export interface LayoutAnchors {
   columnTop: number[];
   /** Column total values (signed sum, or cumulative value for waterfall totals). */
   columnValue: number[];
+  /** Per category: cumulative stack value after each series (for level arrows). */
+  seriesLevels?: number[][];
   /** y coordinate of the zero baseline. */
   baselineY: number;
   /** Plot rectangle. */

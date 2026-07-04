@@ -46,13 +46,17 @@ export function decorationNodes(
     );
   }
 
-  // --- Total difference arrow: dashed level line + vertical double arrow ---
+  // --- Difference arrow: dashed level line + vertical arrow ---
+  // Total (column totals) by default; a level difference arrow when `series`
+  // names a series — it compares the cumulative stack level at that series.
   if (decor.difference) {
     const { from, to } = clampPair(decor.difference, a);
-    const vFrom = a.columnValue[from];
-    const vTo = a.columnValue[to];
-    const yFrom = a.columnTop[from];
-    const yTo = a.columnTop[to];
+    const si = decor.difference.series;
+    const useLevel = si != null && a.seriesLevels != null && a.valueToY != null && si >= 0 && si < (a.seriesLevels[0]?.length ?? 0);
+    const vFrom = useLevel ? a.seriesLevels![from][si!] : a.columnValue[from];
+    const vTo = useLevel ? a.seriesLevels![to][si!] : a.columnValue[to];
+    const yFrom = useLevel ? a.valueToY!(vFrom) : a.columnTop[from];
+    const yTo = useLevel ? a.valueToY!(vTo) : a.columnTop[to];
     const x = a.categoryX[to] + a.categoryWidth[to] / 2 + 10;
     nodes.push(
       {
@@ -90,39 +94,42 @@ export function decorationNodes(
     });
   }
 
-  // --- Value line: dashed horizontal at a value or at the mean of totals ---
-  if (decor.valueLine && a.valueToY) {
-    const value =
-      decor.valueLine.mode === "mean"
-        ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1)
-        : decor.valueLine.value;
-    const y = a.valueToY(value);
-    nodes.push(
-      {
-        kind: "line",
-        x1: a.plot.x,
-        y1: y,
-        x2: a.plot.x + a.plot.w,
-        y2: y,
-        stroke: style.mutedText,
-        strokeWidth: 1,
-        dash: [3, 2],
-        name: "value-line",
-      },
-      {
-        kind: "text",
-        x: a.plot.x + 2,
-        y: y - fs * 1.5,
-        w: 100,
-        h: fs * 1.4,
-        text: (decor.valueLine.mode === "mean" ? "Ø " : "") + formatNumber(value, cfg.numberFormat),
-        fontSize: fs * 0.95,
-        color: style.mutedText,
-        align: "left",
-        valign: "bottom",
-        name: "value-line-label",
-      },
-    );
+  // --- Value lines: dashed horizontals at fixed values or the mean of totals ---
+  const valueLines = decor.valueLines ?? (decor.valueLine ? [decor.valueLine] : []);
+  if (valueLines.length && a.valueToY) {
+    valueLines.forEach((vl, i) => {
+      const value =
+        vl.mode === "mean"
+          ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1)
+          : vl.value;
+      const y = a.valueToY!(value);
+      nodes.push(
+        {
+          kind: "line",
+          x1: a.plot.x,
+          y1: y,
+          x2: a.plot.x + a.plot.w,
+          y2: y,
+          stroke: style.mutedText,
+          strokeWidth: 1,
+          dash: [3, 2],
+          name: `value-line-${i}`,
+        },
+        {
+          kind: "text",
+          x: a.plot.x + 2,
+          y: y - fs * 1.5,
+          w: 100,
+          h: fs * 1.4,
+          text: (vl.mode === "mean" ? "Ø " : "") + formatNumber(value, cfg.numberFormat),
+          fontSize: fs * 0.95,
+          color: style.mutedText,
+          align: "left",
+          valign: "bottom",
+          name: `value-line-label-${i}`,
+        },
+      );
+    });
   }
 
   return nodes;

@@ -15,17 +15,20 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | think-cell feature | PowerChart |
 |---|---|
 | Stacked / clustered / 100% column charts | ✅ |
+| Bar charts as rotated column charts, butterfly charts | ✅ (`horizontal` toggle, `butterfly` kind) |
 | Waterfall with computed totals (`e` cells) and connectors | ✅ |
 | Mekko (Marimekko) with %-axis and column totals | ✅ |
+| Mekko with units (`X extent` row) | ✅ |
 | Line & area charts | ✅ |
 | Smart segment labels (auto-hidden when they don't fit, auto contrast ink) | ✅ |
 | Column totals | ✅ |
 | CAGR arrow (`+x.x% p.a.`) | ✅ |
-| Total difference arrow (level line + arrow + %/absolute delta) | ✅ |
-| Value line (fixed value or mean Ø) | ✅ |
+| Total & level difference arrows (%/absolute delta) | ✅ |
+| Value lines (multiple; fixed values or mean Ø) | ✅ |
 | Series labels placed at the last column (de-overlapped) | ✅ |
-| Excel-style datasheet with TSV paste | ✅ (task pane grid) |
+| Excel-style datasheet with TSV paste, transpose, `100%=` row | ✅ (task pane grid) |
 | Output as native, editable PowerPoint shapes | ✅ (grouped) |
+| Re-edit inserted charts (config persisted in shape tags) | ✅ ("Edit selected chart") |
 | Live Excel data links, agenda/Gantt, scatter/bubble | 🚧 roadmap |
 
 ## How it works
@@ -83,10 +86,17 @@ gracefully on older hosts.
 ## Datasheet conventions
 
 - Row 1 = category names, column A = series names — the same mental model as
-  think-cell's internal datasheet.
+  think-cell's internal datasheet. **⇄ Transpose** swaps the two.
 - Paste a range straight from Excel (TSV) into any cell.
 - **Waterfall**: one series of deltas; type `e` (or `=`) in a cell to draw a
   computed running total at that category, exactly like think-cell's `e` cells.
+- **`100%=` row**: name a row `100%=` to set per-category denominators for
+  100% charts — columns whose series sum to less stay short of full height.
+- **`X extent` row**: name a row `X` or `X extent` to give a Mekko explicit
+  column widths (think-cell's "Mekko with units").
+- **Re-editing**: select an inserted PowerChart on the slide and press
+  **Edit selected chart** — the pane reloads its data and "Update chart"
+  replaces it in place.
 
 ## Disclaimer
 

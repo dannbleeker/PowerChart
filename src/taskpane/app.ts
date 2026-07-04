@@ -2,37 +2,51 @@ import { buildChart, DEFAULT_SIZE } from "../core/chart";
 import type { ChartConfig, ChartKind, Decorations } from "../core/types";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
-import { insertSceneIntoSlide, isPowerPointHost } from "../render/powerpoint";
+import {
+  insertSceneIntoSlide,
+  isPowerPointHost,
+  loadChartFromSelection,
+  updateChartInSlide,
+  type EditTarget,
+} from "../render/powerpoint";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 
 interface AppState {
   kind: ChartKind;
   sheet: SheetModel;
   decorations: Partial<Decorations>;
-  waterfallTotals: Set<number>;
+  horizontal: boolean;
   title: string;
+  /** When set, "Update chart" replaces this shape in place. */
+  editTarget: EditTarget | null;
 }
 
-const state: AppState = initFromSample("stacked");
+const state: AppState = { ...stateFromConfig(sampleConfig("stacked")), editTarget: null };
 
-function initFromSample(kind: ChartKind): AppState {
-  const cfg = sampleConfig(kind);
-  const totals = new Set(cfg.waterfall?.totalIndices ?? []);
+function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
   const sheet = dataToSheet(cfg.data);
-  if (kind === "waterfall") {
+  if (cfg.kind === "waterfall") {
     // Show "e" tokens in the sheet where totals are computed.
-    for (const i of totals) sheet.cells[1][i + 1] = "e";
+    for (const i of cfg.waterfall?.totalIndices ?? []) {
+      if (sheet.cells[1]) sheet.cells[1][i + 1] = "e";
+    }
   }
-  return { kind, sheet, decorations: { ...cfg.decorations }, waterfallTotals: totals, title: cfg.title ?? "" };
+  return {
+    kind: cfg.kind,
+    sheet,
+    decorations: { ...cfg.decorations },
+    horizontal: !!cfg.horizontal,
+    title: cfg.title ?? "",
+  };
 }
 
 function currentConfig(): ChartConfig {
   const totals = new Set<number>();
   const data = sheetToData(state.sheet, state.kind === "waterfall" ? totals : undefined);
-  state.waterfallTotals = totals;
   return {
     kind: state.kind,
     data,
+    horizontal: state.horizontal || undefined,
     ...DEFAULT_SIZE,
     title: state.title || undefined,
     decorations: state.decorations,
@@ -47,8 +61,18 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const gallery = $("gallery");
 const preview = $("preview");
 const optionsHost = $("options");
+const hostNote = $("host-note");
 
 let sheetApi: { setSheet(next: SheetModel): void };
+
+function applyConfig(cfg: ChartConfig, editTarget: EditTarget | null) {
+  Object.assign(state, stateFromConfig(cfg), { editTarget });
+  sheetApi.setSheet(state.sheet);
+  renderGallery();
+  renderOptions();
+  renderPreview();
+  renderActionState();
+}
 
 function renderGallery() {
   gallery.innerHTML = "";
@@ -56,17 +80,7 @@ function renderGallery() {
     const b = document.createElement("button");
     b.textContent = label;
     b.className = kind === state.kind ? "active" : "";
-    b.addEventListener("click", () => {
-      const next = initFromSample(kind);
-      state.kind = next.kind;
-      state.sheet = next.sheet;
-      state.decorations = next.decorations;
-      state.title = next.title;
-      sheetApi.setSheet(state.sheet);
-      renderGallery();
-      renderOptions();
-      renderPreview();
-    });
+    b.addEventListener("click", () => applyConfig(sampleConfig(kind), null));
     gallery.appendChild(b);
   }
 }
@@ -95,6 +109,18 @@ function renderOptions() {
     optionsHost.appendChild(label);
   }
 
+  // think-cell's rotation handle, as a toggle: column ⇄ bar.
+  const rot = document.createElement("label");
+  const rotCb = document.createElement("input");
+  rotCb.type = "checkbox";
+  rotCb.checked = state.horizontal;
+  rotCb.addEventListener("change", () => {
+    state.horizontal = rotCb.checked;
+    renderPreview();
+  });
+  rot.append(rotCb, "Horizontal (bar)");
+  optionsHost.appendChild(rot);
+
   const nCats = () => Math.max(0, state.sheet.cells[0].length - 1);
   optionsHost.appendChild(
     pairControl("CAGR arrow", d.cagr, nCats(), (pair) => {
@@ -102,24 +128,66 @@ function renderOptions() {
       renderPreview();
     }),
   );
-  optionsHost.appendChild(
-    pairControl("Difference arrow", d.difference, nCats(), (pair) => {
-      d.difference = pair;
-      renderPreview();
-    }),
-  );
 
+  // Difference arrow: totals by default, or a level arrow at a series.
+  const diff = document.createElement("label");
+  diff.className = "wide";
+  const diffCb = document.createElement("input");
+  diffCb.type = "checkbox";
+  diffCb.checked = !!d.difference;
+  const dFrom = numInput((d.difference?.from ?? 0) + 1);
+  const dTo = numInput((d.difference?.to ?? Math.max(0, nCats() - 1)) + 1);
+  const dSeries = numInput((d.difference?.series ?? -1) + 1, 0);
+  dSeries.title = "0 = column totals, 1+ = level of that series";
+  const emitDiff = () => {
+    const s = Number(dSeries.value) - 1;
+    d.difference = diffCb.checked
+      ? { from: Number(dFrom.value) - 1, to: Number(dTo.value) - 1, series: s >= 0 ? s : undefined }
+      : undefined;
+    renderPreview();
+  };
+  [diffCb, dFrom, dTo, dSeries].forEach((el) => el.addEventListener(el === diffCb ? "change" : "input", emitDiff));
+  diff.append(diffCb, "Difference arrow from ", dFrom, " to ", dTo, " series ", dSeries);
+  optionsHost.appendChild(diff);
+
+  // Value lines: mean and/or comma-separated fixed values.
   const vl = document.createElement("label");
   vl.className = "wide";
-  const vlCb = document.createElement("input");
-  vlCb.type = "checkbox";
-  vlCb.checked = !!d.valueLine;
-  vlCb.addEventListener("change", () => {
-    d.valueLine = vlCb.checked ? { mode: "mean" } : undefined;
+  const vlMean = document.createElement("input");
+  vlMean.type = "checkbox";
+  const existing = d.valueLines ?? (d.valueLine ? [d.valueLine] : []);
+  vlMean.checked = existing.some((v) => v.mode === "mean");
+  const vlValues = document.createElement("input");
+  vlValues.type = "text";
+  vlValues.placeholder = "e.g. 50, 100";
+  vlValues.style.width = "80px";
+  vlValues.value = existing
+    .filter((v): v is { mode: "value"; value: number } => v.mode === "value")
+    .map((v) => v.value)
+    .join(", ");
+  const emitVl = () => {
+    const lines: NonNullable<Decorations["valueLines"]> = [];
+    if (vlMean.checked) lines.push({ mode: "mean" });
+    for (const part of vlValues.value.split(",")) {
+      const v = Number(part.trim());
+      if (part.trim() && Number.isFinite(v)) lines.push({ mode: "value", value: v });
+    }
+    d.valueLines = lines.length ? lines : undefined;
+    d.valueLine = undefined;
     renderPreview();
-  });
-  vl.append(vlCb, "Value line (mean of totals)");
+  };
+  vlMean.addEventListener("change", emitVl);
+  vlValues.addEventListener("input", emitVl);
+  vl.append(vlMean, "Value line: mean Ø", " + values ", vlValues);
   optionsHost.appendChild(vl);
+}
+
+function numInput(value: number, min = 1): HTMLInputElement {
+  const el = document.createElement("input");
+  el.type = "number";
+  el.min = String(min);
+  el.value = String(value);
+  return el;
 }
 
 function pairControl(
@@ -133,14 +201,8 @@ function pairControl(
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.checked = !!current;
-  const from = document.createElement("input");
-  from.type = "number";
-  from.min = "1";
-  from.value = String((current?.from ?? 0) + 1);
-  const to = document.createElement("input");
-  to.type = "number";
-  to.min = "1";
-  to.value = String((current?.to ?? Math.max(0, nCats - 1)) + 1);
+  const from = numInput((current?.from ?? 0) + 1);
+  const to = numInput((current?.to ?? Math.max(0, nCats - 1)) + 1);
   const emit = () =>
     onChange(cb.checked ? { from: Number(from.value) - 1, to: Number(to.value) - 1 } : undefined);
   cb.addEventListener("change", emit);
@@ -159,12 +221,22 @@ function renderPreview() {
   }
 }
 
+function renderActionState() {
+  const insertBtn = $("insert") as HTMLButtonElement;
+  insertBtn.textContent = state.editTarget ? "Update chart" : "Insert into slide";
+  ($("insert-new") as HTMLButtonElement).style.display = state.editTarget ? "" : "none";
+}
+
 // --- boot ------------------------------------------------------------------
 
-sheetApi = mountDatasheet($("datasheet"), state.sheet, () => renderPreview());
+sheetApi = mountDatasheet($("datasheet"), state.sheet, (sheet) => {
+  state.sheet = sheet;
+  renderPreview();
+});
 renderGallery();
 renderOptions();
 renderPreview();
+renderActionState();
 
 $("download").addEventListener("click", () => {
   const svg = sceneToSvg(buildChart(currentConfig()), { background: "#ffffff" });
@@ -176,28 +248,55 @@ $("download").addEventListener("click", () => {
   URL.revokeObjectURL(a.href);
 });
 
-const insertBtn = $("insert") as HTMLButtonElement;
-const hostNote = $("host-note");
+async function doInsert(asNew: boolean) {
+  const cfg = currentConfig();
+  const scene = buildChart(cfg);
+  const tagData = JSON.stringify(cfg);
+  if (!asNew && state.editTarget) {
+    await updateChartInSlide(scene, state.editTarget, { tagData });
+  } else {
+    await insertSceneIntoSlide(scene, { tagData });
+    state.editTarget = null;
+    renderActionState();
+  }
+}
+
+async function doLoadSelection() {
+  const found = await loadChartFromSelection();
+  if (!found) {
+    hostNote.textContent = "The selection is not a PowerChart — select an inserted chart group first.";
+    return;
+  }
+  hostNote.textContent = "Chart loaded — edits will update it in place.";
+  applyConfig(JSON.parse(found.configJson) as ChartConfig, found.target);
+}
 
 function wireInsert() {
+  const insertBtn = $("insert") as HTMLButtonElement;
+  const insertNewBtn = $("insert-new") as HTMLButtonElement;
+  const loadBtn = $("load-selection") as HTMLButtonElement;
   if (isPowerPointHost()) {
     hostNote.textContent = "";
     insertBtn.disabled = false;
-    insertBtn.addEventListener("click", async () => {
+    loadBtn.disabled = false;
+    const guard = (fn: () => Promise<void>) => async () => {
       insertBtn.disabled = true;
       try {
-        const cfg = currentConfig();
-        const scene = buildChart(cfg);
-        await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg) });
+        await fn();
       } catch (err) {
-        hostNote.textContent = `Insert failed: ${err instanceof Error ? err.message : String(err)}`;
+        hostNote.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
       } finally {
         insertBtn.disabled = false;
       }
-    });
+    };
+    insertBtn.addEventListener("click", guard(() => doInsert(false)));
+    insertNewBtn.addEventListener("click", guard(() => doInsert(true)));
+    loadBtn.addEventListener("click", guard(doLoadSelection));
   } else {
     insertBtn.disabled = true;
-    hostNote.textContent = "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.";
+    loadBtn.disabled = true;
+    hostNote.textContent =
+      "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.";
   }
 }
 

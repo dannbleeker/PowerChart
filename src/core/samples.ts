@@ -68,6 +68,18 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
         },
         decorations: { segmentLabels: false, valueAxis: true, gridlines: true },
       };
+    case "butterfly":
+      return {
+        ...base,
+        title: "Headcount by age band",
+        data: {
+          categories: ["<30", "30–39", "40–49", "50–59", "60+"],
+          series: [
+            { name: "Women", values: [420, 610, 540, 320, 120] },
+            { name: "Men", values: [380, 650, 600, 410, 160] },
+          ],
+        },
+      };
     case "area":
       return {
         ...base,
@@ -107,4 +119,5 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "mekko", label: "Mekko" },
   { kind: "line", label: "Line" },
   { kind: "area", label: "Area" },
+  { kind: "butterfly", label: "Butterfly" },
 ];
