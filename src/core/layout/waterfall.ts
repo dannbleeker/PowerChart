@@ -34,7 +34,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
 
   const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
   const slots = categorySlots(frame, n);
-  const scale = valueScale(frame, lo, hi);
+  const scale = valueScale(frame, lo, hi, cfg.scale);
   const fs = style.fontSize;
   const y0 = scale.toY(0);
 

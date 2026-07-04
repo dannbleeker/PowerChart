@@ -44,6 +44,13 @@ const extras: ChartConfig[] = [
   },
   {
     ...sampleConfig("stacked"),
+    title: "Segment order: descending + pinned axis max 150",
+    segmentOrder: "descending",
+    scale: { max: 150 },
+    decorations: { totals: true, valueAxis: true, gridlines: true },
+  },
+  {
+    ...sampleConfig("stacked"),
     title: "Stacked with difference arrow + value line",
     decorations: {
       totals: true,

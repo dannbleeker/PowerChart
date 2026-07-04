@@ -6,6 +6,8 @@ import { layoutWaterfall } from "./layout/waterfall";
 import { layoutMekko } from "./layout/mekko";
 import { layoutLine } from "./layout/line";
 import { layoutButterfly } from "./layout/butterfly";
+import { layoutScatter } from "./layout/scatter";
+import { layoutGantt } from "./layout/gantt";
 import { decorationNodes } from "./decor";
 import type { LayoutResult } from "./layout/column";
 
@@ -31,13 +33,21 @@ export function buildChart(cfg: ChartConfig): Scene {
     case "butterfly":
       result = layoutButterfly(cfg, style, decor);
       break;
+    case "scatter":
+    case "bubble":
+      result = layoutScatter(cfg, style, decor);
+      break;
+    case "gantt":
+      result = layoutGantt(cfg, style, decor);
+      break;
     default:
       result = layoutColumns(cfg, style, decor);
   }
 
   // Decorations assume a vertical value axis; skip them for bar orientation
   // and butterfly charts.
-  const skipDecor = cfg.horizontal || cfg.kind === "butterfly";
+  const skipDecor =
+    cfg.horizontal || cfg.kind === "butterfly" || cfg.kind === "scatter" || cfg.kind === "bubble" || cfg.kind === "gantt";
   const nodes = skipDecor
     ? result.nodes
     : [...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];

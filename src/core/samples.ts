@@ -80,6 +80,34 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           ],
         },
       };
+    case "scatter":
+    case "bubble":
+      return {
+        ...base,
+        title: kind === "bubble" ? "Market map" : "Price vs. margin",
+        data: {
+          categories: ["Alpha", "Bravo", "Core", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"],
+          series: [
+            { name: "X", values: [12, 25, 40, 55, 62, 74, 30, 48] },
+            { name: "Y", values: [30, 55, 42, 70, 35, 60, 22, 50] },
+            ...(kind === "bubble" ? [{ name: "Size", values: [10, 40, 90, 25, 55, 70, 15, 35] as (number | null)[] }] : []),
+            { name: "Group", values: [1, 1, 2, 2, 3, 3, 1, 2] },
+          ],
+        },
+      };
+    case "gantt":
+      return {
+        ...base,
+        title: "Programme plan (weeks)",
+        data: {
+          categories: ["Scoping", "Design", "Build", "Test", "Rollout"],
+          series: [
+            { name: "Start", values: [1, 3, 5, 10, 13] },
+            { name: "End", values: [3, 6, 11, 13, 15] },
+            { name: "Milestone", values: [null, 6, null, 13, 15] },
+          ],
+        },
+      };
     case "area":
       return {
         ...base,
@@ -120,4 +148,7 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "line", label: "Line" },
   { kind: "area", label: "Area" },
   { kind: "butterfly", label: "Butterfly" },
+  { kind: "scatter", label: "Scatter" },
+  { kind: "bubble", label: "Bubble" },
+  { kind: "gantt", label: "Gantt" },
 ];

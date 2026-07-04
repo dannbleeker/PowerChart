@@ -7,7 +7,10 @@ export type ChartKind =
   | "mekko" // "Mekko" / Marimekko with %-axis
   | "line" // "Line"
   | "area" // "Area"
-  | "butterfly"; // two back-to-back bar charts sharing one scale
+  | "butterfly" // two back-to-back bar charts sharing one scale
+  | "scatter" // "Scatter" — X/Y rows, labelled points
+  | "bubble" // "Bubble" — scatter + Size row
+  | "gantt"; // simplified numeric-timeline Gantt (Start/End rows)
 
 export interface Series {
   name: string;
@@ -104,6 +107,16 @@ export interface ChartConfig {
    * value axis are skipped in horizontal orientation.
    */
   horizontal?: boolean;
+  /**
+   * Manual value-axis scale (think-cell's axis-handle dragging). Either end
+   * may be pinned; the other stays automatic.
+   */
+  scale?: { min?: number; max?: number };
+  /**
+   * think-cell's Segment Order menu: stacking order of series within each
+   * column. `ascending`/`descending` sort per column by value.
+   */
+  segmentOrder?: "sheet" | "reverse" | "ascending" | "descending";
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;

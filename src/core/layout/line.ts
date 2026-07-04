@@ -23,7 +23,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
 
   const { frame } = computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []);
   const slots = categorySlots(frame, n, 0);
-  const scale = valueScale(frame, dataMin, dataMax);
+  const scale = valueScale(frame, dataMin, dataMax, cfg.scale);
   const y0 = scale.toY(0);
 
   const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, slots.centers, scale);
