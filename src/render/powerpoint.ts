@@ -94,6 +94,27 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
   });
 }
 
+/**
+ * Append one agenda slide per chapter, each highlighting its own chapter
+ * (think-cell's agenda). Slides are appended at the end of the deck —
+ * PowerPointApi's slides.add has no insert-at-position — so move them into
+ * place afterwards. Requires PowerPointApi 1.3 (slides.add).
+ */
+export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
+  await PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    const before = slides.getCount();
+    await context.sync();
+    for (let i = 0; i < scenes.length; i++) slides.add();
+    await context.sync();
+    for (let i = 0; i < scenes.length; i++) {
+      const slide = slides.getItemAt(before.value + i);
+      renderScene(slide, scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
+    }
+    await context.sync();
+  });
+}
+
 function renderScene(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions): void {
   const left = opts.left ?? 60;
   const top = opts.top ?? 90;
