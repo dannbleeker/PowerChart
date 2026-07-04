@@ -28,7 +28,9 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Series labels placed at the last column (de-overlapped) | ✅ |
 | Excel-style datasheet with TSV paste, transpose, `100%=` row | ✅ (task pane grid) |
 | Scatter & bubble with collision-avoiding point labels | ✅ (`X`/`Y`/`Size`/`Group` rows) |
-| Gantt / timeline (numeric) with milestones | ✅ (`Start`/`End`/`Milestone` rows) |
+| Gantt / timeline with milestones — numeric or **calendar dates** | ✅ (`Start`/`End`/`Milestone` rows; ISO/`dd.mm.yyyy`/"Jan 2026" dates) |
+| Value-axis breaks (compress an out-of-scale range) | ✅ |
+| Same Scale across all charts in the deck | ✅ (re-renders every chart to a shared scale) |
 | Segment order menu (sheet / reversed / ascending / descending) | ✅ |
 | Manual value-axis scale (pin min and/or max) | ✅ |
 | Number format control (decimals, suffix) | ✅ |
@@ -36,7 +38,7 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Visual chart gallery (Elements-style thumbnails) | ✅ |
 | Output as native, editable PowerPoint shapes | ✅ (grouped) |
 | Re-edit inserted charts (config persisted in shape tags) | ✅ ("Edit selected chart") |
-| Live Excel data links, calendar-based Gantt, axis breaks, Same Scale | 🚧 roadmap |
+| Live Excel data links, in-canvas drag handles | 🚧 out of Office.js reach (see docs/RESEARCH.md) |
 
 ## How it works
 

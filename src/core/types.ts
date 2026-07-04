@@ -34,6 +34,11 @@ export interface ChartData {
    * scaled so the total matches the chart width.
    */
   xExtent?: (number | null)[];
+  /**
+   * Set when datasheet cells were parsed as calendar dates (values are days
+   * since the Unix epoch). Gantt charts render a month/year timeline then.
+   */
+  dates?: boolean;
 }
 
 export interface WaterfallOptions {
@@ -117,6 +122,11 @@ export interface ChartConfig {
    * column. `ascending`/`descending` sort per column by value.
    */
   segmentOrder?: "sheet" | "reverse" | "ascending" | "descending";
+  /**
+   * think-cell axis break: compress the value range [from, to] into a small
+   * band so out-of-scale columns fit. Vertical column/waterfall charts only.
+   */
+  axisBreak?: { from: number; to: number };
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;

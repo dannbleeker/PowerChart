@@ -1,4 +1,4 @@
-import { buildChart, DEFAULT_SIZE } from "../core/chart";
+import { buildChart, DEFAULT_SIZE, valueExtent } from "../core/chart";
 import type { ChartConfig, ChartKind, Decorations } from "../core/types";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
@@ -6,6 +6,7 @@ import {
   insertAgendaSlides,
   insertSceneIntoSlide,
   isPowerPointHost,
+  listChartsInDeck,
   loadChartFromSelection,
   updateChartInSlide,
   type EditTarget,
@@ -22,6 +23,8 @@ interface AppState {
   segmentOrder: NonNullable<ChartConfig["segmentOrder"]>;
   scaleMin: string;
   scaleMax: string;
+  breakFrom: string;
+  breakTo: string;
   decimals: string; // "auto" | "0" | "1" | "2"
   suffix: string;
   /** When set, "Update chart" replaces this shape in place. */
@@ -47,6 +50,8 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     segmentOrder: cfg.segmentOrder ?? "sheet",
     scaleMin: cfg.scale?.min != null ? String(cfg.scale.min) : "",
     scaleMax: cfg.scale?.max != null ? String(cfg.scale.max) : "",
+    breakFrom: cfg.axisBreak ? String(cfg.axisBreak.from) : "",
+    breakTo: cfg.axisBreak ? String(cfg.axisBreak.to) : "",
     decimals: cfg.numberFormat?.decimals != null ? String(cfg.numberFormat.decimals) : "auto",
     suffix: cfg.numberFormat?.suffix ?? "",
   };
@@ -57,6 +62,12 @@ function currentConfig(): ChartConfig {
   const data = sheetToData(state.sheet, state.kind === "waterfall" ? totals : undefined);
   const min = state.scaleMin.trim() === "" ? undefined : Number(state.scaleMin);
   const max = state.scaleMax.trim() === "" ? undefined : Number(state.scaleMax);
+  const bFrom = Number(state.breakFrom);
+  const bTo = Number(state.breakTo);
+  const axisBreak =
+    state.breakFrom.trim() && state.breakTo.trim() && Number.isFinite(bFrom) && Number.isFinite(bTo) && bTo > bFrom
+      ? { from: bFrom, to: bTo }
+      : undefined;
   return {
     kind: state.kind,
     data,
@@ -66,6 +77,7 @@ function currentConfig(): ChartConfig {
     decorations: state.decorations,
     waterfall: { totalIndices: [...totals] },
     segmentOrder: state.segmentOrder === "sheet" ? undefined : state.segmentOrder,
+    axisBreak,
     scale:
       (min != null && Number.isFinite(min)) || (max != null && Number.isFinite(max))
         ? { min: Number.isFinite(min!) ? min : undefined, max: Number.isFinite(max!) ? max : undefined }
@@ -286,6 +298,27 @@ function renderOptions() {
   sc.append("Axis scale min ", scMin, " max ", scMax);
   optionsHost.appendChild(sc);
 
+  // Axis break (compresses the given value range).
+  const ab = document.createElement("label");
+  ab.className = "wide";
+  const abFrom = document.createElement("input");
+  const abTo = document.createElement("input");
+  for (const [el, val] of [[abFrom, state.breakFrom], [abTo, state.breakTo]] as const) {
+    el.type = "text";
+    el.style.width = "48px";
+    el.placeholder = "none";
+    el.value = val;
+  }
+  const emitBreak = () => {
+    state.breakFrom = abFrom.value;
+    state.breakTo = abTo.value;
+    renderPreview();
+  };
+  abFrom.addEventListener("input", emitBreak);
+  abTo.addEventListener("input", emitBreak);
+  ab.append("Axis break from ", abFrom, " to ", abTo);
+  optionsHost.appendChild(ab);
+
   // Number format.
   const nf = document.createElement("label");
   nf.className = "wide";
@@ -399,6 +432,29 @@ async function doInsert(asNew: boolean) {
   }
 }
 
+/**
+ * think-cell's Set Same Scale: pin every value-axis chart in the deck to the
+ * union of their extents and re-render them in place.
+ */
+async function doSameScale() {
+  const charts = await listChartsInDeck();
+  const parsed = charts
+    .map((c) => ({ target: c.target, cfg: JSON.parse(c.configJson) as ChartConfig }))
+    .map((c) => ({ ...c, extent: valueExtent(c.cfg) }))
+    .filter((c): c is typeof c & { extent: { min: number; max: number } } => c.extent != null);
+  if (parsed.length < 2) {
+    hostNote.textContent = "Same scale needs at least two value-axis charts in the deck.";
+    return;
+  }
+  const min = Math.min(...parsed.map((c) => c.extent.min));
+  const max = Math.max(...parsed.map((c) => c.extent.max));
+  for (const c of parsed) {
+    c.cfg.scale = { min: min < 0 ? min : undefined, max };
+    await updateChartInSlide(buildChart(c.cfg), c.target, { tagData: JSON.stringify(c.cfg) });
+  }
+  hostNote.textContent = `Same scale applied to ${parsed.length} charts (max ${max}).`;
+}
+
 async function doLoadSelection() {
   const found = await loadChartFromSelection();
   if (!found) {
@@ -451,6 +507,9 @@ function wireInsert() {
     insertBtn.addEventListener("click", guard(() => doInsert(false)));
     insertNewBtn.addEventListener("click", guard(() => doInsert(true)));
     loadBtn.addEventListener("click", guard(doLoadSelection));
+    const sameScaleBtn = $("same-scale") as HTMLButtonElement;
+    sameScaleBtn.disabled = false;
+    sameScaleBtn.addEventListener("click", guard(doSameScale));
     agendaBtn.disabled = false;
     agendaBtn.addEventListener(
       "click",

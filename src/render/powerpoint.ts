@@ -95,6 +95,41 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
 }
 
 /**
+ * Find every PowerChart in the deck (any shape carrying the config tag),
+ * across all slides. Used by "Same scale" to re-render charts together.
+ */
+export async function listChartsInDeck(): Promise<{ configJson: string; target: EditTarget }[]> {
+  return PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    slides.load("items/id");
+    await context.sync();
+
+    const perSlide = slides.items.map((slide) => {
+      slide.shapes.load("items/id,items/left,items/top");
+      return slide;
+    });
+    await context.sync();
+
+    const lookups: { slideId: string; shape: PowerPoint.Shape; tag: PowerPoint.Tag }[] = [];
+    for (const slide of perSlide) {
+      for (const shape of slide.shapes.items) {
+        const tag = shape.tags.getItemOrNullObject(CHART_TAG);
+        tag.load("value");
+        lookups.push({ slideId: slide.id, shape, tag });
+      }
+    }
+    await context.sync();
+
+    return lookups
+      .filter((l) => !l.tag.isNullObject && l.tag.value)
+      .map((l) => ({
+        configJson: l.tag.value,
+        target: { slideId: l.slideId, shapeId: l.shape.id, left: l.shape.left, top: l.shape.top },
+      }));
+  });
+}
+
+/**
  * Append one agenda slide per chapter, each highlighting its own chapter
  * (think-cell's agenda). Slides are appended at the end of the deck —
  * PowerPointApi's slides.add has no insert-at-position — so move them into

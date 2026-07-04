@@ -54,4 +54,44 @@ export function buildChart(cfg: ChartConfig): Scene {
   return { width: cfg.width, height: cfg.height, nodes };
 }
 
+/**
+ * Value-axis extent of a chart's data (for think-cell's Same Scale): the
+ * range the auto scale would cover. Null for charts without a value axis
+ * (100%, Mekko, butterfly, scatter, gantt).
+ */
+export function valueExtent(cfg: ChartConfig): { min: number; max: number } | null {
+  const { data, kind } = cfg;
+  const cats = data.categories.map((_, c) => c);
+  const vals = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  if (!vals.length) return null;
+  switch (kind) {
+    case "stacked": {
+      const pos = cats.map((c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+      const neg = cats.map((c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
+      return { min: Math.min(0, ...neg), max: Math.max(0, ...pos) };
+    }
+    case "clustered":
+    case "line":
+      return { min: Math.min(0, ...vals), max: Math.max(0, ...vals) };
+    case "area": {
+      const pos = cats.map((c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+      return { min: 0, max: Math.max(0, ...pos) };
+    }
+    case "waterfall": {
+      const totals = new Set(cfg.waterfall?.totalIndices ?? []);
+      let running = 0;
+      let min = 0;
+      let max = 0;
+      cats.forEach((c) => {
+        if (!totals.has(c)) running += data.series[0]?.values[c] ?? 0;
+        min = Math.min(min, running);
+        max = Math.max(max, running);
+      });
+      return { min, max };
+    }
+    default:
+      return null;
+  }
+}
+
 export { layoutColumns, layoutWaterfall, layoutMekko, layoutLine };

@@ -4,6 +4,7 @@ import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import {
   baselineNode,
+  breakMarkerNodes,
   categorySlots,
   chromeNodes,
   computeFrame,
@@ -78,11 +79,14 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   }
   const scale: ValueScale = pct
     ? { min: 0, max: 1, ticks: [0, 0.25, 0.5, 0.75, 1], toY: (v: number) => frame.y + frame.h - v * frame.h }
-    : valueScale(frame, dataMin, dataMax, cfg.scale);
+    : valueScale(frame, dataMin, dataMax, cfg.scale, H ? undefined : cfg.axisBreak);
 
   // Value coordinate: distance along the value axis from the scale minimum.
+  // Vertical charts route through toY so axis breaks apply; horizontal stays linear.
   const valLen = H ? frame.w : frame.h;
-  const qOf = (v: number) => ((v - scale.min) / (scale.max - scale.min || 1)) * valLen;
+  const qOf = H
+    ? (v: number) => ((v - scale.min) / (scale.max - scale.min || 1)) * valLen
+    : (v: number) => frame.y + frame.h - scale.toY(v);
   /** Rect spanning [v0, v1] on the value axis at category position/thickness. */
   const segRect = (catPos: number, thick: number, v0: number, v1: number) => {
     const q0 = Math.min(qOf(v0), qOf(v1));
@@ -214,6 +218,8 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       }
     }
   }
+
+  if (!H) nodes.push(...breakMarkerNodes(frame, scale, style));
 
   // Zero baseline: horizontal line (vertical charts) or vertical line (bars).
   if (H) {

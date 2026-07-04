@@ -5,6 +5,11 @@ import type { ChartConfig } from "../core/types";
 
 const gallery = document.getElementById("gallery")!;
 
+/** ISO date → days since epoch (the datasheet's calendar parsing, inlined). */
+function dstr(iso: string): number {
+  return Math.round(Date.parse(iso) / 86400000);
+}
+
 const extras: ChartConfig[] = [
   {
     ...sampleConfig("stacked"),
@@ -48,6 +53,29 @@ const extras: ChartConfig[] = [
     segmentOrder: "descending",
     scale: { max: 150 },
     decorations: { totals: true, valueAxis: true, gridlines: true },
+  },
+  {
+    ...sampleConfig("clustered"),
+    title: "Axis break 80–580 (one outlier column)",
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [{ name: "Sales", values: [42, 55, 620, 61] }],
+    },
+    axisBreak: { from: 80, to: 580 },
+    decorations: { segmentLabels: true, totals: false, valueAxis: true, gridlines: true, seriesLabels: false },
+  },
+  {
+    ...sampleConfig("gantt"),
+    title: "Calendar Gantt (dates in the datasheet)",
+    data: {
+      categories: ["Scoping", "Design", "Build", "Test", "Rollout"],
+      series: [
+        { name: "Start", values: ["2026-01-05", "2026-02-01", "2026-03-10", "2026-06-01", "2026-07-01"].map(dstr) },
+        { name: "End", values: ["2026-02-01", "2026-03-15", "2026-06-01", "2026-07-01", "2026-07-20"].map(dstr) },
+        { name: "Milestone", values: [null, null, dstr("2026-06-01"), null, dstr("2026-07-20")] },
+      ],
+      dates: true,
+    },
   },
   {
     ...sampleConfig("stacked"),
