@@ -17,6 +17,11 @@ interface AppState {
   decorations: Partial<Decorations>;
   horizontal: boolean;
   title: string;
+  segmentOrder: NonNullable<ChartConfig["segmentOrder"]>;
+  scaleMin: string;
+  scaleMax: string;
+  decimals: string; // "auto" | "0" | "1" | "2"
+  suffix: string;
   /** When set, "Update chart" replaces this shape in place. */
   editTarget: EditTarget | null;
 }
@@ -37,12 +42,19 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     decorations: { ...cfg.decorations },
     horizontal: !!cfg.horizontal,
     title: cfg.title ?? "",
+    segmentOrder: cfg.segmentOrder ?? "sheet",
+    scaleMin: cfg.scale?.min != null ? String(cfg.scale.min) : "",
+    scaleMax: cfg.scale?.max != null ? String(cfg.scale.max) : "",
+    decimals: cfg.numberFormat?.decimals != null ? String(cfg.numberFormat.decimals) : "auto",
+    suffix: cfg.numberFormat?.suffix ?? "",
   };
 }
 
 function currentConfig(): ChartConfig {
   const totals = new Set<number>();
   const data = sheetToData(state.sheet, state.kind === "waterfall" ? totals : undefined);
+  const min = state.scaleMin.trim() === "" ? undefined : Number(state.scaleMin);
+  const max = state.scaleMax.trim() === "" ? undefined : Number(state.scaleMax);
   return {
     kind: state.kind,
     data,
@@ -51,6 +63,18 @@ function currentConfig(): ChartConfig {
     title: state.title || undefined,
     decorations: state.decorations,
     waterfall: { totalIndices: [...totals] },
+    segmentOrder: state.segmentOrder === "sheet" ? undefined : state.segmentOrder,
+    scale:
+      (min != null && Number.isFinite(min)) || (max != null && Number.isFinite(max))
+        ? { min: Number.isFinite(min!) ? min : undefined, max: Number.isFinite(max!) ? max : undefined }
+        : undefined,
+    numberFormat:
+      state.decimals !== "auto" || state.suffix
+        ? {
+            decimals: state.decimals === "auto" ? "auto" : Number(state.decimals),
+            suffix: state.suffix || undefined,
+          }
+        : undefined,
   };
 }
 
@@ -180,6 +204,76 @@ function renderOptions() {
   vlValues.addEventListener("input", emitVl);
   vl.append(vlMean, "Value line: mean Ø", " + values ", vlValues);
   optionsHost.appendChild(vl);
+
+  // Segment order (think-cell's mini-toolbar menu).
+  const so = document.createElement("label");
+  so.className = "wide";
+  const soSel = document.createElement("select");
+  for (const [value, label] of [
+    ["sheet", "Sheet order"],
+    ["reverse", "Reversed"],
+    ["ascending", "Ascending"],
+    ["descending", "Descending"],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    soSel.appendChild(opt);
+  }
+  soSel.value = state.segmentOrder;
+  soSel.addEventListener("change", () => {
+    state.segmentOrder = soSel.value as AppState["segmentOrder"];
+    renderPreview();
+  });
+  so.append("Segment order ", soSel);
+  optionsHost.appendChild(so);
+
+  // Manual axis scale (think-cell's axis-handle dragging).
+  const sc = document.createElement("label");
+  sc.className = "wide";
+  const scMin = document.createElement("input");
+  const scMax = document.createElement("input");
+  for (const [el, val] of [[scMin, state.scaleMin], [scMax, state.scaleMax]] as const) {
+    el.type = "text";
+    el.style.width = "48px";
+    el.placeholder = "auto";
+    el.value = val;
+  }
+  const emitScale = () => {
+    state.scaleMin = scMin.value;
+    state.scaleMax = scMax.value;
+    renderPreview();
+  };
+  scMin.addEventListener("input", emitScale);
+  scMax.addEventListener("input", emitScale);
+  sc.append("Axis scale min ", scMin, " max ", scMax);
+  optionsHost.appendChild(sc);
+
+  // Number format.
+  const nf = document.createElement("label");
+  nf.className = "wide";
+  const nfDec = document.createElement("select");
+  for (const v of ["auto", "0", "1", "2"]) {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v === "auto" ? "auto" : `${v} dp`;
+    nfDec.appendChild(opt);
+  }
+  nfDec.value = state.decimals;
+  const nfSuffix = document.createElement("input");
+  nfSuffix.type = "text";
+  nfSuffix.style.width = "48px";
+  nfSuffix.placeholder = "e.g. €m";
+  nfSuffix.value = state.suffix;
+  const emitNf = () => {
+    state.decimals = nfDec.value;
+    state.suffix = nfSuffix.value;
+    renderPreview();
+  };
+  nfDec.addEventListener("change", emitNf);
+  nfSuffix.addEventListener("input", emitNf);
+  nf.append("Labels: decimals ", nfDec, " suffix ", nfSuffix);
+  optionsHost.appendChild(nf);
 }
 
 function numInput(value: number, min = 1): HTMLInputElement {

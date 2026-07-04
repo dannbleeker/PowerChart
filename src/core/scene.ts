@@ -46,6 +46,18 @@ export interface TextNode {
   name?: string;
 }
 
+export interface EllipseNode {
+  kind: "ellipse";
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
+  name?: string;
+}
+
 /** Filled triangle with tip at (x, y), pointing along `angle` (degrees, 0 = east, clockwise). */
 export interface ArrowheadNode {
   kind: "arrowhead";
@@ -57,7 +69,7 @@ export interface ArrowheadNode {
   name?: string;
 }
 
-export type SceneNode = RectNode | LineNode | TextNode | ArrowheadNode;
+export type SceneNode = RectNode | LineNode | TextNode | EllipseNode | ArrowheadNode;
 
 export interface Scene {
   width: number;

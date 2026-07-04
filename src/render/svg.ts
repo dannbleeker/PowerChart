@@ -41,6 +41,10 @@ function nodeToSvg(n: SceneNode): string {
       const family = n.fontFamily ? ` font-family="${esc(n.fontFamily)}"` : "";
       return `<text x="${r(x)}" y="${r(y)}" font-size="${n.fontSize}" fill="${n.color}" text-anchor="${anchor}"${weight}${family}${name(n)}>${esc(n.text)}</text>`;
     }
+    case "ellipse": {
+      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      return `<ellipse cx="${r(n.cx)}" cy="${r(n.cy)}" rx="${r(n.rx)}" ry="${r(n.ry)}" fill="${n.fill}"${stroke}${name(n)}/>`;
+    }
     case "arrowhead": {
       // Triangle with tip at (x, y), pointing along angle.
       const s = n.size;

@@ -34,13 +34,25 @@ export interface ValueScale {
   toY: (v: number) => number;
 }
 
-/** Linear scale mapping [min, max] onto the plot height, snapped to nice ticks. */
-export function valueScale(frame: Frame, dataMin: number, dataMax: number): ValueScale {
-  const lo = Math.min(0, dataMin);
-  const hi = Math.max(0, dataMax);
-  const ticks = niceTicks(lo, hi, 5);
-  const min = ticks[0];
-  const max = ticks[ticks.length - 1];
+/**
+ * Linear scale mapping [min, max] onto the plot height, snapped to nice ticks.
+ * `override` pins either end manually (think-cell's axis-handle dragging).
+ */
+export function valueScale(
+  frame: Frame,
+  dataMin: number,
+  dataMax: number,
+  override?: { min?: number; max?: number },
+): ValueScale {
+  const lo = override?.min ?? Math.min(0, dataMin);
+  const hi = override?.max ?? Math.max(0, dataMax);
+  const ticks = niceTicks(lo, hi, 5).filter(
+    (t) =>
+      (override?.min == null || t >= override.min - 1e-9) &&
+      (override?.max == null || t <= override.max + 1e-9),
+  );
+  const min = override?.min ?? ticks[0];
+  const max = override?.max ?? ticks[ticks.length - 1];
   const toY = (v: number) => frame.y + frame.h - ((v - min) / (max - min || 1)) * frame.h;
   return { min, max, ticks, toY };
 }

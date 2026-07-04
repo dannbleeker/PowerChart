@@ -27,9 +27,14 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Value lines (multiple; fixed values or mean Ø) | ✅ |
 | Series labels placed at the last column (de-overlapped) | ✅ |
 | Excel-style datasheet with TSV paste, transpose, `100%=` row | ✅ (task pane grid) |
+| Scatter & bubble with collision-avoiding point labels | ✅ (`X`/`Y`/`Size`/`Group` rows) |
+| Gantt / timeline (numeric) with milestones | ✅ (`Start`/`End`/`Milestone` rows) |
+| Segment order menu (sheet / reversed / ascending / descending) | ✅ |
+| Manual value-axis scale (pin min and/or max) | ✅ |
+| Number format control (decimals, suffix) | ✅ |
 | Output as native, editable PowerPoint shapes | ✅ (grouped) |
 | Re-edit inserted charts (config persisted in shape tags) | ✅ ("Edit selected chart") |
-| Live Excel data links, agenda/Gantt, scatter/bubble | 🚧 roadmap |
+| Live Excel data links, agenda slides, calendar-based Gantt, axis breaks, Same Scale | 🚧 roadmap |
 
 ## How it works
 

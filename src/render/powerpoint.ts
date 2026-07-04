@@ -177,6 +177,23 @@ function addNode(
       if (n.name) line.name = n.name;
       return line;
     }
+    case "ellipse": {
+      const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse, {
+        left: dx + n.cx - n.rx,
+        top: dy + n.cy - n.ry,
+        width: Math.max(0.2, n.rx * 2),
+        height: Math.max(0.2, n.ry * 2),
+      });
+      shape.fill.setSolidColor(n.fill);
+      if (n.stroke && (n.strokeWidth ?? 0) > 0) {
+        shape.lineFormat.color = n.stroke;
+        shape.lineFormat.weight = n.strokeWidth ?? 1;
+      } else {
+        shape.lineFormat.visible = false;
+      }
+      if (n.name) shape.name = n.name;
+      return shape;
+    }
     case "text":
       return addText(shapes, n, dx, dy, opts);
     case "arrowhead": {

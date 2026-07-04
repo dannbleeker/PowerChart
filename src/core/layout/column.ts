@@ -78,7 +78,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   }
   const scale: ValueScale = pct
     ? { min: 0, max: 1, ticks: [0, 0.25, 0.5, 0.75, 1], toY: (v: number) => frame.y + frame.h - v * frame.h }
-    : valueScale(frame, dataMin, dataMax);
+    : valueScale(frame, dataMin, dataMax, cfg.scale);
 
   // Value coordinate: distance along the value axis from the scale minimum.
   const valLen = H ? frame.w : frame.h;
@@ -105,10 +105,18 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   for (let c = 0; c < n; c++) {
     let up = 0; // running positive stack (value units)
     let down = 0;
-    const levels: number[] = [];
+    const levels: number[] = data.series.map(() => 0);
     const barThick = stacked ? colThick : colThick / Math.max(1, data.series.length);
+    // think-cell's Segment Order: stacking order within this column.
+    const order = data.series.map((_, i) => i);
+    if (cfg.segmentOrder === "reverse") order.reverse();
+    else if (cfg.segmentOrder === "ascending" || cfg.segmentOrder === "descending") {
+      const sign = cfg.segmentOrder === "ascending" ? 1 : -1;
+      order.sort((a, b) => sign * ((data.series[a].values[c] ?? 0) - (data.series[b].values[c] ?? 0)));
+    }
 
-    data.series.forEach((s, si) => {
+    order.forEach((si, position) => {
+      const s = data.series[si];
       const raw = s.values[c];
       let v = raw ?? 0;
       if (pct) v = denominators[c] > 0 ? Math.max(0, v) / denominators[c] : 0;
@@ -125,11 +133,11 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
             down += v;
           }
         } else {
-          const pos = centers[c] - colThick / 2 + (si + 0.5) * barThick;
+          const pos = centers[c] - colThick / 2 + (position + 0.5) * barThick;
           r = segRect(pos, barThick - 1, 0, v);
         }
       }
-      levels.push(up + down);
+      levels[si] = up + down;
       if (!r) return;
 
       nodes.push({
