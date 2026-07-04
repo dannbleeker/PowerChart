@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { formatNumber, niceTicks, resolveFormat } from "../format";
+import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
 
@@ -27,12 +27,20 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   );
   const plot = { x: catW, y: titleH + headerH, w: cfg.width - catW - 6, h: cfg.height - titleH - headerH - 6 };
 
+  const dates = !!data.dates;
   const all = [...starts, ...ends, ...milestones].filter((v): v is number => v != null);
-  const ticks = niceTicks(Math.min(...(all.length ? all : [0])), Math.max(...(all.length ? all : [1])), 6);
-  const t0 = ticks[0];
-  const t1 = ticks[ticks.length - 1];
+  const lo = Math.min(...(all.length ? all : [0]));
+  const hi = Math.max(...(all.length ? all : [1]));
+  // Calendar mode: the timeline spans whole months; numeric mode: nice ticks.
+  const ticks = dates ? monthStarts(lo - 31, hi + 31) : niceTicks(lo, hi, 6);
+  const t0 = dates ? Math.min(lo, ticks[0] ?? lo) : ticks[0];
+  const t1 = dates ? Math.max(hi, ticks[ticks.length - 1] ?? hi) : ticks[ticks.length - 1];
   const toX = (v: number) => plot.x + ((v - t0) / (t1 - t0 || 1)) * plot.w;
   const fmt = resolveFormat(ticks, cfg.numberFormat);
+  const tickLabel = (t: number, i: number) =>
+    dates ? formatDay(t, i === 0 || new Date(t * 86400000).getUTCMonth() === 0) : formatNumber(t, fmt);
+  const spanLabel = (s: number, e: number) =>
+    dates ? `${formatDay(s)}–${formatDay(e)}` : `${formatNumber(s, fmt)}–${formatNumber(e, fmt)}`;
 
   const nodes: SceneNode[] = [];
   if (cfg.title) {
@@ -42,13 +50,17 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
   }
   // Timeline header on top + vertical gridlines (think-cell's calendar strip).
-  for (const t of ticks) {
+  const minLabelGap = fs * 2.6;
+  let lastLabelX = -1e9;
+  ticks.forEach((t, i) => {
     const x = toX(t);
-    nodes.push(
-      { kind: "text", x: x - 24, y: titleH, w: 48, h: headerH, text: formatNumber(t, fmt), fontSize: fs * 0.9, color: style.mutedText, align: "center", valign: "middle", name: "timeline" },
-      { kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 0.75, name: "gridline" },
-    );
-  }
+    nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 0.75, name: "gridline" });
+    // Thin out header labels when months are dense.
+    if (x - lastLabelX >= minLabelGap) {
+      nodes.push({ kind: "text", x: x - 24, y: titleH, w: 48, h: headerH, text: tickLabel(t, i), fontSize: fs * 0.9, color: style.mutedText, align: "center", valign: "middle", name: "timeline" });
+      lastLabelX = x;
+    }
+  });
 
   const slotH = plot.h / Math.max(1, data.categories.length);
   const barH = Math.min(slotH * 0.55, fs * 1.4);
@@ -73,7 +85,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         fill: seriesColor(style, 0), name: `bar-${c}`,
       });
       if (decor.segmentLabels) {
-        const label = `${formatNumber(s, fmt)}–${formatNumber(e, fmt)}`;
+        const label = spanLabel(s, e);
         if (toX(e) - toX(s) >= textWidth(label, fs * 0.9) + 4) {
           nodes.push({
             kind: "text", x: toX(s), y: cy - fs * 0.7, w: toX(e) - toX(s), h: fs * 1.4,

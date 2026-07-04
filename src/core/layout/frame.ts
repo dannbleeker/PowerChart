@@ -32,6 +32,8 @@ export interface ValueScale {
   max: number;
   ticks: number[];
   toY: (v: number) => number;
+  /** Present when an axis break compresses part of the range: the band's y extent. */
+  breakBand?: { yLow: number; yHigh: number };
 }
 
 /**
@@ -43,18 +45,53 @@ export function valueScale(
   dataMin: number,
   dataMax: number,
   override?: { min?: number; max?: number },
+  axisBreak?: { from: number; to: number },
 ): ValueScale {
   const lo = override?.min ?? Math.min(0, dataMin);
   const hi = override?.max ?? Math.max(0, dataMax);
-  const ticks = niceTicks(lo, hi, 5).filter(
+  let ticks = niceTicks(lo, hi, 5).filter(
     (t) =>
       (override?.min == null || t >= override.min - 1e-9) &&
       (override?.max == null || t <= override.max + 1e-9),
   );
   const min = override?.min ?? ticks[0];
   const max = override?.max ?? ticks[ticks.length - 1];
-  const toY = (v: number) => frame.y + frame.h - ((v - min) / (max - min || 1)) * frame.h;
-  return { min, max, ticks, toY };
+  let toY = (v: number) => frame.y + frame.h - ((v - min) / (max - min || 1)) * frame.h;
+  let breakBand: ValueScale["breakBand"];
+
+  // think-cell axis break: the [from, to] range is compressed into a small
+  // fixed band so out-of-scale columns fit the plot.
+  if (axisBreak && axisBreak.from > min && axisBreak.to < max && axisBreak.to > axisBreak.from) {
+    const { from, to } = axisBreak;
+    const gapFrac = 0.06;
+    const below = from - min;
+    const above = max - to;
+    const span = below + above || 1;
+    const belowFrac = (below / span) * (1 - gapFrac);
+    const aboveFrac = (above / span) * (1 - gapFrac);
+    const frac = (v: number) =>
+      v <= from
+        ? (below ? (v - min) / below : 0) * belowFrac
+        : v >= to
+          ? belowFrac + gapFrac + (above ? (v - to) / above : 0) * aboveFrac
+          : belowFrac + ((v - from) / (to - from)) * gapFrac;
+    toY = (v: number) => frame.y + frame.h - frac(v) * frame.h;
+    ticks = ticks.filter((t) => t <= from + 1e-9 || t >= to - 1e-9);
+    breakBand = { yLow: toY(from), yHigh: toY(to) };
+  }
+  return { min, max, ticks, toY, breakBand };
+}
+
+/** Slanted-band break marker drawn across the plot (over the columns). */
+export function breakMarkerNodes(frame: Frame, scale: ValueScale, style: ChartStyle): SceneNode[] {
+  if (!scale.breakBand) return [];
+  const { yLow, yHigh } = scale.breakBand;
+  const skew = 2.5;
+  return [
+    { kind: "rect", x: frame.x - 2, y: yHigh, w: frame.w + 4, h: yLow - yHigh, fill: style.background, name: "axis-break" },
+    { kind: "line", x1: frame.x - 4, y1: yLow + skew, x2: frame.x + frame.w + 4, y2: yLow - skew, stroke: style.mutedText, strokeWidth: 1, name: "axis-break-lo" },
+    { kind: "line", x1: frame.x - 4, y1: yHigh + skew, x2: frame.x + frame.w + 4, y2: yHigh - skew, stroke: style.mutedText, strokeWidth: 1, name: "axis-break-hi" },
+  ];
 }
 
 export interface FrameReservations {

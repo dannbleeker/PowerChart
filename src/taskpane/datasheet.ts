@@ -1,5 +1,6 @@
 import type { ChartData } from "../core/types";
 import { isTotalToken } from "../core/layout/waterfall";
+import { parseDateToken } from "../core/format";
 
 export interface SheetModel {
   /** Raw cell text; row 0 = category names, column 0 = series names. */
@@ -10,6 +11,8 @@ export interface SheetModel {
 const HUNDRED_ROW = /^100\s*%\s*=?$/i;
 const XEXTENT_ROW = /^x(\s*extent)?$/i;
 
+const GANTT_DATE_ROW = /^(start|end|milestone)$/i;
+
 export function dataToSheet(data: ChartData): SheetModel {
   const cells: string[][] = [["", ...data.categories]];
   const numRow = (name: string, values: (number | null)[]) => [
@@ -19,7 +22,14 @@ export function dataToSheet(data: ChartData): SheetModel {
   if (data.hundredPercent) cells.push(numRow("100%=", data.hundredPercent));
   if (data.xExtent) cells.push(numRow("X extent", data.xExtent));
   for (const s of data.series) {
-    cells.push([s.name, ...s.values.map((v) => (v == null ? "" : String(v)))]);
+    // Calendar Gantt round trip: show epoch-day values as ISO dates again.
+    const asDate = data.dates && GANTT_DATE_ROW.test(s.name.trim());
+    cells.push([
+      s.name,
+      ...s.values.map((v) =>
+        v == null ? "" : asDate ? new Date(v * 86400000).toISOString().slice(0, 10) : String(v),
+      ),
+    ]);
   }
   return { cells };
 }
@@ -28,6 +38,7 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
   const [head = [], ...rows] = sheet.cells;
   const nCats = Math.max(0, head.length - 1);
   const categories = Array.from({ length: nCats }, (_, i) => head[i + 1] ?? `Cat ${i + 1}`);
+  let sawDate = false;
   const parseRow = (r: string[], catIdxTotals?: Set<number>) =>
     Array.from({ length: nCats }, (_, i) => {
       const raw = (r[i + 1] ?? "").trim();
@@ -37,7 +48,14 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
         return 0;
       }
       const num = Number(raw.replace(/,/g, ""));
-      return Number.isFinite(num) ? num : null;
+      if (Number.isFinite(num)) return num;
+      // Calendar dates (for Gantt timelines) become days since the epoch.
+      const day = parseDateToken(raw);
+      if (day != null) {
+        sawDate = true;
+        return day;
+      }
+      return null;
     });
 
   let hundredPercent: (number | null)[] | undefined;
@@ -55,7 +73,7 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
         series.push({ name: name || `Series ${series.length + 1}`, values: parseRow(r, waterfallTotals) });
       }
     });
-  return { categories, series, hundredPercent, xExtent };
+  return { categories, series, hundredPercent, xExtent, dates: sawDate || undefined };
 }
 
 /** Swap rows and columns (think-cell's Transpose): series become categories. */

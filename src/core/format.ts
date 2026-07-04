@@ -61,6 +61,53 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
   return ticks;
 }
 
+const DAY_MS = 86400000;
+
+/**
+ * Parse a calendar-date cell ("2026-01-15", "15.01.2026", "Jan 2026", …)
+ * into days since the Unix epoch. Returns null for non-dates.
+ */
+export function parseDateToken(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const dmy = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!dmy && /^[-+]?[\d,.]+$/.test(t)) return null; // plain numbers are not dates
+  const ms = dmy
+    ? Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
+    : Date.parse(/^\d{4}-\d{2}(-\d{2})?$/.test(t) ? t : `${t} UTC`);
+  if (!Number.isFinite(ms)) return null;
+  return Math.round(ms / DAY_MS);
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Short label for an epoch-day value: "5 Jan" or "Jan 26" on month starts. */
+export function formatDay(days: number, withYear = false): string {
+  const d = new Date(days * DAY_MS);
+  const m = MONTHS[d.getUTCMonth()];
+  if (withYear) return `${m} ${String(d.getUTCFullYear()).slice(2)}`;
+  return d.getUTCDate() === 1 ? m : `${d.getUTCDate()} ${m}`;
+}
+
+/** Epoch-day values of every month start covering [minDay, maxDay]. */
+export function monthStarts(minDay: number, maxDay: number): number[] {
+  const start = new Date(minDay * DAY_MS);
+  let y = start.getUTCFullYear();
+  let m = start.getUTCMonth();
+  const out: number[] = [];
+  for (let guard = 0; guard < 240; guard++) {
+    const day = Date.UTC(y, m, 1) / DAY_MS;
+    if (day > maxDay) break;
+    if (day >= minDay) out.push(day);
+    m++;
+    if (m === 12) {
+      m = 0;
+      y++;
+    }
+  }
+  return out;
+}
+
 /** Compound annual growth rate between two values over `periods` steps. */
 export function cagr(from: number, to: number, periods: number): number | null {
   if (periods <= 0 || from <= 0 || to <= 0) return null;

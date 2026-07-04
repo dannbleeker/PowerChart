@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
-import { baselineNode, categorySlots, chromeNodes, computeFrame, valueScale } from "./frame";
+import { baselineNode, breakMarkerNodes, categorySlots, chromeNodes, computeFrame, valueScale } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -34,7 +34,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
 
   const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
   const slots = categorySlots(frame, n);
-  const scale = valueScale(frame, lo, hi, cfg.scale);
+  const scale = valueScale(frame, lo, hi, cfg.scale, cfg.axisBreak);
   const fs = style.fontSize;
   const y0 = scale.toY(0);
 
@@ -92,6 +92,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
     }
   });
 
+  nodes.push(...breakMarkerNodes(frame, scale, style));
   nodes.push(baselineNode(frame, y0, style));
 
   return {
