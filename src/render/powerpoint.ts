@@ -20,7 +20,16 @@ export interface InsertOptions {
   /** Group the shapes after insertion (default true). */
   group?: boolean;
   fontFamily?: string;
+  /**
+   * Serialized chart model stored as a tag on the inserted group
+   * (PowerPointApi 1.3+), so a future version can re-open and re-edit
+   * the chart — the think-cell "live chart" pattern.
+   */
+  tagData?: string;
 }
+
+/** Tag key under which the chart's serialized config is persisted. */
+export const CHART_TAG = "POWERCHART_CONFIG";
 
 const DEFAULT_FONT = "Segoe UI";
 
@@ -38,12 +47,22 @@ export async function insertSceneIntoSlide(scene: Scene, opts: InsertOptions = {
       if (shape) created.push(shape);
     }
 
+    let tagTarget: PowerPoint.Shape | undefined = created[0];
     if (opts.group !== false && created.length > 1) {
       try {
         // PowerPointApi 1.8+. On older hosts the shapes are simply left ungrouped.
-        (shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(created);
+        tagTarget = (shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(created);
+        tagTarget.name = "PowerChart";
       } catch {
         /* grouping unavailable — leave shapes ungrouped */
+      }
+    }
+    if (opts.tagData && tagTarget) {
+      try {
+        // PowerPointApi 1.3+ — persists the data model in the document.
+        tagTarget.tags.add(CHART_TAG, opts.tagData);
+      } catch {
+        /* tags unavailable — chart is inserted but not re-editable */
       }
     }
     await context.sync();

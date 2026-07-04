@@ -186,8 +186,9 @@ function wireInsert() {
     insertBtn.addEventListener("click", async () => {
       insertBtn.disabled = true;
       try {
-        const scene = buildChart(currentConfig());
-        await insertSceneIntoSlide(scene);
+        const cfg = currentConfig();
+        const scene = buildChart(cfg);
+        await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg) });
       } catch (err) {
         hostNote.textContent = `Insert failed: ${err instanceof Error ? err.message : String(err)}`;
       } finally {
