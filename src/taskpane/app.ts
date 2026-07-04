@@ -3,12 +3,14 @@ import type { ChartConfig, ChartKind, Decorations } from "../core/types";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
 import {
+  insertAgendaSlides,
   insertSceneIntoSlide,
   isPowerPointHost,
   loadChartFromSelection,
   updateChartInSlide,
   type EditTarget,
 } from "../render/powerpoint";
+import { buildAgendaScene } from "../core/agenda";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 
 interface AppState {
@@ -92,18 +94,53 @@ let sheetApi: { setSheet(next: SheetModel): void };
 function applyConfig(cfg: ChartConfig, editTarget: EditTarget | null) {
   Object.assign(state, stateFromConfig(cfg), { editTarget });
   sheetApi.setSheet(state.sheet);
+  const titleField = document.getElementById("chart-title") as HTMLInputElement | null;
+  if (titleField) titleField.value = state.title;
   renderGallery();
   renderOptions();
   renderPreview();
   renderActionState();
 }
 
+/** Miniature preview of a chart kind for the gallery (think-cell's Elements menu). */
+function thumbnailSvg(kind: ChartKind): string {
+  const cfg: ChartConfig = {
+    ...sampleConfig(kind),
+    width: 96,
+    height: 58,
+    title: undefined,
+    decorations: {
+      segmentLabels: false,
+      seriesLabels: false,
+      totals: false,
+      categoryAxis: false,
+      valueAxis: false,
+      gridlines: false,
+    },
+    style: { fontSize: 4 },
+  };
+  try {
+    return sceneToSvg(buildChart(cfg));
+  } catch {
+    return "";
+  }
+}
+
+const thumbnails = new Map<ChartKind, string>();
+
 function renderGallery() {
   gallery.innerHTML = "";
   for (const { kind, label } of CHART_KINDS) {
     const b = document.createElement("button");
-    b.textContent = label;
-    b.className = kind === state.kind ? "active" : "";
+    b.className = "thumb" + (kind === state.kind ? " active" : "");
+    if (!thumbnails.has(kind)) thumbnails.set(kind, thumbnailSvg(kind));
+    const pic = document.createElement("span");
+    pic.className = "thumb-pic";
+    pic.innerHTML = thumbnails.get(kind)!;
+    const cap = document.createElement("span");
+    cap.className = "thumb-cap";
+    cap.textContent = label;
+    b.append(pic, cap);
     b.addEventListener("click", () => applyConfig(sampleConfig(kind), null));
     gallery.appendChild(b);
   }
@@ -327,6 +364,13 @@ sheetApi = mountDatasheet($("datasheet"), state.sheet, (sheet) => {
   state.sheet = sheet;
   renderPreview();
 });
+
+const titleInput = $("chart-title") as HTMLInputElement;
+titleInput.value = state.title;
+titleInput.addEventListener("input", () => {
+  state.title = titleInput.value;
+  renderPreview();
+});
 renderGallery();
 renderOptions();
 renderPreview();
@@ -365,10 +409,31 @@ async function doLoadSelection() {
   applyConfig(JSON.parse(found.configJson) as ChartConfig, found.target);
 }
 
+// --- Agenda ------------------------------------------------------------------
+
+function agendaChapters(): string[] {
+  return ($("agenda-chapters") as HTMLTextAreaElement).value
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+function renderAgendaPreview() {
+  const chapters = agendaChapters();
+  const host = $("agenda-preview");
+  host.innerHTML = chapters.length
+    ? sceneToSvg(buildAgendaScene(chapters, { highlight: 0 }), { background: "#ffffff" })
+    : "";
+}
+
+$("agenda-chapters").addEventListener("input", renderAgendaPreview);
+renderAgendaPreview();
+
 function wireInsert() {
   const insertBtn = $("insert") as HTMLButtonElement;
   const insertNewBtn = $("insert-new") as HTMLButtonElement;
   const loadBtn = $("load-selection") as HTMLButtonElement;
+  const agendaBtn = $("agenda-insert") as HTMLButtonElement;
   if (isPowerPointHost()) {
     hostNote.textContent = "";
     insertBtn.disabled = false;
@@ -386,9 +451,19 @@ function wireInsert() {
     insertBtn.addEventListener("click", guard(() => doInsert(false)));
     insertNewBtn.addEventListener("click", guard(() => doInsert(true)));
     loadBtn.addEventListener("click", guard(doLoadSelection));
+    agendaBtn.disabled = false;
+    agendaBtn.addEventListener(
+      "click",
+      guard(async () => {
+        const chapters = agendaChapters();
+        if (!chapters.length) return;
+        await insertAgendaSlides(chapters.map((_, i) => buildAgendaScene(chapters, { highlight: i })));
+      }),
+    );
   } else {
     insertBtn.disabled = true;
     loadBtn.disabled = true;
+    ($("agenda-insert") as HTMLButtonElement).disabled = true;
     hostNote.textContent =
       "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.";
   }

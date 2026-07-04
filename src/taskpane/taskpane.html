@@ -20,6 +20,7 @@
 
     <section class="section">
       <h2>2 · Data</h2>
+      <label class="field">Chart title <input type="text" id="chart-title" placeholder="optional" /></label>
       <p class="hint" id="sheet-hint">
         Paste straight from Excel. Special rows by name: <code>e</code> cell = waterfall total,
         <code>100%=</code> row = 100%-chart denominator, <code>X extent</code> row = Mekko widths,
@@ -44,6 +45,16 @@
         <button id="download">Download SVG</button>
       </div>
       <p class="hint" id="host-note"></p>
+    </section>
+
+    <section class="section">
+      <h2>Agenda</h2>
+      <p class="hint">One chapter per line. Inserts one agenda slide per chapter (appended at the end of the deck — move them into place), each with its chapter highlighted.</p>
+      <textarea id="agenda-chapters" rows="4" placeholder="Introduction&#10;Market overview&#10;Strategy&#10;Financials"></textarea>
+      <div id="agenda-preview" class="preview agenda-preview"></div>
+      <div class="actions">
+        <button id="agenda-insert" class="primary" disabled>Insert agenda slides</button>
+      </div>
     </section>
 
     <script type="module" src="./app.ts"></script>

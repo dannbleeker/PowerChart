@@ -32,9 +32,11 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Segment order menu (sheet / reversed / ascending / descending) | ✅ |
 | Manual value-axis scale (pin min and/or max) | ✅ |
 | Number format control (decimals, suffix) | ✅ |
+| Agenda / chapter slides (one per chapter, current highlighted) | ✅ (appended to the deck) |
+| Visual chart gallery (Elements-style thumbnails) | ✅ |
 | Output as native, editable PowerPoint shapes | ✅ (grouped) |
 | Re-edit inserted charts (config persisted in shape tags) | ✅ ("Edit selected chart") |
-| Live Excel data links, agenda slides, calendar-based Gantt, axis breaks, Same Scale | 🚧 roadmap |
+| Live Excel data links, calendar-based Gantt, axis breaks, Same Scale | 🚧 roadmap |
 
 ## How it works
 
