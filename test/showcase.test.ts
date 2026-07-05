@@ -105,6 +105,9 @@ describe("showcase deck coverage", () => {
     ["combo waterfall base", (c) => c.combo?.columns === "waterfall"],
     ["combo mekko base", (c) => c.combo?.columns === "mekko"],
     ["combo independent line axes", (c) => c.combo?.lineAxes === "independent"],
+    ["hex tilemap", (c) => c.kind === "tilemap" && c.tilemap?.shape === "hex"],
+    ["tilemap mini-glyphs", (c) => c.kind === "tilemap" && c.tilemap?.glyph === "bars"],
+    ["stacked100 with negatives", (c) => c.kind === "stacked100" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

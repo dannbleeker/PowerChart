@@ -44,6 +44,7 @@ describe("user manual coverage", () => {
       "Other bucket", "Calendar heatmap", "Butterfly stacked flanks",
       "Radar per-spoke scales", "Missing-data bridge", "Floating segments",
       "Combo base modes", "Combo independent line axes",
+      "Hex tile maps", "Tilemap mini-glyphs", "100% charts with negatives",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

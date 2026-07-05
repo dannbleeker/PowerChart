@@ -70,6 +70,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
               jitter?: boolean,       // overlay raw observations as jittered dots (raw-sample mode)
               notch?: boolean },      // notch each box at the median CI (raw-sample mode)
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
+  tilemap?: { shape?: "square"|"hex",       // hexagonal tiles (offset rows) instead of squares
+              glyph?: "bars" },   // mini bar chart per region from a multi-series datasheet
   heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto",
               totals?: "row"|"column"|"both",    // marginal sum strips
               calendar?: boolean },   // weekday × week grid for a daily date series
@@ -233,6 +235,19 @@ mekko / 100%, which have no shared value axis).
 **Combo independent line axes** (`combo.lineAxes: "independent"`): each line
 series is zoomed to its own value range and labelled at every point, so several
 KPIs in unlike units read on one chart without a shared secondary axis.
+
+**Tilemap hex tiles** (`tilemap.shape: "hex"`): draws the cartogram with
+hexagonal tiles (odd rows offset, nested rows) instead of squares — filled in
+SVG/pptx, outlines in the live add-in (polygons have no freeform fill there).
+
+**Tilemap mini-glyphs** (`tilemap.glyph: "bars"`): with a multi-series
+datasheet (categories = regions, series = periods), each tile draws a mini bar
+chart of that region's values with a series legend, instead of a single value
+color.
+
+**100% charts with negatives**: `stacked100` no longer clamps negatives — a
+negative segment renders below the zero line as its share of the (positive)
+column total, so returns / adjustments stay visible.
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap

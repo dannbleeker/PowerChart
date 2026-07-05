@@ -850,6 +850,51 @@ const features = [
     },
     decorations: { seriesLabels: true },
   },
+  {
+    kind: "tilemap",
+    width: 480,
+    height: 300,
+    title: "Hexagonal tile map (US)",
+    map: "us",
+    tilemap: { shape: "hex" },
+    data: {
+      categories: ["CA", "TX", "NY", "FL", "IL", "WA", "MA", "CO", "GA", "NC", "OH", "PA", "MI", "AZ", "VA"],
+      series: [{ name: "Stores", values: [120, 95, 88, 74, 51, 44, 38, 29, 27, 22, 40, 55, 33, 25, 30] }],
+    },
+    decorations: { segmentLabels: true },
+  },
+  {
+    kind: "tilemap",
+    width: 480,
+    height: 300,
+    title: "Tile map with per-region mini-bars",
+    map: "us",
+    tilemap: { glyph: "bars" },
+    data: {
+      categories: ["CA", "TX", "NY", "FL", "IL", "WA"],
+      series: [
+        { name: "Q1", values: [30, 20, 18, 15, 12, 10] },
+        { name: "Q2", values: [35, 25, 20, 17, 14, 12] },
+        { name: "Q3", values: [40, 28, 22, 19, 15, 13] },
+        { name: "Q4", values: [48, 32, 26, 22, 18, 16] },
+      ],
+    },
+  },
+  {
+    kind: "stacked100",
+    width: 480,
+    height: 300,
+    title: "100% chart with negative segments",
+    data: {
+      categories: ["Q1", "Q2", "Q3"],
+      series: [
+        { name: "New", values: [60, 70, 80] },
+        { name: "Renewal", values: [40, 45, 50] },
+        { name: "Returns", values: [-15, -10, -20] },
+      ],
+    },
+    decorations: { segmentLabels: true, valueAxis: true, gridlines: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

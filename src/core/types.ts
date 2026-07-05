@@ -374,6 +374,12 @@ export interface ChartConfig {
    */
   otherBucket?: { max?: number };
   /**
+   * Tilemap options. `shape: "hex"` draws hexagonal tiles (offset rows) instead
+   * of squares. `glyph: "bars"` draws a mini bar chart inside each tile from a
+   * multi-series datasheet (one bar per series) instead of a single color.
+   */
+  tilemap?: { shape?: "square" | "hex"; glyph?: "bars" };
+  /**
    * Butterfly options. `split` is the number of series on the left flank (the
    * rest go right); each flank stacks its series. Omitted → the classic
    * two-series butterfly (series 0 left, series 1 right).
