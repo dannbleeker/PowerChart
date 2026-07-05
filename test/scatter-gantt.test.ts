@@ -48,7 +48,7 @@ describe("scatter & bubble", () => {
       },
     });
     const { nodes, anchors } = layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR);
-    const pts = nodes.filter((n): n is EllipseNode => n.kind === "ellipse");
+    const pts = nodes.filter((n): n is EllipseNode => n.kind === "ellipse" && !!n.name?.startsWith("point-"));
     expect(pts).toHaveLength(2);
     // P2 is right of and above P1.
     expect(pts[1].cx).toBeGreaterThan(pts[0].cx);
@@ -69,7 +69,7 @@ describe("scatter & bubble", () => {
       },
     });
     const { nodes } = layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR);
-    const pts = nodes.filter((n): n is EllipseNode => n.kind === "ellipse");
+    const pts = nodes.filter((n): n is EllipseNode => n.kind === "ellipse" && !!n.name?.startsWith("point-"));
     // Area ∝ size → radius ratio = sqrt(100/25) = 2.
     expect(pts[1].rx / pts[0].rx).toBeCloseTo(2, 1);
   });

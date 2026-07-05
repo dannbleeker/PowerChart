@@ -46,7 +46,9 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     bands?: [{ axis:"x"|"y", from, to, color?, label? }], // shaded background region
                                       // (y = value range; x = category indices;
                                       //  scatter/bubble: both axes in value units)
-    hundredPercentNote?: boolean      // "100% = N" note (pie/doughnut/stacked100)
+    hundredPercentNote?: boolean,     // "100% = N" note (pie/doughnut/stacked100)
+    forecastFrom?: number,            // line: dashed segments + hollow markers from this index
+    quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
   pie?: { explode?: number[] },       // slice indices offset radially to highlight
@@ -54,6 +56,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
               showMean?: boolean, iqrMultiplier?: number },
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
   heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto" },
+  combo?: { columns?: "stacked"|"clustered"|"stacked100" },  // column mode under the lines
   waterfall?: { totalIndices?: number[] },  // categories drawn as running totals ("e")
   scale?: { min?: number, max?: number },   // pin the value axis
   axisBreak?: { from: number, to: number }, // compress an out-of-scale range
@@ -84,6 +87,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Holiday` | Gantt: shade these dates |
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, vertical |
+| `Target` | bullet-chart tick across each column at the value (combine with `bands` for zones) |
 | `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style) |
 | `Mean` | boxplot mean marker (×) |
 | `Outlier <n>` | boxplot: extra outlier dots in precomputed mode |

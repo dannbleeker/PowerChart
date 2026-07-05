@@ -151,6 +151,17 @@ export interface Decorations {
    * and 100% charts (uniform denominator).
    */
   hundredPercentNote?: boolean;
+  /**
+   * Line charts: categories from this index on are forecast — segments
+   * turn dashed, markers hollow, and a subtle divider marks the boundary.
+   */
+  forecastFrom?: number;
+  /**
+   * Scatter/bubble: one X/Y crossing shades four quadrant zones with
+   * optional corner labels ([top-left, top-right, bottom-left,
+   * bottom-right]) — BCG-matrix framing in one step.
+   */
+  quadrants?: { x: number; y: number; labels?: [string?, string?, string?, string?] };
 }
 
 export interface NumberFormat {
@@ -251,6 +262,8 @@ export interface ChartConfig {
   map?: "us" | "eu" | "europe" | "world";
   /** Heatmap color options; mode "auto" picks diverging when data spans zero. */
   heatmap?: { color?: string; negativeColor?: string; mode?: "sequential" | "diverging" | "auto" };
+  /** Combo: how the column series render under the lines (default stacked). */
+  combo?: { columns?: "stacked" | "clustered" | "stacked100" };
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;

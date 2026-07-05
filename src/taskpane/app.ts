@@ -45,7 +45,7 @@ interface AppState {
   /** Comma-separated slice indices to explode (pie/doughnut), 1-based in the UI. */
   pieExplode: string;
   /** Kind-specific config without pane controls, preserved across edits. */
-  extras: Pick<ChartConfig, "boxplot" | "heatmap" | "map">;
+  extras: Pick<ChartConfig, "boxplot" | "heatmap" | "map" | "combo">;
   /** When set, "Update chart" replaces this shape in place. */
   editTarget: EditTarget | null;
 }
@@ -83,7 +83,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     logScale: !!cfg.logScale,
     footnote: cfg.footnote ?? "",
     pieExplode: (cfg.pie?.explode ?? []).map((i) => i + 1).join(","),
-    extras: { boxplot: cfg.boxplot, heatmap: cfg.heatmap, map: cfg.map },
+    extras: { boxplot: cfg.boxplot, heatmap: cfg.heatmap, map: cfg.map, combo: cfg.combo },
   };
 }
 

@@ -48,6 +48,8 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
 
 /** Datasheet rows carrying error-bar deltas: Error (±), Error+ / Error−. */
 const ERROR_ROW = /^error\s*([+\-−])?$/i;
+/** Bullet-chart target row: a bold tick across each column at the value. */
+const TARGET_ROW = /^target$/i;
 const ERROR_KINDS: ChartKind[] = ["stacked", "clustered", "line", "area"];
 
 /**
@@ -58,10 +60,12 @@ const ERROR_KINDS: ChartKind[] = ["stacked", "clustered", "line", "area"];
 function extractErrorRows(cfg: ChartConfig): {
   cfg: ChartConfig;
   errors: { plus: (number | null)[]; minus: (number | null)[] } | null;
+  targets: (number | null)[] | null;
 } {
-  if (!ERROR_KINDS.includes(cfg.kind)) return { cfg, errors: null };
+  if (!ERROR_KINDS.includes(cfg.kind)) return { cfg, errors: null, targets: null };
   const rows = cfg.data.series.filter((s) => ERROR_ROW.test(s.name.trim()));
-  if (!rows.length) return { cfg, errors: null };
+  const targetRow = cfg.data.series.find((s) => TARGET_ROW.test(s.name.trim()));
+  if (!rows.length && !targetRow) return { cfg, errors: null, targets: null };
   const pick = (sign: "+" | "-") =>
     cfg.data.categories.map((_, c) => {
       for (const r of rows) {
@@ -72,8 +76,15 @@ function extractErrorRows(cfg: ChartConfig): {
       return null;
     });
   return {
-    cfg: { ...cfg, data: { ...cfg.data, series: cfg.data.series.filter((s) => !ERROR_ROW.test(s.name.trim())) } },
-    errors: { plus: pick("+"), minus: pick("-") },
+    cfg: {
+      ...cfg,
+      data: {
+        ...cfg.data,
+        series: cfg.data.series.filter((s) => !ERROR_ROW.test(s.name.trim()) && !TARGET_ROW.test(s.name.trim())),
+      },
+    },
+    errors: rows.length ? { plus: pick("+"), minus: pick("-") } : null,
+    targets: targetRow ? cfg.data.categories.map((_, c) => targetRow.values[c] ?? null) : null,
   };
 }
 
@@ -82,16 +93,18 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   const extracted = extractErrorRows(sortCategories(rawCfg));
   let cfg = extracted.cfg;
   const errors = extracted.errors;
+  const targets = extracted.targets;
   const style: ChartStyle = { ...DEFAULT_STYLE, ...cfg.style };
   const decor: Decorations = { ...DEFAULT_DECOR, ...cfg.decorations };
 
-  // Widen the auto scale so error bars stay inside the plot.
-  if (errors && !cfg.horizontal && cfg.scale?.max == null) {
+  // Widen the auto scale so error bars and target ticks stay inside the plot.
+  if ((errors || targets) && !cfg.horizontal && cfg.scale?.max == null) {
     const ext = valueExtent(cfg);
     if (ext) {
-      const maxPlus = Math.max(0, ...errors.plus.filter((v): v is number => v != null));
-      const maxMinus = Math.max(0, ...errors.minus.filter((v): v is number => v != null));
-      const ticks = niceTicks(Math.min(ext.min - maxMinus, 0), ext.max + maxPlus, 5);
+      const maxPlus = Math.max(0, ...(errors?.plus ?? []).filter((v): v is number => v != null));
+      const maxMinus = Math.max(0, ...(errors?.minus ?? []).filter((v): v is number => v != null));
+      const maxTarget = Math.max(0, ...(targets ?? []).filter((v): v is number => v != null));
+      const ticks = niceTicks(Math.min(ext.min - maxMinus, 0), Math.max(ext.max + maxPlus, maxTarget), 5);
       cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: ticks[ticks.length - 1] } };
     }
   }
@@ -172,6 +185,20 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       nodes.push({ kind: "line", x1: x, y1: yHi, x2: x, y2: yLo, stroke: style.axis, strokeWidth: 1, name: `error-${c}` });
       if (plus != null) nodes.push({ kind: "line", x1: x - capW / 2, y1: yHi, x2: x + capW / 2, y2: yHi, stroke: style.axis, strokeWidth: 1, name: `error-cap-hi-${c}` });
       if (minus != null) nodes.push({ kind: "line", x1: x - capW / 2, y1: yLo, x2: x + capW / 2, y2: yLo, stroke: style.axis, strokeWidth: 1, name: `error-cap-lo-${c}` });
+    });
+  }
+
+  // Bullet-chart target ticks: a bold marker across each column at the
+  // target value (combine with decorations.bands for the range zones).
+  if (targets && !skipDecor && result.anchors.valueToY) {
+    const a = result.anchors;
+    cfg.data.categories.forEach((_, c) => {
+      const t = targets[c];
+      if (t == null) return;
+      const x = a.categoryX[c];
+      const half = Math.min(a.categoryWidth[c] * 0.62, 26);
+      const y = a.valueToY!(t);
+      nodes.push({ kind: "line", x1: x - half, y1: y, x2: x + half, y2: y, stroke: style.text, strokeWidth: 2.25, name: `target-${c}` });
     });
   }
 
