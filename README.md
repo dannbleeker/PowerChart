@@ -10,6 +10,24 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 
 ![Demo gallery](docs/gallery.png)
 
+## Try it
+
+- **Live demo gallery** (no install, renders in the browser):
+  <https://powerchart.struktureretsundfornuft.dk/>
+- **Install in PowerPoint** (sideload the add-in):
+  1. Download **`manifest-prod.xml`** from the [latest release](../../releases/latest)
+     (Excel companion: `manifest-excel-prod.xml`).
+  2. PowerPoint on the web → open a deck → **Home ▸ Add-ins ▸ More add-ins ▸
+     My Add-ins ▸ Upload My Add-in** → pick the manifest. (Desktop Windows/Mac:
+     see the [publishing runbook](docs/PUBLISHING.md#phase-2--sideload-in-powerpoint-owner-agent-assists).)
+  3. The **PowerChart** group appears on the Home tab — open the pane and insert.
+  - Requires PowerPoint with the Office **PowerPointApi 1.4+** requirement set
+    (Windows 2207+, Mac 16.62+, or PowerPoint on the web).
+- **Use it from Claude** (headless chart generation): the
+  [`skill-latest`](../../releases/tag/skill-latest) release ships
+  `powerchart-charts.zip` — upload it under claude.ai → Settings → Capabilities
+  → Skills.
+
 ## Feature overview
 
 **[User manual](docs/MANUAL.md)** — how to use the pane, the datasheet
