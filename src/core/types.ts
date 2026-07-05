@@ -414,6 +414,19 @@ export interface ChartConfig {
      * GitHub-contributions view. Ignored without parseable date categories.
      */
     calendar?: boolean;
+    /**
+     * Cell-size encoding: each cell shrinks to a centred square whose area
+     * encodes the value's magnitude (colour still encodes the signed value) —
+     * near-zero cells fade to dots, strong cells fill their slot (corrplot
+     * style). Good for correlation / signed matrices.
+     */
+    sizeEncode?: boolean;
+    /**
+     * Hierarchical row clustering: reorder the rows by average-linkage
+     * similarity and draw a dendrogram in a left gutter, so similar rows sit
+     * together. Needs ≥3 rows.
+     */
+    cluster?: boolean;
   };
   /**
    * Column family: collapse the long tail of series into one "Other" segment,
@@ -454,8 +467,8 @@ export interface ChartConfig {
   };
   /** Combo: how the column series render under the lines (default stacked). */
   combo?: {
-    /** Base column mode under the lines (default stacked). */
-    columns?: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko";
+    /** Base mode under the lines (default stacked). "area" = stacked area. */
+    columns?: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko" | "area";
     /**
      * "independent" gives each line series its own scale (labelled at the
      * points, no shared secondary axis) so unlike-unit KPIs all read on one

@@ -31,6 +31,14 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       ? divergingScale(min, max, positive, negative)
       : sequentialScale(min, max, positive);
   const fmt = resolveFormat(all, cfg.numberFormat);
+  const maxAbs = Math.max(1e-9, Math.abs(min), Math.abs(max));
+  const sizeEncode = !!opts.sizeEncode;
+
+  // Hierarchical row clustering: reorder rows by average-linkage similarity and
+  // draw a dendrogram in a left gutter. Needs ≥3 rows and ≥2 columns.
+  const clusterOn = !!opts.cluster && nRows >= 3 && nCols >= 2;
+  const cl = clusterOn ? clusterRows(data.series.map((s) => data.categories.map((_, c) => s.values[c] ?? 0))) : null;
+  const rows = cl ? cl.order.map((i) => data.series[i]) : data.series;
 
   // Calendar layout: a single daily series with date categories becomes a
   // weekday × week grid (the GitHub-contributions view).
@@ -48,10 +56,11 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const wantColTotals = opts.totals === "column" || opts.totals === "both";
   const totalsW = wantRowTotals ? fs * 4 : 0;
   const totalsH = wantColTotals ? fs * 1.9 : 0;
+  const dendroW = clusterOn ? fs * 4 : 0; // left gutter for the row dendrogram
   const plot = {
-    x: rowLabelW,
+    x: dendroW + rowLabelW,
     y: titleH + headerH,
-    w: cfg.width - rowLabelW - 2 - totalsW,
+    w: cfg.width - dendroW - rowLabelW - 2 - totalsW,
     h: cfg.height - titleH - headerH - legendH - totalsH - footnoteH(cfg, style, decor),
   };
   const cw = plot.w / Math.max(1, nCols);
@@ -73,9 +82,9 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
   }
 
-  data.series.forEach((s, ri) => {
+  rows.forEach((s, ri) => {
     nodes.push({
-      kind: "text", x: 0, y: plot.y + ri * ch, w: rowLabelW - 4, h: ch,
+      kind: "text", x: dendroW, y: plot.y + ri * ch, w: rowLabelW - 4, h: ch,
       text: s.name, fontSize: fs, color: style.text, align: "right", valign: "middle", name: `row-${ri}`,
     });
     data.categories.forEach((_, c) => {
@@ -83,8 +92,15 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const fill = v == null ? NO_DATA : colorOf(v);
       const x = plot.x + c * cw;
       const y = plot.y + ri * ch;
-      nodes.push({ kind: "rect", x, y, w: cw - 1, h: ch - 1, fill, name: `cell-${ri}-${c}` });
-      if (v != null && decor.segmentLabels) {
+      if (sizeEncode) {
+        // Centred square whose side ∝ √(|v|/maxAbs) so its area tracks magnitude.
+        const frac = v == null ? 0 : Math.sqrt(Math.abs(v) / maxAbs);
+        const side = Math.max(0, Math.min(cw - 1, ch - 1) * frac);
+        nodes.push({ kind: "rect", x: x + (cw - 1 - side) / 2, y: y + (ch - 1 - side) / 2, w: side, h: side, fill, name: `cell-${ri}-${c}` });
+      } else {
+        nodes.push({ kind: "rect", x, y, w: cw - 1, h: ch - 1, fill, name: `cell-${ri}-${c}` });
+      }
+      if (v != null && decor.segmentLabels && !sizeEncode) {
         const label = formatNumber(v, fmt);
         if (cw >= textWidth(label, fs) + 4 && ch >= fs * 1.3) {
           nodes.push({
@@ -99,7 +115,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Marginal totals: neutral sum strips outside the color scale.
   const sum = (vals: (number | null)[]) => vals.reduce((a: number, v) => a + (v ?? 0), 0);
   if (wantRowTotals) {
-    data.series.forEach((s, ri) => {
+    rows.forEach((s, ri) => {
       const y = plot.y + ri * ch;
       nodes.push(
         { kind: "rect", x: plot.x + plot.w + 2, y, w: totalsW - 4, h: ch - 1, fill: "#f0efec", name: `row-total-bg-${ri}` },
@@ -161,6 +177,30 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
   }
 
+  // Row dendrogram in the left gutter (leaves next to the labels, root at left).
+  if (cl) {
+    const maxH = cl.maxH || 1;
+    const pos = new Map<number, number>();
+    cl.order.forEach((leaf, idx) => pos.set(leaf, idx));
+    const leafX = dendroW - 3;
+    const nodeX = (h: number) => Math.max(2, leafX - (leafX - 2) * (h / maxH));
+    const draw = (nd: ClusterNode): number => {
+      if (nd.leaf != null) return plot.y + (pos.get(nd.leaf)! + 0.5) * ch;
+      const yl = draw(nd.left!);
+      const yr = draw(nd.right!);
+      const x = nodeX(nd.height);
+      const xl = nd.left!.leaf != null ? leafX : nodeX(nd.left!.height);
+      const xr = nd.right!.leaf != null ? leafX : nodeX(nd.right!.height);
+      nodes.push(
+        { kind: "line", x1: x, y1: yl, x2: xl, y2: yl, stroke: style.mutedText, strokeWidth: 0.75, name: "dendro-h" },
+        { kind: "line", x1: x, y1: yr, x2: xr, y2: yr, stroke: style.mutedText, strokeWidth: 0.75, name: "dendro-h" },
+        { kind: "line", x1: x, y1: yl, x2: x, y2: yr, stroke: style.mutedText, strokeWidth: 0.75, name: "dendro-v" },
+      );
+      return (yl + yr) / 2;
+    };
+    draw(cl.root);
+  }
+
   return {
     nodes,
     anchors: {
@@ -172,6 +212,65 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       plot,
     },
   };
+}
+
+/** A node in the row-clustering tree: a leaf (row index) or an internal merge. */
+interface ClusterNode {
+  height: number;
+  members: number[];
+  leaf?: number;
+  left?: ClusterNode;
+  right?: ClusterNode;
+}
+
+/**
+ * Agglomerative average-linkage clustering of row vectors (Euclidean distance).
+ * Returns the leaf order (for reordering rows), the merge tree, and the tallest
+ * merge height (for scaling the dendrogram).
+ */
+function clusterRows(vecs: number[][]): { order: number[]; root: ClusterNode; maxH: number } {
+  const dist = (a: number[], b: number[]) => Math.sqrt(a.reduce((s, v, k) => s + (v - b[k]) ** 2, 0));
+  let clusters: ClusterNode[] = vecs.map((_, i) => ({ height: 0, members: [i], leaf: i }));
+  const linkage = (A: ClusterNode, B: ClusterNode) => {
+    let s = 0;
+    for (const i of A.members) for (const j of B.members) s += dist(vecs[i], vecs[j]);
+    return s / (A.members.length * B.members.length);
+  };
+  let maxH = 0;
+  while (clusters.length > 1) {
+    let bi = 0;
+    let bj = 1;
+    let bd = Infinity;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const d = linkage(clusters[i], clusters[j]);
+        if (d < bd) {
+          bd = d;
+          bi = i;
+          bj = j;
+        }
+      }
+    }
+    const merged: ClusterNode = {
+      height: bd,
+      members: [...clusters[bi].members, ...clusters[bj].members],
+      left: clusters[bi],
+      right: clusters[bj],
+    };
+    maxH = Math.max(maxH, bd);
+    clusters = clusters.filter((_, k) => k !== bi && k !== bj);
+    clusters.push(merged);
+  }
+  const order: number[] = [];
+  const walk = (n: ClusterNode) => {
+    if (n.leaf != null) order.push(n.leaf);
+    else {
+      walk(n.left!);
+      walk(n.right!);
+    }
+  };
+  walk(clusters[0]);
+  return { order, root: clusters[0], maxH };
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

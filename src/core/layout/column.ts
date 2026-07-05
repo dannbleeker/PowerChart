@@ -17,6 +17,7 @@ import {
 // horizontalChrome), but the calls happen at runtime so the ESM cycle resolves.
 import { layoutWaterfall } from "./waterfall";
 import { layoutMekko } from "./mekko";
+import { layoutLine } from "./line";
 
 export interface LayoutResult {
   nodes: SceneNode[];
@@ -438,7 +439,9 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       ? layoutWaterfall(colCfg, style, decor)
       : columnsKind === "mekko"
         ? layoutMekko(colCfg, style, decor)
-        : layoutColumns(colCfg, style, decor);
+        : columnsKind === "area"
+          ? layoutLine(colCfg, style, decor)
+          : layoutColumns(colCfg, style, decor);
   const { anchors, nodes } = result;
   // No value→y map and no line axis at all → nothing to overlay.
   if (!anchors.valueToY && !secondary && !independent) return result;

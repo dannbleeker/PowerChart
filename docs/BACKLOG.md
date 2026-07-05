@@ -49,7 +49,8 @@ Pareto helper).
   rendering engine.
 
 ### Combo
-- Stacked-area + line, scatter-on-combo — hard/low; skip for now.
+- Scatter-on-combo — hard/low; skip for now.
+  (Stacked-area + line shipped as `combo.columns: "area"`.)
 
 ### Line / Area
 - Sparklines — low/niche.
@@ -79,8 +80,10 @@ Pareto helper).
   Sunburst shipped: nested inner/outer rings from `"Group | Item"` categories.)
 
 ### Heatmap
-- Per-cell icon overlays — medium, low (think-cell excludes these too).
-  Clustering/dendrograms, cell-size encoding — hard/low; skip.
+- Per-cell icon overlays — medium, low; needs an icon asset library
+  (licensing scope, same as the rejected pictogram idea). Skip.
+  (Cell-size encoding shipped as `heatmap.sizeEncode`; row clustering +
+  dendrogram shipped as `heatmap.cluster`.)
 
 ### Tilemap
 - Proportional-area cartograms, drill-down — hard/infeasible; rejected.

@@ -48,6 +48,7 @@ describe("user manual coverage", () => {
       "Semi-circle gauge", "Pareto", "Bump chart", "Horizontal profile chart",
       "Critical path", "Mean±SD box", "Sparklines",
       "Radial bar", "Stacked radar", "Variable-radius pie",
+      "Cell-size heatmap", "Heatmap clustering", "Combo area base",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

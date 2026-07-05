@@ -101,6 +101,9 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Circular bar chart / Nightingale rose | `radar` + `radar.bars: true` (radius = value; series stack) |
 | Part-to-whole across several dimensions | `radar` + `radar.stacked: true` (stacked radar) |
 | Two metrics on a pie (share + a second measure) | `pie` + `pie.variableRadius: true` (or a `Radius` row) |
+| Correlation / signed matrix (size + colour) | `heatmap` + `heatmap.sizeEncode: true` |
+| Group similar rows of a matrix together | `heatmap` + `heatmap.cluster: true` (dendrogram) |
+| Trend of a mix plus a KPI line | `combo` + `combo.columns: "area"` + a `type:"line"` series |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,

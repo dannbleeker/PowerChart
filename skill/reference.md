@@ -83,13 +83,15 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
               glyph?: "bars" },   // mini bar chart per region from a multi-series datasheet
   heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto",
               totals?: "row"|"column"|"both",    // marginal sum strips
-              calendar?: boolean },   // weekday × week grid for a daily date series
+              calendar?: boolean,     // weekday × week grid for a daily date series
+              sizeEncode?: boolean,   // cell area encodes |value| (corrplot style); colour = signed value
+              cluster?: boolean },    // reorder rows by similarity + draw a dendrogram (≥3 rows)
   otherBucket?: { max?: number },     // column family: collapse the long tail into one "Other" (keep max series)
   butterfly?: { split?: number },     // butterfly: series on the left flank (rest stack right)
   radar?: { perSpoke?: boolean,       // radar: normalise each spoke to its own max (mixed KPI units)
             bars?: boolean,           // radial bar chart / coxcomb: category wedges, radius = value (stacks)
             stacked?: boolean },      // stacked radar: series stack cumulatively along each spoke
-  combo?: { columns?: "stacked"|"clustered"|"stacked100"|"waterfall"|"mekko",  // base under the lines
+  combo?: { columns?: "stacked"|"clustered"|"stacked100"|"waterfall"|"mekko"|"area",  // base under the lines
             lineAxes?: "shared"|"independent" },  // "independent": each line its own scale + labels
   waterfall?: { totalIndices?: number[],    // categories drawn as running totals ("e")
                 spacerIndices?: number[] }, // blank grouping gaps (empty category name)
@@ -262,6 +264,19 @@ polygons; the scale reaches the per-spoke sums.
 each slice's angle still encodes the first series while its radius encodes a
 second metric — a two-variable pie. Labels sit outside; pie only (no doughnut,
 no breakout).
+
+**Heatmap cell-size encoding** (`heatmap.sizeEncode`): each cell shrinks to a
+centred square whose area encodes the value's magnitude (colour still encodes
+the signed value) — near-zero cells fade to dots, strong cells fill their slot.
+The corrplot view for correlation / signed matrices.
+
+**Heatmap row clustering** (`heatmap.cluster`): reorder the rows by
+average-linkage similarity (Euclidean over each row's values) so similar rows
+sit together, and draw a dendrogram in a left gutter. Needs ≥3 rows.
+
+**Combo stacked-area base** (`combo.columns: "area"`): the base under the line
+series is a stacked area instead of columns — trend-of-mix plus a KPI line
+(pair with `secondaryAxis` for a %-on-the-right line).
 
 **Missing-data bridge** (`decorations.bridgeGaps`): line charts connect
 straight across null categories instead of breaking into separate segments
