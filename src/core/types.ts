@@ -168,6 +168,8 @@ export interface Decorations {
    * (Cleveland dot plot), or a two-series dumbbell range (dot–line–dot).
    */
   barStyle?: "bar" | "lollipop" | "dot" | "range";
+  /** Line charts: shade the gap between two series (indices) as a ribbon. */
+  fillBetween?: [number, number];
 }
 
 export interface NumberFormat {
@@ -266,8 +268,13 @@ export interface ChartConfig {
   };
   /** Tile-grid map layout; omitted → auto-detected from the region codes. */
   map?: "us" | "eu" | "europe" | "world";
-  /** Heatmap color options; mode "auto" picks diverging when data spans zero. */
-  heatmap?: { color?: string; negativeColor?: string; mode?: "sequential" | "diverging" | "auto" };
+  /** Heatmap color options; mode "auto" picks diverging when data spans zero; totals adds sum strips. */
+  heatmap?: {
+    color?: string;
+    negativeColor?: string;
+    mode?: "sequential" | "diverging" | "auto";
+    totals?: "row" | "column" | "both";
+  };
   /** Combo: how the column series render under the lines (default stacked). */
   combo?: { columns?: "stacked" | "clustered" | "stacked100" };
   /** Frame size in points (PowerPoint native unit). */
