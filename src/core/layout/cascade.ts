@@ -102,14 +102,20 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     if (c > 0) {
       const rem = Math.max(0, values[c - 1] - v);
       if (rem > 0) {
-        const remY = plot.y + h + 2;
         const remPct = values[c - 1] > 0 ? rem / values[c - 1] : null;
         const caption = dropLabels[c] || "Other";
         const numbers = `${formatNumber(rem, fmt)}${remPct != null ? ` (${formatPercent(remPct, 1)})` : ""}`;
         // Wrap onto two lines when caption + numbers don't fit the box width.
         const oneLine = `${caption}: ${numbers}`;
         const wrap = textWidth(oneLine, fs * 0.9) > barW - 6;
-        const remH = Math.max(wrap ? fs * 2.9 : fs * 1.7, toH(rem));
+        // Kept bar + drop box = the previous column's total, so the box is
+        // bottom-anchored at the previous bar's exact bottom and never
+        // extends past it. The 2pt gap is carved out of the box; when the
+        // label needs more height than the remainder's true share, the box
+        // grows UPWARD over the bar instead of downward past the total.
+        const remBottom = plot.y + toH(values[c - 1]);
+        const remH = Math.max(wrap ? fs * 2.9 : fs * 1.7, Math.max(2, toH(rem) - 2));
+        const remY = remBottom - remH;
         const ink = contrastInk(style.neutral);
         nodes.push({ kind: "rect", x, y: remY, w: barW, h: remH, fill: style.neutral, name: `drop-${c}` });
         if (wrap) {
