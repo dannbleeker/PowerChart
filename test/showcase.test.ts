@@ -119,6 +119,9 @@ describe("showcase deck coverage", () => {
     ["radial bar chart", (c) => c.kind === "radar" && !!c.radar?.bars],
     ["stacked radar", (c) => c.kind === "radar" && !!c.radar?.stacked],
     ["variable-radius pie", (c) => c.kind === "pie" && !!c.pie?.variableRadius],
+    ["cell-size heatmap", (c) => c.kind === "heatmap" && !!c.heatmap?.sizeEncode],
+    ["clustered heatmap", (c) => c.kind === "heatmap" && !!c.heatmap?.cluster],
+    ["combo area base", (c) => c.combo?.columns === "area"],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

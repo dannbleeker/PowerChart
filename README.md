@@ -122,6 +122,9 @@ conventions, and every option.
 | Radial bar chart / Nightingale rose | ✅ (`radar` + `radar.bars`; series stack outward) |
 | Stacked radar (part-to-whole per spoke) | ✅ (`radar` + `radar.stacked`) |
 | Variable-radius pie (angle + radius encode two metrics) | ✅ (`pie.variableRadius` or a `Radius` row) |
+| Cell-size heatmap (corrplot: area = magnitude) | ✅ (`heatmap.sizeEncode`) |
+| Heatmap row clustering + dendrogram | ✅ (`heatmap.cluster`, average linkage) |
+| Combo stacked-area base under the lines | ✅ (`combo.columns: "area"`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

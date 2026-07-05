@@ -189,6 +189,13 @@ pick weeks (with weekend shading), months, or quarters automatically.
   spoke as nested filled bands (part-to-whole across dimensions).
 - **Variable-radius pie** (`pie.variableRadius`, or a `Radius` datasheet row):
   slice angle encodes the first series while radius encodes a second metric.
+- **Cell-size heatmap** (`heatmap.sizeEncode`): each cell's area encodes the
+  value's magnitude (colour still encodes the signed value) — the corrplot view
+  for correlation / signed matrices.
+- **Heatmap clustering** (`heatmap.cluster`): reorder rows by average-linkage
+  similarity so similar rows sit together, with a dendrogram in a left gutter.
+- **Combo area base** (`combo.columns: "area"`): put the line series over a
+  stacked-area base instead of columns — trend-of-mix plus a KPI line.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

@@ -1112,6 +1112,60 @@ const features = [
     pie: { variableRadius: true },
     decorations: { segmentLabels: true },
   },
+  {
+    kind: "heatmap",
+    width: 460,
+    height: 320,
+    title: "Correlation matrix (size = magnitude)",
+    data: {
+      categories: ["Rev", "Cost", "Head", "NPS", "Churn"],
+      series: [
+        { name: "Rev", values: [1.0, 0.8, 0.6, 0.5, -0.7] },
+        { name: "Cost", values: [0.8, 1.0, 0.7, 0.1, -0.3] },
+        { name: "Head", values: [0.6, 0.7, 1.0, 0.2, -0.2] },
+        { name: "NPS", values: [0.5, 0.1, 0.2, 1.0, -0.9] },
+        { name: "Churn", values: [-0.7, -0.3, -0.2, -0.9, 1.0] },
+      ],
+    },
+    heatmap: { sizeEncode: true, mode: "diverging" },
+  },
+  {
+    kind: "heatmap",
+    width: 500,
+    height: 320,
+    title: "Region KPIs (rows clustered)",
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "North", values: [80, 82, 85, 88] },
+        { name: "South", values: [20, 22, 19, 25] },
+        { name: "East", values: [78, 80, 83, 90] },
+        { name: "West", values: [22, 18, 24, 21] },
+        { name: "Central", values: [50, 52, 48, 55] },
+        { name: "Metro", values: [81, 79, 86, 87] },
+      ],
+    },
+    heatmap: { cluster: true },
+    decorations: { segmentLabels: true },
+  },
+  {
+    kind: "combo",
+    width: 520,
+    height: 320,
+    title: "Revenue mix (stacked area) + margin %",
+    data: {
+      categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+      series: [
+        { name: "Cloud", values: [20, 24, 28, 30, 35, 40] },
+        { name: "Licenses", values: [15, 14, 16, 15, 17, 18] },
+        { name: "Services", values: [10, 11, 12, 14, 13, 15] },
+        { name: "Margin %", type: "line", values: [22, 24, 26, 25, 28, 30] },
+      ],
+    },
+    combo: { columns: "area" },
+    secondaryAxis: true,
+    decorations: { seriesLabels: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

@@ -42,6 +42,7 @@ describe("skill documentation coverage", () => {
       "bridgeGaps", "perSpoke", "lineAxes", "tilemap", "glyph", "semi", "pareto", "bump",
       "criticalPath", "meanSd", "sparkline",
       "variableRadius", "bars", "stacked",
+      "sizeEncode", "cluster",
     ]) {
       expect(reference).toContain(key);
     }
