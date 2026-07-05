@@ -39,7 +39,7 @@ section and `skill/reference.md`.
 | Type | Use for | Notes |
 |---|---|---|
 | Stacked | composition over categories | one unified engine — a simple column chart is a stacked chart with one series |
-| Clustered | side-by-side comparison | |
+| Clustered | side-by-side comparison | bar styles: plain bars, lollipop (stem + dot), dot plot, or a two-series dumbbell range |
 | 100% | share of total | `100%=` row lets columns fall short of 100% |
 | Waterfall | bridges (EBITDA, headcount) | values are deltas; type `e` in a cell for a computed total; multiple series stack |
 | Mekko | two-dimensional composition | width ∝ column total; `X extent` row for explicit widths |
@@ -56,6 +56,7 @@ section and `skill/reference.md`.
 | Heatmap | value matrices | series = rows, categories = columns, one global color scale (diverging when data spans zero) |
 | Tile map | values by geography | categories = region codes (US postal / ISO-2 / world regions); layout auto-detected |
 | Cascade | stage-by-stage breakdown of a total | categories `"Stage \| Drop label \| Group"`; each bar is a subset of the previous, remainders hang as labeled boxes |
+| Funnel | pipeline / conversion stages | centered bands, width ∝ value, conversion % between stages; order values ascending for a pyramid |
 
 All column-family charts (stacked/clustered/100%), waterfall, Mekko, and
 boxplot rotate into **horizontal** bars/rows with the "Horizontal (bar)"

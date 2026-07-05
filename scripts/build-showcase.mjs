@@ -333,6 +333,20 @@ const features = [
     secondaryAxis: true,
   },
   {
+    kind: "clustered",
+    width: 480,
+    height: 300,
+    title: "Dumbbell range (before vs after)",
+    data: {
+      categories: ["North", "South", "East", "West"],
+      series: [
+        { name: "2024", values: [40, 55, 48, 61] },
+        { name: "2025", values: [52, 60, 45, 70] },
+      ],
+    },
+    decorations: { barStyle: "range", seriesLabels: true },
+  },
+  {
     kind: "line",
     width: 480,
     height: 300,

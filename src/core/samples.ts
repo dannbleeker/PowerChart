@@ -185,6 +185,15 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           series: [{ name: "Revenue", values: [84, 61, 45, 32, 140, 66, 98, 112, 54, 72, 38] }],
         },
       };
+    case "funnel":
+      return {
+        ...base,
+        title: "Sales pipeline",
+        data: {
+          categories: ["Leads", "Qualified", "Proposal", "Negotiation", "Won"],
+          series: [{ name: "Deals", values: [1200, 720, 380, 190, 120] }],
+        },
+      };
     case "cascade":
       return {
         ...base,
@@ -251,4 +260,5 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "heatmap", label: "Heatmap" },
   { kind: "tilemap", label: "Tile map" },
   { kind: "cascade", label: "Cascade" },
+  { kind: "funnel", label: "Funnel" },
 ];

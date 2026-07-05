@@ -66,6 +66,7 @@ describe("showcase deck coverage", () => {
     ["combo column mode", (c) => !!c.combo?.columns],
     ["forecast styling", (c) => c.decorations?.forecastFrom != null],
     ["scatter quadrants", (c) => !!c.decorations?.quadrants],
+    ["bar style (lollipop/dot/range)", (c) => !!c.decorations?.barStyle && c.decorations.barStyle !== "bar"],
     ["datamark axis", (c) => c.decorations?.valueAxis === "datamarks"],
     ["diverging heatmap (negative values)", (c) => c.kind === "heatmap" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
     ["explicit map layout", (c) => !!c.map],

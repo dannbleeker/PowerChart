@@ -18,7 +18,8 @@ export type ChartKind =
   | "radar" // spider chart: categories = spokes, series = polygons
   | "heatmap" // matrix: series = rows, categories = columns, value → color
   | "tilemap" // tile-grid cartogram: categories = region codes, value → color
-  | "cascade"; // decomposition: each stage is a subset of the previous one
+  | "cascade" // decomposition: each stage is a subset of the previous one
+  | "funnel"; // pipeline stages as centered bands, width ∝ value
 
 export interface Series {
   name: string;
@@ -162,6 +163,11 @@ export interface Decorations {
    * bottom-right]) — BCG-matrix framing in one step.
    */
   quadrants?: { x: number; y: number; labels?: [string?, string?, string?, string?] };
+  /**
+   * Clustered charts: draw columns as lollipops (stem + dot), plain dots
+   * (Cleveland dot plot), or a two-series dumbbell range (dot–line–dot).
+   */
+  barStyle?: "bar" | "lollipop" | "dot" | "range";
 }
 
 export interface NumberFormat {

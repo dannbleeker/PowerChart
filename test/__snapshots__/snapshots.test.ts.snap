@@ -513,6 +513,31 @@ exports[`SVG snapshots > sample doughnut 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample funnel 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Sales pipeline</text>
+<rect x="69.4" y="24" width="406.6" height="42.4" fill="#2a78d6" data-name="stage-0"/>
+<text x="65.4" y="48.8" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="category-0">Leads</text>
+<text x="272.7" y="48.8" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="stage-value-0">1,200</text>
+<rect x="150.72" y="81.4" width="243.96" height="42.4" fill="#1baf7a" data-name="stage-1"/>
+<text x="65.4" y="106.2" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="category-1">Qualified</text>
+<text x="272.7" y="106.2" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="stage-value-1">720</text>
+<text x="272.7" y="76.96" font-size="8.5" fill="#52514e" text-anchor="middle" data-name="conversion-1">▾ 60.0%</text>
+<rect x="208.32" y="138.8" width="128.76" height="42.4" fill="#eda100" data-name="stage-2"/>
+<text x="65.4" y="163.6" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="category-2">Proposal</text>
+<text x="272.7" y="163.6" font-size="10" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="stage-value-2">380</text>
+<text x="272.7" y="134.36" font-size="8.5" fill="#52514e" text-anchor="middle" data-name="conversion-2">▾ 52.8%</text>
+<rect x="240.51" y="196.2" width="64.38" height="42.4" fill="#008300" data-name="stage-3"/>
+<text x="65.4" y="221" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="category-3">Negotiation</text>
+<text x="272.7" y="221" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="stage-value-3">190</text>
+<text x="272.7" y="191.76" font-size="8.5" fill="#52514e" text-anchor="middle" data-name="conversion-3">▾ 50.0%</text>
+<rect x="252.37" y="253.6" width="40.66" height="42.4" fill="#4a3aa7" data-name="stage-4"/>
+<text x="65.4" y="278.4" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="category-4">Won</text>
+<text x="272.7" y="278.4" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="stage-value-4">120</text>
+<text x="272.7" y="249.16" font-size="8.5" fill="#52514e" text-anchor="middle" data-name="conversion-4">▾ 63.2%</text>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample gantt 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Programme plan (weeks)</text>

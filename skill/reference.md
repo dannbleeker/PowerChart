@@ -7,7 +7,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   kind: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko"
       | "line" | "area" | "butterfly" | "scatter" | "bubble" | "gantt"
       | "combo" | "pie" | "doughnut" | "boxplot" | "radar" | "heatmap"
-      | "tilemap" | "cascade",
+      | "tilemap" | "cascade" | "funnel",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
   horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows
@@ -48,6 +48,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       //  scatter/bubble: both axes in value units)
     hundredPercentNote?: boolean,     // "100% = N" note (pie/doughnut/stacked100)
     forecastFrom?: number,            // line: dashed segments + hollow markers from this index
+    barStyle?: "bar"|"lollipop"|"dot"|"range",  // clustered: stems+dots / dots / dumbbell
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
@@ -111,6 +112,10 @@ stacks together; different indices sit side by side per category.
 **Boxplot without summary rows**: when no `Min`/`Q1`/… rows are present,
 every series row is a raw observation — quartiles are computed (exclusive
 method) and whiskers use Tukey 1.5×IQR fences with outliers drawn as dots.
+
+**Funnel**: one series of stage values (order ascending for a pyramid);
+centered bands with width ∝ value, conversion % vs the previous stage in
+the gaps, stage names on the left.
 
 **Cascade** (decomposition): each stage's bar is a subset of the previous
 one, top-aligned on one volume scale; the complement hangs as a muted
