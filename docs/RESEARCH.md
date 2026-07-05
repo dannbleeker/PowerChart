@@ -106,12 +106,15 @@ flagged; caveats at the end.
 | Datasheet: auto data grid + paste | Task-pane grid with Excel TSV paste |
 | JSON automation surface | `ChartConfig` is plain JSON in/out |
 
-**Not yet implemented (verified as real think-cell behaviors → roadmap):**
-rotation-handle column↔bar conversion (one orientation transform away, given the
-unified engine), butterfly charts, "Mekko with units" (`X extent` row), datasheet
-transpose and `100%=` row, level difference arrows anchored to individual
-segments, multiple value lines + arrows anchored to value lines, axis-end drag
-scaling, axis breaks, cross-chart Same Scale, segment-order menu, Gantt/agenda.
+**Parity ledger (final).** Everything feasible from the research is built —
+rotation (column↔bar for columns/waterfall/Mekko/boxplot), butterfly, Mekko
+with units, datasheet transpose + `100%=`, level/total/value-line-anchored
+difference arrows, multiple value lines, pinned scales, axis breaks, Same
+Scale, segment order, Gantt, agenda, plus chart types think-cell lacks
+(boxplot raw-sample mode, radar, heatmap, tile-grid maps). What remains
+un-cloneable from a sandboxed add-in is the trio think-cell memory-patches
+Office for: live Excel data links, in-canvas drag manipulation, and the
+slide-layout engine. The README feature table is the authoritative list.
 
 ## Caveats
 
