@@ -93,6 +93,7 @@ conventions, and every option.
 | Semi-circle / gauge-style half doughnut | ✅ (`doughnut` + `pie.semi`) |
 | Pareto chart (sorted bars + cumulative % line) | ✅ (`pareto: true`) |
 | Bump chart (rank over time) | ✅ (`line` + `decorations.bump`) |
+| Horizontal profile chart (rotated line/area) | ✅ (`horizontal` on `line`/`area`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

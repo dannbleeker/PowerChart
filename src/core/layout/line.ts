@@ -1,10 +1,10 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../format";
+import { formatNumber, niceTicks, parseDateToken, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
-import { baselineNode, categorySlots, chromeNodes, computeFrame, footnoteH, valueScale } from "./frame";
-import { seriesLabelNodes, type LayoutResult } from "./column";
+import { baselineNode, categorySlots, chromeNodes, computeFrame, computeFrameHorizontal, footnoteH, valueScale } from "./frame";
+import { horizontalChrome, seriesLabelNodes, type LayoutResult } from "./column";
 
 /** Line and area charts over categories. Lines are 2pt with ≥3pt markers. */
 export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
@@ -13,6 +13,9 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   }
   if (cfg.kind === "line" && decor.bump && cfg.data.categories.length >= 2) {
     return layoutBump(cfg, style, decor);
+  }
+  if ((cfg.kind === "line" || cfg.kind === "area") && cfg.horizontal) {
+    return layoutLineHorizontal(cfg, style, decor);
   }
   const rawData = cfg.data;
   // Band low/high rows shade an uncertainty ribbon instead of drawing lines.
@@ -479,6 +482,119 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, decor: Decorations): La
       columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
       baselineY: plot.y + plot.h,
       plot,
+    },
+  };
+}
+
+/**
+ * Horizontal "profile chart": line / area rotated 90° — categories run down
+ * the left axis and values extend to the right (think-cell parity). Kept
+ * separate from the vertical path so that stays byte-identical.
+ */
+function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const n = data.categories.length;
+  const area = cfg.kind === "area";
+  const fs = style.fontSize;
+
+  const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  const stackedPos = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const stackedNeg = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
+  const dataMax = area ? Math.max(0, ...stackedPos) : Math.max(0, ...all);
+  const dataMin = area ? Math.min(0, ...stackedNeg) : Math.min(0, ...all);
+  const fmt = resolveFormat(all, cfg.numberFormat);
+
+  const frame = computeFrameHorizontal(cfg, style, decor);
+  const scale = valueScale(frame, dataMin, dataMax, cfg.scale);
+  const toX = (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w;
+  const slotH = frame.h / Math.max(1, n);
+  const centers = data.categories.map((_, c) => frame.y + slotH * (c + 0.5));
+  const x0 = toX(0);
+
+  const nodes: SceneNode[] = horizontalChrome(cfg, style, decor, frame, centers, scale, (v) => toX(v) - frame.x);
+  const columnTop: number[] = data.categories.map(() => x0);
+
+  // Legend chips (multi-series) in the reserved top strip.
+  if (decor.seriesLabels && data.series.length > 1) {
+    let lx = frame.x;
+    const ly = (cfg.title ? fs * 1.6 + 6 : 0) + fs * 0.3;
+    data.series.forEach((s, si) => {
+      const chip = fs * 0.7;
+      nodes.push(
+        { kind: "rect", x: lx, y: ly, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
+        { kind: "text", x: lx + chip + 3, y: ly - fs * 0.3, w: textWidth(s.name, fs) + 6, h: fs * 1.4, text: s.name, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${si}` },
+      );
+      lx += chip + 3 + textWidth(s.name, fs) + 12;
+    });
+  }
+
+  if (area) {
+    const posBase = data.categories.map(() => 0);
+    const negBase = data.categories.map(() => 0);
+    data.series.forEach((s, si) => {
+      const fill = seriesColor(style, si, s.color);
+      const lower: number[] = [];
+      const upper: number[] = [];
+      for (let c = 0; c < n; c++) {
+        const v = s.values[c] ?? 0;
+        if (v >= 0) {
+          lower[c] = posBase[c];
+          upper[c] = posBase[c] + v;
+          posBase[c] += v;
+        } else {
+          upper[c] = negBase[c];
+          lower[c] = negBase[c] + v;
+          negBase[c] += v;
+        }
+      }
+      for (let c = 0; c < n - 1; c++) {
+        const xL0 = toX(lower[c]);
+        const xL1 = toX(lower[c + 1]);
+        const xU0 = toX(upper[c]);
+        const xU1 = toX(upper[c + 1]);
+        const steps = 24;
+        const h = (centers[c + 1] - centers[c]) / steps;
+        for (let k = 0; k < steps; k++) {
+          const t = (k + 0.5) / steps;
+          const xL = xL0 + (xL1 - xL0) * t;
+          const xU = xU0 + (xU1 - xU0) * t;
+          nodes.push({ kind: "rect", x: Math.min(xL, xU), y: centers[c] + k * h, w: Math.abs(xU - xL), h: h + 0.5, fill, name: `area-${si}-${c}-${k}` });
+        }
+      }
+    });
+    for (let c = 0; c < n; c++) columnTop[c] = toX(posBase[c]);
+  } else {
+    data.series.forEach((s, si) => {
+      const color = seriesColor(style, si, s.color);
+      let prev: { x: number; y: number } | null = null;
+      for (let c = 0; c < n; c++) {
+        const v = s.values[c];
+        if (v == null) {
+          if (!decor.bridgeGaps) prev = null;
+          continue;
+        }
+        const pt = { x: toX(v), y: centers[c] };
+        columnTop[c] = Math.max(columnTop[c], pt.x);
+        if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `line-${si}-${c}` });
+        const r = 2.4;
+        nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
+        if (decor.segmentLabels) {
+          nodes.push({ kind: "text", x: pt.x + 4, y: pt.y - fs * 0.75, w: fs * 3, h: fs * 1.5, text: formatNumber(v, fmt), fontSize: fs, color: style.text, align: "left", valign: "middle", name: `label-${si}-${c}` });
+        }
+        prev = pt;
+      }
+    });
+  }
+
+  return {
+    nodes,
+    anchors: {
+      categoryX: centers,
+      categoryWidth: data.categories.map(() => slotH * 0.6),
+      columnTop,
+      columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+      baselineY: x0,
+      plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
     },
   };
 }

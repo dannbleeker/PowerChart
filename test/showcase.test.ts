@@ -111,6 +111,7 @@ describe("showcase deck coverage", () => {
     ["semi-circle gauge", (c) => c.kind === "doughnut" && !!c.pie?.semi],
     ["pareto chart", (c) => !!c.pareto],
     ["bump chart", (c) => c.kind === "line" && !!c.decorations?.bump],
+    ["horizontal profile (line/area)", (c) => (c.kind === "line" || c.kind === "area") && !!c.horizontal],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

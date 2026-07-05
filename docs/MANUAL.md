@@ -167,6 +167,8 @@ pick weeks (with weekend shading), months, or quarters automatically.
 - **Semi-circle gauge** (`doughnut` + `pie.semi`): a half-doughnut scorecard.
 - **Pareto** (`pareto`): sorted bars + a cumulative-% line (80/20 view).
 - **Bump chart** (`decorations.bump`): rank-over-time on an inverted axis.
+- **Horizontal profile chart** (`horizontal` on line/area): rotates the chart
+  so categories run down the left and values extend to the right.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing
