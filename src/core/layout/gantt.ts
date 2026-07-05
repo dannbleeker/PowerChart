@@ -24,6 +24,10 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const today = (find(/^today$/i)?.values ?? []).find((v): v is number => v != null);
   /** "Holiday(s)" row: dates shaded like weekends. */
   const holidays = (find(/^holidays?$/i)?.values ?? []).filter((v): v is number => v != null);
+  // Progress (0-100 or 0-1) and plan-vs-actual baseline rows.
+  const completes = find(/^%?\s*complete$/i)?.values ?? [];
+  const baseStarts = find(/^baseline\s*start$/i)?.values ?? [];
+  const baseEnds = find(/^baseline\s*end$/i)?.values ?? [];
   /** "Bracket <label>" rows: first/last non-null values span an annotation. */
   const brackets = data.series
     .filter((s) => /^bracket\b/i.test(s.name.trim()))
@@ -201,11 +205,31 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     }
     const s = starts[c];
     const e = ends[c];
+    // Baseline ghost bar (the original plan), thin, beneath the actual bar.
+    const bs = baseStarts[c];
+    const be = baseEnds[c];
+    if (bs != null && be != null && be > bs) {
+      nodes.push({
+        kind: "rect", x: toX(bs), y: cy + barH * 0.55, w: toX(be) - toX(bs), h: barH * 0.4,
+        fill: "#cfcdc5", name: `gantt-baseline-${c}`,
+      });
+    }
     if (s != null && e != null && e > s) {
       nodes.push({
         kind: "rect", x: toX(s), y: cy - barH / 2, w: toX(e) - toX(s), h: barH,
         fill: seriesColor(style, 0), name: `bar-${c}`,
       });
+      // Percent-complete fill: a darker inner bar over the elapsed share.
+      const rawPct = completes[c];
+      if (rawPct != null) {
+        const pct = Math.max(0, Math.min(1, rawPct > 1 ? rawPct / 100 : rawPct));
+        if (pct > 0) {
+          nodes.push({
+            kind: "rect", x: toX(s), y: cy - barH / 2, w: (toX(e) - toX(s)) * pct, h: barH,
+            fill: "#1b4e8a", name: `progress-${c}`,
+          });
+        }
+      }
       if (decor.segmentLabels) {
         const label = spanLabel(s, e);
         if (toX(e) - toX(s) >= textWidth(label, fs * 0.9) + 4) {

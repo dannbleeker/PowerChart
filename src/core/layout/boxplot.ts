@@ -46,32 +46,45 @@ function quartile(sorted: number[], p: number, method: "exclusive" | "inclusive"
  *  - Raw samples: every row is an observation; quartiles are computed
  *    (exclusive method) and whiskers use Tukey 1.5×IQR fences with
  *    outliers drawn as dots.
+ * Grouped boxplots: suffix rows with "| <group>" ("Min | 2024",
+ * "Q1 | 2024", … "Min | 2025", …) — each group gets a side-by-side box
+ * per category, colored from the palette, with a legend.
  */
 export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const n = data.categories.length;
   const fs = style.fontSize;
   const opts = cfg.boxplot ?? {};
-  const find = (re: RegExp) => data.series.find((s) => re.test(s.name.trim()));
-  const precomputed = SUMMARY_ROWS.some(([, re]) => find(re));
+  // Grouped boxplots: "Min | 2024"-style suffixes split rows into groups.
+  const baseName = (name: string) => name.split("|")[0].trim();
+  const groupOf = (name: string) => (name.includes("|") ? name.split("|").slice(1).join("|").trim() : "");
+  const groupNames: string[] = [];
+  for (const srs of data.series) {
+    const g = groupOf(srs.name);
+    if (!groupNames.includes(g)) groupNames.push(g);
+  }
+  const nG = groupNames.length;
+  const rowsOf = (g: string) => data.series.filter((srs) => groupOf(srs.name) === g);
+  const find = (g: string, re: RegExp) => rowsOf(g).find((srs) => re.test(baseName(srs.name)));
+  const precomputed = SUMMARY_ROWS.some(([, re]) => data.series.some((srs) => re.test(baseName(srs.name))));
 
-  const boxes: (Box | null)[] = data.categories.map((_, c) => {
+  const boxFor = (g: string, c: number): Box | null => {
     if (precomputed) {
       const summary = {} as FiveNum;
       for (const [key, re] of SUMMARY_ROWS) {
-        const v = find(re)?.values[c];
+        const v = find(g, re)?.values[c];
         if (v == null) return null;
         summary[key] = v;
       }
-      const mean = find(MEAN_ROW)?.values[c] ?? undefined;
-      const outliers = data.series
-        .filter((s) => OUTLIER_ROW.test(s.name.trim()))
-        .map((s) => s.values[c])
+      const mean = find(g, MEAN_ROW)?.values[c] ?? undefined;
+      const outliers = rowsOf(g)
+        .filter((srs) => OUTLIER_ROW.test(baseName(srs.name)))
+        .map((srs) => srs.values[c])
         .filter((v): v is number => v != null);
       return { ...summary, mean: mean ?? undefined, outliers };
     }
-    // Raw samples: this category's column across all rows.
-    const sample = data.series.map((s) => s.values[c]).filter((v): v is number => v != null).sort((a, b) => a - b);
+    // Raw samples: this category's column across the group's rows.
+    const sample = rowsOf(g).map((srs) => srs.values[c]).filter((v): v is number => v != null).sort((a, b) => a - b);
     if (sample.length < 2) return null;
     const method = opts.quartileMethod ?? "exclusive";
     const q1 = quartile(sample, 0.25, method);
@@ -92,9 +105,12 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
     const mean = opts.showMean ? sample.reduce((a, b) => a + b, 0) / sample.length : undefined;
     return { min: lo, q1, median, q3, max: hi, mean, outliers };
-  });
+  };
 
-  const all = boxes.flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
+  // boxes[g][c]
+  const grouped = groupNames.map((g) => data.categories.map((_, c) => boxFor(g, c)));
+  const boxes = grouped[0]; // group 0 keeps the single-group code path's shape
+  const all = grouped.flat().flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
   const fmt = resolveFormat(all, cfg.numberFormat);
   const H = !!cfg.horizontal;
   const frame = H
@@ -129,62 +145,85 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     return { kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke, strokeWidth: weight, name: nm };
   };
 
-  boxes.forEach((b, c) => {
-    const p = centers[c];
+  // Group legend (grouped mode only).
+  if (nG > 1) {
+    let lx = frame.x;
+    const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+    groupNames.forEach((g, gi) => {
+      const chip = fs * 0.7;
+      nodes.push(
+        { kind: "rect", x: lx, y: titleH + fs * 0.3, w: chip, h: chip, fill: seriesColor(style, gi), name: `legend-chip-${gi}` },
+        {
+          kind: "text", x: lx + chip + 3, y: titleH, w: textWidth(g, fs) + 6, h: fs * 1.4,
+          text: g, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${gi}`,
+        },
+      );
+      lx += chip + 3 + textWidth(g, fs) + 12;
+    });
+  }
+
+  grouped.forEach((groupBoxes, gi) => groupBoxes.forEach((b, c) => {
+    // Sub-slot offset: groups sit side by side within the category slot.
+    const subW = nG > 1 ? (slotW * 0.7) / nG : boxW;
+    const p0 = nG > 1 ? centers[c] - (slotW * 0.7) / 2 + subW * (gi + 0.5) : centers[c];
+    const gBoxW = nG > 1 ? Math.max(4, subW - 3) : boxW;
+    const gCapW = gBoxW * 0.45;
+    const p = p0;
     if (!b) {
-      columnTop.push(frame.y + frame.h);
+      if (gi === 0) columnTop.push(frame.y + frame.h);
       return;
     }
-    const fill = seriesColor(style, 0, data.series.find((s) => s.color)?.color);
+    const gSuffix = nG > 1 ? `-g${gi}` : "";
+    const fill = nG > 1 ? seriesColor(style, gi) : seriesColor(style, 0, data.series.find((s) => s.color)?.color);
     const boxFill = lerpColor("#ffffff", fill, 0.22);
     const qQ1 = qOf(b.q1);
     const qQ3 = qOf(b.q3);
     const qMed = qOf(b.median);
-    columnTop.push(H ? p - boxW / 2 : Math.min(qOf(b.max), ...b.outliers.map(qOf)));
+    if (gi === 0) columnTop.push(H ? p - gBoxW / 2 : Math.min(qOf(b.max), ...b.outliers.map(qOf)));
     const boxLo = Math.min(qQ1, qQ3);
     nodes.push(
       // Whiskers with caps.
-      segLine(p, qOf(b.max), p, qQ3, 0.75, style.axis, `whisker-hi-${c}`),
-      segLine(p, qQ1, p, qOf(b.min), 0.75, style.axis, `whisker-lo-${c}`),
-      segLine(p - capW / 2, qOf(b.max), p + capW / 2, qOf(b.max), 0.75, style.axis, `cap-hi-${c}`),
-      segLine(p - capW / 2, qOf(b.min), p + capW / 2, qOf(b.min), 0.75, style.axis, `cap-lo-${c}`),
+      segLine(p, qOf(b.max), p, qQ3, 0.75, style.axis, `whisker-hi-${c}${gSuffix}`),
+      segLine(p, qQ1, p, qOf(b.min), 0.75, style.axis, `whisker-lo-${c}${gSuffix}`),
+      segLine(p - gCapW / 2, qOf(b.max), p + gCapW / 2, qOf(b.max), 0.75, style.axis, `cap-hi-${c}${gSuffix}`),
+      segLine(p - gCapW / 2, qOf(b.min), p + gCapW / 2, qOf(b.min), 0.75, style.axis, `cap-lo-${c}${gSuffix}`),
       // Q1–Q3 box with a heavier median line.
       H
-        ? { kind: "rect", x: boxLo, y: p - boxW / 2, w: Math.abs(qQ1 - qQ3), h: boxW, fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}` }
-        : { kind: "rect", x: p - boxW / 2, y: boxLo, w: boxW, h: Math.abs(qQ1 - qQ3), fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}` },
-      segLine(p - boxW / 2, qMed, p + boxW / 2, qMed, 1.75, fill, `median-${c}`),
+        ? { kind: "rect", x: boxLo, y: p - gBoxW / 2, w: Math.abs(qQ1 - qQ3), h: gBoxW, fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` }
+        : { kind: "rect", x: p - gBoxW / 2, y: boxLo, w: gBoxW, h: Math.abs(qQ1 - qQ3), fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` },
+      segLine(p - gBoxW / 2, qMed, p + gBoxW / 2, qMed, 1.75, fill, `median-${c}${gSuffix}`),
     );
     if (b.mean != null) {
       const m = pt(p, qOf(b.mean));
       nodes.push({
         kind: "text", x: m.x - fs * 0.6, y: m.y - fs * 0.7, w: fs * 1.2, h: fs * 1.4,
         text: "×", fontSize: fs, bold: true, color: style.neutral,
-        align: "center", valign: "middle", name: `mean-${c}`,
+        align: "center", valign: "middle", name: `mean-${c}${gSuffix}`,
       });
     }
     b.outliers.forEach((v, i) => {
       const o = pt(p, qOf(v));
-      nodes.push({ kind: "ellipse", cx: o.x, cy: o.y, rx: 2.2, ry: 2.2, fill, name: `outlier-${c}-${i}` });
+      nodes.push({ kind: "ellipse", cx: o.x, cy: o.y, rx: 2.2, ry: 2.2, fill, name: `outlier-${c}-${i}${gSuffix}` });
     });
-    if (decor.segmentLabels) {
+    if (decor.segmentLabels && nG === 1) {
       const label = formatNumber(b.median, fmt);
-      if (boxW >= fs * 1.2 && (H || boxW >= textWidth(label, fs * 0.9) + 4)) {
+      if (gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, fs * 0.9) + 4)) {
         nodes.push(
           H
             ? {
-                kind: "text", x: qMed - 30, y: p - boxW / 2 - fs * 1.35, w: 60, h: fs * 1.3,
+                kind: "text", x: qMed - 30, y: p - gBoxW / 2 - fs * 1.35, w: 60, h: fs * 1.3,
                 text: label, fontSize: fs * 0.9, color: style.text,
                 align: "center", valign: "bottom", name: `median-label-${c}`,
               }
             : {
-                kind: "text", x: p - boxW / 2, y: qMed - fs * 1.5, w: boxW, h: fs * 1.3,
+                kind: "text", x: p - gBoxW / 2, y: qMed - fs * 1.5, w: gBoxW, h: fs * 1.3,
                 text: label, fontSize: fs * 0.9, color: style.text,
                 align: "center", valign: "bottom", name: `median-label-${c}`,
               },
         );
       }
     }
-  });
+  }));
 
   if (H) {
     nodes.push({ kind: "line", x1: frame.x, y1: frame.y, x2: frame.x, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
