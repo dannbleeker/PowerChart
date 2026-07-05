@@ -8,7 +8,7 @@ export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string
   const abs = Math.abs(v);
   const decimals =
     f.decimals === "auto" ? (abs !== 0 && abs < 1 ? 2 : abs < 10 ? 1 : 0) : f.decimals;
-  let s = v.toLocaleString("en-US", {
+  let s = v.toLocaleString(f.locale ?? "en-US", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -59,6 +59,36 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
     ticks.push(+(lo + i * step).toPrecision(12));
   }
   return ticks;
+}
+
+/**
+ * Segment label text from think-cell's label-content dropdown: any ordered
+ * combination of value, percent (of column), series and category names.
+ */
+export function segmentLabel(
+  parts: ("value" | "percent" | "series" | "category")[],
+  ctx: { value: number; fraction: number | null; series: string; category: string; fmt: Partial<NumberFormat> },
+): string {
+  return parts
+    .map((p) => {
+      switch (p) {
+        case "value":
+          return formatNumber(ctx.value, ctx.fmt);
+        case "percent":
+          return ctx.fraction == null ? null : formatPercent(ctx.fraction);
+        case "series":
+          return ctx.series;
+        case "category":
+          return ctx.category;
+      }
+    })
+    .filter(Boolean)
+    .join(p2sep(parts));
+}
+
+/** Multi-part labels read best on one line for two parts, else spaced. */
+function p2sep(parts: string[]): string {
+  return parts.length > 1 ? " " : "";
 }
 
 const DAY_MS = 86400000;

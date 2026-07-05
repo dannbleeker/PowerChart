@@ -1,4 +1,4 @@
-import type { Scene, SceneNode } from "../core/scene";
+import { polar, type Scene, type SceneNode } from "../core/scene";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -44,6 +44,21 @@ function nodeToSvg(n: SceneNode): string {
     case "ellipse": {
       const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
       return `<ellipse cx="${r(n.cx)}" cy="${r(n.cy)}" rx="${r(n.rx)}" ry="${r(n.ry)}" fill="${n.fill}"${stroke}${name(n)}/>`;
+    }
+    case "wedge": {
+      const large = n.endAngle - n.startAngle > 180 ? 1 : 0;
+      const o1 = polar(n.cx, n.cy, n.r, n.startAngle);
+      const o2 = polar(n.cx, n.cy, n.r, n.endAngle);
+      let d: string;
+      if (n.innerR > 0) {
+        const i1 = polar(n.cx, n.cy, n.innerR, n.endAngle);
+        const i2 = polar(n.cx, n.cy, n.innerR, n.startAngle);
+        d = `M ${r(o1.x)} ${r(o1.y)} A ${r(n.r)} ${r(n.r)} 0 ${large} 1 ${r(o2.x)} ${r(o2.y)} L ${r(i1.x)} ${r(i1.y)} A ${r(n.innerR)} ${r(n.innerR)} 0 ${large} 0 ${r(i2.x)} ${r(i2.y)} Z`;
+      } else {
+        d = `M ${r(n.cx)} ${r(n.cy)} L ${r(o1.x)} ${r(o1.y)} A ${r(n.r)} ${r(n.r)} 0 ${large} 1 ${r(o2.x)} ${r(o2.y)} Z`;
+      }
+      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      return `<path d="${d}" fill="${n.fill}"${stroke}${name(n)}/>`;
     }
     case "arrowhead": {
       // Triangle with tip at (x, y), pointing along angle.

@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
-import { formatNumber, formatPercent, resolveFormat } from "../format";
+import { formatNumber, formatPercent, niceTicks, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
 import {
   baselineNode,
@@ -79,7 +79,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   }
   const scale: ValueScale = pct
     ? { min: 0, max: 1, ticks: [0, 0.25, 0.5, 0.75, 1], toY: (v: number) => frame.y + frame.h - v * frame.h }
-    : valueScale(frame, dataMin, dataMax, cfg.scale, H ? undefined : cfg.axisBreak);
+    : valueScale(frame, dataMin, dataMax, cfg.scale, H ? undefined : cfg.axisBreak, !stacked && !H && cfg.logScale);
 
   // Value coordinate: distance along the value axis from the scale minimum.
   // Vertical charts route through toY so axis breaks apply; horizontal stays linear.
@@ -155,7 +155,14 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       if (c === n - 1) lastSegMid[si] = H ? r.x + r.w : r.y + r.h / 2;
 
       if (decor.segmentLabels) {
-        const label = pct ? formatPercent(v) : formatNumber(raw!, fmt);
+        // think-cell's label-content dropdown: value / % / series / category.
+        const label = segmentLabel(decor.labelContent ?? (pct ? ["percent"] : ["value"]), {
+          value: raw!,
+          fraction: pct ? v : posTotals[c] > 0 ? Math.max(0, raw!) / posTotals[c] : null,
+          series: s.name,
+          category: data.categories[c],
+          fmt,
+        });
         const along = H ? r.w : r.h; // extent along the value axis
         const across = H ? r.h : r.w;
         const fits = H
@@ -245,6 +252,78 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       valueToY: pct || H ? undefined : scale.toY,
     },
   };
+}
+
+/**
+ * Combo chart, think-cell style: stacked columns plus line series drawn over
+ * them on the same value axis. Series with `type: "line"` become lines; if
+ * none is marked, the last series does.
+ */
+export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const marked = cfg.data.series.some((s) => s.type === "line");
+  const lines = marked ? cfg.data.series.filter((s) => s.type === "line") : cfg.data.series.slice(-1);
+  const cols = marked
+    ? cfg.data.series.filter((s) => s.type !== "line")
+    : cfg.data.series.slice(0, Math.max(1, cfg.data.series.length - 1));
+
+  // One shared scale: whichever of stack totals / line values reaches higher.
+  const stackMax = Math.max(
+    0,
+    ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)),
+  );
+  const lineMax = Math.max(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  const colCfg: ChartConfig = {
+    ...cfg,
+    kind: "stacked",
+    data: { ...cfg.data, series: cols },
+    scale: cfg.scale?.max != null ? cfg.scale : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
+  };
+  const result = layoutColumns(colCfg, style, decor);
+  const { anchors, nodes } = result;
+  if (!anchors.valueToY) return result;
+
+  const fs = style.fontSize;
+  const fmt = resolveFormat(lines.flatMap((s) => s.values.filter((v): v is number => v != null)), cfg.numberFormat);
+  lines.forEach((s, li) => {
+    const color = seriesColor(style, cols.length + li, s.color);
+    let prev: { x: number; y: number } | null = null;
+    let lastY: number | null = null;
+    s.values.forEach((v, c) => {
+      if (v == null || c >= anchors.categoryX.length) {
+        prev = null;
+        return;
+      }
+      const pt = { x: anchors.categoryX[c], y: anchors.valueToY!(v) };
+      if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `combo-line-${li}-${c}` });
+      const r = 2.4;
+      nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `combo-marker-${li}-${c}` });
+      if (decor.segmentLabels) {
+        nodes.push({
+          kind: "text", x: pt.x - 30, y: pt.y - fs * 1.65, w: 60, h: fs * 1.4,
+          text: formatNumber(v, fmt), fontSize: fs, color: style.text,
+          align: "center", valign: "bottom", name: `combo-label-${li}-${c}`,
+        });
+      }
+      prev = pt;
+      lastY = pt.y;
+    });
+    if (decor.seriesLabels && lastY != null) {
+      nodes.push({
+        kind: "text",
+        x: anchors.plot.x + anchors.plot.w + 4,
+        y: lastY - fs * 1.6,
+        w: cfg.width - (anchors.plot.x + anchors.plot.w) - 4,
+        h: fs * 1.4,
+        text: s.name,
+        fontSize: fs,
+        color: style.text,
+        align: "left",
+        valign: "middle",
+        name: `combo-series-label-${li}`,
+      });
+    }
+  });
+  return result;
 }
 
 /** Chrome for horizontal (bar) orientation: title, legend, left category labels, bottom axis. */

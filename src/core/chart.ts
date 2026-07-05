@@ -1,13 +1,14 @@
 import type { ChartConfig, ChartStyle, Decorations } from "./types";
 import type { Scene } from "./scene";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "./style";
-import { layoutColumns } from "./layout/column";
+import { layoutColumns, layoutCombo } from "./layout/column";
 import { layoutWaterfall } from "./layout/waterfall";
 import { layoutMekko } from "./layout/mekko";
 import { layoutLine } from "./layout/line";
 import { layoutButterfly } from "./layout/butterfly";
 import { layoutScatter } from "./layout/scatter";
 import { layoutGantt } from "./layout/gantt";
+import { layoutPie } from "./layout/pie";
 import { decorationNodes } from "./decor";
 import type { LayoutResult } from "./layout/column";
 
@@ -40,6 +41,13 @@ export function buildChart(cfg: ChartConfig): Scene {
     case "gantt":
       result = layoutGantt(cfg, style, decor);
       break;
+    case "combo":
+      result = layoutCombo(cfg, style, decor);
+      break;
+    case "pie":
+    case "doughnut":
+      result = layoutPie(cfg, style, decor);
+      break;
     default:
       result = layoutColumns(cfg, style, decor);
   }
@@ -47,7 +55,8 @@ export function buildChart(cfg: ChartConfig): Scene {
   // Decorations assume a vertical value axis; skip them for bar orientation
   // and butterfly charts.
   const skipDecor =
-    cfg.horizontal || cfg.kind === "butterfly" || cfg.kind === "scatter" || cfg.kind === "bubble" || cfg.kind === "gantt";
+    cfg.horizontal ||
+    ["butterfly", "scatter", "bubble", "gantt", "pie", "doughnut"].includes(cfg.kind);
   const nodes = skipDecor
     ? result.nodes
     : [...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];

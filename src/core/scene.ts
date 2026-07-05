@@ -58,6 +58,26 @@ export interface EllipseNode {
   name?: string;
 }
 
+/**
+ * Pie/doughnut wedge. Angles in degrees, 0 = 12 o'clock, clockwise.
+ * SVG renders an exact path; PowerPoint approximates with a triangle fan
+ * (Office.js exposes no adjustable pie geometry).
+ */
+export interface WedgeNode {
+  kind: "wedge";
+  cx: number;
+  cy: number;
+  r: number;
+  /** Inner radius for doughnuts; 0 for pies. */
+  innerR: number;
+  startAngle: number;
+  endAngle: number;
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
+  name?: string;
+}
+
 /** Filled triangle with tip at (x, y), pointing along `angle` (degrees, 0 = east, clockwise). */
 export interface ArrowheadNode {
   kind: "arrowhead";
@@ -69,7 +89,13 @@ export interface ArrowheadNode {
   name?: string;
 }
 
-export type SceneNode = RectNode | LineNode | TextNode | EllipseNode | ArrowheadNode;
+export type SceneNode = RectNode | LineNode | TextNode | EllipseNode | WedgeNode | ArrowheadNode;
+
+/** Point on a circle for wedge geometry (0° = 12 o'clock, clockwise). */
+export function polar(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
+  const a = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+}
 
 export interface Scene {
   width: number;

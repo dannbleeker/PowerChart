@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import type { SceneNode } from "../scene";
-import { formatNumber, resolveFormat } from "../format";
+import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { baselineNode, categorySlots, chromeNodes, computeFrame, valueScale } from "./frame";
 import { seriesLabelNodes, type LayoutResult } from "./column";
@@ -23,7 +23,17 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
 
   const { frame } = computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []);
   const slots = categorySlots(frame, n, 0);
-  const scale = valueScale(frame, dataMin, dataMax, cfg.scale);
+  // Date categories ("2024-03", "Jan 2025", …) space x proportionally to time.
+  const days = data.categories.map((c) => parseDateToken(c));
+  if (!area && n > 1 && days.every((d): d is number => d != null)) {
+    const d0 = Math.min(...(days as number[]));
+    const d1 = Math.max(...(days as number[]));
+    const inset = slots.slotWidth / 2;
+    for (let c = 0; c < n; c++) {
+      slots.centers[c] = frame.x + inset + (((days[c] as number) - d0) / (d1 - d0 || 1)) * (frame.w - inset * 2);
+    }
+  }
+  const scale = valueScale(frame, dataMin, dataMax, cfg.scale, undefined, !area && cfg.logScale);
   const y0 = scale.toY(0);
 
   const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, slots.centers, scale);

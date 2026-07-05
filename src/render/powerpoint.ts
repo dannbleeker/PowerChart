@@ -9,7 +9,7 @@
  * Requires PowerPointApi 1.4+ (ShapeCollection.addGeometricShape / addLine /
  * addTextBox). Grouping and arrowhead rotation degrade gracefully on older hosts.
  */
-import type { Scene, SceneNode, TextNode } from "../core/scene";
+import { polar, type Scene, type SceneNode, type TextNode, type WedgeNode } from "../core/scene";
 
 /* global PowerPoint, Office */
 
@@ -157,8 +157,7 @@ function renderScene(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions)
   const created: PowerPoint.Shape[] = [];
 
   for (const n of scene.nodes) {
-    const shape = addNode(shapes, n, left, top, opts);
-    if (shape) created.push(shape);
+    created.push(...addNode(shapes, n, left, top, opts));
   }
 
   let tagTarget: PowerPoint.Shape | undefined = created[0];
@@ -195,7 +194,7 @@ function addNode(
   dx: number,
   dy: number,
   opts: InsertOptions,
-): PowerPoint.Shape | null {
+): PowerPoint.Shape[] {
   switch (n.kind) {
     case "rect": {
       const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
@@ -212,7 +211,7 @@ function addNode(
         shape.lineFormat.visible = false;
       }
       if (n.name) shape.name = n.name;
-      return shape;
+      return [shape];
     }
     case "line": {
       const line = shapes.addLine(PowerPoint.ConnectorType.straight, {
@@ -231,7 +230,7 @@ function addNode(
         }
       }
       if (n.name) line.name = n.name;
-      return line;
+      return [line];
     }
     case "ellipse": {
       const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse, {
@@ -248,10 +247,12 @@ function addNode(
         shape.lineFormat.visible = false;
       }
       if (n.name) shape.name = n.name;
-      return shape;
+      return [shape];
     }
+    case "wedge":
+      return addWedgeFan(shapes, n, dx, dy);
     case "text":
-      return addText(shapes, n, dx, dy, opts);
+      return [addText(shapes, n, dx, dy, opts)];
     case "arrowhead": {
       // No freeform API in Office.js: approximate with a rotated triangle.
       const s = n.size * 2;
@@ -271,7 +272,7 @@ function addNode(
         /* rotation unsupported — arrowhead stays axis-aligned */
       }
       if (n.name) shape.name = n.name;
-      return shape;
+      return [shape];
     }
   }
 }
@@ -325,6 +326,50 @@ function addText(
   }
   if (n.name) shape.name = n.name;
   return shape;
+}
+
+/**
+ * Approximate a pie wedge with a fan of rotated triangles — Office.js has no
+ * adjustable pie geometry or freeform paths. Needs Shape.rotation (1.9);
+ * older hosts get no wedge. Doughnut holes are separate ellipse nodes
+ * emitted by the layout, so wedges here are always full slices.
+ */
+function addWedgeFan(
+  shapes: PowerPoint.ShapeCollection,
+  n: WedgeNode,
+  dx: number,
+  dy: number,
+): PowerPoint.Shape[] {
+  const created: PowerPoint.Shape[] = [];
+  const cx = dx + n.cx;
+  const cy = dy + n.cy;
+  const span = n.endAngle - n.startAngle;
+  const steps = Math.max(1, Math.ceil(span / 12));
+  const step = span / steps;
+  for (let i = 0; i < steps; i++) {
+    const mid = n.startAngle + step * (i + 0.5);
+    // Slightly overlapping chords hide the seams between fan triangles.
+    const chord = 2 * n.r * Math.tan(((step / 2) * Math.PI) / 180) + 1;
+    const center = polar(cx, cy, n.r / 2, mid);
+    try {
+      const tri = shapes.addGeometricShape(PowerPoint.GeometricShapeType.triangle, {
+        left: center.x - chord / 2,
+        top: center.y - n.r / 2,
+        width: chord,
+        height: n.r,
+      });
+      tri.fill.setSolidColor(n.fill);
+      tri.lineFormat.visible = false;
+      // Unrotated, the triangle's base points south (180° in wedge terms).
+      (tri as unknown as { rotation: number }).rotation = mid - 180;
+      if (n.name) tri.name = `${n.name}-f${i}`;
+      created.push(tri);
+    } catch {
+      /* rotation unsupported — skip the fan on this host */
+      break;
+    }
+  }
+  return created;
 }
 
 /** True when running inside an Office host with the PowerPoint JS API. */

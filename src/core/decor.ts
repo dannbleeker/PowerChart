@@ -18,7 +18,12 @@ export function decorationNodes(
   // --- CAGR arrow: diagonal arrow between two column tops with "+x.x% p.a." ---
   if (decor.cagr) {
     const { from, to } = clampPair(decor.cagr, a);
-    const rate = cagr(a.columnValue[from], a.columnValue[to], to - from);
+    // Per-series CAGR when requested (think-cell computes on totals by default).
+    const si = decor.cagr.series;
+    const sVals = si != null ? cfg.data.series[si]?.values : undefined;
+    const vFrom = sVals ? (sVals[from] ?? 0) : a.columnValue[from];
+    const vTo = sVals ? (sVals[to] ?? 0) : a.columnValue[to];
+    const rate = cagr(vFrom, vTo, to - from);
     // Clear the column totals row when it is shown.
     const lift = fs * 1.6 + (decor.totals ? fs * 1.5 : 0);
     const x1 = a.categoryX[from];
@@ -53,10 +58,21 @@ export function decorationNodes(
     const { from, to } = clampPair(decor.difference, a);
     const si = decor.difference.series;
     const useLevel = si != null && a.seriesLevels != null && a.valueToY != null && si >= 0 && si < (a.seriesLevels[0]?.length ?? 0);
-    const vFrom = useLevel ? a.seriesLevels![from][si!] : a.columnValue[from];
+    let vFrom = useLevel ? a.seriesLevels![from][si!] : a.columnValue[from];
+    let yFrom = useLevel ? a.valueToY!(vFrom) : a.columnTop[from];
     const vTo = useLevel ? a.seriesLevels![to][si!] : a.columnValue[to];
-    const yFrom = useLevel ? a.valueToY!(vFrom) : a.columnTop[from];
     const yTo = useLevel ? a.valueToY!(vTo) : a.columnTop[to];
+    // Anchor the arrow's start at a value line instead of a column.
+    const vlIdx = decor.difference.fromValueLine;
+    const vls = decor.valueLines ?? (decor.valueLine ? [decor.valueLine] : []);
+    if (vlIdx != null && vls[vlIdx] && a.valueToY) {
+      const vl = vls[vlIdx];
+      vFrom =
+        vl.mode === "mean"
+          ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1)
+          : vl.value;
+      yFrom = a.valueToY(vFrom);
+    }
     const x = a.categoryX[to] + a.categoryWidth[to] / 2 + 10;
     nodes.push(
       {

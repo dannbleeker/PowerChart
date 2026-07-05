@@ -65,6 +65,51 @@ const extras: ChartConfig[] = [
     decorations: { segmentLabels: true, totals: false, valueAxis: true, gridlines: true, seriesLabels: false },
   },
   {
+    ...sampleConfig("waterfall"),
+    title: "Stacked waterfall (two series per delta)",
+    data: {
+      categories: ["FY23", "Organic", "M&A", "Cost", "FY24"],
+      series: [
+        { name: "Europe", values: [50, 8, 5, -6, 0] },
+        { name: "Americas", values: [36, 6, 9, -6, 0] },
+      ],
+    },
+    waterfall: { totalIndices: [4] },
+  },
+  {
+    ...sampleConfig("combo"),
+    title: "Combo: stacked columns + margin line",
+  },
+  {
+    ...sampleConfig("pie"),
+    title: "Pie (category + % labels)",
+  },
+  {
+    ...sampleConfig("doughnut"),
+    title: "Doughnut with center total",
+  },
+  {
+    ...sampleConfig("clustered"),
+    title: "Log scale + axis title",
+    data: {
+      categories: ["Seed", "A", "B", "C"],
+      series: [{ name: "Valuation", values: [4, 40, 220, 1900] }],
+    },
+    logScale: true,
+    valueAxisTitle: "$m (log)",
+    decorations: { valueAxis: true, gridlines: true, seriesLabels: false, segmentLabels: true },
+  },
+  {
+    ...sampleConfig("stacked"),
+    title: "Value-line-anchored difference + de-DE locale",
+    decorations: {
+      totals: true,
+      valueLines: [{ mode: "value", value: 100 }],
+      difference: { from: 0, to: 3, fromValueLine: 0, percent: false },
+    },
+    numberFormat: { decimals: 1, locale: "de-DE" },
+  },
+  {
     ...sampleConfig("gantt"),
     title: "Calendar Gantt (dates in the datasheet)",
     data: {
