@@ -53,7 +53,7 @@ section and `skill/reference.md`.
 | Pie / Doughnut | simple shares | slices from 12 o'clock, clockwise; explode slices to highlight |
 | Boxplot | distributions | `Min`/`Q1`/`Median`/`Q3`/`Max` rows, or raw samples → automatic Tukey whiskers and outliers; suffix rows with `\| group` for side-by-side grouped boxes |
 | Radar | multi-dimension profiles | categories = spokes, series = translucent polygons; keep ≤ 3 series |
-| Heatmap | value matrices | series = rows, categories = columns, one global color scale (diverging when data spans zero) |
+| Heatmap | value matrices | series = rows, categories = columns, one global color scale (diverging when data spans zero); marginal row/column totals optional |
 | Tile map | values by geography | categories = region codes (US postal / ISO-2 / world regions); layout auto-detected |
 | Cascade | stage-by-stage breakdown of a total | categories `"Stage \| Drop label \| Group"`; each bar is a subset of the previous, remainders hang as labeled boxes |
 | Funnel | pipeline / conversion stages | centered bands, width ∝ value, conversion % between stages; order values ascending for a pyramid |
@@ -86,7 +86,8 @@ toggle — the axis and every decoration rotate with them.
 | `X line`, `Y line` | scatter partition lines |
 | `Trend` | OLS trend line with R² and p-value |
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (symmetric or asymmetric) |
-| `Target` | bullet-chart tick across each column at the target value (add background bands for zones) |
+| `Target` | bullet tick across each column; on waterfalls also a hatched gap-to-target segment |
+| `Band low`, `Band high` | line charts: shaded confidence/uncertainty ribbon |
 | `Min`, `Q1`, `Median`, `Q3`, `Max`, `Mean` | boxplot five-number summary (+ mean marker) |
 | `Outlier <n>` | extra boxplot outlier dots |
 | `Start`, `End`, `Milestone`, `After`, `Today`, `Holiday`, `Bracket <label>` | Gantt — see below |

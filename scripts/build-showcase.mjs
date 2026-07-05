@@ -375,12 +375,46 @@ const features = [
     kind: "line",
     width: 480,
     height: 300,
-    title: "Forecast styling (dashed from 2026)",
+    title: "Forecast with confidence band",
     data: {
       categories: ["2023", "2024", "2025", "2026", "2027"],
-      series: [{ name: "Revenue", values: [40, 46, 52, 60, 69] }],
+      series: [
+        { name: "Revenue", values: [40, 46, 52, 60, 69] },
+        { name: "Band low", values: [null, null, 52, 55, 59] },
+        { name: "Band high", values: [null, null, 52, 66, 82] },
+      ],
     },
     decorations: { forecastFrom: 3, seriesLabels: false },
+  },
+  {
+    kind: "waterfall",
+    width: 480,
+    height: 300,
+    title: "Budget-vs-actual bridge (gap to target)",
+    data: {
+      categories: ["FY23", "Volume", "Price", "Cost", "FY24"],
+      series: [
+        { name: "Delta", values: [86, 14, 9, -12, 0] },
+        { name: "Target", values: [null, null, null, null, 110] },
+      ],
+    },
+    waterfall: { totalIndices: [4] },
+    decorations: { categoryAxis: true },
+  },
+  {
+    kind: "heatmap",
+    width: 480,
+    height: 300,
+    title: "Heatmap with marginal totals",
+    heatmap: { totals: "both" },
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "North", values: [42, 48, 51, 58] },
+        { name: "South", values: [30, 34, 31, 36] },
+        { name: "East", values: [22, 25, 29, 33] },
+      ],
+    },
   },
   {
     kind: "bubble",

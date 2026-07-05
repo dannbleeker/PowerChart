@@ -12,17 +12,19 @@ engine already has were filtered out.
 sweep: the full top-10 — cascade, bullet targets, combo column modes,
 bubble size legend, forecast styling, scatter quadrants, funnel,
 lollipop/dot/dumbbell styles, gantt progress + baselines, grouped
-boxplots.)
+boxplots — plus, from the next tier: waterfall budget-vs-actual bridge,
+line confidence bands, area-between-series (`fillBetween`), heatmap
+marginal totals.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
 
 ## 1. Top candidates (value ÷ effort, cross-cutting rank)
 
-The researched top-10 is fully shipped. Next candidates come from §2/§3
-below (strongest: waterfall budget-vs-actual bridge, line confidence
-bands, area-between-series, pie-of-pie breakout, heatmap marginal totals,
-slope chart, waffle, KPI tile, small multiples).
+The researched top-10 is fully shipped, as is the first slice of the next
+tier (waterfall bridge, confidence bands, fill-between, heatmap totals).
+Next candidates come from §2/§3 below (strongest: slope chart, waffle,
+KPI tile, pie-of-pie breakout, small multiples).
 
 ## 2. Gaps within existing kinds (per kind)
 
@@ -36,8 +38,6 @@ slope chart, waffle, KPI tile, small multiples).
 - stacked100: **negative values are silently clamped** — medium, low/niche.
 
 ### Waterfall
-- **Variance / budget-vs-actual dual bridge** with a hatched gap-to-target
-  segment — medium, **high** (finance staple).
 - **Blank spacer categories** to group bridge sections — easy, medium.
 - Connector re-routing (drag to skip columns) — authoring UX, low for a
   rendering engine.
@@ -56,9 +56,6 @@ slope chart, waffle, KPI tile, small multiples).
 - Stacked-area + line, scatter-on-combo — hard/low; skip for now.
 
 ### Line / Area
-- **Confidence/uncertainty band** around a line (slab technique exists) —
-  easy, high for forecasting slides.
-- **Area between two series** (plan-vs-actual ribbon) — easy, high.
 - **Stepped line/area** — easy, medium. **Smoothed lines** — medium
   (polyline approximation), medium.
 - **Area with negative values** — today clamped to 0 — medium, high for
@@ -107,7 +104,6 @@ slope chart, waffle, KPI tile, small multiples).
 - Variable-radius pie — medium, niche.
 
 ### Heatmap
-- **Marginal totals** (sum row/column strips) — easy, medium-high.
 - **Calendar heatmap layout** (day-of-week × week) — easy-medium, medium.
 - Per-cell icon overlays — medium, low (think-cell excludes these too).
   Clustering/dendrograms, cell-size encoding — hard/low; skip.

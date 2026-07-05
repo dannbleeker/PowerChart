@@ -52,6 +52,8 @@ const ERROR_ROW = /^error\s*([+\-−])?$/i;
 /** Bullet-chart target row: a bold tick across each column at the value. */
 const TARGET_ROW = /^target$/i;
 const ERROR_KINDS: ChartKind[] = ["stacked", "clustered", "line", "area"];
+/** Kinds that accept a Target row (error bars stay column/line-family). */
+const TARGET_KINDS: ChartKind[] = [...ERROR_KINDS, "waterfall"];
 
 /**
  * Pull Error rows out of the data (so they don't render as segments) and
@@ -63,8 +65,8 @@ function extractErrorRows(cfg: ChartConfig): {
   errors: { plus: (number | null)[]; minus: (number | null)[] } | null;
   targets: (number | null)[] | null;
 } {
-  if (!ERROR_KINDS.includes(cfg.kind)) return { cfg, errors: null, targets: null };
-  const rows = cfg.data.series.filter((s) => ERROR_ROW.test(s.name.trim()));
+  if (!TARGET_KINDS.includes(cfg.kind)) return { cfg, errors: null, targets: null };
+  const rows = ERROR_KINDS.includes(cfg.kind) ? cfg.data.series.filter((s) => ERROR_ROW.test(s.name.trim())) : [];
   const targetRow = cfg.data.series.find((s) => TARGET_ROW.test(s.name.trim()));
   if (!rows.length && !targetRow) return { cfg, errors: null, targets: null };
   const pick = (sign: "+" | "-") =>
@@ -203,6 +205,28 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       const half = Math.min(a.categoryWidth[c] * 0.62, 26);
       const y = a.valueToY!(t);
       nodes.push({ kind: "line", x1: x - half, y1: y, x2: x + half, y2: y, stroke: style.text, strokeWidth: 2.25, name: `target-${c}` });
+      // Budget-vs-actual bridge: on a waterfall, a hatched gap segment shows
+      // the distance from the achieved level to the target.
+      if (cfg.kind === "waterfall") {
+        const actual = a.columnValue[c];
+        const gap = t - actual;
+        if (Math.abs(gap) > 1e-9) {
+          const yA = a.valueToY!(actual);
+          const w = a.categoryWidth[c];
+          nodes.push({
+            kind: "rect", x: x - w / 2, y: Math.min(y, yA), w, h: Math.abs(yA - y),
+            fill: style.neutral, pattern: "diagonal", stroke: style.mutedText, strokeWidth: 0.75,
+            name: `target-gap-${c}`,
+          });
+          const fs = style.fontSize;
+          nodes.push({
+            kind: "text", x: x - w / 2 - 4, y: Math.min(y, yA) - fs * 1.5, w: w + 8, h: fs * 1.4,
+            text: `Gap ${formatNumber(gap, { ...resolveFormat([t, actual], cfg.numberFormat), forceSign: true })}`,
+            fontSize: fs * 0.95, bold: true, color: style.text,
+            align: "center", valign: "bottom", name: `target-gap-label-${c}`,
+          });
+        }
+      }
     });
   }
 

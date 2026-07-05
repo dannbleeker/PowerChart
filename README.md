@@ -59,6 +59,9 @@ conventions, and every option.
 | Lollipop, dot-plot, and dumbbell-range styles | ✅ (`decorations.barStyle` on clustered) |
 | Gantt progress fill + plan-vs-actual baselines | ✅ (`% Complete`, `Baseline start`/`end` rows) |
 | Grouped boxplots (two categorical dimensions) | ✅ (`Min \| 2024`-style row suffixes) |
+| Waterfall budget-vs-actual (hatched gap to target) | ✅ (`Target` row on waterfalls) |
+| Confidence bands + plan-vs-actual ribbons on lines | ✅ (`Band low`/`Band high` rows, `decorations.fillBetween`) |
+| Heatmap marginal totals | ✅ (`heatmap.totals`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

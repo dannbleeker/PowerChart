@@ -36,11 +36,16 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const headerH = decor.categoryAxis !== false ? fs * 1.5 : 2;
   const rowLabelW = Math.min(cfg.width * 0.28, Math.max(fs, ...data.series.map((s) => textWidth(s.name, fs))) + 8);
   const legendH = fs * 3;
+  // Marginal totals reserve a strip on the right (row sums) / bottom (column sums).
+  const wantRowTotals = opts.totals === "row" || opts.totals === "both";
+  const wantColTotals = opts.totals === "column" || opts.totals === "both";
+  const totalsW = wantRowTotals ? fs * 4 : 0;
+  const totalsH = wantColTotals ? fs * 1.9 : 0;
   const plot = {
     x: rowLabelW,
     y: titleH + headerH,
-    w: cfg.width - rowLabelW - 2,
-    h: cfg.height - titleH - headerH - legendH - footnoteH(cfg, style, decor),
+    w: cfg.width - rowLabelW - 2 - totalsW,
+    h: cfg.height - titleH - headerH - legendH - totalsH - footnoteH(cfg, style, decor),
   };
   const cw = plot.w / Math.max(1, nCols);
   const ch = plot.h / Math.max(1, nRows);
@@ -84,8 +89,36 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
   });
 
+  // Marginal totals: neutral sum strips outside the color scale.
+  const sum = (vals: (number | null)[]) => vals.reduce((a: number, v) => a + (v ?? 0), 0);
+  if (wantRowTotals) {
+    data.series.forEach((s, ri) => {
+      const y = plot.y + ri * ch;
+      nodes.push(
+        { kind: "rect", x: plot.x + plot.w + 2, y, w: totalsW - 4, h: ch - 1, fill: "#f0efec", name: `row-total-bg-${ri}` },
+        {
+          kind: "text", x: plot.x + plot.w + 2, y, w: totalsW - 6, h: ch - 1, text: formatNumber(sum(s.values), fmt),
+          fontSize: fs * 0.95, bold: true, color: style.text, align: "center", valign: "middle", name: `row-total-${ri}`,
+        },
+      );
+    });
+  }
+  if (wantColTotals) {
+    data.categories.forEach((_, c) => {
+      const x = plot.x + c * cw;
+      const total = sum(data.series.map((s) => s.values[c]));
+      nodes.push(
+        { kind: "rect", x, y: plot.y + plot.h + 2, w: cw - 1, h: totalsH - 4, fill: "#f0efec", name: `col-total-bg-${c}` },
+        {
+          kind: "text", x, y: plot.y + plot.h + 2, w: cw - 1, h: totalsH - 4, text: formatNumber(total, fmt),
+          fontSize: fs * 0.95, bold: true, color: style.text, align: "center", valign: "middle", name: `col-total-${c}`,
+        },
+      );
+    });
+  }
+
   // Gradient legend: a strip of small steps with min/max (and 0) labels.
-  const ly = plot.y + plot.h + fs * 0.6;
+  const ly = plot.y + plot.h + totalsH + fs * 0.6;
   if (constant) {
     nodes.push(
       { kind: "rect", x: plot.x, y: ly, w: fs * 1.6, h: fs * 0.9, fill: colorOf(min), name: "legend-swatch" },

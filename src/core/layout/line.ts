@@ -2,17 +2,31 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import type { SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
+import { lerpColor } from "../color";
 import { baselineNode, categorySlots, chromeNodes, computeFrame, valueScale } from "./frame";
 import { seriesLabelNodes, type LayoutResult } from "./column";
 
 /** Line and area charts over categories. Lines are 2pt with ≥3pt markers. */
 export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
-  const { data } = cfg;
+  const rawData = cfg.data;
+  // Band low/high rows shade an uncertainty ribbon instead of drawing lines.
+  const BAND_LOW = /^band\s*low$/i;
+  const BAND_HIGH = /^band\s*high$/i;
+  const bandLow = rawData.series.find((s) => BAND_LOW.test(s.name.trim()))?.values;
+  const bandHigh = rawData.series.find((s) => BAND_HIGH.test(s.name.trim()))?.values;
+  const data = {
+    ...rawData,
+    series: rawData.series.filter((s) => !BAND_LOW.test(s.name.trim()) && !BAND_HIGH.test(s.name.trim())),
+  };
   const n = data.categories.length;
   const area = cfg.kind === "area";
   const fs = style.fontSize;
 
-  const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  const all = [
+    ...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)),
+    ...(bandLow ?? []).filter((v): v is number => v != null),
+    ...(bandHigh ?? []).filter((v): v is number => v != null),
+  ];
   // Area charts stack; lines share one scale.
   const stackedTotals = data.categories.map((_, c) =>
     data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0),
@@ -39,6 +53,36 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, slots.centers, scale);
   const lastSegMid: (number | null)[] = data.series.map(() => null);
   const columnTop: number[] = data.categories.map(() => y0);
+
+  /** Shaded ribbon between two per-category value arrays (slab technique). */
+  const ribbon = (lows: (number | null)[], highs: (number | null)[], fill: string, name: string) => {
+    for (let c = 0; c < n - 1; c++) {
+      const l0 = lows[c];
+      const l1 = lows[c + 1];
+      const h0 = highs[c];
+      const h1 = highs[c + 1];
+      if (l0 == null || l1 == null || h0 == null || h1 == null) continue;
+      const steps = 24;
+      const w = (slots.centers[c + 1] - slots.centers[c]) / steps;
+      for (let k = 0; k < steps; k++) {
+        const t = (k + 0.5) / steps;
+        const yT = scale.toY(h0 + (h1 - h0) * t);
+        const yB = scale.toY(l0 + (l1 - l0) * t);
+        nodes.push({ kind: "rect", x: slots.centers[c] + k * w, y: Math.min(yT, yB), w: w + 0.5, h: Math.abs(yB - yT), fill, name: `${name}-${c}-${k}` });
+      }
+    }
+  };
+  // Confidence/uncertainty band from Band low / Band high rows.
+  if (!area && bandLow && bandHigh) {
+    ribbon(bandLow, bandHigh, lerpColor("#ffffff", seriesColor(style, 0, data.series[0]?.color), 0.18), "band-ribbon");
+  }
+  // Filled gap between two named series (plan-vs-actual ribbon).
+  if (!area && decor.fillBetween) {
+    const [ai, bi] = decor.fillBetween;
+    const sa = data.series[ai]?.values;
+    const sb = data.series[bi]?.values;
+    if (sa && sb) ribbon(sa, sb, lerpColor("#ffffff", seriesColor(style, ai, data.series[ai]?.color), 0.22), "fill-between");
+  }
 
   if (area) {
     // Stacked areas drawn as per-category slabs (renderers have no polygon fill),

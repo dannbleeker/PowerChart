@@ -49,6 +49,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     hundredPercentNote?: boolean,     // "100% = N" note (pie/doughnut/stacked100)
     forecastFrom?: number,            // line: dashed segments + hollow markers from this index
     barStyle?: "bar"|"lollipop"|"dot"|"range",  // clustered: stems+dots / dots / dumbbell
+    fillBetween?: [number, number],   // line: shade the gap between two series (plan vs actual)
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
@@ -56,7 +57,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",
               showMean?: boolean, iqrMultiplier?: number },
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
-  heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto" },
+  heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto",
+              totals?: "row"|"column"|"both" },  // marginal sum strips
   combo?: { columns?: "stacked"|"clustered"|"stacked100" },  // column mode under the lines
   waterfall?: { totalIndices?: number[] },  // categories drawn as running totals ("e")
   scale?: { min?: number, max?: number },   // pin the value axis
@@ -90,7 +92,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Holiday` | Gantt: shade these dates |
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, vertical |
-| `Target` | bullet-chart tick across each column at the value (combine with `bands` for zones) |
+| `Target` | bullet tick across each column; on waterfalls also a hatched gap-to-target segment + label |
+| `Band low`, `Band high` | line charts: shaded confidence/uncertainty ribbon (rows never draw as lines) |
 | `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style); suffix "\| group" ("Min \| 2024") for side-by-side grouped boxes |
 | `Mean` | boxplot mean marker (×) |
 | `Outlier <n>` | boxplot: extra outlier dots in precomputed mode |
