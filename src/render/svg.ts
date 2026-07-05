@@ -3,12 +3,35 @@ import { polar, type Scene, type SceneNode } from "../core/scene";
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/** Hatch/dot pattern tiles: series-colored base with white strokes over it. */
+const PATTERN_TILE: Record<string, (id: string, color: string) => string> = {
+  diagonal: (id, c) =>
+    `<pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${c}"/><line x1="0" y1="0" x2="0" y2="5" stroke="#ffffff" stroke-width="1.4" stroke-opacity="0.75"/></pattern>`,
+  crosshatch: (id, c) =>
+    `<pattern id="${id}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${c}"/><path d="M 0 0 V 6 M 0 0 H 6" stroke="#ffffff" stroke-width="1.1" stroke-opacity="0.7"/></pattern>`,
+  dots: (id, c) =>
+    `<pattern id="${id}" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="${c}"/><circle cx="3" cy="3" r="1.1" fill="#ffffff" fill-opacity="0.8"/></pattern>`,
+  horizontal: (id, c) =>
+    `<pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="${c}"/><line x1="0" y1="1" x2="5" y2="1" stroke="#ffffff" stroke-width="1.4" stroke-opacity="0.75"/></pattern>`,
+};
+
+const patternId = (pattern: string, color: string) => `p-${pattern}-${color.replace("#", "")}`;
+
 /** Render a scene to a standalone SVG string (1pt = 1px). */
 export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): string {
   const parts: string[] = [];
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" font-family="Segoe UI, Arial, sans-serif">`,
   );
+  // One <pattern> def per (pattern, color) pair used by the scene's rects.
+  const defs = new Map<string, string>();
+  for (const n of scene.nodes) {
+    if (n.kind === "rect" && n.pattern && PATTERN_TILE[n.pattern]) {
+      const id = patternId(n.pattern, n.fill);
+      if (!defs.has(id)) defs.set(id, PATTERN_TILE[n.pattern](id, n.fill));
+    }
+  }
+  if (defs.size) parts.push(`<defs>${[...defs.values()].join("")}</defs>`);
   if (opts.background) {
     parts.push(`<rect width="100%" height="100%" fill="${opts.background}"/>`);
   }
@@ -21,7 +44,8 @@ function nodeToSvg(n: SceneNode): string {
   switch (n.kind) {
     case "rect": {
       const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
-      return `<rect x="${r(n.x)}" y="${r(n.y)}" width="${r(n.w)}" height="${r(n.h)}" fill="${n.fill}"${stroke}${name(n)}/>`;
+      const fill = n.pattern && PATTERN_TILE[n.pattern] ? `url(#${patternId(n.pattern, n.fill)})` : n.fill;
+      return `<rect x="${r(n.x)}" y="${r(n.y)}" width="${r(n.w)}" height="${r(n.h)}" fill="${fill}"${stroke}${name(n)}/>`;
     }
     case "line": {
       const dash = n.dash ? ` stroke-dasharray="${n.dash.join(" ")}"` : "";

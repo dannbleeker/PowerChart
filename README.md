@@ -35,6 +35,10 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Shaded background bands (axis regions) | ✅ (`decorations.bands`, incl. scatter) |
 | Exploding pie slice | ✅ (`pie.explode`) |
 | Footnote/source line + "100% = N" note | ✅ (`footnote`, `decorations.hundredPercentNote`) |
+| Rule-based tables (no side borders, group gaps, totals row) | ✅ (default table style; `{style:"grid"}` keeps the old look) |
+| In-cell table effects (harvey balls, trend arrows, semantic colors) | ✅ (`[hb:0.75]`, `[up]`/`[down]`/`[flat]`, `[good]`/`[bad]`) |
+| Trend line fit statistics (R², p-value) | ✅ (automatic with the `Trend` row) |
+| Pattern/hatch fills on series | ✅ (`series.pattern`, SVG/preview; solid in PPT) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

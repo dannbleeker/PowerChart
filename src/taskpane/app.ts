@@ -944,7 +944,7 @@ function wireInsert() {
       ["harvey-insert", harveyScene],
       ["check-insert", checkScene],
       ["flow-insert", flowScene],
-      ["table-insert", () => buildTableScene(state.sheet.cells, 480)],
+      ["table-insert", () => buildTableScene(state.sheet.cells, 480, { totalRow: ($("table-total") as HTMLInputElement).checked })],
     ] as const) {
       const btn = $(id) as HTMLButtonElement;
       btn.disabled = false;

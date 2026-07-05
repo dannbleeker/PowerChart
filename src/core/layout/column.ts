@@ -174,6 +174,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         fill,
         stroke: style.background,
         strokeWidth: stacked ? 0.75 : 0,
+        pattern: s.pattern,
         name: `seg-${si}-${c}`,
       });
       if (c === n - 1) lastSegMid[si] = H ? r.x + r.w : r.y + r.h / 2;

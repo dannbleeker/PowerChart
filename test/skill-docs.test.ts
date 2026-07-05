@@ -34,7 +34,7 @@ describe("skill documentation coverage", () => {
     for (const key of [
       "cagr", "difference", "valueLines", "labelContent", "segmentOrder", "axisBreak",
       "categorySort", "secondaryAxis", "labelOffsets",
-      "connectors", "callouts", "bands", "hundredPercentNote", "footnote", "explode", "colors",
+      "connectors", "callouts", "bands", "hundredPercentNote", "footnote", "explode", "colors", "pattern",
     ]) {
       expect(reference).toContain(key);
     }

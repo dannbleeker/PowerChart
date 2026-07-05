@@ -26,6 +26,12 @@ export interface Series {
    * slice ("color on a data point"). null cells keep the series color.
    */
   colors?: (string | null)[];
+  /**
+   * Hatch/dot pattern over the series fill — extends a tight color budget
+   * and survives grayscale printing. Column-family segments; SVG/preview
+   * renders the pattern, PowerPoint output degrades to the solid fill.
+   */
+  pattern?: "diagonal" | "crosshatch" | "dots" | "horizontal";
   /** Combo charts: render this series as a line over the columns. */
   type?: "column" | "line";
   /**

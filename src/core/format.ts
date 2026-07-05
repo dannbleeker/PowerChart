@@ -152,3 +152,83 @@ export function cagr(from: number, to: number, periods: number): number | null {
   if (periods <= 0 || from <= 0 || to <= 0) return null;
   return Math.pow(to / from, 1 / periods) - 1;
 }
+
+/**
+ * OLS trend statistics: R² and the two-tailed p-value of the slope
+ * (Student's t via the regularized incomplete beta function). Good charts
+ * always state fit and significance next to a trend line.
+ */
+export function trendStats(pts: { x: number; y: number }[]): { r2: number; p: number | null } | null {
+  const n = pts.length;
+  if (n < 2) return null;
+  const mx = pts.reduce((s, p) => s + p.x, 0) / n;
+  const my = pts.reduce((s, p) => s + p.y, 0) / n;
+  const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
+  const syy = pts.reduce((s, p) => s + (p.y - my) ** 2, 0);
+  const sxy = pts.reduce((s, p) => s + (p.x - mx) * (p.y - my), 0);
+  if (sxx <= 0 || syy <= 0) return null;
+  const r2 = (sxy * sxy) / (sxx * syy);
+  const df = n - 2;
+  if (df < 1) return { r2, p: null };
+  if (r2 >= 1) return { r2: 1, p: 0 };
+  const t2 = (r2 * df) / (1 - r2);
+  // Two-tailed p for Student's t: p = I_{df/(df+t²)}(df/2, 1/2).
+  return { r2, p: betaI(df / 2, 0.5, df / (df + t2)) };
+}
+
+/** Human p-value: "< 0.001", "< 0.01", "< 0.05", or "= 0.31". */
+export function formatP(p: number): string {
+  for (const cut of [0.001, 0.01, 0.05]) if (p < cut) return `< ${cut}`;
+  return `= ${p.toFixed(2)}`;
+}
+
+/** Regularized incomplete beta I_x(a, b) via continued fraction (NR-style). */
+function betaI(a: number, b: number, x: number): number {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const lnBeta =
+    lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x);
+  const front = Math.exp(lnBeta);
+  const symmetric = x >= (a + 1) / (a + b + 2);
+  const [aa, bb, xx] = symmetric ? [b, a, 1 - x] : [a, b, x];
+  // Lentz's continued fraction.
+  let c = 1;
+  let d = 1 - ((aa + bb) * xx) / (aa + 1);
+  if (Math.abs(d) < 1e-30) d = 1e-30;
+  d = 1 / d;
+  let f = d;
+  for (let m = 1; m <= 200; m++) {
+    let num = (m * (bb - m) * xx) / ((aa + 2 * m - 1) * (aa + 2 * m));
+    d = 1 + num * d;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = 1 + num / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d;
+    f *= d * c;
+    num = (-(aa + m) * (aa + bb + m) * xx) / ((aa + 2 * m) * (aa + 2 * m + 1));
+    d = 1 + num * d;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = 1 + num / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d;
+    const delta = d * c;
+    f *= delta;
+    if (Math.abs(delta - 1) < 1e-10) break;
+  }
+  const result = (front * (f - 1)) / aa;
+  return symmetric ? 1 - result : result;
+}
+
+/** Lanczos log-gamma. */
+function lnGamma(z: number): number {
+  const g = [
+    676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnGamma(1 - z);
+  z -= 1;
+  let a = 0.99999999999980993;
+  for (let i = 0; i < g.length; i++) a += g[i] / (z + i + 1);
+  const t = z + g.length - 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
+}

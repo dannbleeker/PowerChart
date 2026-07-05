@@ -13,6 +13,8 @@ export interface RectNode {
   fill: string;
   stroke?: string;
   strokeWidth?: number;
+  /** Hatch/dot pattern overlaid on the fill (SVG renderer; solid elsewhere). */
+  pattern?: "diagonal" | "crosshatch" | "dots" | "horizontal";
   name?: string;
 }
 

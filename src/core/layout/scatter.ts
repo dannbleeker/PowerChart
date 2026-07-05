@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { formatNumber, niceTicks, resolveFormat } from "../format";
+import { formatNumber, formatP, niceTicks, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { PALETTE } from "../style";
 import { footnoteH } from "./frame";
@@ -108,7 +108,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     nodes.push({ kind: "line", x1: plot.x, y1: y, x2: plot.x + plot.w, y2: y, stroke: style.mutedText, strokeWidth: 1, dash: [3, 2], name: "y-line" });
   }
 
-  // OLS trend line across all points.
+  // OLS trend line across all points — always stating fit and significance.
   if (wantTrend && pts.length >= 2) {
     const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
     const my = pts.reduce((s, p) => s + p.y, 0) / pts.length;
@@ -121,6 +121,24 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         x1: toX(x0), y1: toY(at(x0)), x2: toX(x1), y2: toY(at(x1)),
         stroke: style.negative, strokeWidth: 1.25, dash: [4, 2], name: "trend",
       });
+      const stats = trendStats(pts);
+      if (stats) {
+        const label = `R² = ${stats.r2.toFixed(2)}${stats.p != null ? `, p ${formatP(stats.p)}` : ""}`;
+        const endY = toY(at(x1));
+        nodes.push({
+          kind: "text",
+          x: plot.x + plot.w - textWidth(label, fs * 0.9) - 4,
+          y: Math.max(plot.y, Math.min(plot.y + plot.h - fs * 1.3, endY + (slope >= 0 ? fs * 0.4 : -fs * 1.7))),
+          w: textWidth(label, fs * 0.9) + 4,
+          h: fs * 1.3,
+          text: label,
+          fontSize: fs * 0.9,
+          color: style.negative,
+          align: "right",
+          valign: "middle",
+          name: "trend-stats",
+        });
+      }
     }
   }
 

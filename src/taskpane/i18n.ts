@@ -40,6 +40,7 @@ const DE: Record<string, string> = {
   "Auto-update chart": "Diagramm automatisch aktualisieren",
   Insert: "Einfügen",
   "Edit it": "Bearbeiten",
+  "Total row": "Summenzeile",
 };
 
 const DICTS: Record<string, Record<string, string>> = { de: DE };
