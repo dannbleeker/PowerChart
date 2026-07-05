@@ -5033,5 +5033,243 @@
     "decorations": {
       "valueAxis": true
     }
+  },
+  {
+    "kind": "gantt",
+    "width": 560,
+    "height": 300,
+    "title": "Launch plan — critical path highlighted",
+    "data": {
+      "categories": [
+        "Research",
+        "Design",
+        "Build",
+        "Copywriting",
+        "QA",
+        "Launch"
+      ],
+      "series": [
+        {
+          "name": "Start",
+          "values": [
+            1,
+            3,
+            8,
+            3,
+            14,
+            18
+          ]
+        },
+        {
+          "name": "End",
+          "values": [
+            3,
+            8,
+            14,
+            5,
+            18,
+            20
+          ]
+        },
+        {
+          "name": "After",
+          "values": [
+            null,
+            1,
+            2,
+            1,
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "criticalPath": true
+    }
+  },
+  {
+    "kind": "boxplot",
+    "width": 480,
+    "height": 300,
+    "title": "Assay reproducibility (mean ± SD)",
+    "data": {
+      "categories": [
+        "Lot A",
+        "Lot B",
+        "Lot C"
+      ],
+      "series": [
+        {
+          "name": "r1",
+          "values": [
+            95,
+            90,
+            74
+          ]
+        },
+        {
+          "name": "r2",
+          "values": [
+            100,
+            93,
+            77
+          ]
+        },
+        {
+          "name": "r3",
+          "values": [
+            98,
+            96,
+            80
+          ]
+        },
+        {
+          "name": "r4",
+          "values": [
+            96,
+            90,
+            83
+          ]
+        },
+        {
+          "name": "r5",
+          "values": [
+            101,
+            93,
+            86
+          ]
+        },
+        {
+          "name": "r6",
+          "values": [
+            99,
+            96,
+            89
+          ]
+        },
+        {
+          "name": "r7",
+          "values": [
+            97,
+            90,
+            92
+          ]
+        },
+        {
+          "name": "r8",
+          "values": [
+            95,
+            93,
+            95
+          ]
+        }
+      ]
+    },
+    "boxplot": {
+      "meanSd": true
+    },
+    "decorations": {
+      "valueAxis": true,
+      "segmentLabels": true
+    }
+  },
+  {
+    "kind": "line",
+    "width": 480,
+    "height": 260,
+    "title": "KPI sparklines — last 12 weeks",
+    "data": {
+      "categories": [
+        "w1",
+        "w2",
+        "w3",
+        "w4",
+        "w5",
+        "w6",
+        "w7",
+        "w8",
+        "w9",
+        "w10",
+        "w11",
+        "w12"
+      ],
+      "series": [
+        {
+          "name": "Signups",
+          "values": [
+            40,
+            44,
+            42,
+            50,
+            48,
+            60,
+            58,
+            72,
+            66,
+            80,
+            78,
+            92
+          ]
+        },
+        {
+          "name": "Revenue",
+          "values": [
+            12,
+            13,
+            15,
+            14,
+            18,
+            17,
+            22,
+            25,
+            24,
+            30,
+            34,
+            33
+          ]
+        },
+        {
+          "name": "Churn %",
+          "values": [
+            5.1,
+            4.8,
+            4.9,
+            4.4,
+            4.6,
+            4,
+            3.8,
+            3.9,
+            3.3,
+            3.1,
+            2.9,
+            2.7
+          ]
+        },
+        {
+          "name": "NPS",
+          "values": [
+            30,
+            32,
+            31,
+            35,
+            38,
+            40,
+            39,
+            44,
+            47,
+            46,
+            52,
+            55
+          ]
+        }
+      ]
+    },
+    "multiples": {
+      "columns": 1
+    },
+    "decorations": {
+      "sparkline": true
+    }
   }
 ]

@@ -98,6 +98,9 @@ conventions, and every option.
 | Sunburst (nested hierarchical rings) | ✅ (`sunburst` kind, `"Group \| Item"` categories) |
 | Violin plot (kernel-density distributions) | ✅ (`violin` kind, raw samples; outline-only in the live add-in) |
 | Candlestick / OHLC financial chart | ✅ (`candlestick` kind, `Open`/`High`/`Low`/`Close` rows) |
+| Gantt critical-path highlight | ✅ (`decorations.criticalPath`, over `After` edges) |
+| Mean±SD boxplot variant | ✅ (`boxplot.meanSd`, raw-sample mode) |
+| Sparklines (word-sized trend lines) | ✅ (`decorations.sparkline` on `line`/`area`; pair with `multiples`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

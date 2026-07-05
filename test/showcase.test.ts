@@ -113,6 +113,9 @@ describe("showcase deck coverage", () => {
     ["bump chart", (c) => c.kind === "line" && !!c.decorations?.bump],
     ["horizontal profile (line/area)", (c) => (c.kind === "line" || c.kind === "area") && !!c.horizontal],
     ["two-level treemap", (c) => c.kind === "treemap" && c.data.categories.some((cat) => cat.includes("|"))],
+    ["critical-path gantt", (c) => c.kind === "gantt" && !!c.decorations?.criticalPath],
+    ["mean±SD boxplot", (c) => c.kind === "boxplot" && !!c.boxplot?.meanSd],
+    ["sparklines", (c) => !!c.decorations?.sparkline],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

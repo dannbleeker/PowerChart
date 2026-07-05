@@ -225,6 +225,20 @@ export interface Decorations {
    */
   summaryBars?: boolean;
   /**
+   * Gantt: highlight the critical path — the dependency chain (over the
+   * "After" edges) with the greatest cumulative duration. Its bars get a red
+   * outline and its dependency arrows are drawn thicker in red (MS-Project
+   * convention). No-op without "After" rows.
+   */
+  criticalPath?: boolean;
+  /**
+   * Line/area: sparkline mode — a compact, axis-less, word-sized trend line
+   * with no chrome, an optional leading label (the title/series name) and a
+   * trailing value, plus min/max/last dots. Pair with `multiples` for a table
+   * of sparklines, one row per series.
+   */
+  sparkline?: boolean;
+  /**
    * Radar: shade the per-spoke min–max envelope of the "peer" series (all
    * but the last) as a band, and draw the last series prominently on top —
    * the "peer range + us" competitive-profiling view.
@@ -372,6 +386,13 @@ export interface ChartConfig {
      * suggest a significant difference in medians.
      */
     notch?: boolean;
+    /**
+     * Mean±SD box variant (raw-sample mode only): draw the box as mean ± one
+     * standard deviation with the centre line at the mean and whiskers to
+     * mean ± 2·SD, instead of the quartile/Tukey box. The scientific
+     * "mean and spread" summary rather than the order-statistic one.
+     */
+    meanSd?: boolean;
   };
   /** Tile-grid map layout; omitted → auto-detected from the region codes. */
   map?: "us" | "eu" | "europe" | "world";

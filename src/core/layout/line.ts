@@ -8,6 +8,9 @@ import { horizontalChrome, seriesLabelNodes, type LayoutResult } from "./column"
 
 /** Line and area charts over categories. Lines are 2pt with ≥3pt markers. */
 export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  if ((cfg.kind === "line" || cfg.kind === "area") && decor.sparkline) {
+    return layoutSparkline(cfg, style, decor);
+  }
   if (cfg.kind === "line" && decor.slope && cfg.data.categories.length >= 2) {
     return layoutSlope(cfg, style, decor);
   }
@@ -283,6 +286,110 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: scale.toY,
+    },
+  };
+}
+
+/**
+ * Sparkline: a compact, chrome-less trend line sized to sit inline (think
+ * Tufte's "word-sized graphic"). No axes, gridlines or category labels — just
+ * a thin line, an optional leading label (the title / series name) and a
+ * trailing value, with dots on the min (red), max (green) and last points.
+ * Pair with `multiples` to get a table of sparklines, one per series.
+ */
+function layoutSparkline(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const fs = style.fontSize;
+  const n = data.categories.length;
+  const area = cfg.kind === "area";
+  const single = data.series.length === 1;
+  const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  const fmt = resolveFormat(all, cfg.numberFormat);
+  const lo = all.length ? Math.min(...all) : 0;
+  const hi = all.length ? Math.max(...all) : 1;
+  const span = hi - lo || 1;
+
+  // Leading label (title/series name) and trailing last value reserve gutters.
+  const label = cfg.title ?? (single ? data.series[0].name : "");
+  const labelW = label ? Math.min(cfg.width * 0.38, textWidth(label, fs) + 8) : 0;
+  const lastVal = single
+    ? [...data.series[0].values].reverse().find((v): v is number => v != null) ?? null
+    : null;
+  const endText = lastVal != null ? formatNumber(lastVal, fmt) : "";
+  const endW = endText ? textWidth(endText, fs) + 8 : 0;
+  const padY = Math.max(2, cfg.height * 0.16);
+  const plot = {
+    x: labelW,
+    y: padY,
+    w: Math.max(10, cfg.width - labelW - endW - 4),
+    h: Math.max(4, cfg.height - padY * 2),
+  };
+  const xs = data.categories.map((_, c) => plot.x + (n === 1 ? plot.w / 2 : (c / (n - 1)) * plot.w));
+  const toY = (v: number) => plot.y + (1 - (v - lo) / span) * plot.h;
+
+  const nodes: SceneNode[] = [];
+  if (label) {
+    nodes.push({
+      kind: "text", x: 0, y: plot.y + plot.h / 2 - fs * 0.75, w: labelW - 6, h: fs * 1.5,
+      text: label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: "spark-label",
+    });
+  }
+
+  data.series.forEach((s, si) => {
+    const color = seriesColor(style, si, s.color);
+    const pts = s.values
+      .map((v, c) => (v == null ? null : { x: xs[c], y: toY(v), v, c }))
+      .filter((p): p is { x: number; y: number; v: number; c: number } => p != null);
+    // Light area fill under the line (area kind only), per-segment rects to the floor.
+    if (area) {
+      const fill = lerpColor("#ffffff", color, 0.16);
+      const floor = plot.y + plot.h;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const steps = 8;
+        const w = (pts[i + 1].x - pts[i].x) / steps;
+        for (let k = 0; k < steps; k++) {
+          const t = (k + 0.5) / steps;
+          const y = pts[i].y + (pts[i + 1].y - pts[i].y) * t;
+          nodes.push({ kind: "rect", x: pts[i].x + k * w, y, w: w + 0.5, h: Math.max(0, floor - y), fill, name: `spark-fill-${si}-${i}-${k}` });
+        }
+      }
+    }
+    for (let i = 0; i < pts.length - 1; i++) {
+      nodes.push({ kind: "line", x1: pts[i].x, y1: pts[i].y, x2: pts[i + 1].x, y2: pts[i + 1].y, stroke: color, strokeWidth: 1.25, name: `spark-${si}-${pts[i + 1].c}` });
+    }
+    // Min / max / last dots (single-series only, to stay uncluttered).
+    if (single && pts.length) {
+      let minP = pts[0];
+      let maxP = pts[0];
+      for (const p of pts) {
+        if (p.v < minP.v) minP = p;
+        if (p.v > maxP.v) maxP = p;
+      }
+      const last = pts[pts.length - 1];
+      nodes.push(
+        { kind: "ellipse", cx: minP.x, cy: minP.y, rx: 1.9, ry: 1.9, fill: style.negative, name: `spark-min-${si}` },
+        { kind: "ellipse", cx: maxP.x, cy: maxP.y, rx: 1.9, ry: 1.9, fill: "#1a9e6e", name: `spark-max-${si}` },
+        { kind: "ellipse", cx: last.x, cy: last.y, rx: 2.1, ry: 2.1, fill: color, name: `spark-last-${si}` },
+      );
+      if (endText) {
+        nodes.push({
+          kind: "text", x: plot.x + plot.w + 4, y: last.y - fs * 0.75, w: endW, h: fs * 1.5,
+          text: endText, fontSize: fs, bold: true, color, align: "left", valign: "middle", name: `spark-end-${si}`,
+        });
+      }
+    }
+  });
+
+  return {
+    nodes,
+    anchors: {
+      categoryX: xs,
+      categoryWidth: data.categories.map(() => plot.w / Math.max(1, n)),
+      columnTop: data.categories.map(() => plot.y),
+      columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+      baselineY: plot.y + plot.h,
+      plot,
+      valueToY: toY,
     },
   };
 }

@@ -46,6 +46,7 @@ describe("user manual coverage", () => {
       "Combo base modes", "Combo independent line axes",
       "Hex tile maps", "Tilemap mini-glyphs", "100% charts with negatives",
       "Semi-circle gauge", "Pareto", "Bump chart", "Horizontal profile chart",
+      "Critical path", "Mean±SD box", "Sparklines",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }
