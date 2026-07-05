@@ -117,6 +117,11 @@ export interface FrameReservations {
   seriesLabelsW: number;
 }
 
+/** Height reserved at the bottom for the footnote / "100% =" line. */
+export function footnoteH(cfg: ChartConfig, style: ChartStyle, decor: Decorations): number {
+  return cfg.footnote || decor.hundredPercentNote ? style.fontSize * 1.3 : 0;
+}
+
 /**
  * Compute the plot rectangle by reserving margins for the enabled decorations
  * (title, totals row, category labels, value axis, right-hand series labels).
@@ -144,7 +149,7 @@ export function computeFrame(
     x: valueAxisW,
     y: titleH + totalsH,
     w: cfg.width - valueAxisW - Math.max(seriesLabelsW, diffW + 2) - 2,
-    h: cfg.height - titleH - totalsH - categoryAxisH,
+    h: cfg.height - titleH - totalsH - categoryAxisH - footnoteH(cfg, style, decor),
   };
   return { frame, res: { titleH, totalsH, categoryAxisH, valueAxisW, seriesLabelsW } };
 }
@@ -171,7 +176,7 @@ export function computeFrameHorizontal(
     x: catW,
     y: titleH + legendH,
     w: cfg.width - catW - totalsW - 2,
-    h: cfg.height - titleH - legendH - valueAxisH,
+    h: cfg.height - titleH - legendH - valueAxisH - footnoteH(cfg, style, decor),
   };
 }
 

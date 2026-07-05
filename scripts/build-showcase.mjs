@@ -179,6 +179,80 @@ const features = [
     labelOffsets: { "total-3": { dx: 0, dy: -6 } },
     decorations: { totals: true },
   },
+  // --- "The good chart" batch: design formalia & data-highlighting ---
+  {
+    ...sampleConfig("stacked"),
+    title: "Connector lines + footnote (source line)",
+    footnote: "Source: Statistics Denmark, 2024",
+    decorations: { connectors: true, totals: true },
+  },
+  {
+    kind: "stacked",
+    width: 480,
+    height: 300,
+    title: "Point highlight + speech-bubble callout",
+    data: {
+      categories: ["2021", "2022", "2023", "2024"],
+      series: [
+        { name: "Base", values: [40, 44, 47, 52] },
+        { name: "New", values: [8, 10, 21, 14], colors: [null, null, "#e34948", null] },
+      ],
+    },
+    decorations: {
+      connectors: true,
+      callouts: [{ text: "One-off boost", category: 2, dx: 30 }],
+    },
+  },
+  {
+    kind: "clustered",
+    width: 480,
+    height: 300,
+    title: "Background band (target range) + line highlight",
+    data: { categories: ["Q1", "Q2", "Q3", "Q4"], series: [{ name: "Margin", values: [38, 45, 52, 49] }] },
+    decorations: {
+      bands: [{ axis: "y", from: 40, to: 50, label: "Target range" }],
+      seriesLabels: false,
+      valueAxis: true,
+    },
+  },
+  {
+    kind: "scatter",
+    width: 480,
+    height: 300,
+    title: "Scatter background bands (quadrant regions)",
+    data: {
+      categories: ["A", "B", "C", "D", "E"],
+      series: [
+        { name: "X", values: [15, 30, 45, 60, 75] },
+        { name: "Y", values: [20, 45, 35, 60, 70] },
+      ],
+    },
+    decorations: { bands: [{ axis: "x", from: 50, to: 80, color: "#e8f0e4", label: "Focus" }] },
+  },
+  {
+    kind: "pie",
+    width: 480,
+    height: 300,
+    title: "Exploding slice + slice color + 100% = note",
+    footnote: "Source: annual report FY24",
+    pie: { explode: [1] },
+    data: {
+      categories: ["Retail", "Online", "Wholesale", "Other"],
+      series: [{ name: "Revenue", values: [46, 28, 18, 8], colors: [null, "#e34948", null, null] }],
+    },
+    decorations: { hundredPercentNote: true },
+  },
+  {
+    kind: "line",
+    width: 480,
+    height: 300,
+    title: "Highlighted max point (per-cell color on line)",
+    data: {
+      categories: ["Jan", "Feb", "Mar", "Apr", "May"],
+      series: [{ name: "Orders", values: [120, 135, 178, 150, 162], colors: [null, null, "#e34948", null, null] }],
+    },
+    decorations: { seriesLabels: false },
+  },
 ];
 
 const configs = [...kinds, ...features];

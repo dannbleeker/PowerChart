@@ -29,6 +29,12 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Category sorting by total | ✅ |
 | Combo secondary (right) value axis | ✅ |
 | Label content menu on line & scatter labels | ✅ |
+| Connector lines on stacked columns/bars | ✅ (`decorations.connectors`) |
+| Single data-point highlight color | ✅ (per-cell `series.colors`) |
+| Speech-bubble callouts on a value | ✅ (`decorations.callouts`) |
+| Shaded background bands (axis regions) | ✅ (`decorations.bands`, incl. scatter) |
+| Exploding pie slice | ✅ (`pie.explode`) |
+| Footnote/source line + "100% = N" note | ✅ (`footnote`, `decorations.hundredPercentNote`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

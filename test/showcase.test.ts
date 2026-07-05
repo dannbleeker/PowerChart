@@ -49,6 +49,14 @@ describe("showcase deck coverage", () => {
     ["stacked waterfall", (c) => c.kind === "waterfall" && c.data.series.length > 1],
     ["label offsets", (c) => !!c.labelOffsets],
     ["calendar dates", (c) => !!c.data.dates],
+    ["connector lines", (c) => !!c.decorations?.connectors],
+    ["per-cell highlight colors", (c) => c.data.series.some((s) => s.colors?.some(Boolean))],
+    ["callouts", (c) => !!c.decorations?.callouts?.length],
+    ["background bands", (c) => !!c.decorations?.bands?.length],
+    ["scatter background bands", (c) => (c.kind === "scatter" || c.kind === "bubble") && !!c.decorations?.bands?.length],
+    ["exploding pie slice", (c) => !!c.pie?.explode?.length],
+    ["footnote / source line", (c) => !!c.footnote],
+    ["100% = note", (c) => !!c.decorations?.hundredPercentNote],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

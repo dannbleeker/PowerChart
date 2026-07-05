@@ -83,8 +83,11 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
           nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `line-${si}-${c}` });
         }
         // Marker: small square with a background ring so crossings stay legible.
-        const r = 2.4;
-        nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
+        // A per-cell color override highlights the point (max/min/last…) with
+        // a larger, recolored marker.
+        const cellColor = s.colors?.[c];
+        const r = cellColor ? 3.4 : 2.4;
+        nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: cellColor ?? color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
         if (decor.segmentLabels) {
           nodes.push({
             kind: "text",
@@ -100,7 +103,8 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
               fmt,
             }),
             fontSize: fs,
-            color: style.text,
+            bold: !!cellColor,
+            color: cellColor ?? style.text,
             align: "center",
             valign: "bottom",
             name: `label-${si}-${c}`,

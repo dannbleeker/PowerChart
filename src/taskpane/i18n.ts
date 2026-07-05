@@ -35,6 +35,8 @@ const DE: Record<string, string> = {
   "Value axis": "Werteachse",
   Gridlines: "Gitterlinien",
   "Horizontal (bar)": "Horizontal (Balken)",
+  "Connector lines": "Verbindungslinien",
+  "100% = note": "100%-Hinweis",
   "Auto-update chart": "Diagramm automatisch aktualisieren",
   Insert: "Einfügen",
   "Edit it": "Bearbeiten",

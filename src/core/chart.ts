@@ -9,8 +9,10 @@ import { layoutButterfly } from "./layout/butterfly";
 import { layoutScatter } from "./layout/scatter";
 import { layoutGantt } from "./layout/gantt";
 import { layoutPie } from "./layout/pie";
-import { decorationNodes } from "./decor";
+import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
+import { formatNumber, resolveFormat } from "./format";
+import type { SceneNode } from "./scene";
 import type { LayoutResult } from "./layout/column";
 
 export const DEFAULT_SIZE = { width: 480, height: 300 };
@@ -83,9 +85,36 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   const skipDecor =
     cfg.horizontal ||
     ["butterfly", "scatter", "bubble", "gantt", "pie", "doughnut"].includes(cfg.kind);
+  // Background bands go BEFORE the layout's nodes so they render behind the
+  // data (scatter/bubble draw their own, in value units).
+  const bands = !skipDecor && decor.bands?.length ? bandNodes(cfg, style, decor, result.anchors) : [];
   const nodes = skipDecor
-    ? result.nodes
-    : [...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];
+    ? [...bands, ...result.nodes]
+    : [...bands, ...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];
+
+  // Footnote line: source citation and/or the "100% = N" note, bottom-left.
+  const footParts: string[] = [];
+  if (decor.hundredPercentNote) {
+    const total = hundredPercentTotal(cfg);
+    if (total != null) footParts.push(`100% = ${formatNumber(total, resolveFormat([total], cfg.numberFormat))}`);
+  }
+  if (cfg.footnote) footParts.push(cfg.footnote);
+  if (footParts.length) {
+    const fs = style.fontSize;
+    nodes.push({
+      kind: "text",
+      x: 2,
+      y: cfg.height - fs * 1.15,
+      w: cfg.width - 4,
+      h: fs * 1.1,
+      text: footParts.join("   ·   "),
+      fontSize: fs * 0.85,
+      color: style.mutedText,
+      align: "left",
+      valign: "bottom",
+      name: "footnote",
+    } satisfies SceneNode);
+  }
 
   // Global de-collision for outside labels (vertical cartesian charts).
   if (!skipDecor) resolveLabelCollisions(nodes);
@@ -101,6 +130,30 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     }
   }
   return { width: cfg.width, height: cfg.height, nodes };
+}
+
+/**
+ * The denominator behind a "100% = N" note: the series total for pies, the
+ * uniform per-category denominator for 100% charts (null when categories
+ * have different denominators — the note would be a lie then).
+ */
+function hundredPercentTotal(cfg: ChartConfig): number | null {
+  const { data, kind } = cfg;
+  if (kind === "pie" || kind === "doughnut") {
+    const total = data.categories.reduce((a, _, c) => a + Math.max(0, data.series[0]?.values[c] ?? 0), 0);
+    return total > 0 ? total : null;
+  }
+  if (kind === "stacked100") {
+    const denominators = data.categories.map((_, c) => {
+      const d = data.hundredPercent?.[c];
+      return d != null && d > 0
+        ? d
+        : data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0);
+    });
+    if (!denominators.length || denominators[0] <= 0) return null;
+    return denominators.every((d) => Math.abs(d - denominators[0]) < 1e-9) ? denominators[0] : null;
+  }
+  return null;
 }
 
 /**

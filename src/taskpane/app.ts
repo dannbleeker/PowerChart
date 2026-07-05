@@ -39,6 +39,10 @@ interface AppState {
   seriesColors: Record<string, string>;
   axisTitle: string;
   logScale: boolean;
+  /** Footnote / source line ("Kilde: …"). */
+  footnote: string;
+  /** Comma-separated slice indices to explode (pie/doughnut), 1-based in the UI. */
+  pieExplode: string;
   /** When set, "Update chart" replaces this shape in place. */
   editTarget: EditTarget | null;
 }
@@ -74,6 +78,8 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     ),
     axisTitle: cfg.valueAxisTitle ?? "",
     logScale: !!cfg.logScale,
+    footnote: cfg.footnote ?? "",
+    pieExplode: (cfg.pie?.explode ?? []).map((i) => i + 1).join(","),
   };
 }
 
@@ -128,10 +134,16 @@ function currentConfig(): ChartConfig {
   const labelParts = state.labelContent
     ? (state.labelContent.split(",") as NonNullable<Decorations["labelContent"]>)
     : undefined;
+  const explode = state.pieExplode
+    .split(",")
+    .map((v) => Number(v.trim()) - 1)
+    .filter((v) => Number.isInteger(v) && v >= 0);
   return {
     kind: state.kind,
     data,
     horizontal: state.horizontal || undefined,
+    footnote: state.footnote || undefined,
+    pie: explode.length ? { explode } : undefined,
     valueAxisTitle: state.axisTitle || undefined,
     logScale: state.logScale || undefined,
     style: mergedStyle(),
@@ -232,6 +244,8 @@ function renderOptions() {
     { key: "categoryAxis", label: "Category labels" },
     { key: "valueAxis", label: "Value axis" },
     { key: "gridlines", label: "Gridlines" },
+    { key: "connectors", label: "Connector lines" },
+    { key: "hundredPercentNote", label: "100% = note" },
   ];
   for (const t of toggles) {
     const label = document.createElement("label");
@@ -420,6 +434,38 @@ function renderOptions() {
   });
   nf.append("Labels: decimals ", nfDec, " suffix ", nfSuffix, " locale ", nfLoc);
   optionsHost.appendChild(nf);
+
+  // Footnote / source line — good charts always cite their source.
+  const fn = document.createElement("label");
+  fn.className = "wide";
+  const fnInput = document.createElement("input");
+  fnInput.type = "text";
+  fnInput.placeholder = "e.g. Source: Statistics Denmark, 2024";
+  fnInput.style.width = "180px";
+  fnInput.value = state.footnote;
+  fnInput.addEventListener("input", () => {
+    state.footnote = fnInput.value;
+    renderPreview();
+  });
+  fn.append("Footnote / source ", fnInput);
+  optionsHost.appendChild(fn);
+
+  // Exploding slices (pie/doughnut only).
+  if (state.kind === "pie" || state.kind === "doughnut") {
+    const ex = document.createElement("label");
+    ex.className = "wide";
+    const exInput = document.createElement("input");
+    exInput.type = "text";
+    exInput.placeholder = "e.g. 1";
+    exInput.style.width = "48px";
+    exInput.value = state.pieExplode;
+    exInput.addEventListener("input", () => {
+      state.pieExplode = exInput.value;
+      renderPreview();
+    });
+    ex.append("Explode slices ", exInput);
+    optionsHost.appendChild(ex);
+  }
 
   // Label content (think-cell's label dropdown).
   const lc = document.createElement("label");

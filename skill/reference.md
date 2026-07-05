@@ -16,6 +16,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
       name: string,
       values: (number | null)[],      // one per category; null = blank
       color?: "#rrggbb",              // per-series override
+      colors?: ("#rrggbb"|null)[],    // per-CELL override: highlight one segment/point/slice
       type?: "line",                  // combo: draw this series as a line
       stack?: number                  // clustered-stacked: stack group index
     }],
@@ -32,8 +33,16 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     labelContent?: ("value"|"percent"|"series"|"category")[],
     cagr?: { from: number, to: number, series?: number },        // category indices
     difference?: { from, to, percent?, series?, fromValueLine? },
-    valueLines?: ({mode:"mean"} | {mode:"value", value:number})[]
+    valueLines?: ({mode:"mean"} | {mode:"value", value:number})[],
+    connectors?: boolean,             // lines joining stacked-segment boundaries between columns
+    callouts?: [{ text, category, series?, dx?, dy? }],  // speech-bubble comments on a value
+    bands?: [{ axis:"x"|"y", from, to, color?, label? }], // shaded background region
+                                      // (y = value range; x = category indices;
+                                      //  scatter/bubble: both axes in value units)
+    hundredPercentNote?: boolean      // "100% = N" note (pie/doughnut/stacked100)
   },
+  footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
+  pie?: { explode?: number[] },       // slice indices offset radially to highlight
   waterfall?: { totalIndices?: number[] },  // categories drawn as running totals ("e")
   scale?: { min?: number, max?: number },   // pin the value axis
   axisBreak?: { from: number, to: number }, // compress an out-of-scale range
@@ -79,6 +88,15 @@ Multiple series → stacked waterfall (contributions stack per column).
 
 **Clustered-stacked**: give series `stack: 0`, `stack: 1`, … — same index
 stacks together; different indices sit side by side per category.
+
+## Chart-design formalia (baked-in defaults, per "the good chart" practice)
+
+Every chart should carry: a message title, a `footnote` citing source and
+period, sorted categories where order is free, labels on the data instead of
+a value axis, and — on percentage charts — `hundredPercentNote` so readers
+know what 100% is. Use `decorations.connectors` on stacked charts to make
+segment development followable, `series.colors` to draw the eye to one data
+point, `callouts` to comment on it, and `bands` to mark a reference region.
 
 ## Palette
 
