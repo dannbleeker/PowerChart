@@ -3,6 +3,7 @@ import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatP, niceTicks, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { PALETTE } from "../style";
+import { sequentialScale } from "../color";
 import { footnoteH } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -21,19 +22,29 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const ys = find(/^y$/i)?.values ?? [];
   const sizes = cfg.kind === "bubble" ? (find(/^size$/i)?.values ?? []) : [];
   const groups = find(/^group$/i)?.values ?? [];
+  // A numeric "Color" row encodes a third/fourth variable on a sequential ramp.
+  const colorVals = find(/^colou?r$/i)?.values ?? [];
   // Partition lines and trend line, think-cell's scatter decorations.
   const xLines = (find(/^x\s*line$/i)?.values ?? []).filter((v): v is number => v != null);
   const yLines = (find(/^y\s*line$/i)?.values ?? []).filter((v): v is number => v != null);
   const wantTrend = (find(/^trend$/i)?.values ?? []).some((v) => v != null);
 
   const pts = data.categories
-    .map((label, i) => ({ label, x: xs[i], y: ys[i], size: sizes[i] ?? null, group: groups[i] ?? 1 }))
+    .map((label, i) => ({ label, x: xs[i], y: ys[i], size: sizes[i] ?? null, group: groups[i] ?? 1, color: colorVals[i] ?? null }))
     .filter((p): p is typeof p & { x: number; y: number } => p.x != null && p.y != null);
+
+  // Continuous color scale (a "Color" row): maps each point onto a sequential
+  // ramp; supersedes group coloring and swaps the chip legend for a gradient.
+  const colorNums = pts.map((p) => p.color).filter((v): v is number => v != null);
+  const colorScale =
+    colorNums.length > 0
+      ? { min: Math.min(...colorNums), max: Math.max(...colorNums), of: sequentialScale(Math.min(...colorNums), Math.max(...colorNums), (cfg.style?.palette ?? PALETTE)[0]) }
+      : null;
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const axisW = 34;
-  const multiGroup = new Set(pts.map((p) => Math.round(Number(p.group)))).size > 1;
-  const legendH = multiGroup ? fs * 1.8 : 0;
+  const multiGroup = !colorScale && new Set(pts.map((p) => Math.round(Number(p.group)))).size > 1;
+  const legendH = multiGroup || colorScale ? fs * 1.8 : 0;
   const plot = {
     x: axisW,
     y: titleH + 6 + legendH,
@@ -173,8 +184,29 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
   }
 
-  // Group legend when points are colored by group.
-  const groupIds = [...new Set(pts.map((p) => Math.max(1, Math.round(Number(p.group)))))].sort((a, b) => a - b);
+  // Continuous color legend: a discretized gradient bar with min/max labels
+  // (renderer-safe — small rects, no SVG gradient).
+  if (colorScale) {
+    const cFmt = resolveFormat([colorScale.min, colorScale.max], cfg.numberFormat);
+    const steps = 24;
+    const barW = 90;
+    const cell = barW / steps;
+    const bx = plot.x;
+    const by = plot.y - fs * 1.35;
+    for (let i = 0; i < steps; i++) {
+      const t = (i + 0.5) / steps;
+      nodes.push({ kind: "rect", x: bx + i * cell, y: by, w: cell + 0.5, h: fs * 0.7, fill: colorScale.of(colorScale.min + t * (colorScale.max - colorScale.min)), name: `color-legend-${i}` });
+    }
+    const colorName = find(/^colou?r$/i)?.name ?? "Color";
+    nodes.push(
+      { kind: "text", x: bx - 40, y: by - fs * 0.15, w: 38, h: fs, text: colorName, fontSize: fs * 0.85, color: style.mutedText, align: "right", valign: "middle", name: "color-legend-title" },
+      { kind: "text", x: bx, y: by + fs * 0.75, w: barW, h: fs, text: formatNumber(colorScale.min, cFmt), fontSize: fs * 0.75, color: style.mutedText, align: "left", valign: "middle", name: "color-legend-min" },
+      { kind: "text", x: bx, y: by + fs * 0.75, w: barW, h: fs, text: formatNumber(colorScale.max, cFmt), fontSize: fs * 0.75, color: style.mutedText, align: "right", valign: "middle", name: "color-legend-max" },
+    );
+  }
+
+  // Group legend when points are colored by group (skipped under a color scale).
+  const groupIds = colorScale ? [] : [...new Set(pts.map((p) => Math.max(1, Math.round(Number(p.group)))))].sort((a, b) => a - b);
   if (groupIds.length > 1) {
     let lx = plot.x;
     for (const g of groupIds) {
@@ -239,13 +271,15 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   pts.forEach((p, i) => {
     const r = radius(p);
     const gi = Math.max(0, Math.round(Number(p.group)) - 1);
+    const fill =
+      colorScale && p.color != null ? colorScale.of(p.color) : colorScale ? style.mutedText : (cfg.style?.palette ?? PALETTE)[gi % 8];
     nodes.push({
       kind: "ellipse",
       cx: toX(p.x),
       cy: toY(p.y),
       rx: r,
       ry: r,
-      fill: (cfg.style?.palette ?? PALETTE)[gi % 8],
+      fill,
       stroke: style.background,
       strokeWidth: 1,
       name: `point-${i}`,

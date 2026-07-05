@@ -153,8 +153,46 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       const dx = slots.centers[fc - 1] + (slots.centers[fc] - slots.centers[fc - 1]) / 2;
       nodes.push({ kind: "line", x1: dx, y1: frame.y, x2: dx, y2: frame.y + frame.h, stroke: style.gridline, strokeWidth: 1, dash: [2, 3], name: "forecast-divider" });
     }
+    // Smooth (Catmull-Rom) curves, sampled to a dense polyline. Ignored when
+    // stepped is set (mutually exclusive shapes).
+    const smooth = !!decor.smooth && !decor.stepped;
     data.series.forEach((s, si) => {
       const color = seriesColor(style, si, s.color);
+      if (smooth) {
+        // Split into contiguous runs (nulls break the line), then draw each
+        // run as a Catmull-Rom spline sampled at STEPS points per segment.
+        const seq = s.values.map((v, c) => (v == null ? null : { x: slots.centers[c], y: scale.toY(v), c }));
+        const runs: { x: number; y: number; c: number }[][] = [];
+        let cur: { x: number; y: number; c: number }[] = [];
+        for (const p of seq) {
+          if (p) cur.push(p);
+          else if (cur.length) {
+            runs.push(cur);
+            cur = [];
+          }
+        }
+        if (cur.length) runs.push(cur);
+        const STEPS = 16;
+        for (const run of runs) {
+          for (let i = 0; i < run.length - 1; i++) {
+            const p0 = run[Math.max(0, i - 1)];
+            const p1 = run[i];
+            const p2 = run[i + 1];
+            const p3 = run[Math.min(run.length - 1, i + 2)];
+            const forecast = fc != null && p2.c >= fc;
+            let pp = { x: p1.x, y: p1.y };
+            for (let k = 1; k <= STEPS; k++) {
+              const t = k / STEPS;
+              const t2 = t * t;
+              const t3 = t2 * t;
+              const cx = 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+              const cy = 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+              nodes.push({ kind: "line", x1: pp.x, y1: pp.y, x2: cx, y2: cy, stroke: color, strokeWidth: 2, ...(forecast ? { dash: [4, 3] } : {}), name: `line-${si}-${p2.c}-s${k}` });
+              pp = { x: cx, y: cy };
+            }
+          }
+        }
+      }
       let prev: { x: number; y: number } | null = null;
       for (let c = 0; c < n; c++) {
         const v = s.values[c];
@@ -165,7 +203,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
         const forecast = fc != null && c >= fc;
         const pt = { x: slots.centers[c], y: scale.toY(v) };
         columnTop[c] = Math.min(columnTop[c], pt.y);
-        if (prev) {
+        if (prev && !smooth) {
           const p = prev;
           const dashOpt = forecast ? { dash: [4, 3] } : {};
           const seg = (x1: number, y1: number, x2: number, y2: number, suffix: string) =>

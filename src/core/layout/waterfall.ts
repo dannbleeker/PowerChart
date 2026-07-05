@@ -27,6 +27,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const nSeries = Math.max(1, data.series.length);
   const stacked = data.series.length > 1;
   const totalSet = new Set(cfg.waterfall?.totalIndices ?? []);
+  const spacerSet = new Set(cfg.waterfall?.spacerIndices ?? []);
   const H = !!cfg.horizontal;
 
   interface Seg {
@@ -45,6 +46,11 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const bars: Bar[] = [];
   let running = 0;
   for (let c = 0; c < n; c++) {
+    if (spacerSet.has(c)) {
+      // Blank grouping gap: no bar, running total carries across unchanged.
+      bars.push({ segs: [], isTotal: false, value: 0, level: running });
+      continue;
+    }
     if (totalSet.has(c)) {
       bars.push({
         segs: [{ series: 0, from: 0, to: running, value: running }],
@@ -150,6 +156,19 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
     columnTop.push(
       b.segs.length ? (H ? frame.x + topQ : frame.y + frame.h - topQ) : y0,
     );
+
+    // Spacer slot: bridge the connector across the empty gap at the running
+    // level so the dashed line reads as continuous through the section break.
+    if (b.segs.length === 0 && spacerSet.has(c) && c > 0) {
+      const levelQ = qOf(b.level);
+      if (H) {
+        const x = frame.x + levelQ;
+        nodes.push({ kind: "line", x1: x, y1: centers[c] - colThick / 2, x2: x, y2: centers[c] + colThick / 2, stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `spacer-bridge-${c}` });
+      } else {
+        const y = frame.y + frame.h - levelQ;
+        nodes.push({ kind: "line", x1: centers[c] - colThick / 2, y1: y, x2: centers[c] + colThick / 2, y2: y, stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `spacer-bridge-${c}` });
+      }
+    }
 
     // Dashed connector from this column's outgoing level to the next bar.
     if (c < n - 1) {

@@ -19,7 +19,8 @@ small multiples; plus batch G of the §2 within-kind gaps: stepped
 line/area, Excel-style column gap width + clustered overlap, and butterfly
 value ticks/gridlines on both flanks; plus batch H: area with negative
 values, scatter/bubble trajectory trail, and boxplot jittered raw-data
-dots.)
+dots; plus batch I: scatter/bubble continuous color scale, smoothed lines,
+and waterfall grouping spacers.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -42,7 +43,6 @@ Pareto helper).
 - stacked100: **negative values are silently clamped** — medium, low/niche.
 
 ### Waterfall
-- **Blank spacer categories** to group bridge sections — easy, medium.
 - Connector re-routing (drag to skip columns) — authoring UX, low for a
   rendering engine.
 
@@ -58,14 +58,11 @@ Pareto helper).
 - Stacked-area + line, scatter-on-combo — hard/low; skip for now.
 
 ### Line / Area
-- **Smoothed lines** — medium (polyline approximation), medium.
 - **Horizontal "profile chart"** (think-cell parity: rotate line/area) —
   trivial-medium, medium.
 - Missing-data bridge option, sparklines — low/niche.
 
 ### Scatter / Bubble
-- **Continuous color scale** as a third variable (color helpers exist) —
-  easy/medium, medium.
 - Bubble overlap-repulsion pass, marginal histograms, point icons —
   medium/hard, low/niche.
 

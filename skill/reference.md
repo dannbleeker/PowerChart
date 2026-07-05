@@ -51,6 +51,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     barStyle?: "bar"|"lollipop"|"dot"|"range",  // clustered: stems+dots / dots / dumbbell
     fillBetween?: [number, number],   // line: shade the gap between two series (plan vs actual)
     stepped?: "before"|"after"|"center",  // line/area: staircase segments (jump at start / end / midpoint)
+    smooth?: boolean,                 // line: smooth Catmull-Rom curves (sampled polyline)
     slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
     trajectory?: boolean,             // scatter/bubble: connect points in row order with a direction trail
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
@@ -68,7 +69,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto",
               totals?: "row"|"column"|"both" },  // marginal sum strips
   combo?: { columns?: "stacked"|"clustered"|"stacked100" },  // column mode under the lines
-  waterfall?: { totalIndices?: number[] },  // categories drawn as running totals ("e")
+  waterfall?: { totalIndices?: number[],    // categories drawn as running totals ("e")
+                spacerIndices?: number[] }, // blank grouping gaps (empty category name)
   scale?: { min?: number, max?: number },   // pin the value axis
   axisBreak?: { from: number, to: number }, // compress an out-of-scale range
   logScale?: boolean,                       // clustered/line, positive data
@@ -92,6 +94,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `100%=` | per-category denominator for `stacked100` (columns can stay short of 100%) |
 | `X extent` | Mekko-with-units: explicit column widths |
 | `X`, `Y`, `Size`, `Group` | scatter/bubble coordinates, bubble area, point coloring (1..k) |
+| `Color` | scatter/bubble: numeric third variable on a sequential color ramp (with a gradient legend); supersedes `Group` coloring |
 | `X line`, `Y line` | scatter partition lines at those values |
 | `Trend` | any value present → OLS trend line, labelled with its R² and p-value |
 | `Start`, `End`, `Milestone` | Gantt bars & milestone markers (numbers or day values) |
@@ -152,6 +155,20 @@ income over time) dips under the axis instead of being clamped to 0.
 in datasheet (row) order with a trail and a direction arrowhead at each
 segment midpoint — a Gapminder-style path of one entity through the X/Y
 space over time. Order the categories chronologically.
+
+**Scatter/bubble continuous color** (a `Color` row): maps each point's numeric
+value onto a sequential color ramp and swaps the group chip legend for a
+gradient legend with min/max labels. Encodes a third variable (or a fourth,
+on bubbles alongside `Size`). Supersedes `Group` coloring when both exist.
+
+**Smoothed lines** (`decorations.smooth`): draws smooth Catmull-Rom curves
+through the points instead of straight segments (sampled to a dense polyline
+since the renderers have no freeform paths). Ignored when `stepped` is set.
+
+**Waterfall spacers** (`waterfall.spacerIndices`): blank categories that draw
+no bar and leave a gap, grouping a long bridge into sections. The running
+total carries across and the dashed connector bridges the gap — give the
+spacer category an empty name so no axis label shows.
 
 **Boxplot jitter** (`boxplot.jitter`): in raw-sample mode, overlays every
 observation as a deterministically jittered dot over its box, so the reader

@@ -39,6 +39,7 @@ describe("user manual coverage", () => {
       "Same scale", "callouts", "background bands", "pattern fills", "slope",
       "breakout", "Small multiples", "Stepped line/area", "Gap width",
       "Area with negatives", "Scatter trajectory", "Boxplot jitter",
+      "Continuous color", "Smoothed lines", "Waterfall spacers",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

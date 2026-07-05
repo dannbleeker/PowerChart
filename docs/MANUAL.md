@@ -129,6 +129,13 @@ pick weeks (with weekend shading), months, or quarters automatically.
   under the baseline instead of being clamped to zero.
 - **Scatter trajectory** (`trajectory`): connects scatter/bubble points in
   row order with a direction trail (Gapminder-style path over time).
+- **Continuous color** (`Color` row): colors scatter/bubble points on a
+  sequential ramp by a numeric value, with a gradient legend — a third
+  variable beyond X/Y (and Size).
+- **Smoothed lines** (`smooth`): draws line charts as smooth curves instead
+  of straight segments.
+- **Waterfall spacers** (`spacerIndices`): blank grouping gaps that split a
+  long bridge into sections; the running total and connector bridge across.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

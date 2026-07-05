@@ -73,6 +73,9 @@ conventions, and every option.
 | Area charts with negative values (dip below the baseline) | ✅ (`area`, positives up / negatives down) |
 | Scatter/bubble trajectory trail (Gapminder-style path) | ✅ (`decorations.trajectory`) |
 | Boxplot jittered raw-data dots over the box | ✅ (`boxplot.jitter`, raw-sample mode) |
+| Scatter/bubble continuous color scale (a third variable) | ✅ (`Color` row → sequential ramp + gradient legend) |
+| Smoothed line charts (Catmull-Rom curves) | ✅ (`decorations.smooth`) |
+| Waterfall grouping spacers (section gaps in the bridge) | ✅ (`waterfall.spacerIndices`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |
