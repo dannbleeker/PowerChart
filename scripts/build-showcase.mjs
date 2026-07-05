@@ -615,6 +615,46 @@ const features = [
     },
     decorations: { categoryAxis: true, valueAxis: true },
   },
+  {
+    kind: "scatter",
+    width: 480,
+    height: 300,
+    title: "Continuous color scale (a Color row)",
+    data: {
+      categories: ["Alpha", "Bravo", "Core", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"],
+      series: [
+        { name: "X", values: [12, 25, 40, 55, 62, 74, 30, 48] },
+        { name: "Y", values: [30, 55, 42, 70, 35, 60, 22, 50] },
+        { name: "Color", values: [5, 12, 18, 22, 28, 34, 9, 16] },
+      ],
+    },
+  },
+  {
+    kind: "line",
+    width: 480,
+    height: 300,
+    title: "Smoothed line (Catmull-Rom)",
+    data: {
+      categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"],
+      series: [
+        { name: "A", values: [20, 45, 30, 55, 40, 62, 48] },
+        { name: "B", values: [15, 22, 28, 26, 35, 40, 52] },
+      ],
+    },
+    decorations: { segmentLabels: false, valueAxis: true, gridlines: true, smooth: true },
+  },
+  {
+    kind: "waterfall",
+    width: 480,
+    height: 300,
+    title: "Waterfall with grouping spacers",
+    data: {
+      categories: ["FY23", "Volume", "Price", "", "Cost", "FX", "", "FY24"],
+      series: [{ name: "Delta", values: [86, 14, 9, null, -12, -4, null, 0] }],
+    },
+    waterfall: { totalIndices: [7], spacerIndices: [3, 6] },
+    decorations: { categoryAxis: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

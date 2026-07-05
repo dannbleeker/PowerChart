@@ -77,6 +77,13 @@ export interface WaterfallOptions {
    * regardless of the cell value.
    */
   totalIndices?: number[];
+  /**
+   * Blank spacer categories that draw no bar and leave a gap — used to group
+   * a long bridge into sections. The running total carries across unchanged
+   * and the dashed connector bridges the gap. (Give the category an empty
+   * name so no axis label shows.)
+   */
+  spacerIndices?: number[];
 }
 
 /** think-cell style decorations, all computed from layout anchors. */
@@ -178,6 +185,12 @@ export interface Decorations {
    * steps at the interval midpoint (HVH). Area fills follow the same steps.
    */
   stepped?: "before" | "after" | "center";
+  /**
+   * Line charts: draw smooth (Catmull-Rom) curves through the points instead
+   * of straight segments — sampled to a dense polyline since the renderers
+   * have no freeform paths. Ignored when `stepped` is set.
+   */
+  smooth?: boolean;
   /**
    * Line charts: slope-chart mode — no value axis or gridlines, vertical
    * hairlines at the first and last category, and "Name value" labels at

@@ -90,6 +90,9 @@ describe("showcase deck coverage", () => {
     ["area with negative values", (c) => c.kind === "area" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
     ["scatter/bubble trajectory", (c) => (c.kind === "scatter" || c.kind === "bubble") && !!c.decorations?.trajectory],
     ["boxplot jitter", (c) => c.kind === "boxplot" && !!c.boxplot?.jitter],
+    ["scatter continuous color row", (c) => (c.kind === "scatter" || c.kind === "bubble") && c.data.series.some((s) => /^colou?r$/i.test(s.name.trim()))],
+    ["smoothed line", (c) => c.kind === "line" && !!c.decorations?.smooth],
+    ["waterfall grouping spacers", (c) => !!c.waterfall?.spacerIndices?.length],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {
