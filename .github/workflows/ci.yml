@@ -18,3 +18,37 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx vite build
+      # Package the Claude Agent Skill from the same sources the tests just
+      # validated, so the artifact can never drift from the feature set.
+      - run: npm run skill
+      - uses: actions/upload-artifact@v4
+        with:
+          name: powerchart-charts-skill
+          path: skill-dist/powerchart-charts.zip
+
+  # Every merge to main refreshes the rolling "skill-latest" release, giving
+  # the newest skill zip a stable download URL.
+  release-skill:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run skill
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: skill-latest
+          name: PowerChart Agent Skill (latest)
+          body: >
+            Rolling build of the Claude Agent Skill from the latest main.
+            Upload the zip at claude.ai → Customize → Skills; it then also
+            appears inside Claude for PowerPoint.
+          prerelease: true
+          files: skill-dist/powerchart-charts.zip

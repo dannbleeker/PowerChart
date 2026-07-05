@@ -54,6 +54,8 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Positioning / portfolio map | `scatter` or `bubble` (`X`/`Y`/`Size`/`Group` rows, auto label placement) |
 | Population pyramid / two-sided compare | `butterfly` |
 | Simple share | `pie` / `doughnut` (exact wedge geometry in the pptx output) |
+| Side-by-side comparison per category | `clustered` |
+| Trend over time | `line` (date categories space proportionally) or `stacked100`-style share via `area` |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,
