@@ -148,6 +148,12 @@ pick weeks (with weekend shading), months, or quarters automatically.
   weekday × week grid with month labels (contributions view).
 - **Butterfly stacked flanks** (`butterfly.split`): stack more than one
   series on each side of a butterfly chart.
+- **Radar per-spoke scales** (`radar.perSpoke`): normalize each spoke to its
+  own maximum so mixed-unit KPIs compare by shape.
+- **Missing-data bridge** (`bridgeGaps`): connect a line straight across
+  missing (null) points instead of breaking it.
+- **Floating segments**: a stacked-column series with `color: "transparent"`
+  reserves its space without drawing, floating the bars above it.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

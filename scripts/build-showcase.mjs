@@ -760,6 +760,46 @@ const features = [
     },
     decorations: { segmentLabels: true },
   },
+  {
+    kind: "radar",
+    width: 480,
+    height: 300,
+    title: "Radar with per-spoke scales (mixed KPIs)",
+    radar: { perSpoke: true },
+    data: {
+      categories: ["Revenue $m", "NPS", "Churn %", "Headcount", "Uptime %"],
+      series: [
+        { name: "2024", values: [120, 42, 8, 340, 99.2] },
+        { name: "2025", values: [155, 55, 5, 410, 99.7] },
+      ],
+    },
+    decorations: { seriesLabels: true },
+  },
+  {
+    kind: "line",
+    width: 480,
+    height: 300,
+    title: "Missing-data bridge (bridgeGaps)",
+    data: {
+      categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+      series: [{ name: "Signups", values: [20, null, 35, null, 30, 48] }],
+    },
+    decorations: { segmentLabels: false, valueAxis: true, gridlines: true, bridgeGaps: true },
+  },
+  {
+    kind: "stacked",
+    width: 480,
+    height: 300,
+    title: "Floating range columns (transparent base)",
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "Floor", color: "transparent", values: [10, 14, 12, 18] },
+        { name: "Range", values: [20, 18, 24, 16] },
+      ],
+    },
+    decorations: { segmentLabels: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

@@ -42,6 +42,7 @@ describe("user manual coverage", () => {
       "Continuous color", "Smoothed lines", "Waterfall spacers",
       "Gantt summary bars", "Notched boxplots", "Radar band",
       "Other bucket", "Calendar heatmap", "Butterfly stacked flanks",
+      "Radar per-spoke scales", "Missing-data bridge", "Floating segments",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

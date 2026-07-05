@@ -23,7 +23,8 @@ dots; plus batch I: scatter/bubble continuous color scale, smoothed lines,
 and waterfall grouping spacers; plus batch J: gantt auto-summary bars,
 notched boxplots, and the radar min–max "peer range + us" band; plus
 batch K: automatic "Other" bucket, calendar heatmap layout, and butterfly
-stacked flanks.)
+stacked flanks; plus batch L: radar per-spoke scales, transparent floating
+column segments, and the line missing-data bridge.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -39,8 +40,6 @@ Pareto helper).
 ## 2. Gaps within existing kinds (per kind)
 
 ### Column family (stacked / clustered / stacked100)
-- **Transparent "no-fill" segment** (floating bars) — easy, low (waterfall
-  covers most cases).
 - stacked100: **negative values are silently clamped** — medium, low/niche.
 
 ### Waterfall
@@ -57,7 +56,7 @@ Pareto helper).
 ### Line / Area
 - **Horizontal "profile chart"** (think-cell parity: rotate line/area) —
   trivial-medium, medium.
-- Missing-data bridge option, sparklines — low/niche.
+- Sparklines — low/niche.
 
 ### Scatter / Bubble
 - Bubble overlap-repulsion pass, marginal histograms, point icons —
@@ -76,8 +75,7 @@ Pareto helper).
 ### Radar
 - **Vertex markers in the live add-in** — easy, high (closes the
   add-in-vs-SVG quality gap; already present in scene, verify add-in path).
-- Per-spoke scales (mixed KPI units) — medium, medium. Radial bar variant —
-  really a new kind; medium, medium. Stacked radar — low.
+- Radial bar variant — really a new kind; medium, medium. Stacked radar — low.
 
 ### Pie / Doughnut
 - **Semi-circle / gauge-style half doughnut** — easy, medium-high for

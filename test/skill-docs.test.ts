@@ -39,6 +39,7 @@ describe("skill documentation coverage", () => {
       "map", "negativeColor", "forecastFrom", "quadrants", "columns", "barStyle", "fillBetween", "totals",
       "slope", "breakout", "multiples", "stepped", "gapWidth", "overlap", "trajectory",
       "smooth", "spacerIndices", "summaryBars", "radarBand", "otherBucket", "calendar",
+      "bridgeGaps", "perSpoke",
     ]) {
       expect(reference).toContain(key);
     }
