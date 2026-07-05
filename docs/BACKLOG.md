@@ -52,8 +52,6 @@ Pareto helper).
 - Stacked-area + line, scatter-on-combo — hard/low; skip for now.
 
 ### Line / Area
-- **Horizontal "profile chart"** (think-cell parity: rotate line/area) —
-  trivial-medium, medium.
 - Sparklines — low/niche.
 
 ### Scatter / Bubble
@@ -71,9 +69,9 @@ Pareto helper).
   Mean±SD box variant — easy, niche.
 
 ### Radar
-- **Vertex markers in the live add-in** — easy, high (closes the
-  add-in-vs-SVG quality gap; already present in scene, verify add-in path).
 - Radial bar variant — really a new kind; medium, medium. Stacked radar — low.
+  (Vertex markers verified: radar emits `marker-*` ellipse nodes which the
+  Office.js renderer draws, so they already appear in the live add-in.)
 
 ### Pie / Doughnut
 - **Sunburst** (nested rings; wedge fans repeat per ring) — medium-hard,
@@ -92,6 +90,8 @@ Pareto helper).
 - **Treemap** — squarified rect packing (Mekko-adjacent math); blank-row
    grouping for 2 levels. New kind; medium. (bullet, lollipop/dot/dumbbell,
    bump, and the Pareto helper have shipped; treemap is the last §3 candidate.)
+   The horizontal profile chart and radar add-in vertex markers (the last two
+   §2-tail items) have also shipped.
 
 ## 4. Rejected (do not re-propose)
 

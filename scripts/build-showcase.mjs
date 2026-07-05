@@ -936,6 +936,33 @@ const features = [
     },
     decorations: { bump: true },
   },
+  {
+    kind: "line",
+    width: 480,
+    height: 300,
+    title: "Horizontal profile chart (line)",
+    horizontal: true,
+    data: {
+      categories: ["Strategy", "Execution", "Culture", "Innovation", "Finance", "Talent"],
+      series: [{ name: "Score", values: [72, 58, 80, 65, 90, 48] }],
+    },
+    decorations: { segmentLabels: true, categoryAxis: true, valueAxis: true, gridlines: true },
+  },
+  {
+    kind: "area",
+    width: 480,
+    height: 300,
+    title: "Horizontal profile chart (stacked area)",
+    horizontal: true,
+    data: {
+      categories: ["North", "South", "East", "West", "Central"],
+      series: [
+        { name: "Retail", values: [40, 55, 30, 48, 35] },
+        { name: "Online", values: [25, 20, 35, 22, 30] },
+      ],
+    },
+    decorations: { seriesLabels: true, categoryAxis: true, valueAxis: true, gridlines: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

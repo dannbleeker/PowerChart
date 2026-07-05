@@ -90,6 +90,7 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Scorecard gauge (one metric split) | `doughnut` + `pie.semi: true` (semi-circle) |
 | 80/20 breakdown (defects, revenue) | `clustered` + `pareto: true` (sorted bars + cumulative line) |
 | Rank changes over time | `line` + `decorations.bump: true` (bump chart) |
+| Profile across many named items | `line`/`area` + `horizontal: true` (profile chart) |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,

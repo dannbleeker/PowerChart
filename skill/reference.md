@@ -10,7 +10,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
       | "tilemap" | "cascade" | "funnel" | "waffle",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
-  horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows
+  horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows;
+                                      // also line/area → a "profile chart" (categories down, values right)
   data: {
     categories: string[],             // column headers (x categories / activities / points)
     series: [{
@@ -263,6 +264,10 @@ line on a secondary axis — the 80/20 view. Rewrites the chart into a combo.
 **Bump chart** (`kind: "line"` + `decorations.bump: true`): values are ranks
 (1 = best) drawn on an inverted integer axis (rank 1 at the top) with thick
 lines, round markers and a "Name" label at both ends — rank-over-time.
+
+**Horizontal profile chart** (`kind: "line" | "area"` + `horizontal: true`):
+rotates the line/area 90° — categories run down the left axis and values
+extend to the right. Stacked areas stack outward to the right.
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap
