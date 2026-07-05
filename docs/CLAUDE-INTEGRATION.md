@@ -85,6 +85,15 @@ Ask any Claude to output PowerChart `ChartConfig` JSON (paste `reference.md`
 as context) → paste into the pane's **Automation → Import**. Zero new code —
 this is the fallback and the testing path for A.
 
+## Status: Option A is built
+
+The skill lives in `skill/` (SKILL.md, reference.md, `scripts/render-pptx.mjs`).
+`npm run skill` assembles and zips it to `skill-dist/powerchart-charts.zip`;
+upload at claude.ai → Customize → Skills, and it becomes available in Claude
+for PowerPoint too. The pptx renderer emits native shapes with **exact**
+adjustable pie geometry (verified in OOXML: `prst="pie"` with correct
+adj1/adj2 angles), validated end-to-end with python-pptx.
+
 ## Recommendation
 
 1. **Build the scene→pptx converter** (`render-pptx.mjs`, PptxgenJS: rect→

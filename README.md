@@ -35,6 +35,7 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Auto-update mode (edits push to the slide live) | ✅ |
 | Ribbon menu with per-chart-type entries | ✅ (`?kind=` deep links) |
 | Dark-mode pane, busy/status feedback, German UI localization | ✅ |
+| **Claude Agent Skill** (charts as native shapes from any Claude surface) | ✅ `npm run skill` → upload `skill-dist/powerchart-charts.zip` |
 | Claude integration research & plan | 📋 [docs/CLAUDE-INTEGRATION.md](docs/CLAUDE-INTEGRATION.md) |
 | Combo chart (stacked columns + line series) | ✅ (`type: "line"` on a series) |
 | Pie & doughnut | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.9 rotation) |
