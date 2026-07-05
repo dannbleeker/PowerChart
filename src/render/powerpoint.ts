@@ -94,6 +94,29 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
   });
 }
 
+/**
+ * Bounds of the currently selected shape when it is NOT a PowerChart —
+ * used to insert a new chart into a selected placeholder/frame.
+ */
+export async function getSelectionBounds(): Promise<{ left: number; top: number; width: number; height: number } | null> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const shapes = context.presentation.getSelectedShapes();
+      shapes.load("items/left,items/top,items/width,items/height");
+      await context.sync();
+      if (shapes.items.length !== 1) return null;
+      const s = shapes.items[0];
+      const tag = s.tags.getItemOrNullObject(CHART_TAG);
+      tag.load("value");
+      await context.sync();
+      if (!tag.isNullObject && tag.value) return null; // it's a chart — edit, don't cover
+      return { left: s.left, top: s.top, width: s.width, height: s.height };
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** All PowerCharts in the current selection (for Same Scale on a subset). */
 export async function listChartsInSelection(): Promise<{ configJson: string; target: EditTarget }[]> {
   return PowerPoint.run(async (context) => {

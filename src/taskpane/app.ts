@@ -4,6 +4,7 @@ import type { ChartConfig, ChartKind, Decorations } from "../core/types";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
 import {
+  getSelectionBounds,
   insertAgendaSlides,
   insertSceneIntoSlide,
   isPowerPointHost,
@@ -15,6 +16,7 @@ import {
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
 import { buildCheckbox, buildHarveyBall, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
+import { localizePane } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 
 interface AppState {
@@ -105,6 +107,12 @@ function paletteNameFor(palette?: string[]): string {
 function currentConfig(): ChartConfig {
   const totals = new Set<number>();
   const data = sheetToData(state.sheet, state.kind === "waterfall" ? totals : undefined);
+  const w = Number(($("chart-w") as HTMLInputElement | null)?.value);
+  const h = Number(($("chart-h") as HTMLInputElement | null)?.value);
+  const size = {
+    width: Number.isFinite(w) && w >= 80 ? w : DEFAULT_SIZE.width,
+    height: Number.isFinite(h) && h >= 60 ? h : DEFAULT_SIZE.height,
+  };
   const min = state.scaleMin.trim() === "" ? undefined : Number(state.scaleMin);
   const max = state.scaleMax.trim() === "" ? undefined : Number(state.scaleMax);
   const bFrom = Number(state.breakFrom);
@@ -127,7 +135,7 @@ function currentConfig(): ChartConfig {
     valueAxisTitle: state.axisTitle || undefined,
     logScale: state.logScale || undefined,
     style: mergedStyle(),
-    ...DEFAULT_SIZE,
+    ...size,
     title: state.title || undefined,
     decorations: { ...state.decorations, labelContent: labelParts },
     waterfall: { totalIndices: [...totals] },
@@ -538,6 +546,7 @@ function renderPreview() {
   } catch (err) {
     preview.innerHTML = `<p class="hint">Could not render: ${err instanceof Error ? err.message : String(err)}</p>`;
   }
+  maybeAutoUpdate();
 }
 
 function renderActionState() {
@@ -606,17 +615,35 @@ $("download").addEventListener("click", () => {
   URL.revokeObjectURL(a.href);
 });
 
+/** Cascading default insert position so repeated inserts don't pile up. */
+let insertOffset = 0;
+
 async function doInsert(asNew: boolean) {
-  const cfg = currentConfig();
-  const scene = buildChart(cfg);
-  const tagData = JSON.stringify(cfg);
+  let cfg = currentConfig();
   if (!asNew && state.editTarget) {
-    await updateChartInSlide(scene, state.editTarget, { tagData });
-  } else {
-    await insertSceneIntoSlide(scene, { tagData });
-    state.editTarget = null;
-    renderActionState();
+    const scene = buildChart(cfg);
+    await updateChartInSlide(scene, state.editTarget, { tagData: JSON.stringify(cfg) });
+    return;
   }
+  // New chart: use the selected placeholder's bounds when one is selected.
+  const bounds = await getSelectionBounds();
+  if (bounds && bounds.width > 40 && bounds.height > 40) {
+    cfg = { ...cfg, width: bounds.width, height: bounds.height };
+    await insertSceneIntoSlide(buildChart(cfg), {
+      tagData: JSON.stringify(cfg),
+      left: bounds.left,
+      top: bounds.top,
+    });
+  } else {
+    await insertSceneIntoSlide(buildChart(cfg), {
+      tagData: JSON.stringify(cfg),
+      left: 60 + insertOffset,
+      top: 90 + insertOffset,
+    });
+    insertOffset = (insertOffset + 14) % 84;
+  }
+  state.editTarget = null;
+  renderActionState();
 }
 
 /**
@@ -782,6 +809,33 @@ function renderAgendaPreview() {
 $("agenda-chapters").addEventListener("input", renderAgendaPreview);
 renderAgendaPreview();
 
+// Auto-update: push edits to the slide shortly after each change.
+let autoUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+function maybeAutoUpdate() {
+  const on = ($("auto-update") as HTMLInputElement | null)?.checked;
+  if (!on || !state.editTarget || !isPowerPointHost()) return;
+  clearTimeout(autoUpdateTimer);
+  autoUpdateTimer = setTimeout(() => void doInsert(false).catch(() => {}), 900);
+}
+
+/** think-cell's "click the chart" feel: watch the slide selection. */
+function watchSelection() {
+  try {
+    Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, async () => {
+      try {
+        const found = await loadChartFromSelection();
+        const banner = $("selection-banner");
+        banner.style.display =
+          found && found.target.shapeId !== state.editTarget?.shapeId ? "" : "none";
+      } catch {
+        /* selection API hiccup — ignore */
+      }
+    });
+  } catch {
+    /* event unavailable on this host */
+  }
+}
+
 function wireInsert() {
   const insertBtn = $("insert") as HTMLButtonElement;
   const insertNewBtn = $("insert-new") as HTMLButtonElement;
@@ -793,10 +847,17 @@ function wireInsert() {
     loadBtn.disabled = false;
     const guard = (fn: () => Promise<void>) => async () => {
       insertBtn.disabled = true;
+      hostNote.textContent = "Working…";
+      hostNote.className = "hint status-busy";
       try {
         await fn();
+        if (hostNote.textContent === "Working…") {
+          hostNote.textContent = "Done.";
+          hostNote.className = "hint status-ok";
+        }
       } catch (err) {
         hostNote.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+        hostNote.className = "hint status-err";
       } finally {
         insertBtn.disabled = false;
       }
@@ -804,6 +865,14 @@ function wireInsert() {
     insertBtn.addEventListener("click", guard(() => doInsert(false)));
     insertNewBtn.addEventListener("click", guard(() => doInsert(true)));
     loadBtn.addEventListener("click", guard(doLoadSelection));
+    $("selection-banner-load").addEventListener(
+      "click",
+      guard(async () => {
+        await doLoadSelection();
+        $("selection-banner").style.display = "none";
+      }),
+    );
+    watchSelection();
     const sameScaleBtn = $("same-scale") as HTMLButtonElement;
     sameScaleBtn.disabled = false;
     sameScaleBtn.addEventListener("click", guard(() => doSameScale("deck")));
@@ -853,8 +922,25 @@ function wireInsert() {
   }
 }
 
+// Ribbon deep-link: taskpane.html?kind=waterfall preselects a chart type.
+const requestedKind = new URLSearchParams(location.search).get("kind");
+if (requestedKind && CHART_KINDS.some((k) => k.kind === requestedKind)) {
+  applyConfig(sampleConfig(requestedKind as ChartKind), null);
+}
+
+const sizeInputs = [$("chart-w"), $("chart-h")] as HTMLInputElement[];
+for (const el of sizeInputs) el?.addEventListener("input", renderPreview);
+
 if (typeof Office !== "undefined" && Office.onReady) {
-  Office.onReady(() => wireInsert());
+  Office.onReady(() => {
+    wireInsert();
+    try {
+      localizePane(Office.context.displayLanguage);
+    } catch {
+      /* no display language available */
+    }
+  });
 } else {
   wireInsert();
+  localizePane(new URLSearchParams(location.search).get("lang") ?? undefined);
 }

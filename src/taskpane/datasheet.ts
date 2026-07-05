@@ -233,6 +233,35 @@ export function mountDatasheet(
   onChange: (sheet: SheetModel) => void,
 ): { setSheet(next: SheetModel): void } {
   let model = sheet;
+  /** Last focused cell, so row/column operations act at the cursor. */
+  let cursor = { row: 1, col: 1 };
+
+  function focusCell(row: number, col: number) {
+    const el = host.querySelector<HTMLInputElement>(`input[data-row="${row}"][data-col="${col}"]`);
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }
+
+  /** Excel-style navigation: Enter ↓, arrows move at the text boundaries. */
+  function handleNav(e: KeyboardEvent, ri: number, ci: number, input: HTMLInputElement) {
+    const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+    const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+    const move = (r: number, c: number) => {
+      e.preventDefault();
+      focusCell(r, c);
+    };
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      if (ri < model.cells.length - 1) move(ri + 1, ci);
+    } else if (e.key === "ArrowUp") {
+      if (ri > 0) move(ri - 1, ci);
+    } else if (e.key === "ArrowRight" && atEnd) {
+      if (ci < model.cells[0].length - 1) move(ri, ci + 1);
+    } else if (e.key === "ArrowLeft" && atStart) {
+      if (ci > 0) move(ri, ci - 1);
+    }
+  }
 
   function render() {
     host.innerHTML = "";
@@ -252,6 +281,10 @@ export function mountDatasheet(
           model.cells[ri][ci] = input.value;
           onChange(model);
         });
+        input.addEventListener("focus", () => {
+          cursor = { row: ri, col: ci };
+        });
+        input.addEventListener("keydown", (e) => handleNav(e, ri, ci, input));
         input.addEventListener("paste", (e) => handlePaste(e, ri, ci));
         td.appendChild(input);
         tr.appendChild(td);
@@ -262,26 +295,34 @@ export function mountDatasheet(
 
     const controls = document.createElement("div");
     controls.className = "sheet-controls";
+    // Row/column operations act at the cursor (insert after / delete at).
     controls.append(
       button("+ Row", () => {
-        model.cells.push(model.cells[0].map(() => ""));
+        const at = Math.min(cursor.row + 1, model.cells.length);
+        model.cells.splice(at, 0, model.cells[0].map(() => ""));
         render();
         onChange(model);
       }),
       button("+ Column", () => {
-        model.cells.forEach((r) => r.push(""));
+        const at = Math.min(cursor.col + 1, model.cells[0].length);
+        model.cells.forEach((r) => r.splice(at, 0, ""));
         render();
         onChange(model);
       }),
       button("− Row", () => {
-        if (model.cells.length > 2) model.cells.pop();
-        render();
-        onChange(model);
+        if (model.cells.length > 2 && cursor.row > 0) {
+          model.cells.splice(Math.min(cursor.row, model.cells.length - 1), 1);
+          render();
+          onChange(model);
+        }
       }),
       button("− Column", () => {
-        if (model.cells[0].length > 2) model.cells.forEach((r) => r.pop());
-        render();
-        onChange(model);
+        if (model.cells[0].length > 2 && cursor.col > 0) {
+          const at = Math.min(cursor.col, model.cells[0].length - 1);
+          model.cells.forEach((r) => r.splice(at, 1));
+          render();
+          onChange(model);
+        }
       }),
       button("⇄ Transpose", () => {
         model = transposeSheet(model);

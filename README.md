@@ -25,6 +25,17 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Same Scale on the current selection | ✅ |
 | Scatter partition lines, trend line, group legend | ✅ (`X line`/`Y line`/`Trend` rows) |
 | Gantt weeks + weekend shading, section headers, indent, remarks | ✅ (`>` prefix, `Activity \| Owner \| Remark`) |
+| Gantt holidays + bracket annotations | ✅ (`Holiday`, `Bracket <label>` rows) |
+| Category sorting by total | ✅ |
+| Combo secondary (right) value axis | ✅ |
+| Label content menu on line & scatter labels | ✅ |
+| Selection awareness (select a chart → edit banner) | ✅ |
+| Insert into selected placeholder bounds; chart size controls | ✅ |
+| Datasheet keyboard navigation + insert/delete at cursor | ✅ |
+| Auto-update mode (edits push to the slide live) | ✅ |
+| Ribbon menu with per-chart-type entries | ✅ (`?kind=` deep links) |
+| Dark-mode pane, busy/status feedback, German UI localization | ✅ |
+| Claude integration research & plan | 📋 [docs/CLAUDE-INTEGRATION.md](docs/CLAUDE-INTEGRATION.md) |
 | Combo chart (stacked columns + line series) | ✅ (`type: "line"` on a series) |
 | Pie & doughnut | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.9 rotation) |
 | Bar charts as rotated column charts, butterfly charts | ✅ (`horizontal` toggle, `butterfly` kind) |

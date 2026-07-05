@@ -79,6 +79,56 @@ textarea {
 .agenda-preview { margin-top: 8px; }
 .agenda-preview svg { max-height: 160px; }
 
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #eaf2fc;
+  border-bottom: 1px solid var(--accent);
+  padding: 8px 14px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.banner button {
+  font: inherit;
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.status-ok { color: #006300; }
+.status-err { color: #d03b3b; }
+.status-busy { color: var(--accent); }
+
+/* Dark Office themes */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f2f1ec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --line: #3a3a38;
+    --surface: #1f1f1e;
+  }
+  body { background: var(--surface); color: var(--ink); }
+  .gallery button.thumb, .sheet-controls button, .actions button, .element-row button,
+  .datasheet input, textarea, .field input, .element-row input[type="text"] {
+    background: #2a2a28;
+    color: var(--ink);
+    border-color: var(--line);
+  }
+  .datasheet input.header { background: #333331; }
+  .gallery button.thumb.active { background: #14304e; }
+  .thumb-pic svg { background: #fff; border-radius: 3px; }
+  .preview { background: #fff; }
+  code { background: #333331; }
+  .banner { background: #14304e; }
+}
+
 .datasheet { border-collapse: collapse; }
 .datasheet td { padding: 0; border: 1px solid var(--line); }
 .datasheet input {

@@ -1,4 +1,4 @@
-import type { ChartConfig, ChartStyle, Decorations } from "./types";
+import type { ChartConfig, ChartKind, ChartStyle, Decorations } from "./types";
 import type { Scene } from "./scene";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "./style";
 import { layoutColumns, layoutCombo } from "./layout/column";
@@ -15,8 +15,33 @@ import type { LayoutResult } from "./layout/column";
 
 export const DEFAULT_SIZE = { width: 480, height: 300 };
 
+const SORTABLE: ChartKind[] = ["stacked", "clustered", "stacked100", "mekko", "pie", "doughnut", "butterfly"];
+
+/** Reorder categories (and every per-category array) by column total. */
+function sortCategories(cfg: ChartConfig): ChartConfig {
+  if (!cfg.categorySort || !SORTABLE.includes(cfg.kind)) return cfg;
+  const { data } = cfg;
+  const totals = data.categories.map((_, c) =>
+    data.series.reduce((a, s) => a + (s.values[c] ?? 0), 0),
+  );
+  const sign = cfg.categorySort === "ascending" ? 1 : -1;
+  const order = data.categories.map((_, c) => c).sort((a, b) => sign * (totals[a] - totals[b]));
+  const pick = <T,>(arr: T[] | undefined) => (arr ? order.map((c) => arr[c]) : undefined);
+  return {
+    ...cfg,
+    data: {
+      ...data,
+      categories: order.map((c) => data.categories[c]),
+      series: data.series.map((s) => ({ ...s, values: order.map((c) => s.values[c]) })),
+      hundredPercent: pick(data.hundredPercent),
+      xExtent: pick(data.xExtent),
+    },
+  };
+}
+
 /** Build a renderer-agnostic scene from a chart config. Pure and synchronous. */
-export function buildChart(cfg: ChartConfig): Scene {
+export function buildChart(rawCfg: ChartConfig): Scene {
+  const cfg = sortCategories(rawCfg);
   const style: ChartStyle = { ...DEFAULT_STYLE, ...cfg.style };
   const decor: Decorations = { ...DEFAULT_DECOR, ...cfg.decorations };
 

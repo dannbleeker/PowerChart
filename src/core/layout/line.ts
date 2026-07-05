@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import type { SceneNode } from "../scene";
-import { formatNumber, parseDateToken, resolveFormat } from "../format";
+import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
 import { baselineNode, categorySlots, chromeNodes, computeFrame, valueScale } from "./frame";
 import { seriesLabelNodes, type LayoutResult } from "./column";
@@ -92,7 +92,13 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
             y: pt.y - fs * 1.65,
             w: 60,
             h: fs * 1.4,
-            text: formatNumber(v, fmt),
+            text: segmentLabel(decor.labelContent ?? ["value"], {
+              value: v,
+              fraction: null,
+              series: s.name,
+              category: data.categories[c],
+              fmt,
+            }),
             fontSize: fs,
             color: style.text,
             align: "center",

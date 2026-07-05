@@ -147,11 +147,22 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Greedy label placement, biggest bubbles first so important points win.
   if (decor.segmentLabels !== false) {
     const order = pts.map((_, i) => i).sort((a, b) => radius(pts[b]) - radius(pts[a]));
+    // Point label content: category (default), optionally with "(x, y)".
+    const pointLabel = (p: (typeof pts)[number]) => {
+      const parts = decor.labelContent ?? ["category"];
+      const fmt = resolveFormat([p.x, p.y], cfg.numberFormat);
+      return parts
+        .map((part) =>
+          part === "category" ? p.label : part === "value" ? `(${formatNumber(p.x, fmt)}, ${formatNumber(p.y, fmt)})` : null,
+        )
+        .filter(Boolean)
+        .join(" ");
+    };
     const reqs: LabelRequest[] = order.map((i) => ({
       cx: toX(pts[i].x),
       cy: toY(pts[i].y),
       r: radius(pts[i]),
-      w: textWidth(pts[i].label, fs) + 2,
+      w: textWidth(pointLabel(pts[i]), fs) + 2,
       h: fs * 1.3,
     }));
     for (const placed of placeLabels(reqs, { x: 0, y: plot.y, w: cfg.width, h: plot.h + fs * 1.5 }, markerBoxes)) {
@@ -162,7 +173,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         y: placed.box.y,
         w: placed.box.w,
         h: placed.box.h,
-        text: p.label,
+        text: pointLabel(p),
         fontSize: fs,
         color: style.text,
         align: "left",
