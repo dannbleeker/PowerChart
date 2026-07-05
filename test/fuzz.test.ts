@@ -16,7 +16,7 @@ function rng(seed: number) {
 const KINDS: ChartKind[] = [
   "stacked", "clustered", "stacked100", "waterfall", "mekko",
   "line", "area", "butterfly", "combo", "pie", "doughnut",
-  "boxplot", "radar", "heatmap",
+  "boxplot", "radar", "heatmap", "cascade",
 ];
 
 /**

@@ -185,6 +185,21 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           series: [{ name: "Revenue", values: [84, 61, 45, 32, 140, 66, 98, 112, 54, 72, 38] }],
         },
       };
+    case "cascade":
+      return {
+        ...base,
+        title: "Support volume breakdown — April",
+        data: {
+          categories: [
+            "Total contacts | | Contacts",
+            "Answered | Dropped contacts | Contacts",
+            "With a case | Without a case | Incidents & Service Requests",
+            "Solved in support | Not solved in support | Incidents & Service Requests",
+          ],
+          series: [{ name: "Volume", values: [4986, 4616, 3405, 2685] }],
+        },
+        footnote: "Source: service desk logs, Apr 2026",
+      };
     case "area":
       return {
         ...base,
@@ -235,4 +250,5 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "radar", label: "Radar" },
   { kind: "heatmap", label: "Heatmap" },
   { kind: "tilemap", label: "Tile map" },
+  { kind: "cascade", label: "Cascade" },
 ];

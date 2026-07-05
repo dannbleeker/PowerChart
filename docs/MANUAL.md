@@ -55,6 +55,7 @@ section and `skill/reference.md`.
 | Radar | multi-dimension profiles | categories = spokes, series = translucent polygons; keep ≤ 3 series |
 | Heatmap | value matrices | series = rows, categories = columns, one global color scale (diverging when data spans zero) |
 | Tile map | values by geography | categories = region codes (US postal / ISO-2 / world regions); layout auto-detected |
+| Cascade | stage-by-stage breakdown of a total | categories `"Stage \| Drop label \| Group"`; each bar is a subset of the previous, remainders hang as labeled boxes |
 
 All column-family charts (stacked/clustered/100%), waterfall, Mekko, and
 boxplot rotate into **horizontal** bars/rows with the "Horizontal (bar)"

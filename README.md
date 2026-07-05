@@ -49,6 +49,7 @@ conventions, and every option.
 | Tufte datamark axes (ticks only, range-frame option) | ✅ (`valueAxis: "datamarks"`, `tickMode: "data"`) |
 | Error bars (symmetric or asymmetric) | ✅ (`Error` / `Error+` / `Error-` datasheet rows) |
 | Palette from the presentation theme (Accent1-6) | ✅ (pane → "Use deck theme", PowerPointApi 1.10) |
+| Cascade / decomposition chart (stage-by-stage breakdown) | ✅ (`cascade` kind) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

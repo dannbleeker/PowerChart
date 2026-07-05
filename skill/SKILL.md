@@ -59,6 +59,7 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Multi-dimension profile / score | `radar` (translucent polygons, ≤3 series) |
 | Matrix of values (region × period) | `heatmap` (one global color scale) |
 | Values by geography | `tilemap` (tile-grid cartogram: `map: "us"/"eu"/"europe"/"world"`) |
+| Stage-by-stage breakdown of a total (contacts → answered → solved) | `cascade` ("Stage | Drop label | Group" categories) |
 | Trend over time | `line` (date categories space proportionally) or `stacked100`-style share via `area` |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,

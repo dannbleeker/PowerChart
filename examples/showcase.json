@@ -803,6 +803,32 @@
     }
   },
   {
+    "kind": "cascade",
+    "width": 480,
+    "height": 300,
+    "title": "Cascade — Support volume breakdown — April",
+    "data": {
+      "categories": [
+        "Total contacts | | Contacts",
+        "Answered | Dropped contacts | Contacts",
+        "With a case | Without a case | Incidents & Service Requests",
+        "Solved in support | Not solved in support | Incidents & Service Requests"
+      ],
+      "series": [
+        {
+          "name": "Volume",
+          "values": [
+            4986,
+            4616,
+            3405,
+            2685
+          ]
+        }
+      ]
+    },
+    "footnote": "Source: service desk logs, Apr 2026"
+  },
+  {
     "kind": "stacked",
     "width": 480,
     "height": 300,

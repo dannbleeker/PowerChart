@@ -380,6 +380,41 @@ exports[`SVG snapshots > sample butterfly 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample cascade 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Support volume breakdown — April</text>
+<rect x="12.71" y="22" width="216.58" height="15" fill="#898781" data-name="group-0"/>
+<text x="121" y="33.1" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="group-label-0">Contacts</text>
+<rect x="250.71" y="22" width="216.58" height="15" fill="#898781" data-name="group-2"/>
+<text x="359" y="33.1" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="group-label-2">Incidents &amp; Service Requests</text>
+<rect x="12.71" y="43" width="97.58" height="240" fill="#2a78d6" data-name="stage-0"/>
+<text x="61.5" y="96.8" font-size="10" fill="#ffffff" text-anchor="middle" data-name="stage-label-0-0">Total contacts</text>
+<text x="61.5" y="166.28" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="stage-label-0-1">4,986</text>
+<rect x="131.71" y="43" width="97.58" height="222.19" fill="#1baf7a" data-name="stage-1"/>
+<text x="180.5" y="93.59" font-size="10" fill="#ffffff" text-anchor="middle" data-name="stage-label-1-0">Answered</text>
+<text x="180.5" y="157.38" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="stage-label-1-1">4,616</text>
+<text x="180.5" y="171.7" font-size="10" fill="#ffffff" text-anchor="middle" data-name="stage-label-1-2">(92.6%)</text>
+<rect x="131.71" y="267.19" width="97.58" height="29" fill="#898781" data-name="drop-1"/>
+<text x="180.5" y="278.43" font-size="9" fill="#ffffff" text-anchor="middle" data-name="drop-label-1">Dropped contacts</text>
+<text x="180.5" y="291.93" font-size="9" fill="#ffffff" text-anchor="middle" data-name="drop-value-1">370 (7.4%)</text>
+<rect x="250.71" y="43" width="97.58" height="163.9" fill="#eda100" data-name="stage-2"/>
+<text x="299.5" y="83.1" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="stage-label-2-0">With a case</text>
+<text x="299.5" y="128.23" font-size="10.5" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="stage-label-2-1">3,405</text>
+<text x="299.5" y="142.55" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="stage-label-2-2">(73.8%)</text>
+<rect x="250.71" y="208.9" width="97.58" height="58.29" fill="#898781" data-name="drop-2"/>
+<text x="299.5" y="234.78" font-size="9" fill="#ffffff" text-anchor="middle" data-name="drop-label-2">Without a case</text>
+<text x="299.5" y="248.28" font-size="9" fill="#ffffff" text-anchor="middle" data-name="drop-value-2">1,211 (26.2%)</text>
+<rect x="369.71" y="43" width="97.58" height="129.24" fill="#008300" data-name="stage-3"/>
+<text x="418.5" y="76.86" font-size="10" fill="#ffffff" text-anchor="middle" data-name="stage-label-3-0">Solved in support</text>
+<text x="418.5" y="110.9" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="stage-label-3-1">2,685</text>
+<text x="418.5" y="125.22" font-size="10" fill="#ffffff" text-anchor="middle" data-name="stage-label-3-2">(78.9%)</text>
+<rect x="369.71" y="174.24" width="97.58" height="34.66" fill="#898781" data-name="drop-3"/>
+<text x="418.5" y="188.31" font-size="9" fill="#ffffff" text-anchor="middle" data-name="drop-label-3">Not solved in support</text>
+<text x="418.5" y="201.81" font-size="9" fill="#ffffff" text-anchor="middle" data-name="drop-value-3">720 (21.1%)</text>
+<text x="2" y="297.38" font-size="8.5" fill="#52514e" text-anchor="start" data-name="footnote">Source: service desk logs, Apr 2026</text>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample clustered 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Sales by quarter</text>

@@ -17,7 +17,8 @@ export type ChartKind =
   | "boxplot" // box-and-whisker: precomputed Min/Q1/Median/Q3/Max rows or raw samples
   | "radar" // spider chart: categories = spokes, series = polygons
   | "heatmap" // matrix: series = rows, categories = columns, value → color
-  | "tilemap"; // tile-grid cartogram: categories = region codes, value → color
+  | "tilemap" // tile-grid cartogram: categories = region codes, value → color
+  | "cascade"; // decomposition: each stage is a subset of the previous one
 
 export interface Series {
   name: string;

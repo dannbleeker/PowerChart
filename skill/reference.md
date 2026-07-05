@@ -7,7 +7,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   kind: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko"
       | "line" | "area" | "butterfly" | "scatter" | "bubble" | "gantt"
       | "combo" | "pie" | "doughnut" | "boxplot" | "radar" | "heatmap"
-      | "tilemap",
+      | "tilemap" | "cascade",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
   horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows
@@ -107,6 +107,13 @@ stacks together; different indices sit side by side per category.
 **Boxplot without summary rows**: when no `Min`/`Q1`/… rows are present,
 every series row is a raw observation — quartiles are computed (exclusive
 method) and whiskers use Tukey 1.5×IQR fences with outliers drawn as dots.
+
+**Cascade** (decomposition): each stage's bar is a subset of the previous
+one, top-aligned on one volume scale; the complement hangs as a muted
+labeled box at each split. Category syntax: `"Stage | Drop label | Group
+header"` — part 2 captions the remainder of the split into this stage,
+consecutive stages sharing part 3 get one spanning header band.
+series[0] = kept counts per stage.
 
 **Radar**: categories = spokes (first at 12 o'clock, clockwise), series =
 translucent polygons; keep 5–10 spokes and ≤3 series. **Heatmap**: series =
