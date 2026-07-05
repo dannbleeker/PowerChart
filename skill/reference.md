@@ -52,6 +52,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     fillBetween?: [number, number],   // line: shade the gap between two series (plan vs actual)
     stepped?: "before"|"after"|"center",  // line/area: staircase segments (jump at start / end / midpoint)
     slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
+    trajectory?: boolean,             // scatter/bubble: connect points in row order with a direction trail
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
@@ -61,7 +62,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   multiples?: { columns?: number },   // small multiples: one single-series panel per series,
                                       // shared value scale (stacked/clustered/line/area/waterfall/radar)
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",
-              showMean?: boolean, iqrMultiplier?: number },
+              showMean?: boolean, iqrMultiplier?: number,
+              jitter?: boolean },     // overlay raw observations as jittered dots (raw-sample mode)
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
   heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto",
               totals?: "row"|"column"|"both" },  // marginal sum strips
@@ -141,6 +143,20 @@ percentage (`68` → 68 cells + a big "68%" beside the grid).
 instead of sloped segments — `"after"` holds each value then jumps at the
 next category (HV), `"before"` jumps immediately (VH), `"center"` steps at
 the midpoint (HVH). Works for `line` and `area`; area fills follow the steps.
+
+**Area with negative values**: `area` charts stack positives above the zero
+baseline and negatives below it, so a series that goes negative (e.g. net
+income over time) dips under the axis instead of being clamped to 0.
+
+**Scatter/bubble trajectory** (`decorations.trajectory`): connects the points
+in datasheet (row) order with a trail and a direction arrowhead at each
+segment midpoint — a Gapminder-style path of one entity through the X/Y
+space over time. Order the categories chronologically.
+
+**Boxplot jitter** (`boxplot.jitter`): in raw-sample mode, overlays every
+observation as a deterministically jittered dot over its box, so the reader
+sees the distribution and sample size behind the summary (outlier dots are
+subsumed by the jittered points).
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap

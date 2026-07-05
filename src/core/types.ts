@@ -184,6 +184,12 @@ export interface Decorations {
    * both line ends (best with 2 categories).
    */
   slope?: boolean;
+  /**
+   * Scatter/bubble: connect the points in datasheet (row) order with a
+   * trail and a direction arrowhead — a Gapminder-style trajectory showing
+   * how one entity moved through the X/Y space over time.
+   */
+  trajectory?: boolean;
 }
 
 export interface NumberFormat {
@@ -303,6 +309,12 @@ export interface ChartConfig {
     showMean?: boolean;
     /** Tukey fence multiplier (default 1.5). */
     iqrMultiplier?: number;
+    /**
+     * Overlay the raw observations as deterministically jittered dots over
+     * each box (raw-sample mode only) — shows the underlying distribution
+     * and sample size behind the summary.
+     */
+    jitter?: boolean;
   };
   /** Tile-grid map layout; omitted → auto-detected from the region codes. */
   map?: "us" | "eu" | "europe" | "world";

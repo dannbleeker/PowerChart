@@ -3119,5 +3119,184 @@
       "totals": true
     },
     "gapWidth": 0
+  },
+  {
+    "kind": "area",
+    "width": 480,
+    "height": 300,
+    "title": "Area with negative values (net income over time)",
+    "data": {
+      "categories": [
+        "2020",
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Net income",
+          "values": [
+            12,
+            -8,
+            -15,
+            4,
+            18,
+            26
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": false,
+      "valueAxis": true,
+      "gridlines": true
+    }
+  },
+  {
+    "kind": "scatter",
+    "width": 480,
+    "height": 300,
+    "title": "Trajectory trail (one entity over time)",
+    "data": {
+      "categories": [
+        "2019",
+        "2020",
+        "2021",
+        "2022",
+        "2023",
+        "2024"
+      ],
+      "series": [
+        {
+          "name": "X",
+          "values": [
+            20,
+            28,
+            33,
+            45,
+            52,
+            60
+          ]
+        },
+        {
+          "name": "Y",
+          "values": [
+            30,
+            26,
+            40,
+            38,
+            55,
+            68
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "trajectory": true
+    }
+  },
+  {
+    "kind": "boxplot",
+    "width": 480,
+    "height": 300,
+    "title": "Boxplot with jittered raw-data dots",
+    "boxplot": {
+      "jitter": true
+    },
+    "data": {
+      "categories": [
+        "North",
+        "South",
+        "East"
+      ],
+      "series": [
+        {
+          "name": "s1",
+          "values": [
+            4,
+            6,
+            3
+          ]
+        },
+        {
+          "name": "s2",
+          "values": [
+            5,
+            7,
+            4
+          ]
+        },
+        {
+          "name": "s3",
+          "values": [
+            6,
+            7,
+            5
+          ]
+        },
+        {
+          "name": "s4",
+          "values": [
+            5,
+            9,
+            4
+          ]
+        },
+        {
+          "name": "s5",
+          "values": [
+            7,
+            8,
+            6
+          ]
+        },
+        {
+          "name": "s6",
+          "values": [
+            6,
+            11,
+            5
+          ]
+        },
+        {
+          "name": "s7",
+          "values": [
+            8,
+            7,
+            7
+          ]
+        },
+        {
+          "name": "s8",
+          "values": [
+            5,
+            10,
+            4
+          ]
+        },
+        {
+          "name": "s9",
+          "values": [
+            9,
+            8,
+            6
+          ]
+        },
+        {
+          "name": "s10",
+          "values": [
+            6,
+            12,
+            5
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true,
+      "valueAxis": true
+    }
   }
 ]

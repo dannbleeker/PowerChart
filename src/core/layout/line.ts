@@ -30,12 +30,17 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
     ...(bandLow ?? []).filter((v): v is number => v != null),
     ...(bandHigh ?? []).filter((v): v is number => v != null),
   ];
-  // Area charts stack; lines share one scale.
-  const stackedTotals = data.categories.map((_, c) =>
+  // Area charts stack (positives above zero, negatives below); lines share
+  // one scale. Negative areas dip under the baseline — think-cell parity for
+  // P&L-over-time where a series can go negative.
+  const stackedPos = data.categories.map((_, c) =>
     data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0),
   );
-  const dataMax = area ? Math.max(0, ...stackedTotals) : Math.max(0, ...all);
-  const dataMin = area ? 0 : Math.min(0, ...all);
+  const stackedNeg = data.categories.map((_, c) =>
+    data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0),
+  );
+  const dataMax = area ? Math.max(0, ...stackedPos) : Math.max(0, ...all);
+  const dataMin = area ? Math.min(0, ...stackedNeg) : Math.min(0, ...all);
   const fmt = resolveFormat(all, cfg.numberFormat);
 
   const { frame } = computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []);
@@ -89,18 +94,33 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
 
   if (area) {
     // Stacked areas drawn as per-category slabs (renderers have no polygon fill),
-    // bottom-up so later series sit on top visually.
-    const base = data.categories.map(() => 0);
+    // bottom-up so later series sit on top visually. Positives stack above the
+    // zero baseline and negatives below it, so a negative series dips under zero.
+    const posBase = data.categories.map(() => 0);
+    const negBase = data.categories.map(() => 0);
     data.series.forEach((s, si) => {
       const fill = seriesColor(style, si, s.color);
+      // This series' band boundaries per category (value units).
+      const lower: number[] = [];
+      const upper: number[] = [];
+      for (let c = 0; c < n; c++) {
+        const v = s.values[c] ?? 0;
+        if (v >= 0) {
+          lower[c] = posBase[c];
+          upper[c] = posBase[c] + v;
+          posBase[c] += v;
+        } else {
+          upper[c] = negBase[c];
+          lower[c] = negBase[c] + v;
+          negBase[c] += v;
+        }
+      }
       for (let c = 0; c < n - 1; c++) {
-        const v0 = Math.max(0, s.values[c] ?? 0);
-        const v1 = Math.max(0, s.values[c + 1] ?? 0);
         // Approximate the trapezoid with a rect at the average height.
-        const yTop0 = scale.toY(base[c] + v0);
-        const yTop1 = scale.toY(base[c + 1] + v1);
-        const yBot0 = scale.toY(base[c]);
-        const yBot1 = scale.toY(base[c + 1]);
+        const yTop0 = scale.toY(upper[c]);
+        const yTop1 = scale.toY(upper[c + 1]);
+        const yBot0 = scale.toY(lower[c]);
+        const yBot1 = scale.toY(lower[c + 1]);
         const steps = 24;
         const w = (slots.centers[c + 1] - slots.centers[c]) / steps;
         for (let k = 0; k < steps; k++) {
@@ -119,13 +139,12 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
             yT = yTop0 + (yTop1 - yTop0) * t;
             yB = yBot0 + (yBot1 - yBot0) * t;
           }
-          nodes.push({ kind: "rect", x: slots.centers[c] + k * w, y: yT, w: w + 0.5, h: Math.max(0, yB - yT), fill, name: `area-${si}-${c}-${k}` });
+          nodes.push({ kind: "rect", x: slots.centers[c] + k * w, y: Math.min(yT, yB), w: w + 0.5, h: Math.abs(yB - yT), fill, name: `area-${si}-${c}-${k}` });
         }
       }
-      for (let c = 0; c < n; c++) base[c] += Math.max(0, s.values[c] ?? 0);
-      lastSegMid[si] = scale.toY(base[n - 1] - Math.max(0, s.values[n - 1] ?? 0) / 2);
+      lastSegMid[si] = scale.toY((lower[n - 1] + upper[n - 1]) / 2);
     });
-    for (let c = 0; c < n; c++) columnTop[c] = scale.toY(base[c]);
+    for (let c = 0; c < n; c++) columnTop[c] = scale.toY(posBase[c]);
   } else {
     // Forecast boundary: categories from this index on draw dashed with
     // hollow markers; a subtle divider marks the actuals/forecast split.
@@ -214,7 +233,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       categoryX: slots.centers,
       categoryWidth: data.categories.map(() => slots.colWidth || 10),
       columnTop,
-      columnValue: area ? stackedTotals : data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+      columnValue: area ? data.categories.map((_, c) => stackedPos[c] + stackedNeg[c]) : data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: scale.toY,

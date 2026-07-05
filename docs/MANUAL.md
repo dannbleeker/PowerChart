@@ -124,6 +124,13 @@ pick weeks (with weekend shading), months, or quarters automatically.
 - **Explode slices** (pie/doughnut).
 - **Stepped line/area** (`stepped: "before"|"after"|"center"`): draws a
   staircase instead of sloped segments — good for rates that hold then jump.
+- **Area with negatives**: area charts now stack positives above the zero
+  line and negatives below it, so P&L-style series that go negative dip
+  under the baseline instead of being clamped to zero.
+- **Scatter trajectory** (`trajectory`): connects scatter/bubble points in
+  row order with a direction trail (Gapminder-style path over time).
+- **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
+  dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing
   controls. Gap width (0–500%) sets how wide the columns are — 0 makes them
   touch for a histogram look; overlap (−100…100) sets how much clustered bars
