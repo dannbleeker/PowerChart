@@ -44,6 +44,8 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Heatmap (sequential/diverging color matrix) | ✅ (`heatmap` kind) |
 | Map charts as tile-grid cartograms (US / EU / Europe / World) | ✅ (`tilemap` kind, auto-detected layouts) |
 | Tufte datamark axes (ticks only, range-frame option) | ✅ (`valueAxis: "datamarks"`, `tickMode: "data"`) |
+| Error bars (symmetric or asymmetric) | ✅ (`Error` / `Error+` / `Error-` datasheet rows) |
+| Palette from the presentation theme (Accent1-6) | ✅ (pane → "Use deck theme", PowerPointApi 1.10) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

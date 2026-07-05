@@ -281,6 +281,22 @@ const features = [
     horizontal: true,
   },
   {
+    kind: "clustered",
+    width: 480,
+    height: 300,
+    title: "Error bars (Error / Error+ / Error- rows)",
+    data: {
+      categories: ["Trial 1", "Trial 2", "Trial 3", "Trial 4"],
+      series: [
+        { name: "Result", values: [42, 55, 48, 61] },
+        { name: "Error", values: [5, 7, null, null] },
+        { name: "Error+", values: [null, null, 9, 4] },
+        { name: "Error-", values: [null, null, 3, 8] },
+      ],
+    },
+    decorations: { valueAxis: true, seriesLabels: false },
+  },
+  {
     ...sampleConfig("line"),
     title: "Datamark axis (Tufte range frame)",
     decorations: { segmentLabels: false, valueAxis: "datamarks", tickMode: "data", gridlines: false },
