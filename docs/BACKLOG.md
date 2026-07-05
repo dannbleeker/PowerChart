@@ -69,13 +69,14 @@ Pareto helper).
   shipped as their own `violin` kind.)
 
 ### Radar
-- Radial bar variant — really a new kind; medium, medium. Stacked radar — low.
-  (Vertex markers verified: radar emits `marker-*` ellipse nodes which the
-  Office.js renderer draws, so they already appear in the live add-in.)
+- (Radial bar variant / coxcomb shipped as `radar.bars`; stacked radar shipped
+  as `radar.stacked`. Vertex markers verified: radar emits `marker-*` ellipse
+  nodes which the Office.js renderer draws, so they already appear in the live
+  add-in.)
 
 ### Pie / Doughnut
-- Variable-radius pie — medium, niche.
-  (Sunburst shipped: nested inner/outer rings from `"Group | Item"` categories.)
+- (Variable-radius pie shipped as `pie.variableRadius` / a `Radius` row.
+  Sunburst shipped: nested inner/outer rings from `"Group | Item"` categories.)
 
 ### Heatmap
 - Per-cell icon overlays — medium, low (think-cell excludes these too).

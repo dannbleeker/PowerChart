@@ -47,6 +47,7 @@ describe("user manual coverage", () => {
       "Hex tile maps", "Tilemap mini-glyphs", "100% charts with negatives",
       "Semi-circle gauge", "Pareto", "Bump chart", "Horizontal profile chart",
       "Critical path", "Mean±SD box", "Sparklines",
+      "Radial bar", "Stacked radar", "Variable-radius pie",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

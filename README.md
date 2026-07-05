@@ -119,6 +119,9 @@ conventions, and every option.
 | Gantt critical-path highlight | ✅ (`decorations.criticalPath`, over `After` edges) |
 | Mean±SD boxplot variant | ✅ (`boxplot.meanSd`, raw-sample mode) |
 | Sparklines (word-sized trend lines) | ✅ (`decorations.sparkline` on `line`/`area`; pair with `multiples`) |
+| Radial bar chart / Nightingale rose | ✅ (`radar` + `radar.bars`; series stack outward) |
+| Stacked radar (part-to-whole per spoke) | ✅ (`radar` + `radar.stacked`) |
+| Variable-radius pie (angle + radius encode two metrics) | ✅ (`pie.variableRadius` or a `Radius` row) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

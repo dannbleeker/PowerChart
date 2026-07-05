@@ -116,6 +116,9 @@ describe("showcase deck coverage", () => {
     ["critical-path gantt", (c) => c.kind === "gantt" && !!c.decorations?.criticalPath],
     ["mean±SD boxplot", (c) => c.kind === "boxplot" && !!c.boxplot?.meanSd],
     ["sparklines", (c) => !!c.decorations?.sparkline],
+    ["radial bar chart", (c) => c.kind === "radar" && !!c.radar?.bars],
+    ["stacked radar", (c) => c.kind === "radar" && !!c.radar?.stacked],
+    ["variable-radius pie", (c) => c.kind === "pie" && !!c.pie?.variableRadius],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

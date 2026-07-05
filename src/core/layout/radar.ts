@@ -12,6 +12,7 @@ import type { LayoutResult } from "./column";
  * all spokes and ticked on the 12 o'clock spoke only.
  */
 export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  if (cfg.radar?.bars) return layoutRadialBars(cfg, style, decor);
   const { data } = cfg;
   const n = data.categories.length;
   const fs = style.fontSize;
@@ -28,8 +29,13 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     Math.min(cfg.width / 2 - labelW - fs, (cfg.height - titleH - legendH - footH) / 2 - fs * 1.9),
   );
 
+  // Stacked radar: series stack cumulatively along each spoke, so the scale
+  // must reach the per-spoke sums, not the largest single value.
+  const stacked = !!cfg.radar?.stacked && data.series.length >= 2;
+  const spokeSum = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
-  const ticks = niceTicks(Math.min(0, cfg.scale?.min ?? 0), Math.max(cfg.scale?.max ?? Math.max(1, ...all), 1), 4);
+  const tickMax = stacked ? Math.max(1, ...spokeSum) : Math.max(1, ...all);
+  const ticks = niceTicks(Math.min(0, cfg.scale?.min ?? 0), Math.max(cfg.scale?.max ?? tickMax, 1), 4);
   const min = cfg.scale?.min ?? ticks[0];
   const max = cfg.scale?.max ?? ticks[ticks.length - 1];
   const fmt = resolveFormat(ticks, cfg.numberFormat);
@@ -37,7 +43,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const angle = (c: number) => (360 / Math.max(1, n)) * c;
   // Per-spoke scales: normalise each spoke to its own maximum so spokes in
   // different KPI units become comparable in shape (numeric ticks dropped).
-  const perSpoke = !!cfg.radar?.perSpoke && data.series.length >= 1;
+  const perSpoke = !!cfg.radar?.perSpoke && !stacked && data.series.length >= 1;
   const spokeMax = data.categories.map((_, c) =>
     perSpoke ? Math.max(1, ...data.series.map((s) => s.values[c] ?? 0)) : max,
   );
@@ -104,7 +110,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // Min–max band: shade the per-spoke envelope of the peer series (all but
   // the last) as an annulus of per-sector quads, then draw the last series
   // ("us") prominently on top — the "peer range + us" view.
-  const band = !!decor.radarBand && data.series.length >= 2;
+  const band = !!decor.radarBand && !stacked && data.series.length >= 2;
   if (band) {
     const peers = data.series.slice(0, -1);
     const peerMin: number[] = [];
@@ -124,6 +130,39 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       { kind: "polygon", points: maxPts, stroke: style.mutedText, strokeWidth: 1, name: "band-max" },
       { kind: "polygon", points: minPts, stroke: style.mutedText, strokeWidth: 1, name: "band-min" },
     );
+  }
+
+  // Stacked radar: draw each series as an annular band between the cumulative
+  // level below it and its own cumulative level (part-to-whole across spokes).
+  if (stacked) {
+    const cum = data.categories.map(() => 0);
+    data.series.forEach((s, si) => {
+      const innerPts = data.categories.map((_, c) => polar(cx, cy, toR(cum[c]), angle(c)));
+      for (let c = 0; c < n; c++) cum[c] += Math.max(0, s.values[c] ?? 0);
+      const outerPts = data.categories.map((_, c) => polar(cx, cy, toR(cum[c]), angle(c)));
+      const color = seriesColor(style, si, s.color);
+      nodes.push({
+        kind: "polygon",
+        points: [...outerPts, ...innerPts.slice().reverse()],
+        fill: color,
+        fillOpacity: decor.fillOpacity ?? 0.55,
+        stroke: color,
+        strokeWidth: 1.2,
+        name: `series-${si}`,
+      });
+    });
+    if (legendH) drawLegend();
+    return {
+      nodes,
+      anchors: {
+        categoryX: data.categories.map((_, c) => polar(cx, cy, r, angle(c)).x),
+        categoryWidth: data.categories.map(() => r / 2),
+        columnTop: data.categories.map((_, c) => polar(cx, cy, r, angle(c)).y),
+        columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+        baselineY: cy,
+        plot: { x: cx - r, y: cy - r, w: r * 2, h: r * 2 },
+      },
+    };
   }
 
   // Series polygons: translucent fill (SVG), full-opacity outline + markers.
@@ -150,7 +189,10 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
 
   // Legend row under the title when there are multiple series. In band mode
   // it collapses the peers into one "Peer range" swatch plus the "us" series.
-  if (legendH) {
+  if (legendH) drawLegend();
+
+  // Hoisted so the stacked-radar early return can reuse it.
+  function drawLegend() {
     let x = 0;
     const chip = fs * 0.7;
     const entries: { label: string; color: string; name: string }[] = band
@@ -178,6 +220,117 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       categoryWidth: data.categories.map(() => r / 2),
       columnTop: data.categories.map((_, c) => polar(cx, cy, r, angle(c)).y),
       columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+      baselineY: cy,
+      plot: { x: cx - r, y: cy - r, w: r * 2, h: r * 2 },
+    },
+  };
+}
+
+/**
+ * Radial (polar) bar chart / coxcomb: each category is an equal-angle sector
+ * whose bar radius encodes its value, drawn from a small inner hole so it reads
+ * as bars bent around a circle rather than a pie. A single series colours bars
+ * by category (Nightingale rose); multiple series stack outward within each
+ * sector. Concentric value rings give the scale.
+ */
+function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const n = data.categories.length;
+  const fs = style.fontSize;
+  const multi = data.series.length > 1;
+
+  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const footH = footnoteH(cfg, style, decor);
+  const legendH = decor.seriesLabels && multi ? fs * 1.6 : 0;
+  const cx = cfg.width / 2;
+  const cy = titleH + legendH + (cfg.height - titleH - legendH - footH) / 2;
+  const labelW = Math.max(0, ...data.categories.map((c) => textWidth(c, fs)));
+  const r = Math.max(10, Math.min(cfg.width / 2 - labelW - fs, (cfg.height - titleH - legendH - footH) / 2 - fs * 1.9));
+  const innerR = r * 0.18;
+
+  // Scale reaches the per-category stack sums (a single series is its own sum).
+  const catSum = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const ticks = niceTicks(0, Math.max(cfg.scale?.max ?? Math.max(1, ...catSum), 1), 4);
+  const max = cfg.scale?.max ?? ticks[ticks.length - 1];
+  const fmt = resolveFormat(ticks, cfg.numberFormat);
+  const toR = (v: number) => innerR + (Math.max(0, v) / (max || 1)) * (r - innerR);
+  const sector = 360 / Math.max(1, n);
+  const angle = (c: number) => sector * c;
+  const pad = sector * 0.12;
+
+  const nodes: SceneNode[] = [];
+  if (cfg.title) {
+    nodes.push({
+      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
+      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
+    });
+  }
+
+  // Concentric value rings + tick labels on the 12 o'clock line.
+  for (const t of ticks.filter((t) => t > 0)) {
+    nodes.push({ kind: "ellipse", cx, cy, rx: toR(t), ry: toR(t), fill: "none", stroke: style.gridline, strokeWidth: 0.75, name: `grid-${t}` });
+    nodes.push({
+      kind: "text", x: cx + 3, y: cy - toR(t) - fs * 0.6, w: fs * 3.4, h: fs * 1.2,
+      text: formatNumber(t, fmt), fontSize: fs * 0.85, color: style.mutedText, align: "left", valign: "middle", name: `tick-${t}`,
+    });
+  }
+
+  data.categories.forEach((cat, c) => {
+    const a0 = ((angle(c) + pad / 2) % 360 + 360) % 360;
+    const aSpan = sector - pad;
+    let base = 0;
+    data.series.forEach((s, si) => {
+      const v = Math.max(0, s.values[c] ?? 0);
+      if (v <= 0) return;
+      const rin = toR(base);
+      const rout = toR(base + v);
+      base += v;
+      const color = multi ? seriesColor(style, si, s.color) : (s.colors?.[c] ?? style.palette[c % style.palette.length]);
+      nodes.push({
+        kind: "wedge", cx, cy, r: rout, innerR: rin,
+        startAngle: a0, endAngle: a0 + aSpan,
+        fill: color, stroke: style.background, strokeWidth: 1,
+        name: multi ? `bar-${c}-${si}` : `bar-${c}`,
+      });
+    });
+    // Perimeter category label.
+    const mid = angle(c) + sector / 2;
+    const p = polar(cx, cy, r + fs * 0.6, mid);
+    const am = ((mid % 360) + 360) % 360;
+    const align = am < 10 || am > 350 || Math.abs(am - 180) < 10 ? "center" : am < 180 ? "left" : "right";
+    const w = textWidth(cat, fs) + 4;
+    nodes.push({
+      kind: "text",
+      x: align === "center" ? p.x - w / 2 : align === "left" ? p.x : p.x - w,
+      y: p.y - (am < 10 || am > 350 ? fs * 1.4 : Math.abs(am - 180) < 10 ? 0 : fs * 0.7),
+      w, h: fs * 1.4, text: cat, fontSize: fs, color: style.text, align, valign: "middle", name: `category-${c}`,
+    });
+  });
+
+  // Series legend (multi-series stacks).
+  if (legendH) {
+    let x = 0;
+    const chip = fs * 0.7;
+    data.series.forEach((s, si) => {
+      const color = seriesColor(style, si, s.color);
+      nodes.push(
+        { kind: "rect", x, y: titleH + fs * 0.35, w: chip, h: chip, fill: color, name: `legend-chip-${si}` },
+        {
+          kind: "text", x: x + chip + 3, y: titleH, w: textWidth(s.name, fs) + 6, h: fs * 1.4,
+          text: s.name, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${si}`,
+        },
+      );
+      x += chip + 3 + textWidth(s.name, fs) + 12;
+    });
+  }
+
+  return {
+    nodes,
+    anchors: {
+      categoryX: data.categories.map((_, c) => polar(cx, cy, r, angle(c) + sector / 2).x),
+      categoryWidth: data.categories.map(() => (r - innerR) / 2),
+      columnTop: data.categories.map((_, c) => polar(cx, cy, r, angle(c) + sector / 2).y),
+      columnValue: catSum,
       baselineY: cy,
       plot: { x: cx - r, y: cy - r, w: r * 2, h: r * 2 },
     },

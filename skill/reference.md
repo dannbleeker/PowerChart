@@ -68,7 +68,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   pie?: { explode?: number[],         // slice indices offset radially to highlight
           breakout?: number[],        // pie only: collapse these categories into one "Other"
                                       // slice detailed in a stacked bar beside the pie (bar-of-pie)
-          semi?: boolean },           // doughnut only: 180° semi-circle gauge (scorecard)
+          semi?: boolean,             // doughnut only: 180° semi-circle gauge (scorecard)
+          variableRadius?: boolean }, // pie: angle = 1st series, radius = a "Radius" row / 2nd series
   pareto?: boolean,                   // clustered/combo: sort desc + cumulative-% line (80/20 view)
   multiples?: { columns?: number },   // small multiples: one single-series panel per series,
                                       // shared value scale (stacked/clustered/line/area/waterfall/radar)
@@ -85,7 +86,9 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
               calendar?: boolean },   // weekday × week grid for a daily date series
   otherBucket?: { max?: number },     // column family: collapse the long tail into one "Other" (keep max series)
   butterfly?: { split?: number },     // butterfly: series on the left flank (rest stack right)
-  radar?: { perSpoke?: boolean },     // radar: normalise each spoke to its own max (mixed KPI units)
+  radar?: { perSpoke?: boolean,       // radar: normalise each spoke to its own max (mixed KPI units)
+            bars?: boolean,           // radial bar chart / coxcomb: category wedges, radius = value (stacks)
+            stacked?: boolean },      // stacked radar: series stack cumulatively along each spoke
   combo?: { columns?: "stacked"|"clustered"|"stacked100"|"waterfall"|"mekko",  // base under the lines
             lineAxes?: "shared"|"independent" },  // "independent": each line its own scale + labels
   waterfall?: { totalIndices?: number[],    // categories drawn as running totals ("e")
@@ -244,6 +247,21 @@ two headers). Omit for the classic two-series butterfly (series 0 vs series 1).
 **Radar per-spoke scales** (`radar.perSpoke`): normalise each spoke to its own
 maximum so spokes carrying different KPI units become comparable in shape; the
 shared numeric ticks give way to fraction rings (25/50/75/100 %).
+
+**Radial bar chart / coxcomb** (`radar.bars`): instead of connecting the spokes
+into a polygon, draw each category as an equal-angle wedge whose radius encodes
+its value (a Nightingale rose), from a small inner hole with concentric value
+rings. A single series colours bars by category; multiple series stack outward
+within each sector.
+
+**Stacked radar** (`radar.stacked`): series stack cumulatively along each spoke
+(part-to-whole across dimensions) — nested filled bands instead of overlaid
+polygons; the scale reaches the per-spoke sums.
+
+**Variable-radius pie** (`pie.variableRadius`, or add a `Radius` datasheet row):
+each slice's angle still encodes the first series while its radius encodes a
+second metric — a two-variable pie. Labels sit outside; pie only (no doughnut,
+no breakout).
 
 **Missing-data bridge** (`decorations.bridgeGaps`): line charts connect
 straight across null categories instead of breaking into separate segments

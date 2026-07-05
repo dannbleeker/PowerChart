@@ -25,6 +25,12 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     ? [...new Set((cfg.pie?.breakout ?? []).filter((c) => c >= 0 && c < values.length && values[c] > 0))]
     : [];
   const hasBreakout = breakout.length > 0;
+  // Variable-radius pie: angle still encodes the first series, radius encodes a
+  // second metric — a "Radius" datasheet row (or the second series). Pie only.
+  const radiusRow = data.series.find((s) => /^radius$/i.test(s.name.trim()))?.values;
+  const radiusVals = radiusRow ?? (cfg.pie?.variableRadius ? data.series[1]?.values : undefined);
+  const varR = !!radiusVals && !doughnut && !hasBreakout;
+  const maxRad = varR ? Math.max(1, ...radiusVals!.map((v) => Math.max(0, v ?? 0))) : 1;
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const footH = footnoteH(cfg, style, decor);
@@ -57,17 +63,20 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     if (span <= 0) return;
     const other = c === "other";
     if (other) otherStart = angle;
+    // Per-slice outer radius: full r normally, scaled by the radius metric in
+    // variable-radius mode (floored at half r so small slices stay visible).
+    const rr = varR && !other ? r * 0.5 + (Math.max(0, radiusVals![c as number] ?? 0) / maxRad) * (r * 0.5) : r;
     const fill = other
       ? style.neutral
       : (data.series[0]?.colors?.[c as number] ?? style.palette[(c as number) % style.palette.length]);
     // Exploding slice: offset the wedge radially to highlight it.
     const exploded = !other && (cfg.pie?.explode?.includes(c as number) ?? false);
-    const off = exploded ? polar(0, 0, r * 0.08, angle + span / 2) : { x: 0, y: 0 };
+    const off = exploded ? polar(0, 0, rr * 0.08, angle + span / 2) : { x: 0, y: 0 };
     const ecx = cx + off.x;
     const ecy = cy + off.y;
     const a0 = ((angle % 360) + 360) % 360;
     nodes.push({
-      kind: "wedge", cx: ecx, cy: ecy, r, innerR: 0,
+      kind: "wedge", cx: ecx, cy: ecy, r: rr, innerR: 0,
       startAngle: a0, endAngle: a0 + span,
       fill, stroke: style.background, strokeWidth: 1, name: other ? "slice-other" : `slice-${c}`,
     });
@@ -81,14 +90,14 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         category: other ? "Other" : data.categories[c as number],
         fmt,
       });
-      const inside = span >= 30 && !doughnut;
-      const p = polar(ecx, ecy, inside ? r * 0.62 : r + fs * 0.8, mid);
+      const inside = span >= 30 && !doughnut && !varR;
+      const p = polar(ecx, ecy, inside ? rr * 0.62 : rr + fs * 0.8, mid);
       const w = textWidth(label, fs) + 4;
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
       if (!inside) {
         // Leader line from the arc edge toward the label.
-        const a = polar(ecx, ecy, r + 1, mid);
-        const b = polar(ecx, ecy, r + fs * 0.65, mid);
+        const a = polar(ecx, ecy, rr + 1, mid);
+        const b = polar(ecx, ecy, rr + fs * 0.65, mid);
         nodes.push({ kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: style.mutedText, strokeWidth: 0.75, name: other ? "leader-other" : `leader-${c}` });
       }
       nodes.push({
