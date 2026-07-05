@@ -10,7 +10,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
       | "tilemap",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
-  horizontal?: boolean,               // rotate columns/waterfall/mekko into bars/rows
+  horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows
   data: {
     categories: string[],             // column headers (x categories / activities / points)
     series: [{

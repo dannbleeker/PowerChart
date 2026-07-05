@@ -1946,6 +1946,72 @@
     }
   },
   {
+    "kind": "boxplot",
+    "width": 480,
+    "height": 300,
+    "title": "Horizontal boxplot (same shared axis, rotated)",
+    "data": {
+      "categories": [
+        "North",
+        "South",
+        "East",
+        "West"
+      ],
+      "series": [
+        {
+          "name": "Min",
+          "values": [
+            2,
+            3,
+            1,
+            2
+          ]
+        },
+        {
+          "name": "Q1",
+          "values": [
+            3,
+            5,
+            2,
+            4
+          ]
+        },
+        {
+          "name": "Median",
+          "values": [
+            4,
+            7,
+            3,
+            5
+          ]
+        },
+        {
+          "name": "Q3",
+          "values": [
+            6,
+            9,
+            5,
+            7
+          ]
+        },
+        {
+          "name": "Max",
+          "values": [
+            8,
+            12,
+            7,
+            10
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true,
+      "valueAxis": true
+    },
+    "horizontal": true
+  },
+  {
     "kind": "line",
     "width": 480,
     "height": 300,

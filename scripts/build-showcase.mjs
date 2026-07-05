@@ -276,6 +276,11 @@ const features = [
     decorations: { categoryAxis: true, valueAxis: true },
   },
   {
+    ...sampleConfig("boxplot"),
+    title: "Horizontal boxplot (same shared axis, rotated)",
+    horizontal: true,
+  },
+  {
     ...sampleConfig("line"),
     title: "Datamark axis (Tufte range frame)",
     decorations: { segmentLabels: false, valueAxis: "datamarks", tickMode: "data", gridlines: false },
