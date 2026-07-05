@@ -25,6 +25,22 @@ jobs:
         with:
           name: powerchart-charts-skill
           path: skill-dist/powerchart-charts.zip
+      # The committed showcase deck must match a fresh build — regenerate and
+      # compare slide XMLs (deterministic; docProps timestamps excluded).
+      - name: Showcase deck is current
+        run: |
+          cp examples/showcase.pptx /tmp/committed.pptx
+          node scripts/build-showcase.mjs
+          python3 - <<'EOF'
+          import sys, zipfile
+          a = zipfile.ZipFile('/tmp/committed.pptx')
+          b = zipfile.ZipFile('examples/showcase.pptx')
+          slides_a = sorted(n for n in a.namelist() if n.startswith('ppt/slides/slide'))
+          slides_b = sorted(n for n in b.namelist() if n.startswith('ppt/slides/slide'))
+          if slides_a != slides_b or any(a.read(n) != b.read(n) for n in slides_a):
+              sys.exit("examples/showcase.pptx is stale — run `npm run showcase` and commit the result")
+          print("showcase deck is current")
+          EOF
 
   # Every merge to main refreshes the rolling "skill-latest" release, giving
   # the newest skill zip a stable download URL.

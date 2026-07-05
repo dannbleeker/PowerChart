@@ -1,0 +1,189 @@
+#!/usr/bin/env node
+/**
+ * Build the feature showcase deck: one slide per chart kind and per signature
+ * feature, committed at examples/showcase.json + examples/showcase.pptx.
+ *
+ *   npm run showcase          (regenerate after changing features)
+ *
+ * CI regenerates the deck and fails when the committed copy is stale, and
+ * test/showcase.test.ts fails when a chart kind or feature has no slide —
+ * so the deck always demonstrates the full feature set.
+ */
+import { writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { sampleConfig, CHART_KINDS } from "../dist-lib/powerchart.js";
+
+const day = (iso) => Math.round(Date.parse(iso) / 86400000);
+
+/** Every chart kind, via its curated sample. */
+const kinds = CHART_KINDS.map(({ kind, label }) => ({
+  ...sampleConfig(kind),
+  title: `${label} — ${sampleConfig(kind).title ?? "sample"}`,
+}));
+
+/** Feature slides: everything a sample doesn't already show. */
+const features = [
+  {
+    ...sampleConfig("stacked"),
+    title: "Decorations — totals, CAGR, difference, value line",
+    decorations: {
+      totals: true,
+      cagr: { from: 0, to: 3 },
+      difference: { from: 0, to: 3 },
+      valueLines: [{ mode: "mean" }],
+    },
+  },
+  {
+    ...sampleConfig("stacked"),
+    title: "Level difference (series) + label content Value+%",
+    decorations: {
+      difference: { from: 0, to: 3, series: 0 },
+      labelContent: ["value", "percent"],
+    },
+  },
+  {
+    ...sampleConfig("stacked"),
+    title: "Bar orientation + segment order descending",
+    horizontal: true,
+    segmentOrder: "descending",
+    decorations: { totals: true, seriesLabels: true },
+  },
+  {
+    ...sampleConfig("stacked"),
+    title: "Category sort descending + pinned axis + de-DE locale",
+    categorySort: "descending",
+    scale: { max: 150 },
+    numberFormat: { decimals: 1, locale: "de-DE" },
+    decorations: { totals: true, valueAxis: true, gridlines: true },
+  },
+  {
+    kind: "stacked",
+    width: 480,
+    height: 300,
+    title: "Clustered-stacked (stack groups) ",
+    data: {
+      categories: ["2024", "2025"],
+      series: [
+        { name: "EU Product", values: [30, 36], stack: 0 },
+        { name: "EU Services", values: [12, 16], stack: 0 },
+        { name: "US Product", values: [26, 33], stack: 1 },
+        { name: "US Services", values: [10, 14], stack: 1 },
+      ],
+    },
+    decorations: { totals: true },
+  },
+  {
+    kind: "clustered",
+    width: 480,
+    height: 300,
+    title: "Axis break (620 outlier) + axis title",
+    data: { categories: ["Q1", "Q2", "Q3", "Q4"], series: [{ name: "Sales", values: [42, 55, 620, 61] }] },
+    axisBreak: { from: 80, to: 580 },
+    valueAxisTitle: "€m",
+    decorations: { valueAxis: true, gridlines: true, seriesLabels: false },
+  },
+  {
+    kind: "clustered",
+    width: 480,
+    height: 300,
+    title: "Log scale",
+    data: { categories: ["Seed", "A", "B", "C"], series: [{ name: "Valuation", values: [4, 40, 220, 1900] }] },
+    logScale: true,
+    valueAxisTitle: "$m (log)",
+    decorations: { valueAxis: true, gridlines: true, seriesLabels: false },
+  },
+  {
+    kind: "stacked100",
+    width: 480,
+    height: 300,
+    title: "100%= row (columns short of 100%)",
+    data: {
+      categories: ["2023", "2024", "2025"],
+      series: [
+        { name: "Won", values: [40, 55, 70] },
+        { name: "Lost", values: [30, 25, 20] },
+      ],
+      hundredPercent: [100, 100, 100],
+    },
+  },
+  {
+    ...sampleConfig("waterfall"),
+    title: "Stacked waterfall + value-line-anchored difference",
+    data: {
+      categories: ["FY23", "Organic", "M&A", "Cost", "FY24"],
+      series: [
+        { name: "Europe", values: [50, 8, 5, -6, 0] },
+        { name: "Americas", values: [36, 6, 9, -6, 0] },
+      ],
+    },
+    waterfall: { totalIndices: [4] },
+    decorations: {
+      categoryAxis: true,
+      valueLines: [{ mode: "value", value: 100 }],
+      difference: { from: 0, to: 4, fromValueLine: 0, percent: false },
+    },
+  },
+  { ...sampleConfig("waterfall"), title: "Rotated waterfall", horizontal: true },
+  {
+    ...sampleConfig("mekko"),
+    title: "Mekko with units (X extent) — rotated",
+    horizontal: true,
+    data: { ...sampleConfig("mekko").data, xExtent: [50, 30, 20] },
+  },
+  { ...sampleConfig("combo"), title: "Combo + secondary axis", secondaryAxis: true },
+  {
+    kind: "scatter",
+    width: 480,
+    height: 300,
+    title: "Scatter — partition lines, trend, groups",
+    data: {
+      categories: ["Alpha", "Bravo", "Core", "Delta", "Echo", "Foxtrot"],
+      series: [
+        { name: "X", values: [12, 25, 40, 55, 62, 74] },
+        { name: "Y", values: [18, 30, 38, 52, 55, 68] },
+        { name: "Group", values: [1, 1, 2, 2, 3, 3] },
+        { name: "X line", values: [45, null, null, null, null, null] },
+        { name: "Y line", values: [40, null, null, null, null, null] },
+        { name: "Trend", values: [1, null, null, null, null, null] },
+      ],
+    },
+  },
+  {
+    kind: "gantt",
+    width: 480,
+    height: 300,
+    title: "Gantt — sections, owners, remarks, deps, today, holiday, bracket",
+    data: {
+      categories: [
+        "Phase 1 — Discovery",
+        "> Interviews | Anna | 12 done",
+        "> Synthesis | Ben",
+        "Phase 2 — Delivery",
+        "> Build | Cato | at risk",
+      ],
+      series: [
+        { name: "Start", values: [null, day("2026-01-05"), day("2026-01-19"), null, day("2026-01-26")] },
+        { name: "End", values: [null, day("2026-01-23"), day("2026-01-30"), null, day("2026-02-20")] },
+        { name: "Milestone", values: [null, null, day("2026-01-30"), null, day("2026-02-20")] },
+        { name: "After", values: [null, null, 2, null, 3] },
+        { name: "Today", values: [day("2026-02-02"), null, null, null, null] },
+        { name: "Holiday", values: [day("2026-01-15"), null, null, null, null] },
+        { name: "Bracket Sprint 1", values: [day("2026-01-05"), day("2026-01-19"), null, null, null] },
+      ],
+      dates: true,
+    },
+  },
+  {
+    ...sampleConfig("stacked"),
+    title: "Manual label nudge (labelOffsets)",
+    labelOffsets: { "total-3": { dx: 0, dy: -6 } },
+    decorations: { totals: true },
+  },
+];
+
+const configs = [...kinds, ...features];
+writeFileSync("examples/showcase.json", JSON.stringify(configs, null, 2) + "\n");
+execFileSync("node", ["skill/scripts/render-pptx.mjs", "examples/showcase.json", "examples/showcase.pptx"], {
+  stdio: "inherit",
+});
+console.log(`examples/showcase.json + examples/showcase.pptx (${configs.length} slides)`);

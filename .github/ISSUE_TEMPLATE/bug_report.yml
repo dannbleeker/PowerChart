@@ -1,0 +1,33 @@
+name: Bug report
+description: A chart renders wrong, the pane misbehaves, or insertion fails
+labels: [bug]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does it happen?
+      options:
+        - Demo gallery / SVG preview (browser)
+        - Task pane inside PowerPoint
+        - Inserted shapes on the slide
+        - Claude Agent Skill / render-pptx
+        - Excel companion (PowerChart Link)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened vs. what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Chart config (JSON)
+      description: Automation → Export current, paste here. This makes most bugs reproducible in one step.
+      render: json
+  - type: input
+    id: host
+    attributes:
+      label: PowerPoint host & version
+      placeholder: e.g. PowerPoint on the web / Windows 2405 / Mac 16.85
