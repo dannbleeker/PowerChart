@@ -87,11 +87,11 @@ Pareto helper).
 
 ## 3. New chart types worth adding (ranked)
 
-- **Treemap** — squarified rect packing (Mekko-adjacent math); blank-row
-   grouping for 2 levels. New kind; medium. (bullet, lollipop/dot/dumbbell,
-   bump, and the Pareto helper have shipped; treemap is the last §3 candidate.)
-   The horizontal profile chart and radar add-in vertex markers (the last two
-   §2-tail items) have also shipped.
+- (All §3 candidates shipped: bullet, lollipop/dot/dumbbell, bump, Pareto
+   helper, and treemap — squarified packing with 2-level "Group | Item"
+   grouping. The horizontal profile chart and radar add-in vertex markers,
+   the last two §2-tail items, have also shipped. Only §4 rejected ideas and a
+   few low/niche notes remain.)
 
 ## 4. Rejected (do not re-propose)
 

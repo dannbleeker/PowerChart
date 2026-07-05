@@ -203,6 +203,16 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           series: [{ name: "Share", values: [68] }],
         },
       };
+    case "treemap":
+      return {
+        ...base,
+        title: "Revenue by product line",
+        data: {
+          categories: ["Cloud", "Licenses", "Services", "Hardware", "Support", "Training"],
+          series: [{ name: "Revenue", values: [120, 80, 60, 40, 25, 15] }],
+        },
+        decorations: { segmentLabels: true },
+      };
     case "cascade":
       return {
         ...base,
@@ -271,4 +281,5 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "cascade", label: "Cascade" },
   { kind: "funnel", label: "Funnel" },
   { kind: "waffle", label: "Waffle" },
+  { kind: "treemap", label: "Treemap" },
 ];

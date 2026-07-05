@@ -875,6 +875,38 @@
     }
   },
   {
+    "kind": "treemap",
+    "width": 480,
+    "height": 300,
+    "title": "Treemap — Revenue by product line",
+    "data": {
+      "categories": [
+        "Cloud",
+        "Licenses",
+        "Services",
+        "Hardware",
+        "Support",
+        "Training"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            120,
+            80,
+            60,
+            40,
+            25,
+            15
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": true
+    }
+  },
+  {
     "kind": "stacked",
     "width": 480,
     "height": 300,
@@ -4535,6 +4567,42 @@
       "categoryAxis": true,
       "valueAxis": true,
       "gridlines": true
+    }
+  },
+  {
+    "kind": "treemap",
+    "width": 480,
+    "height": 300,
+    "title": "Two-level treemap (region | product)",
+    "data": {
+      "categories": [
+        "EMEA | Cloud",
+        "EMEA | Licenses",
+        "EMEA | Services",
+        "Americas | Cloud",
+        "Americas | Licenses",
+        "APAC | Cloud",
+        "APAC | Hardware",
+        "APAC | Services"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            60,
+            40,
+            25,
+            80,
+            50,
+            45,
+            30,
+            20
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": true
     }
   }
 ]

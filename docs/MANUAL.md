@@ -58,6 +58,7 @@ section and `skill/reference.md`.
 | Cascade | stage-by-stage breakdown of a total | categories `"Stage \| Drop label \| Group"`; each bar is a subset of the previous, remainders hang as labeled boxes |
 | Funnel | pipeline / conversion stages | centered bands, width ∝ value, conversion % between stages; order values ascending for a pyramid |
 | Waffle | one dominant share ("68% of…") | 10×10 unit grid, 1 cell = 1%, filled from the bottom-left; a single category ≤ 100 reads as a literal % with a big-number legend; `100%=` overrides the denominator |
+| Treemap | part-to-whole with many items | squarified rectangles, area ∝ value; categories named `"Group \| Item"` nest into two levels (group headers + child tiles) |
 
 All column-family charts (stacked/clustered/100%), waterfall, Mekko, and
 boxplot rotate into **horizontal** bars/rows with the "Horizontal (bar)"

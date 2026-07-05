@@ -16,6 +16,7 @@ import { layoutTilemap } from "./layout/tilemap";
 import { layoutCascade } from "./layout/cascade";
 import { layoutFunnel } from "./layout/funnel";
 import { layoutWaffle } from "./layout/waffle";
+import { layoutTreemap } from "./layout/treemap";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
 import { formatNumber, niceTicks, resolveFormat } from "./format";
@@ -321,6 +322,9 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       break;
     case "funnel":
       result = layoutFunnel(cfg, style, decor);
+      break;
+    case "treemap":
+      result = layoutTreemap(cfg, style, decor);
       break;
     case "waffle":
       result = layoutWaffle(cfg, style, decor);

@@ -94,6 +94,7 @@ conventions, and every option.
 | Pareto chart (sorted bars + cumulative % line) | ✅ (`pareto: true`) |
 | Bump chart (rank over time) | ✅ (`line` + `decorations.bump`) |
 | Horizontal profile chart (rotated line/area) | ✅ (`horizontal` on `line`/`area`) |
+| Treemap (squarified, area ∝ value, 2-level grouping) | ✅ (`treemap` kind, `"Group \| Item"` categories) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

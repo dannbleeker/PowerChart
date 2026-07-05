@@ -112,6 +112,7 @@ describe("showcase deck coverage", () => {
     ["pareto chart", (c) => !!c.pareto],
     ["bump chart", (c) => c.kind === "line" && !!c.decorations?.bump],
     ["horizontal profile (line/area)", (c) => (c.kind === "line" || c.kind === "area") && !!c.horizontal],
+    ["two-level treemap", (c) => c.kind === "treemap" && c.data.categories.some((cat) => cat.includes("|"))],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

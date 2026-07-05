@@ -20,7 +20,8 @@ export type ChartKind =
   | "tilemap" // tile-grid cartogram: categories = region codes, value → color
   | "cascade" // decomposition: each stage is a subset of the previous one
   | "funnel" // pipeline stages as centered bands, width ∝ value
-  | "waffle"; // 10×10 unit grid, part-to-whole (categories = parts)
+  | "waffle" // 10×10 unit grid, part-to-whole (categories = parts)
+  | "treemap"; // squarified rect packing, area ∝ value; "Group | Item" → 2 levels
 
 export interface Series {
   name: string;

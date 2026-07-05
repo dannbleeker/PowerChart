@@ -7,7 +7,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   kind: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko"
       | "line" | "area" | "butterfly" | "scatter" | "bubble" | "gantt"
       | "combo" | "pie" | "doughnut" | "boxplot" | "radar" | "heatmap"
-      | "tilemap" | "cascade" | "funnel" | "waffle",
+      | "tilemap" | "cascade" | "funnel" | "waffle" | "treemap",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
   horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows;
