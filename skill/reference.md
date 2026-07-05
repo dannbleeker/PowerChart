@@ -76,7 +76,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   otherBucket?: { max?: number },     // column family: collapse the long tail into one "Other" (keep max series)
   butterfly?: { split?: number },     // butterfly: series on the left flank (rest stack right)
   radar?: { perSpoke?: boolean },     // radar: normalise each spoke to its own max (mixed KPI units)
-  combo?: { columns?: "stacked"|"clustered"|"stacked100" },  // column mode under the lines
+  combo?: { columns?: "stacked"|"clustered"|"stacked100"|"waterfall"|"mekko",  // base under the lines
+            lineAxes?: "shared"|"independent" },  // "independent": each line its own scale + labels
   waterfall?: { totalIndices?: number[],    // categories drawn as running totals ("e")
                 spacerIndices?: number[] }, // blank grouping gaps (empty category name)
   scale?: { min?: number, max?: number },   // pin the value axis
@@ -222,6 +223,16 @@ straight across null categories instead of breaking into separate segments
 **Floating segments**: give a stacked-column series `color: "transparent"` and
 it occupies the stack without drawing — the segments above it "float" clear of
 the baseline (a lightweight floating-bar / range effect).
+
+**Combo base modes** (`combo.columns`): the column base under the lines can be
+`waterfall` (a bridge with a %-of-total line over it — set `waterfall.totalIndices`)
+or `mekko` (variable-width columns with an overlaid line) as well as the
+stacked / clustered / 100% modes. The lines use a secondary axis (forced for
+mekko / 100%, which have no shared value axis).
+
+**Combo independent line axes** (`combo.lineAxes: "independent"`): each line
+series is zoomed to its own value range and labelled at every point, so several
+KPIs in unlike units read on one chart without a shared secondary axis.
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap

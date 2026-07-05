@@ -13,6 +13,10 @@ import {
   type Frame,
   type ValueScale,
 } from "./frame";
+// Combo base kinds. These modules import back from column (LayoutResult /
+// horizontalChrome), but the calls happen at runtime so the ESM cycle resolves.
+import { layoutWaterfall } from "./waterfall";
+import { layoutMekko } from "./mekko";
 
 export interface LayoutResult {
   nodes: SceneNode[];
@@ -389,17 +393,23 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     ? cfg.data.series.filter((s) => s.type !== "line")
     : cfg.data.series.slice(0, Math.max(1, cfg.data.series.length - 1));
 
-  // Column mode: stacked (default), clustered, or 100% under the lines.
+  // Column mode: stacked (default), clustered, 100%, waterfall, or mekko.
   const columnsKind = cfg.combo?.columns ?? "stacked";
+  // Independent axes: each line series gets its own scale (labelled, no shared
+  // secondary-axis ticks) — for dashboards mixing unlike units.
+  const independent = cfg.combo?.lineAxes === "independent" && lines.length >= 1;
+  // Mekko (% normalised) and 100% columns expose no value→y map, so a line
+  // needs its own axis; waterfall and column bases carry a shared scale.
+  const noPrimaryAxis = columnsKind === "stacked100" || columnsKind === "mekko";
   // One shared scale: whichever of column extent / line values reaches higher.
   const stackMax =
     columnsKind === "clustered"
       ? Math.max(0, ...cols.flatMap((s) => s.values.filter((v): v is number => v != null)))
       : Math.max(0, ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)));
   const lineMax = Math.max(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
-  // Secondary axis: line series get their own right-hand scale. A 100%
-  // column base forces it — lines rarely live on a 0-100% share axis.
-  const secondary = !!cfg.secondaryAxis || columnsKind === "stacked100";
+  // Secondary axis: line series get their own right-hand scale. A 100% / mekko
+  // base forces it. Independent axes replace the shared secondary axis.
+  const secondary = (!!cfg.secondaryAxis || noPrimaryAxis) && !independent;
   const colCfg: ChartConfig = {
     ...cfg,
     kind: columnsKind,
@@ -407,14 +417,21 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     scale:
       columnsKind === "stacked100"
         ? undefined
-        : cfg.scale?.max != null || secondary
+        : columnsKind === "mekko" || columnsKind === "waterfall"
           ? cfg.scale
-          : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
+          : cfg.scale?.max != null || secondary
+            ? cfg.scale
+            : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
   };
-  const result = layoutColumns(colCfg, style, decor);
+  const result =
+    columnsKind === "waterfall"
+      ? layoutWaterfall(colCfg, style, decor)
+      : columnsKind === "mekko"
+        ? layoutMekko(colCfg, style, decor)
+        : layoutColumns(colCfg, style, decor);
   const { anchors, nodes } = result;
-  // 100% columns have no value→y map, but the secondary axis provides one.
-  if (!anchors.valueToY && !secondary) return result;
+  // No value→y map and no line axis at all → nothing to overlay.
+  if (!anchors.valueToY && !secondary && !independent) return result;
 
   const fs = style.fontSize;
   let lineToY = anchors.valueToY ?? ((v: number) => anchors.plot.y + anchors.plot.h - v);
@@ -443,6 +460,15 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const fmt = resolveFormat(lines.flatMap((s) => s.values.filter((v): v is number => v != null)), cfg.numberFormat);
   lines.forEach((s, li) => {
     const color = seriesColor(style, cols.length + li, s.color);
+    // Independent axis: zoom this line to its own value range (a nice-ticked
+    // [min,max]) so its shape is visible whatever its units; the point labels
+    // carry the real values since there is no shared numeric axis to read.
+    const nums = s.values.filter((v): v is number => v != null);
+    const ownTicks = independent && nums.length ? niceTicks(Math.min(...nums), Math.max(...nums)) : [0, 1];
+    const lo = ownTicks[0];
+    const hi = ownTicks[ownTicks.length - 1];
+    const toY = independent ? (v: number) => anchors.plot.y + anchors.plot.h - ((v - lo) / (hi - lo || 1)) * anchors.plot.h : lineToY;
+    const labelOn = decor.segmentLabels || independent;
     let prev: { x: number; y: number } | null = null;
     let lastY: number | null = null;
     s.values.forEach((v, c) => {
@@ -450,14 +476,14 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         prev = null;
         return;
       }
-      const pt = { x: anchors.categoryX[c], y: lineToY(v) };
+      const pt = { x: anchors.categoryX[c], y: toY(v) };
       if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `combo-line-${li}-${c}` });
       const r = 2.4;
       nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `combo-marker-${li}-${c}` });
-      if (decor.segmentLabels) {
+      if (labelOn) {
         nodes.push({
           kind: "text", x: pt.x - 30, y: pt.y - fs * 1.65, w: 60, h: fs * 1.4,
-          text: formatNumber(v, fmt), fontSize: fs, color: style.text,
+          text: formatNumber(v, fmt), fontSize: fs, color: independent ? color : style.text,
           align: "center", valign: "bottom", name: `combo-label-${li}-${c}`,
         });
       }

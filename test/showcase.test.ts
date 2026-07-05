@@ -102,6 +102,9 @@ describe("showcase deck coverage", () => {
     ["radar per-spoke scales", (c) => c.kind === "radar" && !!c.radar?.perSpoke],
     ["line bridge gaps", (c) => c.kind === "line" && !!c.decorations?.bridgeGaps],
     ["transparent floating segment", (c) => c.data.series.some((s) => s.color === "transparent")],
+    ["combo waterfall base", (c) => c.combo?.columns === "waterfall"],
+    ["combo mekko base", (c) => c.combo?.columns === "mekko"],
+    ["combo independent line axes", (c) => c.combo?.lineAxes === "independent"],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

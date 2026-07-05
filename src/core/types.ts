@@ -386,7 +386,16 @@ export interface ChartConfig {
    */
   radar?: { perSpoke?: boolean };
   /** Combo: how the column series render under the lines (default stacked). */
-  combo?: { columns?: "stacked" | "clustered" | "stacked100" };
+  combo?: {
+    /** Base column mode under the lines (default stacked). */
+    columns?: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko";
+    /**
+     * "independent" gives each line series its own scale (labelled at the
+     * points, no shared secondary axis) so unlike-unit KPIs all read on one
+     * chart; "shared" (default) puts every line on one secondary axis.
+     */
+    lineAxes?: "shared" | "independent";
+  };
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;

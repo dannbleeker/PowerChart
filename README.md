@@ -85,6 +85,8 @@ conventions, and every option.
 | Radar per-spoke scales (mixed KPI units) | ✅ (`radar: {perSpoke}`) |
 | Missing-data bridge on line charts | ✅ (`decorations.bridgeGaps`) |
 | Transparent floating column segments | ✅ (series `color: "transparent"`) |
+| Combo with a waterfall or Mekko base under the lines | ✅ (`combo.columns: "waterfall" \| "mekko"`) |
+| Combo with independent per-line axes (mixed-unit KPIs) | ✅ (`combo.lineAxes: "independent"`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

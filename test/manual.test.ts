@@ -43,6 +43,7 @@ describe("user manual coverage", () => {
       "Gantt summary bars", "Notched boxplots", "Radar band",
       "Other bucket", "Calendar heatmap", "Butterfly stacked flanks",
       "Radar per-spoke scales", "Missing-data bridge", "Floating segments",
+      "Combo base modes", "Combo independent line axes",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

@@ -154,6 +154,10 @@ pick weeks (with weekend shading), months, or quarters automatically.
   missing (null) points instead of breaking it.
 - **Floating segments**: a stacked-column series with `color: "transparent"`
   reserves its space without drawing, floating the bars above it.
+- **Combo base modes** (`combo.columns`): put the lines over a waterfall
+  bridge or a Mekko as well as stacked / clustered / 100% columns.
+- **Combo independent line axes** (`combo.lineAxes: "independent"`): give each
+  line series its own scale so unlike-unit KPIs share one chart.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

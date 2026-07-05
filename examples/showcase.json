@@ -4006,5 +4006,157 @@
     "decorations": {
       "segmentLabels": true
     }
+  },
+  {
+    "kind": "combo",
+    "width": 480,
+    "height": 300,
+    "title": "Combo: waterfall bridge + %-of-total line",
+    "secondaryAxis": true,
+    "combo": {
+      "columns": "waterfall"
+    },
+    "waterfall": {
+      "totalIndices": [
+        5
+      ]
+    },
+    "data": {
+      "categories": [
+        "Start",
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "End"
+      ],
+      "series": [
+        {
+          "name": "Delta",
+          "values": [
+            100,
+            20,
+            -15,
+            25,
+            -10,
+            0
+          ]
+        },
+        {
+          "name": "Margin %",
+          "type": "line",
+          "values": [
+            40,
+            42,
+            38,
+            44,
+            41,
+            43
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": true,
+      "seriesLabels": true
+    }
+  },
+  {
+    "kind": "combo",
+    "width": 480,
+    "height": 300,
+    "title": "Combo: Mekko base + overlaid line",
+    "secondaryAxis": true,
+    "combo": {
+      "columns": "mekko"
+    },
+    "data": {
+      "categories": [
+        "EMEA",
+        "Americas",
+        "APAC"
+      ],
+      "series": [
+        {
+          "name": "Prod A",
+          "values": [
+            30,
+            45,
+            20
+          ]
+        },
+        {
+          "name": "Prod B",
+          "values": [
+            20,
+            25,
+            30
+          ]
+        },
+        {
+          "name": "Share %",
+          "type": "line",
+          "values": [
+            62,
+            70,
+            45
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "seriesLabels": true
+    }
+  },
+  {
+    "kind": "combo",
+    "width": 480,
+    "height": 300,
+    "title": "Combo: independent line axes (mixed KPIs)",
+    "combo": {
+      "lineAxes": "independent"
+    },
+    "data": {
+      "categories": [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            40,
+            48,
+            45,
+            60
+          ]
+        },
+        {
+          "name": "NPS",
+          "type": "line",
+          "values": [
+            30,
+            45,
+            42,
+            55
+          ]
+        },
+        {
+          "name": "Orders k",
+          "type": "line",
+          "values": [
+            1200,
+            1500,
+            1400,
+            1900
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "seriesLabels": true
+    }
   }
 ]
