@@ -67,6 +67,9 @@ conventions, and every option.
 | KPI / number tile (big number + delta arrow) | ✅ (Elements section, `↓ good` flip) |
 | Bar-of-pie breakout (top-N + "Other" detailed) | ✅ (`pie.breakout`) |
 | Small multiples (grid of panels, one shared scale) | ✅ (`multiples: {columns?}`) |
+| Stepped line & area (staircase, jump before/after/center) | ✅ (`decorations.stepped`) |
+| Column gap width & clustered bar overlap (Excel-style) | ✅ (`gapWidth` 0–500, `overlap` −100…100) |
+| Butterfly value ticks & gridlines on both flanks | ✅ (`valueAxis`/`gridlines` on `butterfly`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

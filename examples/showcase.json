@@ -2914,5 +2914,210 @@
     "decorations": {
       "seriesLabels": false
     }
+  },
+  {
+    "kind": "line",
+    "width": 480,
+    "height": 300,
+    "title": "Stepped line (staircase)",
+    "data": {
+      "categories": [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun"
+      ],
+      "series": [
+        {
+          "name": "Base rate",
+          "values": [
+            2,
+            2,
+            2.5,
+            2.5,
+            3,
+            2.75
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": false,
+      "valueAxis": true,
+      "gridlines": true,
+      "stepped": "after"
+    }
+  },
+  {
+    "kind": "area",
+    "width": 480,
+    "height": 300,
+    "title": "Stepped area",
+    "data": {
+      "categories": [
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Mobile",
+          "values": [
+            20,
+            32,
+            45,
+            60,
+            74
+          ]
+        },
+        {
+          "name": "Desktop",
+          "values": [
+            35,
+            37,
+            36,
+            34,
+            30
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": false,
+      "valueAxis": true,
+      "gridlines": true,
+      "stepped": "before"
+    }
+  },
+  {
+    "kind": "butterfly",
+    "width": 480,
+    "height": 300,
+    "title": "Butterfly with value ticks on both flanks",
+    "data": {
+      "categories": [
+        "<30",
+        "30–39",
+        "40–49",
+        "50–59",
+        "60+"
+      ],
+      "series": [
+        {
+          "name": "Women",
+          "values": [
+            420,
+            610,
+            540,
+            320,
+            120
+          ]
+        },
+        {
+          "name": "Men",
+          "values": [
+            380,
+            650,
+            600,
+            410,
+            160
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": true,
+      "valueAxis": true,
+      "gridlines": true
+    }
+  },
+  {
+    "kind": "clustered",
+    "width": 480,
+    "height": 300,
+    "title": "Clustered overlap (Excel-style, 45%)",
+    "data": {
+      "categories": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "series": [
+        {
+          "name": "2024",
+          "values": [
+            42,
+            48,
+            45,
+            61
+          ]
+        },
+        {
+          "name": "2025",
+          "values": [
+            51,
+            55,
+            58,
+            70
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "seriesLabels": true
+    },
+    "overlap": 45
+  },
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Narrow gap width (histogram look, gapWidth 0)",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            34,
+            40,
+            47,
+            56
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            22,
+            26,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            18,
+            17,
+            19,
+            22
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true
+    },
+    "gapWidth": 0
   }
 ]

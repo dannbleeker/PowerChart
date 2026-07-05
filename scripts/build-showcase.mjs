@@ -525,6 +525,48 @@ const features = [
     },
     decorations: { seriesLabels: false },
   },
+  {
+    kind: "line",
+    width: 480,
+    height: 300,
+    title: "Stepped line (staircase)",
+    data: {
+      categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+      series: [{ name: "Base rate", values: [2.0, 2.0, 2.5, 2.5, 3.0, 2.75] }],
+    },
+    decorations: { segmentLabels: false, valueAxis: true, gridlines: true, stepped: "after" },
+  },
+  {
+    kind: "area",
+    width: 480,
+    height: 300,
+    title: "Stepped area",
+    data: {
+      categories: ["2021", "2022", "2023", "2024", "2025"],
+      series: [
+        { name: "Mobile", values: [20, 32, 45, 60, 74] },
+        { name: "Desktop", values: [35, 37, 36, 34, 30] },
+      ],
+    },
+    decorations: { segmentLabels: false, valueAxis: true, gridlines: true, stepped: "before" },
+  },
+  {
+    ...sampleConfig("butterfly"),
+    title: "Butterfly with value ticks on both flanks",
+    decorations: { segmentLabels: true, valueAxis: true, gridlines: true },
+  },
+  {
+    ...sampleConfig("clustered"),
+    title: "Clustered overlap (Excel-style, 45%)",
+    overlap: 45,
+    decorations: { seriesLabels: true },
+  },
+  {
+    ...sampleConfig("stacked"),
+    title: "Narrow gap width (histogram look, gapWidth 0)",
+    gapWidth: 0,
+    decorations: { totals: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

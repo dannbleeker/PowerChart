@@ -105,8 +105,20 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
         const w = (slots.centers[c + 1] - slots.centers[c]) / steps;
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
-          const yT = yTop0 + (yTop1 - yTop0) * t;
-          const yB = yBot0 + (yBot1 - yBot0) * t;
+          // Stepped areas hold a flat top across the interval (staircase);
+          // "after" carries the left value, "before" the right, "center" both.
+          let yT: number;
+          let yB: number;
+          if (decor.stepped === "after" || (decor.stepped === "center" && t < 0.5)) {
+            yT = yTop0;
+            yB = yBot0;
+          } else if (decor.stepped === "before" || decor.stepped === "center") {
+            yT = yTop1;
+            yB = yBot1;
+          } else {
+            yT = yTop0 + (yTop1 - yTop0) * t;
+            yB = yBot0 + (yBot1 - yBot0) * t;
+          }
           nodes.push({ kind: "rect", x: slots.centers[c] + k * w, y: yT, w: w + 0.5, h: Math.max(0, yB - yT), fill, name: `area-${si}-${c}-${k}` });
         }
       }
@@ -135,10 +147,24 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
         const pt = { x: slots.centers[c], y: scale.toY(v) };
         columnTop[c] = Math.min(columnTop[c], pt.y);
         if (prev) {
-          nodes.push({
-            kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2,
-            ...(forecast ? { dash: [4, 3] } : {}), name: `line-${si}-${c}`,
-          });
+          const p = prev;
+          const dashOpt = forecast ? { dash: [4, 3] } : {};
+          const seg = (x1: number, y1: number, x2: number, y2: number, suffix: string) =>
+            nodes.push({ kind: "line", x1, y1, x2, y2, stroke: color, strokeWidth: 2, ...dashOpt, name: `line-${si}-${c}${suffix}` });
+          if (decor.stepped === "after") {
+            seg(p.x, p.y, pt.x, p.y, "a");
+            seg(pt.x, p.y, pt.x, pt.y, "b");
+          } else if (decor.stepped === "before") {
+            seg(p.x, p.y, p.x, pt.y, "a");
+            seg(p.x, pt.y, pt.x, pt.y, "b");
+          } else if (decor.stepped === "center") {
+            const mx = (p.x + pt.x) / 2;
+            seg(p.x, p.y, mx, p.y, "a");
+            seg(mx, p.y, mx, pt.y, "b");
+            seg(mx, pt.y, pt.x, pt.y, "c");
+          } else {
+            seg(p.x, p.y, pt.x, pt.y, "");
+          }
         }
         // Marker: small square with a background ring so crossings stay legible.
         // A per-cell color override highlights the point (max/min/last…) with

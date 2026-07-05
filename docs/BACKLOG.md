@@ -15,7 +15,9 @@ lollipop/dot/dumbbell styles, gantt progress + baselines, grouped
 boxplots — plus, from the next tier: waterfall budget-vs-actual bridge,
 line confidence bands, area-between-series (`fillBetween`), heatmap
 marginal totals, slope chart, waffle, KPI tile, bar-of-pie breakout,
-small multiples.)
+small multiples; plus batch G of the §2 within-kind gaps: stepped
+line/area, Excel-style column gap width + clustered overlap, and butterfly
+value ticks/gridlines on both flanks.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -25,16 +27,14 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 The researched top-10 and the full next tier are shipped (waterfall
 bridge, confidence bands, fill-between, heatmap totals, slope, waffle,
 KPI tile, bar-of-pie, small multiples). Next candidates come from §2/§3
-below (strongest remaining: semi-circle doughnut, stepped lines, butterfly
-value ticks, bump chart, treemap, Pareto helper).
+below (strongest remaining: semi-circle doughnut, bump chart, treemap,
+Pareto helper).
 
 ## 2. Gaps within existing kinds (per kind)
 
 ### Column family (stacked / clustered / stacked100)
 - **Automatic "Other" bucket** for long-tail series (think-cell's "Move to
   Other Series") — medium, medium.
-- **Configurable gap width / column overlap** (Excel exposes 0–500%) —
-  easy, medium; today `colThick` is hardcoded at 2/3 slot.
 - **Transparent "no-fill" segment** (floating bars) — easy, low (waterfall
   covers most cases).
 - stacked100: **negative values are silently clamped** — medium, low/niche.
@@ -45,8 +45,6 @@ value ticks, bump chart, treemap, Pareto helper).
   rendering engine.
 
 ### Butterfly
-- **Value ticks/gridlines on both flanks** (today: only bar-end labels) —
-  easy, medium.
 - **Stacked flanks** (>1 series per side; today hardcoded to series 0/1) —
   medium, medium.
 
@@ -58,8 +56,7 @@ value ticks, bump chart, treemap, Pareto helper).
 - Stacked-area + line, scatter-on-combo — hard/low; skip for now.
 
 ### Line / Area
-- **Stepped line/area** — easy, medium. **Smoothed lines** — medium
-  (polyline approximation), medium.
+- **Smoothed lines** — medium (polyline approximation), medium.
 - **Area with negative values** — today clamped to 0 — medium, high for
   P&L-over-time.
 - **Horizontal "profile chart"** (think-cell parity: rotate line/area) —

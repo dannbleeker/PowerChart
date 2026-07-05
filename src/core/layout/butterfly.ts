@@ -24,18 +24,21 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
     Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12,
   );
   const valueW = fs * 3.4; // room for outside value labels on each flank
+  // A value axis reserves a strip at the bottom for tick labels on both flanks.
+  const axisH = decor.valueAxis ? fs * 1.5 : 0;
   const plot = {
     x: valueW,
     y: titleH + headerH + 2,
     w: cfg.width - valueW * 2,
-    h: cfg.height - titleH - headerH - 6,
+    h: cfg.height - titleH - headerH - 6 - axisH,
   };
   const halfW = (plot.w - gutterW) / 2;
   const leftEdge = plot.x + halfW; // right edge of the left half
   const rightEdge = leftEdge + gutterW; // left edge of the right half
 
   const all = [...left.values, ...right.values].filter((v): v is number => v != null).map((v) => Math.abs(v));
-  const max = niceTicks(0, Math.max(1, ...all), 4).pop()!;
+  const ticks = niceTicks(0, Math.max(1, ...all), 4);
+  const max = ticks[ticks.length - 1];
   const fmt = resolveFormat(all, cfg.numberFormat);
   const qOf = (v: number) => (Math.abs(v) / max) * halfW;
 
@@ -59,6 +62,17 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       });
     },
   );
+
+  // Value gridlines mirrored on both flanks, drawn behind the bars.
+  if (decor.gridlines) {
+    for (const tk of ticks) {
+      if (tk <= 0) continue;
+      const q = qOf(tk);
+      for (const x of [leftEdge - q, rightEdge + q]) {
+        nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 1, name: `gridline-${tk}` });
+      }
+    }
+  }
 
   const columnTop: number[] = [];
   for (let c = 0; c < n; c++) {
@@ -100,6 +114,24 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   // Center axis lines flanking the gutter.
   for (const x of [leftEdge, rightEdge]) {
     nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+  }
+
+  // Value tick labels on both flanks, in the reserved bottom strip.
+  if (decor.valueAxis) {
+    const ty = plot.y + plot.h + 1;
+    for (const tk of ticks) {
+      const q = qOf(tk);
+      const label = formatNumber(tk, fmt);
+      // 0 sits at the inner edges (the gutter sides); other ticks mirror outward.
+      const xs = tk === 0 ? [leftEdge, rightEdge] : [leftEdge - q, rightEdge + q];
+      xs.forEach((x, side) => {
+        nodes.push({
+          kind: "text", x: x - valueW / 2, y: ty, w: valueW, h: axisH,
+          text: label, fontSize: fs * 0.85, color: style.mutedText,
+          align: "center", valign: "middle", name: `tick-${tk}-${side === 0 ? "l" : "r"}`,
+        });
+      });
+    }
   }
 
   return {
