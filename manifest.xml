@@ -14,7 +14,7 @@
   <Description DefaultValue="think-cell-style charts (waterfall, Mekko, stacked, CAGR arrows) inserted as native, editable PowerPoint shapes." />
   <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-80.png" />
-  <SupportUrl DefaultValue="https://github.com/dannbleeker/powerchart-" />
+  <SupportUrl DefaultValue="https://github.com/dannbleeker/powerchart" />
 
   <Hosts>
     <Host Name="Presentation" />
@@ -191,7 +191,7 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html" />
-        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/powerchart-" />
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/powerchart" />
         <bt:Url id="Taskpane.Url.stacked" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=stacked" />
         <bt:Url id="Taskpane.Url.waterfall" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=waterfall" />
         <bt:Url id="Taskpane.Url.mekko" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=mekko" />
