@@ -158,6 +158,12 @@ pick weeks (with weekend shading), months, or quarters automatically.
   bridge or a Mekko as well as stacked / clustered / 100% columns.
 - **Combo independent line axes** (`combo.lineAxes: "independent"`): give each
   line series its own scale so unlike-unit KPIs share one chart.
+- **Hex tile maps** (`tilemap.shape: "hex"`): draw the cartogram with
+  hexagonal tiles instead of squares.
+- **Tilemap mini-glyphs** (`tilemap.glyph: "bars"`): a mini bar chart per
+  region from a multi-series datasheet.
+- **100% charts with negatives**: `stacked100` now shows negative segments
+  below the zero line instead of clamping them away.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

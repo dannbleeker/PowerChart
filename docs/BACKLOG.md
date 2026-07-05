@@ -25,7 +25,8 @@ notched boxplots, and the radar min–max "peer range + us" band; plus
 batch K: automatic "Other" bucket, calendar heatmap layout, and butterfly
 stacked flanks; plus batch L: radar per-spoke scales, transparent floating
 column segments, and the line missing-data bridge; plus batch M: combo
-waterfall/Mekko base modes and independent per-line-series axes.)
+waterfall/Mekko base modes and independent per-line-series axes; plus
+batch N: tilemap hex tiles, tilemap mini-glyphs, and stacked100 negatives.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -41,7 +42,7 @@ Pareto helper).
 ## 2. Gaps within existing kinds (per kind)
 
 ### Column family (stacked / clustered / stacked100)
-- stacked100: **negative values are silently clamped** — medium, low/niche.
+- (all researched column-family gaps shipped)
 
 ### Waterfall
 - Connector re-routing (drag to skip columns) — authoring UX, low for a
@@ -86,9 +87,6 @@ Pareto helper).
   Clustering/dendrograms, cell-size encoding — hard/low; skip.
 
 ### Tilemap
-- **Mini glyphs per tile** (sparkline/bar inside each region) — medium,
-  medium.
-- Hex tiles — SVG/pptx-only (no filled polygons live) — medium, low/medium.
 - Proportional-area cartograms, drill-down — hard/infeasible; rejected.
 
 ## 3. New chart types worth adding (ranked)

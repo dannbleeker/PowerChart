@@ -100,8 +100,18 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     dataMin = Math.min(0, ...all);
     dataMax = Math.max(0, ...all);
   }
+  // 100% charts: negatives are shares below the zero line. The axis drops to
+  // the most-negative column share (0 when all data is positive → unchanged).
+  const pctNegMin = pct
+    ? Math.min(0, ...data.categories.map((_, c) => (denominators[c] > 0 ? negTotals[c] / denominators[c] : 0)))
+    : 0;
   const scale: ValueScale = pct
-    ? { min: 0, max: 1, ticks: [0, 0.25, 0.5, 0.75, 1], toY: (v: number) => frame.y + frame.h - v * frame.h }
+    ? {
+        min: pctNegMin,
+        max: 1,
+        ticks: pctNegMin < 0 ? niceTicks(pctNegMin, 1, 5) : [0, 0.25, 0.5, 0.75, 1],
+        toY: (v: number) => frame.y + frame.h - ((v - pctNegMin) / (1 - pctNegMin)) * frame.h,
+      }
     : valueScale(frame, dataMin, dataMax, cfg.scale, H ? undefined : cfg.axisBreak, !stacked && !H && cfg.logScale);
 
   // Value coordinate: distance along the value axis from the scale minimum.
@@ -156,7 +166,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const s = data.series[si];
       const raw = s.values[c];
       let v = raw ?? 0;
-      if (pct) v = denominators[c] > 0 ? Math.max(0, v) / denominators[c] : 0;
+      if (pct) v = denominators[c] > 0 ? v / denominators[c] : 0;
       let r: { x: number; y: number; w: number; h: number } | null = null;
       const fill = seriesColor(style, si, s.colors?.[c] ?? s.color);
 

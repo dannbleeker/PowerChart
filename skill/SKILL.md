@@ -85,6 +85,8 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Bridge (waterfall) with a %-of-total line | `combo` + `combo.columns: "waterfall"` + a `type:"line"` series |
 | Mekko with an overlaid line | `combo` + `combo.columns: "mekko"` |
 | Several KPIs in unlike units on one chart | `combo` + `combo.lineAxes: "independent"` |
+| Hexagonal tile map | `tilemap` + `tilemap.shape: "hex"` |
+| A trend per region on a map | `tilemap` (regions × periods) + `tilemap.glyph: "bars"` |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,

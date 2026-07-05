@@ -2,6 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { lerpColor, NO_DATA, sequentialScale } from "../color";
+import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
 import { footnoteH } from "./frame";
 import type { LayoutResult } from "./column";
@@ -63,6 +64,19 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const fill = min === max ? () => lerpColor("#ffffff", base, 0.5) : sequentialScale(min, max, base);
   const fmt = resolveFormat(vals, cfg.numberFormat);
 
+  const topts = cfg.tilemap ?? {};
+  const hex = topts.shape === "hex";
+  const glyph = topts.glyph === "bars" && data.series.length > 1;
+  // Mini-glyph mode: each region carries a series of values (one bar each).
+  const seriesVals = new Map<string, (number | null)[]>();
+  if (glyph) {
+    data.categories.forEach((code, c) => {
+      const key = code.trim().toUpperCase();
+      if (key in layout) seriesVals.set(key, data.series.map((s) => s.values[c] ?? null));
+    });
+  }
+  const glyphMax = glyph ? Math.max(1, ...[...seriesVals.values()].flat().filter((v): v is number => v != null)) : 1;
+
   // Fit uniform square tiles into the plot area.
   const cols = Math.max(...Object.values(layout).map(([c]) => c)) + 1;
   const rows = Math.max(...Object.values(layout).map(([, r]) => r)) + 1;
@@ -70,18 +84,53 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const availW = cfg.width - 4;
   const availH = cfg.height - titleH - legendH - footnoteH(cfg, style, decor) - 4;
   const gutter = 2.5;
-  const tile = Math.max(6, Math.min((availW - (cols - 1) * gutter) / cols, (availH - (rows - 1) * gutter) / rows));
-  const gridW = cols * tile + (cols - 1) * gutter;
+  // Hex tiles nest: rows step ~0.87·tile and odd rows shift half a column, so
+  // the footprint needs an extra half column of width and less height.
+  const tile = hex
+    ? Math.max(6, Math.min((availW - (cols - 1) * gutter) / (cols + 0.5), availH / ((rows - 1) * 0.87 + 1)))
+    : Math.max(6, Math.min((availW - (cols - 1) * gutter) / cols, (availH - (rows - 1) * gutter) / rows));
+  const gridW = (hex ? cols + 0.5 : cols) * tile + (cols - 1) * gutter;
   const x0 = (cfg.width - gridW) / 2;
   const y0 = titleH + 2;
+  const rowsBottom = hex ? y0 + (rows - 1) * tile * 0.87 + tile : y0 + rows * (tile + gutter);
 
+  const hexPts = (cx: number, cy: number, R: number) =>
+    [90, 150, 210, 270, 330, 30].map((a) => ({ x: cx + R * Math.cos((a * Math.PI) / 180), y: cy - R * Math.sin((a * Math.PI) / 180) }));
   for (const [code, [col, row]] of Object.entries(layout)) {
     const v = values.get(code);
-    const tileFill = v == null || !vals.length ? NO_DATA : fill(v);
-    const x = x0 + col * (tile + gutter);
-    const y = y0 + row * (tile + gutter);
-    nodes.push({ kind: "rect", x, y, w: tile, h: tile, fill: tileFill, name: `tile-${code}` });
+    // In glyph mode the tile is a faint backdrop for the bars; otherwise it
+    // carries the value color.
+    const tileFill = glyph ? lerpColor("#ffffff", base, 0.1) : v == null || !vals.length ? NO_DATA : fill(v);
+    const x = x0 + col * (tile + gutter) + (hex && row % 2 === 1 ? (tile + gutter) / 2 : 0);
+    const y = hex ? y0 + row * tile * 0.87 : y0 + row * (tile + gutter);
+    if (hex) {
+      nodes.push({ kind: "polygon", points: hexPts(x + tile / 2, y + tile / 2, tile / 2), fill: tileFill, stroke: style.background, strokeWidth: 1, name: `tile-${code}` });
+    } else {
+      nodes.push({ kind: "rect", x, y, w: tile, h: tile, fill: tileFill, name: `tile-${code}` });
+    }
     const ink = contrastInk(tileFill);
+    // Mini bar glyph: one bar per series, from the region's row of values.
+    if (glyph) {
+      const svals = seriesVals.get(code);
+      if (svals && tile >= fs * 2) {
+        const nb = svals.length;
+        const bw = (tile * 0.78) / nb;
+        const bx0 = x + tile * 0.11;
+        const bBase = y + tile * 0.86;
+        const bMax = tile * 0.5;
+        svals.forEach((sv, si) => {
+          if (sv == null) return;
+          const h = (Math.max(0, sv) / glyphMax) * bMax;
+          nodes.push({ kind: "rect", x: bx0 + si * bw, y: bBase - h, w: Math.max(1, bw - 0.5), h, fill: seriesColor(style, si), name: `glyph-${code}-${si}` });
+        });
+      }
+      nodes.push({
+        kind: "text", x, y: y + tile * 0.06, w: tile, h: fs * 1.2,
+        text: code, fontSize: Math.min(fs * 0.85, tile * 0.3), bold: true, color: ink,
+        align: "center", valign: "middle", name: `tile-code-${code}`,
+      });
+      continue;
+    }
     const showValue = v != null && decor.segmentLabels && tile >= fs * 2.6 && textWidth(formatNumber(v, fmt), fs * 0.8) <= tile - 2;
     nodes.push({
       kind: "text", x, y: showValue ? y + tile / 2 - fs * 1.25 : y, w: tile, h: showValue ? fs * 1.3 : tile,
@@ -96,9 +145,21 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
   }
 
+  // Glyph mode: a series legend instead of the value gradient.
+  if (glyph) {
+    let lx = x0;
+    data.series.forEach((s, si) => {
+      const chip = fs * 0.7;
+      nodes.push(
+        { kind: "rect", x: lx, y: rowsBottom + fs * 0.6, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
+        { kind: "text", x: lx + chip + 3, y: rowsBottom + fs * 0.3, w: textWidth(s.name, fs) + 6, h: fs * 1.4, text: s.name, fontSize: fs * 0.85, color: style.text, align: "left", valign: "middle", name: `legend-${si}` },
+      );
+      lx += chip + 3 + textWidth(s.name, fs) + 12;
+    });
+  }
   // Gradient legend + "no data" swatch.
-  if (vals.length && min !== max) {
-    const ly = y0 + rows * (tile + gutter) + fs * 0.5;
+  if (!glyph && vals.length && min !== max) {
+    const ly = rowsBottom + fs * 0.5;
     const lw = Math.min(gridW * 0.5, fs * 12);
     const steps = 24;
     for (let i = 0; i < steps; i++) {

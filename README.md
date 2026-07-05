@@ -87,6 +87,9 @@ conventions, and every option.
 | Transparent floating column segments | ✅ (series `color: "transparent"`) |
 | Combo with a waterfall or Mekko base under the lines | ✅ (`combo.columns: "waterfall" \| "mekko"`) |
 | Combo with independent per-line axes (mixed-unit KPIs) | ✅ (`combo.lineAxes: "independent"`) |
+| Hexagonal tile maps | ✅ (`tilemap.shape: "hex"`) |
+| Per-region mini-glyphs (bars) on tile maps | ✅ (`tilemap.glyph: "bars"`) |
+| 100% charts with negative segments (below the axis) | ✅ (`stacked100`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |
