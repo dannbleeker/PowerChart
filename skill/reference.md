@@ -57,8 +57,10 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     bridgeGaps?: boolean,             // line: connect straight across null points instead of breaking
     slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
     bump?: boolean,                   // line: bump chart — ranks on an inverted axis, thick lines, end names
+    sparkline?: boolean,              // line/area: word-sized trend, no chrome, min/max/last dots (pair with multiples)
     trajectory?: boolean,             // scatter/bubble: connect points in row order with a direction trail
     summaryBars?: boolean,            // gantt: summary bar on section rows (spans children min→max)
+    criticalPath?: boolean,           // gantt: red-outline the longest "After"-dependency chain + its arrows
     radarBand?: boolean,              // radar: shade the peer min–max envelope, draw last series on top
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
@@ -73,7 +75,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",
               showMean?: boolean, iqrMultiplier?: number,
               jitter?: boolean,       // overlay raw observations as jittered dots (raw-sample mode)
-              notch?: boolean },      // notch each box at the median CI (raw-sample mode)
+              notch?: boolean,        // notch each box at the median CI (raw-sample mode)
+              meanSd?: boolean },     // box = mean±SD, centre = mean, whiskers = mean±2SD (raw-sample mode)
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
   tilemap?: { shape?: "square"|"hex",       // hexagonal tiles (offset rows) instead of squares
               glyph?: "bars" },   // mini bar chart per region from a multi-series datasheet
@@ -197,9 +200,27 @@ the median ± 1.57·IQR/√n confidence interval — boxes whose notches don't
 overlap have significantly different medians. Precomputed boxes (no sample
 size) stay rectangular.
 
+**Mean±SD box** (`boxplot.meanSd`): in raw-sample mode, draws each box as
+mean ± 1 standard deviation with the centre line at the mean and whiskers to
+mean ± 2·SD — the scientific "mean and spread" summary rather than the
+quartile/order-statistic one. No mean × marker (the centre line is the mean);
+mutually exclusive with `notch`.
+
 **Gantt summary bars** (`decorations.summaryBars`): draws a capped summary bar
 on each section-header row (a category with no Start/End/Milestone), spanning
 min(start)→max(end) of the activities beneath it up to the next header.
+
+**Gantt critical path** (`decorations.criticalPath`): over the `After`
+dependency edges, finds the chain with the greatest cumulative duration (the
+critical path) and highlights its bars with a red outline and its dependency
+arrows in thicker red — the MS-Project convention for "the tasks that decide
+the finish date". No-op without `After` rows.
+
+**Sparklines** (`decorations.sparkline`, line/area): a compact, axis-less,
+word-sized trend line with no chrome — a thin line, an optional leading label
+(the title / series name), a trailing value, and dots on the min (red), max
+(green) and last points. Pair with `multiples: {}` for a table of sparklines,
+one row per series (KPI dashboards).
 
 **Radar min–max band** (`decorations.radarBand`): shades the per-spoke min–max
 envelope of the peer series (all series except the last) as a band and draws

@@ -173,6 +173,15 @@ pick weeks (with weekend shading), months, or quarters automatically.
 - **Bump chart** (`decorations.bump`): rank-over-time on an inverted axis.
 - **Horizontal profile chart** (`horizontal` on line/area): rotates the chart
   so categories run down the left and values extend to the right.
+- **Critical path** (`decorations.criticalPath` on Gantt): red-outlines the
+  longest chain of `After`-dependent tasks — the tasks that drive the finish
+  date — and draws its dependency arrows thicker in red.
+- **Mean±SD box** (`boxplot.meanSd`): draws each box as mean ± 1 SD with the
+  centre line at the mean and whiskers to mean ± 2 SD (raw-sample mode) — the
+  scientific summary rather than the quartile one.
+- **Sparklines** (`decorations.sparkline` on line/area): compact, axis-less
+  word-sized trend lines with min/max/last dots; pair with small multiples for
+  a KPI dashboard table, one row per series.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

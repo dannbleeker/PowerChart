@@ -54,6 +54,44 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     (_, c) => starts[c] == null && ends[c] == null && milestones[c] == null,
   );
 
+  // Critical path: over the "After" dependency edges, find the chain with the
+  // greatest cumulative duration and flag its activities + connecting arrows.
+  const predOf = (c: number) => {
+    const pred = after[c];
+    if (pred == null) return -1;
+    const p = Math.round(pred) - 1;
+    return p >= 0 && p < data.categories.length && p !== c ? p : -1;
+  };
+  const critical = new Set<number>();
+  if (decor.criticalPath && after.some((v) => v != null)) {
+    const dur = (c: number) =>
+      starts[c] != null && ends[c] != null ? Math.max(0, ends[c]! - starts[c]!) : 0;
+    // Longest cumulative duration ending at each activity (memoized; cycle-safe).
+    const cum: number[] = data.categories.map(() => -1);
+    const seen = new Set<number>();
+    const longest = (c: number): number => {
+      if (cum[c] >= 0) return cum[c];
+      if (seen.has(c)) return dur(c); // break any accidental cycle
+      seen.add(c);
+      const p = predOf(c);
+      const v = dur(c) + (p >= 0 ? longest(p) : 0);
+      seen.delete(c);
+      return (cum[c] = v);
+    };
+    let end = -1;
+    let best = -1;
+    data.categories.forEach((_, c) => {
+      if (!isHeader[c] && longest(c) > best) {
+        best = longest(c);
+        end = c;
+      }
+    });
+    for (let c = end; c >= 0; c = predOf(c)) {
+      if (critical.has(c)) break;
+      critical.add(c);
+    }
+  }
+
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const bracketH = brackets.length ? fs * 1.9 : 0;
   const headerH = fs * 1.6;
@@ -239,9 +277,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       });
     }
     if (s != null && e != null && e > s) {
+      const isCrit = critical.has(c);
       nodes.push({
         kind: "rect", x: toX(s), y: cy - barH / 2, w: toX(e) - toX(s), h: barH,
         fill: seriesColor(style, 0), name: `bar-${c}`,
+        ...(isCrit ? { stroke: style.negative, strokeWidth: 1.75 } : {}),
       });
       // Percent-complete fill: a darker inner bar over the elapsed share.
       const rawPct = completes[c];
@@ -289,10 +329,14 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const yPred = plot.y + slotH * (p + 0.5);
     const ySucc = plot.y + slotH * (c + 0.5);
     const x2 = toX(succStart);
+    // Edges on the critical path are drawn thicker and red.
+    const critEdge = critical.has(c) && critical.has(p);
+    const dcolor = critEdge ? style.negative : style.mutedText;
+    const dw = critEdge ? 1.75 : 1;
     nodes.push(
-      { kind: "line", x1, y1: yPred, x2: x1, y2: ySucc, stroke: style.mutedText, strokeWidth: 1, name: `dep-v-${c}` },
-      { kind: "line", x1, y1: ySucc, x2: x2 - 2, y2: ySucc, stroke: style.mutedText, strokeWidth: 1, name: `dep-h-${c}` },
-      { kind: "arrowhead", x: x2 - 1, y: ySucc, angle: x2 >= x1 ? 0 : 180, size: 3.5, fill: style.mutedText, name: `dep-head-${c}` },
+      { kind: "line", x1, y1: yPred, x2: x1, y2: ySucc, stroke: dcolor, strokeWidth: dw, name: `dep-v-${c}` },
+      { kind: "line", x1, y1: ySucc, x2: x2 - 2, y2: ySucc, stroke: dcolor, strokeWidth: dw, name: `dep-h-${c}` },
+      { kind: "arrowhead", x: x2 - 1, y: ySucc, angle: x2 >= x1 ? 0 : 180, size: critEdge ? 4.2 : 3.5, fill: dcolor, name: `dep-head-${c}` },
     );
   });
 

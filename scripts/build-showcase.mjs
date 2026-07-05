@@ -1023,6 +1023,53 @@ const features = [
     },
     decorations: { valueAxis: true },
   },
+  {
+    kind: "gantt",
+    width: 560,
+    height: 300,
+    title: "Launch plan — critical path highlighted",
+    data: {
+      categories: ["Research", "Design", "Build", "Copywriting", "QA", "Launch"],
+      series: [
+        { name: "Start", values: [1, 3, 8, 3, 14, 18] },
+        { name: "End", values: [3, 8, 14, 5, 18, 20] },
+        { name: "After", values: [null, 1, 2, 1, 3, 5] },
+      ],
+    },
+    decorations: { criticalPath: true },
+  },
+  {
+    kind: "boxplot",
+    width: 480,
+    height: 300,
+    title: "Assay reproducibility (mean ± SD)",
+    data: {
+      categories: ["Lot A", "Lot B", "Lot C"],
+      series: Array.from({ length: 8 }, (_, i) => ({
+        name: `r${i + 1}`,
+        values: [98 + ((i * 5) % 7) - 3, 90 + ((i * 3) % 9), 74 + i * 3],
+      })),
+    },
+    boxplot: { meanSd: true },
+    decorations: { valueAxis: true, segmentLabels: true },
+  },
+  {
+    kind: "line",
+    width: 480,
+    height: 260,
+    title: "KPI sparklines — last 12 weeks",
+    data: {
+      categories: Array.from({ length: 12 }, (_, i) => `w${i + 1}`),
+      series: [
+        { name: "Signups", values: [40, 44, 42, 50, 48, 60, 58, 72, 66, 80, 78, 92] },
+        { name: "Revenue", values: [12, 13, 15, 14, 18, 17, 22, 25, 24, 30, 34, 33] },
+        { name: "Churn %", values: [5.1, 4.8, 4.9, 4.4, 4.6, 4.0, 3.8, 3.9, 3.3, 3.1, 2.9, 2.7] },
+        { name: "NPS", values: [30, 32, 31, 35, 38, 40, 39, 44, 47, 46, 52, 55] },
+      ],
+    },
+    multiples: { columns: 1 },
+    decorations: { sparkline: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

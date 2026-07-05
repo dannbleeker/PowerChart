@@ -95,6 +95,9 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | 80/20 breakdown (defects, revenue) | `clustered` + `pareto: true` (sorted bars + cumulative line) |
 | Rank changes over time | `line` + `decorations.bump: true` (bump chart) |
 | Profile across many named items | `line`/`area` + `horizontal: true` (profile chart) |
+| Which tasks drive the project finish date | `gantt` (with `After` rows) + `decorations.criticalPath: true` |
+| Distribution summary by mean and spread (not quartiles) | `boxplot` (raw samples) + `boxplot.meanSd: true` |
+| Word-sized inline trend / KPI dashboard rows | `line`/`area` + `decorations.sparkline: true` (pair with `multiples`) |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,

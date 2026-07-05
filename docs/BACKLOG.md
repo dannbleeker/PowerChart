@@ -59,14 +59,14 @@ Pareto helper).
   medium/hard, low/niche.
 
 ### Gantt
-- **Critical-path highlight** (CPM over existing `After` edges) —
-  medium-hard, medium (PM-tool territory; think-cell lacks it too).
 - Resource lanes with capacity, working-day calendars, cost columns —
   hard/low; out of deck-tool scope.
+  (Critical-path highlight shipped: `decorations.criticalPath` red-outlines the
+  longest `After`-dependency chain and its arrows.)
 
 ### Boxplot
-- Mean±SD box variant — easy, niche.
-  (Violin density curves shipped as their own `violin` kind.)
+- (Mean±SD box variant shipped as `boxplot.meanSd`; violin density curves
+  shipped as their own `violin` kind.)
 
 ### Radar
 - Radial bar variant — really a new kind; medium, medium. Stacked radar — low.

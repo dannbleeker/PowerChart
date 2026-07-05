@@ -88,6 +88,16 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // Raw samples: this category's column across the group's rows.
     const sample = rowsOf(g).map((srs) => srs.values[c]).filter((v): v is number => v != null).sort((a, b) => a - b);
     if (sample.length < 2) return null;
+    // Mean±SD variant: box = mean ± 1·SD, centre = mean, whiskers = mean ± 2·SD.
+    if (opts.meanSd) {
+      const mean = sample.reduce((a, b) => a + b, 0) / sample.length;
+      const variance = sample.reduce((a, b) => a + (b - mean) ** 2, 0) / (sample.length - 1);
+      const sd = Math.sqrt(variance);
+      return {
+        min: mean - 2 * sd, q1: mean - sd, median: mean, q3: mean + sd, max: mean + 2 * sd,
+        mean: undefined, outliers: [], samples: sample,
+      };
+    }
     const method = opts.quartileMethod ?? "exclusive";
     const q1 = quartile(sample, 0.25, method);
     const q3 = quartile(sample, 0.75, method);
@@ -191,7 +201,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       segLine(p - gCapW / 2, qOf(b.min), p + gCapW / 2, qOf(b.min), 0.75, style.axis, `cap-lo-${c}${gSuffix}`),
     );
     // Q1–Q3 box (notched at the median CI when raw samples give us n).
-    const notch = !!opts.notch && !!b.samples && b.samples.length >= 3;
+    const notch = !!opts.notch && !opts.meanSd && !!b.samples && b.samples.length >= 3;
     let medHalf = gBoxW / 2;
     if (notch) {
       const ci = (1.57 * (b.q3 - b.q1)) / Math.sqrt(b.samples!.length);
