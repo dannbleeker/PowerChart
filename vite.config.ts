@@ -10,6 +10,7 @@ export default defineConfig({
       input: {
         demo: resolve(__dirname, "index.html"),
         taskpane: resolve(__dirname, "src/taskpane/taskpane.html"),
+        excel: resolve(__dirname, "src/excel/excel.html"),
       },
     },
   },

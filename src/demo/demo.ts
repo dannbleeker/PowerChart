@@ -111,13 +111,15 @@ const extras: ChartConfig[] = [
   },
   {
     ...sampleConfig("gantt"),
-    title: "Calendar Gantt (dates in the datasheet)",
+    title: "Gantt: owners, dependencies, today line",
     data: {
-      categories: ["Scoping", "Design", "Build", "Test", "Rollout"],
+      categories: ["Scoping | Anna", "Design | Ben", "Build | Cato", "Test | Dee", "Rollout | Anna"],
       series: [
         { name: "Start", values: ["2026-01-05", "2026-02-01", "2026-03-10", "2026-06-01", "2026-07-01"].map(dstr) },
         { name: "End", values: ["2026-02-01", "2026-03-15", "2026-06-01", "2026-07-01", "2026-07-20"].map(dstr) },
         { name: "Milestone", values: [null, null, dstr("2026-06-01"), null, dstr("2026-07-20")] },
+        { name: "After", values: [null, 1, 2, 3, 4] },
+        { name: "Today", values: [dstr("2026-04-15"), null, null, null, null] },
       ],
       dates: true,
     },
@@ -143,6 +145,43 @@ for (const { kind, label } of CHART_KINDS) {
 }
 for (const cfg of extras) {
   addFigure(cfg.title ?? "extra", cfg);
+}
+
+// --- Elements showcase -------------------------------------------------------
+import { buildCheckbox, buildHarveyBall, buildProcessFlow, buildTableScene } from "../core/elements";
+
+const elements = document.getElementById("elements")!;
+const elementScenes: [string, ReturnType<typeof buildHarveyBall>][] = [
+  ["Harvey balls 0 / 25 / 50 / 75 / 100%", combineRow([0, 0.25, 0.5, 0.75, 1].map((f) => buildHarveyBall(f, 28)), 8)],
+  ["Checkboxes", combineRow((["yes", "no", "partial"] as const).map((s) => buildCheckbox(s, 24)), 10)],
+  ["Process flow (step 3 active)", buildProcessFlow(["Scope", "Design", "Build", "Test", "Launch"], 2, 520, 44)],
+  ["Table", buildTableScene([["", "2024", "2025", "Δ"], ["Revenue", "78", "91", "+13"], ["EBITDA", "21", "27", "+6"], ["Margin", "27%", "30%", "+3pp"]], 520)],
+];
+for (const [caption, scene] of elementScenes) {
+  const fig = document.createElement("figure");
+  const cap = document.createElement("figcaption");
+  cap.textContent = caption;
+  fig.appendChild(cap);
+  const holder = document.createElement("div");
+  holder.innerHTML = sceneToSvg(scene, { background: "#ffffff" });
+  fig.appendChild(holder);
+  elements.appendChild(fig);
+}
+
+/** Lay several small scenes out in one row. */
+function combineRow(scenes: ReturnType<typeof buildHarveyBall>[], gap: number) {
+  let x = 0;
+  const nodes = scenes.flatMap((s) => {
+    const shifted = s.nodes.map((n) => shiftNode(structuredClone(n), x));
+    x += s.width + gap;
+    return shifted;
+  });
+  return { width: x - gap, height: Math.max(...scenes.map((s) => s.height)), nodes };
+}
+function shiftNode<T extends { kind: string }>(n: T, dx: number): T {
+  const node = n as unknown as Record<string, number>;
+  for (const k of ["x", "x1", "x2", "cx"]) if (k in node) node[k] += dx;
+  return n;
 }
 
 function addFigure(caption: string, cfg: ChartConfig) {

@@ -78,6 +78,19 @@ export interface WedgeNode {
   name?: string;
 }
 
+/** Process-flow chevron / pentagon-arrow (PowerPoint's chevron & homePlate). */
+export interface ChevronNode {
+  kind: "chevron";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  fill: string;
+  /** First step in a flow has a flat left edge (homePlate), the rest are chevrons. */
+  flatLeft?: boolean;
+  name?: string;
+}
+
 /** Filled triangle with tip at (x, y), pointing along `angle` (degrees, 0 = east, clockwise). */
 export interface ArrowheadNode {
   kind: "arrowhead";
@@ -89,7 +102,14 @@ export interface ArrowheadNode {
   name?: string;
 }
 
-export type SceneNode = RectNode | LineNode | TextNode | EllipseNode | WedgeNode | ArrowheadNode;
+export type SceneNode =
+  | RectNode
+  | LineNode
+  | TextNode
+  | EllipseNode
+  | WedgeNode
+  | ChevronNode
+  | ArrowheadNode;
 
 /** Point on a circle for wedge geometry (0° = 12 o'clock, clockwise). */
 export function polar(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {

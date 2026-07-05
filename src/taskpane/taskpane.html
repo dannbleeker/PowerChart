@@ -49,6 +49,32 @@
     </section>
 
     <section class="section">
+      <h2>Elements</h2>
+      <div class="element-row">
+        <label>Harvey ball <input type="range" id="harvey-pct" min="0" max="100" value="75" /> <span id="harvey-val">75%</span></label>
+        <span id="harvey-preview" class="element-preview"></span>
+        <button id="harvey-insert" disabled>Insert</button>
+      </div>
+      <div class="element-row">
+        <label>Checkbox
+          <select id="check-state"><option value="yes">✓ yes</option><option value="no">✗ no</option><option value="partial">– partial</option></select>
+        </label>
+        <span id="check-preview" class="element-preview"></span>
+        <button id="check-insert" disabled>Insert</button>
+      </div>
+      <div class="element-row wide">
+        <label style="flex:1">Process flow <input type="text" id="flow-steps" value="Scope, Design, Build, Launch" /></label>
+        <label>step <input type="number" id="flow-highlight" min="0" value="2" style="width:38px" /></label>
+        <button id="flow-insert" disabled>Insert</button>
+      </div>
+      <div id="flow-preview" class="element-flow-preview"></div>
+      <div class="element-row">
+        <label>Table from datasheet</label>
+        <button id="table-insert" disabled>Insert</button>
+      </div>
+    </section>
+
+    <section class="section">
       <h2>Automation (JSON)</h2>
       <p class="hint">Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an array of configs and insert them all. Same schema as <code>npm run render</code>.</p>
       <textarea id="json-io" rows="5" spellcheck="false"></textarea>

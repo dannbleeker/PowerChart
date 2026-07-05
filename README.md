@@ -44,10 +44,16 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | JSON automation (export/import/batch insert + `npm run render` CLI) | ✅ (open take on `.ppttc`) |
 | Datasheet undo/redo (Ctrl+Z / Ctrl+Y) | ✅ |
 | Agenda / chapter slides (one per chapter, current highlighted) | ✅ (appended to the deck) |
+| Harvey balls, checkboxes, process flow, table element | ✅ (Elements section) |
+| Gantt: responsible column, dependency arrows, today line, quarter scale | ✅ (`Activity \| Owner`, `After`/`Today` rows) |
+| Excel data bridge (selection → chart JSON → paste to refresh) | ✅ (`manifest-excel.xml` companion) |
+| Manual label nudging (config-driven) | ✅ (`labelOffsets`) |
+| Pie leader lines for outside labels | ✅ |
+| Visual-regression snapshots + fuzz tests in CI | ✅ |
 | Visual chart gallery (Elements-style thumbnails) | ✅ |
 | Output as native, editable PowerPoint shapes | ✅ (grouped) |
 | Re-edit inserted charts (config persisted in shape tags) | ✅ ("Edit selected chart") |
-| Live Excel data links, in-canvas drag handles | 🚧 out of Office.js reach (see docs/RESEARCH.md) |
+| *Live* Excel data links, in-canvas drag handles | 🚧 out of Office.js reach (see docs/RESEARCH.md; the Excel bridge above is the sandbox-safe substitute) |
 
 ## How it works
 

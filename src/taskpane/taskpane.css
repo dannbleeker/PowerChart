@@ -67,6 +67,15 @@ textarea {
 .series-colors label { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 .series-colors input[type="color"] { width: 22px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 3px; }
 
+.element-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.element-row label { display: flex; align-items: center; gap: 5px; }
+.element-row input[type="text"] { flex: 1; font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; }
+.element-preview svg { display: block; }
+.element-flow-preview { margin: 2px 0 8px; }
+.element-flow-preview svg { width: 100%; height: auto; display: block; }
+.element-row button { font: inherit; font-size: 11px; padding: 3px 10px; border: 1px solid var(--line); background: #fff; border-radius: 5px; cursor: pointer; }
+.element-row button:disabled { opacity: 0.5; }
+
 .agenda-preview { margin-top: 8px; }
 .agenda-preview svg { max-height: 160px; }
 

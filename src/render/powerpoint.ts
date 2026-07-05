@@ -249,6 +249,16 @@ function addNode(
       if (n.name) shape.name = n.name;
       return [shape];
     }
+    case "chevron": {
+      const shape = shapes.addGeometricShape(
+        n.flatLeft ? PowerPoint.GeometricShapeType.homePlate : PowerPoint.GeometricShapeType.chevron,
+        { left: dx + n.x, top: dy + n.y, width: Math.max(0.2, n.w), height: Math.max(0.2, n.h) },
+      );
+      shape.fill.setSolidColor(n.fill);
+      shape.lineFormat.visible = false;
+      if (n.name) shape.name = n.name;
+      return [shape];
+    }
     case "wedge":
       return addWedgeFan(shapes, n, dx, dy);
     case "text":

@@ -45,6 +45,14 @@ function nodeToSvg(n: SceneNode): string {
       const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
       return `<ellipse cx="${r(n.cx)}" cy="${r(n.cy)}" rx="${r(n.rx)}" ry="${r(n.ry)}" fill="${n.fill}"${stroke}${name(n)}/>`;
     }
+    case "chevron": {
+      const notch = n.h * 0.28;
+      const left = n.flatLeft ? `M ${r(n.x)} ${r(n.y)}` : `M ${r(n.x)} ${r(n.y)} L ${r(n.x + notch)} ${r(n.y + n.h / 2)} L ${r(n.x)} ${r(n.y + n.h)}`;
+      const d = n.flatLeft
+        ? `M ${r(n.x)} ${r(n.y)} L ${r(n.x + n.w - notch)} ${r(n.y)} L ${r(n.x + n.w)} ${r(n.y + n.h / 2)} L ${r(n.x + n.w - notch)} ${r(n.y + n.h)} L ${r(n.x)} ${r(n.y + n.h)} Z`
+        : `${left} L ${r(n.x)} ${r(n.y + n.h)} L ${r(n.x + n.w - notch)} ${r(n.y + n.h)} L ${r(n.x + n.w)} ${r(n.y + n.h / 2)} L ${r(n.x + n.w - notch)} ${r(n.y)} Z`;
+      return `<path d="${d}" fill="${n.fill}"${name(n)}/>`;
+    }
     case "wedge": {
       const large = n.endAngle - n.startAngle > 180 ? 1 : 0;
       const o1 = polar(n.cx, n.cy, n.r, n.startAngle);

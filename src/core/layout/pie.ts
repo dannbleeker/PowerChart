@@ -54,6 +54,12 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       const p = polar(cx, cy, inside ? r * 0.62 : r + fs * 0.8, mid);
       const w = textWidth(label, fs) + 4;
       const rightHalf = mid % 360 < 180;
+      if (!inside) {
+        // Leader line from the arc edge toward the label.
+        const a = polar(cx, cy, r + 1, mid);
+        const b = polar(cx, cy, r + fs * 0.65, mid);
+        nodes.push({ kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: style.mutedText, strokeWidth: 0.75, name: `leader-${c}` });
+      }
       nodes.push({
         kind: "text",
         x: inside ? p.x - w / 2 : rightHalf ? p.x : p.x - w,
