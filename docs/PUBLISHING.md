@@ -34,11 +34,13 @@ domain serves the project site from its **root**, the bundle base is `/`
 1. **[agent] Build for Pages** — ✅ `npm run build:pages`
    (`scripts/pages-postbuild.mjs`): runs the prod-manifest gen, `tsc`, a
    root-base `vite build`, then copies the manifest-referenced ribbon icons
-   into `dist/assets/` and writes a `CNAME`. Emits `index.html`,
-   `src/taskpane/taskpane.html`, `src/excel/excel.html` and `assets/icon-*.png`.
+   into `dist/assets/`. Emits `index.html`, `src/taskpane/taskpane.html`,
+   `src/excel/excel.html`, `assets/icon-*.png`, and the static `public/` files
+   (`CNAME`, `privacy.html`, `terms.html`) which Vite copies verbatim.
    > Gotcha found & fixed: Vite doesn't bundle `assets/icon-*.png` (they're
    > referenced only by the manifests), so without the copy step the hosted
-   > icon URLs 404. `pages-postbuild.mjs` copies them and drops the CNAME.
+   > icon URLs 404. `pages-postbuild.mjs` copies them; the `CNAME` and legal
+   > pages ride along from `public/`.
 2. **[agent] Deploy workflow** — ✅ `.github/workflows/pages.yml`: on push to
    `main`, `npm ci` → `npm run build:pages` → `upload-pages-artifact` (path
    `dist`) → `deploy-pages`, with `pages: write` / `id-token: write`.
@@ -123,10 +125,21 @@ outline-only, pattern fills render solid.
 
 - **Org-wide (BESTSELLER)**: a Microsoft 365 admin deploys the manifest
   centrally via Admin Center → Settings → Integrated apps → Upload custom
-  app. No store review; appears for chosen users automatically.
-- **AppSource** (public store): requires a Partner Center account and
-  Microsoft validation (WCAG, privacy URL, support URL). Substantial
-  process; only worth it if PowerChart should be publicly installable.
+  app. No store review; appears for chosen users automatically. Fastest path
+  for internal use — recommended before attempting the public store.
+- **AppSource** (public store): requires a Partner Center account (free for
+  Office Store apps) and Microsoft validation (works on every claimed platform,
+  WCAG, privacy + terms + support URLs). Substantial process; only worth it if
+  PowerChart should be publicly installable. Prep is staged:
+  - **[agent, done]** Hosted **privacy** (`/privacy.html`) + **terms**
+    (`/terms.html`) pages (in `public/`, built to the site root), a
+    trademark-clean store listing in `docs/STORE-LISTING.md`, and the
+    store-facing manifest `<Description>` reworded off the "think-cell" mark.
+  - **[owner]** Create the Partner Center account, produce the listing images
+    (300×300 logo + screenshots), run `office-addin-manifest validate`, then
+    submit. Full checklist in `docs/STORE-LISTING.md`.
+  - ⚠️ **Trademark:** keep everything store-facing (name, description,
+    screenshots) free of the "think-cell" mark — internal docs may keep it.
 
 ## Known constraints to keep in mind
 

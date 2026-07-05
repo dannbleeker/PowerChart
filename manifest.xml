@@ -11,7 +11,7 @@
   <ProviderName>PowerChart (open source)</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="PowerChart" />
-  <Description DefaultValue="think-cell-style charts (waterfall, Mekko, stacked, CAGR arrows) inserted as native, editable PowerPoint shapes." />
+  <Description DefaultValue="Consulting-grade charts — waterfall/bridge, Mekko/Marimekko, stacked columns, CAGR and difference arrows — inserted as native, fully editable PowerPoint shapes." />
   <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-80.png" />
   <SupportUrl DefaultValue="https://github.com/dannbleeker/powerchart" />
