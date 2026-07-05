@@ -26,7 +26,9 @@ Any feature change must update, in the same PR:
 2. **Showcase deck** — extend `scripts/build-showcase.mjs`, run
    `npm run showcase`, commit the regenerated `examples/showcase.json` +
    `showcase.pptx` (`test/showcase.test.ts` + a CI byte-diff staleness gate).
-3. **README feature table.**
+3. **User manual** — `docs/MANUAL.md` (`test/manual.test.ts` fails on
+   missing kinds/rows/controls/elements).
+4. **README feature table.**
 
 ## Commands
 
