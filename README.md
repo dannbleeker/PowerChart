@@ -76,6 +76,9 @@ conventions, and every option.
 | Scatter/bubble continuous color scale (a third variable) | ✅ (`Color` row → sequential ramp + gradient legend) |
 | Smoothed line charts (Catmull-Rom curves) | ✅ (`decorations.smooth`) |
 | Waterfall grouping spacers (section gaps in the bridge) | ✅ (`waterfall.spacerIndices`) |
+| Gantt auto-summary bars on section rows | ✅ (`decorations.summaryBars`) |
+| Notched boxplots (median confidence interval) | ✅ (`boxplot.notch`, raw-sample mode) |
+| Radar min–max "peer range + us" band | ✅ (`decorations.radarBand`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

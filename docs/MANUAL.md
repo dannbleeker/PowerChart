@@ -136,6 +136,12 @@ pick weeks (with weekend shading), months, or quarters automatically.
   of straight segments.
 - **Waterfall spacers** (`spacerIndices`): blank grouping gaps that split a
   long bridge into sections; the running total and connector bridge across.
+- **Gantt summary bars** (`summaryBars`): a capped summary bar on each
+  section-header row spanning its child activities' min start → max end.
+- **Notched boxplots** (`notch`): pinch each box at the median confidence
+  interval — non-overlapping notches flag a significant median difference.
+- **Radar band** (`radarBand`): shade the peer min–max envelope and draw the
+  last series on top — a "peer range + us" competitive profile.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

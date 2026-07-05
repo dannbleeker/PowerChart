@@ -180,6 +180,30 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           text: acts[c], fontSize: fs, bold: true, color: style.text, align: "left", valign: "middle", name: `category-${c}`,
         },
       );
+      // Auto-summary bar: span min(start)→max(end) of the child activities
+      // (the rows below this header up to the next header), with end caps.
+      if (decor.summaryBars) {
+        let s = Infinity;
+        let e = -Infinity;
+        for (let k = c + 1; k < data.categories.length && !isHeader[k]; k++) {
+          for (const v of [starts[k], ends[k], milestones[k]]) {
+            if (v != null) {
+              s = Math.min(s, v);
+              e = Math.max(e, v);
+            }
+          }
+        }
+        if (e > s) {
+          const x1 = toX(s);
+          const x2 = toX(e);
+          const sbH = barH * 0.4;
+          nodes.push(
+            { kind: "rect", x: x1, y: cy - sbH / 2, w: x2 - x1, h: sbH, fill: style.text, name: `summary-${c}` },
+            { kind: "line", x1, y1: cy - sbH / 2, x2: x1, y2: cy + sbH * 1.4, stroke: style.text, strokeWidth: 1.25, name: `summary-cap-a-${c}` },
+            { kind: "line", x1: x2, y1: cy - sbH / 2, x2, y2: cy + sbH * 1.4, stroke: style.text, strokeWidth: 1.25, name: `summary-cap-b-${c}` },
+          );
+        }
+      }
       return;
     }
     nodes.push({

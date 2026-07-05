@@ -40,6 +40,7 @@ describe("user manual coverage", () => {
       "breakout", "Small multiples", "Stepped line/area", "Gap width",
       "Area with negatives", "Scatter trajectory", "Boxplot jitter",
       "Continuous color", "Smoothed lines", "Waterfall spacers",
+      "Gantt summary bars", "Notched boxplots", "Radar band",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

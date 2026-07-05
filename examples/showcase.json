@@ -3451,5 +3451,224 @@
     "decorations": {
       "categoryAxis": true
     }
+  },
+  {
+    "kind": "gantt",
+    "width": 480,
+    "height": 300,
+    "title": "Gantt with auto-summary bars",
+    "data": {
+      "categories": [
+        "Phase 1: Discovery",
+        "> Research",
+        "> Interviews",
+        "Phase 2: Build",
+        "> Backend",
+        "> Frontend",
+        "> QA"
+      ],
+      "series": [
+        {
+          "name": "Start",
+          "values": [
+            null,
+            1,
+            2,
+            null,
+            5,
+            7,
+            11
+          ]
+        },
+        {
+          "name": "End",
+          "values": [
+            null,
+            4,
+            5,
+            null,
+            10,
+            12,
+            13
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "summaryBars": true,
+      "segmentLabels": false
+    }
+  },
+  {
+    "kind": "boxplot",
+    "width": 480,
+    "height": 300,
+    "title": "Notched boxplots (median CI)",
+    "boxplot": {
+      "notch": true
+    },
+    "data": {
+      "categories": [
+        "A",
+        "B",
+        "C"
+      ],
+      "series": [
+        {
+          "name": "o1",
+          "values": [
+            10,
+            14,
+            20
+          ]
+        },
+        {
+          "name": "o2",
+          "values": [
+            12,
+            15,
+            22
+          ]
+        },
+        {
+          "name": "o3",
+          "values": [
+            13,
+            16,
+            23
+          ]
+        },
+        {
+          "name": "o4",
+          "values": [
+            14,
+            17,
+            25
+          ]
+        },
+        {
+          "name": "o5",
+          "values": [
+            15,
+            18,
+            26
+          ]
+        },
+        {
+          "name": "o6",
+          "values": [
+            16,
+            19,
+            28
+          ]
+        },
+        {
+          "name": "o7",
+          "values": [
+            17,
+            20,
+            30
+          ]
+        },
+        {
+          "name": "o8",
+          "values": [
+            18,
+            22,
+            33
+          ]
+        },
+        {
+          "name": "o9",
+          "values": [
+            20,
+            24,
+            36
+          ]
+        },
+        {
+          "name": "o10",
+          "values": [
+            22,
+            27,
+            40
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true,
+      "valueAxis": true
+    }
+  },
+  {
+    "kind": "radar",
+    "width": 480,
+    "height": 300,
+    "title": "Radar peer range + us",
+    "scale": {
+      "min": 0,
+      "max": 5
+    },
+    "data": {
+      "categories": [
+        "Strategy",
+        "Data",
+        "Talent",
+        "Process",
+        "Tech",
+        "Culture"
+      ],
+      "series": [
+        {
+          "name": "Peer 1",
+          "values": [
+            3,
+            2,
+            4,
+            3,
+            3,
+            2
+          ]
+        },
+        {
+          "name": "Peer 2",
+          "values": [
+            2,
+            3,
+            3,
+            4,
+            2,
+            3
+          ]
+        },
+        {
+          "name": "Peer 3",
+          "values": [
+            4,
+            4,
+            2,
+            3,
+            4,
+            3
+          ]
+        },
+        {
+          "name": "Us",
+          "values": [
+            3,
+            4,
+            4,
+            2,
+            5,
+            4
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "seriesLabels": true,
+      "radarBand": true
+    }
   }
 ]

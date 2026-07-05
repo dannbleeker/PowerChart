@@ -54,6 +54,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     smooth?: boolean,                 // line: smooth Catmull-Rom curves (sampled polyline)
     slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
     trajectory?: boolean,             // scatter/bubble: connect points in row order with a direction trail
+    summaryBars?: boolean,            // gantt: summary bar on section rows (spans children min→max)
+    radarBand?: boolean,              // radar: shade the peer min–max envelope, draw last series on top
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
@@ -64,7 +66,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       // shared value scale (stacked/clustered/line/area/waterfall/radar)
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",
               showMean?: boolean, iqrMultiplier?: number,
-              jitter?: boolean },     // overlay raw observations as jittered dots (raw-sample mode)
+              jitter?: boolean,       // overlay raw observations as jittered dots (raw-sample mode)
+              notch?: boolean },      // notch each box at the median CI (raw-sample mode)
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
   heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto",
               totals?: "row"|"column"|"both" },  // marginal sum strips
@@ -174,6 +177,20 @@ spacer category an empty name so no axis label shows.
 observation as a deterministically jittered dot over its box, so the reader
 sees the distribution and sample size behind the summary (outlier dots are
 subsumed by the jittered points).
+
+**Boxplot notch** (`boxplot.notch`): in raw-sample mode, pinches each box at
+the median ± 1.57·IQR/√n confidence interval — boxes whose notches don't
+overlap have significantly different medians. Precomputed boxes (no sample
+size) stay rectangular.
+
+**Gantt summary bars** (`decorations.summaryBars`): draws a capped summary bar
+on each section-header row (a category with no Start/End/Milestone), spanning
+min(start)→max(end) of the activities beneath it up to the next header.
+
+**Radar min–max band** (`decorations.radarBand`): shades the per-spoke min–max
+envelope of the peer series (all series except the last) as a band and draws
+the last series prominently on top — the "peer range + us" competitive
+profile. The legend collapses the peers into one "Peer range" swatch.
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap

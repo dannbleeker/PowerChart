@@ -35,10 +35,10 @@ describe("skill documentation coverage", () => {
       "cagr", "difference", "valueLines", "labelContent", "segmentOrder", "axisBreak",
       "categorySort", "secondaryAxis", "labelOffsets",
       "connectors", "callouts", "bands", "hundredPercentNote", "footnote", "explode", "colors", "pattern",
-      "datamarks", "tickMode", "gridShape", "fillOpacity", "whiskers", "quartileMethod", "iqrMultiplier", "jitter",
+      "datamarks", "tickMode", "gridShape", "fillOpacity", "whiskers", "quartileMethod", "iqrMultiplier", "jitter", "notch",
       "map", "negativeColor", "forecastFrom", "quadrants", "columns", "barStyle", "fillBetween", "totals",
       "slope", "breakout", "multiples", "stepped", "gapWidth", "overlap", "trajectory",
-      "smooth", "spacerIndices",
+      "smooth", "spacerIndices", "summaryBars", "radarBand",
     ]) {
       expect(reference).toContain(key);
     }
