@@ -43,36 +43,49 @@ describe("cascade chart", () => {
     expect(s.nodes.some((n) => n.name === "stage-label-0-2")).toBe(false);
   });
 
-  it("kept bar + drop box exactly equal the previous column — never longer", () => {
-    // Invariant: column c's total extent (bar + remainder box) bottoms out
-    // at PRECISELY the previous bar's bottom edge, for every split.
+  it("each column is one flush split bar spanning exactly the previous continuing segment", () => {
     for (const c of [1, 2, 3]) {
       const prev = rect(s, `stage-${c - 1}`);
+      const bar = rect(s, `stage-${c}`);
       const drop = rect(s, `drop-${c}`);
+      // Flush split: the gray segment starts exactly where the colored one ends.
+      expect(drop.y).toBeCloseTo(bar.y + bar.h, 5);
+      expect(drop.x).toBeCloseTo(bar.x, 5);
+      expect(drop.w).toBeCloseTo(bar.w, 5);
+      // Block span identical to the previous column's continuing segment:
+      // same top, same bottom.
+      expect(bar.y).toBeCloseTo(prev.y, 5);
       expect(drop.y + drop.h).toBeCloseTo(prev.y + prev.h, 5);
     }
-    // Even when the remainder is tiny and the box needs label height, it
-    // grows upward over the bar — not downward past the total.
+    // A thin remainder keeps its exact proportional height — the label moves
+    // OUTSIDE the block instead of inflating the segment.
     const tiny = buildChart({
       ...cfg,
       data: { categories: ["A", "B"], series: [{ name: "V", values: [1000, 995] }] },
     });
     const prev = tiny.nodes.find((n) => n.name === "stage-0") as RectNode;
+    const bar = tiny.nodes.find((n) => n.name === "stage-1") as RectNode;
     const drop = tiny.nodes.find((n) => n.name === "drop-1") as RectNode;
+    expect(drop.h).toBeCloseTo(prev.h * (5 / 1000), 5);
     expect(drop.y + drop.h).toBeCloseTo(prev.y + prev.h, 5);
-    expect(drop.h).toBeGreaterThan(2); // still tall enough to exist visibly
+    const label = tiny.nodes.find((n) => n.name === "drop-label-1") as TextNode;
+    expect(label.y).toBeGreaterThanOrEqual(drop.y + drop.h); // outside, below the block
+    void bar;
   });
 
   it("hangs a labeled remainder box at each split", () => {
     const drop1 = rect(s, "drop-1");
     const bar1 = rect(s, "stage-1");
     expect(drop1.y).toBeGreaterThan(bar1.y); // below the bar's top, at the split
-    expect(drop1.h / rect(s, "stage-0").h).toBeCloseTo(370 / 4986, 1);
-    // Long captions wrap: caption line + numbers line.
-    expect(text(s, "drop-label-1").text).toBe("Dropped contacts");
+    expect(drop1.h / rect(s, "stage-0").h).toBeCloseTo(370 / 4986, 2);
+    // Thin segment + long caption: numbers inside, caption just below.
     expect(text(s, "drop-value-1").text).toBe("370 (7.4%)");
+    expect(text(s, "drop-label-1").text).toBe("Dropped contacts");
+    expect(text(s, "drop-label-1").y).toBeGreaterThanOrEqual(drop1.y + drop1.h);
+    // Taller segments carry caption + numbers inside.
     expect(text(s, "drop-label-2").text).toBe("Without a case");
     expect(text(s, "drop-value-2").text).toContain("1,211");
+    expect(text(s, "drop-label-2").y).toBeLessThan(rect(s, "drop-2").y + rect(s, "drop-2").h);
     // No remainder before the first stage.
     expect(s.nodes.some((n) => n.name === "drop-0")).toBe(false);
   });

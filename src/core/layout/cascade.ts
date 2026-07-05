@@ -102,38 +102,59 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     if (c > 0) {
       const rem = Math.max(0, values[c - 1] - v);
       if (rem > 0) {
+        // The column is ONE bar split in two: the colored segment above is
+        // what continues, this gray segment is what stops here. They are
+        // flush, share the bar width, and their heights are exact — so the
+        // block's span is identical to the previous column's continuing
+        // segment, and a column can never outgrow what feeds it.
+        const segY = plot.y + h;
+        const segH = toH(rem);
         const remPct = values[c - 1] > 0 ? rem / values[c - 1] : null;
         const caption = dropLabels[c] || "Other";
         const numbers = `${formatNumber(rem, fmt)}${remPct != null ? ` (${formatPercent(remPct, 1)})` : ""}`;
-        // Wrap onto two lines when caption + numbers don't fit the box width.
         const oneLine = `${caption}: ${numbers}`;
-        const wrap = textWidth(oneLine, fs * 0.9) > barW - 6;
-        // Kept bar + drop box = the previous column's total, so the box is
-        // bottom-anchored at the previous bar's exact bottom and never
-        // extends past it. The 2pt gap is carved out of the box; when the
-        // label needs more height than the remainder's true share, the box
-        // grows UPWARD over the bar instead of downward past the total.
-        const remBottom = plot.y + toH(values[c - 1]);
-        const remH = Math.max(wrap ? fs * 2.9 : fs * 1.7, Math.max(2, toH(rem) - 2));
-        const remY = remBottom - remH;
         const ink = contrastInk(style.neutral);
-        nodes.push({ kind: "rect", x, y: remY, w: barW, h: remH, fill: style.neutral, name: `drop-${c}` });
-        if (wrap) {
+        nodes.push({
+          kind: "rect", x, y: segY, w: barW, h: segH, fill: style.neutral,
+          stroke: style.background, strokeWidth: 0.75, name: `drop-${c}`,
+        });
+        // Labels adapt to the segment — never the other way around.
+        const fitsOneLine = textWidth(oneLine, fs * 0.9) <= barW - 6;
+        const outside = (text: string, name: string): SceneNode => ({
+          kind: "text", x: x - slotW * 0.09, y: segY + segH + 1, w: barW + slotW * 0.18, h: fs * 1.2,
+          text, fontSize: fs * 0.85, color: style.text, align: "center", valign: "top", name,
+        });
+        if (segH >= fs * 2.9 && !fitsOneLine) {
+          // Tall enough for two lines: caption over numbers, inside.
           nodes.push(
             {
-              kind: "text", x: x + 2, y: remY + remH / 2 - fs * 1.35, w: barW - 4, h: fs * 1.4, text: caption,
+              kind: "text", x: x + 2, y: segY + segH / 2 - fs * 1.35, w: barW - 4, h: fs * 1.4, text: caption,
               fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-label-${c}`,
             },
             {
-              kind: "text", x: x + 2, y: remY + remH / 2, w: barW - 4, h: fs * 1.4, text: numbers,
+              kind: "text", x: x + 2, y: segY + segH / 2, w: barW - 4, h: fs * 1.4, text: numbers,
               fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-value-${c}`,
             },
           );
-        } else {
+        } else if (segH >= fs * 1.3 && fitsOneLine) {
+          // One comfortable line, inside.
           nodes.push({
-            kind: "text", x: x + 2, y: remY, w: barW - 4, h: remH, text: oneLine,
+            kind: "text", x: x + 2, y: segY, w: barW - 4, h: segH, text: oneLine,
             fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-label-${c}`,
           });
+        } else if (segH >= fs * 1.3) {
+          // Room for one line but the caption is long: numbers inside,
+          // caption just below the block.
+          nodes.push(
+            {
+              kind: "text", x: x + 2, y: segY, w: barW - 4, h: segH, text: numbers,
+              fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-value-${c}`,
+            },
+            outside(caption, `drop-label-${c}`),
+          );
+        } else {
+          // Segment too thin for any text: full label below the block.
+          nodes.push(outside(oneLine, `drop-label-${c}`));
         }
       }
     }
