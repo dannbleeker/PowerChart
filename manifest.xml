@@ -67,6 +67,116 @@
                     <SourceLocation resid="Taskpane.Url" />
                   </Action>
                 </Control>
+                <Control xsi:type="Menu" id="PowerChart.InsertMenu">
+                  <Label resid="Menu.Label" />
+                  <Supertip>
+                    <Title resid="Menu.Label" />
+                    <Description resid="Menu.Tooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16" />
+                    <bt:Image size="32" resid="Icon.32" />
+                    <bt:Image size="80" resid="Icon.80" />
+                  </Icon>
+                  <Items>
+                    <Item id="PowerChart.Insert.stacked">
+                      <Label resid="Menu.stacked.Label" />
+                      <Supertip>
+                        <Title resid="Menu.stacked.Label" />
+                        <Description resid="Menu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.stacked" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.Insert.waterfall">
+                      <Label resid="Menu.waterfall.Label" />
+                      <Supertip>
+                        <Title resid="Menu.waterfall.Label" />
+                        <Description resid="Menu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.waterfall" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.Insert.mekko">
+                      <Label resid="Menu.mekko.Label" />
+                      <Supertip>
+                        <Title resid="Menu.mekko.Label" />
+                        <Description resid="Menu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.mekko" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.Insert.gantt">
+                      <Label resid="Menu.gantt.Label" />
+                      <Supertip>
+                        <Title resid="Menu.gantt.Label" />
+                        <Description resid="Menu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.gantt" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.Insert.pie">
+                      <Label resid="Menu.pie.Label" />
+                      <Supertip>
+                        <Title resid="Menu.pie.Label" />
+                        <Description resid="Menu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.pie" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.Insert.scatter">
+                      <Label resid="Menu.scatter.Label" />
+                      <Supertip>
+                        <Title resid="Menu.scatter.Label" />
+                        <Description resid="Menu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.scatter" />
+                      </Action>
+                    </Item>
+                  </Items>
+                </Control>
               </Group>
             </OfficeTab>
           </ExtensionPoint>
@@ -82,15 +192,29 @@
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html" />
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/dannbleeker/powerchart-" />
+        <bt:Url id="Taskpane.Url.stacked" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=stacked" />
+        <bt:Url id="Taskpane.Url.waterfall" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=waterfall" />
+        <bt:Url id="Taskpane.Url.mekko" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=mekko" />
+        <bt:Url id="Taskpane.Url.gantt" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=gantt" />
+        <bt:Url id="Taskpane.Url.pie" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=pie" />
+        <bt:Url id="Taskpane.Url.scatter" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=scatter" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="Group.Label" DefaultValue="PowerChart" />
         <bt:String id="OpenPane.Label" DefaultValue="Insert chart" />
         <bt:String id="GetStarted.Title" DefaultValue="PowerChart loaded" />
+        <bt:String id="Menu.Label" DefaultValue="Insert chart by type" />
+        <bt:String id="Menu.stacked.Label" DefaultValue="Column chart" />
+        <bt:String id="Menu.waterfall.Label" DefaultValue="Waterfall chart" />
+        <bt:String id="Menu.mekko.Label" DefaultValue="Mekko chart" />
+        <bt:String id="Menu.gantt.Label" DefaultValue="Gantt chart" />
+        <bt:String id="Menu.pie.Label" DefaultValue="Pie chart" />
+        <bt:String id="Menu.scatter.Label" DefaultValue="Scatter chart" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="OpenPane.Tooltip" DefaultValue="Open the PowerChart pane to insert waterfall, Mekko and stacked charts as native shapes." />
         <bt:String id="GetStarted.Description" DefaultValue="Find PowerChart on the Home tab and insert your first chart." />
+        <bt:String id="Menu.Tooltip" DefaultValue="Open PowerChart with this chart type preselected." />
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

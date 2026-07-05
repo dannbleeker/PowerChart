@@ -22,6 +22,21 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const after = find(/^(after|dep(endency)?)$/i)?.values ?? [];
   /** "Today" row: a single date/number → today line. */
   const today = (find(/^today$/i)?.values ?? []).find((v): v is number => v != null);
+  /** "Holiday(s)" row: dates shaded like weekends. */
+  const holidays = (find(/^holidays?$/i)?.values ?? []).filter((v): v is number => v != null);
+  /** "Bracket <label>" rows: first/last non-null values span an annotation. */
+  const brackets = data.series
+    .filter((s) => /^bracket\b/i.test(s.name.trim()))
+    .map((s) => {
+      const vals = s.values.filter((v): v is number => v != null);
+      return {
+        label: s.name.replace(/^bracket\s*:?\s*/i, "").trim(),
+        from: Math.min(...vals),
+        to: Math.max(...vals),
+        ok: vals.length >= 2,
+      };
+    })
+    .filter((b) => b.ok);
   // "Activity | Owner | Remark" category convention; ">" prefix indents.
   const parts = data.categories.map((c) => c.split("|").map((p) => p.trim()));
   const indents = parts.map((p) => (p[0].startsWith(">") ? 1 : 0));
@@ -36,6 +51,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   );
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const bracketH = brackets.length ? fs * 1.9 : 0;
   const headerH = fs * 1.6;
   const catW = Math.min(
     cfg.width * 0.32,
@@ -44,12 +60,22 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const ownerW = hasOwners ? Math.max(0, ...owners.map((o) => textWidth(o, fs))) + 12 : 0;
   const remarkW = hasRemarks ? Math.max(0, ...remarks.map((o) => textWidth(o, fs * 0.9))) + 12 : 0;
   const bottomH = today != null ? fs * 1.6 : 6;
-  const plot = { x: catW, y: titleH + headerH, w: cfg.width - catW - ownerW - remarkW - 6, h: cfg.height - titleH - headerH - bottomH };
+  const plot = {
+    x: catW,
+    y: titleH + bracketH + headerH,
+    w: cfg.width - catW - ownerW - remarkW - 6,
+    h: cfg.height - titleH - bracketH - headerH - bottomH,
+  };
 
   const dates = !!data.dates;
-  const all = [...starts, ...ends, ...milestones, ...(today != null ? [today] : [])].filter(
-    (v): v is number => v != null,
-  );
+  const all = [
+    ...starts,
+    ...ends,
+    ...milestones,
+    ...(today != null ? [today] : []),
+    ...holidays,
+    ...brackets.flatMap((b) => [b.from, b.to]),
+  ].filter((v): v is number => v != null);
   const lo = Math.min(...(all.length ? all : [0]));
   const hi = Math.max(...(all.length ? all : [1]));
   // Calendar granularity by span: weeks → months → quarters.
@@ -81,6 +107,32 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
     });
   }
+  // Bracket annotations above the timeline header.
+  brackets.forEach((b, i) => {
+    const x1 = toX(b.from);
+    const x2 = toX(b.to);
+    const y = titleH + fs * 1.5;
+    nodes.push(
+      { kind: "line", x1, y1: y, x2, y2: y, stroke: style.text, strokeWidth: 1, name: `bracket-${i}` },
+      { kind: "line", x1, y1: y, x2: x1, y2: y + 3.5, stroke: style.text, strokeWidth: 1, name: `bracket-tick-a-${i}` },
+      { kind: "line", x1: x2, y1: y, x2, y2: y + 3.5, stroke: style.text, strokeWidth: 1, name: `bracket-tick-b-${i}` },
+      {
+        kind: "text", x: x1, y: y - fs * 1.35, w: x2 - x1, h: fs * 1.3,
+        text: b.label || spanLabel(b.from, b.to), fontSize: fs * 0.9, bold: true,
+        color: style.text, align: "center", valign: "middle", name: `bracket-label-${i}`,
+      },
+    );
+  });
+
+  // Holiday shading (any granularity).
+  for (const h of holidays) {
+    const x1 = Math.max(plot.x, toX(h));
+    const x2 = Math.min(plot.x + plot.w, toX(h + 1));
+    if (x2 > x1) {
+      nodes.push({ kind: "rect", x: x1, y: plot.y, w: x2 - x1, h: plot.h, fill: "#efe7e7", name: `holiday-${h}` });
+    }
+  }
+
   // Weekend shading in week granularity.
   if (weeks) {
     for (let d = lo - 7; d <= hi + 7; d++) {
@@ -103,7 +155,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 0.75, name: "gridline" });
     // Thin out header labels when months are dense.
     if (x - lastLabelX >= minLabelGap) {
-      nodes.push({ kind: "text", x: x - 24, y: titleH, w: 48, h: headerH, text: tickLabel(t, i), fontSize: fs * 0.9, color: style.mutedText, align: "center", valign: "middle", name: "timeline" });
+      nodes.push({ kind: "text", x: x - 24, y: plot.y - headerH, w: 48, h: headerH, text: tickLabel(t, i), fontSize: fs * 0.9, color: style.mutedText, align: "center", valign: "middle", name: "timeline" });
       lastLabelX = x;
     }
   });

@@ -149,6 +149,16 @@ export interface ChartConfig {
    */
   segmentOrder?: "sheet" | "reverse" | "ascending" | "descending";
   /**
+   * Sort categories by column total (think-cell's category sorting).
+   * Column/Mekko/pie families only — order is meaningful for waterfall/Gantt.
+   */
+  categorySort?: "ascending" | "descending";
+  /**
+   * Combo charts: give line series their own right-hand value axis
+   * (e.g. margin % over absolute columns).
+   */
+  secondaryAxis?: boolean;
+  /**
    * think-cell axis break: compress the value range [from, to] into a small
    * band so out-of-scale columns fit. Vertical column/waterfall charts only.
    */

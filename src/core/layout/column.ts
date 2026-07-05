@@ -318,17 +318,45 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)),
   );
   const lineMax = Math.max(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  // Secondary axis: line series get their own right-hand scale.
+  const secondary = !!cfg.secondaryAxis;
   const colCfg: ChartConfig = {
     ...cfg,
     kind: "stacked",
     data: { ...cfg.data, series: cols },
-    scale: cfg.scale?.max != null ? cfg.scale : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
+    scale:
+      cfg.scale?.max != null || secondary
+        ? cfg.scale
+        : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
   };
   const result = layoutColumns(colCfg, style, decor);
   const { anchors, nodes } = result;
   if (!anchors.valueToY) return result;
 
   const fs = style.fontSize;
+  let lineToY = anchors.valueToY;
+  if (secondary) {
+    const ticks2 = niceTicks(0, Math.max(1, lineMax), 5);
+    const max2 = ticks2[ticks2.length - 1];
+    const plot = anchors.plot;
+    lineToY = (v: number) => plot.y + plot.h - (v / max2) * plot.h;
+    const fmt2 = resolveFormat(ticks2, cfg.numberFormat);
+    for (const t of ticks2) {
+      nodes.push({
+        kind: "text",
+        x: plot.x + plot.w + 2,
+        y: lineToY(t) - fs * 0.7,
+        w: fs * 3.4,
+        h: fs * 1.4,
+        text: formatNumber(t, fmt2),
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: "secondary-axis",
+      });
+    }
+  }
   const fmt = resolveFormat(lines.flatMap((s) => s.values.filter((v): v is number => v != null)), cfg.numberFormat);
   lines.forEach((s, li) => {
     const color = seriesColor(style, cols.length + li, s.color);
@@ -339,7 +367,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         prev = null;
         return;
       }
-      const pt = { x: anchors.categoryX[c], y: anchors.valueToY!(v) };
+      const pt = { x: anchors.categoryX[c], y: lineToY(v) };
       if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `combo-line-${li}-${c}` });
       const r = 2.4;
       nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `combo-marker-${li}-${c}` });
