@@ -60,6 +60,37 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
     });
   }
+  // Quadrant preset: one X/Y crossing → four tinted zones with corner
+  // labels and the crossing lines — BCG-matrix framing in one step.
+  if (decor.quadrants) {
+    const { x: qx, y: qy, labels } = decor.quadrants;
+    const cx = Math.max(plot.x, Math.min(plot.x + plot.w, toX(qx)));
+    const cy = Math.max(plot.y, Math.min(plot.y + plot.h, toY(qy)));
+    const zones: { x: number; y: number; w: number; h: number }[] = [
+      { x: plot.x, y: plot.y, w: cx - plot.x, h: cy - plot.y }, // TL
+      { x: cx, y: plot.y, w: plot.x + plot.w - cx, h: cy - plot.y }, // TR
+      { x: plot.x, y: cy, w: cx - plot.x, h: plot.y + plot.h - cy }, // BL
+      { x: cx, y: cy, w: plot.x + plot.w - cx, h: plot.y + plot.h - cy }, // BR
+    ];
+    zones.forEach((z, i) => {
+      if (z.w <= 0 || z.h <= 0) return;
+      // Checkerboard tint so adjacent zones read as distinct regions.
+      nodes.push({ kind: "rect", ...z, fill: i === 0 || i === 3 ? "#f2f1ec" : "#faf9f6", name: `quadrant-${i}` });
+      const label = labels?.[i];
+      if (label) {
+        nodes.push({
+          kind: "text", x: z.x + 4, y: z.y + 2, w: Math.max(20, z.w - 8), h: fs * 1.3,
+          text: label, fontSize: fs * 0.9, bold: true, color: style.mutedText,
+          align: i === 1 || i === 3 ? "right" : "left", valign: "top", name: `quadrant-label-${i}`,
+        });
+      }
+    });
+    nodes.push(
+      { kind: "line", x1: cx, y1: plot.y, x2: cx, y2: plot.y + plot.h, stroke: style.mutedText, strokeWidth: 1, dash: [3, 2], name: "quadrant-x" },
+      { kind: "line", x1: plot.x, y1: cy, x2: plot.x + plot.w, y2: cy, stroke: style.mutedText, strokeWidth: 1, dash: [3, 2], name: "quadrant-y" },
+    );
+  }
+
   // Background bands (both axes in value units), behind gridlines and points.
   decor.bands?.forEach((band, i) => {
     const clampX = (v: number) => Math.max(plot.x, Math.min(plot.x + plot.w, toX(v)));
@@ -163,7 +194,33 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const radius = (p: (typeof pts)[number]) =>
     cfg.kind === "bubble" && p.size != null ? Math.max(2.5, Math.sqrt(Math.abs(p.size) / maxSize) * maxR) : 3;
 
-  const markerBoxes: Box[] = [];
+  // Bubble size legend: without a key, bubble AREA is unreadable. Two
+  // outline reference circles (a nice maximum and its half), top-right.
+  const legendBoxes: Box[] = [];
+  if (cfg.kind === "bubble" && pts.some((p) => p.size != null)) {
+    const sizeFmt = resolveFormat(pts.map((p) => Math.abs(p.size ?? 0)), cfg.numberFormat);
+    const refMax = niceTicks(0, maxSize, 3).pop()!;
+    const refs = [refMax, refMax / 2];
+    let lx = plot.x + plot.w - 4;
+    refs.forEach((v, i) => {
+      const r = Math.max(2.5, Math.sqrt(v / maxSize) * maxR);
+      const cx = lx - r;
+      const cy = plot.y + maxR * 1.1 + (Math.sqrt(refMax / maxSize) * maxR - r); // bottom-aligned circles
+      nodes.push(
+        { kind: "ellipse", cx, cy, rx: r, ry: r, fill: "none", stroke: style.mutedText, strokeWidth: 1, name: `size-legend-${i}` },
+        {
+          kind: "text", x: cx - r, y: cy - Math.sqrt(refMax / maxSize) * maxR - fs * 1.35, w: r * 2, h: fs * 1.2,
+          text: formatNumber(v, sizeFmt), fontSize: fs * 0.8, color: style.mutedText,
+          align: "center", valign: "bottom", name: `size-legend-label-${i}`,
+        },
+      );
+      legendBoxes.push({ x: cx - r, y: cy - r - fs * 1.4, w: r * 2, h: r * 2 + fs * 1.4 });
+      lx = cx - r - fs * 0.8;
+    });
+  }
+
+  // Point labels treat the size legend as an obstacle.
+  const markerBoxes: Box[] = [...legendBoxes];
   pts.forEach((p, i) => {
     const r = radius(p);
     const gi = Math.max(0, Math.round(Number(p.group)) - 1);

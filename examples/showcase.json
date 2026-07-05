@@ -2094,6 +2094,191 @@
     }
   },
   {
+    "kind": "clustered",
+    "width": 480,
+    "height": 300,
+    "title": "Bullet chart (Target row + range bands)",
+    "data": {
+      "categories": [
+        "North",
+        "South",
+        "East",
+        "West"
+      ],
+      "series": [
+        {
+          "name": "Actual",
+          "values": [
+            42,
+            55,
+            48,
+            61
+          ]
+        },
+        {
+          "name": "Target",
+          "values": [
+            50,
+            50,
+            55,
+            58
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "bands": [
+        {
+          "axis": "y",
+          "from": 0,
+          "to": 35,
+          "color": "#e4e2da"
+        },
+        {
+          "axis": "y",
+          "from": 35,
+          "to": 55,
+          "color": "#efeee8"
+        }
+      ],
+      "seriesLabels": false
+    }
+  },
+  {
+    "kind": "combo",
+    "width": 480,
+    "height": 300,
+    "title": "Combo: clustered columns + line",
+    "combo": {
+      "columns": "clustered"
+    },
+    "data": {
+      "categories": [
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Actual",
+          "values": [
+            40,
+            46,
+            52
+          ]
+        },
+        {
+          "name": "Plan",
+          "values": [
+            38,
+            48,
+            55
+          ]
+        },
+        {
+          "name": "Margin %",
+          "values": [
+            31,
+            34,
+            38
+          ],
+          "type": "line"
+        }
+      ]
+    },
+    "secondaryAxis": true
+  },
+  {
+    "kind": "line",
+    "width": 480,
+    "height": 300,
+    "title": "Forecast styling (dashed from 2026)",
+    "data": {
+      "categories": [
+        "2023",
+        "2024",
+        "2025",
+        "2026",
+        "2027"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            40,
+            46,
+            52,
+            60,
+            69
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "forecastFrom": 3,
+      "seriesLabels": false
+    }
+  },
+  {
+    "kind": "bubble",
+    "width": 480,
+    "height": 300,
+    "title": "Bubble size legend + quadrant matrix",
+    "data": {
+      "categories": [
+        "Alpha",
+        "Bravo",
+        "Core",
+        "Delta",
+        "Echo"
+      ],
+      "series": [
+        {
+          "name": "X",
+          "values": [
+            20,
+            35,
+            55,
+            70,
+            85
+          ]
+        },
+        {
+          "name": "Y",
+          "values": [
+            25,
+            60,
+            40,
+            75,
+            55
+          ]
+        },
+        {
+          "name": "Size",
+          "values": [
+            30,
+            80,
+            45,
+            100,
+            60
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "quadrants": {
+        "x": 50,
+        "y": 50,
+        "labels": [
+          "Question marks",
+          "Stars",
+          "Dogs",
+          "Cash cows"
+        ]
+      }
+    }
+  },
+  {
     "kind": "line",
     "width": 480,
     "height": 300,

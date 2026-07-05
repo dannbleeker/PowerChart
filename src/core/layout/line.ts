@@ -68,6 +68,13 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
     });
     for (let c = 0; c < n; c++) columnTop[c] = scale.toY(base[c]);
   } else {
+    // Forecast boundary: categories from this index on draw dashed with
+    // hollow markers; a subtle divider marks the actuals/forecast split.
+    const fc = decor.forecastFrom;
+    if (fc != null && fc > 0 && fc < n) {
+      const dx = slots.centers[fc - 1] + (slots.centers[fc] - slots.centers[fc - 1]) / 2;
+      nodes.push({ kind: "line", x1: dx, y1: frame.y, x2: dx, y2: frame.y + frame.h, stroke: style.gridline, strokeWidth: 1, dash: [2, 3], name: "forecast-divider" });
+    }
     data.series.forEach((s, si) => {
       const color = seriesColor(style, si, s.color);
       let prev: { x: number; y: number } | null = null;
@@ -77,17 +84,26 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
           prev = null;
           continue;
         }
+        const forecast = fc != null && c >= fc;
         const pt = { x: slots.centers[c], y: scale.toY(v) };
         columnTop[c] = Math.min(columnTop[c], pt.y);
         if (prev) {
-          nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `line-${si}-${c}` });
+          nodes.push({
+            kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2,
+            ...(forecast ? { dash: [4, 3] } : {}), name: `line-${si}-${c}`,
+          });
         }
         // Marker: small square with a background ring so crossings stay legible.
         // A per-cell color override highlights the point (max/min/last…) with
-        // a larger, recolored marker.
+        // a larger, recolored marker. Forecast points render hollow.
         const cellColor = s.colors?.[c];
         const r = cellColor ? 3.4 : 2.4;
-        nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: cellColor ?? color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
+        nodes.push({
+          kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2,
+          fill: forecast && !cellColor ? style.background : (cellColor ?? color),
+          stroke: forecast && !cellColor ? color : style.background,
+          strokeWidth: 1, name: `marker-${si}-${c}`,
+        });
         if (decor.segmentLabels) {
           nodes.push({
             kind: "text",

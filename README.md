@@ -50,6 +50,11 @@ conventions, and every option.
 | Error bars (symmetric or asymmetric) | ✅ (`Error` / `Error+` / `Error-` datasheet rows) |
 | Palette from the presentation theme (Accent1-6) | ✅ (pane → "Use deck theme", PowerPointApi 1.10) |
 | Cascade / decomposition chart (stage-by-stage breakdown) | ✅ (`cascade` kind) |
+| Bullet charts (target ticks + range bands) | ✅ (`Target` row + `decorations.bands`) |
+| Combo with clustered or 100% columns | ✅ (`combo.columns`) |
+| Bubble size legend (automatic) | ✅ |
+| Forecast styling on lines (dashed + hollow markers) | ✅ (`decorations.forecastFrom`) |
+| Scatter quadrant matrix (zones + labels in one step) | ✅ (`decorations.quadrants`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

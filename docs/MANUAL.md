@@ -43,13 +43,13 @@ section and `skill/reference.md`.
 | 100% | share of total | `100%=` row lets columns fall short of 100% |
 | Waterfall | bridges (EBITDA, headcount) | values are deltas; type `e` in a cell for a computed total; multiple series stack |
 | Mekko | two-dimensional composition | width ∝ column total; `X extent` row for explicit widths |
-| Line | trends | date categories ("2025-01", "Jan 2025") space proportionally to time |
+| Line | trends | date categories ("2025-01", "Jan 2025") space proportionally to time; forecast periods draw dashed with hollow markers |
 | Area | stacked trends | |
 | Butterfly | two-sided comparison (pyramids) | first two series, back to back, one scale |
-| Scatter | correlation | `X`/`Y` rows; `Group` colors points; `X line`/`Y line` partitions; `Trend` fits an OLS line labelled with R² and p |
-| Bubble | scatter + size | add a `Size` row |
+| Scatter | correlation | `X`/`Y` rows; `Group` colors points; `X line`/`Y line` partitions; `Trend` fits an OLS line labelled with R² and p; quadrants shade a 2×2 matrix |
+| Bubble | scatter + size | add a `Size` row; a size legend with reference circles appears automatically |
 | Gantt | project plans | `Start`/`End`/`Milestone` rows; see [Gantt](#gantt) |
-| Combo | columns + line | mark a series with type "line"; secondary axis optional |
+| Combo | columns + line | mark a series with type "line"; secondary axis optional; columns can be stacked, clustered, or 100% |
 | Pie / Doughnut | simple shares | slices from 12 o'clock, clockwise; explode slices to highlight |
 | Boxplot | distributions | `Min`/`Q1`/`Median`/`Q3`/`Max` rows, or raw samples → automatic Tukey whiskers and outliers |
 | Radar | multi-dimension profiles | categories = spokes, series = translucent polygons; keep ≤ 3 series |
@@ -85,6 +85,7 @@ toggle — the axis and every decoration rotate with them.
 | `X line`, `Y line` | scatter partition lines |
 | `Trend` | OLS trend line with R² and p-value |
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (symmetric or asymmetric) |
+| `Target` | bullet-chart tick across each column at the target value (add background bands for zones) |
 | `Min`, `Q1`, `Median`, `Q3`, `Max`, `Mean` | boxplot five-number summary (+ mean marker) |
 | `Outlier <n>` | extra boxplot outlier dots |
 | `Start`, `End`, `Milestone`, `After`, `Today`, `Holiday`, `Bracket <label>` | Gantt — see below |

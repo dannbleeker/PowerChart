@@ -347,29 +347,35 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     ? cfg.data.series.filter((s) => s.type !== "line")
     : cfg.data.series.slice(0, Math.max(1, cfg.data.series.length - 1));
 
-  // One shared scale: whichever of stack totals / line values reaches higher.
-  const stackMax = Math.max(
-    0,
-    ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)),
-  );
+  // Column mode: stacked (default), clustered, or 100% under the lines.
+  const columnsKind = cfg.combo?.columns ?? "stacked";
+  // One shared scale: whichever of column extent / line values reaches higher.
+  const stackMax =
+    columnsKind === "clustered"
+      ? Math.max(0, ...cols.flatMap((s) => s.values.filter((v): v is number => v != null)))
+      : Math.max(0, ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)));
   const lineMax = Math.max(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
-  // Secondary axis: line series get their own right-hand scale.
-  const secondary = !!cfg.secondaryAxis;
+  // Secondary axis: line series get their own right-hand scale. A 100%
+  // column base forces it — lines rarely live on a 0-100% share axis.
+  const secondary = !!cfg.secondaryAxis || columnsKind === "stacked100";
   const colCfg: ChartConfig = {
     ...cfg,
-    kind: "stacked",
+    kind: columnsKind,
     data: { ...cfg.data, series: cols },
     scale:
-      cfg.scale?.max != null || secondary
-        ? cfg.scale
-        : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
+      columnsKind === "stacked100"
+        ? undefined
+        : cfg.scale?.max != null || secondary
+          ? cfg.scale
+          : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
   };
   const result = layoutColumns(colCfg, style, decor);
   const { anchors, nodes } = result;
-  if (!anchors.valueToY) return result;
+  // 100% columns have no value→y map, but the secondary axis provides one.
+  if (!anchors.valueToY && !secondary) return result;
 
   const fs = style.fontSize;
-  let lineToY = anchors.valueToY;
+  let lineToY = anchors.valueToY ?? ((v: number) => anchors.plot.y + anchors.plot.h - v);
   if (secondary) {
     const ticks2 = niceTicks(0, Math.max(1, lineMax), 5);
     const max2 = ticks2[ticks2.length - 1];

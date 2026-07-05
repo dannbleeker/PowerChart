@@ -9,7 +9,8 @@ engine already has were filtered out.
 
 **This is the only backlog document.** Items graduate from here into PRs
 (and then out of here); rejected ideas stay in §4 so they aren't re-proposed. (Shipped since the
-sweep: the cascade/decomposition chart.)
+sweep: cascade chart; bullet targets; combo column modes; bubble size
+legend; forecast styling; scatter quadrants.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -18,21 +19,14 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 
 | # | Item | Type | Effort | Why first |
 |---|---|---|---|---|
-| 1 | **Bullet chart** — `Target` row (per-category tick) + existing bands | option | easy | KPI staple; ~80% already built (bands, error-row pattern) |
-| 2 | **Combo: clustered / 100% columns + line** — `layoutCombo` hardcodes `"stacked"` | fix | easy | Excel's most common combo default is clustered+line |
-| 3 | **Bubble size legend** — reference circles + labels | fix | easy | Near-correctness gap: bubble area is unreadable without a key |
-| 4 | **Forecast styling on lines** — dashed continuation of actuals | option | easy | Extremely common actuals/plan split in trend decks |
-| 5 | **Scatter quadrant preset** — one X+Y crossing → 4 shaded, labeled zones | option | easy | BCG-matrix framing in one step (bands+labels exist) |
-| 6 | **Funnel / pyramid** — native `funnel`/`trapezoid` autoshapes | new kind | easy | Pipeline/conversion demand; zero rendering risk |
-| 7 | **Lollipop + dumbbell/range styles** on clustered | option | easy | Two FT-taxonomy messages (comparison, gap) from stem+dot |
-| 8 | **Gantt: percent-complete fill + baseline ghost bars** | option | easy | Plan-vs-actual + progress: the two biggest PM asks |
-| 9 | **Grouped boxplots** (category × series sub-boxes) | option | medium | Most natural distribution-comparison extension |
+| 1 | **Funnel / pyramid** — centered bands (rect-native) | new kind | easy | Pipeline/conversion demand; zero rendering risk |
+| 2 | **Lollipop + dumbbell/range styles** on clustered | option | easy | Two FT-taxonomy messages (comparison, gap) from stem+dot |
+| 3 | **Gantt: percent-complete fill + baseline ghost bars** | option | easy | Plan-vs-actual + progress: the two biggest PM asks |
+| 4 | **Grouped boxplots** (category × series sub-boxes) | option | medium | Most natural distribution-comparison extension |
 
 ## 2. Gaps within existing kinds (per kind)
 
 ### Column family (stacked / clustered / stacked100)
-- **Per-column target marker** (tick at a value on one column) — easy, high;
-  folds into the bullet-chart item above.
 - **Automatic "Other" bucket** for long-tail series (think-cell's "Move to
   Other Series") — medium, medium.
 - **Configurable gap width / column overlap** (Excel exposes 0–500%) —
@@ -55,7 +49,6 @@ and skill-pptx renderers additionally have filled polygons and patterns).
   medium, medium.
 
 ### Combo
-- **Clustered / 100% bars + line** (see top-10 #2) — easy, high.
 - **Multiple independent secondary axes** (per-line-series scales) —
   medium, high for KPI dashboards.
 - **Waterfall/Mekko + line overlay** (e.g. bridge with %-of-revenue line) —
@@ -63,7 +56,6 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 - Stacked-area + line, scatter-on-combo — hard/low; skip for now.
 
 ### Line / Area
-- **Forecast dash styling** (top-10 #4) — easy, high.
 - **Confidence/uncertainty band** around a line (slab technique exists) —
   easy, high for forecasting slides.
 - **Area between two series** (plan-vs-actual ribbon) — easy, high.
@@ -76,8 +68,6 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 - Missing-data bridge option, sparklines — low/niche.
 
 ### Scatter / Bubble
-- **Size legend** (top-10 #3) — easy, high.
-- **Quadrant preset** (top-10 #5) — easy, high.
 - **Trajectory mode** (connect points in row order, Gapminder-trail) —
   easy, medium.
 - **Continuous color scale** as a third variable (color helpers exist) —
