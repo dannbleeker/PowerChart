@@ -213,6 +213,54 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
         },
         decorations: { segmentLabels: true },
       };
+    case "sunburst":
+      return {
+        ...base,
+        title: "Revenue by region and product",
+        data: {
+          categories: [
+            "EMEA | Cloud", "EMEA | Licenses", "EMEA | Services",
+            "Americas | Cloud", "Americas | Licenses",
+            "APAC | Cloud", "APAC | Hardware",
+          ],
+          series: [{ name: "Revenue", values: [60, 40, 25, 80, 50, 45, 30] }],
+        },
+        decorations: { segmentLabels: true },
+      };
+    case "violin":
+      return {
+        ...base,
+        title: "Response time distribution (ms)",
+        data: {
+          categories: ["API", "Web", "Batch"],
+          series: [
+            { name: "s1", values: [120, 210, 640] },
+            { name: "s2", values: [135, 190, 700] },
+            { name: "s3", values: [128, 240, 580] },
+            { name: "s4", values: [142, 205, 660] },
+            { name: "s5", values: [150, 260, 720] },
+            { name: "s6", values: [131, 220, 610] },
+            { name: "s7", values: [125, 235, 690] },
+            { name: "s8", values: [160, 200, 640] },
+            { name: "s9", values: [138, 250, 705] },
+            { name: "s10", values: [145, 215, 655] },
+          ],
+        },
+      };
+    case "candlestick":
+      return {
+        ...base,
+        title: "Share price — last two weeks",
+        data: {
+          categories: ["Mon", "Tue", "Wed", "Thu", "Fri", "Mon", "Tue", "Wed", "Thu", "Fri"],
+          series: [
+            { name: "Open", values: [42, 44, 43, 46, 45, 47, 49, 48, 46, 47] },
+            { name: "High", values: [45, 46, 47, 47, 48, 50, 51, 49, 48, 50] },
+            { name: "Low", values: [41, 42, 42, 44, 44, 46, 47, 45, 44, 46] },
+            { name: "Close", values: [44, 43, 46, 45, 47, 49, 48, 46, 47, 49] },
+          ],
+        },
+      };
     case "cascade":
       return {
         ...base,
@@ -282,4 +330,7 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "funnel", label: "Funnel" },
   { kind: "waffle", label: "Waffle" },
   { kind: "treemap", label: "Treemap" },
+  { kind: "sunburst", label: "Sunburst" },
+  { kind: "violin", label: "Violin" },
+  { kind: "candlestick", label: "Candlestick" },
 ];

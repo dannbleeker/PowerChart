@@ -384,6 +384,42 @@ exports[`SVG snapshots > sample butterfly 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample candlestick 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Share price — last two weeks</text>
+<text x="25.7" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-0">Mon</text>
+<text x="73.1" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-1">Tue</text>
+<text x="120.5" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-2">Wed</text>
+<text x="167.9" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-3">Thu</text>
+<text x="215.3" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-4">Fri</text>
+<text x="262.7" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-5">Mon</text>
+<text x="310.1" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-6">Tue</text>
+<text x="357.5" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-7">Wed</text>
+<text x="404.9" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-8">Thu</text>
+<text x="452.3" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-9">Fri</text>
+<line x1="25.7" y1="93" x2="25.7" y2="109.8" stroke="#0b0b0b" stroke-width="1" data-name="wick-0"/>
+<rect x="13.85" y="97.2" width="23.7" height="8.4" fill="#1a9e6e" stroke="#ffffff" stroke-width="0.5" data-name="body-0"/>
+<line x1="73.1" y1="88.8" x2="73.1" y2="105.6" stroke="#0b0b0b" stroke-width="1" data-name="wick-1"/>
+<rect x="61.25" y="97.2" width="23.7" height="4.2" fill="#e34948" stroke="#ffffff" stroke-width="0.5" data-name="body-1"/>
+<line x1="120.5" y1="84.6" x2="120.5" y2="105.6" stroke="#0b0b0b" stroke-width="1" data-name="wick-2"/>
+<rect x="108.65" y="88.8" width="23.7" height="12.6" fill="#1a9e6e" stroke="#ffffff" stroke-width="0.5" data-name="body-2"/>
+<line x1="167.9" y1="84.6" x2="167.9" y2="97.2" stroke="#0b0b0b" stroke-width="1" data-name="wick-3"/>
+<rect x="156.05" y="88.8" width="23.7" height="4.2" fill="#e34948" stroke="#ffffff" stroke-width="0.5" data-name="body-3"/>
+<line x1="215.3" y1="80.4" x2="215.3" y2="97.2" stroke="#0b0b0b" stroke-width="1" data-name="wick-4"/>
+<rect x="203.45" y="84.6" width="23.7" height="8.4" fill="#1a9e6e" stroke="#ffffff" stroke-width="0.5" data-name="body-4"/>
+<line x1="262.7" y1="72" x2="262.7" y2="88.8" stroke="#0b0b0b" stroke-width="1" data-name="wick-5"/>
+<rect x="250.85" y="76.2" width="23.7" height="8.4" fill="#1a9e6e" stroke="#ffffff" stroke-width="0.5" data-name="body-5"/>
+<line x1="310.1" y1="67.8" x2="310.1" y2="84.6" stroke="#0b0b0b" stroke-width="1" data-name="wick-6"/>
+<rect x="298.25" y="76.2" width="23.7" height="4.2" fill="#e34948" stroke="#ffffff" stroke-width="0.5" data-name="body-6"/>
+<line x1="357.5" y1="76.2" x2="357.5" y2="93" stroke="#0b0b0b" stroke-width="1" data-name="wick-7"/>
+<rect x="345.65" y="80.4" width="23.7" height="8.4" fill="#e34948" stroke="#ffffff" stroke-width="0.5" data-name="body-7"/>
+<line x1="404.9" y1="80.4" x2="404.9" y2="97.2" stroke="#0b0b0b" stroke-width="1" data-name="wick-8"/>
+<rect x="393.05" y="84.6" width="23.7" height="4.2" fill="#1a9e6e" stroke="#ffffff" stroke-width="0.5" data-name="body-8"/>
+<line x1="452.3" y1="72" x2="452.3" y2="88.8" stroke="#0b0b0b" stroke-width="1" data-name="wick-9"/>
+<rect x="440.45" y="76.2" width="23.7" height="8.4" fill="#1a9e6e" stroke="#ffffff" stroke-width="0.5" data-name="body-9"/>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample cascade 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Support volume breakdown — April</text>
@@ -906,6 +942,32 @@ exports[`SVG snapshots > sample stacked100 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample sunburst 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Revenue by region and product</text>
+<path d="M 240 80.6 A 80.4 80.4 0 0 1 295.48 219.19 L 269.59 192.03 A 42.88 42.88 0 0 0 240 118.12 Z" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="group-0"/>
+<text x="297.22" y="141.15" font-size="8.5" fill="#ffffff" text-anchor="middle" data-name="group-label-0">EMEA</text>
+<path d="M 240 27 A 134 134 0 0 1 361.89 105.33 L 313.13 127.6 A 80.4 80.4 0 0 0 240 80.6 Z" fill="#7599dd" stroke="#ffffff" stroke-width="1" data-name="slice-0"/>
+<text x="316.23" y="45.44" font-size="8.5" fill="#0b0b0b" text-anchor="start" data-name="label-0">Cloud</text>
+<path d="M 361.89 105.33 A 134 134 0 0 1 366.63 204.83 L 315.98 187.3 A 80.4 80.4 0 0 0 313.13 127.6 Z" fill="#94ade2" stroke="#ffffff" stroke-width="1" data-name="slice-1"/>
+<text x="380.84" y="157.35" font-size="8.5" fill="#0b0b0b" text-anchor="start" data-name="label-1">Licenses</text>
+<path d="M 366.63 204.83 A 134 134 0 0 1 332.47 257.98 L 295.48 219.19 A 80.4 80.4 0 0 0 315.98 187.3 Z" fill="#acbee8" stroke="#ffffff" stroke-width="1" data-name="slice-2"/>
+<text x="358.62" y="240.29" font-size="8.5" fill="#0b0b0b" text-anchor="start" data-name="label-2">Services</text>
+<path d="M 295.48 219.19 A 80.4 80.4 0 0 1 160.42 149.56 L 197.56 154.9 A 42.88 42.88 0 0 0 269.59 192.03 Z" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="group-1"/>
+<text x="211.75" y="218.85" font-size="8.5" fill="#ffffff" text-anchor="middle" data-name="group-label-1">Americas</text>
+<path d="M 332.47 257.98 A 134 134 0 0 1 147.53 257.98 L 184.52 219.19 A 80.4 80.4 0 0 0 295.48 219.19 Z" fill="#72bf9a" stroke="#ffffff" stroke-width="1" data-name="slice-3"/>
+<text x="240" y="305.06" font-size="8.5" fill="#0b0b0b" text-anchor="end" data-name="label-3">Cloud</text>
+<path d="M 147.53 257.98 A 134 134 0 0 1 107.36 141.93 L 160.42 149.56 A 80.4 80.4 0 0 0 184.52 219.19 Z" fill="#92caad" stroke="#ffffff" stroke-width="1" data-name="slice-4"/>
+<text x="106.75" y="210.18" font-size="8.5" fill="#0b0b0b" text-anchor="end" data-name="label-4">Licenses</text>
+<path d="M 160.42 149.56 A 80.4 80.4 0 0 1 240 80.6 L 240 118.12 A 42.88 42.88 0 0 0 197.56 154.9 Z" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="group-2"/>
+<text x="199.63" y="117.48" font-size="8.5" fill="#ffffff" text-anchor="middle" data-name="group-label-2">APAC</text>
+<path d="M 107.36 141.93 A 134 134 0 0 1 167.55 48.27 L 196.53 93.36 A 80.4 80.4 0 0 0 160.42 149.56 Z" fill="#f0b56f" stroke="#ffffff" stroke-width="1" data-name="slice-5"/>
+<text x="121.38" y="87.83" font-size="8.5" fill="#0b0b0b" text-anchor="end" data-name="label-5">Cloud</text>
+<path d="M 167.55 48.27 A 134 134 0 0 1 240 27 L 240 80.6 A 80.4 80.4 0 0 0 196.53 93.36 Z" fill="#f2c290" stroke="#ffffff" stroke-width="1" data-name="slice-6"/>
+<text x="200.28" y="28.77" font-size="8.5" fill="#0b0b0b" text-anchor="end" data-name="label-6">Hardware</text>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample tilemap 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Revenue by market (€m)</text>
@@ -1054,6 +1116,21 @@ exports[`SVG snapshots > sample treemap 1`] = `
 <rect x="366" y="246.63" width="111" height="50.38" fill="#e34948" stroke="#ffffff" stroke-width="1" data-name="tile-5"/>
 <text x="369" y="257.13" font-size="8.5" fill="#ffffff" text-anchor="start" font-weight="600" data-name="tile-5-label">Training</text>
 <text x="369" y="268.63" font-size="8" fill="#ffffff" text-anchor="start" data-name="tile-5-value">15</text>
+</svg>"
+`;
+
+exports[`SVG snapshots > sample violin 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Response time distribution (ms)</text>
+<text x="81" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-0">API</text>
+<text x="239" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-1">Web</text>
+<text x="397" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-2">Batch</text>
+<polygon points="126.2,244.2 147.36,237.9 111.34,231.6 50.66,231.6 14.64,237.9 35.8,244.2" fill="#d8dff3" stroke="#2a78d6" stroke-width="1" stroke-linejoin="round" data-name="violin-0"/>
+<line x1="57.77" y1="239" x2="104.23" y2="239" stroke="#0b0b0b" stroke-width="1.75" data-name="median-0"/>
+<polygon points="260.5,225.3 300.47,219 305.36,212.7 291.83,206.4 271.76,200.1 206.24,200.1 186.17,206.4 172.64,212.7 177.53,219 217.5,225.3" fill="#d8e9e0" stroke="#1baf7a" stroke-width="1" stroke-linejoin="round" data-name="violin-1"/>
+<line x1="215.77" y1="213.49" x2="262.23" y2="213.49" stroke="#0b0b0b" stroke-width="1.75" data-name="median-1"/>
+<polygon points="410.42,105.6 420.82,99.3 432.41,93 446.17,86.7 458.58,80.4 463.36,74.1 462.15,67.8 456.53,61.5 441.69,55.2 421.14,48.9 372.86,48.9 352.31,55.2 337.47,61.5 331.85,67.8 330.64,74.1 335.42,80.4 347.83,86.7 361.59,93 373.18,99.3 383.58,105.6" fill="#f9e6d7" stroke="#eda100" stroke-width="1" stroke-linejoin="round" data-name="violin-2"/>
+<line x1="373.77" y1="74.89" x2="420.23" y2="74.89" stroke="#0b0b0b" stroke-width="1.75" data-name="median-2"/>
 </svg>"
 `;
 

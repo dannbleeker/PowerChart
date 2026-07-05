@@ -978,6 +978,51 @@ const features = [
     },
     decorations: { segmentLabels: true },
   },
+  {
+    kind: "sunburst",
+    width: 480,
+    height: 300,
+    title: "Sunburst (region → product)",
+    data: {
+      categories: [
+        "EMEA | Cloud", "EMEA | Licenses", "EMEA | Services",
+        "Americas | Cloud", "Americas | Licenses",
+        "APAC | Cloud", "APAC | Hardware",
+      ],
+      series: [{ name: "Revenue", values: [60, 40, 25, 80, 50, 45, 30] }],
+    },
+    decorations: { segmentLabels: true },
+  },
+  {
+    kind: "violin",
+    width: 480,
+    height: 300,
+    title: "Response-time distribution (ms)",
+    data: {
+      categories: ["API", "Web", "Batch"],
+      series: Array.from({ length: 10 }, (_, i) => ({
+        name: `s${i + 1}`,
+        values: [90 + i * 4, 140 + i * 9, 300 + i * 22],
+      })),
+    },
+    decorations: { categoryAxis: true, valueAxis: true },
+  },
+  {
+    kind: "candlestick",
+    width: 480,
+    height: 300,
+    title: "Share price — last two weeks",
+    data: {
+      categories: ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"],
+      series: [
+        { name: "Open", values: [40, 42, 45, 44, 47, 46, 43, 45, 48, 47] },
+        { name: "High", values: [43, 46, 47, 48, 49, 47, 46, 49, 50, 49] },
+        { name: "Low", values: [39, 41, 43, 43, 45, 42, 42, 44, 46, 45] },
+        { name: "Close", values: [42, 45, 44, 47, 46, 43, 45, 48, 47, 46] },
+      ],
+    },
+    decorations: { valueAxis: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

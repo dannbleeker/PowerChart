@@ -1,0 +1,95 @@
+import type { ChartConfig, ChartStyle, Decorations } from "../types";
+import { type SceneNode } from "../scene";
+import { resolveFormat } from "../format";
+import { seriesColor } from "../style";
+import { lerpColor } from "../color";
+import { chromeNodes, computeFrame, valueScale } from "./frame";
+import type { LayoutResult } from "./column";
+
+const quantile = (sorted: number[], p: number): number => {
+  if (!sorted.length) return 0;
+  const idx = p * (sorted.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+};
+
+/**
+ * Violin chart: a mirrored kernel-density shape per category, from raw samples
+ * (every datasheet row is an observation, like the boxplot's raw mode). Shows
+ * the full distribution, not just the five-number summary. The body is a
+ * filled polygon — solid in SVG/pptx, outline-only in the live add-in (no
+ * freeform fills there).
+ */
+export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const n = data.categories.length;
+  const fs = style.fontSize;
+  const samplesOf = (c: number) => data.series.map((s) => s.values[c]).filter((v): v is number => v != null);
+  const allSamples = data.categories.flatMap((_, c) => samplesOf(c));
+  const fmt = resolveFormat(allSamples, cfg.numberFormat);
+  void fmt;
+
+  const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
+  const scale = valueScale(frame, Math.min(...(allSamples.length ? allSamples : [0])), Math.max(...(allSamples.length ? allSamples : [1])), cfg.scale);
+  const slotLen = frame.w / Math.max(1, n);
+  const halfW = slotLen * 0.42;
+  const centers = data.categories.map((_, c) => frame.x + slotLen * (c + 0.5));
+
+  const nodes: SceneNode[] = chromeNodes(cfg, style, { ...decor, seriesLabels: false }, frame, centers, scale);
+  const vmin = scale.min;
+  const vmax = scale.max;
+  const M = 40;
+
+  data.categories.forEach((_, c) => {
+    const samples = samplesOf(c);
+    if (samples.length < 2) return;
+    const sorted = samples.slice().sort((a, b) => a - b);
+    const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+    const sd = Math.sqrt(samples.reduce((a, b) => a + (b - mean) ** 2, 0) / samples.length) || 1;
+    // Silverman's rule-of-thumb bandwidth.
+    const h = Math.max((vmax - vmin) / 60, 1.06 * sd * Math.pow(samples.length, -0.2));
+    const lo = sorted[0];
+    const hi = sorted[sorted.length - 1];
+
+    const levels: { y: number; d: number }[] = [];
+    let maxD = 0;
+    for (let k = 0; k <= M; k++) {
+      const y = vmin + ((vmax - vmin) * k) / M;
+      if (y < lo - h || y > hi + h) continue; // clamp near the data range
+      let d = 0;
+      for (const s of samples) d += Math.exp(-0.5 * ((y - s) / h) ** 2);
+      d /= samples.length * h * Math.sqrt(2 * Math.PI);
+      levels.push({ y, d });
+      if (d > maxD) maxD = d;
+    }
+    if (levels.length < 2 || maxD <= 0) return;
+
+    const cxc = centers[c];
+    const points: { x: number; y: number }[] = [];
+    for (const lv of levels) points.push({ x: cxc + (lv.d / maxD) * halfW, y: scale.toY(lv.y) });
+    for (let k = levels.length - 1; k >= 0; k--) points.push({ x: cxc - (levels[k].d / maxD) * halfW, y: scale.toY(levels[k].y) });
+
+    const color = seriesColor(style, c % 8, data.series.find((s) => s.color)?.color);
+    nodes.push({ kind: "polygon", points, fill: lerpColor("#ffffff", color, 0.32), stroke: color, strokeWidth: 1, name: `violin-${c}` });
+    // Median tick.
+    const med = quantile(sorted, 0.5);
+    nodes.push({ kind: "line", x1: cxc - halfW * 0.35, y1: scale.toY(med), x2: cxc + halfW * 0.35, y2: scale.toY(med), stroke: style.text, strokeWidth: 1.75, name: `median-${c}` });
+  });
+
+  return {
+    nodes,
+    anchors: {
+      categoryX: centers,
+      categoryWidth: data.categories.map(() => halfW * 2),
+      columnTop: data.categories.map((_, c) => scale.toY(Math.max(...(samplesOf(c).length ? samplesOf(c) : [0])))),
+      columnValue: data.categories.map((_, c) => {
+        const s = samplesOf(c);
+        return s.length ? quantile(s.slice().sort((a, b) => a - b), 0.5) : 0;
+      }),
+      baselineY: frame.y + frame.h,
+      plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
+      valueToY: scale.toY,
+    },
+  };
+}

@@ -59,6 +59,9 @@ section and `skill/reference.md`.
 | Funnel | pipeline / conversion stages | centered bands, width ∝ value, conversion % between stages; order values ascending for a pyramid |
 | Waffle | one dominant share ("68% of…") | 10×10 unit grid, 1 cell = 1%, filled from the bottom-left; a single category ≤ 100 reads as a literal % with a big-number legend; `100%=` overrides the denominator |
 | Treemap | part-to-whole with many items | squarified rectangles, area ∝ value; categories named `"Group \| Item"` nest into two levels (group headers + child tiles) |
+| Sunburst | a hierarchy as nested rings | `"Group \| Item"` categories → groups on the inner ring, items on the outer ring |
+| Violin | full distribution per category | raw samples per column form a mirrored kernel-density shape with a median tick (fills degrade to outline in the live add-in) |
+| Candlestick | financial OHLC / price action | datasheet rows `Open`/`High`/`Low`/`Close`; green when the period rose, red when it fell |
 
 All column-family charts (stacked/clustered/100%), waterfall, Mekko, and
 boxplot rotate into **horizontal** bars/rows with the "Horizontal (bar)"
