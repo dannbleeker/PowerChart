@@ -132,6 +132,59 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           ],
         },
       };
+    case "boxplot":
+      return {
+        ...base,
+        title: "Delivery days by region",
+        data: {
+          categories: ["North", "South", "East", "West"],
+          series: [
+            { name: "Min", values: [2, 3, 1, 2] },
+            { name: "Q1", values: [3, 5, 2, 4] },
+            { name: "Median", values: [4, 7, 3, 5] },
+            { name: "Q3", values: [6, 9, 5, 7] },
+            { name: "Max", values: [8, 12, 7, 10] },
+          ],
+        },
+        decorations: { categoryAxis: true, valueAxis: true },
+      };
+    case "radar":
+      return {
+        ...base,
+        title: "Capability assessment",
+        data: {
+          categories: ["Strategy", "Data", "Talent", "Process", "Tech", "Culture"],
+          series: [
+            { name: "Today", values: [3, 2, 3, 2, 4, 3] },
+            { name: "Target", values: [4, 4, 4, 3, 5, 4] },
+          ],
+        },
+        scale: { min: 0, max: 5 },
+      };
+    case "heatmap":
+      return {
+        ...base,
+        title: "Sales by region and quarter",
+        data: {
+          categories: ["Q1", "Q2", "Q3", "Q4"],
+          series: [
+            { name: "North", values: [42, 48, 51, 58] },
+            { name: "South", values: [30, 34, 31, 36] },
+            { name: "East", values: [22, 25, 29, 33] },
+            { name: "West", values: [18, 16, 21, 24] },
+          ],
+        },
+      };
+    case "tilemap":
+      return {
+        ...base,
+        title: "Revenue by market (€m)",
+        map: "europe",
+        data: {
+          categories: ["DK", "SE", "NO", "FI", "DE", "NL", "FR", "GB", "ES", "IT", "PL"],
+          series: [{ name: "Revenue", values: [84, 61, 45, 32, 140, 66, 98, 112, 54, 72, 38] }],
+        },
+      };
     case "area":
       return {
         ...base,
@@ -178,4 +231,8 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "combo", label: "Combo" },
   { kind: "pie", label: "Pie" },
   { kind: "doughnut", label: "Doughnut" },
+  { kind: "boxplot", label: "Boxplot" },
+  { kind: "radar", label: "Radar" },
+  { kind: "heatmap", label: "Heatmap" },
+  { kind: "tilemap", label: "Tile map" },
 ];

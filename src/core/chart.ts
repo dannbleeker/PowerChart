@@ -9,6 +9,10 @@ import { layoutButterfly } from "./layout/butterfly";
 import { layoutScatter } from "./layout/scatter";
 import { layoutGantt } from "./layout/gantt";
 import { layoutPie } from "./layout/pie";
+import { boxplotExtent, layoutBoxplot } from "./layout/boxplot";
+import { layoutRadar } from "./layout/radar";
+import { layoutHeatmap } from "./layout/heatmap";
+import { layoutTilemap } from "./layout/tilemap";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
 import { formatNumber, resolveFormat } from "./format";
@@ -76,6 +80,18 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     case "doughnut":
       result = layoutPie(cfg, style, decor);
       break;
+    case "boxplot":
+      result = layoutBoxplot(cfg, style, decor);
+      break;
+    case "radar":
+      result = layoutRadar(cfg, style, decor);
+      break;
+    case "heatmap":
+      result = layoutHeatmap(cfg, style, decor);
+      break;
+    case "tilemap":
+      result = layoutTilemap(cfg, style, decor);
+      break;
     default:
       result = layoutColumns(cfg, style, decor);
   }
@@ -84,7 +100,7 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // and butterfly charts.
   const skipDecor =
     cfg.horizontal ||
-    ["butterfly", "scatter", "bubble", "gantt", "pie", "doughnut"].includes(cfg.kind);
+    ["butterfly", "scatter", "bubble", "gantt", "pie", "doughnut", "radar", "heatmap", "tilemap"].includes(cfg.kind);
   // Background bands go BEFORE the layout's nodes so they render behind the
   // data (scatter/bubble draw their own, in value units).
   const bands = !skipDecor && decor.bands?.length ? bandNodes(cfg, style, decor, result.anchors) : [];
@@ -175,6 +191,8 @@ export function valueExtent(cfg: ChartConfig): { min: number; max: number } | nu
     case "clustered":
     case "line":
       return { min: Math.min(0, ...vals), max: Math.max(0, ...vals) };
+    case "boxplot":
+      return boxplotExtent(cfg);
     case "area": {
       const pos = cats.map((c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
       return { min: 0, max: Math.max(0, ...pos) };

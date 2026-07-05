@@ -257,6 +257,49 @@ exports[`SVG snapshots > sample area 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample boxplot 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Delivery days by region</text>
+<text x="30" y="285.24" font-size="9" fill="#52514e" text-anchor="end" data-name="value-axis">0</text>
+<text x="30" y="201.24" font-size="9" fill="#52514e" text-anchor="end" data-name="value-axis">5</text>
+<text x="30" y="117.24" font-size="9" fill="#52514e" text-anchor="end" data-name="value-axis">10</text>
+<text x="30" y="33.24" font-size="9" fill="#52514e" text-anchor="end" data-name="value-axis">15</text>
+<text x="89.25" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-0">North</text>
+<text x="199.75" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-1">South</text>
+<text x="310.25" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-2">East</text>
+<text x="420.75" y="295" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-3">West</text>
+<line x1="89.25" y1="147.6" x2="89.25" y2="181.2" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-hi-0"/>
+<line x1="89.25" y1="231.6" x2="89.25" y2="248.4" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-lo-0"/>
+<line x1="75.58" y1="147.6" x2="102.92" y2="147.6" stroke="#a5a49e" stroke-width="0.75" data-name="cap-hi-0"/>
+<line x1="75.58" y1="248.4" x2="102.92" y2="248.4" stroke="#a5a49e" stroke-width="0.75" data-name="cap-lo-0"/>
+<rect x="58.86" y="181.2" width="60.78" height="50.4" fill="#e5eaf7" stroke="#2a78d6" stroke-width="1" data-name="box-0"/>
+<line x1="58.86" y1="214.8" x2="119.64" y2="214.8" stroke="#2a78d6" stroke-width="1.75" data-name="median-0"/>
+<text x="89.25" y="210.55" font-size="9" fill="#0b0b0b" text-anchor="middle" data-name="median-label-0">4</text>
+<line x1="199.75" y1="80.4" x2="199.75" y2="130.8" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-hi-1"/>
+<line x1="199.75" y1="198" x2="199.75" y2="231.6" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-lo-1"/>
+<line x1="186.08" y1="80.4" x2="213.42" y2="80.4" stroke="#a5a49e" stroke-width="0.75" data-name="cap-hi-1"/>
+<line x1="186.08" y1="231.6" x2="213.42" y2="231.6" stroke="#a5a49e" stroke-width="0.75" data-name="cap-lo-1"/>
+<rect x="169.36" y="130.8" width="60.78" height="67.2" fill="#e5eaf7" stroke="#2a78d6" stroke-width="1" data-name="box-1"/>
+<line x1="169.36" y1="164.4" x2="230.14" y2="164.4" stroke="#2a78d6" stroke-width="1.75" data-name="median-1"/>
+<text x="199.75" y="160.15" font-size="9" fill="#0b0b0b" text-anchor="middle" data-name="median-label-1">7</text>
+<line x1="310.25" y1="164.4" x2="310.25" y2="198" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-hi-2"/>
+<line x1="310.25" y1="248.4" x2="310.25" y2="265.2" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-lo-2"/>
+<line x1="296.58" y1="164.4" x2="323.92" y2="164.4" stroke="#a5a49e" stroke-width="0.75" data-name="cap-hi-2"/>
+<line x1="296.58" y1="265.2" x2="323.92" y2="265.2" stroke="#a5a49e" stroke-width="0.75" data-name="cap-lo-2"/>
+<rect x="279.86" y="198" width="60.78" height="50.4" fill="#e5eaf7" stroke="#2a78d6" stroke-width="1" data-name="box-2"/>
+<line x1="279.86" y1="231.6" x2="340.64" y2="231.6" stroke="#2a78d6" stroke-width="1.75" data-name="median-2"/>
+<text x="310.25" y="227.35" font-size="9" fill="#0b0b0b" text-anchor="middle" data-name="median-label-2">3</text>
+<line x1="420.75" y1="114" x2="420.75" y2="164.4" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-hi-3"/>
+<line x1="420.75" y1="214.8" x2="420.75" y2="248.4" stroke="#a5a49e" stroke-width="0.75" data-name="whisker-lo-3"/>
+<line x1="407.08" y1="114" x2="434.42" y2="114" stroke="#a5a49e" stroke-width="0.75" data-name="cap-hi-3"/>
+<line x1="407.08" y1="248.4" x2="434.42" y2="248.4" stroke="#a5a49e" stroke-width="0.75" data-name="cap-lo-3"/>
+<rect x="390.36" y="164.4" width="60.78" height="50.4" fill="#e5eaf7" stroke="#2a78d6" stroke-width="1" data-name="box-3"/>
+<line x1="390.36" y1="198" x2="451.14" y2="198" stroke="#2a78d6" stroke-width="1.75" data-name="median-3"/>
+<text x="420.75" y="193.75" font-size="9" fill="#0b0b0b" text-anchor="middle" data-name="median-label-3">5</text>
+<line x1="34" y1="282" x2="476" y2="282" stroke="#a5a49e" stroke-width="1" data-name="baseline"/>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample bubble 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Market map</text>
@@ -467,6 +510,78 @@ exports[`SVG snapshots > sample gantt 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample heatmap 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Sales by region and quarter</text>
+<text x="90.38" y="33.1" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="col-0">Q1</text>
+<text x="201.13" y="33.1" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="col-1">Q2</text>
+<text x="311.88" y="33.1" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="col-2">Q3</text>
+<text x="422.63" y="33.1" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="col-3">Q4</text>
+<text x="31" y="69.72" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="row-0">North</text>
+<rect x="35" y="37" width="109.75" height="57.25" fill="#a0b5e5" data-name="cell-0-0"/>
+<text x="89.88" y="69.22" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-0-0">42</text>
+<rect x="145.75" y="37" width="109.75" height="57.25" fill="#83a1e0" data-name="cell-0-1"/>
+<text x="200.63" y="69.22" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-0-1">48</text>
+<rect x="256.5" y="37" width="109.75" height="57.25" fill="#7197dd" data-name="cell-0-2"/>
+<text x="311.38" y="69.22" font-size="10" fill="#ffffff" text-anchor="middle" data-name="cell-label-0-2">51</text>
+<rect x="367.25" y="37" width="109.75" height="57.25" fill="#2a78d6" data-name="cell-0-3"/>
+<text x="422.13" y="69.22" font-size="10" fill="#ffffff" text-anchor="middle" data-name="cell-label-0-3">58</text>
+<text x="31" y="127.98" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="row-1">South</text>
+<rect x="35" y="95.25" width="109.75" height="57.25" fill="#cbd5f0" data-name="cell-1-0"/>
+<text x="89.88" y="127.48" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-1-0">30</text>
+<rect x="145.75" y="95.25" width="109.75" height="57.25" fill="#becbec" data-name="cell-1-1"/>
+<text x="200.63" y="127.48" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-1-1">34</text>
+<rect x="256.5" y="95.25" width="109.75" height="57.25" fill="#c7d3ef" data-name="cell-1-2"/>
+<text x="311.38" y="127.48" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-1-2">31</text>
+<rect x="367.25" y="95.25" width="109.75" height="57.25" fill="#b7c6ea" data-name="cell-1-3"/>
+<text x="422.13" y="127.48" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-1-3">36</text>
+<text x="31" y="186.23" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="row-2">East</text>
+<rect x="35" y="153.5" width="109.75" height="57.25" fill="#e2e7f6" data-name="cell-2-0"/>
+<text x="89.88" y="185.73" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-2-0">22</text>
+<rect x="145.75" y="153.5" width="109.75" height="57.25" fill="#d9e1f4" data-name="cell-2-1"/>
+<text x="200.63" y="185.73" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-2-1">25</text>
+<rect x="256.5" y="153.5" width="109.75" height="57.25" fill="#ced7f0" data-name="cell-2-2"/>
+<text x="311.38" y="185.73" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-2-2">29</text>
+<rect x="367.25" y="153.5" width="109.75" height="57.25" fill="#c1ceed" data-name="cell-2-3"/>
+<text x="422.13" y="185.73" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-2-3">33</text>
+<text x="31" y="244.48" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="row-3">West</text>
+<rect x="35" y="211.75" width="109.75" height="57.25" fill="#ecf0f9" data-name="cell-3-0"/>
+<text x="89.88" y="243.98" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-3-0">18</text>
+<rect x="145.75" y="211.75" width="109.75" height="57.25" fill="#f1f4fb" data-name="cell-3-1"/>
+<text x="200.63" y="243.98" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-3-1">16</text>
+<rect x="256.5" y="211.75" width="109.75" height="57.25" fill="#e4eaf7" data-name="cell-3-2"/>
+<text x="311.38" y="243.98" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-3-2">21</text>
+<rect x="367.25" y="211.75" width="109.75" height="57.25" fill="#dce3f5" data-name="cell-3-3"/>
+<text x="422.13" y="243.98" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="cell-label-3-3">24</text>
+<rect x="35" y="276" width="6.33" height="9" fill="#f1f4fb" data-name="legend-step-0"/>
+<rect x="40.83" y="276" width="6.33" height="9" fill="#ecf0fa" data-name="legend-step-1"/>
+<rect x="46.67" y="276" width="6.33" height="9" fill="#e8ecf8" data-name="legend-step-2"/>
+<rect x="52.5" y="276" width="6.33" height="9" fill="#e3e9f7" data-name="legend-step-3"/>
+<rect x="58.33" y="276" width="6.33" height="9" fill="#dee5f5" data-name="legend-step-4"/>
+<rect x="64.17" y="276" width="6.33" height="9" fill="#d9e0f4" data-name="legend-step-5"/>
+<rect x="70" y="276" width="6.33" height="9" fill="#d4dcf2" data-name="legend-step-6"/>
+<rect x="75.83" y="276" width="6.33" height="9" fill="#ced8f1" data-name="legend-step-7"/>
+<rect x="81.67" y="276" width="6.33" height="9" fill="#c9d4ef" data-name="legend-step-8"/>
+<rect x="87.5" y="276" width="6.33" height="9" fill="#c3cfed" data-name="legend-step-9"/>
+<rect x="93.33" y="276" width="6.33" height="9" fill="#bdcaec" data-name="legend-step-10"/>
+<rect x="99.17" y="276" width="6.33" height="9" fill="#b6c6ea" data-name="legend-step-11"/>
+<rect x="105" y="276" width="6.33" height="9" fill="#b0c1e9" data-name="legend-step-12"/>
+<rect x="110.83" y="276" width="6.33" height="9" fill="#a9bbe7" data-name="legend-step-13"/>
+<rect x="116.67" y="276" width="6.33" height="9" fill="#a1b6e5" data-name="legend-step-14"/>
+<rect x="122.5" y="276" width="6.33" height="9" fill="#9ab1e4" data-name="legend-step-15"/>
+<rect x="128.33" y="276" width="6.33" height="9" fill="#91abe2" data-name="legend-step-16"/>
+<rect x="134.17" y="276" width="6.33" height="9" fill="#88a5e0" data-name="legend-step-17"/>
+<rect x="140" y="276" width="6.33" height="9" fill="#7e9edf" data-name="legend-step-18"/>
+<rect x="145.83" y="276" width="6.33" height="9" fill="#7398dd" data-name="legend-step-19"/>
+<rect x="151.67" y="276" width="6.33" height="9" fill="#6791db" data-name="legend-step-20"/>
+<rect x="157.5" y="276" width="6.33" height="9" fill="#5889da" data-name="legend-step-21"/>
+<rect x="163.33" y="276" width="6.33" height="9" fill="#4681d8" data-name="legend-step-22"/>
+<rect x="169.17" y="276" width="6.33" height="9" fill="#2a78d6" data-name="legend-step-23"/>
+<text x="35" y="294" font-size="8.5" fill="#52514e" text-anchor="start" data-name="legend-min">16</text>
+<text x="175" y="294" font-size="8.5" fill="#52514e" text-anchor="end" data-name="legend-max">58</text>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample line 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Gross margin</text>
@@ -554,6 +669,48 @@ exports[`SVG snapshots > sample pie 1`] = `
 <path d="M 240 161 L 185.63 57.4 A 117 117 0 0 1 240 44 Z" fill="#008300" stroke="#ffffff" stroke-width="1" data-name="slice-3"/>
 <line x1="211.76" y1="46.43" x2="210.44" y2="41.09" stroke="#52514e" stroke-width="0.75" data-name="leader-3"/>
 <text x="210.09" y="43.23" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="label-3">Other 8%</text>
+</svg>"
+`;
+
+exports[`SVG snapshots > sample radar 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Capability assessment</text>
+<polygon points="240,124.2 278.8,146.6 278.8,191.4 240,213.8 201.2,191.4 201.2,146.6" fill="none" stroke="#e1e0d9" stroke-width="0.75" stroke-linejoin="round" data-name="grid-2"/>
+<text x="243" y="127.26" font-size="8.5" fill="#52514e" text-anchor="start" data-name="tick-2">2.0</text>
+<polygon points="240,79.4 317.6,124.2 317.6,213.8 240,258.6 162.4,213.8 162.4,124.2" fill="none" stroke="#e1e0d9" stroke-width="0.75" stroke-linejoin="round" data-name="grid-4"/>
+<text x="243" y="82.46" font-size="8.5" fill="#52514e" text-anchor="start" data-name="tick-4">4.0</text>
+<polygon points="240,34.6 356.39,101.8 356.39,236.2 240,303.4 123.61,236.2 123.61,101.8" fill="none" stroke="#e1e0d9" stroke-width="0.75" stroke-linejoin="round" data-name="grid-6"/>
+<text x="243" y="37.66" font-size="8.5" fill="#52514e" text-anchor="start" data-name="tick-6">6.0</text>
+<line x1="240" y1="169" x2="240" y2="57" stroke="#e1e0d9" stroke-width="0.75" data-name="spoke-0"/>
+<text x="240" y="47.6" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-0">Strategy</text>
+<line x1="240" y1="169" x2="336.99" y2="113" stroke="#e1e0d9" stroke-width="0.75" data-name="spoke-1"/>
+<text x="342.19" y="113.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="category-1">Data</text>
+<line x1="240" y1="169" x2="336.99" y2="225" stroke="#e1e0d9" stroke-width="0.75" data-name="spoke-2"/>
+<text x="342.19" y="231.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="category-2">Talent</text>
+<line x1="240" y1="169" x2="240" y2="281" stroke="#e1e0d9" stroke-width="0.75" data-name="spoke-3"/>
+<text x="240" y="297.6" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="category-3">Process</text>
+<line x1="240" y1="169" x2="143.01" y2="225" stroke="#e1e0d9" stroke-width="0.75" data-name="spoke-4"/>
+<text x="137.81" y="231.6" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="category-4">Tech</text>
+<line x1="240" y1="169" x2="143.01" y2="113" stroke="#e1e0d9" stroke-width="0.75" data-name="spoke-5"/>
+<text x="137.81" y="113.6" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="category-5">Culture</text>
+<polygon points="240,101.8 278.8,146.6 298.2,202.6 240,213.8 162.4,213.8 181.8,135.4" fill="#2a78d6" fill-opacity="0.18" stroke="#2a78d6" stroke-width="1.6" stroke-linejoin="round" data-name="series-0"/>
+<ellipse cx="240" cy="101.8" rx="2.4" ry="2.4" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="marker-0-0"/>
+<ellipse cx="278.8" cy="146.6" rx="2.4" ry="2.4" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="marker-0-1"/>
+<ellipse cx="298.2" cy="202.6" rx="2.4" ry="2.4" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="marker-0-2"/>
+<ellipse cx="240" cy="213.8" rx="2.4" ry="2.4" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="marker-0-3"/>
+<ellipse cx="162.4" cy="213.8" rx="2.4" ry="2.4" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="marker-0-4"/>
+<ellipse cx="181.8" cy="135.4" rx="2.4" ry="2.4" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="marker-0-5"/>
+<polygon points="240,79.4 317.6,124.2 317.6,213.8 240,236.2 143.01,225 162.4,124.2" fill="#1baf7a" fill-opacity="0.18" stroke="#1baf7a" stroke-width="1.6" stroke-linejoin="round" data-name="series-1"/>
+<ellipse cx="240" cy="79.4" rx="2.4" ry="2.4" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="marker-1-0"/>
+<ellipse cx="317.6" cy="124.2" rx="2.4" ry="2.4" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="marker-1-1"/>
+<ellipse cx="317.6" cy="213.8" rx="2.4" ry="2.4" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="marker-1-2"/>
+<ellipse cx="240" cy="236.2" rx="2.4" ry="2.4" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="marker-1-3"/>
+<ellipse cx="143.01" cy="225" rx="2.4" ry="2.4" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="marker-1-4"/>
+<ellipse cx="162.4" cy="124.2" rx="2.4" ry="2.4" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="marker-1-5"/>
+<rect x="0" y="25.5" width="7" height="7" fill="#2a78d6" data-name="legend-chip-0"/>
+<text x="10" y="32.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-0">Today</text>
+<rect x="49" y="25.5" width="7" height="7" fill="#1baf7a" data-name="legend-chip-1"/>
+<text x="59" y="32.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-1">Target</text>
 </svg>"
 `;
 
@@ -682,6 +839,133 @@ exports[`SVG snapshots > sample stacked100 1`] = `
 <text x="419.4" y="52.5" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="series-label-0">Wholesale</text>
 <text x="419.4" y="130.62" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="series-label-1">Online</text>
 <text x="419.4" y="237.72" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="series-label-2">Retail</text>
+</svg>"
+`;
+
+exports[`SVG snapshots > sample tilemap 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Revenue by market (€m)</text>
+<rect x="83.44" y="24" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-IS"/>
+<text x="97.97" y="42.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IS">IS</text>
+<rect x="209.69" y="24" width="29.06" height="29.06" fill="#e4e9f7" data-name="tile-NO"/>
+<text x="224.22" y="36.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-NO">NO</text>
+<text x="224.22" y="46.53" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-NO">45</text>
+<rect x="241.25" y="24" width="29.06" height="29.06" fill="#d3dcf2" data-name="tile-SE"/>
+<text x="255.78" y="36.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SE">SE</text>
+<text x="255.78" y="46.53" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-SE">61</text>
+<rect x="272.81" y="24" width="29.06" height="29.06" fill="#f1f4fb" data-name="tile-FI"/>
+<text x="287.34" y="36.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-FI">FI</text>
+<text x="287.34" y="46.53" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-FI">32</text>
+<rect x="304.38" y="55.56" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-EE"/>
+<text x="318.91" y="73.65" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-EE">EE</text>
+<rect x="83.44" y="87.13" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-IE"/>
+<text x="97.97" y="105.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IE">IE</text>
+<rect x="115" y="87.13" width="29.06" height="29.06" fill="#88a4e0" data-name="tile-GB"/>
+<text x="129.53" y="99.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-GB">GB</text>
+<text x="129.53" y="109.66" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-GB">112</text>
+<rect x="178.13" y="87.13" width="29.06" height="29.06" fill="#cdd7f0" data-name="tile-NL"/>
+<text x="192.66" y="99.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-NL">NL</text>
+<text x="192.66" y="109.66" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-NL">66</text>
+<rect x="209.69" y="87.13" width="29.06" height="29.06" fill="#b6c5ea" data-name="tile-DK"/>
+<text x="224.22" y="99.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-DK">DK</text>
+<text x="224.22" y="109.66" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-DK">84</text>
+<rect x="304.38" y="87.13" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-LV"/>
+<text x="318.91" y="105.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LV">LV</text>
+<rect x="178.13" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BE"/>
+<text x="192.66" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BE">BE</text>
+<rect x="209.69" y="118.69" width="29.06" height="29.06" fill="#2a78d6" data-name="tile-DE"/>
+<text x="224.22" y="130.78" font-size="9.881250000000001" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="tile-code-DE">DE</text>
+<text x="224.22" y="141.22" font-size="8" fill="#ffffff" text-anchor="middle" data-name="tile-value-DE">140</text>
+<rect x="241.25" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-CZ"/>
+<text x="255.78" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CZ">CZ</text>
+<rect x="272.81" y="118.69" width="29.06" height="29.06" fill="#ebeff9" data-name="tile-PL"/>
+<text x="287.34" y="130.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-PL">PL</text>
+<text x="287.34" y="141.22" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-PL">38</text>
+<rect x="304.38" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-LT"/>
+<text x="318.91" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LT">LT</text>
+<rect x="335.94" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BY"/>
+<text x="350.47" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BY">BY</text>
+<rect x="367.5" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-RU"/>
+<text x="382.03" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RU">RU</text>
+<rect x="146.56" y="150.25" width="29.06" height="29.06" fill="#a1b6e5" data-name="tile-FR"/>
+<text x="161.09" y="162.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-FR">FR</text>
+<text x="161.09" y="172.78" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-FR">98</text>
+<rect x="178.13" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-LU"/>
+<text x="192.66" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LU">LU</text>
+<rect x="209.69" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-AT"/>
+<text x="224.22" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-AT">AT</text>
+<rect x="241.25" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-SK"/>
+<text x="255.78" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SK">SK</text>
+<rect x="272.81" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-RS"/>
+<text x="287.34" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RS">RS</text>
+<rect x="304.38" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-RO"/>
+<text x="318.91" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RO">RO</text>
+<rect x="335.94" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-UA"/>
+<text x="350.47" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-UA">UA</text>
+<rect x="83.44" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-PT"/>
+<text x="97.97" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-PT">PT</text>
+<rect x="115" y="181.81" width="29.06" height="29.06" fill="#dbe2f4" data-name="tile-ES"/>
+<text x="129.53" y="193.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-ES">ES</text>
+<text x="129.53" y="204.34" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-ES">54</text>
+<rect x="178.13" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-CH"/>
+<text x="192.66" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CH">CH</text>
+<rect x="209.69" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-SI"/>
+<text x="224.22" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SI">SI</text>
+<rect x="241.25" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-HU"/>
+<text x="255.78" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-HU">HU</text>
+<rect x="272.81" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BA"/>
+<text x="287.34" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BA">BA</text>
+<rect x="304.38" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BG"/>
+<text x="318.91" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BG">BG</text>
+<rect x="335.94" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-MD"/>
+<text x="350.47" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MD">MD</text>
+<rect x="178.13" y="213.38" width="29.06" height="29.06" fill="#c6d1ee" data-name="tile-IT"/>
+<text x="192.66" y="225.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IT">IT</text>
+<text x="192.66" y="235.91" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-IT">72</text>
+<rect x="241.25" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-HR"/>
+<text x="255.78" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-HR">HR</text>
+<rect x="272.81" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-ME"/>
+<text x="287.34" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-ME">ME</text>
+<rect x="304.38" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-MK"/>
+<text x="318.91" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MK">MK</text>
+<rect x="335.94" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-TR"/>
+<text x="350.47" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-TR">TR</text>
+<rect x="146.56" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-MT"/>
+<text x="161.09" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MT">MT</text>
+<rect x="272.81" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-AL"/>
+<text x="287.34" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-AL">AL</text>
+<rect x="304.38" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-GR"/>
+<text x="318.91" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-GR">GR</text>
+<rect x="367.5" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-CY"/>
+<text x="382.03" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CY">CY</text>
+<rect x="83.44" y="281.5" width="5.5" height="9" fill="#f1f4fb" data-name="legend-step-0"/>
+<rect x="88.44" y="281.5" width="5.5" height="9" fill="#ecf0fa" data-name="legend-step-1"/>
+<rect x="93.44" y="281.5" width="5.5" height="9" fill="#e8ecf8" data-name="legend-step-2"/>
+<rect x="98.44" y="281.5" width="5.5" height="9" fill="#e3e9f7" data-name="legend-step-3"/>
+<rect x="103.44" y="281.5" width="5.5" height="9" fill="#dee5f5" data-name="legend-step-4"/>
+<rect x="108.44" y="281.5" width="5.5" height="9" fill="#d9e0f4" data-name="legend-step-5"/>
+<rect x="113.44" y="281.5" width="5.5" height="9" fill="#d4dcf2" data-name="legend-step-6"/>
+<rect x="118.44" y="281.5" width="5.5" height="9" fill="#ced8f1" data-name="legend-step-7"/>
+<rect x="123.44" y="281.5" width="5.5" height="9" fill="#c9d4ef" data-name="legend-step-8"/>
+<rect x="128.44" y="281.5" width="5.5" height="9" fill="#c3cfed" data-name="legend-step-9"/>
+<rect x="133.44" y="281.5" width="5.5" height="9" fill="#bdcaec" data-name="legend-step-10"/>
+<rect x="138.44" y="281.5" width="5.5" height="9" fill="#b6c6ea" data-name="legend-step-11"/>
+<rect x="143.44" y="281.5" width="5.5" height="9" fill="#b0c1e9" data-name="legend-step-12"/>
+<rect x="148.44" y="281.5" width="5.5" height="9" fill="#a9bbe7" data-name="legend-step-13"/>
+<rect x="153.44" y="281.5" width="5.5" height="9" fill="#a1b6e5" data-name="legend-step-14"/>
+<rect x="158.44" y="281.5" width="5.5" height="9" fill="#9ab1e4" data-name="legend-step-15"/>
+<rect x="163.44" y="281.5" width="5.5" height="9" fill="#91abe2" data-name="legend-step-16"/>
+<rect x="168.44" y="281.5" width="5.5" height="9" fill="#88a5e0" data-name="legend-step-17"/>
+<rect x="173.44" y="281.5" width="5.5" height="9" fill="#7e9edf" data-name="legend-step-18"/>
+<rect x="178.44" y="281.5" width="5.5" height="9" fill="#7398dd" data-name="legend-step-19"/>
+<rect x="183.44" y="281.5" width="5.5" height="9" fill="#6791db" data-name="legend-step-20"/>
+<rect x="188.44" y="281.5" width="5.5" height="9" fill="#5889da" data-name="legend-step-21"/>
+<rect x="193.44" y="281.5" width="5.5" height="9" fill="#4681d8" data-name="legend-step-22"/>
+<rect x="198.44" y="281.5" width="5.5" height="9" fill="#2a78d6" data-name="legend-step-23"/>
+<text x="83.44" y="299.5" font-size="8.5" fill="#52514e" text-anchor="start" data-name="legend-min">32</text>
+<text x="203.44" y="299.5" font-size="8.5" fill="#52514e" text-anchor="end" data-name="legend-max">140</text>
+<rect x="213.44" y="281.5" width="9" height="9" fill="#e6e6e6" data-name="legend-nodata"/>
+<text x="224.44" y="289.06" font-size="8.5" fill="#52514e" text-anchor="start" data-name="legend-nodata-label">no data</text>
 </svg>"
 `;
 

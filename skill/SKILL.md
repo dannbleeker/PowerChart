@@ -55,6 +55,10 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Population pyramid / two-sided compare | `butterfly` |
 | Simple share | `pie` / `doughnut` (exact wedge geometry in the pptx output) |
 | Side-by-side comparison per category | `clustered` |
+| Distribution per category | `boxplot` (Min/Q1/Median/Q3/Max rows, or raw samples → Tukey whiskers) |
+| Multi-dimension profile / score | `radar` (translucent polygons, ≤3 series) |
+| Matrix of values (region × period) | `heatmap` (one global color scale) |
+| Values by geography | `tilemap` (tile-grid cartogram: `map: "us"/"eu"/"europe"/"world"`) |
 | Trend over time | `line` (date categories space proportionally) or `stacked100`-style share via `area` |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,

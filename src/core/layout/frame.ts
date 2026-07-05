@@ -215,14 +215,25 @@ export function chromeNodes(
     }
   }
   if (decor.valueAxis && scale) {
-    const axisFmt = resolveFormat(scale.ticks, cfg.numberFormat);
-    for (const t of scale.ticks) {
+    // "datamarks": Tufte-style tick dashes + labels, no axis line, no
+    // gridlines; tickMode "data" places them at the data extremes instead
+    // of nice round values (the range frame).
+    const marks = decor.valueAxis === "datamarks";
+    const ticks =
+      marks && decor.tickMode === "data"
+        ? [...new Set([scale.min, scale.max])]
+        : scale.ticks;
+    const axisFmt = resolveFormat(ticks, cfg.numberFormat);
+    for (const t of ticks) {
       const y = scale.toY(t);
+      if (marks) {
+        nodes.push({ kind: "line", x1: frame.x - 4, y1: y, x2: frame.x, y2: y, stroke: style.axis, strokeWidth: 1, name: "datamark" });
+      }
       nodes.push({
         kind: "text",
         x: 0,
         y: y - fs * 0.7,
-        w: frame.x - 4,
+        w: marks ? frame.x - 6 : frame.x - 4,
         h: fs * 1.4,
         text: formatNumber(t, axisFmt),
         fontSize: fs * 0.9,

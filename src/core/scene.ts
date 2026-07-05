@@ -18,6 +18,18 @@ export interface RectNode {
   name?: string;
 }
 
+export interface PolygonNode {
+  kind: "polygon";
+  points: { x: number; y: number }[];
+  /** Fill color; rendered translucent via fillOpacity in SVG. PowerPoint
+   * renderers degrade to the stroked outline only (no freeform fills). */
+  fill?: string;
+  fillOpacity?: number;
+  stroke?: string;
+  strokeWidth?: number;
+  name?: string;
+}
+
 export interface LineNode {
   kind: "line";
   x1: number;
@@ -111,7 +123,8 @@ export type SceneNode =
   | EllipseNode
   | WedgeNode
   | ChevronNode
-  | ArrowheadNode;
+  | ArrowheadNode
+  | PolygonNode;
 
 /** Point on a circle for wedge geometry (0° = 12 o'clock, clockwise). */
 export function polar(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {

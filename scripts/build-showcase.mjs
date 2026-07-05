@@ -258,6 +258,53 @@ const features = [
     decorations: { connectors: true },
   },
   {
+    kind: "boxplot",
+    width: 480,
+    height: 300,
+    title: "Boxplot from raw samples (Tukey whiskers, outliers)",
+    boxplot: { showMean: true },
+    data: {
+      categories: ["North", "South", "East"],
+      series: [
+        { name: "", values: [4, 7, 3] }, { name: "", values: [5, 8, 4] },
+        { name: "", values: [5, 9, 4] }, { name: "", values: [6, 9, 5] },
+        { name: "", values: [6, 10, 5] }, { name: "", values: [7, 11, 6] },
+        { name: "", values: [7, 11, 6] }, { name: "", values: [8, 12, 7] },
+        { name: "", values: [15, 12, 14] },
+      ],
+    },
+    decorations: { categoryAxis: true, valueAxis: true },
+  },
+  {
+    ...sampleConfig("line"),
+    title: "Datamark axis (Tufte range frame)",
+    decorations: { segmentLabels: false, valueAxis: "datamarks", tickMode: "data", gridlines: false },
+  },
+  {
+    kind: "heatmap",
+    width: 480,
+    height: 300,
+    title: "Diverging heatmap (YoY change, %)",
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "North", values: [4, 6, -2, 8] },
+        { name: "South", values: [-5, -3, 2, 1] },
+        { name: "East", values: [1, 3, 5, 9] },
+      ],
+    },
+  },
+  {
+    kind: "tilemap",
+    width: 480,
+    height: 300,
+    title: "US tile map (auto-detected layout)",
+    data: {
+      categories: ["CA", "TX", "NY", "FL", "IL", "WA", "MA", "CO", "GA", "NC"],
+      series: [{ name: "Stores", values: [120, 95, 88, 74, 51, 44, 38, 29, 27, 22] }],
+    },
+  },
+  {
     kind: "line",
     width: 480,
     height: 300,

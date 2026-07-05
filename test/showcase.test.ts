@@ -58,6 +58,12 @@ describe("showcase deck coverage", () => {
     ["footnote / source line", (c) => !!c.footnote],
     ["100% = note", (c) => !!c.decorations?.hundredPercentNote],
     ["pattern fills", (c) => c.data.series.some((s) => !!s.pattern)],
+    ["boxplot raw samples", (c) => c.kind === "boxplot" && !c.data.series.some((s) => /^min$/i.test(s.name))],
+    ["boxplot summary rows", (c) => c.kind === "boxplot" && c.data.series.some((s) => /^median$/i.test(s.name))],
+    ["datamark axis", (c) => c.decorations?.valueAxis === "datamarks"],
+    ["diverging heatmap (negative values)", (c) => c.kind === "heatmap" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
+    ["explicit map layout", (c) => !!c.map],
+    ["auto-detected map layout", (c) => c.kind === "tilemap" && !c.map],
     ["trend statistics (Trend row present)", (c) => c.data.series.some((s) => /^trend$/i.test(s.name.trim()))],
   ];
   for (const [name, test] of FEATURES) {

@@ -286,7 +286,9 @@ function addNode(
         width: Math.max(0.2, n.rx * 2),
         height: Math.max(0.2, n.ry * 2),
       });
-      shape.fill.setSolidColor(n.fill);
+      // Stroke-only ellipses (radar circle grid) carry fill "none".
+      if (n.fill === "none") shape.fill.clear();
+      else shape.fill.setSolidColor(n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
         shape.lineFormat.color = n.stroke;
         shape.lineFormat.weight = n.strokeWidth ?? 1;
@@ -308,6 +310,27 @@ function addNode(
     }
     case "wedge":
       return addWedgeFan(shapes, n, dx, dy);
+    case "polygon": {
+      // No freeform paths in Office.js: draw the outline as connected line
+      // segments (translucent fills degrade to outline-only in PowerPoint).
+      const created: PowerPoint.Shape[] = [];
+      const pts = n.points;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        const seg = shapes.addLine(PowerPoint.ConnectorType.straight, {
+          left: dx + Math.min(a.x, b.x),
+          top: dy + Math.min(a.y, b.y),
+          width: Math.abs(b.x - a.x),
+          height: Math.abs(b.y - a.y),
+        });
+        seg.lineFormat.color = n.stroke ?? n.fill ?? "#000000";
+        seg.lineFormat.weight = n.strokeWidth ?? 1;
+        if (n.name) seg.name = `${n.name}-e${i}`;
+        created.push(seg);
+      }
+      return created;
+    }
     case "text":
       return [addText(shapes, n, dx, dy, opts)];
     case "arrowhead": {
