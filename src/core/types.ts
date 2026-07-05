@@ -23,6 +23,12 @@ export interface Series {
   color?: string;
   /** Combo charts: render this series as a line over the columns. */
   type?: "column" | "line";
+  /**
+   * Stack group for clustered-stacked charts (think-cell separates stacks
+   * with blank datasheet rows). Series sharing a stack index stack together;
+   * different indices sit side by side within each category.
+   */
+  stack?: number;
 }
 
 export interface ChartData {

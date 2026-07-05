@@ -16,6 +16,15 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 |---|---|
 | Stacked / clustered / 100% column charts | ✅ |
 | Stacked waterfall (multi-series deltas) | ✅ |
+| Clustered-stacked charts (blank datasheet rows split stacks) | ✅ |
+| Rotation for waterfall & Mekko (not just columns) | ✅ |
+| Global label de-collision pass (outside labels never overlap) | ✅ |
+| Datasheet formulas (`=B2-B3`, `SUM`/`AVG`/`MIN`/`MAX`, ranges) | ✅ |
+| Saved chart templates | ✅ (localStorage) |
+| Corporate style file (import/export JSON defaults) | ✅ |
+| Same Scale on the current selection | ✅ |
+| Scatter partition lines, trend line, group legend | ✅ (`X line`/`Y line`/`Trend` rows) |
+| Gantt weeks + weekend shading, section headers, indent, remarks | ✅ (`>` prefix, `Activity \| Owner \| Remark`) |
 | Combo chart (stacked columns + line series) | ✅ (`type: "line"` on a series) |
 | Pie & doughnut | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.9 rotation) |
 | Bar charts as rotated column charts, butterfly charts | ✅ (`horizontal` toggle, `butterfly` kind) |

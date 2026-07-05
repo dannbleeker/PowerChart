@@ -10,6 +10,7 @@ import { layoutScatter } from "./layout/scatter";
 import { layoutGantt } from "./layout/gantt";
 import { layoutPie } from "./layout/pie";
 import { decorationNodes } from "./decor";
+import { resolveLabelCollisions } from "./collide";
 import type { LayoutResult } from "./layout/column";
 
 export const DEFAULT_SIZE = { width: 480, height: 300 };
@@ -60,6 +61,9 @@ export function buildChart(cfg: ChartConfig): Scene {
   const nodes = skipDecor
     ? result.nodes
     : [...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];
+
+  // Global de-collision for outside labels (vertical cartesian charts).
+  if (!skipDecor) resolveLabelCollisions(nodes);
 
   // Manual label nudges (think-cell's label dragging, config-driven).
   if (cfg.labelOffsets) {
