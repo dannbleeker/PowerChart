@@ -1,0 +1,21 @@
+name: Feature request
+description: A chart type, decoration, or workflow you're missing
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to make?
+      description: A sketch, a think-cell screenshot, or a description of the slide you want.
+    validations:
+      required: true
+  - type: textarea
+    id: thinkcell
+    attributes:
+      label: think-cell equivalent (if any)
+      description: If think-cell has this feature, name it — docs/RESEARCH.md tracks parity.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Chart type, Decoration/labels, Datasheet, Gantt, Task pane UX, Claude skill / automation, Other]

@@ -1,0 +1,1386 @@
+[
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Stacked — Revenue by segment",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            34,
+            40,
+            47,
+            56
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            22,
+            26,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            18,
+            17,
+            19,
+            22
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true,
+      "cagr": {
+        "from": 0,
+        "to": 3
+      }
+    }
+  },
+  {
+    "kind": "clustered",
+    "width": 480,
+    "height": 300,
+    "title": "Clustered — Sales by quarter",
+    "data": {
+      "categories": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "series": [
+        {
+          "name": "2024",
+          "values": [
+            42,
+            48,
+            45,
+            61
+          ]
+        },
+        {
+          "name": "2025",
+          "values": [
+            51,
+            55,
+            58,
+            70
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "seriesLabels": true
+    }
+  },
+  {
+    "kind": "stacked100",
+    "width": 480,
+    "height": 300,
+    "title": "100% — Channel mix",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Retail",
+          "values": [
+            55,
+            49,
+            44,
+            38
+          ]
+        },
+        {
+          "name": "Online",
+          "values": [
+            30,
+            36,
+            41,
+            47
+          ]
+        },
+        {
+          "name": "Wholesale",
+          "values": [
+            15,
+            15,
+            15,
+            15
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "waterfall",
+    "width": 480,
+    "height": 300,
+    "title": "Waterfall — EBITDA bridge",
+    "data": {
+      "categories": [
+        "FY23",
+        "Volume",
+        "Price",
+        "Cost",
+        "FX",
+        "FY24"
+      ],
+      "series": [
+        {
+          "name": "Delta",
+          "values": [
+            86,
+            14,
+            9,
+            -12,
+            -4,
+            0
+          ]
+        }
+      ]
+    },
+    "waterfall": {
+      "totalIndices": [
+        5
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true
+    }
+  },
+  {
+    "kind": "mekko",
+    "width": 480,
+    "height": 300,
+    "title": "Mekko — Revenue by region and segment",
+    "data": {
+      "categories": [
+        "EMEA",
+        "Americas",
+        "APAC"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            42,
+            55,
+            18
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            28,
+            30,
+            22
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            14,
+            25,
+            30
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "line",
+    "width": 480,
+    "height": 300,
+    "title": "Line — Gross margin",
+    "data": {
+      "categories": [
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Brand A",
+          "values": [
+            48,
+            52,
+            55,
+            61,
+            66
+          ]
+        },
+        {
+          "name": "Brand B",
+          "values": [
+            40,
+            42,
+            41,
+            45,
+            49
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": false,
+      "valueAxis": true,
+      "gridlines": true
+    }
+  },
+  {
+    "kind": "area",
+    "width": 480,
+    "height": 300,
+    "title": "Area — Active users",
+    "data": {
+      "categories": [
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Mobile",
+          "values": [
+            20,
+            32,
+            45,
+            60,
+            74
+          ]
+        },
+        {
+          "name": "Desktop",
+          "values": [
+            35,
+            37,
+            36,
+            34,
+            30
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": false,
+      "valueAxis": true,
+      "gridlines": true
+    }
+  },
+  {
+    "kind": "butterfly",
+    "width": 480,
+    "height": 300,
+    "title": "Butterfly — Headcount by age band",
+    "data": {
+      "categories": [
+        "<30",
+        "30–39",
+        "40–49",
+        "50–59",
+        "60+"
+      ],
+      "series": [
+        {
+          "name": "Women",
+          "values": [
+            420,
+            610,
+            540,
+            320,
+            120
+          ]
+        },
+        {
+          "name": "Men",
+          "values": [
+            380,
+            650,
+            600,
+            410,
+            160
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "scatter",
+    "width": 480,
+    "height": 300,
+    "title": "Scatter — Price vs. margin",
+    "data": {
+      "categories": [
+        "Alpha",
+        "Bravo",
+        "Core",
+        "Delta",
+        "Echo",
+        "Foxtrot",
+        "Golf",
+        "Hotel"
+      ],
+      "series": [
+        {
+          "name": "X",
+          "values": [
+            12,
+            25,
+            40,
+            55,
+            62,
+            74,
+            30,
+            48
+          ]
+        },
+        {
+          "name": "Y",
+          "values": [
+            30,
+            55,
+            42,
+            70,
+            35,
+            60,
+            22,
+            50
+          ]
+        },
+        {
+          "name": "Group",
+          "values": [
+            1,
+            1,
+            2,
+            2,
+            3,
+            3,
+            1,
+            2
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "bubble",
+    "width": 480,
+    "height": 300,
+    "title": "Bubble — Market map",
+    "data": {
+      "categories": [
+        "Alpha",
+        "Bravo",
+        "Core",
+        "Delta",
+        "Echo",
+        "Foxtrot",
+        "Golf",
+        "Hotel"
+      ],
+      "series": [
+        {
+          "name": "X",
+          "values": [
+            12,
+            25,
+            40,
+            55,
+            62,
+            74,
+            30,
+            48
+          ]
+        },
+        {
+          "name": "Y",
+          "values": [
+            30,
+            55,
+            42,
+            70,
+            35,
+            60,
+            22,
+            50
+          ]
+        },
+        {
+          "name": "Size",
+          "values": [
+            10,
+            40,
+            90,
+            25,
+            55,
+            70,
+            15,
+            35
+          ]
+        },
+        {
+          "name": "Group",
+          "values": [
+            1,
+            1,
+            2,
+            2,
+            3,
+            3,
+            1,
+            2
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "gantt",
+    "width": 480,
+    "height": 300,
+    "title": "Gantt — Programme plan (weeks)",
+    "data": {
+      "categories": [
+        "Scoping",
+        "Design",
+        "Build",
+        "Test",
+        "Rollout"
+      ],
+      "series": [
+        {
+          "name": "Start",
+          "values": [
+            1,
+            3,
+            5,
+            10,
+            13
+          ]
+        },
+        {
+          "name": "End",
+          "values": [
+            3,
+            6,
+            11,
+            13,
+            15
+          ]
+        },
+        {
+          "name": "Milestone",
+          "values": [
+            null,
+            6,
+            null,
+            13,
+            15
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "combo",
+    "width": 480,
+    "height": 300,
+    "title": "Combo — Revenue and margin",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Product",
+          "values": [
+            40,
+            46,
+            52,
+            60
+          ]
+        },
+        {
+          "name": "Services",
+          "values": [
+            18,
+            22,
+            27,
+            33
+          ]
+        },
+        {
+          "name": "Margin %",
+          "values": [
+            31,
+            34,
+            38,
+            45
+          ],
+          "type": "line"
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true
+    }
+  },
+  {
+    "kind": "pie",
+    "width": 480,
+    "height": 300,
+    "title": "Pie — Revenue split",
+    "data": {
+      "categories": [
+        "EMEA",
+        "Americas",
+        "APAC",
+        "Other"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            84,
+            110,
+            70,
+            22
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "doughnut",
+    "width": 480,
+    "height": 300,
+    "title": "Doughnut — Revenue split",
+    "data": {
+      "categories": [
+        "EMEA",
+        "Americas",
+        "APAC",
+        "Other"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            84,
+            110,
+            70,
+            22
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Decorations — totals, CAGR, difference, value line",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            34,
+            40,
+            47,
+            56
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            22,
+            26,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            18,
+            17,
+            19,
+            22
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true,
+      "cagr": {
+        "from": 0,
+        "to": 3
+      },
+      "difference": {
+        "from": 0,
+        "to": 3
+      },
+      "valueLines": [
+        {
+          "mode": "mean"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Level difference (series) + label content Value+%",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            34,
+            40,
+            47,
+            56
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            22,
+            26,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            18,
+            17,
+            19,
+            22
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "difference": {
+        "from": 0,
+        "to": 3,
+        "series": 0
+      },
+      "labelContent": [
+        "value",
+        "percent"
+      ]
+    }
+  },
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Bar orientation + segment order descending",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            34,
+            40,
+            47,
+            56
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            22,
+            26,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            18,
+            17,
+            19,
+            22
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true,
+      "seriesLabels": true
+    },
+    "horizontal": true,
+    "segmentOrder": "descending"
+  },
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Category sort descending + pinned axis + de-DE locale",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            34,
+            40,
+            47,
+            56
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            22,
+            26,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            18,
+            17,
+            19,
+            22
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true,
+      "valueAxis": true,
+      "gridlines": true
+    },
+    "categorySort": "descending",
+    "scale": {
+      "max": 150
+    },
+    "numberFormat": {
+      "decimals": 1,
+      "locale": "de-DE"
+    }
+  },
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Clustered-stacked (stack groups) ",
+    "data": {
+      "categories": [
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "EU Product",
+          "values": [
+            30,
+            36
+          ],
+          "stack": 0
+        },
+        {
+          "name": "EU Services",
+          "values": [
+            12,
+            16
+          ],
+          "stack": 0
+        },
+        {
+          "name": "US Product",
+          "values": [
+            26,
+            33
+          ],
+          "stack": 1
+        },
+        {
+          "name": "US Services",
+          "values": [
+            10,
+            14
+          ],
+          "stack": 1
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true
+    }
+  },
+  {
+    "kind": "clustered",
+    "width": 480,
+    "height": 300,
+    "title": "Axis break (620 outlier) + axis title",
+    "data": {
+      "categories": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "series": [
+        {
+          "name": "Sales",
+          "values": [
+            42,
+            55,
+            620,
+            61
+          ]
+        }
+      ]
+    },
+    "axisBreak": {
+      "from": 80,
+      "to": 580
+    },
+    "valueAxisTitle": "€m",
+    "decorations": {
+      "valueAxis": true,
+      "gridlines": true,
+      "seriesLabels": false
+    }
+  },
+  {
+    "kind": "clustered",
+    "width": 480,
+    "height": 300,
+    "title": "Log scale",
+    "data": {
+      "categories": [
+        "Seed",
+        "A",
+        "B",
+        "C"
+      ],
+      "series": [
+        {
+          "name": "Valuation",
+          "values": [
+            4,
+            40,
+            220,
+            1900
+          ]
+        }
+      ]
+    },
+    "logScale": true,
+    "valueAxisTitle": "$m (log)",
+    "decorations": {
+      "valueAxis": true,
+      "gridlines": true,
+      "seriesLabels": false
+    }
+  },
+  {
+    "kind": "stacked100",
+    "width": 480,
+    "height": 300,
+    "title": "100%= row (columns short of 100%)",
+    "data": {
+      "categories": [
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Won",
+          "values": [
+            40,
+            55,
+            70
+          ]
+        },
+        {
+          "name": "Lost",
+          "values": [
+            30,
+            25,
+            20
+          ]
+        }
+      ],
+      "hundredPercent": [
+        100,
+        100,
+        100
+      ]
+    }
+  },
+  {
+    "kind": "waterfall",
+    "width": 480,
+    "height": 300,
+    "title": "Stacked waterfall + value-line-anchored difference",
+    "data": {
+      "categories": [
+        "FY23",
+        "Organic",
+        "M&A",
+        "Cost",
+        "FY24"
+      ],
+      "series": [
+        {
+          "name": "Europe",
+          "values": [
+            50,
+            8,
+            5,
+            -6,
+            0
+          ]
+        },
+        {
+          "name": "Americas",
+          "values": [
+            36,
+            6,
+            9,
+            -6,
+            0
+          ]
+        }
+      ]
+    },
+    "waterfall": {
+      "totalIndices": [
+        4
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true,
+      "valueLines": [
+        {
+          "mode": "value",
+          "value": 100
+        }
+      ],
+      "difference": {
+        "from": 0,
+        "to": 4,
+        "fromValueLine": 0,
+        "percent": false
+      }
+    }
+  },
+  {
+    "kind": "waterfall",
+    "width": 480,
+    "height": 300,
+    "title": "Rotated waterfall",
+    "data": {
+      "categories": [
+        "FY23",
+        "Volume",
+        "Price",
+        "Cost",
+        "FX",
+        "FY24"
+      ],
+      "series": [
+        {
+          "name": "Delta",
+          "values": [
+            86,
+            14,
+            9,
+            -12,
+            -4,
+            0
+          ]
+        }
+      ]
+    },
+    "waterfall": {
+      "totalIndices": [
+        5
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true
+    },
+    "horizontal": true
+  },
+  {
+    "kind": "mekko",
+    "width": 480,
+    "height": 300,
+    "title": "Mekko with units (X extent) — rotated",
+    "data": {
+      "categories": [
+        "EMEA",
+        "Americas",
+        "APAC"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            42,
+            55,
+            18
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            28,
+            30,
+            22
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            14,
+            25,
+            30
+          ]
+        }
+      ],
+      "xExtent": [
+        50,
+        30,
+        20
+      ]
+    },
+    "horizontal": true
+  },
+  {
+    "kind": "combo",
+    "width": 480,
+    "height": 300,
+    "title": "Combo + secondary axis",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Product",
+          "values": [
+            40,
+            46,
+            52,
+            60
+          ]
+        },
+        {
+          "name": "Services",
+          "values": [
+            18,
+            22,
+            27,
+            33
+          ]
+        },
+        {
+          "name": "Margin %",
+          "values": [
+            31,
+            34,
+            38,
+            45
+          ],
+          "type": "line"
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true
+    },
+    "secondaryAxis": true
+  },
+  {
+    "kind": "scatter",
+    "width": 480,
+    "height": 300,
+    "title": "Scatter — partition lines, trend, groups",
+    "data": {
+      "categories": [
+        "Alpha",
+        "Bravo",
+        "Core",
+        "Delta",
+        "Echo",
+        "Foxtrot"
+      ],
+      "series": [
+        {
+          "name": "X",
+          "values": [
+            12,
+            25,
+            40,
+            55,
+            62,
+            74
+          ]
+        },
+        {
+          "name": "Y",
+          "values": [
+            18,
+            30,
+            38,
+            52,
+            55,
+            68
+          ]
+        },
+        {
+          "name": "Group",
+          "values": [
+            1,
+            1,
+            2,
+            2,
+            3,
+            3
+          ]
+        },
+        {
+          "name": "X line",
+          "values": [
+            45,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "name": "Y line",
+          "values": [
+            40,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "name": "Trend",
+          "values": [
+            1,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "gantt",
+    "width": 480,
+    "height": 300,
+    "title": "Gantt — sections, owners, remarks, deps, today, holiday, bracket",
+    "data": {
+      "categories": [
+        "Phase 1 — Discovery",
+        "> Interviews | Anna | 12 done",
+        "> Synthesis | Ben",
+        "Phase 2 — Delivery",
+        "> Build | Cato | at risk"
+      ],
+      "series": [
+        {
+          "name": "Start",
+          "values": [
+            null,
+            20458,
+            20472,
+            null,
+            20479
+          ]
+        },
+        {
+          "name": "End",
+          "values": [
+            null,
+            20476,
+            20483,
+            null,
+            20504
+          ]
+        },
+        {
+          "name": "Milestone",
+          "values": [
+            null,
+            null,
+            20483,
+            null,
+            20504
+          ]
+        },
+        {
+          "name": "After",
+          "values": [
+            null,
+            null,
+            2,
+            null,
+            3
+          ]
+        },
+        {
+          "name": "Today",
+          "values": [
+            20486,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "name": "Holiday",
+          "values": [
+            20468,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "name": "Bracket Sprint 1",
+          "values": [
+            20458,
+            20472,
+            null,
+            null,
+            null
+          ]
+        }
+      ],
+      "dates": true
+    }
+  },
+  {
+    "kind": "stacked",
+    "width": 480,
+    "height": 300,
+    "title": "Manual label nudge (labelOffsets)",
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Enterprise",
+          "values": [
+            34,
+            40,
+            47,
+            56
+          ]
+        },
+        {
+          "name": "SMB",
+          "values": [
+            22,
+            26,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Consumer",
+          "values": [
+            18,
+            17,
+            19,
+            22
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true
+    },
+    "labelOffsets": {
+      "total-3": {
+        "dx": 0,
+        "dy": -6
+      }
+    }
+  }
+]
