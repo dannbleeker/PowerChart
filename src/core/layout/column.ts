@@ -118,6 +118,9 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const seriesLevels: number[][] = [];
   /** Segment mid-position of the last category per series, for series labels. */
   const lastSegMid: (number | null)[] = data.series.map(() => null);
+  /** Cumulative segment boundaries per column (value units), for connectors. */
+  const posBounds: number[][] = [];
+  const negBounds: number[][] = [];
 
   for (let c = 0; c < n; c++) {
     // Running positive/negative levels per stack group (value units).
@@ -140,7 +143,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       let v = raw ?? 0;
       if (pct) v = denominators[c] > 0 ? Math.max(0, v) / denominators[c] : 0;
       let r: { x: number; y: number; w: number; h: number } | null = null;
-      const fill = seriesColor(style, si, s.color);
+      const fill = seriesColor(style, si, s.colors?.[c] ?? s.color);
 
       const sp = stackPos.get(s.stack ?? 0) ?? 0;
       if (raw != null && v !== 0) {
@@ -151,9 +154,11 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           if (v >= 0) {
             r = segRect(catPos, thick, ups[sp], ups[sp] + v);
             ups[sp] += v;
+            if (nStacks === 1) (posBounds[c] ??= []).push(ups[sp]);
           } else {
             r = segRect(catPos, thick, downs[sp] + v, downs[sp]);
             downs[sp] += v;
+            if (nStacks === 1) (negBounds[c] ??= []).push(downs[sp]);
           }
         } else {
           const pos = centers[c] - colThick / 2 + (position + 0.5) * barThick;
@@ -268,6 +273,35 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           valign: "bottom",
           name: `total-${c}`,
         });
+      }
+    }
+  }
+
+  // Connector lines between adjacent stacked columns: one per segment
+  // boundary, so the development of each segment is easy to follow.
+  if (decor.connectors && stacked && nStacks === 1) {
+    const edge = (c: number, q: number, side: 1 | -1) =>
+      H
+        ? { x: frame.x + q, y: centers[c] + (side * colThick) / 2 }
+        : { x: centers[c] + (side * colThick) / 2, y: frame.y + frame.h - q };
+    for (let c = 0; c < n - 1; c++) {
+      for (const bounds of [posBounds, negBounds]) {
+        const a = bounds[c] ?? [];
+        const b = bounds[c + 1] ?? [];
+        for (let i = 0; i < Math.min(a.length, b.length); i++) {
+          const p1 = edge(c, qOf(a[i]), 1);
+          const p2 = edge(c + 1, qOf(b[i]), -1);
+          nodes.push({
+            kind: "line",
+            x1: p1.x,
+            y1: p1.y,
+            x2: p2.x,
+            y2: p2.y,
+            stroke: style.mutedText,
+            strokeWidth: 0.75,
+            name: `connector-${c}-${i}${bounds === negBounds ? "n" : ""}`,
+          });
+        }
       }
     }
   }

@@ -21,6 +21,11 @@ export interface Series {
   values: (number | null)[];
   /** Override the palette color for this series. */
   color?: string;
+  /**
+   * Per-category fill overrides — highlight a single segment, point, or
+   * slice ("color on a data point"). null cells keep the series color.
+   */
+  colors?: (string | null)[];
   /** Combo charts: render this series as a line over the columns. */
   type?: "column" | "line";
   /**
@@ -99,6 +104,30 @@ export interface Decorations {
   valueLines?: ({ mode: "mean" } | { mode: "value"; value: number })[];
   /** @deprecated legacy single value line; normalized into valueLines. */
   valueLine?: { mode: "mean" } | { mode: "value"; value: number };
+  /**
+   * Connector lines joining segment boundaries of adjacent stacked
+   * columns/bars — they make the development of each segment much easier
+   * to follow. Stacked/100% charts (single stack group).
+   */
+  connectors?: boolean;
+  /**
+   * Speech-bubble callouts commenting on a value: anchored to a column top,
+   * or to the cumulative level of `series` within it. dx/dy nudge the bubble
+   * from its default spot above the anchor.
+   */
+  callouts?: { text: string; category: number; series?: number; dx?: number; dy?: number }[];
+  /**
+   * Shaded background bands highlighting a region of an axis, drawn behind
+   * the data. axis "y" spans a value range; axis "x" spans category indices
+   * (scatter/bubble: both axes are in value units).
+   */
+  bands?: { axis: "x" | "y"; from: number; to: number; color?: string; label?: string }[];
+  /**
+   * Render a "100% = N" note in the footnote line — the classic annotation
+   * telling readers what the percentages are of. Pie/doughnut (series total)
+   * and 100% charts (uniform denominator).
+   */
+  hundredPercentNote?: boolean;
 }
 
 export interface NumberFormat {
@@ -173,6 +202,14 @@ export interface ChartConfig {
   labelOffsets?: Record<string, { dx: number; dy: number }>;
   /** Logarithmic value axis (decade ticks). Clustered/line charts, positive data. */
   logScale?: boolean;
+  /**
+   * Source/footnote line rendered bottom-left in small muted text
+   * (e.g. "Kilde: Danmarks Statistik, 2024"). Good charts always cite
+   * their source and period.
+   */
+  footnote?: string;
+  /** Pie/doughnut options: `explode` offsets the listed slice indices radially. */
+  pie?: { explode?: number[] };
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;

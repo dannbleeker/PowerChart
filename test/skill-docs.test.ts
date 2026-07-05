@@ -31,7 +31,11 @@ describe("skill documentation coverage", () => {
   });
 
   it("reference.md documents the decoration keys", () => {
-    for (const key of ["cagr", "difference", "valueLines", "labelContent", "segmentOrder", "axisBreak", "categorySort", "secondaryAxis", "labelOffsets"]) {
+    for (const key of [
+      "cagr", "difference", "valueLines", "labelContent", "segmentOrder", "axisBreak",
+      "categorySort", "secondaryAxis", "labelOffsets",
+      "connectors", "callouts", "bands", "hundredPercentNote", "footnote", "explode", "colors",
+    ]) {
       expect(reference).toContain(key);
     }
   });

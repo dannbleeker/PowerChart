@@ -1,6 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat, segmentLabel } from "../format";
+import { footnoteH } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -17,9 +18,10 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const fmt = resolveFormat(values, cfg.numberFormat);
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const footH = footnoteH(cfg, style, decor);
   const cx = cfg.width / 2;
-  const cy = titleH + (cfg.height - titleH) / 2;
-  const r = Math.min(cfg.width * 0.5 - fs * 7, (cfg.height - titleH) / 2 - fs * 2.2);
+  const cy = titleH + (cfg.height - titleH - footH) / 2;
+  const r = Math.min(cfg.width * 0.5 - fs * 7, (cfg.height - titleH - footH) / 2 - fs * 2.2);
   const doughnut = cfg.kind === "doughnut";
 
   const nodes: SceneNode[] = [];
@@ -34,9 +36,14 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   values.forEach((v, c) => {
     const span = (v / total) * 360;
     if (span <= 0) return;
-    const fill = style.palette[c % style.palette.length];
+    const fill = data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length];
+    // Exploding slice: offset the wedge radially to highlight it.
+    const exploded = cfg.pie?.explode?.includes(c) ?? false;
+    const off = exploded ? polar(0, 0, r * 0.08, angle + span / 2) : { x: 0, y: 0 };
+    const ecx = cx + off.x;
+    const ecy = cy + off.y;
     nodes.push({
-      kind: "wedge", cx, cy, r, innerR: 0,
+      kind: "wedge", cx: ecx, cy: ecy, r, innerR: 0,
       startAngle: angle, endAngle: angle + span,
       fill, stroke: style.background, strokeWidth: 1, name: `slice-${c}`,
     });
@@ -51,13 +58,13 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         fmt,
       });
       const inside = span >= 30 && !doughnut;
-      const p = polar(cx, cy, inside ? r * 0.62 : r + fs * 0.8, mid);
+      const p = polar(ecx, ecy, inside ? r * 0.62 : r + fs * 0.8, mid);
       const w = textWidth(label, fs) + 4;
       const rightHalf = mid % 360 < 180;
       if (!inside) {
         // Leader line from the arc edge toward the label.
-        const a = polar(cx, cy, r + 1, mid);
-        const b = polar(cx, cy, r + fs * 0.65, mid);
+        const a = polar(ecx, ecy, r + 1, mid);
+        const b = polar(ecx, ecy, r + fs * 0.65, mid);
         nodes.push({ kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: style.mutedText, strokeWidth: 0.75, name: `leader-${c}` });
       }
       nodes.push({

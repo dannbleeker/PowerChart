@@ -1,5 +1,5 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "./types";
-import type { SceneNode } from "./scene";
+import { textWidth, type SceneNode } from "./scene";
 import { cagr, formatNumber, formatPercent } from "./format";
 
 /**
@@ -148,6 +148,85 @@ export function decorationNodes(
     });
   }
 
+  // --- Speech-bubble callouts: a comment anchored to a column or level ---
+  decor.callouts?.forEach((co, i) => {
+    const c = Math.max(0, Math.min(a.categoryX.length - 1, co.category));
+    const ax = a.categoryX[c];
+    const useLevel =
+      co.series != null && a.seriesLevels != null && a.valueToY != null && co.series < (a.seriesLevels[c]?.length ?? 0);
+    const ay = useLevel ? a.valueToY!(a.seriesLevels![c][co.series!]) : a.columnTop[c];
+    const w = textWidth(co.text, fs) + fs * 1.2;
+    const h = fs * 1.9;
+    // Bubble center defaults to hovering above the anchor.
+    const bx = ax + (co.dx ?? 0);
+    const by = ay - fs * 4.2 + (co.dy ?? 0);
+    nodes.push(
+      { kind: "line", x1: bx, y1: by + h / 2 - 1, x2: ax, y2: ay - 2, stroke: style.text, strokeWidth: 0.75, name: `callout-tail-${i}` },
+      { kind: "rect", x: bx - w / 2, y: by - h / 2, w, h, fill: style.background, stroke: style.text, strokeWidth: 1, name: `callout-box-${i}` },
+      {
+        kind: "text",
+        x: bx - w / 2,
+        y: by - h / 2,
+        w,
+        h,
+        text: co.text,
+        fontSize: fs,
+        color: style.text,
+        align: "center",
+        valign: "middle",
+        name: `callout-text-${i}`,
+      },
+    );
+  });
+
+  return nodes;
+}
+
+/**
+ * Shaded background bands highlighting an axis region — drawn BEHIND the
+ * data (the caller prepends these to the scene). axis "y" spans a value
+ * range; axis "x" spans category indices.
+ */
+export function bandNodes(
+  cfg: ChartConfig,
+  style: ChartStyle,
+  decor: Decorations,
+  a: LayoutAnchors,
+): SceneNode[] {
+  const nodes: SceneNode[] = [];
+  const fs = style.fontSize;
+  decor.bands?.forEach((band, i) => {
+    const fill = band.color ?? "#f2f1ec";
+    let r: { x: number; y: number; w: number; h: number } | null = null;
+    if (band.axis === "y" && a.valueToY) {
+      const y1 = a.valueToY(band.from);
+      const y2 = a.valueToY(band.to);
+      r = { x: a.plot.x, y: Math.min(y1, y2), w: a.plot.w, h: Math.abs(y1 - y2) };
+    } else if (band.axis === "x" && a.categoryX.length) {
+      const c1 = Math.max(0, Math.min(a.categoryX.length - 1, Math.min(band.from, band.to)));
+      const c2 = Math.max(0, Math.min(a.categoryX.length - 1, Math.max(band.from, band.to)));
+      const x1 = a.categoryX[c1] - a.categoryWidth[c1] * 0.75;
+      const x2 = a.categoryX[c2] + a.categoryWidth[c2] * 0.75;
+      r = { x: x1, y: a.plot.y, w: x2 - x1, h: a.plot.h };
+    }
+    if (!r || r.w <= 0 || r.h <= 0) return;
+    nodes.push({ kind: "rect", ...r, fill, name: `band-${i}` });
+    if (band.label) {
+      nodes.push({
+        kind: "text",
+        x: r.x + 3,
+        y: r.y + 1,
+        w: Math.max(20, r.w - 6),
+        h: fs * 1.3,
+        text: band.label,
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "left",
+        valign: "top",
+        name: `band-label-${i}`,
+      });
+    }
+  });
   return nodes;
 }
 

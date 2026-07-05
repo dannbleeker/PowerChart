@@ -59,9 +59,13 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,
-`segmentOrder`, plus `scale {min,max}`, `axisBreak {from,to}`, `logScale`,
-`categorySort` at the top level. Defaults are think-cell-like: labels on,
-axis off.
+`segmentOrder`, `connectors` (segment-boundary lines between stacked columns),
+`callouts` (speech-bubble comments), `bands` (shaded background regions),
+`hundredPercentNote`, plus `scale {min,max}`, `axisBreak {from,to}`,
+`logScale`, `categorySort`, `footnote` (source line), `pie {explode}` and
+per-cell `series.colors` highlights at the top level. Defaults are
+think-cell-like: labels on, axis off; always set `footnote` with the data
+source when you know it.
 
 ## Rules
 

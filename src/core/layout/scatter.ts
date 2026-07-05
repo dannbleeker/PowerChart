@@ -3,6 +3,7 @@ import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, resolveFormat } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { PALETTE } from "../style";
+import { footnoteH } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -37,7 +38,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     x: axisW,
     y: titleH + 6 + legendH,
     w: cfg.width - axisW - 8,
-    h: cfg.height - titleH - 6 - legendH - fs * 1.6,
+    h: cfg.height - titleH - 6 - legendH - fs * 1.6 - footnoteH(cfg, style, decor),
   };
 
   const xTicks = niceTicks(Math.min(0, ...pts.map((p) => p.x)), Math.max(1, ...pts.map((p) => p.x)), 5);
@@ -59,6 +60,24 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
     });
   }
+  // Background bands (both axes in value units), behind gridlines and points.
+  decor.bands?.forEach((band, i) => {
+    const clampX = (v: number) => Math.max(plot.x, Math.min(plot.x + plot.w, toX(v)));
+    const clampY = (v: number) => Math.max(plot.y, Math.min(plot.y + plot.h, toY(v)));
+    const r =
+      band.axis === "x"
+        ? { x: Math.min(clampX(band.from), clampX(band.to)), y: plot.y, w: Math.abs(clampX(band.to) - clampX(band.from)), h: plot.h }
+        : { x: plot.x, y: Math.min(clampY(band.from), clampY(band.to)), w: plot.w, h: Math.abs(clampY(band.to) - clampY(band.from)) };
+    if (r.w <= 0 || r.h <= 0) return;
+    nodes.push({ kind: "rect", ...r, fill: band.color ?? "#f2f1ec", name: `band-${i}` });
+    if (band.label) {
+      nodes.push({
+        kind: "text", x: r.x + 3, y: r.y + 1, w: Math.max(20, r.w - 6), h: fs * 1.3,
+        text: band.label, fontSize: fs * 0.9, color: style.mutedText, align: "left", valign: "top", name: `band-label-${i}`,
+      });
+    }
+  });
+
   // Gridlines + axis labels on both axes.
   for (const t of yTicks) {
     const y = toY(t);
