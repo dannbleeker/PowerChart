@@ -98,6 +98,9 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Which tasks drive the project finish date | `gantt` (with `After` rows) + `decorations.criticalPath: true` |
 | Distribution summary by mean and spread (not quartiles) | `boxplot` (raw samples) + `boxplot.meanSd: true` |
 | Word-sized inline trend / KPI dashboard rows | `line`/`area` + `decorations.sparkline: true` (pair with `multiples`) |
+| Circular bar chart / Nightingale rose | `radar` + `radar.bars: true` (radius = value; series stack) |
+| Part-to-whole across several dimensions | `radar` + `radar.stacked: true` (stacked radar) |
+| Two metrics on a pie (share + a second measure) | `pie` + `pie.variableRadius: true` (or a `Radius` row) |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,

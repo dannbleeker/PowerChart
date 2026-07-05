@@ -182,6 +182,13 @@ pick weeks (with weekend shading), months, or quarters automatically.
 - **Sparklines** (`decorations.sparkline` on line/area): compact, axis-less
   word-sized trend lines with min/max/last dots; pair with small multiples for
   a KPI dashboard table, one row per series.
+- **Radial bar chart** (`radar.bars`): a circular bar chart / Nightingale rose —
+  each category is an equal-angle wedge whose radius encodes its value; multiple
+  series stack outward.
+- **Stacked radar** (`radar.stacked`): series stack cumulatively along each
+  spoke as nested filled bands (part-to-whole across dimensions).
+- **Variable-radius pie** (`pie.variableRadius`, or a `Radius` datasheet row):
+  slice angle encodes the first series while radius encodes a second metric.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

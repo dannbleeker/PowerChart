@@ -1070,6 +1070,48 @@ const features = [
     multiples: { columns: 1 },
     decorations: { sparkline: true },
   },
+  {
+    kind: "radar",
+    width: 420,
+    height: 320,
+    title: "Monthly sales (radial bars)",
+    data: {
+      categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"],
+      series: [{ name: "Units", values: [40, 55, 30, 70, 62, 48, 80, 35] }],
+    },
+    radar: { bars: true },
+  },
+  {
+    kind: "radar",
+    width: 460,
+    height: 320,
+    title: "Team capability (stacked radar)",
+    data: {
+      categories: ["Strategy", "Delivery", "Design", "Data", "Comms", "Ops"],
+      series: [
+        { name: "Alice", values: [4, 3, 5, 2, 4, 3] },
+        { name: "Bob", values: [3, 4, 2, 5, 3, 4] },
+        { name: "Cara", values: [2, 3, 3, 3, 5, 2] },
+      ],
+    },
+    radar: { stacked: true },
+    decorations: { seriesLabels: true },
+  },
+  {
+    kind: "pie",
+    width: 460,
+    height: 320,
+    title: "Region share (angle = revenue, radius = margin)",
+    data: {
+      categories: ["EMEA", "Americas", "APAC", "LatAm"],
+      series: [
+        { name: "Revenue", values: [45, 30, 18, 7] },
+        { name: "Radius", values: [90, 55, 70, 40] },
+      ],
+    },
+    pie: { variableRadius: true },
+    decorations: { segmentLabels: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

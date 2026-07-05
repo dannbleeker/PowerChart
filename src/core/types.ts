@@ -347,6 +347,12 @@ export interface ChartConfig {
     breakout?: number[];
     /** Doughnut only: render as a semi-circle (180°) gauge for scorecards. */
     semi?: boolean;
+    /**
+     * Variable-radius pie: each slice's angle still encodes the first series,
+     * but its radius encodes a second metric — supply a `Radius` datasheet row
+     * (or set this flag to use the second series). Pie only, no breakout.
+     */
+    variableRadius?: boolean;
   };
   /**
    * Pareto helper: sort categories by the (first non-line) series descending
@@ -432,7 +438,20 @@ export interface ChartConfig {
    * spokes carrying different KPI units become comparable in shape (the shared
    * numeric ticks are dropped in favour of per-spoke rim maxima).
    */
-  radar?: { perSpoke?: boolean };
+  radar?: {
+    perSpoke?: boolean;
+    /**
+     * Radial (polar) bar chart / coxcomb: draw each category as an equal-angle
+     * wedge whose radius encodes its value, instead of connecting the spokes
+     * into a polygon. Multi-series data stacks the wedges outward.
+     */
+    bars?: boolean;
+    /**
+     * Stacked radar: series stack cumulatively along each spoke (part-to-whole
+     * across dimensions) — nested filled polygons instead of overlaid ones.
+     */
+    stacked?: boolean;
+  };
   /** Combo: how the column series render under the lines (default stacked). */
   combo?: {
     /** Base column mode under the lines (default stacked). */
