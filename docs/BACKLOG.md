@@ -24,7 +24,8 @@ and waterfall grouping spacers; plus batch J: gantt auto-summary bars,
 notched boxplots, and the radar min–max "peer range + us" band; plus
 batch K: automatic "Other" bucket, calendar heatmap layout, and butterfly
 stacked flanks; plus batch L: radar per-spoke scales, transparent floating
-column segments, and the line missing-data bridge.)
+column segments, and the line missing-data bridge; plus batch M: combo
+waterfall/Mekko base modes and independent per-line-series axes.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -47,10 +48,6 @@ Pareto helper).
   rendering engine.
 
 ### Combo
-- **Multiple independent secondary axes** (per-line-series scales) —
-  medium, high for KPI dashboards.
-- **Waterfall/Mekko + line overlay** (e.g. bridge with %-of-revenue line) —
-  medium, medium.
 - Stacked-area + line, scatter-on-combo — hard/low; skip for now.
 
 ### Line / Area

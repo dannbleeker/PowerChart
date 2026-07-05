@@ -82,6 +82,9 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Radar over mixed KPI units (shape comparison) | `radar` + `radar.perSpoke: true` |
 | Line series with holes in the data | `line` + `decorations.bridgeGaps: true` (connect across nulls) |
 | Floating bar / range column | `stacked` with a `color: "transparent"` base series |
+| Bridge (waterfall) with a %-of-total line | `combo` + `combo.columns: "waterfall"` + a `type:"line"` series |
+| Mekko with an overlaid line | `combo` + `combo.columns: "mekko"` |
+| Several KPIs in unlike units on one chart | `combo` + `combo.lineAxes: "independent"` |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,
