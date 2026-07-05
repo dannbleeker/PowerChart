@@ -13,6 +13,7 @@ import { boxplotExtent, layoutBoxplot } from "./layout/boxplot";
 import { layoutRadar } from "./layout/radar";
 import { layoutHeatmap } from "./layout/heatmap";
 import { layoutTilemap } from "./layout/tilemap";
+import { layoutCascade } from "./layout/cascade";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
 import { formatNumber, niceTicks, resolveFormat } from "./format";
@@ -136,6 +137,9 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     case "tilemap":
       result = layoutTilemap(cfg, style, decor);
       break;
+    case "cascade":
+      result = layoutCascade(cfg, style, decor);
+      break;
     default:
       result = layoutColumns(cfg, style, decor);
   }
@@ -144,7 +148,7 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // and butterfly charts.
   const skipDecor =
     cfg.horizontal ||
-    ["butterfly", "scatter", "bubble", "gantt", "pie", "doughnut", "radar", "heatmap", "tilemap"].includes(cfg.kind);
+    ["butterfly", "scatter", "bubble", "gantt", "pie", "doughnut", "radar", "heatmap", "tilemap", "cascade"].includes(cfg.kind);
   // Background bands go BEFORE the layout's nodes so they render behind the
   // data (scatter/bubble draw their own, in value units).
   const bands = !skipDecor && decor.bands?.length ? bandNodes(cfg, style, decor, result.anchors) : [];

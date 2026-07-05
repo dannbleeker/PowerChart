@@ -8,7 +8,8 @@ Every claim was verified against the source before listing — items the
 engine already has were filtered out.
 
 **This is the only backlog document.** Items graduate from here into PRs
-(and then out of here); rejected ideas stay in §4 so they aren't re-proposed.
+(and then out of here); rejected ideas stay in §4 so they aren't re-proposed. (Shipped since the
+sweep: the cascade/decomposition chart.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -17,16 +18,15 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 
 | # | Item | Type | Effort | Why first |
 |---|---|---|---|---|
-| 1 | **Cascade / decomposition chart** (owner-requested; see §5) | new kind | easy | Real BESTSELLER slides use it monthly; pure rects+text |
-| 2 | **Bullet chart** — `Target` row (per-category tick) + existing bands | option | easy | KPI staple; ~80% already built (bands, error-row pattern) |
-| 3 | **Combo: clustered / 100% columns + line** — `layoutCombo` hardcodes `"stacked"` | fix | easy | Excel's most common combo default is clustered+line |
-| 4 | **Bubble size legend** — reference circles + labels | fix | easy | Near-correctness gap: bubble area is unreadable without a key |
-| 5 | **Forecast styling on lines** — dashed continuation of actuals | option | easy | Extremely common actuals/plan split in trend decks |
-| 6 | **Scatter quadrant preset** — one X+Y crossing → 4 shaded, labeled zones | option | easy | BCG-matrix framing in one step (bands+labels exist) |
-| 7 | **Funnel / pyramid** — native `funnel`/`trapezoid` autoshapes | new kind | easy | Pipeline/conversion demand; zero rendering risk |
-| 8 | **Lollipop + dumbbell/range styles** on clustered | option | easy | Two FT-taxonomy messages (comparison, gap) from stem+dot |
-| 9 | **Gantt: percent-complete fill + baseline ghost bars** | option | easy | Plan-vs-actual + progress: the two biggest PM asks |
-| 10 | **Grouped boxplots** (category × series sub-boxes) | option | medium | Most natural distribution-comparison extension |
+| 1 | **Bullet chart** — `Target` row (per-category tick) + existing bands | option | easy | KPI staple; ~80% already built (bands, error-row pattern) |
+| 2 | **Combo: clustered / 100% columns + line** — `layoutCombo` hardcodes `"stacked"` | fix | easy | Excel's most common combo default is clustered+line |
+| 3 | **Bubble size legend** — reference circles + labels | fix | easy | Near-correctness gap: bubble area is unreadable without a key |
+| 4 | **Forecast styling on lines** — dashed continuation of actuals | option | easy | Extremely common actuals/plan split in trend decks |
+| 5 | **Scatter quadrant preset** — one X+Y crossing → 4 shaded, labeled zones | option | easy | BCG-matrix framing in one step (bands+labels exist) |
+| 6 | **Funnel / pyramid** — native `funnel`/`trapezoid` autoshapes | new kind | easy | Pipeline/conversion demand; zero rendering risk |
+| 7 | **Lollipop + dumbbell/range styles** on clustered | option | easy | Two FT-taxonomy messages (comparison, gap) from stem+dot |
+| 8 | **Gantt: percent-complete fill + baseline ghost bars** | option | easy | Plan-vs-actual + progress: the two biggest PM asks |
+| 9 | **Grouped boxplots** (category × series sub-boxes) | option | medium | Most natural distribution-comparison extension |
 
 ## 2. Gaps within existing kinds (per kind)
 
@@ -55,7 +55,7 @@ and skill-pptx renderers additionally have filled polygons and patterns).
   medium, medium.
 
 ### Combo
-- **Clustered / 100% bars + line** (see top-10 #3) — easy, high.
+- **Clustered / 100% bars + line** (see top-10 #2) — easy, high.
 - **Multiple independent secondary axes** (per-line-series scales) —
   medium, high for KPI dashboards.
 - **Waterfall/Mekko + line overlay** (e.g. bridge with %-of-revenue line) —
@@ -63,7 +63,7 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 - Stacked-area + line, scatter-on-combo — hard/low; skip for now.
 
 ### Line / Area
-- **Forecast dash styling** (top-10 #5) — easy, high.
+- **Forecast dash styling** (top-10 #4) — easy, high.
 - **Confidence/uncertainty band** around a line (slab technique exists) —
   easy, high for forecasting slides.
 - **Area between two series** (plan-vs-actual ribbon) — easy, high.
@@ -76,8 +76,8 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 - Missing-data bridge option, sparklines — low/niche.
 
 ### Scatter / Bubble
-- **Size legend** (top-10 #4) — easy, high.
-- **Quadrant preset** (top-10 #6) — easy, high.
+- **Size legend** (top-10 #3) — easy, high.
+- **Quadrant preset** (top-10 #5) — easy, high.
 - **Trajectory mode** (connect points in row order, Gapminder-trail) —
   easy, medium.
 - **Continuous color scale** as a third variable (color helpers exist) —
@@ -97,7 +97,7 @@ and skill-pptx renderers additionally have filled polygons and patterns).
   hard/low; out of deck-tool scope.
 
 ### Boxplot
-- **Grouped boxplots** (top-10 #10) — easy/medium, high.
+- **Grouped boxplots** (top-10 #9) — easy/medium, high.
 - **Jittered raw-data dots** over the box — easy, medium.
 - **Notched boxplots** (median CI) — medium, medium.
 - Violin (density curves) — infeasible live / medium SVG-only; low.
@@ -134,26 +134,25 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 
 ## 3. New chart types worth adding (ranked)
 
-1. **Cascade / decomposition** — see §5. New kind; easy.
-2. **Funnel + pyramid** — one declining series; native autoshapes; optional
+1. **Funnel + pyramid** — one declining series; native autoshapes; optional
    auto drop-off % between stages. New kind; easy.
-3. **Bullet chart** — as a `Target` row + bands on column charts, not a new
+2. **Bullet chart** — as a `Target` row + bands on column charts, not a new
    kind. Easy.
-4. **Lollipop / dot / dumbbell-range** — `series.style` marker options on
+3. **Lollipop / dot / dumbbell-range** — `series.style` marker options on
    clustered. Easy.
-5. **Slope chart** — line chart with 2 categories: suppress axis, label both
+4. **Slope chart** — line chart with 2 categories: suppress axis, label both
    ends. Option on line; easy.
-6. **Waffle chart** — 10×10 unit grid, part-to-whole for one dominant %.
+5. **Waffle chart** — 10×10 unit grid, part-to-whole for one dominant %.
    New kind; easy.
-7. **KPI / number tile** — big number + delta arrow + label; an *Element*
+6. **KPI / number tile** — big number + delta arrow + label; an *Element*
    (with Harvey ball etc.), reusing table-token semantics. Trivial.
-8. **Small multiples** — grid-of-charts orchestration over any kind, reusing
+7. **Small multiples** — grid-of-charts orchestration over any kind, reusing
    Same Scale + batch insert. Feature; easy-medium.
-9. **Bump chart** — rank-over-time via inverted integer axis on line.
+8. **Bump chart** — rank-over-time via inverted integer axis on line.
    Option; easy-medium.
-10. **Treemap** — squarified rect packing (Mekko-adjacent math); blank-row
+9. **Treemap** — squarified rect packing (Mekko-adjacent math); blank-row
     grouping for 2 levels. New kind; medium.
-11. **Pareto helper** — computed `Cumulative %` row on combo. Trivial.
+10. **Pareto helper** — computed `Cumulative %` row on combo. Trivial.
 
 ## 4. Rejected (do not re-propose)
 
@@ -169,18 +168,3 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 - **Population pyramid, plain dot chart** — already covered (butterfly;
   dot style option).
 
-## 5. Cascade / decomposition chart (owner-requested spec)
-
-From the owner's real "Retail Support" monthly slides: a left-to-right
-breakdown where each stage's bar is a subset of the previous one — Total
-contacts → Answered (+ small "Dropped" remainder box) → With a case
-(+ "Without a case") → Solved (+ "Not solved"). Top-aligned bars on one
-volume scale, each labeled with value + % of the previous stage; remainder
-boxes hang at the split point in a muted color; optional group headers
-spanning stage ranges ("Contacts", "Incidents & Service Requests").
-
-Sketch: `kind: "cascade"`; categories = stages; series[0] = kept counts;
-remainder auto-computed (prev − current) with label + %; optional
-`Remainder label` row for the drop-box captions; group headers via a
-`Group` header row or `"Stage | Group"` category syntax. All rects + text —
-easy in every renderer, native in the live add-in.
