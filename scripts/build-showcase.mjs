@@ -243,6 +243,21 @@ const features = [
     decorations: { hundredPercentNote: true },
   },
   {
+    kind: "stacked",
+    width: 480,
+    height: 300,
+    title: "Pattern fills (SVG/preview; solid in PPT)",
+    data: {
+      categories: ["2022", "2023", "2024"],
+      series: [
+        { name: "Base", values: [40, 44, 50] },
+        { name: "Plan", values: [10, 14, 16], pattern: "diagonal" },
+        { name: "Risk", values: [6, 8, 9], pattern: "dots" },
+      ],
+    },
+    decorations: { connectors: true },
+  },
+  {
     kind: "line",
     width: 480,
     height: 300,

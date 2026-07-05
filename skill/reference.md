@@ -17,6 +17,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
       values: (number | null)[],      // one per category; null = blank
       color?: "#rrggbb",              // per-series override
       colors?: ("#rrggbb"|null)[],    // per-CELL override: highlight one segment/point/slice
+      pattern?: "diagonal"|"crosshatch"|"dots"|"horizontal",
+                                      // hatch over the fill (SVG/preview; solid in PPT output)
       type?: "line",                  // combo: draw this series as a line
       stack?: number                  // clustered-stacked: stack group index
     }],
@@ -66,7 +68,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `X extent` | Mekko-with-units: explicit column widths |
 | `X`, `Y`, `Size`, `Group` | scatter/bubble coordinates, bubble area, point coloring (1..k) |
 | `X line`, `Y line` | scatter partition lines at those values |
-| `Trend` | any value present → OLS trend line over all points |
+| `Trend` | any value present → OLS trend line, labelled with its R² and p-value |
 | `Start`, `End`, `Milestone` | Gantt bars & milestone markers (numbers or day values) |
 | `After` | Gantt dependency: 1-based predecessor index → elbow arrow |
 | `Today` | Gantt today line at the (single) value |

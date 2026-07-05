@@ -37,13 +37,22 @@ describe("elements", () => {
     expect((chevrons[0] as { flatLeft?: boolean }).flatLeft).toBe(true);
   });
 
-  it("table sizes columns to content and styles the header", () => {
+  it("table sizes columns to content and rules the header (no cell borders)", () => {
     const scene = buildTableScene([["", "Long header col", "B"], ["Row", "1", "2"]], 400);
-    const cells = byName(scene.nodes, "cell-0-");
-    expect(cells).toHaveLength(3);
-    const w1 = (scene.nodes.find((n) => n.name === "cell-0-1") as { w: number }).w;
-    const w2 = (scene.nodes.find((n) => n.name === "cell-0-2") as { w: number }).w;
+    // Rules style: no cell rects, just top/header/bottom rules.
+    expect(byName(scene.nodes, "cell-0-")).toHaveLength(0);
+    for (const rule of ["rule-top", "rule-header", "rule-bottom"]) {
+      expect(scene.nodes.some((n) => n.name === rule)).toBe(true);
+    }
+    const w1 = (scene.nodes.find((n) => n.name === "cell-text-0-1") as { w: number }).w;
+    const w2 = (scene.nodes.find((n) => n.name === "cell-text-0-2") as { w: number }).w;
     expect(w1).toBeGreaterThan(w2);
+  });
+
+  it("grid style keeps the legacy bordered look", () => {
+    const scene = buildTableScene([["", "A"], ["Row", "1"]], 200, { style: "grid" });
+    expect(byName(scene.nodes, "cell-0-")).toHaveLength(2);
+    expect(scene.nodes.some((n) => n.name === "rule-top")).toBe(false);
   });
 });
 

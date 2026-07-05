@@ -57,6 +57,8 @@ describe("showcase deck coverage", () => {
     ["exploding pie slice", (c) => !!c.pie?.explode?.length],
     ["footnote / source line", (c) => !!c.footnote],
     ["100% = note", (c) => !!c.decorations?.hundredPercentNote],
+    ["pattern fills", (c) => c.data.series.some((s) => !!s.pattern)],
+    ["trend statistics (Trend row present)", (c) => c.data.series.some((s) => /^trend$/i.test(s.name.trim()))],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {
