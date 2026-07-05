@@ -43,10 +43,30 @@ describe("cascade chart", () => {
     expect(s.nodes.some((n) => n.name === "stage-label-0-2")).toBe(false);
   });
 
+  it("kept bar + drop box exactly equal the previous column — never longer", () => {
+    // Invariant: column c's total extent (bar + remainder box) bottoms out
+    // at PRECISELY the previous bar's bottom edge, for every split.
+    for (const c of [1, 2, 3]) {
+      const prev = rect(s, `stage-${c - 1}`);
+      const drop = rect(s, `drop-${c}`);
+      expect(drop.y + drop.h).toBeCloseTo(prev.y + prev.h, 5);
+    }
+    // Even when the remainder is tiny and the box needs label height, it
+    // grows upward over the bar — not downward past the total.
+    const tiny = buildChart({
+      ...cfg,
+      data: { categories: ["A", "B"], series: [{ name: "V", values: [1000, 995] }] },
+    });
+    const prev = tiny.nodes.find((n) => n.name === "stage-0") as RectNode;
+    const drop = tiny.nodes.find((n) => n.name === "drop-1") as RectNode;
+    expect(drop.y + drop.h).toBeCloseTo(prev.y + prev.h, 5);
+    expect(drop.h).toBeGreaterThan(2); // still tall enough to exist visibly
+  });
+
   it("hangs a labeled remainder box at each split", () => {
     const drop1 = rect(s, "drop-1");
     const bar1 = rect(s, "stage-1");
-    expect(drop1.y).toBeGreaterThanOrEqual(bar1.y + bar1.h); // below the kept bar
+    expect(drop1.y).toBeGreaterThan(bar1.y); // below the bar's top, at the split
     expect(drop1.h / rect(s, "stage-0").h).toBeCloseTo(370 / 4986, 1);
     // Long captions wrap: caption line + numbers line.
     expect(text(s, "drop-label-1").text).toBe("Dropped contacts");
