@@ -60,6 +60,7 @@ describe("showcase deck coverage", () => {
     ["pattern fills", (c) => c.data.series.some((s) => !!s.pattern)],
     ["boxplot raw samples", (c) => c.kind === "boxplot" && !c.data.series.some((s) => /^min$/i.test(s.name))],
     ["boxplot summary rows", (c) => c.kind === "boxplot" && c.data.series.some((s) => /^median$/i.test(s.name))],
+    ["horizontal boxplot", (c) => c.kind === "boxplot" && !!c.horizontal],
     ["datamark axis", (c) => c.decorations?.valueAxis === "datamarks"],
     ["diverging heatmap (negative values)", (c) => c.kind === "heatmap" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
     ["explicit map layout", (c) => !!c.map],

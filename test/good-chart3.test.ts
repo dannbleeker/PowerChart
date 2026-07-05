@@ -65,6 +65,82 @@ describe("boxplot", () => {
     expect(outlier?.kind === "ellipse" && outlier.cy).toBeLessThan(capHi.y1);
   });
 
+  it("all boxes in one chart share a single value axis", () => {
+    // South's Max (12) equals a hypothetical value on any other box's scale:
+    // assert equal values map to equal coordinates across categories.
+    const shared: ChartConfig = cfg({
+      kind: "boxplot",
+      data: {
+        categories: ["A", "B", "C"],
+        series: [
+          { name: "Min", values: [2, 2, 5] },
+          { name: "Q1", values: [3, 3, 6] },
+          { name: "Median", values: [4, 4, 8] },
+          { name: "Q3", values: [6, 6, 9] },
+          { name: "Max", values: [8, 8, 12] },
+        ],
+      },
+    });
+    const s = buildChart(shared);
+    // Boxes A and B carry identical numbers → identical y geometry.
+    const boxA = s.nodes.find((n) => n.name === "box-0") as RectNode;
+    const boxB = s.nodes.find((n) => n.name === "box-1") as RectNode;
+    expect(boxA.y).toBeCloseTo(boxB.y);
+    expect(boxA.h).toBeCloseTo(boxB.h);
+    // And box C's larger values sit strictly higher on the same scale.
+    const boxC = s.nodes.find((n) => n.name === "box-2") as RectNode;
+    expect(boxC.y).toBeLessThan(boxA.y);
+    // Exactly one value axis is generated for the whole chart.
+    const axisLabels = buildChart({ ...shared, decorations: { valueAxis: true, segmentLabels: true } })
+      .nodes.filter((n) => n.name === "value-axis");
+    expect(axisLabels.length).toBeGreaterThan(1); // one shared set of ticks, not per-box
+  });
+
+  it("renders horizontally: boxes become rows on a bottom value axis", () => {
+    const v = buildChart(summary);
+    const h = buildChart({ ...summary, horizontal: true, decorations: { valueAxis: true, categoryAxis: true, segmentLabels: true } });
+    const vBox = v.nodes.find((n) => n.name === "box-0") as RectNode;
+    const hBox = h.nodes.find((n) => n.name === "box-0") as RectNode;
+    // Vertical: box taller than wide (IQR spans y). Horizontal: wider than tall.
+    expect(vBox.h).toBeGreaterThan(0);
+    expect(hBox.w).toBeGreaterThan(hBox.h * 0.5);
+    // The median line rotates too: vertical chart → horizontal line; horizontal chart → vertical line.
+    const vMed = v.nodes.find((n) => n.name === "median-0") as LineNode;
+    const hMed = h.nodes.find((n) => n.name === "median-0") as LineNode;
+    expect(vMed.y1).toBeCloseTo(vMed.y2);
+    expect(hMed.x1).toBeCloseTo(hMed.x2);
+    // Same shared-axis property holds horizontally: equal values → equal x.
+    const hData: ChartConfig = {
+      ...summary,
+      horizontal: true,
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "Min", values: [2, 2] },
+          { name: "Q1", values: [3, 3] },
+          { name: "Median", values: [4, 4] },
+          { name: "Q3", values: [6, 6] },
+          { name: "Max", values: [8, 8] },
+        ],
+      },
+    };
+    const hs = buildChart(hData);
+    const b0 = hs.nodes.find((n) => n.name === "box-0") as RectNode;
+    const b1 = hs.nodes.find((n) => n.name === "box-1") as RectNode;
+    expect(b0.x).toBeCloseTo(b1.x);
+    expect(b0.w).toBeCloseTo(b1.w);
+    expect(b0.y).not.toBeCloseTo(b1.y); // separate category rows
+    // Outliers and whisker caps rotate with the chart.
+    const hOut = buildChart({
+      ...hData,
+      data: { ...hData.data, series: [...hData.data.series, { name: "Outlier 1", values: [11, null] }] },
+    });
+    const out = hOut.nodes.find((n) => n.name === "outlier-0-0");
+    const cap = hOut.nodes.find((n) => n.name === "cap-hi-0") as LineNode;
+    expect(out?.kind === "ellipse" && out.cx).toBeGreaterThan(cap.x1); // beyond the whisker, along x
+    expect(cap.x1).toBeCloseTo(cap.x2); // caps are vertical dashes now
+  });
+
   it("min/max whiskers can be forced and Same Scale sees the extent", () => {
     const raw: ChartConfig = cfg({
       kind: "boxplot",

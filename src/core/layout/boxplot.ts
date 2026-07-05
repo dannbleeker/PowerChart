@@ -3,8 +3,8 @@ import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
-import { baselineNode, chromeNodes, computeFrame, valueScale } from "./frame";
-import type { LayoutResult } from "./column";
+import { baselineNode, chromeNodes, computeFrame, computeFrameHorizontal, valueScale } from "./frame";
+import { horizontalChrome, type LayoutResult } from "./column";
 
 /** The five-number-summary datasheet rows (think-cell's own boxplot recipe). */
 const SUMMARY_ROWS: [keyof FiveNum, RegExp][] = [
@@ -96,63 +96,101 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   const all = boxes.flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
   const fmt = resolveFormat(all, cfg.numberFormat);
-  const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
+  const H = !!cfg.horizontal;
+  const frame = H
+    ? computeFrameHorizontal(cfg, style, { ...decor, seriesLabels: false, totals: false })
+    : computeFrame(cfg, style, { ...decor, seriesLabels: false }, []).frame;
+  // One shared value scale across every box — that is the point of putting
+  // them in one chart.
   const scale = valueScale(frame, Math.min(0, ...all), Math.max(0, ...all), cfg.scale);
-  const toY = scale.toY;
+  // Value coordinate along the value axis (x when horizontal, y otherwise).
+  const qOf = H
+    ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w
+    : scale.toY;
 
-  const slotW = frame.w / Math.max(1, n);
+  const catStart = H ? frame.y : frame.x;
+  const catLen = H ? frame.h : frame.w;
+  const slotW = catLen / Math.max(1, n);
   const boxW = slotW * 0.55;
   const capW = boxW * 0.45;
-  const centers = data.categories.map((_, c) => frame.x + slotW * (c + 0.5));
+  const centers = data.categories.map((_, c) => catStart + slotW * (c + 0.5));
 
-  const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, centers, scale);
+  // Summary rows (Min/Q1/…) are anatomy, not series — never a legend.
+  const nodes: SceneNode[] = H
+    ? horizontalChrome(cfg, style, { ...decor, totals: false, seriesLabels: false }, frame, centers, scale, (v) => qOf(v) - frame.x)
+    : chromeNodes(cfg, style, { ...decor, seriesLabels: false }, frame, centers, scale);
   const columnTop: number[] = [];
 
+  /** Category-axis point p + value-axis point q → chart coordinates. */
+  const pt = (p: number, q: number) => (H ? { x: q, y: p } : { x: p, y: q });
+  const segLine = (p1: number, q1: number, p2: number, q2: number, weight: number, stroke: string, nm: string): SceneNode => {
+    const a = pt(p1, q1);
+    const b = pt(p2, q2);
+    return { kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke, strokeWidth: weight, name: nm };
+  };
+
   boxes.forEach((b, c) => {
-    const x = centers[c];
+    const p = centers[c];
     if (!b) {
       columnTop.push(frame.y + frame.h);
       return;
     }
     const fill = seriesColor(style, 0, data.series.find((s) => s.color)?.color);
     const boxFill = lerpColor("#ffffff", fill, 0.22);
-    const yQ1 = toY(b.q1);
-    const yQ3 = toY(b.q3);
-    const yMed = toY(b.median);
-    columnTop.push(Math.min(toY(b.max), ...b.outliers.map(toY)));
+    const qQ1 = qOf(b.q1);
+    const qQ3 = qOf(b.q3);
+    const qMed = qOf(b.median);
+    columnTop.push(H ? p - boxW / 2 : Math.min(qOf(b.max), ...b.outliers.map(qOf)));
+    const boxLo = Math.min(qQ1, qQ3);
     nodes.push(
       // Whiskers with caps.
-      { kind: "line", x1: x, y1: toY(b.max), x2: x, y2: yQ3, stroke: style.axis, strokeWidth: 0.75, name: `whisker-hi-${c}` },
-      { kind: "line", x1: x, y1: yQ1, x2: x, y2: toY(b.min), stroke: style.axis, strokeWidth: 0.75, name: `whisker-lo-${c}` },
-      { kind: "line", x1: x - capW / 2, y1: toY(b.max), x2: x + capW / 2, y2: toY(b.max), stroke: style.axis, strokeWidth: 0.75, name: `cap-hi-${c}` },
-      { kind: "line", x1: x - capW / 2, y1: toY(b.min), x2: x + capW / 2, y2: toY(b.min), stroke: style.axis, strokeWidth: 0.75, name: `cap-lo-${c}` },
+      segLine(p, qOf(b.max), p, qQ3, 0.75, style.axis, `whisker-hi-${c}`),
+      segLine(p, qQ1, p, qOf(b.min), 0.75, style.axis, `whisker-lo-${c}`),
+      segLine(p - capW / 2, qOf(b.max), p + capW / 2, qOf(b.max), 0.75, style.axis, `cap-hi-${c}`),
+      segLine(p - capW / 2, qOf(b.min), p + capW / 2, qOf(b.min), 0.75, style.axis, `cap-lo-${c}`),
       // Q1–Q3 box with a heavier median line.
-      { kind: "rect", x: x - boxW / 2, y: Math.min(yQ1, yQ3), w: boxW, h: Math.abs(yQ1 - yQ3), fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}` },
-      { kind: "line", x1: x - boxW / 2, y1: yMed, x2: x + boxW / 2, y2: yMed, stroke: fill, strokeWidth: 1.75, name: `median-${c}` },
+      H
+        ? { kind: "rect", x: boxLo, y: p - boxW / 2, w: Math.abs(qQ1 - qQ3), h: boxW, fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}` }
+        : { kind: "rect", x: p - boxW / 2, y: boxLo, w: boxW, h: Math.abs(qQ1 - qQ3), fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}` },
+      segLine(p - boxW / 2, qMed, p + boxW / 2, qMed, 1.75, fill, `median-${c}`),
     );
     if (b.mean != null) {
+      const m = pt(p, qOf(b.mean));
       nodes.push({
-        kind: "text", x: x - fs * 0.6, y: toY(b.mean) - fs * 0.7, w: fs * 1.2, h: fs * 1.4,
+        kind: "text", x: m.x - fs * 0.6, y: m.y - fs * 0.7, w: fs * 1.2, h: fs * 1.4,
         text: "×", fontSize: fs, bold: true, color: style.neutral,
         align: "center", valign: "middle", name: `mean-${c}`,
       });
     }
     b.outliers.forEach((v, i) => {
-      nodes.push({ kind: "ellipse", cx: x, cy: toY(v), rx: 2.2, ry: 2.2, fill, name: `outlier-${c}-${i}` });
+      const o = pt(p, qOf(v));
+      nodes.push({ kind: "ellipse", cx: o.x, cy: o.y, rx: 2.2, ry: 2.2, fill, name: `outlier-${c}-${i}` });
     });
     if (decor.segmentLabels) {
       const label = formatNumber(b.median, fmt);
-      if (boxW >= textWidth(label, fs * 0.9) + 4) {
-        nodes.push({
-          kind: "text", x: x - boxW / 2, y: yMed - fs * 1.5, w: boxW, h: fs * 1.3,
-          text: label, fontSize: fs * 0.9, color: style.text,
-          align: "center", valign: "bottom", name: `median-label-${c}`,
-        });
+      if (boxW >= fs * 1.2 && (H || boxW >= textWidth(label, fs * 0.9) + 4)) {
+        nodes.push(
+          H
+            ? {
+                kind: "text", x: qMed - 30, y: p - boxW / 2 - fs * 1.35, w: 60, h: fs * 1.3,
+                text: label, fontSize: fs * 0.9, color: style.text,
+                align: "center", valign: "bottom", name: `median-label-${c}`,
+              }
+            : {
+                kind: "text", x: p - boxW / 2, y: qMed - fs * 1.5, w: boxW, h: fs * 1.3,
+                text: label, fontSize: fs * 0.9, color: style.text,
+                align: "center", valign: "bottom", name: `median-label-${c}`,
+              },
+        );
       }
     }
   });
 
-  nodes.push(baselineNode(frame, frame.y + frame.h, style));
+  if (H) {
+    nodes.push({ kind: "line", x1: frame.x, y1: frame.y, x2: frame.x, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+  } else {
+    nodes.push(baselineNode(frame, frame.y + frame.h, style));
+  }
 
   return {
     nodes,
@@ -161,9 +199,9 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       categoryWidth: data.categories.map(() => boxW),
       columnTop,
       columnValue: boxes.map((b) => b?.median ?? 0),
-      baselineY: frame.y + frame.h,
+      baselineY: H ? frame.x : frame.y + frame.h,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
-      valueToY: toY,
+      valueToY: H ? undefined : qOf,
     },
   };
 }
