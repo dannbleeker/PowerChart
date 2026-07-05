@@ -76,6 +76,9 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Is the median difference significant? | `boxplot` (raw samples) + `boxplot.notch: true` (non-overlapping notches) |
 | Summary bar per Gantt section | `gantt` with section-header rows + `decorations.summaryBars: true` |
 | "Us vs the peer range" on a radar | `radar` (peers then us) + `decorations.radarBand: true` |
+| Too many stack segments (long tail) | `stacked`/`clustered` + `otherBucket: {max}` (collapse the rest to "Other") |
+| Daily activity over months (contributions grid) | `heatmap` (one daily date series) + `heatmap.calendar: true` |
+| Back-to-back comparison with sub-parts each side | `butterfly` + `butterfly.split: k` (stacked flanks) |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,

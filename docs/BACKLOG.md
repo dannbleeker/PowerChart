@@ -21,7 +21,9 @@ value ticks/gridlines on both flanks; plus batch H: area with negative
 values, scatter/bubble trajectory trail, and boxplot jittered raw-data
 dots; plus batch I: scatter/bubble continuous color scale, smoothed lines,
 and waterfall grouping spacers; plus batch J: gantt auto-summary bars,
-notched boxplots, and the radar min–max "peer range + us" band.)
+notched boxplots, and the radar min–max "peer range + us" band; plus
+batch K: automatic "Other" bucket, calendar heatmap layout, and butterfly
+stacked flanks.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -37,8 +39,6 @@ Pareto helper).
 ## 2. Gaps within existing kinds (per kind)
 
 ### Column family (stacked / clustered / stacked100)
-- **Automatic "Other" bucket** for long-tail series (think-cell's "Move to
-  Other Series") — medium, medium.
 - **Transparent "no-fill" segment** (floating bars) — easy, low (waterfall
   covers most cases).
 - stacked100: **negative values are silently clamped** — medium, low/niche.
@@ -46,10 +46,6 @@ Pareto helper).
 ### Waterfall
 - Connector re-routing (drag to skip columns) — authoring UX, low for a
   rendering engine.
-
-### Butterfly
-- **Stacked flanks** (>1 series per side; today hardcoded to series 0/1) —
-  medium, medium.
 
 ### Combo
 - **Multiple independent secondary axes** (per-line-series scales) —
@@ -91,7 +87,6 @@ Pareto helper).
 - Variable-radius pie — medium, niche.
 
 ### Heatmap
-- **Calendar heatmap layout** (day-of-week × week) — easy-medium, medium.
 - Per-cell icon overlays — medium, low (think-cell excludes these too).
   Clustering/dendrograms, cell-size encoding — hard/low; skip.
 

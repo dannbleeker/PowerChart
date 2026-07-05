@@ -142,6 +142,12 @@ pick weeks (with weekend shading), months, or quarters automatically.
   interval — non-overlapping notches flag a significant median difference.
 - **Radar band** (`radarBand`): shade the peer min–max envelope and draw the
   last series on top — a "peer range + us" competitive profile.
+- **Other bucket** (`otherBucket`): collapse a long tail of stack segments
+  into one "Other" series, keeping the largest few.
+- **Calendar heatmap** (`heatmap.calendar`): lay a daily date series out as a
+  weekday × week grid with month labels (contributions view).
+- **Butterfly stacked flanks** (`butterfly.split`): stack more than one
+  series on each side of a butterfly chart.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing

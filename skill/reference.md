@@ -70,7 +70,10 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
               notch?: boolean },      // notch each box at the median CI (raw-sample mode)
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
   heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto",
-              totals?: "row"|"column"|"both" },  // marginal sum strips
+              totals?: "row"|"column"|"both",    // marginal sum strips
+              calendar?: boolean },   // weekday × week grid for a daily date series
+  otherBucket?: { max?: number },     // column family: collapse the long tail into one "Other" (keep max series)
+  butterfly?: { split?: number },     // butterfly: series on the left flank (rest stack right)
   combo?: { columns?: "stacked"|"clustered"|"stacked100" },  // column mode under the lines
   waterfall?: { totalIndices?: number[],    // categories drawn as running totals ("e")
                 spacerIndices?: number[] }, // blank grouping gaps (empty category name)
@@ -191,6 +194,20 @@ min(start)→max(end) of the activities beneath it up to the next header.
 envelope of the peer series (all series except the last) as a band and draws
 the last series prominently on top — the "peer range + us" competitive
 profile. The legend collapses the peers into one "Peer range" swatch.
+
+**Other bucket** (`otherBucket.max`): for stacked/clustered/100% charts with
+many series, keep the `max` largest (by absolute total) and sum the rest into
+one trailing "Other" segment — think-cell's "Move to Other Series". No-op when
+there are already `max` or fewer series.
+
+**Calendar heatmap** (`heatmap.calendar`): a single daily series with date
+categories (ISO strings or day numbers with `data.dates`) is laid out as a
+weekday (row) × week (column) grid with month labels — the
+GitHub-contributions view. Falls back to the matrix layout without dates.
+
+**Butterfly stacked flanks** (`butterfly.split`): the first `split` series
+stack on the left flank and the rest stack on the right (a legend replaces the
+two headers). Omit for the classic two-series butterfly (series 0 vs series 1).
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap

@@ -354,7 +354,25 @@ export interface ChartConfig {
     negativeColor?: string;
     mode?: "sequential" | "diverging" | "auto";
     totals?: "row" | "column" | "both";
+    /**
+     * Calendar layout: a single daily series with date categories is laid out
+     * as a weekday (row) × week (column) grid, with month labels — the
+     * GitHub-contributions view. Ignored without parseable date categories.
+     */
+    calendar?: boolean;
   };
+  /**
+   * Column family: collapse the long tail of series into one "Other" segment,
+   * keeping the `max` largest (by absolute total) and summing the rest. No-op
+   * when there are already `max` or fewer series. think-cell's "Move to Other".
+   */
+  otherBucket?: { max?: number };
+  /**
+   * Butterfly options. `split` is the number of series on the left flank (the
+   * rest go right); each flank stacks its series. Omitted → the classic
+   * two-series butterfly (series 0 left, series 1 right).
+   */
+  butterfly?: { split?: number };
   /** Combo: how the column series render under the lines (default stacked). */
   combo?: { columns?: "stacked" | "clustered" | "stacked100" };
   /** Frame size in points (PowerPoint native unit). */

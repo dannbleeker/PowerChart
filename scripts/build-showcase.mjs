@@ -709,6 +709,57 @@ const features = [
     },
     decorations: { seriesLabels: true, radarBand: true },
   },
+  {
+    kind: "stacked",
+    width: 480,
+    height: 300,
+    title: "Long tail collapsed into Other (otherBucket)",
+    otherBucket: { max: 5 },
+    data: {
+      categories: ["2023", "2024", "2025"],
+      series: [
+        { name: "Enterprise", values: [40, 46, 52] },
+        { name: "SMB", values: [22, 26, 31] },
+        { name: "Consumer", values: [18, 17, 19] },
+        { name: "Gov", values: [6, 7, 8] },
+        { name: "Edu", values: [4, 5, 5] },
+        { name: "NGO", values: [3, 3, 4] },
+        { name: "Startup", values: [2, 3, 3] },
+      ],
+    },
+    decorations: { totals: true },
+  },
+  {
+    kind: "heatmap",
+    width: 480,
+    height: 300,
+    title: "Calendar heatmap (daily commits)",
+    heatmap: { calendar: true },
+    data: {
+      categories: Array.from({ length: 30 }, (_, i) => {
+        const d = new Date(Date.UTC(2025, 0, 6 + i));
+        return d.toISOString().slice(0, 10);
+      }),
+      series: [{ name: "Commits", values: [3, 5, 2, 8, 4, 0, 0, 6, 1, 9, 7, 3, 0, 0, 5, 8, 2, 4, 6, 0, 0, 10, 3, 5, 7, 2, 0, 0, 4, 6] }],
+    },
+  },
+  {
+    kind: "butterfly",
+    width: 480,
+    height: 300,
+    title: "Butterfly with stacked flanks",
+    butterfly: { split: 2 },
+    data: {
+      categories: ["<30", "30–39", "40–49", "50–59", "60+"],
+      series: [
+        { name: "Women FT", values: [220, 340, 300, 180, 60] },
+        { name: "Women PT", values: [200, 270, 240, 140, 60] },
+        { name: "Men FT", values: [240, 420, 400, 280, 110] },
+        { name: "Men PT", values: [140, 230, 200, 130, 50] },
+      ],
+    },
+    decorations: { segmentLabels: true },
+  },
 ];
 
 const configs = [...kinds, ...features];
