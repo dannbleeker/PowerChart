@@ -18,6 +18,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run coverage
       - run: npx vite build
+      # The committed production manifests must match a fresh generation from
+      # the dev manifests (same lockstep idea as the showcase deck).
+      - name: Production manifests are current
+        run: npm run build:manifest -- --check
       # Package the Claude Agent Skill from the same sources the tests just
       # validated, so the artifact can never drift from the feature set.
       - run: npm run skill

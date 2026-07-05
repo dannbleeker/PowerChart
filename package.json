@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "build:lib": "vite build --config vite.config.lib.ts",
+    "build:manifest": "node scripts/build-manifest.mjs",
+    "build:pages": "npm run build:manifest && tsc --noEmit && vite build && node scripts/pages-postbuild.mjs",
     "render": "node scripts/render-batch.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

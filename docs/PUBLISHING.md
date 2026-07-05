@@ -12,55 +12,50 @@ Do the phases in order — later phases depend on the hosted URLs.
 
 ---
 
-## Phase 0 — Preconditions
+## Phase 0 — Preconditions ✅ done
 
-1. **[owner] Make the repo public** (Settings → General → Danger Zone →
-   Change visibility). GitHub Pages on the free tier requires it, and Pages
-   is the zero-cost HTTPS host the rest of this runbook assumes.
-2. **[agent] Pre-publication sweep** (should already hold, verify anyway):
-   - `git grep -iE "secret|api[_-]?key|token" -- ':!package-lock.json'` — nothing sensitive.
-   - All sample/showcase data is invented dummy data (see CLAUDE.md).
-   - `npm test` green on main.
-3. **[agent] Post-public hygiene** (was deferred until this moment; see
-   CLAUDE.md "Pending"): enable Dependabot alerts + security updates and
-   CodeQL default setup (Settings → Security, owner may need to click),
-   propose a branch-protection ruleset for `main` (require CI green), and
-   give the repo a description + topics (`powerpoint`, `office-addin`,
-   `think-cell`, `charts`, `claude-skill`).
+1. **[owner] Make the repo public** — ✅ done.
+2. **[agent] Pre-publication sweep** — ✅ done: no secrets/keys/tokens
+   (`git grep` clean; every "token" hit is benign code), no env/credential
+   files, all sample/showcase data is invented dummy data, `npm test` green.
+3. **[owner] Post-public hygiene** — ✅ done (Dependabot + CodeQL, description
+   + topics). A branch-protection ruleset for `main` (require CI green) is
+   still worth adding when convenient.
 
-## Phase 1 — Host the add-in on GitHub Pages
+## Phase 1 — Host the add-in on GitHub Pages ✅ agent work landed
 
-Office add-ins load from an HTTPS URL; the manifests currently point at
-`https://localhost:3000` (dev server). Replace that with Pages hosting.
+Office add-ins load from an HTTPS URL; the dev manifests point at
+`https://localhost:3000`. The site is hosted on GitHub Pages under a **custom
+domain**, `https://powerchart.struktureretsundfornuft.dk/`. Because a custom
+domain serves the project site from its **root**, the bundle base is `/`
+(no `/PowerChart/` path segment) — the prod-manifest URLs are just
+`https://powerchart.struktureretsundfornuft.dk/…`.
 
-1. **[agent] Build for Pages.** The site must be served from
-   `https://<owner>.github.io/PowerChart/`, so the bundle needs that base
-   path: build with `vite build --base=/PowerChart/` (add a
-   `build:pages` npm script). Verify `dist/` contains `index.html` (demo
-   gallery), `src/taskpane/taskpane.html`, `src/excel/excel.html`, and
-   `assets/icon-*.png` — the taskpane path segment matters because the
-   manifests reference it.
-2. **[agent] Add a deploy workflow** `.github/workflows/pages.yml`:
-   on push to `main` → checkout, `npm ci`, `npm run build:pages`,
-   `actions/upload-pages-artifact` (path `dist`), `actions/deploy-pages`.
-   Permissions: `pages: write`, `id-token: write`. Keep it separate from
-   `ci.yml`.
-3. **[owner] Enable Pages**: Settings → Pages → Source: **GitHub Actions**.
-4. **[agent] Produce production manifests.** Don't edit the dev manifests —
-   generate `manifest-prod.xml` / `manifest-excel-prod.xml` by replacing
-   every `https://localhost:3000` with
-   `https://<owner>.github.io/PowerChart` (a small
-   `scripts/build-manifest.mjs` keeps them in lockstep with the dev ones;
-   wire it into `npm run build:pages` and attach the prod manifests to
-   releases in `release.yml`). Rules:
-   - **Keep the GUID** (`<Id>`) stable across updates — changing it makes
-     PowerPoint treat it as a different add-in.
-   - The Excel manifest has a different GUID; keep that one too.
-   - Validate both: `npx office-addin-manifest validate manifest-prod.xml`.
-5. **[agent] Smoke-test the deployment**: after the Pages run,
-   `curl -sI https://<owner>.github.io/PowerChart/src/taskpane/taskpane.html`
-   → 200, and the icons under `/assets/`. Load the demo gallery URL in a
-   browser screenshot (Playwright is preinstalled) to confirm assets render.
+1. **[agent] Build for Pages** — ✅ `npm run build:pages`
+   (`scripts/pages-postbuild.mjs`): runs the prod-manifest gen, `tsc`, a
+   root-base `vite build`, then copies the manifest-referenced ribbon icons
+   into `dist/assets/` and writes a `CNAME`. Emits `index.html`,
+   `src/taskpane/taskpane.html`, `src/excel/excel.html` and `assets/icon-*.png`.
+   > Gotcha found & fixed: Vite doesn't bundle `assets/icon-*.png` (they're
+   > referenced only by the manifests), so without the copy step the hosted
+   > icon URLs 404. `pages-postbuild.mjs` copies them and drops the CNAME.
+2. **[agent] Deploy workflow** — ✅ `.github/workflows/pages.yml`: on push to
+   `main`, `npm ci` → `npm run build:pages` → `upload-pages-artifact` (path
+   `dist`) → `deploy-pages`, with `pages: write` / `id-token: write`.
+3. **[owner] Enable Pages + custom domain** — ✅ done (Source: GitHub Actions;
+   domain `powerchart.struktureretsundfornuft.dk`). Confirm **Enforce HTTPS**
+   is checked once the cert provisions.
+4. **[agent] Production manifests** — ✅ `scripts/build-manifest.mjs` rewrites
+   `https://localhost:3000` → the custom-domain origin into
+   `manifest-prod.xml` / `manifest-excel-prod.xml` (committed; `--check` mode
+   gates staleness in `ci.yml`; regenerated + attached to releases in
+   `release.yml`). Both GUIDs (`b7f6d3a2…`, `c8a7e4b3…`) preserved; 0 localhost
+   URLs survive. (`office-addin-manifest validate` couldn't run in the sandbox
+   — no network for the install — so validate once locally when convenient.)
+5. **[agent/owner] Smoke-test the deployment**: after the first Pages run,
+   `curl -sI https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html`
+   → 200, and the icons under `/assets/icon-*.png`. Load the demo gallery URL
+   in a browser to confirm assets render.
 
 ## Phase 2 — Sideload in PowerPoint ([owner], agent assists)
 
