@@ -21,7 +21,10 @@ export type ChartKind =
   | "cascade" // decomposition: each stage is a subset of the previous one
   | "funnel" // pipeline stages as centered bands, width ∝ value
   | "waffle" // 10×10 unit grid, part-to-whole (categories = parts)
-  | "treemap"; // squarified rect packing, area ∝ value; "Group | Item" → 2 levels
+  | "treemap" // squarified rect packing, area ∝ value; "Group | Item" → 2 levels
+  | "sunburst" // nested wedge rings from a "Group | Item" hierarchy
+  | "violin" // distribution shape per category (mirrored density) from raw samples
+  | "candlestick"; // OHLC financial bars (Open/High/Low/Close rows)
 
 export interface Series {
   name: string;

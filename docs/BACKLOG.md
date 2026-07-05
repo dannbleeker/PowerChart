@@ -65,8 +65,8 @@ Pareto helper).
   hard/low; out of deck-tool scope.
 
 ### Boxplot
-- Violin (density curves) — infeasible live / medium SVG-only; low.
-  Mean±SD box variant — easy, niche.
+- Mean±SD box variant — easy, niche.
+  (Violin density curves shipped as their own `violin` kind.)
 
 ### Radar
 - Radial bar variant — really a new kind; medium, medium. Stacked radar — low.
@@ -74,9 +74,8 @@ Pareto helper).
   Office.js renderer draws, so they already appear in the live add-in.)
 
 ### Pie / Doughnut
-- **Sunburst** (nested rings; wedge fans repeat per ring) — medium-hard,
-  medium.
 - Variable-radius pie — medium, niche.
+  (Sunburst shipped: nested inner/outer rings from `"Group | Item"` categories.)
 
 ### Heatmap
 - Per-cell icon overlays — medium, low (think-cell excludes these too).
@@ -97,8 +96,10 @@ Pareto helper).
 
 - **Gauge** — bullet chart replaces it deliberately (Few); low deck demand.
 - **Sankey / chord / arc** — need curved ribbons; infographic genre.
-- **Violin / ridgeline** — smoothed density curves; academic register.
-- **Candlestick / OHLC** — trading charts, no consulting demand signal.
+- **Ridgeline** — stacked density curves; academic register. (The single-column
+  `violin` kind shipped at owner request; ridgeline stacking not pursued.)
+- ~~Candlestick / OHLC~~ — shipped as the `candlestick` kind at owner request,
+  despite the thin consulting-demand signal.
 - **Stream graph** — feasible but editorial aesthetic; no deck demand.
 - **Pictogram with icon libraries** — asset/licensing scope; waffle covers it.
 - **Histogram as a kind** — it's clustered with zero gap (see gap-width item).

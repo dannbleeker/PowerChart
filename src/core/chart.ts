@@ -17,6 +17,9 @@ import { layoutCascade } from "./layout/cascade";
 import { layoutFunnel } from "./layout/funnel";
 import { layoutWaffle } from "./layout/waffle";
 import { layoutTreemap } from "./layout/treemap";
+import { layoutSunburst } from "./layout/sunburst";
+import { layoutViolin } from "./layout/violin";
+import { layoutCandlestick } from "./layout/candlestick";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
 import { formatNumber, niceTicks, resolveFormat } from "./format";
@@ -325,6 +328,15 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       break;
     case "treemap":
       result = layoutTreemap(cfg, style, decor);
+      break;
+    case "sunburst":
+      result = layoutSunburst(cfg, style, decor);
+      break;
+    case "violin":
+      result = layoutViolin(cfg, style, decor);
+      break;
+    case "candlestick":
+      result = layoutCandlestick(cfg, style, decor);
       break;
     case "waffle":
       result = layoutWaffle(cfg, style, decor);

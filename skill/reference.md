@@ -7,7 +7,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   kind: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko"
       | "line" | "area" | "butterfly" | "scatter" | "bubble" | "gantt"
       | "combo" | "pie" | "doughnut" | "boxplot" | "radar" | "heatmap"
-      | "tilemap" | "cascade" | "funnel" | "waffle" | "treemap",
+      | "tilemap" | "cascade" | "funnel" | "waffle" | "treemap"
+      | "sunburst" | "violin" | "candlestick",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
   horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows;
@@ -124,6 +125,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Band low`, `Band high` | line charts: shaded confidence/uncertainty ribbon (rows never draw as lines) |
 | `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style); suffix "\| group" ("Min \| 2024") for side-by-side grouped boxes |
 | `Mean` | boxplot mean marker (×) |
+| `Open`, `High`, `Low`, `Close` | candlestick OHLC prices per period (category) |
 | `Outlier <n>` | boxplot: extra outlier dots in precomputed mode |
 
 Gantt category conventions: `"Activity | Owner | Remark"` adds responsible and
@@ -268,6 +270,19 @@ lines, round markers and a "Name" label at both ends — rank-over-time.
 **Horizontal profile chart** (`kind: "line" | "area"` + `horizontal: true`):
 rotates the line/area 90° — categories run down the left axis and values
 extend to the right. Stacked areas stack outward to the right.
+
+**Sunburst** (`kind: "sunburst"`): a two-ring hierarchical pie — categories
+named `"Group | Item"` put groups on the inner ring and their items on the
+outer ring; without `"|"` it degrades to a single-ring doughnut.
+
+**Violin** (`kind: "violin"`): a mirrored kernel-density shape per category
+from raw samples (every datasheet row is an observation, like the boxplot's
+raw mode) with a median tick. The body is a filled polygon — solid in
+SVG/pptx, outline-only in the live add-in.
+
+**Candlestick** (`kind: "candlestick"`): OHLC financial bars from rows named
+`Open` / `High` / `Low` / `Close`; a high–low wick carries a body from open to
+close, green when the period rose and red when it fell.
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap

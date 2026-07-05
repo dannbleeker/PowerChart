@@ -95,6 +95,9 @@ conventions, and every option.
 | Bump chart (rank over time) | ✅ (`line` + `decorations.bump`) |
 | Horizontal profile chart (rotated line/area) | ✅ (`horizontal` on `line`/`area`) |
 | Treemap (squarified, area ∝ value, 2-level grouping) | ✅ (`treemap` kind, `"Group \| Item"` categories) |
+| Sunburst (nested hierarchical rings) | ✅ (`sunburst` kind, `"Group \| Item"` categories) |
+| Violin plot (kernel-density distributions) | ✅ (`violin` kind, raw samples; outline-only in the live add-in) |
+| Candlestick / OHLC financial chart | ✅ (`candlestick` kind, `Open`/`High`/`Low`/`Close` rows) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

@@ -907,6 +907,217 @@
     }
   },
   {
+    "kind": "sunburst",
+    "width": 480,
+    "height": 300,
+    "title": "Sunburst — Revenue by region and product",
+    "data": {
+      "categories": [
+        "EMEA | Cloud",
+        "EMEA | Licenses",
+        "EMEA | Services",
+        "Americas | Cloud",
+        "Americas | Licenses",
+        "APAC | Cloud",
+        "APAC | Hardware"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            60,
+            40,
+            25,
+            80,
+            50,
+            45,
+            30
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": true
+    }
+  },
+  {
+    "kind": "violin",
+    "width": 480,
+    "height": 300,
+    "title": "Violin — Response time distribution (ms)",
+    "data": {
+      "categories": [
+        "API",
+        "Web",
+        "Batch"
+      ],
+      "series": [
+        {
+          "name": "s1",
+          "values": [
+            120,
+            210,
+            640
+          ]
+        },
+        {
+          "name": "s2",
+          "values": [
+            135,
+            190,
+            700
+          ]
+        },
+        {
+          "name": "s3",
+          "values": [
+            128,
+            240,
+            580
+          ]
+        },
+        {
+          "name": "s4",
+          "values": [
+            142,
+            205,
+            660
+          ]
+        },
+        {
+          "name": "s5",
+          "values": [
+            150,
+            260,
+            720
+          ]
+        },
+        {
+          "name": "s6",
+          "values": [
+            131,
+            220,
+            610
+          ]
+        },
+        {
+          "name": "s7",
+          "values": [
+            125,
+            235,
+            690
+          ]
+        },
+        {
+          "name": "s8",
+          "values": [
+            160,
+            200,
+            640
+          ]
+        },
+        {
+          "name": "s9",
+          "values": [
+            138,
+            250,
+            705
+          ]
+        },
+        {
+          "name": "s10",
+          "values": [
+            145,
+            215,
+            655
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "candlestick",
+    "width": 480,
+    "height": 300,
+    "title": "Candlestick — Share price — last two weeks",
+    "data": {
+      "categories": [
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri"
+      ],
+      "series": [
+        {
+          "name": "Open",
+          "values": [
+            42,
+            44,
+            43,
+            46,
+            45,
+            47,
+            49,
+            48,
+            46,
+            47
+          ]
+        },
+        {
+          "name": "High",
+          "values": [
+            45,
+            46,
+            47,
+            47,
+            48,
+            50,
+            51,
+            49,
+            48,
+            50
+          ]
+        },
+        {
+          "name": "Low",
+          "values": [
+            41,
+            42,
+            42,
+            44,
+            44,
+            46,
+            47,
+            45,
+            44,
+            46
+          ]
+        },
+        {
+          "name": "Close",
+          "values": [
+            44,
+            43,
+            46,
+            45,
+            47,
+            49,
+            48,
+            46,
+            47,
+            49
+          ]
+        }
+      ]
+    }
+  },
+  {
     "kind": "stacked",
     "width": 480,
     "height": 300,
@@ -4603,6 +4814,224 @@
     },
     "decorations": {
       "segmentLabels": true
+    }
+  },
+  {
+    "kind": "sunburst",
+    "width": 480,
+    "height": 300,
+    "title": "Sunburst (region → product)",
+    "data": {
+      "categories": [
+        "EMEA | Cloud",
+        "EMEA | Licenses",
+        "EMEA | Services",
+        "Americas | Cloud",
+        "Americas | Licenses",
+        "APAC | Cloud",
+        "APAC | Hardware"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            60,
+            40,
+            25,
+            80,
+            50,
+            45,
+            30
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": true
+    }
+  },
+  {
+    "kind": "violin",
+    "width": 480,
+    "height": 300,
+    "title": "Response-time distribution (ms)",
+    "data": {
+      "categories": [
+        "API",
+        "Web",
+        "Batch"
+      ],
+      "series": [
+        {
+          "name": "s1",
+          "values": [
+            90,
+            140,
+            300
+          ]
+        },
+        {
+          "name": "s2",
+          "values": [
+            94,
+            149,
+            322
+          ]
+        },
+        {
+          "name": "s3",
+          "values": [
+            98,
+            158,
+            344
+          ]
+        },
+        {
+          "name": "s4",
+          "values": [
+            102,
+            167,
+            366
+          ]
+        },
+        {
+          "name": "s5",
+          "values": [
+            106,
+            176,
+            388
+          ]
+        },
+        {
+          "name": "s6",
+          "values": [
+            110,
+            185,
+            410
+          ]
+        },
+        {
+          "name": "s7",
+          "values": [
+            114,
+            194,
+            432
+          ]
+        },
+        {
+          "name": "s8",
+          "values": [
+            118,
+            203,
+            454
+          ]
+        },
+        {
+          "name": "s9",
+          "values": [
+            122,
+            212,
+            476
+          ]
+        },
+        {
+          "name": "s10",
+          "values": [
+            126,
+            221,
+            498
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true,
+      "valueAxis": true
+    }
+  },
+  {
+    "kind": "candlestick",
+    "width": 480,
+    "height": 300,
+    "title": "Share price — last two weeks",
+    "data": {
+      "categories": [
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "D5",
+        "D6",
+        "D7",
+        "D8",
+        "D9",
+        "D10"
+      ],
+      "series": [
+        {
+          "name": "Open",
+          "values": [
+            40,
+            42,
+            45,
+            44,
+            47,
+            46,
+            43,
+            45,
+            48,
+            47
+          ]
+        },
+        {
+          "name": "High",
+          "values": [
+            43,
+            46,
+            47,
+            48,
+            49,
+            47,
+            46,
+            49,
+            50,
+            49
+          ]
+        },
+        {
+          "name": "Low",
+          "values": [
+            39,
+            41,
+            43,
+            43,
+            45,
+            42,
+            42,
+            44,
+            46,
+            45
+          ]
+        },
+        {
+          "name": "Close",
+          "values": [
+            42,
+            45,
+            44,
+            47,
+            46,
+            43,
+            45,
+            48,
+            47,
+            46
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "valueAxis": true
     }
   }
 ]
