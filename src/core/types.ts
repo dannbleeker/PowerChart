@@ -257,8 +257,20 @@ export interface ChartConfig {
    * their source and period.
    */
   footnote?: string;
-  /** Pie/doughnut options: `explode` offsets the listed slice indices radially. */
-  pie?: { explode?: number[] };
+  /**
+   * Pie/doughnut options: `explode` offsets the listed slice indices
+   * radially; `breakout` (pie only) collapses the listed category indices
+   * into one muted "Other" slice and details them in a stacked bar beside
+   * the pie, joined by connector lines (Excel's bar-of-pie).
+   */
+  pie?: { explode?: number[]; breakout?: number[] };
+  /**
+   * Small multiples: split a multi-series chart into a grid of
+   * single-series panels titled by series name, sharing one value scale
+   * (stacked/clustered/line/area/waterfall/radar). Special rows (Error,
+   * Target, Band low/high) are carried into every panel.
+   */
+  multiples?: { columns?: number };
   /**
    * Boxplot options. Without precomputed Min/Q1/Median/Q3/Max rows, every
    * series row is a raw observation and quartiles/whiskers are computed.

@@ -14,17 +14,19 @@ bubble size legend, forecast styling, scatter quadrants, funnel,
 lollipop/dot/dumbbell styles, gantt progress + baselines, grouped
 boxplots — plus, from the next tier: waterfall budget-vs-actual bridge,
 line confidence bands, area-between-series (`fillBetween`), heatmap
-marginal totals, slope chart, waffle, KPI tile.)
+marginal totals, slope chart, waffle, KPI tile, bar-of-pie breakout,
+small multiples.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
 
 ## 1. Top candidates (value ÷ effort, cross-cutting rank)
 
-The researched top-10 is fully shipped, and the next tier is nearly done
-(waterfall bridge, confidence bands, fill-between, heatmap totals, slope,
-waffle, KPI tile). Next candidates come from §2/§3 below (strongest:
-pie-of-pie breakout, small multiples).
+The researched top-10 and the full next tier are shipped (waterfall
+bridge, confidence bands, fill-between, heatmap totals, slope, waffle,
+KPI tile, bar-of-pie, small multiples). Next candidates come from §2/§3
+below (strongest remaining: semi-circle doughnut, stepped lines, butterfly
+value ticks, bump chart, treemap, Pareto helper).
 
 ## 2. Gaps within existing kinds (per kind)
 
@@ -95,8 +97,6 @@ pie-of-pie breakout, small multiples).
   really a new kind; medium, medium. Stacked radar — low.
 
 ### Pie / Doughnut
-- **Bar-of-pie / pie-of-pie breakout** (top-5 + "Other" detailed) —
-  medium, high for market-share decks.
 - **Semi-circle / gauge-style half doughnut** — easy, medium-high for
   scorecards.
 - **Sunburst** (nested rings; wedge fans repeat per ring) — medium-hard,
@@ -120,8 +120,6 @@ pie-of-pie breakout, small multiples).
    kind. Easy.
 3. **Lollipop / dot / dumbbell-range** — `series.style` marker options on
    clustered. Easy.
-7. **Small multiples** — grid-of-charts orchestration over any kind, reusing
-   Same Scale + batch insert. Feature; easy-medium.
 8. **Bump chart** — rank-over-time via inverted integer axis on line.
    Option; easy-medium.
 9. **Treemap** — squarified rect packing (Mekko-adjacent math); blank-row

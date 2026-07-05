@@ -65,6 +65,8 @@ conventions, and every option.
 | Slope chart (before/after, labels both ends) | ✅ (`decorations.slope` on line) |
 | Waffle chart (10×10 unit grid, one dominant share) | ✅ (`waffle` kind) |
 | KPI / number tile (big number + delta arrow) | ✅ (Elements section, `↓ good` flip) |
+| Bar-of-pie breakout (top-N + "Other" detailed) | ✅ (`pie.breakout`) |
+| Small multiples (grid of panels, one shared scale) | ✅ (`multiples: {columns?}`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

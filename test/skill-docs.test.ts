@@ -37,7 +37,7 @@ describe("skill documentation coverage", () => {
       "connectors", "callouts", "bands", "hundredPercentNote", "footnote", "explode", "colors", "pattern",
       "datamarks", "tickMode", "gridShape", "fillOpacity", "whiskers", "quartileMethod", "iqrMultiplier",
       "map", "negativeColor", "forecastFrom", "quadrants", "columns", "barStyle", "fillBetween", "totals",
-      "slope",
+      "slope", "breakout", "multiples",
     ]) {
       expect(reference).toContain(key);
     }

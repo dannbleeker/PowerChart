@@ -2612,6 +2612,91 @@
     }
   },
   {
+    "kind": "pie",
+    "width": 480,
+    "height": 300,
+    "title": "Bar-of-pie — revenue with the long tail detailed",
+    "data": {
+      "categories": [
+        "EMEA",
+        "Americas",
+        "APAC",
+        "Nordics",
+        "Benelux",
+        "DACH"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            80,
+            100,
+            60,
+            20,
+            15,
+            25
+          ]
+        }
+      ]
+    },
+    "pie": {
+      "breakout": [
+        3,
+        4,
+        5
+      ]
+    }
+  },
+  {
+    "kind": "line",
+    "width": 480,
+    "height": 300,
+    "title": "Small multiples — one panel per brand, shared scale",
+    "multiples": {},
+    "data": {
+      "categories": [
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Brand A",
+          "values": [
+            40,
+            48,
+            55,
+            66
+          ]
+        },
+        {
+          "name": "Brand B",
+          "values": [
+            30,
+            32,
+            31,
+            35
+          ]
+        },
+        {
+          "name": "Brand C",
+          "values": [
+            12,
+            18,
+            26,
+            41
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": false,
+      "valueAxis": true,
+      "gridlines": true
+    }
+  },
+  {
     "kind": "bubble",
     "width": 480,
     "height": 300,

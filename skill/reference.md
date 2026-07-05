@@ -54,7 +54,11 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
-  pie?: { explode?: number[] },       // slice indices offset radially to highlight
+  pie?: { explode?: number[],         // slice indices offset radially to highlight
+          breakout?: number[] },      // pie only: collapse these categories into one "Other"
+                                      // slice detailed in a stacked bar beside the pie (bar-of-pie)
+  multiples?: { columns?: number },   // small multiples: one single-series panel per series,
+                                      // shared value scale (stacked/clustered/line/area/waterfall/radar)
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",
               showMean?: boolean, iqrMultiplier?: number },
   map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
@@ -134,6 +138,17 @@ percentage (`68` → 68 cells + a big "68%" beside the grid).
 two categories — the before/after comparison. No value axis; vertical
 rails carry the two periods and every series gets a colored "Name value"
 label at both ends (labels de-overlap automatically).
+
+**Bar-of-pie** (`pie.breakout`): the listed category indices collapse into
+one muted "Other" slice (rotated to face 3 o'clock) and are detailed in a
+stacked bar on the right with dashed connectors; detail labels show the
+share of the grand total.
+
+**Small multiples** (`multiples`): a multi-series chart becomes a grid of
+single-series panels titled by series name, pinned to one shared value
+scale so panels compare honestly. Special rows (Error, Target, Band
+low/high) are carried into every panel. `columns` overrides the grid
+(default: one row up to 3 panels, else a near-square).
 
 **Cascade** (decomposition): each stage's bar is a subset of the previous
 one, top-aligned on one volume scale; the complement hangs as a muted
