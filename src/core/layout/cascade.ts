@@ -37,7 +37,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     h: cfg.height - titleH - groupH - (hasGroups ? 4 : 0) - footnoteH(cfg, style, decor) - 4,
   };
   const slotW = plot.w / Math.max(1, n);
-  const barW = slotW * 0.82;
+  const barW = slotW * 0.91;
   const toH = (v: number) => (v / v0) * plot.h;
 
   const nodes: SceneNode[] = [];
@@ -121,7 +121,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // Labels adapt to the segment — never the other way around.
         const fitsOneLine = textWidth(oneLine, fs * 0.9) <= barW - 6;
         const outside = (text: string, name: string): SceneNode => ({
-          kind: "text", x: x - slotW * 0.09, y: segY + segH + 1, w: barW + slotW * 0.18, h: fs * 1.2,
+          kind: "text", x: x - slotW * 0.045, y: segY + segH + 1, w: barW + slotW * 0.09, h: fs * 1.2,
           text, fontSize: fs * 0.85, color: style.text, align: "center", valign: "top", name,
         });
         if (segH >= fs * 2.9 && !fitsOneLine) {
