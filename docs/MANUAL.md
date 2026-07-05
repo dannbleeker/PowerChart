@@ -51,7 +51,7 @@ section and `skill/reference.md`.
 | Gantt | project plans | `Start`/`End`/`Milestone` rows; see [Gantt](#gantt) |
 | Combo | columns + line | mark a series with type "line"; secondary axis optional; columns can be stacked, clustered, or 100% |
 | Pie / Doughnut | simple shares | slices from 12 o'clock, clockwise; explode slices to highlight |
-| Boxplot | distributions | `Min`/`Q1`/`Median`/`Q3`/`Max` rows, or raw samples → automatic Tukey whiskers and outliers |
+| Boxplot | distributions | `Min`/`Q1`/`Median`/`Q3`/`Max` rows, or raw samples → automatic Tukey whiskers and outliers; suffix rows with `\| group` for side-by-side grouped boxes |
 | Radar | multi-dimension profiles | categories = spokes, series = translucent polygons; keep ≤ 3 series |
 | Heatmap | value matrices | series = rows, categories = columns, one global color scale (diverging when data spans zero) |
 | Tile map | values by geography | categories = region codes (US postal / ISO-2 / world regions); layout auto-detected |
@@ -90,6 +90,7 @@ toggle — the axis and every decoration rotate with them.
 | `Min`, `Q1`, `Median`, `Q3`, `Max`, `Mean` | boxplot five-number summary (+ mean marker) |
 | `Outlier <n>` | extra boxplot outlier dots |
 | `Start`, `End`, `Milestone`, `After`, `Today`, `Holiday`, `Bracket <label>` | Gantt — see below |
+| `% Complete`, `Baseline start`, `Baseline end` | Gantt progress fill and plan-vs-actual ghost bars |
 
 ### Gantt
 

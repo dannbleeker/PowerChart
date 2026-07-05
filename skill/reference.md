@@ -83,13 +83,15 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `X line`, `Y line` | scatter partition lines at those values |
 | `Trend` | any value present → OLS trend line, labelled with its R² and p-value |
 | `Start`, `End`, `Milestone` | Gantt bars & milestone markers (numbers or day values) |
+| `% Complete` | Gantt: darker progress fill inside the bar (0-100 or 0-1) |
+| `Baseline start`, `Baseline end` | Gantt: thin ghost bars showing the original plan vs actual |
 | `After` | Gantt dependency: 1-based predecessor index → elbow arrow |
 | `Today` | Gantt today line at the (single) value |
 | `Holiday` | Gantt: shade these dates |
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, vertical |
 | `Target` | bullet-chart tick across each column at the value (combine with `bands` for zones) |
-| `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style) |
+| `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style); suffix "\| group" ("Min \| 2024") for side-by-side grouped boxes |
 | `Mean` | boxplot mean marker (×) |
 | `Outlier <n>` | boxplot: extra outlier dots in precomputed mode |
 

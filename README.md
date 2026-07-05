@@ -57,6 +57,8 @@ conventions, and every option.
 | Scatter quadrant matrix (zones + labels in one step) | ✅ (`decorations.quadrants`) |
 | Funnel / pyramid chart with conversion rates | ✅ (`funnel` kind) |
 | Lollipop, dot-plot, and dumbbell-range styles | ✅ (`decorations.barStyle` on clustered) |
+| Gantt progress fill + plan-vs-actual baselines | ✅ (`% Complete`, `Baseline start`/`end` rows) |
+| Grouped boxplots (two categorical dimensions) | ✅ (`Min \| 2024`-style row suffixes) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

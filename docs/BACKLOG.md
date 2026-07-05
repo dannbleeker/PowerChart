@@ -9,19 +9,20 @@ engine already has were filtered out.
 
 **This is the only backlog document.** Items graduate from here into PRs
 (and then out of here); rejected ideas stay in §4 so they aren't re-proposed. (Shipped since the
-sweep: cascade chart; bullet targets; combo column modes; bubble size
-legend; forecast styling; scatter quadrants; funnel; lollipop/dot/
-dumbbell styles.)
+sweep: the full top-10 — cascade, bullet targets, combo column modes,
+bubble size legend, forecast styling, scatter quadrants, funnel,
+lollipop/dot/dumbbell styles, gantt progress + baselines, grouped
+boxplots.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
 
 ## 1. Top candidates (value ÷ effort, cross-cutting rank)
 
-| # | Item | Type | Effort | Why first |
-|---|---|---|---|---|
-| 1 | **Gantt: percent-complete fill + baseline ghost bars** | option | easy | Plan-vs-actual + progress: the two biggest PM asks |
-| 2 | **Grouped boxplots** (category × series sub-boxes) | option | medium | Most natural distribution-comparison extension |
+The researched top-10 is fully shipped. Next candidates come from §2/§3
+below (strongest: waterfall budget-vs-actual bridge, line confidence
+bands, area-between-series, pie-of-pie breakout, heatmap marginal totals,
+slope chart, waffle, KPI tile, small multiples).
 
 ## 2. Gaps within existing kinds (per kind)
 
@@ -75,9 +76,6 @@ and skill-pptx renderers additionally have filled polygons and patterns).
   medium/hard, low/niche.
 
 ### Gantt
-- **Percent-complete fill** (`% Complete` row → inner bar) — easy, high.
-- **Baseline vs. actual ghost bars** (`Baseline start`/`Baseline end` rows) —
-  easy, high.
 - **Auto summary bars** (section rows span min(start)→max(end) of children) —
   medium, medium.
 - **Critical-path highlight** (CPM over existing `After` edges) —
@@ -86,7 +84,6 @@ and skill-pptx renderers additionally have filled polygons and patterns).
   hard/low; out of deck-tool scope.
 
 ### Boxplot
-- **Grouped boxplots** (top-10 #9) — easy/medium, high.
 - **Jittered raw-data dots** over the box — easy, medium.
 - **Notched boxplots** (median CI) — medium, medium.
 - Violin (density curves) — infeasible live / medium SVG-only; low.
