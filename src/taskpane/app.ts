@@ -8,6 +8,7 @@ import {
   insertSceneIntoSlide,
   isPowerPointHost,
   listChartsInDeck,
+  listChartsInSelection,
   loadChartFromSelection,
   updateChartInSlide,
   type EditTarget,
@@ -74,6 +75,28 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
   };
 }
 
+/** Corporate style file: persisted defaults merged into every chart. */
+interface StyleFile {
+  palette?: string[];
+  fontFamily?: string;
+  fontSize?: number;
+  negative?: string;
+  neutral?: string;
+}
+let styleFile: StyleFile = {};
+try {
+  styleFile = JSON.parse(localStorage.getItem("powerchart-style") ?? "{}");
+} catch {
+  /* corrupted style file — start fresh */
+}
+
+/** Style-file defaults + the palette preset chosen in the pane. */
+function mergedStyle(): ChartConfig["style"] {
+  const style = { ...styleFile } as NonNullable<ChartConfig["style"]>;
+  if (state.paletteName !== "Default") style.palette = PALETTES[state.paletteName];
+  return Object.keys(style).length ? style : undefined;
+}
+
 function paletteNameFor(palette?: string[]): string {
   if (!palette) return "Default";
   return Object.entries(PALETTES).find(([, p]) => p.join() === palette.join())?.[0] ?? "Default";
@@ -103,7 +126,7 @@ function currentConfig(): ChartConfig {
     horizontal: state.horizontal || undefined,
     valueAxisTitle: state.axisTitle || undefined,
     logScale: state.logScale || undefined,
-    style: state.paletteName !== "Default" ? { palette: PALETTES[state.paletteName] } : undefined,
+    style: mergedStyle(),
     ...DEFAULT_SIZE,
     title: state.title || undefined,
     decorations: { ...state.decorations, labelContent: labelParts },
@@ -597,17 +620,20 @@ async function doInsert(asNew: boolean) {
 }
 
 /**
- * think-cell's Set Same Scale: pin every value-axis chart in the deck to the
- * union of their extents and re-render them in place.
+ * think-cell's Set Same Scale: pin every value-axis chart (in the deck, or
+ * just the selected ones) to the union of their extents and re-render them.
  */
-async function doSameScale() {
-  const charts = await listChartsInDeck();
+async function doSameScale(scope: "deck" | "selection" = "deck") {
+  const charts = scope === "deck" ? await listChartsInDeck() : await listChartsInSelection();
   const parsed = charts
     .map((c) => ({ target: c.target, cfg: JSON.parse(c.configJson) as ChartConfig }))
     .map((c) => ({ ...c, extent: valueExtent(c.cfg) }))
     .filter((c): c is typeof c & { extent: { min: number; max: number } } => c.extent != null);
   if (parsed.length < 2) {
-    hostNote.textContent = "Same scale needs at least two value-axis charts in the deck.";
+    hostNote.textContent =
+      scope === "deck"
+        ? "Same scale needs at least two value-axis charts in the deck."
+        : "Select two or more PowerCharts (Ctrl-click), then apply Same scale.";
     return;
   }
   const min = Math.min(...parsed.map((c) => c.extent.min));
@@ -652,6 +678,72 @@ for (const id of ["harvey-pct", "check-state", "flow-steps", "flow-highlight"]) 
   $(id).addEventListener("input", renderElementPreviews);
 }
 renderElementPreviews();
+
+// --- Templates & style file ----------------------------------------------------
+
+const TEMPLATES_KEY = "powerchart-templates";
+const STYLE_KEY = "powerchart-style";
+
+function loadTemplates(): Record<string, ChartConfig> {
+  try {
+    return JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function renderTemplateList() {
+  const sel = $("template-list") as HTMLSelectElement;
+  sel.innerHTML = "<option value=''>— templates —</option>";
+  for (const name of Object.keys(loadTemplates()).sort()) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  }
+}
+
+$("template-save").addEventListener("click", () => {
+  const name = prompt("Template name?", state.title || state.kind);
+  if (!name) return;
+  const all = loadTemplates();
+  all[name] = currentConfig();
+  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(all));
+  renderTemplateList();
+});
+$("template-list").addEventListener("change", () => {
+  const name = ($("template-list") as HTMLSelectElement).value;
+  const cfg = loadTemplates()[name];
+  if (cfg) applyConfig({ ...DEFAULT_SIZE, ...cfg }, null);
+});
+$("template-delete").addEventListener("click", () => {
+  const name = ($("template-list") as HTMLSelectElement).value;
+  if (!name) return;
+  const all = loadTemplates();
+  delete all[name];
+  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(all));
+  renderTemplateList();
+});
+renderTemplateList();
+
+$("style-export").addEventListener("click", () => {
+  const current: StyleFile = { ...styleFile };
+  if (state.paletteName !== "Default") current.palette = PALETTES[state.paletteName];
+  ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(current, null, 2);
+  hostNote.textContent = "Style exported — share the JSON as your corporate style file.";
+});
+$("style-import").addEventListener("click", () => {
+  try {
+    const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
+    if (parsed.kind) throw new Error("that is a chart config — use Import instead");
+    styleFile = parsed;
+    localStorage.setItem(STYLE_KEY, JSON.stringify(styleFile));
+    renderPreview();
+    hostNote.textContent = "Style imported — applied to every chart from this pane.";
+  } catch (err) {
+    hostNote.textContent = `Style import failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+});
 
 // --- Automation (JSON in / out, the open .ppttc idea) -------------------------
 
@@ -714,7 +806,10 @@ function wireInsert() {
     loadBtn.addEventListener("click", guard(doLoadSelection));
     const sameScaleBtn = $("same-scale") as HTMLButtonElement;
     sameScaleBtn.disabled = false;
-    sameScaleBtn.addEventListener("click", guard(doSameScale));
+    sameScaleBtn.addEventListener("click", guard(() => doSameScale("deck")));
+    const sameScaleSelBtn = $("same-scale-sel") as HTMLButtonElement;
+    sameScaleSelBtn.disabled = false;
+    sameScaleSelBtn.addEventListener("click", guard(() => doSameScale("selection")));
     const batchBtn = $("json-insert-batch") as HTMLButtonElement;
     batchBtn.disabled = false;
     batchBtn.addEventListener(

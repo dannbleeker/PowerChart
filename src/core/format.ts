@@ -119,6 +119,15 @@ export function formatDay(days: number, withYear = false): string {
   return d.getUTCDate() === 1 ? m : `${d.getUTCDate()} ${m}`;
 }
 
+/** Epoch-day values of every Monday covering [minDay, maxDay]. */
+export function weekStarts(minDay: number, maxDay: number): number[] {
+  // Day 0 (1970-01-01) was a Thursday; Monday ≡ 4 (mod 7).
+  const first = minDay + ((4 - (minDay % 7) + 7) % 7);
+  const out: number[] = [];
+  for (let d = first; d <= maxDay && out.length < 120; d += 7) out.push(d);
+  return out;
+}
+
 /** Epoch-day values of every month start covering [minDay, maxDay]. */
 export function monthStarts(minDay: number, maxDay: number): number[] {
   const start = new Date(minDay * DAY_MS);

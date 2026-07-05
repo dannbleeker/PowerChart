@@ -94,6 +94,30 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
   });
 }
 
+/** All PowerCharts in the current selection (for Same Scale on a subset). */
+export async function listChartsInSelection(): Promise<{ configJson: string; target: EditTarget }[]> {
+  return PowerPoint.run(async (context) => {
+    const slide = context.presentation.getSelectedSlides().getItemAt(0);
+    slide.load("id");
+    const shapes = context.presentation.getSelectedShapes();
+    shapes.load("items/id,items/left,items/top");
+    await context.sync();
+    const tags = shapes.items.map((s) => {
+      const tag = s.tags.getItemOrNullObject(CHART_TAG);
+      tag.load("value");
+      return tag;
+    });
+    await context.sync();
+    return shapes.items
+      .map((s, i) => ({ s, tag: tags[i] }))
+      .filter(({ tag }) => !tag.isNullObject && tag.value)
+      .map(({ s, tag }) => ({
+        configJson: tag.value,
+        target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top },
+      }));
+  });
+}
+
 /**
  * Find every PowerChart in the deck (any shape carrying the config tag),
  * across all slides. Used by "Same scale" to re-render charts together.
@@ -354,7 +378,10 @@ function addWedgeFan(
   const cx = dx + n.cx;
   const cy = dy + n.cy;
   const span = n.endAngle - n.startAngle;
-  const steps = Math.max(1, Math.ceil(span / 12));
+  // Adaptive density: keep chord sagitta under ~0.5pt so edges read as smooth
+  // (stepDeg ≈ 2·√(2·tol/r) rad), capped to bound the shape count per wedge.
+  const stepDeg = Math.max(3, Math.min(12, (2 * Math.sqrt((2 * 0.5) / Math.max(n.r, 1)) * 180) / Math.PI));
+  const steps = Math.max(1, Math.min(60, Math.ceil(span / stepDeg)));
   const step = span / steps;
   for (let i = 0; i < steps; i++) {
     const mid = n.startAngle + step * (i + 0.5);

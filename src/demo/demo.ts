@@ -65,6 +65,65 @@ const extras: ChartConfig[] = [
     decorations: { segmentLabels: true, totals: false, valueAxis: true, gridlines: true, seriesLabels: false },
   },
   {
+    ...sampleConfig("stacked"),
+    title: "Clustered-stacked (two stack groups per category)",
+    data: {
+      categories: ["2024", "2025"],
+      series: [
+        { name: "EU Product", values: [30, 36], stack: 0 },
+        { name: "EU Services", values: [12, 16], stack: 0 },
+        { name: "US Product", values: [26, 33], stack: 1 },
+        { name: "US Services", values: [10, 14], stack: 1 },
+      ],
+    },
+    decorations: { totals: true, segmentLabels: true, seriesLabels: true },
+  },
+  {
+    ...sampleConfig("waterfall"),
+    title: "Rotated waterfall (horizontal)",
+    horizontal: true,
+  },
+  {
+    ...sampleConfig("mekko"),
+    title: "Rotated Mekko (horizontal)",
+    horizontal: true,
+  },
+  {
+    ...sampleConfig("gantt"),
+    title: "Gantt: weeks, weekend shading, sections, remarks",
+    data: {
+      categories: [
+        "Phase 1 — Discovery",
+        "> Interviews | Anna | 12 done",
+        "> Synthesis | Ben",
+        "Phase 2 — Delivery",
+        "> Build | Cato | at risk",
+      ],
+      series: [
+        { name: "Start", values: [null, "2026-01-05", "2026-01-19", null, "2026-01-26"].map((d) => (d ? dstr(d) : null)) },
+        { name: "End", values: [null, "2026-01-23", "2026-01-30", null, "2026-02-20"].map((d) => (d ? dstr(d) : null)) },
+        { name: "After", values: [null, null, 2, null, 3] },
+        { name: "Today", values: [dstr("2026-02-02"), null, null, null, null] },
+      ],
+      dates: true,
+    },
+  },
+  {
+    ...sampleConfig("scatter"),
+    title: "Scatter: partition lines, trend, group legend",
+    data: {
+      categories: ["Alpha", "Bravo", "Core", "Delta", "Echo", "Foxtrot"],
+      series: [
+        { name: "X", values: [12, 25, 40, 55, 62, 74] },
+        { name: "Y", values: [18, 30, 38, 52, 55, 68] },
+        { name: "Group", values: [1, 1, 2, 2, 3, 3] },
+        { name: "X line", values: [45, null, null, null, null, null] },
+        { name: "Y line", values: [40, null, null, null, null, null] },
+        { name: "Trend", values: [1, null, null, null, null, null] },
+      ],
+    },
+  },
+  {
     ...sampleConfig("waterfall"),
     title: "Stacked waterfall (two series per delta)",
     data: {

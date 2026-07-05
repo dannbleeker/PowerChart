@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat } from "../format";
+import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
 
@@ -22,10 +22,18 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const after = find(/^(after|dep(endency)?)$/i)?.values ?? [];
   /** "Today" row: a single date/number → today line. */
   const today = (find(/^today$/i)?.values ?? []).find((v): v is number => v != null);
-  // Responsible column via the "Activity | Owner" category convention.
-  const acts = data.categories.map((c) => c.split("|")[0].trim());
-  const owners = data.categories.map((c) => (c.includes("|") ? c.split("|")[1].trim() : ""));
+  // "Activity | Owner | Remark" category convention; ">" prefix indents.
+  const parts = data.categories.map((c) => c.split("|").map((p) => p.trim()));
+  const indents = parts.map((p) => (p[0].startsWith(">") ? 1 : 0));
+  const acts = parts.map((p) => p[0].replace(/^>+\s*/, ""));
+  const owners = parts.map((p) => p[1] ?? "");
+  const remarks = parts.map((p) => p[2] ?? "");
   const hasOwners = owners.some(Boolean);
+  const hasRemarks = remarks.some(Boolean);
+  // A row with no bar data at all is a section header.
+  const isHeader = data.categories.map(
+    (_, c) => starts[c] == null && ends[c] == null && milestones[c] == null,
+  );
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const headerH = fs * 1.6;
@@ -34,8 +42,9 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     Math.max(0, ...acts.map((c) => textWidth(c, fs))) + 10,
   );
   const ownerW = hasOwners ? Math.max(0, ...owners.map((o) => textWidth(o, fs))) + 12 : 0;
+  const remarkW = hasRemarks ? Math.max(0, ...remarks.map((o) => textWidth(o, fs * 0.9))) + 12 : 0;
   const bottomH = today != null ? fs * 1.6 : 6;
-  const plot = { x: catW, y: titleH + headerH, w: cfg.width - catW - ownerW - 6, h: cfg.height - titleH - headerH - bottomH };
+  const plot = { x: catW, y: titleH + headerH, w: cfg.width - catW - ownerW - remarkW - 6, h: cfg.height - titleH - headerH - bottomH };
 
   const dates = !!data.dates;
   const all = [...starts, ...ends, ...milestones, ...(today != null ? [today] : [])].filter(
@@ -43,10 +52,13 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   );
   const lo = Math.min(...(all.length ? all : [0]));
   const hi = Math.max(...(all.length ? all : [1]));
-  // Calendar mode: months, or quarters when the plan spans years.
+  // Calendar granularity by span: weeks → months → quarters.
+  const weeks = dates && hi - lo <= 130;
   const quarters = dates && hi - lo > 550;
   const ticks = dates
-    ? monthStarts(lo - 31, hi + 31).filter((d) => !quarters || new Date(d * 86400000).getUTCMonth() % 3 === 0)
+    ? weeks
+      ? weekStarts(lo - 7, hi + 7)
+      : monthStarts(lo - 31, hi + 31).filter((d) => !quarters || new Date(d * 86400000).getUTCMonth() % 3 === 0)
     : niceTicks(lo, hi, 6);
   const t0 = dates ? Math.min(lo, ticks[0] ?? lo) : ticks[0];
   const t1 = dates ? Math.max(hi, ticks[ticks.length - 1] ?? hi) : ticks[ticks.length - 1];
@@ -56,6 +68,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     if (!dates) return formatNumber(t, fmt);
     const d = new Date(t * 86400000);
     if (quarters) return `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${String(d.getUTCFullYear()).slice(2)}`;
+    if (weeks) return formatDay(t);
     return formatDay(t, i === 0 || d.getUTCMonth() === 0);
   };
   const spanLabel = (s: number, e: number) =>
@@ -68,6 +81,20 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
     });
   }
+  // Weekend shading in week granularity.
+  if (weeks) {
+    for (let d = lo - 7; d <= hi + 7; d++) {
+      if (d % 7 === 2) {
+        // Day ≡ 2 (mod 7) is Saturday (day 0 = Thursday); shade Sat+Sun.
+        const x1 = Math.max(plot.x, toX(d));
+        const x2 = Math.min(plot.x + plot.w, toX(d + 2));
+        if (x2 > x1) {
+          nodes.push({ kind: "rect", x: x1, y: plot.y, w: x2 - x1, h: plot.h, fill: "#f4f3f0", name: `weekend-${d}` });
+        }
+      }
+    }
+  }
+
   // Timeline header on top + vertical gridlines (think-cell's calendar strip).
   const minLabelGap = fs * 2.6;
   let lastLabelX = -1e9;
@@ -88,15 +115,32 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   data.categories.forEach((_, c) => {
     const cy = plot.y + slotH * (c + 0.5);
     columnTop.push(cy - barH / 2);
+    // Section header rows: bold label, light band, no bar.
+    if (isHeader[c]) {
+      nodes.push(
+        { kind: "rect", x: 0, y: cy - slotH / 2 + 1, w: cfg.width, h: slotH - 2, fill: "#f0efec", name: `section-${c}` },
+        {
+          kind: "text", x: 0, y: cy - fs * 0.75, w: cfg.width, h: fs * 1.5,
+          text: acts[c], fontSize: fs, bold: true, color: style.text, align: "left", valign: "middle", name: `category-${c}`,
+        },
+      );
+      return;
+    }
     nodes.push({
-      kind: "text", x: 0, y: cy - fs * 0.75, w: catW - 6, h: fs * 1.5,
+      kind: "text", x: indents[c] * 10, y: cy - fs * 0.75, w: catW - 6 - indents[c] * 10, h: fs * 1.5,
       text: acts[c], fontSize: fs, color: style.text, align: "left", valign: "middle", name: `category-${c}`,
     });
-    // Responsible column right of the timeline ("Activity | Owner").
+    // Responsible + remark columns right of the timeline.
     if (hasOwners && owners[c]) {
       nodes.push({
         kind: "text", x: plot.x + plot.w + 6, y: cy - fs * 0.75, w: ownerW - 6, h: fs * 1.5,
         text: owners[c], fontSize: fs, color: style.mutedText, align: "left", valign: "middle", name: `owner-${c}`,
+      });
+    }
+    if (hasRemarks && remarks[c]) {
+      nodes.push({
+        kind: "text", x: plot.x + plot.w + ownerW + 4, y: cy - fs * 0.7, w: remarkW - 4, h: fs * 1.4,
+        text: remarks[c], fontSize: fs * 0.9, color: style.mutedText, align: "left", valign: "middle", name: `remark-${c}`,
       });
     }
     // Faint row separator.

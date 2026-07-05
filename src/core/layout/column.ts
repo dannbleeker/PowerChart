@@ -33,6 +33,10 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const stacked = kind !== "clustered";
   const pct = kind === "stacked100";
   const H = !!cfg.horizontal;
+  // Clustered-stacked: series carry stack indices (blank datasheet rows).
+  const stackIds = [...new Set(data.series.map((s) => s.stack ?? 0))].sort((a, b) => a - b);
+  const nStacks = stacked && !pct ? stackIds.length : 1;
+  const stackPos = new Map(stackIds.map((id, i) => [id, i]));
 
   const frame = H
     ? computeFrameHorizontal(cfg, style, decor)
@@ -65,10 +69,19 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     cfg.numberFormat,
   );
 
+  // Per-stack totals (clustered-stacked scales to the tallest single stack).
+  const stackPosTotals = (c: number, id: number) =>
+    data.series.reduce((a, s) => a + ((s.stack ?? 0) === id ? Math.max(0, s.values[c] ?? 0) : 0), 0);
+  const stackNegTotals = (c: number, id: number) =>
+    data.series.reduce((a, s) => a + ((s.stack ?? 0) === id ? Math.min(0, s.values[c] ?? 0) : 0), 0);
+
   let dataMin: number, dataMax: number;
   if (pct) {
     dataMin = 0;
     dataMax = 1;
+  } else if (stacked && nStacks > 1) {
+    dataMin = Math.min(0, ...data.categories.flatMap((_, c) => stackIds.map((id) => stackNegTotals(c, id))));
+    dataMax = Math.max(0, ...data.categories.flatMap((_, c) => stackIds.map((id) => stackPosTotals(c, id))));
   } else if (stacked) {
     dataMin = Math.min(0, ...negTotals);
     dataMax = Math.max(0, ...posTotals);
@@ -107,10 +120,12 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const lastSegMid: (number | null)[] = data.series.map(() => null);
 
   for (let c = 0; c < n; c++) {
-    let up = 0; // running positive stack (value units)
-    let down = 0;
+    // Running positive/negative levels per stack group (value units).
+    const ups = stackIds.map(() => 0);
+    const downs = stackIds.map(() => 0);
     const levels: number[] = data.series.map(() => 0);
-    const barThick = stacked ? colThick : colThick / Math.max(1, data.series.length);
+    const stackThick = colThick / nStacks;
+    const barThick = stacked ? stackThick : colThick / Math.max(1, data.series.length);
     // think-cell's Segment Order: stacking order within this column.
     const order = data.series.map((_, i) => i);
     if (cfg.segmentOrder === "reverse") order.reverse();
@@ -127,21 +142,25 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       let r: { x: number; y: number; w: number; h: number } | null = null;
       const fill = seriesColor(style, si, s.color);
 
+      const sp = stackPos.get(s.stack ?? 0) ?? 0;
       if (raw != null && v !== 0) {
         if (stacked) {
+          const catPos =
+            nStacks > 1 ? centers[c] - colThick / 2 + (sp + 0.5) * stackThick : centers[c];
+          const thick = nStacks > 1 ? stackThick - 1 : colThick;
           if (v >= 0) {
-            r = segRect(centers[c], colThick, up, up + v);
-            up += v;
+            r = segRect(catPos, thick, ups[sp], ups[sp] + v);
+            ups[sp] += v;
           } else {
-            r = segRect(centers[c], colThick, down + v, down);
-            down += v;
+            r = segRect(catPos, thick, downs[sp] + v, downs[sp]);
+            downs[sp] += v;
           }
         } else {
           const pos = centers[c] - colThick / 2 + (position + 0.5) * barThick;
           r = segRect(pos, barThick - 1, 0, v);
         }
       }
-      levels[si] = up + down;
+      levels[si] = ups[sp] + downs[sp];
       if (!r) return;
 
       nodes.push({
@@ -187,11 +206,38 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
     seriesLevels.push(levels);
 
-    const topV = pct ? (denominators[c] > 0 ? posTotals[c] / denominators[c] : 0) : stacked ? up : Math.max(0, ...data.series.map((s) => s.values[c] ?? 0));
+    const topV = pct
+      ? denominators[c] > 0
+        ? posTotals[c] / denominators[c]
+        : 0
+      : stacked
+        ? Math.max(...ups)
+        : Math.max(0, ...data.series.map((s) => s.values[c] ?? 0));
     const topQ = qOf(Math.max(0, topV));
     columnTop.push(H ? frame.x + topQ : frame.y + frame.h - topQ);
 
-    if (decor.totals && !pct) {
+    // Clustered-stacked: one total per stack sub-column (vertical only).
+    if (decor.totals && !pct && nStacks > 1 && !H) {
+      stackIds.forEach((id, sp) => {
+        const subX = centers[c] - colThick / 2 + sp * stackThick;
+        const subTopQ = qOf(Math.max(0, ups[sp]));
+        const total = data.series.reduce((a, s) => a + ((s.stack ?? 0) === id ? (s.values[c] ?? 0) : 0), 0);
+        nodes.push({
+          kind: "text",
+          x: subX - 4,
+          y: frame.y + frame.h - subTopQ - fs * 1.45,
+          w: stackThick + 8,
+          h: fs * 1.4,
+          text: formatNumber(total, fmt),
+          fontSize: fs * 0.95,
+          bold: true,
+          color: style.text,
+          align: "center",
+          valign: "bottom",
+          name: `total-${c}-s${sp}`,
+        });
+      });
+    } else if (decor.totals && !pct) {
       if (H) {
         nodes.push({
           kind: "text",
@@ -327,7 +373,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
 }
 
 /** Chrome for horizontal (bar) orientation: title, legend, left category labels, bottom axis. */
-function horizontalChrome(
+export function horizontalChrome(
   cfg: ChartConfig,
   style: ChartStyle,
   decor: Decorations,

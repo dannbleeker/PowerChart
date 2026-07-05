@@ -262,37 +262,43 @@ exports[`SVG snapshots > sample bubble 1`] = `
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Market map</text>
 <line x1="34" y1="284" x2="472" y2="284" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
 <text x="30" y="287.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">0</text>
-<line x1="34" y1="220" x2="472" y2="220" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="223.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">20</text>
-<line x1="34" y1="156" x2="472" y2="156" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="159.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">40</text>
-<line x1="34" y1="92" x2="472" y2="92" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="95.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">60</text>
-<line x1="34" y1="28" x2="472" y2="28" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="31.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">80</text>
+<line x1="34" y1="224.5" x2="472" y2="224.5" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="227.74" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">20</text>
+<line x1="34" y1="165" x2="472" y2="165" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="168.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">40</text>
+<line x1="34" y1="105.5" x2="472" y2="105.5" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="108.74" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">60</text>
+<line x1="34" y1="46" x2="472" y2="46" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="49.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">80</text>
 <text x="34" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">0</text>
 <text x="143.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">20</text>
 <text x="253" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">40</text>
 <text x="362.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">60</text>
 <text x="472" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">80</text>
 <line x1="34" y1="284" x2="472" y2="284" stroke="#a5a49e" stroke-width="1" data-name="baseline"/>
-<line x1="34" y1="28" x2="34" y2="284" stroke="#a5a49e" stroke-width="1" data-name="y-axis-line"/>
-<ellipse cx="99.7" cy="188" rx="7.68" ry="7.68" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-0"/>
-<ellipse cx="170.88" cy="108" rx="15.36" ry="15.36" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-1"/>
-<ellipse cx="253" cy="149.6" rx="23.04" ry="23.04" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-2"/>
-<ellipse cx="335.13" cy="60" rx="12.14" ry="12.14" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-3"/>
-<ellipse cx="373.45" cy="172" rx="18.01" ry="18.01" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-4"/>
-<ellipse cx="439.15" cy="92" rx="20.32" ry="20.32" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-5"/>
-<ellipse cx="198.25" cy="213.6" rx="9.41" ry="9.41" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-6"/>
-<ellipse cx="296.8" cy="124" rx="14.37" ry="14.37" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-7"/>
-<text x="278.04" y="153.2" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-2">Core</text>
-<text x="377.03" y="95.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-5">Foxtrot</text>
-<text x="393.46" y="175.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-4">Echo</text>
-<text x="188.24" y="111.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-1">Bravo</text>
-<text x="313.17" y="127.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-7">Hotel</text>
-<text x="349.27" y="63.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-3">Delta</text>
-<text x="209.66" y="217.2" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-6">Golf</text>
-<text x="109.38" y="191.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-0">Alpha</text>
+<line x1="34" y1="46" x2="34" y2="284" stroke="#a5a49e" stroke-width="1" data-name="y-axis-line"/>
+<rect x="34" y="34" width="7" height="7" fill="#2a78d6" data-name="legend-chip-1"/>
+<text x="44" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-1">Group 1</text>
+<rect x="95.8" y="34" width="7" height="7" fill="#1baf7a" data-name="legend-chip-2"/>
+<text x="105.8" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-2">Group 2</text>
+<rect x="157.6" y="34" width="7" height="7" fill="#eda100" data-name="legend-chip-3"/>
+<text x="167.6" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-3">Group 3</text>
+<ellipse cx="99.7" cy="194.75" rx="7.14" ry="7.14" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-0"/>
+<ellipse cx="170.88" cy="120.38" rx="14.28" ry="14.28" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-1"/>
+<ellipse cx="253" cy="159.05" rx="21.42" ry="21.42" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-2"/>
+<ellipse cx="335.13" cy="75.75" rx="11.29" ry="11.29" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-3"/>
+<ellipse cx="373.45" cy="179.88" rx="16.74" ry="16.74" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-4"/>
+<ellipse cx="439.15" cy="105.5" rx="18.89" ry="18.89" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-5"/>
+<ellipse cx="198.25" cy="218.55" rx="8.74" ry="8.74" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-6"/>
+<ellipse cx="296.8" cy="135.25" rx="13.36" ry="13.36" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-7"/>
+<text x="276.42" y="162.65" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-2">Core</text>
+<text x="378.46" y="109.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-5">Foxtrot</text>
+<text x="392.19" y="183.48" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-4">Echo</text>
+<text x="187.16" y="123.98" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-1">Bravo</text>
+<text x="312.16" y="138.85" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-7">Hotel</text>
+<text x="348.41" y="79.35" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-3">Delta</text>
+<text x="208.99" y="222.15" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-6">Golf</text>
+<text x="108.84" y="198.35" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-0">Alpha</text>
 </svg>"
 `;
 
@@ -556,37 +562,43 @@ exports[`SVG snapshots > sample scatter 1`] = `
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Price vs. margin</text>
 <line x1="34" y1="284" x2="472" y2="284" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
 <text x="30" y="287.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">0</text>
-<line x1="34" y1="220" x2="472" y2="220" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="223.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">20</text>
-<line x1="34" y1="156" x2="472" y2="156" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="159.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">40</text>
-<line x1="34" y1="92" x2="472" y2="92" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="95.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">60</text>
-<line x1="34" y1="28" x2="472" y2="28" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
-<text x="30" y="31.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">80</text>
+<line x1="34" y1="224.5" x2="472" y2="224.5" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="227.74" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">20</text>
+<line x1="34" y1="165" x2="472" y2="165" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="168.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">40</text>
+<line x1="34" y1="105.5" x2="472" y2="105.5" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="108.74" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">60</text>
+<line x1="34" y1="46" x2="472" y2="46" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
+<text x="30" y="49.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">80</text>
 <text x="34" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">0</text>
 <text x="143.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">20</text>
 <text x="253" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">40</text>
 <text x="362.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">60</text>
 <text x="472" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">80</text>
 <line x1="34" y1="284" x2="472" y2="284" stroke="#a5a49e" stroke-width="1" data-name="baseline"/>
-<line x1="34" y1="28" x2="34" y2="284" stroke="#a5a49e" stroke-width="1" data-name="y-axis-line"/>
-<ellipse cx="99.7" cy="188" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-0"/>
-<ellipse cx="170.88" cy="108" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-1"/>
-<ellipse cx="253" cy="149.6" rx="3" ry="3" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-2"/>
-<ellipse cx="335.13" cy="60" rx="3" ry="3" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-3"/>
-<ellipse cx="373.45" cy="172" rx="3" ry="3" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-4"/>
-<ellipse cx="439.15" cy="92" rx="3" ry="3" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-5"/>
-<ellipse cx="198.25" cy="213.6" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-6"/>
-<ellipse cx="296.8" cy="124" rx="3" ry="3" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-7"/>
-<text x="104.7" y="191.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-0">Alpha</text>
-<text x="175.88" y="111.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-1">Bravo</text>
-<text x="258" y="153.2" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-2">Core</text>
-<text x="340.13" y="63.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-3">Delta</text>
-<text x="378.45" y="175.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-4">Echo</text>
-<text x="394.35" y="95.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-5">Foxtrot</text>
-<text x="203.25" y="217.2" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-6">Golf</text>
-<text x="301.8" y="127.6" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-7">Hotel</text>
+<line x1="34" y1="46" x2="34" y2="284" stroke="#a5a49e" stroke-width="1" data-name="y-axis-line"/>
+<rect x="34" y="34" width="7" height="7" fill="#2a78d6" data-name="legend-chip-1"/>
+<text x="44" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-1">Group 1</text>
+<rect x="95.8" y="34" width="7" height="7" fill="#1baf7a" data-name="legend-chip-2"/>
+<text x="105.8" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-2">Group 2</text>
+<rect x="157.6" y="34" width="7" height="7" fill="#eda100" data-name="legend-chip-3"/>
+<text x="167.6" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-3">Group 3</text>
+<ellipse cx="99.7" cy="194.75" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-0"/>
+<ellipse cx="170.88" cy="120.38" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-1"/>
+<ellipse cx="253" cy="159.05" rx="3" ry="3" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-2"/>
+<ellipse cx="335.13" cy="75.75" rx="3" ry="3" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-3"/>
+<ellipse cx="373.45" cy="179.88" rx="3" ry="3" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-4"/>
+<ellipse cx="439.15" cy="105.5" rx="3" ry="3" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-5"/>
+<ellipse cx="198.25" cy="218.55" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-6"/>
+<ellipse cx="296.8" cy="135.25" rx="3" ry="3" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-7"/>
+<text x="104.7" y="198.35" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-0">Alpha</text>
+<text x="175.88" y="123.98" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-1">Bravo</text>
+<text x="258" y="162.65" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-2">Core</text>
+<text x="340.13" y="79.35" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-3">Delta</text>
+<text x="378.45" y="183.48" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-4">Echo</text>
+<text x="394.35" y="109.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-5">Foxtrot</text>
+<text x="203.25" y="222.15" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-6">Golf</text>
+<text x="301.8" y="138.85" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-7">Hotel</text>
 </svg>"
 `;
 
