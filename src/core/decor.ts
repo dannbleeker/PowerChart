@@ -24,8 +24,8 @@ export function decorationNodes(
     const vFrom = sVals ? (sVals[from] ?? 0) : a.columnValue[from];
     const vTo = sVals ? (sVals[to] ?? 0) : a.columnValue[to];
     const rate = cagr(vFrom, vTo, to - from);
-    // Clear the column totals row when it is shown.
-    const lift = fs * 1.6 + (decor.totals ? fs * 1.5 : 0);
+    // Clear the column totals row and difference arrows when shown.
+    const lift = fs * 1.6 + (decor.totals ? fs * 1.5 : 0) + (decor.difference ? fs * 1.2 : 0);
     const x1 = a.categoryX[from];
     const y1 = a.columnTop[from] - lift;
     const x2 = a.categoryX[to];

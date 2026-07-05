@@ -18,27 +18,46 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const starts = find(/^start$/i)?.values ?? [];
   const ends = find(/^end$/i)?.values ?? [];
   const milestones = find(/^milestone$/i)?.values ?? [];
+  /** "After" row: 1-based predecessor index → dependency arrow. */
+  const after = find(/^(after|dep(endency)?)$/i)?.values ?? [];
+  /** "Today" row: a single date/number → today line. */
+  const today = (find(/^today$/i)?.values ?? []).find((v): v is number => v != null);
+  // Responsible column via the "Activity | Owner" category convention.
+  const acts = data.categories.map((c) => c.split("|")[0].trim());
+  const owners = data.categories.map((c) => (c.includes("|") ? c.split("|")[1].trim() : ""));
+  const hasOwners = owners.some(Boolean);
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const headerH = fs * 1.6;
   const catW = Math.min(
     cfg.width * 0.32,
-    Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 10,
+    Math.max(0, ...acts.map((c) => textWidth(c, fs))) + 10,
   );
-  const plot = { x: catW, y: titleH + headerH, w: cfg.width - catW - 6, h: cfg.height - titleH - headerH - 6 };
+  const ownerW = hasOwners ? Math.max(0, ...owners.map((o) => textWidth(o, fs))) + 12 : 0;
+  const bottomH = today != null ? fs * 1.6 : 6;
+  const plot = { x: catW, y: titleH + headerH, w: cfg.width - catW - ownerW - 6, h: cfg.height - titleH - headerH - bottomH };
 
   const dates = !!data.dates;
-  const all = [...starts, ...ends, ...milestones].filter((v): v is number => v != null);
+  const all = [...starts, ...ends, ...milestones, ...(today != null ? [today] : [])].filter(
+    (v): v is number => v != null,
+  );
   const lo = Math.min(...(all.length ? all : [0]));
   const hi = Math.max(...(all.length ? all : [1]));
-  // Calendar mode: the timeline spans whole months; numeric mode: nice ticks.
-  const ticks = dates ? monthStarts(lo - 31, hi + 31) : niceTicks(lo, hi, 6);
+  // Calendar mode: months, or quarters when the plan spans years.
+  const quarters = dates && hi - lo > 550;
+  const ticks = dates
+    ? monthStarts(lo - 31, hi + 31).filter((d) => !quarters || new Date(d * 86400000).getUTCMonth() % 3 === 0)
+    : niceTicks(lo, hi, 6);
   const t0 = dates ? Math.min(lo, ticks[0] ?? lo) : ticks[0];
   const t1 = dates ? Math.max(hi, ticks[ticks.length - 1] ?? hi) : ticks[ticks.length - 1];
   const toX = (v: number) => plot.x + ((v - t0) / (t1 - t0 || 1)) * plot.w;
   const fmt = resolveFormat(ticks, cfg.numberFormat);
-  const tickLabel = (t: number, i: number) =>
-    dates ? formatDay(t, i === 0 || new Date(t * 86400000).getUTCMonth() === 0) : formatNumber(t, fmt);
+  const tickLabel = (t: number, i: number) => {
+    if (!dates) return formatNumber(t, fmt);
+    const d = new Date(t * 86400000);
+    if (quarters) return `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${String(d.getUTCFullYear()).slice(2)}`;
+    return formatDay(t, i === 0 || d.getUTCMonth() === 0);
+  };
   const spanLabel = (s: number, e: number) =>
     dates ? `${formatDay(s)}–${formatDay(e)}` : `${formatNumber(s, fmt)}–${formatNumber(e, fmt)}`;
 
@@ -66,13 +85,20 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const barH = Math.min(slotH * 0.55, fs * 1.4);
   const columnTop: number[] = [];
 
-  data.categories.forEach((activity, c) => {
+  data.categories.forEach((_, c) => {
     const cy = plot.y + slotH * (c + 0.5);
     columnTop.push(cy - barH / 2);
     nodes.push({
       kind: "text", x: 0, y: cy - fs * 0.75, w: catW - 6, h: fs * 1.5,
-      text: activity, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `category-${c}`,
+      text: acts[c], fontSize: fs, color: style.text, align: "left", valign: "middle", name: `category-${c}`,
     });
+    // Responsible column right of the timeline ("Activity | Owner").
+    if (hasOwners && owners[c]) {
+      nodes.push({
+        kind: "text", x: plot.x + plot.w + 6, y: cy - fs * 0.75, w: ownerW - 6, h: fs * 1.5,
+        text: owners[c], fontSize: fs, color: style.mutedText, align: "left", valign: "middle", name: `owner-${c}`,
+      });
+    }
     // Faint row separator.
     if (c > 0) {
       nodes.push({ kind: "line", x1: plot.x, y1: cy - slotH / 2, x2: plot.x + plot.w, y2: cy - slotH / 2, stroke: style.gridline, strokeWidth: 0.5, name: `row-${c}` });
@@ -104,6 +130,39 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       });
     }
   });
+
+  // Dependency arrows ("After" row): elbow from the predecessor's end down
+  // to the successor's start.
+  data.categories.forEach((_, c) => {
+    const pred = after[c];
+    if (pred == null) return;
+    const p = Math.round(pred) - 1;
+    if (p < 0 || p >= data.categories.length || p === c) return;
+    const predEnd = ends[p];
+    const succStart = starts[c];
+    if (predEnd == null || succStart == null) return;
+    const x1 = toX(predEnd);
+    const yPred = plot.y + slotH * (p + 0.5);
+    const ySucc = plot.y + slotH * (c + 0.5);
+    const x2 = toX(succStart);
+    nodes.push(
+      { kind: "line", x1, y1: yPred, x2: x1, y2: ySucc, stroke: style.mutedText, strokeWidth: 1, name: `dep-v-${c}` },
+      { kind: "line", x1, y1: ySucc, x2: x2 - 2, y2: ySucc, stroke: style.mutedText, strokeWidth: 1, name: `dep-h-${c}` },
+      { kind: "arrowhead", x: x2 - 1, y: ySucc, angle: x2 >= x1 ? 0 : 180, size: 3.5, fill: style.mutedText, name: `dep-head-${c}` },
+    );
+  });
+
+  // Today line.
+  if (today != null && today >= t0 && today <= t1) {
+    const x = toX(today);
+    nodes.push(
+      { kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.negative, strokeWidth: 1.25, dash: [3, 2], name: "today-line" },
+      {
+        kind: "text", x: x - 24, y: plot.y + plot.h + 1, w: 48, h: fs * 1.3,
+        text: "Today", fontSize: fs * 0.85, color: style.negative, align: "center", valign: "top", name: "today-label",
+      },
+    );
+  }
 
   return {
     nodes,

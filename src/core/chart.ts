@@ -60,6 +60,17 @@ export function buildChart(cfg: ChartConfig): Scene {
   const nodes = skipDecor
     ? result.nodes
     : [...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];
+
+  // Manual label nudges (think-cell's label dragging, config-driven).
+  if (cfg.labelOffsets) {
+    for (const n of nodes) {
+      const off = n.name && cfg.labelOffsets[n.name];
+      if (off && n.kind === "text") {
+        n.x += off.dx;
+        n.y += off.dy;
+      }
+    }
+  }
   return { width: cfg.width, height: cfg.height, nodes };
 }
 

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PowerChart Link</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <link rel="stylesheet" href="../taskpane/taskpane.css" />
+  </head>
+  <body>
+    <header class="pane-header">
+      <h1>PowerChart Link</h1>
+      <p class="tagline">Excel → PowerChart data bridge</p>
+    </header>
+
+    <section class="section">
+      <p class="hint">
+        Select a range (first row = categories, first column = series names),
+        pick a chart type, and copy the generated config. Paste it into
+        PowerChart's <b>Automation</b> box in PowerPoint — re-run after the
+        data changes to refresh the chart. This is the sandbox-safe stand-in
+        for think-cell's live Excel links.
+      </p>
+      <label class="field">Chart type
+        <select id="kind">
+          <option>stacked</option><option>clustered</option><option>stacked100</option>
+          <option>waterfall</option><option>mekko</option><option>line</option>
+          <option>area</option><option>combo</option><option>pie</option><option>gantt</option>
+        </select>
+      </label>
+      <label class="field">Title <input type="text" id="title" placeholder="optional" /></label>
+      <div class="actions">
+        <button id="generate" class="primary">Generate from selection</button>
+        <button id="copy">Copy</button>
+      </div>
+      <textarea id="output" rows="14" spellcheck="false"></textarea>
+      <p class="hint" id="note"></p>
+    </section>
+
+    <script type="module" src="./excel.ts"></script>
+  </body>
+</html>

@@ -149,6 +149,12 @@ export interface ChartConfig {
   axisBreak?: { from: number; to: number };
   /** Units label shown at the top of the value axis (e.g. "€m"). */
   valueAxisTitle?: string;
+  /**
+   * Manual label nudges by node name (e.g. {"label-0-2": {dx: 0, dy: -8}}) —
+   * the pane-based stand-in for think-cell's label dragging. Applied to text
+   * nodes after layout.
+   */
+  labelOffsets?: Record<string, { dx: number; dy: number }>;
   /** Logarithmic value axis (decade ticks). Clustered/line charts, positive data. */
   logScale?: boolean;
   /** Frame size in points (PowerPoint native unit). */

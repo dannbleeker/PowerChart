@@ -13,6 +13,7 @@ import {
   type EditTarget,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
+import { buildCheckbox, buildHarveyBall, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 
 interface AppState {
@@ -628,6 +629,30 @@ async function doLoadSelection() {
   applyConfig(JSON.parse(found.configJson) as ChartConfig, found.target);
 }
 
+// --- Elements (harvey balls, checkboxes, process flow, table) -----------------
+
+function harveyScene() {
+  return buildHarveyBall(Number(($("harvey-pct") as HTMLInputElement).value) / 100, 24);
+}
+function checkScene() {
+  return buildCheckbox(($("check-state") as HTMLSelectElement).value as CheckState, 20);
+}
+function flowScene() {
+  const steps = ($("flow-steps") as HTMLInputElement).value.split(",").map((s) => s.trim()).filter(Boolean);
+  const hl = Number(($("flow-highlight") as HTMLInputElement).value) - 1;
+  return buildProcessFlow(steps, hl, 480, 40);
+}
+function renderElementPreviews() {
+  $("harvey-val").textContent = `${($("harvey-pct") as HTMLInputElement).value}%`;
+  $("harvey-preview").innerHTML = sceneToSvg(harveyScene());
+  $("check-preview").innerHTML = sceneToSvg(checkScene());
+  $("flow-preview").innerHTML = sceneToSvg(flowScene());
+}
+for (const id of ["harvey-pct", "check-state", "flow-steps", "flow-highlight"]) {
+  $(id).addEventListener("input", renderElementPreviews);
+}
+renderElementPreviews();
+
 // --- Automation (JSON in / out, the open .ppttc idea) -------------------------
 
 $("json-export").addEventListener("click", () => {
@@ -704,6 +729,17 @@ function wireInsert() {
         hostNote.textContent = `Inserted ${configs.length} chart(s) on the current slide.`;
       }),
     );
+    // Elements insert at a small default offset (they're compact shapes).
+    for (const [id, scene] of [
+      ["harvey-insert", harveyScene],
+      ["check-insert", checkScene],
+      ["flow-insert", flowScene],
+      ["table-insert", () => buildTableScene(state.sheet.cells, 480)],
+    ] as const) {
+      const btn = $(id) as HTMLButtonElement;
+      btn.disabled = false;
+      btn.addEventListener("click", guard(() => insertSceneIntoSlide(scene(), { left: 120, top: 160 })));
+    }
     agendaBtn.disabled = false;
     agendaBtn.addEventListener(
       "click",
