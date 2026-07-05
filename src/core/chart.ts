@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartKind, ChartStyle, Decorations } from "./types";
 import type { Scene } from "./scene";
-import { DEFAULT_DECOR, DEFAULT_STYLE } from "./style";
+import { DEFAULT_DECOR, DEFAULT_STYLE, seriesColor } from "./style";
 import { layoutColumns, layoutCombo } from "./layout/column";
 import { layoutWaterfall } from "./layout/waterfall";
 import { layoutMekko } from "./layout/mekko";
@@ -92,8 +92,112 @@ function extractErrorRows(cfg: ChartConfig): {
   };
 }
 
+/** Kinds whose multi-series data splits cleanly into per-series panels. */
+const MULTIPLES_KINDS: ChartKind[] = ["stacked", "clustered", "line", "area", "waterfall", "radar"];
+/** Special rows carried into every small-multiples panel (not split). */
+const CARRIED_ROW = /^(error\s*[+\-−]?|target|band\s*(low|high))$/i;
+
+/** Shift a scene's nodes by (dx, dy) and prefix their names. */
+function translateNodes(nodes: SceneNode[], dx: number, dy: number, prefix: string): SceneNode[] {
+  return nodes.map((node) => {
+    const n = { ...node, name: node.name ? `${prefix}${node.name}` : undefined };
+    switch (n.kind) {
+      case "rect":
+      case "text":
+      case "chevron":
+      case "arrowhead":
+        n.x += dx;
+        n.y += dy;
+        break;
+      case "line":
+        n.x1 += dx;
+        n.y1 += dy;
+        n.x2 += dx;
+        n.y2 += dy;
+        break;
+      case "ellipse":
+      case "wedge":
+        n.cx += dx;
+        n.cy += dy;
+        break;
+      case "polygon":
+        n.points = n.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+        break;
+    }
+    return n;
+  });
+}
+
+/**
+ * Small multiples: one single-series panel per data series, titled by the
+ * series name, laid out in a grid and pinned to one shared value scale so
+ * panels compare honestly. Null when the config doesn't call for it.
+ */
+function buildMultiples(cfg: ChartConfig): Scene | null {
+  if (!cfg.multiples || !MULTIPLES_KINDS.includes(cfg.kind)) return null;
+  const carried = cfg.data.series.filter((s) => CARRIED_ROW.test(s.name.trim()));
+  const dataSeries = cfg.data.series.filter((s) => !CARRIED_ROW.test(s.name.trim()));
+  if (dataSeries.length < 2) return null;
+
+  const style: ChartStyle = { ...DEFAULT_STYLE, ...cfg.style };
+  const fs = style.fontSize;
+  const n = dataSeries.length;
+  const cols = Math.max(1, Math.min(n, cfg.multiples.columns ?? (n <= 3 ? n : Math.ceil(Math.sqrt(n)))));
+  const rows = Math.ceil(n / cols);
+  const gap = 10;
+  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const footH = cfg.footnote ? fs * 1.3 : 0;
+  const panelW = (cfg.width - gap * (cols - 1)) / cols;
+  const panelH = (cfg.height - titleH - footH - gap * (rows - 1)) / rows;
+
+  const panelCfg = (s: (typeof dataSeries)[number], si: number): ChartConfig => ({
+    ...cfg,
+    multiples: undefined,
+    title: s.name,
+    footnote: undefined,
+    width: panelW,
+    height: panelH,
+    data: { ...cfg.data, series: [{ ...s, color: seriesColor(style, si, s.color) }, ...carried] },
+    decorations: { ...cfg.decorations, seriesLabels: false },
+  });
+
+  // Shared scale across panels; radar (no valueExtent) pins 0..global max.
+  let scale = cfg.scale;
+  if (scale?.min == null || scale?.max == null) {
+    const exts = dataSeries.map((s, si) => valueExtent(panelCfg(s, si)));
+    const global = exts.every((e) => e != null)
+      ? { min: Math.min(...exts.map((e) => e!.min)), max: Math.max(...exts.map((e) => e!.max)) }
+      : { min: 0, max: Math.max(1, ...dataSeries.flatMap((s) => s.values.filter((v): v is number => v != null))) };
+    scale = { min: scale?.min ?? global.min, max: scale?.max ?? global.max };
+  }
+
+  const nodes: SceneNode[] = [];
+  if (cfg.title) {
+    nodes.push({
+      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
+      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
+    });
+  }
+  dataSeries.forEach((s, si) => {
+    const panel = buildChart({ ...panelCfg(s, si), scale });
+    const dx = (si % cols) * (panelW + gap);
+    const dy = titleH + Math.floor(si / cols) * (panelH + gap);
+    nodes.push(...translateNodes(panel.nodes, dx, dy, `p${si}-`));
+  });
+  if (cfg.footnote) {
+    nodes.push({
+      kind: "text", x: 2, y: cfg.height - fs * 1.15, w: cfg.width - 4, h: fs * 1.1,
+      text: cfg.footnote, fontSize: fs * 0.85, color: style.mutedText,
+      align: "left", valign: "bottom", name: "footnote",
+    });
+  }
+  return { width: cfg.width, height: cfg.height, nodes };
+}
+
 /** Build a renderer-agnostic scene from a chart config. Pure and synchronous. */
 export function buildChart(rawCfg: ChartConfig): Scene {
+  const multiples = buildMultiples(rawCfg);
+  if (multiples) return multiples;
   const extracted = extractErrorRows(sortCategories(rawCfg));
   let cfg = extracted.cfg;
   const errors = extracted.errors;

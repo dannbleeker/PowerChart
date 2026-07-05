@@ -50,7 +50,7 @@ section and `skill/reference.md`.
 | Bubble | scatter + size | add a `Size` row; a size legend with reference circles appears automatically |
 | Gantt | project plans | `Start`/`End`/`Milestone` rows; see [Gantt](#gantt) |
 | Combo | columns + line | mark a series with type "line"; secondary axis optional; columns can be stacked, clustered, or 100% |
-| Pie / Doughnut | simple shares | slices from 12 o'clock, clockwise; explode slices to highlight |
+| Pie / Doughnut | simple shares | slices from 12 o'clock, clockwise; explode slices to highlight; `pie.breakout: [indices]` collapses categories into an "Other" slice detailed in a bar beside the pie (bar-of-pie) |
 | Boxplot | distributions | `Min`/`Q1`/`Median`/`Q3`/`Max` rows, or raw samples → automatic Tukey whiskers and outliers; suffix rows with `\| group` for side-by-side grouped boxes |
 | Radar | multi-dimension profiles | categories = spokes, series = translucent polygons; keep ≤ 3 series |
 | Heatmap | value matrices | series = rows, categories = columns, one global color scale (diverging when data spans zero); marginal row/column totals optional |
@@ -123,6 +123,9 @@ pick weeks (with weekend shading), months, or quarters automatically.
   bottom-left.
 - **Explode slices** (pie/doughnut).
 - **Same scale** (deck-wide or selection) re-renders charts on a common axis.
+- **Small multiples** (`multiples: {columns?}`, JSON): splits a multi-series
+  chart into a grid of single-series panels titled by series name, on one
+  shared value scale (column family, line/area, waterfall, radar).
 - Advanced (JSON-only, survive re-editing): callouts (speech bubbles),
   background bands, per-cell highlight colors, pattern fills, log scale
   presets — see `skill/reference.md` for the full schema.

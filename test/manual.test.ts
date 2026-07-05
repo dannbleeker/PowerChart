@@ -37,6 +37,7 @@ describe("user manual coverage", () => {
       "CAGR", "Difference arrow", "Value line", "Segment order",
       "Axis break", "label content", "Footnote", "Explode slices",
       "Same scale", "callouts", "background bands", "pattern fills", "slope",
+      "breakout", "Small multiples",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

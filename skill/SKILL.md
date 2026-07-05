@@ -62,6 +62,8 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Stage-by-stage breakdown of a total (contacts → answered → solved) | `cascade` ("Stage | Drop label | Group" categories) |
 | Pipeline / conversion stages | `funnel` (centered bands + conversion %) |
 | One dominant share ("68% of…") | `waffle` (10×10 unit grid; single category reads as a literal %) |
+| Share with a long tail ("top 3 + the rest in detail") | `pie` + `pie.breakout: [indices]` (bar-of-pie) |
+| Same chart repeated per series ("one panel per region") | any column/line/area/waterfall/radar kind + `multiples: {}` (shared scale) |
 | Before/after comparison of a few series | `line` + `decorations.slope: true` (slope chart: end rails, labels both ends) |
 | Trend over time | `line` (date categories space proportionally) or `stacked100`-style share via `area` |
 

@@ -75,6 +75,8 @@ describe("showcase deck coverage", () => {
     ["heatmap marginal totals", (c) => !!c.heatmap?.totals],
     ["slope chart", (c) => !!c.decorations?.slope],
     ["multi-part waffle", (c) => c.kind === "waffle" && c.data.categories.length > 1],
+    ["bar-of-pie breakout", (c) => !!c.pie?.breakout?.length],
+    ["small multiples", (c) => !!c.multiples],
     ["datamark axis", (c) => c.decorations?.valueAxis === "datamarks"],
     ["diverging heatmap (negative values)", (c) => c.kind === "heatmap" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
     ["explicit map layout", (c) => !!c.map],
