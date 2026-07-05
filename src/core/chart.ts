@@ -15,7 +15,7 @@ import { layoutHeatmap } from "./layout/heatmap";
 import { layoutTilemap } from "./layout/tilemap";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
-import { formatNumber, resolveFormat } from "./format";
+import { formatNumber, niceTicks, resolveFormat } from "./format";
 import type { SceneNode } from "./scene";
 import type { LayoutResult } from "./layout/column";
 
@@ -45,11 +45,55 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
   };
 }
 
+/** Datasheet rows carrying error-bar deltas: Error (±), Error+ / Error−. */
+const ERROR_ROW = /^error\s*([+\-−])?$/i;
+const ERROR_KINDS: ChartKind[] = ["stacked", "clustered", "line", "area"];
+
+/**
+ * Pull Error rows out of the data (so they don't render as segments) and
+ * return per-category plus/minus deltas. Bars anchor at the column total
+ * (single-series charts: the value) or the first line series.
+ */
+function extractErrorRows(cfg: ChartConfig): {
+  cfg: ChartConfig;
+  errors: { plus: (number | null)[]; minus: (number | null)[] } | null;
+} {
+  if (!ERROR_KINDS.includes(cfg.kind)) return { cfg, errors: null };
+  const rows = cfg.data.series.filter((s) => ERROR_ROW.test(s.name.trim()));
+  if (!rows.length) return { cfg, errors: null };
+  const pick = (sign: "+" | "-") =>
+    cfg.data.categories.map((_, c) => {
+      for (const r of rows) {
+        const m = r.name.trim().match(ERROR_ROW)!;
+        const dir = m[1] === "−" ? "-" : (m[1] ?? "both");
+        if ((dir === "both" || dir === sign) && r.values[c] != null) return Math.abs(r.values[c]!);
+      }
+      return null;
+    });
+  return {
+    cfg: { ...cfg, data: { ...cfg.data, series: cfg.data.series.filter((s) => !ERROR_ROW.test(s.name.trim())) } },
+    errors: { plus: pick("+"), minus: pick("-") },
+  };
+}
+
 /** Build a renderer-agnostic scene from a chart config. Pure and synchronous. */
 export function buildChart(rawCfg: ChartConfig): Scene {
-  const cfg = sortCategories(rawCfg);
+  const extracted = extractErrorRows(sortCategories(rawCfg));
+  let cfg = extracted.cfg;
+  const errors = extracted.errors;
   const style: ChartStyle = { ...DEFAULT_STYLE, ...cfg.style };
   const decor: Decorations = { ...DEFAULT_DECOR, ...cfg.decorations };
+
+  // Widen the auto scale so error bars stay inside the plot.
+  if (errors && !cfg.horizontal && cfg.scale?.max == null) {
+    const ext = valueExtent(cfg);
+    if (ext) {
+      const maxPlus = Math.max(0, ...errors.plus.filter((v): v is number => v != null));
+      const maxMinus = Math.max(0, ...errors.minus.filter((v): v is number => v != null));
+      const ticks = niceTicks(Math.min(ext.min - maxMinus, 0), ext.max + maxPlus, 5);
+      cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: ticks[ticks.length - 1] } };
+    }
+  }
 
   let result: LayoutResult;
   switch (cfg.kind) {
@@ -107,6 +151,25 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   const nodes = skipDecor
     ? [...bands, ...result.nodes]
     : [...bands, ...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];
+
+  // Error bars from Error / Error+ / Error− rows: a whisker with caps at the
+  // column total (or line point), on the shared value scale.
+  if (errors && !skipDecor && result.anchors.valueToY) {
+    const a = result.anchors;
+    cfg.data.categories.forEach((_, c) => {
+      const plus = errors.plus[c];
+      const minus = errors.minus[c];
+      if (plus == null && minus == null) return;
+      const base = a.columnValue[c];
+      const x = a.categoryX[c];
+      const capW = Math.min(a.categoryWidth[c] * 0.35, 10);
+      const yHi = a.valueToY!(base + (plus ?? 0));
+      const yLo = a.valueToY!(base - (minus ?? 0));
+      nodes.push({ kind: "line", x1: x, y1: yHi, x2: x, y2: yLo, stroke: style.axis, strokeWidth: 1, name: `error-${c}` });
+      if (plus != null) nodes.push({ kind: "line", x1: x - capW / 2, y1: yHi, x2: x + capW / 2, y2: yHi, stroke: style.axis, strokeWidth: 1, name: `error-cap-hi-${c}` });
+      if (minus != null) nodes.push({ kind: "line", x1: x - capW / 2, y1: yLo, x2: x + capW / 2, y2: yLo, stroke: style.axis, strokeWidth: 1, name: `error-cap-lo-${c}` });
+    });
+  }
 
   // Footnote line: source citation and/or the "100% = N" note, bottom-left.
   const footParts: string[] = [];

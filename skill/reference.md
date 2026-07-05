@@ -83,6 +83,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Today` | Gantt today line at the (single) value |
 | `Holiday` | Gantt: shade these dates |
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
+| `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, vertical |
 | `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style) |
 | `Mean` | boxplot mean marker (×) |
 | `Outlier <n>` | boxplot: extra outlier dots in precomputed mode |

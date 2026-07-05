@@ -455,6 +455,32 @@ function addWedgeFan(
   return created;
 }
 
+/**
+ * Read the presentation's theme accent colors (Accent1-6) from the current
+ * slide's color scheme — the deck's actual corporate palette. Requires
+ * PowerPointApi 1.10 (ThemeColorScheme); returns null on older hosts.
+ */
+export async function loadThemePalette(): Promise<string[] | null> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.getSelectedSlides().getItemAt(0);
+      const scheme = (slide as unknown as { themeColorScheme: { getThemeColor(c: string): { value: string } } })
+        .themeColorScheme;
+      const accents = ["Accent1", "Accent2", "Accent3", "Accent4", "Accent5", "Accent6"].map((a) =>
+        scheme.getThemeColor(a),
+      );
+      await context.sync();
+      const palette = accents
+        .map((r) => r.value)
+        .filter(Boolean)
+        .map((c) => (c.startsWith("#") ? c : `#${c}`).toLowerCase());
+      return palette.length >= 3 ? palette : null;
+    });
+  } catch {
+    return null; // no selection, or host below PowerPointApi 1.10
+  }
+}
+
 /** True when running inside an Office host with the PowerPoint JS API. */
 export function isPowerPointHost(): boolean {
   return (

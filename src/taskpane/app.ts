@@ -11,6 +11,7 @@ import {
   listChartsInDeck,
   listChartsInSelection,
   loadChartFromSelection,
+  loadThemePalette,
   updateChartInSlide,
   type EditTarget,
 } from "../render/powerpoint";
@@ -101,10 +102,14 @@ try {
   /* corrupted style file — start fresh */
 }
 
+/** Deck theme accents loaded via "Use deck theme" (session-scoped). */
+let themePalette: string[] | null = null;
+
 /** Style-file defaults + the palette preset chosen in the pane. */
 function mergedStyle(): ChartConfig["style"] {
   const style = { ...styleFile } as NonNullable<ChartConfig["style"]>;
-  if (state.paletteName !== "Default") style.palette = PALETTES[state.paletteName];
+  if (state.paletteName === "Theme" && themePalette) style.palette = themePalette;
+  else if (state.paletteName !== "Default") style.palette = PALETTES[state.paletteName];
   return Object.keys(style).length ? style : undefined;
 }
 
@@ -535,7 +540,8 @@ function renderOptions() {
   const pal = document.createElement("label");
   pal.className = "wide";
   const palSel = document.createElement("select");
-  for (const name of Object.keys(PALETTES)) {
+  const palNames = [...Object.keys(PALETTES), ...(themePalette ? ["Theme"] : [])];
+  for (const name of palNames) {
     const opt = document.createElement("option");
     opt.value = name;
     opt.textContent = name;
@@ -546,12 +552,35 @@ function renderOptions() {
     state.paletteName = palSel.value;
     renderPreview();
   });
-  pal.append("Palette ", palSel);
+  // Read the deck's theme accent colors (PowerPointApi 1.10) as a palette.
+  const themeBtn = document.createElement("button");
+  themeBtn.type = "button";
+  themeBtn.textContent = "Use deck theme";
+  themeBtn.disabled = !isPowerPointHost();
+  themeBtn.addEventListener("click", async () => {
+    const loaded = await loadThemePalette();
+    if (!loaded) {
+      themeBtn.textContent = "Theme unavailable";
+      return;
+    }
+    themePalette = loaded;
+    if (![...palSel.options].some((o) => o.value === "Theme")) {
+      const opt = document.createElement("option");
+      opt.value = "Theme";
+      opt.textContent = "Theme";
+      palSel.appendChild(opt);
+    }
+    state.paletteName = "Theme";
+    palSel.value = "Theme";
+    renderOptions();
+    renderPreview();
+  });
+  pal.append("Palette ", palSel, " ", themeBtn);
   optionsHost.appendChild(pal);
 
   const colors = document.createElement("div");
   colors.className = "wide series-colors";
-  const palette = PALETTES[state.paletteName] ?? PALETTES.Default;
+  const palette = (state.paletteName === "Theme" && themePalette) || PALETTES[state.paletteName] || PALETTES.Default;
   currentSeriesNames().forEach((name, i) => {
     const wrap = document.createElement("label");
     const input = document.createElement("input");
@@ -818,7 +847,8 @@ renderTemplateList();
 
 $("style-export").addEventListener("click", () => {
   const current: StyleFile = { ...styleFile };
-  if (state.paletteName !== "Default") current.palette = PALETTES[state.paletteName];
+  if (state.paletteName === "Theme" && themePalette) current.palette = themePalette;
+  else if (state.paletteName !== "Default") current.palette = PALETTES[state.paletteName];
   ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(current, null, 2);
   hostNote.textContent = "Style exported — share the JSON as your corporate style file.";
 });

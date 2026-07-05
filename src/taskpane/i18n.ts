@@ -42,6 +42,7 @@ const DE: Record<string, string> = {
   "Edit it": "Bearbeiten",
   "Total row": "Summenzeile",
   "Datamark axis (ticks only)": "Datenmarken-Achse (nur Striche)",
+  "Use deck theme": "Design der Präsentation",
 };
 
 const DICTS: Record<string, Record<string, string>> = { de: DE };
