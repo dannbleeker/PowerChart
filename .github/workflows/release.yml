@@ -1,11 +1,17 @@
 name: Release
 
-# Versioned releases: push a tag like v0.1.0 and this attaches everything a
+# Versioned releases: push a tag like v0.1.0 (or run this workflow manually
+# with a version input — it creates the tag) and this attaches everything a
 # user needs — the Claude skill zip, both add-in manifests, and the feature
 # showcase deck — with auto-generated notes.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to create and release, e.g. v0.1.0"
+        required: true
 
 jobs:
   release:
@@ -24,6 +30,7 @@ jobs:
       - run: npm run showcase
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
           generate_release_notes: true
           files: |
             skill-dist/powerchart-charts.zip
