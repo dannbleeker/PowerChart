@@ -80,6 +80,12 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   project follows argues against 3D anyway). Built instead: tile-grid
   cartograms (`tilemap`) and heatmaps.
 
+## Backlog
+
+`docs/BACKLOG.md` is the single curated backlog (researched candidates with
+feasibility/priority, plus a rejected list — don't re-propose those). Items
+graduate from there into PRs and are removed when shipped.
+
 ## Pending / user-gated
 
 - Repo goes public later → then: Pages-hosted manifests for sideloading,
