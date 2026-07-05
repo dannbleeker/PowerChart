@@ -99,6 +99,9 @@ describe("showcase deck coverage", () => {
     ["other bucket", (c) => !!c.otherBucket],
     ["calendar heatmap", (c) => c.kind === "heatmap" && !!c.heatmap?.calendar],
     ["butterfly stacked flanks", (c) => c.kind === "butterfly" && c.butterfly?.split != null],
+    ["radar per-spoke scales", (c) => c.kind === "radar" && !!c.radar?.perSpoke],
+    ["line bridge gaps", (c) => c.kind === "line" && !!c.decorations?.bridgeGaps],
+    ["transparent floating segment", (c) => c.data.series.some((s) => s.color === "transparent")],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

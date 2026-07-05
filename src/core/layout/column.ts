@@ -207,6 +207,9 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         return;
       }
 
+      // Transparent "no-fill" segment: it still occupies the stack (the level
+      // was already advanced) but draws nothing, floating the segments above.
+      if (fill === "transparent") return;
       nodes.push({
         kind: "rect",
         ...r,

@@ -197,7 +197,9 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       for (let c = 0; c < n; c++) {
         const v = s.values[c];
         if (v == null) {
-          prev = null;
+          // Bridge gaps: keep the previous point so the next value connects
+          // straight across the missing categories instead of breaking.
+          if (!decor.bridgeGaps) prev = null;
           continue;
         }
         const forecast = fc != null && c >= fc;

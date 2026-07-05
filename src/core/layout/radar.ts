@@ -35,6 +35,14 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const fmt = resolveFormat(ticks, cfg.numberFormat);
   const toR = (v: number) => ((v - min) / (max - min || 1)) * r;
   const angle = (c: number) => (360 / Math.max(1, n)) * c;
+  // Per-spoke scales: normalise each spoke to its own maximum so spokes in
+  // different KPI units become comparable in shape (numeric ticks dropped).
+  const perSpoke = !!cfg.radar?.perSpoke && data.series.length >= 1;
+  const spokeMax = data.categories.map((_, c) =>
+    perSpoke ? Math.max(1, ...data.series.map((s) => s.values[c] ?? 0)) : max,
+  );
+  const toRc = (v: number, c: number) =>
+    perSpoke ? (Math.max(0, v) / spokeMax[c]) * r : toR(Math.max(min, v));
 
   const nodes: SceneNode[] = [];
   if (cfg.title) {
@@ -44,11 +52,12 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
   }
 
-  // Grid: concentric polygons (or circles) at each tick, plus the spokes.
+  // Grid: concentric polygons (or circles). Per-spoke mode uses fraction
+  // rings with no numeric labels (each spoke has its own scale); otherwise
+  // rings sit at the value ticks and the 12 o'clock spoke is labelled.
   const gridShape = decor.gridShape ?? "polygon";
-  for (const t of ticks) {
-    if (t <= min) continue;
-    const rr = toR(t);
+  const rings = perSpoke ? [0.25, 0.5, 0.75, 1].map((f) => ({ rr: f * r, t: f })) : ticks.filter((t) => t > min).map((t) => ({ rr: toR(t), t }));
+  for (const { rr, t } of rings) {
     if (gridShape === "circle") {
       nodes.push({ kind: "ellipse", cx, cy, rx: rr, ry: rr, fill: "none", stroke: style.gridline, strokeWidth: 0.75, name: `grid-${t}` });
     } else {
@@ -60,12 +69,14 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         name: `grid-${t}`,
       });
     }
-    // Tick label on the 12 o'clock spoke only.
-    nodes.push({
-      kind: "text", x: cx + 3, y: cy - rr - fs * 0.6, w: fs * 3.4, h: fs * 1.2,
-      text: formatNumber(t, fmt), fontSize: fs * 0.85, color: style.mutedText,
-      align: "left", valign: "middle", name: `tick-${t}`,
-    });
+    if (!perSpoke) {
+      // Tick label on the 12 o'clock spoke only.
+      nodes.push({
+        kind: "text", x: cx + 3, y: cy - rr - fs * 0.6, w: fs * 3.4, h: fs * 1.2,
+        text: formatNumber(t, fmt), fontSize: fs * 0.85, color: style.mutedText,
+        align: "left", valign: "middle", name: `tick-${t}`,
+      });
+    }
   }
   data.categories.forEach((cat, c) => {
     const end = polar(cx, cy, r, angle(c));
@@ -96,15 +107,15 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const band = !!decor.radarBand && data.series.length >= 2;
   if (band) {
     const peers = data.series.slice(0, -1);
-    const spokeMin: number[] = [];
-    const spokeMax: number[] = [];
+    const peerMin: number[] = [];
+    const peerMax: number[] = [];
     for (let c = 0; c < n; c++) {
       const vals = peers.map((s) => s.values[c]).filter((v): v is number => v != null);
-      spokeMin[c] = vals.length ? Math.max(min, Math.min(...vals)) : min;
-      spokeMax[c] = vals.length ? Math.max(min, Math.max(...vals)) : min;
+      peerMin[c] = vals.length ? Math.max(min, Math.min(...vals)) : min;
+      peerMax[c] = vals.length ? Math.max(min, Math.max(...vals)) : min;
     }
-    const minPts = data.categories.map((_, c) => polar(cx, cy, toR(spokeMin[c]), angle(c)));
-    const maxPts = data.categories.map((_, c) => polar(cx, cy, toR(spokeMax[c]), angle(c)));
+    const minPts = data.categories.map((_, c) => polar(cx, cy, toRc(peerMin[c], c), angle(c)));
+    const maxPts = data.categories.map((_, c) => polar(cx, cy, toRc(peerMax[c], c), angle(c)));
     for (let c = 0; c < n; c++) {
       const c2 = (c + 1) % n;
       nodes.push({ kind: "polygon", points: [minPts[c], minPts[c2], maxPts[c2], maxPts[c]], fill: style.mutedText, fillOpacity: 0.16, name: `band-${c}` });
@@ -121,7 +132,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   drawIdx.forEach((si) => {
     const s = data.series[si];
     const color = seriesColor(style, si, s.color);
-    const pts = data.categories.map((_, c) => polar(cx, cy, toR(Math.max(min, s.values[c] ?? min)), angle(c)));
+    const pts = data.categories.map((_, c) => polar(cx, cy, toRc(s.values[c] ?? min, c), angle(c)));
     nodes.push({
       kind: "polygon",
       points: pts,

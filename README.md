@@ -82,6 +82,9 @@ conventions, and every option.
 | Automatic "Other" bucket for long-tail series | ✅ (`otherBucket: {max}`) |
 | Calendar heatmap (weekday × week contributions grid) | ✅ (`heatmap.calendar`) |
 | Butterfly with stacked flanks (>1 series per side) | ✅ (`butterfly: {split}`) |
+| Radar per-spoke scales (mixed KPI units) | ✅ (`radar: {perSpoke}`) |
+| Missing-data bridge on line charts | ✅ (`decorations.bridgeGaps`) |
+| Transparent floating column segments | ✅ (series `color: "transparent"`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

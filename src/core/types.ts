@@ -192,6 +192,12 @@ export interface Decorations {
    */
   smooth?: boolean;
   /**
+   * Line charts: bridge missing data — connect straight across null points
+   * instead of breaking the line into segments. (Applies to plain straight
+   * lines, not smooth/stepped.)
+   */
+  bridgeGaps?: boolean;
+  /**
    * Line charts: slope-chart mode — no value axis or gridlines, vertical
    * hairlines at the first and last category, and "Name value" labels at
    * both line ends (best with 2 categories).
@@ -373,6 +379,12 @@ export interface ChartConfig {
    * two-series butterfly (series 0 left, series 1 right).
    */
   butterfly?: { split?: number };
+  /**
+   * Radar options. `perSpoke` normalizes each spoke to its own maximum, so
+   * spokes carrying different KPI units become comparable in shape (the shared
+   * numeric ticks are dropped in favour of per-spoke rim maxima).
+   */
+  radar?: { perSpoke?: boolean };
   /** Combo: how the column series render under the lines (default stacked). */
   combo?: { columns?: "stacked" | "clustered" | "stacked100" };
   /** Frame size in points (PowerPoint native unit). */

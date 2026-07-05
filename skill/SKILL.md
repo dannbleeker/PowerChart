@@ -79,14 +79,18 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Too many stack segments (long tail) | `stacked`/`clustered` + `otherBucket: {max}` (collapse the rest to "Other") |
 | Daily activity over months (contributions grid) | `heatmap` (one daily date series) + `heatmap.calendar: true` |
 | Back-to-back comparison with sub-parts each side | `butterfly` + `butterfly.split: k` (stacked flanks) |
+| Radar over mixed KPI units (shape comparison) | `radar` + `radar.perSpoke: true` |
+| Line series with holes in the data | `line` + `decorations.bridgeGaps: true` (connect across nulls) |
+| Floating bar / range column | `stacked` with a `color: "transparent"` base series |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,
 `segmentOrder`, `connectors` (segment-boundary lines between stacked columns),
 `callouts` (speech-bubble comments), `bands` (shaded background regions),
 `hundredPercentNote`, `stepped` (line/area staircase), `smooth` (line
-curves), `trajectory` (scatter/bubble trail), `summaryBars` (gantt sections),
-`radarBand` (radar peer range), plus `scale {min,max}`,
+curves), `bridgeGaps` (line across nulls), `trajectory` (scatter/bubble trail),
+`summaryBars` (gantt sections), `radarBand` (radar peer range), plus
+`scale {min,max}`,
 `axisBreak {from,to}`, `logScale`, `gapWidth`/`overlap` (Excel-style column
 spacing), `categorySort`, `footnote` (source line), `pie {explode}` and
 per-cell `series.colors` highlights at the top level. Defaults are

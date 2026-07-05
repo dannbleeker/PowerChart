@@ -52,6 +52,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     fillBetween?: [number, number],   // line: shade the gap between two series (plan vs actual)
     stepped?: "before"|"after"|"center",  // line/area: staircase segments (jump at start / end / midpoint)
     smooth?: boolean,                 // line: smooth Catmull-Rom curves (sampled polyline)
+    bridgeGaps?: boolean,             // line: connect straight across null points instead of breaking
     slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
     trajectory?: boolean,             // scatter/bubble: connect points in row order with a direction trail
     summaryBars?: boolean,            // gantt: summary bar on section rows (spans children min→max)
@@ -74,6 +75,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
               calendar?: boolean },   // weekday × week grid for a daily date series
   otherBucket?: { max?: number },     // column family: collapse the long tail into one "Other" (keep max series)
   butterfly?: { split?: number },     // butterfly: series on the left flank (rest stack right)
+  radar?: { perSpoke?: boolean },     // radar: normalise each spoke to its own max (mixed KPI units)
   combo?: { columns?: "stacked"|"clustered"|"stacked100" },  // column mode under the lines
   waterfall?: { totalIndices?: number[],    // categories drawn as running totals ("e")
                 spacerIndices?: number[] }, // blank grouping gaps (empty category name)
@@ -208,6 +210,18 @@ GitHub-contributions view. Falls back to the matrix layout without dates.
 **Butterfly stacked flanks** (`butterfly.split`): the first `split` series
 stack on the left flank and the rest stack on the right (a legend replaces the
 two headers). Omit for the classic two-series butterfly (series 0 vs series 1).
+
+**Radar per-spoke scales** (`radar.perSpoke`): normalise each spoke to its own
+maximum so spokes carrying different KPI units become comparable in shape; the
+shared numeric ticks give way to fraction rings (25/50/75/100 %).
+
+**Missing-data bridge** (`decorations.bridgeGaps`): line charts connect
+straight across null categories instead of breaking into separate segments
+(applies to plain straight lines, not `smooth`/`stepped`).
+
+**Floating segments**: give a stacked-column series `color: "transparent"` and
+it occupies the stack without drawing — the segments above it "float" clear of
+the baseline (a lightweight floating-bar / range effect).
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap
