@@ -48,6 +48,33 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
   };
 }
 
+/** Column-family kinds whose series can be collapsed into an "Other" bucket. */
+const OTHER_KINDS: ChartKind[] = ["stacked", "clustered", "stacked100"];
+
+/**
+ * Collapse the long tail of series into one "Other" segment: keep the
+ * (max − 1) largest by absolute total and sum the rest into "Other", so the
+ * result has at most `max` series. No-op when already within budget.
+ */
+function collapseOther(cfg: ChartConfig): ChartConfig {
+  const ob = cfg.otherBucket;
+  if (!ob || !OTHER_KINDS.includes(cfg.kind)) return cfg;
+  const max = Math.max(2, Math.floor(ob.max ?? 5));
+  const series = cfg.data.series;
+  if (series.length <= max) return cfg;
+  const totals = series.map((s) => s.values.reduce((a: number, v) => a + Math.abs(v ?? 0), 0));
+  const rank = series.map((_, i) => i).sort((a, b) => totals[b] - totals[a]);
+  const keep = new Set(rank.slice(0, max - 1));
+  const kept = series.filter((_, i) => keep.has(i)); // original order preserved
+  const otherVals = cfg.data.categories.map((_, c) =>
+    series.reduce((a, s, i) => (keep.has(i) ? a : a + (s.values[c] ?? 0)), 0),
+  );
+  return {
+    ...cfg,
+    data: { ...cfg.data, series: [...kept, { name: "Other", values: otherVals }] },
+  };
+}
+
 /** Datasheet rows carrying error-bar deltas: Error (±), Error+ / Error−. */
 const ERROR_ROW = /^error\s*([+\-−])?$/i;
 /** Bullet-chart target row: a bold tick across each column at the value. */
@@ -199,7 +226,7 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   const multiples = buildMultiples(rawCfg);
   if (multiples) return multiples;
   const extracted = extractErrorRows(sortCategories(rawCfg));
-  let cfg = extracted.cfg;
+  let cfg = collapseOther(extracted.cfg);
   const errors = extracted.errors;
   const targets = extracted.targets;
   const style: ChartStyle = { ...DEFAULT_STYLE, ...cfg.style };

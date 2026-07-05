@@ -96,6 +96,9 @@ describe("showcase deck coverage", () => {
     ["gantt summary bars", (c) => c.kind === "gantt" && !!c.decorations?.summaryBars],
     ["notched boxplots", (c) => c.kind === "boxplot" && !!c.boxplot?.notch],
     ["radar peer-range band", (c) => c.kind === "radar" && !!c.decorations?.radarBand],
+    ["other bucket", (c) => !!c.otherBucket],
+    ["calendar heatmap", (c) => c.kind === "heatmap" && !!c.heatmap?.calendar],
+    ["butterfly stacked flanks", (c) => c.kind === "butterfly" && c.butterfly?.split != null],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

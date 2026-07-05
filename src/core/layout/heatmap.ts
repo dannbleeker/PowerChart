@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
-import { formatNumber, resolveFormat } from "../format";
+import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { divergingScale, lerpColor, NO_DATA, sequentialScale } from "../color";
 import { footnoteH } from "./frame";
 import type { LayoutResult } from "./column";
@@ -31,6 +31,13 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       ? divergingScale(min, max, positive, negative)
       : sequentialScale(min, max, positive);
   const fmt = resolveFormat(all, cfg.numberFormat);
+
+  // Calendar layout: a single daily series with date categories becomes a
+  // weekday × week grid (the GitHub-contributions view).
+  const calDays = data.categories.map((c) => parseDateToken(c));
+  if (opts.calendar && data.series.length >= 1 && calDays.every((d): d is number => d != null)) {
+    return calendarLayout(cfg, style, decor, calDays as number[], data.series[0].values, colorOf, min, max, constant);
+  }
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const headerH = decor.categoryAxis !== false ? fs * 1.5 : 2;
@@ -163,6 +170,103 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
       baselineY: plot.y + plot.h,
       plot,
+    },
+  };
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/**
+ * Calendar heatmap: a weekday (row) × week (column) grid. Days-since-epoch
+ * map to a weekday (Mon=0 … Sun=6, since the epoch was a Thursday) and a week
+ * index; month labels sit above the week where each month first appears.
+ */
+function calendarLayout(
+  cfg: ChartConfig,
+  style: ChartStyle,
+  decor: Decorations,
+  days: number[],
+  values: (number | null)[],
+  colorOf: (v: number) => string,
+  min: number,
+  max: number,
+  constant: boolean,
+): LayoutResult {
+  const fs = style.fontSize;
+  const weekdayOf = (d: number) => (((d + 3) % 7) + 7) % 7; // Mon=0 … Sun=6
+  const minDay = Math.min(...days);
+  const maxDay = Math.max(...days);
+  const weekStart = minDay - weekdayOf(minDay); // Monday of the first week
+  const weekOf = (d: number) => Math.floor((d - weekStart) / 7);
+  const nWeeks = weekOf(maxDay) + 1;
+
+  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const wdLabelW = fs * 2.2;
+  const monthH = fs * 1.4;
+  const legendH = fs * 2.2;
+  const gridX = wdLabelW;
+  const gridY = titleH + monthH + 2;
+  const availW = cfg.width - gridX - 4;
+  const availH = cfg.height - gridY - legendH - footnoteH(cfg, style, decor);
+  const cell = Math.max(4, Math.min(availW / Math.max(1, nWeeks), availH / 7));
+
+  const nodes: SceneNode[] = [];
+  if (cfg.title) {
+    nodes.push({
+      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
+      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
+    });
+  }
+  // Weekday labels (every other row to reduce clutter).
+  for (let r = 0; r < 7; r++) {
+    if (r % 2 === 0) {
+      nodes.push({
+        kind: "text", x: 0, y: gridY + r * cell, w: wdLabelW - 3, h: cell,
+        text: WEEKDAYS[r], fontSize: fs * 0.8, color: style.mutedText, align: "right", valign: "middle", name: `weekday-${r}`,
+      });
+    }
+  }
+  // Month labels above the week where each month first appears.
+  let lastMonth = -1;
+  for (let w = 0; w < nWeeks; w++) {
+    const mon = new Date((weekStart + w * 7) * 86400000).getUTCMonth();
+    if (mon !== lastMonth) {
+      nodes.push({
+        kind: "text", x: gridX + w * cell, y: titleH, w: cell * 5, h: monthH,
+        text: MONTHS[mon], fontSize: fs * 0.85, color: style.mutedText, align: "left", valign: "middle", name: `month-${w}`,
+      });
+      lastMonth = mon;
+    }
+  }
+  // Day cells.
+  days.forEach((d, i) => {
+    const v = values[i];
+    const x = gridX + weekOf(d) * cell;
+    const y = gridY + weekdayOf(d) * cell;
+    nodes.push({ kind: "rect", x, y, w: cell - 1.5, h: cell - 1.5, fill: v == null ? NO_DATA : colorOf(v), name: `cell-${i}` });
+  });
+  // Compact gradient legend (Less → More).
+  const ly = gridY + 7 * cell + fs * 0.5;
+  if (!constant) {
+    const steps = 12;
+    const sw = cell * 0.8;
+    nodes.push({ kind: "text", x: gridX - fs * 3, y: ly, w: fs * 2.6, h: sw, text: "Less", fontSize: fs * 0.8, color: style.mutedText, align: "right", valign: "middle", name: "legend-less" });
+    for (let i = 0; i < steps; i++) {
+      nodes.push({ kind: "rect", x: gridX + i * (sw + 1), y: ly, w: sw, h: sw, fill: colorOf(min + ((max - min) * i) / (steps - 1)), name: `legend-step-${i}` });
+    }
+    nodes.push({ kind: "text", x: gridX + steps * (sw + 1) + 2, y: ly, w: fs * 3, h: sw, text: "More", fontSize: fs * 0.8, color: style.mutedText, align: "left", valign: "middle", name: "legend-more" });
+  }
+
+  return {
+    nodes,
+    anchors: {
+      categoryX: days.map((d) => gridX + weekOf(d) * cell + cell / 2),
+      categoryWidth: days.map(() => cell),
+      columnTop: days.map(() => gridY),
+      columnValue: values.map((v) => v ?? 0),
+      baselineY: gridY + 7 * cell,
+      plot: { x: gridX, y: gridY, w: nWeeks * cell, h: 7 * cell },
     },
   };
 }

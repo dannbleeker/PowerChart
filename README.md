@@ -79,6 +79,9 @@ conventions, and every option.
 | Gantt auto-summary bars on section rows | ✅ (`decorations.summaryBars`) |
 | Notched boxplots (median confidence interval) | ✅ (`boxplot.notch`, raw-sample mode) |
 | Radar min–max "peer range + us" band | ✅ (`decorations.radarBand`) |
+| Automatic "Other" bucket for long-tail series | ✅ (`otherBucket: {max}`) |
+| Calendar heatmap (weekday × week contributions grid) | ✅ (`heatmap.calendar`) |
+| Butterfly with stacked flanks (>1 series per side) | ✅ (`butterfly: {split}`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

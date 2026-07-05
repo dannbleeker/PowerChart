@@ -14,8 +14,17 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const { data } = cfg;
   const n = data.categories.length;
   const fs = style.fontSize;
-  const left = data.series[0] ?? { name: "", values: [] };
-  const right = data.series[1] ?? { name: "", values: [] };
+  // Flanks: with butterfly.split, the first `split` series stack on the left
+  // and the rest on the right; otherwise the classic series 0 / series 1.
+  const withIdx = data.series.map((s, si) => ({ s, si }));
+  const split = cfg.butterfly?.split;
+  const leftSeries = split != null ? withIdx.slice(0, split) : withIdx.slice(0, 1);
+  const rightSeries = split != null ? withIdx.slice(split) : withIdx.slice(1, 2);
+  const stacked = leftSeries.length > 1 || rightSeries.length > 1;
+  const stackSum = (series: typeof withIdx, c: number) =>
+    series.reduce((a, { s }) => a + Math.abs(s.values[c] ?? 0), 0);
+  const signedSum = (series: typeof withIdx, c: number) =>
+    series.reduce((a, { s }) => a + (s.values[c] ?? 0), 0);
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const headerH = fs * 1.6;
@@ -36,8 +45,9 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const leftEdge = plot.x + halfW; // right edge of the left half
   const rightEdge = leftEdge + gutterW; // left edge of the right half
 
-  const all = [...left.values, ...right.values].filter((v): v is number => v != null).map((v) => Math.abs(v));
-  const ticks = niceTicks(0, Math.max(1, ...all), 4);
+  const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null)).map((v) => Math.abs(v));
+  const sums = data.categories.flatMap((_, c) => [stackSum(leftSeries, c), stackSum(rightSeries, c)]);
+  const ticks = niceTicks(0, Math.max(1, ...sums), 4);
   const max = ticks[ticks.length - 1];
   const fmt = resolveFormat(all, cfg.numberFormat);
   const qOf = (v: number) => (Math.abs(v) / max) * halfW;
@@ -52,16 +62,32 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
     });
   }
-  // Series headers above each half.
-  ([[left, plot.x, leftEdge, 0], [right, rightEdge, plot.x + plot.w, 1]] as const).forEach(
-    ([s, x0, x1, si]) => {
-      nodes.push({
-        kind: "text", x: x0, y: titleH, w: x1 - x0, h: headerH,
-        text: s.name, fontSize: fs, bold: true,
-        color: seriesColor(style, si, s.color), align: "center", valign: "middle", name: `header-${si}`,
-      });
-    },
-  );
+  if (!stacked) {
+    // Series headers above each half (classic two-series butterfly).
+    ([[leftSeries[0], plot.x, leftEdge], [rightSeries[0], rightEdge, plot.x + plot.w]] as const).forEach(
+      ([entry, x0, x1], i) => {
+        nodes.push({
+          kind: "text", x: x0, y: titleH, w: x1 - x0, h: headerH,
+          text: entry?.s.name ?? "", fontSize: fs, bold: true,
+          color: seriesColor(style, entry?.si ?? i, entry?.s.color), align: "center", valign: "middle", name: `header-${i}`,
+        });
+      },
+    );
+  } else {
+    // Stacked flanks: one legend of all series across the top.
+    let lx = plot.x;
+    for (const { s, si } of [...leftSeries, ...rightSeries]) {
+      const chip = fs * 0.7;
+      nodes.push(
+        { kind: "rect", x: lx, y: titleH + fs * 0.35, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
+        {
+          kind: "text", x: lx + chip + 3, y: titleH, w: textWidth(s.name, fs) + 6, h: headerH,
+          text: s.name, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${si}`,
+        },
+      );
+      lx += chip + 3 + textWidth(s.name, fs) + 12;
+    }
+  }
 
   // Value gridlines mirrored on both flanks, drawn behind the bars.
   if (decor.gridlines) {
@@ -84,31 +110,42 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       text: data.categories[c], fontSize: fs, color: style.text,
       align: "center", valign: "middle", name: `category-${c}`,
     });
-    ([[left, -1, 0], [right, 1, 1]] as const).forEach(([s, dir, si]) => {
-      const v = s.values[c];
-      if (v == null) return;
-      const len = qOf(v);
-      const x = dir < 0 ? leftEdge - len : rightEdge;
-      const fill = seriesColor(style, si, s.color);
-      nodes.push({ kind: "rect", x, y: cy - barH / 2, w: len, h: barH, fill, name: `seg-${si}-${c}` });
-      if (decor.segmentLabels) {
-        const label = formatNumber(v, fmt);
-        const inside = len >= textWidth(label, fs) + 4 && barH >= fs * 1.25;
-        nodes.push({
-          kind: "text",
-          x: inside ? x : dir < 0 ? x - fs * 3.4 - 2 : x + len + 2,
-          y: cy - fs * 0.75,
-          w: inside ? len : fs * 3.4,
-          h: fs * 1.5,
-          text: label,
-          fontSize: fs,
-          color: inside ? contrastInk(fill) : style.text,
-          align: inside ? "center" : dir < 0 ? "right" : "left",
-          valign: "middle",
-          name: `label-${si}-${c}`,
-        });
+    const drawSide = (series: typeof withIdx, dir: -1 | 1, edge: number) => {
+      let offset = 0;
+      for (const { s, si } of series) {
+        const v = s.values[c];
+        if (v == null) continue;
+        const len = qOf(v);
+        const x = dir < 0 ? edge - offset - len : edge + offset;
+        const fill = seriesColor(style, si, s.color);
+        nodes.push({ kind: "rect", x, y: cy - barH / 2, w: len, h: barH, fill, name: `seg-${si}-${c}` });
+        if (decor.segmentLabels) {
+          const label = formatNumber(v, fmt);
+          const single = series.length === 1;
+          const inside = len >= textWidth(label, fs) + 4 && barH >= fs * 1.25;
+          // Stacked segments only label when the value fits inside; single
+          // flanks fall back to an outside label (classic behaviour).
+          if (inside || single) {
+            nodes.push({
+              kind: "text",
+              x: inside ? x : dir < 0 ? x - fs * 3.4 - 2 : x + len + 2,
+              y: cy - fs * 0.75,
+              w: inside ? len : fs * 3.4,
+              h: fs * 1.5,
+              text: label,
+              fontSize: fs,
+              color: inside ? contrastInk(fill) : style.text,
+              align: inside ? "center" : dir < 0 ? "right" : "left",
+              valign: "middle",
+              name: `label-${si}-${c}`,
+            });
+          }
+        }
+        offset += len;
       }
-    });
+    };
+    drawSide(leftSeries, -1, leftEdge);
+    drawSide(rightSeries, 1, rightEdge);
   }
 
   // Center axis lines flanking the gutter.
@@ -140,7 +177,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       categoryX: data.categories.map((_, c) => plot.y + slotH * (c + 0.5)),
       categoryWidth: data.categories.map(() => barH),
       columnTop,
-      columnValue: data.categories.map((_, c) => (right.values[c] ?? 0) - (left.values[c] ?? 0)),
+      columnValue: data.categories.map((_, c) => signedSum(rightSeries, c) - signedSum(leftSeries, c)),
       baselineY: leftEdge,
       plot,
     },
