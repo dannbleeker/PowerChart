@@ -88,7 +88,8 @@ graduate from there into PRs and are removed when shipped.
 
 ## Pending / user-gated
 
-- Repo goes public later → then: Pages-hosted manifests for sideloading,
-  branch protection, CodeQL/Dependabot, repo topics (owner-only actions).
-- Real-PowerPoint sideload validation of `manifest.xml` / `manifest-excel.xml`.
-- Uploading `skill-dist/powerchart-charts.zip` to claude.ai (owner's account).
+`docs/PUBLISHING.md` is the go-live runbook (written for an Opus 4.8
+session + the owner): make the repo public, host on GitHub Pages, generate
+production manifests, sideload + validate in real PowerPoint, activate the
+Claude skill, cut v0.2.0. Follow it phase by phase; retire items from it
+and from this list as they complete.
