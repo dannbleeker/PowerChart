@@ -10,7 +10,8 @@ engine already has were filtered out.
 **This is the only backlog document.** Items graduate from here into PRs
 (and then out of here); rejected ideas stay in §4 so they aren't re-proposed. (Shipped since the
 sweep: cascade chart; bullet targets; combo column modes; bubble size
-legend; forecast styling; scatter quadrants.)
+legend; forecast styling; scatter quadrants; funnel; lollipop/dot/
+dumbbell styles.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -19,10 +20,8 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 
 | # | Item | Type | Effort | Why first |
 |---|---|---|---|---|
-| 1 | **Funnel / pyramid** — centered bands (rect-native) | new kind | easy | Pipeline/conversion demand; zero rendering risk |
-| 2 | **Lollipop + dumbbell/range styles** on clustered | option | easy | Two FT-taxonomy messages (comparison, gap) from stem+dot |
-| 3 | **Gantt: percent-complete fill + baseline ghost bars** | option | easy | Plan-vs-actual + progress: the two biggest PM asks |
-| 4 | **Grouped boxplots** (category × series sub-boxes) | option | medium | Most natural distribution-comparison extension |
+| 1 | **Gantt: percent-complete fill + baseline ghost bars** | option | easy | Plan-vs-actual + progress: the two biggest PM asks |
+| 2 | **Grouped boxplots** (category × series sub-boxes) | option | medium | Most natural distribution-comparison extension |
 
 ## 2. Gaps within existing kinds (per kind)
 
@@ -124,8 +123,6 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 
 ## 3. New chart types worth adding (ranked)
 
-1. **Funnel + pyramid** — one declining series; native autoshapes; optional
-   auto drop-off % between stages. New kind; easy.
 2. **Bullet chart** — as a `Target` row + bands on column charts, not a new
    kind. Easy.
 3. **Lollipop / dot / dumbbell-range** — `series.style` marker options on

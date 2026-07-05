@@ -55,6 +55,8 @@ conventions, and every option.
 | Bubble size legend (automatic) | ✅ |
 | Forecast styling on lines (dashed + hollow markers) | ✅ (`decorations.forecastFrom`) |
 | Scatter quadrant matrix (zones + labels in one step) | ✅ (`decorations.quadrants`) |
+| Funnel / pyramid chart with conversion rates | ✅ (`funnel` kind) |
+| Lollipop, dot-plot, and dumbbell-range styles | ✅ (`decorations.barStyle` on clustered) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

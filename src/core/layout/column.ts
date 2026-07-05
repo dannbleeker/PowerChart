@@ -146,6 +146,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const fill = seriesColor(style, si, s.colors?.[c] ?? s.color);
 
       const sp = stackPos.get(s.stack ?? 0) ?? 0;
+      const barStyle = !stacked && !H ? (decor.barStyle ?? "bar") : "bar";
       if (raw != null && v !== 0) {
         if (stacked) {
           const catPos =
@@ -167,6 +168,33 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       }
       levels[si] = ups[sp] + downs[sp];
       if (!r) return;
+
+      if (barStyle !== "bar") {
+        // Lollipop / dot / dumbbell-range rendering for clustered charts:
+        // the value point is a dot; lollipops add a stem from the baseline;
+        // range connects the two series' dots with a line (drawn once).
+        const dotX = barStyle === "range" ? centers[c] : r.x + r.w / 2;
+        const dotY = v >= 0 ? r.y : r.y + r.h;
+        const dotR = 4;
+        if (barStyle === "lollipop") {
+          nodes.push({ kind: "line", x1: dotX, y1: frame.y + frame.h - qOf(0), x2: dotX, y2: dotY, stroke: fill, strokeWidth: 1.5, name: `stem-${si}-${c}` });
+        }
+        if (barStyle === "range" && si === 1 && data.series[0].values[c] != null) {
+          const y0r = frame.y + frame.h - qOf(data.series[0].values[c]!);
+          nodes.push({ kind: "line", x1: dotX, y1: y0r, x2: dotX, y2: dotY, stroke: style.mutedText, strokeWidth: 1.5, name: `range-${c}` });
+        }
+        nodes.push({ kind: "ellipse", cx: dotX, cy: dotY, rx: dotR, ry: dotR, fill, stroke: style.background, strokeWidth: 1, name: `seg-${si}-${c}` });
+        if (c === n - 1) lastSegMid[si] = dotY;
+        if (decor.segmentLabels) {
+          const label = formatNumber(raw!, fmt);
+          nodes.push({
+            kind: "text", x: dotX + dotR + 2, y: dotY - fs * 0.7, w: textWidth(label, fs) + 4, h: fs * 1.4,
+            text: label, fontSize: fs, color: style.text, align: "left", valign: "middle",
+            name: `label-${si}-${c}`,
+          });
+        }
+        return;
+      }
 
       nodes.push({
         kind: "rect",

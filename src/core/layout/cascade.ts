@@ -24,7 +24,9 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const groups = parts.map((p) => p[2] ?? "");
   const n = stages.length;
   const values = stages.map((_, c) => Math.max(0, data.series[0]?.values[c] ?? 0));
-  const v0 = values[0] || 1;
+  // Valid cascades decrease, so the first stage IS the max; scaling by the
+  // max keeps malformed (growing) data inside the plot instead of overflowing.
+  const v0 = Math.max(...values, 1);
   const fmt = resolveFormat(values, cfg.numberFormat);
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
