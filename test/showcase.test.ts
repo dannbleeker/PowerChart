@@ -73,6 +73,8 @@ describe("showcase deck coverage", () => {
     ["waterfall gap-to-target", (c) => c.kind === "waterfall" && c.data.series.some((s) => /^target$/i.test(s.name.trim()))],
     ["confidence band rows", (c) => c.data.series.some((s) => /^band\s*low$/i.test(s.name.trim()))],
     ["heatmap marginal totals", (c) => !!c.heatmap?.totals],
+    ["slope chart", (c) => !!c.decorations?.slope],
+    ["multi-part waffle", (c) => c.kind === "waffle" && c.data.categories.length > 1],
     ["datamark axis", (c) => c.decorations?.valueAxis === "datamarks"],
     ["diverging heatmap (negative values)", (c) => c.kind === "heatmap" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
     ["explicit map layout", (c) => !!c.map],

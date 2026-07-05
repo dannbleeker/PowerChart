@@ -16,7 +16,7 @@ import {
   type EditTarget,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
-import { buildCheckbox, buildHarveyBall, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
+import { buildCheckbox, buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
 import { localizePane } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 
@@ -787,13 +787,22 @@ function flowScene() {
   const hl = Number(($("flow-highlight") as HTMLInputElement).value) - 1;
   return buildProcessFlow(steps, hl, 480, 40);
 }
+function kpiScene() {
+  return buildKpiTile({
+    label: ($("kpi-label") as HTMLInputElement).value,
+    value: ($("kpi-value") as HTMLInputElement).value,
+    delta: ($("kpi-delta") as HTMLInputElement).value || undefined,
+    goodIsUp: !($("kpi-down-good") as HTMLInputElement).checked,
+  });
+}
 function renderElementPreviews() {
   $("harvey-val").textContent = `${($("harvey-pct") as HTMLInputElement).value}%`;
   $("harvey-preview").innerHTML = sceneToSvg(harveyScene());
   $("check-preview").innerHTML = sceneToSvg(checkScene());
   $("flow-preview").innerHTML = sceneToSvg(flowScene());
+  $("kpi-preview").innerHTML = sceneToSvg(kpiScene());
 }
-for (const id of ["harvey-pct", "check-state", "flow-steps", "flow-highlight"]) {
+for (const id of ["harvey-pct", "check-state", "flow-steps", "flow-highlight", "kpi-label", "kpi-value", "kpi-delta", "kpi-down-good"]) {
   $(id).addEventListener("input", renderElementPreviews);
 }
 renderElementPreviews();
@@ -991,6 +1000,7 @@ function wireInsert() {
       ["harvey-insert", harveyScene],
       ["check-insert", checkScene],
       ["flow-insert", flowScene],
+      ["kpi-insert", kpiScene],
       ["table-insert", () => buildTableScene(state.sheet.cells, 480, { totalRow: ($("table-total") as HTMLInputElement).checked })],
     ] as const) {
       const btn = $(id) as HTMLButtonElement;

@@ -43,7 +43,7 @@ section and `skill/reference.md`.
 | 100% | share of total | `100%=` row lets columns fall short of 100% |
 | Waterfall | bridges (EBITDA, headcount) | values are deltas; type `e` in a cell for a computed total; multiple series stack |
 | Mekko | two-dimensional composition | width ∝ column total; `X extent` row for explicit widths |
-| Line | trends | date categories ("2025-01", "Jan 2025") space proportionally to time; forecast periods draw dashed with hollow markers |
+| Line | trends | date categories ("2025-01", "Jan 2025") space proportionally to time; forecast periods draw dashed with hollow markers; `decorations.slope: true` turns two-period data into a slope chart (end rails, "Name value" labels both ends, no axis) |
 | Area | stacked trends | |
 | Butterfly | two-sided comparison (pyramids) | first two series, back to back, one scale |
 | Scatter | correlation | `X`/`Y` rows; `Group` colors points; `X line`/`Y line` partitions; `Trend` fits an OLS line labelled with R² and p; quadrants shade a 2×2 matrix |
@@ -57,6 +57,7 @@ section and `skill/reference.md`.
 | Tile map | values by geography | categories = region codes (US postal / ISO-2 / world regions); layout auto-detected |
 | Cascade | stage-by-stage breakdown of a total | categories `"Stage \| Drop label \| Group"`; each bar is a subset of the previous, remainders hang as labeled boxes |
 | Funnel | pipeline / conversion stages | centered bands, width ∝ value, conversion % between stages; order values ascending for a pyramid |
+| Waffle | one dominant share ("68% of…") | 10×10 unit grid, 1 cell = 1%, filled from the bottom-left; a single category ≤ 100 reads as a literal % with a big-number legend; `100%=` overrides the denominator |
 
 All column-family charts (stacked/clustered/100%), waterfall, Mekko, and
 boxplot rotate into **horizontal** bars/rows with the "Horizontal (bar)"
@@ -140,6 +141,9 @@ pick weeks (with weekend shading), months, or quarters automatically.
 - **Harvey ball** — fraction-filled circle, size slider.
 - **Checkbox** — ✓ / ✗ / − status marks.
 - **Process flow** — chevron step bar with a highlighted step.
+- **KPI tile** — big number + delta arrow + caption; the arrow takes
+  semantic colors from the delta's sign, and **↓ good** flips them for
+  metrics where falling is better (costs, churn).
 - **Table from datasheet** — rule-based table (lines top/header/bottom only,
   never side borders, a gap every 5 rows, optional bold **Total row**).
   Cells accept effect tokens: `[hb:0.75]` mini harvey ball, `[up]` `[down]`

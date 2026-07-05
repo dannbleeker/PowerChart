@@ -7,7 +7,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   kind: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko"
       | "line" | "area" | "butterfly" | "scatter" | "bubble" | "gantt"
       | "combo" | "pie" | "doughnut" | "boxplot" | "radar" | "heatmap"
-      | "tilemap" | "cascade" | "funnel",
+      | "tilemap" | "cascade" | "funnel" | "waffle",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
   horizontal?: boolean,               // rotate columns/waterfall/mekko/boxplot into bars/rows
@@ -50,6 +50,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     forecastFrom?: number,            // line: dashed segments + hollow markers from this index
     barStyle?: "bar"|"lollipop"|"dot"|"range",  // clustered: stems+dots / dots / dumbbell
     fillBetween?: [number, number],   // line: shade the gap between two series (plan vs actual)
+    slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
@@ -121,6 +122,18 @@ method) and whiskers use Tukey 1.5×IQR fences with outliers drawn as dots.
 **Funnel**: one series of stage values (order ascending for a pyramid);
 centered bands with width ∝ value, conversion % vs the previous stage in
 the gaps, stage names on the left.
+
+**Waffle**: a 10×10 unit grid (1 cell = 1%), filling from the bottom-left.
+Categories are the parts (pie semantics, first series); shares round to
+whole cells by largest remainder and unassigned cells stay gray. The
+denominator is the `100%=` row when present, else the value sum — except a
+single category ≤ 100 with no denominator, which reads as a literal
+percentage (`68` → 68 cells + a big "68%" beside the grid).
+
+**Slope chart**: `kind: "line"` + `decorations.slope: true` with (ideally)
+two categories — the before/after comparison. No value axis; vertical
+rails carry the two periods and every series gets a colored "Name value"
+label at both ends (labels de-overlap automatically).
 
 **Cascade** (decomposition): each stage's bar is a subset of the previous
 one, top-aligned on one volume scale; the complement hangs as a muted
