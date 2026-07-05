@@ -90,6 +90,9 @@ conventions, and every option.
 | Hexagonal tile maps | ✅ (`tilemap.shape: "hex"`) |
 | Per-region mini-glyphs (bars) on tile maps | ✅ (`tilemap.glyph: "bars"`) |
 | 100% charts with negative segments (below the axis) | ✅ (`stacked100`) |
+| Semi-circle / gauge-style half doughnut | ✅ (`doughnut` + `pie.semi`) |
+| Pareto chart (sorted bars + cumulative % line) | ✅ (`pareto: true`) |
+| Bump chart (rank over time) | ✅ (`line` + `decorations.bump`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

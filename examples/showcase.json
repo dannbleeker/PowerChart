@@ -4322,5 +4322,139 @@
       "valueAxis": true,
       "gridlines": true
     }
+  },
+  {
+    "kind": "doughnut",
+    "width": 480,
+    "height": 300,
+    "title": "Semi-circle gauge (market share)",
+    "pie": {
+      "semi": true
+    },
+    "data": {
+      "categories": [
+        "Us",
+        "Rival A",
+        "Rival B",
+        "Others"
+      ],
+      "series": [
+        {
+          "name": "Share",
+          "values": [
+            42,
+            28,
+            18,
+            12
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "segmentLabels": true
+    }
+  },
+  {
+    "kind": "clustered",
+    "width": 480,
+    "height": 300,
+    "title": "Pareto chart (defect causes)",
+    "pareto": true,
+    "data": {
+      "categories": [
+        "Scratches",
+        "Dents",
+        "Misalign",
+        "Cracks",
+        "Paint",
+        "Other"
+      ],
+      "series": [
+        {
+          "name": "Defects",
+          "values": [
+            120,
+            80,
+            45,
+            30,
+            15,
+            10
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "seriesLabels": true
+    }
+  },
+  {
+    "kind": "line",
+    "width": 480,
+    "height": 300,
+    "title": "Bump chart (brand rank by year)",
+    "data": {
+      "categories": [
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025"
+      ],
+      "series": [
+        {
+          "name": "Acme",
+          "values": [
+            1,
+            2,
+            2,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Globex",
+          "values": [
+            2,
+            1,
+            1,
+            3,
+            2
+          ]
+        },
+        {
+          "name": "Initech",
+          "values": [
+            3,
+            3,
+            4,
+            2,
+            3
+          ]
+        },
+        {
+          "name": "Umbrella",
+          "values": [
+            4,
+            4,
+            3,
+            4,
+            5
+          ]
+        },
+        {
+          "name": "Soylent",
+          "values": [
+            5,
+            5,
+            5,
+            5,
+            4
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "bump": true
+    }
   }
 ]

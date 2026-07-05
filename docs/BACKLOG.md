@@ -76,8 +76,6 @@ Pareto helper).
 - Radial bar variant — really a new kind; medium, medium. Stacked radar — low.
 
 ### Pie / Doughnut
-- **Semi-circle / gauge-style half doughnut** — easy, medium-high for
-  scorecards.
 - **Sunburst** (nested rings; wedge fans repeat per ring) — medium-hard,
   medium.
 - Variable-radius pie — medium, niche.
@@ -91,15 +89,9 @@ Pareto helper).
 
 ## 3. New chart types worth adding (ranked)
 
-2. **Bullet chart** — as a `Target` row + bands on column charts, not a new
-   kind. Easy.
-3. **Lollipop / dot / dumbbell-range** — `series.style` marker options on
-   clustered. Easy.
-8. **Bump chart** — rank-over-time via inverted integer axis on line.
-   Option; easy-medium.
-9. **Treemap** — squarified rect packing (Mekko-adjacent math); blank-row
-    grouping for 2 levels. New kind; medium.
-10. **Pareto helper** — computed `Cumulative %` row on combo. Trivial.
+- **Treemap** — squarified rect packing (Mekko-adjacent math); blank-row
+   grouping for 2 levels. New kind; medium. (bullet, lollipop/dot/dumbbell,
+   bump, and the Pareto helper have shipped; treemap is the last §3 candidate.)
 
 ## 4. Rejected (do not re-propose)
 

@@ -198,6 +198,12 @@ export interface Decorations {
    */
   bridgeGaps?: boolean;
   /**
+   * Line charts: bump-chart mode — values are ranks (1 = best), drawn on an
+   * inverted integer axis (rank 1 at the top) with thicker lines, markers and
+   * "Name" labels at both ends. Rank-over-time comparison.
+   */
+  bump?: boolean;
+  /**
    * Line charts: slope-chart mode — no value axis or gridlines, vertical
    * hairlines at the first and last category, and "Name value" labels at
    * both line ends (best with 2 categories).
@@ -318,7 +324,18 @@ export interface ChartConfig {
    * into one muted "Other" slice and details them in a stacked bar beside
    * the pie, joined by connector lines (Excel's bar-of-pie).
    */
-  pie?: { explode?: number[]; breakout?: number[] };
+  pie?: {
+    explode?: number[];
+    breakout?: number[];
+    /** Doughnut only: render as a semi-circle (180°) gauge for scorecards. */
+    semi?: boolean;
+  };
+  /**
+   * Pareto helper: sort categories by the (first non-line) series descending
+   * and overlay a computed cumulative-% line on a secondary axis. Turns a
+   * clustered/combo chart into the classic Pareto (80/20) view.
+   */
+  pareto?: boolean;
   /**
    * Small multiples: split a multi-series chart into a grid of
    * single-series panels titled by series name, sharing one value scale

@@ -54,6 +54,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     smooth?: boolean,                 // line: smooth Catmull-Rom curves (sampled polyline)
     bridgeGaps?: boolean,             // line: connect straight across null points instead of breaking
     slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
+    bump?: boolean,                   // line: bump chart — ranks on an inverted axis, thick lines, end names
     trajectory?: boolean,             // scatter/bubble: connect points in row order with a direction trail
     summaryBars?: boolean,            // gantt: summary bar on section rows (spans children min→max)
     radarBand?: boolean,              // radar: shade the peer min–max envelope, draw last series on top
@@ -61,8 +62,10 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
   pie?: { explode?: number[],         // slice indices offset radially to highlight
-          breakout?: number[] },      // pie only: collapse these categories into one "Other"
+          breakout?: number[],        // pie only: collapse these categories into one "Other"
                                       // slice detailed in a stacked bar beside the pie (bar-of-pie)
+          semi?: boolean },           // doughnut only: 180° semi-circle gauge (scorecard)
+  pareto?: boolean,                   // clustered/combo: sort desc + cumulative-% line (80/20 view)
   multiples?: { columns?: number },   // small multiples: one single-series panel per series,
                                       // shared value scale (stacked/clustered/line/area/waterfall/radar)
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",
@@ -248,6 +251,18 @@ color.
 **100% charts with negatives**: `stacked100` no longer clamps negatives — a
 negative segment renders below the zero line as its share of the (positive)
 column total, so returns / adjustments stay visible.
+
+**Semi-circle gauge** (`kind: "doughnut"` + `pie.semi: true`): a half-doughnut
+scorecard — categories fill a 180° arc across the top with the total in the
+open centre.
+
+**Pareto** (`pareto: true` on a clustered/combo chart): sorts the categories by
+the (first non-line) series descending and overlays a computed "Cumulative %"
+line on a secondary axis — the 80/20 view. Rewrites the chart into a combo.
+
+**Bump chart** (`kind: "line"` + `decorations.bump: true`): values are ranks
+(1 = best) drawn on an inverted integer axis (rank 1 at the top) with thick
+lines, round markers and a "Name" label at both ends — rank-over-time.
 
 **Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
 controls for the column family. `gapWidth` (0–500, default 50) is the gap
