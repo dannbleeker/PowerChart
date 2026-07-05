@@ -17,7 +17,9 @@ line confidence bands, area-between-series (`fillBetween`), heatmap
 marginal totals, slope chart, waffle, KPI tile, bar-of-pie breakout,
 small multiples; plus batch G of the §2 within-kind gaps: stepped
 line/area, Excel-style column gap width + clustered overlap, and butterfly
-value ticks/gridlines on both flanks.)
+value ticks/gridlines on both flanks; plus batch H: area with negative
+values, scatter/bubble trajectory trail, and boxplot jittered raw-data
+dots.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -57,15 +59,11 @@ Pareto helper).
 
 ### Line / Area
 - **Smoothed lines** — medium (polyline approximation), medium.
-- **Area with negative values** — today clamped to 0 — medium, high for
-  P&L-over-time.
 - **Horizontal "profile chart"** (think-cell parity: rotate line/area) —
   trivial-medium, medium.
 - Missing-data bridge option, sparklines — low/niche.
 
 ### Scatter / Bubble
-- **Trajectory mode** (connect points in row order, Gapminder-trail) —
-  easy, medium.
 - **Continuous color scale** as a third variable (color helpers exist) —
   easy/medium, medium.
 - Bubble overlap-repulsion pass, marginal histograms, point icons —
@@ -80,7 +78,6 @@ Pareto helper).
   hard/low; out of deck-tool scope.
 
 ### Boxplot
-- **Jittered raw-data dots** over the box — easy, medium.
 - **Notched boxplots** (median CI) — medium, medium.
 - Violin (density curves) — infeasible live / medium SVG-only; low.
   Mean±SD box variant — easy, niche.

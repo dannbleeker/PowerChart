@@ -28,6 +28,8 @@ interface FiveNum {
 interface Box extends FiveNum {
   mean?: number;
   outliers: number[];
+  /** Raw observations (raw-sample mode only), for the optional jitter overlay. */
+  samples?: number[];
 }
 
 /** Excel-style exclusive/inclusive quartile on a sorted sample. */
@@ -104,7 +106,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       outliers = sample.filter((v) => v < loFence || v > hiFence);
     }
     const mean = opts.showMean ? sample.reduce((a, b) => a + b, 0) / sample.length : undefined;
-    return { min: lo, q1, median, q3, max: hi, mean, outliers };
+    return { min: lo, q1, median, q3, max: hi, mean, outliers, samples: sample };
   };
 
   // boxes[g][c]
@@ -201,10 +203,24 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
         align: "center", valign: "middle", name: `mean-${c}${gSuffix}`,
       });
     }
-    b.outliers.forEach((v, i) => {
-      const o = pt(p, qOf(v));
-      nodes.push({ kind: "ellipse", cx: o.x, cy: o.y, rx: 2.2, ry: 2.2, fill, name: `outlier-${c}-${i}${gSuffix}` });
-    });
+    // Jitter overlay: every raw observation as a deterministically offset dot
+    // over the box. Golden-ratio spacing keeps it byte-deterministic (no RNG).
+    const jitter = !!opts.jitter && !!b.samples;
+    if (jitter) {
+      const jw = gBoxW * 0.8;
+      b.samples!.forEach((v, j) => {
+        const off = (((j + 1) * 0.6180339887) % 1 - 0.5) * jw;
+        const d = pt(p + off, qOf(v));
+        nodes.push({ kind: "ellipse", cx: d.x, cy: d.y, rx: 1.5, ry: 1.5, fill, stroke: style.background, strokeWidth: 0.5, name: `dot-${c}${gSuffix}-${j}` });
+      });
+    }
+    // Separate outlier dots — skipped when jitter already draws every point.
+    if (!jitter) {
+      b.outliers.forEach((v, i) => {
+        const o = pt(p, qOf(v));
+        nodes.push({ kind: "ellipse", cx: o.x, cy: o.y, rx: 2.2, ry: 2.2, fill, name: `outlier-${c}-${i}${gSuffix}` });
+      });
+    }
     if (decor.segmentLabels && nG === 1) {
       const label = formatNumber(b.median, fmt);
       if (gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, fs * 0.9) + 4)) {

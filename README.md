@@ -70,6 +70,9 @@ conventions, and every option.
 | Stepped line & area (staircase, jump before/after/center) | ✅ (`decorations.stepped`) |
 | Column gap width & clustered bar overlap (Excel-style) | ✅ (`gapWidth` 0–500, `overlap` −100…100) |
 | Butterfly value ticks & gridlines on both flanks | ✅ (`valueAxis`/`gridlines` on `butterfly`) |
+| Area charts with negative values (dip below the baseline) | ✅ (`area`, positives up / negatives down) |
+| Scatter/bubble trajectory trail (Gapminder-style path) | ✅ (`decorations.trajectory`) |
+| Boxplot jittered raw-data dots over the box | ✅ (`boxplot.jitter`, raw-sample mode) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |

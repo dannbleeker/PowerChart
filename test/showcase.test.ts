@@ -87,6 +87,9 @@ describe("showcase deck coverage", () => {
     ["butterfly value ticks", (c) => c.kind === "butterfly" && !!c.decorations?.valueAxis],
     ["clustered overlap", (c) => c.overlap != null],
     ["column gap width", (c) => c.gapWidth != null],
+    ["area with negative values", (c) => c.kind === "area" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
+    ["scatter/bubble trajectory", (c) => (c.kind === "scatter" || c.kind === "bubble") && !!c.decorations?.trajectory],
+    ["boxplot jitter", (c) => c.kind === "boxplot" && !!c.boxplot?.jitter],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

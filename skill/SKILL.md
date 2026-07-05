@@ -67,12 +67,16 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Before/after comparison of a few series | `line` + `decorations.slope: true` (slope chart: end rails, labels both ends) |
 | Trend over time | `line` (date categories space proportionally) or `stacked100`-style share via `area` |
 | Rates that hold then jump (policy rate, tiers) | `line`/`area` + `decorations.stepped: "after"` (staircase) |
+| P&L / net value over time that can go negative | `area` (negatives dip below the zero baseline) |
+| One entity's path through an X/Y space over time | `scatter`/`bubble` + `decorations.trajectory: true` (Gapminder trail) |
+| Distribution behind a boxplot (show the raw points) | `boxplot` (raw samples) + `boxplot.jitter: true` |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,
 `segmentOrder`, `connectors` (segment-boundary lines between stacked columns),
 `callouts` (speech-bubble comments), `bands` (shaded background regions),
-`hundredPercentNote`, `stepped` (line/area staircase), plus `scale {min,max}`,
+`hundredPercentNote`, `stepped` (line/area staircase), `trajectory`
+(scatter/bubble trail), plus `scale {min,max}`,
 `axisBreak {from,to}`, `logScale`, `gapWidth`/`overlap` (Excel-style column
 spacing), `categorySort`, `footnote` (source line), `pie {explode}` and
 per-cell `series.colors` highlights at the top level. Defaults are

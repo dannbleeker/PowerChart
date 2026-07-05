@@ -38,6 +38,7 @@ describe("user manual coverage", () => {
       "Axis break", "label content", "Footnote", "Explode slices",
       "Same scale", "callouts", "background bands", "pattern fills", "slope",
       "breakout", "Small multiples", "Stepped line/area", "Gap width",
+      "Area with negatives", "Scatter trajectory", "Boxplot jitter",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

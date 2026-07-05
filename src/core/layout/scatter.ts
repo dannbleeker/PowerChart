@@ -219,6 +219,21 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
   }
 
+  // Trajectory / trail: connect the points in datasheet (row) order with a
+  // direction arrowhead at each segment midpoint, drawn behind the markers —
+  // a Gapminder-style path of one entity through the X/Y space over time.
+  if (decor.trajectory && pts.length > 1) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const ax = toX(pts[i].x);
+      const ay = toY(pts[i].y);
+      const bx = toX(pts[i + 1].x);
+      const by = toY(pts[i + 1].y);
+      nodes.push({ kind: "line", x1: ax, y1: ay, x2: bx, y2: by, stroke: style.mutedText, strokeWidth: 1.5, name: `trajectory-${i}` });
+      const angle = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+      nodes.push({ kind: "arrowhead", x: (ax + bx) / 2, y: (ay + by) / 2, angle, size: 4, fill: style.mutedText, name: `trajectory-head-${i}` });
+    }
+  }
+
   // Point labels treat the size legend as an obstacle.
   const markerBoxes: Box[] = [...legendBoxes];
   pts.forEach((p, i) => {
