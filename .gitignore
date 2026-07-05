@@ -3,3 +3,4 @@ dist/
 *.log
 dist-lib/
 skill-dist/
+coverage/

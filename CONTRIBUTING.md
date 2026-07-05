@@ -5,7 +5,8 @@
 ```bash
 npm install
 npm run dev          # demo gallery at http://localhost:3000, pane at /src/taskpane/taskpane.html
-npm test             # 200+ engine tests incl. SVG snapshots and fuzzing
+npm test             # 300+ tests incl. SVG snapshots, fuzzing, and mocked Office.js hosts
+npm run coverage     # same suite + report; CI enforces the thresholds in vitest.config.ts
 npm run typecheck
 ```
 

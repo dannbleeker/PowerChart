@@ -198,5 +198,6 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
 /** Parse a datasheet column value for waterfalls: "e"/"=" marks a computed total. */
 export function isTotalToken(raw: string): boolean {
   const t = raw.trim().toLowerCase();
-  return t === "e" || t === "=" || t === "Σ";
+  // "Σ".toLowerCase() is "σ" — compare against the lowercased form.
+  return t === "e" || t === "=" || t === "σ";
 }

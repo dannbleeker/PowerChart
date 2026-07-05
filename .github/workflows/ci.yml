@@ -16,7 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run coverage
       - run: npx vite build
       # Package the Claude Agent Skill from the same sources the tests just
       # validated, so the artifact can never drift from the feature set.

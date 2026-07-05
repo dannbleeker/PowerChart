@@ -1,0 +1,413 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  CHART_TAG,
+  getSelectionBounds,
+  insertAgendaSlides,
+  insertSceneIntoSlide,
+  isPowerPointHost,
+  listChartsInDeck,
+  listChartsInSelection,
+  loadChartFromSelection,
+  updateChartInSlide,
+} from "../src/render/powerpoint";
+import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
+import { buildAgendaScene } from "../src/core/agenda";
+import type { ChartConfig } from "../src/core/types";
+
+/**
+ * Recording doubles for the PowerPoint JS proxy-object API: every shape the
+ * renderer creates is captured with the geometry/format calls made on it, so
+ * the whole scene→native-shapes mapping is testable without an Office host.
+ */
+
+let idSeq = 0;
+
+function makeShape(type: string, geo: string | undefined, box: { left: number; top: number; width: number; height: number }) {
+  const tagStore = new Map<string, string>();
+  const shape = {
+    type,
+    geo,
+    box,
+    fillColor: null as string | null,
+    fillCleared: false,
+    text: undefined as string | undefined,
+    name: undefined as string | undefined,
+    rotation: undefined as number | undefined,
+    deleted: false,
+    id: `shape-${++idSeq}`,
+    left: box.left,
+    top: box.top,
+    width: box.width,
+    height: box.height,
+    tagStore,
+    tags: {
+      add: (k: string, v: string) => void tagStore.set(k, v),
+      getItemOrNullObject: (k: string) => ({
+        isNullObject: !tagStore.has(k),
+        value: tagStore.get(k) ?? "",
+        load() {},
+      }),
+    },
+    fill: {
+      setSolidColor(c: string) {
+        shape.fillColor = c;
+      },
+      clear() {
+        shape.fillCleared = true;
+      },
+    },
+    lineFormat: {} as Record<string, unknown>,
+    textFrame: {
+      textRange: { font: {} as Record<string, unknown>, paragraphFormat: {} as Record<string, unknown> },
+    } as Record<string, unknown> & { textRange: { font: Record<string, unknown>; paragraphFormat: Record<string, unknown> } },
+    grouped: undefined as unknown[] | undefined,
+    delete() {
+      shape.deleted = true;
+    },
+  };
+  return shape;
+}
+
+type FakeShape = ReturnType<typeof makeShape>;
+
+function makeSlide(id: string) {
+  const created: FakeShape[] = [];
+  const slide = {
+    id,
+    created,
+    load() {},
+    shapes: {
+      items: created,
+      load() {},
+      addGeometricShape(geo: string, box: FakeShape["box"]) {
+        const s = makeShape("geometric", geo, box);
+        created.push(s);
+        return s;
+      },
+      addLine(_kind: string, box: FakeShape["box"]) {
+        const s = makeShape("line", undefined, box);
+        created.push(s);
+        return s;
+      },
+      addTextBox(text: string, box: FakeShape["box"]) {
+        const s = makeShape("text", undefined, box);
+        s.text = text;
+        created.push(s);
+        return s;
+      },
+      addGroup(items: FakeShape[]) {
+        const g = makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 });
+        g.grouped = items;
+        created.push(g);
+        return g;
+      },
+      getItemOrNullObject(id: string) {
+        return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, delete() {} };
+      },
+    },
+  };
+  return slide;
+}
+
+type FakeSlide = ReturnType<typeof makeSlide>;
+
+/** Install a fake PowerPoint global whose run() drives the mocked context. */
+function installHost(slides: FakeSlide[], selectedShapes: FakeShape[] = [], selectedSlide = slides[0]) {
+  const context = {
+    presentation: {
+      slides: {
+        items: slides,
+        load() {},
+        getItem: (id: string) => slides.find((s) => s.id === id)!,
+        getItemAt: (i: number) => slides[i],
+        getCount: () => ({ value: slides.length }),
+        add: () => void slides.push(makeSlide(`slide-${slides.length + 1}`)),
+      },
+      getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
+      getSelectedShapes: () => ({ items: selectedShapes, load() {} }),
+    },
+    sync: async () => {},
+  };
+  vi.stubGlobal("PowerPoint", {
+    run: async <T>(cb: (ctx: typeof context) => Promise<T>) => cb(context),
+    GeometricShapeType: {
+      rectangle: "rectangle",
+      ellipse: "ellipse",
+      triangle: "triangle",
+      chevron: "chevron",
+      homePlate: "homePlate",
+    },
+    ConnectorType: { straight: "straight" },
+    ShapeLineDashStyle: { dash: "dash" },
+    ShapeAutoSize: { autoSizeNone: "none" },
+    TextVerticalAlignment: { top: "top", middle: "middle", bottom: "bottom" },
+    ParagraphHorizontalAlignment: { left: "left", center: "center", right: "right" },
+  });
+  return context;
+}
+
+const config: ChartConfig = {
+  kind: "stacked",
+  ...DEFAULT_SIZE,
+  data: {
+    categories: ["A", "B"],
+    series: [
+      { name: "S1", values: [3, 4] },
+      { name: "S2", values: [1, 2] },
+    ],
+  },
+};
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("insertSceneIntoSlide", () => {
+  it("creates native shapes at the requested offset, groups, and tags", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { left: 100, top: 50, tagData: JSON.stringify(config) });
+
+    const rects = slide.created.filter((s) => s.geo === "rectangle");
+    expect(rects.length).toBeGreaterThanOrEqual(4); // one per stacked segment
+    for (const r of rects) expect(r.box.left).toBeGreaterThanOrEqual(100);
+    const group = slide.created.find((s) => s.type === "group")!;
+    expect(group.name).toBe("PowerChart");
+    expect(group.grouped).toHaveLength(slide.created.length - 1);
+    expect(group.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
+  });
+
+  it("renders a pie as a rotated triangle fan", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const scene = buildChart({
+      ...config,
+      kind: "pie",
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 1] }] },
+    });
+    await insertSceneIntoSlide(scene, {});
+    const tris = slide.created.filter((s) => s.geo === "triangle" && s.name?.includes("-f"));
+    expect(tris.length).toBeGreaterThan(10);
+    for (const t of tris) expect(typeof t.rotation).toBe("number");
+  });
+
+  it("maps title font and alignment onto text boxes", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart({ ...config, title: "Hello" }), { fontFamily: "Arial" });
+    const title = slide.created.find((s) => s.text === "Hello")!;
+    expect(title.fillCleared).toBe(true);
+    expect(title.textFrame.textRange.font).toMatchObject({ name: "Arial", bold: true });
+  });
+
+  it("draws value lines as dashed native connectors", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(
+      buildChart({ ...config, decorations: { valueLines: [{ mode: "mean" }], segmentLabels: true } }),
+      {},
+    );
+    const dashed = slide.created.filter((s) => s.type === "line" && s.lineFormat.dashStyle === "dash");
+    expect(dashed.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("scene node mapping", () => {
+  const insert = async (nodes: object[], opts = {}) => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide({ width: 200, height: 100, nodes } as never, opts);
+    return slide;
+  };
+
+  it("maps ellipses with stroke or hidden outline", async () => {
+    const slide = await insert([
+      { kind: "ellipse", cx: 50, cy: 50, rx: 20, ry: 10, fill: "#ff0000", stroke: "#000000", strokeWidth: 2, name: "dot" },
+      { kind: "ellipse", cx: 10, cy: 10, rx: 5, ry: 5, fill: "#00ff00" },
+    ]);
+    const [a, b] = slide.created.filter((s) => s.geo === "ellipse");
+    // center − radius, plus the default 60/90pt insert offset
+    expect(a.box).toEqual({ left: 90, top: 130, width: 40, height: 20 });
+    expect(a.lineFormat).toMatchObject({ color: "#000000", weight: 2 });
+    expect(b.lineFormat.visible).toBe(false);
+  });
+
+  it("maps chevrons to chevron/homePlate geometry", async () => {
+    const slide = await insert([
+      { kind: "chevron", x: 0, y: 0, w: 40, h: 20, fill: "#123456", flatLeft: true },
+      { kind: "chevron", x: 50, y: 0, w: 40, h: 20, fill: "#123456" },
+    ]);
+    expect(slide.created.filter((s) => s.type !== "group").map((s) => s.geo)).toEqual(["homePlate", "chevron"]);
+  });
+
+  it("maps arrowheads to rotated triangles", async () => {
+    const slide = await insert([{ kind: "arrowhead", x: 10, y: 10, size: 4, angle: 45, fill: "#000000", name: "ah" }]);
+    const tri = slide.created[0];
+    expect(tri.geo).toBe("triangle");
+    expect(tri.rotation).toBe(135); // scene angle + 90
+  });
+
+  it("skips grouping when group:false or only one shape", async () => {
+    const slide = await insert(
+      [
+        { kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: "#111111" },
+        { kind: "rect", x: 20, y: 0, w: 10, h: 10, fill: "#222222" },
+      ],
+      { group: false, tagData: "cfg" },
+    );
+    expect(slide.created.some((s) => s.type === "group")).toBe(false);
+    // The tag falls back onto the first created shape.
+    expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
+  });
+
+  it("degrades gracefully when the host lacks grouping and rotation", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    // Break addGroup and rotation assignment the way an old host would.
+    slide.shapes.addGroup = () => {
+      throw new Error("addGroup requires PowerPointApi 1.8");
+    };
+    const scene = {
+      width: 200,
+      height: 100,
+      nodes: [
+        { kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: "#111111" },
+        { kind: "wedge", cx: 50, cy: 50, r: 30, innerR: 0, startAngle: 0, endAngle: 90, fill: "#333333", name: "w" },
+      ],
+    };
+    const realAdd = slide.shapes.addGeometricShape.bind(slide.shapes);
+    slide.shapes.addGeometricShape = (geo, box) => {
+      const s = realAdd(geo, box);
+      if (geo === "triangle") {
+        Object.defineProperty(s, "rotation", {
+          set() {
+            throw new Error("rotation requires PowerPointApi 1.9");
+          },
+        });
+      }
+      return s;
+    };
+    await insertSceneIntoSlide(scene as never, { tagData: "cfg" });
+    // No group, no fan triangles survive — but the rect is inserted and tagged.
+    expect(slide.created.some((s) => s.type === "group")).toBe(false);
+    expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
+  });
+
+  it("falls back to the first slide when nothing is selected", async () => {
+    const slide = makeSlide("s1");
+    const ctx = installHost([slide]);
+    ctx.presentation.getSelectedSlides = () => {
+      throw new Error("no selection");
+    };
+    await insertSceneIntoSlide({ width: 10, height: 10, nodes: [{ kind: "rect", x: 0, y: 0, w: 5, h: 5, fill: "#111111" }] } as never, {});
+    expect(slide.created).toHaveLength(1);
+  });
+});
+
+describe("updateChartInSlide", () => {
+  it("deletes the old group and re-renders at the same position", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: "x" });
+    const oldGroup = slide.created.find((s) => s.type === "group")!;
+    const before = slide.created.length;
+    await updateChartInSlide(buildChart(config), { slideId: "s1", shapeId: oldGroup.id, left: 33, top: 44 });
+    expect(oldGroup.deleted).toBe(true);
+    const fresh = slide.created.slice(before).filter((s) => s.type !== "group");
+    expect(fresh.length).toBeGreaterThan(0);
+    expect(Math.min(...fresh.map((s) => s.box.left))).toBeGreaterThanOrEqual(33);
+  });
+});
+
+describe("selection readers", () => {
+  it("loadChartFromSelection returns the tagged config and target", async () => {
+    const slide = makeSlide("s1");
+    const chart = makeShape("group", undefined, { left: 10, top: 20, width: 300, height: 200 });
+    chart.tagStore.set(CHART_TAG, '{"kind":"pie"}');
+    const other = makeShape("geometric", "rectangle", { left: 0, top: 0, width: 5, height: 5 });
+    installHost([slide], [other, chart]);
+    const res = await loadChartFromSelection();
+    expect(res?.configJson).toBe('{"kind":"pie"}');
+    expect(res?.target).toMatchObject({ slideId: "s1", shapeId: chart.id, left: 10, top: 20 });
+  });
+
+  it("loadChartFromSelection returns null for untagged selections", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide], [makeShape("geometric", "rectangle", { left: 0, top: 0, width: 5, height: 5 })]);
+    expect(await loadChartFromSelection()).toBeNull();
+  });
+
+  it("getSelectionBounds returns plain shape bounds but skips charts and multi-selects", async () => {
+    const slide = makeSlide("s1");
+    const box = makeShape("geometric", "rectangle", { left: 7, top: 8, width: 100, height: 60 });
+    installHost([slide], [box]);
+    expect(await getSelectionBounds()).toEqual({ left: 7, top: 8, width: 100, height: 60 });
+
+    box.tagStore.set(CHART_TAG, "{}");
+    installHost([slide], [box]);
+    expect(await getSelectionBounds()).toBeNull();
+
+    installHost([slide], [box, makeShape("geometric", "rectangle", { left: 0, top: 0, width: 1, height: 1 })]);
+    expect(await getSelectionBounds()).toBeNull();
+  });
+
+  it("getSelectionBounds swallows host errors", async () => {
+    vi.stubGlobal("PowerPoint", {
+      run: async () => {
+        throw new Error("no selection");
+      },
+    });
+    expect(await getSelectionBounds()).toBeNull();
+  });
+
+  it("listChartsInSelection filters to tagged shapes", async () => {
+    const slide = makeSlide("s1");
+    const a = makeShape("group", undefined, { left: 1, top: 1, width: 1, height: 1 });
+    a.tagStore.set(CHART_TAG, "{}");
+    const b = makeShape("geometric", "rectangle", { left: 2, top: 2, width: 1, height: 1 });
+    installHost([slide], [a, b]);
+    const res = await listChartsInSelection();
+    expect(res).toHaveLength(1);
+    expect(res[0].target.shapeId).toBe(a.id);
+  });
+});
+
+describe("listChartsInDeck", () => {
+  it("finds tagged charts across all slides", async () => {
+    const s1 = makeSlide("s1");
+    const s2 = makeSlide("s2");
+    installHost([s1, s2]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
+    const g = s2.shapes.addGroup([]);
+    g.tagStore.set(CHART_TAG, '{"b":2}');
+    s2.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
+
+    const found = await listChartsInDeck();
+    expect(found).toHaveLength(2);
+    expect(found.map((f) => f.target.slideId).sort()).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("insertAgendaSlides", () => {
+  it("appends one slide per chapter and renders ungrouped", async () => {
+    const s1 = makeSlide("s1");
+    const slides = [s1];
+    installHost(slides);
+    const chapters = ["Intro", "Findings", "Next steps"];
+    const scenes = chapters.map((_, i) => buildAgendaScene(chapters, { highlight: i }));
+    await insertAgendaSlides(scenes);
+    expect(slides).toHaveLength(4);
+    for (let i = 1; i < 4; i++) {
+      expect(slides[i].created.length).toBeGreaterThan(0);
+      expect(slides[i].created.some((s) => s.type === "group")).toBe(false);
+    }
+  });
+});
+
+describe("isPowerPointHost", () => {
+  it("is false outside an Office host and true inside", () => {
+    expect(isPowerPointHost()).toBe(false);
+    vi.stubGlobal("PowerPoint", {});
+    vi.stubGlobal("Office", { context: { host: "PowerPoint" } });
+    expect(isPowerPointHost()).toBe(true);
+  });
+});
