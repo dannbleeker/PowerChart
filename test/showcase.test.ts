@@ -108,6 +108,9 @@ describe("showcase deck coverage", () => {
     ["hex tilemap", (c) => c.kind === "tilemap" && c.tilemap?.shape === "hex"],
     ["tilemap mini-glyphs", (c) => c.kind === "tilemap" && c.tilemap?.glyph === "bars"],
     ["stacked100 with negatives", (c) => c.kind === "stacked100" && c.data.series.some((s) => s.values.some((v) => (v ?? 0) < 0))],
+    ["semi-circle gauge", (c) => c.kind === "doughnut" && !!c.pie?.semi],
+    ["pareto chart", (c) => !!c.pareto],
+    ["bump chart", (c) => c.kind === "line" && !!c.decorations?.bump],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

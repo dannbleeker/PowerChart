@@ -45,6 +45,7 @@ describe("user manual coverage", () => {
       "Radar per-spoke scales", "Missing-data bridge", "Floating segments",
       "Combo base modes", "Combo independent line axes",
       "Hex tile maps", "Tilemap mini-glyphs", "100% charts with negatives",
+      "Semi-circle gauge", "Pareto", "Bump chart",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }

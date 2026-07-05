@@ -87,6 +87,9 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Several KPIs in unlike units on one chart | `combo` + `combo.lineAxes: "independent"` |
 | Hexagonal tile map | `tilemap` + `tilemap.shape: "hex"` |
 | A trend per region on a map | `tilemap` (regions × periods) + `tilemap.glyph: "bars"` |
+| Scorecard gauge (one metric split) | `doughnut` + `pie.semi: true` (semi-circle) |
+| 80/20 breakdown (defects, revenue) | `clustered` + `pareto: true` (sorted bars + cumulative line) |
+| Rank changes over time | `line` + `decorations.bump: true` (bump chart) |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,

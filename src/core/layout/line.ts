@@ -11,6 +11,9 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   if (cfg.kind === "line" && decor.slope && cfg.data.categories.length >= 2) {
     return layoutSlope(cfg, style, decor);
   }
+  if (cfg.kind === "line" && decor.bump && cfg.data.categories.length >= 2) {
+    return layoutBump(cfg, style, decor);
+  }
   const rawData = cfg.data;
   // Band low/high rows shade an uncertainty ribbon instead of drawing lines.
   const BAND_LOW = /^band\s*low$/i;
@@ -394,6 +397,88 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
       baselineY: plot.y + plot.h,
       plot,
       valueToY: toY,
+    },
+  };
+}
+
+/**
+ * Bump chart: rank-over-time. Categories are periods (x); each series is an
+ * entity whose values are ranks (1 = best). Ranks map onto an inverted integer
+ * axis (rank 1 at the top) with thick lines, round markers and a "Name" label
+ * at both ends of every line.
+ */
+function layoutBump(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const fs = style.fontSize;
+  const n = data.categories.length;
+  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const headerH = fs * 1.6;
+  const maxRank = Math.max(1, ...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  const nameW = Math.max(fs * 3, ...data.series.map((s) => textWidth(s.name, fs))) + fs;
+  const plot = {
+    x: nameW,
+    y: titleH + headerH,
+    w: cfg.width - nameW * 2,
+    h: cfg.height - titleH - headerH - fs * 1.6,
+  };
+  const xs = data.categories.map((_, c) => plot.x + (n === 1 ? 0 : (c / (n - 1)) * plot.w));
+  const toY = (rank: number) => plot.y + (maxRank === 1 ? plot.h / 2 : ((rank - 1) / (maxRank - 1)) * plot.h);
+
+  const nodes: SceneNode[] = [];
+  if (cfg.title) {
+    nodes.push({
+      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
+      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
+    });
+  }
+  // Period headers along the top.
+  data.categories.forEach((cat, c) => {
+    nodes.push({
+      kind: "text", x: xs[c] - 40, y: titleH, w: 80, h: headerH,
+      text: cat, fontSize: fs, bold: true, color: style.text, align: "center", valign: "middle", name: `period-${c}`,
+    });
+  });
+
+  data.series.forEach((s, si) => {
+    const color = seriesColor(style, si, s.color);
+    let prev: { x: number; y: number } | null = null;
+    let firstC = -1;
+    let lastC = -1;
+    s.values.forEach((v, c) => {
+      if (v == null) {
+        prev = null;
+        return;
+      }
+      if (firstC < 0) firstC = c;
+      lastC = c;
+      const pt = { x: xs[c], y: toY(v) };
+      if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 3.5, name: `bump-${si}-${c}` });
+      prev = pt;
+    });
+    s.values.forEach((v, c) => {
+      if (v == null) return;
+      nodes.push({ kind: "ellipse", cx: xs[c], cy: toY(v), rx: 4, ry: 4, fill: color, stroke: style.background, strokeWidth: 1.5, name: `bump-marker-${si}-${c}` });
+    });
+    // "Name" labels at both ends of the line.
+    if (firstC >= 0) {
+      const y = toY(s.values[firstC]!);
+      nodes.push({ kind: "text", x: 0, y: y - fs * 0.75, w: nameW - fs * 0.5, h: fs * 1.5, text: s.name, fontSize: fs, bold: true, color, align: "right", valign: "middle", name: `bump-label-l-${si}` });
+    }
+    if (lastC >= 0) {
+      const y = toY(s.values[lastC]!);
+      nodes.push({ kind: "text", x: plot.x + plot.w + fs * 0.5, y: y - fs * 0.75, w: nameW - fs * 0.5, h: fs * 1.5, text: s.name, fontSize: fs, bold: true, color, align: "left", valign: "middle", name: `bump-label-r-${si}` });
+    }
+  });
+
+  return {
+    nodes,
+    anchors: {
+      categoryX: xs,
+      categoryWidth: data.categories.map(() => fs * 2),
+      columnTop: data.categories.map(() => plot.y),
+      columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+      baselineY: plot.y + plot.h,
+      plot,
     },
   };
 }

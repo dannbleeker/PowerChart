@@ -75,6 +75,37 @@ function collapseOther(cfg: ChartConfig): ChartConfig {
   };
 }
 
+/**
+ * Pareto helper: sort categories by the first (non-line) series descending and
+ * overlay a computed cumulative-% line on a secondary axis — the classic 80/20
+ * view. Rewrites the config into a combo.
+ */
+function applyPareto(cfg: ChartConfig): ChartConfig {
+  if (!cfg.pareto) return cfg;
+  const bar = cfg.data.series.find((s) => s.type !== "line");
+  if (!bar) return cfg;
+  const order = cfg.data.categories.map((_, c) => c).sort((a, b) => (bar.values[b] ?? 0) - (bar.values[a] ?? 0));
+  const pick = <T,>(arr: T[] | undefined) => (arr ? order.map((c) => arr[c]) : undefined);
+  const barVals = order.map((c) => bar.values[c] ?? 0);
+  const total = barVals.reduce((a, v) => a + Math.max(0, v), 0) || 1;
+  let run = 0;
+  const cum = barVals.map((v) => {
+    run += Math.max(0, v);
+    return Math.round((run / total) * 1000) / 10;
+  });
+  return {
+    ...cfg,
+    kind: "combo",
+    secondaryAxis: true,
+    data: {
+      ...cfg.data,
+      categories: order.map((c) => cfg.data.categories[c]),
+      series: [{ ...bar, values: barVals }, { name: "Cumulative %", type: "line", values: cum }],
+      hundredPercent: pick(cfg.data.hundredPercent),
+    },
+  };
+}
+
 /** Datasheet rows carrying error-bar deltas: Error (±), Error+ / Error−. */
 const ERROR_ROW = /^error\s*([+\-−])?$/i;
 /** Bullet-chart target row: a bold tick across each column at the value. */
@@ -225,7 +256,7 @@ function buildMultiples(cfg: ChartConfig): Scene | null {
 export function buildChart(rawCfg: ChartConfig): Scene {
   const multiples = buildMultiples(rawCfg);
   if (multiples) return multiples;
-  const extracted = extractErrorRows(sortCategories(rawCfg));
+  const extracted = extractErrorRows(sortCategories(applyPareto(rawCfg)));
   let cfg = collapseOther(extracted.cfg);
   const errors = extracted.errors;
   const targets = extracted.targets;

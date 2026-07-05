@@ -164,6 +164,9 @@ pick weeks (with weekend shading), months, or quarters automatically.
   region from a multi-series datasheet.
 - **100% charts with negatives**: `stacked100` now shows negative segments
   below the zero line instead of clamping them away.
+- **Semi-circle gauge** (`doughnut` + `pie.semi`): a half-doughnut scorecard.
+- **Pareto** (`pareto`): sorted bars + a cumulative-% line (80/20 view).
+- **Bump chart** (`decorations.bump`): rank-over-time on an inverted axis.
 - **Boxplot jitter** (`jitter`): overlays the raw observations as jittered
   dots over each box (raw-sample mode).
 - **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing
