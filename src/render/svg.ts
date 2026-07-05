@@ -92,6 +92,12 @@ function nodeToSvg(n: SceneNode): string {
       const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
       return `<path d="${d}" fill="${n.fill}"${stroke}${name(n)}/>`;
     }
+    case "polygon": {
+      const pts = n.points.map((p) => `${r(p.x)},${r(p.y)}`).join(" ");
+      const fill = n.fill ? ` fill="${n.fill}"${n.fillOpacity != null ? ` fill-opacity="${n.fillOpacity}"` : ""}` : ` fill="none"`;
+      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"` : "";
+      return `<polygon points="${pts}"${fill}${stroke}${name(n)}/>`;
+    }
     case "arrowhead": {
       // Triangle with tip at (x, y), pointing along angle.
       const s = n.size;

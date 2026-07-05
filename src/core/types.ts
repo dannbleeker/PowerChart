@@ -13,7 +13,11 @@ export type ChartKind =
   | "gantt" // Gantt (Start/End rows), numeric or calendar timeline
   | "combo" // stacked columns + line series (Series.type === "line")
   | "pie" // pie chart (first series)
-  | "doughnut"; // doughnut variant of pie
+  | "doughnut" // doughnut variant of pie
+  | "boxplot" // box-and-whisker: precomputed Min/Q1/Median/Q3/Max rows or raw samples
+  | "radar" // spider chart: categories = spokes, series = polygons
+  | "heatmap" // matrix: series = rows, categories = columns, value → color
+  | "tilemap"; // tile-grid cartogram: categories = region codes, value → color
 
 export interface Series {
   name: string;
@@ -82,8 +86,20 @@ export interface Decorations {
   totals: boolean;
   /** Category labels below the baseline. */
   categoryAxis: boolean;
-  /** Numeric value axis on the left (off by default, as in think-cell). */
-  valueAxis: boolean;
+  /**
+   * Numeric value axis on the left (off by default, as in think-cell).
+   * "datamarks" draws Tufte-style tick dashes + labels with no axis line.
+   */
+  valueAxis: boolean | "datamarks";
+  /**
+   * Tick placement for datamark axes: "nice" round values (default) or
+   * "data" — ticks at the actual data min/max (Tufte's range frame).
+   */
+  tickMode?: "nice" | "data";
+  /** Radar: gridline web shape (default "polygon", business style). */
+  gridShape?: "polygon" | "circle";
+  /** Radar: series fill opacity (default 0.18; 0.25 for a single series). */
+  fillOpacity?: number;
   gridlines: boolean;
   /**
    * Segment label content, think-cell's label dropdown: any combination of
@@ -216,6 +232,24 @@ export interface ChartConfig {
   footnote?: string;
   /** Pie/doughnut options: `explode` offsets the listed slice indices radially. */
   pie?: { explode?: number[] };
+  /**
+   * Boxplot options. Without precomputed Min/Q1/Median/Q3/Max rows, every
+   * series row is a raw observation and quartiles/whiskers are computed.
+   */
+  boxplot?: {
+    /** Whisker convention; auto: min/max for precomputed rows, Tukey for raw samples. */
+    whiskers?: "tukey" | "minmax";
+    /** Quartile method for raw samples (default "exclusive", Excel-style). */
+    quartileMethod?: "exclusive" | "inclusive";
+    /** Show the mean marker (default: only when a Mean row exists). */
+    showMean?: boolean;
+    /** Tukey fence multiplier (default 1.5). */
+    iqrMultiplier?: number;
+  };
+  /** Tile-grid map layout; omitted → auto-detected from the region codes. */
+  map?: "us" | "eu" | "europe" | "world";
+  /** Heatmap color options; mode "auto" picks diverging when data spans zero. */
+  heatmap?: { color?: string; negativeColor?: string; mode?: "sequential" | "diverging" | "auto" };
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;

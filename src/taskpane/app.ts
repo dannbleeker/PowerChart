@@ -43,6 +43,8 @@ interface AppState {
   footnote: string;
   /** Comma-separated slice indices to explode (pie/doughnut), 1-based in the UI. */
   pieExplode: string;
+  /** Kind-specific config without pane controls, preserved across edits. */
+  extras: Pick<ChartConfig, "boxplot" | "heatmap" | "map">;
   /** When set, "Update chart" replaces this shape in place. */
   editTarget: EditTarget | null;
 }
@@ -80,6 +82,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     logScale: !!cfg.logScale,
     footnote: cfg.footnote ?? "",
     pieExplode: (cfg.pie?.explode ?? []).map((i) => i + 1).join(","),
+    extras: { boxplot: cfg.boxplot, heatmap: cfg.heatmap, map: cfg.map },
   };
 }
 
@@ -144,6 +147,7 @@ function currentConfig(): ChartConfig {
     horizontal: state.horizontal || undefined,
     footnote: state.footnote || undefined,
     pie: explode.length ? { explode } : undefined,
+    ...state.extras,
     valueAxisTitle: state.axisTitle || undefined,
     logScale: state.logScale || undefined,
     style: mergedStyle(),
@@ -259,6 +263,19 @@ function renderOptions() {
     label.append(cb, t.label);
     optionsHost.appendChild(label);
   }
+
+  // Tufte-style datamark axis: tick dashes + labels, no axis line.
+  const dm = document.createElement("label");
+  const dmCb = document.createElement("input");
+  dmCb.type = "checkbox";
+  dmCb.checked = d.valueAxis === "datamarks";
+  dmCb.addEventListener("change", () => {
+    d.valueAxis = dmCb.checked ? "datamarks" : false;
+    renderOptions();
+    renderPreview();
+  });
+  dm.append(dmCb, "Datamark axis (ticks only)");
+  optionsHost.appendChild(dm);
 
   // think-cell's rotation handle, as a toggle: column ⇄ bar.
   const rot = document.createElement("label");

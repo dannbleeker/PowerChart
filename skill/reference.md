@@ -6,7 +6,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 {
   kind: "stacked" | "clustered" | "stacked100" | "waterfall" | "mekko"
       | "line" | "area" | "butterfly" | "scatter" | "bubble" | "gantt"
-      | "combo" | "pie" | "doughnut",
+      | "combo" | "pie" | "doughnut" | "boxplot" | "radar" | "heatmap"
+      | "tilemap",
   width?: 480, height?: 300,          // frame size in pt
   title?: string,
   horizontal?: boolean,               // rotate columns/waterfall/mekko into bars/rows
@@ -31,7 +32,11 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     seriesLabels?: boolean,           // default true (right of last column / legend)
     totals?: boolean,                 // column totals
     categoryAxis?: boolean,           // default true
-    valueAxis?: boolean, gridlines?: boolean,   // default false (think-cell style)
+    valueAxis?: boolean | "datamarks", gridlines?: boolean,  // default false;
+                                      // "datamarks" = Tufte ticks-only axis, no line
+    tickMode?: "nice" | "data",       // datamarks at round values or at data min/max
+    gridShape?: "polygon" | "circle", // radar grid web (default polygon)
+    fillOpacity?: number,             // radar series fill (default 0.18)
     labelContent?: ("value"|"percent"|"series"|"category")[],
     cagr?: { from: number, to: number, series?: number },        // category indices
     difference?: { from, to, percent?, series?, fromValueLine? },
@@ -45,6 +50,10 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
   pie?: { explode?: number[] },       // slice indices offset radially to highlight
+  boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",
+              showMean?: boolean, iqrMultiplier?: number },
+  map?: "us" | "eu" | "europe" | "world",   // tilemap layout (auto-detected if omitted)
+  heatmap?: { color?, negativeColor?, mode?: "sequential"|"diverging"|"auto" },
   waterfall?: { totalIndices?: number[] },  // categories drawn as running totals ("e")
   scale?: { min?: number, max?: number },   // pin the value axis
   axisBreak?: { from: number, to: number }, // compress an out-of-scale range
@@ -74,6 +83,9 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Today` | Gantt today line at the (single) value |
 | `Holiday` | Gantt: shade these dates |
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
+| `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style) |
+| `Mean` | boxplot mean marker (×) |
+| `Outlier <n>` | boxplot: extra outlier dots in precomputed mode |
 
 Gantt category conventions: `"Activity | Owner | Remark"` adds responsible and
 remark columns; a leading `">"` indents; a category with no Start/End/Milestone
@@ -90,6 +102,17 @@ Multiple series → stacked waterfall (contributions stack per column).
 
 **Clustered-stacked**: give series `stack: 0`, `stack: 1`, … — same index
 stacks together; different indices sit side by side per category.
+
+**Boxplot without summary rows**: when no `Min`/`Q1`/… rows are present,
+every series row is a raw observation — quartiles are computed (exclusive
+method) and whiskers use Tukey 1.5×IQR fences with outliers drawn as dots.
+
+**Radar**: categories = spokes (first at 12 o'clock, clockwise), series =
+translucent polygons; keep 5–10 spokes and ≤3 series. **Heatmap**: series =
+rows, categories = columns; one global color scale (diverging through white
+when the data spans zero). **Tilemap**: categories = region codes (US postal,
+ISO-2 for eu/europe, or NA/LATAM/EU/MEA/SSA/CIS/SA/EA/SEA/OCE for world) —
+the layout is auto-detected from the codes or pinned with `map:`.
 
 ## Chart-design formalia (baked-in defaults, per "the good chart" practice)
 

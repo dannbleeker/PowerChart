@@ -41,6 +41,7 @@ const DE: Record<string, string> = {
   Insert: "Einfügen",
   "Edit it": "Bearbeiten",
   "Total row": "Summenzeile",
+  "Datamark axis (ticks only)": "Datenmarken-Achse (nur Striche)",
 };
 
 const DICTS: Record<string, Record<string, string>> = { de: DE };

@@ -99,8 +99,32 @@ function addNode(slide, n, dx, dy) {
         y: dy + (n.cy - n.ry) * IN,
         w: Math.max(0.003, n.rx * 2 * IN),
         h: Math.max(0.003, n.ry * 2 * IN),
-        fill: { color: hex(n.fill) },
+        // fill "none" = stroke-only ring (radar circle grid).
+        fill: n.fill === "none" ? { type: "none" } : { color: hex(n.fill) },
         line: n.stroke && (n.strokeWidth ?? 0) > 0 ? { color: hex(n.stroke), width: n.strokeWidth } : { type: "none" },
+      });
+      break;
+    }
+    case "polygon": {
+      // Real freeform geometry: filled, optionally translucent polygons
+      // (radar series and grid webs) as native editable shapes.
+      const xs = n.points.map((p) => p.x);
+      const ys = n.points.map((p) => p.y);
+      const x0 = Math.min(...xs);
+      const y0 = Math.min(...ys);
+      slide.addShape("custGeom", {
+        x: dx + x0 * IN,
+        y: dy + y0 * IN,
+        w: Math.max(0.01, (Math.max(...xs) - x0) * IN),
+        h: Math.max(0.01, (Math.max(...ys) - y0) * IN),
+        points: [
+          ...n.points.map((p, i) => ({ x: (p.x - x0) * IN, y: (p.y - y0) * IN, moveTo: i === 0 })),
+          { close: true },
+        ],
+        fill: n.fill
+          ? { color: hex(n.fill), transparency: Math.round((1 - (n.fillOpacity ?? 1)) * 100) }
+          : { type: "none" },
+        line: n.stroke ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       });
       break;
     }

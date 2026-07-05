@@ -39,6 +39,11 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | In-cell table effects (harvey balls, trend arrows, semantic colors) | ✅ (`[hb:0.75]`, `[up]`/`[down]`/`[flat]`, `[good]`/`[bad]`) |
 | Trend line fit statistics (R², p-value) | ✅ (automatic with the `Trend` row) |
 | Pattern/hatch fills on series | ✅ (`series.pattern`, SVG/preview; solid in PPT) |
+| Boxplot (five-number rows or raw samples with Tukey whiskers) | ✅ (`boxplot` kind) |
+| Radar/spider chart (translucent polygons) | ✅ (`radar` kind; filled in SVG+pptx, outline in live add-in) |
+| Heatmap (sequential/diverging color matrix) | ✅ (`heatmap` kind) |
+| Map charts as tile-grid cartograms (US / EU / Europe / World) | ✅ (`tilemap` kind, auto-detected layouts) |
+| Tufte datamark axes (ticks only, range-frame option) | ✅ (`valueAxis: "datamarks"`, `tickMode: "data"`) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |
