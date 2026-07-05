@@ -11,8 +11,11 @@
    Node for unit tests, in the browser for the preview, and inside PowerPoint
    for insertion — one code path for all three.
 3. **Renderer-agnostic scene graph.** Layouts emit `rect | line | text |
-   arrowhead` nodes in points (PowerPoint's native unit, 1pt = 1/72"). Renderers
-   are dumb: SVG maps 1pt→1px; Office.js maps nodes to shapes 1:1.
+   ellipse | wedge | chevron | arrowhead | polygon` nodes in points
+   (PowerPoint's native unit, 1pt = 1/72"). Renderers are dumb: SVG maps
+   1pt→1px; Office.js maps nodes to shapes 1:1 (pies as triangle fans,
+   polygons as outline segments); the skill's PptxgenJS renderer gets exact
+   pie geometry and real filled polygons.
 
 ## Data flow
 
@@ -79,11 +82,10 @@ src/render/svg.ts          src/render/powerpoint.ts
 - The Office.js renderer is deliberately thin (a switch statement) so nearly all
   logic is covered by the Node tests.
 
-## Roadmap
+## Status
 
-- Scatter/bubble with smart label placement
-- Gantt/timeline (think-cell's second pillar)
-- Agenda (chapter slides)
-- Excel data links (Office.js Excel add-in companion + shared workbook binding)
-- Theme-color palettes read from the presentation
-- Butterfly/tornado, combo charts, error bars
+The roadmap this document originally carried is complete — scatter/bubble
+with greedy label placement, Gantt, agenda, butterfly, combo, the Excel
+companion add-in (range → config JSON, the feasible substitute for live
+links), and everything after it (see the README feature table and CLAUDE.md
+for the current state and the explicit out-of-scope list).

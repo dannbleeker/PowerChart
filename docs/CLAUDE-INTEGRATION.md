@@ -94,16 +94,14 @@ for PowerPoint too. The pptx renderer emits native shapes with **exact**
 adjustable pie geometry (verified in OOXML: `prst="pie"` with correct
 adj1/adj2 angles), validated end-to-end with python-pptx.
 
-## Recommendation
+## What remains
 
-1. **Build the scene→pptx converter** (`render-pptx.mjs`, PptxgenJS: rect→
-   `addShape("rect")`, line→`addShape("line")`, text→`addText`, wedge→
-   `addShape("pie")` — PptxgenJS *does* support angle-adjustable pies, so decks
-   generated this way get **exact** pie geometry, better than the live add-in).
-2. **Author `SKILL.md` + `reference.md`** condensing the datasheet conventions
-   and config schema (most content exists in README/ARCHITECTURE).
-3. **Zip and upload** to claude.ai → it appears in Claude for PowerPoint.
-4. Revisit B (MCP) for org-wide distribution, C for in-pane NL authoring.
+Option A shipped and is kept current automatically: CI rebuilds the zip on
+every merge (rolling `skill-latest` release) and the lockstep tests keep its
+docs in sync with the engine. Options B (remote MCP connector, for org-wide
+distribution without per-user skill uploads) and C (Claude-in-the-pane NL
+authoring) stay on the shelf until there is a concrete need; D (paste JSON
+into Automation → Import) works today as the zero-setup fallback.
 
 ## Sources
 
