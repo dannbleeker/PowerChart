@@ -1033,6 +1033,30 @@ exports[`SVG snapshots > sample tilemap 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample treemap 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Revenue by product line</text>
+<rect x="2" y="24" width="167" height="273" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="tile-0"/>
+<text x="5" y="34.5" font-size="8.5" fill="#ffffff" text-anchor="start" font-weight="600" data-name="tile-0-label">Cloud</text>
+<text x="5" y="46" font-size="8" fill="#ffffff" text-anchor="start" data-name="tile-0-value">120</text>
+<rect x="170" y="24" width="195" height="155.57" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="tile-1"/>
+<text x="173" y="34.5" font-size="8.5" fill="#ffffff" text-anchor="start" font-weight="600" data-name="tile-1-label">Licenses</text>
+<text x="173" y="46" font-size="8" fill="#ffffff" text-anchor="start" data-name="tile-1-value">80</text>
+<rect x="170" y="180.57" width="195" height="116.43" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="tile-2"/>
+<text x="173" y="191.07" font-size="8.5" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="tile-2-label">Services</text>
+<text x="173" y="202.57" font-size="8" fill="#0b0b0b" text-anchor="start" data-name="tile-2-value">60</text>
+<rect x="366" y="24" width="111" height="136" fill="#008300" stroke="#ffffff" stroke-width="1" data-name="tile-3"/>
+<text x="369" y="34.5" font-size="8.5" fill="#ffffff" text-anchor="start" font-weight="600" data-name="tile-3-label">Hardware</text>
+<text x="369" y="46" font-size="8" fill="#ffffff" text-anchor="start" data-name="tile-3-value">40</text>
+<rect x="366" y="161" width="111" height="84.63" fill="#4a3aa7" stroke="#ffffff" stroke-width="1" data-name="tile-4"/>
+<text x="369" y="171.5" font-size="8.5" fill="#ffffff" text-anchor="start" font-weight="600" data-name="tile-4-label">Support</text>
+<text x="369" y="183" font-size="8" fill="#ffffff" text-anchor="start" data-name="tile-4-value">25</text>
+<rect x="366" y="246.63" width="111" height="50.38" fill="#e34948" stroke="#ffffff" stroke-width="1" data-name="tile-5"/>
+<text x="369" y="257.13" font-size="8.5" fill="#ffffff" text-anchor="start" font-weight="600" data-name="tile-5-label">Training</text>
+<text x="369" y="268.63" font-size="8" fill="#ffffff" text-anchor="start" data-name="tile-5-value">15</text>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample waffle 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Share of revenue under subscription</text>

@@ -963,6 +963,21 @@ const features = [
     },
     decorations: { seriesLabels: true, categoryAxis: true, valueAxis: true, gridlines: true },
   },
+  {
+    kind: "treemap",
+    width: 480,
+    height: 300,
+    title: "Two-level treemap (region | product)",
+    data: {
+      categories: [
+        "EMEA | Cloud", "EMEA | Licenses", "EMEA | Services",
+        "Americas | Cloud", "Americas | Licenses",
+        "APAC | Cloud", "APAC | Hardware", "APAC | Services",
+      ],
+      series: [{ name: "Revenue", values: [60, 40, 25, 80, 50, 45, 30, 20] }],
+    },
+    decorations: { segmentLabels: true },
+  },
 ];
 
 const configs = [...kinds, ...features];
