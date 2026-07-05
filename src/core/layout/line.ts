@@ -1,13 +1,16 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
-import type { SceneNode } from "../scene";
+import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
-import { baselineNode, categorySlots, chromeNodes, computeFrame, valueScale } from "./frame";
+import { baselineNode, categorySlots, chromeNodes, computeFrame, footnoteH, valueScale } from "./frame";
 import { seriesLabelNodes, type LayoutResult } from "./column";
 
 /** Line and area charts over categories. Lines are 2pt with ≥3pt markers. */
 export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  if (cfg.kind === "line" && decor.slope && cfg.data.categories.length >= 2) {
+    return layoutSlope(cfg, style, decor);
+  }
   const rawData = cfg.data;
   // Band low/high rows shade an uncertainty ribbon instead of drawing lines.
   const BAND_LOW = /^band\s*low$/i;
@@ -189,6 +192,123 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: scale.toY,
+    },
+  };
+}
+
+/**
+ * Slope chart: the before/after comparison. No value axis or gridlines —
+ * two vertical hairlines carry the periods, every series is a straight
+ * line (or polyline for >2 categories) with a "Name value" label at both
+ * ends, colored like its line. Labels de-overlap vertically per side.
+ */
+function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const fs = style.fontSize;
+  const n = data.categories.length;
+  const last = n - 1;
+  const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  const fmt = resolveFormat(all, cfg.numberFormat);
+  const lo = all.length ? Math.min(...all) : 0;
+  const hi = all.length ? Math.max(...all) : 1;
+  const span = hi - lo || 1;
+
+  const endLabel = (s: (typeof data.series)[number], c: number) =>
+    s.values[c] == null ? "" : `${s.name} ${formatNumber(s.values[c]!, fmt)}`;
+  const gutterL = Math.min(cfg.width * 0.34, Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, 0), fs))) + 10);
+  const gutterR = Math.min(cfg.width * 0.34, Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, last), fs))) + 10);
+
+  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const headerH = fs * 1.5; // period labels above the rails
+  const plot = {
+    x: gutterL,
+    y: titleH + headerH + 4,
+    w: cfg.width - gutterL - gutterR,
+    h: cfg.height - titleH - headerH - 4 - footnoteH(cfg, style, decor) - 6,
+  };
+  const pad = plot.h * 0.08;
+  const toY = (v: number) => plot.y + pad + (1 - (v - lo) / span) * (plot.h - pad * 2);
+  const xs = data.categories.map((_, c) => plot.x + (n === 1 ? plot.w / 2 : (c / (n - 1)) * plot.w));
+
+  const nodes: SceneNode[] = [];
+  if (cfg.title) {
+    nodes.push({
+      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
+      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
+    });
+  }
+  // Rails and period labels at the two ends only.
+  for (const c of [0, last]) {
+    nodes.push({ kind: "line", x1: xs[c], y1: plot.y, x2: xs[c], y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 1, name: `slope-rail-${c}` });
+    nodes.push({
+      kind: "text", x: xs[c] - 60, y: titleH, w: 120, h: headerH, text: data.categories[c],
+      fontSize: fs, color: style.mutedText, align: "center", valign: "middle", name: `category-${c}`,
+    });
+  }
+
+  // Per-side label placement: keep each label at its line end, then push
+  // apart to a minimum gap and clamp back inside the plot.
+  const place = (ys: (number | null)[]): (number | null)[] => {
+    const idx = ys
+      .map((y, i) => ({ y, i }))
+      .filter((e): e is { y: number; i: number } => e.y != null)
+      .sort((a, b) => a.y - b.y);
+    const minGap = fs * 1.5;
+    for (let k = 1; k < idx.length; k++) idx[k].y = Math.max(idx[k].y, idx[k - 1].y + minGap);
+    if (idx.length) {
+      idx[idx.length - 1].y = Math.min(idx[idx.length - 1].y, plot.y + plot.h);
+      for (let k = idx.length - 2; k >= 0; k--) idx[k].y = Math.min(idx[k].y, idx[k + 1].y - minGap);
+    }
+    const out: (number | null)[] = ys.map(() => null);
+    idx.forEach((e) => (out[e.i] = e.y));
+    return out;
+  };
+  const leftYs = place(data.series.map((s) => (s.values[0] == null ? null : toY(s.values[0]!))));
+  const rightYs = place(data.series.map((s) => (s.values[last] == null ? null : toY(s.values[last]!))));
+
+  const columnTop: number[] = data.categories.map(() => plot.y + plot.h);
+  data.series.forEach((s, si) => {
+    const color = seriesColor(style, si, s.color);
+    let prev: { x: number; y: number } | null = null;
+    for (let c = 0; c < n; c++) {
+      const v = s.values[c];
+      if (v == null) {
+        prev = null;
+        continue;
+      }
+      const pt = { x: xs[c], y: toY(v) };
+      columnTop[c] = Math.min(columnTop[c], pt.y);
+      if (prev) {
+        nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `line-${si}-${c}` });
+      }
+      const r = 2.4;
+      nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
+      prev = pt;
+    }
+    if (leftYs[si] != null) {
+      nodes.push({
+        kind: "text", x: 0, y: leftYs[si]! - fs * 0.75, w: gutterL - 6, h: fs * 1.5,
+        text: endLabel(s, 0), fontSize: fs, color, align: "right", valign: "middle", name: `slope-left-${si}`,
+      });
+    }
+    if (rightYs[si] != null) {
+      nodes.push({
+        kind: "text", x: plot.x + plot.w + 6, y: rightYs[si]! - fs * 0.75, w: gutterR - 6, h: fs * 1.5,
+        text: endLabel(s, last), fontSize: fs, color, align: "left", valign: "middle", name: `slope-right-${si}`,
+      });
+    }
+  });
+
+  return {
+    nodes,
+    anchors: {
+      categoryX: xs,
+      categoryWidth: data.categories.map(() => fs * 2),
+      columnTop,
+      columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+      baselineY: plot.y + plot.h,
+      plot,
+      valueToY: toY,
     },
   };
 }

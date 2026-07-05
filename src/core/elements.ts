@@ -84,6 +84,71 @@ export function buildProcessFlow(
   return { width, height, nodes };
 }
 
+export interface KpiTileOptions {
+  /** Small muted caption above the number, e.g. "Revenue". */
+  label?: string;
+  /** The big number, preformatted ("€4.2m", "87 NPS"). */
+  value: string;
+  /** Delta line, e.g. "+12% vs LY". A leading +/− picks the arrow. */
+  delta?: string;
+  /** Arrow direction override; default inferred from the delta's sign. */
+  direction?: "up" | "down" | "flat";
+  /** Whether up is the good direction (colors the delta). Default true. */
+  goodIsUp?: boolean;
+}
+
+/**
+ * KPI / number tile: big number + delta arrow + caption — the dashboard
+ * scorecard element. The delta arrow and text take semantic colors
+ * (good/bad) from the direction and `goodIsUp`.
+ */
+export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Scene {
+  const dir =
+    opts.direction ??
+    (opts.delta ? (/^\s*[-−▼]/.test(opts.delta) ? "down" : /^\s*[+▲]/.test(opts.delta) ? "up" : "flat") : undefined);
+  const goodIsUp = opts.goodIsUp ?? true;
+  const deltaColor =
+    dir === "flat" || dir == null ? S.mutedText : (dir === "up") === goodIsUp ? "#0ca30c" : "#d03b3b";
+
+  const pad = 10;
+  const labelFs = 10;
+  // Shrink the big number to fit the tile width.
+  let valueFs = Math.min(26, height * 0.34);
+  while (valueFs > 11 && textWidth(opts.value, valueFs) > width - pad * 2) valueFs -= 1;
+
+  const nodes: SceneNode[] = [
+    { kind: "rect", x: 0.5, y: 0.5, w: width - 1, h: height - 1, fill: "#ffffff", stroke: "#e1e0d9", strokeWidth: 1, name: "kpi-box" },
+  ];
+  let y = pad;
+  if (opts.label) {
+    nodes.push({
+      kind: "text", x: pad, y, w: width - pad * 2, h: labelFs * 1.3, text: opts.label,
+      fontSize: labelFs, color: S.mutedText, align: "left", valign: "top", name: "kpi-label",
+    });
+    y += labelFs * 1.5;
+  }
+  nodes.push({
+    kind: "text", x: pad, y, w: width - pad * 2, h: valueFs * 1.25, text: opts.value,
+    fontSize: valueFs, bold: true, color: S.text, align: "left", valign: "top", name: "kpi-value",
+  });
+  if (opts.delta) {
+    const dy = height - pad - labelFs * 0.75;
+    let dx = pad;
+    if (dir && dir !== "flat") {
+      const size = labelFs * 0.45;
+      nodes.push({ kind: "arrowhead", x: dx + size, y: dy, angle: dir === "up" ? -90 : 90, size, fill: deltaColor, name: "kpi-arrow" });
+      dx += size * 2 + 4;
+    }
+    // Strip a leading arrow glyph — the arrowhead node already shows it.
+    const text = opts.delta.replace(/^\s*[▲▼]\s*/, "");
+    nodes.push({
+      kind: "text", x: dx, y: dy - labelFs * 0.75, w: width - dx - pad, h: labelFs * 1.5, text,
+      fontSize: labelFs, bold: true, color: deltaColor, align: "left", valign: "middle", name: "kpi-delta",
+    });
+  }
+  return { width, height, nodes };
+}
+
 export interface TableOptions {
   /**
    * "rules" (default): horizontal rules only — top, under the header, and

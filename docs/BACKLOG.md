@@ -14,17 +14,17 @@ bubble size legend, forecast styling, scatter quadrants, funnel,
 lollipop/dot/dumbbell styles, gantt progress + baselines, grouped
 boxplots — plus, from the next tier: waterfall budget-vs-actual bridge,
 line confidence bands, area-between-series (`fillBetween`), heatmap
-marginal totals.)
+marginal totals, slope chart, waffle, KPI tile.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
 
 ## 1. Top candidates (value ÷ effort, cross-cutting rank)
 
-The researched top-10 is fully shipped, as is the first slice of the next
-tier (waterfall bridge, confidence bands, fill-between, heatmap totals).
-Next candidates come from §2/§3 below (strongest: slope chart, waffle,
-KPI tile, pie-of-pie breakout, small multiples).
+The researched top-10 is fully shipped, and the next tier is nearly done
+(waterfall bridge, confidence bands, fill-between, heatmap totals, slope,
+waffle, KPI tile). Next candidates come from §2/§3 below (strongest:
+pie-of-pie breakout, small multiples).
 
 ## 2. Gaps within existing kinds (per kind)
 
@@ -120,12 +120,6 @@ KPI tile, pie-of-pie breakout, small multiples).
    kind. Easy.
 3. **Lollipop / dot / dumbbell-range** — `series.style` marker options on
    clustered. Easy.
-4. **Slope chart** — line chart with 2 categories: suppress axis, label both
-   ends. Option on line; easy.
-5. **Waffle chart** — 10×10 unit grid, part-to-whole for one dominant %.
-   New kind; easy.
-6. **KPI / number tile** — big number + delta arrow + label; an *Element*
-   (with Harvey ball etc.), reusing table-token semantics. Trivial.
 7. **Small multiples** — grid-of-charts orchestration over any kind, reusing
    Same Scale + batch insert. Feature; easy-medium.
 8. **Bump chart** — rank-over-time via inverted integer axis on line.

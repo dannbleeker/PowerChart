@@ -417,6 +417,33 @@ const features = [
     },
   },
   {
+    kind: "line",
+    width: 480,
+    height: 300,
+    title: "Slope chart — market share, before vs after",
+    data: {
+      categories: ["2020", "2025"],
+      series: [
+        { name: "Brand A", values: [24, 31] },
+        { name: "Brand B", values: [28, 26] },
+        { name: "Brand C", values: [19, 22] },
+        { name: "Private label", values: [12, 18] },
+      ],
+    },
+    decorations: { slope: true },
+    footnote: "Source: internal market model, 2026",
+  },
+  {
+    kind: "waffle",
+    width: 480,
+    height: 300,
+    title: "Waffle — order mix by channel",
+    data: {
+      categories: ["Online", "Retail", "Wholesale"],
+      series: [{ name: "Orders", values: [52, 33, 15] }],
+    },
+  },
+  {
     kind: "bubble",
     width: 480,
     height: 300,

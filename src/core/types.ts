@@ -19,7 +19,8 @@ export type ChartKind =
   | "heatmap" // matrix: series = rows, categories = columns, value → color
   | "tilemap" // tile-grid cartogram: categories = region codes, value → color
   | "cascade" // decomposition: each stage is a subset of the previous one
-  | "funnel"; // pipeline stages as centered bands, width ∝ value
+  | "funnel" // pipeline stages as centered bands, width ∝ value
+  | "waffle"; // 10×10 unit grid, part-to-whole (categories = parts)
 
 export interface Series {
   name: string;
@@ -170,6 +171,12 @@ export interface Decorations {
   barStyle?: "bar" | "lollipop" | "dot" | "range";
   /** Line charts: shade the gap between two series (indices) as a ribbon. */
   fillBetween?: [number, number];
+  /**
+   * Line charts: slope-chart mode — no value axis or gridlines, vertical
+   * hairlines at the first and last category, and "Name value" labels at
+   * both line ends (best with 2 categories).
+   */
+  slope?: boolean;
 }
 
 export interface NumberFormat {

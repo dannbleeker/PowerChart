@@ -36,7 +36,7 @@ describe("user manual coverage", () => {
       "Connector lines", "100% = note", "Datamark axis",
       "CAGR", "Difference arrow", "Value line", "Segment order",
       "Axis break", "label content", "Footnote", "Explode slices",
-      "Same scale", "callouts", "background bands", "pattern fills",
+      "Same scale", "callouts", "background bands", "pattern fills", "slope",
     ]) {
       expect(manual, `option ${feature}`).toContain(feature);
     }
@@ -54,7 +54,7 @@ describe("user manual coverage", () => {
   });
 
   it("documents the elements and their in-cell tokens", () => {
-    for (const el of ["Harvey ball", "Checkbox", "Process flow", "Total row", "[hb:", "[up]", "[good]", "Agenda"]) {
+    for (const el of ["Harvey ball", "Checkbox", "Process flow", "KPI tile", "Total row", "[hb:", "[up]", "[good]", "Agenda"]) {
       expect(manual, `element ${el}`).toContain(el);
     }
   });

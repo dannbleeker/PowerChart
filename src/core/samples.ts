@@ -194,6 +194,15 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           series: [{ name: "Deals", values: [1200, 720, 380, 190, 120] }],
         },
       };
+    case "waffle":
+      return {
+        ...base,
+        title: "Share of revenue under subscription",
+        data: {
+          categories: ["Subscription"],
+          series: [{ name: "Share", values: [68] }],
+        },
+      };
     case "cascade":
       return {
         ...base,
@@ -261,4 +270,5 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "tilemap", label: "Tile map" },
   { kind: "cascade", label: "Cascade" },
   { kind: "funnel", label: "Funnel" },
+  { kind: "waffle", label: "Waffle" },
 ];

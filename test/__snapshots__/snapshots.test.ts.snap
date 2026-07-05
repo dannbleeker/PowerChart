@@ -1033,6 +1033,114 @@ exports[`SVG snapshots > sample tilemap 1`] = `
 </svg>"
 `;
 
+exports[`SVG snapshots > sample waffle 1`] = `
+"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
+<text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Share of revenue under subscription</text>
+<rect x="2" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-0"/>
+<rect x="29" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-1"/>
+<rect x="56" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-2"/>
+<rect x="83" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-3"/>
+<rect x="110" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-4"/>
+<rect x="137" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-5"/>
+<rect x="164" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-6"/>
+<rect x="191" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-7"/>
+<rect x="218" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-8"/>
+<rect x="245" y="269" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-9"/>
+<rect x="2" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-10"/>
+<rect x="29" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-11"/>
+<rect x="56" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-12"/>
+<rect x="83" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-13"/>
+<rect x="110" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-14"/>
+<rect x="137" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-15"/>
+<rect x="164" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-16"/>
+<rect x="191" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-17"/>
+<rect x="218" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-18"/>
+<rect x="245" y="242" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-19"/>
+<rect x="2" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-20"/>
+<rect x="29" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-21"/>
+<rect x="56" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-22"/>
+<rect x="83" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-23"/>
+<rect x="110" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-24"/>
+<rect x="137" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-25"/>
+<rect x="164" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-26"/>
+<rect x="191" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-27"/>
+<rect x="218" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-28"/>
+<rect x="245" y="215" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-29"/>
+<rect x="2" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-30"/>
+<rect x="29" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-31"/>
+<rect x="56" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-32"/>
+<rect x="83" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-33"/>
+<rect x="110" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-34"/>
+<rect x="137" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-35"/>
+<rect x="164" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-36"/>
+<rect x="191" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-37"/>
+<rect x="218" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-38"/>
+<rect x="245" y="188" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-39"/>
+<rect x="2" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-40"/>
+<rect x="29" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-41"/>
+<rect x="56" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-42"/>
+<rect x="83" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-43"/>
+<rect x="110" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-44"/>
+<rect x="137" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-45"/>
+<rect x="164" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-46"/>
+<rect x="191" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-47"/>
+<rect x="218" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-48"/>
+<rect x="245" y="161" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-49"/>
+<rect x="2" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-50"/>
+<rect x="29" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-51"/>
+<rect x="56" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-52"/>
+<rect x="83" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-53"/>
+<rect x="110" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-54"/>
+<rect x="137" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-55"/>
+<rect x="164" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-56"/>
+<rect x="191" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-57"/>
+<rect x="218" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-58"/>
+<rect x="245" y="134" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-59"/>
+<rect x="2" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-60"/>
+<rect x="29" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-61"/>
+<rect x="56" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-62"/>
+<rect x="83" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-63"/>
+<rect x="110" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-64"/>
+<rect x="137" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-65"/>
+<rect x="164" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-66"/>
+<rect x="191" y="107" width="23.22" height="23.22" fill="#2a78d6" data-name="waffle-cell-67"/>
+<rect x="218" y="107" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-68"/>
+<rect x="245" y="107" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-69"/>
+<rect x="2" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-70"/>
+<rect x="29" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-71"/>
+<rect x="56" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-72"/>
+<rect x="83" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-73"/>
+<rect x="110" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-74"/>
+<rect x="137" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-75"/>
+<rect x="164" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-76"/>
+<rect x="191" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-77"/>
+<rect x="218" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-78"/>
+<rect x="245" y="80" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-79"/>
+<rect x="2" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-80"/>
+<rect x="29" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-81"/>
+<rect x="56" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-82"/>
+<rect x="83" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-83"/>
+<rect x="110" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-84"/>
+<rect x="137" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-85"/>
+<rect x="164" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-86"/>
+<rect x="191" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-87"/>
+<rect x="218" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-88"/>
+<rect x="245" y="53" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-89"/>
+<rect x="2" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-90"/>
+<rect x="29" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-91"/>
+<rect x="56" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-92"/>
+<rect x="83" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-93"/>
+<rect x="110" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-94"/>
+<rect x="137" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-95"/>
+<rect x="164" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-96"/>
+<rect x="191" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-97"/>
+<rect x="218" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-98"/>
+<rect x="245" y="26" width="23.22" height="23.22" fill="#e6e6e6" data-name="waffle-cell-99"/>
+<text x="282" y="162.36" font-size="26" fill="#2a78d6" text-anchor="start" font-weight="600" data-name="waffle-big-pct">68%</text>
+<text x="282" y="181.1" font-size="10" fill="#52514e" text-anchor="start" data-name="legend-label-0">Subscription</text>
+</svg>"
+`;
+
 exports[`SVG snapshots > sample waterfall 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" font-family="Segoe UI, Arial, sans-serif">
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">EBITDA bridge</text>

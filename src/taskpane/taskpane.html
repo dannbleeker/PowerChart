@@ -84,6 +84,14 @@
         <button id="flow-insert" disabled>Insert</button>
       </div>
       <div id="flow-preview" class="element-flow-preview"></div>
+      <div class="element-row wide">
+        <label>KPI tile <input type="text" id="kpi-label" value="Revenue" style="width:70px" /></label>
+        <label><input type="text" id="kpi-value" value="€4.2m" style="width:56px" /></label>
+        <label><input type="text" id="kpi-delta" value="+12% vs LY" style="width:80px" /></label>
+        <label title="Down is good (costs, churn)"><input type="checkbox" id="kpi-down-good" /> ↓ good</label>
+        <button id="kpi-insert" disabled>Insert</button>
+      </div>
+      <div id="kpi-preview" class="element-flow-preview"></div>
       <div class="element-row">
         <label>Table from datasheet</label>
         <label><input type="checkbox" id="table-total" /> Total row</label>

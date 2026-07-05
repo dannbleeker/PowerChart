@@ -62,6 +62,9 @@ conventions, and every option.
 | Waterfall budget-vs-actual (hatched gap to target) | ✅ (`Target` row on waterfalls) |
 | Confidence bands + plan-vs-actual ribbons on lines | ✅ (`Band low`/`Band high` rows, `decorations.fillBetween`) |
 | Heatmap marginal totals | ✅ (`heatmap.totals`) |
+| Slope chart (before/after, labels both ends) | ✅ (`decorations.slope` on line) |
+| Waffle chart (10×10 unit grid, one dominant share) | ✅ (`waffle` kind) |
+| KPI / number tile (big number + delta arrow) | ✅ (Elements section, `↓ good` flip) |
 | Selection awareness (select a chart → edit banner) | ✅ |
 | Insert into selected placeholder bounds; chart size controls | ✅ |
 | Datasheet keyboard navigation + insert/delete at cursor | ✅ |
