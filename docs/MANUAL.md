@@ -122,6 +122,12 @@ pick weeks (with weekend shading), months, or quarters automatically.
 - **Footnote / source** — every good chart cites its source; renders
   bottom-left.
 - **Explode slices** (pie/doughnut).
+- **Stepped line/area** (`stepped: "before"|"after"|"center"`): draws a
+  staircase instead of sloped segments — good for rates that hold then jump.
+- **Gap width & overlap** (`gapWidth`, `overlap`): Excel's two column-spacing
+  controls. Gap width (0–500%) sets how wide the columns are — 0 makes them
+  touch for a histogram look; overlap (−100…100) sets how much clustered bars
+  within a category overlap or gap.
 - **Same scale** (deck-wide or selection) re-renders charts on a common axis.
 - **Small multiples** (`multiples: {columns?}`, JSON): splits a multi-series
   chart into a grid of single-series panels titled by series name, on one

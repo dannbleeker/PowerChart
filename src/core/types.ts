@@ -172,6 +172,13 @@ export interface Decorations {
   /** Line charts: shade the gap between two series (indices) as a ribbon. */
   fillBetween?: [number, number];
   /**
+   * Line/area charts: draw stepped (staircase) segments instead of straight
+   * lines. "before" jumps to the new value at the start of the interval
+   * (VH), "after" holds then jumps at the next category (HV), "center"
+   * steps at the interval midpoint (HVH). Area fills follow the same steps.
+   */
+  stepped?: "before" | "after" | "center";
+  /**
    * Line charts: slope-chart mode — no value axis or gridlines, vertical
    * hairlines at the first and last category, and "Name value" labels at
    * both line ends (best with 2 categories).
@@ -251,6 +258,18 @@ export interface ChartConfig {
   labelOffsets?: Record<string, { dx: number; dy: number }>;
   /** Logarithmic value axis (decade ticks). Clustered/line charts, positive data. */
   logScale?: boolean;
+  /**
+   * Column-family gap width, as Excel exposes it: the gap between columns as
+   * a percentage of column width (0–500). 0 makes columns touch (histogram
+   * look); higher values make them thinner. Default 50 (think-cell's spacing).
+   */
+  gapWidth?: number;
+  /**
+   * Clustered charts: overlap between bars within a category, as Excel
+   * exposes it (−100…100). 0 places bars edge to edge; positive values
+   * overlap them; negative values add a gap. Default 0.
+   */
+  overlap?: number;
   /**
    * Source/footnote line rendered bottom-left in small muted text
    * (e.g. "Kilde: Danmarks Statistik, 2024"). Good charts always cite

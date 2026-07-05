@@ -66,13 +66,15 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Same chart repeated per series ("one panel per region") | any column/line/area/waterfall/radar kind + `multiples: {}` (shared scale) |
 | Before/after comparison of a few series | `line` + `decorations.slope: true` (slope chart: end rails, labels both ends) |
 | Trend over time | `line` (date categories space proportionally) or `stacked100`-style share via `area` |
+| Rates that hold then jump (policy rate, tiers) | `line`/`area` + `decorations.stepped: "after"` (staircase) |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,
 `segmentOrder`, `connectors` (segment-boundary lines between stacked columns),
 `callouts` (speech-bubble comments), `bands` (shaded background regions),
-`hundredPercentNote`, plus `scale {min,max}`, `axisBreak {from,to}`,
-`logScale`, `categorySort`, `footnote` (source line), `pie {explode}` and
+`hundredPercentNote`, `stepped` (line/area staircase), plus `scale {min,max}`,
+`axisBreak {from,to}`, `logScale`, `gapWidth`/`overlap` (Excel-style column
+spacing), `categorySort`, `footnote` (source line), `pie {explode}` and
 per-cell `series.colors` highlights at the top level. Defaults are
 think-cell-like: labels on, axis off; always set `footnote` with the data
 source when you know it.

@@ -50,6 +50,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     forecastFrom?: number,            // line: dashed segments + hollow markers from this index
     barStyle?: "bar"|"lollipop"|"dot"|"range",  // clustered: stems+dots / dots / dumbbell
     fillBetween?: [number, number],   // line: shade the gap between two series (plan vs actual)
+    stepped?: "before"|"after"|"center",  // line/area: staircase segments (jump at start / end / midpoint)
     slope?: boolean,                  // line: slope-chart mode — end rails + "Name value" labels, no axis
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
   },
@@ -69,6 +70,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   scale?: { min?: number, max?: number },   // pin the value axis
   axisBreak?: { from: number, to: number }, // compress an out-of-scale range
   logScale?: boolean,                       // clustered/line, positive data
+  gapWidth?: number,                        // column family: Excel gap width 0–500 (% of column width; default 50)
+  overlap?: number,                         // clustered: Excel bar overlap −100…100 (default 0 = edge to edge)
   valueAxisTitle?: string,                  // units label, e.g. "€m"
   segmentOrder?: "sheet"|"reverse"|"ascending"|"descending",
   categorySort?: "ascending"|"descending",  // by column total (not waterfall/gantt)
@@ -133,6 +136,18 @@ whole cells by largest remainder and unassigned cells stay gray. The
 denominator is the `100%=` row when present, else the value sum — except a
 single category ≤ 100 with no denominator, which reads as a literal
 percentage (`68` → 68 cells + a big "68%" beside the grid).
+
+**Stepped line/area** (`decorations.stepped`): draw values as a staircase
+instead of sloped segments — `"after"` holds each value then jumps at the
+next category (HV), `"before"` jumps immediately (VH), `"center"` steps at
+the midpoint (HVH). Works for `line` and `area`; area fills follow the steps.
+
+**Gap width & overlap** (`gapWidth`, `overlap`): mirror Excel's two spacing
+controls for the column family. `gapWidth` (0–500, default 50) is the gap
+between columns as a percentage of column width — 0 makes them touch
+(histogram look), higher makes them thinner. `overlap` (−100…100, default 0)
+sets how much clustered bars within a category overlap: positive overlaps
+them, negative opens a gap.
 
 **Slope chart**: `kind: "line"` + `decorations.slope: true` with (ideally)
 two categories — the before/after comparison. No value axis; vertical

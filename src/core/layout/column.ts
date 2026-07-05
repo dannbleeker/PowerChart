@@ -47,7 +47,13 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const catStart = H ? frame.y : frame.x;
   const catLen = H ? frame.h : frame.w;
   const slotLen = catLen / Math.max(1, n);
-  const colThick = slotLen * (2 / 3);
+  // Excel-style gap width: gap between columns as a % of column width.
+  // Default 50 reproduces think-cell's 2/3-of-slot columns.
+  const gapWidth = Math.max(0, Math.min(500, cfg.gapWidth ?? 50));
+  const colThick = slotLen / (1 + gapWidth / 100);
+  // Excel-style clustered overlap (−100…100): fraction each bar overlaps its
+  // neighbour. 0 = edge to edge (the historical default).
+  const overlapFrac = Math.max(-100, Math.min(100, cfg.overlap ?? 0)) / 100;
   const centers = Array.from({ length: n }, (_, i) => catStart + slotLen * (i + 0.5));
 
   const posTotals = data.categories.map((_, c) =>
@@ -128,7 +134,12 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const downs = stackIds.map(() => 0);
     const levels: number[] = data.series.map(() => 0);
     const stackThick = colThick / nStacks;
-    const barThick = stacked ? stackThick : colThick / Math.max(1, data.series.length);
+    // Clustered bars fill the column; overlap widens each bar and shrinks the
+    // stride so they overlap (or gap). At overlap 0 this is colThick / nBars.
+    const nBars = Math.max(1, data.series.length);
+    const barW = stacked ? stackThick : colThick / (1 + (nBars - 1) * (1 - overlapFrac));
+    const barStep = stacked ? stackThick : barW * (1 - overlapFrac);
+    const barThick = barW;
     // think-cell's Segment Order: stacking order within this column.
     const order = data.series.map((_, i) => i);
     if (cfg.segmentOrder === "reverse") order.reverse();
@@ -162,7 +173,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
             if (nStacks === 1) (negBounds[c] ??= []).push(downs[sp]);
           }
         } else {
-          const pos = centers[c] - colThick / 2 + (position + 0.5) * barThick;
+          const pos = centers[c] - colThick / 2 + barW / 2 + position * barStep;
           r = segRect(pos, barThick - 1, 0, v);
         }
       }

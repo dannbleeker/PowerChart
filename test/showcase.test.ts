@@ -82,6 +82,11 @@ describe("showcase deck coverage", () => {
     ["explicit map layout", (c) => !!c.map],
     ["auto-detected map layout", (c) => c.kind === "tilemap" && !c.map],
     ["trend statistics (Trend row present)", (c) => c.data.series.some((s) => /^trend$/i.test(s.name.trim()))],
+    ["stepped line", (c) => c.kind === "line" && !!c.decorations?.stepped],
+    ["stepped area", (c) => c.kind === "area" && !!c.decorations?.stepped],
+    ["butterfly value ticks", (c) => c.kind === "butterfly" && !!c.decorations?.valueAxis],
+    ["clustered overlap", (c) => c.overlap != null],
+    ["column gap width", (c) => c.gapWidth != null],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {
