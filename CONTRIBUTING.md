@@ -16,7 +16,7 @@ thin mapping layer; changes there need a sideloaded host to verify.
 
 ## The lockstep rule
 
-Two artifacts must always match the feature set, and CI enforces both:
+Three artifacts must always match the feature set, and CI enforces all of them:
 
 1. **The Claude Agent Skill** (`skill/`) — `test/skill-docs.test.ts` fails if a
    chart kind, datasheet row, or decoration key is missing from the docs. The
@@ -25,6 +25,8 @@ Two artifacts must always match the feature set, and CI enforces both:
    `scripts/build-showcase.mjs` for new features, run `npm run showcase`, and
    commit the regenerated json+pptx. `test/showcase.test.ts` checks coverage
    and CI diffs the slide XML against a fresh build.
+3. **The user manual** (`docs/MANUAL.md`) — `test/manual.test.ts` fails if a
+   chart kind, datasheet row, pane control, or element is missing from it.
 
 ## Snapshots
 

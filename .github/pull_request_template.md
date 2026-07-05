@@ -6,6 +6,7 @@
 
 - [ ] New chart kinds/decorations/datasheet rows documented in `skill/SKILL.md` + `skill/reference.md` (enforced by `test/skill-docs.test.ts`)
 - [ ] Showcased in the demo deck: `scripts/build-showcase.mjs` extended + `npm run showcase` committed (enforced by `test/showcase.test.ts` + CI staleness gate)
+- [ ] User manual updated: `docs/MANUAL.md` (enforced by `test/manual.test.ts`)
 - [ ] README feature table updated
 
 ## Verification

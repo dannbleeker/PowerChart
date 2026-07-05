@@ -12,6 +12,9 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 
 ## Feature overview
 
+**[User manual](docs/MANUAL.md)** — how to use the pane, the datasheet
+conventions, and every option.
+
 | think-cell feature | PowerChart |
 |---|---|
 | Stacked / clustered / 100% column charts | ✅ |
