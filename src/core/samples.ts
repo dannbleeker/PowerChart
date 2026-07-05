@@ -95,6 +95,30 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           ],
         },
       };
+    case "combo":
+      return {
+        ...base,
+        title: "Revenue and margin",
+        data: {
+          categories: ["2022", "2023", "2024", "2025"],
+          series: [
+            { name: "Product", values: [40, 46, 52, 60] },
+            { name: "Services", values: [18, 22, 27, 33] },
+            { name: "Margin %", values: [31, 34, 38, 45], type: "line" },
+          ],
+        },
+        decorations: { totals: true },
+      };
+    case "pie":
+    case "doughnut":
+      return {
+        ...base,
+        title: "Revenue split",
+        data: {
+          categories: ["EMEA", "Americas", "APAC", "Other"],
+          series: [{ name: "Revenue", values: [84, 110, 70, 22] }],
+        },
+      };
     case "gantt":
       return {
         ...base,
@@ -151,4 +175,7 @@ export const CHART_KINDS: { kind: ChartKind; label: string }[] = [
   { kind: "scatter", label: "Scatter" },
   { kind: "bubble", label: "Bubble" },
   { kind: "gantt", label: "Gantt" },
+  { kind: "combo", label: "Combo" },
+  { kind: "pie", label: "Pie" },
+  { kind: "doughnut", label: "Doughnut" },
 ];

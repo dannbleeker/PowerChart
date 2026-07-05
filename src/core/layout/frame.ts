@@ -46,7 +46,22 @@ export function valueScale(
   dataMax: number,
   override?: { min?: number; max?: number },
   axisBreak?: { from: number; to: number },
+  logScale?: boolean,
 ): ValueScale {
+  // Logarithmic axis: decade ticks; requires positive data (falls back otherwise).
+  if (logScale && dataMax > 0) {
+    const minPos = Math.max(dataMin > 0 ? dataMin : dataMax / 1000, 1e-12);
+    const lo10 = Math.floor(Math.log10(override?.min && override.min > 0 ? override.min : minPos));
+    const hi10 = Math.ceil(Math.log10(override?.max && override.max > 0 ? override.max : dataMax));
+    const ticks: number[] = [];
+    for (let e = lo10; e <= hi10; e++) ticks.push(Math.pow(10, e));
+    const min = ticks[0];
+    const max = ticks[ticks.length - 1];
+    const span = Math.log10(max) - Math.log10(min) || 1;
+    const toY = (v: number) =>
+      frame.y + frame.h - ((Math.log10(Math.max(v, min)) - Math.log10(min)) / span) * frame.h;
+    return { min, max, ticks, toY };
+  }
   const lo = override?.min ?? Math.min(0, dataMin);
   const hi = override?.max ?? Math.max(0, dataMax);
   let ticks = niceTicks(lo, hi, 5).filter(
@@ -212,6 +227,21 @@ export function chromeNodes(
         name: "value-axis",
       });
     }
+  }
+  if (cfg.valueAxisTitle) {
+    nodes.push({
+      kind: "text",
+      x: 0,
+      y: Math.max(0, frame.y - fs * 1.5),
+      w: Math.max(frame.x - 4, textWidth(cfg.valueAxisTitle, fs)),
+      h: fs * 1.4,
+      text: cfg.valueAxisTitle,
+      fontSize: fs * 0.95,
+      color: style.mutedText,
+      align: "left",
+      valign: "bottom",
+      name: "value-axis-title",
+    });
   }
   if (decor.categoryAxis) {
     const slotW = centers.length > 1 ? centers[1] - centers[0] : frame.w;

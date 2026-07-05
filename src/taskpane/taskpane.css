@@ -63,6 +63,10 @@ textarea {
   border-radius: 6px;
   resize: vertical;
 }
+.series-colors { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.series-colors label { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.series-colors input[type="color"] { width: 22px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 3px; }
+
 .agenda-preview { margin-top: 8px; }
 .agenda-preview svg { max-height: 160px; }
 

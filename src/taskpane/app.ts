@@ -1,4 +1,5 @@
 import { buildChart, DEFAULT_SIZE, valueExtent } from "../core/chart";
+import { PALETTES } from "../core/style";
 import type { ChartConfig, ChartKind, Decorations } from "../core/types";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
@@ -27,6 +28,13 @@ interface AppState {
   breakTo: string;
   decimals: string; // "auto" | "0" | "1" | "2"
   suffix: string;
+  locale: string;
+  labelContent: string; // comma-joined parts, "" = default
+  paletteName: string;
+  /** Per-series color overrides, keyed by series name. */
+  seriesColors: Record<string, string>;
+  axisTitle: string;
+  logScale: boolean;
   /** When set, "Update chart" replaces this shape in place. */
   editTarget: EditTarget | null;
 }
@@ -54,7 +62,20 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     breakTo: cfg.axisBreak ? String(cfg.axisBreak.to) : "",
     decimals: cfg.numberFormat?.decimals != null ? String(cfg.numberFormat.decimals) : "auto",
     suffix: cfg.numberFormat?.suffix ?? "",
+    locale: cfg.numberFormat?.locale ?? "en-US",
+    labelContent: cfg.decorations?.labelContent?.join(",") ?? "",
+    paletteName: paletteNameFor(cfg.style?.palette),
+    seriesColors: Object.fromEntries(
+      cfg.data.series.filter((s) => s.color).map((s) => [s.name, s.color!]),
+    ),
+    axisTitle: cfg.valueAxisTitle ?? "",
+    logScale: !!cfg.logScale,
   };
+}
+
+function paletteNameFor(palette?: string[]): string {
+  if (!palette) return "Default";
+  return Object.entries(PALETTES).find(([, p]) => p.join() === palette.join())?.[0] ?? "Default";
 }
 
 function currentConfig(): ChartConfig {
@@ -68,13 +89,23 @@ function currentConfig(): ChartConfig {
     state.breakFrom.trim() && state.breakTo.trim() && Number.isFinite(bFrom) && Number.isFinite(bTo) && bTo > bFrom
       ? { from: bFrom, to: bTo }
       : undefined;
+  for (const s of data.series) {
+    const c = state.seriesColors[s.name];
+    if (c) s.color = c;
+  }
+  const labelParts = state.labelContent
+    ? (state.labelContent.split(",") as NonNullable<Decorations["labelContent"]>)
+    : undefined;
   return {
     kind: state.kind,
     data,
     horizontal: state.horizontal || undefined,
+    valueAxisTitle: state.axisTitle || undefined,
+    logScale: state.logScale || undefined,
+    style: state.paletteName !== "Default" ? { palette: PALETTES[state.paletteName] } : undefined,
     ...DEFAULT_SIZE,
     title: state.title || undefined,
-    decorations: state.decorations,
+    decorations: { ...state.decorations, labelContent: labelParts },
     waterfall: { totalIndices: [...totals] },
     segmentOrder: state.segmentOrder === "sheet" ? undefined : state.segmentOrder,
     axisBreak,
@@ -83,10 +114,11 @@ function currentConfig(): ChartConfig {
         ? { min: Number.isFinite(min!) ? min : undefined, max: Number.isFinite(max!) ? max : undefined }
         : undefined,
     numberFormat:
-      state.decimals !== "auto" || state.suffix
+      state.decimals !== "auto" || state.suffix || state.locale !== "en-US"
         ? {
             decimals: state.decimals === "auto" ? "auto" : Number(state.decimals),
             suffix: state.suffix || undefined,
+            locale: state.locale !== "en-US" ? state.locale : undefined,
           }
         : undefined,
   };
@@ -342,8 +374,107 @@ function renderOptions() {
   };
   nfDec.addEventListener("change", emitNf);
   nfSuffix.addEventListener("input", emitNf);
-  nf.append("Labels: decimals ", nfDec, " suffix ", nfSuffix);
+  const nfLoc = document.createElement("select");
+  for (const v of ["en-US", "de-DE", "fr-FR", "da-DK"]) {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    nfLoc.appendChild(opt);
+  }
+  nfLoc.value = state.locale;
+  nfLoc.addEventListener("change", () => {
+    state.locale = nfLoc.value;
+    renderPreview();
+  });
+  nf.append("Labels: decimals ", nfDec, " suffix ", nfSuffix, " locale ", nfLoc);
   optionsHost.appendChild(nf);
+
+  // Label content (think-cell's label dropdown).
+  const lc = document.createElement("label");
+  lc.className = "wide";
+  const lcSel = document.createElement("select");
+  for (const [value, label] of [
+    ["", "Default"],
+    ["value", "Value"],
+    ["percent", "%"],
+    ["value,percent", "Value + %"],
+    ["series,value", "Series + value"],
+    ["category,percent", "Category + %"],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    lcSel.appendChild(opt);
+  }
+  lcSel.value = state.labelContent;
+  lcSel.addEventListener("change", () => {
+    state.labelContent = lcSel.value;
+    renderPreview();
+  });
+  lc.append("Label content ", lcSel);
+  optionsHost.appendChild(lc);
+
+  // Axis title + log scale.
+  const ax = document.createElement("label");
+  ax.className = "wide";
+  const axTitle = document.createElement("input");
+  axTitle.type = "text";
+  axTitle.style.width = "56px";
+  axTitle.placeholder = "e.g. €m";
+  axTitle.value = state.axisTitle;
+  axTitle.addEventListener("input", () => {
+    state.axisTitle = axTitle.value;
+    renderPreview();
+  });
+  const axLog = document.createElement("input");
+  axLog.type = "checkbox";
+  axLog.checked = state.logScale;
+  axLog.addEventListener("change", () => {
+    state.logScale = axLog.checked;
+    renderPreview();
+  });
+  ax.append("Axis title ", axTitle, " ", axLog, " log scale");
+  optionsHost.appendChild(ax);
+
+  // Palette preset + per-series color overrides.
+  const pal = document.createElement("label");
+  pal.className = "wide";
+  const palSel = document.createElement("select");
+  for (const name of Object.keys(PALETTES)) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    palSel.appendChild(opt);
+  }
+  palSel.value = state.paletteName;
+  palSel.addEventListener("change", () => {
+    state.paletteName = palSel.value;
+    renderPreview();
+  });
+  pal.append("Palette ", palSel);
+  optionsHost.appendChild(pal);
+
+  const colors = document.createElement("div");
+  colors.className = "wide series-colors";
+  const palette = PALETTES[state.paletteName] ?? PALETTES.Default;
+  currentSeriesNames().forEach((name, i) => {
+    const wrap = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = state.seriesColors[name] ?? palette[i % palette.length];
+    input.addEventListener("input", () => {
+      state.seriesColors[name] = input.value;
+      renderPreview();
+    });
+    wrap.append(input, name);
+    colors.appendChild(wrap);
+  });
+  optionsHost.appendChild(colors);
+}
+
+/** Series names from the sheet, excluding special rows. */
+function currentSeriesNames(): string[] {
+  return sheetToData(state.sheet).series.map((s) => s.name);
 }
 
 function numInput(value: number, min = 1): HTMLInputElement {
@@ -393,10 +524,42 @@ function renderActionState() {
 
 // --- boot ------------------------------------------------------------------
 
+// Datasheet undo/redo (Ctrl+Z / Ctrl+Y while the pane has focus).
+const history: string[] = [];
+const redoStack: string[] = [];
+function snapshot() {
+  const snap = JSON.stringify(state.sheet.cells);
+  if (history[history.length - 1] !== snap) {
+    history.push(snap);
+    if (history.length > 100) history.shift();
+    redoStack.length = 0;
+  }
+}
+function restore(cells: string[][]) {
+  state.sheet = { cells };
+  sheetApi.setSheet(state.sheet);
+  renderPreview();
+}
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === "z" && history.length > 1) {
+    e.preventDefault();
+    redoStack.push(history.pop()!);
+    restore(JSON.parse(history[history.length - 1]));
+  } else if (e.key === "y" && redoStack.length) {
+    e.preventDefault();
+    const snap = redoStack.pop()!;
+    history.push(snap);
+    restore(JSON.parse(snap));
+  }
+});
+
 sheetApi = mountDatasheet($("datasheet"), state.sheet, (sheet) => {
   state.sheet = sheet;
+  snapshot();
   renderPreview();
 });
+snapshot();
 
 const titleInput = $("chart-title") as HTMLInputElement;
 titleInput.value = state.title;
@@ -465,6 +628,23 @@ async function doLoadSelection() {
   applyConfig(JSON.parse(found.configJson) as ChartConfig, found.target);
 }
 
+// --- Automation (JSON in / out, the open .ppttc idea) -------------------------
+
+$("json-export").addEventListener("click", () => {
+  ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(currentConfig(), null, 2);
+});
+$("json-import").addEventListener("click", () => {
+  try {
+    const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
+    applyConfig({ ...DEFAULT_SIZE, ...(Array.isArray(parsed) ? parsed[0] : parsed) }, null);
+    hostNote.textContent = Array.isArray(parsed)
+      ? `Loaded chart 1 of ${parsed.length} — use "Insert batch" for all.`
+      : "Chart config loaded.";
+  } catch (err) {
+    hostNote.textContent = `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`;
+  }
+});
+
 // --- Agenda ------------------------------------------------------------------
 
 function agendaChapters(): string[] {
@@ -510,6 +690,20 @@ function wireInsert() {
     const sameScaleBtn = $("same-scale") as HTMLButtonElement;
     sameScaleBtn.disabled = false;
     sameScaleBtn.addEventListener("click", guard(doSameScale));
+    const batchBtn = $("json-insert-batch") as HTMLButtonElement;
+    batchBtn.disabled = false;
+    batchBtn.addEventListener(
+      "click",
+      guard(async () => {
+        const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
+        const configs: ChartConfig[] = Array.isArray(parsed) ? parsed : [parsed];
+        for (const c of configs) {
+          const cfg = { ...DEFAULT_SIZE, ...c };
+          await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+        }
+        hostNote.textContent = `Inserted ${configs.length} chart(s) on the current slide.`;
+      }),
+    );
     agendaBtn.disabled = false;
     agendaBtn.addEventListener(
       "click",

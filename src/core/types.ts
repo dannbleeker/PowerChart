@@ -10,7 +10,10 @@ export type ChartKind =
   | "butterfly" // two back-to-back bar charts sharing one scale
   | "scatter" // "Scatter" — X/Y rows, labelled points
   | "bubble" // "Bubble" — scatter + Size row
-  | "gantt"; // simplified numeric-timeline Gantt (Start/End rows)
+  | "gantt" // Gantt (Start/End rows), numeric or calendar timeline
+  | "combo" // stacked columns + line series (Series.type === "line")
+  | "pie" // pie chart (first series)
+  | "doughnut"; // doughnut variant of pie
 
 export interface Series {
   name: string;
@@ -18,6 +21,8 @@ export interface Series {
   values: (number | null)[];
   /** Override the palette color for this series. */
   color?: string;
+  /** Combo charts: render this series as a line over the columns. */
+  type?: "column" | "line";
 }
 
 export interface ChartData {
@@ -63,14 +68,27 @@ export interface Decorations {
   /** Numeric value axis on the left (off by default, as in think-cell). */
   valueAxis: boolean;
   gridlines: boolean;
-  /** Compound annual growth rate arrow between two category indices. */
-  cagr?: { from: number; to: number };
+  /**
+   * Segment label content, think-cell's label dropdown: any combination of
+   * value, percent (of column), series name, and category name.
+   * Default: ["value"] (["percent"] on 100% charts).
+   */
+  labelContent?: ("value" | "percent" | "series" | "category")[];
+  /** CAGR arrow between two categories; `series` computes it on one series. */
+  cagr?: { from: number; to: number; series?: number };
   /**
    * Difference arrow between two category indices. Without `series` it is a
    * total difference arrow (column totals); with `series` it is a level
    * difference arrow comparing the cumulative level at that series.
    */
-  difference?: { from: number; to: number; percent?: boolean; series?: number };
+  difference?: {
+    from: number;
+    to: number;
+    percent?: boolean;
+    series?: number;
+    /** Anchor the arrow's start at valueLines[fromValueLine] instead of a column. */
+    fromValueLine?: number;
+  };
   /** Value lines: at fixed values or at the mean of column totals. */
   valueLines?: ({ mode: "mean" } | { mode: "value"; value: number })[];
   /** @deprecated legacy single value line; normalized into valueLines. */
@@ -84,6 +102,8 @@ export interface NumberFormat {
   suffix?: string;
   /** Show an explicit "+" on positive deltas (waterfall, difference arrows). */
   forceSign?: boolean;
+  /** BCP-47 locale for separators, e.g. "de-DE" → 1.234,5. Default en-US. */
+  locale?: string;
 }
 
 export interface ChartStyle {
@@ -127,6 +147,10 @@ export interface ChartConfig {
    * band so out-of-scale columns fit. Vertical column/waterfall charts only.
    */
   axisBreak?: { from: number; to: number };
+  /** Units label shown at the top of the value axis (e.g. "€m"). */
+  valueAxisTitle?: string;
+  /** Logarithmic value axis (decade ticks). Clustered/line charts, positive data. */
+  logScale?: boolean;
   /** Frame size in points (PowerPoint native unit). */
   width: number;
   height: number;

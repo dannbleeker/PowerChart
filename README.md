@@ -15,6 +15,9 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | think-cell feature | PowerChart |
 |---|---|
 | Stacked / clustered / 100% column charts | ✅ |
+| Stacked waterfall (multi-series deltas) | ✅ |
+| Combo chart (stacked columns + line series) | ✅ (`type: "line"` on a series) |
+| Pie & doughnut | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.9 rotation) |
 | Bar charts as rotated column charts, butterfly charts | ✅ (`horizontal` toggle, `butterfly` kind) |
 | Waterfall with computed totals (`e` cells) and connectors | ✅ |
 | Mekko (Marimekko) with %-axis and column totals | ✅ |
@@ -33,7 +36,13 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 | Same Scale across all charts in the deck | ✅ (re-renders every chart to a shared scale) |
 | Segment order menu (sheet / reversed / ascending / descending) | ✅ |
 | Manual value-axis scale (pin min and/or max) | ✅ |
-| Number format control (decimals, suffix) | ✅ |
+| Number format control (decimals, suffix, locale) | ✅ |
+| Label content menu (value / % / series / category combos) | ✅ |
+| Palette presets + per-series color pickers | ✅ |
+| Axis title, log scale, date-spaced line x-axis | ✅ |
+| Difference arrows anchored to value lines, per-series CAGR | ✅ |
+| JSON automation (export/import/batch insert + `npm run render` CLI) | ✅ (open take on `.ppttc`) |
+| Datasheet undo/redo (Ctrl+Z / Ctrl+Y) | ✅ |
 | Agenda / chapter slides (one per chapter, current highlighted) | ✅ (appended to the deck) |
 | Visual chart gallery (Elements-style thumbnails) | ✅ |
 | Output as native, editable PowerPoint shapes | ✅ (grouped) |
