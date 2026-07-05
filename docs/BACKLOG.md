@@ -20,7 +20,8 @@ line/area, Excel-style column gap width + clustered overlap, and butterfly
 value ticks/gridlines on both flanks; plus batch H: area with negative
 values, scatter/bubble trajectory trail, and boxplot jittered raw-data
 dots; plus batch I: scatter/bubble continuous color scale, smoothed lines,
-and waterfall grouping spacers.)
+and waterfall grouping spacers; plus batch J: gantt auto-summary bars,
+notched boxplots, and the radar min–max "peer range + us" band.)
 Feasibility is judged against the live-add-in constraint (rects, lines,
 text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
 and skill-pptx renderers additionally have filled polygons and patterns).
@@ -67,23 +68,18 @@ Pareto helper).
   medium/hard, low/niche.
 
 ### Gantt
-- **Auto summary bars** (section rows span min(start)→max(end) of children) —
-  medium, medium.
 - **Critical-path highlight** (CPM over existing `After` edges) —
   medium-hard, medium (PM-tool territory; think-cell lacks it too).
 - Resource lanes with capacity, working-day calendars, cost columns —
   hard/low; out of deck-tool scope.
 
 ### Boxplot
-- **Notched boxplots** (median CI) — medium, medium.
 - Violin (density curves) — infeasible live / medium SVG-only; low.
   Mean±SD box variant — easy, niche.
 
 ### Radar
 - **Vertex markers in the live add-in** — easy, high (closes the
   add-in-vs-SVG quality gap; already present in scene, verify add-in path).
-- **Min–max band across many series** ("peer range + us") — medium
-  (SVG/pptx fill; dashed outlines live), high for competitive profiling.
 - Per-spoke scales (mixed KPI units) — medium, medium. Radial bar variant —
   really a new kind; medium, medium. Stacked radar — low.
 

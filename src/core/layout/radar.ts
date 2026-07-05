@@ -90,9 +90,36 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
   });
 
+  // Min–max band: shade the per-spoke envelope of the peer series (all but
+  // the last) as an annulus of per-sector quads, then draw the last series
+  // ("us") prominently on top — the "peer range + us" view.
+  const band = !!decor.radarBand && data.series.length >= 2;
+  if (band) {
+    const peers = data.series.slice(0, -1);
+    const spokeMin: number[] = [];
+    const spokeMax: number[] = [];
+    for (let c = 0; c < n; c++) {
+      const vals = peers.map((s) => s.values[c]).filter((v): v is number => v != null);
+      spokeMin[c] = vals.length ? Math.max(min, Math.min(...vals)) : min;
+      spokeMax[c] = vals.length ? Math.max(min, Math.max(...vals)) : min;
+    }
+    const minPts = data.categories.map((_, c) => polar(cx, cy, toR(spokeMin[c]), angle(c)));
+    const maxPts = data.categories.map((_, c) => polar(cx, cy, toR(spokeMax[c]), angle(c)));
+    for (let c = 0; c < n; c++) {
+      const c2 = (c + 1) % n;
+      nodes.push({ kind: "polygon", points: [minPts[c], minPts[c2], maxPts[c2], maxPts[c]], fill: style.mutedText, fillOpacity: 0.16, name: `band-${c}` });
+    }
+    nodes.push(
+      { kind: "polygon", points: maxPts, stroke: style.mutedText, strokeWidth: 1, name: "band-max" },
+      { kind: "polygon", points: minPts, stroke: style.mutedText, strokeWidth: 1, name: "band-min" },
+    );
+  }
+
   // Series polygons: translucent fill (SVG), full-opacity outline + markers.
   const defaultOpacity = data.series.length === 1 ? 0.25 : 0.18;
-  data.series.forEach((s, si) => {
+  const drawIdx = band ? [data.series.length - 1] : data.series.map((_, i) => i);
+  drawIdx.forEach((si) => {
+    const s = data.series[si];
     const color = seriesColor(style, si, s.color);
     const pts = data.categories.map((_, c) => polar(cx, cy, toR(Math.max(min, s.values[c] ?? min)), angle(c)));
     nodes.push({
@@ -110,20 +137,26 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
   });
 
-  // Legend row under the title when there are multiple series.
+  // Legend row under the title when there are multiple series. In band mode
+  // it collapses the peers into one "Peer range" swatch plus the "us" series.
   if (legendH) {
     let x = 0;
-    data.series.forEach((s, si) => {
-      const chip = fs * 0.7;
-      const color = seriesColor(style, si, s.color);
+    const chip = fs * 0.7;
+    const entries: { label: string; color: string; name: string }[] = band
+      ? [
+          { label: "Peer range", color: style.mutedText, name: "legend-band" },
+          { label: data.series[data.series.length - 1].name, color: seriesColor(style, data.series.length - 1, data.series[data.series.length - 1].color), name: "legend-us" },
+        ]
+      : data.series.map((s, si) => ({ label: s.name, color: seriesColor(style, si, s.color), name: `legend-${si}` }));
+    entries.forEach((e, i) => {
       nodes.push(
-        { kind: "rect", x, y: titleH + fs * 0.35, w: chip, h: chip, fill: color, name: `legend-chip-${si}` },
+        { kind: "rect", x, y: titleH + fs * 0.35, w: chip, h: chip, fill: e.color, name: band ? e.name : `legend-chip-${i}` },
         {
-          kind: "text", x: x + chip + 3, y: titleH, w: textWidth(s.name, fs) + 6, h: fs * 1.4,
-          text: s.name, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${si}`,
+          kind: "text", x: x + chip + 3, y: titleH, w: textWidth(e.label, fs) + 6, h: fs * 1.4,
+          text: e.label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: e.name,
         },
       );
-      x += chip + 3 + textWidth(s.name, fs) + 12;
+      x += chip + 3 + textWidth(e.label, fs) + 12;
     });
   }
 

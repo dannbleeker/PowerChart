@@ -189,12 +189,34 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       segLine(p, qQ1, p, qOf(b.min), 0.75, style.axis, `whisker-lo-${c}${gSuffix}`),
       segLine(p - gCapW / 2, qOf(b.max), p + gCapW / 2, qOf(b.max), 0.75, style.axis, `cap-hi-${c}${gSuffix}`),
       segLine(p - gCapW / 2, qOf(b.min), p + gCapW / 2, qOf(b.min), 0.75, style.axis, `cap-lo-${c}${gSuffix}`),
-      // Q1–Q3 box with a heavier median line.
-      H
-        ? { kind: "rect", x: boxLo, y: p - gBoxW / 2, w: Math.abs(qQ1 - qQ3), h: gBoxW, fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` }
-        : { kind: "rect", x: p - gBoxW / 2, y: boxLo, w: gBoxW, h: Math.abs(qQ1 - qQ3), fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` },
-      segLine(p - gBoxW / 2, qMed, p + gBoxW / 2, qMed, 1.75, fill, `median-${c}${gSuffix}`),
     );
+    // Q1–Q3 box (notched at the median CI when raw samples give us n).
+    const notch = !!opts.notch && !!b.samples && b.samples.length >= 3;
+    let medHalf = gBoxW / 2;
+    if (notch) {
+      const ci = (1.57 * (b.q3 - b.q1)) / Math.sqrt(b.samples!.length);
+      const qMedHi = qOf(Math.min(b.q3, b.median + ci));
+      const qMedLo = qOf(Math.max(b.q1, b.median - ci));
+      const nx = gBoxW * 0.25;
+      medHalf = nx;
+      nodes.push({
+        kind: "polygon",
+        points: [
+          pt(p - gBoxW / 2, qQ3), pt(p + gBoxW / 2, qQ3),
+          pt(p + gBoxW / 2, qMedHi), pt(p + nx, qMed), pt(p + gBoxW / 2, qMedLo),
+          pt(p + gBoxW / 2, qQ1), pt(p - gBoxW / 2, qQ1),
+          pt(p - gBoxW / 2, qMedLo), pt(p - nx, qMed), pt(p - gBoxW / 2, qMedHi),
+        ],
+        fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}`,
+      });
+    } else {
+      nodes.push(
+        H
+          ? { kind: "rect", x: boxLo, y: p - gBoxW / 2, w: Math.abs(qQ1 - qQ3), h: gBoxW, fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` }
+          : { kind: "rect", x: p - gBoxW / 2, y: boxLo, w: gBoxW, h: Math.abs(qQ1 - qQ3), fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` },
+      );
+    }
+    nodes.push(segLine(p - medHalf, qMed, p + medHalf, qMed, 1.75, fill, `median-${c}${gSuffix}`));
     if (b.mean != null) {
       const m = pt(p, qOf(b.mean));
       nodes.push({

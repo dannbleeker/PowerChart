@@ -93,6 +93,9 @@ describe("showcase deck coverage", () => {
     ["scatter continuous color row", (c) => (c.kind === "scatter" || c.kind === "bubble") && c.data.series.some((s) => /^colou?r$/i.test(s.name.trim()))],
     ["smoothed line", (c) => c.kind === "line" && !!c.decorations?.smooth],
     ["waterfall grouping spacers", (c) => !!c.waterfall?.spacerIndices?.length],
+    ["gantt summary bars", (c) => c.kind === "gantt" && !!c.decorations?.summaryBars],
+    ["notched boxplots", (c) => c.kind === "boxplot" && !!c.boxplot?.notch],
+    ["radar peer-range band", (c) => c.kind === "radar" && !!c.decorations?.radarBand],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

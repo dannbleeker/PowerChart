@@ -73,13 +73,17 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Smooth trend curve instead of straight segments | `line` + `decorations.smooth: true` |
 | Grouping a long waterfall into sections | `waterfall.spacerIndices` (blank gap columns) |
 | Distribution behind a boxplot (show the raw points) | `boxplot` (raw samples) + `boxplot.jitter: true` |
+| Is the median difference significant? | `boxplot` (raw samples) + `boxplot.notch: true` (non-overlapping notches) |
+| Summary bar per Gantt section | `gantt` with section-header rows + `decorations.summaryBars: true` |
+| "Us vs the peer range" on a radar | `radar` (peers then us) + `decorations.radarBand: true` |
 
 Decorations (`decorations` object): `totals`, `cagr {from,to}`,
 `difference {from,to,series?,fromValueLine?}`, `valueLines`, `labelContent`,
 `segmentOrder`, `connectors` (segment-boundary lines between stacked columns),
 `callouts` (speech-bubble comments), `bands` (shaded background regions),
 `hundredPercentNote`, `stepped` (line/area staircase), `smooth` (line
-curves), `trajectory` (scatter/bubble trail), plus `scale {min,max}`,
+curves), `trajectory` (scatter/bubble trail), `summaryBars` (gantt sections),
+`radarBand` (radar peer range), plus `scale {min,max}`,
 `axisBreak {from,to}`, `logScale`, `gapWidth`/`overlap` (Excel-style column
 spacing), `categorySort`, `footnote` (source line), `pie {explode}` and
 per-cell `series.colors` highlights at the top level. Defaults are

@@ -203,6 +203,17 @@ export interface Decorations {
    * how one entity moved through the X/Y space over time.
    */
   trajectory?: boolean;
+  /**
+   * Gantt: draw a summary bar (with end caps) on each section-header row,
+   * spanning min(start)→max(end) of the activities beneath it.
+   */
+  summaryBars?: boolean;
+  /**
+   * Radar: shade the per-spoke min–max envelope of the "peer" series (all
+   * but the last) as a band, and draw the last series prominently on top —
+   * the "peer range + us" competitive-profiling view.
+   */
+  radarBand?: boolean;
 }
 
 export interface NumberFormat {
@@ -328,6 +339,12 @@ export interface ChartConfig {
      * and sample size behind the summary.
      */
     jitter?: boolean;
+    /**
+     * Notch each box at the median ± 1.57·IQR/√n confidence interval
+     * (raw-sample mode only, where n is known) — non-overlapping notches
+     * suggest a significant difference in medians.
+     */
+    notch?: boolean;
   };
   /** Tile-grid map layout; omitted → auto-detected from the region codes. */
   map?: "us" | "eu" | "europe" | "world";
