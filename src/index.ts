@@ -9,5 +9,8 @@ export { buildHarveyBall, buildCheckbox, buildProcessFlow, buildTableScene, buil
 export { sampleConfig, CHART_KINDS } from "./core/samples";
 export { PALETTE, PALETTES, DEFAULT_STYLE } from "./core/style";
 export { formatNumber, formatPercent, parseDateToken, cagr } from "./core/format";
+// Shared renderer geometry — the headless pptx renderer (skill/scripts/render-pptx.mjs)
+// consumes these from the built lib instead of re-deriving them.
+export { arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints } from "./core/geometry";
 export type { ChartConfig, ChartData, ChartKind, Decorations, Series } from "./core/types";
 export type { Scene, SceneNode } from "./core/scene";

@@ -9,7 +9,8 @@
  * Requires PowerPointApi 1.4+ (ShapeCollection.addGeometricShape / addLine /
  * addTextBox). Grouping and arrowhead rotation degrade gracefully on older hosts.
  */
-import { polar, type Scene, type SceneNode, type TextNode, type WedgeNode } from "../core/scene";
+import { polar, arrowheadBox, wedgeFanSteps } from "../core/geometry";
+import type { Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 
 /* global PowerPoint, Office */
 
@@ -423,27 +424,21 @@ function addNode(
     case "text":
       return [addText(shapes, n, dx, dy, opts)];
     case "arrowhead": {
-      // No freeform API in Office.js: approximate with a rotated triangle.
-      const s = n.size * 2;
-      const theta = (((n.angle + 90) % 360) + 360) % 360;
-      const rad = (theta * Math.PI) / 180;
-      // The geometric triangle's tip sits at its box top-centre; offset the box
-      // so the tip lands on (n.x, n.y) after rotating θ° about the box centre —
-      // the SVG renderer anchors the tip, not the centroid.
-      const bx = n.x - (s / 2) * Math.sin(rad);
-      const by = n.y + (s / 2) * Math.cos(rad);
+      // No freeform API in Office.js: a rotated geometric triangle whose tip is
+      // offset onto (n.x, n.y) about the box centre — see arrowheadBox.
+      const box = arrowheadBox(n.x, n.y, n.size, n.angle);
       const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.triangle, {
-        left: dx + bx - s / 2,
-        top: dy + by - s / 2,
-        width: s,
-        height: s,
+        left: dx + box.left,
+        top: dy + box.top,
+        width: box.size,
+        height: box.size,
       });
       shape.fill.setSolidColor(n.fill);
       shape.lineFormat.visible = false;
       try {
         // Geometric 'triangle' points up (= -90° in scene terms); rotation is
         // exposed from PowerPointApi 1.9 — best effort on older hosts.
-        (shape as unknown as { rotation: number }).rotation = theta;
+        (shape as unknown as { rotation: number }).rotation = box.rotation;
       } catch {
         /* rotation unsupported — arrowhead stays axis-aligned */
       }
@@ -526,11 +521,8 @@ function addWedgeFan(
   const annular = n.innerR > 0;
   const midR = annular ? (n.innerR + n.r) / 2 : n.r / 2;
   const bandH = annular ? n.r - n.innerR : n.r;
-  // Adaptive density: keep chord sagitta under ~0.5pt so edges read as smooth
-  // (stepDeg ≈ 2·√(2·tol/r) rad), capped to bound the shape count per wedge.
-  const stepDeg = Math.max(3, Math.min(12, (2 * Math.sqrt((2 * 0.5) / Math.max(n.r, 1)) * 180) / Math.PI));
-  const steps = Math.max(1, Math.min(60, Math.ceil(span / stepDeg)));
-  const step = span / steps;
+  // Adaptive fan density (chord sagitta under ~0.5pt), capped — see wedgeFanSteps.
+  const { steps, step } = wedgeFanSteps(n.r, span);
   for (let i = 0; i < steps; i++) {
     const mid = n.startAngle + step * (i + 0.5);
     // Slightly overlapping chords hide the seams between fan shapes.

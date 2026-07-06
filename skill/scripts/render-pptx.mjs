@@ -25,7 +25,7 @@ if (!engine) {
   console.error("powerchart engine not found — run `npm run build:lib` first");
   process.exit(1);
 }
-const { buildChart, DEFAULT_SIZE } = engine;
+const { buildChart, DEFAULT_SIZE, arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints } = engine;
 
 const [, , input, output = "powerchart.pptx"] = process.argv;
 if (!input) {
@@ -44,12 +44,6 @@ pres.defineLayout({ name: "WIDE", width: SLIDE.w, height: SLIDE.h });
 pres.layout = "WIDE";
 
 const hex = (c) => (c ?? "000000").replace("#", "");
-
-// Scene polar: 0° = 12 o'clock, clockwise (matches src/core/scene.ts).
-const polar = (cx, cy, r, angleDeg) => {
-  const a = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-};
 
 /** Map one scene node to PptxgenJS calls at slide offset (inches). */
 function addNode(slide, n, dx, dy) {
@@ -147,29 +141,20 @@ function addNode(slide, n, dx, dy) {
         line: n.stroke ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       };
       if (n.innerR > 0) {
-        // Sunburst ring / gauge: a real filled annular sector via custGeom —
-        // outer arc forward, inner arc back, arcs approximated by short chords.
-        // (OOXML's "pie" shape can't express an inner radius.)
-        const steps = Math.max(2, Math.ceil(span / 6));
+        // Sunburst ring / gauge: a real filled annular sector via custGeom
+        // (OOXML's "pie" shape can't express an inner radius) — see
+        // annularSectorPoints (outer arc forward, then inner arc back).
         const rel = (p) => ({ x: (p.x - x0) * IN, y: (p.y - y0) * IN });
-        const pts = [];
-        for (let i = 0; i <= steps; i++) {
-          const ang = n.startAngle + (span * i) / steps;
-          pts.push({ ...rel(polar(n.cx, n.cy, n.r, ang)), moveTo: i === 0 });
-        }
-        for (let i = 0; i <= steps; i++) {
-          const ang = n.endAngle - (span * i) / steps;
-          pts.push(rel(polar(n.cx, n.cy, n.innerR, ang)));
-        }
+        const arc = annularSectorPoints(n.cx, n.cy, n.innerR, n.r, n.startAngle, n.endAngle);
+        const half = arc.length / 2; // outer points carry moveTo; inner points don't.
+        const pts = arc.map((p, i) => (i < half ? { ...rel(p), moveTo: i === 0 } : rel(p)));
         pts.push({ close: true });
         slide.addShape("custGeom", { ...box, points: pts });
       } else if (span >= 359.9) {
         slide.addShape("ellipse", box);
       } else {
         // Scene angles: 0 = 12 o'clock, clockwise; OOXML pie: 0 = 3 o'clock.
-        const a1 = (((n.startAngle - 90) % 360) + 360) % 360;
-        const a2 = (((n.endAngle - 90) % 360) + 360) % 360;
-        slide.addShape("pie", { ...box, angleRange: [a1, a2] });
+        slide.addShape("pie", { ...box, angleRange: [sceneToOoxmlPieAngle(n.startAngle), sceneToOoxmlPieAngle(n.endAngle)] });
       }
       break;
     }
@@ -185,22 +170,17 @@ function addNode(slide, n, dx, dy) {
       break;
     }
     case "arrowhead": {
-      const s = n.size * 2;
-      const theta = (((n.angle + 90) % 360) + 360) % 360;
-      const rad = (theta * Math.PI) / 180;
-      // The geometric triangle's tip sits at its box top-centre; offset the box
-      // so the tip lands on (n.x, n.y) after rotating θ° about the box centre —
-      // matching the SVG renderer, which anchors the tip (not the centroid).
-      const bx = n.x - (s / 2) * Math.sin(rad);
-      const by = n.y + (s / 2) * Math.cos(rad);
+      // Rotated triangle whose tip is offset onto (n.x, n.y) about the box
+      // centre — matching the SVG renderer, which anchors the tip. See arrowheadBox.
+      const box = arrowheadBox(n.x, n.y, n.size, n.angle);
       slide.addShape("triangle", {
-        x: dx + (bx - s / 2) * IN,
-        y: dy + (by - s / 2) * IN,
-        w: s * IN,
-        h: s * IN,
+        x: dx + box.left * IN,
+        y: dy + box.top * IN,
+        w: box.size * IN,
+        h: box.size * IN,
         fill: { color: hex(n.fill) },
         line: { type: "none" },
-        rotate: Math.round(theta),
+        rotate: Math.round(box.rotation),
       });
       break;
     }

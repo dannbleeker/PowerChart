@@ -126,11 +126,9 @@ export type SceneNode =
   | ArrowheadNode
   | PolygonNode;
 
-/** Point on a circle for wedge geometry (0° = 12 o'clock, clockwise). */
-export function polar(cx: number, cy: number, r: number, angleDeg: number): { x: number; y: number } {
-  const a = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-}
+// Circle/wedge math lives in ./geometry (shared with the renderers); re-exported
+// here so scene consumers (layouts) keep importing `polar` from the scene module.
+export { polar } from "./geometry";
 
 export interface Scene {
   width: number;
