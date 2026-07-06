@@ -73,7 +73,11 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Per-category denominator for 100% charts (think-cell's "100%=" row).
   const denominators = data.categories.map((_, c) => {
     const d = data.hundredPercent?.[c];
-    return d != null && d > 0 ? d : posTotals[c];
+    if (d != null && d > 0) return d;
+    // An all-negative category has no positive total; normalise against the
+    // negative magnitude so its segments fill down to -100% instead of
+    // collapsing to zero (v / 0).
+    return posTotals[c] > 0 ? posTotals[c] : -negTotals[c];
   });
   const fmt = resolveFormat(
     [...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)), ...signedTotals],
@@ -399,10 +403,20 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
  */
 export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const marked = cfg.data.series.some((s) => s.type === "line");
-  const lines = marked ? cfg.data.series.filter((s) => s.type === "line") : cfg.data.series.slice(-1);
+  const nSeries = cfg.data.series.length;
+  // Unmarked combo: the last series is the line, the rest are columns. A lone
+  // series is a plain column, not both a column *and* a line (which would
+  // double-render it).
+  const lines = marked
+    ? cfg.data.series.filter((s) => s.type === "line")
+    : nSeries > 1
+      ? cfg.data.series.slice(-1)
+      : [];
   const cols = marked
     ? cfg.data.series.filter((s) => s.type !== "line")
-    : cfg.data.series.slice(0, Math.max(1, cfg.data.series.length - 1));
+    : nSeries > 1
+      ? cfg.data.series.slice(0, nSeries - 1)
+      : cfg.data.series;
 
   // Column mode: stacked (default), clustered, 100%, waterfall, or mekko.
   const columnsKind = cfg.combo?.columns ?? "stacked";
@@ -418,9 +432,27 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       ? Math.max(0, ...cols.flatMap((s) => s.values.filter((v): v is number => v != null)))
       : Math.max(0, ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)));
   const lineMax = Math.max(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  // Waterfall columns reach their running cumulative total, not the per-category
+  // positive sum, so `stackMax` understates them; track the cumulative peak so a
+  // shared-axis line taller than it isn't clipped off the top of the plot.
+  const wfMax = (() => {
+    const totals = new Set(cfg.waterfall?.totalIndices ?? []);
+    let running = 0;
+    let max = 0;
+    cfg.data.categories.forEach((_, c) => {
+      if (!totals.has(c)) running += cols[0]?.values[c] ?? 0;
+      max = Math.max(max, running);
+    });
+    return max;
+  })();
   // Secondary axis: line series get their own right-hand scale. A 100% / mekko
   // base forces it. Independent axes replace the shared secondary axis.
   const secondary = (!!cfg.secondaryAxis || noPrimaryAxis) && !independent;
+  // A shared-axis line that overflows the waterfall's cumulative peak needs the
+  // column scale stretched to fit it (only then — otherwise leave the
+  // waterfall's own auto scale untouched to preserve existing layouts).
+  const waterfallLineOverflow =
+    columnsKind === "waterfall" && !secondary && !independent && cfg.scale?.max == null && lineMax > wfMax;
   const colCfg: ChartConfig = {
     ...cfg,
     kind: columnsKind,
@@ -428,11 +460,15 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     scale:
       columnsKind === "stacked100"
         ? undefined
-        : columnsKind === "mekko" || columnsKind === "waterfall"
+        : columnsKind === "mekko"
           ? cfg.scale
-          : cfg.scale?.max != null || secondary
-            ? cfg.scale
-            : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
+          : columnsKind === "waterfall"
+            ? waterfallLineOverflow
+              ? { ...cfg.scale, max: niceTicks(0, Math.max(lineMax, wfMax, 1)).pop() }
+              : cfg.scale
+            : cfg.scale?.max != null || secondary
+              ? cfg.scale
+              : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
   };
   const result =
     columnsKind === "waterfall"
