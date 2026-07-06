@@ -43,8 +43,12 @@ export interface EditTarget {
 
 export async function insertSceneIntoSlide(scene: Scene, opts: InsertOptions = {}): Promise<void> {
   await PowerPoint.run(async (context) => {
-    renderScene(getTargetSlide(context), scene, opts);
+    const slide = getTargetSlide(context);
+    const created = renderShapes(slide, scene, opts);
+    // Commit the shapes first — so grouping/tagging (which some hosts, notably
+    // PowerPoint on the web, don't support) can't roll back the whole insert.
     await context.sync();
+    await groupAndTag(context, slide, created, opts);
   });
 }
 
@@ -55,8 +59,9 @@ export async function updateChartInSlide(scene: Scene, target: EditTarget, opts:
     const old = slide.shapes.getItemOrNullObject(target.shapeId);
     await context.sync();
     if (!old.isNullObject) old.delete();
-    renderScene(slide, scene, { ...opts, left: target.left, top: target.top });
+    const created = renderShapes(slide, scene, { ...opts, left: target.left, top: target.top });
     await context.sync();
+    await groupAndTag(context, slide, created, { ...opts, left: target.left, top: target.top });
   });
 }
 
@@ -191,36 +196,62 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
     await context.sync();
     for (let i = 0; i < scenes.length; i++) {
       const slide = slides.getItemAt(before.value + i);
-      renderScene(slide, scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
+      renderShapes(slide, scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
     }
     await context.sync();
   });
 }
 
-function renderScene(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions): void {
+/** True when the host advertises the given PowerPointApi requirement set. */
+function supports(version: string): boolean {
+  try {
+    return Office.context.requirements.isSetSupported("PowerPointApi", version);
+  } catch {
+    return false;
+  }
+}
+
+/** Add every scene node as a shape (no grouping/tagging). Returns the shapes. */
+function renderShapes(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions): PowerPoint.Shape[] {
   const left = opts.left ?? 60;
   const top = opts.top ?? 90;
   const shapes = slide.shapes;
   const created: PowerPoint.Shape[] = [];
-
   for (const n of scene.nodes) {
     created.push(...addNode(shapes, n, left, top, opts));
   }
+  return created;
+}
 
+/**
+ * Group the inserted shapes and persist the config tag — each in its OWN sync
+ * and gated on host support, so a host that lacks grouping (e.g. PowerPoint on
+ * the web) or tags never rolls back the already-committed shapes. The shapes
+ * must already be committed (a prior context.sync) before this runs.
+ */
+async function groupAndTag(
+  context: PowerPoint.RequestContext,
+  slide: PowerPoint.Slide,
+  created: PowerPoint.Shape[],
+  opts: InsertOptions,
+): Promise<void> {
   let tagTarget: PowerPoint.Shape | undefined = created[0];
-  if (opts.group !== false && created.length > 1) {
+  // Grouping is PowerPointApi 1.8+; skip entirely where unsupported.
+  if (opts.group !== false && created.length > 1 && supports("1.8")) {
     try {
-      // PowerPointApi 1.8+. On older hosts the shapes are simply left ungrouped.
-      tagTarget = (shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(created);
-      tagTarget.name = "PowerChart";
+      const group = (slide.shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(created);
+      group.name = "PowerChart";
+      await context.sync();
+      tagTarget = group;
     } catch {
-      /* grouping unavailable — leave shapes ungrouped */
+      /* grouping failed — shapes stay ungrouped, chart is already on the slide */
     }
   }
-  if (opts.tagData && tagTarget) {
+  // Tags are PowerPointApi 1.3+; keep the chart re-editable where supported.
+  if (opts.tagData && tagTarget && supports("1.3")) {
     try {
-      // PowerPointApi 1.3+ — persists the data model in the document.
       tagTarget.tags.add(CHART_TAG, opts.tagData);
+      await context.sync();
     } catch {
       /* tags unavailable — chart is inserted but not re-editable */
     }

@@ -112,8 +112,15 @@ function makeSlide(id: string) {
 
 type FakeSlide = ReturnType<typeof makeSlide>;
 
-/** Install a fake PowerPoint global whose run() drives the mocked context. */
-function installHost(slides: FakeSlide[], selectedShapes: FakeShape[] = [], selectedSlide = slides[0]) {
+/** Install a fake PowerPoint global whose run() drives the mocked context.
+ * `supported(version)` models the host's requirement-set support (default: all)
+ * — pass a predicate to simulate e.g. PowerPoint on the web lacking grouping. */
+function installHost(
+  slides: FakeSlide[],
+  selectedShapes: FakeShape[] = [],
+  selectedSlide = slides[0],
+  supported: (version: string) => boolean = () => true,
+) {
   const context = {
     presentation: {
       slides: {
@@ -143,6 +150,9 @@ function installHost(slides: FakeSlide[], selectedShapes: FakeShape[] = [], sele
     ShapeAutoSize: { autoSizeNone: "none" },
     TextVerticalAlignment: { top: "top", middle: "middle", bottom: "bottom" },
     ParagraphHorizontalAlignment: { left: "left", center: "center", right: "right" },
+  });
+  vi.stubGlobal("Office", {
+    context: { host: "PowerPoint", requirements: { isSetSupported: (_set: string, version: string) => supported(version) } },
   });
   return context;
 }
@@ -290,6 +300,27 @@ describe("scene node mapping", () => {
     // No group, no fan triangles survive — but the rect is inserted and tagged.
     expect(slide.created.some((s) => s.type === "group")).toBe(false);
     expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
+  });
+
+  it("still inserts (ungrouped) when the host lacks grouping — the web case", async () => {
+    // PowerPoint on the web: grouping (1.8) unsupported, tags (1.3) supported.
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, (v) => v !== "1.8");
+    await insertSceneIntoSlide(buildChart(config), { tagData: "cfg" });
+    // The shapes are committed and no grouping was attempted…
+    expect(slide.created.some((s) => s.type === "group")).toBe(false);
+    expect(slide.created.filter((s) => s.geo === "rectangle").length).toBeGreaterThanOrEqual(4);
+    // …and the config tag lands on the first shape, so the chart is re-editable.
+    expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
+  });
+
+  it("skips tagging when the host lacks tags", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, () => false); // nothing supported
+    await insertSceneIntoSlide(buildChart(config), { tagData: "cfg" });
+    expect(slide.created.some((s) => s.type === "group")).toBe(false);
+    expect(slide.created[0].tagStore.get(CHART_TAG)).toBeUndefined();
+    expect(slide.created.length).toBeGreaterThan(0);
   });
 
   it("falls back to the first slide when nothing is selected", async () => {
