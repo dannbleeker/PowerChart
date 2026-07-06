@@ -1,4 +1,5 @@
-import { polar, type Scene, type SceneNode } from "../core/scene";
+import { polar } from "../core/geometry";
+import type { Scene, SceneNode } from "../core/scene";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
