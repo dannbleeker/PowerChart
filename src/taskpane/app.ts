@@ -238,8 +238,34 @@ function renderGallery() {
     cap.className = "thumb-cap";
     cap.textContent = label;
     b.append(pic, cap);
-    b.addEventListener("click", () => applyConfig(sampleConfig(kind), null));
+    b.addEventListener("click", () => {
+      applyConfig(sampleConfig(kind), null);
+      // Auto-collapse the (tall) type grid once a kind is chosen — the summary
+      // then shows the current kind, click to re-expand.
+      const acc = document.getElementById("type-acc") as HTMLDetailsElement | null;
+      if (acc) acc.open = false;
+    });
     gallery.appendChild(b);
+  }
+  updateTypeSummary();
+}
+
+/** Reflect the selected chart kind in the collapsed "1 · Chart type" summary. */
+function updateTypeSummary() {
+  const sub = document.getElementById("type-sub");
+  if (sub) sub.textContent = CHART_KINDS.find((k) => k.kind === state.kind)?.label ?? state.kind;
+}
+
+/** Top-level mode tabs: Chart / Elements / Agenda / Automation. */
+function wireTabs() {
+  const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".tabs .tab"));
+  const panels = Array.from(document.querySelectorAll<HTMLElement>(".tab-panel"));
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => {
+      const name = tab.dataset.tab;
+      tabs.forEach((t) => t.classList.toggle("active", t === tab));
+      panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === name));
+    });
   }
 }
 
@@ -692,6 +718,7 @@ titleInput.addEventListener("input", () => {
   state.title = titleInput.value;
   renderPreview();
 });
+wireTabs();
 renderGallery();
 renderOptions();
 renderPreview();

@@ -21,6 +21,12 @@ section and `skill/reference.md`.
 
 ## Inserting and editing a chart
 
+The pane is organised into four **tabs** — **Chart** (the main flow), **Elements**,
+**Agenda**, and **Automation** — and the **Insert / Update** button is pinned to a
+bar at the bottom so it's always reachable. Within the Chart tab, *Chart type*,
+*Decorations* and *Preview & size* are collapsible sections (click the header);
+picking a type auto-collapses the gallery to a compact "current type" summary.
+
 1. **Pick a chart type** from the gallery (thumbnails are live previews).
 2. **Type or paste your data** into the datasheet — row 1 is categories,
    column A is series names. Pasting a range from Excel (Ctrl+V) works.
