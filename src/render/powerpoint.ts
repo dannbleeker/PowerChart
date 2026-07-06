@@ -292,23 +292,55 @@ function addNode(
       return [shape];
     }
     case "line": {
-      const line = shapes.addLine(PowerPoint.ConnectorType.straight, {
-        left: dx + Math.min(n.x1, n.x2),
-        top: dy + Math.min(n.y1, n.y2),
-        width: Math.abs(n.x2 - n.x1),
-        height: Math.abs(n.y2 - n.y1),
-      });
-      line.lineFormat.color = n.stroke;
-      line.lineFormat.weight = n.strokeWidth ?? 1;
-      if (n.dash) {
-        try {
-          line.lineFormat.dashStyle = PowerPoint.ShapeLineDashStyle.dash;
-        } catch {
-          /* dash style unsupported on this host */
+      const x1 = dx + n.x1;
+      const y1 = dy + n.y1;
+      const x2 = dx + n.x2;
+      const y2 = dy + n.y2;
+      const w = Math.abs(x2 - x1);
+      const h = Math.abs(y2 - y1);
+      // PowerPoint's addLine takes only a bounding box, so it can't tell an
+      // up-right line from a down-right one — and a zero-thickness box makes
+      // the web host substitute a default and draw a giant diagonal. Axis-
+      // aligned lines (the common case: baselines, gridlines, connectors, value
+      // lines — all horizontal/vertical, and the only ones we dash) use addLine
+      // with the near-zero dimension clamped; diagonal lines are drawn as a thin
+      // rotated rectangle, which is direction-correct on every host.
+      if (w < 0.5 || h < 0.5) {
+        const line = shapes.addLine(PowerPoint.ConnectorType.straight, {
+          left: Math.min(x1, x2),
+          top: Math.min(y1, y2),
+          width: Math.max(w, 0.5),
+          height: Math.max(h, 0.5),
+        });
+        line.lineFormat.color = n.stroke;
+        line.lineFormat.weight = n.strokeWidth ?? 1;
+        if (n.dash) {
+          try {
+            line.lineFormat.dashStyle = PowerPoint.ShapeLineDashStyle.dash;
+          } catch {
+            /* dash style unsupported on this host */
+          }
         }
+        if (n.name) line.name = n.name;
+        return [line];
       }
-      if (n.name) line.name = n.name;
-      return [line];
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const weight = Math.max(0.5, n.strokeWidth ?? 1);
+      const rect = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+        left: (x1 + x2) / 2 - len / 2,
+        top: (y1 + y2) / 2 - weight / 2,
+        width: len,
+        height: weight,
+      });
+      rect.fill.setSolidColor(n.stroke);
+      rect.lineFormat.visible = false;
+      try {
+        rect.rotation = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+      } catch {
+        /* rotation unsupported — line renders horizontally */
+      }
+      if (n.name) rect.name = n.name;
+      return [rect];
     }
     case "ellipse": {
       const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse, {

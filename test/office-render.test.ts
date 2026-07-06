@@ -249,6 +249,32 @@ describe("scene node mapping", () => {
     expect(slide.created.filter((s) => s.type !== "group").map((s) => s.geo)).toEqual(["homePlate", "chevron"]);
   });
 
+  it("draws axis-aligned lines with a clamped non-zero box (never a degenerate diagonal)", async () => {
+    const slide = await insert([
+      { kind: "line", x1: 10, y1: 50, x2: 200, y2: 50, stroke: "#333333", strokeWidth: 1, dash: [3, 2], name: "connector" },
+    ]);
+    const line = slide.created.find((s) => s.type === "line")!;
+    // Horizontal line: width spans, height is clamped up from 0 so the web host
+    // can't blow a zero-thickness box into a giant diagonal.
+    expect(line.box.width).toBeGreaterThan(180);
+    expect(line.box.height).toBeGreaterThanOrEqual(0.5);
+    expect(line.lineFormat.dashStyle).toBe("dash");
+  });
+
+  it("draws diagonal lines as thin rotated rectangles (direction-correct on every host)", async () => {
+    // Up-right and down-right diagonals a bounding box alone can't distinguish.
+    const down = await insert([{ kind: "line", x1: 0, y1: 0, x2: 100, y2: 100, stroke: "#a00000", strokeWidth: 2, name: "d" }]);
+    const dr = down.created.find((s) => s.geo === "rectangle")!;
+    expect(dr).toBeTruthy();
+    expect(dr.fillColor).toBe("#a00000");
+    expect(dr.rotation).toBeCloseTo(45, 0); // down-right
+    expect(down.created.some((s) => s.type === "line")).toBe(false);
+
+    const up = await insert([{ kind: "line", x1: 0, y1: 100, x2: 100, y2: 0, stroke: "#00a000", strokeWidth: 2, name: "u" }]);
+    const ur = up.created.find((s) => s.geo === "rectangle")!;
+    expect(ur.rotation).toBeCloseTo(-45, 0); // up-right — the case a box would mirror
+  });
+
   it("maps arrowheads to rotated triangles", async () => {
     const slide = await insert([{ kind: "arrowhead", x: 10, y: 10, size: 4, angle: 45, fill: "#000000", name: "ah" }]);
     const tri = slide.created[0];
