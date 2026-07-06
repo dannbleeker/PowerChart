@@ -399,9 +399,16 @@ function addNode(
     case "arrowhead": {
       // No freeform API in Office.js: approximate with a rotated triangle.
       const s = n.size * 2;
+      const theta = (((n.angle + 90) % 360) + 360) % 360;
+      const rad = (theta * Math.PI) / 180;
+      // The geometric triangle's tip sits at its box top-centre; offset the box
+      // so the tip lands on (n.x, n.y) after rotating θ° about the box centre —
+      // the SVG renderer anchors the tip, not the centroid.
+      const bx = n.x - (s / 2) * Math.sin(rad);
+      const by = n.y + (s / 2) * Math.cos(rad);
       const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.triangle, {
-        left: dx + n.x - s / 2,
-        top: dy + n.y - s / 2,
+        left: dx + bx - s / 2,
+        top: dy + by - s / 2,
         width: s,
         height: s,
       });
@@ -410,7 +417,7 @@ function addNode(
       try {
         // Geometric 'triangle' points up (= -90° in scene terms); rotation is
         // exposed from PowerPointApi 1.9 — best effort on older hosts.
-        (shape as unknown as { rotation: number }).rotation = n.angle + 90;
+        (shape as unknown as { rotation: number }).rotation = theta;
       } catch {
         /* rotation unsupported — arrowhead stays axis-aligned */
       }
@@ -487,6 +494,12 @@ function addWedgeFan(
   const cx = dx + n.cx;
   const cy = dy + n.cy;
   const span = n.endAngle - n.startAngle;
+  // Annular wedge (sunburst ring / gauge): a triangle can't leave a hole, so
+  // the band from innerR→r is drawn as radial rectangles; solid slices keep the
+  // triangle fan (which tapers to the centre).
+  const annular = n.innerR > 0;
+  const midR = annular ? (n.innerR + n.r) / 2 : n.r / 2;
+  const bandH = annular ? n.r - n.innerR : n.r;
   // Adaptive density: keep chord sagitta under ~0.5pt so edges read as smooth
   // (stepDeg ≈ 2·√(2·tol/r) rad), capped to bound the shape count per wedge.
   const stepDeg = Math.max(3, Math.min(12, (2 * Math.sqrt((2 * 0.5) / Math.max(n.r, 1)) * 180) / Math.PI));
@@ -494,25 +507,58 @@ function addWedgeFan(
   const step = span / steps;
   for (let i = 0; i < steps; i++) {
     const mid = n.startAngle + step * (i + 0.5);
-    // Slightly overlapping chords hide the seams between fan triangles.
-    const chord = 2 * n.r * Math.tan(((step / 2) * Math.PI) / 180) + 1;
-    const center = polar(cx, cy, n.r / 2, mid);
+    // Slightly overlapping chords hide the seams between fan shapes.
+    const chord = 2 * midR * Math.tan(((step / 2) * Math.PI) / 180) + 1;
+    const center = polar(cx, cy, midR, mid);
     try {
-      const tri = shapes.addGeometricShape(PowerPoint.GeometricShapeType.triangle, {
-        left: center.x - chord / 2,
-        top: center.y - n.r / 2,
-        width: chord,
-        height: n.r,
-      });
-      tri.fill.setSolidColor(n.fill);
-      tri.lineFormat.visible = false;
-      // Unrotated, the triangle's base points south (180° in wedge terms).
-      (tri as unknown as { rotation: number }).rotation = mid - 180;
-      if (n.name) tri.name = `${n.name}-f${i}`;
-      created.push(tri);
+      const shape = shapes.addGeometricShape(
+        annular ? PowerPoint.GeometricShapeType.rectangle : PowerPoint.GeometricShapeType.triangle,
+        {
+          left: center.x - chord / 2,
+          top: center.y - bandH / 2,
+          width: chord,
+          height: bandH,
+        },
+      );
+      shape.fill.setSolidColor(n.fill);
+      shape.lineFormat.visible = false;
+      // Unrotated the rectangle's height / the triangle's base points south
+      // (180° in wedge terms); rotate so it runs along `mid`.
+      (shape as unknown as { rotation: number }).rotation = annular ? mid : mid - 180;
+      if (n.name) shape.name = `${n.name}-f${i}`;
+      created.push(shape);
     } catch {
       /* rotation unsupported — skip the fan on this host */
       break;
+    }
+  }
+  // Best-effort slice outline: the two radial boundary edges as thin rectangles
+  // in the stroke colour (stroking every fan seam would web the slice). This
+  // reproduces think-cell's thin separators between adjacent slices. Drawn as
+  // rotated rectangles, not addLine, since a line's bounding box can't encode a
+  // diagonal's direction.
+  if (n.stroke && span < 359.9) {
+    const eInner = annular ? n.innerR : 0;
+    const eLen = n.r - eInner;
+    const eMidR = (eInner + n.r) / 2;
+    const sw = n.strokeWidth ?? 1;
+    for (const ang of [n.startAngle, n.endAngle]) {
+      const c = polar(cx, cy, eMidR, ang);
+      try {
+        const edge = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: c.x - sw / 2,
+          top: c.y - eLen / 2,
+          width: sw,
+          height: eLen,
+        });
+        edge.fill.setSolidColor(n.stroke);
+        edge.lineFormat.visible = false;
+        (edge as unknown as { rotation: number }).rotation = ang;
+        if (n.name) edge.name = `${n.name}-edge`;
+        created.push(edge);
+      } catch {
+        /* rotation unsupported — skip the separator */
+      }
     }
   }
   return created;

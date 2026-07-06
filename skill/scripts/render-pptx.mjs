@@ -45,6 +45,12 @@ pres.layout = "WIDE";
 
 const hex = (c) => (c ?? "000000").replace("#", "");
 
+// Scene polar: 0° = 12 o'clock, clockwise (matches src/core/scene.ts).
+const polar = (cx, cy, r, angleDeg) => {
+  const a = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+};
+
 /** Map one scene node to PptxgenJS calls at slide offset (inches). */
 function addNode(slide, n, dx, dy) {
   switch (n.kind) {
@@ -130,15 +136,34 @@ function addNode(slide, n, dx, dy) {
     }
     case "wedge": {
       const span = n.endAngle - n.startAngle;
+      const x0 = n.cx - n.r;
+      const y0 = n.cy - n.r;
       const box = {
-        x: dx + (n.cx - n.r) * IN,
-        y: dy + (n.cy - n.r) * IN,
+        x: dx + x0 * IN,
+        y: dy + y0 * IN,
         w: n.r * 2 * IN,
         h: n.r * 2 * IN,
         fill: { color: hex(n.fill) },
         line: n.stroke ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       };
-      if (span >= 359.9) {
+      if (n.innerR > 0) {
+        // Sunburst ring / gauge: a real filled annular sector via custGeom —
+        // outer arc forward, inner arc back, arcs approximated by short chords.
+        // (OOXML's "pie" shape can't express an inner radius.)
+        const steps = Math.max(2, Math.ceil(span / 6));
+        const rel = (p) => ({ x: (p.x - x0) * IN, y: (p.y - y0) * IN });
+        const pts = [];
+        for (let i = 0; i <= steps; i++) {
+          const ang = n.startAngle + (span * i) / steps;
+          pts.push({ ...rel(polar(n.cx, n.cy, n.r, ang)), moveTo: i === 0 });
+        }
+        for (let i = 0; i <= steps; i++) {
+          const ang = n.endAngle - (span * i) / steps;
+          pts.push(rel(polar(n.cx, n.cy, n.innerR, ang)));
+        }
+        pts.push({ close: true });
+        slide.addShape("custGeom", { ...box, points: pts });
+      } else if (span >= 359.9) {
         slide.addShape("ellipse", box);
       } else {
         // Scene angles: 0 = 12 o'clock, clockwise; OOXML pie: 0 = 3 o'clock.
@@ -161,14 +186,21 @@ function addNode(slide, n, dx, dy) {
     }
     case "arrowhead": {
       const s = n.size * 2;
+      const theta = (((n.angle + 90) % 360) + 360) % 360;
+      const rad = (theta * Math.PI) / 180;
+      // The geometric triangle's tip sits at its box top-centre; offset the box
+      // so the tip lands on (n.x, n.y) after rotating θ° about the box centre —
+      // matching the SVG renderer, which anchors the tip (not the centroid).
+      const bx = n.x - (s / 2) * Math.sin(rad);
+      const by = n.y + (s / 2) * Math.cos(rad);
       slide.addShape("triangle", {
-        x: dx + (n.x - s / 2) * IN,
-        y: dy + (n.y - s / 2) * IN,
+        x: dx + (bx - s / 2) * IN,
+        y: dy + (by - s / 2) * IN,
         w: s * IN,
         h: s * IN,
         fill: { color: hex(n.fill) },
         line: { type: "none" },
-        rotate: Math.round((((n.angle + 90) % 360) + 360) % 360),
+        rotate: Math.round(theta),
       });
       break;
     }

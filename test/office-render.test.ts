@@ -275,11 +275,39 @@ describe("scene node mapping", () => {
     expect(ur.rotation).toBeCloseTo(-45, 0); // up-right — the case a box would mirror
   });
 
-  it("maps arrowheads to rotated triangles", async () => {
+  it("maps arrowheads to rotated triangles anchored at the tip", async () => {
     const slide = await insert([{ kind: "arrowhead", x: 10, y: 10, size: 4, angle: 45, fill: "#000000", name: "ah" }]);
     const tri = slide.created[0];
     expect(tri.geo).toBe("triangle");
     expect(tri.rotation).toBe(135); // scene angle + 90
+    // The triangle's tip (box top-centre, rotated θ about the box centre) must
+    // land on the scene point (10,10) + the default 60/90pt insert offset.
+    const s = 8; // size * 2
+    const theta = (tri.rotation! * Math.PI) / 180;
+    const cx = tri.box.left + s / 2;
+    const cy = tri.box.top + s / 2;
+    const tipX = cx + (s / 2) * Math.sin(theta);
+    const tipY = cy - (s / 2) * Math.cos(theta);
+    expect(tipX).toBeCloseTo(70, 4); // 60 + 10
+    expect(tipY).toBeCloseTo(100, 4); // 90 + 10
+  });
+
+  it("renders an annular wedge (sunburst ring / gauge) as a rotated rectangle band", async () => {
+    const slide = await insert([
+      { kind: "wedge", cx: 50, cy: 50, r: 30, innerR: 15, startAngle: 0, endAngle: 90, fill: "#333333", stroke: "#ffffff", strokeWidth: 1, name: "ring" },
+    ]);
+    const band = slide.created.filter((s) => s.geo === "rectangle" && s.name?.includes("-f"));
+    expect(band.length).toBeGreaterThan(2); // the annular band, not a triangle fan
+    for (const b of band) {
+      expect(b.fillColor).toBe("#333333");
+      expect(typeof b.rotation).toBe("number");
+    }
+    // No triangles for an annular wedge (a triangle can't leave a hole).
+    expect(slide.created.some((s) => s.geo === "triangle")).toBe(false);
+    // Two radial separators in the stroke colour.
+    const edges = slide.created.filter((s) => s.name === "ring-edge");
+    expect(edges.length).toBe(2);
+    for (const e of edges) expect(e.fillColor).toBe("#ffffff");
   });
 
   it("skips grouping when group:false or only one shape", async () => {
