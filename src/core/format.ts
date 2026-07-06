@@ -2,16 +2,32 @@ import type { NumberFormat } from "./types";
 
 export const DEFAULT_FORMAT: NumberFormat = { decimals: "auto" };
 
+/**
+ * Intl.NumberFormat instances are expensive to construct but immutable and
+ * reusable, and a chart formats hundreds of labels sharing a handful of
+ * (locale, decimals) pairs. `Number.prototype.toLocaleString(locale, opts)` is
+ * specified to construct a fresh NumberFormat on every call, so caching by
+ * (locale, decimals) and reusing `.format()` is byte-identical output at a
+ * fraction of the cost.
+ */
+const NUMBER_FORMATTERS = new Map<string, Intl.NumberFormat>();
+function numberFormatter(locale: string, decimals: number): Intl.NumberFormat {
+  const key = `${locale} ${decimals}`;
+  let nf = NUMBER_FORMATTERS.get(key);
+  if (!nf) {
+    nf = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    NUMBER_FORMATTERS.set(key, nf);
+  }
+  return nf;
+}
+
 /** Format a value the way think-cell's default label format does: compact, thousands-separated. */
 export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string {
   const f = { ...DEFAULT_FORMAT, ...fmt };
   const abs = Math.abs(v);
   const decimals =
     f.decimals === "auto" ? (abs !== 0 && abs < 1 ? 2 : abs < 10 ? 1 : 0) : f.decimals;
-  let s = v.toLocaleString(f.locale ?? "en-US", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  let s = numberFormatter(f.locale ?? "en-US", decimals).format(v);
   // Rounding a small negative toward zero can yield "-0" — normalise to "0".
   if (/^-0([.,]0+)?$/.test(s)) s = s.slice(1);
   if (f.forceSign && v > 0) s = "+" + s;
