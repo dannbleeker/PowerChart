@@ -202,6 +202,32 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
   });
 }
 
+/**
+ * Testing aid: append one slide per item and render its chart, tagged so each
+ * stays re-editable. Shapes are committed for every slide first (one sync),
+ * then grouped/tagged per slide — so a host lacking grouping (PowerPoint on the
+ * web) never rolls back the already-inserted charts. Requires PowerPointApi 1.3
+ * (slides.add).
+ */
+export async function insertDemoDeck(items: { scene: Scene; tagData?: string }[]): Promise<void> {
+  await PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    const before = slides.getCount();
+    await context.sync();
+    for (let i = 0; i < items.length; i++) slides.add();
+    await context.sync();
+    const perSlide = items.map((item, i) => {
+      const slide = slides.getItemAt(before.value + i);
+      const created = renderShapes(slide, item.scene, { left: 60, top: 90 });
+      return { slide, created, tagData: item.tagData };
+    });
+    await context.sync();
+    for (const p of perSlide) {
+      await groupAndTag(context, p.slide, p.created, { group: true, tagData: p.tagData });
+    }
+  });
+}
+
 /** True when the host advertises the given PowerPointApi requirement set. */
 function supports(version: string): boolean {
   try {

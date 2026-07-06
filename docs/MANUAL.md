@@ -249,6 +249,13 @@ drives the CLI (`npm run render`) and the **Claude Agent Skill**
 Capabilities → Skills, then ask Claude for "a waterfall of …" on any
 surface, including Claude for PowerPoint).
 
+### Testing
+
+**Insert demo deck** appends a fresh slide for every chart kind plus a set of
+feature and element highlights — a fast way to eyeball how everything renders
+as native shapes in your PowerPoint. Each chart stays editable (click it and
+**Edit selected chart**); delete the slides when you're done.
+
 ## Excel companion
 
 Sideload `manifest-excel.xml` in Excel, select a range, and **Generate**

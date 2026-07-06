@@ -4,6 +4,7 @@ import {
   CHART_TAG,
   getSelectionBounds,
   insertAgendaSlides,
+  insertDemoDeck,
   insertSceneIntoSlide,
   isPowerPointHost,
   listChartsInDeck,
@@ -485,6 +486,26 @@ describe("insertAgendaSlides", () => {
       expect(slides[i].created.length).toBeGreaterThan(0);
       expect(slides[i].created.some((s) => s.type === "group")).toBe(false);
     }
+  });
+});
+
+describe("insertDemoDeck", () => {
+  it("appends one slide per item and tags the charts with their config", async () => {
+    const s1 = makeSlide("s1");
+    const slides = [s1];
+    installHost(slides);
+    const items = [
+      { scene: buildChart({ ...DEFAULT_SIZE, kind: "pie" as const, data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 1] }] } }), tagData: '{"kind":"pie"}' },
+      { scene: buildChart({ ...DEFAULT_SIZE, kind: "clustered" as const, data: { categories: ["A"], series: [{ name: "S", values: [5] }] } }), tagData: '{"kind":"clustered"}' },
+      { scene: { width: 100, height: 40, nodes: [{ kind: "rect" as const, x: 0, y: 0, w: 10, h: 10, fill: "#111111" }] } }, // untagged element
+    ];
+    await insertDemoDeck(items);
+    // Three slides appended after the original.
+    expect(slides).toHaveLength(4);
+    for (let i = 1; i < 4; i++) expect(slides[i].created.length).toBeGreaterThan(0);
+    // The two chart slides carry their config tag; the element slide does not.
+    expect(slides[1].created.some((s) => s.tagStore.get(CHART_TAG) === '{"kind":"pie"}')).toBe(true);
+    expect(slides[3].created.every((s) => !s.tagStore.has(CHART_TAG))).toBe(true);
   });
 });
 
