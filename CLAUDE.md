@@ -42,7 +42,7 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 
 ## Working conventions (established with the repo owner)
 
-- **Branch flow**: develop on `claude/think-cell-clone-research-5tgx3v`; after
+- **Branch flow**: develop on `claude/backlog-review-9c9qr9`; after
   each merge, reset it onto `origin/main` (`git checkout -B <branch>
   origin/main`) — never stack on merged history. One PR per increment.
 - **Auto-merge is authorized**: once CI is green on the exact pushed commit
