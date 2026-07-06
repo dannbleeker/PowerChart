@@ -6,6 +6,7 @@ import { sceneToSvg } from "../render/svg";
 import {
   getSelectionBounds,
   insertAgendaSlides,
+  insertDemoDeck,
   insertSceneIntoSlide,
   isPowerPointHost,
   listChartsInDeck,
@@ -16,6 +17,7 @@ import {
   type EditTarget,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
+import { demoItems } from "../core/demo";
 import { buildCheckbox, buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
 import { localizePane } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
@@ -1041,6 +1043,17 @@ function wireInsert() {
         const chapters = agendaChapters();
         if (!chapters.length) return;
         await insertAgendaSlides(chapters.map((_, i) => buildAgendaScene(chapters, { highlight: i })));
+      }),
+    );
+    // Testing aid: one demo slide per chart kind + feature/element highlights.
+    const demoBtn = $("demo-insert") as HTMLButtonElement;
+    demoBtn.disabled = false;
+    demoBtn.addEventListener(
+      "click",
+      guard(async () => {
+        const items = demoItems();
+        await insertDemoDeck(items.map((i) => ({ scene: i.scene, tagData: i.configJson })));
+        hostNote.textContent = `Inserted ${items.length} demo slides at the end of the deck.`;
       }),
     );
   } else {
