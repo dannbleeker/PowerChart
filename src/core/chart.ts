@@ -226,10 +226,36 @@ function buildMultiples(cfg: ChartConfig): Scene | null {
     decorations: { ...cfg.decorations, seriesLabels: false },
   });
 
+  // Per-panel extent that also covers the carried Error whiskers (base ± delta)
+  // and Target rows — `valueExtent` alone treats an error row as a standalone
+  // series, so a whisker or high target could render past the panel edge.
+  const panelExtent = (s: (typeof dataSeries)[number], si: number): { min: number; max: number } | null => {
+    const pcfg = panelCfg(s, si);
+    const { cfg: baseCfg, errors, targets } = extractErrorRows(pcfg);
+    const base = valueExtent(baseCfg);
+    if (!base) return null;
+    let { min, max } = base;
+    const vals = baseCfg.data.series[0]?.values ?? [];
+    if (errors) {
+      vals.forEach((v, c) => {
+        if (v == null) return;
+        if (errors.plus[c] != null) max = Math.max(max, v + errors.plus[c]!);
+        if (errors.minus[c] != null) min = Math.min(min, v - errors.minus[c]!);
+      });
+    }
+    if (targets) {
+      for (const t of targets) if (t != null) {
+        max = Math.max(max, t);
+        min = Math.min(min, t);
+      }
+    }
+    return { min, max };
+  };
+
   // Shared scale across panels; radar (no valueExtent) pins 0..global max.
   let scale = cfg.scale;
   if (scale?.min == null || scale?.max == null) {
-    const exts = dataSeries.map((s, si) => valueExtent(panelCfg(s, si)));
+    const exts = dataSeries.map((s, si) => panelExtent(s, si));
     const global = exts.every((e) => e != null)
       ? { min: Math.min(...exts.map((e) => e!.min)), max: Math.max(...exts.map((e) => e!.max)) }
       : { min: 0, max: Math.max(1, ...dataSeries.flatMap((s) => s.values.filter((v): v is number => v != null))) };
