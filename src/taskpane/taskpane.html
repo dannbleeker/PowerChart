@@ -13,115 +13,149 @@
       <p class="tagline">think-cell-style charts as native PowerPoint shapes</p>
     </header>
 
-    <section class="section">
-      <h2>1 · Chart type</h2>
-      <div id="gallery" class="gallery"></div>
-      <div class="element-row" style="margin-top: 8px">
-        <select id="template-list"></select>
-        <button id="template-save">Save as template</button>
-        <button id="template-delete">Delete</button>
+    <!-- Top-level mode switch: charts are the main flow; Elements / Agenda /
+         Automation are separate tools that get their own tab. -->
+    <nav class="tabs" id="tabs" role="tablist">
+      <button class="tab active" data-tab="chart" role="tab">Chart</button>
+      <button class="tab" data-tab="elements" role="tab">Elements</button>
+      <button class="tab" data-tab="agenda" role="tab">Agenda</button>
+      <button class="tab" data-tab="automation" role="tab">Automation</button>
+    </nav>
+
+    <div class="scroll">
+      <div id="selection-banner" class="banner" style="display: none">
+        A PowerChart is selected on the slide.
+        <button id="selection-banner-load">Edit it</button>
       </div>
-    </section>
 
-    <section class="section">
-      <h2>2 · Data</h2>
-      <label class="field">Chart title <input type="text" id="chart-title" placeholder="optional" /></label>
-      <p class="hint" id="sheet-hint">
-        Paste straight from Excel. Special rows by name: <code>e</code> cell = waterfall total,
-        <code>100%=</code> row = 100%-chart denominator, <code>X extent</code> row = Mekko widths,
-        <code>X</code>/<code>Y</code>/<code>Size</code>/<code>Group</code> rows = scatter &amp; bubble,
-        <code>Start</code>/<code>End</code>/<code>Milestone</code> rows = Gantt.
-      </p>
-      <div id="datasheet"></div>
-    </section>
+      <!-- ── CHART ──────────────────────────────────────────────── -->
+      <div class="tab-panel active" data-panel="chart">
+        <details class="section acc" id="type-acc" open>
+          <summary><span class="acc-title">1 · Chart type</span><span class="acc-sub" id="type-sub"></span></summary>
+          <div class="acc-body">
+            <div id="gallery" class="gallery"></div>
+            <div class="element-row" style="margin-top: 8px">
+              <select id="template-list"></select>
+              <button id="template-save">Save as template</button>
+              <button id="template-delete">Delete</button>
+            </div>
+          </div>
+        </details>
 
-    <section class="section">
-      <h2>3 · Decorations</h2>
-      <div id="options" class="options"></div>
-    </section>
+        <section class="section">
+          <h2>2 · Data</h2>
+          <label class="field">Chart title <input type="text" id="chart-title" placeholder="optional" /></label>
+          <p class="hint" id="sheet-hint">
+            Paste straight from Excel. Special rows by name: <code>e</code> cell = waterfall total,
+            <code>100%=</code> row = 100%-chart denominator, <code>X extent</code> row = Mekko widths,
+            <code>X</code>/<code>Y</code>/<code>Size</code>/<code>Group</code> rows = scatter &amp; bubble,
+            <code>Start</code>/<code>End</code>/<code>Milestone</code> rows = Gantt.
+          </p>
+          <div id="datasheet"></div>
+        </section>
 
-    <div id="selection-banner" class="banner" style="display: none">
-      A PowerChart is selected on the slide.
-      <button id="selection-banner-load">Edit it</button>
+        <details class="section acc" open>
+          <summary><span class="acc-title">3 · Decorations</span></summary>
+          <div class="acc-body">
+            <div id="options" class="options"></div>
+          </div>
+        </details>
+
+        <details class="section acc">
+          <summary><span class="acc-title">Preview &amp; size</span></summary>
+          <div class="acc-body">
+            <div class="element-row">
+              <label>Size <input type="number" id="chart-w" value="480" min="80" style="width: 52px" /> ×
+                <input type="number" id="chart-h" value="300" min="60" style="width: 52px" /> pt</label>
+              <label><input type="checkbox" id="auto-update" /> Auto-update chart</label>
+            </div>
+            <div id="preview" class="preview"></div>
+            <div class="actions">
+              <button id="insert-new" style="display: none">Insert as new</button>
+              <button id="load-selection">Edit selected chart</button>
+              <button id="same-scale" disabled title="Pin every value-axis chart in the deck to a shared scale">Same scale (deck)</button>
+              <button id="same-scale-sel" disabled title="Pin the selected charts to a shared scale">Same scale (selection)</button>
+              <button id="download">Download SVG</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- ── ELEMENTS ───────────────────────────────────────────── -->
+      <div class="tab-panel" data-panel="elements">
+        <section class="section">
+          <h2>Elements</h2>
+          <div class="element-row">
+            <label>Harvey ball <input type="range" id="harvey-pct" min="0" max="100" value="75" /> <span id="harvey-val">75%</span></label>
+            <span id="harvey-preview" class="element-preview"></span>
+            <button id="harvey-insert" disabled>Insert</button>
+          </div>
+          <div class="element-row">
+            <label>Checkbox
+              <select id="check-state"><option value="yes">✓ yes</option><option value="no">✗ no</option><option value="partial">– partial</option></select>
+            </label>
+            <span id="check-preview" class="element-preview"></span>
+            <button id="check-insert" disabled>Insert</button>
+          </div>
+          <div class="element-row wide">
+            <label style="flex:1">Process flow <input type="text" id="flow-steps" value="Scope, Design, Build, Launch" /></label>
+            <label>step <input type="number" id="flow-highlight" min="0" value="2" style="width:38px" /></label>
+            <button id="flow-insert" disabled>Insert</button>
+          </div>
+          <div id="flow-preview" class="element-flow-preview"></div>
+          <div class="element-row wide">
+            <label>KPI tile <input type="text" id="kpi-label" value="Revenue" style="width:70px" /></label>
+            <label><input type="text" id="kpi-value" value="€4.2m" style="width:56px" /></label>
+            <label><input type="text" id="kpi-delta" value="+12% vs LY" style="width:80px" /></label>
+            <label title="Down is good (costs, churn)"><input type="checkbox" id="kpi-down-good" /> ↓ good</label>
+            <button id="kpi-insert" disabled>Insert</button>
+          </div>
+          <div id="kpi-preview" class="element-flow-preview"></div>
+          <div class="element-row">
+            <label>Table from datasheet</label>
+            <label><input type="checkbox" id="table-total" /> Total row</label>
+            <button id="table-insert" disabled>Insert</button>
+          </div>
+          <p class="hint">Cells accept <code>[hb:0.75]</code> harvey balls, <code>[up]</code>/<code>[down]</code>/<code>[flat]</code> arrows, <code>[good]</code>/<code>[bad]</code> colors.</p>
+        </section>
+      </div>
+
+      <!-- ── AGENDA ─────────────────────────────────────────────── -->
+      <div class="tab-panel" data-panel="agenda">
+        <section class="section">
+          <h2>Agenda</h2>
+          <p class="hint">One chapter per line. Inserts one agenda slide per chapter (appended at the end of the deck — move them into place), each with its chapter highlighted.</p>
+          <textarea id="agenda-chapters" rows="4" placeholder="Introduction&#10;Market overview&#10;Strategy&#10;Financials"></textarea>
+          <div id="agenda-preview" class="preview agenda-preview"></div>
+          <div class="actions">
+            <button id="agenda-insert" class="primary" disabled>Insert agenda slides</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── AUTOMATION ─────────────────────────────────────────── -->
+      <div class="tab-panel" data-panel="automation">
+        <section class="section">
+          <h2>Automation (JSON)</h2>
+          <p class="hint">Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an array of configs and insert them all. Same schema as <code>npm run render</code>.</p>
+          <textarea id="json-io" rows="5" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="json-export">Export current</button>
+            <button id="json-import">Import</button>
+            <button id="json-insert-batch" disabled>Insert batch</button>
+            <button id="style-export">Export style</button>
+            <button id="style-import">Import style</button>
+          </div>
+        </section>
+      </div>
     </div>
 
-    <section class="section">
-      <h2>Preview</h2>
-      <div class="element-row">
-        <label>Size <input type="number" id="chart-w" value="480" min="80" style="width: 52px" /> ×
-          <input type="number" id="chart-h" value="300" min="60" style="width: 52px" /> pt</label>
-        <label><input type="checkbox" id="auto-update" /> Auto-update chart</label>
-      </div>
-      <div id="preview" class="preview"></div>
-      <div class="actions">
-        <button id="insert" class="primary">Insert into slide</button>
-        <button id="insert-new" style="display: none">Insert as new</button>
-        <button id="load-selection">Edit selected chart</button>
-        <button id="same-scale" disabled title="Pin every value-axis chart in the deck to a shared scale">Same scale (deck)</button>
-        <button id="same-scale-sel" disabled title="Pin the selected charts to a shared scale">Same scale (selection)</button>
-        <button id="download">Download SVG</button>
-      </div>
+    <!-- Sticky action bar — the primary Insert/Update is always reachable no
+         matter how far the pane has scrolled. -->
+    <footer class="action-bar">
+      <button id="insert" class="primary">Insert into slide</button>
       <p class="hint" id="host-note"></p>
-    </section>
-
-    <section class="section">
-      <h2>Elements</h2>
-      <div class="element-row">
-        <label>Harvey ball <input type="range" id="harvey-pct" min="0" max="100" value="75" /> <span id="harvey-val">75%</span></label>
-        <span id="harvey-preview" class="element-preview"></span>
-        <button id="harvey-insert" disabled>Insert</button>
-      </div>
-      <div class="element-row">
-        <label>Checkbox
-          <select id="check-state"><option value="yes">✓ yes</option><option value="no">✗ no</option><option value="partial">– partial</option></select>
-        </label>
-        <span id="check-preview" class="element-preview"></span>
-        <button id="check-insert" disabled>Insert</button>
-      </div>
-      <div class="element-row wide">
-        <label style="flex:1">Process flow <input type="text" id="flow-steps" value="Scope, Design, Build, Launch" /></label>
-        <label>step <input type="number" id="flow-highlight" min="0" value="2" style="width:38px" /></label>
-        <button id="flow-insert" disabled>Insert</button>
-      </div>
-      <div id="flow-preview" class="element-flow-preview"></div>
-      <div class="element-row wide">
-        <label>KPI tile <input type="text" id="kpi-label" value="Revenue" style="width:70px" /></label>
-        <label><input type="text" id="kpi-value" value="€4.2m" style="width:56px" /></label>
-        <label><input type="text" id="kpi-delta" value="+12% vs LY" style="width:80px" /></label>
-        <label title="Down is good (costs, churn)"><input type="checkbox" id="kpi-down-good" /> ↓ good</label>
-        <button id="kpi-insert" disabled>Insert</button>
-      </div>
-      <div id="kpi-preview" class="element-flow-preview"></div>
-      <div class="element-row">
-        <label>Table from datasheet</label>
-        <label><input type="checkbox" id="table-total" /> Total row</label>
-        <button id="table-insert" disabled>Insert</button>
-      </div>
-      <p class="hint">Cells accept <code>[hb:0.75]</code> harvey balls, <code>[up]</code>/<code>[down]</code>/<code>[flat]</code> arrows, <code>[good]</code>/<code>[bad]</code> colors.</p>
-    </section>
-
-    <section class="section">
-      <h2>Automation (JSON)</h2>
-      <p class="hint">Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an array of configs and insert them all. Same schema as <code>npm run render</code>.</p>
-      <textarea id="json-io" rows="5" spellcheck="false"></textarea>
-      <div class="actions">
-        <button id="json-export">Export current</button>
-        <button id="json-import">Import</button>
-        <button id="json-insert-batch" disabled>Insert batch</button>
-        <button id="style-export">Export style</button>
-        <button id="style-import">Import style</button>
-      </div>
-    </section>
-
-    <section class="section">
-      <h2>Agenda</h2>
-      <p class="hint">One chapter per line. Inserts one agenda slide per chapter (appended at the end of the deck — move them into place), each with its chapter highlighted.</p>
-      <textarea id="agenda-chapters" rows="4" placeholder="Introduction&#10;Market overview&#10;Strategy&#10;Financials"></textarea>
-      <div id="agenda-preview" class="preview agenda-preview"></div>
-      <div class="actions">
-        <button id="agenda-insert" class="primary" disabled>Insert agenda slides</button>
-      </div>
-    </section>
+    </footer>
 
     <script type="module" src="./app.ts"></script>
   </body>
