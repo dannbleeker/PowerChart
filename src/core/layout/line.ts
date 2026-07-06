@@ -151,7 +151,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
           nodes.push({ kind: "rect", x: slots.centers[c] + k * w, y: Math.min(yT, yB), w: w + 0.5, h: Math.abs(yB - yT), fill, name: `area-${si}-${c}-${k}` });
         }
       }
-      lastSegMid[si] = scale.toY((lower[n - 1] + upper[n - 1]) / 2);
+      lastSegMid[si] = n > 0 ? scale.toY((lower[n - 1] + upper[n - 1]) / 2) : null;
     });
     for (let c = 0; c < n; c++) columnTop[c] = scale.toY(posBase[c]);
   } else {

@@ -121,7 +121,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   // boxes[g][c]
   const grouped = groupNames.map((g) => data.categories.map((_, c) => boxFor(g, c)));
-  const boxes = grouped[0]; // group 0 keeps the single-group code path's shape
+  const boxes = grouped[0] ?? []; // group 0 keeps the single-group code path's shape
   const all = grouped.flat().flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
   const fmt = resolveFormat(all, cfg.numberFormat);
   const H = !!cfg.horizontal;

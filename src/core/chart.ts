@@ -34,8 +34,11 @@ const SORTABLE: ChartKind[] = ["stacked", "clustered", "stacked100", "mekko", "p
 function sortCategories(cfg: ChartConfig): ChartConfig {
   if (!cfg.categorySort || !SORTABLE.includes(cfg.kind)) return cfg;
   const { data } = cfg;
+  // Sort runs before error/target rows are extracted; those carried rows are
+  // not real stack contributors, so exclude them from the ranking totals.
+  const ranked = data.series.filter((s) => !CARRIED_ROW.test(s.name.trim()));
   const totals = data.categories.map((_, c) =>
-    data.series.reduce((a, s) => a + (s.values[c] ?? 0), 0),
+    ranked.reduce((a, s) => a + (s.values[c] ?? 0), 0),
   );
   const sign = cfg.categorySort === "ascending" ? 1 : -1;
   const order = data.categories.map((_, c) => c).sort((a, b) => sign * (totals[a] - totals[b]));
