@@ -78,6 +78,18 @@ function nodeToSvg(n: SceneNode): string {
       return `<path d="${d}" fill="${n.fill}"${name(n)}/>`;
     }
     case "wedge": {
+      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      // A full 360° span has coincident start/end points, so the arc collapses
+      // and SVG draws nothing. Emit an explicit circle (or ring) instead.
+      if (n.endAngle - n.startAngle >= 359.9) {
+        const ring = (rad: number, sweep: number) => {
+          const a = polar(n.cx, n.cy, rad, 0);
+          const b = polar(n.cx, n.cy, rad, 180);
+          return `M ${r(a.x)} ${r(a.y)} A ${r(rad)} ${r(rad)} 0 1 ${sweep} ${r(b.x)} ${r(b.y)} A ${r(rad)} ${r(rad)} 0 1 ${sweep} ${r(a.x)} ${r(a.y)} Z`;
+        };
+        const d = n.innerR > 0 ? `${ring(n.r, 1)} ${ring(n.innerR, 0)}` : ring(n.r, 1);
+        return `<path d="${d}" fill="${n.fill}" fill-rule="evenodd"${stroke}${name(n)}/>`;
+      }
       const large = n.endAngle - n.startAngle > 180 ? 1 : 0;
       const o1 = polar(n.cx, n.cy, n.r, n.startAngle);
       const o2 = polar(n.cx, n.cy, n.r, n.endAngle);
@@ -89,7 +101,6 @@ function nodeToSvg(n: SceneNode): string {
       } else {
         d = `M ${r(n.cx)} ${r(n.cy)} L ${r(o1.x)} ${r(o1.y)} A ${r(n.r)} ${r(n.r)} 0 ${large} 1 ${r(o2.x)} ${r(o2.y)} Z`;
       }
-      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
       return `<path d="${d}" fill="${n.fill}"${stroke}${name(n)}/>`;
     }
     case "polygon": {

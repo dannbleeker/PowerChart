@@ -12,6 +12,8 @@ export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+  // Rounding a small negative toward zero can yield "-0" — normalise to "0".
+  if (/^-0([.,]0+)?$/.test(s)) s = s.slice(1);
   if (f.forceSign && v > 0) s = "+" + s;
   if (f.suffix) s += f.suffix;
   return s;
@@ -102,6 +104,9 @@ export function parseDateToken(raw: string): number | null {
   if (!t) return null;
   const dmy = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (!dmy && /^[-+]?[\d,.]+$/.test(t)) return null; // plain numbers are not dates
+  // Numeric ranges ("3-5", "10–20") are category labels, not dates — Date.parse
+  // would otherwise misread them as partial ISO dates.
+  if (/^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t)) return null;
   const ms = dmy
     ? Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
     : Date.parse(/^\d{4}-\d{2}(-\d{2})?$/.test(t) ? t : `${t} UTC`);
