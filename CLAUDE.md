@@ -55,6 +55,15 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 - **Releases**: merges to main refresh the rolling `skill-latest` prerelease.
   Versioned releases via the Release workflow's manual dispatch (the git proxy
   rejects tag pushes — dispatch creates the tag server-side).
+- **Flag manifest re-installs to the owner**: the add-in is hosted on GitHub
+  Pages (`powerchart.struktureretsundfornuft.dk`) and the sideloaded
+  `manifest-prod.xml` only points at stable URLs — so code/pane/chart changes
+  ship through `main` → Pages with **no** re-install. But when a change touches
+  the **manifest itself** (ribbon buttons/menu items, `Permissions`,
+  requirement sets, `DisplayName`/`Description`, icon references, or — never do
+  this — the `<Id>` GUID), the owner MUST re-sideload the updated manifest in
+  PowerPoint for it to take effect. Always tell the owner explicitly in that
+  PR/turn: "⚠️ this needs a manifest re-install in PowerPoint" and say why.
 
 ## Gotchas
 
