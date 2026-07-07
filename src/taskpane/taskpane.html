@@ -89,36 +89,51 @@
       <div class="tab-panel" data-panel="elements">
         <section class="section">
           <h2>Elements</h2>
-          <div class="element-row">
-            <label>Harvey ball <input type="range" id="harvey-pct" min="0" max="100" value="75" /> <span id="harvey-val">75%</span></label>
-            <span id="harvey-preview" class="element-preview"></span>
-            <button id="harvey-insert" disabled>Insert</button>
-          </div>
-          <div class="element-row">
-            <label>Checkbox
-              <select id="check-state"><option value="yes">✓ yes</option><option value="no">✗ no</option><option value="partial">– partial</option></select>
-            </label>
-            <span id="check-preview" class="element-preview"></span>
-            <button id="check-insert" disabled>Insert</button>
-          </div>
-          <div class="element-row wide">
-            <label style="flex:1">Process flow <input type="text" id="flow-steps" value="Scope, Design, Build, Launch" /></label>
-            <label>step <input type="number" id="flow-highlight" min="0" value="2" style="width:38px" /></label>
-            <button id="flow-insert" disabled>Insert</button>
-          </div>
-          <div id="flow-preview" class="element-flow-preview"></div>
-          <div class="element-row wide">
-            <label>KPI tile <input type="text" id="kpi-label" value="Revenue" style="width:70px" /></label>
-            <label><input type="text" id="kpi-value" value="€4.2m" style="width:56px" /></label>
-            <label><input type="text" id="kpi-delta" value="+12% vs LY" style="width:80px" /></label>
-            <label title="Down is good (costs, churn)"><input type="checkbox" id="kpi-down-good" /> ↓ good</label>
-            <button id="kpi-insert" disabled>Insert</button>
-          </div>
-          <div id="kpi-preview" class="element-flow-preview"></div>
-          <div class="element-row">
-            <label>Table from datasheet</label>
-            <label><input type="checkbox" id="table-total" /> Total row</label>
-            <button id="table-insert" disabled>Insert</button>
+          <div class="el-grid">
+            <div class="el-card">
+              <div class="el-top"><span class="el-name">Harvey ball</span><button id="harvey-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-body">
+                <label class="el-ctl">Fill <input type="range" id="harvey-pct" min="0" max="100" value="75" /> <span id="harvey-val">75%</span></label>
+                <span id="harvey-preview" class="element-preview"></span>
+              </div>
+            </div>
+            <div class="el-card">
+              <div class="el-top"><span class="el-name">Checkbox</span><button id="check-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-body">
+                <label class="el-ctl">State
+                  <select id="check-state"><option value="yes">✓ yes</option><option value="no">✗ no</option><option value="partial">– partial</option></select>
+                </label>
+                <span id="check-preview" class="element-preview"></span>
+              </div>
+            </div>
+            <div class="el-card">
+              <div class="el-top"><span class="el-name">Process flow</span><button id="flow-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-body el-col">
+                <div class="el-ctl-row">
+                  <input type="text" id="flow-steps" class="el-grow" value="Scope, Design, Build, Launch" aria-label="Process-flow steps" />
+                  <label>step <input type="number" id="flow-highlight" min="0" value="2" style="width: 38px" /></label>
+                </div>
+                <div id="flow-preview" class="element-flow-preview"></div>
+              </div>
+            </div>
+            <div class="el-card">
+              <div class="el-top"><span class="el-name">KPI tile</span><button id="kpi-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-body el-col">
+                <div class="el-ctl-row">
+                  <input type="text" id="kpi-label" value="Revenue" style="width: 84px" aria-label="KPI label" />
+                  <input type="text" id="kpi-value" value="€4.2m" style="width: 64px" aria-label="KPI value" />
+                  <input type="text" id="kpi-delta" value="+12% vs LY" style="width: 92px" aria-label="KPI delta" />
+                  <label title="Down is good (costs, churn)"><input type="checkbox" id="kpi-down-good" /> ↓ good</label>
+                </div>
+                <div id="kpi-preview" class="element-flow-preview"></div>
+              </div>
+            </div>
+            <div class="el-card">
+              <div class="el-top"><span class="el-name">Table from datasheet</span><button id="table-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-body">
+                <label class="el-ctl"><input type="checkbox" id="table-total" /> Total row</label>
+              </div>
+            </div>
           </div>
           <p class="hint">Cells accept <code>[hb:0.75]</code> harvey balls, <code>[up]</code>/<code>[down]</code>/<code>[flat]</code> arrows, <code>[good]</code>/<code>[bad]</code> colors.</p>
         </section>
