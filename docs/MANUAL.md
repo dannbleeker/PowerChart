@@ -10,8 +10,10 @@ section and `skill/reference.md`.
 
 1. Sideload the add-in: in PowerPoint, **Insert → Add-ins → Upload My
    Add-in** → pick `manifest.xml` (the dev server must be running:
-   `npm run dev`). The **PowerChart** ribbon menu opens the pane, with
-   direct entries for the most common chart types.
+   `npm run dev`). The **PowerChart** ribbon group has an **Insert chart**
+   button and menu (direct entries for the most common chart types) plus an
+   **Insert element** menu (Harvey ball, checkbox, process flow, KPI tile,
+   table) that opens the pane on the Elements tab with that element highlighted.
 2. Requirements: PowerPoint on Windows 2207+, Mac 16.62+, or the web
    (PowerPointApi 1.4+). Grouping needs 1.8+, chart re-editing (tags) 1.3+,
    pies 1.9+, deck-theme colors 1.10+. Missing capabilities degrade

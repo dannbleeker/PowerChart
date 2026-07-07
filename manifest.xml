@@ -177,6 +177,100 @@
                     </Item>
                   </Items>
                 </Control>
+                <Control xsi:type="Menu" id="PowerChart.ElementsMenu">
+                  <Label resid="ElementsMenu.Label" />
+                  <Supertip>
+                    <Title resid="ElementsMenu.Label" />
+                    <Description resid="ElementsMenu.Tooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16" />
+                    <bt:Image size="32" resid="Icon.32" />
+                    <bt:Image size="80" resid="Icon.80" />
+                  </Icon>
+                  <Items>
+                    <Item id="PowerChart.El.harvey">
+                      <Label resid="El.harvey.Label" />
+                      <Supertip>
+                        <Title resid="El.harvey.Label" />
+                        <Description resid="ElementsMenu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.el.harvey" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.El.check">
+                      <Label resid="El.check.Label" />
+                      <Supertip>
+                        <Title resid="El.check.Label" />
+                        <Description resid="ElementsMenu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.el.check" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.El.flow">
+                      <Label resid="El.flow.Label" />
+                      <Supertip>
+                        <Title resid="El.flow.Label" />
+                        <Description resid="ElementsMenu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.el.flow" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.El.kpi">
+                      <Label resid="El.kpi.Label" />
+                      <Supertip>
+                        <Title resid="El.kpi.Label" />
+                        <Description resid="ElementsMenu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.el.kpi" />
+                      </Action>
+                    </Item>
+                    <Item id="PowerChart.El.table">
+                      <Label resid="El.table.Label" />
+                      <Supertip>
+                        <Title resid="El.table.Label" />
+                        <Description resid="ElementsMenu.Tooltip" />
+                      </Supertip>
+                      <Icon>
+                        <bt:Image size="16" resid="Icon.16" />
+                        <bt:Image size="32" resid="Icon.32" />
+                        <bt:Image size="80" resid="Icon.80" />
+                      </Icon>
+                      <Action xsi:type="ShowTaskpane">
+                        <TaskpaneId>PowerChartPane</TaskpaneId>
+                        <SourceLocation resid="Taskpane.Url.el.table" />
+                      </Action>
+                    </Item>
+                  </Items>
+                </Control>
               </Group>
             </OfficeTab>
           </ExtensionPoint>
@@ -198,6 +292,11 @@
         <bt:Url id="Taskpane.Url.gantt" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=gantt" />
         <bt:Url id="Taskpane.Url.pie" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=pie" />
         <bt:Url id="Taskpane.Url.scatter" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?kind=scatter" />
+        <bt:Url id="Taskpane.Url.el.harvey" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?tab=elements&amp;el=harvey" />
+        <bt:Url id="Taskpane.Url.el.check" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?tab=elements&amp;el=check" />
+        <bt:Url id="Taskpane.Url.el.flow" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?tab=elements&amp;el=flow" />
+        <bt:Url id="Taskpane.Url.el.kpi" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?tab=elements&amp;el=kpi" />
+        <bt:Url id="Taskpane.Url.el.table" DefaultValue="https://localhost:3000/src/taskpane/taskpane.html?tab=elements&amp;el=table" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="Group.Label" DefaultValue="PowerChart" />
@@ -210,11 +309,18 @@
         <bt:String id="Menu.gantt.Label" DefaultValue="Gantt chart" />
         <bt:String id="Menu.pie.Label" DefaultValue="Pie chart" />
         <bt:String id="Menu.scatter.Label" DefaultValue="Scatter chart" />
+        <bt:String id="ElementsMenu.Label" DefaultValue="Insert element" />
+        <bt:String id="El.harvey.Label" DefaultValue="Harvey ball" />
+        <bt:String id="El.check.Label" DefaultValue="Checkbox" />
+        <bt:String id="El.flow.Label" DefaultValue="Process flow" />
+        <bt:String id="El.kpi.Label" DefaultValue="KPI tile" />
+        <bt:String id="El.table.Label" DefaultValue="Table from data" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="OpenPane.Tooltip" DefaultValue="Open the PowerChart pane to insert waterfall, Mekko and stacked charts as native shapes." />
         <bt:String id="GetStarted.Description" DefaultValue="Find PowerChart on the Home tab and insert your first chart." />
         <bt:String id="Menu.Tooltip" DefaultValue="Open PowerChart with this chart type preselected." />
+        <bt:String id="ElementsMenu.Tooltip" DefaultValue="Open PowerChart on the Elements tab to insert this element (Harvey ball, checkbox, process flow, KPI tile or table)." />
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>
