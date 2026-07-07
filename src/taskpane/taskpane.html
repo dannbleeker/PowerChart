@@ -81,13 +81,6 @@
               <label><input type="checkbox" id="auto-update" /> Auto-update chart</label>
             </div>
             <div id="preview" class="preview"></div>
-            <div class="actions">
-              <button id="insert-new" style="display: none">Insert as new</button>
-              <button id="load-selection">Edit selected chart</button>
-              <button id="same-scale" disabled title="Pin every value-axis chart in the deck to a shared scale">Same scale (deck)</button>
-              <button id="same-scale-sel" disabled title="Pin the selected charts to a shared scale">Same scale (selection)</button>
-              <button id="download">Download SVG</button>
-            </div>
           </div>
         </details>
       </div>
@@ -173,6 +166,16 @@
          matter how far the pane has scrolled. -->
     <footer class="action-bar">
       <button id="insert" class="primary">Insert into slide</button>
+      <div class="more-wrap">
+        <button id="more-actions" class="more-btn" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More actions">⋯</button>
+        <div class="actions-menu" id="actions-menu" role="menu" hidden>
+          <button id="insert-new" role="menuitem" style="display: none">Insert as new</button>
+          <button id="load-selection" role="menuitem">Edit selected chart</button>
+          <button id="same-scale" role="menuitem" disabled title="Pin every value-axis chart in the deck to a shared scale">Same scale (deck)</button>
+          <button id="same-scale-sel" role="menuitem" disabled title="Pin the selected charts to a shared scale">Same scale (selection)</button>
+          <button id="download" role="menuitem">Download SVG</button>
+        </div>
+      </div>
       <p class="hint" id="host-note"></p>
     </footer>
 

@@ -502,6 +502,52 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 .action-bar .primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .action-bar .hint { margin: 0; flex: 1; }
 
+/* footer "⋯" overflow menu for secondary actions */
+.more-wrap { position: relative; flex: 0 0 auto; }
+.more-btn {
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.more-btn:hover { border-color: var(--accent-line); }
+.more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.actions-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(20, 20, 18, 0.16);
+  z-index: 20;
+}
+.actions-menu[hidden] { display: none; }
+.actions-menu button {
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.actions-menu button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
+.actions-menu button:disabled { opacity: 0.45; cursor: not-allowed; }
+.actions-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
 /* ── dark (Office dark themes) ──────────────────────── */
 @media (prefers-color-scheme: dark) {
   :root {

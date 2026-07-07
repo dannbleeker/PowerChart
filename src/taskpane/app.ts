@@ -326,6 +326,30 @@ function wireTabs() {
   }
 }
 
+/** The footer "⋯" overflow menu holding the secondary actions (edit selected,
+ *  same scale, download). Opens upward; closes on item click, outside click,
+ *  or Escape. */
+function wireActionsMenu() {
+  const btn = document.getElementById("more-actions");
+  const menu = document.getElementById("actions-menu");
+  if (!btn || !menu) return;
+  const setOpen = (open: boolean) => {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(menu.hidden);
+  });
+  menu.addEventListener("click", () => setOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && e.target !== btn && !menu.contains(e.target as Node)) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !menu.hidden) setOpen(false);
+  });
+}
+
 /** One collapsible Format group (Labels / Axes / Analysis / Layout / Colours). */
 interface OptGroup {
   details: HTMLDetailsElement;
@@ -830,6 +854,7 @@ titleInput.addEventListener("input", () => {
   renderPreview();
 });
 wireTabs();
+wireActionsMenu();
 document.getElementById("type-search-input")?.addEventListener("input", applyTypeFilter);
 optionsHost.addEventListener("change", updateGroupCounts);
 renderGallery();
