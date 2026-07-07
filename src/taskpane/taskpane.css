@@ -367,6 +367,13 @@ textarea {
 .el-ctl input[type="text"] { font: inherit; padding: 4px 7px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); }
 .el-ctl-row label,
 .el-ctl { color: var(--ink-2); }
+/* Brief highlight when the ribbon's "Insert element" deep-links to a card. */
+.el-flash { animation: el-flash 1.6s ease-out; }
+@keyframes el-flash {
+  0%, 25% { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-soft); border-color: var(--accent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .el-flash { animation: none; } }
 
 .agenda-preview { margin-top: 8px; }
 .agenda-preview svg { max-height: 160px; }

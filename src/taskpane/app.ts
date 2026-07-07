@@ -1226,10 +1226,26 @@ function wireInsert() {
   }
 }
 
-// Ribbon deep-link: taskpane.html?kind=waterfall preselects a chart type.
-const requestedKind = new URLSearchParams(location.search).get("kind");
+// Ribbon deep-link: taskpane.html?kind=waterfall preselects a chart type;
+// ?tab=elements opens a tab and ?el=harvey focuses that element's card
+// (the ribbon's "Insert element" menu uses these).
+const deepLink = new URLSearchParams(location.search);
+const requestedKind = deepLink.get("kind");
 if (requestedKind && CHART_KINDS.some((k) => k.kind === requestedKind)) {
   applyConfig(sampleConfig(requestedKind as ChartKind), null);
+}
+const requestedTab = deepLink.get("tab");
+if (requestedTab) {
+  document.querySelector<HTMLButtonElement>(`.tabs .tab[data-tab="${requestedTab}"]`)?.click();
+}
+const requestedEl = deepLink.get("el");
+if (requestedEl) {
+  const card = document.getElementById(`${requestedEl}-insert`)?.closest(".el-card");
+  if (card) {
+    card.scrollIntoView({ block: "center" });
+    card.classList.add("el-flash");
+    setTimeout(() => card.classList.remove("el-flash"), 1600);
+  }
 }
 
 const sizeInputs = [$("chart-w"), $("chart-h")] as HTMLInputElement[];
