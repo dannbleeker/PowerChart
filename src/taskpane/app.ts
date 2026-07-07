@@ -21,6 +21,7 @@ import { demoItems } from "../core/demo";
 import { buildCheckbox, buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
 import { localizePane, localizeTree } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
+import { BUILTIN_TEMPLATES } from "./templates";
 
 interface AppState {
   kind: ChartKind;
@@ -990,11 +991,26 @@ function loadTemplates(): Record<string, ChartConfig> {
 function renderTemplateList() {
   const sel = $("template-list") as HTMLSelectElement;
   sel.innerHTML = "<option value=''>— templates —</option>";
-  for (const name of Object.keys(loadTemplates()).sort()) {
+  const starters = document.createElement("optgroup");
+  starters.label = "Starters";
+  for (const t of BUILTIN_TEMPLATES) {
     const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    sel.appendChild(opt);
+    opt.value = `builtin:${t.name}`;
+    opt.textContent = t.name;
+    starters.appendChild(opt);
+  }
+  sel.appendChild(starters);
+  const names = Object.keys(loadTemplates()).sort();
+  if (names.length) {
+    const mine = document.createElement("optgroup");
+    mine.label = "My templates";
+    for (const name of names) {
+      const opt = document.createElement("option");
+      opt.value = `user:${name}`;
+      opt.textContent = name;
+      mine.appendChild(opt);
+    }
+    sel.appendChild(mine);
   }
 }
 
@@ -1007,13 +1023,20 @@ $("template-save").addEventListener("click", () => {
   renderTemplateList();
 });
 $("template-list").addEventListener("change", () => {
-  const name = ($("template-list") as HTMLSelectElement).value;
-  const cfg = loadTemplates()[name];
+  const value = ($("template-list") as HTMLSelectElement).value;
+  if (!value) return;
+  const sep = value.indexOf(":");
+  const [source, name] = [value.slice(0, sep), value.slice(sep + 1)];
+  const cfg =
+    source === "builtin"
+      ? BUILTIN_TEMPLATES.find((t) => t.name === name)?.config
+      : loadTemplates()[name];
   if (cfg) applyConfig({ ...DEFAULT_SIZE, ...cfg }, null);
 });
 $("template-delete").addEventListener("click", () => {
-  const name = ($("template-list") as HTMLSelectElement).value;
-  if (!name) return;
+  const value = ($("template-list") as HTMLSelectElement).value;
+  if (!value.startsWith("user:")) return; // starters (and the placeholder) can't be deleted
+  const name = value.slice("user:".length);
   const all = loadTemplates();
   delete all[name];
   localStorage.setItem(TEMPLATES_KEY, JSON.stringify(all));

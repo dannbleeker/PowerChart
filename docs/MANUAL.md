@@ -229,8 +229,11 @@ count of how many of its options are currently on.
   reads the presentation's Accent 1–6 theme colors (PowerPointApi 1.10).
 - **Export style / Import style**: a corporate style file (JSON: palette,
   font, negative/total colors) applied to every chart you make.
-- **Save as template** stores the whole chart (data + options) locally for
-  reuse.
+- **Templates** — the dropdown groups built-in **Starters** (polished, ready-to-
+  edit presets: revenue bridge, growth columns + CAGR, channel mix, market
+  share, KPI trend, bullet vs target, programme Gantt) with **My templates**.
+  **Save as template** stores the whole current chart (data + options) locally
+  under *My templates*; **Delete** removes a saved one (starters stay).
 
 ## Elements
 
