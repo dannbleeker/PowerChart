@@ -118,6 +118,10 @@ pick weeks (with weekend shading), months, or quarters automatically.
 
 ## Options and decorations
 
+The *Format* section organises these into five collapsible groups — **Labels**,
+**Axes & scale**, **Analysis**, **Layout**, and **Colours & style** — each with a
+count of how many of its options are currently on.
+
 - **Toggles**: Segment labels (auto-hidden when they don't fit),
   Series labels, Column totals, Category labels, Value axis, Gridlines,
   **Connector lines** (joins stacked-segment boundaries between columns),

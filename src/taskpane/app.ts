@@ -326,18 +326,70 @@ function wireTabs() {
   }
 }
 
+/** One collapsible Format group (Labels / Axes / Analysis / Layout / Colours). */
+interface OptGroup {
+  details: HTMLDetailsElement;
+  togs: HTMLDivElement;
+  body: HTMLDivElement;
+}
+const FGROUP_ICON: Record<string, string> = {
+  labels: '<path d="M3 4h10M8 4v9" stroke-linecap="round"/>',
+  axes: '<path d="M4 3v10h9M4 10l3-3 2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>',
+  analysis: '<path d="M3 12l4-4 2 2 5-6M11 4h3v3" stroke-linecap="round" stroke-linejoin="round"/>',
+  layout: '<rect x="3" y="3" width="10" height="10" rx="1.5"/><path d="M3 8h10M8 3v10" stroke-width="1.1"/>',
+  colours: '<circle cx="8" cy="8" r="5"/><path d="M8 3a5 5 0 010 10z" fill="currentColor" stroke="none"/>',
+};
+function optGroup(name: string, iconKey: string): OptGroup {
+  const details = document.createElement("details");
+  details.className = "fgroup";
+  const summary = document.createElement("summary");
+  summary.innerHTML =
+    `<svg class="fgroup-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">${FGROUP_ICON[iconKey]}</svg>` +
+    `<span class="fgroup-name">${name}</span><span class="fgroup-count"></span><span class="fgroup-chev"></span>`;
+  const body = document.createElement("div");
+  body.className = "fgroup-body";
+  const togs = document.createElement("div");
+  togs.className = "togs";
+  body.appendChild(togs);
+  details.append(summary, body);
+  return { details, togs, body };
+}
+/** Reflect each group's enabled-checkbox count in its "N on" pill. */
+function updateGroupCounts() {
+  for (const g of optionsHost.querySelectorAll<HTMLDetailsElement>(".fgroup")) {
+    const on = g.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked').length;
+    const pill = g.querySelector(".fgroup-count");
+    if (pill) {
+      pill.textContent = on ? `${on} on` : "";
+      pill.classList.toggle("zero", on === 0);
+    }
+  }
+}
+
 function renderOptions() {
   optionsHost.innerHTML = "";
   const d = state.decorations;
-  const toggles: { key: keyof Decorations; label: string }[] = [
-    { key: "segmentLabels", label: "Segment labels" },
-    { key: "seriesLabels", label: "Series labels" },
-    { key: "totals", label: "Column totals" },
-    { key: "categoryAxis", label: "Category labels" },
-    { key: "valueAxis", label: "Value axis" },
-    { key: "gridlines", label: "Gridlines" },
-    { key: "connectors", label: "Connector lines" },
-    { key: "hundredPercentNote", label: "100% = note" },
+  const nCats = () => Math.max(0, state.sheet.cells[0].length - 1);
+  // think-cell surfaces these controls contextually on the chart; in the pane
+  // they're grouped so the long list stays scannable.
+  const G = {
+    labels: optGroup("Labels", "labels"),
+    axes: optGroup("Axes & scale", "axes"),
+    analysis: optGroup("Analysis", "analysis"),
+    layout: optGroup("Layout", "layout"),
+    colours: optGroup("Colours & style", "colours"),
+  };
+  G.labels.details.open = true;
+
+  const toggles: { key: keyof Decorations; label: string; group: OptGroup }[] = [
+    { key: "segmentLabels", label: "Segment labels", group: G.labels },
+    { key: "seriesLabels", label: "Series labels", group: G.labels },
+    { key: "totals", label: "Column totals", group: G.labels },
+    { key: "categoryAxis", label: "Category labels", group: G.labels },
+    { key: "valueAxis", label: "Value axis", group: G.axes },
+    { key: "gridlines", label: "Gridlines", group: G.axes },
+    { key: "connectors", label: "Connector lines", group: G.layout },
+    { key: "hundredPercentNote", label: "100% = note", group: G.labels },
   ];
   for (const t of toggles) {
     const label = document.createElement("label");
@@ -349,7 +401,7 @@ function renderOptions() {
       renderPreview();
     });
     label.append(cb, t.label);
-    optionsHost.appendChild(label);
+    t.group.togs.appendChild(label);
   }
 
   // Tufte-style datamark axis: tick dashes + labels, no axis line.
@@ -363,7 +415,7 @@ function renderOptions() {
     renderPreview();
   });
   dm.append(dmCb, "Datamark axis (ticks only)");
-  optionsHost.appendChild(dm);
+  G.axes.togs.appendChild(dm);
 
   // think-cell's rotation handle, as a toggle: column ⇄ bar.
   const rot = document.createElement("label");
@@ -375,10 +427,9 @@ function renderOptions() {
     renderPreview();
   });
   rot.append(rotCb, "Horizontal (bar)");
-  optionsHost.appendChild(rot);
+  G.layout.togs.appendChild(rot);
 
-  const nCats = () => Math.max(0, state.sheet.cells[0].length - 1);
-  optionsHost.appendChild(
+  G.analysis.body.appendChild(
     pairControl("CAGR arrow", d.cagr, nCats(), (pair) => {
       d.cagr = pair;
       renderPreview();
@@ -404,7 +455,7 @@ function renderOptions() {
   };
   [diffCb, dFrom, dTo, dSeries].forEach((el) => el.addEventListener(el === diffCb ? "change" : "input", emitDiff));
   diff.append(diffCb, "Difference arrow from ", dFrom, " to ", dTo, " series ", dSeries);
-  optionsHost.appendChild(diff);
+  G.analysis.body.appendChild(diff);
 
   // Value lines: mean and/or comma-separated fixed values.
   const vl = document.createElement("label");
@@ -435,7 +486,7 @@ function renderOptions() {
   vlMean.addEventListener("change", emitVl);
   vlValues.addEventListener("input", emitVl);
   vl.append(vlMean, "Value line: mean Ø", " + values ", vlValues);
-  optionsHost.appendChild(vl);
+  G.analysis.body.appendChild(vl);
 
   // Segment order (think-cell's mini-toolbar menu).
   const so = document.createElement("label");
@@ -458,7 +509,7 @@ function renderOptions() {
     renderPreview();
   });
   so.append("Segment order ", soSel);
-  optionsHost.appendChild(so);
+  G.layout.body.appendChild(so);
 
   // Manual axis scale (think-cell's axis-handle dragging).
   const sc = document.createElement("label");
@@ -479,7 +530,7 @@ function renderOptions() {
   scMin.addEventListener("input", emitScale);
   scMax.addEventListener("input", emitScale);
   sc.append("Axis scale min ", scMin, " max ", scMax);
-  optionsHost.appendChild(sc);
+  G.axes.body.appendChild(sc);
 
   // Axis break (compresses the given value range).
   const ab = document.createElement("label");
@@ -500,7 +551,7 @@ function renderOptions() {
   abFrom.addEventListener("input", emitBreak);
   abTo.addEventListener("input", emitBreak);
   ab.append("Axis break from ", abFrom, " to ", abTo);
-  optionsHost.appendChild(ab);
+  G.axes.body.appendChild(ab);
 
   // Number format.
   const nf = document.createElement("label");
@@ -538,7 +589,7 @@ function renderOptions() {
     renderPreview();
   });
   nf.append("Labels: decimals ", nfDec, " suffix ", nfSuffix, " locale ", nfLoc);
-  optionsHost.appendChild(nf);
+  G.labels.body.appendChild(nf);
 
   // Footnote / source line — good charts always cite their source.
   const fn = document.createElement("label");
@@ -553,7 +604,7 @@ function renderOptions() {
     renderPreview();
   });
   fn.append("Footnote / source ", fnInput);
-  optionsHost.appendChild(fn);
+  G.colours.body.appendChild(fn);
 
   // Exploding slices (pie/doughnut only).
   if (state.kind === "pie" || state.kind === "doughnut") {
@@ -569,7 +620,7 @@ function renderOptions() {
       renderPreview();
     });
     ex.append("Explode slices ", exInput);
-    optionsHost.appendChild(ex);
+    G.layout.body.appendChild(ex);
   }
 
   // Label content (think-cell's label dropdown).
@@ -595,7 +646,7 @@ function renderOptions() {
     renderPreview();
   });
   lc.append("Label content ", lcSel);
-  optionsHost.appendChild(lc);
+  G.labels.body.appendChild(lc);
 
   // Axis title + log scale.
   const ax = document.createElement("label");
@@ -617,7 +668,7 @@ function renderOptions() {
     renderPreview();
   });
   ax.append("Axis title ", axTitle, " ", axLog, " log scale");
-  optionsHost.appendChild(ax);
+  G.axes.body.appendChild(ax);
 
   // Palette preset + per-series color overrides.
   const pal = document.createElement("label");
@@ -659,7 +710,7 @@ function renderOptions() {
     renderPreview();
   });
   pal.append("Palette ", palSel, " ", themeBtn);
-  optionsHost.appendChild(pal);
+  G.colours.body.appendChild(pal);
 
   const colors = document.createElement("div");
   colors.className = "wide series-colors";
@@ -676,7 +727,10 @@ function renderOptions() {
     wrap.append(input, name);
     colors.appendChild(wrap);
   });
-  optionsHost.appendChild(colors);
+  G.colours.body.appendChild(colors);
+
+  for (const g of [G.labels, G.axes, G.analysis, G.layout, G.colours]) optionsHost.appendChild(g.details);
+  updateGroupCounts();
 }
 
 /** Series names from the sheet, excluding special rows. */
@@ -777,6 +831,7 @@ titleInput.addEventListener("input", () => {
 });
 wireTabs();
 document.getElementById("type-search-input")?.addEventListener("input", applyTypeFilter);
+optionsHost.addEventListener("change", updateGroupCounts);
 renderGallery();
 renderOptions();
 renderPreview();
