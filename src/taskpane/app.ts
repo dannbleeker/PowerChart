@@ -19,7 +19,7 @@ import {
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems } from "../core/demo";
 import { buildCheckbox, buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
-import { localizePane } from "./i18n";
+import { localizePane, localizeTree } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 
 interface AppState {
@@ -284,6 +284,7 @@ function renderGallery() {
     sec.append(heading, grid);
     gallery.appendChild(sec);
   }
+  localizeTree(gallery);
   updateTypeSummary();
   applyTypeFilter();
 }
@@ -754,6 +755,7 @@ function renderOptions() {
   G.colours.body.appendChild(colors);
 
   for (const g of [G.labels, G.axes, G.analysis, G.layout, G.colours]) optionsHost.appendChild(g.details);
+  localizeTree(optionsHost);
   updateGroupCounts();
 }
 

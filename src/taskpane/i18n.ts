@@ -43,17 +43,37 @@ const DE: Record<string, string> = {
   "Total row": "Summenzeile",
   "Datamark axis (ticks only)": "Datenmarken-Achse (nur Striche)",
   "Use deck theme": "Design der Präsentation",
+  // Chart-type families (grouped picker) + its search.
+  "Columns & bars": "Säulen & Balken",
+  "Line & area": "Linien & Flächen",
+  "Parts of a whole": "Anteile am Ganzen",
+  Distribution: "Verteilung",
+  Correlation: "Korrelation",
+  "Matrix & spatial": "Matrix & Raum",
+  "Search chart types…": "Diagrammtypen suchen…",
+  "No chart type matches that search.": "Kein Diagrammtyp passt zu dieser Suche.",
+  // Format groups (Layout is spelled the same in German).
+  Labels: "Beschriftungen",
+  "Axes & scale": "Achsen & Skala",
+  Analysis: "Analyse",
+  "Colours & style": "Farben & Stil",
+  // Datasheet help.
+  "Paste straight from Excel — special data rows": "Direkt aus Excel einfügen — besondere Datenzeilen",
 };
 
 const DICTS: Record<string, Record<string, string>> = { de: DE };
 
-/** Translate visible UI text in place; no-op for unsupported languages. */
-export function localizePane(language: string | undefined): void {
-  const dict = DICTS[(language ?? "").slice(0, 2).toLowerCase()];
-  if (!dict) return;
-  const selector = "h2, button, label, .banner, option, .tagline, figcaption";
-  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
-    // Only translate elements whose direct text matches, keeping child inputs.
+let activeDict: Record<string, string> | undefined;
+
+/* The picker families, Format group names, the datasheet-help summary, and the
+   search placeholder are added to the base selector; input placeholders are
+   translated too. */
+const LOCALIZE_SELECTOR =
+  "h2, button, label, .banner, option, .tagline, figcaption, summary, .group-label, .fgroup-name, .no-type-result";
+
+function translateTree(root: ParentNode, dict: Record<string, string>): void {
+  for (const el of root.querySelectorAll<HTMLElement>(LOCALIZE_SELECTOR)) {
+    // Only translate an element's direct text, so child inputs/spans survive.
     for (const child of el.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) {
         const t = child.textContent?.trim();
@@ -61,4 +81,20 @@ export function localizePane(language: string | undefined): void {
       }
     }
   }
+  for (const input of root.querySelectorAll<HTMLInputElement>("input[placeholder]")) {
+    const p = input.placeholder.trim();
+    if (p && dict[p]) input.placeholder = dict[p];
+  }
+}
+
+/** Translate visible UI text in place; no-op for unsupported languages. */
+export function localizePane(language: string | undefined): void {
+  activeDict = DICTS[(language ?? "").slice(0, 2).toLowerCase()];
+  if (activeDict) translateTree(document, activeDict);
+}
+
+/** Re-apply the active translation to a freshly-rendered subtree — the chart
+ *  gallery and Format groups are rebuilt in English on every render. */
+export function localizeTree(root: ParentNode): void {
+  if (activeDict) translateTree(root, activeDict);
 }
