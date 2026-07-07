@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { mountDatasheet, type SheetModel } from "../src/taskpane/datasheet";
-import { localizePane } from "../src/taskpane/i18n";
+import { localizePane, localizeTree } from "../src/taskpane/i18n";
 
 const sheet = (): SheetModel => ({
   cells: [
@@ -170,5 +170,29 @@ describe("localizePane", () => {
     localizePane("fr-FR");
     localizePane(undefined);
     expect(document.querySelector("h2")!.textContent).toBe("2 · Data");
+  });
+
+  it("translates the grouped picker, Format groups, search and datasheet help", () => {
+    document.body.innerHTML = `
+      <div class="group-label">Columns &amp; bars</div>
+      <span class="fgroup-name">Axes &amp; scale</span>
+      <p class="no-type-result">No chart type matches that search.</p>
+      <details><summary>Paste straight from Excel — special data rows</summary></details>
+      <input placeholder="Search chart types…" />`;
+    localizePane("de-DE");
+    expect(document.querySelector(".group-label")!.textContent).toBe("Säulen & Balken");
+    expect(document.querySelector(".fgroup-name")!.textContent).toBe("Achsen & Skala");
+    expect(document.querySelector(".no-type-result")!.textContent).toBe("Kein Diagrammtyp passt zu dieser Suche.");
+    expect(document.querySelector("summary")!.textContent).toBe("Direkt aus Excel einfügen — besondere Datenzeilen");
+    expect(document.querySelector("input")!.placeholder).toBe("Diagrammtypen suchen…");
+  });
+
+  it("localizeTree re-applies the active language to a freshly rendered subtree", () => {
+    localizePane("de"); // sets the active language
+    const root = document.createElement("div");
+    root.innerHTML = `<div class="group-label">Distribution</div><span class="fgroup-name">Analysis</span>`;
+    localizeTree(root);
+    expect(root.querySelector(".group-label")!.textContent).toBe("Verteilung");
+    expect(root.querySelector(".fgroup-name")!.textContent).toBe("Analyse");
   });
 });
