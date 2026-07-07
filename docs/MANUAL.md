@@ -27,7 +27,10 @@ bar at the bottom so it's always reachable. Within the Chart tab, *Chart type*,
 *Decorations* and *Preview & size* are collapsible sections (click the header);
 picking a type auto-collapses the gallery to a compact "current type" summary.
 
-1. **Pick a chart type** from the gallery (thumbnails are live previews).
+1. **Pick a chart type** from the gallery — the types are grouped by family
+   (columns & bars, line & area, parts of a whole, distribution, correlation,
+   matrix & spatial), with a search box to filter by name; thumbnails are live
+   previews.
 2. **Type or paste your data** into the datasheet — row 1 is categories,
    column A is series names. Pasting a range from Excel (Ctrl+V) works.
 3. Adjust options; the preview updates live.

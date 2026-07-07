@@ -227,29 +227,84 @@ function thumbnailSvg(kind: ChartKind): string {
 
 const thumbnails = new Map<ChartKind, string>();
 
+/** Chart kinds grouped by family, so the picker is scannable (think-cell's
+ *  Elements menu). Any CHART_KINDS entry not listed here still renders under a
+ *  trailing "Other" group, so a new kind can never silently disappear. */
+const CHART_GROUPS: { label: string; kinds: ChartKind[] }[] = [
+  { label: "Columns & bars", kinds: ["stacked", "clustered", "stacked100", "waterfall", "mekko", "butterfly", "cascade", "funnel"] },
+  { label: "Line & area", kinds: ["line", "area", "combo"] },
+  { label: "Parts of a whole", kinds: ["pie", "doughnut", "treemap", "sunburst", "waffle"] },
+  { label: "Distribution", kinds: ["boxplot", "violin", "candlestick"] },
+  { label: "Correlation", kinds: ["scatter", "bubble"] },
+  { label: "Matrix & spatial", kinds: ["heatmap", "tilemap", "radar", "gantt"] },
+];
+
+function thumbButton(kind: ChartKind, label: string): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "thumb" + (kind === state.kind ? " active" : "");
+  b.dataset.kind = kind;
+  b.dataset.label = label.toLowerCase();
+  if (!thumbnails.has(kind)) thumbnails.set(kind, thumbnailSvg(kind));
+  const pic = document.createElement("span");
+  pic.className = "thumb-pic";
+  pic.innerHTML = thumbnails.get(kind)!;
+  const cap = document.createElement("span");
+  cap.className = "thumb-cap";
+  cap.textContent = label;
+  b.append(pic, cap);
+  b.addEventListener("click", () => {
+    applyConfig(sampleConfig(kind), null);
+    // Auto-collapse the (tall) type grid once a kind is chosen — the summary
+    // then shows the current kind, click to re-expand.
+    const acc = document.getElementById("type-acc") as HTMLDetailsElement | null;
+    if (acc) acc.open = false;
+  });
+  return b;
+}
+
 function renderGallery() {
   gallery.innerHTML = "";
-  for (const { kind, label } of CHART_KINDS) {
-    const b = document.createElement("button");
-    b.className = "thumb" + (kind === state.kind ? " active" : "");
-    if (!thumbnails.has(kind)) thumbnails.set(kind, thumbnailSvg(kind));
-    const pic = document.createElement("span");
-    pic.className = "thumb-pic";
-    pic.innerHTML = thumbnails.get(kind)!;
-    const cap = document.createElement("span");
-    cap.className = "thumb-cap";
-    cap.textContent = label;
-    b.append(pic, cap);
-    b.addEventListener("click", () => {
-      applyConfig(sampleConfig(kind), null);
-      // Auto-collapse the (tall) type grid once a kind is chosen — the summary
-      // then shows the current kind, click to re-expand.
-      const acc = document.getElementById("type-acc") as HTMLDetailsElement | null;
-      if (acc) acc.open = false;
-    });
-    gallery.appendChild(b);
+  const labelOf = new Map(CHART_KINDS.map((k) => [k.kind, k.label] as const));
+  const grouped = new Set<ChartKind>();
+  const groups = CHART_GROUPS.map((g) => ({ label: g.label, kinds: g.kinds.filter((k) => labelOf.has(k)) }));
+  groups.forEach((g) => g.kinds.forEach((k) => grouped.add(k)));
+  const leftover = CHART_KINDS.filter((k) => !grouped.has(k.kind)).map((k) => k.kind);
+  if (leftover.length) groups.push({ label: "Other", kinds: leftover });
+
+  for (const g of groups) {
+    if (!g.kinds.length) continue;
+    const sec = document.createElement("div");
+    sec.className = "type-group";
+    const heading = document.createElement("div");
+    heading.className = "group-label";
+    heading.textContent = g.label;
+    const grid = document.createElement("div");
+    grid.className = "gallery";
+    for (const kind of g.kinds) grid.appendChild(thumbButton(kind, labelOf.get(kind)!));
+    sec.append(heading, grid);
+    gallery.appendChild(sec);
   }
   updateTypeSummary();
+  applyTypeFilter();
+}
+
+/** Filter the grouped picker by the search box; hide families with no match. */
+function applyTypeFilter() {
+  const input = document.getElementById("type-search-input") as HTMLInputElement | null;
+  const q = (input?.value ?? "").trim().toLowerCase();
+  let anyVisible = false;
+  for (const sec of gallery.querySelectorAll<HTMLElement>(".type-group")) {
+    let shown = 0;
+    for (const btn of sec.querySelectorAll<HTMLButtonElement>(".thumb")) {
+      const match = !q || (btn.dataset.label ?? "").includes(q);
+      btn.style.display = match ? "" : "none";
+      if (match) shown++;
+    }
+    sec.style.display = shown ? "" : "none";
+    if (shown) anyVisible = true;
+  }
+  const noRes = document.getElementById("type-noresult");
+  if (noRes) noRes.style.display = anyVisible ? "none" : "";
 }
 
 /** Reflect the selected chart kind in the collapsed "1 · Chart type" summary. */
@@ -721,6 +776,7 @@ titleInput.addEventListener("input", () => {
   renderPreview();
 });
 wireTabs();
+document.getElementById("type-search-input")?.addEventListener("input", applyTypeFilter);
 renderGallery();
 renderOptions();
 renderPreview();

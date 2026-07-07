@@ -36,7 +36,12 @@
         <details class="section acc" id="type-acc" open>
           <summary><span class="acc-title">1 · Chart type</span><span class="acc-sub" id="type-sub"></span></summary>
           <div class="acc-body">
-            <div id="gallery" class="gallery"></div>
+            <div class="type-search">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 14 14" /></svg>
+              <input type="text" id="type-search-input" placeholder="Search chart types…" aria-label="Search chart types" />
+            </div>
+            <div id="gallery"></div>
+            <p class="no-type-result" id="type-noresult" style="display: none">No chart type matches that search.</p>
             <div class="element-row" style="margin-top: 8px">
               <select id="template-list"></select>
               <button id="template-save">Save as template</button>
