@@ -1247,6 +1247,18 @@ const features = [
     },
     decorations: { totals: true },
   },
+  {
+    kind: "waterfall",
+    width: 560,
+    height: 300,
+    title: "Bridge with “of which” detail columns — the walk steps over them",
+    data: {
+      categories: ["FY23", "Volume", "Cost", "> Labour", "> Freight", "> Energy", "FX", "FY24"],
+      series: [{ name: "Delta", values: [86, 14, -12, -7, -3, -2, -4, 0] }],
+    },
+    waterfall: { totalIndices: [7], detailGroups: [{ of: 2, indices: [3, 4, 5] }] },
+    decorations: { categoryAxis: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

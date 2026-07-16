@@ -76,6 +76,7 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | A third variable on a scatter/bubble (by color) | add a numeric `Color` row (sequential ramp + gradient legend) |
 | Smooth trend curve instead of straight segments | `line` + `decorations.smooth: true` |
 | Grouping a long waterfall into sections | `waterfall.spacerIndices` (blank gap columns) |
+| Breaking one bridge step into "of which" sub-columns | `waterfall.detailGroups: [{ of: 2, indices: [3,4,5] }]` (off-chain; totals unaffected) |
 | Distribution behind a boxplot (show the raw points) | `boxplot` (raw samples) + `boxplot.jitter: true` |
 | Is the median difference significant? | `boxplot` (raw samples) + `boxplot.notch: true` (non-overlapping notches) |
 | Summary bar per Gantt section | `gantt` with section-header rows + `decorations.summaryBars: true` |
