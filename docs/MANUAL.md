@@ -119,6 +119,13 @@ Category cells support `Activity | Owner | Remark` columns, a leading `>`
 for indenting, and section-header rows (no Start/End). Calendar timelines
 pick weeks (with weekend shading), months, or quarters automatically.
 
+Set `gantt.workdays` to make a bar's LENGTH mean working days rather than
+elapsed days: a Mon→Mon task reads as 5 units, not 7, and weekends stop
+inflating every bar. `true` is Mon–Fri; pass ISO weekday numbers for a custom
+week (`[7,1,2,3,4]` = Sun–Thu). `Holiday` rows come out of the scale as well,
+and weekend/holiday shading switches off — those days have no width left to
+shade. Calendar timelines only.
+
 `Column <label>` adds a numeric table column between the task labels and the
 plan — the MS-Project look — right-aligned under `<label>` as its heading. Use
 one row per column (`Column Cost €k`, `Column FTE`): each resolves its own

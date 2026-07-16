@@ -5686,5 +5686,61 @@
     "decorations": {
       "summaryBars": true
     }
+  },
+  {
+    "kind": "gantt",
+    "width": 560,
+    "height": 240,
+    "title": "Working-day timeline — weekends carry no width",
+    "data": {
+      "categories": [
+        "Spec",
+        "Build",
+        "Review",
+        "Ship"
+      ],
+      "series": [
+        {
+          "name": "Start",
+          "values": [
+            20458,
+            20461,
+            20468,
+            20473
+          ]
+        },
+        {
+          "name": "End",
+          "values": [
+            20461,
+            20468,
+            20473,
+            20475
+          ]
+        },
+        {
+          "name": "Holiday",
+          "values": [
+            20466,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "name": "After",
+          "values": [
+            null,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "dates": true
+    },
+    "gantt": {
+      "workdays": true
+    }
   }
 ]
