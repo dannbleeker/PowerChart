@@ -485,3 +485,45 @@ describe("boxplot jitter dots are inside the plot", () => {
     expect(valueExtent(noJitter)!.max).toBeLessThan(100);
   });
 });
+
+describe("waterfall extent walks the same chain the layout draws", () => {
+  const stacked = {
+    kind: "waterfall", ...DEFAULT_SIZE, waterfall: { totalIndices: [3] },
+    data: {
+      categories: ["FY23", "Organic", "M&A", "FY24"],
+      series: [
+        { name: "Europe", values: [50, 8, 5, 0] },
+        { name: "Americas", values: [36, 6, 9, 0] },
+      ],
+    },
+  } as ChartConfig;
+
+  it("counts every stacked series, not just the first", () => {
+    // The bridge runs (50+36) + (8+6) + (5+9) = 114. A second chain that added
+    // only series[0] reported 63 — the first series' total, called the chart's.
+    expect(valueExtent(stacked)).toEqual({ min: 0, max: 114 });
+  });
+
+  it("keeps a stacked bridge on the shape under Same scale", () => {
+    const e = valueExtent(stacked)!;
+    const scene = buildChart({ ...stacked, scale: { min: e.min < 0 ? e.min : undefined, max: e.max } });
+    const { top, bottom } = rectSpan(scene);
+    expect(top).toBeGreaterThanOrEqual(-1); // was -213.8 on a 300pt canvas
+    expect(bottom).toBeLessThanOrEqual(scene.height + 1);
+  });
+
+  it("carries the running total across a spacer, as the bars do", () => {
+    // The old extent ignored spacerIndices entirely; it only got away with it
+    // because a spacer's cell is usually null.
+    const withSpacer = {
+      kind: "waterfall", ...DEFAULT_SIZE,
+      waterfall: { totalIndices: [4], spacerIndices: [2] },
+      data: {
+        categories: ["Start", "Up", "", "Up2", "End"],
+        series: [{ name: "V", values: [40, 10, 999, 10, 0] }],
+      },
+    } as ChartConfig;
+    // The spacer draws no bar and must not advance the total: 40+10+10 = 60.
+    expect(valueExtent(withSpacer)).toEqual({ min: 0, max: 60 });
+  });
+});
