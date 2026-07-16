@@ -271,3 +271,39 @@ describe("layout indexing", () => {
     expect(tall.nodes.some((n: any) => n.kind === "text" && n.name?.startsWith("label-"))).toBe(true);
   });
 });
+
+describe("boxplot extent reports the boxes, not the rows", () => {
+  const meanSd = (values: number[]): ChartConfig => ({
+    kind: "boxplot", ...DEFAULT_SIZE, boxplot: { meanSd: true },
+    data: { categories: ["A"], series: values.map((v, i) => ({ name: `o${i}`, values: [v] })) },
+  });
+
+  it("covers the mean±2·SD whiskers, which sit outside the samples", () => {
+    // samples 0..100 → mean 50, sample SD 57.7 → whiskers at -65.5 and 165.5.
+    const ext = valueExtent(meanSd([0, 100, 0, 100]))!;
+    expect(ext.max).toBeCloseTo(165.47, 1); // was 100 — the largest raw sample
+    expect(ext.min).toBeCloseTo(-65.47, 1); // was 0
+  });
+
+  it("keeps mean±SD whiskers on the plot when Same scale applies the extent", () => {
+    // "Same scale" writes valueExtent's result back as a hard scale override,
+    // so an understated extent clipped the whiskers off the plot.
+    const cfg = meanSd([0, 100, 0, 100]);
+    const ext = valueExtent(cfg)!;
+    const scene = buildChart({ ...cfg, scale: { min: ext.min < 0 ? ext.min : undefined, max: ext.max } });
+    const ys = scene.nodes.flatMap((n: any) =>
+      n.kind === "line" ? [n.y1, n.y2] : n.kind === "rect" ? [n.y, n.y + n.h] : [],
+    );
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(-1);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(scene.height + 1);
+  });
+
+  it("still reports the raw range for a plain Tukey boxplot", () => {
+    // Tukey whiskers and outliers are real observations, so nothing moves here.
+    const cfg: ChartConfig = {
+      kind: "boxplot", ...DEFAULT_SIZE,
+      data: { categories: ["A"], series: [10, 20, 30, 40].map((v, i) => ({ name: `o${i}`, values: [v] })) },
+    };
+    expect(valueExtent(cfg)).toEqual({ min: 0, max: 40 });
+  });
+});

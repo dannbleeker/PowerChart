@@ -52,10 +52,14 @@ function quartile(sorted: number[], p: number, method: "exclusive" | "inclusive"
  * "Q1 | 2024", … "Min | 2025", …) — each group gets a side-by-side box
  * per category, colored from the palette, with a legend.
  */
-export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+/**
+ * Every box the chart draws, in group-major order, plus the flat list of values
+ * they span. The layout scales to these, and boxplotExtent reports them, so the
+ * two can't drift apart — the mean±SD variant's whiskers reach beyond the raw
+ * samples, and an extent taken from the samples alone understates it.
+ */
+function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box | null)[][]; all: number[] } {
   const { data } = cfg;
-  const n = data.categories.length;
-  const fs = style.fontSize;
   const opts = cfg.boxplot ?? {};
   // Grouped boxplots: "Min | 2024"-style suffixes split rows into groups.
   const baseName = (name: string) => name.split("|")[0].trim();
@@ -65,7 +69,6 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const g = groupOf(srs.name);
     if (!groupNames.includes(g)) groupNames.push(g);
   }
-  const nG = groupNames.length;
   const rowsOf = (g: string) => data.series.filter((srs) => groupOf(srs.name) === g);
   const find = (g: string, re: RegExp) => rowsOf(g).find((srs) => re.test(baseName(srs.name)));
   const precomputed = SUMMARY_ROWS.some(([, re]) => data.series.some((srs) => re.test(baseName(srs.name))));
@@ -121,8 +124,18 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   // boxes[g][c]
   const grouped = groupNames.map((g) => data.categories.map((_, c) => boxFor(g, c)));
-  const boxes = grouped[0] ?? []; // group 0 keeps the single-group code path's shape
   const all = grouped.flat().flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
+  return { groupNames, grouped, all };
+}
+
+export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const n = data.categories.length;
+  const fs = style.fontSize;
+  const opts = cfg.boxplot ?? {};
+  const { groupNames, grouped, all } = boxplotBoxes(cfg);
+  const nG = groupNames.length;
+  const boxes = grouped[0] ?? []; // group 0 keeps the single-group code path's shape
   const fmt = resolveFormat(all, cfg.numberFormat);
   const H = !!cfg.horizontal;
   const frame = H
@@ -295,6 +308,9 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
 /** Value extent for Same Scale, including whisker ends and outliers. */
 export function boxplotExtent(cfg: ChartConfig): { min: number; max: number } | null {
-  const all = cfg.data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  // Report the boxes, not the raw rows: mean±SD whiskers sit at mean ± 2·SD,
+  // outside the samples, and "Same scale" turns this extent into a hard scale
+  // override — understating it pushed those whiskers off the plot.
+  const { all } = boxplotBoxes(cfg);
   return all.length ? { min: Math.min(0, ...all), max: Math.max(0, ...all) } : null;
 }

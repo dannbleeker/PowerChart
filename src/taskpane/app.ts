@@ -836,6 +836,11 @@ function renderActionState() {
   const insertBtn = $("insert") as HTMLButtonElement;
   insertBtn.textContent = state.editTarget ? "Update chart" : "Insert into slide";
   ($("insert-new") as HTMLButtonElement).style.display = state.editTarget ? "" : "none";
+  // This label is rewritten every time the edit target changes — long after
+  // localizePane translated the pane — so it has to be re-translated or it
+  // reverts to English. localizeTree only looks at descendants, hence the
+  // parent.
+  if (insertBtn.parentElement) localizeTree(insertBtn.parentElement);
 }
 
 // --- boot ------------------------------------------------------------------
