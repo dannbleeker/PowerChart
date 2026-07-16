@@ -4,114 +4,74 @@ Curated candidate work, from a research sweep (July 2026) comparing every
 existing chart kind against think-cell, Excel, Highcharts, Datawrapper, and
 Mekko Graphics, plus a chart-type survey across the Zelazny / FT Visual
 Vocabulary taxonomies and competitor add-ins (Zebra BI, Vizzlo, UpSlide).
-Every claim was verified against the source before listing — items the
-engine already has were filtered out.
 
-**This is the only backlog document.** Items graduate from here into PRs
-(and then out of here); rejected ideas stay in §4 so they aren't re-proposed. (Shipped since the
-sweep: the full top-10 — cascade, bullet targets, combo column modes,
-bubble size legend, forecast styling, scatter quadrants, funnel,
-lollipop/dot/dumbbell styles, gantt progress + baselines, grouped
-boxplots — plus, from the next tier: waterfall budget-vs-actual bridge,
-line confidence bands, area-between-series (`fillBetween`), heatmap
-marginal totals, slope chart, waffle, KPI tile, bar-of-pie breakout,
-small multiples; plus batch G of the §2 within-kind gaps: stepped
-line/area, Excel-style column gap width + clustered overlap, and butterfly
-value ticks/gridlines on both flanks; plus batch H: area with negative
-values, scatter/bubble trajectory trail, and boxplot jittered raw-data
-dots; plus batch I: scatter/bubble continuous color scale, smoothed lines,
-and waterfall grouping spacers; plus batch J: gantt auto-summary bars,
-notched boxplots, and the radar min–max "peer range + us" band; plus
-batch K: automatic "Other" bucket, calendar heatmap layout, and butterfly
-stacked flanks; plus batch L: radar per-spoke scales, transparent floating
-column segments, and the line missing-data bridge; plus batch M: combo
-waterfall/Mekko base modes and independent per-line-series axes; plus
-batch N: tilemap hex tiles, tilemap mini-glyphs, and stacked100 negatives.)
-Feasibility is judged against the live-add-in constraint (rects, lines,
-text, ellipses, triangles, polygon *outlines* — no freeform curves; the SVG
-and skill-pptx renderers additionally have filled polygons and patterns).
+**This is the only backlog document.** Items graduate from here into PRs and are
+deleted when they ship — what has shipped is recorded by the README feature
+table and by git, not here. Rejected ideas stay in §2 so they aren't
+re-proposed.
 
-## 1. Top candidates (value ÷ effort, cross-cutting rank)
+Feasibility is judged against the live-add-in constraint: rects, lines, text,
+ellipses, triangles and polygon *outlines* — no freeform curves, and no images
+(the scene graph has no image node). The SVG and skill-pptx renderers
+additionally have filled polygons and patterns.
 
-The researched top-10 and the full next tier are shipped (waterfall
-bridge, confidence bands, fill-between, heatmap totals, slope, waffle,
-KPI tile, bar-of-pie, small multiples) — and so are the four that used to
-head this list: semi-circle doughnut (`pie.semi`), bump (`decorations.bump`
-on a line chart), treemap, and the Pareto helper (`pareto`).
+The researched top-10 and the whole next tier have shipped, as has every new
+chart type the sweep ranked and every within-kind gap it found worth doing.
+Nothing below is queued behind them: each item is parked for the reason it
+states.
 
-Nothing in §2/§3 is queued behind them. What is left there is left because
-it was judged low-value, hard, or out of register — each item says which.
+## 1. Open
 
-## 2. Gaps within existing kinds (per kind)
+### Blocked on an image node the engine doesn't have
 
-### Column family (stacked / clustered / stacked100)
-- (all researched column-family gaps shipped)
+Both need the same two new things — an image/icon node kind that all three
+renderers can draw, and an icon asset library (licensing scope). Pictogram (§2)
+was rejected on exactly that; these are the same call under another name.
 
-### Waterfall
-- Connector re-routing (drag to skip columns) — authoring UX, low for a
+- **Scatter/bubble point icons** — medium/hard, low/niche.
+- **Heatmap per-cell icon overlays** — medium, low.
+
+### Authoring UX rather than rendering
+
+PowerChart renders from a config; this wants in-canvas manipulation, which is
+one of the three things Office.js can't reach anyway (see docs/RESEARCH.md).
+
+- **Waterfall connector re-routing** (drag to skip columns) — low for a
   rendering engine.
 
-### Combo
-- Scatter-on-combo — hard/low; skip for now.
-  (Stacked-area + line shipped as `combo.columns: "area"`.)
+### Judged low value
 
-### Line / Area
-- Sparklines — low/niche.
+- **Scatter-on-combo** — hard/low. (`Series.type` is `"column" | "line"`, and
+  the combo bases are column/waterfall/Mekko/area.)
+- **Bubble overlap-repulsion pass** — medium/hard, low/niche. Label collision
+  avoidance already ships; this is about separating the bubbles themselves.
+- **Marginal histograms** on scatter/bubble — low/niche.
+- **Gantt resource lanes with capacity, working-day calendars, cost columns** —
+  hard/low; project-management scope, not deck-tool scope.
 
-### Scatter / Bubble
-- Bubble overlap-repulsion pass, marginal histograms, point icons —
-  medium/hard, low/niche.
+## 2. Rejected or already covered (do not re-propose)
 
-### Gantt
-- Resource lanes with capacity, working-day calendars, cost columns —
-  hard/low; out of deck-tool scope.
-  (Critical-path highlight shipped: `decorations.criticalPath` red-outlines the
-  longest `After`-dependency chain and its arrows.)
-
-### Boxplot
-- (Mean±SD box variant shipped as `boxplot.meanSd`; violin density curves
-  shipped as their own `violin` kind.)
-
-### Radar
-- (Radial bar variant / coxcomb shipped as `radar.bars`; stacked radar shipped
-  as `radar.stacked`. Vertex markers verified: radar emits `marker-*` ellipse
-  nodes which the Office.js renderer draws, so they already appear in the live
-  add-in.)
-
-### Pie / Doughnut
-- (Variable-radius pie shipped as `pie.variableRadius` / a `Radius` row.
-  Sunburst shipped: nested inner/outer rings from `"Group | Item"` categories.)
-
-### Heatmap
-- Per-cell icon overlays — medium, low; needs an icon asset library
-  (licensing scope, same as the rejected pictogram idea). Skip.
-  (Cell-size encoding shipped as `heatmap.sizeEncode`; row clustering +
-  dendrogram shipped as `heatmap.cluster`.)
-
-### Tilemap
-- Proportional-area cartograms, drill-down — hard/infeasible; rejected.
-
-## 3. New chart types worth adding (ranked)
-
-- (All §3 candidates shipped: bullet, lollipop/dot/dumbbell, bump, Pareto
-   helper, and treemap — squarified packing with 2-level "Group | Item"
-   grouping. The horizontal profile chart and radar add-in vertex markers,
-   the last two §2-tail items, have also shipped. Only §4 rejected ideas and a
-   few low/niche notes remain.)
-
-## 4. Rejected (do not re-propose)
-
-- **Gauge** — bullet chart replaces it deliberately (Few); low deck demand.
+- **Dial / needle gauge** — bullet charts replace it deliberately (Few); low
+  deck demand. Note the *semi-circle scorecard* gauge did ship (`doughnut` +
+  `pie.semi`); what stays rejected is the dial-with-needle and its threshold
+  bands.
 - **Sankey / chord / arc** — need curved ribbons; infographic genre.
 - **Ridgeline** — stacked density curves; academic register. (The single-column
   `violin` kind shipped at owner request; ridgeline stacking not pursued.)
+- **Stream graph** — feasible but editorial aesthetic; no deck demand.
+- **Pictogram with icon libraries** — needs the image node above plus an asset
+  library (licensing scope). Waffle is the deliberate substitute: it covers the
+  part-to-whole genre with square cells, it does not render icons.
+- **Histogram as a kind** — the look is `clustered` + `gapWidth: 0`, both
+  shipped. If this is ever revisited, auto-binning raw samples into categories
+  is the only real gap; the bar geometry is not.
+- **Choropleth maps, 3D, drill-down interactivity** — out of scope by design
+  (see CLAUDE.md). Tilemap proportional-area cartograms and tilemap drill-down
+  fall here too: hard/infeasible.
+- **Population pyramid, plain dot chart** — already covered by `butterfly`
+  (+ `butterfly.split`) and `decorations.barStyle: "dot"`.
+- **Radar vertex markers** — already there: radar emits `marker-*` ellipse
+  nodes, which the Office.js renderer draws, so they appear in the live add-in
+  too.
 - ~~Candlestick / OHLC~~ — shipped as the `candlestick` kind at owner request,
   despite the thin consulting-demand signal.
-- **Stream graph** — feasible but editorial aesthetic; no deck demand.
-- **Pictogram with icon libraries** — asset/licensing scope; waffle covers it.
-- **Histogram as a kind** — it's clustered with zero gap (see gap-width item).
-- **Choropleth maps, 3D, drill-down interactivity** — out of scope by
-  design (see CLAUDE.md).
-- **Population pyramid, plain dot chart** — already covered (butterfly;
-  dot style option).
-
