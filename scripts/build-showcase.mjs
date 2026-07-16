@@ -1182,6 +1182,23 @@ const features = [
     },
     decorations: { summaryBars: true },
   },
+  {
+    kind: "gantt",
+    width: 560,
+    height: 240,
+    title: "Working-day timeline — weekends carry no width",
+    data: {
+      categories: ["Spec", "Build", "Review", "Ship"],
+      series: [
+        { name: "Start", values: [day("2026-01-05"), day("2026-01-08"), day("2026-01-15"), day("2026-01-20")] },
+        { name: "End", values: [day("2026-01-08"), day("2026-01-15"), day("2026-01-20"), day("2026-01-22")] },
+        { name: "Holiday", values: [day("2026-01-13"), null, null, null] },
+        { name: "After", values: [null, 1, 2, 3] },
+      ],
+      dates: true,
+    },
+    gantt: { workdays: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

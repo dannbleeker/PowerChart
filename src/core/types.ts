@@ -446,6 +446,19 @@ export interface ChartConfig {
    * two-series butterfly (series 0 left, series 1 right).
    */
   butterfly?: { split?: number };
+  /** Gantt options — the timeline itself; task data stays in datasheet rows. */
+  gantt?: {
+    /**
+     * Working-day timeline: non-working days collapse to zero width, so a bar's
+     * LENGTH reads as working days rather than elapsed days (Mon→Mon is 5 units,
+     * not 7). `true` = Mon–Fri; an array of ISO weekday numbers (1=Mon … 7=Sun)
+     * sets a custom working week, e.g. [7,1,2,3,4] for Sun–Thu. `Holiday` rows
+     * are excluded too. Weekend/holiday shading switches off with it — those
+     * days have no width left to shade. Calendar timelines only (`data.dates`);
+     * a no-op on a numeric one, where "working day" means nothing.
+     */
+    workdays?: boolean | number[];
+  };
   /**
    * Radar options. `perSpoke` normalizes each spoke to its own maximum, so
    * spokes carrying different KPI units become comparable in shape (the shared

@@ -155,7 +155,53 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     : niceTicks(lo, hi, 6);
   const t0 = dates ? Math.min(lo, ticks[0] ?? lo) : ticks[0];
   const t1 = dates ? Math.max(hi, ticks[ticks.length - 1] ?? hi) : ticks[ticks.length - 1];
-  const toX = (v: number) => plot.x + ((v - t0) / (t1 - t0 || 1)) * plot.w;
+
+  // Working-day timeline: give non-working days zero width so a bar's length
+  // reads as the working days it contains. Every x in this file goes through
+  // toX, so bars, milestones, dependencies, brackets, summary bars, baselines,
+  // progress fills, the today line and the gridlines all follow from here.
+  // Calendar only — "working day" means nothing on a numeric timeline.
+  const wdCfg = cfg.gantt?.workdays;
+  const workSet =
+    wdCfg === true
+      ? new Set([1, 2, 3, 4, 5])
+      : Array.isArray(wdCfg)
+        ? new Set(wdCfg.map((n) => Math.round(n)))
+        : null;
+  // ~55 years. A mistyped date must not allocate a giant array.
+  const SPAN_CAP = 20000;
+  const workdays = dates && !!workSet && workSet.size > 0 && t1 - t0 <= SPAN_CAP;
+  // ISO weekday, day 0 = Thursday. The (d%7+7)%7 fold also handles pre-1970
+  // days, which the weekend-shading loop below never did.
+  const isoDow = (d: number) => (((((d % 7) + 7) % 7) + 3) % 7) + 1;
+  const offDays = new Set(holidays.map((h) => Math.round(h)));
+  const pre: number[] = [];
+  if (workdays) {
+    let n = 0;
+    for (let d = Math.floor(t0); d <= Math.ceil(t1); d++) {
+      // Working days STRICTLY BEFORE d, so a span's width is the working days
+      // it contains: Mon→Fri stays 4 units (as on the elapsed scale, so the
+      // "End is an instant" convention is unchanged), Mon→Mon becomes 5, not 7.
+      pre.push(n);
+      if (workSet!.has(isoDow(d)) && !offDays.has(d)) n++;
+    }
+  }
+  // The last prefix entry, not the running counter: it is by construction the
+  // working-day count of [t0, t1), which is what makes toX(t1) land exactly on
+  // the right edge, as the linear branch does.
+  const workTotal = pre.length ? pre[pre.length - 1] : 0;
+  const workIndex = (v: number) =>
+    pre[Math.max(0, Math.min(pre.length - 1, Math.round(v) - Math.floor(t0)))];
+  const toX = (v: number) =>
+    workdays
+      ? plot.x + (workIndex(v) / Math.max(1, workTotal)) * plot.w
+      : plot.x + ((v - t0) / (t1 - t0 || 1)) * plot.w;
+  /**
+   * Minimum width for a span that collapses to nothing. Only a working-day
+   * scale can do that (a weekend-only task), so it stays 0 otherwise and no
+   * existing output moves. A constant, so the result stays deterministic.
+   */
+  const minW = workdays ? 1.5 : 0;
   const fmt = resolveFormat(ticks, cfg.numberFormat);
   const tickLabel = (t: number, i: number) => {
     if (!dates) return formatNumber(t, fmt);
@@ -191,8 +237,9 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     );
   });
 
-  // Holiday shading (any granularity).
-  for (const h of holidays) {
+  // Holiday shading (any granularity). Pointless under a working-day scale:
+  // a holiday has no width left to shade.
+  for (const h of workdays ? [] : holidays) {
     const x1 = Math.max(plot.x, toX(h));
     const x2 = Math.min(plot.x + plot.w, toX(h + 1));
     if (x2 > x1) {
@@ -200,8 +247,12 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     }
   }
 
-  // Weekend shading in week granularity.
-  if (weeks) {
+  // Weekend shading in week granularity. Gated on !workdays explicitly rather
+  // than left to the x2 > x1 guard below: that only collapses for a Mon–Fri
+  // week. Under a custom workweek (say Sun–Thu) Saturday has width again, so
+  // the guard passes and the block shades a Sunday — a working day there —
+  // while leaving the real non-working Friday unshaded.
+  if (weeks && !workdays) {
     for (let d = lo - 7; d <= hi + 7; d++) {
       if (d % 7 === 2) {
         // Day ≡ 2 (mod 7) is Saturday (day 0 = Thursday); shade Sat+Sun.
@@ -261,7 +312,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           const x2 = toX(e);
           const sbH = barH * 0.4;
           nodes.push(
-            { kind: "rect", x: x1, y: cy - sbH / 2, w: x2 - x1, h: sbH, fill: style.text, name: `summary-${c}` },
+            { kind: "rect", x: x1, y: cy - sbH / 2, w: Math.max(x2 - x1, minW), h: sbH, fill: style.text, name: `summary-${c}` },
             { kind: "line", x1, y1: cy - sbH / 2, x2: x1, y2: cy + sbH * 1.4, stroke: style.text, strokeWidth: 1.25, name: `summary-cap-a-${c}` },
             { kind: "line", x1: x2, y1: cy - sbH / 2, x2, y2: cy + sbH * 1.4, stroke: style.text, strokeWidth: 1.25, name: `summary-cap-b-${c}` },
           );
@@ -297,14 +348,18 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const be = baseEnds[c];
     if (bs != null && be != null && be > bs) {
       nodes.push({
-        kind: "rect", x: toX(bs), y: cy + barH * 0.55, w: toX(be) - toX(bs), h: barH * 0.4,
+        kind: "rect", x: toX(bs), y: cy + barH * 0.55, w: Math.max(toX(be) - toX(bs), minW), h: barH * 0.4,
         fill: "#cfcdc5", name: `gantt-baseline-${c}`,
       });
     }
     if (s != null && e != null && e > s) {
       const isCrit = critical.has(c);
+      const bx = toX(s);
+      // A task living entirely inside non-working days has zero working length
+      // and would vanish. Keep a hairline so it is still visible and clickable.
+      const bw = Math.max(toX(e) - bx, minW);
       nodes.push({
-        kind: "rect", x: toX(s), y: cy - barH / 2, w: toX(e) - toX(s), h: barH,
+        kind: "rect", x: bx, y: cy - barH / 2, w: bw, h: barH,
         fill: seriesColor(style, 0), name: `bar-${c}`,
         ...(isCrit ? { stroke: style.negative, strokeWidth: 1.75 } : {}),
       });
@@ -314,16 +369,16 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         const pct = Math.max(0, Math.min(1, rawPct > 1 ? rawPct / 100 : rawPct));
         if (pct > 0) {
           nodes.push({
-            kind: "rect", x: toX(s), y: cy - barH / 2, w: (toX(e) - toX(s)) * pct, h: barH,
+            kind: "rect", x: bx, y: cy - barH / 2, w: bw * pct, h: barH,
             fill: "#1b4e8a", name: `progress-${c}`,
           });
         }
       }
       if (decor.segmentLabels) {
         const label = spanLabel(s, e);
-        if (toX(e) - toX(s) >= textWidth(label, fs * 0.9) + 4) {
+        if (bw >= textWidth(label, fs * 0.9) + 4) {
           nodes.push({
-            kind: "text", x: toX(s), y: cy - fs * 0.7, w: toX(e) - toX(s), h: fs * 1.4,
+            kind: "text", x: bx, y: cy - fs * 0.7, w: bw, h: fs * 1.4,
             text: label, fontSize: fs * 0.9, color: "#ffffff", align: "center", valign: "middle", name: `bar-label-${c}`,
           });
         }

@@ -232,3 +232,110 @@ describe("segment order & manual scale", () => {
     expect((anchors.baselineY - anchors.columnTop[0]) / anchors.plot.h).toBeCloseTo(0.5, 2);
   });
 });
+
+describe("gantt working-day timeline (gantt.workdays)", () => {
+  const day = (iso: string) => Math.round(Date.parse(iso) / 86400000);
+  /** Mon 5 Jan 2026 → Fri 9 (4 elapsed, 4 working) and → Mon 12 (7 elapsed, 5 working). */
+  const twoBars = (gantt?: ChartConfig["gantt"], holiday?: string) =>
+    cfg({
+      kind: "gantt",
+      width: 500,
+      height: 200,
+      ...(gantt ? { gantt } : {}),
+      data: {
+        categories: ["MonFri", "MonMon"],
+        series: [
+          { name: "Start", values: [day("2026-01-05"), day("2026-01-05")] },
+          { name: "End", values: [day("2026-01-09"), day("2026-01-12")] },
+          ...(holiday ? [{ name: "Holiday", values: [day(holiday), null] }] : []),
+        ],
+        dates: true,
+      },
+    });
+  const widthRatio = (c: ChartConfig) => {
+    const { nodes } = layoutGantt(c, DEFAULT_STYLE, DEFAULT_DECOR);
+    const w = (i: number) => (nodes.find((n) => n.name === `bar-${i}`) as RectNode).w;
+    return w(1) / w(0);
+  };
+  const count = (c: ChartConfig, prefix: string) =>
+    layoutGantt(c, DEFAULT_STYLE, DEFAULT_DECOR).nodes.filter((n) => n.name?.startsWith(prefix)).length;
+
+  it("makes a bar's length the working days it contains", () => {
+    // The ratio of the two bars is what discriminates: it is independent of the
+    // timeline's padding, which is a whole number of weeks either way.
+    expect(widthRatio(twoBars())).toBeCloseTo(7 / 4, 3); // elapsed days
+    expect(widthRatio(twoBars({ workdays: true }))).toBeCloseTo(5 / 4, 3); // Mon→Mon is 5, not 7
+  });
+
+  it("takes Holiday rows out of the working days too", () => {
+    // A Wednesday holiday costs both bars a day: 4→3 and 5→4.
+    expect(widthRatio(twoBars({ workdays: true }, "2026-01-07"))).toBeCloseTo(4 / 3, 3);
+  });
+
+  it("drops weekend and holiday shading — those days have no width left", () => {
+    const shaded = twoBars(undefined, "2026-01-07");
+    expect(count(shaded, "weekend-")).toBeGreaterThan(0);
+    expect(count(shaded, "holiday-")).toBeGreaterThan(0);
+    const workweeks: (boolean | number[])[] = [true, [7, 1, 2, 3, 4]];
+    for (const wd of workweeks) {
+      // [7,1,2,3,4] (Sun–Thu) is the case the `x2 > x1` guard alone does NOT
+      // catch: Saturday has width again, so the old block shaded a Sunday — a
+      // working day there — and left the real non-working Friday unshaded.
+      const c = twoBars({ workdays: wd }, "2026-01-07");
+      expect(count(c, "weekend-"), String(wd)).toBe(0);
+      expect(count(c, "holiday-"), String(wd)).toBe(0);
+    }
+  });
+
+  it("reaches the right edge of the plot, exactly like the elapsed scale", () => {
+    const c = twoBars({ workdays: true });
+    const { nodes, anchors } = layoutGantt(c, DEFAULT_STYLE, DEFAULT_DECOR);
+    const right = anchors.plot!.x + anchors.plot!.w;
+    const xs = nodes.filter((n) => n.name?.startsWith("bar-")).map((n) => (n as RectNode).x);
+    for (const x of xs) expect(x).toBeGreaterThanOrEqual(anchors.plot!.x - 0.01);
+    // The denominator is the working-day count of [t0, t1), so the far end maps
+    // onto the right edge rather than short of it.
+    const gridlines = nodes.filter((n) => n.name?.startsWith("gridline"));
+    if (gridlines.length) {
+      const maxX = Math.max(...gridlines.map((n) => (n as any).x1 ?? 0));
+      expect(maxX).toBeLessThanOrEqual(right + 0.01);
+    }
+  });
+
+  it("keeps a weekend-only task visible instead of collapsing it to nothing", () => {
+    const c = cfg({
+      kind: "gantt",
+      width: 500,
+      height: 200,
+      gantt: { workdays: true },
+      data: {
+        categories: ["Weekend job", "Normal"],
+        series: [
+          { name: "Start", values: [day("2026-01-10"), day("2026-01-05")] }, // Sat
+          { name: "End", values: [day("2026-01-11"), day("2026-01-09")] }, // Sun
+        ],
+        dates: true,
+      },
+    });
+    const { nodes } = layoutGantt(c, DEFAULT_STYLE, DEFAULT_DECOR);
+    const bar = nodes.find((n) => n.name === "bar-0") as RectNode;
+    expect(bar.w).toBeGreaterThan(0); // zero working days, but still drawn
+    expect(bar.w).toBeLessThan(3); // as a hairline, not a real span
+  });
+
+  it("is a no-op on a numeric timeline, where working days mean nothing", () => {
+    const numeric = (gantt?: ChartConfig["gantt"]) =>
+      layoutGantt(
+        cfg({
+          kind: "gantt",
+          width: 500,
+          height: 200,
+          ...(gantt ? { gantt } : {}),
+          data: { categories: ["A"], series: [{ name: "Start", values: [0] }, { name: "End", values: [5] }] },
+        }),
+        DEFAULT_STYLE,
+        DEFAULT_DECOR,
+      ).nodes;
+    expect(numeric({ workdays: true })).toEqual(numeric());
+  });
+});

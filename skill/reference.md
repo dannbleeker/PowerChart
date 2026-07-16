@@ -129,6 +129,14 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Holiday` | Gantt: shade these dates |
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
 | `Column <label>` | Gantt: numeric table column beside the task labels (right-aligned, own precision; unit goes in the label) |
+
+`gantt: { workdays?: boolean | number[] }` — working-day timeline: non-working
+days collapse to zero width so a bar's length reads as working days, not
+elapsed days (Mon→Mon = 5 units, not 7). `true` = Mon–Fri; an array of ISO
+weekday numbers (1=Mon … 7=Sun) sets a custom week, e.g. `[7,1,2,3,4]` for
+Sun–Thu. `Holiday` rows drop out of the scale too, and weekend/holiday shading
+switches off with it. Calendar timelines only; a no-op on a numeric one.
+
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, vertical |
 | `Target` | bullet tick across each column; on waterfalls also a hatched gap-to-target segment + label |
 | `Band low`, `Band high` | line charts: shaded confidence/uncertainty ribbon (rows never draw as lines) |

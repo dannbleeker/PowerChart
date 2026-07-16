@@ -123,6 +123,7 @@ describe("showcase deck coverage", () => {
     ["clustered heatmap", (c) => c.kind === "heatmap" && !!c.heatmap?.cluster],
     ["combo area base", (c) => c.combo?.columns === "area"],
     ["gantt gutter columns", (c) => c.kind === "gantt" && !!c.data.series.some((s) => /^column\b/i.test(s.name))],
+    ["gantt working-day timeline", (c) => c.kind === "gantt" && c.gantt?.workdays != null],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

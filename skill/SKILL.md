@@ -80,6 +80,7 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Is the median difference significant? | `boxplot` (raw samples) + `boxplot.notch: true` (non-overlapping notches) |
 | Summary bar per Gantt section | `gantt` with section-header rows + `decorations.summaryBars: true` |
 | Cost / effort table beside a Gantt | `gantt` + one `Column <label>` row per column (e.g. `Column Cost k€`) |
+| Plan where a bar's length means working days | `gantt` (dates) + `gantt.workdays: true` (or ISO weekday numbers for a custom week) |
 | "Us vs the peer range" on a radar | `radar` (peers then us) + `decorations.radarBand: true` |
 | Too many stack segments (long tail) | `stacked`/`clustered` + `otherBucket: {max}` (collapse the rest to "Other") |
 | Daily activity over months (contributions grid) | `heatmap` (one daily date series) + `heatmap.calendar: true` |
