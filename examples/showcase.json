@@ -6049,5 +6049,59 @@
     "decorations": {
       "categoryAxis": true
     }
+  },
+  {
+    "kind": "gantt",
+    "width": 560,
+    "height": 280,
+    "title": "Plan grouped into owner lanes — dependencies follow their rows",
+    "data": {
+      "categories": [
+        "Spec | Ana",
+        "Build | Ben",
+        "Review | Ana",
+        "Ship | Ben",
+        "Handover"
+      ],
+      "series": [
+        {
+          "name": "Start",
+          "values": [
+            20458,
+            20465,
+            20472,
+            20479,
+            20486
+          ]
+        },
+        {
+          "name": "End",
+          "values": [
+            20465,
+            20472,
+            20479,
+            20486,
+            20489
+          ]
+        },
+        {
+          "name": "After",
+          "values": [
+            null,
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      ],
+      "dates": true
+    },
+    "gantt": {
+      "lanes": "owner"
+    },
+    "decorations": {
+      "summaryBars": true
+    }
   }
 ]

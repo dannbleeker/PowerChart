@@ -53,6 +53,7 @@ conventions, and every option.
 | Bubble overlap relief along one axis (disclosed) | ✅ (`scatter.spread: "x"/"y"` + `spreadLimit`; cap printed in the footnote) |
 | Combo benchmark markers (points, no connecting line) | ✅ (`type: "marker"` on a combo series; shares the columns' scale) |
 | Waterfall "of which" detail columns (off the chain) | ✅ (`waterfall.detailGroups: [{of, indices}]`; the bridge steps over them) |
+| Gantt lanes grouped by owner | ✅ (`gantt.lanes: "owner"`; opt-in, stable, `After` renumbered) |
 | Category sorting by total | ✅ |
 | Combo secondary (right) value axis | ✅ |
 | Label content menu on line & scatter labels | ✅ |

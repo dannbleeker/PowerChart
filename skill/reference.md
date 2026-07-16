@@ -155,6 +155,13 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
 | `Column <label>` | Gantt: numeric table column beside the task labels (right-aligned, own precision; unit goes in the label) |
 
+`gantt: { lanes?: "owner" }` — regroup tasks under one synthesized header per
+Owner (the middle part of an `Activity | Owner | Remark` category). Opt-in: a
+plan's row order is the plan, so nothing regroups on its own. A stable
+partition rather than a sort — rows keep their order inside a lane, unowned
+tasks stay together at the end — and `After` is renumbered so the dependency
+arrows still join the same tasks.
+
 `gantt: { workdays?: boolean | number[] }` — working-day timeline: non-working
 days collapse to zero width so a bar's length reads as working days, not
 elapsed days (Mon→Mon = 5 units, not 7). `true` = Mon–Fri; an array of ISO
