@@ -58,7 +58,7 @@ function quartile(sorted: number[], p: number, method: "exclusive" | "inclusive"
  * two can't drift apart — the mean±SD variant's whiskers reach beyond the raw
  * samples, and an extent taken from the samples alone understates it.
  */
-function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box | null)[][]; all: number[] } {
+function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box | null)[][]; all: number[]; drawn: number[] } {
   const { data } = cfg;
   const opts = cfg.boxplot ?? {};
   // Grouped boxplots: "Min | 2024"-style suffixes split rows into groups.
@@ -125,7 +125,15 @@ function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box |
   // boxes[g][c]
   const grouped = groupNames.map((g) => data.categories.map((_, c) => boxFor(g, c)));
   const all = grouped.flat().flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
-  return { groupNames, grouped, all };
+  // The jitter overlay plots every raw observation. Normally the box already
+  // spans them, but the mean±SD variant's whiskers stop at mean ± 2·SD and it
+  // reports no outliers, so a sample past 2·SD has nothing covering it. The
+  // scale needs those dots; the number format does not (it describes the
+  // summary, and the samples it is derived from can only add noise).
+  const drawn = opts.jitter
+    ? [...all, ...grouped.flat().flatMap((b) => b?.samples ?? [])]
+    : all;
+  return { groupNames, grouped, all, drawn };
 }
 
 export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
@@ -133,7 +141,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const n = data.categories.length;
   const fs = style.fontSize;
   const opts = cfg.boxplot ?? {};
-  const { groupNames, grouped, all } = boxplotBoxes(cfg);
+  const { groupNames, grouped, all, drawn } = boxplotBoxes(cfg);
   const nG = groupNames.length;
   const boxes = grouped[0] ?? []; // group 0 keeps the single-group code path's shape
   const fmt = resolveFormat(all, cfg.numberFormat);
@@ -143,7 +151,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     : computeFrame(cfg, style, { ...decor, seriesLabels: false }, []).frame;
   // One shared value scale across every box — that is the point of putting
   // them in one chart.
-  const scale = valueScale(frame, Math.min(0, ...all), Math.max(0, ...all), cfg.scale);
+  const scale = valueScale(frame, Math.min(0, ...drawn), Math.max(0, ...drawn), cfg.scale);
   // Value coordinate along the value axis (x when horizontal, y otherwise).
   const qOf = H
     ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w
@@ -311,6 +319,6 @@ export function boxplotExtent(cfg: ChartConfig): { min: number; max: number } | 
   // Report the boxes, not the raw rows: mean±SD whiskers sit at mean ± 2·SD,
   // outside the samples, and "Same scale" turns this extent into a hard scale
   // override — understating it pushed those whiskers off the plot.
-  const { all } = boxplotBoxes(cfg);
-  return all.length ? { min: Math.min(0, ...all), max: Math.max(0, ...all) } : null;
+  const { drawn } = boxplotBoxes(cfg);
+  return drawn.length ? { min: Math.min(0, ...drawn), max: Math.max(0, ...drawn) } : null;
 }

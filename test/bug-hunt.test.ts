@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE, valueExtent } from "../src/core/chart";
 import { sceneToSvg } from "../src/render/svg";
 import { formatNumber, parseDateToken } from "../src/core/format";
+import { textWidth } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /** Regression tests for defects found during a codebase bug-hunt pass. */
@@ -270,6 +271,35 @@ describe("layout indexing", () => {
     const tall = buildChart({ ...cfg, horizontal: false } as ChartConfig);
     expect(tall.nodes.some((n: any) => n.kind === "text" && n.name?.startsWith("label-"))).toBe(true);
   });
+
+  it("horizontal mekko keeps labels out of segments shorter than the font", () => {
+    // Thick rows, hairline-short segments — the case the thickness gate alone
+    // does not catch. The fit check tolerates 2pt of bleed (the text box is
+    // drawn 4pt wider than the segment), which is fine for a vertical mekko's
+    // wide columns but let three 3.8pt segments each print a 5.4pt "4",
+    // overlapping their neighbours by 1.6pt.
+    const scene = buildChart({
+      kind: "mekko", width: 400, height: 300, horizontal: true,
+      data: {
+        categories: ["EMEA"],
+        series: [
+          { name: "A", values: [4] }, { name: "B", values: [4] },
+          { name: "C", values: [4] }, { name: "D", values: [300] },
+        ],
+      },
+    } as ChartConfig);
+    const ink = (n: any) => {
+      const w = textWidth(n.text, n.fontSize);
+      const cx = n.x + n.w / 2;
+      return { lo: cx - w / 2, hi: cx + w / 2 };
+    };
+    const labels = scene.nodes.filter((n: any) => n.kind === "text" && n.name?.startsWith("label-")) as any[];
+    // Only D is wide enough to carry a label.
+    expect(labels.map((l) => l.text)).toEqual(["300"]);
+    // And no two labels may ever overlap.
+    const inks = labels.map(ink).sort((a, b) => a.lo - b.lo);
+    for (let i = 1; i < inks.length; i++) expect(inks[i].lo).toBeGreaterThanOrEqual(inks[i - 1].hi);
+  });
 });
 
 describe("boxplot extent reports the boxes, not the rows", () => {
@@ -305,5 +335,153 @@ describe("boxplot extent reports the boxes, not the rows", () => {
       data: { categories: ["A"], series: [10, 20, 30, 40].map((v, i) => ({ name: `o${i}`, values: [v] })) },
     };
     expect(valueExtent(cfg)).toEqual({ min: 0, max: 40 });
+  });
+});
+
+describe("valueExtent reports what the layout draws", () => {
+  /** What "Same scale" does: write the extent back as a hard scale override. */
+  const underSameScale = (cfg: ChartConfig) => {
+    const e = valueExtent(cfg)!;
+    return buildChart({ ...cfg, scale: { min: e.min < 0 ? e.min : undefined, max: e.max } });
+  };
+  const inkSpan = (scene: { nodes: any[] }) => {
+    const ys = scene.nodes.flatMap((n) =>
+      n.kind === "line" ? [n.y1, n.y2] : n.kind === "rect" ? [n.y, n.y + n.h] : [],
+    );
+    return { top: Math.min(...ys), bottom: Math.max(...ys) };
+  };
+
+  it("treats an Error row as a whisker, not as a data point", () => {
+    const cfg = {
+      kind: "clustered", width: 480, height: 300,
+      data: { categories: ["A"], series: [{ name: "S", values: [10] }, { name: "Error", values: [30] }] },
+    } as ChartConfig;
+    // The whisker spans 10±30. The old extent was {0,30}: 30 was the Error row's
+    // own magnitude mistaken for a value — neither the data range nor the drawn one.
+    const ext = valueExtent(cfg)!;
+    expect(ext.max).toBeGreaterThanOrEqual(40);
+    expect(ext.min).toBeLessThanOrEqual(-20);
+    const { top, bottom } = inkSpan(underSameScale(cfg));
+    expect(top).toBeGreaterThanOrEqual(-1); // whisker used to reach y=-83
+    expect(bottom).toBeLessThanOrEqual(301); // and y=465
+  });
+
+  it("covers a waterfall's Target row", () => {
+    const cfg = {
+      kind: "waterfall", width: 480, height: 300, waterfall: { totalIndices: [2] },
+      data: {
+        categories: ["Start", "Up", "End"],
+        series: [{ name: "V", values: [100, 20, 0] }, { name: "Target", values: [null, null, 200] }],
+      },
+    } as ChartConfig;
+    expect(valueExtent(cfg)!.max).toBeGreaterThanOrEqual(200); // was 120 — the running total only
+    const { bottom } = inkSpan(underSameScale(cfg));
+    expect(bottom).toBeLessThanOrEqual(301);
+  });
+
+  it("does not sum a Target row into a stack", () => {
+    const cfg = {
+      kind: "stacked", ...DEFAULT_SIZE,
+      data: { categories: ["A"], series: [{ name: "S", values: [10] }, { name: "Target", values: [5] }] },
+    } as ChartConfig;
+    // The Target is a tick at 5, not another 5pt of stack: the column totals 10.
+    expect(valueExtent(cfg)).toEqual({ min: 0, max: 10 });
+  });
+
+  it("covers an explicit threshold line above the data", () => {
+    const cfg = {
+      kind: "clustered", width: 480, height: 300,
+      decorations: { valueLines: [{ mode: "value", value: 500 }] },
+      data: { categories: ["A"], series: [{ name: "S", values: [10] }] },
+    } as ChartConfig;
+    expect(valueExtent(cfg)!.max).toBeGreaterThanOrEqual(500); // was 10
+  });
+
+  it("a mean value line needs no widening — it is inside the data by construction", () => {
+    const plain = { kind: "clustered", ...DEFAULT_SIZE, data: { categories: ["A", "B"], series: [{ name: "S", values: [10, 20] }] } } as ChartConfig;
+    const withMean = { ...plain, decorations: { valueLines: [{ mode: "mean" }] } } as ChartConfig;
+    expect(valueExtent(withMean)).toEqual(valueExtent(plain));
+  });
+});
+
+describe("reordering categories carries the per-category colors", () => {
+  /** The fill of each column, left to right. */
+  const fills = (scene: { nodes: any[] }) =>
+    scene.nodes
+      .filter((n) => n.kind === "rect" && /^(seg|col|bar)-/.test(n.name ?? ""))
+      .sort((a, b) => a.x - b.x)
+      .map((n) => n.fill);
+
+  const data = {
+    categories: ["A", "B", "C"],
+    // The highlight is declared on A, the SMALLEST value — so any sort moves it.
+    series: [{ name: "S1", values: [10, 50, 30], colors: ["#ff0000", null, null] }],
+  };
+
+  it("categorySort moves a highlight with its data point", () => {
+    const scene = buildChart({ kind: "clustered", width: 480, height: 300, categorySort: "descending", data } as ChartConfig);
+    const order = scene.nodes
+      .filter((n: any) => n.kind === "text" && n.name?.startsWith("category-"))
+      .sort((a: any, b: any) => a.x - b.x)
+      .map((n: any) => n.text);
+    expect(order).toEqual(["B", "C", "A"]);
+    // Red belongs to A, now rightmost. It used to stay at position 0 and paint B.
+    const red = fills(scene).map((f, i) => [i, f]).filter(([, f]) => f === "#ff0000");
+    expect(red).toEqual([[order.indexOf("A"), "#ff0000"]]);
+  });
+
+  it("pareto moves a highlight with its data point", () => {
+    const scene = buildChart({ kind: "clustered", width: 480, height: 300, pareto: true, data } as ChartConfig);
+    const order = scene.nodes
+      .filter((n: any) => n.kind === "text" && n.name?.startsWith("category-"))
+      .sort((a: any, b: any) => a.x - b.x)
+      .map((n: any) => n.text);
+    expect(order).toEqual(["B", "C", "A"]);
+    const red = fills(scene).map((f, i) => [i, f]).filter(([, f]) => f === "#ff0000");
+    expect(red).toEqual([[order.indexOf("A"), "#ff0000"]]);
+  });
+});
+
+describe("boxplot jitter dots are inside the plot", () => {
+  // 19 tight samples plus one at 100: mean ~5.95, SD ~22.1, so the mean±SD box
+  // spans only [-38.3, 50.2] and reports no outliers. The jitter overlay still
+  // plots the 100.
+  const cfg = {
+    kind: "boxplot", width: 480, height: 300, boxplot: { meanSd: true, jitter: true },
+    data: {
+      categories: ["A"],
+      series: [...Array(19).fill(1), 100].map((v, i) => ({ name: `o${i}`, values: [v] })),
+    },
+  } as ChartConfig;
+
+  const dotSpan = (scene: { nodes: any[] }) => {
+    const dots = scene.nodes.filter((n) => n.name?.startsWith("dot-"));
+    expect(dots.length).toBeGreaterThan(0);
+    const ys = dots.map((d: any) => d.cy ?? d.y);
+    return { top: Math.min(...ys), bottom: Math.max(...ys) };
+  };
+
+  it("the extent covers the samples the overlay draws", () => {
+    expect(valueExtent(cfg)!.max).toBeGreaterThanOrEqual(100); // was ~50.2 (mean+2SD)
+  });
+
+  it("dots stay on the plot on the auto path", () => {
+    const { top, bottom } = dotSpan(buildChart(cfg));
+    expect(top).toBeGreaterThanOrEqual(-1); // the 100 sample used to sit at y=-101.6
+    expect(bottom).toBeLessThanOrEqual(301);
+  });
+
+  it("dots stay on the plot under Same scale", () => {
+    const e = valueExtent(cfg)!;
+    const scene = buildChart({ ...cfg, scale: { min: e.min < 0 ? e.min : undefined, max: e.max } });
+    const { top, bottom } = dotSpan(scene);
+    expect(top).toBeGreaterThanOrEqual(-1); // and y=-146.0
+    expect(bottom).toBeLessThanOrEqual(301);
+  });
+
+  it("without jitter the scale still describes the box, not the samples", () => {
+    // Nothing plots the far sample, so it must not stretch the axis.
+    const noJitter = { ...cfg, boxplot: { meanSd: true } } as ChartConfig;
+    expect(valueExtent(noJitter)!.max).toBeLessThan(100);
   });
 });
