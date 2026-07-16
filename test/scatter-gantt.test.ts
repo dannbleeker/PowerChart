@@ -339,3 +339,117 @@ describe("gantt working-day timeline (gantt.workdays)", () => {
     expect(numeric({ workdays: true })).toEqual(numeric());
   });
 });
+
+describe("scatter marginal histograms (decorations.marginals)", () => {
+  const pts = (n: number) =>
+    cfg({
+      kind: "scatter",
+      width: 480,
+      height: 300,
+      data: {
+        categories: Array.from({ length: n }, (_, i) => `p${i}`),
+        series: [
+          { name: "X", values: Array.from({ length: n }, (_, i) => (i * 97) % 100) },
+          { name: "Y", values: Array.from({ length: n }, (_, i) => (i * 53) % 100) },
+        ],
+      },
+    });
+  const build = (c: ChartConfig, marginals?: "x" | "y" | "both") =>
+    layoutScatter(c, DEFAULT_STYLE, { ...DEFAULT_DECOR, ...(marginals ? { marginals } : {}) });
+
+  it("puts every axis tick on a bin edge", () => {
+    // The point of a chart-adjacent histogram: a bar is read against the scale
+    // beside it. A rule keyed off the sample size alone (Sturges,
+    // Freedman-Diaconis) yields a count with no relation to the tick grid, so
+    // its edges land between the ticks. Deriving the count FROM the ticks makes
+    // alignment a theorem instead of a coincidence.
+    const { nodes, anchors } = build(pts(40), "x");
+    const bars = nodes.filter((n) => n.name?.startsWith("marginal-x-")) as RectNode[];
+    expect(bars.length).toBeGreaterThan(0);
+    const gridX = nodes
+      .filter((n) => n.kind === "line" && n.name?.startsWith("gridline-x"))
+      .map((n) => (n as any).x1);
+    const plot = anchors.plot!;
+    const bw = plot.w / ((gridX.length - 1) * 2); // 40 points → 2 sub-bins per interval
+    for (const gx of gridX) {
+      // Every gridline must sit on a bin boundary (within float noise).
+      const k = (gx - plot.x) / bw;
+      expect(Math.abs(k - Math.round(k)), `tick at ${gx}`).toBeLessThan(1e-6);
+    }
+  });
+
+  it("reserves real space: the plot shrinks by the gutter", () => {
+    const base = build(pts(20)).anchors.plot!;
+    const top = build(pts(20), "x").anchors.plot!;
+    const right = build(pts(20), "y").anchors.plot!;
+    const both = build(pts(20), "both").anchors.plot!;
+    expect(top.h).toBeLessThan(base.h);
+    expect(top.y).toBeGreaterThan(base.y);
+    expect(right.w).toBeLessThan(base.w);
+    expect(both.h).toBeLessThan(base.h);
+    expect(both.w).toBeLessThan(base.w);
+  });
+
+  it("drops the marginals rather than the plot when there is no room", () => {
+    const tiny = cfg({ ...pts(20), height: 90, width: 120 } as Partial<ChartConfig>);
+    const { nodes, anchors } = build(tiny, "both");
+    expect(nodes.filter((n) => n.name?.startsWith("marginal-"))).toHaveLength(0);
+    // ...and the plot keeps the space it would have given away.
+    expect(anchors.plot!.h).toBe(build(tiny).anchors.plot!.h);
+  });
+
+  it("changes nothing when it is off", () => {
+    expect(build(pts(20)).nodes).toEqual(build(pts(20), undefined).nodes);
+    expect(build(pts(20)).nodes.some((n) => n.name?.startsWith("marginal-"))).toBe(false);
+  });
+
+  it("keeps the plot height expression bit-exact at a non-default font size", () => {
+    // Float subtraction is not associative: (H-t)-6-l is NOT H-(t+6+l). The
+    // showcase deck is entirely fs=10, where the two agree — so the deck's
+    // byte-identity gate CANNOT catch a "simplification" here. Pin the exact
+    // value at a font size where they differ (128 would be the rewritten form).
+    const c = cfg({
+      kind: "scatter",
+      width: 480,
+      height: 180,
+      title: "T",
+      data: {
+        categories: ["a", "b"],
+        series: [
+          { name: "X", values: [1, 2] },
+          { name: "Y", values: [1, 2] },
+          { name: "Group", values: [1, 2] }, // forces the legend into the height
+        ],
+      },
+    });
+    const { anchors } = layoutScatter(c, { ...DEFAULT_STYLE, fontSize: 8 }, DEFAULT_DECOR);
+    expect(anchors.plot!.h).toBe(127.99999999999999);
+  });
+
+  it("does not let the colour legend fall into the top gutter", () => {
+    // The gradient legend's min/max labels are the ones that spill: they sit
+    // below the bar, so anchoring them to a lowered plot top would drop them
+    // onto the marginal bars.
+    const c = cfg({
+      kind: "scatter",
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["a", "b", "c"],
+        series: [
+          { name: "X", values: [1, 5, 9] },
+          { name: "Y", values: [2, 6, 8] },
+          { name: "Color", values: [10, 50, 90] },
+        ],
+      },
+    });
+    const { nodes } = layoutScatter(c, DEFAULT_STYLE, { ...DEFAULT_DECOR, marginals: "x" });
+    const bars = nodes.filter((n) => n.name?.startsWith("marginal-x-")) as RectNode[];
+    const top = Math.min(...bars.map((b) => b.y));
+    for (const name of ["color-legend-min", "color-legend-max", "color-legend-title"]) {
+      const n = nodes.find((x) => x.name === name) as TextNode;
+      expect(n, name).toBeTruthy();
+      expect(n.y + n.h, name).toBeLessThanOrEqual(top + 0.01);
+    }
+  });
+});

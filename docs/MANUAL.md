@@ -119,6 +119,14 @@ Category cells support `Activity | Owner | Remark` columns, a leading `>`
 for indenting, and section-header rows (no Start/End). Calendar timelines
 pick weeks (with weekend shading), months, or quarters automatically.
 
+**Marginal histograms** (`decorations.marginals: "x" | "y" | "both"` on
+scatter/bubble): distribution bars in a gutter along the top and/or right
+margin — where the points bunch up, beside the chart that shows how they
+relate. The bins subdivide the axis's own ticks, so every tick is a bin edge
+and a bar can be read straight against the scale next to it. The gutter takes
+real space, so the plot shrinks; on a chart too small to give any away, the
+marginals are dropped instead.
+
 Set `gantt.workdays` to make a bar's LENGTH mean working days rather than
 elapsed days: a Mon→Mon task reads as 5 units, not 7, and weekends stop
 inflating every bar. `true` is Mon–Fri; pass ISO weekday numbers for a custom

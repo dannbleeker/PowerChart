@@ -40,7 +40,7 @@ describe("skill documentation coverage", () => {
       "slope", "breakout", "multiples", "stepped", "gapWidth", "overlap", "trajectory",
       "smooth", "spacerIndices", "summaryBars", "radarBand", "otherBucket", "calendar",
       "bridgeGaps", "perSpoke", "lineAxes", "tilemap", "glyph", "semi", "pareto", "bump",
-      "criticalPath", "meanSd", "sparkline", "workdays",
+      "criticalPath", "meanSd", "sparkline", "workdays", "marginals",
       "variableRadius", "bars", "stacked",
       "sizeEncode", "cluster",
     ]) {

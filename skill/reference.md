@@ -63,6 +63,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     criticalPath?: boolean,           // gantt: red-outline the longest "After"-dependency chain + its arrows
     radarBand?: boolean,              // radar: shade the peer min–max envelope, draw last series on top
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
+    marginals?: "x"|"y"|"both",       // scatter/bubble: distribution histograms in a top/right gutter (bins subdivide the axis ticks, so every tick is a bin edge; plot shrinks, dropped if it would leave too little)
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
   pie?: { explode?: number[],         // slice indices offset radially to highlight
