@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only by default; release-skill re-grants itself the contents: write it
+# needs for the rolling release.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
