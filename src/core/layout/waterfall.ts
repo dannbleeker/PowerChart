@@ -21,28 +21,35 @@ import { horizontalChrome, type LayoutResult } from "./column";
  * contributions from the incoming level and the running total moves by the
  * column sum. Set cfg.horizontal for the rotated (bar) variant.
  */
-export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+export interface Seg {
+  series: number;
+  from: number;
+  to: number;
+  value: number;
+}
+export interface Bar {
+  segs: Seg[];
+  isTotal: boolean;
+  value: number;
+  level: number;
+}
+
+/**
+ * Walk the bridge: one bar per category, each carrying its stacked segments and
+ * the running level it leaves behind.
+ *
+ * The single source of truth for what a waterfall draws. It used to be inlined
+ * here and re-implemented, differently, by the value extent — which walked only
+ * series[0] and ignored spacers, so a stacked bridge's extent stopped at the
+ * first series' total. Anything that needs to know how high a waterfall reaches
+ * calls this.
+ */
+export function waterfallChain(cfg: ChartConfig): Bar[] {
   const { data } = cfg;
   const n = data.categories.length;
   const nSeries = Math.max(1, data.series.length);
-  const stacked = data.series.length > 1;
   const totalSet = new Set(cfg.waterfall?.totalIndices ?? []);
   const spacerSet = new Set(cfg.waterfall?.spacerIndices ?? []);
-  const H = !!cfg.horizontal;
-
-  interface Seg {
-    series: number;
-    from: number;
-    to: number;
-    value: number;
-  }
-  interface Bar {
-    segs: Seg[];
-    isTotal: boolean;
-    value: number;
-    level: number;
-  }
-
   const bars: Bar[] = [];
   let running = 0;
   for (let c = 0; c < n; c++) {
@@ -71,6 +78,25 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
     bars.push({ segs, isTotal: false, value: level - running, level });
     running = level;
   }
+  return bars;
+}
+
+/** The value range a waterfall's bars actually occupy. */
+export function waterfallExtent(cfg: ChartConfig): { min: number; max: number } {
+  const vals = waterfallChain(cfg).flatMap((b) => [b.level, ...b.segs.flatMap((s) => [s.from, s.to])]);
+  return { min: Math.min(0, ...vals), max: Math.max(0, ...vals) };
+}
+
+export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+  const { data } = cfg;
+  const n = data.categories.length;
+  const nSeries = Math.max(1, data.series.length);
+  const stacked = data.series.length > 1;
+  const totalSet = new Set(cfg.waterfall?.totalIndices ?? []);
+  const spacerSet = new Set(cfg.waterfall?.spacerIndices ?? []);
+  const H = !!cfg.horizontal;
+
+  const bars = waterfallChain(cfg);
 
   const allLevels = bars.flatMap((b) => b.segs.flatMap((s) => [s.from, s.to]));
   const hi = Math.max(0, ...allLevels);

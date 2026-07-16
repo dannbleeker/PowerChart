@@ -2,7 +2,7 @@ import type { ChartConfig, ChartKind, ChartStyle, Decorations } from "./types";
 import type { Scene } from "./scene";
 import { DEFAULT_DECOR, DEFAULT_STYLE, seriesColor } from "./style";
 import { layoutColumns, layoutCombo } from "./layout/column";
-import { layoutWaterfall } from "./layout/waterfall";
+import { layoutWaterfall, waterfallExtent } from "./layout/waterfall";
 import { layoutMekko } from "./layout/mekko";
 import { layoutLine } from "./layout/line";
 import { layoutButterfly } from "./layout/butterfly";
@@ -558,16 +558,11 @@ function dataExtent(cfg: ChartConfig): { min: number; max: number } | null {
       return { min: Math.min(0, ...neg), max: Math.max(0, ...pos) };
     }
     case "waterfall": {
-      const totals = new Set(cfg.waterfall?.totalIndices ?? []);
-      let running = 0;
-      let min = 0;
-      let max = 0;
-      cats.forEach((c) => {
-        if (!totals.has(c)) running += data.series[0]?.values[c] ?? 0;
-        min = Math.min(min, running);
-        max = Math.max(max, running);
-      });
-      return { min, max };
+      // One chain, shared with the layout. This used to be a second walk that
+      // added only series[0] and skipped spacerIndices, so a stacked bridge
+      // reported the first series' total as the whole chart's — 63 instead of
+      // 114 — and Same scale then clipped the bars off the shape.
+      return waterfallExtent(cfg);
     }
     default:
       return null;
