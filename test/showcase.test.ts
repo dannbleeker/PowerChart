@@ -124,6 +124,7 @@ describe("showcase deck coverage", () => {
     ["combo area base", (c) => c.combo?.columns === "area"],
     ["gantt gutter columns", (c) => c.kind === "gantt" && !!c.data.series.some((s) => /^column\b/i.test(s.name))],
     ["gantt working-day timeline", (c) => c.kind === "gantt" && c.gantt?.workdays != null],
+    ["scatter marginal histograms", (c) => c.decorations?.marginals != null],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

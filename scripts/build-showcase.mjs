@@ -1199,6 +1199,21 @@ const features = [
     },
     gantt: { workdays: true },
   },
+  {
+    kind: "scatter",
+    width: 520,
+    height: 320,
+    title: "Marginal histograms — distribution beside the relationship",
+    data: {
+      categories: Array.from({ length: 40 }, (_, i) => `A${i + 1}`),
+      series: [
+        // Two loose clusters, so the marginals have a shape worth reading.
+        { name: "X", values: Array.from({ length: 40 }, (_, i) => (i < 22 ? 18 + ((i * 7) % 22) : 55 + ((i * 5) % 30))) },
+        { name: "Y", values: Array.from({ length: 40 }, (_, i) => (i < 22 ? 22 + ((i * 11) % 26) : 52 + ((i * 3) % 34))) },
+      ],
+    },
+    decorations: { marginals: "both", segmentLabels: false },
+  },
 ];
 
 const configs = [...kinds, ...features];

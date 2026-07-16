@@ -49,6 +49,7 @@ conventions, and every option.
 | Gantt holidays + bracket annotations | ✅ (`Holiday`, `Bracket <label>` rows) |
 | Gantt numeric table columns (cost / FTE / days) | ✅ (`Column <label>` rows, beside the task labels) |
 | Gantt working-day timeline (bar length = working days) | ✅ (`gantt.workdays`; `true` = Mon–Fri, or ISO weekday numbers) |
+| Scatter/bubble marginal distribution histograms | ✅ (`decorations.marginals: "x"/"y"/"both"`; bins subdivide the axis ticks) |
 | Category sorting by total | ✅ |
 | Combo secondary (right) value axis | ✅ |
 | Label content menu on line & scatter labels | ✅ |

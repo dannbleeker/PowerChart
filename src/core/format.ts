@@ -263,3 +263,28 @@ function lnGamma(z: number): number {
   const t = z + g.length - 0.5;
   return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
 }
+
+/**
+ * Count `values` into `k` equal bins tiling [lo, hi]. The caller supplies k
+ * rather than a rule, because the only k worth using here is one derived from
+ * the axis's own tick grid — see layoutScatter's marginals, where k is a
+ * multiple of the tick-interval count so every tick is a bin edge. A rule
+ * keyed off the sample size alone (Sturges, Freedman-Diaconis) produces edges
+ * that land between the ticks, which is exactly what a marginal histogram
+ * must not do: it is read against the axis beside it.
+ *
+ * A value on an interior edge counts to the upper bin; hi counts to the last.
+ * Values outside [lo, hi] are ignored — the caller's domain is the axis, and
+ * the axis already covers the data.
+ */
+export function histogramBins(values: number[], lo: number, hi: number, k: number): number[] {
+  const counts = new Array(Math.max(1, k)).fill(0);
+  const span = hi - lo;
+  if (!(span > 0)) return counts;
+  for (const v of values) {
+    if (v < lo || v > hi) continue;
+    const i = Math.min(counts.length - 1, Math.floor(((v - lo) / span) * counts.length));
+    counts[i]++;
+  }
+  return counts;
+}

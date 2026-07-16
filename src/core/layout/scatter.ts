@@ -1,9 +1,9 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { formatNumber, formatP, niceTicks, resolveFormat, trendStats } from "../format";
+import { formatNumber, formatP, histogramBins, niceTicks, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { PALETTE } from "../style";
-import { sequentialScale } from "../color";
+import { lerpColor, sequentialScale } from "../color";
 import { footnoteH } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -45,11 +45,30 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const axisW = 34;
   const multiGroup = !colorScale && new Set(pts.map((p) => Math.round(Number(p.group)))).size > 1;
   const legendH = multiGroup || colorScale ? fs * 1.8 : 0;
+  /** Where the plot starts before any marginal gutter — the legends' anchor. */
+  const chromeTop = titleH + 6 + legendH;
+  // Marginal gutters, in font-size units like the heatmap's already-shipped
+  // marginal totals, so they scale with the style instead of being a magic 34.
+  const GUT = fs * 3.4;
+  const wantMx = decor.marginals === "x" || decor.marginals === "both";
+  const wantMy = decor.marginals === "y" || decor.marginals === "both";
+  // NB: bodyW/bodyH are today's w/h expressions character-for-character. Do not
+  // "simplify" bodyH in terms of chromeTop — float subtraction is not
+  // associative, and (H-t)-6-l differs from H-(t+6+l) for many font sizes. It
+  // happens to agree at the default fs=10, which every showcase config uses, so
+  // the deck's byte-identity gate would NOT catch the difference.
+  const bodyW = cfg.width - axisW - 8;
+  const bodyH = cfg.height - titleH - 6 - legendH - fs * 1.6 - footnoteH(cfg, style, decor);
+  // A gutter costs real space. If what's left would stop being a chart, drop
+  // the marginals rather than the plot.
+  const MIN_PLOT = 60;
+  const mTop = wantMx && bodyH - GUT >= MIN_PLOT ? GUT : 0;
+  const mRight = wantMy && bodyW - GUT >= MIN_PLOT ? GUT : 0;
   const plot = {
     x: axisW,
-    y: titleH + 6 + legendH,
-    w: cfg.width - axisW - 8,
-    h: cfg.height - titleH - 6 - legendH - fs * 1.6 - footnoteH(cfg, style, decor),
+    y: chromeTop + mTop,
+    w: bodyW - mRight,
+    h: bodyH - mTop,
   };
 
   const xTicks = niceTicks(Math.min(0, ...pts.map((p) => p.x)), Math.max(1, ...pts.map((p) => p.x)), 5);
@@ -192,7 +211,10 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const barW = 90;
     const cell = barW / steps;
     const bx = plot.x;
-    const by = plot.y - fs * 1.35;
+    // The min/max labels hang BELOW the gradient bar, so with a top gutter the
+    // legend has to sit a little higher or they land on the marginal bars.
+    // Only when the gutter exists, so no existing output moves.
+    const by = chromeTop - fs * (mTop > 0 ? 1.75 : 1.35);
     for (let i = 0; i < steps; i++) {
       const t = (i + 0.5) / steps;
       nodes.push({ kind: "rect", x: bx + i * cell, y: by, w: cell + 0.5, h: fs * 0.7, fill: colorScale.of(colorScale.min + t * (colorScale.max - colorScale.min)), name: `color-legend-${i}` });
@@ -213,8 +235,8 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const chip = fs * 0.7;
       const label = `Group ${g}`;
       nodes.push(
-        { kind: "rect", x: lx, y: plot.y - fs * 1.2, w: chip, h: chip, fill: (cfg.style?.palette ?? PALETTE)[(g - 1) % 8], name: `legend-chip-${g}` },
-        { kind: "text", x: lx + chip + 3, y: plot.y - fs * 1.55, w: textWidth(label, fs) + 6, h: fs * 1.4, text: label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${g}` },
+        { kind: "rect", x: lx, y: chromeTop - fs * 1.2, w: chip, h: chip, fill: (cfg.style?.palette ?? PALETTE)[(g - 1) % 8], name: `legend-chip-${g}` },
+        { kind: "text", x: lx + chip + 3, y: chromeTop - fs * 1.55, w: textWidth(label, fs) + 6, h: fs * 1.4, text: label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${g}` },
       );
       lx += chip + 3 + textWidth(label, fs) + 14;
     }
@@ -263,6 +285,45 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       nodes.push({ kind: "line", x1: ax, y1: ay, x2: bx, y2: by, stroke: style.mutedText, strokeWidth: 1.5, name: `trajectory-${i}` });
       const angle = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
       nodes.push({ kind: "arrowhead", x: (ax + bx) / 2, y: (ay + by) / 2, angle, size: 4, fill: style.mutedText, name: `trajectory-head-${i}` });
+    }
+  }
+
+  // Marginal distribution histograms in the reserved gutters. The bin count is
+  // a multiple of the axis's own tick intervals, so every tick is a bin edge
+  // and a bar reads straight against the scale beside it. A rule keyed off the
+  // sample size alone (Sturges, Freedman-Diaconis) puts edges BETWEEN the
+  // ticks, which is exactly what a chart-adjacent histogram must not do. The
+  // multiplier is the only freedom and it stays bounded: past ~2 sub-bins per
+  // interval the bars are a few points wide and read as noise, not shape.
+  if (mTop > 0 || mRight > 0) {
+    const binMult = pts.length >= 15 ? 2 : 1;
+    const fill = lerpColor("#ffffff", (cfg.style?.palette ?? PALETTE)[0], 0.35);
+    if (mTop > 0) {
+      const counts = histogramBins(pts.map((p) => p.x), x0, x1, (xTicks.length - 1) * binMult);
+      const peak = Math.max(1, ...counts);
+      const bw = plot.w / counts.length;
+      counts.forEach((n, i) => {
+        if (!n) return;
+        const h = (n / peak) * (mTop - 5);
+        nodes.push({
+          kind: "rect", x: plot.x + i * bw, y: plot.y - 3 - h, w: Math.max(0.5, bw - 1), h,
+          fill, name: `marginal-x-${i}`,
+        });
+      });
+    }
+    if (mRight > 0) {
+      const counts = histogramBins(pts.map((p) => p.y), y0, y1, (yTicks.length - 1) * binMult);
+      const peak = Math.max(1, ...counts);
+      const bh = plot.h / counts.length;
+      counts.forEach((n, i) => {
+        if (!n) return;
+        const w = (n / peak) * (mRight - 5);
+        // Bin 0 is the bottom of the y axis, so it is the LAST band down the plot.
+        nodes.push({
+          kind: "rect", x: plot.x + plot.w + 3, y: plot.y + plot.h - (i + 1) * bh, w, h: Math.max(0.5, bh - 1),
+          fill, name: `marginal-y-${i}`,
+        });
+      });
     }
   }
 

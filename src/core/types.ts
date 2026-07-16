@@ -176,6 +176,16 @@ export interface Decorations {
    */
   quadrants?: { x: number; y: number; labels?: [string?, string?, string?, string?] };
   /**
+   * Scatter/bubble: distribution histograms in a gutter along the top (x)
+   * and/or right (y) margin — where are the points concentrated, beside the
+   * chart that shows how they relate. Bins SUBDIVIDE the axis's own nice
+   * ticks, so every tick is a bin edge and a bar can be read straight against
+   * the scale next to it. The gutter takes real space: the plot shrinks, and
+   * the marginals are dropped rather than drawn if that would leave it too
+   * small to be a chart.
+   */
+  marginals?: "x" | "y" | "both";
+  /**
    * Clustered charts: draw columns as lollipops (stem + dot), plain dots
    * (Cleveland dot plot), or a two-series dumbbell range (dot–line–dot).
    */
