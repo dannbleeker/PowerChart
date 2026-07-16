@@ -119,6 +119,14 @@ Category cells support `Activity | Owner | Remark` columns, a leading `>`
 for indenting, and section-header rows (no Start/End). Calendar timelines
 pick weeks (with weekend shading), months, or quarters automatically.
 
+**Combo marker series** (`type: "marker"` on a combo series): draws the points
+without a connecting line — a benchmark, target or consensus that belongs to
+each category rather than to a trend. Keep it on the columns' own scale: on a
+`secondaryAxis`, or under `combo.lineAxes: "independent"`, the marks would be
+measured against a different axis than the columns they benchmark, which is
+the one thing the mark is for. `pareto` keeps only the bars and its cumulative
+line, so a marker series does not survive it.
+
 **Overlap relief** (`scatter.spread: "x" | "y"` on scatter/bubble): when markers
 cover each other, PowerChart can nudge them along ONE axis you name — the other
 stays exact. The shift is hard-capped (`scatter.spreadLimit`, in that axis's

@@ -43,8 +43,18 @@ export interface Series {
    * renders the pattern, PowerPoint output degrades to the solid fill.
    */
   pattern?: "diagonal" | "crosshatch" | "dots" | "horizontal";
-  /** Combo charts: render this series as a line over the columns. */
-  type?: "column" | "line";
+  /**
+   * Combo charts: how this series renders over the columns. "line" connects the
+   * points; "marker" draws unconnected points only — a per-category benchmark,
+   * target or consensus, where a connecting line would falsely imply the values
+   * interpolate between categories.
+   *
+   * A marker series shares whatever scale the overlays use, so it only means
+   * what it looks like on the columns' own scale: don't put one on a
+   * `secondaryAxis` or under `combo.lineAxes: "independent"`, where it would be
+   * measured against a different axis than the columns it benchmarks.
+   */
+  type?: "column" | "line" | "marker";
   /**
    * Stack group for clustered-stacked charts (think-cell separates stacks
    * with blank datasheet rows). Series sharing a stack index stack together;

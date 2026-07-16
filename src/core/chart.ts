@@ -95,7 +95,10 @@ function collapseOther(cfg: ChartConfig): ChartConfig {
  */
 function applyPareto(cfg: ChartConfig): ChartConfig {
   if (!cfg.pareto) return cfg;
-  const bar = cfg.data.series.find((s) => s.type !== "line");
+  // The bars are the first series that is neither overlay kind. Testing only
+  // against "line" would rank the chart by a marker series when one is written
+  // first — sorting the columns by their own benchmark.
+  const bar = cfg.data.series.find((s) => s.type !== "line" && s.type !== "marker");
   if (!bar) return cfg;
   const order = cfg.data.categories.map((_, c) => c).sort((a, b) => (bar.values[b] ?? 0) - (bar.values[a] ?? 0));
   const pick = <T,>(arr: T[] | undefined) => (arr ? order.map((c) => arr[c]) : undefined);

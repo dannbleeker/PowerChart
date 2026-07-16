@@ -558,3 +558,76 @@ describe("scatter overlap relief (scatter.spread)", () => {
     );
   });
 });
+
+describe("combo marker series (Series.type: \"marker\")", () => {
+  const combo = (markerType: "marker" | "line", extra: Partial<ChartConfig> = {}) =>
+    cfg({
+      kind: "combo",
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["Q1", "Q2", "Q3"],
+        series: [
+          { name: "Revenue", values: [40, 55, 50] },
+          { name: "Consensus", type: markerType, values: [45, 45, 52] },
+        ],
+      },
+      ...extra,
+    });
+  const names = (c: ChartConfig) => buildChart(c).nodes.map((n) => n.name ?? "");
+
+  it("draws the points but not the segments between them", () => {
+    // The values are per-category facts — a benchmark does not interpolate.
+    const marker = names(combo("marker"));
+    expect(marker.filter((n) => n.startsWith("combo-marker-0-"))).toHaveLength(3);
+    expect(marker.filter((n) => n.startsWith("combo-line-0-"))).toHaveLength(0);
+    // A line series is the same overlay WITH the segments.
+    const line = names(combo("line"));
+    expect(line.filter((n) => n.startsWith("combo-marker-0-"))).toHaveLength(3);
+    expect(line.filter((n) => n.startsWith("combo-line-0-")).length).toBeGreaterThan(0);
+  });
+
+  it("keeps the columns as columns", () => {
+    // The marker series must not be mistaken for another column, and the
+    // column series must not be mistaken for the overlay.
+    const scene = buildChart(combo("marker"));
+    const cols = scene.nodes.filter((n) => n.kind === "rect" && /^seg-0-\d+$/.test(n.name ?? ""));
+    expect(cols).toHaveLength(3);
+  });
+
+  it("measures the benchmark against the same scale as the columns it benchmarks", () => {
+    // Q3: Revenue 50 vs Consensus 52 — the mark must sit just ABOVE the column
+    // top. That only holds on the shared scale, which is why a marker series
+    // has no business on a secondaryAxis.
+    const scene = buildChart(combo("marker"));
+    const col = scene.nodes.find((n) => n.name === "seg-0-2") as RectNode;
+    const mark = scene.nodes.find((n) => n.name === "combo-marker-0-2") as RectNode;
+    expect(mark.y).toBeLessThan(col.y); // 52 > 50 → higher on the chart
+    expect(col.y - mark.y).toBeLessThan(col.h); // ...but only slightly
+  });
+
+  it("does not let a marker series rank a pareto", () => {
+    // Written FIRST, which is the only order that trips it: the bar-series
+    // lookup takes the first non-line series, so a marker would be picked and
+    // the columns sorted by their own benchmark.
+    const c = cfg({
+      kind: "clustered",
+      width: 480,
+      height: 300,
+      pareto: true,
+      data: {
+        categories: ["A", "B", "C"],
+        series: [
+          { name: "Consensus", type: "marker", values: [99, 1, 50] },
+          { name: "Revenue", values: [10, 90, 50] },
+        ],
+      },
+    });
+    const order = buildChart(c)
+      .nodes.filter((n) => n.kind === "text" && n.name?.startsWith("category-"))
+      .sort((a, b) => (a as TextNode).x - (b as TextNode).x)
+      .map((n) => (n as TextNode).text);
+    // Revenue descending: B(90), C(50), A(10). Ranking by Consensus would give A, C, B.
+    expect(order).toEqual(["B", "C", "A"]);
+  });
+});

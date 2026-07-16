@@ -83,6 +83,7 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Plan where a bar's length means working days | `gantt` (dates) + `gantt.workdays: true` (or ISO weekday numbers for a custom week) |
 | Where are the points concentrated (distribution beside a scatter) | `scatter`/`bubble` + `decorations.marginals: "x" \| "y" \| "both"` |
 | Bubbles covering each other | `bubble` + `scatter.spread: "y"` (nudges along ONE axis, capped and disclosed in the footnote) |
+| Benchmark / consensus / target per category over columns | `combo` + `"type": "marker"` on that series (points, no line — keep it on the columns' scale) |
 | "Us vs the peer range" on a radar | `radar` (peers then us) + `decorations.radarBand: true` |
 | Too many stack segments (long tail) | `stacked`/`clustered` + `otherBucket: {max}` (collapse the rest to "Other") |
 | Daily activity over months (contributions grid) | `heatmap` (one daily date series) + `heatmap.calendar: true` |

@@ -22,7 +22,13 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
       colors?: ("#rrggbb"|null)[],    // per-CELL override: highlight one segment/point/slice
       pattern?: "diagonal"|"crosshatch"|"dots"|"horizontal",
                                       // hatch over the fill (SVG/preview; solid in PPT output)
-      type?: "line",                  // combo: draw this series as a line
+      type?: "line" | "marker",       // combo: draw this series over the columns as a line, or as
+                                      // bare unconnected points ("marker") — a per-category
+                                      // benchmark/target/consensus, where a line would imply the
+                                      // values interpolate. A marker series shares the overlay
+                                      // scale, so it only means what it looks like on the columns'
+                                      // own scale: not with secondaryAxis or lineAxes:"independent",
+                                      // and pareto keeps only the bars + the cumulative line.
       stack?: number                  // clustered-stacked: stack group index
     }],
     hundredPercent?: (number|null)[], // "100%=" row: denominators for 100% charts
