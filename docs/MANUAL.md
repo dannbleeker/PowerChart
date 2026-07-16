@@ -119,6 +119,15 @@ Category cells support `Activity | Owner | Remark` columns, a leading `>`
 for indenting, and section-header rows (no Start/End). Calendar timelines
 pick weeks (with weekend shading), months, or quarters automatically.
 
+**Waterfall "of which" columns** (`waterfall.detailGroups: [{ of, indices }]`):
+break one step of a bridge into its parts, in line with the rest. The detail
+columns decompose that step's delta starting from its own base, and sit OFF the
+chain — they carry no running total, so every later total and the final one are
+unaffected no matter what the parts add up to — while the dashed connector
+steps over the whole group to the next real column. Name the parent (`of`); the
+engine never guesses it. If the parts don't sum to the parent, you get exactly
+the bars you typed — nothing is reconciled behind your back.
+
 **Combo marker series** (`type: "marker"` on a combo series): draws the points
 without a connecting line — a benchmark, target or consensus that belongs to
 each category rather than to a trend. Keep it on the columns' own scale: on a

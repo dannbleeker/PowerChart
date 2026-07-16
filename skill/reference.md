@@ -79,6 +79,15 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       // slice detailed in a stacked bar beside the pie (bar-of-pie)
           semi?: boolean,             // doughnut only: 180° semi-circle gauge (scorecard)
           variableRadius?: boolean }, // pie: angle = 1st series, radius = a "Radius" row / 2nd series
+  waterfall?: { totalIndices?: number[],   // categories drawn as cumulative totals (the "e" cell)
+                spacerIndices?: number[],  // blank gap columns; the running total carries across
+                detailGroups?: [{ of: number, indices: number[] }] },
+                                      // "of which": `indices` decompose column `of`'s delta as a
+                                      // sub-bridge from that column's own base. Off the chain — they
+                                      // carry no running total, so every downstream total is
+                                      // unaffected — and the dashed connector steps over the group.
+                                      // The parent is named, never inferred. A group that does not
+                                      // sum to the parent's delta renders as authored.
   pareto?: boolean,                   // clustered/combo: sort desc + cumulative-% line (80/20 view)
   scatter?: { spread?: "x"|"y",       // scatter/bubble: nudge markers along ONE axis to relieve overlap;
                                       // the other axis stays exact. The cap is printed in the footnote.

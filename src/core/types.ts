@@ -98,6 +98,19 @@ export interface WaterfallOptions {
    * name so no axis label shows.)
    */
   spacerIndices?: number[];
+  /**
+   * "Of which" detail groups: `indices` are categories that decompose column
+   * `of`'s delta into a sub-bridge, drawn in line with the others but OFF the
+   * chain — they carry no running total, and the main dashed connector steps
+   * over the whole group from `of` to the next chain column.
+   *
+   * The parent is named, never inferred: guessing it (say, "the nearest
+   * preceding chain column") is what would make this look broken on the cases
+   * where the guess is wrong. `indices` should be contiguous and sit after
+   * `of`. A group whose values don't sum to the parent's delta renders exactly
+   * as authored — the engine draws your numbers, it doesn't reconcile them.
+   */
+  detailGroups?: { of: number; indices: number[] }[];
 }
 
 /** think-cell style decorations, all computed from layout anchors. */

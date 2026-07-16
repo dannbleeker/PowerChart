@@ -52,6 +52,7 @@ conventions, and every option.
 | Scatter/bubble marginal distribution histograms | ✅ (`decorations.marginals: "x"/"y"/"both"`; bins subdivide the axis ticks) |
 | Bubble overlap relief along one axis (disclosed) | ✅ (`scatter.spread: "x"/"y"` + `spreadLimit`; cap printed in the footnote) |
 | Combo benchmark markers (points, no connecting line) | ✅ (`type: "marker"` on a combo series; shares the columns' scale) |
+| Waterfall "of which" detail columns (off the chain) | ✅ (`waterfall.detailGroups: [{of, indices}]`; the bridge steps over them) |
 | Category sorting by total | ✅ |
 | Combo secondary (right) value axis | ✅ |
 | Label content menu on line & scatter labels | ✅ |

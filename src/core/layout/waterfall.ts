@@ -44,18 +44,50 @@ export interface Bar {
  * first series' total. Anything that needs to know how high a waterfall reaches
  * calls this.
  */
+/** Category → the chain column its detail group decomposes. */
+export function detailParents(cfg: ChartConfig): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const g of cfg.waterfall?.detailGroups ?? []) {
+    for (const i of g.indices) map.set(i, g.of);
+  }
+  return map;
+}
+
 export function waterfallChain(cfg: ChartConfig): Bar[] {
   const { data } = cfg;
   const n = data.categories.length;
   const nSeries = Math.max(1, data.series.length);
   const totalSet = new Set(cfg.waterfall?.totalIndices ?? []);
   const spacerSet = new Set(cfg.waterfall?.spacerIndices ?? []);
+  const detailOf = detailParents(cfg);
   const bars: Bar[] = [];
   let running = 0;
   for (let c = 0; c < n; c++) {
     if (spacerSet.has(c)) {
       // Blank grouping gap: no bar, running total carries across unchanged.
       bars.push({ segs: [], isTotal: false, value: 0, level: running });
+      continue;
+    }
+    const parent = detailOf.get(c);
+    if (parent != null && bars[parent]) {
+      // "Of which": decompose the parent's delta as a sub-bridge rising from
+      // the parent's own base, so the group reads as that column taken apart
+      // rather than as more steps in the walk. Off the chain — `running` is
+      // untouched, exactly like a total, so every downstream total and the
+      // final one stay correct whatever these add up to.
+      const p = bars[parent];
+      const base = p.isTotal ? 0 : p.level - p.value;
+      // Chain within the group: pick up where the previous detail left off.
+      const prev = detailOf.get(c - 1) === parent ? bars[c - 1] : null;
+      let level = prev ? prev.level : base;
+      const segs: Seg[] = [];
+      for (let si = 0; si < nSeries; si++) {
+        const v = data.series[si]?.values[c];
+        if (v == null || v === 0) continue;
+        segs.push({ series: si, from: level, to: level + v, value: v });
+        level += v;
+      }
+      bars.push({ segs, isTotal: false, value: level - (prev ? prev.level : base), level });
       continue;
     }
     if (totalSet.has(c)) {
@@ -95,6 +127,13 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const totalSet = new Set(cfg.waterfall?.totalIndices ?? []);
   const spacerSet = new Set(cfg.waterfall?.spacerIndices ?? []);
   const H = !!cfg.horizontal;
+  const detailOf = detailParents(cfg);
+  /** The next column the chain actually flows to, stepping over any details. */
+  const nextChainColumn = (from: number) => {
+    let j = from + 1;
+    while (j < n && detailOf.has(j)) j++;
+    return j;
+  };
 
   const bars = waterfallChain(cfg);
 
@@ -196,15 +235,21 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
       }
     }
 
-    // Dashed connector from this column's outgoing level to the next bar.
-    if (c < n - 1) {
+    // Dashed connector from this column's outgoing level to the next bar. A
+    // detail column has no outgoing level to carry — the chain flows past the
+    // whole group — so it draws none, and its parent's connector reaches over
+    // the group to the next chain column instead. That step-over is what tells
+    // the reader the group is a decomposition and not more of the walk.
+    const isDetail = detailOf.has(c);
+    const to = isDetail ? -1 : nextChainColumn(c);
+    if (!isDetail && to > c && to < n) {
       const levelQ = qOf(b.level);
       if (H) {
         const x = frame.x + levelQ;
         nodes.push({
           kind: "line",
           x1: x, y1: centers[c] + colThick / 2,
-          x2: x, y2: centers[c + 1] - colThick / 2,
+          x2: x, y2: centers[to] - colThick / 2,
           stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `connector-${c}`,
         });
       } else {
@@ -212,7 +257,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
         nodes.push({
           kind: "line",
           x1: centers[c] + colThick / 2, y1: y,
-          x2: centers[c + 1] - colThick / 2, y2: y,
+          x2: centers[to] - colThick / 2, y2: y,
           stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `connector-${c}`,
         });
       }

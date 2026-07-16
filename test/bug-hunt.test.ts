@@ -527,3 +527,70 @@ describe("waterfall extent walks the same chain the layout draws", () => {
     expect(valueExtent(withSpacer)).toEqual({ min: 0, max: 60 });
   });
 });
+
+describe("waterfall \"of which\" detail groups", () => {
+  /** Cost (-12) decomposed into Labour/Freight/Energy (-7/-3/-2). */
+  const bridge = (detail: boolean) =>
+    ({
+      kind: "waterfall", width: 560, height: 300,
+      data: {
+        categories: ["FY23", "Volume", "Cost", "> Labour", "> Freight", "> Energy", "FX", "FY24"],
+        series: [{ name: "Delta", values: [86, 14, -12, -7, -3, -2, -4, 0] }],
+      },
+      waterfall: {
+        totalIndices: [7],
+        ...(detail ? { detailGroups: [{ of: 2, indices: [3, 4, 5] }] } : {}),
+      },
+    }) as ChartConfig;
+  const node = (c: ChartConfig, name: string) => buildChart(c).nodes.find((n) => n.name === name) as any;
+
+  it("keeps detail columns off the chain, so the totals stay right", () => {
+    // 86 + 14 - 12 - 4 = 84. Without the grouping the details join the walk and
+    // the same rows total 72 — the breakdown counted twice.
+    expect(node(bridge(true), "label-7").text).toBe("84");
+    expect(node(bridge(false), "label-7").text).toBe("72");
+  });
+
+  it("decomposes the parent's delta, from the parent's own base", () => {
+    const c = bridge(true);
+    const cost = node(c, "bar-2");
+    const energy = node(c, "bar-5"); // the last detail
+    const labour = node(c, "bar-3"); // the first
+    // The sub-bridge starts where Cost starts and ends where Cost ends: the
+    // group IS that column taken apart, not more steps in the walk.
+    expect(labour.y).toBeCloseTo(cost.y, 6);
+    expect(energy.y + energy.h).toBeCloseTo(cost.y + cost.h, 6);
+  });
+
+  it("steps the connector over the group, without burying it", () => {
+    const c = bridge(true);
+    const names = buildChart(c).nodes.filter((n) => n.name?.startsWith("connector-")).map((n) => n.name);
+    // A detail has no outgoing level to carry, so it draws no connector.
+    expect(names).toEqual(["connector-0", "connector-1", "connector-2", "connector-6"]);
+    // The parent's connector reaches the next CHAIN column, not the next index.
+    const conn = node(c, "connector-2");
+    const fx = node(c, "bar-6");
+    expect(conn.x2).toBeLessThanOrEqual(fx.x + 0.01);
+    expect(conn.x2 - conn.x1).toBeGreaterThan(150); // it spans the whole group
+    // Anchoring the sub-bridge at the parent's base (rather than at the level
+    // the chain carries) is what keeps this line clear of the bars it skips.
+    for (const i of [3, 4, 5]) {
+      const b = node(c, `bar-${i}`);
+      const through = conn.y1 > b.y && conn.y1 < b.y + b.h;
+      expect(through, `bar-${i}`).toBe(false);
+    }
+  });
+
+  it("renders a group that does not sum to its parent exactly as authored", () => {
+    // The engine draws your numbers; it does not reconcile them. The chain is
+    // unaffected either way, so the totals cannot silently drift.
+    const c = bridge(true);
+    (c.data.series[0].values as (number | null)[])[3] = -1; // 1+3+2 != 12
+    expect(node(c, "label-7").text).toBe("84");
+    expect(node(c, "bar-3")).toBeTruthy();
+  });
+
+  it("covers the detail bars in the value extent", () => {
+    expect(valueExtent(bridge(true))!.max).toBeGreaterThanOrEqual(100);
+  });
+});
