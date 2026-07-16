@@ -119,6 +119,15 @@ Category cells support `Activity | Owner | Remark` columns, a leading `>`
 for indenting, and section-header rows (no Start/End). Calendar timelines
 pick weeks (with weekend shading), months, or quarters automatically.
 
+**Overlap relief** (`scatter.spread: "x" | "y"` on scatter/bubble): when markers
+cover each other, PowerChart can nudge them along ONE axis you name — the other
+stays exact. The shift is hard-capped (`scatter.spreadLimit`, in that axis's
+own units; 2% of the range by default) and the cap is printed in the footnote,
+so the chart discloses its own approximation. It is ignored under `quadrants`:
+a nudge must never move a point across a quadrant line. Both axes carry data,
+so PowerChart will not move a marker freely in 2D — that would corrupt two
+readings at once.
+
 **Marginal histograms** (`decorations.marginals: "x" | "y" | "both"` on
 scatter/bubble): distribution bars in a gutter along the top and/or right
 margin — where the points bunch up, beside the chart that shows how they

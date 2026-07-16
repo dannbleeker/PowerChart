@@ -119,7 +119,9 @@ export interface FrameReservations {
 
 /** Height reserved at the bottom for the footnote / "100% =" line. */
 export function footnoteH(cfg: ChartConfig, style: ChartStyle, decor: Decorations): number {
-  return cfg.footnote || decor.hundredPercentNote ? style.fontSize * 1.3 : 0;
+  // scatter.spread prints its cap on the footnote line, so it needs the row
+  // reserved even when the author wrote no footnote of their own.
+  return cfg.footnote || decor.hundredPercentNote || cfg.scatter?.spread ? style.fontSize * 1.3 : 0;
 }
 
 /**

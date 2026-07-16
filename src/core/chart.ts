@@ -6,7 +6,7 @@ import { layoutWaterfall } from "./layout/waterfall";
 import { layoutMekko } from "./layout/mekko";
 import { layoutLine } from "./layout/line";
 import { layoutButterfly } from "./layout/butterfly";
-import { layoutScatter } from "./layout/scatter";
+import { layoutScatter, spreadCap } from "./layout/scatter";
 import { layoutGantt } from "./layout/gantt";
 import { layoutPie } from "./layout/pie";
 import { boxplotExtent, layoutBoxplot } from "./layout/boxplot";
@@ -464,6 +464,14 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     if (total != null) footParts.push(`100% = ${formatNumber(total, resolveFormat([total], cfg.numberFormat))}`);
   }
   if (cfg.footnote) footParts.push(cfg.footnote);
+  // Overlap relief is an approximation, so the chart discloses it — quoting
+  // the cap the layout actually enforces, not a restatement of it.
+  const sc = spreadCap(cfg);
+  if (sc) {
+    footParts.push(
+      `${sc.axis.toUpperCase()} positions approximate: markers spread by up to ±${formatNumber(sc.limit, resolveFormat([sc.limit], cfg.numberFormat))} to reduce overlap`,
+    );
+  }
   if (footParts.length) {
     const fs = style.fontSize;
     nodes.push({

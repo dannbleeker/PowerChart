@@ -2,6 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatP, histogramBins, niceTicks, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
+import { spreadAlongAxis } from "../spread";
 import { PALETTE } from "../style";
 import { lerpColor, sequentialScale } from "../color";
 import { footnoteH } from "./frame";
@@ -14,6 +15,29 @@ import type { LayoutResult } from "./column";
  * Point labels are placed by the greedy collision-avoiding placer and hidden
  * when the chart gets too dense.
  */
+/**
+ * The overlap-relief cap, in DATA UNITS of the spread axis — or null when
+ * spread is off. Exported so the footnote quotes exactly the number the layout
+ * enforces: a disclosure that drifts from the cap is worse than no disclosure.
+ */
+export function spreadCap(cfg: ChartConfig): { axis: "x" | "y"; limit: number } | null {
+  const axis = cfg.scatter?.spread;
+  if (!axis || (cfg.kind !== "scatter" && cfg.kind !== "bubble")) return null;
+  // Quadrants make a categorical claim — which box a point is in. A nudge, however
+  // small and however well disclosed, could carry a marker across the crossing
+  // line and change that claim. Overlap is the lesser problem, so spread yields.
+  // Returning null here also suppresses the footnote, so the chart never
+  // promises an approximation it did not make.
+  if (cfg.decorations?.quadrants) return null;
+  const find = (re: RegExp) => cfg.data.series.find((s) => re.test(s.name.trim()));
+  const vals = (find(axis === "x" ? /^x$/i : /^y$/i)?.values ?? []).filter((v): v is number => v != null);
+  const ticks = niceTicks(Math.min(0, ...vals), Math.max(1, ...vals), 5);
+  const range = ticks[ticks.length - 1] - ticks[0];
+  if (!(range > 0)) return null;
+  const limit = cfg.scatter?.spreadLimit ?? range * 0.02;
+  return { axis, limit: Math.max(0, Math.min(limit, range * 0.1)) };
+}
+
 export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
@@ -248,6 +272,29 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const radius = (p: (typeof pts)[number]) =>
     cfg.kind === "bubble" && p.size != null ? Math.max(2.5, Math.sqrt(Math.abs(p.size) / maxSize) * maxR) : 3;
 
+  // Overlap relief along one axis. The cross axis stays exact, the named one
+  // moves by at most the disclosed cap, and every marker keeps its identity —
+  // this only shifts where a marker is drawn, never which point it is.
+  const cap = spreadCap(cfg);
+  const spread = new Map<number, number>();
+  if (cap) {
+    const byX = cap.axis === "x";
+    // The cap is quoted in data units; the relaxation works in px.
+    const limitPx = byX
+      ? (cap.limit / (x1 - x0 || 1)) * plot.w
+      : (cap.limit / (y1 - y0 || 1)) * plot.h;
+    const disp = spreadAlongAxis(
+      pts.map((p) => ({ m: byX ? toX(p.x) : toY(p.y), c: byX ? toY(p.y) : toX(p.x), r: radius(p) })),
+      byX
+        ? { limit: limitPx, min: plot.x, max: plot.x + plot.w }
+        : { limit: limitPx, min: plot.y, max: plot.y + plot.h },
+    );
+    disp.forEach((d, i) => spread.set(i, d));
+  }
+  /** Drawn position: the exact one, plus any disclosed nudge on the spread axis. */
+  const px = (p: (typeof pts)[number], i: number) => toX(p.x) + (cap?.axis === "x" ? (spread.get(i) ?? 0) : 0);
+  const py = (p: (typeof pts)[number], i: number) => toY(p.y) + (cap?.axis === "y" ? (spread.get(i) ?? 0) : 0);
+
   // Bubble size legend: without a key, bubble AREA is unreadable. Two
   // outline reference circles (a nice maximum and its half), top-right.
   const legendBoxes: Box[] = [];
@@ -345,8 +392,8 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       colorScale && p.color != null ? colorScale.of(p.color) : colorScale ? style.mutedText : (cfg.style?.palette ?? PALETTE)[gi % 8];
     nodes.push({
       kind: "ellipse",
-      cx: toX(p.x),
-      cy: toY(p.y),
+      cx: px(p, i),
+      cy: py(p, i),
       rx: r,
       ry: r,
       fill,
@@ -354,7 +401,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       strokeWidth: 1,
       name: `point-${i}`,
     });
-    markerBoxes.push({ x: toX(p.x) - r, y: toY(p.y) - r, w: r * 2, h: r * 2 });
+    markerBoxes.push({ x: px(p, i) - r, y: py(p, i) - r, w: r * 2, h: r * 2 });
   }
 
   // Greedy label placement, biggest bubbles first so important points win.

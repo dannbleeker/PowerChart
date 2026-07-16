@@ -125,6 +125,7 @@ describe("showcase deck coverage", () => {
     ["gantt gutter columns", (c) => c.kind === "gantt" && !!c.data.series.some((s) => /^column\b/i.test(s.name))],
     ["gantt working-day timeline", (c) => c.kind === "gantt" && c.gantt?.workdays != null],
     ["scatter marginal histograms", (c) => c.decorations?.marginals != null],
+    ["bubble overlap relief", (c) => c.scatter?.spread != null],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

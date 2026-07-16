@@ -63,7 +63,9 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     criticalPath?: boolean,           // gantt: red-outline the longest "After"-dependency chain + its arrows
     radarBand?: boolean,              // radar: shade the peer min–max envelope, draw last series on top
     quadrants?: { x, y, labels? }     // scatter: 4 tinted zones + corner labels at one crossing
-    marginals?: "x"|"y"|"both",       // scatter/bubble: distribution histograms in a top/right gutter (bins subdivide the axis ticks, so every tick is a bin edge; plot shrinks, dropped if it would leave too little)
+    marginals?: "x"|"y"|"both",       // scatter/bubble: distribution histograms in a top/right gutter
+                                      // (bins subdivide the axis ticks, so every tick is a bin edge;
+                                      //  the plot shrinks; dropped if that would leave too little)
   },
   footnote?: string,                  // source line, bottom-left ("Source: …, 2024")
   pie?: { explode?: number[],         // slice indices offset radially to highlight
@@ -72,6 +74,13 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
           semi?: boolean,             // doughnut only: 180° semi-circle gauge (scorecard)
           variableRadius?: boolean }, // pie: angle = 1st series, radius = a "Radius" row / 2nd series
   pareto?: boolean,                   // clustered/combo: sort desc + cumulative-% line (80/20 view)
+  scatter?: { spread?: "x"|"y",       // scatter/bubble: nudge markers along ONE axis to relieve overlap;
+                                      // the other axis stays exact. The cap is printed in the footnote.
+                                      // Ignored under decorations.quadrants (a nudge must not move a
+                                      // point across a quadrant line). No free 2D repulsion: it would
+                                      // corrupt both of a marker's readings at once.
+              spreadLimit?: number }, // hard cap, in DATA UNITS of the spread axis (default 2% of its
+                                      // tick range, max 10%)
   multiples?: { columns?: number },   // small multiples: one single-series panel per series,
                                       // shared value scale (stacked/clustered/line/area/waterfall/radar)
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",

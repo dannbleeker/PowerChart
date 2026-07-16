@@ -1214,6 +1214,22 @@ const features = [
     },
     decorations: { marginals: "both", segmentLabels: false },
   },
+  {
+    kind: "bubble",
+    width: 520,
+    height: 300,
+    title: "Overlap relief — markers nudged along Y only, by a disclosed cap",
+    data: {
+      categories: ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"],
+      series: [
+        // Two tight clusters that would otherwise sit on top of each other.
+        { name: "X", values: [30, 31, 32, 30.5, 68, 69, 70, 68.5] },
+        { name: "Y", values: [40, 41, 39, 40.5, 62, 61, 63, 62.5] },
+        { name: "Size", values: [70, 55, 60, 45, 80, 50, 65, 40] },
+      ],
+    },
+    scatter: { spread: "y", spreadLimit: 6 },
+  },
 ];
 
 const configs = [...kinds, ...features];
