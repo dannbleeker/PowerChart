@@ -145,6 +145,7 @@ function installHost(
       triangle: "triangle",
       chevron: "chevron",
       homePlate: "homePlate",
+      lineInverse: "lineInverse",
     },
     ConnectorType: { straight: "straight" },
     ShapeLineDashStyle: { dash: "dash" },
@@ -274,6 +275,51 @@ describe("scene node mapping", () => {
     const up = await insert([{ kind: "line", x1: 0, y1: 100, x2: 100, y2: 0, stroke: "#00a000", strokeWidth: 2, name: "u" }]);
     const ur = up.created.find((s) => s.geo === "rectangle")!;
     expect(ur.rotation).toBeCloseTo(-45, 0); // up-right — the case a box would mirror
+  });
+
+  it("draws dashed diagonals as real line shapes, picking the geometry per direction", async () => {
+    // A rotated rectangle carries its colour in its fill, which can't be
+    // dashed — scatter trend lines and forecast segments came out solid.
+    const down = await insert([
+      { kind: "line", x1: 0, y1: 0, x2: 100, y2: 60, stroke: "#a00000", strokeWidth: 1.25, dash: [4, 2], name: "trend" },
+    ]);
+    const dl = down.created.find((s) => s.name === "trend")!;
+    expect(dl.type).toBe("line"); // not a filled rectangle
+    expect(dl.lineFormat.dashStyle).toBe("dash");
+    expect(dl.box).toMatchObject({ width: 100, height: 60 });
+
+    // Up-right: addLine only ever draws the box's top-left→bottom-right
+    // diagonal, so this direction needs the lineInverse geometry.
+    const up = await insert([
+      { kind: "line", x1: 0, y1: 60, x2: 100, y2: 0, stroke: "#a00000", strokeWidth: 1.25, dash: [4, 2], name: "trend" },
+    ]);
+    const ul = up.created.find((s) => s.name === "trend")!;
+    expect(ul.geo).toBe("lineInverse");
+    expect(ul.lineFormat.dashStyle).toBe("dash");
+  });
+
+  it("draws polygon edges direction-correct, with no zero-thickness boxes", async () => {
+    // A violin body: an up-right edge, a horizontal edge and a down-right edge.
+    const slide = await insert([
+      {
+        kind: "polygon",
+        points: [{ x: 0, y: 40 }, { x: 50, y: 0 }, { x: 100, y: 40 }, { x: 100, y: 40 }],
+        fill: "#eeeeee", stroke: "#3366cc", strokeWidth: 1, name: "violin-0",
+      },
+    ]);
+    const edges = slide.created.filter((s) => s.name?.startsWith("violin-0-e"));
+    expect(edges).toHaveLength(4);
+    for (const e of edges) {
+      // Every edge is a real segment: a bounding box collapsed to zero on one
+      // axis let the web host blow it up into a giant diagonal.
+      expect(e.box.width).toBeGreaterThanOrEqual(0.5);
+      expect(e.box.height).toBeGreaterThanOrEqual(0.5);
+    }
+    // Edge 0 (0,40)->(50,0) rises to the right; edge 1 (50,0)->(100,40) falls.
+    // Passing both bounding boxes to addLine drew them as the same diagonal.
+    const [e0, e1] = edges;
+    expect(e0.rotation).toBeLessThan(0);
+    expect(e1.rotation).toBeGreaterThan(0);
   });
 
   it("maps arrowheads to rotated triangles anchored at the tip", async () => {
