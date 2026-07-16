@@ -5,7 +5,7 @@
  * → skill-dist/powerchart-charts.zip  (upload at claude.ai → Customize → Skills;
  *   it then also appears inside Claude for PowerPoint)
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 
 if (!existsSync("dist-lib/powerchart.js")) {
@@ -30,11 +30,19 @@ writeFileSync(
 );
 
 // render-svg.mjs was written for the repo layout — point it at the bundled lib.
-execSync(`node -e "
-const fs = require('node:fs');
-const p = '${root}/scripts/render-svg.mjs';
-fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('../dist-lib/powerchart.js', '../lib/powerchart.js'));
-"`);
+// Done in-process: shelling out to `node -e` to rewrite a file from a Node
+// script bought nothing and broke on Windows, silently shipping a skill whose
+// renderer imported ../dist-lib/powerchart.js, a path that doesn't exist here.
+const renderSvg = `${root}/scripts/render-svg.mjs`;
+const patched = readFileSync(renderSvg, "utf8").replace(
+  "../dist-lib/powerchart.js",
+  "../lib/powerchart.js",
+);
+if (!patched.includes("../lib/powerchart.js")) {
+  console.error(`${renderSvg}: import of ../dist-lib/powerchart.js not found — skill would ship broken`);
+  process.exit(1);
+}
+writeFileSync(renderSvg, patched);
 
 execSync(`cd skill-dist && python3 -m zipfile -c powerchart-charts.zip powerchart-charts`);
 console.log("skill-dist/powerchart-charts.zip");

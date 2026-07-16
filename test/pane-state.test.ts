@@ -13,7 +13,9 @@ import type { ChartConfig } from "../src/core/types";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-async function bootPane() {
+async function bootPane(search = "") {
+  // app.ts reads ?lang= at import time, so the URL has to be set up front.
+  window.history.replaceState({}, "", `/taskpane.html${search}`);
   // Parse rather than regex out the <script> tags: the office.js tag has no
   // business loading here, and a regex that thinks it can find "</script>"
   // misses "</script >" (CodeQL js/bad-tag-filter).
@@ -92,5 +94,19 @@ describe("task pane — loading a chart config", () => {
     // Ctrl+Z used to replay the *previous* chart's cells into the new sheet,
     // leaving a chart whose data belonged to neither.
     expect(exportConfig().data).toEqual(loaded.data);
+  });
+});
+
+describe("task pane — localisation survives re-renders", () => {
+  it("keeps the action button translated after a chart loads", async () => {
+    await bootPane("?lang=de");
+    const insert = () => $("insert").textContent;
+    expect(insert()).toBe("In Folie einfügen");
+
+    // renderActionState rewrites this label whenever the edit target changes —
+    // which happens long after localizePane ran — and used to stamp the English
+    // string straight back into a German pane.
+    importConfig({ kind: "clustered", data: baseData });
+    expect(insert()).toBe("In Folie einfügen");
   });
 });
