@@ -39,6 +39,12 @@ interface AppState {
   locale: string;
   labelContent: string; // comma-joined parts, "" = default
   paletteName: string;
+  /**
+   * Style carried in from a loaded chart — fonts, negative/neutral, and a
+   * palette matching no preset. Overrides the corporate style file's defaults;
+   * `paletteName` still wins over `style.palette` once the user picks one.
+   */
+  style?: NonNullable<ChartConfig["style"]>;
   /** Per-series color overrides, keyed by series name. */
   seriesColors: Record<string, string>;
   axisTitle: string;
@@ -79,6 +85,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     locale: cfg.numberFormat?.locale ?? "en-US",
     labelContent: cfg.decorations?.labelContent?.join(",") ?? "",
     paletteName: paletteNameFor(cfg.style?.palette),
+    style: cfg.style ? { ...cfg.style } : undefined,
     seriesColors: Object.fromEntries(
       cfg.data.series.filter((s) => s.color).map((s) => [s.name, s.color!]),
     ),
@@ -110,12 +117,18 @@ let themePalette: string[] | null = null;
 
 /** Style-file defaults + the palette preset chosen in the pane. */
 function mergedStyle(): ChartConfig["style"] {
-  const style = { ...styleFile } as NonNullable<ChartConfig["style"]>;
+  // The loaded chart's own style beats the corporate defaults; an explicit
+  // palette pick beats both.
+  const style = { ...styleFile, ...state.style } as NonNullable<ChartConfig["style"]>;
   if (state.paletteName === "Theme" && themePalette) style.palette = themePalette;
   else if (state.paletteName !== "Default") style.palette = PALETTES[state.paletteName];
   return Object.keys(style).length ? style : undefined;
 }
 
+/**
+ * The preset name for a palette, or "Default" when it matches none — including
+ * a chart's own custom palette, which `state.style` carries instead.
+ */
 function paletteNameFor(palette?: string[]): string {
   if (!palette) return "Default";
   return Object.entries(PALETTES).find(([, p]) => p.join() === palette.join())?.[0] ?? "Default";
@@ -196,6 +209,15 @@ function applyConfig(cfg: ChartConfig, editTarget: EditTarget | null) {
   sheetApi.setSheet(state.sheet);
   const titleField = document.getElementById("chart-title") as HTMLInputElement | null;
   if (titleField) titleField.value = state.title;
+  // currentConfig() reads the size straight off these fields, so leaving them
+  // stale silently resized every loaded chart to the previous one's dimensions.
+  const sizeField = (id: string, value: number) => {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (el) el.value = String(value);
+  };
+  sizeField("chart-w", cfg.width ?? DEFAULT_SIZE.width);
+  sizeField("chart-h", cfg.height ?? DEFAULT_SIZE.height);
+  resetHistory();
   renderGallery();
   renderOptions();
   renderPreview();
@@ -710,6 +732,9 @@ function renderOptions() {
   palSel.value = state.paletteName;
   palSel.addEventListener("change", () => {
     state.paletteName = palSel.value;
+    // An explicit pick — "Default" included — replaces a custom palette the
+    // loaded chart brought with it.
+    delete state.style?.palette;
     renderPreview();
   });
   // Read the deck's theme accent colors (PowerPointApi 1.10) as a palette.
@@ -740,7 +765,9 @@ function renderOptions() {
 
   const colors = document.createElement("div");
   colors.className = "wide series-colors";
-  const palette = (state.paletteName === "Theme" && themePalette) || PALETTES[state.paletteName] || PALETTES.Default;
+  // Resolve through mergedStyle so the swatches show the colors the chart
+  // actually draws with — including a loaded chart's custom palette.
+  const palette = mergedStyle()?.palette ?? PALETTES.Default;
   currentSeriesNames().forEach((name, i) => {
     const wrap = document.createElement("label");
     const input = document.createElement("input");
@@ -823,6 +850,16 @@ function snapshot() {
     if (history.length > 100) history.shift();
     redoStack.length = 0;
   }
+}
+/**
+ * Start a fresh undo timeline at the current sheet — the same baseline boot
+ * establishes, re-established for each newly loaded chart. Without it Ctrl+Z
+ * replayed the previous chart's cells into the new one.
+ */
+function resetHistory() {
+  history.length = 0;
+  redoStack.length = 0;
+  history.push(JSON.stringify(state.sheet.cells));
 }
 function restore(cells: string[][]) {
   state.sheet = { cells };
