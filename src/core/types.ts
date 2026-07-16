@@ -456,6 +456,24 @@ export interface ChartConfig {
    * two-series butterfly (series 0 left, series 1 right).
    */
   butterfly?: { split?: number };
+  /** Scatter/bubble options. */
+  scatter?: {
+    /**
+     * Overlap relief: nudge markers along ONE axis so they stop covering each
+     * other, leaving the other axis exact. Position on the NAMED axis becomes
+     * approximate, and the chart says so in its footnote, quoting the cap. Off
+     * by default. Free 2D repulsion is deliberately not offered — it would
+     * corrupt both of a marker's readings at once, with nothing to bound it.
+     */
+    spread?: "x" | "y";
+    /**
+     * Hard cap on the displacement, in DATA UNITS of the `spread` axis — the
+     * units the footnote quotes. Default: 2% of that axis's tick range, clamped
+     * to at most 10%. A marker is never moved further than this, even if
+     * overlap remains.
+     */
+    spreadLimit?: number;
+  };
   /** Gantt options — the timeline itself; task data stays in datasheet rows. */
   gantt?: {
     /**

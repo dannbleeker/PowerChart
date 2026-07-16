@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
-import { layoutScatter } from "../src/core/layout/scatter";
+import { layoutScatter, spreadCap } from "../src/core/layout/scatter";
 import { layoutGantt } from "../src/core/layout/gantt";
 import { layoutColumns } from "../src/core/layout/column";
 import { placeLabels } from "../src/core/labels";
@@ -451,5 +451,110 @@ describe("scatter marginal histograms (decorations.marginals)", () => {
       expect(n, name).toBeTruthy();
       expect(n.y + n.h, name).toBeLessThanOrEqual(top + 0.01);
     }
+  });
+});
+
+describe("scatter overlap relief (scatter.spread)", () => {
+  /** Five bubbles piled on the same x, a point apart in y — a real overlap. */
+  const pile = (scatter?: ChartConfig["scatter"]) =>
+    cfg({
+      kind: "bubble",
+      width: 480,
+      height: 300,
+      footnote: "src", // so footnoteH matches with and without spread
+      data: {
+        categories: ["a", "b", "c", "d", "e"],
+        series: [
+          { name: "X", values: [50, 50, 50, 50, 50] },
+          { name: "Y", values: [50, 51, 52, 53, 54] },
+          { name: "Size", values: [60, 60, 60, 60, 60] },
+        ],
+      },
+      ...(scatter ? { scatter } : {}),
+    });
+  const at = (c: ChartConfig, i: number) =>
+    layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR).nodes.find((n) => n.name === `point-${i}`) as EllipseNode;
+
+  it("never moves a marker further than the cap it discloses", () => {
+    const c = pile({ spread: "y" });
+    const cap = spreadCap(c)!;
+    const plot = layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR).anchors.plot!;
+    const limitPx = (cap.limit / 60) * plot.h; // y ticks run 0..60
+    for (let i = 0; i < 5; i++) {
+      // The cap is the contract — the footnote quotes it, so it cannot be a
+      // suggestion. Bounding a marker to the plot must never override it.
+      expect(Math.abs(at(c, i).cy - at(pile(), i).cy), `point-${i}`).toBeLessThanOrEqual(limitPx + 1e-6);
+    }
+  });
+
+  it("leaves the cross axis exact", () => {
+    const c = pile({ spread: "y" });
+    for (let i = 0; i < 5; i++) expect(at(c, i).cx).toBe(at(pile(), i).cx);
+  });
+
+  it("relieves the overlap, spreading a pile symmetrically about its middle", () => {
+    const c = pile({ spread: "y", spreadLimit: 6 });
+    const d = [0, 1, 2, 3, 4].map((i) => at(c, i).cy - at(pile(), i).cy);
+    // The middle of a symmetric pile has no reason to move; the ends move most.
+    expect(Math.abs(d[2])).toBeLessThan(0.01);
+    expect(Math.abs(d[0])).toBeGreaterThan(Math.abs(d[1]));
+    expect(d[0]).toBeCloseTo(-d[4], 6);
+    expect(d[1]).toBeCloseTo(-d[3], 6);
+    // Overlap is genuinely reduced: adjacent markers end further apart than the
+    // 1pt of y they started with.
+    const gapBefore = Math.abs(at(pile(), 0).cy - at(pile(), 1).cy);
+    const gapAfter = Math.abs(at(c, 0).cy - at(c, 1).cy);
+    expect(gapAfter).toBeGreaterThan(gapBefore);
+  });
+
+  it("does not move a marker that overlaps nothing, even at an axis extreme", () => {
+    // Bounding the circle's EXTENT rather than its centre would shove a big
+    // bubble sitting on the top tick inward by its whole radius — several times
+    // the cap, on the first pass, for a marker with no overlap at all.
+    const c = cfg({
+      kind: "bubble",
+      width: 480,
+      height: 300,
+      footnote: "src",
+      scatter: { spread: "y" },
+      data: {
+        categories: ["top", "far"],
+        series: [
+          { name: "X", values: [20, 80] },
+          { name: "Y", values: [80, 10] }, // 80 lands exactly on the top tick
+          { name: "Size", values: [100, 10] },
+        ],
+      },
+    });
+    const bare = cfg({ ...c, scatter: undefined } as Partial<ChartConfig>);
+    expect(at(c, 0).cy).toBe(at(bare, 0).cy);
+    expect(at(c, 1).cy).toBe(at(bare, 1).cy);
+  });
+
+  it("is deterministic, and independent of the input order", () => {
+    const a = layoutScatter(pile({ spread: "y" }), DEFAULT_STYLE, DEFAULT_DECOR).nodes;
+    const b = layoutScatter(pile({ spread: "y" }), DEFAULT_STYLE, DEFAULT_DECOR).nodes;
+    expect(a).toEqual(b);
+  });
+
+  it("yields to quadrants rather than blur which box a point is in", () => {
+    const c = pile({ spread: "y" });
+    const q = cfg({ ...c, decorations: { quadrants: { x: 50, y: 52 } } } as Partial<ChartConfig>);
+    expect(spreadCap(q)).toBeNull();
+    // ...and with no spread there is no approximation to disclose.
+    const foot = buildChart(q).nodes.find((n) => n.name === "footnote") as TextNode;
+    expect(foot.text).not.toMatch(/approximate/);
+  });
+
+  it("discloses the cap it enforces, in the axis's own units", () => {
+    const foot = buildChart(pile({ spread: "y" })).nodes.find((n) => n.name === "footnote") as TextNode;
+    expect(foot.text).toContain("Y positions approximate");
+    expect(foot.text).toContain(String(spreadCap(pile({ spread: "y" }))!.limit));
+  });
+
+  it("changes nothing when it is off", () => {
+    expect(layoutScatter(pile(), DEFAULT_STYLE, DEFAULT_DECOR).nodes).toEqual(
+      layoutScatter(pile(undefined), DEFAULT_STYLE, DEFAULT_DECOR).nodes,
+    );
   });
 });
