@@ -145,7 +145,11 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const iscale = (inner.w * inner.h) / (g.total || 1);
       const rects = squarify(sorted.map((r) => ({ area: r.value * iscale, key: r.key })), inner);
       sorted.forEach((r, k) => {
-        const rect = rects.get(k);
+        // squarify keys its rects by the item's own key (the pre-sort index), so
+        // look up by r.key — using the post-sort loop index handed each tile the
+        // rectangle sized for a different member's value whenever the group's
+        // members weren't already in descending order.
+        const rect = rects.get(r.key);
         if (rect) drawTile(rect, lerpColor(gColor, "#ffffff", 0.15 + 0.12 * (k % 4)), labelOf(r.label), r.value, `tile-${r.i}`);
       });
     });

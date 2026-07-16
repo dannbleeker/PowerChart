@@ -202,3 +202,72 @@ describe("value extents and auto-scales", () => {
     expect(p1).toEqual(p0); // panels used to rank by their own series and disagree
   });
 });
+
+describe("layout indexing", () => {
+  it("grouped treemap tiles get the rectangle for their own value", () => {
+    const scene = buildChart({
+      kind: "treemap", width: 600, height: 400,
+      data: { categories: ["G | a", "G | b", "G | c"], series: [{ name: "S", values: [1, 50, 100] }] },
+    } as ChartConfig);
+    const area = (name: string) => {
+      const t = scene.nodes.find((n: any) => n.kind === "rect" && n.name === name) as any;
+      return t ? t.w * t.h : 0;
+    };
+    // values 1 < 50 < 100 must give areas tile-0 < tile-1 < tile-2.
+    // (Members are listed ascending, so the sort reorders them — which is
+    // exactly when the post-sort-index lookup handed over the wrong rect.)
+    expect(area("tile-0")).toBeLessThan(area("tile-1"));
+    expect(area("tile-1")).toBeLessThan(area("tile-2"));
+  });
+
+  it("stacked connectors join the same series across a zero segment", () => {
+    const scene = buildChart({
+      kind: "stacked", ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S1", values: [0, 10] }, { name: "S2", values: [20, 30] }] },
+      decorations: { connectors: true },
+    } as ChartConfig);
+    const conns = scene.nodes.filter((n: any) => n.kind === "line" && n.name?.startsWith("connector-")) as any[];
+    // S1 is absent in category A, so only S2's boundary can be joined: exactly one
+    // connector, and it must link the two S2 tops (20 -> 30+... ), never S1<->S2.
+    expect(conns).toHaveLength(1);
+    expect(conns[0].name).toBe("connector-0-1"); // series index 1 = S2, not push-order 0
+  });
+
+  it("a tight-spread violin category still renders", () => {
+    const scene = buildChart({
+      kind: "violin", width: 480, height: 300,
+      data: {
+        categories: ["Wide", "Tight"],
+        series: [
+          { name: "o1", values: [0, 3] }, { name: "o2", values: [30, 3.1] },
+          { name: "o3", values: [60, 3] }, { name: "o4", values: [90, 3.05] },
+          { name: "o5", values: [120, 3.02] },
+        ],
+      },
+    } as ChartConfig);
+    // Both categories have valid observations; neither may be silently dropped.
+    expect(scene.nodes.some((n: any) => n.name === "violin-0")).toBe(true);
+    expect(scene.nodes.some((n: any) => n.name === "violin-1")).toBe(true);
+  });
+
+  it("horizontal mekko hides labels in rows thinner than the font", () => {
+    const cats = Array.from({ length: 16 }, (_, i) => `C${i + 1}`);
+    const cfg = {
+      kind: "mekko", width: 600, height: 160, horizontal: true,
+      data: { categories: cats, series: [{ name: "S1", values: cats.map(() => 50) }, { name: "S2", values: cats.map(() => 50) }] },
+      decorations: { segmentLabels: true },
+    } as ChartConfig;
+    const scene = buildChart(cfg);
+    const segs = scene.nodes.filter((n: any) => n.kind === "rect" && n.name?.startsWith("seg-")) as any[];
+    const labels = scene.nodes.filter((n: any) => n.kind === "text" && n.name?.startsWith("label-")) as any[];
+    // Rows here are ~6.6pt thick — far under the 11pt font. The old gate measured
+    // the segment's 250pt value-axis length instead, so it stamped a label into
+    // every one of them.
+    expect(segs.length).toBe(32);
+    expect(segs.every((s) => s.h < 11 * 1.25)).toBe(true);
+    expect(labels).toHaveLength(0);
+    // Vertical mekko is unaffected: its gate always measured r.h.
+    const tall = buildChart({ ...cfg, horizontal: false } as ChartConfig);
+    expect(tall.nodes.some((n: any) => n.kind === "text" && n.name?.startsWith("label-"))).toBe(true);
+  });
+});

@@ -185,11 +185,14 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           if (v >= 0) {
             r = segRect(catPos, thick, ups[sp], ups[sp] + v);
             ups[sp] += v;
-            if (nStacks === 1) (posBounds[c] ??= []).push(ups[sp]);
+            // Key the boundary by SERIES, not push order: a zero/null segment
+            // pushes nothing, which used to shift every later boundary down an
+            // index and join mismatched series between columns.
+            if (nStacks === 1) (posBounds[c] ??= [])[si] = ups[sp];
           } else {
             r = segRect(catPos, thick, downs[sp] + v, downs[sp]);
             downs[sp] += v;
-            if (nStacks === 1) (negBounds[c] ??= []).push(downs[sp]);
+            if (nStacks === 1) (negBounds[c] ??= [])[si] = downs[sp];
           }
         } else {
           const pos = centers[c] - colThick / 2 + barW / 2 + position * barStep;
@@ -350,7 +353,9 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       for (const bounds of [posBounds, negBounds]) {
         const a = bounds[c] ?? [];
         const b = bounds[c + 1] ?? [];
-        for (let i = 0; i < Math.min(a.length, b.length); i++) {
+        // Sparse by series: only join a boundary that exists on both columns.
+        for (let i = 0; i < Math.max(a.length, b.length); i++) {
+          if (a[i] == null || b[i] == null) continue;
           const p1 = edge(c, qOf(a[i]), 1);
           const p2 = edge(c + 1, qOf(b[i]), -1);
           nodes.push({
