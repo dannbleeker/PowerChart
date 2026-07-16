@@ -10,7 +10,7 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["office-js"]
+    "types": ["office-js", "node"]
   },
   "include": ["src", "test"]
 }
