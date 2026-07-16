@@ -8,7 +8,7 @@ const DE: Record<string, string> = {
   "1 · Chart type": "1 · Diagrammtyp",
   "2 · Data": "2 · Daten",
   "3 · Decorations": "3 · Dekorationen",
-  Preview: "Vorschau",
+  "Preview & size": "Vorschau & Größe",
   Elements: "Elemente",
   "Automation (JSON)": "Automatisierung (JSON)",
   Agenda: "Agenda",
@@ -68,8 +68,11 @@ let activeDict: Record<string, string> | undefined;
 /* The picker families, Format group names, the datasheet-help summary, and the
    search placeholder are added to the base selector; input placeholders are
    translated too. */
+// .acc-title is the accordion step heading. It sits in a <span> inside the
+// <summary>, and translateTree only rewrites an element's DIRECT text, so
+// matching the <summary> alone never reaches it.
 const LOCALIZE_SELECTOR =
-  "h2, button, label, .banner, option, .tagline, figcaption, summary, .group-label, .fgroup-name, .no-type-result";
+  "h2, button, label, .banner, option, .tagline, figcaption, summary, .acc-title, .group-label, .fgroup-name, .no-type-result";
 
 function translateTree(root: ParentNode, dict: Record<string, string>): void {
   for (const el of root.querySelectorAll<HTMLElement>(LOCALIZE_SELECTOR)) {

@@ -110,3 +110,37 @@ describe("task pane — localisation survives re-renders", () => {
     expect(insert()).toBe("In Folie einfügen");
   });
 });
+
+describe("task pane — status colour and headings", () => {
+  beforeEach(async () => {
+    await bootPane();
+  });
+
+  it("shows a failure in the error colour, not the previous success's green", () => {
+    const note = () => $("host-note");
+    // Stand in for a prior successful action having stamped the green class.
+    note().className = "hint status-ok";
+    ($("json-io") as HTMLTextAreaElement).value = "{ not json";
+    $("json-import").click();
+    expect(note().textContent).toMatch(/^Invalid JSON:/);
+    expect(note().className).toBe("hint status-err");
+  });
+
+  it("labels a successful load as such", () => {
+    importConfig({ kind: "clustered", data: baseData });
+    expect($("host-note").className).toBe("hint status-ok");
+  });
+});
+
+describe("task pane — accordion headings are translated", () => {
+  it("translates the numbered step headings", async () => {
+    await bootPane("?lang=de");
+    const titles = [...document.querySelectorAll(".acc-title")].map((e) => e.textContent);
+    // These live in a <span> inside the <summary>; matching the <summary> alone
+    // never reached them, so the dictionary entries were dead.
+    expect(titles).toContain("1 · Diagrammtyp");
+    expect(titles).toContain("3 · Dekorationen");
+    expect(titles).toContain("Vorschau & Größe");
+    expect(titles).not.toContain("1 · Chart type");
+  });
+});
