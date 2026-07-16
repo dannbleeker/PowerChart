@@ -198,8 +198,13 @@ function translateNodes(nodes: SceneNode[], dx: number, dy: number, prefix: stri
  * series name, laid out in a grid and pinned to one shared value scale so
  * panels compare honestly. Null when the config doesn't call for it.
  */
-function buildMultiples(cfg: ChartConfig): Scene | null {
-  if (!cfg.multiples || !MULTIPLES_KINDS.includes(cfg.kind)) return null;
+function buildMultiples(rawCfg: ChartConfig): Scene | null {
+  const multiples = rawCfg.multiples;
+  if (!multiples || !MULTIPLES_KINDS.includes(rawCfg.kind)) return null;
+  // Sort categories ONCE, ranked across the full data, so every panel shares one
+  // x-axis. (Letting each panel sort itself — it inherits categorySort — ranked
+  // each panel by its own single series and gave the panels contradictory axes.)
+  const cfg = sortCategories(rawCfg);
   const carried = cfg.data.series.filter((s) => CARRIED_ROW.test(s.name.trim()));
   const dataSeries = cfg.data.series.filter((s) => !CARRIED_ROW.test(s.name.trim()));
   if (dataSeries.length < 2) return null;
@@ -207,7 +212,7 @@ function buildMultiples(cfg: ChartConfig): Scene | null {
   const style: ChartStyle = { ...DEFAULT_STYLE, ...cfg.style };
   const fs = style.fontSize;
   const n = dataSeries.length;
-  const cols = Math.max(1, Math.min(n, cfg.multiples.columns ?? (n <= 3 ? n : Math.ceil(Math.sqrt(n)))));
+  const cols = Math.max(1, Math.min(n, multiples.columns ?? (n <= 3 ? n : Math.ceil(Math.sqrt(n)))));
   const rows = Math.ceil(n / cols);
   const gap = 10;
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
@@ -218,6 +223,7 @@ function buildMultiples(cfg: ChartConfig): Scene | null {
   const panelCfg = (s: (typeof dataSeries)[number], si: number): ChartConfig => ({
     ...cfg,
     multiples: undefined,
+    categorySort: undefined, // already applied above, on the full data
     title: s.name,
     footnote: undefined,
     width: panelW,
@@ -302,8 +308,12 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     if (ext) {
       const maxPlus = Math.max(0, ...(errors?.plus ?? []).filter((v): v is number => v != null));
       const maxMinus = Math.max(0, ...(errors?.minus ?? []).filter((v): v is number => v != null));
-      const maxTarget = Math.max(0, ...(targets ?? []).filter((v): v is number => v != null));
-      const ticks = niceTicks(Math.min(ext.min - maxMinus, 0), Math.max(ext.max + maxPlus, maxTarget), 5);
+      // Targets widen the scale in BOTH directions — a target under the data range
+      // used to be floored at 0 and its tick rendered outside the plot.
+      const targetVals = (targets ?? []).filter((v): v is number => v != null);
+      const maxTarget = Math.max(0, ...targetVals);
+      const minTarget = Math.min(0, ...targetVals);
+      const ticks = niceTicks(Math.min(ext.min - maxMinus, minTarget, 0), Math.max(ext.max + maxPlus, maxTarget), 5);
       cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: ticks[ticks.length - 1] } };
     }
   }
@@ -527,8 +537,12 @@ export function valueExtent(cfg: ChartConfig): { min: number; max: number } | nu
     case "boxplot":
       return boxplotExtent(cfg);
     case "area": {
+      // Areas stack under the baseline too (layout/line.ts dips negatives below
+      // zero), so the extent must mirror "stacked" — a hard 0 floor here clipped
+      // every negative area on the shared-scale paths (small multiples, Same Scale).
       const pos = cats.map((c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
-      return { min: 0, max: Math.max(0, ...pos) };
+      const neg = cats.map((c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
+      return { min: Math.min(0, ...neg), max: Math.max(0, ...pos) };
     }
     case "waterfall": {
       const totals = new Set(cfg.waterfall?.totalIndices ?? []);

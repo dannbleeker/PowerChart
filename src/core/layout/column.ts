@@ -440,7 +440,10 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     let running = 0;
     let max = 0;
     cfg.data.categories.forEach((_, c) => {
-      if (!totals.has(c)) running += cols[0]?.values[c] ?? 0;
+      // Every column series contributes to the running total (layoutWaterfall
+      // stacks them all) — summing only cols[0] understated the peak and pushed
+      // a multi-series waterfall combo off the top of the plot.
+      if (!totals.has(c)) running += cols.reduce((a, s) => a + (s.values[c] ?? 0), 0);
       max = Math.max(max, running);
     });
     return max;
