@@ -38,8 +38,11 @@ describe("connector lines", () => {
       decorations: { connectors: true, segmentLabels: true },
     };
     const names = byPrefix(cfg, "connector-").map((n) => n.name);
+    // The trailing index is the series index on both sides — S is 0, T is 1 —
+    // so the negative boundary is "-1n". (It was the push-order of the negative
+    // segments, which drifted out of step with the series whenever one was zero.)
     expect(names).toContain("connector-0-0");
-    expect(names).toContain("connector-0-0n");
+    expect(names).toContain("connector-0-1n");
   });
 
   it("works in horizontal orientation and stays off by default", () => {

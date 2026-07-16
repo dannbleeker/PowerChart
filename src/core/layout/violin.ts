@@ -52,11 +52,18 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     const lo = sorted[0];
     const hi = sorted[sorted.length - 1];
 
+    // Evaluate the KDE across THIS category's own support (clamped to the axis).
+    // Sampling the chart-wide range and skipping points outside the category
+    // silently dropped any category whose spread was small relative to the whole
+    // range — fewer than 2 of the M+1 grid points landed in it, so it rendered
+    // no violin and no median tick at all despite having valid observations.
+    const gLo = Math.max(vmin, lo - h);
+    const gHi = Math.min(vmax, hi + h);
+    if (!(gHi > gLo)) return;
     const levels: { y: number; d: number }[] = [];
     let maxD = 0;
     for (let k = 0; k <= M; k++) {
-      const y = vmin + ((vmax - vmin) * k) / M;
-      if (y < lo - h || y > hi + h) continue; // clamp near the data range
+      const y = gLo + ((gHi - gLo) * k) / M;
       let d = 0;
       for (const s of samples) d += Math.exp(-0.5 * ((y - s) / h) ** 2);
       d /= samples.length * h * Math.sqrt(2 * Math.PI);

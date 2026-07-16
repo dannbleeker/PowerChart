@@ -74,9 +74,13 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const fill = seriesColor(style, si, s.color);
       nodes.push({ kind: "rect", ...r, fill, stroke: style.background, strokeWidth: 0.75, name: `seg-${si}-${c}` });
       if (c === n - 1) lastSegMid[si] = H ? r.x + r.w / 2 : r.y + r.h / 2;
-      if (decor.segmentLabels && (H ? r.w : r.h) >= fs * 1.25) {
+      // The label is centred in r.h and spans r.w in BOTH orientations, so the
+      // room checks are r.h / r.w regardless of H. (Gating the vertical fit on
+      // r.w for horizontal mekko measured the value-axis length, not the row
+      // thickness, so labels rendered in rows thinner than the font.)
+      if (decor.segmentLabels && r.h >= fs * 1.25) {
         const label = formatNumber(v, fmt);
-        if (textWidth(label, fs) <= (H ? r.w : r.w) + 2) {
+        if (textWidth(label, fs) <= r.w + 2) {
           nodes.push({
             kind: "text",
             x: r.x - 2,
