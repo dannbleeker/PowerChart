@@ -17,6 +17,24 @@ describe("formatNumber", () => {
     for (const locale of ["en-US", "de-DE", "da-DK", "sv-SE", "nb-NO", "fi-FI", "lt-LT"]) {
       expect(formatNumber(-0.004, { decimals: 0, locale }), locale).toBe("0");
     }
+    // And the ones a pattern match on the formatted string could never cover:
+    // RTL locales prefix an invisible directional mark (U+200E/U+061C) ahead of
+    // the sign, and these render digits outside ASCII.
+    const zeroOf: Record<string, string> = {
+      "ar-AE": "0", "ur-PK": "0", "he-IL": "0", // ASCII digits behind a mark
+      "ar-EG": "٠", "fa-IR": "۰", "bn-BD": "০", "my-MM": "၀",
+    };
+    for (const [locale, zero] of Object.entries(zeroOf)) {
+      expect(formatNumber(-0.4, { decimals: 0, locale }), locale).toBe(zero);
+      expect(formatNumber(-0.004, { decimals: 2, locale }), locale).not.toMatch(/[-−]/);
+    }
+  });
+
+  it("keeps the sign on a genuine negative in those same locales", () => {
+    // The normalisation must key off the value, not strip a leading character.
+    for (const locale of ["ar-EG", "fa-IR", "bn-BD", "my-MM", "he-IL", "sv-SE"]) {
+      expect(formatNumber(-5.2, { decimals: 1, locale }), locale).toMatch(/[-−]/);
+    }
   });
 });
 

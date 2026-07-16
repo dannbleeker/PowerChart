@@ -27,10 +27,13 @@ export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string
   const abs = Math.abs(v);
   const decimals =
     f.decimals === "auto" ? (abs !== 0 && abs < 1 ? 2 : abs < 10 ? 1 : 0) : f.decimals;
+  // A small negative that rounds toward zero would print as "-0". Normalise the
+  // VALUE, not the formatted string: Intl renders the sign as U+2212 in some
+  // locales, prefixes an invisible directional mark in RTL ones, and uses
+  // non-Latin digits in others — no pattern match on the output survives all
+  // three, and -0 leaked through in every locale that does any of them.
+  if (Number(v.toFixed(decimals)) === 0) v = 0;
   let s = numberFormatter(f.locale ?? "en-US", decimals).format(v);
-  // Rounding a small negative toward zero can yield "-0" — normalise to "0".
-  // Intl emits U+2212 MINUS SIGN (not ASCII "-") for sv/nb/fi/lt/et, so match both.
-  if (/^[-−]0([.,٫]0+)?$/.test(s)) s = s.slice(1);
   if (f.forceSign && v > 0) s = "+" + s;
   if (f.suffix) s += f.suffix;
   return s;

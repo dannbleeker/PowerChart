@@ -9,20 +9,36 @@
  * Requires: npm install pptxgenjs
  */
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import pptxgen from "pptxgenjs";
 
 // Engine location: packaged skill layout first, then repo layout.
 let engine;
+const failures = [];
 for (const candidate of ["../lib/powerchart.js", "../../dist-lib/powerchart.js"]) {
+  const href = new URL(candidate, import.meta.url).href;
   try {
-    engine = await import(new URL(candidate, import.meta.url).href);
+    engine = await import(href);
     break;
-  } catch {
-    /* try next location */
+  } catch (err) {
+    // THIS candidate being absent just means "not this layout" — keep looking.
+    // Anything else is the engine itself failing, and swallowing it reported a
+    // corrupt-but-present lib as missing, telling the user to rebuild a file
+    // that is already there (and the packaged skill has no build:lib to run).
+    // Node names the missing file by path, not by href — a missing import
+    // *inside* the engine names a different one, and that is a real failure.
+    const missingSelf =
+      err?.code === "ERR_MODULE_NOT_FOUND" &&
+      String(err?.message ?? "").includes(fileURLToPath(href));
+    if (!missingSelf) failures.push(`${candidate}: ${err?.message ?? err}`);
   }
 }
 if (!engine) {
-  console.error("powerchart engine not found — run `npm run build:lib` first");
+  console.error(
+    failures.length
+      ? `powerchart engine failed to load:\n  ${failures.join("\n  ")}`
+      : "powerchart engine not found — run `npm run build:lib` first",
+  );
   process.exit(1);
 }
 const { buildChart, DEFAULT_SIZE, arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints } = engine;
