@@ -24,6 +24,13 @@ describe("skill documentation coverage", () => {
     }
   });
 
+  it("reference.md documents the combo marker series", () => {
+    // The bare word "marker" is already all over this file (forecast markers,
+    // milestone markers, the boxplot mean marker), so assert the quoted
+    // Series.type value — the thing that actually has to be documented.
+    expect(reference).toContain('"marker"');
+  });
+
   it("reference.md documents the special datasheet rows", () => {
     for (const row of ["100%=", "X extent", "Start", "After", "Today", "Holiday", "Bracket", "Trend", "X line", "Color", "Min", "Q1", "Median", "Q3", "Max", "Mean", "Outlier", "Error", "Target", "% Complete", "Baseline start", "Band low", "Band high", "Column <label>"]) {
       expect(reference).toContain(row);

@@ -407,18 +407,20 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
  * none is marked, the last series does.
  */
 export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
-  const marked = cfg.data.series.some((s) => s.type === "line");
+  /** Drawn over the columns rather than as one: a line, or bare markers. */
+  const isOverlay = (s: (typeof cfg.data.series)[number]) => s.type === "line" || s.type === "marker";
+  const marked = cfg.data.series.some(isOverlay);
   const nSeries = cfg.data.series.length;
   // Unmarked combo: the last series is the line, the rest are columns. A lone
   // series is a plain column, not both a column *and* a line (which would
   // double-render it).
   const lines = marked
-    ? cfg.data.series.filter((s) => s.type === "line")
+    ? cfg.data.series.filter(isOverlay)
     : nSeries > 1
       ? cfg.data.series.slice(-1)
       : [];
   const cols = marked
-    ? cfg.data.series.filter((s) => s.type !== "line")
+    ? cfg.data.series.filter((s) => !isOverlay(s))
     : nSeries > 1
       ? cfg.data.series.slice(0, nSeries - 1)
       : cfg.data.series;
@@ -526,6 +528,11 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const hi = ownTicks[ownTicks.length - 1];
     const toY = independent ? (v: number) => anchors.plot.y + anchors.plot.h - ((v - lo) / (hi - lo || 1)) * anchors.plot.h : lineToY;
     const labelOn = decor.segmentLabels || independent;
+    // A marker series is this same overlay minus the connecting segments: the
+    // values are per-category facts (a benchmark, a target, a consensus), and a
+    // line between them would claim they interpolate. The mark is a little
+    // larger, since it has no line to carry it.
+    const markersOnly = s.type === "marker";
     let prev: { x: number; y: number } | null = null;
     let lastY: number | null = null;
     s.values.forEach((v, c) => {
@@ -534,8 +541,8 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         return;
       }
       const pt = { x: anchors.categoryX[c], y: toY(v) };
-      if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `combo-line-${li}-${c}` });
-      const r = 2.4;
+      if (prev && !markersOnly) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `combo-line-${li}-${c}` });
+      const r = markersOnly ? 3.2 : 2.4;
       nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `combo-marker-${li}-${c}` });
       if (labelOn) {
         nodes.push({

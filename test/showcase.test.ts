@@ -126,6 +126,7 @@ describe("showcase deck coverage", () => {
     ["gantt working-day timeline", (c) => c.kind === "gantt" && c.gantt?.workdays != null],
     ["scatter marginal histograms", (c) => c.decorations?.marginals != null],
     ["bubble overlap relief", (c) => c.scatter?.spread != null],
+    ["combo marker series", (c) => c.data.series.some((s) => s.type === "marker")],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

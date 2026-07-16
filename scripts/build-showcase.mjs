@@ -1230,6 +1230,23 @@ const features = [
     },
     scatter: { spread: "y", spreadLimit: 6 },
   },
+  {
+    kind: "combo",
+    width: 500,
+    height: 300,
+    // No secondaryAxis and no lineAxes: "independent" — a benchmark marker is
+    // only meaningful measured against the columns it benchmarks.
+    title: "Benchmark markers — consensus per quarter, on the columns' own scale",
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "Licenses", values: [28, 31, 30, 36] },
+        { name: "Services", values: [12, 14, 17, 15] },
+        { name: "Consensus", type: "marker", values: [42, 44, 50, 49] },
+      ],
+    },
+    decorations: { totals: true },
+  },
 ];
 
 const configs = [...kinds, ...features];
