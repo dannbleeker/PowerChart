@@ -268,7 +268,16 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   // Point labels treat the size legend as an obstacle.
   const markerBoxes: Box[] = [...legendBoxes];
-  pts.forEach((p, i) => {
+  // Paint back-to-front. Emitting in datasheet order lets a large bubble drawn
+  // early bury a smaller one drawn later — completely, in all three renderers,
+  // with nothing to tell the reader a point is missing. Largest first puts the
+  // big ones at the back. This is paint order only: every marker keeps its
+  // datasheet index in its name and its exact position. Ties keep datasheet
+  // order (Array.sort is stable), so the result stays deterministic. Labels
+  // already run biggest-first below, for the same reason.
+  const paintOrder = pts.map((_, i) => i).sort((a, b) => radius(pts[b]) - radius(pts[a]));
+  for (const i of paintOrder) {
+    const p = pts[i];
     const r = radius(p);
     const gi = Math.max(0, Math.round(Number(p.group)) - 1);
     const fill =
@@ -285,7 +294,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       name: `point-${i}`,
     });
     markerBoxes.push({ x: toX(p.x) - r, y: toY(p.y) - r, w: r * 2, h: r * 2 });
-  });
+  }
 
   // Greedy label placement, biggest bubbles first so important points win.
   if (decor.segmentLabels !== false) {

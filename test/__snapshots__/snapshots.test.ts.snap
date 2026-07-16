@@ -330,14 +330,14 @@ exports[`SVG snapshots > sample bubble 1`] = `
 <text x="445.42" y="43.48" font-size="8" fill="#52514e" text-anchor="middle" data-name="size-legend-label-0">100</text>
 <ellipse cx="398.88" cy="76.18" rx="15.97" ry="15.97" fill="none" stroke="#52514e" stroke-width="1" data-name="size-legend-1"/>
 <text x="398.88" y="50.1" font-size="8" fill="#52514e" text-anchor="middle" data-name="size-legend-label-1">50</text>
-<ellipse cx="99.7" cy="194.75" rx="7.14" ry="7.14" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-0"/>
-<ellipse cx="170.88" cy="120.38" rx="14.28" ry="14.28" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-1"/>
 <ellipse cx="253" cy="159.05" rx="21.42" ry="21.42" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-2"/>
-<ellipse cx="335.13" cy="75.75" rx="11.29" ry="11.29" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-3"/>
-<ellipse cx="373.45" cy="179.88" rx="16.74" ry="16.74" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-4"/>
 <ellipse cx="439.15" cy="105.5" rx="18.89" ry="18.89" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-5"/>
-<ellipse cx="198.25" cy="218.55" rx="8.74" ry="8.74" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-6"/>
+<ellipse cx="373.45" cy="179.88" rx="16.74" ry="16.74" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="point-4"/>
+<ellipse cx="170.88" cy="120.38" rx="14.28" ry="14.28" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-1"/>
 <ellipse cx="296.8" cy="135.25" rx="13.36" ry="13.36" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-7"/>
+<ellipse cx="335.13" cy="75.75" rx="11.29" ry="11.29" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-3"/>
+<ellipse cx="198.25" cy="218.55" rx="8.74" ry="8.74" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-6"/>
+<ellipse cx="99.7" cy="194.75" rx="7.14" ry="7.14" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-0"/>
 <text x="276.42" y="162.65" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-2">Core</text>
 <text x="378.46" y="109.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-5">Foxtrot</text>
 <text x="392.19" y="183.48" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="label-4">Echo</text>

@@ -69,9 +69,37 @@ describe("scatter & bubble", () => {
       },
     });
     const { nodes } = layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR);
-    const pts = nodes.filter((n): n is EllipseNode => n.kind === "ellipse" && !!n.name?.startsWith("point-"));
+    // By name, not by position: markers paint back-to-front (largest first), so
+    // the emission order is deliberately not the datasheet order.
+    const pt = (i: number) =>
+      nodes.find((n): n is EllipseNode => n.kind === "ellipse" && n.name === `point-${i}`)!;
     // Area ∝ size → radius ratio = sqrt(100/25) = 2.
-    expect(pts[1].rx / pts[0].rx).toBeCloseTo(2, 1);
+    expect(pt(1).rx / pt(0).rx).toBeCloseTo(2, 1);
+  });
+
+  it("paints bubbles back-to-front so a big one cannot bury a small one", () => {
+    const c = cfg({
+      kind: "bubble",
+      data: {
+        categories: ["Big", "Small"],
+        series: [
+          // Same point: the small bubble sits inside the big one's disc.
+          { name: "X", values: [50, 50] },
+          { name: "Y", values: [50, 50] },
+          { name: "Size", values: [100, 4] },
+        ],
+      },
+    });
+    const { nodes } = layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR);
+    const order = nodes
+      .filter((n) => n.kind === "ellipse" && n.name?.startsWith("point-"))
+      .map((n) => (n as EllipseNode).name);
+    // Datasheet order would emit the big one first and paint the small one
+    // under it — invisible in all three renderers.
+    expect(order).toEqual(["point-0", "point-1"]);
+    const rx = (i: number) =>
+      (nodes.find((n) => n.name === `point-${i}`) as EllipseNode).rx;
+    expect(rx(0)).toBeGreaterThan(rx(1)); // point-0 IS the big one, drawn first
   });
 
   it("labels points without overlaps", () => {
