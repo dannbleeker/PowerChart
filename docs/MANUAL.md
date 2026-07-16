@@ -153,6 +153,20 @@ and a bar can be read straight against the scale next to it. The gutter takes
 real space, so the plot shrinks; on a chart too small to give any away, the
 marginals are dropped instead.
 
+Set `gantt.lanes: "owner"` to regroup the tasks under one header per owner
+(the middle part of an `Activity | Owner | Remark` category). It is opt-in
+because a plan's row order IS the plan — nothing regroups behind your back —
+and it groups rather than sorts: inside a lane your rows keep the order you
+wrote them, unowned tasks stay together at the end, and `After` dependencies
+are renumbered so the arrows still join the same tasks. To control the
+grouping yourself, type a section-header row and indent its tasks with `>` —
+that has always worked and this changes nothing about it.
+
+**Resource capacity vs load** is a different chart, not a Gantt option: make a
+stacked column chart with the weeks as categories and one series per task, and
+add a `Target` row for the capacity line. A load histogram needs a value axis,
+which a timeline does not have.
+
 Set `gantt.workdays` to make a bar's LENGTH mean working days rather than
 elapsed days: a Mon→Mon task reads as 5 units, not 7, and weekends stop
 inflating every bar. `true` is Mon–Fri; pass ISO weekday numbers for a custom

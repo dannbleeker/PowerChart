@@ -80,6 +80,8 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Distribution behind a boxplot (show the raw points) | `boxplot` (raw samples) + `boxplot.jitter: true` |
 | Is the median difference significant? | `boxplot` (raw samples) + `boxplot.notch: true` (non-overlapping notches) |
 | Summary bar per Gantt section | `gantt` with section-header rows + `decorations.summaryBars: true` |
+| Plan grouped by who owns each task | `gantt` (`Activity \| Owner` categories) + `gantt.lanes: "owner"` |
+| Resource capacity vs load per week | NOT a gantt — a `stacked` column chart (weeks = categories, one series per task) + a `Target` row for capacity |
 | Cost / effort table beside a Gantt | `gantt` + one `Column <label>` row per column (e.g. `Column Cost k€`) |
 | Plan where a bar's length means working days | `gantt` (dates) + `gantt.workdays: true` (or ISO weekday numbers for a custom week) |
 | Where are the points concentrated (distribution beside a scatter) | `scatter`/`bubble` + `decorations.marginals: "x" \| "y" \| "both"` |

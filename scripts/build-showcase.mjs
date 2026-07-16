@@ -1259,6 +1259,23 @@ const features = [
     waterfall: { totalIndices: [7], detailGroups: [{ of: 2, indices: [3, 4, 5] }] },
     decorations: { categoryAxis: true },
   },
+  {
+    kind: "gantt",
+    width: 560,
+    height: 280,
+    title: "Plan grouped into owner lanes — dependencies follow their rows",
+    data: {
+      categories: ["Spec | Ana", "Build | Ben", "Review | Ana", "Ship | Ben", "Handover"],
+      series: [
+        { name: "Start", values: [day("2026-01-05"), day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02")] },
+        { name: "End", values: [day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02"), day("2026-02-05")] },
+        { name: "After", values: [null, 1, 2, 3, 4] },
+      ],
+      dates: true,
+    },
+    gantt: { lanes: "owner" },
+    decorations: { summaryBars: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

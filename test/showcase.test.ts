@@ -128,6 +128,7 @@ describe("showcase deck coverage", () => {
     ["bubble overlap relief", (c) => c.scatter?.spread != null],
     ["combo marker series", (c) => c.data.series.some((s) => s.type === "marker")],
     ["waterfall detail groups", (c) => !!c.waterfall?.detailGroups?.length],
+    ["gantt owner lanes", (c) => c.kind === "gantt" && c.gantt?.lanes != null],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

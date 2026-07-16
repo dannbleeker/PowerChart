@@ -631,3 +631,66 @@ describe("combo marker series (Series.type: \"marker\")", () => {
     expect(order).toEqual(["B", "C", "A"]);
   });
 });
+
+describe("gantt owner lanes (gantt.lanes)", () => {
+  const day = (iso: string) => Math.round(Date.parse(iso) / 86400000);
+  const plan = (lanes?: "owner") =>
+    cfg({
+      kind: "gantt",
+      width: 560,
+      height: 280,
+      ...(lanes ? { gantt: { lanes } } : {}),
+      data: {
+        categories: ["Spec | Ana", "Build | Ben", "Review | Ana", "Ship | Ben", "Handover"],
+        series: [
+          { name: "Start", values: [day("2026-01-05"), day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02")] },
+          { name: "End", values: [day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02"), day("2026-02-05")] },
+          { name: "After", values: [null, 1, 2, 3, 4] },
+        ],
+        dates: true,
+      },
+    });
+  const labels = (c: ChartConfig) =>
+    buildChart(c)
+      .nodes.filter((n) => n.kind === "text" && /^category-\d+$/.test(n.name ?? ""))
+      .map((n) => (n as TextNode).text);
+
+  it("groups tasks under a header per owner, keeping each lane's own order", () => {
+    // A stable partition, not a sort: Spec still precedes Review inside Ana's
+    // lane, because that order is the plan.
+    // The axis renders the activity name; the ">" only drives the indent.
+    expect(labels(plan("owner"))).toEqual(["Ana", "Spec", "Review", "Ben", "Build", "Ship", "Handover"]);
+  });
+
+  it("renumbers After so the arrows still join the same tasks", () => {
+    // After values are 1-based ROW INDICES. Moving rows without renumbering
+    // would leave every dependency pointing at whatever now sits at that index.
+    const pairs = (c: ChartConfig) => {
+      const nodes = buildChart(c).nodes;
+      const name = new Map<number, string>();
+      nodes
+        .filter((n) => n.kind === "text" && /^category-\d+$/.test(n.name ?? ""))
+        .forEach((t) => name.set(+t.name!.split("-")[1], String((t as TextNode).text).replace(/^>\s*/, "").split("|")[0].trim()));
+      const bars = nodes.filter((n) => /^bar-\d+$/.test(n.name ?? "")) as RectNode[];
+      return nodes
+        .filter((n) => /^dep-v-\d+$/.test(n.name ?? ""))
+        .map((n) => {
+          const succ = +n.name!.split("-")[2];
+          const pred = bars.find((b) => (n as any).y1 >= b.y - 6 && (n as any).y1 <= b.y + b.h + 6);
+          return `${name.get(succ)} after ${name.get(pred ? +pred.name!.split("-")[1] : -1)}`;
+        })
+        .sort();
+    };
+    expect(pairs(plan("owner"))).toEqual(pairs(plan()));
+    expect(pairs(plan())).toContain("Review after Build");
+  });
+
+  it("leaves unowned tasks together at the end", () => {
+    expect(labels(plan("owner")).at(-1)).toBe("Handover");
+  });
+
+  it("changes nothing when it is off — a plan's row order is the plan", () => {
+    expect(buildChart(plan()).nodes).toEqual(buildChart(plan(undefined)).nodes);
+    expect(labels(plan())).toEqual(["Spec", "Build", "Review", "Ship", "Handover"]);
+  });
+});

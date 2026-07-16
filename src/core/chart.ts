@@ -127,6 +127,80 @@ function applyPareto(cfg: ChartConfig): ChartConfig {
   };
 }
 
+/** "After" / "Dep" row: a 1-based predecessor index, so it moves with the rows. */
+const AFTER_ROW = /^(after|dep(endency)?)$/i;
+
+/**
+ * Gantt lanes: regroup task rows under one synthesized header per owner.
+ *
+ * A stable partition, not a sort — inside a lane the rows keep the order they
+ * were written in, because that order is the plan. (categorySort refuses to
+ * touch a Gantt for exactly that reason; this reorders only on request.) Tasks
+ * with no owner keep to themselves at the end.
+ *
+ * The subtle part is `After`: its values are 1-based ROW INDICES, so moving
+ * rows without renumbering them would silently point every dependency arrow at
+ * the wrong task.
+ */
+function applyGanttLanes(cfg: ChartConfig): ChartConfig {
+  if (cfg.kind !== "gantt" || cfg.gantt?.lanes !== "owner") return cfg;
+  const { data } = cfg;
+  const part = (c: string, i: number) => (c.split("|")[i] ?? "").trim();
+  const ownerOf = (c: string) => part(c, 1);
+  const lanes: string[] = [];
+  for (const c of data.categories) {
+    const o = ownerOf(c);
+    if (o && !lanes.includes(o)) lanes.push(o);
+  }
+  if (!lanes.length) return cfg;
+
+  /** New row order: -1 marks a synthesized header. */
+  const perm: number[] = [];
+  const labels: string[] = [];
+  const push = (i: number) => {
+    const c = data.categories[i];
+    const act = part(c, 0).replace(/^>+\s*/, "");
+    const remark = part(c, 2);
+    // Drop the owner from the row — the lane header carries it now.
+    labels.push(remark ? `> ${act} |  | ${remark}` : `> ${act}`);
+    perm.push(i);
+  };
+  for (const lane of lanes) {
+    labels.push(lane);
+    perm.push(-1);
+    data.categories.forEach((c, i) => {
+      if (ownerOf(c) === lane) push(i);
+    });
+  }
+  // Unassigned rows keep their own order, after the lanes.
+  data.categories.forEach((c, i) => {
+    if (!ownerOf(c)) push(i);
+  });
+
+  const oldToNew = new Map<number, number>();
+  perm.forEach((old, next) => {
+    if (old >= 0) oldToNew.set(old, next);
+  });
+  return {
+    ...cfg,
+    data: {
+      ...data,
+      categories: labels,
+      series: data.series.map((s) => ({
+        ...s,
+        values: perm.map((old, next) => {
+          if (old < 0) return null; // synthesized header: no bar
+          const v = s.values[old];
+          if (v == null || !AFTER_ROW.test(s.name.trim())) return v;
+          // Renumber the dependency onto its row's new position.
+          const target = oldToNew.get(Math.round(v) - 1);
+          return target == null || target === next ? null : target + 1;
+        }),
+      })),
+    },
+  };
+}
+
 /** Datasheet rows carrying error-bar deltas: Error (±), Error+ / Error−. */
 const ERROR_ROW = /^error\s*([+\-−])?$/i;
 /** Bullet-chart target row: a bold tick across each column at the value. */
@@ -309,7 +383,7 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
 export function buildChart(rawCfg: ChartConfig): Scene {
   const multiples = buildMultiples(rawCfg);
   if (multiples) return multiples;
-  const extracted = extractErrorRows(sortCategories(applyPareto(rawCfg)));
+  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(rawCfg))));
   let cfg = collapseOther(extracted.cfg);
   const errors = extracted.errors;
   const targets = extracted.targets;

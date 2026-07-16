@@ -500,6 +500,18 @@ export interface ChartConfig {
   /** Gantt options — the timeline itself; task data stays in datasheet rows. */
   gantt?: {
     /**
+     * Group tasks into lanes under a synthesized header per owner (the middle
+     * part of an "Activity | Owner | Remark" category).
+     *
+     * Opt-in on purpose. Row order is meaningful in a plan — it is the
+     * narrative — which is why `categorySort` refuses to touch a Gantt at all.
+     * This reorders only because you asked, and it is a stable partition rather
+     * than a sort: within a lane the rows keep the order you wrote them in, and
+     * tasks with no owner stay together at the end. `After` dependencies are
+     * renumbered to follow their rows.
+     */
+    lanes?: "owner";
+    /**
      * Working-day timeline: non-working days collapse to zero width, so a bar's
      * LENGTH reads as working days rather than elapsed days (Mon→Mon is 5 units,
      * not 7). `true` = Mon–Fri; an array of ISO weekday numbers (1=Mon … 7=Sun)
