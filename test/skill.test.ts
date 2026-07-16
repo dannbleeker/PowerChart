@@ -78,3 +78,25 @@ describe("skill pptx renderer — annular sectors", () => {
     expect(xml).not.toContain("NaN");
   });
 });
+
+describe("packaged skill layout", () => {
+  beforeAll(() => {
+    if (!existsSync("dist-lib/powerchart.js")) {
+      execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
+    }
+    execSync("node scripts/build-skill.mjs", { stdio: "pipe" });
+  }, 120000);
+
+  it("points the SVG renderer at the bundled lib, not the repo's dist-lib", () => {
+    // render-svg.mjs is copied from the repo, where the engine lives at
+    // ../dist-lib — a path that does not exist inside the package. The rewrite
+    // that fixes this used to be shelled out to `node -e`, which silently did
+    // nothing on Windows while still exiting 0, shipping a renderer that could
+    // not start.
+    const src = readFileSync("skill-dist/powerchart-charts/scripts/render-svg.mjs", "utf8");
+    expect(src).toContain("../lib/powerchart.js");
+    expect(src).not.toContain("../dist-lib/powerchart.js");
+    // And the path it now imports has to be real.
+    expect(existsSync("skill-dist/powerchart-charts/lib/powerchart.js")).toBe(true);
+  });
+});

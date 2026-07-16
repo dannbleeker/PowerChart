@@ -35,9 +35,12 @@ and skill-pptx renderers additionally have filled polygons and patterns).
 
 The researched top-10 and the full next tier are shipped (waterfall
 bridge, confidence bands, fill-between, heatmap totals, slope, waffle,
-KPI tile, bar-of-pie, small multiples). Next candidates come from §2/§3
-below (strongest remaining: semi-circle doughnut, bump chart, treemap,
-Pareto helper).
+KPI tile, bar-of-pie, small multiples) — and so are the four that used to
+head this list: semi-circle doughnut (`pie.semi`), bump (`decorations.bump`
+on a line chart), treemap, and the Pareto helper (`pareto`).
+
+Nothing in §2/§3 is queued behind them. What is left there is left because
+it was judged low-value, hard, or out of register — each item says which.
 
 ## 2. Gaps within existing kinds (per kind)
 
