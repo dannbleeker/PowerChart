@@ -204,6 +204,24 @@ const hostNote = $("host-note");
 
 let sheetApi: { setSheet(next: SheetModel): void };
 
+/**
+ * Pending auto-update push. Declared up here because the boot render calls
+ * maybeAutoUpdate() long before the wiring below runs, and that now clears the
+ * timer before its guard — a `let` further down would be in its dead zone.
+ */
+let autoUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Write the host note together with its status colour. The colour is a
+ * parameter rather than an afterthought because only guard() used to set it,
+ * so every other message inherited whatever the previous action left behind —
+ * an "Invalid JSON" error rendered in the success green.
+ */
+function note(text: string, status: "ok" | "err" | "busy" | "none" = "none") {
+  hostNote.textContent = text;
+  hostNote.className = status === "none" ? "hint" : `hint status-${status}`;
+}
+
 function applyConfig(cfg: ChartConfig, editTarget: EditTarget | null) {
   Object.assign(state, stateFromConfig(cfg), { editTarget });
   sheetApi.setSheet(state.sheet);
@@ -959,10 +977,12 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     .map((c) => ({ ...c, extent: valueExtent(c.cfg) }))
     .filter((c): c is typeof c & { extent: { min: number; max: number } } => c.extent != null);
   if (parsed.length < 2) {
-    hostNote.textContent =
+    note(
       scope === "deck"
         ? "Same scale needs at least two value-axis charts in the deck."
-        : "Select two or more PowerCharts (Ctrl-click), then apply Same scale.";
+        : "Select two or more PowerCharts (Ctrl-click), then apply Same scale.",
+      "err",
+    );
     return;
   }
   const min = Math.min(...parsed.map((c) => c.extent.min));
@@ -971,17 +991,21 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     c.cfg.scale = { min: min < 0 ? min : undefined, max };
     await updateChartInSlide(buildChart(c.cfg), c.target, { tagData: JSON.stringify(c.cfg) });
   }
-  hostNote.textContent = `Same scale applied to ${parsed.length} charts (max ${max}).`;
+  note(`Same scale applied to ${parsed.length} charts (max ${max}).`, "ok");
 }
 
 async function doLoadSelection() {
   const found = await loadChartFromSelection();
   if (!found) {
-    hostNote.textContent = "The selection is not a PowerChart — select an inserted chart group first.";
+    note("The selection is not a PowerChart — select an inserted chart group first.", "err");
     return;
   }
-  hostNote.textContent = "Chart loaded — edits will update it in place.";
+  note("Chart loaded — edits will update it in place.", "ok");
   applyConfig(JSON.parse(found.configJson) as ChartConfig, found.target);
+  // The banner offers to load the selected chart; once it is loaded the offer
+  // is stale. Hiding it here rather than in the banner's own click handler
+  // covers the other way in — the "Edit selected chart" button.
+  $("selection-banner").style.display = "none";
 }
 
 // --- Elements (harvey balls, checkboxes, process flow, table) -----------------
@@ -1091,7 +1115,7 @@ $("style-export").addEventListener("click", () => {
   if (state.paletteName === "Theme" && themePalette) current.palette = themePalette;
   else if (state.paletteName !== "Default") current.palette = PALETTES[state.paletteName];
   ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(current, null, 2);
-  hostNote.textContent = "Style exported — share the JSON as your corporate style file.";
+  note("Style exported — share the JSON as your corporate style file.", "ok");
 });
 $("style-import").addEventListener("click", () => {
   try {
@@ -1100,9 +1124,9 @@ $("style-import").addEventListener("click", () => {
     styleFile = parsed;
     localStorage.setItem(STYLE_KEY, JSON.stringify(styleFile));
     renderPreview();
-    hostNote.textContent = "Style imported — applied to every chart from this pane.";
+    note("Style imported — applied to every chart from this pane.", "ok");
   } catch (err) {
-    hostNote.textContent = `Style import failed: ${err instanceof Error ? err.message : String(err)}`;
+    note(`Style import failed: ${err instanceof Error ? err.message : String(err)}`, "err");
   }
 });
 
@@ -1115,11 +1139,14 @@ $("json-import").addEventListener("click", () => {
   try {
     const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
     applyConfig({ ...DEFAULT_SIZE, ...(Array.isArray(parsed) ? parsed[0] : parsed) }, null);
-    hostNote.textContent = Array.isArray(parsed)
-      ? `Loaded chart 1 of ${parsed.length} — use "Insert batch" for all.`
-      : "Chart config loaded.";
+    note(
+      Array.isArray(parsed)
+        ? `Loaded chart 1 of ${parsed.length} — use "Insert batch" for all.`
+        : "Chart config loaded.",
+      "ok",
+    );
   } catch (err) {
-    hostNote.textContent = `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`;
+    note(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`, "err");
   }
 });
 
@@ -1144,13 +1171,22 @@ $("agenda-chapters").addEventListener("input", renderAgendaPreview);
 renderAgendaPreview();
 
 // Auto-update: push edits to the slide shortly after each change.
-let autoUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 function maybeAutoUpdate() {
+  // Cancel any pending push BEFORE the guard. The guard returns early once the
+  // edit target is gone — which is exactly what loading another chart does — and
+  // a timer still armed against the previous one would go on to fire. doInsert
+  // then finds no edit target, takes its new-chart branch, and drops a chart
+  // nobody asked for onto the slide.
+  clearTimeout(autoUpdateTimer);
   const on = ($("auto-update") as HTMLInputElement | null)?.checked;
   if (!on || !state.editTarget || !isPowerPointHost()) return;
-  clearTimeout(autoUpdateTimer);
   autoUpdateTimer = setTimeout(() => void doInsert(false).catch(() => {}), 900);
 }
+// Unticking has to cancel a push that is already in flight; ticking on its own
+// shouldn't push anything until the next edit.
+$("auto-update").addEventListener("change", () => {
+  if (!($("auto-update") as HTMLInputElement).checked) clearTimeout(autoUpdateTimer);
+});
 
 /** think-cell's "click the chart" feel: watch the slide selection. */
 function watchSelection() {
@@ -1176,22 +1212,19 @@ function wireInsert() {
   const loadBtn = $("load-selection") as HTMLButtonElement;
   const agendaBtn = $("agenda-insert") as HTMLButtonElement;
   if (isPowerPointHost()) {
-    hostNote.textContent = "";
+    note("");
     insertBtn.disabled = false;
     loadBtn.disabled = false;
     const guard = (fn: () => Promise<void>) => async () => {
       insertBtn.disabled = true;
-      hostNote.textContent = "Working…";
-      hostNote.className = "hint status-busy";
+      note("Working…", "busy");
       try {
         await fn();
         if (hostNote.textContent === "Working…") {
-          hostNote.textContent = "Done.";
-          hostNote.className = "hint status-ok";
+          note("Done.", "ok");
         }
       } catch (err) {
-        hostNote.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
-        hostNote.className = "hint status-err";
+        note(`Failed: ${err instanceof Error ? err.message : String(err)}`, "err");
       } finally {
         insertBtn.disabled = false;
       }
@@ -1199,13 +1232,7 @@ function wireInsert() {
     insertBtn.addEventListener("click", guard(() => doInsert(false)));
     insertNewBtn.addEventListener("click", guard(() => doInsert(true)));
     loadBtn.addEventListener("click", guard(doLoadSelection));
-    $("selection-banner-load").addEventListener(
-      "click",
-      guard(async () => {
-        await doLoadSelection();
-        $("selection-banner").style.display = "none";
-      }),
-    );
+    $("selection-banner-load").addEventListener("click", guard(doLoadSelection));
     watchSelection();
     const sameScaleBtn = $("same-scale") as HTMLButtonElement;
     sameScaleBtn.disabled = false;
@@ -1224,7 +1251,7 @@ function wireInsert() {
           const cfg = { ...DEFAULT_SIZE, ...c };
           await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
         }
-        hostNote.textContent = `Inserted ${configs.length} chart(s) on the current slide.`;
+        note(`Inserted ${configs.length} chart(s) on the current slide.`, "ok");
       }),
     );
     // Elements insert at a small default offset (they're compact shapes).
@@ -1256,15 +1283,16 @@ function wireInsert() {
       guard(async () => {
         const items = demoItems();
         await insertDemoDeck(items.map((i) => ({ scene: i.scene, tagData: i.configJson })));
-        hostNote.textContent = `Inserted ${items.length} demo slides at the end of the deck.`;
+        note(`Inserted ${items.length} demo slides at the end of the deck.`, "ok");
       }),
     );
   } else {
     insertBtn.disabled = true;
     loadBtn.disabled = true;
     ($("agenda-insert") as HTMLButtonElement).disabled = true;
-    hostNote.textContent =
-      "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.";
+    note(
+      "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.",
+    );
   }
 }
 
