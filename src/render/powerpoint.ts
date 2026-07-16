@@ -293,6 +293,88 @@ function getTargetSlide(context: PowerPoint.RequestContext): PowerPoint.Slide {
   }
 }
 
+/** A straight segment's appearance — the subset of a line node the host needs. */
+interface SegmentStyle {
+  stroke: string;
+  strokeWidth?: number;
+  dash?: number[];
+  name?: string;
+}
+
+/**
+ * Draw one straight segment as a native shape, in absolute slide coordinates.
+ *
+ * PowerPoint's addLine takes only a bounding box, so it can't tell an up-right
+ * line from a down-right one — and a zero-thickness box makes the web host
+ * substitute a default and draw a giant diagonal. Three cases:
+ *
+ * - Axis-aligned (baselines, gridlines, connectors, value lines): addLine with
+ *   the near-zero dimension clamped. The box is unambiguous.
+ * - Dashed diagonal (scatter trend lines, forecast segments, pie breakout
+ *   connectors): a real line shape, the only kind that can carry a native dash.
+ *   addLine draws the box's top-left→bottom-right diagonal and the lineInverse
+ *   geometry draws top-right→bottom-left, so between them the direction is
+ *   explicit rather than guessed.
+ * - Solid diagonal (line-chart series, the common case): a thin rotated
+ *   rectangle, which is direction-correct on every host.
+ */
+function addSegment(
+  shapes: PowerPoint.ShapeCollection,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  s: SegmentStyle,
+): PowerPoint.Shape {
+  const w = Math.abs(x2 - x1);
+  const h = Math.abs(y2 - y1);
+  const box = {
+    left: Math.min(x1, x2),
+    top: Math.min(y1, y2),
+    width: Math.max(w, 0.5),
+    height: Math.max(h, 0.5),
+  };
+  const setDash = (shape: PowerPoint.Shape) => {
+    if (!s.dash) return;
+    try {
+      shape.lineFormat.dashStyle = PowerPoint.ShapeLineDashStyle.dash;
+    } catch {
+      /* dash style unsupported on this host */
+    }
+  };
+
+  if (w < 0.5 || h < 0.5 || s.dash) {
+    const downRight = (x2 - x1) * (y2 - y1) > 0;
+    const line =
+      w < 0.5 || h < 0.5 || downRight
+        ? shapes.addLine(PowerPoint.ConnectorType.straight, box)
+        : shapes.addGeometricShape(PowerPoint.GeometricShapeType.lineInverse, box);
+    line.lineFormat.color = s.stroke;
+    line.lineFormat.weight = s.strokeWidth ?? 1;
+    setDash(line);
+    if (s.name) line.name = s.name;
+    return line;
+  }
+
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const weight = Math.max(0.5, s.strokeWidth ?? 1);
+  const rect = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+    left: (x1 + x2) / 2 - len / 2,
+    top: (y1 + y2) / 2 - weight / 2,
+    width: len,
+    height: weight,
+  });
+  rect.fill.setSolidColor(s.stroke);
+  rect.lineFormat.visible = false;
+  try {
+    rect.rotation = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+  } catch {
+    /* rotation unsupported — line renders horizontally */
+  }
+  if (s.name) rect.name = s.name;
+  return rect;
+}
+
 function addNode(
   shapes: PowerPoint.ShapeCollection,
   n: SceneNode,
@@ -318,57 +400,8 @@ function addNode(
       if (n.name) shape.name = n.name;
       return [shape];
     }
-    case "line": {
-      const x1 = dx + n.x1;
-      const y1 = dy + n.y1;
-      const x2 = dx + n.x2;
-      const y2 = dy + n.y2;
-      const w = Math.abs(x2 - x1);
-      const h = Math.abs(y2 - y1);
-      // PowerPoint's addLine takes only a bounding box, so it can't tell an
-      // up-right line from a down-right one — and a zero-thickness box makes
-      // the web host substitute a default and draw a giant diagonal. Axis-
-      // aligned lines (the common case: baselines, gridlines, connectors, value
-      // lines — all horizontal/vertical, and the only ones we dash) use addLine
-      // with the near-zero dimension clamped; diagonal lines are drawn as a thin
-      // rotated rectangle, which is direction-correct on every host.
-      if (w < 0.5 || h < 0.5) {
-        const line = shapes.addLine(PowerPoint.ConnectorType.straight, {
-          left: Math.min(x1, x2),
-          top: Math.min(y1, y2),
-          width: Math.max(w, 0.5),
-          height: Math.max(h, 0.5),
-        });
-        line.lineFormat.color = n.stroke;
-        line.lineFormat.weight = n.strokeWidth ?? 1;
-        if (n.dash) {
-          try {
-            line.lineFormat.dashStyle = PowerPoint.ShapeLineDashStyle.dash;
-          } catch {
-            /* dash style unsupported on this host */
-          }
-        }
-        if (n.name) line.name = n.name;
-        return [line];
-      }
-      const len = Math.hypot(x2 - x1, y2 - y1);
-      const weight = Math.max(0.5, n.strokeWidth ?? 1);
-      const rect = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-        left: (x1 + x2) / 2 - len / 2,
-        top: (y1 + y2) / 2 - weight / 2,
-        width: len,
-        height: weight,
-      });
-      rect.fill.setSolidColor(n.stroke);
-      rect.lineFormat.visible = false;
-      try {
-        rect.rotation = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
-      } catch {
-        /* rotation unsupported — line renders horizontally */
-      }
-      if (n.name) rect.name = n.name;
-      return [rect];
-    }
+    case "line":
+      return [addSegment(shapes, dx + n.x1, dy + n.y1, dx + n.x2, dy + n.y2, n)];
     case "ellipse": {
       const shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse, {
         left: dx + n.cx - n.rx,
@@ -403,21 +436,21 @@ function addNode(
     case "polygon": {
       // No freeform paths in Office.js: draw the outline as connected line
       // segments (translucent fills degrade to outline-only in PowerPoint).
+      // These go through addSegment like any other line — passing each edge's
+      // bounding box straight to addLine mirrored every up-right edge and gave
+      // horizontal ones a zero-height box.
       const created: PowerPoint.Shape[] = [];
       const pts = n.points;
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i];
         const b = pts[(i + 1) % pts.length];
-        const seg = shapes.addLine(PowerPoint.ConnectorType.straight, {
-          left: dx + Math.min(a.x, b.x),
-          top: dy + Math.min(a.y, b.y),
-          width: Math.abs(b.x - a.x),
-          height: Math.abs(b.y - a.y),
-        });
-        seg.lineFormat.color = n.stroke ?? n.fill ?? "#000000";
-        seg.lineFormat.weight = n.strokeWidth ?? 1;
-        if (n.name) seg.name = `${n.name}-e${i}`;
-        created.push(seg);
+        created.push(
+          addSegment(shapes, dx + a.x, dy + a.y, dx + b.x, dy + b.y, {
+            stroke: n.stroke ?? n.fill ?? "#000000",
+            strokeWidth: n.strokeWidth,
+            name: n.name ? `${n.name}-e${i}` : undefined,
+          }),
+        );
       }
       return created;
     }
