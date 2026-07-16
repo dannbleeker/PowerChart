@@ -41,6 +41,31 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       };
     })
     .filter((b) => b.ok);
+  // "Column <label>" rows: a numeric gutter column beside the task labels, the
+  // MS-Project table look. Values are per-category data, so this is a datasheet
+  // row like Start/End rather than config. Each column resolves its own format,
+  // so a Cost column and an FTE column keep their own precision — the chart-wide
+  // format is resolved over the timeline's epoch-day ticks and means nothing
+  // here. suffix/forceSign are deliberately not picked up: they are value-axis
+  // concerns, and units belong in the label ("Column Cost €k").
+  const columns = data.series
+    .filter((s) => /^column\b/i.test(s.name.trim()))
+    .map((s) => {
+      const nums = s.values.filter((v): v is number => v != null);
+      const fmt = resolveFormat(nums, {
+        decimals: cfg.numberFormat?.decimals,
+        locale: cfg.numberFormat?.locale,
+      });
+      const label = s.name.trim().replace(/^column\s*:?\s*/i, "").trim();
+      const cells = s.values.map((v) => (v == null ? "" : formatNumber(v, fmt)));
+      const w = Math.min(
+        cfg.width * 0.12,
+        Math.max(textWidth(label, fs * 0.9), ...cells.map((t) => textWidth(t, fs))) + 10,
+      );
+      return { label, cells, w };
+    });
+  const colsW = columns.reduce((a, c) => a + c.w, 0);
+
   // "Activity | Owner | Remark" category convention; ">" prefix indents.
   const parts = data.categories.map((c) => c.split("|").map((p) => p.trim()));
   const indents = parts.map((p) => (p[0].startsWith(">") ? 1 : 0));
@@ -103,9 +128,9 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const remarkW = hasRemarks ? Math.max(0, ...remarks.map((o) => textWidth(o, fs * 0.9))) + 12 : 0;
   const bottomH = today != null ? fs * 1.6 : 6;
   const plot = {
-    x: catW,
+    x: catW + colsW,
     y: titleH + bracketH + headerH,
-    w: cfg.width - catW - ownerW - remarkW - 6,
+    w: cfg.width - catW - colsW - ownerW - remarkW - 6,
     h: cfg.height - titleH - bracketH - headerH - bottomH,
   };
 
@@ -313,6 +338,48 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         fill: style.text, name: `milestone-${c}`,
       });
     }
+  });
+
+  // Gutter columns, in their own pass. This has to come after the row loop:
+  // the section-header band is a full-width rect (`section-*`, x: 0,
+  // w: cfg.width) and would paint straight over cells emitted alongside it.
+  // A header row shows whatever value it carries — nothing is auto-summed here
+  // (summaryBars sums spans, not money).
+  columns.forEach((col, i) => {
+    let cx = catW;
+    for (let k = 0; k < i; k++) cx += columns[k].w;
+    nodes.push({
+      kind: "text",
+      x: cx,
+      y: plot.y - headerH,
+      w: col.w - 6,
+      h: headerH,
+      text: col.label,
+      fontSize: fs * 0.9,
+      bold: true,
+      color: style.mutedText,
+      align: "right",
+      valign: "middle",
+      name: `col-head-${i}`,
+    });
+    data.categories.forEach((_, c) => {
+      if (!col.cells[c]) return;
+      const cy = plot.y + slotH * (c + 0.5);
+      nodes.push({
+        kind: "text",
+        x: cx,
+        y: cy - fs * 0.75,
+        w: col.w - 6,
+        h: fs * 1.5,
+        text: col.cells[c],
+        fontSize: fs,
+        color: isHeader[c] ? style.text : style.mutedText,
+        bold: isHeader[c],
+        align: "right",
+        valign: "middle",
+        name: `col-${i}-${c}`,
+      });
+    });
   });
 
   // Dependency arrows ("After" row): elbow from the predecessor's end down

@@ -108,6 +108,7 @@ toggle — the axis and every decoration rotate with them.
 | `Outlier <n>` | extra boxplot outlier dots |
 | `Start`, `End`, `Milestone`, `After`, `Today`, `Holiday`, `Bracket <label>` | Gantt — see below |
 | `% Complete`, `Baseline start`, `Baseline end` | Gantt progress fill and plan-vs-actual ghost bars |
+| `Column <label>` | Gantt: a numeric table column beside the task labels (cost, FTE, days) |
 
 ### Gantt
 
@@ -117,6 +118,13 @@ line; `Holiday` shades dates; `Bracket <label>` spans an annotation.
 Category cells support `Activity | Owner | Remark` columns, a leading `>`
 for indenting, and section-header rows (no Start/End). Calendar timelines
 pick weeks (with weekend shading), months, or quarters automatically.
+
+`Column <label>` adds a numeric table column between the task labels and the
+plan — the MS-Project look — right-aligned under `<label>` as its heading. Use
+one row per column (`Column Cost €k`, `Column FTE`): each resolves its own
+precision from its own values, so money and headcount don't share decimals. Put
+the unit in the label. Section-header rows show whatever value you type in
+them; nothing is summed for you. Unlike `Remark`, these align and format.
 
 ## Options and decorations
 

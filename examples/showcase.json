@@ -5621,5 +5621,70 @@
     "decorations": {
       "seriesLabels": true
     }
+  },
+  {
+    "kind": "gantt",
+    "width": 620,
+    "height": 260,
+    "title": "Programme plan — cost and effort beside the bars",
+    "data": {
+      "categories": [
+        "Discovery | Ana",
+        "> Research | Ana",
+        "> Concept | Ana",
+        "Delivery | Ben",
+        "> Build | Ben",
+        "> QA | Cara"
+      ],
+      "series": [
+        {
+          "name": "Start",
+          "values": [
+            null,
+            0,
+            3,
+            null,
+            5,
+            11
+          ]
+        },
+        {
+          "name": "End",
+          "values": [
+            null,
+            3,
+            5,
+            null,
+            11,
+            14
+          ]
+        },
+        {
+          "name": "Column Cost k€",
+          "values": [
+            120,
+            45,
+            75,
+            260,
+            190.5,
+            69.5
+          ]
+        },
+        {
+          "name": "Column FTE",
+          "values": [
+            2,
+            1,
+            1,
+            3,
+            2,
+            1
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "summaryBars": true
+    }
   }
 ]

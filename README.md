@@ -47,6 +47,7 @@ conventions, and every option.
 | Scatter partition lines, trend line, group legend | ✅ (`X line`/`Y line`/`Trend` rows) |
 | Gantt weeks + weekend shading, section headers, indent, remarks | ✅ (`>` prefix, `Activity \| Owner \| Remark`) |
 | Gantt holidays + bracket annotations | ✅ (`Holiday`, `Bracket <label>` rows) |
+| Gantt numeric table columns (cost / FTE / days) | ✅ (`Column <label>` rows, beside the task labels) |
 | Category sorting by total | ✅ |
 | Combo secondary (right) value axis | ✅ |
 | Label content menu on line & scatter labels | ✅ |

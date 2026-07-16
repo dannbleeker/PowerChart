@@ -79,6 +79,7 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 | Distribution behind a boxplot (show the raw points) | `boxplot` (raw samples) + `boxplot.jitter: true` |
 | Is the median difference significant? | `boxplot` (raw samples) + `boxplot.notch: true` (non-overlapping notches) |
 | Summary bar per Gantt section | `gantt` with section-header rows + `decorations.summaryBars: true` |
+| Cost / effort table beside a Gantt | `gantt` + one `Column <label>` row per column (e.g. `Column Cost k€`) |
 | "Us vs the peer range" on a radar | `radar` (peers then us) + `decorations.radarBand: true` |
 | Too many stack segments (long tail) | `stacked`/`clustered` + `otherBucket: {max}` (collapse the rest to "Other") |
 | Daily activity over months (contributions grid) | `heatmap` (one daily date series) + `heatmap.calendar: true` |

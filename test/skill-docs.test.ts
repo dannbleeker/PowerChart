@@ -25,7 +25,7 @@ describe("skill documentation coverage", () => {
   });
 
   it("reference.md documents the special datasheet rows", () => {
-    for (const row of ["100%=", "X extent", "Start", "After", "Today", "Holiday", "Bracket", "Trend", "X line", "Color", "Min", "Q1", "Median", "Q3", "Max", "Mean", "Outlier", "Error", "Target", "% Complete", "Baseline start", "Band low", "Band high"]) {
+    for (const row of ["100%=", "X extent", "Start", "After", "Today", "Holiday", "Bracket", "Trend", "X line", "Color", "Min", "Q1", "Median", "Q3", "Max", "Mean", "Outlier", "Error", "Target", "% Complete", "Baseline start", "Band low", "Band high", "Column <label>"]) {
       expect(reference).toContain(row);
     }
   });

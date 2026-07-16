@@ -128,6 +128,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
 | `Today` | Gantt today line at the (single) value |
 | `Holiday` | Gantt: shade these dates |
 | `Bracket <label>` | Gantt: interval annotation spanning min→max of the row's values |
+| `Column <label>` | Gantt: numeric table column beside the task labels (right-aligned, own precision; unit goes in the label) |
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, vertical |
 | `Target` | bullet tick across each column; on waterfalls also a hatched gap-to-target segment + label |
 | `Band low`, `Band high` | line charts: shaded confidence/uncertainty ribbon (rows never draw as lines) |

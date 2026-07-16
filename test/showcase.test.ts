@@ -122,6 +122,7 @@ describe("showcase deck coverage", () => {
     ["cell-size heatmap", (c) => c.kind === "heatmap" && !!c.heatmap?.sizeEncode],
     ["clustered heatmap", (c) => c.kind === "heatmap" && !!c.heatmap?.cluster],
     ["combo area base", (c) => c.combo?.columns === "area"],
+    ["gantt gutter columns", (c) => c.kind === "gantt" && !!c.data.series.some((s) => /^column\b/i.test(s.name))],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {
@@ -129,7 +130,7 @@ describe("showcase deck coverage", () => {
     });
   }
 
-  const GANTT_ROWS = ["After", "Today", "Holiday", "Bracket", "X line", "Y line", "Trend", "Group"];
+  const GANTT_ROWS = ["After", "Today", "Holiday", "Bracket", "Column", "X line", "Y line", "Trend", "Group"];
   for (const row of GANTT_ROWS) {
     it(`uses the "${row}" datasheet row`, () => {
       expect(json).toContain(`"${row}`);
