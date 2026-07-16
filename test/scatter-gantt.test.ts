@@ -140,6 +140,66 @@ describe("gantt", () => {
     expect(bars[1].x).toBeCloseTo(bars[0].x + bars[0].w, 1);
     expect(nodes.find((n) => n.name === "milestone-1")).toBeTruthy();
   });
+
+  describe("gutter columns (\"Column <label>\" rows)", () => {
+    const withColumns = (extra: Record<string, unknown> = {}) =>
+      cfg({
+        kind: "gantt",
+        width: 640,
+        height: 260,
+        data: {
+          categories: ["Phase 1", "> Design", "> Build"],
+          series: [
+            { name: "Start", values: [null, 0, 4] },
+            { name: "End", values: [null, 4, 10] },
+            { name: "Column Cost", values: [250, 90.5, 159.5] },
+            { name: "Column FTE", values: [3, 1, 2] },
+          ],
+        },
+        ...extra,
+      });
+
+    it("renders each Column row as a headed, right-aligned gutter column", () => {
+      const { nodes } = layoutGantt(withColumns(), DEFAULT_STYLE, DEFAULT_DECOR);
+      const text = (name: string) => nodes.find((n) => n.name === name) as TextNode;
+      expect(text("col-head-0").text).toBe("Cost");
+      expect(text("col-head-1").text).toBe("FTE");
+      expect(text("col-0-1").text).toBe("91"); // 90.5, at the Cost column's own precision
+      expect(text("col-1-1").text).toBe("1.0"); // FTE resolves its own decimals
+      for (const n of nodes.filter((x) => x.name?.startsWith("col-"))) {
+        expect((n as TextNode).align).toBe("right");
+      }
+      // Columns sit side by side, left of the plot.
+      expect(text("col-head-1").x).toBeGreaterThan(text("col-head-0").x);
+    });
+
+    it("does not turn a Column row into a bar, and shrinks the plot to make room", () => {
+      const bars = (c: ChartConfig) =>
+        layoutGantt(c, DEFAULT_STYLE, DEFAULT_DECOR).nodes.filter(
+          (n): n is RectNode => n.kind === "rect" && /^bar-\d+$/.test(n.name ?? ""),
+        );
+      const withCols = bars(withColumns());
+      expect(withCols).toHaveLength(2); // Design + Build; Phase 1 has no span
+
+      // Same chart without the Column rows: the bars must start further left.
+      const bare = withColumns();
+      bare.data.series = bare.data.series.filter((s) => !s.name.startsWith("Column"));
+      const without = bars(bare);
+      expect(withCols[0].x).toBeGreaterThan(without[0].x);
+    });
+
+    it("paints cells after the section band, which is full-width and would cover them", () => {
+      // Phase 1 has no Start/End, so it is a section header: `section-0` is a
+      // rect spanning the whole chart width, including the gutter.
+      const { nodes } = layoutGantt(withColumns(), DEFAULT_STYLE, DEFAULT_DECOR);
+      const band = nodes.findIndex((n) => n.name === "section-0");
+      const cell = nodes.findIndex((n) => n.name === "col-0-0");
+      expect(band).toBeGreaterThanOrEqual(0);
+      expect(cell).toBeGreaterThan(band);
+      // A header row still shows the value it carries — nothing is auto-summed.
+      expect((nodes[cell] as TextNode).text).toBe("250");
+    });
+  });
 });
 
 describe("segment order & manual scale", () => {

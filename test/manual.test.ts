@@ -24,7 +24,7 @@ describe("user manual coverage", () => {
       "100%=", "X extent", "X line", "Y line", "Trend",
       "Error+", "Error-",
       "Min", "Q1", "Median", "Q3", "Max", "Mean", "Outlier",
-      "Start", "End", "Milestone", "After", "Today", "Holiday", "Bracket",
+      "Start", "End", "Milestone", "After", "Today", "Holiday", "Bracket", "Column <label>",
     ]) {
       expect(manual, `datasheet row ${row}`).toContain(row);
     }
