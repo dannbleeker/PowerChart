@@ -75,10 +75,18 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       nodes.push({ kind: "rect", ...r, fill, stroke: style.background, strokeWidth: 0.75, name: `seg-${si}-${c}` });
       if (c === n - 1) lastSegMid[si] = H ? r.x + r.w / 2 : r.y + r.h / 2;
       // The label is centred in r.h and spans r.w in BOTH orientations, so the
-      // room checks are r.h / r.w regardless of H. (Gating the vertical fit on
-      // r.w for horizontal mekko measured the value-axis length, not the row
-      // thickness, so labels rendered in rows thinner than the font.)
-      if (decor.segmentLabels && r.h >= fs * 1.25) {
+      // vertical fit is r.h either way. (Gating it on r.w for horizontal mekko
+      // measured the value-axis length, not the row thickness, so labels
+      // rendered in rows thinner than the font.)
+      //
+      // Horizontal segments also need a length floor. The fit check below allows
+      // 2pt of bleed — the text box is deliberately 4pt wider than the segment —
+      // which is harmless for a vertical mekko's wide columns but lets a row of
+      // hairline-thin horizontal segments print their labels on top of each
+      // other. Vertical keeps exactly the room it always had.
+      const roomAcross = r.h >= fs * 1.25;
+      const roomAlong = !H || r.w >= fs * 1.25;
+      if (decor.segmentLabels && roomAcross && roomAlong) {
         const label = formatNumber(v, fmt);
         if (textWidth(label, fs) <= r.w + 2) {
           nodes.push({

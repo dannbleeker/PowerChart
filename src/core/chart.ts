@@ -48,7 +48,13 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
     data: {
       ...data,
       categories: order.map((c) => data.categories[c]),
-      series: data.series.map((s) => ({ ...s, values: order.map((c) => s.values[c]) })),
+      // colors is per-category too: leaving it in pre-sort order pins a
+      // highlight to a screen position instead of to its data point.
+      series: data.series.map((s) => ({
+        ...s,
+        values: order.map((c) => s.values[c]),
+        ...(s.colors ? { colors: pick(s.colors) } : {}),
+      })),
       hundredPercent: pick(data.hundredPercent),
       xExtent: pick(data.xExtent),
     },
@@ -107,7 +113,12 @@ function applyPareto(cfg: ChartConfig): ChartConfig {
     data: {
       ...cfg.data,
       categories: order.map((c) => cfg.data.categories[c]),
-      series: [{ ...bar, values: barVals }, { name: "Cumulative %", type: "line", values: cum }],
+      series: [
+        // colors follows the permutation, like values — Pareto's whole point is
+        // that the ranked order changes, and a highlight has to travel with it.
+        { ...bar, values: barVals, ...(bar.colors ? { colors: pick(bar.colors) } : {}) },
+        { name: "Cumulative %", type: "line", values: cum },
+      ],
       hundredPercent: pick(cfg.data.hundredPercent),
     },
   };
@@ -303,17 +314,12 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   const decor: Decorations = { ...DEFAULT_DECOR, ...cfg.decorations };
 
   // Widen the auto scale so error bars and target ticks stay inside the plot.
+  // valueExtent already folds the whiskers and ticks in — it has to, since Same
+  // Scale reads it — so this only has to round the result to nice ticks.
   if ((errors || targets) && !cfg.horizontal && cfg.scale?.max == null) {
-    const ext = valueExtent(cfg);
+    const ext = drawnExtent(cfg, errors, targets);
     if (ext) {
-      const maxPlus = Math.max(0, ...(errors?.plus ?? []).filter((v): v is number => v != null));
-      const maxMinus = Math.max(0, ...(errors?.minus ?? []).filter((v): v is number => v != null));
-      // Targets widen the scale in BOTH directions — a target under the data range
-      // used to be floored at 0 and its tick rendered outside the plot.
-      const targetVals = (targets ?? []).filter((v): v is number => v != null);
-      const maxTarget = Math.max(0, ...targetVals);
-      const minTarget = Math.min(0, ...targetVals);
-      const ticks = niceTicks(Math.min(ext.min - maxMinus, minTarget, 0), Math.max(ext.max + maxPlus, maxTarget), 5);
+      const ticks = niceTicks(ext.min, ext.max, 5);
       cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: ticks[ticks.length - 1] } };
     }
   }
@@ -515,12 +521,8 @@ function hundredPercentTotal(cfg: ChartConfig): number | null {
   return null;
 }
 
-/**
- * Value-axis extent of a chart's data (for think-cell's Same Scale): the
- * range the auto scale would cover. Null for charts without a value axis
- * (100%, Mekko, butterfly, scatter, gantt).
- */
-export function valueExtent(cfg: ChartConfig): { min: number; max: number } | null {
+/** The data's own range, ignoring the anatomy drawn on top of it. */
+function dataExtent(cfg: ChartConfig): { min: number; max: number } | null {
   const { data, kind } = cfg;
   const cats = data.categories.map((_, c) => c);
   const vals = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
@@ -559,6 +561,67 @@ export function valueExtent(cfg: ChartConfig): { min: number; max: number } | nu
     default:
       return null;
   }
+}
+
+/**
+ * Value-axis extent of a chart (for think-cell's Same Scale): the range the
+ * auto scale would cover. Null for charts without a value axis (100%, Mekko,
+ * butterfly, scatter, gantt).
+ *
+ * This reports what the layout DRAWS, not what the datasheet holds. Error and
+ * Target rows are chart anatomy rather than data — counting an Error row's
+ * magnitude as a data point gave a range that was neither — so they are pulled
+ * out first and then folded back in as the whiskers and ticks they become.
+ * Same Scale writes this straight back as a hard `scale` override, which
+ * suppresses the auto-widen below, so anything this under-reports renders off
+ * the shape.
+ */
+export function valueExtent(cfg: ChartConfig): { min: number; max: number } | null {
+  const { cfg: clean, errors, targets } = extractErrorRows(cfg);
+  return drawnExtent(clean, errors, targets);
+}
+
+/**
+ * valueExtent for a config whose carried rows are already extracted — the state
+ * buildChart is in by the time it needs the scale. Re-extracting there would
+ * find nothing left to extract and silently widen by zero.
+ */
+function drawnExtent(
+  clean: ChartConfig,
+  errors: { plus: (number | null)[]; minus: (number | null)[] } | null,
+  targets: (number | null)[] | null,
+): { min: number; max: number } | null {
+  const base = dataExtent(clean);
+  return base ? widenForAnatomy(base, clean, errors, targets) : null;
+}
+
+/**
+ * Grow an extent to cover the decorations drawn beyond the data: error whiskers,
+ * target ticks and threshold lines. Deliberately conservative — whiskers are
+ * anchored per category, but taking the largest delta against the extreme value
+ * can only over-reach, and over-reaching costs a little white space where
+ * under-reaching pushes ink off the shape.
+ */
+function widenForAnatomy(
+  base: { min: number; max: number },
+  cfg: ChartConfig,
+  errors: { plus: (number | null)[]; minus: (number | null)[] } | null,
+  targets: (number | null)[] | null,
+): { min: number; max: number } {
+  const nums = (xs: (number | null)[] | null | undefined) => (xs ?? []).filter((v): v is number => v != null);
+  const maxPlus = Math.max(0, ...nums(errors?.plus));
+  const maxMinus = Math.max(0, ...nums(errors?.minus));
+  const targetVals = nums(targets);
+  // Same normalization decor.ts applies to the legacy single valueLine. Only an
+  // explicit threshold can sit outside the data — a "mean" line never can.
+  const decor = cfg.decorations;
+  const lineVals = (decor?.valueLines ?? (decor?.valueLine ? [decor.valueLine] : []))
+    .filter((l): l is { mode: "value"; value: number } => l.mode === "value")
+    .map((l) => l.value);
+  return {
+    min: Math.min(base.min - maxMinus, 0, ...targetVals, ...lineVals),
+    max: Math.max(base.max + maxPlus, 0, ...targetVals, ...lineVals),
+  };
 }
 
 export { layoutColumns, layoutWaterfall, layoutMekko, layoutLine };
