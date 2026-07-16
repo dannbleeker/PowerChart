@@ -29,7 +29,8 @@ export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string
     f.decimals === "auto" ? (abs !== 0 && abs < 1 ? 2 : abs < 10 ? 1 : 0) : f.decimals;
   let s = numberFormatter(f.locale ?? "en-US", decimals).format(v);
   // Rounding a small negative toward zero can yield "-0" — normalise to "0".
-  if (/^-0([.,]0+)?$/.test(s)) s = s.slice(1);
+  // Intl emits U+2212 MINUS SIGN (not ASCII "-") for sv/nb/fi/lt/et, so match both.
+  if (/^[-−]0([.,٫]0+)?$/.test(s)) s = s.slice(1);
   if (f.forceSign && v > 0) s = "+" + s;
   if (f.suffix) s += f.suffix;
   return s;
@@ -49,7 +50,10 @@ export function resolveFormat(values: number[], fmt: Partial<NumberFormat> = {})
 }
 
 export function formatPercent(v: number, decimals = 0, forceSign = false): string {
-  const s = (v * 100).toFixed(decimals) + "%";
+  // toFixed is not locale-aware, so the "-0" it can produce is always ASCII.
+  let n = (v * 100).toFixed(decimals);
+  if (/^-0(\.0+)?$/.test(n)) n = n.slice(1);
+  const s = n + "%";
   return forceSign && v > 0 ? "+" + s : s;
 }
 
@@ -236,7 +240,10 @@ function betaI(a: number, b: number, x: number): number {
     f *= delta;
     if (Math.abs(delta - 1) < 1e-10) break;
   }
-  const result = (front * (f - 1)) / aa;
+  // `f` is Numerical Recipes' betacf continued fraction, so I_x(a,b) = front·f/a.
+  // (An earlier `front·(f-1)/a` mixed in a different formulation's offset and made
+  // every p-value wrong — e.g. p=0.014 where the true value is 0.205.)
+  const result = (front * f) / aa;
   return symmetric ? 1 - result : result;
 }
 
