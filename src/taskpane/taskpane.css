@@ -517,6 +517,11 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 .element-row button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── sticky action bar ──────────────────────────────── */
+/* `display: flex` here is an author rule and beats the UA stylesheet's
+   `[hidden] { display: none }`, so the attribute alone would set and do
+   nothing. Say it explicitly. */
+.action-bar[hidden] { display: none; }
+
 .action-bar {
   flex: 0 0 auto;
   display: flex;
