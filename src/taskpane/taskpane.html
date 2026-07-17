@@ -13,6 +13,9 @@
       <div class="head-text">
         <h1>PowerChart</h1>
         <p class="tagline">Native, editable PowerPoint charts</p>
+        <!-- Which build is actually running. PowerPoint caches the pane hard,
+             so without this "reload and retry" is unverifiable. -->
+        <p class="build-stamp" id="build-stamp" title="Build running in this pane"></p>
       </div>
     </header>
 

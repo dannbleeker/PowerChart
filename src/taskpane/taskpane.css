@@ -613,3 +613,14 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
   .actions button.primary,
   .banner button { color: #0b1a2b; }
 }
+
+/* Build stamp: present for support and cache-checking, never competing with
+   the pane's actual content. */
+.build-stamp {
+  margin: 2px 0 0;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--muted, #6b6a67);
+  font-variant-numeric: tabular-nums;
+  user-select: all; /* one click selects it for pasting into a bug report */
+}
