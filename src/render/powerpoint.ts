@@ -447,50 +447,57 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
 
 /**
  * Testing aid: append one slide per item and render its chart, tagged so each
- * stays re-editable. Shapes are committed for every slide first (one sync), and
- * only then grouped/tagged — so a host lacking grouping (PowerPoint on the web)
- * never rolls back the already-inserted charts. That protection is the sync
- * ORDER, not a sync per slide, so the grouping batches like everything else and
- * the round-trip count stays flat in the slide count. Requires PowerPointApi 1.3
- * (slides.add).
+ * stays re-editable. Returns the indices of any items that could NOT be drawn —
+ * the caller names them so the user knows what to retry on its own.
+ *
+ * ONE `PowerPoint.run` per slide, for two reasons learned on the real host:
+ * - Isolation. A chart the host cannot finish (a dense area chart is ~200 native
+ *   shapes, since a filled outline is one line per edge) fails ALONE and is
+ *   reported, rather than aborting the whole deck. A timed-out sync leaves its
+ *   context unusable, so recovery HAS to be a fresh context — i.e. the next slide.
+ * - Weight. A chunk of four dense charts piled 400-500 shapes into one context;
+ *   one chart per context keeps each run light, which the host tolerates better.
+ *
+ * Off-screen slides, so the extra round-trips are cheap next to reliability. The
+ * per-slide sync ORDER still holds (shapes commit before grouping), so a host
+ * lacking grouping never rolls back the chart. Requires PowerPointApi 1.3.
  */
 export async function insertDemoDeck(
   items: { scene: Scene; tagData?: string }[],
   onProgress?: (done: number, total: number) => void,
-): Promise<void> {
-  // Deliberately NOT one batch. The whole deck is ~1,700 native shapes and
-  // several times that in property sets, and queueing it behind a single sync
-  // is all-or-nothing: nothing appears until every shape lands, a failure loses
-  // the lot, and there is nothing to show the user but a spinner. Chunking
-  // costs a few more round-trips and buys slides that appear as they are made —
-  // the opposite call from updateChartsInSlides, for the opposite reason: there,
-  // round-trips were the whole cost; here, they are the only progress there is.
-  const CHUNK = 4;
-  // Looked up once and reused: the id is a plain string and stays valid across
-  // contexts, so paying a round-trip for it in every chunk would be waste.
+): Promise<number[]> {
+  const failed: number[] = [];
+  let lastError: unknown;
+  // The blank-layout id is a plain string valid across contexts, so it is looked
+  // up once (on the first slide's context) and reused for the rest.
   let layoutId: string | undefined;
-  for (let start = 0; start < items.length; start += CHUNK) {
-    const batch = items.slice(start, start + CHUNK);
-    await PowerPoint.run(async (context) => {
-      if (start === 0) layoutId = await blankLayoutId(context);
-      // Positional, re-acquired fresh every batch — a HELD handle to a new slide
-      // is what 5010'd across syncs; see SlideThunk / addSlides.
-      const slideThunks = await addSlides(context, batch.length, layoutId);
-      const perSlide: Grouping[] = [];
-      for (const [i, item] of batch.entries()) {
-        const getSlide = slideThunks[i];
-        const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: item.tagData };
-        // Chunked, and per slide: ~50 shapes a chart x 4 charts was ~200 in one
-        // sync, which the host simply stops answering. This is what left the
-        // demo deck at "Working… 845s" with nothing added and no progress —
-        // progress only fires when a CHUNK completes, and the first never did.
-        perSlide.push({ getSlide, created: await renderShapesChunked(context, getSlide, item.scene, opts), opts });
-        onProgress?.(start + i + 1, items.length);
-      }
-      // Shapes are committed by now, so grouping cannot roll them back.
-      await groupAndTagAll(context, perSlide);
-    });
+  let layoutResolved = false;
+  for (let i = 0; i < items.length; i++) {
+    try {
+      await PowerPoint.run(async (context) => {
+        if (!layoutResolved) {
+          layoutId = await blankLayoutId(context);
+          layoutResolved = true;
+        }
+        const [getSlide] = await addSlides(context, 1, layoutId);
+        const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: items[i].tagData };
+        const created = await renderShapesChunked(context, getSlide, items[i].scene, opts);
+        // Shapes are committed by now, so grouping cannot roll them back.
+        await groupAndTagAll(context, [{ getSlide, created, opts }]);
+      });
+    } catch (err) {
+      // One chart the host would not draw does not sink the rest of the deck.
+      lastError = err;
+      failed.push(i);
+    }
+    onProgress?.(i + 1, items.length);
   }
+  // Nothing rendered at all is a real failure, not a partial one — surface it as
+  // the host error so the pane says "Failed", rather than "inserted 0 of N".
+  if (items.length && failed.length === items.length) {
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+  return failed;
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */
