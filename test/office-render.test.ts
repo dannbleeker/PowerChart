@@ -74,6 +74,9 @@ function makeShape(type: string, geo: string | undefined, box: { left: number; t
 
 type FakeShape = ReturnType<typeof makeShape>;
 
+/** Layout ids passed to slides.add() since the last installHost(). */
+const addedWithLayout: (string | undefined)[] = [];
+
 function makeSlide(id: string) {
   const created: FakeShape[] = [];
   const slide = {
@@ -146,7 +149,27 @@ function installHost(
         getItem: (id: string) => slides.find((s) => s.id === id)!,
         getItemAt: (i: number) => slides[i],
         getCount: () => ({ value: slides.length }),
-        add: () => void slides.push(makeSlide(`slide-${slides.length + 1}`)),
+        add: (options?: { layoutId?: string }) => {
+          addedWithLayout.push(options?.layoutId);
+          slides.push(makeSlide(`slide-${slides.length + 1}`));
+        },
+      },
+      // A real deck's master carries several layouts; only one is blank, and
+      // its NAME is localised — which is why the renderer matches on type.
+      slideMasters: {
+        items: [
+          {
+            id: "master-1",
+            layouts: {
+              items: [
+                { id: "layout-title", name: "Titeldias", type: "titleSlide" },
+                { id: "layout-blank", name: "Tom", type: "blank" },
+                { id: "layout-content", name: "Titel og indhold", type: "object" },
+              ],
+            },
+          },
+        ],
+        load() {},
       },
       getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
       getSelectedShapes: () => ({ items: selectedShapes, load() {} }),
@@ -158,6 +181,7 @@ function installHost(
   };
   trips.syncs = 0;
   trips.contexts = 0;
+  addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
       trips.contexts++;
@@ -187,6 +211,7 @@ function installHost(
         },
       },
     ),
+    SlideLayoutType: { blank: "blank", titleSlide: "titleSlide", object: "object" },
     ConnectorType: { straight: "straight" },
     ShapeLineDashStyle: { dash: "dash" },
     ShapeAutoSize: { autoSizeNone: "none" },
@@ -781,7 +806,8 @@ describe("Office round-trips do not scale with the chart count", () => {
       // One context per chunk of 4 — work per round-trip is bounded, so a slow
       // host shows slides appearing instead of freezing.
       expect(trips.contexts, `${n} slides`).toBe(chunks);
-      expect(trips.syncs, `${n} slides`).toBe(chunks * 5);
+      // 5 syncs a chunk, +1 once for the blank-layout lookup in the first.
+      expect(trips.syncs, `${n} slides`).toBe(chunks * 5 + 1);
       // Progress is reported once per chunk and always ends at the total.
       expect(seen, `${n} slides`).toHaveLength(chunks);
       expect(seen.at(-1)).toBe(`${n}/${n}`);
@@ -836,8 +862,8 @@ describe("a stalled host is legible, and does not hang the pane", () => {
       });
       const seen: string[] = [];
       const p = insertSceneIntoSlide(buildChart(config), {}, (ph) => seen.push(ph));
-      const assertion = expect(p).rejects.toThrow(/did not respond while committing the shapes/);
-      await vi.advanceTimersByTimeAsync(21_000);
+      const assertion = expect(p).rejects.toThrow(/did not respond while committing \d+ shapes/);
+      await vi.advanceTimersByTimeAsync(400_000); // past max(45s, shapes*3s)
       await assertion;
       // And it says where it stopped — "commit" is the last thing reached.
       expect(seen.at(-1)).toBe("commit");
@@ -870,7 +896,7 @@ describe("a host that answers late still gets heard", () => {
       });
       const p = insertSceneIntoSlide(buildChart(config), {});
       const assertion = expect(p).rejects.toThrow(/did not respond/);
-      await vi.advanceTimersByTimeAsync(21_000);
+      await vi.advanceTimersByTimeAsync(400_000); // past max(45s, shapes*3s)
       await assertion;
       expect(heard, "nothing heard before the host answers").toHaveLength(0);
 
@@ -905,13 +931,112 @@ describe("a host that answers late still gets heard", () => {
       });
       const p = insertSceneIntoSlide(buildChart(config), {});
       const assertion = expect(p).rejects.toThrow(/did not respond/);
-      await vi.advanceTimersByTimeAsync(21_000);
+      await vi.advanceTimersByTimeAsync(400_000); // past max(45s, shapes*3s)
       await assertion;
       finish();
       await vi.advanceTimersByTimeAsync(1);
       // "SUCCEEDED late" means the timeout is too short — a different bug from
       // a host that is actually broken, and the note has to distinguish them.
       expect(heard[0]).toContain("the host eventually SUCCEEDED");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("added slides use the blank layout", () => {
+  it("asks for the blank layout by TYPE, not by its localised name", async () => {
+    // A slide added with no layout inherits the PREVIOUS slide's — on a fresh
+    // deck that is the title slide, so an agenda lands on top of "Click to add
+    // title" with the placeholder showing through. We draw everything
+    // ourselves and want no placeholders.
+    // The master here is Danish ("Tom"), which is the point: matching the name
+    // "Blank" would silently do nothing for most of the world.
+    installHost([makeSlide("s1")]);
+    await insertAgendaSlides([buildAgendaScene(["Intro", "Body"], { highlight: 0 }), buildAgendaScene(["Intro", "Body"], { highlight: 1 })]);
+    expect(addedWithLayout).toEqual(["layout-blank", "layout-blank"]);
+  });
+
+  it("uses it for the demo deck too", async () => {
+    installHost([makeSlide("s1")]);
+    await insertDemoDeck([{ scene: buildChart(config), tagData: "{}" }, { scene: buildChart(config) }]);
+    expect(addedWithLayout).toEqual(["layout-blank", "layout-blank"]);
+  });
+
+  it("still adds slides on a host that exposes no masters", async () => {
+    // Layout choice is a nicety; inserting is not. If the host will not tell us
+    // its layouts, fall back to the inherited one rather than failing.
+    const ctx = installHost([makeSlide("s1")]);
+    (ctx.presentation as unknown as { slideMasters: unknown }).slideMasters = {
+      load() {},
+      get items(): never {
+        throw new Error("masters unavailable on this host");
+      },
+    };
+    await insertAgendaSlides([buildAgendaScene(["Intro"], { highlight: 0 })]);
+    expect(addedWithLayout).toEqual([undefined]);
+  });
+});
+
+describe("the wait budget scales with the work", () => {
+  /** Park the sync so we can watch the clock without the host ever answering. */
+  const parkedHost = (slide: FakeSlide) =>
+    vi.stubGlobal("PowerPoint", {
+      ...(globalThis as unknown as { PowerPoint: Record<string, unknown> }).PowerPoint,
+      run: async (cb: (ctx: unknown) => Promise<unknown>) =>
+        cb({
+          presentation: { slides: { getItemAt: () => slide }, getSelectedSlides: () => ({ getItemAt: () => slide }) },
+          sync: () => new Promise<void>(() => {}),
+        }),
+    });
+
+  /** A scene of `n` trivial shapes — the budget is a function of the count. */
+  const sceneOf = (n: number) => ({
+    width: 400,
+    height: 300,
+    nodes: Array.from({ length: n }, (_, i) => ({ kind: "rect" as const, x: i, y: 0, w: 4, h: 4, fill: "#111111" })),
+  });
+
+  it("waits LONGER for a bigger chart — the budget follows the work", async () => {
+    // The regression this exists for: a flat 20s budget killed a 40-shape chart
+    // at almost exactly the moment it would have finished. PowerPoint on the web
+    // draws ~2 shapes a second, so the limit has to follow the work — being late
+    // costs a user nothing, being wrong costs them their chart.
+    vi.useFakeTimers();
+    try {
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      parkedHost(slide);
+      let settled = false;
+      // 100 shapes: budget 300s, well clear of the 45s floor — so being alive at
+      // 100s can ONLY be the per-shape scaling. A flat 20s or 45s dies here.
+      const p = insertSceneIntoSlide(sceneOf(100), {}).catch(() => void (settled = true));
+      await vi.advanceTimersByTimeAsync(100_000);
+      expect(settled, "a 100-shape chart must still be waiting at 100s").toBe(false);
+
+      await vi.advanceTimersByTimeAsync(900_000);
+      await p;
+      expect(settled, "but it must give up eventually — a hang is not a feature").toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still bounds a trivial insert — the floor, not zero", async () => {
+    vi.useFakeTimers();
+    try {
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      parkedHost(slide);
+      let settled = false;
+      // 1 shape: the per-shape budget is tiny, so the 45s floor is what holds —
+      // and 30s is past the old flat 20s, which is the thing that broke.
+      const p = insertSceneIntoSlide(sceneOf(1), {}).catch(() => void (settled = true));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(settled, "the floor keeps a small insert waiting past 30s").toBe(false);
+      await vi.advanceTimersByTimeAsync(200_000);
+      await p;
+      expect(settled).toBe(true);
     } finally {
       vi.useRealTimers();
     }
