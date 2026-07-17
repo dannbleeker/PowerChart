@@ -1012,6 +1012,10 @@ describe("Office round-trips do not scale with the chart count", () => {
     const stamp = denseSlide.created.find((s) => s.name === "PowerChart:not-complete");
     expect(stamp, "dense slide is stamped").toBeTruthy();
     expect(stamp!.text).toContain("NOT COMPLETE");
+    // A top strip, not a slab over the middle — a mis-targeted stamp must not
+    // obliterate a real chart under it (a 540pt-tall slide).
+    expect(stamp!.top, "stamp sits at the top").toBeLessThan(80);
+    expect(stamp!.height, "stamp is a strip").toBeLessThan(120);
     expect(denseSlide.created.length, "chart not drawn").toBeLessThan(120);
     // The light neighbours rendered as real charts (no stamp).
     expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
