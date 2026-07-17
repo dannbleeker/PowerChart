@@ -24,6 +24,22 @@ describe("demo deck", () => {
     }
   });
 
+  it("opens with a title slide and a contents/manifest table", () => {
+    expect(items[0].title).toBe("Title");
+    expect(items[1].title).toBe("Contents");
+    // Title slide names the deck.
+    expect(items[0].scene.nodes.some((n) => n.kind === "text" && /chart gallery/i.test(n.text))).toBe(true);
+    // The contents table must itself stay UNDER the ~90 web shape budget, or the
+    // manifest would be the first thing skipped. It lists ~35 charts in two pairs.
+    expect(items[1].scene.nodes.length).toBeLessThan(90);
+    const idxText = items[1].scene.nodes.filter((n) => n.kind === "text").map((n) => n.text);
+    expect(idxText).toContain("Shapes");
+    expect(idxText.some((t) => /Doughnut/.test(t))).toBe(true);
+    // Neither structural slide is a re-editable chart.
+    expect(items[0].configJson).toBeUndefined();
+    expect(items[1].configJson).toBeUndefined();
+  });
+
   it("tags real charts with re-editable config JSON, and leaves elements untagged", () => {
     const charts = items.filter((i) => i.configJson);
     // Every chart kind is a tagged, re-editable config.
