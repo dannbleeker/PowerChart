@@ -207,6 +207,12 @@ function installHost(
   selectedSlide = slides[0],
   supported: (version: string) => boolean = () => true,
 ) {
+  // The slide count as of the last COMMITTED sync. getCount() reports THIS, not
+  // the live array — so an add() queued in the current batch is invisible to a
+  // getCount() in the SAME batch, exactly as PowerPoint web behaves. A getCount
+  // result resolves at the next sync to the count from before that sync's adds.
+  let committedCount = slides.length;
+  const pendingCounts: { value: number }[] = [];
   const context = {
     presentation: {
       slides: {
@@ -228,7 +234,13 @@ function installHost(
           if (!s) return s;
           return i >= contextBaseCount ? freshWindowedHandle(s) : s;
         },
-        getCount: () => ({ value: slides.length }),
+        // Resolves at the NEXT sync to the committed count (from before that
+        // sync's adds), never to slides.length now — see committedCount.
+        getCount: () => {
+          const result = { value: committedCount };
+          pendingCounts.push(result);
+          return result;
+        },
         add: (options?: { layoutId?: string }) => {
           addedWithLayout.push(options?.layoutId);
           slides.push(makeSlide(`slide-${slides.length + 1}`));
@@ -264,6 +276,11 @@ function installHost(
         pendingHostError = null;
         throw err;
       }
+      // Each getCount from this batch resolves to the PRE-batch committed count,
+      // then this batch's adds become visible to the NEXT sync's getCount.
+      for (const r of pendingCounts) r.value = committedCount;
+      pendingCounts.length = 0;
+      committedCount = slides.length;
     },
   };
   trips.syncs = 0;
