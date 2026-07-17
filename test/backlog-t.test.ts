@@ -140,6 +140,40 @@ describe("heatmap sign marks", () => {
     expect(signAt(c, 1, 1)!.kind).toBe("symbol"); // +9
   });
 
+  it("leaves a zero cell unmarked — the scale paints it neutral, and zero has no sign", () => {
+    // The colour says "neither" (divergingScale's exact-zero is white). A "+"
+    // over that white would have the two channels contradict each other on one
+    // cell — and to the greyscale reader, the only one the mark exists for, the
+    // glyph is the whole story. Reachable without any opt-out: labels are only
+    // drawn if they FIT, so a dense diverging matrix hits this by default.
+    const c = hm({ symbols: "sign" }, [[0, -7], [-6, 9]], { decorations: { segmentLabels: false } });
+    const nodes = buildChart(c).nodes;
+    expect((nodes.find((n) => n.name === "cell-0-0") as RectNode).fill).toBe("#ffffff");
+    expect(nodes.find((n) => n.name === "cell-sign-0-0")).toBeUndefined();
+    // ...while its signed neighbours are still marked.
+    expect(nodes.find((n) => n.name === "cell-sign-0-1")!.kind).toBe("rect"); // -7
+    expect(nodes.find((n) => n.name === "cell-sign-1-1")!.kind).toBe("symbol"); // +9
+  });
+
+  it("marks a calendar heatmap, which never draws labels at all", () => {
+    // The calendar layout returns before the grid's cell loop, so it silently
+    // ignored the option — on the one layout where colour is the ONLY sign
+    // carrier, i.e. exactly where the marks matter most.
+    const cal = (symbols?: "sign"): ChartConfig => ({
+      kind: "heatmap",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: Array.from({ length: 40 }, (_, i) => `2026-03-${String((i % 28) + 1).padStart(2, "0")}`),
+        series: [{ name: "Net flow", values: Array.from({ length: 40 }, (_, i) => (i % 2 ? 1 : -1) * (i + 1)) }],
+      },
+      heatmap: { calendar: true, symbols },
+    });
+    const signs = (c: ChartConfig) => buildChart(c).nodes.filter((n) => n.name?.startsWith("cell-sign-"));
+    expect(signs(cal("sign")).length).toBeGreaterThan(10);
+    // Still off by default.
+    expect(signs(cal(undefined))).toHaveLength(0);
+  });
+
   it("stays inert on one-signed data, where every mark would be identical", () => {
     expect(signs(hm({ sizeEncode: true, symbols: "sign" }, [[8, 7], [6, 9]]))).toHaveLength(0);
     expect(signs(hm({ sizeEncode: true, symbols: "sign" }, [[-8, -7], [-6, -9]]))).toHaveLength(0);

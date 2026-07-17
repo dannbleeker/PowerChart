@@ -11,6 +11,42 @@ import type { LayoutResult } from "./column";
  * one-signed data; diverging through white, symmetric around zero, when the
  * data spans zero. Cell labels shown when they fit; compact gradient legend.
  */
+/**
+ * The +/− mark for one cell, or null where a sign would be a claim the data
+ * does not make.
+ *
+ * Zero gets NOTHING. The diverging scale paints exactly-zero its neutral
+ * white, and a "+" over that white would have the two channels contradict each
+ * other on the same cell — to the greyscale reader, the only one who needs the
+ * mark, the colour is unreadable and the glyph would be the whole story. Zero
+ * has no sign, so the honest mark is none.
+ *
+ * `box` is the cell AS DRAWN: sizeEncode shrinks it, and a mark sized off the
+ * slot would spill across its neighbours. It also puts the largest mark on the
+ * largest magnitude, which is where the sign matters most.
+ *
+ * Shared by the grid and calendar layouts so the two cannot drift apart.
+ */
+function signMark(
+  v: number | null | undefined,
+  box: { x: number; y: number; w: number; h: number },
+  fill: string,
+  name: string,
+): SceneNode | null {
+  if (v == null || v === 0) return null;
+  const gs = Math.min(box.w, box.h) * 0.3;
+  // Below this the mark is a smudge, not a sign.
+  if (!(gs > 0.4)) return null;
+  const ink = contrastInk(fill);
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  return v > 0
+    ? { kind: "symbol", shape: "plus", cx, cy, size: gs, fill: ink, name }
+    : // The minus IS the plus's horizontal arm — same bar, same weight, so the
+      // pair matches by construction and needs no second preset.
+      { kind: "rect", x: cx - gs, y: cy - gs / 2, w: gs * 2, h: gs, fill: ink, name };
+}
+
 export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const nCols = data.categories.length;
@@ -48,7 +84,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // weekday × week grid (the GitHub-contributions view).
   const calDays = data.categories.map((c) => parseDateToken(c));
   if (opts.calendar && data.series.length >= 1 && calDays.every((d): d is number => d != null)) {
-    return calendarLayout(cfg, style, decor, calDays as number[], data.series[0].values, colorOf, min, max, constant);
+    return calendarLayout(cfg, style, decor, calDays as number[], data.series[0].values, colorOf, min, max, constant, wantSign);
   }
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
@@ -121,20 +157,9 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       // Sign marks, for the reader who cannot use the color. Only where the
       // value label is absent: the label already prints the minus sign, and a
       // second sign in the same cell is noise that would sit on top of it.
-      if (wantSign && v != null && !labelled) {
-        const gs = Math.min(box.w, box.h) * 0.3;
-        if (gs > 0.4) {
-          const ink = contrastInk(fill);
-          const cx = box.x + box.w / 2;
-          const cy = box.y + box.h / 2;
-          nodes.push(
-            v >= 0
-              ? { kind: "symbol", shape: "plus", cx, cy, size: gs, fill: ink, name: `cell-sign-${ri}-${c}` }
-              : // The minus IS the plus's horizontal arm — same bar, same weight,
-                // so the pair matches by construction and needs no second preset.
-                { kind: "rect", x: cx - gs, y: cy - gs / 2, w: gs * 2, h: gs, fill: ink, name: `cell-sign-${ri}-${c}` },
-          );
-        }
+      if (wantSign && !labelled) {
+        const mark = signMark(v, box, fill, `cell-sign-${ri}-${c}`);
+        if (mark) nodes.push(mark);
       }
     });
   });
@@ -318,6 +343,7 @@ function calendarLayout(
   min: number,
   max: number,
   constant: boolean,
+  wantSign: boolean,
 ): LayoutResult {
   const fs = style.fontSize;
   const weekdayOf = (d: number) => (((d + 3) % 7) + 7) % 7; // Mon=0 … Sun=6
@@ -370,7 +396,15 @@ function calendarLayout(
     const v = values[i];
     const x = gridX + weekOf(d) * cell;
     const y = gridY + weekdayOf(d) * cell;
-    nodes.push({ kind: "rect", x, y, w: cell - 1.5, h: cell - 1.5, fill: v == null ? NO_DATA : colorOf(v), name: `cell-${i}` });
+    const fill = v == null ? NO_DATA : colorOf(v);
+    const box = { x, y, w: cell - 1.5, h: cell - 1.5 };
+    nodes.push({ kind: "rect", ...box, fill, name: `cell-${i}` });
+    // A calendar never draws value labels, so colour is its ONLY sign carrier —
+    // which makes it the layout that needs the marks most, not one to skip.
+    if (wantSign) {
+      const mark = signMark(v, box, fill, `cell-sign-${i}`);
+      if (mark) nodes.push(mark);
+    }
   });
   // Compact gradient legend (Less → More).
   const ly = gridY + 7 * cell + fs * 0.5;

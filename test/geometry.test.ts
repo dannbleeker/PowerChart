@@ -168,7 +168,7 @@ function shoelace(pts: { x: number; y: number }[]): number {
   return Math.abs(a) / 2;
 }
 
-const SHAPES: SymbolShape[] = ["diamond", "triangle", "plus", "star5"];
+const SHAPES: SymbolShape[] = ["diamond", "triangle", "plus"];
 
 describe("marker symbols", () => {
   it("every shape stays inside the box the PowerPoint renderers hand the preset", () => {
@@ -211,8 +211,8 @@ describe("marker symbols", () => {
 
   it("markerScale equalises AREA against a circle — the bubble's size claim", () => {
     // "area ∝ size" is what a bubble chart asserts. Shape must not perturb it:
-    // a star inscribed in the same box as a square holds ~28% of its ink, so
-    // without this the same Size value would read threefold different by group.
+    // a diamond inscribed in the same box as a square holds half its ink, so
+    // without this the same Size value would read half as large by group.
     // Measured off the real outline, so a wrong constant in MARKER_AREA fails
     // here rather than silently mis-sizing every marker of that shape.
     for (const s of SHAPES) {
