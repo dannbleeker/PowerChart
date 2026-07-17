@@ -976,6 +976,29 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
+  it("skips a chart too dense for the host, keeps the slide, and stamps it NOT COMPLETE", async () => {
+    // The heavy charts (area ~208 shapes) will not land on web and burn the
+    // timeout trying. They are skipped up-front — the slide is kept (coverage),
+    // its chart NOT drawn, and a stamp makes the placeholder unmistakable.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const dense = { width: 100, height: 100, nodes: Array.from({ length: 120 }, (_, k) => ({ kind: "rect" as const, x: k, y: 0, w: 1, h: 1, fill: "#111111" })) };
+    const light = () => buildChart(cfgFor(0)); // a handful of shapes, well under budget
+    const failed = await insertDemoDeck([{ scene: light() }, { scene: dense }, { scene: light() }]);
+    // Only the dense one is reported; the deck still has all three slides.
+    expect(failed).toEqual([1]);
+    expect(deck.length).toBe(1 + 3);
+    // The dense slide (deck[2]) carries a stamp, NOT the 120 chart shapes.
+    const denseSlide = deck[2];
+    const stamp = denseSlide.created.find((s) => s.name === "PowerChart:not-complete");
+    expect(stamp, "dense slide is stamped").toBeTruthy();
+    expect(stamp!.text).toContain("NOT COMPLETE");
+    expect(denseSlide.created.length, "chart not drawn").toBeLessThan(120);
+    // The light neighbours rendered as real charts (no stamp).
+    expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+    expect(deck[3].created.length).toBeGreaterThan(1);
+  });
+
   it("re-acquires each freshly-added slide per batch, so a rewritten getItemAt cannot 5010 mid-deck", async () => {
     // The real regression: HOLD one getItemAt handle to a new slide and reuse it
     // across the render's batched syncs, and once Office.js rewrites its path to

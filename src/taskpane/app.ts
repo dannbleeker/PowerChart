@@ -1418,12 +1418,13 @@ function wireInsert() {
         if (!failed.length) {
           note(`Inserted ${items.length} demo slides at the end of the deck.`, "ok");
         } else {
-          // A total failure throws (the guard shows it); reaching here is a
-          // partial — most rendered, some were too heavy for this host.
+          // A total HOST failure throws (the guard shows it); reaching here is a
+          // partial — most rendered, some too dense for this host and left with a
+          // "NOT COMPLETE" stamp.
           const names = failed.map((idx) => items[idx].title).join(", ");
           const each = failed.length === 1 ? "it" : "them";
           note(
-            `Inserted ${items.length - failed.length} of ${items.length}. Too heavy for this host to finish: ${names} — insert ${each} on their own to retry.`,
+            `Inserted ${items.length - failed.length} of ${items.length}. Too dense for this host (stamped "NOT COMPLETE"): ${names} — insert ${each} on their own to retry.`,
             "ok",
           );
         }

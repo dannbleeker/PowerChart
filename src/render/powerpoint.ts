@@ -446,9 +446,55 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
 }
 
 /**
+ * A chart above this many native shapes is not attempted on the demo deck: on
+ * PowerPoint web it will not finish inside the batch timeout, and trying it both
+ * wastes ~45s and loads the host toward the "we ran into a problem" crash. The
+ * densest charts (a filled area is one line per edge) run 100-200 shapes; the
+ * rest are well under. Tunable — the point is to skip the few that can't land,
+ * not to trim the deck.
+ */
+const DEMO_SHAPE_BUDGET = 90;
+
+/**
+ * Draw a bold banner across a slide so an incomplete one is unmistakable — a
+ * half-rendered chart looks almost right, which is exactly the trap. Best-effort
+ * styling: a host that lacks a property just skips it, the text still lands.
+ */
+async function stampSlide(context: PowerPoint.RequestContext, getSlide: SlideThunk, title: string, detail: string): Promise<void> {
+  const box = (getSlide().shapes as unknown as {
+    addTextBox(text: string, box: { left: number; top: number; width: number; height: number }): PowerPoint.Shape;
+  }).addTextBox(`${title}\n${detail}`, { left: 80, top: 210, width: 800, height: 120 });
+  box.name = "PowerChart:not-complete";
+  try {
+    box.fill.setSolidColor("#c0392b");
+    const font = (box.textFrame.textRange as unknown as { font: Record<string, unknown> }).font;
+    font.color = "#ffffff";
+    font.bold = true;
+    font.size = 32;
+    const para = (box.textFrame.textRange as unknown as { paragraphFormat: Record<string, unknown> }).paragraphFormat;
+    para.horizontalAlignment = "Center";
+  } catch {
+    /* a styling property the host lacks — the banner text is what matters */
+  }
+  await context.sync();
+}
+
+/** Stamp the LAST slide from a FRESH context — used after a render poisoned its own. */
+async function stampLastSlide(title: string, detail: string): Promise<void> {
+  await PowerPoint.run(async (context) => {
+    const count = context.presentation.slides.getCount();
+    await context.sync();
+    if (count.value < 1) return;
+    await stampSlide(context, () => context.presentation.slides.getItemAt(count.value - 1), title, detail);
+  });
+}
+
+/**
  * Testing aid: append one slide per item and render its chart, tagged so each
- * stays re-editable. Returns the indices of any items that could NOT be drawn —
- * the caller names them so the user knows what to retry on its own.
+ * stays re-editable. Returns the indices of any items that were NOT drawn as a
+ * real chart — skipped as too dense, or failed mid-render — the caller names
+ * them so the user knows what to retry on its own. Every such slide is left with
+ * a "NOT COMPLETE" stamp so a placeholder is never mistaken for a real chart.
  *
  * ONE `PowerPoint.run` per slide, for two reasons learned on the real host:
  * - Isolation. A chart the host cannot finish (a dense area chart is ~200 native
@@ -473,6 +519,8 @@ export async function insertDemoDeck(
   let layoutId: string | undefined;
   let layoutResolved = false;
   for (let i = 0; i < items.length; i++) {
+    const shapeCount = items[i].scene.nodes.length;
+    const tooDense = shapeCount > DEMO_SHAPE_BUDGET;
     try {
       await PowerPoint.run(async (context) => {
         if (!layoutResolved) {
@@ -480,21 +528,33 @@ export async function insertDemoDeck(
           layoutResolved = true;
         }
         const [getSlide] = await addSlides(context, 1, layoutId);
+        if (tooDense) {
+          // Do NOT attempt it: this many shapes will not land on web, and trying
+          // burns the timeout and pushes the host toward a crash. Leave a stamped
+          // placeholder so the slide count and order still line up.
+          await stampSlide(context, getSlide, "NOT COMPLETE", `Too dense for this host — ${shapeCount} shapes, not rendered`);
+          return;
+        }
         const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: items[i].tagData };
         const created = await renderShapesChunked(context, getSlide, items[i].scene, opts);
         // Shapes are committed by now, so grouping cannot roll them back.
         await groupAndTagAll(context, [{ getSlide, created, opts }]);
       });
+      if (tooDense) failed.push(i);
     } catch (err) {
       // One chart the host would not draw does not sink the rest of the deck.
       lastError = err;
       failed.push(i);
+      // Mark the half-rendered slide so a partial chart is not mistaken for a
+      // real one. A fresh context, because the failed render poisoned its own.
+      await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
     }
     onProgress?.(i + 1, items.length);
   }
-  // Nothing rendered at all is a real failure, not a partial one — surface it as
-  // the host error so the pane says "Failed", rather than "inserted 0 of N".
-  if (items.length && failed.length === items.length) {
+  // A whole deck lost to HOST errors (not just skipped-as-dense) is a real
+  // failure — surface it so the pane says "Failed", not "inserted 0 of N". If
+  // everything was merely skipped, there is no error to throw; return the list.
+  if (items.length && failed.length === items.length && lastError !== undefined) {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
   return failed;
