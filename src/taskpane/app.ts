@@ -1408,14 +1408,25 @@ function wireInsert() {
         const items = demoItems();
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        await insertDemoDeck(
+        const failed = await insertDemoDeck(
           items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
           (done, total) => {
             note(`Inserting demo slides… ${done} of ${total}`, "busy");
-            setProgress(done / total); // real chunks, so a real bar
+            setProgress(done / total); // one slide per context, so a real bar
           },
         );
-        note(`Inserted ${items.length} demo slides at the end of the deck.`, "ok");
+        if (!failed.length) {
+          note(`Inserted ${items.length} demo slides at the end of the deck.`, "ok");
+        } else {
+          // A total failure throws (the guard shows it); reaching here is a
+          // partial — most rendered, some were too heavy for this host.
+          const names = failed.map((idx) => items[idx].title).join(", ");
+          const each = failed.length === 1 ? "it" : "them";
+          note(
+            `Inserted ${items.length - failed.length} of ${items.length}. Too heavy for this host to finish: ${names} — insert ${each} on their own to retry.`,
+            "ok",
+          );
+        }
       }),
     );
   } else {

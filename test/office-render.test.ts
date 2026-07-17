@@ -921,25 +921,20 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
-  it("appends a demo deck in CHUNKS, reporting progress as slides land", async () => {
-    // ~1,700 shapes behind a single sync is all-or-nothing: nothing appears
-    // until every shape lands, one failure loses the lot, and there is nothing
-    // to show but a spinner. Bounded work per round-trip, and visible progress.
-    for (const [n, chunks] of [[2, 1], [12, 3], [35, 9]] as const) {
+  it("renders one slide per context and reports progress per slide", async () => {
+    // One PowerPoint.run per slide isolates a chart the host can't finish and
+    // keeps each context light (one chart's shapes, not a chunk's four). Progress
+    // is per slide, so a slow host shows slides landing instead of freezing.
+    for (const n of [2, 12, 35] as const) {
       installHost([makeSlide("s1")]);
       const seen: string[] = [];
-      await insertDemoDeck(
+      const failed = await insertDemoDeck(
         Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
         (done, total) => seen.push(`${done}/${total}`),
       );
-      // One context per chunk of 4 — bounded work per round-trip, so a slow
-      // host shows slides appearing instead of freezing. The SYNC count is
-      // deliberately NOT pinned: shapes commit in batches of SHAPES_PER_SYNC,
-      // so it tracks the drawing, which is the whole point.
-      expect(trips.contexts, `${n} slides`).toBe(chunks);
-      // Progress is per SLIDE, not per chunk. A chunk is 4 slides ~ 200 shapes;
-      // reporting only when all four land is what left the owner watching
-      // "Working… 845s" with no counter at all.
+      expect(failed, `${n} slides`).toEqual([]);
+      // One context per SLIDE now.
+      expect(trips.contexts, `${n} slides`).toBe(n);
       expect(seen, `${n} slides`).toHaveLength(n);
       expect(seen.at(-1)).toBe(`${n}/${n}`);
       // Monotonic, never over-counting.
@@ -948,16 +943,37 @@ describe("Office round-trips do not scale with the chart count", () => {
   });
 
   it("appends every demo slide, each tagged with its own config", async () => {
-    // Chunking must not lose or duplicate a slide at a boundary: 35 is not a
-    // multiple of 4, so the last chunk is short.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const n = 35;
-    await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+    const failed = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+    expect(failed).toEqual([]);
     // The fake appends a slide per add(); the original + n new ones.
     expect(deck.length).toBe(1 + n);
     const tags = deck.slice(1).map((s) => s.created.map((c) => c.tagStore.get(CHART_TAG)).find(Boolean));
     expect(tags).toEqual(Array.from({ length: n }, (_, i) => `{"i":${i}}`));
+  });
+
+  it("reports the slide a host refuses and finishes the rest", async () => {
+    // A chart the host cannot draw (on the real host, a ~200-shape area chart that
+    // times out) must not abort the whole deck: it is caught, its index returned,
+    // and the remaining slides still render. One sync failure = one lost slide.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const n = 6;
+    // Fail a single sync partway in (past the first slide's layout+add+render).
+    failSyncOn = 9;
+    try {
+      const failed = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+      expect(failed.length).toBeGreaterThanOrEqual(1);
+      expect(failed.length).toBeLessThan(n); // it kept going — not a whole-deck abort
+      // At least every non-failed slide drew its chart (a failed slide may retain
+      // the partial shapes it had queued before the refused sync).
+      const drawn = deck.slice(1).filter((s) => s.created.length > 0).length;
+      expect(drawn).toBeGreaterThanOrEqual(n - failed.length);
+    } finally {
+      failSyncOn = 0;
+    }
   });
 
   it("re-acquires each freshly-added slide per batch, so a rewritten getItemAt cannot 5010 mid-deck", async () => {
@@ -981,8 +997,8 @@ describe("Office round-trips do not scale with the chart count", () => {
     };
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    const n = 6; // spans two chunks (CHUNK = 4), so the boundary is covered too
-    await expect(insertDemoDeck(Array.from({ length: n }, () => ({ scene: bigScene })))).resolves.toBeUndefined();
+    const n = 6;
+    await expect(insertDemoDeck(Array.from({ length: n }, () => ({ scene: bigScene })))).resolves.toEqual([]);
     // Every appended slide got all its shapes (plus the group) — nothing stranded
     // by a mid-batch 5010.
     expect(deck.length).toBe(1 + n);
@@ -1207,7 +1223,7 @@ describe("the wait budget scales with the work", () => {
 
 describe("EVERY insert path batches its shapes", () => {
   /** Max shapes handed to the host in any single sync of `run`. */
-  async function maxPerSync(run: () => Promise<void>, slides: FakeSlide[]) {
+  async function maxPerSync(run: () => Promise<unknown>, slides: FakeSlide[]) {
     const worst = { n: 0 };
     let last = 0;
     const ctx = installHost(slides);
