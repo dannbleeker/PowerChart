@@ -144,3 +144,86 @@ describe("task pane — accordion headings are translated", () => {
     expect(titles).not.toContain("1 · Chart type");
   });
 });
+
+describe("busy-guard on host actions", () => {
+  /**
+   * Boot the pane down its HOST branch, with a PowerPoint.run we control: it
+   * parks until we release it, so we can look at the buttons mid-flight — which
+   * is the only moment the bug existed.
+   */
+  async function bootHost() {
+    let release!: () => void;
+    const parked = new Promise<void>((r) => (release = r));
+    let runs = 0;
+    vi.stubGlobal("Office", {
+      context: { host: "PowerPoint", requirements: { isSetSupported: () => false } },
+    });
+    vi.stubGlobal("PowerPoint", {
+      run: async (cb: (ctx: unknown) => Promise<unknown>) => {
+        runs++;
+        await parked;
+        return cb({
+          presentation: {
+            slides: {
+              getCount: () => ({ value: 0 }),
+              add() {},
+              getItemAt: () => ({ shapes: { addGeometricShape: stubShape, addLine: stubShape, addTextBox: stubShape } }),
+            },
+          },
+          sync: async () => {},
+        });
+      },
+      GeometricShapeType: new Proxy({}, { get: (_t, p) => String(p) }),
+      ConnectorType: { straight: "straight" },
+      ShapeLineDashStyle: { dash: "dash" },
+      ShapeAutoSize: { autoSizeNone: "none" },
+      TextVerticalAlignment: { top: "t", middle: "m", bottom: "b" },
+      ParagraphHorizontalAlignment: { left: "l", center: "c", right: "r" },
+    });
+    const stubShape = () => ({
+      fill: { setSolidColor() {}, clear() {} },
+      lineFormat: {},
+      textFrame: { textRange: { font: {}, paragraphFormat: {} } },
+      tags: { add() {} },
+    });
+    await bootPane();
+    return { release, runs: () => runs };
+  }
+
+  it("disables the clicked button AND the primary Insert while an action runs", async () => {
+    // The bug, seen in real PowerPoint: guard disabled only the primary button,
+    // so "Insert demo deck" stayed live through a multi-minute run (one more
+    // click = another 35 slides), while Insert went dead WITHOUT looking dead —
+    // so a stuck action read as "Insert is broken".
+    const { release } = await bootHost();
+    const demo = $<HTMLButtonElement>("demo-insert");
+    const insert = $<HTMLButtonElement>("insert");
+    expect(demo.disabled).toBe(false);
+    expect(insert.disabled).toBe(false);
+
+    demo.click();
+    await Promise.resolve();
+    expect(demo.disabled, "clicked button must not accept a second click").toBe(true);
+    expect(insert.disabled, "primary acts on the same deck").toBe(true);
+
+    release();
+    await vi.waitFor(() => expect(demo.disabled).toBe(false));
+    expect(insert.disabled).toBe(false);
+  });
+
+  it("re-enables both when the action fails", async () => {
+    vi.stubGlobal("Office", { context: { host: "PowerPoint", requirements: { isSetSupported: () => false } } });
+    vi.stubGlobal("PowerPoint", {
+      run: async () => {
+        throw new Error("host refused");
+      },
+    });
+    await bootPane();
+    const demo = $<HTMLButtonElement>("demo-insert");
+    demo.click();
+    await vi.waitFor(() => expect(document.getElementById("host-note")!.textContent).toMatch(/^Failed:/));
+    // A failed action must not leave the pane permanently dead.
+    expect(demo.disabled).toBe(false);
+    expect($<HTMLButtonElement>("insert").disabled).toBe(false);
+  });
+});

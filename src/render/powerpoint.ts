@@ -245,21 +245,37 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
  * the round-trip count stays flat in the slide count. Requires PowerPointApi 1.3
  * (slides.add).
  */
-export async function insertDemoDeck(items: { scene: Scene; tagData?: string }[]): Promise<void> {
-  await PowerPoint.run(async (context) => {
-    const slides = context.presentation.slides;
-    const before = slides.getCount();
-    await context.sync();
-    for (let i = 0; i < items.length; i++) slides.add();
-    await context.sync();
-    const perSlide = items.map((item, i) => {
-      const slide = slides.getItemAt(before.value + i);
-      const created = renderShapes(slide, item.scene, { left: 60, top: 90 });
-      return { slide, created, opts: { group: true, tagData: item.tagData } };
+export async function insertDemoDeck(
+  items: { scene: Scene; tagData?: string }[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  // Deliberately NOT one batch. The whole deck is ~1,700 native shapes and
+  // several times that in property sets, and queueing it behind a single sync
+  // is all-or-nothing: nothing appears until every shape lands, a failure loses
+  // the lot, and there is nothing to show the user but a spinner. Chunking
+  // costs a few more round-trips and buys slides that appear as they are made —
+  // the opposite call from updateChartsInSlides, for the opposite reason: there,
+  // round-trips were the whole cost; here, they are the only progress there is.
+  const CHUNK = 4;
+  for (let start = 0; start < items.length; start += CHUNK) {
+    const batch = items.slice(start, start + CHUNK);
+    await PowerPoint.run(async (context) => {
+      const slides = context.presentation.slides;
+      const before = slides.getCount();
+      await context.sync();
+      for (let i = 0; i < batch.length; i++) slides.add();
+      await context.sync();
+      const perSlide = batch.map((item, i) => {
+        const slide = slides.getItemAt(before.value + i);
+        const created = renderShapes(slide, item.scene, { left: 60, top: 90 });
+        return { slide, created, opts: { group: true, tagData: item.tagData } };
+      });
+      // Shapes commit before anything is grouped, exactly as elsewhere.
+      await context.sync();
+      await groupAndTagAll(context, perSlide);
     });
-    await context.sync();
-    await groupAndTagAll(context, perSlide);
-  });
+    onProgress?.(Math.min(start + CHUNK, items.length), items.length);
+  }
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */

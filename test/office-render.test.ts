@@ -764,13 +764,41 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
-  it("appends a demo deck with a flat sync count too", async () => {
-    // Same seam, same property: grouping used to cost 2 syncs per slide.
-    for (const n of [2, 12]) {
+  it("appends a demo deck in CHUNKS, reporting progress as slides land", async () => {
+    // The demo deck is the one place that must NOT batch: ~1,700 shapes behind
+    // a single sync is all-or-nothing — nothing appears until every shape lands,
+    // one failure loses the lot, and there is nothing to show but a spinner.
+    // So the contract here is the opposite of updateChartsInSlides': bounded
+    // work per round-trip, and visible progress.
+    for (const [n, chunks] of [[2, 1], [12, 3], [35, 9]] as const) {
       installHost([makeSlide("s1")]);
-      await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
-      expect(trips.contexts, `${n} slides`).toBe(1);
-      expect(trips.syncs, `${n} slides`).toBe(5);
+      const seen: string[] = [];
+      await insertDemoDeck(
+        Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
+        (done, total) => seen.push(`${done}/${total}`),
+      );
+      // One context per chunk of 4 — work per round-trip is bounded, so a slow
+      // host shows slides appearing instead of freezing.
+      expect(trips.contexts, `${n} slides`).toBe(chunks);
+      expect(trips.syncs, `${n} slides`).toBe(chunks * 5);
+      // Progress is reported once per chunk and always ends at the total.
+      expect(seen, `${n} slides`).toHaveLength(chunks);
+      expect(seen.at(-1)).toBe(`${n}/${n}`);
+      // Monotonic, never over-counting.
+      expect(seen.map((x) => Number(x.split("/")[0]))).toEqual([...seen.map((x) => Number(x.split("/")[0]))].sort((a, b) => a - b));
     }
+  });
+
+  it("appends every demo slide, each tagged with its own config", async () => {
+    // Chunking must not lose or duplicate a slide at a boundary: 35 is not a
+    // multiple of 4, so the last chunk is short.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const n = 35;
+    await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+    // The fake appends a slide per add(); the original + n new ones.
+    expect(deck.length).toBe(1 + n);
+    const tags = deck.slice(1).map((s) => s.created.map((c) => c.tagStore.get(CHART_TAG)).find(Boolean));
+    expect(tags).toEqual(Array.from({ length: n }, (_, i) => `{"i":${i}}`));
   });
 });
