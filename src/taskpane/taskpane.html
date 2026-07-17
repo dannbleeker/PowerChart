@@ -28,6 +28,18 @@
       <button class="tab" data-tab="automation" role="tab">Automation</button>
     </nav>
 
+    <!-- Pane-wide status. NOT in the action bar: that bar belongs to the Chart
+         tab and is hidden elsewhere, which would take every "Working…",
+         "Failed:" and progress count on the Elements/Agenda/Automation tabs
+         down with it. Inserting is slow enough on the web that silence reads
+         as broken. -->
+    <div class="status-strip" id="status-strip" hidden>
+      <div class="status-bar" id="status-bar" hidden><i></i></div>
+      <p class="status-line">
+        <span class="hint" id="host-note"></span><span class="status-elapsed" id="status-elapsed"></span>
+      </p>
+    </div>
+
     <div class="scroll">
       <div id="selection-banner" class="banner" style="display: none">
         A PowerChart is selected on the slide.
@@ -194,7 +206,6 @@
           <button id="download" role="menuitem">Download SVG</button>
         </div>
       </div>
-      <p class="hint" id="host-note"></p>
     </footer>
 
     <script type="module" src="./app.ts"></script>

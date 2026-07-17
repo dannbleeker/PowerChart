@@ -629,3 +629,60 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
   font-variant-numeric: tabular-nums;
   user-select: all; /* one click selects it for pasting into a bug report */
 }
+
+/* ── Pane-wide status strip ──────────────────────────────────────────────
+   Sits under the tabs, so it is visible on every tab — the action bar is
+   Chart-only. Collapsed entirely when there is nothing to say. */
+.status-strip {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.status-strip[hidden] { display: none; }
+
+/* The bar is 3px of pure signal: it exists to say "still alive", which on a
+   host that takes 20s to draw a chart is the whole job. */
+.status-bar {
+  height: 3px;
+  background: var(--line-2, #ececea);
+  overflow: hidden;
+}
+.status-bar[hidden] { display: none; }
+.status-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent, #2563eb);
+  /* Determinate: width is set inline from real progress. */
+  width: 0;
+  transition: width 180ms ease-out;
+}
+/* Indeterminate: a single insert is ONE context.sync() and Office.js reports
+   nothing until it lands, so there is no honest percentage to show. Motion
+   says "alive" without claiming to know how far along it is. */
+.status-bar.indeterminate > i {
+  width: 35%;
+  transition: none;
+  animation: status-slide 1.1s ease-in-out infinite;
+}
+@keyframes status-slide {
+  0% { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-bar.indeterminate > i { animation-duration: 2.4s; }
+}
+
+.status-line {
+  margin: 0;
+  padding: 5px 13px;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.status-line .hint { margin: 0; }
+/* Elapsed seconds: the one number we can honestly report mid-sync. */
+.status-elapsed {
+  font-size: 11px;
+  color: var(--muted, #6b6a67);
+  font-variant-numeric: tabular-nums;
+}
