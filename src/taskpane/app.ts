@@ -15,6 +15,8 @@ import {
   loadThemePalette,
   updateChartInSlide,
   updateChartsInSlides,
+  onLateSync,
+  errorText,
   type EditTarget,
   type InsertPhase,
 } from "../render/powerpoint";
@@ -1265,7 +1267,10 @@ function wireInsert() {
             note("Done.", "ok");
           }
         } catch (err) {
-          note(`Failed: ${err instanceof Error ? err.message : String(err)}`, "err");
+          // errorText, not err.message: a RichApi.Error's message is generic
+          // ("An internal error has occurred") and the useful part is in code
+          // and debugInfo, which String(err) throws away.
+          note(`Failed: ${errorText(err)}`, "err");
         } finally {
           // Only re-enable what this call disabled — never resurrect a button
           // some other state (no host, no selection) means to keep dead.
@@ -1319,6 +1324,11 @@ function wireInsert() {
       }),
     );
     // Testing aid: one demo slide per chart kind + feature/element highlights.
+    // A call we gave up on may still answer. Whatever it says is the only
+    // evidence we get about a host that went quiet, so surface it even though
+    // the action has already failed — the note is stale by then, but the
+    // information is what a bug report needs.
+    onLateSync((msg) => note(`Host answered late — ${msg}`, "err"));
     const demoBtn = $("demo-insert") as HTMLButtonElement;
     demoBtn.disabled = false;
     demoBtn.addEventListener(

@@ -51,15 +51,74 @@ export interface EditTarget {
  */
 export type InsertPhase = "context" | "queue" | "commit" | "group" | "done";
 
-/** Reject if `p` has not settled within `ms` — a hung host must not hang the pane. */
+/**
+ * Reported when a timed-out call finally settles — see `withTimeout`.
+ * `null` while nothing has been abandoned.
+ */
+export let lastLateSync: string | null = null;
+
+let lateSubscriber: ((msg: string) => void) | null = null;
+
+/** Be told when a call we already gave up on finally settles. */
+export function onLateSync(cb: (msg: string) => void): void {
+  lateSubscriber = cb;
+}
+
+/**
+ * Reject if `p` has not settled within `ms` — a hung host must not hang the
+ * pane.
+ *
+ * Racing alone throws away the answer, and the answer is the whole point: the
+ * abandoned promise keeps running, and whatever it does NEXT is the only
+ * evidence we get about a host that went quiet. If it resolves at 45s the host
+ * is merely slow and the timeout is wrong; if it rejects with a RichApi error,
+ * that error names the real bug and would otherwise be lost forever, because
+ * Office.js reports queued-command failures HERE and nowhere else. So keep
+ * listening after giving up, and record what arrives.
+ */
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
+  let abandoned = false;
+  const started = Date.now();
+  const describe = (outcome: string) => {
+    if (!abandoned) return;
+    lastLateSync = `${what}: ${outcome} after ${Math.round((Date.now() - started) / 1000)}s`;
+    lateSubscriber?.(lastLateSync);
+  };
+  p.then(
+    () => describe("the host eventually SUCCEEDED"),
+    (err: unknown) => describe(`the host eventually FAILED — ${errorText(err)}`),
+  );
   return Promise.race([
     p.finally(() => clearTimeout(timer)),
     new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`)), ms);
+      timer = setTimeout(() => {
+        abandoned = true;
+        reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
+      }, ms);
     }),
   ]);
+}
+
+/**
+ * Everything an Office.js error knows. A RichApi.Error's `message` is usually
+ * generic ("An internal error has occurred"); the useful part — the failing
+ * command and why — lives in `code` and `debugInfo`, which a plain String(err)
+ * silently drops.
+ */
+export function errorText(err: unknown): string {
+  if (!err || typeof err !== "object") return String(err);
+  const e = err as { message?: string; code?: string; debugInfo?: unknown };
+  const bits = [e.message ?? String(err)];
+  if (e.code) bits.push(`code=${e.code}`);
+  if (e.debugInfo) {
+    try {
+      bits.push(`debugInfo=${JSON.stringify(e.debugInfo)}`);
+    } catch {
+      /* not serialisable — the message and code still carry */
+    }
+  }
+  return bits.join(" | ");
 }
 
 /** How long any single host round-trip may take before we call it stalled. */
