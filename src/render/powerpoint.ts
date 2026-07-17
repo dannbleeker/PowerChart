@@ -121,8 +121,47 @@ export function errorText(err: unknown): string {
   return bits.join(" | ");
 }
 
-/** How long any single host round-trip may take before we call it stalled. */
-const HOST_TIMEOUT_MS = 20_000;
+/**
+ * How long to wait for the host, for a batch of `shapes` shapes.
+ *
+ * PowerPoint on the web creates native shapes at roughly two per second, so
+ * "how long is too long" is a function of the work, not a constant. A flat 20s
+ * killed a 40-shape chart at almost exactly the moment it would have finished —
+ * the timeout meant to expose a hang became the thing that caused the failure.
+ *
+ * So: budget generously per shape and floor it, because the point of this is
+ * only ever to stop an infinite spinner. Being late costs a user nothing;
+ * being wrong costs them their chart.
+ */
+function hostTimeoutMs(shapes: number): number {
+  return Math.max(45_000, shapes * 3_000);
+}
+
+/**
+ * The blank layout of the presentation's first master, or undefined if the host
+ * has no opinion.
+ *
+ * A slide added with no layout inherits the previous slide's — which on a fresh
+ * deck is the title slide, so an agenda lands on top of "Click to add title"
+ * with the placeholder showing through. We draw every element ourselves and
+ * want no placeholders at all. Matched on `type`, not on the name: the name is
+ * localised ("Tom" on a Danish master) and matching English would silently do
+ * nothing for most of the world.
+ */
+async function blankLayoutId(context: PowerPoint.RequestContext): Promise<string | undefined> {
+  try {
+    const masters = context.presentation.slideMasters;
+    masters.load("items/id,items/layouts/items/id,items/layouts/items/type");
+    await context.sync();
+    for (const master of masters.items) {
+      const blank = master.layouts.items.find((l) => l.type === PowerPoint.SlideLayoutType.blank);
+      if (blank) return blank.id;
+    }
+  } catch {
+    /* no master/layout access on this host — fall back to the inherited layout */
+  }
+  return undefined;
+}
 
 export async function insertSceneIntoSlide(
   scene: Scene,
@@ -138,13 +177,15 @@ export async function insertSceneIntoSlide(
       // Commit the shapes first — so grouping/tagging (which some hosts, notably
       // PowerPoint on the web, don't support) can't roll back the whole insert.
       onPhase?.("commit", `${created.length} shapes`);
-      await withTimeout(context.sync(), HOST_TIMEOUT_MS, "committing the shapes");
+      // Budget by the work: the web takes ~0.5s a shape, so a flat limit fails
+      // exactly the charts that are worth drawing.
+      await withTimeout(context.sync(), hostTimeoutMs(created.length), `committing ${created.length} shapes`);
       onPhase?.("group");
       await groupAndTagAll(context, [{ slide, created, opts }]);
       onPhase?.("done");
     }),
-    // The whole run gets a longer budget than one sync: it contains several.
-    HOST_TIMEOUT_MS * 3,
+    // The whole run holds several syncs, so it gets a multiple of the budget.
+    hostTimeoutMs(scene.nodes.length) * 3,
     "opening a request context",
   );
 }
@@ -320,8 +361,10 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
   await PowerPoint.run(async (context) => {
     const slides = context.presentation.slides;
     const before = slides.getCount();
+    // Resolves on its own sync, before the count is read.
+    const layoutId = await blankLayoutId(context);
     await context.sync();
-    for (let i = 0; i < scenes.length; i++) slides.add();
+    for (let i = 0; i < scenes.length; i++) slides.add(layoutId ? { layoutId } : undefined);
     await context.sync();
     for (let i = 0; i < scenes.length; i++) {
       const slide = slides.getItemAt(before.value + i);
@@ -352,13 +395,17 @@ export async function insertDemoDeck(
   // the opposite call from updateChartsInSlides, for the opposite reason: there,
   // round-trips were the whole cost; here, they are the only progress there is.
   const CHUNK = 4;
+  // Looked up once and reused: the id is a plain string and stays valid across
+  // contexts, so paying a round-trip for it in every chunk would be waste.
+  let layoutId: string | undefined;
   for (let start = 0; start < items.length; start += CHUNK) {
     const batch = items.slice(start, start + CHUNK);
     await PowerPoint.run(async (context) => {
       const slides = context.presentation.slides;
       const before = slides.getCount();
+      if (start === 0) layoutId = await blankLayoutId(context);
       await context.sync();
-      for (let i = 0; i < batch.length; i++) slides.add();
+      for (let i = 0; i < batch.length; i++) slides.add(layoutId ? { layoutId } : undefined);
       await context.sync();
       const perSlide = batch.map((item, i) => {
         const slide = slides.getItemAt(before.value + i);
