@@ -86,7 +86,7 @@ expect the first real-host run to surface issues the mocked tests can't):
    bar by hand (proof of editability).
 3. Select the chart → "Edit it" banner → change data → **Update chart**
    replaces in place.
-4. Pie chart on a 1.9+ host (triangle-fan rotation), grouping on 1.8+.
+4. Pie chart on a 1.10+ host (triangle-fan rotation), grouping on 1.8+.
 5. **Use deck theme** on a 1.10+ host pulls the template's accent colors.
 6. Elements (harvey ball, table with a total row) and Agenda insert.
 7. Excel: select a range → Generate → paste JSON into PowerPoint pane →
@@ -144,7 +144,7 @@ outline-only, pattern fills render solid.
 ## Known constraints to keep in mind
 
 - Requirement sets: shapes need PowerPointApi **1.4+** (Win 2207+, Mac
-  16.62+, web; not iPad); grouping 1.8, re-edit tags 1.3, pie rotation 1.9,
+  16.62+, web; not iPad); grouping 1.8, re-edit tags 1.3, pie rotation 1.10,
   theme colors 1.10. The pane degrades gracefully below each.
 - Pages is static HTTPS — exactly what an add-in needs; no server code, no
   auth, no cost. If the repo must stay private instead, any static HTTPS

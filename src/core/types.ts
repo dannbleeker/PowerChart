@@ -1,3 +1,11 @@
+import type { SymbolShape } from "./geometry";
+
+/**
+ * A point shape. "circle" and "square" are the scene's existing ellipse and
+ * rect; the rest are SymbolNode shapes drawn from PowerPoint preset geometry.
+ */
+export type MarkerSymbol = "circle" | "square" | SymbolShape;
+
 /** Chart kinds supported by the layout engine (think-cell equivalents in comments). */
 export type ChartKind =
   | "stacked" // think-cell "Stacked" column chart
@@ -496,6 +504,20 @@ export interface ChartConfig {
      * overlap remains.
      */
     spreadLimit?: number;
+    /**
+     * Point shape per `Group`, cycled like the palette — the same channel
+     * color already carries, in a form that survives greyscale printing and
+     * red-green color blindness. `["circle", "diamond"]` gives group 1 circles
+     * and group 2 diamonds. Off by default (every point a circle).
+     *
+     * Shape follows Group and nothing else: a scatter has no series to hang it
+     * on (X/Y/Size/Group/Color are rows, points are categories), and encoding
+     * it against anything else would claim a grouping the data doesn't state.
+     * When this is set the legend draws the shapes, so the channel is always
+     * explained — including under a `Color` row, where color means something
+     * else and the group legend would otherwise be suppressed.
+     */
+    markers?: MarkerSymbol[];
   };
   /** Gantt options — the timeline itself; task data stays in datasheet rows. */
   gantt?: {

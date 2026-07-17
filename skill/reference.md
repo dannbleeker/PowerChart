@@ -94,8 +94,14 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       // Ignored under decorations.quadrants (a nudge must not move a
                                       // point across a quadrant line). No free 2D repulsion: it would
                                       // corrupt both of a marker's readings at once.
-              spreadLimit?: number }, // hard cap, in DATA UNITS of the spread axis (default 2% of its
+              spreadLimit?: number,   // hard cap, in DATA UNITS of the spread axis (default 2% of its
                                       // tick range, max 10%)
+              markers?: ("circle"|"square"|"diamond"|"triangle"|"plus"|"star5")[] },
+                                      // point shape per Group row, cycled like the palette; the legend
+                                      // draws the shapes. Off => every point a circle. Shape is a
+                                      // channel color cannot carry: it survives greyscale printing and
+                                      // red-green color blindness. Area is equalised across shapes, so
+                                      // a bubble's "area proportional to Size" still holds.
   multiples?: { columns?: number },   // small multiples: one single-series panel per series,
                                       // shared value scale (stacked/clustered/line/area/waterfall/radar)
   boxplot?: { whiskers?: "tukey"|"minmax", quartileMethod?: "exclusive"|"inclusive",

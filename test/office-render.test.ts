@@ -14,7 +14,7 @@ import {
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { buildAgendaScene } from "../src/core/agenda";
-import type { ChartConfig } from "../src/core/types";
+import type { ChartConfig, MarkerSymbol } from "../src/core/types";
 
 /**
  * Recording doubles for the PowerPoint JS proxy-object API: every shape the
@@ -139,14 +139,31 @@ function installHost(
   };
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => cb(context),
-    GeometricShapeType: {
-      rectangle: "rectangle",
-      ellipse: "ellipse",
-      triangle: "triangle",
-      chevron: "chevron",
-      homePlate: "homePlate",
-      lineInverse: "lineInverse",
-    },
+    // Real Office.js exposes all 177 presets. A plain object listing only the
+    // ones in use today hands back `undefined` for any other name, and the
+    // renderer then records a shape with no geometry while this suite still
+    // passes green — a test that asserts nothing about the shape it drew.
+    // The Proxy makes that impossible: reaching for a preset this stub has not
+    // been told about throws instead of returning undefined.
+    GeometricShapeType: new Proxy(
+      {
+        rectangle: "rectangle",
+        ellipse: "ellipse",
+        triangle: "triangle",
+        chevron: "chevron",
+        homePlate: "homePlate",
+        lineInverse: "lineInverse",
+        diamond: "diamond",
+        plus: "plus",
+        star5: "star5",
+      } as Record<string, string>,
+      {
+        get(target, prop: string) {
+          if (!(prop in target)) throw new Error(`office stub: unknown GeometricShapeType "${String(prop)}"`);
+          return target[prop];
+        },
+      },
+    ),
     ConnectorType: { straight: "straight" },
     ShapeLineDashStyle: { dash: "dash" },
     ShapeAutoSize: { autoSizeNone: "none" },
@@ -561,5 +578,73 @@ describe("isPowerPointHost", () => {
     vi.stubGlobal("PowerPoint", {});
     vi.stubGlobal("Office", { context: { host: "PowerPoint" } });
     expect(isPowerPointHost()).toBe(true);
+  });
+});
+
+describe("marker symbols in the live add-in", () => {
+  const markerScene = (markers: MarkerSymbol[]) =>
+    buildChart({
+      kind: "scatter",
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["a", "b", "c"],
+        series: [
+          { name: "X", values: [1, 2, 3] },
+          { name: "Y", values: [2, 4, 3] },
+          { name: "Group", values: [1, 2, 3] },
+        ],
+      },
+      scatter: { markers },
+    });
+
+  it("draws each symbol as native preset geometry, filled", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(markerScene(["diamond", "plus", "star5"]), { left: 0, top: 0 });
+
+    // Filled preset geometry is the whole reason a symbol is not a polygon:
+    // PowerPoint can only outline a freeform, so a polygon marker would be
+    // hollow here while the SVG preview showed it solid.
+    for (const preset of ["diamond", "plus", "star5"]) {
+      const shapes = slide.created.filter((s) => s.geo === preset);
+      expect(shapes.length, preset).toBeGreaterThan(0);
+      for (const s of shapes) {
+        expect(s.fillColor, preset).toMatch(/^#[0-9a-f]{6}$/i);
+        expect(s.fillCleared, preset).toBe(false);
+        expect(s.box.width, preset).toBeGreaterThan(0);
+        expect(s.box.width, preset).toBeCloseTo(s.box.height, 9);
+      }
+    }
+  });
+
+  it("needs no rotation, so it works on a bare 1.4 host", async () => {
+    // Arrowheads and pie fans need Shape.rotation (1.10+) and degrade without
+    // it. The marker set is deliberately rotation-free: nothing here may set
+    // rotation, so a 1.4 host draws the same shapes as a current one.
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, () => false);
+    await insertSceneIntoSlide(markerScene(["diamond", "triangle", "star5"]), { left: 0, top: 0 });
+    const presets = slide.created.filter((s) => ["diamond", "triangle", "star5"].includes(s.geo!));
+    expect(presets.length).toBeGreaterThan(0);
+    for (const s of presets) expect(s.rotation).toBeUndefined();
+  });
+
+  it("places the symbol's box centred on the point", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const scene = markerScene(["diamond", "diamond", "diamond"]);
+    await insertSceneIntoSlide(scene, { left: 100, top: 50 });
+    const nodes = scene.nodes.filter((n) => n.kind === "symbol");
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const n of nodes) {
+      if (n.kind !== "symbol") continue;
+      const s = slide.created.find(
+        (c) => c.geo === "diamond" && Math.abs(c.box.left - (100 + n.cx - n.size)) < 1e-6,
+      );
+      expect(s, `no shape at cx=${n.cx}`).toBeTruthy();
+      expect(s!.box.top).toBeCloseTo(50 + n.cy - n.size, 9);
+      expect(s!.box.width).toBeCloseTo(n.size * 2, 9);
+    }
   });
 });

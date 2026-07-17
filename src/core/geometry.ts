@@ -91,3 +91,134 @@ export function annularSectorPoints(
   }
   return pts;
 }
+
+/**
+ * Marker symbol shapes — the ones the scene graph cannot already draw filled.
+ *
+ * `circle` and `square` are deliberately absent: those are EllipseNode and
+ * RectNode, and re-expressing them here would fork two shapes that already
+ * render correctly everywhere. A SymbolNode carries only the rest.
+ *
+ * An X ("cross") is absent too, and on purpose. Its OOXML preset
+ * (`mathMultiply`) is built from angled arms this module cannot reproduce
+ * honestly at marker scale, so the SVG preview would promise a shape
+ * PowerPoint does not draw. At 3-4pt an X and a plus are near-identical
+ * anyway, so the set loses nothing by stopping at `plus`.
+ */
+export type SymbolShape = "diamond" | "triangle" | "plus" | "star5";
+
+/**
+ * A point shape. "circle" and "square" are the scene's existing ellipse and
+ * rect; the rest are SymbolNode shapes drawn from PowerPoint preset geometry.
+ */
+export type MarkerSymbol = "circle" | "square" | SymbolShape;
+
+/** OOXML `star5` inner/outer radius ratio (its default adj, 19098/50000). */
+const STAR5_INNER = 19098 / 50000;
+/** OOXML `plus` arm half-width as a fraction of the box side (its default adj). */
+const PLUS_ARM = 25000 / 100000;
+
+/**
+ * Area of each shape when inscribed with half-extent 1, i.e. in a 2x2 box.
+ * Verified against the shoelace area of `symbolPoints` in the geometry tests —
+ * these are the numbers `markerScale` divides by, so a wrong one here silently
+ * mis-sizes every marker of that shape.
+ */
+const MARKER_AREA: Record<MarkerSymbol, number> = {
+  circle: Math.PI,
+  square: 4,
+  diamond: 2,
+  triangle: 2,
+  // Two 2x1 bars crossing, minus their 1x1 overlap.
+  plus: 3,
+  // Ten triangles of (R, R*STAR5_INNER) with 36 degrees between them.
+  star5: 5 * STAR5_INNER * Math.sin((36 * Math.PI) / 180),
+};
+
+/**
+ * Radius multiplier that gives `shape` the same AREA as a circle of the same
+ * radius.
+ *
+ * Bubble radius carries the data — "area ∝ size" is the chart's central
+ * quantitative claim — and a shape drawn at a bare radius does not honour it: a
+ * star inscribed in the same box as a square holds barely a quarter of its ink,
+ * so two bubbles with identical `size` values would differ threefold in area
+ * for no reason but their group. Equalising area keeps shape a purely
+ * categorical channel that cannot be misread as magnitude. It costs the
+ * bounding box: an area-matched star reaches further than the circle it
+ * replaces, which is the correct trade — ink is what the eye measures.
+ */
+export function markerScale(shape: MarkerSymbol): number {
+  return Math.sqrt(Math.PI / MARKER_AREA[shape]);
+}
+
+/**
+ * SymbolShape → OOXML preset geometry name. Both PowerPoint renderers read
+ * this same table: Office.js as a `GeometricShapeType` key, PptxgenJS as an
+ * `addShape` name — the two vocabularies are the same lowercase OOXML names,
+ * so one table serves both and they cannot drift apart.
+ */
+export const SYMBOL_PRESET: Record<SymbolShape, string> = {
+  diamond: "diamond",
+  triangle: "triangle",
+  plus: "plus",
+  star5: "star5",
+};
+
+/**
+ * Outline of a marker symbol as scene-coordinate points, centred on (cx, cy)
+ * and inscribed in the `2*size` square the PowerPoint renderers hand to the
+ * preset. The SVG renderer draws these points directly; the other two name the
+ * preset instead, so this is the one place the two descriptions of a symbol sit
+ * side by side.
+ *
+ * `diamond`, `triangle` and `plus` reproduce their preset's geometry exactly.
+ * `star5` is a regular 5-point star inscribed in the box: the real preset
+ * additionally stretches itself by its `hf`/`vf` factors to touch all four
+ * edges, which this does not copy — the same order of approximation the wedge
+ * fan and the chevron notch already accept, and invisible at marker scale.
+ */
+export function symbolPoints(shape: SymbolShape, cx: number, cy: number, size: number): { x: number; y: number }[] {
+  const s = Math.max(0, size);
+  switch (shape) {
+    case "diamond":
+      return [
+        { x: cx, y: cy - s },
+        { x: cx + s, y: cy },
+        { x: cx, y: cy + s },
+        { x: cx - s, y: cy },
+      ];
+    case "triangle":
+      return [
+        { x: cx, y: cy - s },
+        { x: cx + s, y: cy + s },
+        { x: cx - s, y: cy + s },
+      ];
+    case "plus": {
+      // Arm half-width, from the preset's adj against the box side (2*size).
+      const a = 2 * s * PLUS_ARM;
+      return [
+        { x: cx - s, y: cy - a },
+        { x: cx - a, y: cy - a },
+        { x: cx - a, y: cy - s },
+        { x: cx + a, y: cy - s },
+        { x: cx + a, y: cy - a },
+        { x: cx + s, y: cy - a },
+        { x: cx + s, y: cy + a },
+        { x: cx + a, y: cy + a },
+        { x: cx + a, y: cy + s },
+        { x: cx - a, y: cy + s },
+        { x: cx - a, y: cy + a },
+        { x: cx - s, y: cy + a },
+      ];
+    }
+    case "star5": {
+      const pts: { x: number; y: number }[] = [];
+      // Ten alternating vertices, 36° apart, first point at 12 o'clock.
+      for (let i = 0; i < 10; i++) {
+        pts.push(polar(cx, cy, i % 2 === 0 ? s : s * STAR5_INNER, i * 36));
+      }
+      return pts;
+    }
+  }
+}

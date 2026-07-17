@@ -74,7 +74,9 @@ describe("layout engine fuzz", () => {
                     ? [n.x, n.y, n.w, n.h]
                     : n.kind === "polygon"
                       ? n.points.flatMap((p) => [p.x, p.y])
-                      : [n.x, n.y, n.angle, n.size];
+                      : n.kind === "symbol"
+                        ? [n.cx, n.cy, n.size]
+                        : [n.x, n.y, n.angle, n.size];
         for (const c of coords) {
           expect(Number.isFinite(c)).toBe(true);
           expect(Math.abs(c)).toBeLessThan(5000);

@@ -7,9 +7,10 @@
  * rather than being pasted as pictures or opaque OLE charts.
  *
  * Requires PowerPointApi 1.4+ (ShapeCollection.addGeometricShape / addLine /
- * addTextBox). Grouping and arrowhead rotation degrade gracefully on older hosts.
+ * addTextBox) — marker symbols are preset geometry, so they need only 1.4 too.
+ * Grouping (1.8+) and shape rotation (1.10+) degrade gracefully on older hosts.
  */
-import { polar, arrowheadBox, wedgeFanSteps } from "../core/geometry";
+import { polar, arrowheadBox, wedgeFanSteps, SYMBOL_PRESET } from "../core/geometry";
 import type { Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 
 /* global PowerPoint, Office */
@@ -431,6 +432,29 @@ function addNode(
       if (n.name) shape.name = n.name;
       return [shape];
     }
+    case "symbol": {
+      // Native preset geometry, so the marker stays FILLED here — the reason a
+      // symbol is its own kind rather than a polygon, which PowerPoint can only
+      // outline. SYMBOL_PRESET names are GeometricShapeType keys.
+      const geo = (PowerPoint.GeometricShapeType as unknown as Record<string, PowerPoint.GeometricShapeType>)[
+        SYMBOL_PRESET[n.shape]
+      ];
+      const shape = shapes.addGeometricShape(geo, {
+        left: dx + n.cx - n.size,
+        top: dy + n.cy - n.size,
+        width: Math.max(0.2, n.size * 2),
+        height: Math.max(0.2, n.size * 2),
+      });
+      shape.fill.setSolidColor(n.fill);
+      if (n.stroke && (n.strokeWidth ?? 0) > 0) {
+        shape.lineFormat.color = n.stroke;
+        shape.lineFormat.weight = n.strokeWidth ?? 1;
+      } else {
+        shape.lineFormat.visible = false;
+      }
+      if (n.name) shape.name = n.name;
+      return [shape];
+    }
     case "wedge":
       return addWedgeFan(shapes, n, dx, dy);
     case "polygon": {
@@ -470,7 +494,7 @@ function addNode(
       shape.lineFormat.visible = false;
       try {
         // Geometric 'triangle' points up (= -90° in scene terms); rotation is
-        // exposed from PowerPointApi 1.9 — best effort on older hosts.
+        // exposed from PowerPointApi 1.10 — best effort on older hosts.
         (shape as unknown as { rotation: number }).rotation = box.rotation;
       } catch {
         /* rotation unsupported — arrowhead stays axis-aligned */
@@ -534,7 +558,7 @@ function addText(
 
 /**
  * Approximate a pie wedge with a fan of rotated triangles — Office.js has no
- * adjustable pie geometry or freeform paths. Needs Shape.rotation (1.9);
+ * adjustable pie geometry or freeform paths. Needs Shape.rotation (1.10);
  * older hosts get no wedge. Doughnut holes are separate ellipse nodes
  * emitted by the layout, so wedges here are always full slices.
  */

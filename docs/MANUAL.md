@@ -16,8 +16,9 @@ section and `skill/reference.md`.
    table) that opens the pane on the Elements tab with that element highlighted.
 2. Requirements: PowerPoint on Windows 2207+, Mac 16.62+, or the web
    (PowerPointApi 1.4+). Grouping needs 1.8+, chart re-editing (tags) 1.3+,
-   pies 1.9+, deck-theme colors 1.10+. Missing capabilities degrade
-   gracefully — charts still insert.
+   pies 1.10+ (shape rotation), deck-theme colors 1.10+. Marker symbols need
+   only 1.4 — they are preset geometry, not rotated shapes. Missing
+   capabilities degrade gracefully — charts still insert.
 3. No host? The pane also runs as a plain web page (`npm run dev` →
    `localhost:3000`) with everything except insertion, plus a demo gallery.
 
@@ -144,6 +145,19 @@ so the chart discloses its own approximation. It is ignored under `quadrants`:
 a nudge must never move a point across a quadrant line. Both axes carry data,
 so PowerChart will not move a marker freely in 2D — that would corrupt two
 readings at once.
+
+**Marker symbols** (`scatter.markers` on scatter/bubble): give each `Group` a
+point shape — `["circle", "diamond", "triangle"]` makes group 1 circles, group
+2 diamonds, group 3 triangles, cycling if there are more groups than shapes.
+Shape carries what color cannot: a printed deck is often greyscale, and ~8% of
+men cannot separate red from green, either of which flattens a palette back to
+one group. The legend draws the shapes, so the channel is always explained —
+including alongside a `Color` row, where color means something else. Shapes are
+area-matched to the circle they replace, so a bubble's "area tracks Size"
+survives: without that a group drawn as stars would read as a quarter the
+magnitude of the same value drawn as squares. Available: `circle`, `square`,
+`diamond`, `triangle`, `plus`, `star5` — all PowerPoint preset geometry, so
+they stay filled and editable in the deck on any 1.4+ host.
 
 **Marginal histograms** (`decorations.marginals: "x" | "y" | "both"` on
 scatter/bubble): distribution bars in a gutter along the top and/or right
@@ -341,7 +355,7 @@ practical substitute for live data links.
 
 - **Charts insert ungrouped** — host below PowerPointApi 1.8; everything
   still works, shapes just aren't grouped.
-- **Pie slices missing** — host below 1.9 (no shape rotation).
+- **Pie slices missing** — host below 1.10 (no shape rotation).
 - **"Theme unavailable"** — host below 1.10.
 - **Chart not recognized for editing** — it must carry the PowerChart tag;
   charts inserted before tagging existed can't be re-opened.

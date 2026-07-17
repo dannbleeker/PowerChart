@@ -1,4 +1,5 @@
-import type { ChartConfig, ChartStyle, Decorations } from "../types";
+import type { ChartConfig, ChartStyle, Decorations, MarkerSymbol } from "../types";
+import { markerScale } from "../geometry";
 import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatP, histogramBins, niceTicks, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
@@ -38,6 +39,42 @@ export function spreadCap(cfg: ChartConfig): { axis: "x" | "y"; limit: number } 
   return { axis, limit: Math.max(0, Math.min(limit, range * 0.1)) };
 }
 
+/** Width of the continuous-color gradient bar; the group legend clears it. */
+const COLOR_BAR_W = 90;
+
+/**
+ * A point mark of the given shape, carrying the same ink as a circle of radius
+ * `r`.
+ *
+ * `r` is the DATA radius — "area ∝ size" is the bubble's central claim — so
+ * every shape is grown or shrunk by markerScale to match the circle's area.
+ * Without that, a group drawn as stars would read as a quarter the magnitude of
+ * an identical value drawn as squares.
+ *
+ * "circle" and "square" resolve to the ellipse and rect the scene already has,
+ * so the default scatter emits exactly the node it always did (markerScale is
+ * 1 for a circle) and its output cannot move; only the shapes that need preset
+ * geometry become SymbolNodes.
+ */
+function markerNode(
+  shape: MarkerSymbol,
+  cx: number,
+  cy: number,
+  r: number,
+  fill: string,
+  stroke: string,
+  strokeWidth: number,
+  name: string,
+): SceneNode {
+  const m = markerExtent(shape, r);
+  if (shape === "circle") return { kind: "ellipse", cx, cy, rx: m, ry: m, fill, stroke, strokeWidth, name };
+  if (shape === "square") return { kind: "rect", x: cx - m, y: cy - m, w: m * 2, h: m * 2, fill, stroke, strokeWidth, name };
+  return { kind: "symbol", shape, cx, cy, size: m, fill, stroke, strokeWidth, name };
+}
+
+/** Drawn half-extent of a marker whose data radius is `r`. */
+const markerExtent = (shape: MarkerSymbol, r: number) => r * markerScale(shape);
+
 export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
@@ -56,6 +93,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const pts = data.categories
     .map((label, i) => ({ label, x: xs[i], y: ys[i], size: sizes[i] ?? null, group: groups[i] ?? 1, color: colorVals[i] ?? null }))
     .filter((p): p is typeof p & { x: number; y: number } => p.x != null && p.y != null);
+
+  // Shape per group, cycled like the palette. Off => every point a circle,
+  // which is the ellipse the layout has always emitted.
+  const markers = cfg.scatter?.markers?.length ? cfg.scatter.markers : null;
+  const markerFor = (group: number | null): MarkerSymbol =>
+    markers ? markers[Math.max(0, Math.round(Number(group)) - 1) % markers.length] : "circle";
 
   // Continuous color scale (a "Color" row): maps each point onto a sequential
   // ramp; supersedes group coloring and swaps the chip legend for a gradient.
@@ -232,7 +275,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (colorScale) {
     const cFmt = resolveFormat([colorScale.min, colorScale.max], cfg.numberFormat);
     const steps = 24;
-    const barW = 90;
+    const barW = COLOR_BAR_W;
     const cell = barW / steps;
     const bx = plot.x;
     // The min/max labels hang BELOW the gradient bar, so with a top gutter the
@@ -251,18 +294,34 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     );
   }
 
-  // Group legend when points are colored by group (skipped under a color scale).
-  const groupIds = colorScale ? [] : [...new Set(pts.map((p) => Math.max(1, Math.round(Number(p.group)))))].sort((a, b) => a - b);
+  // Group legend when points are colored by group. A color scale normally
+  // supersedes group coloring and suppresses this — but markers put group on
+  // the SHAPE channel, which the color legend says nothing about, so the legend
+  // has to come back or the shapes stand unexplained.
+  const groupIds =
+    colorScale && !markers ? [] : [...new Set(pts.map((p) => Math.max(1, Math.round(Number(p.group)))))].sort((a, b) => a - b);
   if (groupIds.length > 1) {
-    let lx = plot.x;
+    // Clear the gradient bar when both legends are up — they share this row and
+    // both anchor at plot.x, so without the offset the chips land on the ramp.
+    let lx = plot.x + (colorScale ? COLOR_BAR_W + 16 : 0);
     for (const g of groupIds) {
       const chip = fs * 0.7;
       const label = `Group ${g}`;
+      // Under a color scale the chip's color would be a lie (color means the
+      // Color row there), so the shape carries the legend in neutral ink.
+      const chipFill = colorScale ? style.mutedText : (cfg.style?.palette ?? PALETTE)[(g - 1) % 8];
+      // The chip is drawn like the points it explains, area and all — so an
+      // area-matched star is 1.67x wider than `chip` and would sit on its own
+      // label. Advance by what was actually drawn. Without markers the drawn
+      // width IS chip, so the default legend's spacing is untouched.
+      const drawn = markers ? markerExtent(markerFor(g), chip / 2) * 2 : chip;
       nodes.push(
-        { kind: "rect", x: lx, y: chromeTop - fs * 1.2, w: chip, h: chip, fill: (cfg.style?.palette ?? PALETTE)[(g - 1) % 8], name: `legend-chip-${g}` },
-        { kind: "text", x: lx + chip + 3, y: chromeTop - fs * 1.55, w: textWidth(label, fs) + 6, h: fs * 1.4, text: label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${g}` },
+        markers
+          ? markerNode(markerFor(g), lx + drawn / 2, chromeTop - fs * 1.2 + chip / 2, chip / 2, chipFill, style.background, 0, `legend-chip-${g}`)
+          : { kind: "rect", x: lx, y: chromeTop - fs * 1.2, w: chip, h: chip, fill: chipFill, name: `legend-chip-${g}` },
+        { kind: "text", x: lx + drawn + 3, y: chromeTop - fs * 1.55, w: textWidth(label, fs) + 6, h: fs * 1.4, text: label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${g}` },
       );
-      lx += chip + 3 + textWidth(label, fs) + 14;
+      lx += drawn + 3 + textWidth(label, fs) + 14;
     }
   }
 
@@ -390,18 +449,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const gi = Math.max(0, Math.round(Number(p.group)) - 1);
     const fill =
       colorScale && p.color != null ? colorScale.of(p.color) : colorScale ? style.mutedText : (cfg.style?.palette ?? PALETTE)[gi % 8];
-    nodes.push({
-      kind: "ellipse",
-      cx: px(p, i),
-      cy: py(p, i),
-      rx: r,
-      ry: r,
-      fill,
-      stroke: style.background,
-      strokeWidth: 1,
-      name: `point-${i}`,
-    });
-    markerBoxes.push({ x: px(p, i) - r, y: py(p, i) - r, w: r * 2, h: r * 2 });
+    nodes.push(markerNode(markerFor(p.group), px(p, i), py(p, i), r, fill, style.background, 1, `point-${i}`));
+    // Keep labels off the mark as DRAWN: an area-matched star reaches ~1.67x
+    // its data radius, and a keep-out box built from `r` would let a label sit
+    // on its points.
+    const mr = markerExtent(markerFor(p.group), r);
+    markerBoxes.push({ x: px(p, i) - mr, y: py(p, i) - mr, w: mr * 2, h: mr * 2 });
   }
 
   // Greedy label placement, biggest bubbles first so important points win.

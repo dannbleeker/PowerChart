@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { niceTicks, segmentLabel, resolveFormat } from "../src/core/format";
 import { sceneToSvg } from "../src/render/svg";
+import type { SymbolNode } from "../src/core/scene";
 import { sheetToData } from "../src/taskpane/datasheet";
 import type { ChartConfig, ChartData } from "../src/core/types";
 import type { TextNode } from "../src/core/scene";
@@ -192,5 +193,40 @@ describe("SVG annular wedge path", () => {
     });
     expect(svg.match(/A /g)!.length).toBe(2);
     expect(svg).toContain('stroke="#000000"');
+  });
+});
+
+describe("SVG marker symbols", () => {
+  const svgOf = (n: Partial<SymbolNode> = {}) =>
+    sceneToSvg({
+      width: 100,
+      height: 100,
+      nodes: [{ kind: "symbol", shape: "diamond", cx: 50, cy: 50, size: 10, fill: "#123456", ...n } as SymbolNode],
+    });
+
+  it("draws a filled polygon on the symbol's own points", () => {
+    const svg = svgOf();
+    expect(svg).toContain('fill="#123456"');
+    // The four diamond vertices, at the box edge midpoints.
+    expect(svg).toContain('points="50,40 60,50 50,60 40,50"');
+  });
+
+  it("carries an optional stroke, and omits it when absent", () => {
+    expect(svgOf({ stroke: "#ffffff", strokeWidth: 2 })).toContain('stroke="#ffffff" stroke-width="2"');
+    expect(svgOf()).not.toContain("stroke=");
+  });
+
+  it("emits the data-name so a symbol is addressable like any other node", () => {
+    expect(svgOf({ name: "point-3" })).toContain('data-name="point-3"');
+  });
+
+  it("draws every shape, and rounds coordinates like the rest of the renderer", () => {
+    for (const shape of ["diamond", "triangle", "plus", "star5"] as const) {
+      const svg = svgOf({ shape, cx: 33.333333, cy: 12.126, size: 7.77 });
+      expect(svg).toContain("<polygon");
+      // r() quantises to 2dp; a raw float here would be snapshot noise.
+      const pts = svg.match(/points="([^"]+)"/)![1];
+      for (const n of pts.split(/[ ,]/)) expect(n).toMatch(/^-?\d+(\.\d{1,2})?$/);
+    }
   });
 });
