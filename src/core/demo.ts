@@ -4,6 +4,7 @@ import { CHART_KINDS, sampleConfig } from "./samples";
 import { buildChart, DEFAULT_SIZE } from "./chart";
 import { buildAgendaScene } from "./agenda";
 import { buildKpiTile, buildProcessFlow, buildTableScene } from "./elements";
+import { PALETTE } from "./style";
 
 /**
  * One entry per demo slide. `configJson` is set for real charts so the inserted
@@ -134,22 +135,60 @@ function elementScenes(): { title: string; scene: Scene }[] {
   ];
 }
 
+/** The opening title slide of the demo deck. */
+function buildTitleScene(): Scene {
+  return {
+    width: 840,
+    height: 360,
+    nodes: [
+      { kind: "text", x: 0, y: 96, w: 840, h: 66, text: "PowerChart chart gallery", fontSize: 40, bold: true, color: PALETTE[0], align: "left", valign: "top", name: "title" },
+      { kind: "text", x: 0, y: 168, w: 840, h: 28, text: "Every chart kind, feature highlight, and scorecard element — as native, editable PowerPoint shapes.", fontSize: 15, color: "#52514e", align: "left", valign: "top", name: "subtitle" },
+      { kind: "text", x: 0, y: 208, w: 840, h: 22, text: "The next slide indexes each chart with its shape count.", fontSize: 12, color: "#8a8984", align: "left", valign: "top", name: "note" },
+    ],
+  };
+}
+
 /**
- * The full demo deck: one editable chart per kind, then the feature and element
- * highlights. A single button drops all of this onto fresh slides for live
- * testing in PowerPoint.
+ * A contents table listing every chart with its shape count — doubles as the
+ * regression manifest (shape count vs the ~90 web budget shows which are skipped).
+ * Two name/count pairs side by side so all ~35 rows fit one slide, under budget.
+ */
+function buildIndexScene(charts: DemoItem[]): Scene {
+  const per = Math.ceil(charts.length / 2);
+  const rows: string[][] = [["Chart", "Shapes", "Chart", "Shapes"]];
+  for (let i = 0; i < per; i++) {
+    const left = charts[i];
+    const right = charts[i + per];
+    rows.push([
+      left ? `${i + 1}. ${left.title}` : "",
+      left ? String(left.scene.nodes.length) : "",
+      right ? `${i + per + 1}. ${right.title}` : "",
+      right ? String(right.scene.nodes.length) : "",
+    ]);
+  }
+  return buildTableScene(rows, 840);
+}
+
+/**
+ * The full demo deck: a title slide, a contents/manifest table, then one editable
+ * chart per kind, the feature highlights, and the elements. A single button drops
+ * all of this onto fresh slides for live testing in PowerPoint.
  */
 export function demoItems(): DemoItem[] {
-  const items: DemoItem[] = [];
+  const charts: DemoItem[] = [];
   for (const { kind, label } of CHART_KINDS) {
     const config: ChartConfig = { ...sampleConfig(kind), title: label };
-    items.push({ title: label, scene: buildChart(config), configJson: JSON.stringify(config) });
+    charts.push({ title: label, scene: buildChart(config), configJson: JSON.stringify(config) });
   }
   for (const { title, config } of featureConfigs()) {
-    items.push({ title, scene: buildChart(config), configJson: JSON.stringify(config) });
+    charts.push({ title, scene: buildChart(config), configJson: JSON.stringify(config) });
   }
   for (const { title, scene } of elementScenes()) {
-    items.push({ title, scene });
+    charts.push({ title, scene });
   }
-  return items;
+  return [
+    { title: "Title", scene: buildTitleScene() },
+    { title: "Contents", scene: buildIndexScene(charts) },
+    ...charts,
+  ];
 }
