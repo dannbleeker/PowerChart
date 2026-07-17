@@ -135,8 +135,11 @@ function elementScenes(): { title: string; scene: Scene }[] {
   ];
 }
 
-/** The opening title slide of the demo deck. */
-function buildTitleScene(): Scene {
+/**
+ * The opening title slide of the demo deck. Stamps the running build so a test
+ * PDF is self-identifying — you can tell at a glance which build produced it.
+ */
+function buildTitleScene(buildStamp: string): Scene {
   return {
     width: 840,
     height: 360,
@@ -144,6 +147,7 @@ function buildTitleScene(): Scene {
       { kind: "text", x: 0, y: 96, w: 840, h: 66, text: "PowerChart chart gallery", fontSize: 40, bold: true, color: PALETTE[0], align: "left", valign: "top", name: "title" },
       { kind: "text", x: 0, y: 168, w: 840, h: 28, text: "Every chart kind, feature highlight, and scorecard element — as native, editable PowerPoint shapes.", fontSize: 15, color: "#52514e", align: "left", valign: "top", name: "subtitle" },
       { kind: "text", x: 0, y: 208, w: 840, h: 22, text: "The next slide indexes each chart with its shape count.", fontSize: 12, color: "#8a8984", align: "left", valign: "top", name: "note" },
+      { kind: "text", x: 0, y: 300, w: 840, h: 22, text: `Build ${buildStamp}`, fontSize: 12, bold: true, color: "#52514e", align: "left", valign: "top", name: "build-stamp" },
     ],
   };
 }
@@ -174,7 +178,7 @@ function buildIndexScene(charts: DemoItem[]): Scene {
  * chart per kind, the feature highlights, and the elements. A single button drops
  * all of this onto fresh slides for live testing in PowerPoint.
  */
-export function demoItems(): DemoItem[] {
+export function demoItems(buildStamp = "local build"): DemoItem[] {
   const charts: DemoItem[] = [];
   for (const { kind, label } of CHART_KINDS) {
     const config: ChartConfig = { ...sampleConfig(kind), title: label };
@@ -187,7 +191,7 @@ export function demoItems(): DemoItem[] {
     charts.push({ title, scene });
   }
   return [
-    { title: "Title", scene: buildTitleScene() },
+    { title: "Title", scene: buildTitleScene(buildStamp) },
     { title: "Contents", scene: buildIndexScene(charts) },
     ...charts,
   ];
