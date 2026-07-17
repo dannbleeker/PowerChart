@@ -363,13 +363,30 @@ function updateTypeSummary() {
 function wireTabs() {
   const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".tabs .tab"));
   const panels = Array.from(document.querySelectorAll<HTMLElement>(".tab-panel"));
+  const bar = document.querySelector<HTMLElement>(".action-bar");
+  /**
+   * The action bar belongs to the Chart tab alone.
+   *
+   * Every one of its actions reads the CHART's state — "Insert into slide"
+   * inserts currentConfig(), and the ⋯ menu edits, rescales or downloads
+   * charts. On Elements it therefore offered a big primary button that inserts
+   * a stacked column chart, sitting directly under the small "Insert" that
+   * inserts the Harvey ball you are actually looking at: the prominent button
+   * was the wrong one. Elements and Agenda already carry their own insert
+   * buttons, so hiding it there removes a trap rather than a feature.
+   */
+  const showBarFor = (name?: string) => bar?.toggleAttribute("hidden", name !== "chart");
   for (const tab of tabs) {
     tab.addEventListener("click", () => {
       const name = tab.dataset.tab;
       tabs.forEach((t) => t.classList.toggle("active", t === tab));
       panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === name));
+      showBarFor(name);
     });
   }
+  // No initial call: the bar ships visible and Chart ships active, so the
+  // default is already right — and a ?tab= deep link CLICKS its tab, which
+  // runs the listener above. Setting it here as well only looked prudent.
 }
 
 /** The footer "⋯" overflow menu holding the secondary actions (edit selected,

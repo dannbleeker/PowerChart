@@ -227,3 +227,39 @@ describe("busy-guard on host actions", () => {
     expect($<HTMLButtonElement>("insert").disabled).toBe(false);
   });
 });
+
+describe("the action bar belongs to the Chart tab", () => {
+  const bar = () => document.querySelector<HTMLElement>(".action-bar")!;
+  const clickTab = (name: string) => document.querySelector<HTMLButtonElement>(`.tabs .tab[data-tab="${name}"]`)!.click();
+
+  it("hides itself on every tab that is not Chart", async () => {
+    // Every action in this bar reads the CHART's state: "Insert into slide"
+    // inserts currentConfig(). On Elements that put a big primary button that
+    // inserts a stacked column chart directly under the small "Insert" that
+    // inserts the Harvey ball you are looking at — the prominent button was
+    // the wrong one.
+    await bootPane();
+    expect(bar().hasAttribute("hidden"), "Chart tab").toBe(false);
+    for (const tab of ["elements", "agenda", "automation"]) {
+      clickTab(tab);
+      expect(bar().hasAttribute("hidden"), tab).toBe(true);
+    }
+    clickTab("chart");
+    expect(bar().hasAttribute("hidden"), "back on Chart").toBe(false);
+  });
+
+  it("honours the tab a deep link opens on", async () => {
+    // ?tab=elements clicks the tab after wiring, so the bar must follow the
+    // link rather than the markup's default active tab.
+    await bootPane("?tab=elements");
+    expect(bar().hasAttribute("hidden")).toBe(true);
+  });
+
+  it("actually disappears — [hidden] must beat the bar's own display:flex", async () => {
+    // The trap: `.action-bar { display: flex }` is an author rule and outranks
+    // the UA stylesheet's `[hidden] { display: none }`, so the attribute would
+    // be set and the bar would stay on screen. Assert the CSS, not the DOM.
+    const css = readFileSync("src/taskpane/taskpane.css", "utf8");
+    expect(css).toMatch(/\.action-bar\[hidden\]\s*\{[^}]*display:\s*none/);
+  });
+});
