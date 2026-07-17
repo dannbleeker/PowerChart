@@ -11,6 +11,7 @@
  * Grouping (1.8+) and shape rotation (1.10+) degrade gracefully on older hosts.
  */
 import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET } from "../core/geometry";
+import { estimateOfficeShapes } from "../core/scene";
 import type { Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 
 /* global PowerPoint, Office */
@@ -454,29 +455,6 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
  * not to trim the deck.
  */
 const DEMO_SHAPE_BUDGET = 90;
-
-/**
- * How many NATIVE shapes a scene becomes on the host — the number the budget
- * actually cares about, which is NOT the node count. A wedge fans out into
- * `wedgeFanSteps` shapes (+2 stroke edges); a polygon draws one line per edge.
- * So a 10-node pie is ~50 shapes and a 10-node violin ~250 — counting nodes waved
- * both straight past the budget and the host choked, which is exactly what the
- * self-check caught. Everything else is one shape.
- */
-export function estimateOfficeShapes(scene: Scene): number {
-  let total = 0;
-  for (const n of scene.nodes) {
-    if (n.kind === "wedge") {
-      const span = n.endAngle - n.startAngle;
-      total += wedgeFanSteps(n.r, span).steps + (n.stroke && span < 359.9 ? 2 : 0);
-    } else if (n.kind === "polygon") {
-      total += n.points.length; // one line per edge, closed
-    } else {
-      total += 1;
-    }
-  }
-  return total;
-}
 
 /**
  * Draw a bold red banner ACROSS THE TOP of a slide so an incomplete one is

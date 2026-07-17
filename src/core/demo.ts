@@ -1,5 +1,5 @@
 import type { ChartConfig } from "./types";
-import type { Scene } from "./scene";
+import { estimateOfficeShapes, type Scene } from "./scene";
 import { CHART_KINDS, sampleConfig } from "./samples";
 import { buildChart, DEFAULT_SIZE } from "./chart";
 import { buildAgendaScene } from "./agenda";
@@ -161,9 +161,9 @@ function buildIndexScene(charts: DemoItem[]): Scene {
     const right = charts[i + per];
     rows.push([
       left ? `${i + 1}. ${left.title}` : "",
-      left ? String(left.scene.nodes.length) : "",
+      left ? String(estimateOfficeShapes(left.scene)) : "",
       right ? `${i + per + 1}. ${right.title}` : "",
-      right ? String(right.scene.nodes.length) : "",
+      right ? String(estimateOfficeShapes(right.scene)) : "",
     ]);
   }
   return buildTableScene(rows, 840);
