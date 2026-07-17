@@ -522,15 +522,6 @@ export interface DemoResult {
   /** Wall-clock time for this slide, ms. A value nearing BATCH_TIMEOUT_MS (45s) is
    *  a near-miss stall — the host was one hair from losing it. */
   ms: number;
-  /**
-   * TOP-LEVEL shapes the host reports on this slide, read back after the run
-   * (-1 = not read: the deck lost a slide, so order-mapping is unsafe, or the
-   * readback itself faulted). A `rendered` slide reading 0 came back BLANK —
-   * it committed but its shapes detached, a silent partial a visual scan misses.
-   * NOT comparable to `created`: a grouped chart collapses to one top-level
-   * group, so this is a presence check, not a per-shape census.
-   */
-  onSlide: number;
   /** The item stalled on its first attempt but a single retry recovered it. The
    *  first attempt may have left a stray partial slide (see slidesAdded). */
   retried?: boolean;
@@ -539,13 +530,33 @@ export interface DemoResult {
 /** A demo-deck insert's self-verification report. */
 export interface DemoReport {
   results: DemoResult[];
-  /**
-   * How much the deck ACTUALLY grew, read back from the host. It SHOULD equal
-   * `results.length` (one slide per item, even skipped/failed ones). A shortfall
-   * means the host silently lost slides mid-run — an otherwise-invisible
-   * corruption that a regression run must surface, not hide.
-   */
+  /** How much the deck ACTUALLY grew (settled getCount, after − before). */
   slidesAdded: number;
+  /**
+   * How many slide-adds the run ISSUED: one per item, plus one more for each
+   * retried or failed item (both make a second attempt). Comparing this to
+   * `slidesAdded` — NOT `results.length` — is what un-masks a lost slide: a
+   * retry/fail leaves a stray that inflates `slidesAdded`, so measuring loss
+   * against `results.length` reads 0 during real corruption when a stray happens
+   * to cancel a lost slide. `addsIssued − slidesAdded` counts adds that did not
+   * land (a stray that landed cancels; a swallowed/lost add does not).
+   */
+  addsIssued: number;
+  /**
+   * 1-based deck positions of ADDED slides that read back with ZERO shapes — the
+   * host committed the slide but its content detached (a silent partial a visual
+   * scan misses). Position-only BY DESIGN: a blank slide has no content and no
+   * config tag, so it cannot be attributed to a named item. Each 0 is re-read
+   * once (a struggling host can report a transient 0) before being recorded.
+   * Honest limits: it cannot see a chart grouped onto ONE shape that then lost
+   * some children, a MERGE of two items onto one slide (that slide isn't blank),
+   * or a paint-only blank (office-js#2699 — shapes exist, getCount > 0). Naming
+   * the missing/merged charts by their config tag is a documented follow-up.
+   */
+  blankSlides: number[];
+  /** False if the blank readback faulted mid-pass — so an empty `blankSlides` is
+   *  not mistaken for "no blanks" when it really means "not fully measured". */
+  blanksRead: boolean;
   /** Wall-clock time for the whole run, ms — the headline regression metric. */
   totalMs: number;
 }
@@ -647,52 +658,87 @@ export async function insertDemoDeck(
         await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
       }
     }
-    results.push({ created, status, ms: Date.now() - t0, onSlide: -1, retried });
+    results.push({ created, status, ms: Date.now() - t0, retried });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
   const after = await slideCount();
   const slidesAdded = after - before;
+  // One add per item, plus a second for every retried/failed item — the count of
+  // adds we ISSUED. Loss is `addsIssued − slidesAdded`, never `items.length −
+  // slidesAdded`: a stray from a retry/fail cancels a lost slide against the
+  // latter, hiding corruption (observed on a real run: 2 slides lost, reported 0).
+  const addsIssued = results.length + results.filter((r) => r.retried || r.status === "failed").length;
   // A whole deck lost to HOST errors (not just skipped-as-dense) is a real
   // failure — surface it so the pane says "Failed", not "inserted 0 of N". If
   // everything was merely skipped, there is no error to throw.
   if (items.length && results.every((r) => r.status !== "rendered") && lastError !== undefined) {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
-  // On-slide readback: confirm each added slide against the host, catching a
-  // slide that committed but came back BLANK. Order-mapped, so only sound when
-  // the deck grew by exactly one slide per item; a lost slide shifts every index,
-  // so skip it then and leave onSlide = -1. A readback hiccup must not sink the
-  // run — the counts simply stay unread.
-  if (slidesAdded === results.length) {
-    await readBackShapeCounts(before, results).catch(() => {});
-  }
-  return { results, slidesAdded, totalMs };
+  // Blank readback: find added slides the host kept but left EMPTY. Counted by
+  // position, not mapped to items — a scrambled deck (lost/merged/reordered
+  // slides, plus retry strays) breaks any positional item mapping, and a blank
+  // slide has no tag to identify it anyway. Best-effort: a fault leaves
+  // blanksRead false so an empty list is not read as "no blanks".
+  const { positions: blankSlides, complete: blanksRead } = await findBlankAddedSlides(before, after);
+  return { results, slidesAdded, addsIssued, blankSlides, blanksRead, totalMs };
 }
 
 /** Slides read per sync in the readback — kept modest to stay clear of the web
  *  >50-item load ceiling (office-js#4272), though getCount is a scalar, not a load. */
 export const READBACK_PAGE = 20;
 
+/** Top-level shape counts for slides [start, end), read in one settled sync. */
+async function shapeCounts(start: number, end: number): Promise<number[]> {
+  return PowerPoint.run(async (context) => {
+    const counts: { value: number }[] = [];
+    for (let i = start; i < end; i++) counts.push(context.presentation.slides.getItemAt(i).shapes.getCount());
+    await context.sync();
+    return counts.map((c) => c.value);
+  });
+}
+
 /**
- * Read back how many TOP-LEVEL shapes each freshly-added slide actually holds, so
- * a slide that committed yet came back empty (its shapes detached after a poisoned
- * fresh-slide handle, say) is caught — a silent partial a visual scan misses.
- * Fresh positional proxies per page (getItemAt is durable for these now-settled
- * slides). Sets `results[j].onSlide`; leaves -1 untouched on any read that faults.
+ * Find the ADDED slides (indices [before, after)) the host kept but left EMPTY,
+ * returned as 1-based deck positions. Paged to stay clear of the web load ceiling.
+ * A struggling host can report a transient 0 for a slide whose shapes have not yet
+ * reconciled, so every candidate 0 is RE-READ once in a fresh settled sync before
+ * it counts. `complete` is false if any page's read faulted — so callers don't read
+ * an empty list as "no blanks" when it really means "not fully measured".
+ *
+ * Position-only by design: the host scrambles order under load (lost/merged/
+ * reordered slides), which defeats any slide↔item mapping, and a blank slide
+ * carries no config tag to identify it. This flags empty SLOTS; naming the
+ * missing/merged charts via their tags is a documented follow-up.
  */
-async function readBackShapeCounts(before: number, results: DemoResult[]): Promise<void> {
-  for (let start = 0; start < results.length; start += READBACK_PAGE) {
-    const end = Math.min(start + READBACK_PAGE, results.length);
-    await PowerPoint.run(async (context) => {
-      const counts: { value: number }[] = [];
-      for (let j = start; j < end; j++) {
-        counts.push(context.presentation.slides.getItemAt(before + j).shapes.getCount());
-      }
-      await context.sync();
-      for (let j = start; j < end; j++) results[j].onSlide = counts[j - start].value;
-    });
+async function findBlankAddedSlides(before: number, after: number): Promise<{ positions: number[]; complete: boolean }> {
+  const candidates: number[] = [];
+  let complete = true;
+  for (let start = before; start < after; start += READBACK_PAGE) {
+    const end = Math.min(start + READBACK_PAGE, after);
+    try {
+      const counts = await shapeCounts(start, end);
+      counts.forEach((n, k) => { if (n === 0) candidates.push(start + k); });
+    } catch {
+      complete = false; // a page we could not read — do not claim it as clean
+    }
   }
+  // Re-read each candidate once: a transient 0 under load clears on a settled retry.
+  const positions: number[] = [];
+  for (let start = 0; start < candidates.length; start += READBACK_PAGE) {
+    const page = candidates.slice(start, start + READBACK_PAGE);
+    try {
+      const again = await PowerPoint.run(async (context) => {
+        const cs = page.map((i) => context.presentation.slides.getItemAt(i).shapes.getCount());
+        await context.sync();
+        return cs.map((c) => c.value);
+      });
+      page.forEach((i, k) => { if (again[k] === 0) positions.push(i + 1); }); // 1-based deck position
+    } catch {
+      complete = false;
+    }
+  }
+  return { positions: positions.sort((a, b) => a - b), complete };
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */

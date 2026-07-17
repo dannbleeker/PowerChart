@@ -1427,7 +1427,7 @@ function wireInsert() {
         const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        const { results, slidesAdded, totalMs } = await insertDemoDeck(
+        const { results, slidesAdded, addsIssued, blankSlides, blanksRead, totalMs } = await insertDemoDeck(
           items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
           (done, total) => {
             note(`Inserting demo slides… ${done} of ${total}`, "busy");
@@ -1435,43 +1435,44 @@ function wireInsert() {
           },
         );
         // Self-check: the deck is a regression harness, so report what the HOST
-        // actually did, not what we asked for. Per-item status + a lost-slide
-        // check (deck growth vs items) — the latter catches silent corruption a
-        // visual scan would miss. The full table goes to the console to copy.
+        // actually did, not what we asked for. The full table goes to the console.
         const named = (s: "skipped" | "failed") =>
           results.map((r, i) => (r.status === s ? items[i].title : "")).filter(Boolean);
         const skipped = named("skipped");
         const failedNames = named("failed");
         const rendered = results.filter((r) => r.status === "rendered").length;
-        const lost = items.length - slidesAdded;
-        const secs = (totalMs / 1000).toFixed(1);
-        // A slide we "rendered" that reads back with zero shapes came out BLANK —
-        // it committed but its content detached. onSlide is -1 when unread (a lost
-        // slide made order-mapping unsafe), so only a hard 0 counts.
-        const blank = results.map((r, i) => (r.status === "rendered" && r.onSlide === 0 ? items[i].title : "")).filter(Boolean);
         const recovered = results.filter((r) => r.retried).length;
+        // Loss vs adds ISSUED, not vs items.length: a retry/fail stray inflates
+        // slidesAdded, so measuring against items.length reads 0 during real
+        // corruption when a stray cancels a lost slide. addsIssued − slidesAdded
+        // counts adds that never landed (strays that landed cancel out).
+        const lost = Math.max(0, addsIssued - slidesAdded);
+        const secs = (totalMs / 1000).toFixed(1);
         console.log("PowerChart demo self-check:");
-        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, onSlide: r.onSlide, status: r.status, retried: !!r.retried, ms: r.ms })));
-        console.log(`deck grew by ${slidesAdded}, expected ${items.length}${lost > 0 ? ` — ${lost} LOST` : ""} · total ${secs}s`);
+        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, status: r.status, retried: !!r.retried, ms: r.ms })));
+        console.log(`deck grew by ${slidesAdded}, issued ${addsIssued} adds${lost > 0 ? ` — ${lost} LOST` : ""}; blank slots ${blankSlides.length ? blankSlides.join(", ") : "none"}${blanksRead ? "" : " (blank check incomplete)"} · total ${secs}s`);
         let msg = `Inserted ${rendered} of ${items.length} in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (recovered) msg += ` ${recovered} recovered on retry.`;
-        if (lost > 0) msg += ` ⚠ ${lost} slide${lost === 1 ? "" : "s"} LOST by the host (deck grew by ${slidesAdded}, expected ${items.length}).`;
-        if (blank.length) msg += ` ⚠ ${blank.length} rendered BLANK (committed but empty): ${blank.join(", ")}.`;
+        if (lost > 0) msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
+        // Blank slides are reported by DECK POSITION, not item name: a blank slide
+        // has no content to identify it, and a scrambled deck breaks any mapping.
+        if (blankSlides.length) msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK (deck slide${blankSlides.length === 1 ? "" : "s"} ${blankSlides.join(", ")}).`;
+        else if (!blanksRead) msg += ` (Blank check did not finish.)`;
         // Close the deck with a self-contained results slide so the exported PDF is
         // a complete run record. A second insertDemoDeck reuses the same add/render/
         // self-check machinery; wrap it so a host stall here can't swallow the run's
         // own summary (its failure is itself just another data point).
         const rows: ResultRow[] = results.map((r, i) => ({ title: items[i].title, status: r.status, shapes: r.created, ms: r.ms }));
-        const summary: ResultsSummary = { buildStamp, items: items.length, rendered, skipped: skipped.length, failed: failedNames.length, lost: Math.max(0, lost), retried: recovered, totalMs };
+        const summary: ResultsSummary = { buildStamp, items: items.length, rendered, skipped: skipped.length, failed: failedNames.length, lost, retried: recovered, totalMs };
         try {
           await insertDemoDeck([{ scene: buildResultsScene(rows, summary) }]);
         } catch (e) {
           console.warn("PowerChart: results slide failed to insert", e);
           msg += " (results slide not added)";
         }
-        note(msg, lost > 0 || failedNames.length || blank.length ? "err" : "ok");
+        note(msg, lost > 0 || failedNames.length || blankSlides.length ? "err" : "ok");
       }),
     );
   } else {

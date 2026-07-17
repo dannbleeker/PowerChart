@@ -134,7 +134,10 @@ function makeSlide(id: string) {
         return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, delete() {} };
       },
       // Top-level shape count the host reports on readback — non-deleted shapes.
-      getCount: () => ({ value: created.filter((s) => !s.deleted).length }),
+      getCount: () => {
+        if (faultShapeGetCount) throw new Error("readback getCount faulted");
+        return { value: created.filter((s) => !s.deleted).length };
+      },
     },
   };
   return slide;
@@ -217,6 +220,10 @@ let swallowAdds = 0;
  * that committed but came back BLANK (its shapes detached), the silent partial
  * the on-slide readback must catch. */
 const blankReadbackAt = new Set<number>();
+
+/** When true, shapes.getCount() throws — models the blank readback faulting, so
+ * the report must come back blanksRead:false rather than an empty "no blanks". */
+let faultShapeGetCount = false;
 
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
@@ -316,6 +323,7 @@ function installHost(
   swallowAdds = 0;
   failSyncsOn.clear();
   blankReadbackAt.clear();
+  faultShapeGetCount = false;
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
@@ -1000,35 +1008,54 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(report.totalMs).toBeGreaterThanOrEqual(Math.max(...report.results.map((r) => r.ms)));
   });
 
-  it("reads back the on-slide shape count for every added slide of a clean run", async () => {
+  it("finds no blank slots and completes the readback on a clean run", async () => {
     installHost([makeSlide("s1")]);
     const n = 4;
     const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
-    // Nothing lost → readback ran → every slide reports a real, non-blank count.
-    expect(report.results.every((r) => r.onSlide >= 1)).toBe(true);
+    expect(report.blankSlides).toEqual([]); // every added slide read back with shapes
+    expect(report.blanksRead).toBe(true); // the readback finished
+    expect(report.addsIssued).toBe(n); // one add per item, no retries/fails
   });
 
-  it("flags a slide that committed but the host reports BLANK on readback", async () => {
-    const deck = [makeSlide("s1")]; // index 0; added slides take indices 1..n
+  it("reports a host-blanked slide by DECK POSITION, not by item name", async () => {
+    const deck = [makeSlide("s1")]; // pre-existing at index 0; added slides take indices 1..n
     installHost(deck);
     const n = 4;
-    blankReadbackAt.add(2); // the 2nd added slide (deck index 2 ↔ results[1])
+    blankReadbackAt.add(2); // the added slide at deck index 2 reads back empty on readback
     const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
-    expect(report.results[1].onSlide).toBe(0); // came back empty
-    expect(report.results[1].status).toBe("rendered"); // yet the render itself "succeeded"
-    // The blank one stands out — every other slide read back non-empty.
-    expect(report.results.filter((r) => r.onSlide === 0)).toHaveLength(1);
+    // A blank slide has no content/tag to name it — reported as the 1-based deck position (index 2 → slide 3).
+    expect(report.blankSlides).toEqual([3]);
+    expect(report.blanksRead).toBe(true);
   });
 
-  it("skips readback when a slide was lost, since order-mapping is then unsafe", async () => {
+  it("un-masks a lost slide that a retry stray hid from the deck-growth count", async () => {
+    // The exact real-host coincidence: the host loses one item's slide while a
+    // retry leaves a stray, so net growth == items.length and the naive
+    // (items.length − slidesAdded) reads 0. addsIssued − slidesAdded surfaces it.
     const deck = [makeSlide("s1")];
     installHost(deck);
-    const n = 4;
-    swallowAdds = 2; // dropped on BOTH the first add and its retry → truly lost, deck grows by n-1
-    const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
-    expect(report.slidesAdded).toBe(n - 1); // a slide was lost for good
-    // Order-mapping is unsafe now, so onSlide is left unread (-1) for all.
-    expect(report.results.every((r) => r.onSlide === -1)).toBe(true);
+    // item0 strays: attempt-1 render (#5) fails after its add lands, retry recovers → 2 slides.
+    // item1 is lost: both attempts fail at their getCount (#10/#11), before any add → 0 slides.
+    failSyncsOn.add(5);
+    failSyncsOn.add(10);
+    failSyncsOn.add(11);
+    const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)) }, { scene: buildChart(cfgFor(1)) }]);
+    expect(report.results[0].retried).toBe(true); // the stray item recovered
+    expect(report.results[1].status).toBe("failed"); // the lost item
+    expect(report.slidesAdded).toBe(2); // net growth == items.length → naive lost would read 0
+    expect(report.addsIssued).toBe(4); // 2 items + 1 retried + 1 failed
+    expect(report.addsIssued - report.slidesAdded).toBe(2); // the hardened lost surfaces the loss
+  });
+
+  it("marks the blank readback incomplete when it faults, not falsely clean", async () => {
+    installHost([makeSlide("s1")]);
+    faultShapeGetCount = true; // every readback getCount throws
+    const report = await insertDemoDeck(Array.from({ length: 3 }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
+    // An empty list must NOT read as "no blanks" when we could not measure.
+    expect(report.blanksRead).toBe(false);
+    expect(report.blankSlides).toEqual([]);
+    // The run itself still succeeded — a readback fault is not a render failure.
+    expect(report.results.every((r) => r.status === "rendered")).toBe(true);
   });
 
   it("retries a slide the host stalls on once, and the transient stall recovers", async () => {
