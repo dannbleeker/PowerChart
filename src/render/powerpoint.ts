@@ -10,7 +10,7 @@
  * addTextBox) — marker symbols are preset geometry, so they need only 1.4 too.
  * Grouping (1.8+) and shape rotation (1.10+) degrade gracefully on older hosts.
  */
-import { polar, arrowheadBox, wedgeFanSteps, SYMBOL_PRESET } from "../core/geometry";
+import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET } from "../core/geometry";
 import type { Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 
 /* global PowerPoint, Office */
@@ -1016,8 +1016,10 @@ function addWedgeFan(
   const { steps, step } = wedgeFanSteps(n.r, span);
   for (let i = 0; i < steps; i++) {
     const mid = n.startAngle + step * (i + 0.5);
-    // Slightly overlapping chords hide the seams between fan shapes.
-    const chord = 2 * midR * Math.tan(((step / 2) * Math.PI) / 180) + 1;
+    // Width sized at the OUTER rim so adjacent shapes meet there and tile into a
+    // solid arc — at midR they were half-width on a solid slice and rendered as
+    // gapped spokes on the web host. See wedgeFanChord.
+    const chord = wedgeFanChord(n.r, step);
     const center = polar(cx, cy, midR, mid);
     try {
       const shape = shapes.addGeometricShape(
