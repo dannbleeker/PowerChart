@@ -11,6 +11,7 @@ import {
   listChartsInSelection,
   loadChartFromSelection,
   updateChartInSlide,
+  updateChartsInSlides,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { buildAgendaScene } from "../src/core/agenda";
@@ -113,6 +114,20 @@ function makeSlide(id: string) {
 
 type FakeSlide = ReturnType<typeof makeSlide>;
 
+/**
+ * Office round-trips since the last installHost(). Every context.sync() is a
+ * trip to PowerPoint and dominates insert latency, so the count is a behaviour
+ * worth asserting — see "round-trips do not scale with the chart count".
+ */
+const trips = { syncs: 0, contexts: 0 };
+
+/**
+ * Make the Nth context.sync() of the next run throw. Office.js queues commands
+ * and only reports their errors at sync — so this, not a throwing addGroup, is
+ * how a host actually refuses something. 0 = never.
+ */
+let failSyncOn = 0;
+
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
  * — pass a predicate to simulate e.g. PowerPoint on the web lacking grouping. */
@@ -135,10 +150,18 @@ function installHost(
       getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
       getSelectedShapes: () => ({ items: selectedShapes, load() {} }),
     },
-    sync: async () => {},
+    sync: async () => {
+      trips.syncs++;
+      if (trips.syncs === failSyncOn) throw new Error("host refused a queued command");
+    },
   };
+  trips.syncs = 0;
+  trips.contexts = 0;
   vi.stubGlobal("PowerPoint", {
-    run: async <T>(cb: (ctx: typeof context) => Promise<T>) => cb(context),
+    run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
+      trips.contexts++;
+      return cb(context);
+    },
     // Real Office.js exposes all 177 presets. A plain object listing only the
     // ones in use today hands back `undefined` for any other name, and the
     // renderer then records a shape with no geometry while this suite still
@@ -644,6 +667,110 @@ describe("marker symbols in the live add-in", () => {
       expect(s, `no shape at cx=${n.cx}`).toBeTruthy();
       expect(s!.box.top).toBeCloseTo(50 + n.cy - n.size, 9);
       expect(s!.box.width).toBeCloseTo(n.size * 2, 9);
+    }
+  });
+});
+
+describe("Office round-trips do not scale with the chart count", () => {
+  const cfgFor = (v: number): ChartConfig => ({
+    ...config,
+    data: { categories: ["A", "B"], series: [{ name: "S1", values: [v, v + 1] }] },
+  });
+  const targetsOn = (slide: FakeSlide, n: number) =>
+    Array.from({ length: n }, (_, i) => {
+      // A real target names a shape that exists on the slide; make one per chart.
+      const s = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
+      return { scene: buildChart(cfgFor(i)), target: { slideId: slide.id, shapeId: s.id, left: 10, top: 20 }, opts: { tagData: `{"i":${i}}` } };
+    });
+
+  it("re-renders N charts in ONE context with a FLAT sync count", async () => {
+    // The defect this guards: doSameScale awaited the single-chart update in a
+    // loop, so each chart opened its own PowerPoint.run and paid 4 round-trips
+    // — 80 of them across a 20-chart deck. Shapes batch for free; syncs do not.
+    const counts: string[] = [];
+    for (const n of [1, 2, 10, 20]) {
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      await updateChartsInSlides(targetsOn(slide, n));
+      counts.push(`${n}:${trips.syncs}/${trips.contexts}`);
+      expect(trips.contexts, `${n} charts`).toBe(1);
+      expect(trips.syncs, `${n} charts`).toBe(4);
+    }
+    // Spelled out so a regression reads as a diff, not just a failed compare.
+    expect(counts).toEqual(["1:4/1", "2:4/1", "10:4/1", "20:4/1"]);
+  });
+
+  it("still draws every chart it batches, tagged and grouped", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const items = targetsOn(slide, 3);
+    await updateChartsInSlides(items);
+    const groups = slide.created.filter((s) => s.type === "group");
+    expect(groups).toHaveLength(3);
+    // Each group carries its OWN config, not the last one written.
+    expect(groups.map((g) => g.tagStore.get(CHART_TAG))).toEqual(['{"i":0}', '{"i":1}', '{"i":2}']);
+    // The old shape each target named is gone.
+    for (const it of items) expect(slide.created.find((s) => s.id === it.target.shapeId)!.deleted).toBe(true);
+    // Charts land at their target's position, not the default offset.
+    for (const r of slide.created.filter((s) => s.geo === "rectangle" && s.box.width > 1)) {
+      expect(r.box.left).toBeGreaterThanOrEqual(10);
+    }
+  });
+
+  it("leaves the single-chart paths exactly as they were", async () => {
+    // updateChartInSlide is now updateChartsInSlides([one]); the Insert button
+    // is untouched. Both must keep their original round-trip counts.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: "{}" });
+    expect([trips.syncs, trips.contexts]).toEqual([3, 1]);
+
+    const slide2 = makeSlide("s2");
+    installHost([slide2]);
+    const s = slide2.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
+    await updateChartInSlide(buildChart(config), { slideId: "s2", shapeId: s.id, left: 0, top: 0 }, { tagData: "{}" });
+    expect([trips.syncs, trips.contexts]).toEqual([4, 1]);
+  });
+
+  it("does nothing, and opens no context, for an empty batch", async () => {
+    installHost([makeSlide("s1")]);
+    await updateChartsInSlides([]);
+    expect([trips.syncs, trips.contexts]).toEqual([0, 0]);
+  });
+
+  it("keeps every chart re-editable when the grouping sync is refused", async () => {
+    // Batching costs granularity: a refused grouping now loses grouping for the
+    // whole batch, not just one chart. What must NOT be lost is the config tag —
+    // the charts are already on the slide (their shapes committed a phase
+    // earlier), so each must fall back to tagging its own first shape or it
+    // silently stops being re-editable.
+    //
+    // The failure has to come from the SYNC, not from addGroup: Office.js only
+    // reports queued commands there, which means every tag target has already
+    // been pointed at a group that turned out not to exist. A test that throws
+    // from addGroup instead never overwrites them and proves nothing.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    failSyncOn = 3; // 1 resolve, 2 render, 3 GROUP, 4 tag
+    try {
+      const items = targetsOn(slide, 3);
+      await expect(updateChartsInSlides(items)).resolves.toBeUndefined();
+      // Each chart's OWN config, back on each chart's OWN first shape.
+      const tagged = slide.created.filter((s) => s.tagStore.has(CHART_TAG));
+      expect(tagged.map((s) => s.tagStore.get(CHART_TAG))).toEqual(['{"i":0}', '{"i":1}', '{"i":2}']);
+      expect(tagged.every((s) => s.type !== "group")).toBe(true);
+    } finally {
+      failSyncOn = 0;
+    }
+  });
+
+  it("appends a demo deck with a flat sync count too", async () => {
+    // Same seam, same property: grouping used to cost 2 syncs per slide.
+    for (const n of [2, 12]) {
+      installHost([makeSlide("s1")]);
+      await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+      expect(trips.contexts, `${n} slides`).toBe(1);
+      expect(trips.syncs, `${n} slides`).toBe(5);
     }
   });
 });

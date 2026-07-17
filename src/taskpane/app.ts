@@ -14,6 +14,7 @@ import {
   loadChartFromSelection,
   loadThemePalette,
   updateChartInSlide,
+  updateChartsInSlides,
   type EditTarget,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
@@ -987,10 +988,15 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
   }
   const min = Math.min(...parsed.map((c) => c.extent.min));
   const max = Math.max(...parsed.map((c) => c.extent.max));
-  for (const c of parsed) {
-    c.cfg.scale = { min: min < 0 ? min : undefined, max };
-    await updateChartInSlide(buildChart(c.cfg), c.target, { tagData: JSON.stringify(c.cfg) });
-  }
+  // One request context for the whole deck, not one per chart: each chart's
+  // update costs four round-trips to PowerPoint, and awaiting them in a loop
+  // made Same Scale across 20 charts eighty of them.
+  await updateChartsInSlides(
+    parsed.map((c) => {
+      c.cfg.scale = { min: min < 0 ? min : undefined, max };
+      return { scene: buildChart(c.cfg), target: c.target, opts: { tagData: JSON.stringify(c.cfg) } };
+    }),
+  );
   note(`Same scale applied to ${parsed.length} charts (max ${max}).`, "ok");
 }
 

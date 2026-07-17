@@ -50,20 +50,52 @@ export async function insertSceneIntoSlide(scene: Scene, opts: InsertOptions = {
     // Commit the shapes first — so grouping/tagging (which some hosts, notably
     // PowerPoint on the web, don't support) can't roll back the whole insert.
     await context.sync();
-    await groupAndTag(context, slide, created, opts);
+    await groupAndTagAll(context, [{ slide, created, opts }]);
   });
 }
 
 /** Replace an existing PowerChart group with a re-rendered scene, in place. */
 export async function updateChartInSlide(scene: Scene, target: EditTarget, opts: InsertOptions = {}): Promise<void> {
+  await updateChartsInSlides([{ scene, target, opts }]);
+}
+
+/**
+ * Replace any number of existing PowerCharts in place, in ONE request context.
+ *
+ * Every Office.js sync is a round-trip to PowerPoint, so the thing that must not
+ * scale with the chart count is the number of syncs — not the number of shapes,
+ * which ride along in a batch for free. Re-rendering charts one at a time (a
+ * loop around the single-chart update) cost 4 syncs and a whole PowerPoint.run
+ * context EACH: Same Scale across a 20-chart deck was 80 round-trips. This is
+ * four, whatever N is.
+ *
+ * The four phases are ordered, and that order is load-bearing: every old shape
+ * resolves before any is deleted, and every new shape COMMITS before anything is
+ * grouped — so a host without grouping cannot roll back the charts themselves.
+ * Batching happens across charts WITHIN a phase, never across phases.
+ */
+export async function updateChartsInSlides(
+  items: { scene: Scene; target: EditTarget; opts?: InsertOptions }[],
+): Promise<void> {
+  if (!items.length) return;
   await PowerPoint.run(async (context) => {
-    const slide = context.presentation.slides.getItem(target.slideId);
-    const old = slide.shapes.getItemOrNullObject(target.shapeId);
+    // 1. Resolve every old shape — one sync for all of them.
+    const found = items.map((it) => {
+      const slide = context.presentation.slides.getItem(it.target.slideId);
+      return { it, slide, old: slide.shapes.getItemOrNullObject(it.target.shapeId) };
+    });
     await context.sync();
-    if (!old.isNullObject) old.delete();
-    const created = renderShapes(slide, scene, { ...opts, left: target.left, top: target.top });
+
+    // 2. Drop the old shapes and queue every new one — one sync commits the lot.
+    const rendered = found.map(({ it, slide, old }) => {
+      if (!old.isNullObject) old.delete();
+      const opts: InsertOptions = { ...it.opts, left: it.target.left, top: it.target.top };
+      return { slide, created: renderShapes(slide, it.scene, opts), opts };
+    });
     await context.sync();
-    await groupAndTag(context, slide, created, { ...opts, left: target.left, top: target.top });
+
+    // 3-4. Group, then tag — one sync each, however many charts.
+    await groupAndTagAll(context, rendered);
   });
 }
 
@@ -206,9 +238,11 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
 
 /**
  * Testing aid: append one slide per item and render its chart, tagged so each
- * stays re-editable. Shapes are committed for every slide first (one sync),
- * then grouped/tagged per slide — so a host lacking grouping (PowerPoint on the
- * web) never rolls back the already-inserted charts. Requires PowerPointApi 1.3
+ * stays re-editable. Shapes are committed for every slide first (one sync), and
+ * only then grouped/tagged — so a host lacking grouping (PowerPoint on the web)
+ * never rolls back the already-inserted charts. That protection is the sync
+ * ORDER, not a sync per slide, so the grouping batches like everything else and
+ * the round-trip count stays flat in the slide count. Requires PowerPointApi 1.3
  * (slides.add).
  */
 export async function insertDemoDeck(items: { scene: Scene; tagData?: string }[]): Promise<void> {
@@ -221,12 +255,10 @@ export async function insertDemoDeck(items: { scene: Scene; tagData?: string }[]
     const perSlide = items.map((item, i) => {
       const slide = slides.getItemAt(before.value + i);
       const created = renderShapes(slide, item.scene, { left: 60, top: 90 });
-      return { slide, created, tagData: item.tagData };
+      return { slide, created, opts: { group: true, tagData: item.tagData } };
     });
     await context.sync();
-    for (const p of perSlide) {
-      await groupAndTag(context, p.slide, p.created, { group: true, tagData: p.tagData });
-    }
+    await groupAndTagAll(context, perSlide);
   });
 }
 
@@ -251,37 +283,57 @@ function renderShapes(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions
   return created;
 }
 
+/** One chart's committed shapes, awaiting grouping and tagging. */
+interface Grouping {
+  slide: PowerPoint.Slide;
+  created: PowerPoint.Shape[];
+  opts: InsertOptions;
+}
+
 /**
- * Group the inserted shapes and persist the config tag — each in its OWN sync
- * and gated on host support, so a host that lacks grouping (e.g. PowerPoint on
- * the web) or tags never rolls back the already-committed shapes. The shapes
- * must already be committed (a prior context.sync) before this runs.
+ * Group the inserted shapes and persist the config tag for ANY number of charts
+ * — grouping in one sync, tagging in a second, however many charts there are.
+ *
+ * Two properties, and the ORDER of these syncs is what buys them:
+ * - A host that lacks grouping (e.g. PowerPoint on the web) or tags must never
+ *   roll back the already-committed shapes. So the shapes must already be
+ *   committed (a prior context.sync) before this runs, and group/tag get their
+ *   own syncs after.
+ * - Round-trips must not scale with the chart count. Each sync is a trip to
+ *   PowerPoint; a per-chart sync is what made Same Scale 4N of them.
+ *
+ * The cost of batching is granularity: one chart's addGroup throwing now leaves
+ * every chart in the batch ungrouped rather than just its own. That is the same
+ * outcome the per-chart catch already produced, just wider — and in both cases
+ * the charts are on the slide, because their shapes committed a phase earlier.
  */
-async function groupAndTag(
-  context: PowerPoint.RequestContext,
-  slide: PowerPoint.Slide,
-  created: PowerPoint.Shape[],
-  opts: InsertOptions,
-): Promise<void> {
-  let tagTarget: PowerPoint.Shape | undefined = created[0];
+async function groupAndTagAll(context: PowerPoint.RequestContext, items: Grouping[]): Promise<void> {
+  const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
   // Grouping is PowerPointApi 1.8+; skip entirely where unsupported.
-  if (opts.group !== false && created.length > 1 && supports("1.8")) {
+  const groupable = items
+    .map((it, i) => ({ it, i }))
+    .filter(({ it }) => it.opts.group !== false && it.created.length > 1);
+  if (groupable.length && supports("1.8")) {
     try {
-      const group = (slide.shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(created);
-      group.name = "PowerChart";
+      for (const { it, i } of groupable) {
+        const group = (it.slide.shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(it.created);
+        group.name = "PowerChart";
+        tagTargets[i] = group;
+      }
       await context.sync();
-      tagTarget = group;
     } catch {
-      /* grouping failed — shapes stay ungrouped, chart is already on the slide */
+      /* grouping failed — shapes stay ungrouped, charts are already on the slide */
+      for (const { i } of groupable) tagTargets[i] = items[i].created[0];
     }
   }
   // Tags are PowerPointApi 1.3+; keep the chart re-editable where supported.
-  if (opts.tagData && tagTarget && supports("1.3")) {
+  const taggable = items.map((it, i) => ({ it, target: tagTargets[i] })).filter((t) => t.it.opts.tagData && t.target);
+  if (taggable.length && supports("1.3")) {
     try {
-      tagTarget.tags.add(CHART_TAG, opts.tagData);
+      for (const { it, target } of taggable) target!.tags.add(CHART_TAG, it.opts.tagData!);
       await context.sync();
     } catch {
-      /* tags unavailable — chart is inserted but not re-editable */
+      /* tags unavailable — charts are inserted but not re-editable */
     }
   }
 }
