@@ -1405,7 +1405,7 @@ function wireInsert() {
     demoBtn.addEventListener(
       "click",
       guard(async () => {
-        const items = demoItems();
+        const items = demoItems(typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev");
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
         const { results, slidesAdded } = await insertDemoDeck(
