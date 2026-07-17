@@ -49,10 +49,20 @@ unbuildable, and the itch under them was met another way.
   narrower and is fixed: a diverging scale states direction in hue alone, and
   its strongest + and − sit at 1.12:1 in greyscale — the same tone — with no
   label to fall back on under `sizeEncode`. Shipped as `heatmap.symbols`.
-- **An X / cross marker** — its preset (`mathMultiply`) is built from angled
-  arms the SVG renderer cannot reproduce honestly at marker scale, so the
-  preview would promise a shape PowerPoint does not draw. Redundant with `plus`
-  at 3-4pt.
+- **An X / cross marker, and a five-point star** — a marker shape has to
+  reproduce its OOXML preset *exactly*, because the SVG renderer draws the
+  points while the PowerPoint renderers name the preset, and `markerScale`
+  measures the area off those same points. A shape that only approximates its
+  preset therefore breaks the bubble's "area ∝ size" claim in the deck while
+  keeping it in the preview — the worst kind of divergence, since the preview
+  looks right. `mathMultiply` fails on angled arms (and is redundant with
+  `plus` at 3-4pt). `star5` fails on its `hf`/`vf` stretch: the preset widens
+  itself 1.05146x and heightens itself 1.10557x so the star fills its box
+  (a 5-point star spans 1.902R by 1.809R, and those factors are exactly
+  2/1.902 and 2/1.809), which makes PowerPoint's star **16.2% larger in area**
+  than an inscribed SVG one. Reproducing that faithfully is possible on paper
+  but not verifiable here without a PowerPoint rasteriser, so the set stops at
+  the shapes whose geometry is exact: circle, square, diamond, triangle, plus.
 
 - **Waterfall connector re-routing** (drag to skip columns) — the drag is out of
   Office.js reach, and the rendering feature underneath is ill-posed: the

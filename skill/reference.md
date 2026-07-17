@@ -96,7 +96,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       // corrupt both of a marker's readings at once.
               spreadLimit?: number,   // hard cap, in DATA UNITS of the spread axis (default 2% of its
                                       // tick range, max 10%)
-              markers?: ("circle"|"square"|"diamond"|"triangle"|"plus"|"star5")[] },
+              markers?: ("circle"|"square"|"diamond"|"triangle"|"plus")[] },
                                       // point shape per Group row, cycled like the palette; the legend
                                       // draws the shapes. Off => every point a circle. Shape is a
                                       // channel color cannot carry: it survives greyscale printing and
@@ -121,8 +121,9 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       // diverging scale says "which way" in hue alone, and greyscale
                                       // printing collapses its strongest + and − to the same tone.
                                       // Only where a cell has no value label (the label already prints
-                                      // the sign) — so it matters most under sizeEncode, which
-                                      // suppresses labels. Inert on one-signed data.
+                                      // the sign) — so it matters most under sizeEncode and on calendar
+                                      // heatmaps, neither of which draws labels. Exactly-zero gets no
+                                      // mark (no sign to state). Inert on one-signed data.
   otherBucket?: { max?: number },     // column family: collapse the long tail into one "Other" (keep max series)
   butterfly?: { split?: number },     // butterfly: series on the left flank (rest stack right)
   radar?: { perSpoke?: boolean,       // radar: normalise each spoke to its own max (mixed KPI units)

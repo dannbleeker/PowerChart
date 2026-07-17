@@ -156,18 +156,26 @@ including alongside a `Color` row, where color means something else. Shapes are
 area-matched to the circle they replace, so a bubble's "area tracks Size"
 survives: without that a group drawn as stars would read as a quarter the
 magnitude of the same value drawn as squares. Available: `circle`, `square`,
-`diamond`, `triangle`, `plus`, `star5` — all PowerPoint preset geometry, so
-they stay filled and editable in the deck on any 1.4+ host.
+`diamond`, `triangle`, `plus` — all PowerPoint preset geometry, so they stay
+filled and editable in the deck on any 1.4+ host, and each reproduces its
+preset exactly, so the preview and the deck agree on the ink. (A five-point
+star and an X are deliberately absent: their presets reshape themselves in
+ways the preview cannot reproduce, which would make the preview disagree with
+the deck and quietly break the area match.)
 
 **Heatmap sign marks** (`heatmap.symbols: "sign"`): draw a `+` or `−` in each
 cell. A diverging heatmap states its direction in hue alone, and hue is what a
-greyscale printer takes away — the strongest positive and the strongest
-negative land within about 1.1:1 of each other in grey, which is to say they
-become the same tone. Marks are drawn only where the cell has no value label,
+greyscale printer takes away: on the default palette the strongest positive
+and the strongest negative land about 1.1:1 apart in grey, which is to say
+the same tone. A palette chosen for contrasting lightness fares better, but
+the two ends of a diverging ramp are the same distance from white by
+construction, so the collapse is the rule rather than the exception. Marks are drawn only where the cell has no value label,
 since the label already prints the minus sign; that makes them matter most
 under `sizeEncode`, which suppresses labels entirely and leaves colour as the
-only sign carrier. The option is inert on one-signed data, where every mark
-would say the same thing. Not up/down arrows: an arrow on a matrix of KPIs
+only sign carrier — and on calendar heatmaps, which never draw labels at all.
+A cell of exactly zero gets no mark: the scale already paints it the neutral
+midpoint, and zero has no sign to state. The option is inert on one-signed
+data, where every mark would say the same thing. Not up/down arrows: an arrow on a matrix of KPIs
 reads as movement against last period, a claim PowerChart does not check.
 
 **Marginal histograms** (`decorations.marginals: "x" | "y" | "both"` on

@@ -221,7 +221,7 @@ describe("SVG marker symbols", () => {
   });
 
   it("draws every shape, and rounds coordinates like the rest of the renderer", () => {
-    for (const shape of ["diamond", "triangle", "plus", "star5"] as const) {
+    for (const shape of ["diamond", "triangle", "plus"] as const) {
       const svg = svgOf({ shape, cx: 33.333333, cy: 12.126, size: 7.77 });
       expect(svg).toContain("<polygon");
       // r() quantises to 2dp; a raw float here would be snapshot noise.

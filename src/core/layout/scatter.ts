@@ -43,6 +43,23 @@ export function spreadCap(cfg: ChartConfig): { axis: "x" | "y"; limit: number } 
 const COLOR_BAR_W = 90;
 
 /**
+ * A point's group id, normalised to a whole number ≥ 1.
+ *
+ * Group ids come out of a datasheet row, so they are whatever a cell can hold —
+ * blank, 0, negative, fractional, NaN. Every consumer indexes something with
+ * them (the palette, the marker shape, the legend), and each used to re-derive
+ * its own index from the raw value: `palette[NaN]` quietly yields `fill=
+ * "undefined"`, and `markers[NaN]` yields no shape at all, which throws in the
+ * renderer. Normalising once, here, makes all of them safe by construction.
+ * Anything not a usable id reads as group 1 — the same bucket a point with no
+ * Group row already falls into.
+ */
+function groupOf(v: number | null | undefined): number {
+  const g = Math.round(Number(v ?? 1));
+  return Number.isFinite(g) && g >= 1 ? g : 1;
+}
+
+/**
  * A point mark of the given shape, carrying the same ink as a circle of radius
  * `r`.
  *
@@ -91,14 +108,13 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const wantTrend = (find(/^trend$/i)?.values ?? []).some((v) => v != null);
 
   const pts = data.categories
-    .map((label, i) => ({ label, x: xs[i], y: ys[i], size: sizes[i] ?? null, group: groups[i] ?? 1, color: colorVals[i] ?? null }))
+    .map((label, i) => ({ label, x: xs[i], y: ys[i], size: sizes[i] ?? null, group: groupOf(groups[i]), color: colorVals[i] ?? null }))
     .filter((p): p is typeof p & { x: number; y: number } => p.x != null && p.y != null);
 
   // Shape per group, cycled like the palette. Off => every point a circle,
   // which is the ellipse the layout has always emitted.
   const markers = cfg.scatter?.markers?.length ? cfg.scatter.markers : null;
-  const markerFor = (group: number | null): MarkerSymbol =>
-    markers ? markers[Math.max(0, Math.round(Number(group)) - 1) % markers.length] : "circle";
+  const markerFor = (group: number): MarkerSymbol => (markers ? markers[(group - 1) % markers.length] : "circle");
 
   // Continuous color scale (a "Color" row): maps each point onto a sequential
   // ramp; supersedes group coloring and swaps the chip legend for a gradient.
@@ -110,7 +126,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   const titleH = cfg.title ? fs * 1.6 + 6 : 0;
   const axisW = 34;
-  const multiGroup = !colorScale && new Set(pts.map((p) => Math.round(Number(p.group)))).size > 1;
+  const multiGroup = !colorScale && new Set(pts.map((p) => p.group)).size > 1;
   const legendH = multiGroup || colorScale ? fs * 1.8 : 0;
   /** Where the plot starts before any marginal gutter — the legends' anchor. */
   const chromeTop = titleH + 6 + legendH;
@@ -299,7 +315,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // the SHAPE channel, which the color legend says nothing about, so the legend
   // has to come back or the shapes stand unexplained.
   const groupIds =
-    colorScale && !markers ? [] : [...new Set(pts.map((p) => Math.max(1, Math.round(Number(p.group)))))].sort((a, b) => a - b);
+    colorScale && !markers ? [] : [...new Set(pts.map((p) => p.group))].sort((a, b) => a - b);
   if (groupIds.length > 1) {
     // Clear the gradient bar when both legends are up — they share this row and
     // both anchor at plot.x, so without the offset the chips land on the ramp.
@@ -446,7 +462,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   for (const i of paintOrder) {
     const p = pts[i];
     const r = radius(p);
-    const gi = Math.max(0, Math.round(Number(p.group)) - 1);
+    const gi = p.group - 1;
     const fill =
       colorScale && p.color != null ? colorScale.of(p.color) : colorScale ? style.mutedText : (cfg.style?.palette ?? PALETTE)[gi % 8];
     nodes.push(markerNode(markerFor(p.group), px(p, i), py(p, i), r, fill, style.background, 1, `point-${i}`));

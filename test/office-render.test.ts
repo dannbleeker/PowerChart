@@ -155,7 +155,6 @@ function installHost(
         lineInverse: "lineInverse",
         diamond: "diamond",
         plus: "plus",
-        star5: "star5",
       } as Record<string, string>,
       {
         get(target, prop: string) {
@@ -408,7 +407,7 @@ describe("scene node mapping", () => {
       if (geo === "triangle") {
         Object.defineProperty(s, "rotation", {
           set() {
-            throw new Error("rotation requires PowerPointApi 1.9");
+            throw new Error("rotation requires PowerPointApi 1.10");
           },
         });
       }
@@ -601,12 +600,12 @@ describe("marker symbols in the live add-in", () => {
   it("draws each symbol as native preset geometry, filled", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
-    await insertSceneIntoSlide(markerScene(["diamond", "plus", "star5"]), { left: 0, top: 0 });
+    await insertSceneIntoSlide(markerScene(["diamond", "plus", "triangle"]), { left: 0, top: 0 });
 
     // Filled preset geometry is the whole reason a symbol is not a polygon:
     // PowerPoint can only outline a freeform, so a polygon marker would be
     // hollow here while the SVG preview showed it solid.
-    for (const preset of ["diamond", "plus", "star5"]) {
+    for (const preset of ["diamond", "plus", "triangle"]) {
       const shapes = slide.created.filter((s) => s.geo === preset);
       expect(shapes.length, preset).toBeGreaterThan(0);
       for (const s of shapes) {
@@ -624,8 +623,8 @@ describe("marker symbols in the live add-in", () => {
     // rotation, so a 1.4 host draws the same shapes as a current one.
     const slide = makeSlide("s1");
     installHost([slide], [], slide, () => false);
-    await insertSceneIntoSlide(markerScene(["diamond", "triangle", "star5"]), { left: 0, top: 0 });
-    const presets = slide.created.filter((s) => ["diamond", "triangle", "star5"].includes(s.geo!));
+    await insertSceneIntoSlide(markerScene(["diamond", "triangle", "plus"]), { left: 0, top: 0 });
+    const presets = slide.created.filter((s) => ["diamond", "triangle", "plus"].includes(s.geo!));
     expect(presets.length).toBeGreaterThan(0);
     for (const s of presets) expect(s.rotation).toBeUndefined();
   });

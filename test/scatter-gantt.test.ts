@@ -6,9 +6,10 @@ import { layoutColumns } from "../src/core/layout/column";
 import { placeLabels } from "../src/core/labels";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import { sampleConfig } from "../src/core/samples";
-import type { ChartConfig, Series } from "../src/core/types";
+import type { ChartConfig, MarkerSymbol, Series } from "../src/core/types";
 import type { EllipseNode, RectNode, SceneNode, TextNode } from "../src/core/scene";
 import { symbolPoints } from "../src/core/geometry";
+import { sceneToSvg } from "../src/render/svg";
 
 function cfg(partial: Partial<ChartConfig>): ChartConfig {
   return { kind: "stacked", width: 480, height: 300, data: { categories: [], series: [] }, ...partial };
@@ -735,12 +736,12 @@ describe("scatter marker symbols", () => {
   });
 
   it("keeps each point's datasheet index, so shape never renames a point", () => {
-    const got = named(points({ markers: ["star5", "triangle"] }), "point-").map((n) => n.name);
+    const got = named(points({ markers: ["triangle", "plus"] }), "point-").map((n) => n.name);
     expect(got.sort()).toEqual(["point-0", "point-1", "point-2", "point-3", "point-4", "point-5"]);
   });
 
   it("draws the legend chip as the shape it explains", () => {
-    const nodes = points({ markers: ["circle", "square", "diamond", "triangle", "plus", "star5"] });
+    const nodes = points({ markers: ["circle", "square", "diamond", "triangle", "plus"] });
     const chips = named(nodes, "legend-chip-").map(shapeOf);
     const pts = named(nodes, "point-").map(shapeOf);
     // Group g's chip and group g's points must be the same shape, or the
@@ -749,12 +750,13 @@ describe("scatter marker symbols", () => {
   });
 
   it("keeps a legend chip clear of its own label, at any font size", () => {
-    // An area-matched star reaches ~1.67x the chip slot. The chip scales with
-    // fontSize but the 3pt gap after it does NOT, so the overhang is swallowed
-    // at the default fs=10 and only bites once the type is big enough — which
-    // is exactly why this asserts across sizes instead of the default alone.
+    // An area-matched diamond reaches ~1.25x the chip slot. The chip scales
+    // with fontSize but the 3pt gap after it does NOT, so the overhang is
+    // swallowed at small type and only bites past fs≈34 — which is exactly why
+    // this asserts across sizes instead of the default alone, and why the top
+    // of the range has to clear that threshold or the test proves nothing.
     // (Every showcase config uses fs=10, so the deck's gate cannot see this.)
-    for (const fontSize of [8, 10, 14, 20, 28]) {
+    for (const fontSize of [8, 10, 14, 20, 28, 40]) {
       const nodes = buildChart(
         cfg({
           kind: "scatter",
@@ -769,7 +771,7 @@ describe("scatter marker symbols", () => {
               { name: "Group", values: [1, 2, 3] },
             ],
           },
-          scatter: { markers: ["star5", "star5", "star5"] },
+          scatter: { markers: ["diamond", "diamond", "diamond"] },
         }),
       ).nodes;
       for (const g of [1, 2, 3]) {
@@ -801,7 +803,7 @@ describe("scatter marker symbols", () => {
     // A bubble asserts area ∝ size. Shape is categorical and must not perturb
     // it — otherwise a group drawn as stars reads as a quarter the magnitude.
     const size: Series[] = [{ name: "Size", values: [10, 10, 10, 10, 10, 10] }];
-    const nodes = points({ markers: ["circle", "square", "diamond", "triangle", "plus", "star5"] }, "bubble", size);
+    const nodes = points({ markers: ["circle", "square", "diamond", "triangle", "plus"] }, "bubble", size);
     const areas = named(nodes, "point-").map((n) => {
       if (n.kind === "ellipse") return Math.PI * n.rx * n.ry;
       if (n.kind === "rect") return n.w * n.h;
@@ -810,5 +812,83 @@ describe("scatter marker symbols", () => {
       return Math.abs(p.reduce((a, c, i) => a + (c.x * p[(i + 1) % p.length].y - p[(i + 1) % p.length].x * c.y), 0)) / 2;
     });
     for (const a of areas) expect(a).toBeCloseTo(areas[0], 6);
+  });
+});
+
+describe("scatter group ids are whatever a datasheet cell holds", () => {
+  const withGroups = (groups: (number | null)[], markers?: MarkerSymbol[]): ChartConfig =>
+    cfg({
+      kind: "scatter",
+      width: 400,
+      height: 260,
+      data: {
+        categories: groups.map((_, i) => `p${i}`),
+        series: [
+          { name: "X", values: groups.map((_, i) => i + 1) },
+          { name: "Y", values: groups.map((_, i) => i + 2) },
+          { name: "Group", values: groups },
+        ],
+      },
+      ...(markers ? { scatter: { markers } } : {}),
+    });
+
+  // A Group row is data, so it can hold anything — including values no index
+  // should ever see.
+  //
+  // Measured against the shipped code, NaN and +Infinity were the two that
+  // actually broke: `Math.max(0, x - 1)` passes both straight through, so the
+  // index became NaN, and `markers[NaN]` is no shape at all — which threw in
+  // the renderer, on a chart that drew fine before markers existed.
+  // zero/negative/-Infinity were already clamped to the first group and are
+  // kept here as regression guards on the normalisation, not as past bugs.
+  const junk: [string, number][] = [
+    ["NaN", NaN],
+    ["Infinity", Infinity],
+    ["-Infinity", -Infinity],
+    ["zero", 0],
+    ["negative", -3],
+  ];
+
+  for (const [name, g] of junk) {
+    it(`renders, and picks a real shape and colour, for a ${name} group`, () => {
+      for (const markers of [undefined, ["circle", "diamond", "triangle"] as MarkerSymbol[]]) {
+        const scene = buildChart(withGroups([g, 2], markers));
+        const svg = sceneToSvg(scene);
+        expect(svg, `${name}/${markers ? "markers" : "default"}`).not.toContain("undefined");
+        expect(svg, `${name}/${markers ? "markers" : "default"}`).not.toContain("NaN");
+        const p = scene.nodes.find((n) => n.name === "point-0")!;
+        expect(p).toBeTruthy();
+        if (p.kind === "symbol") expect(p.size).toBeGreaterThan(0);
+        expect((p as { fill: string }).fill).toMatch(/^#[0-9a-f]{6}$/i);
+      }
+    });
+  }
+
+  it("buckets an unusable id into group 1, where a missing Group row already lands", () => {
+    // Same chart, said two ways: junk ids and no Group row at all.
+    const junky = buildChart(withGroups([NaN, NaN], ["diamond", "triangle"])).nodes;
+    const none = buildChart(
+      cfg({
+        kind: "scatter",
+        width: 400,
+        height: 260,
+        data: {
+          categories: ["p0", "p1"],
+          series: [
+            { name: "X", values: [1, 2] },
+            { name: "Y", values: [2, 3] },
+          ],
+        },
+        scatter: { markers: ["diamond", "triangle"] },
+      }),
+    ).nodes;
+    expect(junky).toEqual(none);
+  });
+
+  it("rounds a fractional id rather than indexing between shapes", () => {
+    const shapes = buildChart(withGroups([1.4, 2.6], ["circle", "diamond", "triangle"])).nodes
+      .filter((n) => n.name?.startsWith("point-"))
+      .map((n) => (n.kind === "symbol" ? n.shape : n.kind));
+    expect(shapes).toEqual(["ellipse", "triangle"]); // 1.4 -> 1, 2.6 -> 3
   });
 });

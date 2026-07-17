@@ -95,17 +95,27 @@ export function annularSectorPoints(
 /**
  * Marker symbol shapes — the ones the scene graph cannot already draw filled.
  *
- * `circle` and `square` are deliberately absent: those are EllipseNode and
- * RectNode, and re-expressing them here would fork two shapes that already
- * render correctly everywhere. A SymbolNode carries only the rest.
+ * Every shape here reproduces its OOXML preset EXACTLY, and that is the entry
+ * requirement. The SVG renderer draws these points while the PowerPoint
+ * renderers name the preset and let PowerPoint draw it, so a shape whose
+ * points only approximate its preset makes the preview lie about the deck —
+ * and, because `markerScale` measures area off these points, it also breaks
+ * the bubble's "area ∝ size" claim in the deck while keeping it in the preview.
  *
- * An X ("cross") is absent too, and on purpose. Its OOXML preset
- * (`mathMultiply`) is built from angled arms this module cannot reproduce
- * honestly at marker scale, so the SVG preview would promise a shape
- * PowerPoint does not draw. At 3-4pt an X and a plus are near-identical
- * anyway, so the set loses nothing by stopping at `plus`.
+ * `circle` and `square` are absent: those are EllipseNode and RectNode, and
+ * re-expressing them here would fork two shapes that already render correctly
+ * everywhere. A SymbolNode carries only the rest.
+ *
+ * Two shapes were tried and rejected on the rule above:
+ *   - `star5` — its preset stretches itself by hf=1.05146 / vf=1.10557 so the
+ *     star fills its box (a 5-point star spans 1.902R by 1.809R, and those
+ *     factors are exactly 2/1.902 and 2/1.809). An inscribed SVG star is
+ *     therefore 16.2% smaller in AREA than the one PowerPoint draws — enough
+ *     to make an area-matched star bubble over-read by a sixth in the deck.
+ *   - `mathMultiply` (an X) — angled arms, same class of problem. Redundant
+ *     with `plus` at 3-4pt anyway.
  */
-export type SymbolShape = "diamond" | "triangle" | "plus" | "star5";
+export type SymbolShape = "diamond" | "triangle" | "plus";
 
 /**
  * A point shape. "circle" and "square" are the scene's existing ellipse and
@@ -113,8 +123,6 @@ export type SymbolShape = "diamond" | "triangle" | "plus" | "star5";
  */
 export type MarkerSymbol = "circle" | "square" | SymbolShape;
 
-/** OOXML `star5` inner/outer radius ratio (its default adj, 19098/50000). */
-const STAR5_INNER = 19098 / 50000;
 /** OOXML `plus` arm half-width as a fraction of the box side (its default adj). */
 const PLUS_ARM = 25000 / 100000;
 
@@ -131,8 +139,6 @@ const MARKER_AREA: Record<MarkerSymbol, number> = {
   triangle: 2,
   // Two 2x1 bars crossing, minus their 1x1 overlap.
   plus: 3,
-  // Ten triangles of (R, R*STAR5_INNER) with 36 degrees between them.
-  star5: 5 * STAR5_INNER * Math.sin((36 * Math.PI) / 180),
 };
 
 /**
@@ -162,7 +168,6 @@ export const SYMBOL_PRESET: Record<SymbolShape, string> = {
   diamond: "diamond",
   triangle: "triangle",
   plus: "plus",
-  star5: "star5",
 };
 
 /**
@@ -172,11 +177,8 @@ export const SYMBOL_PRESET: Record<SymbolShape, string> = {
  * preset instead, so this is the one place the two descriptions of a symbol sit
  * side by side.
  *
- * `diamond`, `triangle` and `plus` reproduce their preset's geometry exactly.
- * `star5` is a regular 5-point star inscribed in the box: the real preset
- * additionally stretches itself by its `hf`/`vf` factors to touch all four
- * edges, which this does not copy — the same order of approximation the wedge
- * fan and the chevron notch already accept, and invisible at marker scale.
+ * Each shape reproduces its preset's geometry exactly — see SymbolShape for
+ * why that is a hard requirement rather than a nicety.
  */
 export function symbolPoints(shape: SymbolShape, cx: number, cy: number, size: number): { x: number; y: number }[] {
   const s = Math.max(0, size);
@@ -211,14 +213,6 @@ export function symbolPoints(shape: SymbolShape, cx: number, cy: number, size: n
         { x: cx - a, y: cy + a },
         { x: cx - s, y: cy + a },
       ];
-    }
-    case "star5": {
-      const pts: { x: number; y: number }[] = [];
-      // Ten alternating vertices, 36° apart, first point at 12 o'clock.
-      for (let i = 0; i < 10; i++) {
-        pts.push(polar(cx, cy, i % 2 === 0 ? s : s * STAR5_INNER, i * 36));
-      }
-      return pts;
     }
   }
 }
