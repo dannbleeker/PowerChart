@@ -394,17 +394,21 @@ type SlideThunk = () => PowerPoint.Slide;
 /**
  * Append `count` blank slides and return a fresh-proxy thunk for each.
  *
- * By index, off a `getCount()` taken BEFORE the adds — `slides.add()` always
- * appends to the end, so the new slides are `start .. start+count-1`. The count
- * delta after the adds is the one signal the web host reports reliably, so it is
- * asserted: a partial/failed add becomes a named error here instead of an
- * `undefined.shapes` crash downstream.
+ * By index, off a `getCount()` taken in its OWN sync BEFORE the adds —
+ * `slides.add()` always appends to the end, so the new slides are
+ * `start .. start+count-1`. The adds then get their own commit sync, and the
+ * positional thunks need nothing more.
  *
- * Deliberately NOT via `slides.items`: `.items` is a snapshot from the last
- * `load`, not a live view, and reading it in the same sync as the adds returns
- * the pre-add set (this is the bug that returned zero new slides). And NOT by
- * loading ids to re-acquire `getItem(id)`: that id is the very thing the web host
- * mis-round-trips. `getCount` + a fresh positional proxy needs neither.
+ * There is deliberately NO post-add count check. `getCount()` queued in the SAME
+ * sync as the adds returns the PRE-add total on PowerPoint web — the adds are
+ * queued but not yet reflected in the count — so a delta assertion there throws
+ * "added 0 of N" while the slides are in fact appearing. `start` is read cleanly
+ * before any add is queued, which is the only count reading this host reports
+ * reliably.
+ *
+ * Also NOT via `slides.items` (a snapshot, stale in the adds' sync — the bug that
+ * returned zero new slides) and NOT by loading ids to re-acquire `getItem(id)`
+ * (that id is the very thing the web host mis-round-trips).
  */
 async function addSlides(
   context: PowerPoint.RequestContext,
@@ -417,11 +421,7 @@ async function addSlides(
   await context.sync();
   const start = before.value;
   for (let i = 0; i < count; i++) slides.add(layoutId ? { layoutId } : undefined);
-  const after = slides.getCount();
   await context.sync();
-  if (after.value !== start + count) {
-    throw new Error(`PowerPoint added ${after.value - start} of ${count} slides — cannot draw on what is not there`);
-  }
   return Array.from({ length: count }, (_, i) => () => context.presentation.slides.getItemAt(start + i));
 }
 
