@@ -812,11 +812,9 @@ describe("Office round-trips do not scale with the chart count", () => {
   });
 
   it("appends a demo deck in CHUNKS, reporting progress as slides land", async () => {
-    // The demo deck is the one place that must NOT batch: ~1,700 shapes behind
-    // a single sync is all-or-nothing — nothing appears until every shape lands,
-    // one failure loses the lot, and there is nothing to show but a spinner.
-    // So the contract here is the opposite of updateChartsInSlides': bounded
-    // work per round-trip, and visible progress.
+    // ~1,700 shapes behind a single sync is all-or-nothing: nothing appears
+    // until every shape lands, one failure loses the lot, and there is nothing
+    // to show but a spinner. Bounded work per round-trip, and visible progress.
     for (const [n, chunks] of [[2, 1], [12, 3], [35, 9]] as const) {
       installHost([makeSlide("s1")]);
       const seen: string[] = [];
@@ -824,13 +822,15 @@ describe("Office round-trips do not scale with the chart count", () => {
         Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
         (done, total) => seen.push(`${done}/${total}`),
       );
-      // One context per chunk of 4 — work per round-trip is bounded, so a slow
-      // host shows slides appearing instead of freezing.
+      // One context per chunk of 4 — bounded work per round-trip, so a slow
+      // host shows slides appearing instead of freezing. The SYNC count is
+      // deliberately NOT pinned: shapes commit in batches of SHAPES_PER_SYNC,
+      // so it tracks the drawing, which is the whole point.
       expect(trips.contexts, `${n} slides`).toBe(chunks);
-      // 5 syncs a chunk, +1 once for the blank-layout lookup in the first.
-      expect(trips.syncs, `${n} slides`).toBe(chunks * 5 + 1);
-      // Progress is reported once per chunk and always ends at the total.
-      expect(seen, `${n} slides`).toHaveLength(chunks);
+      // Progress is per SLIDE, not per chunk. A chunk is 4 slides ~ 200 shapes;
+      // reporting only when all four land is what left the owner watching
+      // "Working… 845s" with no counter at all.
+      expect(seen, `${n} slides`).toHaveLength(n);
       expect(seen.at(-1)).toBe(`${n}/${n}`);
       // Monotonic, never over-counting.
       expect(seen.map((x) => Number(x.split("/")[0]))).toEqual([...seen.map((x) => Number(x.split("/")[0]))].sort((a, b) => a - b));
@@ -1063,5 +1063,52 @@ describe("the wait budget scales with the work", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("EVERY insert path batches its shapes", () => {
+  /** Max shapes handed to the host in any single sync of `run`. */
+  async function maxPerSync(run: () => Promise<void>, slides: FakeSlide[]) {
+    const worst = { n: 0 };
+    let last = 0;
+    const ctx = installHost(slides);
+    const count = () => slides.reduce((a, s) => a + s.created.length, 0);
+    ctx.sync = async () => {
+      trips.syncs++;
+      worst.n = Math.max(worst.n, count() - last);
+      last = count();
+    };
+    await run();
+    return worst.n;
+  }
+
+  it("insert, update, agenda AND demo deck — none may send a whole scene", async () => {
+    // The omission this exists for: I chunked insertSceneIntoSlide and
+    // updateChartsInSlides and forgot insertAgendaSlides and insertDemoDeck.
+    // The demo deck kept handing over ~200 shapes (4 slides at once) and sat at
+    // "Working… 845s" having added nothing — and reported no progress, because
+    // progress only fires when a chunk COMPLETES and the first never did.
+    // A per-path test would have missed it; this asserts the invariant.
+    const scene = () => buildChart(config);
+    expect(scene().nodes.length).toBeGreaterThan(10); // must span batches
+
+    const s1 = makeSlide("s1");
+    expect(await maxPerSync(() => insertSceneIntoSlide(scene(), { tagData: "{}" }), [s1]), "insert").toBeLessThanOrEqual(10);
+
+    const s2 = makeSlide("s2");
+    const old = s2.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
+    expect(
+      await maxPerSync(() => updateChartInSlide(scene(), { slideId: "s2", shapeId: old.id, left: 0, top: 0 }, {}), [s2]),
+      "update",
+    ).toBeLessThanOrEqual(11); // +1: the pre-existing shape this test planted
+
+    const s3 = makeSlide("s3");
+    expect(await maxPerSync(() => insertAgendaSlides([scene(), scene()]), [s3]), "agenda").toBeLessThanOrEqual(10);
+
+    const s4 = makeSlide("s4");
+    expect(
+      await maxPerSync(() => insertDemoDeck([{ scene: scene() }, { scene: scene() }, { scene: scene() }, { scene: scene() }, { scene: scene() }]), [s4]),
+      "demo deck",
+    ).toBeLessThanOrEqual(10);
   });
 });
