@@ -1376,6 +1376,13 @@ if (requestedEl) {
   }
 }
 
+// Injected by vite (see vite.config.ts). Shown in the header so the running
+// build is always identifiable — PowerPoint caches the pane, and a stale one is
+// otherwise indistinguishable from a fixed one.
+declare const __BUILD_STAMP__: string;
+const stampEl = document.getElementById("build-stamp");
+if (stampEl) stampEl.textContent = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
+
 const sizeInputs = [$("chart-w"), $("chart-h")] as HTMLInputElement[];
 for (const el of sizeInputs) el?.addEventListener("input", renderPreview);
 
