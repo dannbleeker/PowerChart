@@ -519,6 +519,9 @@ export interface DemoResult {
   /** Chart shapes actually drawn (0 when skipped as too dense, or failed early). */
   created: number;
   status: "rendered" | "skipped" | "failed";
+  /** Wall-clock time for this slide, ms. A value nearing BATCH_TIMEOUT_MS (45s) is
+   *  a near-miss stall — the host was one hair from losing it. */
+  ms: number;
 }
 
 /** A demo-deck insert's self-verification report. */
@@ -531,6 +534,8 @@ export interface DemoReport {
    * corruption that a regression run must surface, not hide.
    */
   slidesAdded: number;
+  /** Wall-clock time for the whole run, ms — the headline regression metric. */
+  totalMs: number;
 }
 
 /** The current slide count, read in its own settled sync (reliable on web). */
@@ -555,11 +560,13 @@ export async function insertDemoDeck(
   // Bracket the run with a settled slide count, so a regression run can prove the
   // deck grew by exactly one slide per item — the lost-slide check.
   const before = await slideCount();
+  const runStart = Date.now();
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
     let status: DemoResult["status"] = "rendered";
+    const t0 = Date.now();
     try {
       await PowerPoint.run(async (context) => {
         if (!layoutResolved) {
@@ -589,9 +596,10 @@ export async function insertDemoDeck(
       // real one. A fresh context, because the failed render poisoned its own.
       await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
     }
-    results.push({ created, status });
+    results.push({ created, status, ms: Date.now() - t0 });
     onProgress?.(i + 1, items.length);
   }
+  const totalMs = Date.now() - runStart;
   const after = await slideCount();
   // A whole deck lost to HOST errors (not just skipped-as-dense) is a real
   // failure — surface it so the pane says "Failed", not "inserted 0 of N". If
@@ -599,7 +607,7 @@ export async function insertDemoDeck(
   if (items.length && results.every((r) => r.status !== "rendered") && lastError !== undefined) {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
-  return { results, slidesAdded: after - before };
+  return { results, slidesAdded: after - before, totalMs };
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */

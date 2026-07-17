@@ -1,5 +1,5 @@
 import type { ChartConfig } from "./types";
-import { estimateOfficeShapes, type Scene } from "./scene";
+import { estimateOfficeShapes, type Scene, type SceneNode } from "./scene";
 import { CHART_KINDS, sampleConfig } from "./samples";
 import { buildChart, DEFAULT_SIZE } from "./chart";
 import { buildAgendaScene } from "./agenda";
@@ -136,10 +136,11 @@ function elementScenes(): { title: string; scene: Scene }[] {
 }
 
 /**
- * The opening title slide of the demo deck. Stamps the running build so a test
- * PDF is self-identifying — you can tell at a glance which build produced it.
+ * The opening title slide of the demo deck. Stamps the running build AND the host
+ * (from Office.context.diagnostics) so a test PDF is fully self-identifying — you
+ * can tell at a glance which build on which host produced it.
  */
-function buildTitleScene(buildStamp: string): Scene {
+function buildTitleScene(buildStamp: string, host: string): Scene {
   return {
     width: 840,
     height: 360,
@@ -147,7 +148,8 @@ function buildTitleScene(buildStamp: string): Scene {
       { kind: "text", x: 0, y: 96, w: 840, h: 66, text: "PowerChart chart gallery", fontSize: 40, bold: true, color: PALETTE[0], align: "left", valign: "top", name: "title" },
       { kind: "text", x: 0, y: 168, w: 840, h: 28, text: "Every chart kind, feature highlight, and scorecard element — as native, editable PowerPoint shapes.", fontSize: 15, color: "#52514e", align: "left", valign: "top", name: "subtitle" },
       { kind: "text", x: 0, y: 208, w: 840, h: 22, text: "The next slide indexes each chart with its shape count.", fontSize: 12, color: "#8a8984", align: "left", valign: "top", name: "note" },
-      { kind: "text", x: 0, y: 300, w: 840, h: 22, text: `Build ${buildStamp}`, fontSize: 12, bold: true, color: "#52514e", align: "left", valign: "top", name: "build-stamp" },
+      { kind: "text", x: 0, y: 296, w: 840, h: 22, text: `Build ${buildStamp}`, fontSize: 12, bold: true, color: "#52514e", align: "left", valign: "top", name: "build-stamp" },
+      { kind: "text", x: 0, y: 320, w: 840, h: 22, text: `Host  ${host}`, fontSize: 12, color: "#8a8984", align: "left", valign: "top", name: "host" },
     ],
   };
 }
@@ -173,12 +175,21 @@ function buildIndexScene(charts: DemoItem[]): Scene {
   return buildTableScene(rows, 840);
 }
 
+/** Options for {@link demoItems}. All optional so `demoItems()` still works. */
+export interface DemoOptions {
+  /** Short build id stamped on the title slide, e.g. "10a6fa0 · 2026-07-17 20:11Z". */
+  buildStamp?: string;
+  /** Host descriptor (from `Office.context.diagnostics`) stamped under the build. */
+  host?: string;
+}
+
 /**
  * The full demo deck: a title slide, a contents/manifest table, then one editable
  * chart per kind, the feature highlights, and the elements. A single button drops
  * all of this onto fresh slides for live testing in PowerPoint.
  */
-export function demoItems(buildStamp = "local build"): DemoItem[] {
+export function demoItems(opts: DemoOptions = {}): DemoItem[] {
+  const { buildStamp = "local build", host = "unknown host" } = opts;
   const charts: DemoItem[] = [];
   for (const { kind, label } of CHART_KINDS) {
     const config: ChartConfig = { ...sampleConfig(kind), title: label };
@@ -191,8 +202,69 @@ export function demoItems(buildStamp = "local build"): DemoItem[] {
     charts.push({ title, scene });
   }
   return [
-    { title: "Title", scene: buildTitleScene(buildStamp) },
+    { title: "Title", scene: buildTitleScene(buildStamp, host) },
     { title: "Contents", scene: buildIndexScene(charts) },
     ...charts,
   ];
+}
+
+/** One item's outcome, as shown on the results slide. */
+export interface ResultRow {
+  title: string;
+  status: "rendered" | "skipped" | "failed";
+  shapes: number;
+  ms: number;
+}
+
+/** Run-level totals shown on the results slide. `lost` = slides the host dropped. */
+export interface ResultsSummary {
+  buildStamp: string;
+  items: number;
+  rendered: number;
+  skipped: number;
+  failed: number;
+  lost: number;
+  totalMs: number;
+}
+
+/**
+ * The closing results slide: a self-contained record of one regression run —
+ * a summary line, the build stamp, and a table of ONLY the skipped/failed items
+ * (chart · status · shapes · ms). Failures are few, so this stays well under the
+ * ~90 web shape budget; a clean run just says so. The contents slide already
+ * lists every chart, so there's no need to repeat the whole 37-row manifest here.
+ */
+export function buildResultsScene(rows: ResultRow[], summary: ResultsSummary): Scene {
+  const ink = "#52514e";
+  const grey = "#8a8984";
+  const secs = (summary.totalMs / 1000).toFixed(1);
+  const summaryText = `${summary.items} items · ${summary.rendered} rendered · ${summary.skipped} skipped · ${summary.failed} failed · ${summary.lost} lost · total ${secs}s`;
+  const nodes: SceneNode[] = [
+    { kind: "text", x: 0, y: 40, w: 840, h: 40, text: "Regression results", fontSize: 28, bold: true, color: PALETTE[0], align: "left", valign: "top", name: "results-title" },
+    { kind: "text", x: 0, y: 96, w: 840, h: 24, text: summaryText, fontSize: 14, color: ink, align: "left", valign: "top", name: "results-summary" },
+    { kind: "text", x: 0, y: 122, w: 840, h: 20, text: `Build ${summary.buildStamp}`, fontSize: 12, bold: true, color: ink, align: "left", valign: "top", name: "results-build" },
+  ];
+  const failures = rows.filter((r) => r.status !== "rendered");
+  const headerY = 168;
+  if (failures.length === 0) {
+    nodes.push({ kind: "text", x: 0, y: headerY, w: 840, h: 24, text: "All slides rendered cleanly.", fontSize: 14, color: ink, align: "left", valign: "top", name: "results-clean" });
+  } else {
+    nodes.push(
+      { kind: "text", x: 0, y: headerY, w: 380, h: 18, text: "Chart", fontSize: 12, bold: true, color: ink, align: "left", valign: "top", name: "results-th-chart" },
+      { kind: "text", x: 380, y: headerY, w: 160, h: 18, text: "Status", fontSize: 12, bold: true, color: ink, align: "left", valign: "top", name: "results-th-status" },
+      { kind: "text", x: 560, y: headerY, w: 100, h: 18, text: "Shapes", fontSize: 12, bold: true, color: ink, align: "right", valign: "top", name: "results-th-shapes" },
+      { kind: "text", x: 680, y: headerY, w: 140, h: 18, text: "ms", fontSize: 12, bold: true, color: ink, align: "right", valign: "top", name: "results-th-ms" },
+    );
+    failures.forEach((r, i) => {
+      const y = headerY + 26 + i * 22;
+      nodes.push(
+        { kind: "text", x: 0, y, w: 380, h: 20, text: r.title, fontSize: 12, color: ink, align: "left", valign: "top" },
+        { kind: "text", x: 380, y, w: 160, h: 20, text: r.status, fontSize: 12, color: r.status === "failed" ? "#c0392b" : grey, align: "left", valign: "top" },
+        { kind: "text", x: 560, y, w: 100, h: 20, text: String(r.shapes), fontSize: 12, color: ink, align: "right", valign: "top" },
+        { kind: "text", x: 680, y, w: 140, h: 20, text: String(r.ms), fontSize: 12, color: ink, align: "right", valign: "top" },
+      );
+    });
+  }
+  const height = Math.max(360, headerY + 26 + failures.length * 22 + 20);
+  return { width: 840, height, nodes };
 }

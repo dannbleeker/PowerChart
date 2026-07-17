@@ -21,7 +21,7 @@ import {
   type InsertPhase,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
-import { demoItems } from "../core/demo";
+import { demoItems, buildResultsScene, type ResultRow, type ResultsSummary } from "../core/demo";
 import { buildCheckbox, buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
 import { localizePane, localizeTree } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
@@ -1300,6 +1300,22 @@ function watchSelection() {
   }
 }
 
+/**
+ * A one-line host descriptor for the demo title/results slides, e.g.
+ * "PowerPoint · OfficeOnline · 16.0.1". Web vs desktop vs Mac behave differently
+ * under the demo's shape budget, so a run's PDF should say which one it was.
+ * Guarded — `Office.context.diagnostics` is absent outside a host.
+ */
+function describeHost(): string {
+  try {
+    const d = Office.context?.diagnostics;
+    if (d?.host) return `${d.host} · ${d.platform} · ${d.version}`;
+  } catch {
+    /* Office.context unavailable — fall through */
+  }
+  return "unknown host";
+}
+
 function wireInsert() {
   const insertBtn = $("insert") as HTMLButtonElement;
   const insertNewBtn = $("insert-new") as HTMLButtonElement;
@@ -1405,10 +1421,12 @@ function wireInsert() {
     demoBtn.addEventListener(
       "click",
       guard(async () => {
-        const items = demoItems(typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev");
+        const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
+        const host = describeHost();
+        const items = demoItems({ buildStamp, host });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        const { results, slidesAdded } = await insertDemoDeck(
+        const { results, slidesAdded, totalMs } = await insertDemoDeck(
           items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
           (done, total) => {
             note(`Inserting demo slides… ${done} of ${total}`, "busy");
@@ -1425,13 +1443,26 @@ function wireInsert() {
         const failedNames = named("failed");
         const rendered = results.filter((r) => r.status === "rendered").length;
         const lost = items.length - slidesAdded;
+        const secs = (totalMs / 1000).toFixed(1);
         console.log("PowerChart demo self-check:");
-        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, status: r.status })));
-        console.log(`deck grew by ${slidesAdded}, expected ${items.length}${lost > 0 ? ` — ${lost} LOST` : ""}`);
-        let msg = `Inserted ${rendered} of ${items.length}.`;
+        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, status: r.status, ms: r.ms })));
+        console.log(`deck grew by ${slidesAdded}, expected ${items.length}${lost > 0 ? ` — ${lost} LOST` : ""} · total ${secs}s`);
+        let msg = `Inserted ${rendered} of ${items.length} in ${secs}s.`;
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (lost > 0) msg += ` ⚠ ${lost} slide${lost === 1 ? "" : "s"} LOST by the host (deck grew by ${slidesAdded}, expected ${items.length}).`;
+        // Close the deck with a self-contained results slide so the exported PDF is
+        // a complete run record. A second insertDemoDeck reuses the same add/render/
+        // self-check machinery; wrap it so a host stall here can't swallow the run's
+        // own summary (its failure is itself just another data point).
+        const rows: ResultRow[] = results.map((r, i) => ({ title: items[i].title, status: r.status, shapes: r.created, ms: r.ms }));
+        const summary: ResultsSummary = { buildStamp, items: items.length, rendered, skipped: skipped.length, failed: failedNames.length, lost: Math.max(0, lost), totalMs };
+        try {
+          await insertDemoDeck([{ scene: buildResultsScene(rows, summary) }]);
+        } catch (e) {
+          console.warn("PowerChart: results slide failed to insert", e);
+          msg += " (results slide not added)";
+        }
         note(msg, lost > 0 || failedNames.length ? "err" : "ok");
       }),
     );

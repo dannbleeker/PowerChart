@@ -7,25 +7,35 @@ This catches host-only bugs the vitest fakes cannot (ellipse repaint, wedge
 tessellation, slide-timing races), which is the whole point: the fake asserts our
 intent, the deck asserts the host's behaviour.
 
+The deck is **self-identifying and self-summarising**: it opens with a **title
+slide** stamping the running build *and* the host (`Office.context.diagnostics` →
+`PowerPoint · OfficeOnline · 16.0.x`), a **contents** slide indexing every chart
+with its office-shape count, and closes with a **results slide** — a summary line
+plus a table of only the skipped/failed items. So an exported PDF is a complete,
+comparable record of one run without opening the console: which build, which host,
+what failed, how long it took.
+
 ## 1. The cheap pass — self-check (every run)
 
 Insert the deck. When it finishes, the pane reports and the **console** (F12)
 prints a per-chart table plus a lost-slide check:
 
 ```
-chart        shapes  status
-Bubble         44    rendered
-Combo          22    failed        ← host stalled mid-draw
-Doughnut       15    rendered
-Area            0    skipped       ← too dense, stamped
-deck grew by 32, expected 35 — 3 LOST
+chart        shapes  status      ms
+Bubble         44    rendered   180
+Combo          22    failed   45012   ← host stalled mid-draw (near the 45s timeout)
+Doughnut       15    rendered   240
+Area            0    skipped      2   ← too dense, stamped
+deck grew by 32, expected 35 — 3 LOST · total 78.4s
 ```
 
 Read `insertDemoDeck`'s `DemoReport` (`src/render/powerpoint.ts`): `results[i]` is
-`{created, status}` and `slidesAdded` is the deck's ACTUAL growth, read back with a
-settled `getCount`. **`slidesAdded < items.length` means the host silently dropped
-slides** — an otherwise-invisible corruption. This pass needs no PDF and catches
-every *structural* regression: missing, partial, skipped, failed, lost.
+`{created, status, ms}`, `slidesAdded` is the deck's ACTUAL growth (read back with a
+settled `getCount`), and `totalMs` is the whole run's wall-clock. **`slidesAdded <
+items.length` means the host silently dropped slides** — an otherwise-invisible
+corruption. A per-item `ms` nearing 45 000 (`BATCH_TIMEOUT_MS`) is a near-miss
+stall — the host was one hair from losing that slide. This pass needs no PDF and
+catches every *structural* regression: missing, partial, skipped, failed, lost.
 
 It does NOT catch *paint* bugs — a shape created but not rendered (office-js#2699)
 still counts. That's what the visual pass is for.
