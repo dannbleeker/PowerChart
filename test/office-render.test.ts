@@ -77,12 +77,25 @@ type FakeShape = ReturnType<typeof makeShape>;
 /** Layout ids passed to slides.add() since the last installHost(). */
 const addedWithLayout: (string | undefined)[] = [];
 
-function makeSlide(id: string) {
+/**
+ * The queued-command failure a stalled getItemAt handle produces, surfaced at
+ * the NEXT sync — because Office.js reports queued-command errors only at sync,
+ * never at the call that queued them. `installHost`'s sync() throws it. See
+ * `getItemAt` below for why a freshly-added slide's handle poisons.
+ */
+let pendingHostError: Error | null = null;
+
+function makeSlide(id: string, fresh = false) {
   const created: FakeShape[] = [];
   const slide = {
     id,
     created,
     isNullObject: false,
+    // A slide add()ed during a run() is "fresh": its getItemAt handle is not a
+    // durable reference until the host has handed back an authoritative id via a
+    // load. `idLoaded` flips true when the collection's ids are loaded.
+    fresh,
+    idLoaded: false,
     load() {},
     shapes: {
       items: created,
@@ -120,6 +133,43 @@ function makeSlide(id: string) {
 type FakeSlide = ReturnType<typeof makeSlide>;
 
 /**
+ * The reference `slides.getItemAt(i)` hands back for a freshly-added slide whose
+ * id the caller never loaded: a stand-in for the object path Office.js has
+ * silently rewritten to `getItem(<unstable id>)`. Shapes queued on it appear to
+ * succeed, then the NEXT sync throws "InvalidParam passed to GetItem(id)" (code
+ * 5010) — the exact failure the real host produced on the demo deck, and the one
+ * the old `getItemAt(before + i)` fake could not express because it returned the
+ * live slide. Nothing lands: the queued shapes are detached, not pushed to the
+ * real slide's `created`.
+ */
+function poisonedHandle(real: FakeSlide) {
+  const boom = () => {
+    pendingHostError = new Error(
+      'InvalidParam passed to GetItem(id) | code=5010 | debugInfo={"errorLocation":"SlideCollection.getItem"}',
+    );
+  };
+  return {
+    id: real.id,
+    isNullObject: false,
+    load() {},
+    shapes: {
+      items: [] as FakeShape[],
+      load() {},
+      addGeometricShape: (geo: string, box: FakeShape["box"]) => (boom(), makeShape("geometric", geo, box)),
+      addLine: (_kind: string, box: FakeShape["box"]) => (boom(), makeShape("line", undefined, box)),
+      addTextBox: (text: string, box: FakeShape["box"]) => {
+        boom();
+        const s = makeShape("text", undefined, box);
+        s.text = text;
+        return s;
+      },
+      addGroup: (_items: FakeShape[]) => (boom(), makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 })),
+      getItemOrNullObject: () => ({ isNullObject: true, delete() {} }),
+    },
+  };
+}
+
+/**
  * Office round-trips since the last installHost(). Every context.sync() is a
  * trip to PowerPoint and dominates insert latency, so the count is a behaviour
  * worth asserting — see "round-trips do not scale with the chart count".
@@ -146,18 +196,28 @@ function installHost(
     presentation: {
       slides: {
         items: slides,
-        load() {},
+        // Loading ids is what blesses a freshly-added slide: after this the host
+        // knows its authoritative id, so a getItem(id) reference to it is stable.
+        load: (select?: string) => {
+          if (!select || select.includes("id")) for (const s of slides) s.idLoaded = true;
+        },
         getItem: (id: string) => slides.find((s) => s.id === id)!,
         // Real Office.js hands back a null OBJECT for an unknown id — it does
         // not throw and does not return undefined. A fake that returns
         // undefined would make `slide.isNullObject` a TypeError instead of the
-        // false it should be, and hide the very case this models.
+        // false it should be, and hide the very case this models. By id, the
+        // reference is always durable — the whole point of the fix.
         getItemOrNullObject: (id: string) => slides.find((s) => s.id === id) ?? { isNullObject: true, load() {} },
-        getItemAt: (i: number) => slides[i],
+        // A pre-existing slide's handle is durable; a freshly-added one's is not
+        // until its id has been loaded — reusing it across syncs is the bug.
+        getItemAt: (i: number) => {
+          const s = slides[i];
+          return s && s.fresh && !s.idLoaded ? poisonedHandle(s) : s;
+        },
         getCount: () => ({ value: slides.length }),
         add: (options?: { layoutId?: string }) => {
           addedWithLayout.push(options?.layoutId);
-          slides.push(makeSlide(`slide-${slides.length + 1}`));
+          slides.push(makeSlide(`slide-${slides.length + 1}`, true));
         },
       },
       // A real deck's master carries several layouts; only one is blank, and
@@ -183,10 +243,18 @@ function installHost(
     sync: async () => {
       trips.syncs++;
       if (trips.syncs === failSyncOn) throw new Error("host refused a queued command");
+      // A queued-command failure (e.g. drawing on a poisoned getItemAt handle)
+      // surfaces here, at the sync, exactly as Office.js reports it.
+      if (pendingHostError) {
+        const err = pendingHostError;
+        pendingHostError = null;
+        throw err;
+      }
     },
   };
   trips.syncs = 0;
   trips.contexts = 0;
+  pendingHostError = null;
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
@@ -856,6 +924,25 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(deck.length).toBe(1 + n);
     const tags = deck.slice(1).map((s) => s.created.map((c) => c.tagStore.get(CHART_TAG)).find(Boolean));
     expect(tags).toEqual(Array.from({ length: n }, (_, i) => `{"i":${i}}`));
+  });
+
+  it("draws freshly-added slides by loaded id, so a rewritten getItemAt cannot 5010 mid-deck", async () => {
+    // The real regression: a slide obtained with getItemAt(before + i) and reused
+    // across the render's batched syncs stops resolving once Office.js rewrites
+    // its path to getItem(id) with an unstable id — "InvalidParam passed to
+    // GetItem(id)", code 5010 — and the deck dies partway through, as it did on
+    // the real host. The fake now poisons exactly that handle; a deck that spans
+    // several chunks must still land in full. 12 items = 3 chunks, so the failure
+    // (if present) surfaces at a chunk boundary, not on the first slide.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const n = 12;
+    await expect(
+      insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` }))),
+    ).resolves.toBeUndefined();
+    // Every appended slide carries its chart — nothing was stranded by a 5010.
+    expect(deck.length).toBe(1 + n);
+    for (let i = 1; i <= n; i++) expect(deck[i].created.length, `slide ${i}`).toBeGreaterThan(0);
   });
 });
 
