@@ -331,8 +331,17 @@ textarea {
 .element-row input[type="text"] { flex: 1; min-width: 0; font: inherit; padding: 4px 7px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); }
 .element-row select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); }
 .element-preview svg { display: block; }
+/* The process flow is 480pt wide and built to shrink into the pane, so it wants
+   the full width. */
 .element-flow-preview { margin: 2px 0 0; }
 .element-flow-preview svg { width: 100%; height: auto; display: block; }
+
+/* A tile is NOT that. The KPI is 160x90, so stretching it to the card's width
+   blows it up to ~2.5x its natural height — enough to push the card's own
+   Insert button out of view, leaving the NEXT element's Insert as the nearest
+   one. Cap at natural size; shrink only if the pane is narrower than the tile. */
+.element-tile-preview { margin: 2px 0 0; }
+.element-tile-preview svg { max-width: 100%; height: auto; display: block; }
 
 /* Elements tab: one consistent card per insertable element. */
 .el-grid { display: flex; flex-direction: column; gap: 8px; }

@@ -341,3 +341,29 @@ describe("status is pane-wide, and only claims what it knows", () => {
     expect(bar().hasAttribute("hidden")).toBe(true);
   });
 });
+
+describe("element previews are sized for their own shape", () => {
+  it("does not stretch the KPI tile like the process flow", async () => {
+    // The flow is 480x44 and built to shrink, so it wants width:100%. The KPI
+    // is 160x90 — the same rule blows it up to ~2.5x its natural height, which
+    // pushed the KPI card's own Insert button out of view and left "Table from
+    // datasheet"'s Insert as the nearest one. The owner clicked it and got a
+    // table, exactly as the layout invited.
+    await bootPane();
+    expect(document.getElementById("kpi-preview")!.className).toBe("element-tile-preview");
+    expect(document.getElementById("flow-preview")!.className).toBe("element-flow-preview");
+    const css = readFileSync("src/taskpane/taskpane.css", "utf8");
+    // A tile caps at its natural size; only the flow may stretch.
+    expect(css).toMatch(/\.element-tile-preview svg \{[^}]*max-width:\s*100%/);
+    expect(css).not.toMatch(/\.element-tile-preview svg \{[^}]*[^-]width:\s*100%/);
+    expect(css).toMatch(/\.element-flow-preview svg \{[^}]*[^-]width:\s*100%/);
+  });
+
+  it("renders the KPI preview at the tile's real aspect, not the card's width", async () => {
+    await bootPane();
+    const svg = document.querySelector("#kpi-preview svg")!;
+    // sceneToSvg states the scene's own size; the CSS must not override it.
+    expect(svg.getAttribute("width")).toBe("160");
+    expect(svg.getAttribute("height")).toBe("90");
+  });
+});
