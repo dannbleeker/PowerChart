@@ -116,7 +116,13 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
               totals?: "row"|"column"|"both",    // marginal sum strips
               calendar?: boolean,     // weekday × week grid for a daily date series
               sizeEncode?: boolean,   // cell area encodes |value| (corrplot style); colour = signed value
-              cluster?: boolean },    // reorder rows by similarity + draw a dendrogram (≥3 rows)
+              cluster?: boolean,      // reorder rows by similarity + draw a dendrogram (≥3 rows)
+              symbols?: "sign" },     // mark each cell +/− for readers who cannot use the colour. A
+                                      // diverging scale says "which way" in hue alone, and greyscale
+                                      // printing collapses its strongest + and − to the same tone.
+                                      // Only where a cell has no value label (the label already prints
+                                      // the sign) — so it matters most under sizeEncode, which
+                                      // suppresses labels. Inert on one-signed data.
   otherBucket?: { max?: number },     // column family: collapse the long tail into one "Other" (keep max series)
   butterfly?: { split?: number },     // butterfly: series on the left flank (rest stack right)
   radar?: { perSpoke?: boolean,       // radar: normalise each spoke to its own max (mixed KPI units)

@@ -5409,7 +5409,7 @@
     "kind": "heatmap",
     "width": 460,
     "height": 320,
-    "title": "Correlation matrix (size = magnitude)",
+    "title": "Correlation matrix — size = magnitude, +/− marks the direction",
     "data": {
       "categories": [
         "Rev",
@@ -5473,7 +5473,8 @@
     },
     "heatmap": {
       "sizeEncode": true,
-      "mode": "diverging"
+      "mode": "diverging",
+      "symbols": "sign"
     }
   },
   {

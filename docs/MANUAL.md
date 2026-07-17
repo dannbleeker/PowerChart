@@ -159,6 +159,17 @@ magnitude of the same value drawn as squares. Available: `circle`, `square`,
 `diamond`, `triangle`, `plus`, `star5` — all PowerPoint preset geometry, so
 they stay filled and editable in the deck on any 1.4+ host.
 
+**Heatmap sign marks** (`heatmap.symbols: "sign"`): draw a `+` or `−` in each
+cell. A diverging heatmap states its direction in hue alone, and hue is what a
+greyscale printer takes away — the strongest positive and the strongest
+negative land within about 1.1:1 of each other in grey, which is to say they
+become the same tone. Marks are drawn only where the cell has no value label,
+since the label already prints the minus sign; that makes them matter most
+under `sizeEncode`, which suppresses labels entirely and leaves colour as the
+only sign carrier. The option is inert on one-signed data, where every mark
+would say the same thing. Not up/down arrows: an arrow on a matrix of KPIs
+reads as movement against last period, a claim PowerChart does not check.
+
 **Marginal histograms** (`decorations.marginals: "x" | "y" | "both"` on
 scatter/bubble): distribution bars in a gutter along the top and/or right
 margin — where the points bunch up, beside the chart that shows how they
