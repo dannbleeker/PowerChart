@@ -1408,26 +1408,31 @@ function wireInsert() {
         const items = demoItems();
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        const failed = await insertDemoDeck(
+        const { results, slidesAdded } = await insertDemoDeck(
           items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
           (done, total) => {
             note(`Inserting demo slides… ${done} of ${total}`, "busy");
             setProgress(done / total); // one slide per context, so a real bar
           },
         );
-        if (!failed.length) {
-          note(`Inserted ${items.length} demo slides at the end of the deck.`, "ok");
-        } else {
-          // A total HOST failure throws (the guard shows it); reaching here is a
-          // partial — most rendered, some too dense for this host and left with a
-          // "NOT COMPLETE" stamp.
-          const names = failed.map((idx) => items[idx].title).join(", ");
-          const each = failed.length === 1 ? "it" : "them";
-          note(
-            `Inserted ${items.length - failed.length} of ${items.length}. Too dense for this host (stamped "NOT COMPLETE"): ${names} — insert ${each} on their own to retry.`,
-            "ok",
-          );
-        }
+        // Self-check: the deck is a regression harness, so report what the HOST
+        // actually did, not what we asked for. Per-item status + a lost-slide
+        // check (deck growth vs items) — the latter catches silent corruption a
+        // visual scan would miss. The full table goes to the console to copy.
+        const named = (s: "skipped" | "failed") =>
+          results.map((r, i) => (r.status === s ? items[i].title : "")).filter(Boolean);
+        const skipped = named("skipped");
+        const failedNames = named("failed");
+        const rendered = results.filter((r) => r.status === "rendered").length;
+        const lost = items.length - slidesAdded;
+        console.log("PowerChart demo self-check:");
+        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, status: r.status })));
+        console.log(`deck grew by ${slidesAdded}, expected ${items.length}${lost > 0 ? ` — ${lost} LOST` : ""}`);
+        let msg = `Inserted ${rendered} of ${items.length}.`;
+        if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
+        if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
+        if (lost > 0) msg += ` ⚠ ${lost} slide${lost === 1 ? "" : "s"} LOST by the host (deck grew by ${slidesAdded}, expected ${items.length}).`;
+        note(msg, lost > 0 || failedNames.length ? "err" : "ok");
       }),
     );
   } else {

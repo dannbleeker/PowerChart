@@ -17,6 +17,10 @@ import {
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { buildAgendaScene } from "../src/core/agenda";
 import type { ChartConfig, MarkerSymbol } from "../src/core/types";
+import type { DemoReport } from "../src/render/powerpoint";
+
+/** The indices a demo run did not render as a real chart (skipped or failed). */
+const failedIndices = (r: DemoReport) => r.results.map((x, i) => (x.status !== "rendered" ? i : -1)).filter((i) => i >= 0);
 
 /**
  * Recording doubles for the PowerPoint JS proxy-object API: every shape the
@@ -198,6 +202,10 @@ const trips = { syncs: 0, contexts: 0 };
  */
 let failSyncOn = 0;
 
+/** Make the next N slides.add() calls no-ops — models PowerPoint web silently
+ * dropping a slide-add under load, the corruption the self-check must catch. */
+let swallowAdds = 0;
+
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
  * — pass a predicate to simulate e.g. PowerPoint on the web lacking grouping. */
@@ -243,6 +251,10 @@ function installHost(
         },
         add: (options?: { layoutId?: string }) => {
           addedWithLayout.push(options?.layoutId);
+          if (swallowAdds > 0) {
+            swallowAdds--; // the host dropped this add — no slide appears
+            return;
+          }
           slides.push(makeSlide(`slide-${slides.length + 1}`));
         },
       },
@@ -286,6 +298,7 @@ function installHost(
   trips.syncs = 0;
   trips.contexts = 0;
   pendingHostError = null;
+  swallowAdds = 0;
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
@@ -928,13 +941,15 @@ describe("Office round-trips do not scale with the chart count", () => {
     for (const n of [2, 12, 35] as const) {
       installHost([makeSlide("s1")]);
       const seen: string[] = [];
-      const failed = await insertDemoDeck(
+      const report = await insertDemoDeck(
         Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
         (done, total) => seen.push(`${done}/${total}`),
       );
-      expect(failed, `${n} slides`).toEqual([]);
-      // One context per SLIDE now.
-      expect(trips.contexts, `${n} slides`).toBe(n);
+      expect(failedIndices(report), `${n} slides`).toEqual([]);
+      // Self-check: the deck grew by exactly one slide per item, nothing lost.
+      expect(report.slidesAdded, `${n} slides`).toBe(n);
+      // One context per SLIDE, plus the two settled slideCount reads (before/after).
+      expect(trips.contexts, `${n} slides`).toBe(n + 2);
       expect(seen, `${n} slides`).toHaveLength(n);
       expect(seen.at(-1)).toBe(`${n}/${n}`);
       // Monotonic, never over-counting.
@@ -946,8 +961,9 @@ describe("Office round-trips do not scale with the chart count", () => {
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const n = 35;
-    const failed = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
-    expect(failed).toEqual([]);
+    const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+    expect(failedIndices(report)).toEqual([]);
+    expect(report.slidesAdded).toBe(n);
     // The fake appends a slide per add(); the original + n new ones.
     expect(deck.length).toBe(1 + n);
     const tags = deck.slice(1).map((s) => s.created.map((c) => c.tagStore.get(CHART_TAG)).find(Boolean));
@@ -964,7 +980,8 @@ describe("Office round-trips do not scale with the chart count", () => {
     // Fail a single sync partway in (past the first slide's layout+add+render).
     failSyncOn = 9;
     try {
-      const failed = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+      const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+      const failed = failedIndices(report);
       expect(failed.length).toBeGreaterThanOrEqual(1);
       expect(failed.length).toBeLessThan(n); // it kept going — not a whole-deck abort
       // At least every non-failed slide drew its chart (a failed slide may retain
@@ -984,9 +1001,11 @@ describe("Office round-trips do not scale with the chart count", () => {
     installHost(deck);
     const dense = { width: 100, height: 100, nodes: Array.from({ length: 120 }, (_, k) => ({ kind: "rect" as const, x: k, y: 0, w: 1, h: 1, fill: "#111111" })) };
     const light = () => buildChart(cfgFor(0)); // a handful of shapes, well under budget
-    const failed = await insertDemoDeck([{ scene: light() }, { scene: dense }, { scene: light() }]);
-    // Only the dense one is reported; the deck still has all three slides.
-    expect(failed).toEqual([1]);
+    const report = await insertDemoDeck([{ scene: light() }, { scene: dense }, { scene: light() }]);
+    // Only the dense one is reported (as "skipped"); the deck still has all three.
+    expect(failedIndices(report)).toEqual([1]);
+    expect(report.results[1].status).toBe("skipped");
+    expect(report.slidesAdded).toBe(3);
     expect(deck.length).toBe(1 + 3);
     // The dense slide (deck[2]) carries a stamp, NOT the 120 chart shapes.
     const denseSlide = deck[2];
@@ -997,6 +1016,25 @@ describe("Office round-trips do not scale with the chart count", () => {
     // The light neighbours rendered as real charts (no stamp).
     expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
     expect(deck[3].created.length).toBeGreaterThan(1);
+  });
+
+  it("self-check catches a slide the host silently drops (deck grew by less than asked)", async () => {
+    // The corruption a visual scan misses and today cost us 3 lost slides: an
+    // add() that never lands leaves the deck one slide short with no error the
+    // user sees. The report's slidesAdded is read back from the host, so the
+    // shortfall is caught — and the dropped item shows up as not rendered.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    swallowAdds = 1; // the host drops the first item's slide-add
+    try {
+      const report = await insertDemoDeck(Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+      // 4 items asked for, but the deck only grew by 3 — the lost-slide signal.
+      expect(report.slidesAdded).toBe(3);
+      expect(report.results).toHaveLength(4); // every item is still accounted for
+      expect(failedIndices(report).length).toBeGreaterThanOrEqual(1); // the dropped one is flagged
+    } finally {
+      swallowAdds = 0;
+    }
   });
 
   it("re-acquires each freshly-added slide per batch, so a rewritten getItemAt cannot 5010 mid-deck", async () => {
@@ -1021,7 +1059,8 @@ describe("Office round-trips do not scale with the chart count", () => {
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const n = 6;
-    await expect(insertDemoDeck(Array.from({ length: n }, () => ({ scene: bigScene })))).resolves.toEqual([]);
+    const report = await insertDemoDeck(Array.from({ length: n }, () => ({ scene: bigScene })));
+    expect(failedIndices(report)).toEqual([]);
     // Every appended slide got all its shapes (plus the group) — nothing stranded
     // by a mid-batch 5010.
     expect(deck.length).toBe(1 + n);
