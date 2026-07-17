@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { demoItems } from "../src/core/demo";
 import { CHART_KINDS } from "../src/core/samples";
 import { sceneToSvg } from "../src/render/svg";
+import { estimateOfficeShapes } from "../src/render/powerpoint";
 
 describe("demo deck", () => {
   const items = demoItems();
@@ -38,6 +39,18 @@ describe("demo deck", () => {
     // Neither structural slide is a re-editable chart.
     expect(items[0].configJson).toBeUndefined();
     expect(items[1].configJson).toBeUndefined();
+  });
+
+  it("estimates the EXPANDED office shape count so wedge/polygon charts are budgeted honestly", () => {
+    const scene = (t: string) => items.find((i) => i.title === t)!.scene;
+    // The bug the self-check exposed: node count under-counts the render. A wedge
+    // fans out and a polygon draws one line per edge, so these explode.
+    expect(estimateOfficeShapes(scene("Violin"))).toBeGreaterThan(200); // ~250, was 10 nodes
+    expect(estimateOfficeShapes(scene("Violin"))).toBeGreaterThan(scene("Violin").nodes.length * 5);
+    expect(estimateOfficeShapes(scene("Sunburst"))).toBeGreaterThan(90); // now over budget → skipped
+    expect(estimateOfficeShapes(scene("Pie"))).toBeGreaterThan(scene("Pie").nodes.length); // wedge fan expands
+    // A plain bar chart is one shape per node — no expansion, no over-count.
+    expect(estimateOfficeShapes(scene("Stacked"))).toBe(scene("Stacked").nodes.length);
   });
 
   it("tags real charts with re-editable config JSON, and leaves elements untagged", () => {
