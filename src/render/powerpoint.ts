@@ -531,6 +531,9 @@ export interface DemoResult {
    * group, so this is a presence check, not a per-shape census.
    */
   onSlide: number;
+  /** The item stalled on its first attempt but a single retry recovered it. The
+   *  first attempt may have left a stray partial slide (see slidesAdded). */
+  retried?: boolean;
 }
 
 /** A demo-deck insert's self-verification report. */
@@ -556,16 +559,54 @@ async function slideCount(): Promise<number> {
   });
 }
 
+/** The blank-layout id, resolved lazily on the first slide's context and reused. */
+interface LayoutRef {
+  id?: string;
+  resolved: boolean;
+}
+
+/**
+ * Add one slide in a FRESH context and either render the item onto it, or — when
+ * the scene is too dense for the web host — stamp a placeholder instead of
+ * attempting it (which would burn the timeout and push the host toward a crash).
+ * Returns the shapes drawn (0 when stamped). Throws on a host stall; the caller
+ * decides whether to retry. A fresh context per call is what makes a retry safe —
+ * the failed attempt's context is already discarded.
+ */
+async function addAndRenderItem(
+  item: { scene: Scene; tagData?: string },
+  tooDense: boolean,
+  shapeCount: number,
+  layout: LayoutRef,
+): Promise<number> {
+  let created = 0;
+  await PowerPoint.run(async (context) => {
+    if (!layout.resolved) {
+      layout.id = await blankLayoutId(context);
+      layout.resolved = true;
+    }
+    const [getSlide] = await addSlides(context, 1, layout.id);
+    if (tooDense) {
+      // Leave a stamped placeholder so the slide count and order still line up.
+      await stampSlide(context, getSlide, "NOT COMPLETE", `Too dense for this host — ${shapeCount} shapes, not rendered`);
+      return;
+    }
+    const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: item.tagData };
+    const drawn = await renderShapesChunked(context, getSlide, item.scene, opts);
+    created = drawn.length;
+    // Shapes are committed by now, so grouping cannot roll them back.
+    await groupAndTagAll(context, [{ getSlide, created: drawn, opts }]);
+  });
+  return created;
+}
+
 export async function insertDemoDeck(
   items: { scene: Scene; tagData?: string }[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<DemoReport> {
   const results: DemoResult[] = [];
   let lastError: unknown;
-  // The blank-layout id is a plain string valid across contexts, so it is looked
-  // up once (on the first slide's context) and reused for the rest.
-  let layoutId: string | undefined;
-  let layoutResolved = false;
+  const layout: LayoutRef = { resolved: false };
   // Bracket the run with a settled slide count, so a regression run can prove the
   // deck grew by exactly one slide per item — the lost-slide check.
   const before = await slideCount();
@@ -574,38 +615,39 @@ export async function insertDemoDeck(
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
-    let status: DemoResult["status"] = "rendered";
+    let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
+    let retried = false;
     const t0 = Date.now();
     try {
-      await PowerPoint.run(async (context) => {
-        if (!layoutResolved) {
-          layoutId = await blankLayoutId(context);
-          layoutResolved = true;
-        }
-        const [getSlide] = await addSlides(context, 1, layoutId);
-        if (tooDense) {
-          // Do NOT attempt it: this many shapes will not land on web, and trying
-          // burns the timeout and pushes the host toward a crash. Leave a stamped
-          // placeholder so the slide count and order still line up.
-          await stampSlide(context, getSlide, "NOT COMPLETE", `Too dense for this host — ${shapeCount} shapes, not rendered`);
-          status = "skipped";
-          return;
-        }
-        const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: items[i].tagData };
-        const drawn = await renderShapesChunked(context, getSlide, items[i].scene, opts);
-        created = drawn.length;
-        // Shapes are committed by now, so grouping cannot roll them back.
-        await groupAndTagAll(context, [{ getSlide, created: drawn, opts }]);
-      });
+      created = await addAndRenderItem(items[i], tooDense, shapeCount, layout);
     } catch (err) {
-      // One chart the host would not draw does not sink the rest of the deck.
-      lastError = err;
-      status = "failed";
-      // Mark the half-rendered slide so a partial chart is not mistaken for a
-      // real one. A fresh context, because the failed render poisoned its own.
-      await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
+      // A host stall is often transient, so retry the RENDER once — a fresh run
+      // and a NEW slide, because we must NOT delete the first failed slide: a
+      // mis-identified last-slide delete could destroy a good one. A recovered
+      // item may thus leave a stray partial slide from attempt 1; slidesAdded
+      // surfaces that. Too-dense items only stamp a placeholder — nothing to
+      // re-render — so they fail straight through.
+      let recovered = false;
+      if (!tooDense) {
+        try {
+          created = await addAndRenderItem(items[i], false, shapeCount, layout);
+          recovered = true;
+        } catch {
+          /* stalled again — fall through to the failed stamp */
+        }
+      }
+      if (recovered) {
+        retried = true; // status stays "rendered"
+      } else {
+        // One chart the host would not draw does not sink the rest of the deck.
+        // Mark the half-rendered slide so a partial chart is not mistaken for a
+        // real one. A fresh context, because the failed render poisoned its own.
+        lastError = err;
+        status = "failed";
+        await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
+      }
     }
-    results.push({ created, status, ms: Date.now() - t0, onSlide: -1 });
+    results.push({ created, status, ms: Date.now() - t0, onSlide: -1, retried });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;

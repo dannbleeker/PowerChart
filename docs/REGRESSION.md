@@ -15,6 +15,13 @@ plus a table of only the skipped/failed items. So an exported PDF is a complete,
 comparable record of one run without opening the console: which build, which host,
 what failed, how long it took.
 
+Two conveniences: tick **Smoke test (10 slides)** in the pane for a fast pass over
+one representative chart per family (`demoItems({ smoke: true })`) instead of the
+full deck; and a slide that stalls is **retried once** automatically in a fresh
+context (the recovered item is marked `retried`, and — because a mis-identified
+last-slide delete is not worth the risk — attempt 1's stray slide is left in place,
+which `slidesAdded` then surfaces as an extra slide).
+
 ## 1. The cheap pass — self-check (every run)
 
 Insert the deck. When it finishes, the pane reports and the **console** (F12)

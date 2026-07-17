@@ -129,4 +129,45 @@ describe("results slide", () => {
     const scene = buildResultsScene(rows, summary({ items: 12, rendered: 0, skipped: 0, failed: 12, lost: 0 }));
     expect(estimateOfficeShapes(scene)).toBeLessThan(90);
   });
+
+  it("notes recovered-on-retry items in the summary, and omits the note when none", () => {
+    const withRetries = buildResultsScene([], summary({ retried: 2 }))
+      .nodes.filter((n) => n.kind === "text").map((n) => n.text);
+    expect(withRetries.some((t) => /2 recovered/.test(t))).toBe(true);
+    const noRetries = buildResultsScene([], summary())
+      .nodes.filter((n) => n.kind === "text").map((n) => n.text);
+    expect(noRetries.some((t) => /recovered/.test(t))).toBe(false);
+  });
+});
+
+describe("smoke subset", () => {
+  const smoke = demoItems({ smoke: true });
+
+  it("returns a small subset — Title, Contents, then ~10 charts", () => {
+    expect(smoke[0].title).toBe("Title");
+    expect(smoke[1].title).toBe("Contents");
+    const charts = smoke.slice(2);
+    expect(charts.length).toBeGreaterThanOrEqual(8);
+    expect(charts.length).toBeLessThanOrEqual(12);
+    // Far smaller than the full deck.
+    expect(smoke.length).toBeLessThan(demoItems().length);
+  });
+
+  it("spans multiple chart families and an element, excluding the dense charts", () => {
+    const titles = new Set(smoke.map((i) => i.title));
+    for (const t of ["Stacked", "Line", "Pie", "Scatter", "Bubble", "Gantt", "Heatmap", "Combo"]) {
+      expect(titles.has(t), `smoke includes ${t}`).toBe(true);
+    }
+    expect(titles.has("Agenda"), "smoke includes an element").toBe(true);
+    // The known host-stallers / over-budget charts are deliberately left out.
+    for (const t of ["Violin", "Sunburst", "Area", "Waffle"]) {
+      expect(titles.has(t), `smoke excludes ${t}`).toBe(false);
+    }
+  });
+
+  it("keeps every smoke slide under the ~90 web shape budget so the fast pass stays fast", () => {
+    for (const item of smoke) {
+      expect(estimateOfficeShapes(item.scene), `${item.title} under budget`).toBeLessThan(90);
+    }
+  });
 });

@@ -205,6 +205,10 @@ const trips = { syncs: 0, contexts: 0 };
  */
 let failSyncOn = 0;
 
+/** Like failSyncOn but a SET of sync indices — models a stall that persists across
+ * the retry (fail both attempts' syncs), so a slide is truly lost, not recovered. */
+const failSyncsOn = new Set<number>();
+
 /** Make the next N slides.add() calls no-ops — models PowerPoint web silently
  * dropping a slide-add under load, the corruption the self-check must catch. */
 let swallowAdds = 0;
@@ -291,7 +295,7 @@ function installHost(
     },
     sync: async () => {
       trips.syncs++;
-      if (trips.syncs === failSyncOn) throw new Error("host refused a queued command");
+      if (trips.syncs === failSyncOn || failSyncsOn.has(trips.syncs)) throw new Error("host refused a queued command");
       // A queued-command failure (e.g. drawing on a poisoned getItemAt handle)
       // surfaces here, at the sync, exactly as Office.js reports it.
       if (pendingHostError) {
@@ -310,6 +314,7 @@ function installHost(
   trips.contexts = 0;
   pendingHostError = null;
   swallowAdds = 0;
+  failSyncsOn.clear();
   blankReadbackAt.clear();
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
@@ -1019,34 +1024,46 @@ describe("Office round-trips do not scale with the chart count", () => {
     const deck = [makeSlide("s1")];
     installHost(deck);
     const n = 4;
-    swallowAdds = 1; // the host silently drops one slide-add → deck grows by n-1
+    swallowAdds = 2; // dropped on BOTH the first add and its retry → truly lost, deck grows by n-1
     const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
-    expect(report.slidesAdded).toBe(n - 1); // a slide was lost
+    expect(report.slidesAdded).toBe(n - 1); // a slide was lost for good
     // Order-mapping is unsafe now, so onSlide is left unread (-1) for all.
     expect(report.results.every((r) => r.onSlide === -1)).toBe(true);
   });
 
-  it("reports the slide a host refuses and finishes the rest", async () => {
-    // A chart the host cannot draw (on the real host, a ~200-shape area chart that
-    // times out) must not abort the whole deck: it is caught, its index returned,
-    // and the remaining slides still render. One sync failure = one lost slide.
+  it("retries a slide the host stalls on once, and the transient stall recovers", async () => {
+    // A single refused sync (a transient host stall) must not lose the slide: the
+    // item is retried once in a fresh context, its later syncs land, and the deck
+    // completes whole. This is the everyday web flake the retry exists for.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const n = 6;
-    // Fail a single sync partway in (past the first slide's layout+add+render).
+    // Fail a single sync partway in (item 1's render, past item 0's layout+add+render).
     failSyncOn = 9;
     try {
       const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
-      const failed = failedIndices(report);
-      expect(failed.length).toBeGreaterThanOrEqual(1);
-      expect(failed.length).toBeLessThan(n); // it kept going — not a whole-deck abort
-      // At least every non-failed slide drew its chart (a failed slide may retain
-      // the partial shapes it had queued before the refused sync).
-      const drawn = deck.slice(1).filter((s) => s.created.length > 0).length;
-      expect(drawn).toBeGreaterThanOrEqual(n - failed.length);
+      // Nothing ends failed — the one stall was recovered on retry.
+      expect(failedIndices(report)).toEqual([]);
+      // Exactly the stalled item is flagged retried.
+      expect(report.results.filter((r) => r.retried).length).toBe(1);
     } finally {
       failSyncOn = 0;
     }
+  });
+
+  it("gives up after a single retry when the stall persists, and finishes the rest", async () => {
+    // A chart the host genuinely cannot draw stalls BOTH the first attempt and the
+    // retry. It must then be given up (status failed) without aborting the deck —
+    // the remaining slides still render. failSyncsOn hits each attempt's first
+    // propagating sync (the addSlides getCount): #3 = item 0 attempt 1, #4 = its retry.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    failSyncsOn.add(3);
+    failSyncsOn.add(4);
+    const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)) }, { scene: buildChart(cfgFor(1)) }]);
+    expect(report.results[0].status).toBe("failed");
+    expect(report.results[0].retried).toBeFalsy(); // a retry that also failed is not a recovery
+    expect(report.results[1].status).toBe("rendered"); // the deck kept going
   });
 
   it("skips a chart too dense for the host, keeps the slide, and stamps it NOT COMPLETE", async () => {
@@ -1085,7 +1102,7 @@ describe("Office round-trips do not scale with the chart count", () => {
     // shortfall is caught — and the dropped item shows up as not rendered.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    swallowAdds = 1; // the host drops the first item's slide-add
+    swallowAdds = 2; // dropped on the first item's add AND its retry → gone for good
     try {
       const report = await insertDemoDeck(Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
       // 4 items asked for, but the deck only grew by 3 — the lost-slide signal.

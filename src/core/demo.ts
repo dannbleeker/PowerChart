@@ -181,7 +181,16 @@ export interface DemoOptions {
   buildStamp?: string;
   /** Host descriptor (from `Office.context.diagnostics`) stamped under the build. */
   host?: string;
+  /** Render only the ~10-item smoke subset (one per family) for a fast pass. */
+  smoke?: boolean;
 }
+
+/**
+ * The smoke subset: one representative per chart family plus two elements — a fast
+ * regression pass. Deliberately excludes the dense wedge/polygon charts (Pie is the
+ * one wedge kept) so the whole run stays comfortably under the web shape budget.
+ */
+const SMOKE_TITLES = new Set(["Stacked", "Line", "Pie", "Scatter", "Bubble", "Gantt", "Heatmap", "Combo", "KPI tile", "Agenda"]);
 
 /**
  * The full demo deck: a title slide, a contents/manifest table, then one editable
@@ -189,7 +198,7 @@ export interface DemoOptions {
  * all of this onto fresh slides for live testing in PowerPoint.
  */
 export function demoItems(opts: DemoOptions = {}): DemoItem[] {
-  const { buildStamp = "local build", host = "unknown host" } = opts;
+  const { buildStamp = "local build", host = "unknown host", smoke = false } = opts;
   const charts: DemoItem[] = [];
   for (const { kind, label } of CHART_KINDS) {
     const config: ChartConfig = { ...sampleConfig(kind), title: label };
@@ -201,10 +210,11 @@ export function demoItems(opts: DemoOptions = {}): DemoItem[] {
   for (const { title, scene } of elementScenes()) {
     charts.push({ title, scene });
   }
+  const selected = smoke ? charts.filter((c) => SMOKE_TITLES.has(c.title)) : charts;
   return [
     { title: "Title", scene: buildTitleScene(buildStamp, host) },
-    { title: "Contents", scene: buildIndexScene(charts) },
-    ...charts,
+    { title: "Contents", scene: buildIndexScene(selected) },
+    ...selected,
   ];
 }
 
@@ -224,6 +234,8 @@ export interface ResultsSummary {
   skipped: number;
   failed: number;
   lost: number;
+  /** Items that stalled but recovered on a retry; omitted/0 → not shown. */
+  retried?: number;
   totalMs: number;
 }
 
@@ -238,7 +250,8 @@ export function buildResultsScene(rows: ResultRow[], summary: ResultsSummary): S
   const ink = "#52514e";
   const grey = "#8a8984";
   const secs = (summary.totalMs / 1000).toFixed(1);
-  const summaryText = `${summary.items} items · ${summary.rendered} rendered · ${summary.skipped} skipped · ${summary.failed} failed · ${summary.lost} lost · total ${secs}s`;
+  const recovered = summary.retried ?? 0;
+  const summaryText = `${summary.items} items · ${summary.rendered} rendered · ${summary.skipped} skipped · ${summary.failed} failed · ${summary.lost} lost${recovered ? ` · ${recovered} recovered` : ""} · total ${secs}s`;
   const nodes: SceneNode[] = [
     { kind: "text", x: 0, y: 40, w: 840, h: 40, text: "Regression results", fontSize: 28, bold: true, color: PALETTE[0], align: "left", valign: "top", name: "results-title" },
     { kind: "text", x: 0, y: 96, w: 840, h: 24, text: summaryText, fontSize: 14, color: ink, align: "left", valign: "top", name: "results-summary" },

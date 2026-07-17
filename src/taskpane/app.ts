@@ -1423,7 +1423,8 @@ function wireInsert() {
       guard(async () => {
         const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
         const host = describeHost();
-        const items = demoItems({ buildStamp, host });
+        const smoke = ($("demo-smoke") as HTMLInputElement | null)?.checked ?? false;
+        const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
         const { results, slidesAdded, totalMs } = await insertDemoDeck(
@@ -1448,12 +1449,14 @@ function wireInsert() {
         // it committed but its content detached. onSlide is -1 when unread (a lost
         // slide made order-mapping unsafe), so only a hard 0 counts.
         const blank = results.map((r, i) => (r.status === "rendered" && r.onSlide === 0 ? items[i].title : "")).filter(Boolean);
+        const recovered = results.filter((r) => r.retried).length;
         console.log("PowerChart demo self-check:");
-        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, onSlide: r.onSlide, status: r.status, ms: r.ms })));
+        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, onSlide: r.onSlide, status: r.status, retried: !!r.retried, ms: r.ms })));
         console.log(`deck grew by ${slidesAdded}, expected ${items.length}${lost > 0 ? ` — ${lost} LOST` : ""} · total ${secs}s`);
-        let msg = `Inserted ${rendered} of ${items.length} in ${secs}s.`;
+        let msg = `Inserted ${rendered} of ${items.length} in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
+        if (recovered) msg += ` ${recovered} recovered on retry.`;
         if (lost > 0) msg += ` ⚠ ${lost} slide${lost === 1 ? "" : "s"} LOST by the host (deck grew by ${slidesAdded}, expected ${items.length}).`;
         if (blank.length) msg += ` ⚠ ${blank.length} rendered BLANK (committed but empty): ${blank.join(", ")}.`;
         // Close the deck with a self-contained results slide so the exported PDF is
@@ -1461,7 +1464,7 @@ function wireInsert() {
         // self-check machinery; wrap it so a host stall here can't swallow the run's
         // own summary (its failure is itself just another data point).
         const rows: ResultRow[] = results.map((r, i) => ({ title: items[i].title, status: r.status, shapes: r.created, ms: r.ms }));
-        const summary: ResultsSummary = { buildStamp, items: items.length, rendered, skipped: skipped.length, failed: failedNames.length, lost: Math.max(0, lost), totalMs };
+        const summary: ResultsSummary = { buildStamp, items: items.length, rendered, skipped: skipped.length, failed: failedNames.length, lost: Math.max(0, lost), retried: recovered, totalMs };
         try {
           await insertDemoDeck([{ scene: buildResultsScene(rows, summary) }]);
         } catch (e) {
