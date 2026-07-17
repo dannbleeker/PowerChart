@@ -81,21 +81,24 @@ const addedWithLayout: (string | undefined)[] = [];
  * The queued-command failure a stalled getItemAt handle produces, surfaced at
  * the NEXT sync — because Office.js reports queued-command errors only at sync,
  * never at the call that queued them. `installHost`'s sync() throws it. See
- * `getItemAt` below for why a freshly-added slide's handle poisons.
+ * `freshWindowedHandle` below for why a reused fresh-slide handle poisons.
  */
 let pendingHostError: Error | null = null;
 
-function makeSlide(id: string, fresh = false) {
+/**
+ * The slide count at the start of the current `PowerPoint.run` — every slide at
+ * an index >= this was `add()`ed during this context and so is "fresh". A fresh
+ * slide's getItemAt handle is only good within the sync it was acquired in (see
+ * `freshWindowedHandle`); a pre-existing slide's handle is durable.
+ */
+let contextBaseCount = 0;
+
+function makeSlide(id: string) {
   const created: FakeShape[] = [];
   const slide = {
     id,
     created,
     isNullObject: false,
-    // A slide add()ed during a run() is "fresh": its getItemAt handle is not a
-    // durable reference until the host has handed back an authoritative id via a
-    // load. `idLoaded` flips true when the collection's ids are loaded.
-    fresh,
-    idLoaded: false,
     load() {},
     shapes: {
       items: created,
@@ -133,38 +136,50 @@ function makeSlide(id: string, fresh = false) {
 type FakeSlide = ReturnType<typeof makeSlide>;
 
 /**
- * The reference `slides.getItemAt(i)` hands back for a freshly-added slide whose
- * id the caller never loaded: a stand-in for the object path Office.js has
- * silently rewritten to `getItem(<unstable id>)`. Shapes queued on it appear to
- * succeed, then the NEXT sync throws "InvalidParam passed to GetItem(id)" (code
- * 5010) — the exact failure the real host produced on the demo deck, and the one
- * the old `getItemAt(before + i)` fake could not express because it returned the
- * live slide. Nothing lands: the queued shapes are detached, not pushed to the
- * real slide's `created`.
+ * The reference `slides.getItemAt(i)` hands back for a FRESHLY-ADDED slide.
+ *
+ * It draws fine within the sync it was acquired in, but reusing it to draw AFTER
+ * a later sync is the object-path rewrite trap: Office.js has by then rewritten
+ * its path to `getItem(<web-non-round-trippable id>)`, so the next shape throws
+ * "InvalidParam passed to GetItem(id)" (code 5010) at the following sync. That is
+ * exactly why the fix re-acquires a brand-new getItemAt proxy every batch — a
+ * fresh handle is always inside its own window — and why HOLDING one across
+ * batches fails. When poisoned, nothing lands: the queued shapes are detached,
+ * not pushed to the real slide's `created`.
+ *
+ * The old fake could not express this at all: it returned the live slide from
+ * getItemAt, so a held handle was as good as a fresh one.
  */
-function poisonedHandle(real: FakeSlide) {
-  const boom = () => {
+function freshWindowedHandle(real: FakeSlide) {
+  const acquiredSync = trips.syncs;
+  // Valid only until the next sync moves past the window it was acquired in.
+  const ok = () => {
+    if (trips.syncs <= acquiredSync) return true;
     pendingHostError = new Error(
       'InvalidParam passed to GetItem(id) | code=5010 | debugInfo={"errorLocation":"SlideCollection.getItem"}',
     );
+    return false;
   };
   return {
     id: real.id,
     isNullObject: false,
     load() {},
     shapes: {
-      items: [] as FakeShape[],
+      items: real.shapes.items,
       load() {},
-      addGeometricShape: (geo: string, box: FakeShape["box"]) => (boom(), makeShape("geometric", geo, box)),
-      addLine: (_kind: string, box: FakeShape["box"]) => (boom(), makeShape("line", undefined, box)),
+      addGeometricShape: (geo: string, box: FakeShape["box"]) =>
+        ok() ? real.shapes.addGeometricShape(geo, box) : makeShape("geometric", geo, box),
+      addLine: (kind: string, box: FakeShape["box"]) =>
+        ok() ? real.shapes.addLine(kind, box) : makeShape("line", undefined, box),
       addTextBox: (text: string, box: FakeShape["box"]) => {
-        boom();
+        if (ok()) return real.shapes.addTextBox(text, box);
         const s = makeShape("text", undefined, box);
         s.text = text;
         return s;
       },
-      addGroup: (_items: FakeShape[]) => (boom(), makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 })),
-      getItemOrNullObject: () => ({ isNullObject: true, delete() {} }),
+      addGroup: (items: FakeShape[]) =>
+        ok() ? real.shapes.addGroup(items) : makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 }),
+      getItemOrNullObject: (id: string) => real.shapes.getItemOrNullObject(id),
     },
   };
 }
@@ -196,28 +211,27 @@ function installHost(
     presentation: {
       slides: {
         items: slides,
-        // Loading ids is what blesses a freshly-added slide: after this the host
-        // knows its authoritative id, so a getItem(id) reference to it is stable.
-        load: (select?: string) => {
-          if (!select || select.includes("id")) for (const s of slides) s.idLoaded = true;
-        },
+        load() {},
         getItem: (id: string) => slides.find((s) => s.id === id)!,
         // Real Office.js hands back a null OBJECT for an unknown id — it does
         // not throw and does not return undefined. A fake that returns
         // undefined would make `slide.isNullObject` a TypeError instead of the
         // false it should be, and hide the very case this models. By id, the
-        // reference is always durable — the whole point of the fix.
+        // reference is always durable.
         getItemOrNullObject: (id: string) => slides.find((s) => s.id === id) ?? { isNullObject: true, load() {} },
-        // A pre-existing slide's handle is durable; a freshly-added one's is not
-        // until its id has been loaded — reusing it across syncs is the bug.
+        // A pre-existing slide's handle is durable; a freshly-added one's is only
+        // good within the sync it was acquired in (see freshWindowedHandle), so
+        // HOLDING one across the render's batches is the bug the fix avoids by
+        // re-acquiring fresh each batch.
         getItemAt: (i: number) => {
           const s = slides[i];
-          return s && s.fresh && !s.idLoaded ? poisonedHandle(s) : s;
+          if (!s) return s;
+          return i >= contextBaseCount ? freshWindowedHandle(s) : s;
         },
         getCount: () => ({ value: slides.length }),
         add: (options?: { layoutId?: string }) => {
           addedWithLayout.push(options?.layoutId);
-          slides.push(makeSlide(`slide-${slides.length + 1}`, true));
+          slides.push(makeSlide(`slide-${slides.length + 1}`));
         },
       },
       // A real deck's master carries several layouts; only one is blank, and
@@ -259,6 +273,9 @@ function installHost(
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
       trips.contexts++;
+      // Slides present at the start of this context are "existing"; anything
+      // add()ed past here is fresh, and its getItemAt handle is window-limited.
+      contextBaseCount = slides.length;
       return cb(context);
     },
     // Real Office.js exposes all 177 presets. A plain object listing only the
@@ -926,23 +943,33 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(tags).toEqual(Array.from({ length: n }, (_, i) => `{"i":${i}}`));
   });
 
-  it("draws freshly-added slides by loaded id, so a rewritten getItemAt cannot 5010 mid-deck", async () => {
-    // The real regression: a slide obtained with getItemAt(before + i) and reused
-    // across the render's batched syncs stops resolving once Office.js rewrites
-    // its path to getItem(id) with an unstable id — "InvalidParam passed to
-    // GetItem(id)", code 5010 — and the deck dies partway through, as it did on
-    // the real host. The fake now poisons exactly that handle; a deck that spans
-    // several chunks must still land in full. 12 items = 3 chunks, so the failure
-    // (if present) surfaces at a chunk boundary, not on the first slide.
+  it("re-acquires each freshly-added slide per batch, so a rewritten getItemAt cannot 5010 mid-deck", async () => {
+    // The real regression: HOLD one getItemAt handle to a new slide and reuse it
+    // across the render's batched syncs, and once Office.js rewrites its path to
+    // getItem(<web-non-round-trippable id>) the next shape throws "InvalidParam
+    // passed to GetItem(id)", code 5010 — the deck dies partway through, as it did
+    // on the real host. The fix re-acquires a fresh proxy each batch; the fake
+    // window-limits a held one.
+    //
+    // Load-bearing: each slide must span MORE than one batch, because a held
+    // handle only goes stale on the batch AFTER a sync. SHAPES_PER_SYNC is 10, so
+    // a 25-node scene is 3 batches — a single-batch chart (e.g. cfgFor) can hold
+    // its handle and never notice, which is exactly how a weaker version of this
+    // test passed against the very bug it meant to guard.
+    const NODES = 25;
+    const bigScene = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: NODES }, (_, k) => ({ kind: "rect" as const, x: k, y: 0, w: 4, h: 4, fill: "#111111" })),
+    };
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    const n = 12;
-    await expect(
-      insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` }))),
-    ).resolves.toBeUndefined();
-    // Every appended slide carries its chart — nothing was stranded by a 5010.
+    const n = 6; // spans two chunks (CHUNK = 4), so the boundary is covered too
+    await expect(insertDemoDeck(Array.from({ length: n }, () => ({ scene: bigScene })))).resolves.toBeUndefined();
+    // Every appended slide got all its shapes (plus the group) — nothing stranded
+    // by a mid-batch 5010.
     expect(deck.length).toBe(1 + n);
-    for (let i = 1; i <= n; i++) expect(deck[i].created.length, `slide ${i}`).toBeGreaterThan(0);
+    for (let i = 1; i <= n; i++) expect(deck[i].created.length, `slide ${i}`).toBeGreaterThanOrEqual(NODES);
   });
 });
 

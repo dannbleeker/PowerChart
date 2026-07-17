@@ -169,18 +169,23 @@ export async function insertSceneIntoSlide(
 ): Promise<void> {
   onPhase?.("context");
   await PowerPoint.run(async (context) => {
+    // The current slide already exists, so its proxy IS stable across syncs (its
+    // id round-trips) — hold one and reuse it. Only a freshly-added slide needs a
+    // per-batch fresh proxy; see SlideThunk. Resolving once also pins the target
+    // to the slide selected at the start, immune to any selection drift mid-draw.
     const slide = getTargetSlide(context);
+    const getSlide: SlideThunk = () => slide;
     onPhase?.("queue", `${scene.nodes.length} nodes`);
     // Committed in batches: the whole scene in one sync is what a live canvas
     // will not take. Each batch reports, so progress here is measured, not
     // guessed — see renderShapesChunked.
-    const created = await renderShapesChunked(context, slide, scene, opts, (done, total) =>
+    const created = await renderShapesChunked(context, getSlide, scene, opts, (done, total) =>
       onPhase?.("commit", `${done} of ${total} shapes`),
     );
     // Shapes are committed by now, so grouping/tagging (which some hosts,
     // notably PowerPoint on the web, don't support) can't roll back the chart.
     onPhase?.("group");
-    await groupAndTagAll(context, [{ slide, created, opts }]);
+    await groupAndTagAll(context, [{ getSlide, created, opts }]);
     onPhase?.("done");
   });
 }
@@ -241,7 +246,10 @@ export async function updateChartsInSlides(
     const rendered: Grouping[] = [];
     for (const { it, slide } of withOld) {
       const opts: InsertOptions = { ...it.opts, left: it.target.left, top: it.target.top };
-      rendered.push({ slide, created: await renderShapesChunked(context, slide, it.scene, opts), opts });
+      // An existing slide's proxy is stable across syncs — hold it. Only a
+      // freshly-added slide needs a per-batch fresh proxy; see SlideThunk.
+      const getSlide: SlideThunk = () => slide;
+      rendered.push({ getSlide, created: await renderShapesChunked(context, getSlide, it.scene, opts), opts });
     }
 
     // 4-5. Group, then tag — one sync each, however many charts.
@@ -366,58 +374,73 @@ export async function listChartsInDeck(): Promise<{ configJson: string; target: 
 }
 
 /**
- * Append `count` blank slides and hand each one back as a reference the host
- * will still honour after later syncs.
+ * A slide reference that is RE-ACQUIRED on every call, never held.
  *
- * `slides.getItemAt(index)` is NOT a durable handle. Office.js rewrites an
- * item's object path to `getItem(id)` the moment the host resolves it
- * (`createChildItemObjectPathUsingIndexerOrGetItemAt` / `updateUsingObjectData`
- * in office-js) — and for a slide that was *just* `add()`ed, the id behind that
- * rewrite is not reliably valid across the render's next syncs. The host then
- * throws "InvalidParam passed to GetItem(id)" (code 5010) on the next shape it
- * draws — which is exactly what killed the demo deck after the first chunk of
- * slides, and the agenda after its first slide. A pre-existing slide survives
- * the same rewrite (its id is stable), which is why editing charts in place and
- * inserting onto the current slide never hit this.
- *
- * The cure is to take the authoritative ids the host itself returns from a
- * `load` and re-acquire each new slide by id — the same durable path that
- * `updateChartsInSlides` uses without trouble. The new slides are the ones whose
- * ids were not present before the adds; identifying them by id set-difference
- * (not by a `getCount()` offset) is deliberate, so a miscounted offset can never
- * point the render at the wrong slide.
+ * This is the crux of drawing onto a freshly-added slide. `slides.getItemAt(i)`
+ * is a positional proxy, and the moment the host resolves one Office.js rewrites
+ * its object path to `getItem(id)` (`createChildItemObjectPathUsingIndexerOr-
+ * GetItemAt` / `fixObjectPathIfNecessary` in office-js). For a slide that was
+ * just `add()`ed, PowerPoint on the web returns an id that does not round-trip
+ * through `getItem`, so every *later* use of that same proxy throws "InvalidParam
+ * passed to GetItem(id)" (code 5010). A *brand-new* `getItemAt(i)` proxy has not
+ * been resolved, so it is still positional and executes cleanly — which is why
+ * the fix is to call this thunk again for each sync-batch instead of holding one
+ * proxy across them. Pre-existing slides never hit this (their id round-trips),
+ * which is why inserting onto the current slide and editing in place always
+ * worked.
  */
-async function addSlidesById(
+type SlideThunk = () => PowerPoint.Slide;
+
+/**
+ * Append `count` blank slides and return a fresh-proxy thunk for each.
+ *
+ * By index, off a `getCount()` taken BEFORE the adds — `slides.add()` always
+ * appends to the end, so the new slides are `start .. start+count-1`. The count
+ * delta after the adds is the one signal the web host reports reliably, so it is
+ * asserted: a partial/failed add becomes a named error here instead of an
+ * `undefined.shapes` crash downstream.
+ *
+ * Deliberately NOT via `slides.items`: `.items` is a snapshot from the last
+ * `load`, not a live view, and reading it in the same sync as the adds returns
+ * the pre-add set (this is the bug that returned zero new slides). And NOT by
+ * loading ids to re-acquire `getItem(id)`: that id is the very thing the web host
+ * mis-round-trips. `getCount` + a fresh positional proxy needs neither.
+ */
+async function addSlides(
   context: PowerPoint.RequestContext,
   count: number,
   layoutId: string | undefined,
-): Promise<PowerPoint.Slide[]> {
+): Promise<SlideThunk[]> {
+  if (count <= 0) return [];
   const slides = context.presentation.slides;
-  slides.load("items/id");
+  const before = slides.getCount();
   await context.sync();
-  const before = new Set(slides.items.map((s) => s.id));
+  const start = before.value;
   for (let i = 0; i < count; i++) slides.add(layoutId ? { layoutId } : undefined);
-  slides.load("items/id");
+  const after = slides.getCount();
   await context.sync();
-  const freshIds = slides.items.map((s) => s.id).filter((id) => !before.has(id));
-  return freshIds.map((id) => context.presentation.slides.getItemOrNullObject(id));
+  if (after.value !== start + count) {
+    throw new Error(`PowerPoint added ${after.value - start} of ${count} slides — cannot draw on what is not there`);
+  }
+  return Array.from({ length: count }, (_, i) => () => context.presentation.slides.getItemAt(start + i));
 }
 
 /**
  * Append one agenda slide per chapter, each highlighting its own chapter
- * (think-cell's agenda). Slides are appended at the end of the deck —
- * PowerPointApi's slides.add has no insert-at-position — so move them into
- * place afterwards. Requires PowerPointApi 1.3 (slides.add).
+ * (think-cell's agenda). Slides land at the END of the deck: PowerPointApi's
+ * slides.add has no insert-at-position (AddSlideOptions.index is preview-only),
+ * and repositioning needs Slide.index (1.8) — so for now they stay appended, the
+ * same as the demo deck. Requires PowerPointApi 1.3 (slides.add).
  */
 export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
   await PowerPoint.run(async (context) => {
     const layoutId = await blankLayoutId(context);
-    const fresh = await addSlidesById(context, scenes.length, layoutId);
+    const slideThunks = await addSlides(context, scenes.length, layoutId);
     // Batched like every other render: a slide's worth of shapes in one sync is
     // what the host refuses. Off-screen slides tolerate more than the live
     // canvas does, but "more" is not a number worth betting on twice.
     for (let i = 0; i < scenes.length; i++) {
-      await renderShapesChunked(context, fresh[i], scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
+      await renderShapesChunked(context, slideThunks[i], scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
     }
   });
 }
@@ -450,18 +473,18 @@ export async function insertDemoDeck(
     const batch = items.slice(start, start + CHUNK);
     await PowerPoint.run(async (context) => {
       if (start === 0) layoutId = await blankLayoutId(context);
-      // By id, never by offset: a freshly added slide's getItemAt handle does
-      // not survive the render's later syncs — see addSlidesById.
-      const fresh = await addSlidesById(context, batch.length, layoutId);
+      // Positional, re-acquired fresh every batch — a HELD handle to a new slide
+      // is what 5010'd across syncs; see SlideThunk / addSlides.
+      const slideThunks = await addSlides(context, batch.length, layoutId);
       const perSlide: Grouping[] = [];
       for (const [i, item] of batch.entries()) {
-        const slide = fresh[i];
+        const getSlide = slideThunks[i];
         const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: item.tagData };
         // Chunked, and per slide: ~50 shapes a chart x 4 charts was ~200 in one
         // sync, which the host simply stops answering. This is what left the
         // demo deck at "Working… 845s" with nothing added and no progress —
         // progress only fires when a CHUNK completes, and the first never did.
-        perSlide.push({ slide, created: await renderShapesChunked(context, slide, item.scene, opts), opts });
+        perSlide.push({ getSlide, created: await renderShapesChunked(context, getSlide, item.scene, opts), opts });
         onProgress?.(start + i + 1, items.length);
       }
       // Shapes are committed by now, so grouping cannot roll them back.
@@ -508,17 +531,19 @@ const SHAPES_PER_SYNC = 10;
  */
 async function renderShapesChunked(
   context: PowerPoint.RequestContext,
-  slide: PowerPoint.Slide,
+  getSlide: SlideThunk,
   scene: Scene,
   opts: InsertOptions,
   onBatch?: (sending: number, total: number) => void,
 ): Promise<PowerPoint.Shape[]> {
   const left = opts.left ?? 60;
   const top = opts.top ?? 90;
-  const shapes = slide.shapes;
   const created: PowerPoint.Shape[] = [];
   const total = scene.nodes.length;
   for (let i = 0; i < total; i += SHAPES_PER_SYNC) {
+    // Fresh slide proxy per batch: a proxy held across the previous sync may have
+    // been rewritten to an unusable getItem(id) — see SlideThunk.
+    const shapes = getSlide().shapes;
     for (const n of scene.nodes.slice(i, i + SHAPES_PER_SYNC)) {
       created.push(...addNode(shapes, n, left, top, opts));
     }
@@ -537,7 +562,7 @@ async function renderShapesChunked(
 
 /** One chart's committed shapes, awaiting grouping and tagging. */
 interface Grouping {
-  slide: PowerPoint.Slide;
+  getSlide: SlideThunk;
   created: PowerPoint.Shape[];
   opts: InsertOptions;
 }
@@ -568,7 +593,9 @@ async function groupAndTagAll(context: PowerPoint.RequestContext, items: Groupin
   if (groupable.length && supports("1.8")) {
     try {
       for (const { it, i } of groupable) {
-        const group = (it.slide.shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(it.created);
+        // Fresh slide proxy: grouping runs a sync after the render, by which time
+        // a held proxy to a new slide could be stale — see SlideThunk.
+        const group = (it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(it.created);
         group.name = "PowerChart";
         tagTargets[i] = group;
       }
