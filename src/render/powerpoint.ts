@@ -368,11 +368,13 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
     await context.sync();
     for (let i = 0; i < scenes.length; i++) slides.add(layoutId ? { layoutId } : undefined);
     await context.sync();
+    // Batched like every other render: a slide's worth of shapes in one sync is
+    // what the host refuses. Off-screen slides tolerate more than the live
+    // canvas does, but "more" is not a number worth betting on twice.
     for (let i = 0; i < scenes.length; i++) {
       const slide = slides.getItemAt(before.value + i);
-      renderShapes(slide, scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
+      await renderShapesChunked(context, slide, scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
     }
-    await context.sync();
   });
 }
 
@@ -409,16 +411,20 @@ export async function insertDemoDeck(
       await context.sync();
       for (let i = 0; i < batch.length; i++) slides.add(layoutId ? { layoutId } : undefined);
       await context.sync();
-      const perSlide = batch.map((item, i) => {
+      const perSlide: Grouping[] = [];
+      for (const [i, item] of batch.entries()) {
         const slide = slides.getItemAt(before.value + i);
-        const created = renderShapes(slide, item.scene, { left: 60, top: 90 });
-        return { slide, created, opts: { group: true, tagData: item.tagData } };
-      });
-      // Shapes commit before anything is grouped, exactly as elsewhere.
-      await context.sync();
+        const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: item.tagData };
+        // Chunked, and per slide: ~50 shapes a chart x 4 charts was ~200 in one
+        // sync, which the host simply stops answering. This is what left the
+        // demo deck at "Working… 845s" with nothing added and no progress —
+        // progress only fires when a CHUNK completes, and the first never did.
+        perSlide.push({ slide, created: await renderShapesChunked(context, slide, item.scene, opts), opts });
+        onProgress?.(start + i + 1, items.length);
+      }
+      // Shapes are committed by now, so grouping cannot roll them back.
       await groupAndTagAll(context, perSlide);
     });
-    onProgress?.(Math.min(start + CHUNK, items.length), items.length);
   }
 }
 
@@ -431,17 +437,6 @@ function supports(version: string): boolean {
   }
 }
 
-/** Add every scene node as a shape (no grouping/tagging). Returns the shapes. */
-function renderShapes(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions): PowerPoint.Shape[] {
-  const left = opts.left ?? 60;
-  const top = opts.top ?? 90;
-  const shapes = slide.shapes;
-  const created: PowerPoint.Shape[] = [];
-  for (const n of scene.nodes) {
-    created.push(...addNode(shapes, n, left, top, opts));
-  }
-  return created;
-}
 
 /**
  * Shapes committed per sync when drawing onto the slide the user is LOOKING at.
