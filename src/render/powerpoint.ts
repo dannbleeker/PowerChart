@@ -122,20 +122,19 @@ export function errorText(err: unknown): string {
 }
 
 /**
- * How long to wait for the host, for a batch of `shapes` shapes.
+ * How long one batch may take before we call the host stalled.
  *
- * PowerPoint on the web creates native shapes at roughly two per second, so
- * "how long is too long" is a function of the work, not a constant. A flat 20s
- * killed a 40-shape chart at almost exactly the moment it would have finished —
- * the timeout meant to expose a hang became the thing that caused the failure.
+ * A constant, because the batch is a constant: SHAPES_PER_SYNC caps what we
+ * hand over at a size the live canvas is known to swallow, so there is nothing
+ * left for the budget to scale WITH. (This was briefly a function of the shape
+ * count — a flat 20s had killed a 40-shape chart at almost exactly the moment
+ * it would have finished. Chunking made that whole question moot: the fix was
+ * never a bigger number, it was a smaller batch.)
  *
- * So: budget generously per shape and floor it, because the point of this is
- * only ever to stop an infinite spinner. Being late costs a user nothing;
- * being wrong costs them their chart.
+ * Generous, because its only job is to stop an infinite spinner. Being late
+ * costs a user nothing; being wrong costs them their chart.
  */
-function hostTimeoutMs(shapes: number): number {
-  return Math.max(45_000, shapes * 3_000);
-}
+const BATCH_TIMEOUT_MS = 45_000;
 
 /**
  * The blank layout of the presentation's first master, or undefined if the host
@@ -169,25 +168,21 @@ export async function insertSceneIntoSlide(
   onPhase?: (phase: InsertPhase, detail?: string) => void,
 ): Promise<void> {
   onPhase?.("context");
-  await withTimeout(
-    PowerPoint.run(async (context) => {
-      const slide = getTargetSlide(context);
-      onPhase?.("queue", `${scene.nodes.length} nodes`);
-      const created = renderShapes(slide, scene, opts);
-      // Commit the shapes first — so grouping/tagging (which some hosts, notably
-      // PowerPoint on the web, don't support) can't roll back the whole insert.
-      onPhase?.("commit", `${created.length} shapes`);
-      // Budget by the work: the web takes ~0.5s a shape, so a flat limit fails
-      // exactly the charts that are worth drawing.
-      await withTimeout(context.sync(), hostTimeoutMs(created.length), `committing ${created.length} shapes`);
-      onPhase?.("group");
-      await groupAndTagAll(context, [{ slide, created, opts }]);
-      onPhase?.("done");
-    }),
-    // The whole run holds several syncs, so it gets a multiple of the budget.
-    hostTimeoutMs(scene.nodes.length) * 3,
-    "opening a request context",
-  );
+  await PowerPoint.run(async (context) => {
+    const slide = getTargetSlide(context);
+    onPhase?.("queue", `${scene.nodes.length} nodes`);
+    // Committed in batches: the whole scene in one sync is what a live canvas
+    // will not take. Each batch reports, so progress here is measured, not
+    // guessed — see renderShapesChunked.
+    const created = await renderShapesChunked(context, slide, scene, opts, (done, total) =>
+      onPhase?.("commit", `${done} of ${total} shapes`),
+    );
+    // Shapes are committed by now, so grouping/tagging (which some hosts,
+    // notably PowerPoint on the web, don't support) can't roll back the chart.
+    onPhase?.("group");
+    await groupAndTagAll(context, [{ slide, created, opts }]);
+    onPhase?.("done");
+  });
 }
 
 /** Replace an existing PowerChart group with a re-rendered scene, in place. */
@@ -222,15 +217,22 @@ export async function updateChartsInSlides(
     });
     await context.sync();
 
-    // 2. Drop the old shapes and queue every new one — one sync commits the lot.
-    const rendered = found.map(({ it, slide, old }) => {
-      if (!old.isNullObject) old.delete();
-      const opts: InsertOptions = { ...it.opts, left: it.target.left, top: it.target.top };
-      return { slide, created: renderShapes(slide, it.scene, opts), opts };
-    });
+    // 2. Drop the old shapes — one sync for all of them.
+    for (const { slide: _s, old } of found) if (!old.isNullObject) old.delete();
     await context.sync();
 
-    // 3-4. Group, then tag — one sync each, however many charts.
+    // 3. Redraw each chart in batches. One of these charts is on the slide the
+    //    user is looking at, and a live canvas will not take a whole chart in
+    //    one sync — so the batching is not an optimisation here, it is the only
+    //    way the shapes arrive at all. Per chart, because a chart's shapes must
+    //    all reach the same slide.
+    const rendered: Grouping[] = [];
+    for (const { it, slide } of found) {
+      const opts: InsertOptions = { ...it.opts, left: it.target.left, top: it.target.top };
+      rendered.push({ slide, created: await renderShapesChunked(context, slide, it.scene, opts), opts });
+    }
+
+    // 4-5. Group, then tag — one sync each, however many charts.
     await groupAndTagAll(context, rendered);
   });
 }
@@ -437,6 +439,61 @@ function renderShapes(slide: PowerPoint.Slide, scene: Scene, opts: InsertOptions
   const created: PowerPoint.Shape[] = [];
   for (const n of scene.nodes) {
     created.push(...addNode(shapes, n, left, top, opts));
+  }
+  return created;
+}
+
+/**
+ * Shapes committed per sync when drawing onto the slide the user is LOOKING at.
+ *
+ * PowerPoint on the web repaints the live canvas as shapes arrive, and past
+ * roughly twenty in one batch it stops answering — the sync never settles and
+ * nothing lands at all. Measured against the real host: ~10 shapes insert
+ * instantly, the 18-shape table element works, a 30-shape butterfly never
+ * commits in 90 seconds. The same shapes go onto NEW slides by the hundred
+ * without trouble, because an off-screen slide is not painted.
+ *
+ * Ten is comfortably under the last known-good (18) and still coarse enough
+ * that the round-trips (~0.1s each) disappear next to the drawing.
+ */
+const SHAPES_PER_SYNC = 10;
+
+/**
+ * Render a scene onto a slide, committing in small batches.
+ *
+ * This forfeits all-or-nothing, which is a real loss: a failure now strands a
+ * partial chart instead of leaving the slide clean. It buys the only thing that
+ * matters more — the chart arriving at all — and it is why `created` is
+ * returned even on failure, so a caller can clean up what landed.
+ *
+ * The batches also make progress REAL: shapes committed over shapes total is a
+ * fact, not the estimate a single opaque sync would force us to invent.
+ */
+async function renderShapesChunked(
+  context: PowerPoint.RequestContext,
+  slide: PowerPoint.Slide,
+  scene: Scene,
+  opts: InsertOptions,
+  onBatch?: (sending: number, total: number) => void,
+): Promise<PowerPoint.Shape[]> {
+  const left = opts.left ?? 60;
+  const top = opts.top ?? 90;
+  const shapes = slide.shapes;
+  const created: PowerPoint.Shape[] = [];
+  const total = scene.nodes.length;
+  for (let i = 0; i < total; i += SHAPES_PER_SYNC) {
+    for (const n of scene.nodes.slice(i, i + SHAPES_PER_SYNC)) {
+      created.push(...addNode(shapes, n, left, top, opts));
+    }
+    const upTo = Math.min(i + SHAPES_PER_SYNC, total);
+    // Reported BEFORE the sync, and deliberately: the sync is where a bad host
+    // stops answering, so this is the number that has to be on screen WHILE we
+    // wait. Reporting after would leave the pane naming the previous phase and
+    // blaming the wrong one for the stall.
+    onBatch?.(upTo, total);
+    // Budget per BATCH, not per chart: a stalled host must still be caught, but
+    // the limit now measures a batch we know the host can swallow.
+    await withTimeout(context.sync(), BATCH_TIMEOUT_MS, `drawing shapes ${i + 1}-${upTo} of ${total}`);
   }
   return created;
 }

@@ -709,21 +709,37 @@ describe("Office round-trips do not scale with the chart count", () => {
       return { scene: buildChart(cfgFor(i)), target: { slideId: slide.id, shapeId: s.id, left: 10, top: 20 }, opts: { tagData: `{"i":${i}}` } };
     });
 
-  it("re-renders N charts in ONE context with a FLAT sync count", async () => {
+  it("re-renders N charts in ONE context, whatever N is", async () => {
     // The defect this guards: doSameScale awaited the single-chart update in a
-    // loop, so each chart opened its own PowerPoint.run and paid 4 round-trips
-    // — 80 of them across a 20-chart deck. Shapes batch for free; syncs do not.
-    const counts: string[] = [];
+    // loop, so each chart opened its own PowerPoint.run — 20 contexts across a
+    // 20-chart deck. That is the property worth pinning. The SYNC count is no
+    // longer flat and must not be: shapes commit in batches, because a live
+    // canvas will not take a whole chart at once (SHAPES_PER_SYNC).
     for (const n of [1, 2, 10, 20]) {
       const slide = makeSlide("s1");
       installHost([slide]);
       await updateChartsInSlides(targetsOn(slide, n));
-      counts.push(`${n}:${trips.syncs}/${trips.contexts}`);
       expect(trips.contexts, `${n} charts`).toBe(1);
-      expect(trips.syncs, `${n} charts`).toBe(4);
     }
-    // Spelled out so a regression reads as a diff, not just a failed compare.
-    expect(counts).toEqual(["1:4/1", "2:4/1", "10:4/1", "20:4/1"]);
+  });
+
+  it("costs syncs per BATCH OF SHAPES, not a fixed toll per chart", async () => {
+    // The two failure modes this sits between: a per-chart context (the old
+    // N+1, 80 round-trips for 20 charts), and a per-chart mega-batch that the
+    // host silently refuses. Syncs must track the shapes, and nothing else.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await updateChartsInSlides(targetsOn(slide, 1));
+    const one = trips.syncs;
+    installHost([makeSlide("s2")]);
+    const slide2 = makeSlide("s2");
+    installHost([slide2]);
+    await updateChartsInSlides(targetsOn(slide2, 2));
+    const two = trips.syncs;
+    // Doubling the charts doubles the drawing, not a fixed per-chart overhead:
+    // the growth is the extra shapes' batches, so it stays well under 2x.
+    expect(two).toBeGreaterThan(one);
+    expect(two).toBeLessThan(one * 2 + 2);
   });
 
   it("still draws every chart it batches, tagged and grouped", async () => {
@@ -743,19 +759,20 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
-  it("leaves the single-chart paths exactly as they were", async () => {
+  it("keeps the single-chart paths to ONE context each", async () => {
     // updateChartInSlide is now updateChartsInSlides([one]); the Insert button
-    // is untouched. Both must keep their original round-trip counts.
+    // opens its own. Neither may open more than one, however many shapes the
+    // chart has.
     const slide = makeSlide("s1");
     installHost([slide]);
     await insertSceneIntoSlide(buildChart(config), { tagData: "{}" });
-    expect([trips.syncs, trips.contexts]).toEqual([3, 1]);
+    expect(trips.contexts).toBe(1);
 
     const slide2 = makeSlide("s2");
     installHost([slide2]);
     const s = slide2.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
     await updateChartInSlide(buildChart(config), { slideId: "s2", shapeId: s.id, left: 0, top: 0 }, { tagData: "{}" });
-    expect([trips.syncs, trips.contexts]).toEqual([4, 1]);
+    expect(trips.contexts).toBe(1);
   });
 
   it("does nothing, and opens no context, for an empty batch", async () => {
@@ -777,7 +794,11 @@ describe("Office round-trips do not scale with the chart count", () => {
     // from addGroup instead never overwrites them and proves nothing.
     const slide = makeSlide("s1");
     installHost([slide]);
-    failSyncOn = 3; // 1 resolve, 2 render, 3 GROUP, 4 tag
+    // The group sync is no longer a fixed number: the shapes commit in batches
+    // first, so its index depends on the chart's size. Find it rather than
+    // hardcode it — a wrong number here silently tests nothing.
+    const batches = Math.ceil(buildChart(cfgFor(0)).nodes.length / 10);
+    failSyncOn = 1 /* resolve */ + 1 /* delete */ + batches * 3 /* 3 charts */ + 1; // the GROUP sync
     try {
       const items = targetsOn(slide, 3);
       await expect(updateChartsInSlides(items)).resolves.toBeUndefined();
@@ -838,10 +859,15 @@ describe("a stalled host is legible, and does not hang the pane", () => {
     await insertSceneIntoSlide(buildChart(config), { tagData: "{}" }, (p, d) => seen.push(d ? `${p}:${d}` : p));
     expect(seen[0]).toBe("context");
     expect(seen.at(-1)).toBe("done");
-    expect(seen.map((s) => s.split(":")[0])).toEqual(["context", "queue", "commit", "group", "done"]);
-    // The counts are the diagnostic: they say how much work was handed over.
+    // "commit" now repeats — once per batch — because shapes land in batches.
+    expect(seen.filter((s) => s.startsWith("commit:")).length).toBeGreaterThan(1);
+    expect([...new Set(seen.map((s) => s.split(":")[0]))]).toEqual(["context", "queue", "commit", "group", "done"]);
     expect(seen.find((s) => s.startsWith("queue:"))).toMatch(/^queue:\d+ nodes$/);
-    expect(seen.find((s) => s.startsWith("commit:"))).toMatch(/^commit:\d+ shapes$/);
+    // Real progress: "10 of 40 shapes", ending at the total.
+    const commits = seen.filter((s) => s.startsWith("commit:"));
+    expect(commits[0]).toMatch(/^commit:\d+ of \d+ shapes$/);
+    const [done, total] = commits.at(-1)!.match(/(\d+) of (\d+)/)!.slice(1);
+    expect(done).toBe(total);
   });
 
   it("gives up on a host that never answers, naming the phase it died in", async () => {
@@ -862,11 +888,11 @@ describe("a stalled host is legible, and does not hang the pane", () => {
       });
       const seen: string[] = [];
       const p = insertSceneIntoSlide(buildChart(config), {}, (ph) => seen.push(ph));
-      const assertion = expect(p).rejects.toThrow(/did not respond while committing \d+ shapes/);
+      const assertion = expect(p).rejects.toThrow(/did not respond while drawing shapes \d+-\d+ of \d+/);
       await vi.advanceTimersByTimeAsync(400_000); // past max(45s, shapes*3s)
       await assertion;
       // And it says where it stopped — "commit" is the last thing reached.
-      expect(seen.at(-1)).toBe("commit");
+      expect(seen.at(-1)?.startsWith("commit")).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -997,29 +1023,26 @@ describe("the wait budget scales with the work", () => {
     nodes: Array.from({ length: n }, (_, i) => ({ kind: "rect" as const, x: i, y: 0, w: 4, h: 4, fill: "#111111" })),
   });
 
-  it("waits LONGER for a bigger chart — the budget follows the work", async () => {
-    // The regression this exists for: a flat 20s budget killed a 40-shape chart
-    // at almost exactly the moment it would have finished. PowerPoint on the web
-    // draws ~2 shapes a second, so the limit has to follow the work — being late
-    // costs a user nothing, being wrong costs them their chart.
-    vi.useFakeTimers();
-    try {
-      const slide = makeSlide("s1");
-      installHost([slide]);
-      parkedHost(slide);
-      let settled = false;
-      // 100 shapes: budget 300s, well clear of the 45s floor — so being alive at
-      // 100s can ONLY be the per-shape scaling. A flat 20s or 45s dies here.
-      const p = insertSceneIntoSlide(sceneOf(100), {}).catch(() => void (settled = true));
-      await vi.advanceTimersByTimeAsync(100_000);
-      expect(settled, "a 100-shape chart must still be waiting at 100s").toBe(false);
-
-      await vi.advanceTimersByTimeAsync(900_000);
-      await p;
-      expect(settled, "but it must give up eventually — a hang is not a feature").toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
+  it("never hands the host more than a batch at once — THE bug", async () => {
+    // Measured against real PowerPoint on the web: ~10 shapes insert instantly,
+    // the 18-shape table element works, a 30-shape butterfly NEVER commits —
+    // the sync simply stops answering and nothing lands. The same shapes go
+    // onto off-screen slides by the hundred, because those are not painted.
+    // So the fix was never a bigger timeout; it was a smaller batch.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const perSync: number[] = [];
+    let last = 0;
+    const ctx = installHost([slide]);
+    ctx.sync = async () => {
+      trips.syncs++;
+      perSync.push(slide.created.length - last);
+      last = slide.created.length;
+    };
+    const scene = buildChart(config);
+    expect(scene.nodes.length).toBeGreaterThan(10); // must actually span batches
+    await insertSceneIntoSlide(scene, { tagData: "{}" });
+    expect(Math.max(...perSync), `handed over at once: ${perSync.join(",")}`).toBeLessThanOrEqual(10);
   });
 
   it("still bounds a trivial insert — the floor, not zero", async () => {
