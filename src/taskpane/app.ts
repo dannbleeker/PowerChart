@@ -221,9 +221,60 @@ let autoUpdateTimer: ReturnType<typeof setTimeout> | undefined;
  * so every other message inherited whatever the previous action left behind —
  * an "Invalid JSON" error rendered in the success green.
  */
+const statusStrip = document.getElementById("status-strip");
+const statusBar = document.getElementById("status-bar");
+const statusElapsed = document.getElementById("status-elapsed");
+
 function note(text: string, status: "ok" | "err" | "busy" | "none" = "none") {
   hostNote.textContent = text;
   hostNote.className = status === "none" ? "hint" : `hint status-${status}`;
+  // The strip carries the note now, so it has to follow it: shown whenever
+  // there is something to say, collapsed when there is not.
+  statusStrip?.toggleAttribute("hidden", !text);
+  statusBar?.toggleAttribute("hidden", status !== "busy");
+  if (status !== "busy") setProgress(null);
+}
+
+/**
+ * How far along, when we honestly know: a fraction for work we complete in
+ * steps, "busy" for work we hand to PowerPoint in one go.
+ *
+ * A single insert is ONE context.sync() and Office.js reports nothing until it
+ * lands, so any percentage there would be invented — and a bar that sticks at
+ * 99% is a worse lie than no bar. Chunked work (the demo deck) really does know,
+ * so it gets a real one.
+ */
+function setProgress(p: number | "busy" | null) {
+  if (!statusBar) return;
+  const fill = statusBar.querySelector("i");
+  if (p === "busy") {
+    statusBar.classList.add("indeterminate");
+    if (fill) fill.style.width = "";
+  } else {
+    statusBar.classList.remove("indeterminate");
+    if (fill) fill.style.width = p == null ? "0" : `${Math.round(Math.max(0, Math.min(1, p)) * 100)}%`;
+  }
+}
+
+/**
+ * Count the seconds while the host works. It is the only number we can report
+ * mid-sync, and on a host that takes 20s to draw a chart, a number that moves
+ * is the difference between "working" and "dead".
+ */
+let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+function startElapsed() {
+  const t0 = Date.now();
+  stopElapsed();
+  const tick = () => {
+    if (statusElapsed) statusElapsed.textContent = `${Math.round((Date.now() - t0) / 1000)}s`;
+  };
+  tick();
+  elapsedTimer = setInterval(tick, 1000);
+}
+function stopElapsed() {
+  clearInterval(elapsedTimer);
+  elapsedTimer = undefined;
+  if (statusElapsed) statusElapsed.textContent = "";
 }
 
 function applyConfig(cfg: ChartConfig, editTarget: EditTarget | null) {
@@ -1278,6 +1329,8 @@ function wireInsert() {
         const lock = [insertBtn, clicked].filter((b): b is HTMLButtonElement => !!b && !b.disabled);
         for (const b of lock) b.disabled = true;
         note("Working…", "busy");
+        setProgress("busy");
+        startElapsed();
         try {
           await fn();
           if (hostNote.textContent?.startsWith("Working…")) {
@@ -1289,6 +1342,7 @@ function wireInsert() {
           // and debugInfo, which String(err) throws away.
           note(`Failed: ${errorText(err)}`, "err");
         } finally {
+          stopElapsed();
           // Only re-enable what this call disabled — never resurrect a button
           // some other state (no host, no selection) means to keep dead.
           for (const b of lock) b.disabled = false;
@@ -1356,7 +1410,10 @@ function wireInsert() {
         // multi-minute run is indistinguishable from a hang.
         await insertDemoDeck(
           items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
-          (done, total) => note(`Inserting demo slides… ${done} of ${total}`, "busy"),
+          (done, total) => {
+            note(`Inserting demo slides… ${done} of ${total}`, "busy");
+            setProgress(done / total); // real chunks, so a real bar
+          },
         );
         note(`Inserted ${items.length} demo slides at the end of the deck.`, "ok");
       }),

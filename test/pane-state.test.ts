@@ -145,51 +145,52 @@ describe("task pane — accordion headings are translated", () => {
   });
 });
 
-describe("busy-guard on host actions", () => {
-  /**
-   * Boot the pane down its HOST branch, with a PowerPoint.run we control: it
-   * parks until we release it, so we can look at the buttons mid-flight — which
-   * is the only moment the bug existed.
-   */
-  async function bootHost() {
-    let release!: () => void;
-    const parked = new Promise<void>((r) => (release = r));
-    let runs = 0;
-    vi.stubGlobal("Office", {
-      context: { host: "PowerPoint", requirements: { isSetSupported: () => false } },
-    });
-    vi.stubGlobal("PowerPoint", {
-      run: async (cb: (ctx: unknown) => Promise<unknown>) => {
-        runs++;
-        await parked;
-        return cb({
-          presentation: {
-            slides: {
-              getCount: () => ({ value: 0 }),
-              add() {},
-              getItemAt: () => ({ shapes: { addGeometricShape: stubShape, addLine: stubShape, addTextBox: stubShape } }),
-            },
-          },
-          sync: async () => {},
-        });
-      },
-      GeometricShapeType: new Proxy({}, { get: (_t, p) => String(p) }),
-      ConnectorType: { straight: "straight" },
-      ShapeLineDashStyle: { dash: "dash" },
-      ShapeAutoSize: { autoSizeNone: "none" },
-      TextVerticalAlignment: { top: "t", middle: "m", bottom: "b" },
-      ParagraphHorizontalAlignment: { left: "l", center: "c", right: "r" },
-    });
-    const stubShape = () => ({
-      fill: { setSolidColor() {}, clear() {} },
-      lineFormat: {},
-      textFrame: { textRange: { font: {}, paragraphFormat: {} } },
-      tags: { add() {} },
-    });
-    await bootPane();
-    return { release, runs: () => runs };
-  }
 
+/**
+ * Boot the pane down its HOST branch, with a PowerPoint.run we control: it
+ * parks until we release it, so we can look at the buttons mid-flight — which
+ * is the only moment the bug existed.
+ */
+async function bootHost() {
+  let release!: () => void;
+  const parked = new Promise<void>((r) => (release = r));
+  let runs = 0;
+  vi.stubGlobal("Office", {
+    context: { host: "PowerPoint", requirements: { isSetSupported: () => false } },
+  });
+  vi.stubGlobal("PowerPoint", {
+    run: async (cb: (ctx: unknown) => Promise<unknown>) => {
+      runs++;
+      await parked;
+      return cb({
+        presentation: {
+          slides: {
+            getCount: () => ({ value: 0 }),
+            add() {},
+            getItemAt: () => ({ shapes: { addGeometricShape: stubShape, addLine: stubShape, addTextBox: stubShape } }),
+          },
+        },
+        sync: async () => {},
+      });
+    },
+    GeometricShapeType: new Proxy({}, { get: (_t, p) => String(p) }),
+    ConnectorType: { straight: "straight" },
+    ShapeLineDashStyle: { dash: "dash" },
+    ShapeAutoSize: { autoSizeNone: "none" },
+    TextVerticalAlignment: { top: "t", middle: "m", bottom: "b" },
+    ParagraphHorizontalAlignment: { left: "l", center: "c", right: "r" },
+  });
+  const stubShape = () => ({
+    fill: { setSolidColor() {}, clear() {} },
+    lineFormat: {},
+    textFrame: { textRange: { font: {}, paragraphFormat: {} } },
+    tags: { add() {} },
+  });
+  await bootPane();
+  return { release, runs: () => runs };
+}
+
+describe("busy-guard on host actions", () => {
   it("disables the clicked button AND the primary Insert while an action runs", async () => {
     // The bug, seen in real PowerPoint: guard disabled only the primary button,
     // so "Insert demo deck" stayed live through a multi-minute run (one more
@@ -261,5 +262,82 @@ describe("the action bar belongs to the Chart tab", () => {
     // be set and the bar would stay on screen. Assert the CSS, not the DOM.
     const css = readFileSync("src/taskpane/taskpane.css", "utf8");
     expect(css).toMatch(/\.action-bar\[hidden\]\s*\{[^}]*display:\s*none/);
+  });
+});
+
+describe("status is pane-wide, and only claims what it knows", () => {
+  const strip = () => document.getElementById("status-strip")!;
+  const bar = () => document.getElementById("status-bar")!;
+  const noteEl = () => document.getElementById("host-note")!;
+
+  it("lives OUTSIDE the action bar, so hiding that bar cannot silence it", async () => {
+    // The regression this exists for: host-note used to live inside
+    // <footer class="action-bar">, which is Chart-only. Hiding the bar took
+    // every "Working…", "Failed:" and progress count on Elements / Agenda /
+    // Automation down with it — including the demo deck's own counter, which
+    // is on Automation. Inserting is slow enough here that silence reads as
+    // broken.
+    await bootPane();
+    expect(document.querySelector(".action-bar #host-note"), "note must not be inside the action bar").toBeNull();
+    expect(strip().contains(noteEl())).toBe(true);
+    // And the strip must not be a child of the thing that gets hidden.
+    expect(document.querySelector(".action-bar")!.contains(strip())).toBe(false);
+  });
+
+  it("collapses when there is nothing to say", async () => {
+    await bootPane();
+    expect(strip().hasAttribute("hidden")).toBe(true);
+    expect(bar().hasAttribute("hidden")).toBe(true);
+  });
+
+  it("shows an INDETERMINATE bar for work whose progress we cannot know", async () => {
+    // A single insert is one context.sync(); Office.js reports nothing until it
+    // lands. Any percentage would be invented, and a bar stuck at 99% is a
+    // worse lie than no bar.
+    const { release } = await bootHost();
+    $<HTMLButtonElement>("demo-insert").click();
+    await Promise.resolve();
+    expect(strip().hasAttribute("hidden")).toBe(false);
+    expect(bar().hasAttribute("hidden")).toBe(false);
+    expect(bar().classList.contains("indeterminate")).toBe(true);
+    // Indeterminate means NO width claim.
+    expect(bar().querySelector("i")!.style.width).toBe("");
+    release();
+    await vi.waitFor(() => expect(bar().hasAttribute("hidden")).toBe(true));
+  });
+
+  it("counts the seconds while the host works, and stops when it is done", async () => {
+    // The only number we can honestly report mid-sync — and on a host that
+    // takes 20s to draw a chart, a number that moves is the whole difference
+    // between "working" and "dead".
+    vi.useFakeTimers();
+    try {
+      const { release } = await bootHost();
+      const elapsed = () => document.getElementById("status-elapsed")!.textContent;
+      $<HTMLButtonElement>("demo-insert").click();
+      await Promise.resolve();
+      expect(elapsed()).toBe("0s");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(elapsed()).toBe("3s");
+      release();
+      await vi.advanceTimersByTimeAsync(10);
+      await vi.waitFor(() => expect(elapsed()).toBe(""));
+      // The ticker must not outlive the work.
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(elapsed()).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the bar when the note turns into an error", async () => {
+    vi.stubGlobal("Office", { context: { host: "PowerPoint", requirements: { isSetSupported: () => false } } });
+    vi.stubGlobal("PowerPoint", { run: async () => { throw new Error("host refused"); } });
+    await bootPane();
+    $<HTMLButtonElement>("demo-insert").click();
+    await vi.waitFor(() => expect(noteEl().textContent).toMatch(/^Failed:/));
+    // The message stays; the "still working" signal must not.
+    expect(strip().hasAttribute("hidden")).toBe(false);
+    expect(bar().hasAttribute("hidden")).toBe(true);
   });
 });
