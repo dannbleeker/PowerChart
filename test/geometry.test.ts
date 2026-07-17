@@ -5,6 +5,11 @@ import {
   sceneToOoxmlPieAngle,
   wedgeFanSteps,
   annularSectorPoints,
+  symbolPoints,
+  markerScale,
+  SYMBOL_PRESET,
+  type MarkerSymbol,
+  type SymbolShape,
 } from "../src/core/geometry";
 
 /**
@@ -149,5 +154,91 @@ describe("annularSectorPoints", () => {
     expect(annularSectorPoints(0, 0, 5, 10, 0, 3)).toHaveLength(2 * (2 + 1));
     // 90° → ceil(90/6)=15 segments → 16 points per arc → 32 total
     expect(annularSectorPoints(0, 0, 5, 10, 0, 90)).toHaveLength(2 * (15 + 1));
+  });
+});
+
+/** Area of a simple polygon (shoelace), sign-independent. */
+function shoelace(pts: { x: number; y: number }[]): number {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a) / 2;
+}
+
+const SHAPES: SymbolShape[] = ["diamond", "triangle", "plus", "star5"];
+
+describe("marker symbols", () => {
+  it("every shape stays inside the box the PowerPoint renderers hand the preset", () => {
+    // The two PowerPoint renderers place a 2*size box and let the preset fill
+    // it. If the SVG outline left that box, the preview would draw a marker
+    // bigger than the deck does — the drift this module exists to prevent.
+    for (const s of SHAPES) {
+      const pts = symbolPoints(s, 100, 50, 10);
+      expect(pts.length).toBeGreaterThan(2);
+      for (const p of pts) {
+        expect(p.x).toBeGreaterThanOrEqual(90);
+        expect(p.x).toBeLessThanOrEqual(110);
+        expect(p.y).toBeGreaterThanOrEqual(40);
+        expect(p.y).toBeLessThanOrEqual(60);
+      }
+    }
+  });
+
+  it("scales with size and translates with the centre", () => {
+    for (const s of SHAPES) {
+      const a = symbolPoints(s, 0, 0, 1);
+      const b = symbolPoints(s, 7, -3, 4);
+      a.forEach((p, i) => {
+        expect(b[i].x).toBeCloseTo(p.x * 4 + 7, 10);
+        expect(b[i].y).toBeCloseTo(p.y * 4 - 3, 10);
+      });
+    }
+  });
+
+  it("degenerate sizes stay finite", () => {
+    for (const s of SHAPES) {
+      for (const size of [0, -5]) {
+        for (const p of symbolPoints(s, 3, 4, size)) {
+          expect(Number.isFinite(p.x)).toBe(true);
+          expect(Number.isFinite(p.y)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("markerScale equalises AREA against a circle — the bubble's size claim", () => {
+    // "area ∝ size" is what a bubble chart asserts. Shape must not perturb it:
+    // a star inscribed in the same box as a square holds ~28% of its ink, so
+    // without this the same Size value would read threefold different by group.
+    // Measured off the real outline, so a wrong constant in MARKER_AREA fails
+    // here rather than silently mis-sizing every marker of that shape.
+    for (const s of SHAPES) {
+      const k = markerScale(s);
+      expect(shoelace(symbolPoints(s, 0, 0, k))).toBeCloseTo(Math.PI, 6);
+    }
+    // circle and square have no outline here; check them against their formulas.
+    expect(Math.PI * markerScale("circle") ** 2).toBeCloseTo(Math.PI, 10);
+    expect((2 * markerScale("square")) ** 2).toBeCloseTo(Math.PI, 10);
+  });
+
+  it("leaves a circle alone, so the default scatter cannot move", () => {
+    expect(markerScale("circle")).toBe(1);
+  });
+
+  it("names a preset for every symbol shape, and only lowercase OOXML names", () => {
+    // One table feeds Office.js (as a GeometricShapeType key) and PptxgenJS (as
+    // an addShape name). A typo here is invisible until it reaches PowerPoint.
+    for (const s of SHAPES) {
+      expect(SYMBOL_PRESET[s]).toMatch(/^[a-z][A-Za-z0-9]*$/);
+    }
+    expect(Object.keys(SYMBOL_PRESET).sort()).toEqual([...SHAPES].sort());
+  });
+
+  it("markerScale covers every MarkerSymbol", () => {
+    const all: MarkerSymbol[] = ["circle", "square", ...SHAPES];
+    for (const m of all) expect(markerScale(m)).toBeGreaterThan(0);
   });
 });

@@ -1,4 +1,4 @@
-import { polar } from "../core/geometry";
+import { polar, symbolPoints } from "../core/geometry";
 import type { Scene, SceneNode } from "../core/scene";
 
 const esc = (s: string) =>
@@ -114,6 +114,14 @@ function nodeToSvg(n: SceneNode): string {
       // Triangle with tip at (x, y), pointing along angle.
       const s = n.size;
       return `<path d="M 0 0 L ${-s * 1.8} ${-s * 0.7} L ${-s * 1.8} ${s * 0.7} Z" fill="${n.fill}" transform="translate(${r(n.x)} ${r(n.y)}) rotate(${r(n.angle)})"${name(n)}/>`;
+    }
+    case "symbol": {
+      // The other two renderers name a preset; here we draw its outline.
+      const pts = symbolPoints(n.shape, n.cx, n.cy, n.size)
+        .map((p) => `${r(p.x)},${r(p.y)}`)
+        .join(" ");
+      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"` : "";
+      return `<polygon points="${pts}" fill="${n.fill}"${stroke}${name(n)}/>`;
     }
   }
 }

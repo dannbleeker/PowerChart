@@ -270,12 +270,20 @@ function translateNodes(nodes: SceneNode[], dx: number, dy: number, prefix: stri
         break;
       case "ellipse":
       case "wedge":
+      case "symbol":
         n.cx += dx;
         n.cy += dy;
         break;
       case "polygon":
         n.points = n.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
         break;
+      default: {
+        // A new SceneNode kind that reaches here would be silently left at the
+        // origin panel's coordinates — a misplaced shape, with nothing failing.
+        // This turns that into a compile error at the point of adding the kind.
+        const unreached: never = n;
+        return unreached;
+      }
     }
     return n;
   });

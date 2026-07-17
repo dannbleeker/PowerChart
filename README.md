@@ -51,6 +51,7 @@ conventions, and every option.
 | Gantt working-day timeline (bar length = working days) | ✅ (`gantt.workdays`; `true` = Mon–Fri, or ISO weekday numbers) |
 | Scatter/bubble marginal distribution histograms | ✅ (`decorations.marginals: "x"/"y"/"both"`; bins subdivide the axis ticks) |
 | Bubble overlap relief along one axis (disclosed) | ✅ (`scatter.spread: "x"/"y"` + `spreadLimit`; cap printed in the footnote) |
+| Scatter/bubble marker symbols per group | ✅ (`scatter.markers`; preset geometry, area-matched, legend draws the shapes) |
 | Combo benchmark markers (points, no connecting line) | ✅ (`type: "marker"` on a combo series; shares the columns' scale) |
 | Waterfall "of which" detail columns (off the chain) | ✅ (`waterfall.detailGroups: [{of, indices}]`; the bridge steps over them) |
 | Gantt lanes grouped by owner | ✅ (`gantt.lanes: "owner"`; opt-in, stable, `After` renumbered) |
@@ -141,7 +142,7 @@ conventions, and every option.
 | **Claude Agent Skill** (charts as native shapes from any Claude surface) | ✅ download from the [skill-latest release](../../releases/tag/skill-latest) (rebuilt by CI on every merge), or `npm run skill` locally |
 | Claude integration research & plan | 📋 [docs/CLAUDE-INTEGRATION.md](docs/CLAUDE-INTEGRATION.md) |
 | Combo chart (stacked columns + line series) | ✅ (`type: "line"` on a series) |
-| Pie & doughnut | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.9 rotation) |
+| Pie & doughnut | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.10 rotation) |
 | Bar charts as rotated column charts, butterfly charts | ✅ (`horizontal` toggle, `butterfly` kind) |
 | Waterfall with computed totals (`e` cells) and connectors | ✅ |
 | Mekko (Marimekko) with %-axis and column totals | ✅ |
@@ -228,8 +229,9 @@ outside PowerPoint the **Download SVG** button replaces slide insertion.
    and hit **Insert into slide**.
 
 Requires PowerPoint with **PowerPointApi 1.4+** (Microsoft 365 desktop or web).
-Grouping uses 1.8+ and arrowhead rotation 1.9+ when available; both degrade
-gracefully on older hosts.
+Grouping uses 1.8+ and shape rotation (arrowheads, pie wedges) 1.10+ when
+available; both degrade gracefully on older hosts. Marker symbols need only
+1.4 — they are preset geometry, not rotated shapes.
 
 ## Datasheet conventions
 

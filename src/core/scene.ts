@@ -105,6 +105,29 @@ export interface ChevronNode {
   name?: string;
 }
 
+/**
+ * Filled marker symbol centred on (cx, cy), inscribed in a `2*size` square.
+ *
+ * Shape is an encoding channel that survives what color does not: greyscale
+ * printing and red-green color blindness both flatten a palette, and a deck
+ * gets printed. A PolygonNode would render the same outline in SVG but
+ * degrades to an unfilled outline in PowerPoint (no freeform fills there),
+ * so a symbol is its own kind: each shape maps to a native preset geometry
+ * and stays filled in all three renderers. See `symbolPoints` / `SYMBOL_PRESET`.
+ */
+export interface SymbolNode {
+  kind: "symbol";
+  shape: SymbolShape;
+  cx: number;
+  cy: number;
+  /** Half the box side, so it reads like an ellipse's radius. */
+  size: number;
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
+  name?: string;
+}
+
 /** Filled triangle with tip at (x, y), pointing along `angle` (degrees, 0 = east, clockwise). */
 export interface ArrowheadNode {
   kind: "arrowhead";
@@ -124,11 +147,14 @@ export type SceneNode =
   | WedgeNode
   | ChevronNode
   | ArrowheadNode
-  | PolygonNode;
+  | PolygonNode
+  | SymbolNode;
 
 // Circle/wedge math lives in ./geometry (shared with the renderers); re-exported
 // here so scene consumers (layouts) keep importing `polar` from the scene module.
 export { polar } from "./geometry";
+import type { SymbolShape } from "./geometry";
+export type { SymbolShape };
 
 export interface Scene {
   width: number;

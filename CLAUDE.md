@@ -10,7 +10,7 @@ the README feature table for the authoritative list.
 
 `ChartConfig` (pure JSON) → `buildChart()` in `src/core` (pure TypeScript, no
 Office imports) → renderer-agnostic scene graph (`rect | line | text | ellipse
-| wedge | chevron | arrowhead | polygon` nodes, coordinates in points) → three
+| wedge | chevron | arrowhead | polygon | symbol` nodes, coordinates in points) → three
 renderers: SVG (`src/render/svg.ts`, preview + tests), Office.js
 (`src/render/powerpoint.ts`, live add-in; config persisted in a
 `POWERCHART_CONFIG` shape tag for re-editing), and PptxgenJS

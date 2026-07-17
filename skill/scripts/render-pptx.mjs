@@ -41,7 +41,7 @@ if (!engine) {
   );
   process.exit(1);
 }
-const { buildChart, DEFAULT_SIZE, arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints } = engine;
+const { buildChart, DEFAULT_SIZE, arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints, SYMBOL_PRESET } = engine;
 
 const [, , input, output = "powerchart.pptx"] = process.argv;
 if (!input) {
@@ -182,6 +182,20 @@ function addNode(slide, n, dx, dy) {
         h: n.h * IN,
         fill: { color: hex(n.fill) },
         line: { type: "none" },
+      });
+      break;
+    }
+    case "symbol": {
+      // Native preset geometry, so the marker stays FILLED — a custGeom polygon
+      // would render here but not in the live add-in. SYMBOL_PRESET names are
+      // OOXML preset names, which is exactly what addShape takes.
+      slide.addShape(SYMBOL_PRESET[n.shape], {
+        x: dx + (n.cx - n.size) * IN,
+        y: dy + (n.cy - n.size) * IN,
+        w: n.size * 2 * IN,
+        h: n.size * 2 * IN,
+        fill: { color: hex(n.fill) },
+        line: n.stroke && (n.strokeWidth ?? 0) > 0 ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       });
       break;
     }

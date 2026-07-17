@@ -5953,6 +5953,89 @@
     }
   },
   {
+    "kind": "scatter",
+    "width": 520,
+    "height": 300,
+    "title": "Shape per group — the split survives greyscale and color blindness",
+    "data": {
+      "categories": [
+        "Northwind",
+        "Acme",
+        "Globex",
+        "Initech",
+        "Umbra",
+        "Soylent",
+        "Vandelay",
+        "Hooli",
+        "Stark",
+        "Wayne",
+        "Tyrell",
+        "Cyberdyne"
+      ],
+      "series": [
+        {
+          "name": "X",
+          "values": [
+            12,
+            18,
+            22,
+            15,
+            44,
+            51,
+            47,
+            55,
+            74,
+            81,
+            78,
+            85
+          ]
+        },
+        {
+          "name": "Y",
+          "values": [
+            30,
+            41,
+            25,
+            36,
+            55,
+            48,
+            62,
+            51,
+            72,
+            66,
+            80,
+            74
+          ]
+        },
+        {
+          "name": "Group",
+          "values": [
+            1,
+            1,
+            1,
+            1,
+            2,
+            2,
+            2,
+            2,
+            3,
+            3,
+            3,
+            3
+          ]
+        }
+      ]
+    },
+    "footnote": "Groups: challengers, contenders, leaders.",
+    "scatter": {
+      "markers": [
+        "circle",
+        "diamond",
+        "triangle"
+      ]
+    }
+  },
+  {
     "kind": "combo",
     "width": 500,
     "height": 300,

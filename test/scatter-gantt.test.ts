@@ -6,8 +6,9 @@ import { layoutColumns } from "../src/core/layout/column";
 import { placeLabels } from "../src/core/labels";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import { sampleConfig } from "../src/core/samples";
-import type { ChartConfig } from "../src/core/types";
-import type { EllipseNode, RectNode, TextNode } from "../src/core/scene";
+import type { ChartConfig, Series } from "../src/core/types";
+import type { EllipseNode, RectNode, SceneNode, TextNode } from "../src/core/scene";
+import { symbolPoints } from "../src/core/geometry";
 
 function cfg(partial: Partial<ChartConfig>): ChartConfig {
   return { kind: "stacked", width: 480, height: 300, data: { categories: [], series: [] }, ...partial };
@@ -692,5 +693,122 @@ describe("gantt owner lanes (gantt.lanes)", () => {
   it("changes nothing when it is off — a plan's row order is the plan", () => {
     expect(buildChart(plan()).nodes).toEqual(buildChart(plan(undefined)).nodes);
     expect(labels(plan())).toEqual(["Spec", "Build", "Review", "Ship", "Handover"]);
+  });
+});
+
+describe("scatter marker symbols", () => {
+  const points = (markers?: ChartConfig["scatter"], kind: "scatter" | "bubble" = "scatter", extra: Series[] = []) =>
+    buildChart(
+      cfg({
+        kind,
+        width: 480,
+        height: 300,
+        data: {
+          categories: ["a", "b", "c", "d", "e", "f"],
+          series: [
+            { name: "X", values: [1, 2, 3, 4, 5, 6] },
+            { name: "Y", values: [2, 4, 3, 5, 4, 6] },
+            { name: "Group", values: [1, 2, 3, 4, 5, 6] },
+            ...extra,
+          ],
+        },
+        scatter: markers,
+      }),
+    ).nodes;
+
+  const named = (nodes: SceneNode[], prefix: string) => nodes.filter((n) => n.name?.startsWith(prefix));
+  const shapeOf = (n: SceneNode) => (n.kind === "symbol" ? `symbol/${n.shape}` : n.kind);
+
+  it("draws circles and nothing else by default — the chart it has always drawn", () => {
+    // Guards the whole feature's blast radius: `markers` off must be the exact
+    // scene, node for node, that shipped before symbols existed.
+    const before = points(undefined);
+    expect(before.some((n) => n.kind === "symbol")).toBe(false);
+    expect(named(before, "point-").map((n) => n.kind)).toEqual(Array(6).fill("ellipse"));
+    // An empty list is "off", not "cycle through nothing".
+    expect(points({ markers: [] })).toEqual(before);
+  });
+
+  it("assigns a shape per Group and cycles when groups outnumber shapes", () => {
+    const got = named(points({ markers: ["circle", "square", "diamond"] }), "point-").map(shapeOf);
+    expect(got).toEqual(["ellipse", "rect", "symbol/diamond", "ellipse", "rect", "symbol/diamond"]);
+  });
+
+  it("keeps each point's datasheet index, so shape never renames a point", () => {
+    const got = named(points({ markers: ["star5", "triangle"] }), "point-").map((n) => n.name);
+    expect(got.sort()).toEqual(["point-0", "point-1", "point-2", "point-3", "point-4", "point-5"]);
+  });
+
+  it("draws the legend chip as the shape it explains", () => {
+    const nodes = points({ markers: ["circle", "square", "diamond", "triangle", "plus", "star5"] });
+    const chips = named(nodes, "legend-chip-").map(shapeOf);
+    const pts = named(nodes, "point-").map(shapeOf);
+    // Group g's chip and group g's points must be the same shape, or the
+    // legend explains a chart that isn't on the slide.
+    expect(chips).toEqual(pts);
+  });
+
+  it("keeps a legend chip clear of its own label, at any font size", () => {
+    // An area-matched star reaches ~1.67x the chip slot. The chip scales with
+    // fontSize but the 3pt gap after it does NOT, so the overhang is swallowed
+    // at the default fs=10 and only bites once the type is big enough — which
+    // is exactly why this asserts across sizes instead of the default alone.
+    // (Every showcase config uses fs=10, so the deck's gate cannot see this.)
+    for (const fontSize of [8, 10, 14, 20, 28]) {
+      const nodes = buildChart(
+        cfg({
+          kind: "scatter",
+          width: 720,
+          height: 400,
+          style: { fontSize },
+          data: {
+            categories: ["a", "b", "c"],
+            series: [
+              { name: "X", values: [1, 2, 3] },
+              { name: "Y", values: [2, 4, 3] },
+              { name: "Group", values: [1, 2, 3] },
+            ],
+          },
+          scatter: { markers: ["star5", "star5", "star5"] },
+        }),
+      ).nodes;
+      for (const g of [1, 2, 3]) {
+        const chip = nodes.find((n) => n.name === `legend-chip-${g}`)!;
+        const label = nodes.find((n) => n.name === `legend-${g}`)! as TextNode;
+        expect(chip.kind).toBe("symbol");
+        const right = chip.kind === "symbol" ? chip.cx + chip.size : NaN;
+        expect(right, `fs=${fontSize} group ${g}`).toBeLessThanOrEqual(label.x);
+      }
+    }
+  });
+
+  it("brings the group legend back under a Color row, where color means something else", () => {
+    const color: Series[] = [{ name: "Color", values: [1, 2, 3, 4, 5, 6] }];
+    // Without markers a color scale supersedes group coloring: no chips.
+    expect(named(points(undefined, "scatter", color), "legend-chip-")).toHaveLength(0);
+    // With markers, group is on the shape channel and must be explained.
+    const nodes = points({ markers: ["circle", "diamond"] }, "scatter", color);
+    expect(named(nodes, "legend-chip-").length).toBeGreaterThan(1);
+    // ...and the chips must clear the gradient bar rather than sit on it.
+    const barRight = Math.max(...named(nodes, "color-legend-").map((n) => (n.kind === "rect" ? n.x + n.w : 0)));
+    for (const c of named(nodes, "legend-chip-")) {
+      const left = c.kind === "symbol" ? c.cx - c.size : c.kind === "ellipse" ? c.cx - c.rx : (c as RectNode).x;
+      expect(left).toBeGreaterThan(barRight);
+    }
+  });
+
+  it("gives equal Size values equal ink, whatever their shape", () => {
+    // A bubble asserts area ∝ size. Shape is categorical and must not perturb
+    // it — otherwise a group drawn as stars reads as a quarter the magnitude.
+    const size: Series[] = [{ name: "Size", values: [10, 10, 10, 10, 10, 10] }];
+    const nodes = points({ markers: ["circle", "square", "diamond", "triangle", "plus", "star5"] }, "bubble", size);
+    const areas = named(nodes, "point-").map((n) => {
+      if (n.kind === "ellipse") return Math.PI * n.rx * n.ry;
+      if (n.kind === "rect") return n.w * n.h;
+      if (n.kind !== "symbol") throw new Error(`unexpected ${n.kind}`);
+      const p = symbolPoints(n.shape, n.cx, n.cy, n.size);
+      return Math.abs(p.reduce((a, c, i) => a + (c.x * p[(i + 1) % p.length].y - p[(i + 1) % p.length].x * c.y), 0)) / 2;
+    });
+    for (const a of areas) expect(a).toBeCloseTo(areas[0], 6);
   });
 });

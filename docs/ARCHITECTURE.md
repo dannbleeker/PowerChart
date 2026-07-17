@@ -11,7 +11,7 @@
    Node for unit tests, in the browser for the preview, and inside PowerPoint
    for insertion — one code path for all three.
 3. **Renderer-agnostic scene graph.** Layouts emit `rect | line | text |
-   ellipse | wedge | chevron | arrowhead | polygon` nodes in points
+   ellipse | wedge | chevron | arrowhead | polygon | symbol` nodes in points
    (PowerPoint's native unit, 1pt = 1/72"). Renderers are dumb: SVG maps
    1pt→1px; Office.js maps nodes to shapes 1:1 (pies as triangle fans,
    polygons as outline segments); the skill's PptxgenJS renderer gets exact
