@@ -508,19 +508,52 @@ async function stampLastSlide(title: string, detail: string): Promise<void> {
  * per-slide sync ORDER still holds (shapes commit before grouping), so a host
  * lacking grouping never rolls back the chart. Requires PowerPointApi 1.3.
  */
+/** One item's outcome from a demo-deck insert — the raw material for self-check. */
+export interface DemoResult {
+  /** Chart shapes actually drawn (0 when skipped as too dense, or failed early). */
+  created: number;
+  status: "rendered" | "skipped" | "failed";
+}
+
+/** A demo-deck insert's self-verification report. */
+export interface DemoReport {
+  results: DemoResult[];
+  /**
+   * How much the deck ACTUALLY grew, read back from the host. It SHOULD equal
+   * `results.length` (one slide per item, even skipped/failed ones). A shortfall
+   * means the host silently lost slides mid-run — an otherwise-invisible
+   * corruption that a regression run must surface, not hide.
+   */
+  slidesAdded: number;
+}
+
+/** The current slide count, read in its own settled sync (reliable on web). */
+async function slideCount(): Promise<number> {
+  return PowerPoint.run(async (context) => {
+    const c = context.presentation.slides.getCount();
+    await context.sync();
+    return c.value;
+  });
+}
+
 export async function insertDemoDeck(
   items: { scene: Scene; tagData?: string }[],
   onProgress?: (done: number, total: number) => void,
-): Promise<number[]> {
-  const failed: number[] = [];
+): Promise<DemoReport> {
+  const results: DemoResult[] = [];
   let lastError: unknown;
   // The blank-layout id is a plain string valid across contexts, so it is looked
   // up once (on the first slide's context) and reused for the rest.
   let layoutId: string | undefined;
   let layoutResolved = false;
+  // Bracket the run with a settled slide count, so a regression run can prove the
+  // deck grew by exactly one slide per item — the lost-slide check.
+  const before = await slideCount();
   for (let i = 0; i < items.length; i++) {
     const shapeCount = items[i].scene.nodes.length;
     const tooDense = shapeCount > DEMO_SHAPE_BUDGET;
+    let created = 0;
+    let status: DemoResult["status"] = "rendered";
     try {
       await PowerPoint.run(async (context) => {
         if (!layoutResolved) {
@@ -533,31 +566,34 @@ export async function insertDemoDeck(
           // burns the timeout and pushes the host toward a crash. Leave a stamped
           // placeholder so the slide count and order still line up.
           await stampSlide(context, getSlide, "NOT COMPLETE", `Too dense for this host — ${shapeCount} shapes, not rendered`);
+          status = "skipped";
           return;
         }
         const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: items[i].tagData };
-        const created = await renderShapesChunked(context, getSlide, items[i].scene, opts);
+        const drawn = await renderShapesChunked(context, getSlide, items[i].scene, opts);
+        created = drawn.length;
         // Shapes are committed by now, so grouping cannot roll them back.
-        await groupAndTagAll(context, [{ getSlide, created, opts }]);
+        await groupAndTagAll(context, [{ getSlide, created: drawn, opts }]);
       });
-      if (tooDense) failed.push(i);
     } catch (err) {
       // One chart the host would not draw does not sink the rest of the deck.
       lastError = err;
-      failed.push(i);
+      status = "failed";
       // Mark the half-rendered slide so a partial chart is not mistaken for a
       // real one. A fresh context, because the failed render poisoned its own.
       await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
     }
+    results.push({ created, status });
     onProgress?.(i + 1, items.length);
   }
+  const after = await slideCount();
   // A whole deck lost to HOST errors (not just skipped-as-dense) is a real
   // failure — surface it so the pane says "Failed", not "inserted 0 of N". If
-  // everything was merely skipped, there is no error to throw; return the list.
-  if (items.length && failed.length === items.length && lastError !== undefined) {
+  // everything was merely skipped, there is no error to throw.
+  if (items.length && results.every((r) => r.status !== "rendered") && lastError !== undefined) {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
-  return failed;
+  return { results, slidesAdded: after - before };
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */
