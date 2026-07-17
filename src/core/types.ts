@@ -450,6 +450,22 @@ export interface ChartConfig {
     mode?: "sequential" | "diverging" | "auto";
     totals?: "row" | "column" | "both";
     /**
+     * Mark each cell's sign (+ / −) for the reader who cannot use the color.
+     * A diverging scale says "which way" in hue alone, and hue is exactly what
+     * greyscale printing and red-green color blindness take away: the strongest
+     * positive and the strongest negative land within ~1.1:1 of each other in
+     * greyscale, i.e. the same tone.
+     *
+     * Drawn only where the cell has no value label — the label already prints
+     * the minus sign — which is what makes this matter under `sizeEncode`,
+     * where labels are suppressed entirely and color is the only sign carrier.
+     * Inert on one-signed data, where every mark would be identical.
+     *
+     * Not "up/down": an arrow on a matrix of KPIs reads as movement against
+     * last period, which is a claim this makes no attempt to check.
+     */
+    symbols?: "sign";
+    /**
      * Calendar layout: a single daily series with date categories is laid out
      * as a weekday (row) × week (column) grid, with month labels — the
      * GitHub-contributions view. Ignored without parseable date categories.

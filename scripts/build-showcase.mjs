@@ -1116,7 +1116,7 @@ const features = [
     kind: "heatmap",
     width: 460,
     height: 320,
-    title: "Correlation matrix (size = magnitude)",
+    title: "Correlation matrix — size = magnitude, +/− marks the direction",
     data: {
       categories: ["Rev", "Cost", "Head", "NPS", "Churn"],
       series: [
@@ -1127,7 +1127,10 @@ const features = [
         { name: "Churn", values: [-0.7, -0.3, -0.2, -0.9, 1.0] },
       ],
     },
-    heatmap: { sizeEncode: true, mode: "diverging" },
+    // The canonical case for sign marks: sizeEncode suppresses the value
+    // labels, so without them a printed copy has only hue to tell +0.8 from
+    // -0.7 — and hue is the first thing a greyscale printer discards.
+    heatmap: { sizeEncode: true, mode: "diverging", symbols: "sign" },
   },
   {
     kind: "heatmap",

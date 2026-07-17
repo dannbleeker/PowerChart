@@ -52,6 +52,7 @@ conventions, and every option.
 | Scatter/bubble marginal distribution histograms | ✅ (`decorations.marginals: "x"/"y"/"both"`; bins subdivide the axis ticks) |
 | Bubble overlap relief along one axis (disclosed) | ✅ (`scatter.spread: "x"/"y"` + `spreadLimit`; cap printed in the footnote) |
 | Scatter/bubble marker symbols per group | ✅ (`scatter.markers`; preset geometry, area-matched, legend draws the shapes) |
+| Heatmap sign marks (greyscale-safe diverging) | ✅ (`heatmap.symbols: "sign"`; +/− where no value label carries the sign) |
 | Combo benchmark markers (points, no connecting line) | ✅ (`type: "marker"` on a combo series; shares the columns' scale) |
 | Waterfall "of which" detail columns (off the chain) | ✅ (`waterfall.detailGroups: [{of, indices}]`; the bridge steps over them) |
 | Gantt lanes grouped by owner | ✅ (`gantt.lanes: "owner"`; opt-in, stable, `After` renumbered) |

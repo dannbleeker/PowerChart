@@ -130,6 +130,7 @@ describe("showcase deck coverage", () => {
     ["waterfall detail groups", (c) => !!c.waterfall?.detailGroups?.length],
     ["gantt owner lanes", (c) => c.kind === "gantt" && c.gantt?.lanes != null],
     ["scatter marker symbols", (c) => !!c.scatter?.markers?.length],
+    ["heatmap sign marks", (c) => c.kind === "heatmap" && c.heatmap?.symbols === "sign"],
   ];
   for (const [name, test] of FEATURES) {
     it(`demonstrates ${name}`, () => {

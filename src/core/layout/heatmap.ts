@@ -33,6 +33,10 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const fmt = resolveFormat(all, cfg.numberFormat);
   const maxAbs = Math.max(1e-9, Math.abs(min), Math.abs(max));
   const sizeEncode = !!opts.sizeEncode;
+  // Sign marks only say something when the data actually has both signs. On
+  // one-signed data every cell would carry the same mark — pure noise — so the
+  // option stays inert there, the same way `mode` auto-detects diverging.
+  const wantSign = opts.symbols === "sign" && min < 0 && max > 0;
 
   // Hierarchical row clustering: reorder rows by average-linkage similarity and
   // draw a dendrogram in a left gutter. Needs ≥3 rows and ≥2 columns.
@@ -92,21 +96,44 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const fill = v == null ? NO_DATA : colorOf(v);
       const x = plot.x + c * cw;
       const y = plot.y + ri * ch;
+      // The cell as DRAWN — sizeEncode shrinks it, and the sign mark has to sit
+      // inside whatever is actually there.
+      let box = { x, y, w: cw - 1, h: ch - 1 };
       if (sizeEncode) {
         // Centred square whose side ∝ √(|v|/maxAbs) so its area tracks magnitude.
         const frac = v == null ? 0 : Math.sqrt(Math.abs(v) / maxAbs);
         const side = Math.max(0, Math.min(cw - 1, ch - 1) * frac);
-        nodes.push({ kind: "rect", x: x + (cw - 1 - side) / 2, y: y + (ch - 1 - side) / 2, w: side, h: side, fill, name: `cell-${ri}-${c}` });
-      } else {
-        nodes.push({ kind: "rect", x, y, w: cw - 1, h: ch - 1, fill, name: `cell-${ri}-${c}` });
+        box = { x: x + (cw - 1 - side) / 2, y: y + (ch - 1 - side) / 2, w: side, h: side };
       }
+      nodes.push({ kind: "rect", ...box, fill, name: `cell-${ri}-${c}` });
+
+      let labelled = false;
       if (v != null && decor.segmentLabels && !sizeEncode) {
         const label = formatNumber(v, fmt);
         if (cw >= textWidth(label, fs) + 4 && ch >= fs * 1.3) {
+          labelled = true;
           nodes.push({
             kind: "text", x, y, w: cw - 1, h: ch - 1, text: label, fontSize: fs,
             color: contrastInk(fill), align: "center", valign: "middle", name: `cell-label-${ri}-${c}`,
           });
+        }
+      }
+      // Sign marks, for the reader who cannot use the color. Only where the
+      // value label is absent: the label already prints the minus sign, and a
+      // second sign in the same cell is noise that would sit on top of it.
+      if (wantSign && v != null && !labelled) {
+        const gs = Math.min(box.w, box.h) * 0.3;
+        if (gs > 0.4) {
+          const ink = contrastInk(fill);
+          const cx = box.x + box.w / 2;
+          const cy = box.y + box.h / 2;
+          nodes.push(
+            v >= 0
+              ? { kind: "symbol", shape: "plus", cx, cy, size: gs, fill: ink, name: `cell-sign-${ri}-${c}` }
+              : // The minus IS the plus's horizontal arm — same bar, same weight,
+                // so the pair matches by construction and needs no second preset.
+                { kind: "rect", x: cx - gs, y: cy - gs / 2, w: gs * 2, h: gs, fill: ink, name: `cell-sign-${ri}-${c}` },
+          );
         }
       }
     });
