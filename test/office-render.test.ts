@@ -10,6 +10,7 @@ import {
   listChartsInDeck,
   listChartsInSelection,
   loadChartFromSelection,
+  onLateSync,
   updateChartInSlide,
   updateChartsInSlides,
 } from "../src/render/powerpoint";
@@ -840,6 +841,77 @@ describe("a stalled host is legible, and does not hang the pane", () => {
       await assertion;
       // And it says where it stopped — "commit" is the last thing reached.
       expect(seen.at(-1)).toBe("commit");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("a host that answers late still gets heard", () => {
+  it("reports the real Office error when an abandoned sync finally rejects", async () => {
+    // The evidence problem: racing a timeout throws the answer away. The
+    // abandoned sync keeps running, and Office.js reports queued-command
+    // failures THERE and nowhere else — so whatever it says next is the only
+    // description of the bug we will ever get. Without this it is lost.
+    vi.useFakeTimers();
+    const heard: string[] = [];
+    onLateSync((m) => heard.push(m));
+    try {
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      let rejectSync!: (e: unknown) => void;
+      vi.stubGlobal("PowerPoint", {
+        ...(globalThis as unknown as { PowerPoint: Record<string, unknown> }).PowerPoint,
+        run: async (cb: (ctx: unknown) => Promise<unknown>) =>
+          cb({
+            presentation: { slides: { getItemAt: () => slide }, getSelectedSlides: () => ({ getItemAt: () => slide }) },
+            sync: () => new Promise<void>((_, rej) => (rejectSync = rej)),
+          }),
+      });
+      const p = insertSceneIntoSlide(buildChart(config), {});
+      const assertion = expect(p).rejects.toThrow(/did not respond/);
+      await vi.advanceTimersByTimeAsync(21_000);
+      await assertion;
+      expect(heard, "nothing heard before the host answers").toHaveLength(0);
+
+      // Now the host finally answers — with a real RichApi-shaped error.
+      rejectSync({ message: "An internal error has occurred.", code: "GeneralException", debugInfo: { errorLocation: "Shape.name" } });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(heard).toHaveLength(1);
+      // The generic message alone is useless; code + debugInfo name the bug.
+      expect(heard[0]).toContain("the host eventually FAILED");
+      expect(heard[0]).toContain("code=GeneralException");
+      expect(heard[0]).toContain("Shape.name");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says so when the host was merely slow, not broken", async () => {
+    vi.useFakeTimers();
+    const heard: string[] = [];
+    onLateSync((m) => heard.push(m));
+    try {
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      let finish!: () => void;
+      vi.stubGlobal("PowerPoint", {
+        ...(globalThis as unknown as { PowerPoint: Record<string, unknown> }).PowerPoint,
+        run: async (cb: (ctx: unknown) => Promise<unknown>) =>
+          cb({
+            presentation: { slides: { getItemAt: () => slide }, getSelectedSlides: () => ({ getItemAt: () => slide }) },
+            sync: () => new Promise<void>((res) => (finish = res)),
+          }),
+      });
+      const p = insertSceneIntoSlide(buildChart(config), {});
+      const assertion = expect(p).rejects.toThrow(/did not respond/);
+      await vi.advanceTimersByTimeAsync(21_000);
+      await assertion;
+      finish();
+      await vi.advanceTimersByTimeAsync(1);
+      // "SUCCEEDED late" means the timeout is too short — a different bug from
+      // a host that is actually broken, and the note has to distinguish them.
+      expect(heard[0]).toContain("the host eventually SUCCEEDED");
     } finally {
       vi.useRealTimers();
     }
