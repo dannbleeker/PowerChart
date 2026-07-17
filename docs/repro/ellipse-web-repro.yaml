@@ -1,0 +1,127 @@
+name: PowerChart — ellipse vs rectangle render on PowerPoint web
+description: >-
+  Draws a filled rectangle (control) beside three filled-ellipse variants on the
+  CURRENT slide. On PowerPoint on the web, PowerChart's bubble/scatter points
+  (drawn as GeometricShapeType.ellipse + fill.setSolidColor) do not appear, while
+  rectangles drawn the identical way do. This isolates whether the ellipse fill
+  fails, and whether a sync-before-fill or dropping the outline changes anything.
+host: POWERPOINT
+api_set:
+  PowerPointApi: '1.5'
+script:
+  content: |-
+    // Run on a BLANK slide. Compare which shapes show a FILL on PowerPoint web
+    // vs desktop. Each shape is also logged with its id so you can confirm it was
+    // created even if it is not painted (the office-js "created but not repainted"
+    // web bug, OfficeDev/office-js#2699).
+    document.getElementById("run").addEventListener("click", () => tryCatch(run));
+    document.getElementById("count").addEventListener("click", () => tryCatch(countShapes));
+
+    async function run() {
+      await PowerPoint.run(async (context) => {
+        const slide = context.presentation.getSelectedSlides().getItemAt(0);
+        const shapes = slide.shapes;
+
+        // 1. CONTROL — filled rectangle (PowerChart bars render fine this way).
+        const rect = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle,
+          { left: 40, top: 70, width: 90, height: 90 });
+        rect.fill.setSolidColor("#2a78d6");
+        rect.name = "repro-1-rect";
+
+        // 2. SUSPECT — ellipse + fill + white 1pt outline, EXACTLY as PowerChart
+        //    draws a bubble.
+        const e1 = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse,
+          { left: 160, top: 70, width: 90, height: 90 });
+        e1.fill.setSolidColor("#1baf7a");
+        e1.lineFormat.color = "#ffffff";
+        e1.lineFormat.weight = 1;
+        e1.name = "repro-2-ellipse-asis";
+
+        // 3. ellipse whose fill is set AFTER a sync (tests "shape must commit
+        //    before fill takes on web").
+        const e2 = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse,
+          { left: 280, top: 70, width: 90, height: 90 });
+        e2.name = "repro-3-ellipse-syncfirst";
+        await context.sync();
+        e2.fill.setSolidColor("#eda100");
+
+        // 4. ellipse with fill only, NO outline (tests whether the white outline
+        //    is masking a fill that never applied).
+        const e3 = shapes.addGeometricShape(PowerPoint.GeometricShapeType.ellipse,
+          { left: 400, top: 70, width: 90, height: 90 });
+        e3.fill.setSolidColor("#8e44ad");
+        e3.name = "repro-4-ellipse-noline";
+
+        // Labels so the differential is unambiguous in a screenshot.
+        const labels = [
+          ["1 rect (control)", 40],
+          ["2 ellipse as-is", 160],
+          ["3 ellipse sync-first", 280],
+          ["4 ellipse fill-only", 400],
+        ];
+        for (const [text, left] of labels) {
+          shapes.addTextBox(text, { left: left, top: 170, width: 110, height: 24 });
+        }
+
+        await context.sync();
+        console.log("Drew 4 shapes + labels on the current slide.");
+        console.log("On WEB: does the RECT show a fill but the ELLIPSES do not?");
+        console.log("Then zoom in/out — do the ellipses appear? (that = repaint bug #2699)");
+      });
+    }
+
+    // Proves the shapes EXIST even when not painted: counts them and lists ids.
+    async function countShapes() {
+      await PowerPoint.run(async (context) => {
+        const shapes = context.presentation.getSelectedSlides().getItemAt(0).shapes;
+        shapes.load("items/name,items/id");
+        await context.sync();
+        console.log(`This slide has ${shapes.items.length} shapes:`);
+        for (const s of shapes.items) console.log(`  ${s.name || "(unnamed)"} — ${s.id}`);
+        console.log("If the repro shapes are listed but not visible, they were created but not painted.");
+      });
+    }
+
+    async function tryCatch(callback) {
+      try {
+        await callback();
+      } catch (error) {
+        console.error(error);
+        if (error instanceof OfficeExtension.Error) {
+          console.error("Debug info: " + JSON.stringify(error.debugInfo));
+        }
+      }
+    }
+  language: typescript
+template:
+  content: |-
+    <section class="ms-font-m">
+      <p>Run on a <b>blank slide</b> in PowerPoint. Then compare which shapes show a
+      fill — on the web vs desktop.</p>
+    </section>
+    <section class="ms-Fabric">
+      <button id="run" class="ms-Button"><span class="ms-Button-label">Draw rect + 3 ellipses</span></button>
+      <button id="count" class="ms-Button"><span class="ms-Button-label">Count shapes on this slide</span></button>
+    </section>
+    <section class="ms-font-s">
+      <p>Open the console (bottom of the ScriptLab pane) to read the shape ids. If the
+      ellipses are listed by <b>Count</b> but not visible, they were created but not
+      painted — the web repaint bug. If <b>zoom</b> makes them appear, same thing.
+      If they never appear even zoomed, it is an ellipse-render bug.</p>
+    </section>
+  language: html
+style:
+  content: |-
+    section {
+      padding: 8px 0;
+    }
+    button {
+      margin: 4px 8px 4px 0;
+    }
+  language: css
+libraries: |-
+  https://appsforoffice.microsoft.com/lib/1/hosted/office.js
+  @types/office-js
+
+  office-ui-fabric-js@1.4.0/dist/css/fabric.min.css
+  office-ui-fabric-js@1.4.0/dist/css/fabric.components.min.css
