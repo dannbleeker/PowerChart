@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { demoItems } from "../src/core/demo";
 import { CHART_KINDS } from "../src/core/samples";
 import { sceneToSvg } from "../src/render/svg";
-import { estimateOfficeShapes } from "../src/render/powerpoint";
+import { estimateOfficeShapes } from "../src/core/scene";
 
 describe("demo deck", () => {
   const items = demoItems();

@@ -153,13 +153,35 @@ export type SceneNode =
 // Circle/wedge math lives in ./geometry (shared with the renderers); re-exported
 // here so scene consumers (layouts) keep importing `polar` from the scene module.
 export { polar } from "./geometry";
-import type { SymbolShape } from "./geometry";
+import { wedgeFanSteps, type SymbolShape } from "./geometry";
 export type { SymbolShape };
 
 export interface Scene {
   width: number;
   height: number;
   nodes: SceneNode[];
+}
+
+/**
+ * How many NATIVE shapes a scene becomes on the Office.js host — NOT the node
+ * count. A wedge fans out into `wedgeFanSteps` shapes (+2 stroke edges); a polygon
+ * draws one line per edge. So a 10-node pie is ~50 shapes and a 10-node violin
+ * ~250. This is the number the web shape budget cares about (counting nodes waved
+ * both past it and the host choked) and the number the demo's contents table shows.
+ */
+export function estimateOfficeShapes(scene: Scene): number {
+  let total = 0;
+  for (const n of scene.nodes) {
+    if (n.kind === "wedge") {
+      const span = n.endAngle - n.startAngle;
+      total += wedgeFanSteps(n.r, span).steps + (n.stroke && span < 359.9 ? 2 : 0);
+    } else if (n.kind === "polygon") {
+      total += n.points.length; // one line per edge, closed
+    } else {
+      total += 1;
+    }
+  }
+  return total;
 }
 
 /** Approximate rendered text width in points (average glyph ≈ 0.54 em for UI sans). */
