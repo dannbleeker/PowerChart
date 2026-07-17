@@ -211,14 +211,26 @@ export async function updateChartsInSlides(
   if (!items.length) return;
   await PowerPoint.run(async (context) => {
     // 1. Resolve every old shape — one sync for all of them.
+    //
+    // getItemOrNullObject, never getItem: a target names a slide that the user
+    // may have deleted, undone, or closed since we read it, and getItem THROWS
+    // on a stale id — "InvalidParam passed to GetItem(id)", code 5010, which is
+    // a normal condition wearing a crash's clothes. A chart whose slide is gone
+    // is not an error, it is nothing to do.
     const found = items.map((it) => {
-      const slide = context.presentation.slides.getItem(it.target.slideId);
-      return { it, slide, old: slide.shapes.getItemOrNullObject(it.target.shapeId) };
+      const slide = context.presentation.slides.getItemOrNullObject(it.target.slideId);
+      slide.load("isNullObject");
+      return { it, slide };
     });
     await context.sync();
 
+    const live = found.filter(({ slide }) => !slide.isNullObject);
+    if (!live.length) return;
+    const withOld = live.map(({ it, slide }) => ({ it, slide, old: slide.shapes.getItemOrNullObject(it.target.shapeId) }));
+    await context.sync();
+
     // 2. Drop the old shapes — one sync for all of them.
-    for (const { slide: _s, old } of found) if (!old.isNullObject) old.delete();
+    for (const { old } of withOld) if (!old.isNullObject) old.delete();
     await context.sync();
 
     // 3. Redraw each chart in batches. One of these charts is on the slide the
@@ -227,7 +239,7 @@ export async function updateChartsInSlides(
     //    way the shapes arrive at all. Per chart, because a chart's shapes must
     //    all reach the same slide.
     const rendered: Grouping[] = [];
-    for (const { it, slide } of found) {
+    for (const { it, slide } of withOld) {
       const opts: InsertOptions = { ...it.opts, left: it.target.left, top: it.target.top };
       rendered.push({ slide, created: await renderShapesChunked(context, slide, it.scene, opts), opts });
     }

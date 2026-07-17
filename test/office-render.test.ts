@@ -82,6 +82,7 @@ function makeSlide(id: string) {
   const slide = {
     id,
     created,
+    isNullObject: false,
     load() {},
     shapes: {
       items: created,
@@ -147,6 +148,11 @@ function installHost(
         items: slides,
         load() {},
         getItem: (id: string) => slides.find((s) => s.id === id)!,
+        // Real Office.js hands back a null OBJECT for an unknown id — it does
+        // not throw and does not return undefined. A fake that returns
+        // undefined would make `slide.isNullObject` a TypeError instead of the
+        // false it should be, and hide the very case this models.
+        getItemOrNullObject: (id: string) => slides.find((s) => s.id === id) ?? { isNullObject: true, load() {} },
         getItemAt: (i: number) => slides[i],
         getCount: () => ({ value: slides.length }),
         add: (options?: { layoutId?: string }) => {
@@ -798,7 +804,9 @@ describe("Office round-trips do not scale with the chart count", () => {
     // first, so its index depends on the chart's size. Find it rather than
     // hardcode it — a wrong number here silently tests nothing.
     const batches = Math.ceil(buildChart(cfgFor(0)).nodes.length / 10);
-    failSyncOn = 1 /* resolve */ + 1 /* delete */ + batches * 3 /* 3 charts */ + 1; // the GROUP sync
+    // 1 resolve slides, 1 resolve old shapes, 1 delete, then each chart's
+    // batches, then GROUP.
+    failSyncOn = 3 + batches * 3 /* 3 charts */ + 1;
     try {
       const items = targetsOn(slide, 3);
       await expect(updateChartsInSlides(items)).resolves.toBeUndefined();
@@ -1110,5 +1118,41 @@ describe("EVERY insert path batches its shapes", () => {
       await maxPerSync(() => insertDemoDeck([{ scene: scene() }, { scene: scene() }, { scene: scene() }, { scene: scene() }, { scene: scene() }]), [s4]),
       "demo deck",
     ).toBeLessThanOrEqual(10);
+  });
+});
+
+describe("a target whose slide is gone is nothing to do, not a crash", () => {
+  it("skips a stale slideId instead of throwing InvalidParam", async () => {
+    // The real error, from the real host:
+    //   InvalidParam passed to GetItem(id) | code=5010
+    //   errorLocation: SlideCollection.getItem
+    // An EditTarget outlives the slide it names — delete the slide, undo, or
+    // reopen the deck and the id is stale. getItem THROWS on that; it is a
+    // normal condition wearing a crash's clothes. Same Scale over a deck would
+    // take one deleted chart and lose every OTHER chart's rescale with it.
+    const live = makeSlide("s-live");
+    installHost([live]);
+    const s = live.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
+    await expect(
+      updateChartsInSlides([
+        { scene: buildChart(config), target: { slideId: "s-deleted", shapeId: "gone", left: 0, top: 0 }, opts: { tagData: "{}" } },
+        { scene: buildChart(config), target: { slideId: "s-live", shapeId: s.id, left: 10, top: 20 }, opts: { tagData: '{"ok":1}' } },
+      ]),
+    ).resolves.toBeUndefined();
+    // The live chart still got drawn and tagged — one dead target must not take
+    // the others down.
+    const group = live.created.find((c) => c.type === "group");
+    expect(group, "the live chart was skipped too").toBeTruthy();
+    expect(group!.tagStore.get(CHART_TAG)).toBe('{"ok":1}');
+  });
+
+  it("does nothing at all when every target is stale", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const before = slide.created.length;
+    await expect(
+      updateChartsInSlides([{ scene: buildChart(config), target: { slideId: "nope", shapeId: "nope", left: 0, top: 0 }, opts: {} }]),
+    ).resolves.toBeUndefined();
+    expect(slide.created.length).toBe(before);
   });
 });
