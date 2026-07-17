@@ -11,6 +11,7 @@ import {
   listChartsInSelection,
   loadChartFromSelection,
   onLateSync,
+  READBACK_PAGE,
   updateChartInSlide,
   updateChartsInSlides,
 } from "../src/render/powerpoint";
@@ -132,6 +133,8 @@ function makeSlide(id: string) {
       getItemOrNullObject(id: string) {
         return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, delete() {} };
       },
+      // Top-level shape count the host reports on readback — non-deleted shapes.
+      getCount: () => ({ value: created.filter((s) => !s.deleted).length }),
     },
   };
   return slide;
@@ -206,6 +209,11 @@ let failSyncOn = 0;
  * dropping a slide-add under load, the corruption the self-check must catch. */
 let swallowAdds = 0;
 
+/** Deck indices whose shapes.getCount() reports 0 on readback — models a slide
+ * that committed but came back BLANK (its shapes detached), the silent partial
+ * the on-slide readback must catch. */
+const blankReadbackAt = new Set<number>();
+
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
  * — pass a predicate to simulate e.g. PowerPoint on the web lacking grouping. */
@@ -240,7 +248,10 @@ function installHost(
         getItemAt: (i: number) => {
           const s = slides[i];
           if (!s) return s;
-          return i >= contextBaseCount ? freshWindowedHandle(s) : s;
+          if (i >= contextBaseCount) return freshWindowedHandle(s);
+          // A durable slide the host reports empty on readback (see blankReadbackAt).
+          if (blankReadbackAt.has(i)) return { ...s, shapes: { ...s.shapes, getCount: () => ({ value: 0 }) } };
+          return s;
         },
         // Resolves at the NEXT sync to the committed count (from before that
         // sync's adds), never to slides.length now — see committedCount.
@@ -299,6 +310,7 @@ function installHost(
   trips.contexts = 0;
   pendingHostError = null;
   swallowAdds = 0;
+  blankReadbackAt.clear();
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
@@ -948,8 +960,9 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(failedIndices(report), `${n} slides`).toEqual([]);
       // Self-check: the deck grew by exactly one slide per item, nothing lost.
       expect(report.slidesAdded, `${n} slides`).toBe(n);
-      // One context per SLIDE, plus the two settled slideCount reads (before/after).
-      expect(trips.contexts, `${n} slides`).toBe(n + 2);
+      // One context per SLIDE, the two settled slideCount reads (before/after),
+      // and the paged on-slide readback (nothing lost, so it runs).
+      expect(trips.contexts, `${n} slides`).toBe(n + 2 + Math.ceil(n / READBACK_PAGE));
       expect(seen, `${n} slides`).toHaveLength(n);
       expect(seen.at(-1)).toBe(`${n}/${n}`);
       // Monotonic, never over-counting.
@@ -980,6 +993,37 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(report.totalMs).toBeGreaterThanOrEqual(0);
     // The whole run is at least as long as its slowest single item.
     expect(report.totalMs).toBeGreaterThanOrEqual(Math.max(...report.results.map((r) => r.ms)));
+  });
+
+  it("reads back the on-slide shape count for every added slide of a clean run", async () => {
+    installHost([makeSlide("s1")]);
+    const n = 4;
+    const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
+    // Nothing lost → readback ran → every slide reports a real, non-blank count.
+    expect(report.results.every((r) => r.onSlide >= 1)).toBe(true);
+  });
+
+  it("flags a slide that committed but the host reports BLANK on readback", async () => {
+    const deck = [makeSlide("s1")]; // index 0; added slides take indices 1..n
+    installHost(deck);
+    const n = 4;
+    blankReadbackAt.add(2); // the 2nd added slide (deck index 2 ↔ results[1])
+    const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
+    expect(report.results[1].onSlide).toBe(0); // came back empty
+    expect(report.results[1].status).toBe("rendered"); // yet the render itself "succeeded"
+    // The blank one stands out — every other slide read back non-empty.
+    expect(report.results.filter((r) => r.onSlide === 0)).toHaveLength(1);
+  });
+
+  it("skips readback when a slide was lost, since order-mapping is then unsafe", async () => {
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const n = 4;
+    swallowAdds = 1; // the host silently drops one slide-add → deck grows by n-1
+    const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
+    expect(report.slidesAdded).toBe(n - 1); // a slide was lost
+    // Order-mapping is unsafe now, so onSlide is left unread (-1) for all.
+    expect(report.results.every((r) => r.onSlide === -1)).toBe(true);
   });
 
   it("reports the slide a host refuses and finishes the rest", async () => {
