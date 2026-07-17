@@ -19,43 +19,52 @@ Two conveniences: tick **Smoke test (10 slides)** in the pane for a fast pass ov
 one representative chart per family (`demoItems({ smoke: true })`) instead of the
 full deck; and a slide that stalls is **retried once** automatically in a fresh
 context (the recovered item is marked `retried`, and — because a mis-identified
-last-slide delete is not worth the risk — attempt 1's stray slide is left in place,
-which `slidesAdded` then surfaces as an extra slide).
+last-slide delete is not worth the risk — attempt 1's stray slide is left in place;
+`addsIssued`, below, accounts for it).
 
 ## 1. The cheap pass — self-check (every run)
 
 Insert the deck. When it finishes, the pane reports and the **console** (F12)
-prints a per-chart table plus a lost-slide check:
+prints a per-chart table plus the run's integrity numbers:
 
 ```
-chart        shapes  onSlide  status      ms
-Bubble         44        1    rendered   180
-Combo          22        1    failed   45012   ← host stalled mid-draw (near the 45s timeout)
-Doughnut       15        1    rendered   240
-Waffle         30        0    rendered   210   ← committed but read back BLANK
-Area            0         1    skipped      2   ← too dense, stamped
-deck grew by 32, expected 35 — 3 LOST · total 78.4s
+chart        shapes  status      retried   ms
+Bubble         44    rendered      false   180
+Combo          22    failed        false 45012   ← host stalled mid-draw (near the 45s timeout)
+Doughnut       15    rendered      false   240
+Area            0    skipped       false     2   ← too dense, stamped
+deck grew by 33, issued 35 adds — 2 LOST; blank slots 24, 34 · total 78.4s
 ```
 
 Read `insertDemoDeck`'s `DemoReport` (`src/render/powerpoint.ts`): `results[i]` is
-`{created, status, ms, onSlide}`, `slidesAdded` is the deck's ACTUAL growth (read
-back with a settled `getCount`), and `totalMs` is the whole run's wall-clock.
-**`slidesAdded < items.length` means the host silently dropped slides** — an
-otherwise-invisible corruption. A per-item `ms` nearing 45 000 (`BATCH_TIMEOUT_MS`)
-is a near-miss stall — the host was one hair from losing that slide.
+`{created, status, ms, retried}`; `slidesAdded` is the deck's ACTUAL growth (settled
+`getCount`, after − before); `totalMs` is the whole run's wall-clock.
 
-**`onSlide`** is the TOP-LEVEL shape count read back from the host per added slide
-after the run. Its job is the silent partial: a slide that committed (status
-`rendered`, no throw) but came back **blank** (`onSlide === 0`) because its shapes
-detached. It is *not* comparable to `shapes` — a chart is grouped into ONE
-top-level group where the host supports grouping, so a healthy `rendered` slide
-reads `1`, not its shape count. `onSlide` is a per-slide presence check, not a
-census. Two honest limits: it is `-1` (unread) when a slide was lost, since
-order-mapping (slide *before+j* ↔ `results[j]`) is then unsound; and it cannot see
-loss *inside* a group.
+**Lost slides — measure against `addsIssued`, not `items.length`.** The retry and a
+double-failed item each leave a **stray** slide, so `slidesAdded` can equal
+`items.length` even when the host lost a real slide — the stray cancels it. So loss
+is `addsIssued − slidesAdded`, where `addsIssued` = one add per item plus one more
+for each retried/failed item (both make a second attempt). A stray that LANDED
+cancels; a swallowed/lost add does not — so this reads through the coincidence.
+(A real run once lost 2 slides and reported 0 under the old `items.length` formula.)
 
-This pass needs no PDF and catches every *structural* regression: missing, partial
-(blank), skipped, failed, lost.
+**`blankSlides`** is the list of **1-based deck positions** of added slides that read
+back with **zero shapes** — the host kept the slide but its content detached. It is
+reported **by position, never by item name**: a blank slide has no content and no
+config tag, so it cannot be attributed to an item, and under load the host reorders/
+merges/loses slides, which breaks any positional item mapping anyway. Each `0` is
+re-read once (a struggling host reports transient `0`s) before it counts, and
+`blanksRead` is `false` if the readback faulted — so an empty list is never mistaken
+for "no blanks" when it means "not fully measured".
+
+Honest limits of `blankSlides`: it cannot see a **merge** (two items on one slide —
+that slide isn't blank), loss *inside* a group, or a **paint-only** blank
+(office-js#2699 — the shapes exist, so `getCount > 0`). Naming the missing/merged
+charts by their config tag (`CHART_TAG`, deck-wide, order-independent) is a
+**documented follow-up**, not yet built.
+
+This pass needs no PDF and catches structural regressions: skipped, failed, lost
+(via `addsIssued`), and empty slots (via `blankSlides`).
 
 It does NOT catch *paint* bugs — a shape created but not rendered (office-js#2699)
 still counts. That's what the visual pass is for.
