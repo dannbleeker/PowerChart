@@ -4,6 +4,7 @@ import {
   arrowheadBox,
   sceneToOoxmlPieAngle,
   wedgeFanSteps,
+  wedgeFanChord,
   annularSectorPoints,
   symbolPoints,
   markerScale,
@@ -129,6 +130,20 @@ describe("wedgeFanSteps", () => {
   it("clamps the step count between 1 and 60", () => {
     expect(wedgeFanSteps(10000, 360).steps).toBe(60); // fine steps → capped at 60
     expect(wedgeFanSteps(1, 1).steps).toBe(1); // tiny span → floored at 1
+  });
+
+  it("wedgeFanChord is wide enough to close the outer arc (no gapped spokes)", () => {
+    // The fan tiles ONLY if each shape's width covers the arc chord at the OUTER
+    // rim, 2·r·sin(step/2). Sizing at the mid radius (r/2 on a solid slice) left
+    // the shapes half-width and the ring rendered as spokes on PowerPoint web.
+    for (const r of [20, 60, 117, 300]) {
+      const { step } = wedgeFanSteps(r, 104); // a real doughnut slice (~29% of 360)
+      const outerArcChord = 2 * r * Math.sin(((step / 2) * Math.PI) / 180);
+      expect(wedgeFanChord(r, step)).toBeGreaterThanOrEqual(outerArcChord);
+      // And the OLD mid-radius width would NOT cover it on a solid slice — the bug.
+      const midRadiusWidth = 2 * (r / 2) * Math.tan(((step / 2) * Math.PI) / 180) + 1;
+      expect(midRadiusWidth, `r=${r}`).toBeLessThan(outerArcChord);
+    }
   });
 });
 

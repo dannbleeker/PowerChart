@@ -66,6 +66,21 @@ export function wedgeFanSteps(r: number, span: number): { steps: number; step: n
 }
 
 /**
+ * Tangential width of ONE fan shape, sized at the OUTER radius.
+ *
+ * Each fan shape is a straight bar/triangle spanning one `stepDeg` slice; its
+ * widest point is the outer rim, where the arc chord is `2·r·sin(step/2)`. Sizing
+ * the width there (with a hair of overlap) makes adjacent shapes meet at the rim
+ * and tile into a solid arc. Sizing it at the MID radius — as this once did —
+ * left the bars ~half-width on a solid slice (mid radius = r/2), so they rendered
+ * as a fan of gapped spokes on PowerPoint web instead of a ring. `tan` ≥ `sin`,
+ * so the returned width always covers the chord; overlap is hidden under fill.
+ */
+export function wedgeFanChord(outerR: number, stepDeg: number): number {
+  return 2 * outerR * Math.tan(((stepDeg / 2) * Math.PI) / 180) + 1;
+}
+
+/**
  * Outline of an annular sector as scene-coordinate points, for a filled
  * PptxgenJS `custGeom` (OOXML's pie preset can't express an inner radius): the
  * outer arc forward from startAngle→endAngle, then the inner arc back, each arc
