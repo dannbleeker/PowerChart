@@ -46,13 +46,24 @@ python -c "import fitz; [print(i+1, p.get_text().split(chr(10))[0]) for i,p in e
 **Pair by TITLE, not page number** — a lost or misaligned slide shifts the page
 order (map the title text on each page to the chart).
 
-**Framing caveat that WILL bite you:** the rendered chart sits in a *sub-region*
-of a 960×540 slide (placed at ~60,90 with margins), while a raw SVG reference
-fills its own frame. So "rendered is smaller / shifted down-right" is a **framing
-artifact, not a defect** — one bad diff run flagged it on 15 charts. Either place
-the reference on a 960×540 canvas at the same offset, or tell the reviewer to
-ignore absolute scale/position and judge only data, proportions, colour, and
-completeness.
+**Two artifacts that WILL bite you** (both flagged bogus "defects" on a real run):
+
+- *Framing.* The rendered chart sits in a *sub-region* of a 960×540 slide (placed
+  at ~60,90 with margins), while a raw SVG reference fills its own frame. So
+  "rendered is smaller / shifted down-right" is not a defect — it flagged 15
+  charts once. Either place the reference on a 960×540 canvas at the same offset,
+  or tell the reviewer to ignore absolute scale/position and judge only data,
+  proportions, colour, and completeness.
+- *Title text.* `demoItems()` overrides each sample's title with a short label
+  (`{...sampleConfig(kind), title: label}`), so a reference built from
+  `sampleConfig(kind)` shows the sample's LONG title — a "title differs / colour
+  lost" mismatch that isn't real. Build references with the SAME title override
+  the demo uses.
+
+Net from the run that produced this doc: of ~20 "findings", exactly ONE was a real
+render bug (doughnut arc gaps); the rest were these two artifacts, known host
+limits, or the stamp/stall. Distrust the diff; verify each finding against the
+scene before filing.
 
 ## Known host limitations (not regressions)
 

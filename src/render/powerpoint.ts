@@ -456,21 +456,26 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
 const DEMO_SHAPE_BUDGET = 90;
 
 /**
- * Draw a bold banner across a slide so an incomplete one is unmistakable — a
- * half-rendered chart looks almost right, which is exactly the trap. Best-effort
- * styling: a host that lacks a property just skips it, the text still lands.
+ * Draw a bold red banner ACROSS THE TOP of a slide so an incomplete one is
+ * unmistakable — a half-rendered chart looks almost right, which is the trap.
+ *
+ * Deliberately a top strip, not a slab over the middle: a stamp that lands on a
+ * real chart (a mis-targeted skip once landed on the butterfly) must not destroy
+ * it, and a partial chart under a failed render should still be legible beneath
+ * the banner. Best-effort styling: a host that lacks a property skips it, the
+ * text still lands.
  */
 async function stampSlide(context: PowerPoint.RequestContext, getSlide: SlideThunk, title: string, detail: string): Promise<void> {
   const box = (getSlide().shapes as unknown as {
     addTextBox(text: string, box: { left: number; top: number; width: number; height: number }): PowerPoint.Shape;
-  }).addTextBox(`${title}\n${detail}`, { left: 80, top: 210, width: 800, height: 120 });
+  }).addTextBox(`${title} — ${detail}`, { left: 24, top: 12, width: 912, height: 46 });
   box.name = "PowerChart:not-complete";
   try {
     box.fill.setSolidColor("#c0392b");
     const font = (box.textFrame.textRange as unknown as { font: Record<string, unknown> }).font;
     font.color = "#ffffff";
     font.bold = true;
-    font.size = 32;
+    font.size = 18;
     const para = (box.textFrame.textRange as unknown as { paragraphFormat: Record<string, unknown> }).paragraphFormat;
     para.horizontalAlignment = "Center";
   } catch {
