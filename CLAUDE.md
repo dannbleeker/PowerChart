@@ -97,8 +97,17 @@ graduate from there into PRs and are removed when shipped.
 
 ## Pending / user-gated
 
-`docs/PUBLISHING.md` is the go-live runbook (written for an Opus 4.8
-session + the owner): make the repo public, host on GitHub Pages, generate
-production manifests, sideload + validate in real PowerPoint, activate the
-Claude skill, cut v0.2.0. Follow it phase by phase; retire items from it
-and from this list as they complete.
+`docs/PUBLISHING.md` is the go-live runbook. Phases 0, 1 and 4 are done: the
+repo is public and protected, the add-in is hosted at
+<https://powerchart.struktureretsundfornuft.dk/>, and **v0.2.0** ships the
+prod manifests, the skill zip and the showcase deck.
+
+What is left needs the owner, not the agent:
+
+- **Phase 2 — sideload + validate in real PowerPoint.** Nothing has ever run
+  in a real host: every Office.js assertion in this repo is against a fake.
+  Expect the first real run to surface things the mocked tests cannot.
+- **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
+
+Follow it phase by phase; retire items from it and from this list as they
+complete.

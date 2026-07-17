@@ -19,8 +19,14 @@ Do the phases in order — later phases depend on the hosted URLs.
    (`git grep` clean; every "token" hit is benign code), no env/credential
    files, all sample/showcase data is invented dummy data, `npm test` green.
 3. **[owner] Post-public hygiene** — ✅ done (Dependabot + CodeQL, description
-   + topics). A branch-protection ruleset for `main` (require CI green) is
-   still worth adding when convenient.
+   + topics).
+4. **[agent] Branch protection** — ✅ done: ruleset "main: require CI green"
+   (active) requires the `test` check and blocks force-push and deletion of
+   `main`. Only `test` is required because it is the only check that runs on
+   `pull_request` — `build`/`deploy` (Pages) and `release` fire on push/tag
+   only, so requiring them would deadlock every PR. Repo admins keep an
+   `always` bypass, so the owner can never be locked out of his own default
+   branch.
 
 ## Phase 1 — Host the add-in on GitHub Pages ✅ agent work landed
 
@@ -109,17 +115,25 @@ outline-only, pattern fills render solid.
    which closes the loop: Claude builds PowerChart charts directly in the
    user's deck.
 
-## Phase 4 — Cut the release
+## Phase 4 — Cut the release ✅ v0.2.0 done
 
-1. **[agent]** Confirm main is green, then trigger the **Release** workflow
-   via `workflow_dispatch` with input `version: v0.2.0` (the git proxy in
-   remote sessions can't push tags; the workflow creates the tag). It
-   attaches the skill zip, both manifests (add the prod manifests, Phase 1
-   step 4), and the showcase deck.
-2. **[agent]** Update README with the Pages URLs: live demo gallery link
-   and "install" section pointing at the prod manifest download.
-3. **[agent]** Move the finished items out of CLAUDE.md's "Pending /
-   user-gated" list and out of this runbook's open questions.
+1. **[agent]** ✅ done — `gh workflow run release.yml -f version=v0.2.0`
+   (the workflow creates the tag; the git proxy in remote sessions can't push
+   tags). Trigger it from a green `main`: the release job runs `npm test` but
+   **not** typecheck or the coverage thresholds, so it is a weaker gate than
+   `ci.yml` and trusts the branch it builds from.
+2. **[agent]** ✅ done — README carries the live gallery link and an install
+   section pointing at the prod manifest download.
+3. **[agent]** ✅ done — CLAUDE.md's "Pending / user-gated" list now names
+   only what is genuinely still owner-gated.
+
+**v0.1.0 shipped the DEV manifests** (`manifest.xml`, pointing at
+`https://localhost:3000`) because it predates the Phase 1 change that attaches
+the prod pair — so the README's install path was broken for anyone who tried
+it: the file it names, `manifest-prod.xml`, was not in the release at all.
+v0.2.0 fixes that. If a future release ever ships a manifest again, check the
+asset list, not just the workflow file — the workflow was right for 12 days
+while the published release stayed wrong.
 
 ## Distribution beyond sideloading (later, optional)
 
