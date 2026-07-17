@@ -1444,13 +1444,18 @@ function wireInsert() {
         const rendered = results.filter((r) => r.status === "rendered").length;
         const lost = items.length - slidesAdded;
         const secs = (totalMs / 1000).toFixed(1);
+        // A slide we "rendered" that reads back with zero shapes came out BLANK —
+        // it committed but its content detached. onSlide is -1 when unread (a lost
+        // slide made order-mapping unsafe), so only a hard 0 counts.
+        const blank = results.map((r, i) => (r.status === "rendered" && r.onSlide === 0 ? items[i].title : "")).filter(Boolean);
         console.log("PowerChart demo self-check:");
-        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, status: r.status, ms: r.ms })));
+        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, onSlide: r.onSlide, status: r.status, ms: r.ms })));
         console.log(`deck grew by ${slidesAdded}, expected ${items.length}${lost > 0 ? ` — ${lost} LOST` : ""} · total ${secs}s`);
         let msg = `Inserted ${rendered} of ${items.length} in ${secs}s.`;
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (lost > 0) msg += ` ⚠ ${lost} slide${lost === 1 ? "" : "s"} LOST by the host (deck grew by ${slidesAdded}, expected ${items.length}).`;
+        if (blank.length) msg += ` ⚠ ${blank.length} rendered BLANK (committed but empty): ${blank.join(", ")}.`;
         // Close the deck with a self-contained results slide so the exported PDF is
         // a complete run record. A second insertDemoDeck reuses the same add/render/
         // self-check machinery; wrap it so a host stall here can't swallow the run's
@@ -1463,7 +1468,7 @@ function wireInsert() {
           console.warn("PowerChart: results slide failed to insert", e);
           msg += " (results slide not added)";
         }
-        note(msg, lost > 0 || failedNames.length ? "err" : "ok");
+        note(msg, lost > 0 || failedNames.length || blank.length ? "err" : "ok");
       }),
     );
   } else {

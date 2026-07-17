@@ -21,21 +21,34 @@ Insert the deck. When it finishes, the pane reports and the **console** (F12)
 prints a per-chart table plus a lost-slide check:
 
 ```
-chart        shapes  status      ms
-Bubble         44    rendered   180
-Combo          22    failed   45012   ← host stalled mid-draw (near the 45s timeout)
-Doughnut       15    rendered   240
-Area            0    skipped      2   ← too dense, stamped
+chart        shapes  onSlide  status      ms
+Bubble         44        1    rendered   180
+Combo          22        1    failed   45012   ← host stalled mid-draw (near the 45s timeout)
+Doughnut       15        1    rendered   240
+Waffle         30        0    rendered   210   ← committed but read back BLANK
+Area            0         1    skipped      2   ← too dense, stamped
 deck grew by 32, expected 35 — 3 LOST · total 78.4s
 ```
 
 Read `insertDemoDeck`'s `DemoReport` (`src/render/powerpoint.ts`): `results[i]` is
-`{created, status, ms}`, `slidesAdded` is the deck's ACTUAL growth (read back with a
-settled `getCount`), and `totalMs` is the whole run's wall-clock. **`slidesAdded <
-items.length` means the host silently dropped slides** — an otherwise-invisible
-corruption. A per-item `ms` nearing 45 000 (`BATCH_TIMEOUT_MS`) is a near-miss
-stall — the host was one hair from losing that slide. This pass needs no PDF and
-catches every *structural* regression: missing, partial, skipped, failed, lost.
+`{created, status, ms, onSlide}`, `slidesAdded` is the deck's ACTUAL growth (read
+back with a settled `getCount`), and `totalMs` is the whole run's wall-clock.
+**`slidesAdded < items.length` means the host silently dropped slides** — an
+otherwise-invisible corruption. A per-item `ms` nearing 45 000 (`BATCH_TIMEOUT_MS`)
+is a near-miss stall — the host was one hair from losing that slide.
+
+**`onSlide`** is the TOP-LEVEL shape count read back from the host per added slide
+after the run. Its job is the silent partial: a slide that committed (status
+`rendered`, no throw) but came back **blank** (`onSlide === 0`) because its shapes
+detached. It is *not* comparable to `shapes` — a chart is grouped into ONE
+top-level group where the host supports grouping, so a healthy `rendered` slide
+reads `1`, not its shape count. `onSlide` is a per-slide presence check, not a
+census. Two honest limits: it is `-1` (unread) when a slide was lost, since
+order-mapping (slide *before+j* ↔ `results[j]`) is then unsound; and it cannot see
+loss *inside* a group.
+
+This pass needs no PDF and catches every *structural* regression: missing, partial
+(blank), skipped, failed, lost.
 
 It does NOT catch *paint* bugs — a shape created but not rendered (office-js#2699)
 still counts. That's what the visual pass is for.

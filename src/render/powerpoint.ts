@@ -522,6 +522,15 @@ export interface DemoResult {
   /** Wall-clock time for this slide, ms. A value nearing BATCH_TIMEOUT_MS (45s) is
    *  a near-miss stall — the host was one hair from losing it. */
   ms: number;
+  /**
+   * TOP-LEVEL shapes the host reports on this slide, read back after the run
+   * (-1 = not read: the deck lost a slide, so order-mapping is unsafe, or the
+   * readback itself faulted). A `rendered` slide reading 0 came back BLANK —
+   * it committed but its shapes detached, a silent partial a visual scan misses.
+   * NOT comparable to `created`: a grouped chart collapses to one top-level
+   * group, so this is a presence check, not a per-shape census.
+   */
+  onSlide: number;
 }
 
 /** A demo-deck insert's self-verification report. */
@@ -596,18 +605,52 @@ export async function insertDemoDeck(
       // real one. A fresh context, because the failed render poisoned its own.
       await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
     }
-    results.push({ created, status, ms: Date.now() - t0 });
+    results.push({ created, status, ms: Date.now() - t0, onSlide: -1 });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
   const after = await slideCount();
+  const slidesAdded = after - before;
   // A whole deck lost to HOST errors (not just skipped-as-dense) is a real
   // failure — surface it so the pane says "Failed", not "inserted 0 of N". If
   // everything was merely skipped, there is no error to throw.
   if (items.length && results.every((r) => r.status !== "rendered") && lastError !== undefined) {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
-  return { results, slidesAdded: after - before, totalMs };
+  // On-slide readback: confirm each added slide against the host, catching a
+  // slide that committed but came back BLANK. Order-mapped, so only sound when
+  // the deck grew by exactly one slide per item; a lost slide shifts every index,
+  // so skip it then and leave onSlide = -1. A readback hiccup must not sink the
+  // run — the counts simply stay unread.
+  if (slidesAdded === results.length) {
+    await readBackShapeCounts(before, results).catch(() => {});
+  }
+  return { results, slidesAdded, totalMs };
+}
+
+/** Slides read per sync in the readback — kept modest to stay clear of the web
+ *  >50-item load ceiling (office-js#4272), though getCount is a scalar, not a load. */
+export const READBACK_PAGE = 20;
+
+/**
+ * Read back how many TOP-LEVEL shapes each freshly-added slide actually holds, so
+ * a slide that committed yet came back empty (its shapes detached after a poisoned
+ * fresh-slide handle, say) is caught — a silent partial a visual scan misses.
+ * Fresh positional proxies per page (getItemAt is durable for these now-settled
+ * slides). Sets `results[j].onSlide`; leaves -1 untouched on any read that faults.
+ */
+async function readBackShapeCounts(before: number, results: DemoResult[]): Promise<void> {
+  for (let start = 0; start < results.length; start += READBACK_PAGE) {
+    const end = Math.min(start + READBACK_PAGE, results.length);
+    await PowerPoint.run(async (context) => {
+      const counts: { value: number }[] = [];
+      for (let j = start; j < end; j++) {
+        counts.push(context.presentation.slides.getItemAt(before + j).shapes.getCount());
+      }
+      await context.sync();
+      for (let j = start; j < end; j++) results[j].onSlide = counts[j - start].value;
+    });
+  }
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */
