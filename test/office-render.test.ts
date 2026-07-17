@@ -802,3 +802,46 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(tags).toEqual(Array.from({ length: n }, (_, i) => `{"i":${i}}`));
   });
 });
+
+describe("a stalled host is legible, and does not hang the pane", () => {
+  it("reports every phase, in order, with the shape count", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const seen: string[] = [];
+    await insertSceneIntoSlide(buildChart(config), { tagData: "{}" }, (p, d) => seen.push(d ? `${p}:${d}` : p));
+    expect(seen[0]).toBe("context");
+    expect(seen.at(-1)).toBe("done");
+    expect(seen.map((s) => s.split(":")[0])).toEqual(["context", "queue", "commit", "group", "done"]);
+    // The counts are the diagnostic: they say how much work was handed over.
+    expect(seen.find((s) => s.startsWith("queue:"))).toMatch(/^queue:\d+ nodes$/);
+    expect(seen.find((s) => s.startsWith("commit:"))).toMatch(/^commit:\d+ shapes$/);
+  });
+
+  it("gives up on a host that never answers, naming the phase it died in", async () => {
+    // The real failure mode: Office.js does not throw when the host stops
+    // answering — the sync promise simply never settles, so the pane spins for
+    // ever with nothing to report. This is the only way out.
+    vi.useFakeTimers();
+    try {
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      // A sync that never settles, exactly like a stalled PowerPoint.ashx.
+      (slide as unknown as { id: string }).id = "s1";
+      const ctxSync = () => new Promise<void>(() => {});
+      vi.stubGlobal("PowerPoint", {
+        ...(globalThis as unknown as { PowerPoint: Record<string, unknown> }).PowerPoint,
+        run: async (cb: (ctx: unknown) => Promise<unknown>) =>
+          cb({ presentation: { slides: { getItemAt: () => slide }, getSelectedSlides: () => ({ getItemAt: () => slide }) }, sync: ctxSync }),
+      });
+      const seen: string[] = [];
+      const p = insertSceneIntoSlide(buildChart(config), {}, (ph) => seen.push(ph));
+      const assertion = expect(p).rejects.toThrow(/did not respond while committing the shapes/);
+      await vi.advanceTimersByTimeAsync(21_000);
+      await assertion;
+      // And it says where it stopped — "commit" is the last thing reached.
+      expect(seen.at(-1)).toBe("commit");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

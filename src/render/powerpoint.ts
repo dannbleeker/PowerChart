@@ -43,15 +43,51 @@ export interface EditTarget {
   top: number;
 }
 
-export async function insertSceneIntoSlide(scene: Scene, opts: InsertOptions = {}): Promise<void> {
-  await PowerPoint.run(async (context) => {
-    const slide = getTargetSlide(context);
-    const created = renderShapes(slide, scene, opts);
-    // Commit the shapes first — so grouping/tagging (which some hosts, notably
-    // PowerPoint on the web, don't support) can't roll back the whole insert.
-    await context.sync();
-    await groupAndTagAll(context, [{ slide, created, opts }]);
-  });
+/**
+ * Where an insert has got to. A host that stops answering does not throw — the
+ * sync promise simply never settles — so without this a stall is
+ * indistinguishable from slow work, and there is nothing to report but a
+ * spinner. Every phase is named so the pane can say which one it died in.
+ */
+export type InsertPhase = "context" | "queue" | "commit" | "group" | "done";
+
+/** Reject if `p` has not settled within `ms` — a hung host must not hang the pane. */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    p.finally(() => clearTimeout(timer)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`)), ms);
+    }),
+  ]);
+}
+
+/** How long any single host round-trip may take before we call it stalled. */
+const HOST_TIMEOUT_MS = 20_000;
+
+export async function insertSceneIntoSlide(
+  scene: Scene,
+  opts: InsertOptions = {},
+  onPhase?: (phase: InsertPhase, detail?: string) => void,
+): Promise<void> {
+  onPhase?.("context");
+  await withTimeout(
+    PowerPoint.run(async (context) => {
+      const slide = getTargetSlide(context);
+      onPhase?.("queue", `${scene.nodes.length} nodes`);
+      const created = renderShapes(slide, scene, opts);
+      // Commit the shapes first — so grouping/tagging (which some hosts, notably
+      // PowerPoint on the web, don't support) can't roll back the whole insert.
+      onPhase?.("commit", `${created.length} shapes`);
+      await withTimeout(context.sync(), HOST_TIMEOUT_MS, "committing the shapes");
+      onPhase?.("group");
+      await groupAndTagAll(context, [{ slide, created, opts }]);
+      onPhase?.("done");
+    }),
+    // The whole run gets a longer budget than one sync: it contains several.
+    HOST_TIMEOUT_MS * 3,
+    "opening a request context",
+  );
 }
 
 /** Replace an existing PowerChart group with a re-rendered scene, in place. */

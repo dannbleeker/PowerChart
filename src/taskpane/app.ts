@@ -16,6 +16,7 @@ import {
   updateChartInSlide,
   updateChartsInSlides,
   type EditTarget,
+  type InsertPhase,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems } from "../core/demo";
@@ -939,6 +940,23 @@ $("download").addEventListener("click", () => {
 /** Cascading default insert position so repeated inserts don't pile up. */
 let insertOffset = 0;
 
+/**
+ * Say which host phase we are in. A stalled Office.js sync never throws — it
+ * simply never settles — so "Working…" alone cannot tell a slow host from a
+ * dead one. Naming the phase makes a stall legible: whatever it says last is
+ * where it stopped.
+ */
+function phaseNote(phase: InsertPhase, detail?: string) {
+  const said: Record<InsertPhase, string> = {
+    context: "opening PowerPoint…",
+    queue: "building shapes…",
+    commit: "sending to PowerPoint…",
+    group: "grouping…",
+    done: "done",
+  };
+  note(`Working… ${said[phase]}${detail ? ` (${detail})` : ""}`, "busy");
+}
+
 async function doInsert(asNew: boolean) {
   let cfg = currentConfig();
   if (!asNew && state.editTarget) {
@@ -950,17 +968,17 @@ async function doInsert(asNew: boolean) {
   const bounds = await getSelectionBounds();
   if (bounds && bounds.width > 40 && bounds.height > 40) {
     cfg = { ...cfg, width: bounds.width, height: bounds.height };
-    await insertSceneIntoSlide(buildChart(cfg), {
-      tagData: JSON.stringify(cfg),
-      left: bounds.left,
-      top: bounds.top,
-    });
+    await insertSceneIntoSlide(
+      buildChart(cfg),
+      { tagData: JSON.stringify(cfg), left: bounds.left, top: bounds.top },
+      phaseNote,
+    );
   } else {
-    await insertSceneIntoSlide(buildChart(cfg), {
-      tagData: JSON.stringify(cfg),
-      left: 60 + insertOffset,
-      top: 90 + insertOffset,
-    });
+    await insertSceneIntoSlide(
+      buildChart(cfg),
+      { tagData: JSON.stringify(cfg), left: 60 + insertOffset, top: 90 + insertOffset },
+      phaseNote,
+    );
     insertOffset = (insertOffset + 14) % 84;
   }
   state.editTarget = null;
@@ -1243,7 +1261,7 @@ function wireInsert() {
         note("Working…", "busy");
         try {
           await fn();
-          if (hostNote.textContent === "Working…") {
+          if (hostNote.textContent?.startsWith("Working…")) {
             note("Done.", "ok");
           }
         } catch (err) {
@@ -1289,7 +1307,7 @@ function wireInsert() {
     ] as const) {
       const btn = $(id) as HTMLButtonElement;
       btn.disabled = false;
-      btn.addEventListener("click", guard(() => insertSceneIntoSlide(scene(), { left: 120, top: 160 })));
+      btn.addEventListener("click", guard(() => insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote)));
     }
     agendaBtn.disabled = false;
     agendaBtn.addEventListener(
