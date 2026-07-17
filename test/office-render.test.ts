@@ -970,6 +970,18 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(tags).toEqual(Array.from({ length: n }, (_, i) => `{"i":${i}}`));
   });
 
+  it("records per-item and total wall-clock so a run's duration is on the record", async () => {
+    installHost([makeSlide("s1")]);
+    const n = 5;
+    const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
+    // Every item is timed; the total is present and never negative.
+    expect(report.results.every((r) => typeof r.ms === "number" && r.ms >= 0)).toBe(true);
+    expect(typeof report.totalMs).toBe("number");
+    expect(report.totalMs).toBeGreaterThanOrEqual(0);
+    // The whole run is at least as long as its slowest single item.
+    expect(report.totalMs).toBeGreaterThanOrEqual(Math.max(...report.results.map((r) => r.ms)));
+  });
+
   it("reports the slide a host refuses and finishes the rest", async () => {
     // A chart the host cannot draw (on the real host, a ~200-shape area chart that
     // times out) must not abort the whole deck: it is caught, its index returned,

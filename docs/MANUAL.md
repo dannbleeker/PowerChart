@@ -362,7 +362,10 @@ surface, including Claude for PowerPoint).
 **Insert demo deck** appends a fresh slide for every chart kind plus a set of
 feature and element highlights — a fast way to eyeball how everything renders
 as native shapes in your PowerPoint. Each chart stays editable (click it and
-**Edit selected chart**); delete the slides when you're done.
+**Edit selected chart**); delete the slides when you're done. The deck opens
+with a title slide stamping the build and host, and closes with a results slide
+summarising what rendered, what the host skipped or failed, and how long the run
+took — so an exported PDF is a self-contained regression record.
 
 ## Excel companion
 
