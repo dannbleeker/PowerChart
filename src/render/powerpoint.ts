@@ -366,6 +366,44 @@ export async function listChartsInDeck(): Promise<{ configJson: string; target: 
 }
 
 /**
+ * Append `count` blank slides and hand each one back as a reference the host
+ * will still honour after later syncs.
+ *
+ * `slides.getItemAt(index)` is NOT a durable handle. Office.js rewrites an
+ * item's object path to `getItem(id)` the moment the host resolves it
+ * (`createChildItemObjectPathUsingIndexerOrGetItemAt` / `updateUsingObjectData`
+ * in office-js) — and for a slide that was *just* `add()`ed, the id behind that
+ * rewrite is not reliably valid across the render's next syncs. The host then
+ * throws "InvalidParam passed to GetItem(id)" (code 5010) on the next shape it
+ * draws — which is exactly what killed the demo deck after the first chunk of
+ * slides, and the agenda after its first slide. A pre-existing slide survives
+ * the same rewrite (its id is stable), which is why editing charts in place and
+ * inserting onto the current slide never hit this.
+ *
+ * The cure is to take the authoritative ids the host itself returns from a
+ * `load` and re-acquire each new slide by id — the same durable path that
+ * `updateChartsInSlides` uses without trouble. The new slides are the ones whose
+ * ids were not present before the adds; identifying them by id set-difference
+ * (not by a `getCount()` offset) is deliberate, so a miscounted offset can never
+ * point the render at the wrong slide.
+ */
+async function addSlidesById(
+  context: PowerPoint.RequestContext,
+  count: number,
+  layoutId: string | undefined,
+): Promise<PowerPoint.Slide[]> {
+  const slides = context.presentation.slides;
+  slides.load("items/id");
+  await context.sync();
+  const before = new Set(slides.items.map((s) => s.id));
+  for (let i = 0; i < count; i++) slides.add(layoutId ? { layoutId } : undefined);
+  slides.load("items/id");
+  await context.sync();
+  const freshIds = slides.items.map((s) => s.id).filter((id) => !before.has(id));
+  return freshIds.map((id) => context.presentation.slides.getItemOrNullObject(id));
+}
+
+/**
  * Append one agenda slide per chapter, each highlighting its own chapter
  * (think-cell's agenda). Slides are appended at the end of the deck —
  * PowerPointApi's slides.add has no insert-at-position — so move them into
@@ -373,19 +411,13 @@ export async function listChartsInDeck(): Promise<{ configJson: string; target: 
  */
 export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
   await PowerPoint.run(async (context) => {
-    const slides = context.presentation.slides;
-    const before = slides.getCount();
-    // Resolves on its own sync, before the count is read.
     const layoutId = await blankLayoutId(context);
-    await context.sync();
-    for (let i = 0; i < scenes.length; i++) slides.add(layoutId ? { layoutId } : undefined);
-    await context.sync();
+    const fresh = await addSlidesById(context, scenes.length, layoutId);
     // Batched like every other render: a slide's worth of shapes in one sync is
     // what the host refuses. Off-screen slides tolerate more than the live
     // canvas does, but "more" is not a number worth betting on twice.
     for (let i = 0; i < scenes.length; i++) {
-      const slide = slides.getItemAt(before.value + i);
-      await renderShapesChunked(context, slide, scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
+      await renderShapesChunked(context, fresh[i], scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
     }
   });
 }
@@ -417,15 +449,13 @@ export async function insertDemoDeck(
   for (let start = 0; start < items.length; start += CHUNK) {
     const batch = items.slice(start, start + CHUNK);
     await PowerPoint.run(async (context) => {
-      const slides = context.presentation.slides;
-      const before = slides.getCount();
       if (start === 0) layoutId = await blankLayoutId(context);
-      await context.sync();
-      for (let i = 0; i < batch.length; i++) slides.add(layoutId ? { layoutId } : undefined);
-      await context.sync();
+      // By id, never by offset: a freshly added slide's getItemAt handle does
+      // not survive the render's later syncs — see addSlidesById.
+      const fresh = await addSlidesById(context, batch.length, layoutId);
       const perSlide: Grouping[] = [];
       for (const [i, item] of batch.entries()) {
-        const slide = slides.getItemAt(before.value + i);
+        const slide = fresh[i];
         const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: item.tagData };
         // Chunked, and per slide: ~50 shapes a chart x 4 charts was ~200 in one
         // sync, which the host simply stops answering. This is what left the
