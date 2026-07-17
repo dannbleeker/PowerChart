@@ -1221,20 +1221,39 @@ function wireInsert() {
     note("");
     insertBtn.disabled = false;
     loadBtn.disabled = false;
-    const guard = (fn: () => Promise<void>) => async () => {
-      insertBtn.disabled = true;
-      note("Working…", "busy");
-      try {
-        await fn();
-        if (hostNote.textContent === "Working…") {
-          note("Done.", "ok");
+    /**
+     * Run a host action with a busy note, and lock out re-entry while it runs.
+     *
+     * Both buttons matter. The one that was CLICKED has to go dead or a slow
+     * action invites a second click that queues the whole job again — "Insert
+     * demo deck" is 35 slides and ~1,700 shapes, and it stayed live throughout.
+     * The primary Insert button has to go dead too, since it acts on the same
+     * deck. Disabling only the primary was the worst of both: the clicked
+     * button re-entered freely, while Insert went dead WITHOUT looking it (the
+     * CSS greys `.el-insert:disabled`, not the primary), so a stuck action read
+     * as "Insert does nothing" rather than "Insert is busy".
+     *
+     * The clicked button comes from the event, so no call site can forget it.
+     */
+    const guard = (fn: () => Promise<void>) =>
+      async function (this: unknown, ev?: Event) {
+        const clicked = ev?.currentTarget as HTMLButtonElement | undefined;
+        const lock = [insertBtn, clicked].filter((b): b is HTMLButtonElement => !!b && !b.disabled);
+        for (const b of lock) b.disabled = true;
+        note("Working…", "busy");
+        try {
+          await fn();
+          if (hostNote.textContent === "Working…") {
+            note("Done.", "ok");
+          }
+        } catch (err) {
+          note(`Failed: ${err instanceof Error ? err.message : String(err)}`, "err");
+        } finally {
+          // Only re-enable what this call disabled — never resurrect a button
+          // some other state (no host, no selection) means to keep dead.
+          for (const b of lock) b.disabled = false;
         }
-      } catch (err) {
-        note(`Failed: ${err instanceof Error ? err.message : String(err)}`, "err");
-      } finally {
-        insertBtn.disabled = false;
-      }
-    };
+      };
     insertBtn.addEventListener("click", guard(() => doInsert(false)));
     insertNewBtn.addEventListener("click", guard(() => doInsert(true)));
     loadBtn.addEventListener("click", guard(doLoadSelection));
@@ -1288,7 +1307,12 @@ function wireInsert() {
       "click",
       guard(async () => {
         const items = demoItems();
-        await insertDemoDeck(items.map((i) => ({ scene: i.scene, tagData: i.configJson })));
+        // The slowest thing the pane can do — say where it has got to, or a
+        // multi-minute run is indistinguishable from a hang.
+        await insertDemoDeck(
+          items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
+          (done, total) => note(`Inserting demo slides… ${done} of ${total}`, "busy"),
+        );
         note(`Inserted ${items.length} demo slides at the end of the deck.`, "ok");
       }),
     );
