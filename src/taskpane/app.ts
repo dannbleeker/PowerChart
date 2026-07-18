@@ -1,6 +1,6 @@
 import { buildChart, DEFAULT_SIZE, valueExtent } from "../core/chart";
 import { PALETTES } from "../core/style";
-import type { ChartConfig, ChartKind, Decorations } from "../core/types";
+import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
 import {
@@ -66,6 +66,13 @@ interface AppState {
   style?: NonNullable<ChartConfig["style"]>;
   /** Per-series color overrides, keyed by series name. */
   seriesColors: Record<string, string>;
+  /**
+   * Series fields the datasheet can't carry (combo `type`, hatch `pattern`,
+   * per-point `colors`), keyed by series name. The pane rebuilds ChartConfig
+   * from the sheet on every preview/insert — without this these fields would be
+   * silently dropped from an imported chart and destroyed on re-save.
+   */
+  seriesMeta: Record<string, Pick<Series, "type" | "pattern" | "colors">>;
   axisTitle: string;
   logScale: boolean;
   /** Footnote / source line ("Kilde: …"). */
@@ -108,6 +115,11 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     paletteName: paletteNameFor(cfg.style?.palette),
     style: cfg.style ? { ...cfg.style } : undefined,
     seriesColors: Object.fromEntries(cfg.data.series.filter((s) => s.color).map((s) => [s.name, s.color!])),
+    seriesMeta: Object.fromEntries(
+      cfg.data.series
+        .filter((s) => s.type || s.pattern || s.colors)
+        .map((s) => [s.name, { type: s.type, pattern: s.pattern, colors: s.colors }]),
+    ),
     axisTitle: cfg.valueAxisTitle ?? "",
     logScale: !!cfg.logScale,
     footnote: cfg.footnote ?? "",
@@ -176,6 +188,14 @@ function currentConfig(): ChartConfig {
   for (const s of data.series) {
     const c = state.seriesColors[s.name];
     if (c) s.color = c;
+    // Re-attach the fields the datasheet can't carry (combo type, pattern,
+    // per-point colors) so an imported chart survives the sheet round-trip.
+    const m = state.seriesMeta[s.name];
+    if (m) {
+      if (m.type) s.type = m.type;
+      if (m.pattern) s.pattern = m.pattern;
+      if (m.colors) s.colors = m.colors;
+    }
   }
   const labelParts = state.labelContent
     ? (state.labelContent.split(",") as NonNullable<Decorations["labelContent"]>)
@@ -1453,11 +1473,15 @@ function wireInsert() {
         const lock = [insertBtn, clicked].filter((b): b is HTMLButtonElement => !!b && !b.disabled);
         for (const b of lock) b.disabled = true;
         note("Working…", "busy");
+        // Compare against the TRANSLATED busy text: note() routes through t(), so
+        // under a localized pane hostNote reads e.g. "Arbeite…" and a check against
+        // the English literal never matched — the success note was never shown.
+        const busyText = hostNote.textContent;
         setProgress("busy");
         startElapsed();
         try {
           await fn();
-          if (hostNote.textContent?.startsWith("Working…")) {
+          if (hostNote.textContent === busyText) {
             note("Done.", "ok");
           }
         } catch (err) {

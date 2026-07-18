@@ -91,6 +91,41 @@ describe("task pane — loading a chart config", () => {
     expect(exportConfig().style).toMatchObject(style);
   });
 
+  it("preserves series fields the datasheet can't carry (type / pattern / colors)", () => {
+    // The pane rebuilds ChartConfig from the sheet on every export/insert, and the
+    // sheet only holds name+values. Without a side-channel these three fields are
+    // silently dropped on import and destroyed on re-save.
+    importConfig({
+      kind: "combo",
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "Rev", values: [100, 120] },
+          { name: "Margin", values: [30, 40], type: "line", pattern: "diagonal", colors: ["#ff0000", null] },
+        ],
+      },
+    });
+    const margin = exportConfig().data.series.find((s) => s.name === "Margin")!;
+    expect(margin.type).toBe("line");
+    expect(margin.pattern).toBe("diagonal");
+    expect(margin.colors).toEqual(["#ff0000", null]);
+  });
+
+  it("keeps those series fields through a datasheet edit (round-trip on rebuild)", () => {
+    importConfig({
+      kind: "combo",
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "Rev", values: [100, 120] },
+          { name: "Margin", values: [30, 40], type: "line" },
+        ],
+      },
+    });
+    type(1, 1, "150"); // edit a cell → currentConfig rebuilds from the sheet
+    expect(exportConfig().data.series.find((s) => s.name === "Margin")!.type).toBe("line");
+  });
+
   it("does not undo into the previous chart's data", () => {
     importConfig({ kind: "clustered", data: baseData });
     type(1, 1, "99"); // an edit, so there is history to undo
