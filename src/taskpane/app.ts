@@ -33,6 +33,14 @@ interface AppState {
   decorations: Partial<Decorations>;
   horizontal: boolean;
   title: string;
+  /**
+   * Frame size in points. The single source of truth — the size inputs write
+   * here and currentConfig() reads here. It used to be read straight off the DOM
+   * inputs while every other field lived in state, and that split silently
+   * resized loaded charts to the previous chart's dimensions.
+   */
+  width: number;
+  height: number;
   segmentOrder: NonNullable<ChartConfig["segmentOrder"]>;
   scaleMin: string;
   scaleMax: string;
@@ -79,6 +87,8 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     decorations: { ...cfg.decorations },
     horizontal: !!cfg.horizontal,
     title: cfg.title ?? "",
+    width: cfg.width ?? DEFAULT_SIZE.width,
+    height: cfg.height ?? DEFAULT_SIZE.height,
     segmentOrder: cfg.segmentOrder ?? "sheet",
     scaleMin: cfg.scale?.min != null ? String(cfg.scale.min) : "",
     scaleMax: cfg.scale?.max != null ? String(cfg.scale.max) : "",
@@ -141,12 +151,8 @@ function paletteNameFor(palette?: string[]): string {
 function currentConfig(): ChartConfig {
   const totals = new Set<number>();
   const data = sheetToData(state.sheet, state.kind === "waterfall" ? totals : undefined);
-  const w = Number(($("chart-w") as HTMLInputElement | null)?.value);
-  const h = Number(($("chart-h") as HTMLInputElement | null)?.value);
-  const size = {
-    width: Number.isFinite(w) && w >= 80 ? w : DEFAULT_SIZE.width,
-    height: Number.isFinite(h) && h >= 60 ? h : DEFAULT_SIZE.height,
-  };
+  // Size is state now, not a DOM read — the inputs write state on edit.
+  const size = { width: state.width, height: state.height };
   const min = state.scaleMin.trim() === "" ? undefined : Number(state.scaleMin);
   const max = state.scaleMax.trim() === "" ? undefined : Number(state.scaleMax);
   const bFrom = Number(state.breakFrom);
@@ -912,7 +918,7 @@ function pairControl(
   return wrap;
 }
 
-function renderPreview() {
+function renderPreviewNow() {
   try {
     const scene = buildChart(currentConfig());
     preview.innerHTML = sceneToSvg(scene, { background: "#ffffff" });
@@ -920,6 +926,20 @@ function renderPreview() {
     preview.innerHTML = `<p class="hint">Could not render: ${err instanceof Error ? err.message : String(err)}</p>`;
   }
   maybeAutoUpdate();
+}
+
+/**
+ * Coalesce preview renders onto a trailing timer. Every control and every
+ * datasheet keystroke calls renderPreview(); each render is a full
+ * buildChart()+sceneToSvg()+innerHTML reparse, so firing one per keystroke was
+ * measurable jank on a large sheet. A short trailing debounce collapses a burst
+ * of edits into a single render of the final state. (snapshot() stays
+ * synchronous — undo granularity depends on it.)
+ */
+let renderTimer: ReturnType<typeof setTimeout> | undefined;
+function renderPreview() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderPreviewNow, 80);
 }
 
 function renderActionState() {
@@ -1514,8 +1534,22 @@ declare const __BUILD_STAMP__: string;
 const stampEl = document.getElementById("build-stamp");
 if (stampEl) stampEl.textContent = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
 
-const sizeInputs = [$("chart-w"), $("chart-h")] as HTMLInputElement[];
-for (const el of sizeInputs) el?.addEventListener("input", renderPreview);
+const chartWInput = $("chart-w") as HTMLInputElement | null;
+const chartHInput = $("chart-h") as HTMLInputElement | null;
+// Seed the inputs from state, then let them WRITE state on edit (state is the
+// source of truth currentConfig reads). A sub-usable value is ignored so the
+// preview holds its last good size instead of snapping to the default.
+if (chartWInput) chartWInput.value = String(state.width);
+if (chartHInput) chartHInput.value = String(state.height);
+const syncSizeFromInputs = () => {
+  const w = Number(chartWInput?.value);
+  const h = Number(chartHInput?.value);
+  if (Number.isFinite(w) && w >= 80) state.width = w;
+  if (Number.isFinite(h) && h >= 60) state.height = h;
+  renderPreview();
+};
+chartWInput?.addEventListener("input", syncSizeFromInputs);
+chartHInput?.addEventListener("input", syncSizeFromInputs);
 
 if (typeof Office !== "undefined" && Office.onReady) {
   Office.onReady(() => {
