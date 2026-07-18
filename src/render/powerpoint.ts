@@ -1022,7 +1022,7 @@ function addSegment(
       w < 0.5 || h < 0.5 || downRight
         ? shapes.addLine(PowerPoint.ConnectorType.straight, box)
         : shapes.addGeometricShape(PowerPoint.GeometricShapeType.lineInverse, box);
-    line.lineFormat.color = s.stroke;
+    line.lineFormat.color = hex6(s.stroke);
     line.lineFormat.weight = s.strokeWidth ?? 1;
     setDash(line);
     if (s.name) line.name = s.name;
@@ -1037,7 +1037,7 @@ function addSegment(
     width: len,
     height: weight,
   });
-  rect.fill.setSolidColor(s.stroke);
+  solidFill(rect.fill, s.stroke);
   rect.lineFormat.visible = false;
   try {
     rect.rotation = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
@@ -1047,6 +1047,33 @@ function addSegment(
   if (s.name) rect.name = s.name;
   return rect;
 }
+
+/**
+ * Set a solid fill, honouring an 8-digit `#RRGGBBAA` colour. Office.js
+ * `setSolidColor` validates a 6-digit `#RRGGBB` hex or a named HTML colour, so an
+ * 8-digit value — valid in a hand-authored config, and rendered translucent by
+ * both the SVG preview and the skill's pptx — would be mis-parsed here. Split the
+ * alpha off into `fill.transparency` (PowerPointApi 1.4, the pinned set) so the
+ * live add-in matches the other two renderers instead of dropping the colour.
+ */
+function solidFill(fill: PowerPoint.ShapeFill, color: string): void {
+  const m = /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})$/.exec(color);
+  fill.setSolidColor(m ? `#${m[1]}` : color);
+  if (m) {
+    const t = 1 - parseInt(m[2], 16) / 255;
+    if (t > 0.0001) fill.transparency = t;
+  }
+}
+
+/**
+ * Drop an 8-digit hex's alpha byte for a line- or font-colour sink, which carries
+ * no alpha channel here. A no-op for the 6-digit hex and named colours the engine
+ * actually emits, so valid charts are unaffected.
+ */
+const hex6 = (color: string): string => {
+  const m = /^#([0-9a-fA-F]{6})[0-9a-fA-F]{2}$/.exec(color);
+  return m ? `#${m[1]}` : color;
+};
 
 function addNode(
   shapes: PowerPoint.ShapeCollection,
@@ -1063,9 +1090,9 @@ function addNode(
         width: Math.max(0.2, n.w),
         height: Math.max(0.2, n.h),
       });
-      shape.fill.setSolidColor(n.fill);
+      solidFill(shape.fill, n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
-        shape.lineFormat.color = n.stroke;
+        shape.lineFormat.color = hex6(n.stroke);
         shape.lineFormat.weight = n.strokeWidth ?? 1;
       } else {
         shape.lineFormat.visible = false;
@@ -1084,9 +1111,9 @@ function addNode(
       });
       // Stroke-only ellipses (radar circle grid) carry fill "none".
       if (n.fill === "none") shape.fill.clear();
-      else shape.fill.setSolidColor(n.fill);
+      else solidFill(shape.fill, n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
-        shape.lineFormat.color = n.stroke;
+        shape.lineFormat.color = hex6(n.stroke);
         shape.lineFormat.weight = n.strokeWidth ?? 1;
       } else {
         shape.lineFormat.visible = false;
@@ -1099,7 +1126,7 @@ function addNode(
         n.flatLeft ? PowerPoint.GeometricShapeType.homePlate : PowerPoint.GeometricShapeType.chevron,
         { left: dx + n.x, top: dy + n.y, width: Math.max(0.2, n.w), height: Math.max(0.2, n.h) },
       );
-      shape.fill.setSolidColor(n.fill);
+      solidFill(shape.fill, n.fill);
       shape.lineFormat.visible = false;
       if (n.name) shape.name = n.name;
       return [shape];
@@ -1117,9 +1144,9 @@ function addNode(
         width: Math.max(0.2, n.size * 2),
         height: Math.max(0.2, n.size * 2),
       });
-      shape.fill.setSolidColor(n.fill);
+      solidFill(shape.fill, n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
-        shape.lineFormat.color = n.stroke;
+        shape.lineFormat.color = hex6(n.stroke);
         shape.lineFormat.weight = n.strokeWidth ?? 1;
       } else {
         shape.lineFormat.visible = false;
@@ -1162,7 +1189,7 @@ function addNode(
         width: box.size,
         height: box.size,
       });
-      shape.fill.setSolidColor(n.fill);
+      solidFill(shape.fill, n.fill);
       shape.lineFormat.visible = false;
       try {
         // Geometric 'triangle' points up (= -90° in scene terms); rotation is
@@ -1211,7 +1238,7 @@ function addText(
   }
   const font = tf.textRange.font;
   font.size = n.fontSize;
-  font.color = n.color;
+  font.color = hex6(n.color);
   font.bold = !!n.bold;
   font.name = n.fontFamily ?? opts.fontFamily ?? DEFAULT_FONT;
   try {
@@ -1264,7 +1291,7 @@ function addWedgeFan(shapes: PowerPoint.ShapeCollection, n: WedgeNode, dx: numbe
           height: bandH,
         },
       );
-      shape.fill.setSolidColor(n.fill);
+      solidFill(shape.fill, n.fill);
       shape.lineFormat.visible = false;
       // Unrotated the rectangle's height / the triangle's base points south
       // (180° in wedge terms); rotate so it runs along `mid`.
@@ -1295,7 +1322,7 @@ function addWedgeFan(shapes: PowerPoint.ShapeCollection, n: WedgeNode, dx: numbe
           width: sw,
           height: eLen,
         });
-        edge.fill.setSolidColor(n.stroke);
+        solidFill(edge.fill, n.stroke);
         edge.lineFormat.visible = false;
         (edge as unknown as { rotation: number }).rotation = ang;
         if (n.name) edge.name = `${n.name}-edge`;
