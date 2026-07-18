@@ -1,4 +1,4 @@
-import type { ChartConfig, ChartKind, ChartStyle, Decorations } from "./types";
+import type { ChartConfig, ChartData, ChartKind, ChartStyle, Decorations } from "./types";
 import type { Scene } from "./scene";
 import { DEFAULT_DECOR, DEFAULT_STYLE, seriesColor } from "./style";
 import { layoutColumns, layoutCombo } from "./layout/column";
@@ -27,6 +27,73 @@ import type { SceneNode } from "./scene";
 import type { LayoutResult } from "./layout/column";
 
 export const DEFAULT_SIZE = { width: 480, height: 300 };
+
+/** A positive, finite dimension, or the fallback for a zero/negative/NaN one. */
+function clampDim(v: number | undefined, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+/** Coerce a data block to trustworthy arrays: every series padded to the
+ *  category count, non-finite cells nulled, per-category arrays aligned. */
+function normalizeData(data: ChartData): ChartData {
+  const categories = Array.isArray(data?.categories) ? data.categories : [];
+  const n = categories.length;
+  const cell = (v: number | null | undefined): number | null =>
+    v == null ? null : Number.isFinite(v) ? v : null;
+  const series = (Array.isArray(data?.series) ? data.series : []).map((s) => {
+    const raw = Array.isArray(s?.values) ? s.values : [];
+    const values = Array.from({ length: n }, (_, c) => cell(raw[c]));
+    if (s?.colors) {
+      return { ...s, values, colors: Array.from({ length: n }, (_, c) => s.colors![c] ?? null) };
+    }
+    return { ...s, values };
+  });
+  const pad = <T>(arr: (T | null)[] | undefined): (T | null)[] | undefined =>
+    arr ? Array.from({ length: n }, (_, c) => arr[c] ?? null) : arr;
+  return { ...data, categories, series, hundredPercent: pad(data.hundredPercent), xExtent: pad(data.xExtent) };
+}
+
+/** Drop label nudges carrying a non-finite delta (they corrupt a node's coords). */
+function cleanOffsets(offs: Record<string, { dx: number; dy: number }>): Record<string, { dx: number; dy: number }> {
+  const out: Record<string, { dx: number; dy: number }> = {};
+  for (const [k, o] of Object.entries(offs)) {
+    if (o && Number.isFinite(o.dx) && Number.isFinite(o.dy)) out[k] = o;
+  }
+  return out;
+}
+
+/**
+ * Coerce a possibly-malformed ChartConfig into one the layout engine can trust.
+ *
+ * buildChart is now fed by the Claude skill (arbitrary authored JSON) and by
+ * configs round-tripped out of slide shape tags, so it can no longer assume its
+ * input is well-formed. This REPAIRS rather than throws — a chart with a clamped
+ * size beats a stack trace in a headless render — and every branch is a no-op
+ * unless the field is actually out of range, so valid configs render identically.
+ */
+export function normalizeConfig(cfg: ChartConfig): ChartConfig {
+  const width = clampDim(cfg.width, DEFAULT_SIZE.width);
+  const height = clampDim(cfg.height, DEFAULT_SIZE.height);
+
+  // Order a reversed manual scale and drop non-finite ends — a NaN or inverted
+  // bound reaches niceTicks and blanks the whole value axis.
+  let scale = cfg.scale;
+  if (scale) {
+    let min = typeof scale.min === "number" && Number.isFinite(scale.min) ? scale.min : undefined;
+    let max = typeof scale.max === "number" && Number.isFinite(scale.max) ? scale.max : undefined;
+    if (min != null && max != null && min > max) [min, max] = [max, min];
+    scale = { ...(min != null ? { min } : {}), ...(max != null ? { max } : {}) };
+  }
+
+  return {
+    ...cfg,
+    width,
+    height,
+    scale,
+    data: normalizeData(cfg.data),
+    labelOffsets: cfg.labelOffsets ? cleanOffsets(cfg.labelOffsets) : cfg.labelOffsets,
+  };
+}
 
 const SORTABLE: ChartKind[] = ["stacked", "clustered", "stacked100", "mekko", "pie", "doughnut", "butterfly"];
 
@@ -389,9 +456,10 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
 
 /** Build a renderer-agnostic scene from a chart config. Pure and synchronous. */
 export function buildChart(rawCfg: ChartConfig): Scene {
-  const multiples = buildMultiples(rawCfg);
+  const cfg0 = normalizeConfig(rawCfg);
+  const multiples = buildMultiples(cfg0);
   if (multiples) return multiples;
-  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(rawCfg))));
+  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(cfg0))));
   let cfg = collapseOther(extracted.cfg);
   const errors = extracted.errors;
   const targets = extracted.targets;
