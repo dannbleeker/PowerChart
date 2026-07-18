@@ -251,7 +251,9 @@ function parseCell(raw: string): { text: string; harvey?: number; trend?: "up" |
     const tok = m[1].toLowerCase();
     if (tok.startsWith("hb:")) {
       const v = parseFloat(m[2]);
-      out.harvey = Math.max(0, Math.min(1, m[2].includes("%") ? v / 100 : v));
+      // A bare "." parses to NaN; clamping NaN leaks it into the harvey fraction
+      // (an empty ring with reserved space). Ignore a non-finite value instead.
+      if (Number.isFinite(v)) out.harvey = Math.max(0, Math.min(1, m[2].includes("%") ? v / 100 : v));
     } else if (tok === "up" || tok === "down" || tok === "flat") out.trend = tok;
     else out.color = tok === "good" ? GOOD : BAD;
     text = text.slice(m[0].length);
