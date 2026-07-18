@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
-import { layoutScatter, spreadCap } from "../src/core/layout/scatter";
+import { layoutScatter, spreadCap, scatterDomain } from "../src/core/layout/scatter";
+import { niceTicks } from "../src/core/format";
 import { layoutGantt } from "../src/core/layout/gantt";
 import { layoutColumns } from "../src/core/layout/column";
 import { placeLabels } from "../src/core/labels";
@@ -457,7 +458,11 @@ describe("scatter marginal histograms (decorations.marginals)", () => {
 });
 
 describe("scatter overlap relief (scatter.spread)", () => {
-  /** Five bubbles piled on the same x, a point apart in y — a real overlap. */
+  // Five bubbles piled on the SAME spot — a genuine overlap the relief must
+  // break. (They used to be a point apart in y; that only overlapped because the
+  // old forced-zero domain squashed them. With a data-driven domain five points
+  // spanning a few units fill the plot ~50px apart and no longer touch, so a
+  // real pile now means a real coincidence of coordinates.)
   const pile = (scatter?: ChartConfig["scatter"]) =>
     cfg({
       kind: "bubble",
@@ -468,12 +473,17 @@ describe("scatter overlap relief (scatter.spread)", () => {
         categories: ["a", "b", "c", "d", "e"],
         series: [
           { name: "X", values: [50, 50, 50, 50, 50] },
-          { name: "Y", values: [50, 51, 52, 53, 54] },
+          { name: "Y", values: [50, 50, 50, 50, 50] },
           { name: "Size", values: [60, 60, 60, 60, 60] },
         ],
       },
       ...(scatter ? { scatter } : {}),
     });
+  /** The nice-ticked span of the pile's y axis — the units spreadCap.limit is in. */
+  const pileYRange = () => {
+    const t = niceTicks(...scatterDomain(pile({ spread: "y" }), "y"), 5);
+    return t[t.length - 1] - t[0];
+  };
   const at = (c: ChartConfig, i: number) =>
     layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR).nodes.find((n) => n.name === `point-${i}`) as EllipseNode;
 
@@ -481,7 +491,7 @@ describe("scatter overlap relief (scatter.spread)", () => {
     const c = pile({ spread: "y" });
     const cap = spreadCap(c)!;
     const plot = layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR).anchors.plot!;
-    const limitPx = (cap.limit / 60) * plot.h; // y ticks run 0..60
+    const limitPx = (cap.limit / pileYRange()) * plot.h; // cap is in data units of the y domain
     for (let i = 0; i < 5; i++) {
       // The cap is the contract — the footnote quotes it, so it cannot be a
       // suggestion. Bounding a marker to the plot must never override it.
