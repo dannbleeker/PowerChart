@@ -710,43 +710,69 @@ export function horizontalChrome(
     });
   }
   if (decor.seriesLabels && cfg.data.series.length > 1) {
-    nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2));
+    nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2, { maxX: cfg.width - 4 }));
   }
   return nodes;
 }
 
 /** Horizontal legend row: color chip + series name, left to right. */
-export function legendRow(cfg: ChartConfig, style: ChartStyle, x0: number, y: number): SceneNode[] {
+/** One legend entry: a coloured chip and a label. */
+export interface LegendEntry {
+  label: string;
+  color: string;
+  /** Node name for the text (defaults to `legend-${index}`). */
+  name?: string;
+}
+
+/**
+ * Horizontal legend of coloured chips, wrapping to new rows so a chart with many
+ * series/groups never marches its chips off the right edge (`opts.maxX`). Custom
+ * entries (group names, a "Peer range" swatch) come via `opts.entries`; without
+ * them it legends `cfg.data.series`. Called with no opts it is byte-identical to
+ * the old single-row version (maxX defaults to no wrap).
+ */
+export function legendRow(
+  cfg: ChartConfig,
+  style: ChartStyle,
+  x0: number,
+  y: number,
+  opts: { maxX?: number; entries?: LegendEntry[] } = {},
+): SceneNode[] {
   const fs = style.fontSize;
   const nodes: SceneNode[] = [];
+  const chip = fs * 0.7;
+  const rowH = fs * 1.6;
+  const maxX = opts.maxX ?? Infinity;
+  const entries: LegendEntry[] =
+    opts.entries ??
+    cfg.data.series.map((s, si) => ({ label: s.name, color: seriesColor(style, si, s.color), name: `legend-${si}` }));
   let x = x0;
-  cfg.data.series.forEach((s, si) => {
-    const chip = fs * 0.7;
+  let row = 0;
+  entries.forEach((e, si) => {
+    const wLabel = textWidth(e.label, fs);
+    // Wrap before an entry that would cross maxX — never on the first of a row.
+    if (x > x0 && x + chip + 3 + wLabel > maxX) {
+      x = x0;
+      row++;
+    }
+    const ry = y + row * rowH;
     nodes.push(
-      {
-        kind: "rect",
-        x,
-        y: y + fs * 0.35,
-        w: chip,
-        h: chip,
-        fill: seriesColor(style, si, s.color),
-        name: `legend-chip-${si}`,
-      },
+      { kind: "rect", x, y: ry + fs * 0.35, w: chip, h: chip, fill: e.color, name: `legend-chip-${si}` },
       {
         kind: "text",
         x: x + chip + 3,
-        y,
-        w: textWidth(s.name, fs) + 6,
+        y: ry,
+        w: wLabel + 6,
         h: fs * 1.4,
-        text: s.name,
+        text: e.label,
         fontSize: fs,
         color: style.text,
         align: "left",
         valign: "middle",
-        name: `legend-${si}`,
+        name: e.name ?? `legend-${si}`,
       },
     );
-    x += chip + 3 + textWidth(s.name, fs) + 12;
+    x += chip + 3 + wLabel + 12;
   });
   return nodes;
 }
