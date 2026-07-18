@@ -18,9 +18,40 @@ patterns.
 
 ## 1. Open
 
-Nothing. Everything the sweep ranked has shipped, and the two items that
-outlived it are closed in §2 — the primitive they waited on turned out to be
-unbuildable, and the itch under them was met another way.
+- **SVG/PNG image output as an alternative render mode** — offer, beside the
+  native-shapes renderer, a mode that inserts the whole chart as a *single image
+  object*. The scene→SVG renderer already exists (`src/render/svg.ts`), so the
+  pixels are free: rasterise to a high-DPI PNG (3–4×, canvas
+  `drawImage`→`toDataURL`; the scene graph is pure geometry/text with no
+  `foreignObject` or remote assets, so the canvas stays untainted), or insert the
+  SVG as a native vector. The motive is performance/reliability, not looks — one
+  object sidesteps the PowerPoint-**web** wall where the live canvas stops
+  answering past ~20 shapes per `context.sync()` (office-js #4272, #5022, #6498),
+  which is exactly what caps the densest kinds today (`DEMO_SHAPE_BUDGET = 90`,
+  `SHAPES_PER_SYNC = 10`). Insert paths, all shipped: `setSelectedDataAsync(png,
+  {coercionType: Image})` (ImageCoercion 1.1, widest host reach) or
+  `addGeometricShape` + `ShapeFill.setImage(png)` (PowerPointApi 1.8) — the latter
+  returns a tracked `Shape`, so the `POWERCHART_CONFIG` tag round-trips onto the
+  picture exactly as it does now, keeping the chart re-editable. Native-vector SVG
+  via `setSelectedDataAsync(svg, {coercionType: XmlSvg})` (ImageCoercion 1.2) is
+  the best quality/size answer — PowerPoint can even "Convert to Shape" it — but
+  it's flaky (office-js #4967 open: vertical shift; #2881: complex SVG; #412: no
+  iOS), so gate it behind a flag with a PNG fallback. The cost is real: an image
+  is not editable in PowerPoint, ignores theme colours, and blurs on rescale
+  unless rasterised high-DPI — so pair it with an **"explode to native shapes"**
+  command that reads the tag, deletes the picture, and draws the real shapes on
+  demand (paying the web cost only when the user actually edits). This is distinct
+  from the rejected per-point **image / icon node** in §2: that was one bitmap
+  *per data point* inside the scene graph, unreachable at the 1.4 pin; this is one
+  image for the *whole chart* as an output format, with the `1.8`/ImageCoercion
+  gates degrading to the native-shapes path on older hosts (like grouping
+  already does). Feasibility: medium — needs Phase-2 real-host validation first,
+  since the `setSelectedDataAsync` base64 size cap (office-js #225, fixed, no
+  published threshold) and the shape-tag value-size limit are both undocumented.
+
+Otherwise nothing: everything the sweep ranked has shipped, and the two items
+that outlived it are closed in §2 — the primitive they waited on turned out to
+be unbuildable, and the itch under them was met another way.
 
 ## 2. Rejected or already covered (do not re-propose)
 
