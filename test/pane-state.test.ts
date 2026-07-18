@@ -126,6 +126,65 @@ describe("task pane — loading a chart config", () => {
     expect(exportConfig().data.series.find((s) => s.name === "Margin")!.type).toBe("line");
   });
 
+  it("preserves top-level chart features the pane has no control for (round-trip)", () => {
+    // The pane rebuilds ChartConfig from a handful of state fields on every
+    // export/insert. Keys with no matching control — radar/scatter/gantt modes,
+    // secondaryAxis, categorySort, otherBucket, labelOffsets, multiples/butterfly/
+    // tilemap options — used to be dropped on import and destroyed on re-save.
+    importConfig({
+      kind: "radar",
+      data: baseData,
+      radar: { perSpoke: true },
+      secondaryAxis: true,
+      categorySort: "descending",
+      otherBucket: { max: 3 },
+      labelOffsets: { "S1@0": { dx: 4, dy: -2 } },
+    });
+    const out = exportConfig();
+    expect(out.radar).toEqual({ perSpoke: true });
+    expect(out.secondaryAxis).toBe(true);
+    expect(out.categorySort).toBe("descending");
+    expect(out.otherBucket).toEqual({ max: 3 });
+    expect(out.labelOffsets).toEqual({ "S1@0": { dx: 4, dy: -2 } });
+  });
+
+  it("merges pane-owned fields with import-only ones for pie/waterfall/numberFormat", () => {
+    // These three are split: the control owns explode / total "e" tokens /
+    // decimals+suffix+locale, but semi/breakout/variableRadius, detailGroups/
+    // spacerIndices and forceSign live only in the imported config. A naive
+    // rebuild let the control's half clobber the whole object.
+    importConfig({
+      kind: "pie",
+      data: baseData,
+      pie: { semi: true, breakout: [1], explode: [0] },
+      numberFormat: { decimals: 1, forceSign: true },
+    });
+    const pieOut = exportConfig();
+    // The pane's explode survives AND the import-only pie fields do too.
+    expect(pieOut.pie).toMatchObject({ semi: true, breakout: [1], explode: [0] });
+    expect(pieOut.numberFormat).toMatchObject({ decimals: 1, forceSign: true });
+
+    importConfig({
+      kind: "waterfall",
+      data: { categories: ["A", "B", "C"], series: [{ name: "S1", values: [10, -4, 6] }] },
+      waterfall: { detailGroups: [{ of: 0, indices: [1, 2] }], spacerIndices: [1] },
+    });
+    const wfOut = exportConfig();
+    expect(wfOut.waterfall).toMatchObject({
+      detailGroups: [{ of: 0, indices: [1, 2] }],
+      spacerIndices: [1],
+    });
+    expect(Array.isArray(wfOut.waterfall!.totalIndices)).toBe(true);
+  });
+
+  it("keeps import-only features through a datasheet edit (rebuild from sheet)", () => {
+    importConfig({ kind: "radar", data: baseData, radar: { perSpoke: true }, secondaryAxis: true });
+    type(1, 1, "42"); // edit a cell → currentConfig rebuilds
+    const out = exportConfig();
+    expect(out.radar).toEqual({ perSpoke: true });
+    expect(out.secondaryAxis).toBe(true);
+  });
+
   it("does not undo into the previous chart's data", () => {
     importConfig({ kind: "clustered", data: baseData });
     type(1, 1, "99"); // an edit, so there is history to undo
