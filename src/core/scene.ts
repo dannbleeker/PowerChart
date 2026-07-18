@@ -2,6 +2,31 @@
  * Renderer-agnostic scene graph. Layouts emit these nodes; the SVG renderer
  * (preview/tests) and the Office.js renderer (native PowerPoint shapes)
  * consume them. Coordinates are in points, origin top-left.
+ *
+ * ── Renderer parity contract ────────────────────────────────────────────────
+ * Three renderers consume this graph: SVG (src/render/svg.ts), Office.js
+ * (src/render/powerpoint.ts, the live add-in), and PptxgenJS
+ * (skill/scripts/render-pptx.mjs, the headless skill). SVG is the reference —
+ * it can draw anything — so where the two PowerPoint renderers differ it is
+ * because Office.js and OOXML presets cannot express what SVG can. The
+ * divergences are intentional; each is noted on the field or kind it affects so
+ * a later change does not "fix" an approximation into a regression:
+ *
+ *  - Pattern fills (rect.pattern): SVG only; solid elsewhere.
+ *  - Polygon fills (polygon.fill/fillOpacity): SVG + pptx custGeom; Office.js
+ *    has no freeform fill and degrades to the stroked outline.
+ *  - Wedge geometry: SVG + pptx draw the exact arc; Office.js approximates with
+ *    a triangle/rectangle fan (no adjustable pie geometry).
+ *  - Dash arrays (line.dash): SVG honours the exact array; the PowerPoint
+ *    renderers expose enums, so they map to the nearest native style via
+ *    `dashKind` (dotted → roundDot/sysDot, else dash) rather than the exact rhythm.
+ *  - Chevron point depth and arrowhead proportions: SVG draws its own geometry;
+ *    the PowerPoint renderers name a native preset whose default proportions
+ *    differ slightly (see the notes on those kinds). Reproducing the preset
+ *    geometry exactly is not verifiable without a PowerPoint rasteriser, so the
+ *    preview approximates a shape the deck draws natively — deliberately, the
+ *    same call made for the rejected star5 marker.
+ * ────────────────────────────────────────────────────────────────────────────
  */
 
 export interface RectNode {
@@ -38,7 +63,12 @@ export interface LineNode {
   y2: number;
   stroke: string;
   strokeWidth?: number;
-  /** Dash pattern in points, e.g. [2, 2]. */
+  /**
+   * Dash pattern in points, e.g. [2, 2]. SVG renders the exact array; the
+   * PowerPoint renderers have only an enum of named styles, so they collapse it
+   * to the nearest one via `dashKind` (a dotted [1.5,1.5] stays dotted;
+   * everything else is a dash). The rhythm is approximate in the deck by design.
+   */
   dash?: number[];
   name?: string;
 }
@@ -92,7 +122,14 @@ export interface WedgeNode {
   name?: string;
 }
 
-/** Process-flow chevron / pentagon-arrow (PowerPoint's chevron & homePlate). */
+/**
+ * Process-flow chevron / pentagon-arrow (PowerPoint's chevron & homePlate).
+ * SVG draws the arrow with its notch at a fixed fraction of the height; the
+ * PowerPoint renderers name the native chevron/homePlate preset, whose own
+ * default point depth differs slightly — so the arrow's point is a touch
+ * deeper/shallower in the deck than the preview. Intentional (see the parity
+ * contract at the top): the preset can't be matched pixel-for-pixel here.
+ */
 export interface ChevronNode {
   kind: "chevron";
   x: number;
@@ -128,7 +165,13 @@ export interface SymbolNode {
   name?: string;
 }
 
-/** Filled triangle with tip at (x, y), pointing along `angle` (degrees, 0 = east, clockwise). */
+/**
+ * Filled triangle with tip at (x, y), pointing along `angle` (degrees, 0 = east,
+ * clockwise). SVG draws a narrow isosceles triangle; the PowerPoint renderers
+ * name the native `triangle` preset in a `2*size` square (see `arrowheadBox`),
+ * which is a touch broader. The tip anchor and angle match across all three;
+ * only the triangle's proportions differ, intentionally (see the parity contract).
+ */
 export interface ArrowheadNode {
   kind: "arrowhead";
   x: number;
