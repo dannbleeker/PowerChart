@@ -149,7 +149,11 @@ export function decorationNodes(
     const c = Math.max(0, Math.min(a.categoryX.length - 1, co.category));
     const ax = a.categoryX[c];
     const useLevel =
-      co.series != null && a.seriesLevels != null && a.valueToY != null && co.series < (a.seriesLevels[c]?.length ?? 0);
+      co.series != null &&
+      a.seriesLevels != null &&
+      a.valueToY != null &&
+      co.series >= 0 &&
+      co.series < (a.seriesLevels[c]?.length ?? 0);
     const ay = useLevel ? a.valueToY!(a.seriesLevels![c][co.series!]) : a.columnTop[c];
     const w = textWidth(co.text, fs) + fs * 1.2;
     const h = fs * 1.9;
