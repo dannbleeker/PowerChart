@@ -30,13 +30,56 @@ export function spreadCap(cfg: ChartConfig): { axis: "x" | "y"; limit: number } 
   // Returning null here also suppresses the footnote, so the chart never
   // promises an approximation it did not make.
   if (cfg.decorations?.quadrants) return null;
-  const find = (re: RegExp) => cfg.data.series.find((s) => re.test(s.name.trim()));
-  const vals = (find(axis === "x" ? /^x$/i : /^y$/i)?.values ?? []).filter((v): v is number => v != null);
-  const ticks = niceTicks(Math.min(0, ...vals), Math.max(1, ...vals), 5);
+  // Measure the cap against the SAME nice-ticked domain the plot maps, so the
+  // disclosed number matches what the viewer sees. (This used to force a zero
+  // baseline of its own, which — once the plot became data-driven — let the cap
+  // exceed the whole visible range on a tight cluster.)
+  const ticks = niceTicks(...scatterDomain(cfg, axis), 5);
   const range = ticks[ticks.length - 1] - ticks[0];
   if (!(range > 0)) return null;
   const limit = cfg.scatter?.spreadLimit ?? range * 0.02;
   return { axis, limit: Math.max(0, Math.min(limit, range * 0.1)) };
+}
+
+/**
+ * The value domain the plot maps for one axis of a scatter/bubble: the plotted
+ * points' coordinates plus the decorations that must stay on-plot (partition
+ * lines, a quadrant crossing, axis bands). Shared by the layout and spreadCap.
+ *
+ * The domain follows the DATA and is NOT anchored to zero — a scatter is read by
+ * point position, not by length-from-zero the way a bar chart is, so forcing a
+ * zero baseline (as this once did) collapsed a tight cluster like x∈[1000,1050]
+ * into a sliver.
+ */
+export function scatterDomain(cfg: ChartConfig, axis: "x" | "y"): [number, number] {
+  const find = (re: RegExp) => cfg.data.series.find((s) => re.test(s.name.trim()));
+  const xs = find(/^x$/i)?.values ?? [];
+  const ys = find(/^y$/i)?.values ?? [];
+  // Only points carrying BOTH coordinates are plotted; a half-specified point
+  // contributes no extent.
+  const vals: number[] = [];
+  for (let i = 0; i < cfg.data.categories.length; i++) {
+    const x = xs[i];
+    const y = ys[i];
+    if (x == null || y == null) continue;
+    vals.push(axis === "x" ? x : y);
+  }
+  const extra = (find(axis === "x" ? /^x\s*line$/i : /^y\s*line$/i)?.values ?? []).filter(
+    (v): v is number => v != null,
+  );
+  const q = cfg.decorations?.quadrants;
+  if (q) extra.push(axis === "x" ? q.x : q.y);
+  for (const b of cfg.decorations?.bands ?? []) if (b.axis === axis) extra.push(b.from, b.to);
+  const all = [...vals, ...extra].filter((v) => Number.isFinite(v));
+  if (!all.length) return [0, 1];
+  let lo = Math.min(...all);
+  let hi = Math.max(...all);
+  if (lo === hi) {
+    const pad = Math.abs(lo) > 1e-9 ? Math.abs(lo) * 0.1 : 1;
+    lo -= pad;
+    hi += pad;
+  }
+  return [lo, hi];
 }
 
 /** Width of the continuous-color gradient bar; the group legend clears it. */
@@ -154,8 +197,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     h: bodyH - mTop,
   };
 
-  const xTicks = niceTicks(Math.min(0, ...pts.map((p) => p.x)), Math.max(1, ...pts.map((p) => p.x)), 5);
-  const yTicks = niceTicks(Math.min(0, ...pts.map((p) => p.y)), Math.max(1, ...pts.map((p) => p.y)), 5);
+  // Data-driven axis domain (no forced zero baseline) shared with spreadCap;
+  // folds in partition lines, a quadrant crossing and x/y bands so those
+  // decorations never fall outside the plot. See scatterDomain.
+  const xTicks = niceTicks(...scatterDomain(cfg, "x"), 5);
+  const yTicks = niceTicks(...scatterDomain(cfg, "y"), 5);
   const x0 = xTicks[0];
   const x1 = xTicks[xTicks.length - 1];
   const y0 = yTicks[0];
