@@ -36,11 +36,21 @@ function clampDim(v: number | undefined, fallback: number): number {
 
 /** Coerce a data block to trustworthy arrays: every series padded to the
  *  category count, non-finite cells nulled, per-category arrays aligned. */
+// Hard ceilings on grid size. buildChart is fed arbitrary authored JSON (the
+// skill) and configs round-tripped from shape tags, so a config claiming
+// millions of categories × thousands of series would otherwise make normalizeData
+// allocate ~10⁹ cells and OOM the headless renderer. These caps sit far above any
+// real chart (a multi-year daily calendar heatmap is ~1–4k days, business charts
+// rarely exceed a few dozen series), so truncating past them is a no-op for valid
+// input and a bound on abusive input.
+const MAX_CATEGORIES = 4096;
+const MAX_SERIES = 256;
+
 function normalizeData(data: ChartData): ChartData {
-  const categories = Array.isArray(data?.categories) ? data.categories : [];
+  const categories = (Array.isArray(data?.categories) ? data.categories : []).slice(0, MAX_CATEGORIES);
   const n = categories.length;
   const cell = (v: number | null | undefined): number | null => (v == null ? null : Number.isFinite(v) ? v : null);
-  const series = (Array.isArray(data?.series) ? data.series : []).map((s) => {
+  const series = (Array.isArray(data?.series) ? data.series : []).slice(0, MAX_SERIES).map((s) => {
     const raw = Array.isArray(s?.values) ? s.values : [];
     const values = Array.from({ length: n }, (_, c) => cell(raw[c]));
     if (s?.colors) {
