@@ -13,10 +13,13 @@ interface Rect {
   h: number;
 }
 
-/** Worst aspect ratio in a candidate row (Bruls et al. squarified treemap). */
-function worst(areas: number[], side: number, sum: number): number {
-  const mx = Math.max(...areas);
-  const mn = Math.min(...areas);
+/**
+ * Worst aspect ratio in a candidate row (Bruls et al. squarified treemap).
+ * Takes the row's max/min/sum directly so the caller can carry them incrementally
+ * as the row grows — instead of re-slicing and re-scanning the row each step,
+ * which made packing one strip O(L²) in allocations and comparisons.
+ */
+function worst(mx: number, mn: number, side: number, sum: number): number {
   const s2 = sum * sum;
   const side2 = side * side;
   return Math.max((side2 * mx) / s2, s2 / (side2 * mn));
@@ -35,20 +38,18 @@ function squarify<T extends { area: number; key: number }>(items: T[], rect: Rec
     const side = Math.min(dx, dy) || 1;
     let end = i + 1;
     let rowArea = items[i].area;
+    // Carry the row's running max/min/sum; adding an item only folds in one value.
+    let rowMax = items[i].area;
+    let rowMin = items[i].area;
     while (end < items.length) {
-      const next = rowArea + items[end].area;
-      const withNext = worst(
-        items.slice(i, end + 1).map((t) => t.area),
-        side,
-        next,
-      );
-      const without = worst(
-        items.slice(i, end).map((t) => t.area),
-        side,
-        rowArea,
-      );
+      const a = items[end].area;
+      const next = rowArea + a;
+      const withNext = worst(Math.max(rowMax, a), Math.min(rowMin, a), side, next);
+      const without = worst(rowMax, rowMin, side, rowArea);
       if (withNext <= without) {
         rowArea = next;
+        rowMax = Math.max(rowMax, a);
+        rowMin = Math.min(rowMin, a);
         end++;
       } else break;
     }
