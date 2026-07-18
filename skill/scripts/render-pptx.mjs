@@ -98,7 +98,25 @@ pres.layout = "WIDE";
 const hex = (c) => {
   const h = (c ?? "").replace("#", "");
   if (/^[0-9a-fA-F]{3}$/.test(h)) return h.replace(/./g, "$&$&"); // #abc → aabbcc
-  return /^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(h) ? h : "000000";
+  // Accept a bare 6- or 8-digit hex; drop the 8-digit alpha byte here. pptxgenjs
+  // validates 6-digit RGB only, so an #RRGGBBAA value would otherwise be rejected
+  // and replaced with solid black — fillOf() folds the alpha into transparency.
+  return /^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(h) ? h.slice(0, 6) : "000000";
+};
+
+// Opacity 0..1 carried in an 8-digit #RRGGBBAA paint (else fully opaque). The SVG
+// renderer honours the alpha natively; here it has to become OOXML transparency.
+const alphaOf = (c) => {
+  const h = (c ?? "").replace("#", "");
+  return /^[0-9a-fA-F]{8}$/.test(h) ? parseInt(h.slice(6), 16) / 255 : 1;
+};
+
+// A pptxgenjs solid fill folding an 8-digit-hex alpha and any scene fillOpacity
+// into OOXML transparency (0 = opaque, 100 = clear). A zero transparency is
+// dropped by pptxgenjs, so an opaque fill is byte-identical to the bare {color}.
+const fillOf = (color, fillOpacity = 1) => {
+  const t = Math.round((1 - alphaOf(color) * fillOpacity) * 100);
+  return t > 0 ? { color: hex(color), transparency: t } : { color: hex(color) };
 };
 
 /** Map one scene node to PptxgenJS calls at slide offset (inches). */
@@ -110,7 +128,7 @@ function addNode(slide, n, dx, dy) {
         y: dy + n.y * IN,
         w: Math.max(0.003, n.w * IN),
         h: Math.max(0.003, n.h * IN),
-        fill: { color: hex(n.fill) },
+        fill: fillOf(n.fill),
         line: n.stroke && (n.strokeWidth ?? 0) > 0 ? { color: hex(n.stroke), width: n.strokeWidth } : { type: "none" },
       });
       break;
@@ -156,7 +174,7 @@ function addNode(slide, n, dx, dy) {
         w: Math.max(0.003, n.rx * 2 * IN),
         h: Math.max(0.003, n.ry * 2 * IN),
         // fill "none" = stroke-only ring (radar circle grid).
-        fill: n.fill === "none" ? { type: "none" } : { color: hex(n.fill) },
+        fill: n.fill === "none" ? { type: "none" } : fillOf(n.fill),
         line: n.stroke && (n.strokeWidth ?? 0) > 0 ? { color: hex(n.stroke), width: n.strokeWidth } : { type: "none" },
       });
       break;
@@ -178,7 +196,7 @@ function addNode(slide, n, dx, dy) {
           { close: true },
         ],
         fill: n.fill
-          ? { color: hex(n.fill), transparency: Math.round((1 - (n.fillOpacity ?? 1)) * 100) }
+          ? fillOf(n.fill, n.fillOpacity)
           : { type: "none" },
         line: n.stroke ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       });
@@ -193,7 +211,7 @@ function addNode(slide, n, dx, dy) {
         y: dy + y0 * IN,
         w: n.r * 2 * IN,
         h: n.r * 2 * IN,
-        fill: { color: hex(n.fill) },
+        fill: fillOf(n.fill),
         line: n.stroke ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       };
       if (span >= 359.9 && n.innerR <= 0) {
@@ -222,7 +240,7 @@ function addNode(slide, n, dx, dy) {
         y: dy + n.y * IN,
         w: n.w * IN,
         h: n.h * IN,
-        fill: { color: hex(n.fill) },
+        fill: fillOf(n.fill),
         line: { type: "none" },
       });
       break;
@@ -236,7 +254,7 @@ function addNode(slide, n, dx, dy) {
         y: dy + (n.cy - n.size) * IN,
         w: n.size * 2 * IN,
         h: n.size * 2 * IN,
-        fill: { color: hex(n.fill) },
+        fill: fillOf(n.fill),
         line: n.stroke && (n.strokeWidth ?? 0) > 0 ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       });
       break;
@@ -250,7 +268,7 @@ function addNode(slide, n, dx, dy) {
         y: dy + box.top * IN,
         w: box.size * IN,
         h: box.size * IN,
-        fill: { color: hex(n.fill) },
+        fill: fillOf(n.fill),
         line: { type: "none" },
         rotate: Math.round(box.rotation),
       });

@@ -29,7 +29,12 @@ const PATTERN_TILE: Record<string, (id: string, color: string) => string> = {
     `<pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="${c}"/><line x1="0" y1="1" x2="5" y2="1" stroke="#ffffff" stroke-width="1.4" stroke-opacity="0.75"/></pattern>`,
 };
 
-const patternId = (pattern: string, color: string) => `p-${pattern}-${color.replace("#", "")}`;
+// A fragment id must be a safe token. A hex paint yields one after dropping the
+// "#", but an rgb()/hsl() paint (both accepted by PAINT_OK) carries "(", ")" and
+// "," — which break the <pattern id> AND make url(#…) unresolvable, since the URL
+// parser stops at the first ")". Mapping those chars to "-" is a no-op for hex
+// (byte-identical output) and produces a resolvable id for the rest.
+const patternId = (pattern: string, color: string) => `p-${pattern}-${color.replace("#", "").replace(/[^\w-]/g, "-")}`;
 
 /** Render a scene to a standalone SVG string (1pt = 1px). */
 export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): string {
