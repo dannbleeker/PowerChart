@@ -4,6 +4,7 @@ import { formatNumber, niceTicks, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
+import { columnPositiveTotal } from "./totals";
 
 /**
  * Radar (spider) chart: categories = spokes (first at 12 o'clock,
@@ -29,7 +30,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // Stacked radar: series stack cumulatively along each spoke, so the scale
   // must reach the per-spoke sums, not the largest single value.
   const stacked = !!cfg.radar?.stacked && data.series.length >= 2;
-  const spokeSum = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const spokeSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
   const tickMax = stacked ? Math.max(1, ...spokeSum) : Math.max(1, ...all);
   const ticks = niceTicks(Math.min(0, cfg.scale?.min ?? 0), Math.max(cfg.scale?.max ?? tickMax, 1), 4);
@@ -307,7 +308,7 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const innerR = r * 0.18;
 
   // Scale reaches the per-category stack sums (a single series is its own sum).
-  const catSum = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const catSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const ticks = niceTicks(0, Math.max(cfg.scale?.max ?? Math.max(1, ...catSum), 1), 4);
   const max = cfg.scale?.max ?? ticks[ticks.length - 1];
   const fmt = resolveFormat(ticks, cfg.numberFormat);

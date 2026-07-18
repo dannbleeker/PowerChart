@@ -34,11 +34,14 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     .filter((s) => /^bracket\b/i.test(s.name.trim()))
     .map((s) => {
       const vals = s.values.filter((v): v is number => v != null);
+      // A bracket needs two endpoints to span anything; fewer and it is dropped
+      // below. Guard the min/max so an empty row can't spread to ±Infinity here.
+      const ok = vals.length >= 2;
       return {
         label: s.name.replace(/^bracket\s*:?\s*/i, "").trim(),
-        from: Math.min(...vals),
-        to: Math.max(...vals),
-        ok: vals.length >= 2,
+        from: ok ? Math.min(...vals) : 0,
+        to: ok ? Math.max(...vals) : 0,
+        ok,
       };
     })
     .filter((b) => b.ok);
