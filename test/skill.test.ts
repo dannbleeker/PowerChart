@@ -30,17 +30,21 @@ describe("skill pptx renderer", () => {
     expect(statSync(out).size).toBeGreaterThan(10000);
   });
 
-  it("contains exact pie wedges (preset geometry with angle adjustments)", () => {
-    // A .pptx is a zip; the slide XML is stored deflated but the preset names
-    // survive a raw scan after inflation via python (available in CI image?).
-    // Portable approach: unzip via execSync + python3 zipfile.
+  it("emits solid pie wedges as custGeom, not the wrap-broken pie preset", () => {
+    // A .pptx is a zip; read the slide XML via python3 zipfile.
     const xml = execSync(
       `python3 -c "import zipfile;print(zipfile.ZipFile('${out}').read('ppt/slides/slide1.xml').decode())"`,
     ).toString();
-    expect(xml.match(/prst="pie"/g)?.length).toBe(2);
-    // 75% slice: scene 0→270° = OOXML 270→180.
-    expect(xml).toContain('name="adj1" fmla="val 16200000"'); // 270°
-    expect(xml).toContain('name="adj2" fmla="val 10800000"'); // 180°
+    // The OOXML "pie" preset computes swAng = end − start over two independently
+    // normalized angles, so any slice crossing 3 o'clock (every pie has one)
+    // renders the wrong wedge. Solid pies now take the SAME custGeom path as the
+    // doughnut ring — annularSectorPoints sampled from polar(), correct across the
+    // boundary. So there must be no "pie" preset, and one custGeom arc per slice.
+    expect(xml).not.toContain('prst="pie"');
+    expect(xml.match(/<a:custGeom>/g)?.length).toBe(2); // one filled wedge per slice
+    expect(xml).not.toContain("NaN");
+    // Each wedge is a real sampled arc, not a degenerate 2-point shape.
+    expect(xml.match(/<a:lnTo>/g)?.length ?? 0).toBeGreaterThan(10);
     expect(xml).toContain("Split");
   });
 });
