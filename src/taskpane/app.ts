@@ -1023,7 +1023,13 @@ function renderPreviewNow() {
     const scene = buildChart(currentConfig());
     preview.innerHTML = sceneToSvg(scene, { background: "#ffffff" });
   } catch (err) {
-    preview.innerHTML = `<p class="hint">Could not render: ${err instanceof Error ? err.message : String(err)}</p>`;
+    // textContent, not innerHTML: the error message can carry config-derived
+    // strings, and an innerHTML sink here would be a second injection path.
+    preview.replaceChildren();
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = `Could not render: ${err instanceof Error ? err.message : String(err)}`;
+    preview.appendChild(p);
   }
   maybeAutoUpdate();
 }

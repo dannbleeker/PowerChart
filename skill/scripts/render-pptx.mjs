@@ -91,7 +91,15 @@ const pres = new pptxgen();
 pres.defineLayout({ name: "WIDE", width: SLIDE.w, height: SLIDE.h });
 pres.layout = "WIDE";
 
-const hex = (c) => (c ?? "000000").replace("#", "");
+// Validate, don't just strip "#": the colour comes from arbitrary authored JSON
+// and is interpolated into OOXML by pptxgenjs without escaping, so an unchecked
+// value like `000"/><a:x` could inject markup (corrupting the .pptx). Accept a
+// bare 6- or 8-digit hex only; anything else falls back to black.
+const hex = (c) => {
+  const h = (c ?? "").replace("#", "");
+  if (/^[0-9a-fA-F]{3}$/.test(h)) return h.replace(/./g, "$&$&"); // #abc → aabbcc
+  return /^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(h) ? h : "000000";
+};
 
 /** Map one scene node to PptxgenJS calls at slide offset (inches). */
 function addNode(slide, n, dx, dy) {
