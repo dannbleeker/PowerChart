@@ -1,14 +1,15 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { type SceneNode } from "../scene";
-import { resolveFormat } from "../format";
 import { chromeNodes, computeFrame, valueScale } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
  * Candlestick / OHLC chart. Datasheet rows named Open / High / Low / Close
  * give each period's prices; categories are the periods. A thin high–low wick
- * carries a body from open to close, coloured green when the period rose and
- * red when it fell.
+ * carries a body from open to close. Direction is encoded REDUNDANTLY: a rising
+ * period is a hollow body (background fill, coloured outline) and a falling one
+ * is solid — the classic convention, so up/down survives greyscale printing and
+ * red-green colour blindness, not colour alone.
  */
 export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
@@ -20,7 +21,6 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
   const close = find(/^close$/i);
 
   const all = [...open, ...high, ...low, ...close].filter((v): v is number => v != null);
-  const fmt = resolveFormat(all, cfg.numberFormat);
   const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
   const scale = valueScale(
     frame,
@@ -35,7 +35,6 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
   const nodes: SceneNode[] = chromeNodes(cfg, style, { ...decor, seriesLabels: false }, frame, centers, scale);
   const up = "#1a9e6e";
   const down = style.negative;
-  void fmt;
 
   for (let c = 0; c < n; c++) {
     const hi = high[c];
@@ -59,15 +58,17 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
       const rising = cl >= o;
       const yTop = scale.toY(Math.max(o, cl));
       const yBot = scale.toY(Math.min(o, cl));
+      // Rising = hollow (background fill, coloured outline); falling = solid.
+      // Direction reads without colour, then colour reinforces it.
       nodes.push({
         kind: "rect",
         x: x - colThick / 2,
         y: yTop,
         w: colThick,
         h: Math.max(1, yBot - yTop),
-        fill: rising ? up : down,
-        stroke: style.background,
-        strokeWidth: 0.5,
+        fill: rising ? style.background : down,
+        stroke: rising ? up : down,
+        strokeWidth: rising ? 1 : 0.5,
         name: `body-${c}`,
       });
     }

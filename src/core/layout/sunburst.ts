@@ -96,7 +96,7 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
       let a2 = angle;
       g.members.forEach((m, mi) => {
         const mspan = (m.value / g.total) * span;
-        const mColor = lerpColor(gColor, "#ffffff", 0.16 + 0.12 * (mi % 4));
+        const mColor = lerpColor(gColor, style.background, 0.16 + 0.12 * (mi % 4));
         const ma0 = norm(a2);
         nodes.push({
           kind: "wedge",

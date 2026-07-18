@@ -703,7 +703,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // interval the bars are a few points wide and read as noise, not shape.
   if (mTop > 0 || mRight > 0) {
     const binMult = pts.length >= 15 ? 2 : 1;
-    const fill = lerpColor("#ffffff", (cfg.style?.palette ?? PALETTE)[0], 0.35);
+    const fill = lerpColor(style.background, (cfg.style?.palette ?? PALETTE)[0], 0.35);
     if (mTop > 0) {
       const counts = histogramBins(
         pts.map((p) => p.x),

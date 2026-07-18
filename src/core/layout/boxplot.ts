@@ -257,7 +257,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       }
       const gSuffix = nG > 1 ? `-g${gi}` : "";
       const fill = nG > 1 ? seriesColor(style, gi) : seriesColor(style, 0, data.series.find((s) => s.color)?.color);
-      const boxFill = lerpColor("#ffffff", fill, 0.22);
+      const boxFill = lerpColor(style.background, fill, 0.22);
       const qQ1 = qOf(b.q1);
       const qQ3 = qOf(b.q3);
       const qMed = qOf(b.median);
