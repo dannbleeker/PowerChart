@@ -75,8 +75,12 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const wantSign = opts.symbols === "sign" && min < 0 && max > 0;
 
   // Hierarchical row clustering: reorder rows by average-linkage similarity and
-  // draw a dendrogram in a left gutter. Needs ≥3 rows and ≥2 columns.
-  const clusterOn = !!opts.cluster && nRows >= 3 && nCols >= 2;
+  // draw a dendrogram in a left gutter. Needs ≥3 rows and ≥2 columns. Capped at
+  // MAX_CLUSTER_ROWS: the agglomerative sweep is ~O(rows³) and a dendrogram past a
+  // few dozen leaves is unreadable anyway, so above the cap the heatmap renders in
+  // input order rather than letting an authored row count spin the CPU.
+  const MAX_CLUSTER_ROWS = 64;
+  const clusterOn = !!opts.cluster && nRows >= 3 && nCols >= 2 && nRows <= MAX_CLUSTER_ROWS;
   const cl = clusterOn ? clusterRows(data.series.map((s) => data.categories.map((_, c) => s.values[c] ?? 0))) : null;
   const rows = cl ? cl.order.map((i) => data.series[i]) : data.series;
 
