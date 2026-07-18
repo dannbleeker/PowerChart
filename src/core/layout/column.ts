@@ -473,6 +473,18 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       ? Math.max(0, ...cols.flatMap((s) => s.values.filter((v): v is number => v != null)))
       : Math.max(0, ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)));
   const lineMax = Math.max(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  // A shared-axis line can also dip BELOW the column base — e.g. a negative
+  // overlay over all-positive or all-zero bars. The column scale floors at its
+  // own data only, so without this the line plots far off the bottom of the plot
+  // (a fuzz-found overshoot). Mirror the max-overflow fix: drop the shared floor
+  // to the line, but only when it actually reaches lower than the columns would,
+  // so combos whose bars already run more negative are left untouched.
+  const lineMin = Math.min(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  const colMin =
+    columnsKind === "clustered"
+      ? Math.min(0, ...cols.flatMap((s) => s.values.filter((v): v is number => v != null)))
+      : Math.min(0, ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0)));
+  const sharedFloor = lineMin < colMin ? niceTicks(lineMin, Math.max(stackMax, lineMax, 1))[0] : undefined;
   // Waterfall columns reach their running cumulative total, not the per-category
   // positive sum, so `stackMax` understates them; track the cumulative peak so a
   // shared-axis line taller than it isn't clipped off the top of the plot.
@@ -512,7 +524,11 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
               : cfg.scale
             : cfg.scale?.max != null || secondary
               ? cfg.scale
-              : { ...cfg.scale, max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop() },
+              : {
+                  ...cfg.scale,
+                  min: cfg.scale?.min ?? sharedFloor,
+                  max: niceTicks(0, Math.max(stackMax, lineMax, 1)).pop(),
+                },
   };
   const result =
     columnsKind === "waterfall"

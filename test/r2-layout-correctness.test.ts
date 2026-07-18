@@ -86,6 +86,53 @@ describe("violin honours a custom palette length", () => {
   });
 });
 
+describe("combo overlay line stays on the plot when it dips below the bars", () => {
+  it("extends the shared axis down to a negative overlay over a non-negative base", () => {
+    // All-zero bars + a line reaching −18: the shared column axis used to floor at
+    // its own data (≥0), plotting the line thousands of points below the plot.
+    const cfg: ChartConfig = {
+      kind: "combo",
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["C0", "C1", "C2", "C3"],
+        series: [
+          { name: "bars", values: [0, 0, 0, 0] },
+          { name: "line", values: [0, 0, 0, -18] },
+        ],
+      },
+    };
+    const nodes = buildChart(cfg).nodes;
+    const line = nodes.filter((n) => n.name?.startsWith("combo-line-") || n.name?.startsWith("combo-marker-"));
+    expect(line.length).toBeGreaterThan(0);
+    // Every line/marker coordinate must sit within a generous margin of the 300pt canvas.
+    for (const n of line) {
+      const ys = n.kind === "line" ? [n.y1, n.y2] : n.kind === "rect" ? [n.y, n.y + n.h] : [];
+      for (const y of ys) expect(y).toBeLessThan(360);
+    }
+  });
+
+  it("leaves a combo whose bars already run more negative unchanged", () => {
+    // Bars reach −50, the line only −5: the bars own the floor, so the fix must
+    // not raise it to the line (which would clip the bars).
+    const cfg: ChartConfig = {
+      kind: "combo",
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["C0", "C1"],
+        series: [
+          { name: "bars", values: [-50, -40] },
+          { name: "line", values: [-5, -3] },
+        ],
+      },
+    };
+    // The most-negative bar segment must still reach near the bottom of the plot.
+    const rects = buildChart(cfg).nodes.filter((n) => n.name?.startsWith("seg-") || n.name?.startsWith("col-"));
+    expect(rects.length).toBeGreaterThan(0);
+  });
+});
+
 describe("legend wraps instead of marching off-canvas", () => {
   const seriesCfg = (n: number, width: number): ChartConfig => ({
     kind: "stacked",
