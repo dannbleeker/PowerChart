@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -19,7 +19,7 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const vMax = Math.max(1, ...values);
   const fmt = resolveFormat(values, cfg.numberFormat);
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   // Left gutter for stage names when category labels are on (default).
   const catW = decor.categoryAxis
     ? Math.min(cfg.width * 0.28, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 10)
@@ -35,12 +35,8 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const cx = plot.x + plot.w / 2;
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
 
   const columnTop: number[] = [];
   values.forEach((v, c) => {

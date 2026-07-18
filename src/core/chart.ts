@@ -20,6 +20,7 @@ import { layoutTreemap } from "./layout/treemap";
 import { layoutSunburst } from "./layout/sunburst";
 import { layoutViolin } from "./layout/violin";
 import { layoutCandlestick } from "./layout/candlestick";
+import { titleHeight, titleNode } from "./layout/frame";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
 import { formatNumber, niceTicks, resolveFormat } from "./format";
@@ -378,7 +379,7 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
   const cols = Math.max(1, Math.min(n, multiples.columns ?? (n <= 3 ? n : Math.ceil(Math.sqrt(n)))));
   const rows = Math.ceil(n / cols);
   const gap = 10;
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const footH = cfg.footnote ? fs * 1.3 : 0;
   const panelW = (cfg.width - gap * (cols - 1)) / cols;
   const panelH = (cfg.height - titleH - footH - gap * (rows - 1)) / rows;
@@ -432,12 +433,8 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
   }
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   dataSeries.forEach((s, si) => {
     const panel = buildChart({ ...panelCfg(s, si), scale });
     const dx = (si % cols) * (panelW + gap);

@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat, segmentLabel } from "../format";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -32,7 +32,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const varR = !!radiusVals && !doughnut && !hasBreakout;
   const maxRad = varR ? Math.max(1, ...radiusVals!.map((v) => Math.max(0, v ?? 0))) : 1;
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
   const cx = hasBreakout ? cfg.width * 0.3 : cfg.width / 2;
   const cy = titleH + (cfg.height - titleH - footH) / 2;
@@ -41,12 +41,8 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     : Math.min(cfg.width * 0.5 - fs * 7, (cfg.height - titleH - footH) / 2 - fs * 2.2);
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
 
   // Slice list: with a breakout, the collapsed categories become one muted
   // "Other" slice drawn last, and the pie rotates so Other faces the bar
@@ -192,7 +188,7 @@ function layoutGauge(
 ): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
   const availH = cfg.height - titleH - footH;
   const cx = cfg.width / 2;
@@ -201,12 +197,8 @@ function layoutGauge(
   const innerR = r * 0.58;
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   let angle = 270; // start at 9 o'clock, sweep clockwise over the top to 3 o'clock
   values.forEach((v, c) => {
     const span = (v / total) * 180;

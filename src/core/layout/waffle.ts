@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatPercent } from "../format";
 import { NO_DATA } from "../color";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -41,7 +41,7 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     cells[byRemainder[k].i]++;
   }
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const legendEntries = data.categories.map((name, c) => ({
     name,
     pct: formatPercent(values[c] / denom, quotas[c] > 0 && quotas[c] < 1 ? 1 : 0),
@@ -60,12 +60,8 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const gy = titleH + 4 + (availH - gridSize) / 2;
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
 
   // Cell colors in fill order: category 0 first, gray remainder.
   const fills: string[] = [];
