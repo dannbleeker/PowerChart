@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
-import { divergingScale, lerpColor, NO_DATA, sequentialScale } from "../color";
+import { divergingScale, lerpColor, NO_DATA, sequentialScale, zoneFill } from "../color";
 import { maxOf, minOf } from "../agg";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
@@ -215,7 +215,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           y,
           w: totalsW - 4,
           h: ch - 1,
-          fill: "#f0efec",
+          fill: zoneFill(style.background, "#f0efec"),
           name: `row-total-bg-${ri}`,
         },
         {
@@ -246,7 +246,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           y: plot.y + plot.h + 2,
           w: cw - 1,
           h: totalsH - 4,
-          fill: "#f0efec",
+          fill: zoneFill(style.background, "#f0efec"),
           name: `col-total-bg-${c}`,
         },
         {

@@ -4,6 +4,7 @@ import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat, weekSta
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
 import { titleHeight, titleNode } from "./frame";
+import { zoneFill } from "../color";
 
 /**
  * Simplified Gantt / timeline: categories are activities; rows named
@@ -244,7 +245,15 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const x1 = Math.max(plot.x, toX(h));
     const x2 = Math.min(plot.x + plot.w, toX(h + 1));
     if (x2 > x1) {
-      nodes.push({ kind: "rect", x: x1, y: plot.y, w: x2 - x1, h: plot.h, fill: "#efe7e7", name: `holiday-${h}` });
+      nodes.push({
+        kind: "rect",
+        x: x1,
+        y: plot.y,
+        w: x2 - x1,
+        h: plot.h,
+        fill: zoneFill(style.background, "#efe7e7"),
+        name: `holiday-${h}`,
+      });
     }
   }
 
@@ -260,7 +269,15 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         const x1 = Math.max(plot.x, toX(d));
         const x2 = Math.min(plot.x + plot.w, toX(d + 2));
         if (x2 > x1) {
-          nodes.push({ kind: "rect", x: x1, y: plot.y, w: x2 - x1, h: plot.h, fill: "#f4f3f0", name: `weekend-${d}` });
+          nodes.push({
+            kind: "rect",
+            x: x1,
+            y: plot.y,
+            w: x2 - x1,
+            h: plot.h,
+            fill: zoneFill(style.background, "#f4f3f0"),
+            name: `weekend-${d}`,
+          });
         }
       }
     }
@@ -316,7 +333,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           y: cy - slotH / 2 + 1,
           w: cfg.width,
           h: slotH - 2,
-          fill: "#f0efec",
+          fill: zoneFill(style.background, "#f0efec"),
           name: `section-${c}`,
         },
         {
