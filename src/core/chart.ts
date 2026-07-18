@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartData, ChartKind, ChartStyle, Decorations } from "./types";
 import type { Scene } from "./scene";
+import { maxOf, minOf } from "./agg";
 import { DEFAULT_DECOR, DEFAULT_STYLE, seriesColor } from "./style";
 import { layoutColumns, layoutCombo } from "./layout/column";
 import { layoutWaterfall, waterfallExtent } from "./layout/waterfall";
@@ -436,7 +437,13 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
     const exts = dataSeries.map((s, si) => panelExtent(s, si));
     const global = exts.every((e) => e != null)
       ? { min: Math.min(...exts.map((e) => e!.min)), max: Math.max(...exts.map((e) => e!.max)) }
-      : { min: 0, max: Math.max(1, ...dataSeries.flatMap((s) => s.values.filter((v): v is number => v != null))) };
+      : {
+          min: 0,
+          max: maxOf(
+            dataSeries.flatMap((s) => s.values.filter((v): v is number => v != null)),
+            1,
+          ),
+        };
     scale = { min: scale?.min ?? global.min, max: scale?.max ?? global.max };
   }
 
@@ -820,11 +827,11 @@ function dataExtent(cfg: ChartConfig): { min: number; max: number } | null {
     case "stacked": {
       const pos = cats.map((c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
       const neg = cats.map((c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
-      return { min: Math.min(0, ...neg), max: Math.max(0, ...pos) };
+      return { min: minOf(neg, 0), max: maxOf(pos, 0) };
     }
     case "clustered":
     case "line":
-      return { min: Math.min(0, ...vals), max: Math.max(0, ...vals) };
+      return { min: minOf(vals, 0), max: maxOf(vals, 0) };
     case "boxplot":
       return boxplotExtent(cfg);
     case "area": {
@@ -833,7 +840,7 @@ function dataExtent(cfg: ChartConfig): { min: number; max: number } | null {
       // every negative area on the shared-scale paths (small multiples, Same Scale).
       const pos = cats.map((c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
       const neg = cats.map((c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
-      return { min: Math.min(0, ...neg), max: Math.max(0, ...pos) };
+      return { min: minOf(neg, 0), max: maxOf(pos, 0) };
     }
     case "waterfall": {
       // One chain, shared with the layout. This used to be a second walk that

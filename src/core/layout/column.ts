@@ -18,6 +18,7 @@ import { layoutWaterfall } from "./waterfall";
 import { layoutMekko } from "./mekko";
 import { layoutLine } from "./line";
 import { columnNegativeTotal, columnPositiveTotal, columnSignedTotal } from "./totals";
+import { maxOf, minOf } from "../agg";
 
 export interface LayoutResult {
   nodes: SceneNode[];
@@ -96,8 +97,8 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     dataMax = Math.max(0, ...posTotals);
   } else {
     const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
-    dataMin = Math.min(0, ...all);
-    dataMax = Math.max(0, ...all);
+    dataMin = minOf(all, 0);
+    dataMax = maxOf(all, 0);
   }
   // 100% charts: negatives are shares below the zero line. The axis drops to
   // the most-negative column share (0 when all data is positive → unchanged).
@@ -470,20 +471,38 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // One shared scale: whichever of column extent / line values reaches higher.
   const stackMax =
     columnsKind === "clustered"
-      ? Math.max(0, ...cols.flatMap((s) => s.values.filter((v): v is number => v != null)))
-      : Math.max(0, ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)));
-  const lineMax = Math.max(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
+      ? maxOf(
+          cols.flatMap((s) => s.values.filter((v): v is number => v != null)),
+          0,
+        )
+      : maxOf(
+          cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0)),
+          0,
+        );
+  const lineMax = maxOf(
+    lines.flatMap((s) => s.values.filter((v): v is number => v != null)),
+    0,
+  );
   // A shared-axis line can also dip BELOW the column base — e.g. a negative
   // overlay over all-positive or all-zero bars. The column scale floors at its
   // own data only, so without this the line plots far off the bottom of the plot
   // (a fuzz-found overshoot). Mirror the max-overflow fix: drop the shared floor
   // to the line, but only when it actually reaches lower than the columns would,
   // so combos whose bars already run more negative are left untouched.
-  const lineMin = Math.min(0, ...lines.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  const lineMin = minOf(
+    lines.flatMap((s) => s.values.filter((v): v is number => v != null)),
+    0,
+  );
   const colMin =
     columnsKind === "clustered"
-      ? Math.min(0, ...cols.flatMap((s) => s.values.filter((v): v is number => v != null)))
-      : Math.min(0, ...cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0)));
+      ? minOf(
+          cols.flatMap((s) => s.values.filter((v): v is number => v != null)),
+          0,
+        )
+      : minOf(
+          cfg.data.categories.map((_, c) => cols.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0)),
+          0,
+        );
   const sharedFloor = lineMin < colMin ? niceTicks(lineMin, Math.max(stackMax, lineMax, 1))[0] : undefined;
   // Waterfall columns reach their running cumulative total, not the per-category
   // positive sum, so `stackMax` understates them; track the cumulative peak so a

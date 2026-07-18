@@ -1,6 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
+import { maxOf, minOf } from "../agg";
 import { lerpColor, NO_DATA, sequentialScale } from "../color";
 import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
@@ -61,8 +62,8 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     if (v != null && code.trim().toUpperCase() in layout) values.set(code.trim().toUpperCase(), v);
   });
   const vals = [...values.values()];
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
+  const min = minOf(vals);
+  const max = maxOf(vals);
   const base = data.series[0]?.color ?? style.palette[0];
   // Constant data: a flat mid-tone beats a zero-width ramp.
   const fill = min === max ? () => lerpColor(style.background, base, 0.5) : sequentialScale(min, max, base);
@@ -83,7 +84,12 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         );
     });
   }
-  const glyphMax = glyph ? Math.max(1, ...[...seriesVals.values()].flat().filter((v): v is number => v != null)) : 1;
+  const glyphMax = glyph
+    ? maxOf(
+        [...seriesVals.values()].flat().filter((v): v is number => v != null),
+        1,
+      )
+    : 1;
 
   // Fit uniform square tiles into the plot area.
   const cols = Math.max(...Object.values(layout).map(([c]) => c)) + 1;

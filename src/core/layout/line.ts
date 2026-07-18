@@ -1,6 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../format";
+import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import {
@@ -70,8 +71,8 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   // P&L-over-time where a series can go negative.
   const stackedPos = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
   const stackedNeg = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
-  const dataMax = area ? Math.max(0, ...stackedPos) : Math.max(0, ...all);
-  const dataMin = area ? Math.min(0, ...stackedNeg) : Math.min(0, ...all);
+  const dataMax = area ? maxOf(stackedPos, 0) : maxOf(all, 0);
+  const dataMin = area ? minOf(stackedNeg, 0) : minOf(all, 0);
   const fmt = resolveFormat(all, cfg.numberFormat);
 
   const { frame } = computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []);
@@ -398,8 +399,8 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, _decor: Decoration
   const single = data.series.length === 1;
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
   const fmt = resolveFormat(all, cfg.numberFormat);
-  const lo = all.length ? Math.min(...all) : 0;
-  const hi = all.length ? Math.max(...all) : 1;
+  const lo = all.length ? minOf(all) : 0;
+  const hi = all.length ? maxOf(all) : 1;
   const span = hi - lo || 1;
 
   // Leading label (title/series name) and trailing last value reserve gutters.
@@ -535,8 +536,8 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
   const last = n - 1;
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
   const fmt = resolveFormat(all, cfg.numberFormat);
-  const lo = all.length ? Math.min(...all) : 0;
-  const hi = all.length ? Math.max(...all) : 1;
+  const lo = all.length ? minOf(all) : 0;
+  const hi = all.length ? maxOf(all) : 1;
   const span = hi - lo || 1;
 
   const endLabel = (s: (typeof data.series)[number], c: number) =>
@@ -708,7 +709,10 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): L
   const n = data.categories.length;
   const titleH = titleHeight(cfg, style);
   const headerH = fs * 1.6;
-  const maxRank = Math.max(1, ...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)));
+  const maxRank = maxOf(
+    data.series.flatMap((s) => s.values.filter((v): v is number => v != null)),
+    1,
+  );
   const nameW = Math.max(fs * 3, ...data.series.map((s) => textWidth(s.name, fs))) + fs;
   const plot = {
     x: nameW,
@@ -844,8 +848,8 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
   const stackedPos = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
   const stackedNeg = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
-  const dataMax = area ? Math.max(0, ...stackedPos) : Math.max(0, ...all);
-  const dataMin = area ? Math.min(0, ...stackedNeg) : Math.min(0, ...all);
+  const dataMax = area ? maxOf(stackedPos, 0) : maxOf(all, 0);
+  const dataMin = area ? minOf(stackedNeg, 0) : minOf(all, 0);
   const fmt = resolveFormat(all, cfg.numberFormat);
 
   const frame = computeFrameHorizontal(cfg, style, decor);
