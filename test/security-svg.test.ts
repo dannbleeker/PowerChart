@@ -98,4 +98,25 @@ describe("svg renderer neutralizes injected colours", () => {
     expect(ref).toBeTruthy();
     expect(svg).toContain(`<pattern id="${ref![1]}"`);
   });
+
+  it("builds a resolvable pattern id from a legitimate rgb() fill", () => {
+    // rgb()/hsl() colours are valid (PAINT_OK accepts them) and reach the scene
+    // from Series.color/colors, but their "(", ")" and "," used to leak into the
+    // <pattern id> and the url(#…) reference — where the URL parser stops at the
+    // first ")", leaving the fill pointing at a non-existent, unbalanced id.
+    const scene: Scene = {
+      width: 100,
+      height: 100,
+      nodes: [{ kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: "rgb(78,121,167)", pattern: "diagonal", name: "p" }],
+    };
+    const svg = sceneToSvg(scene);
+    const ref = svg.match(/fill="url\(#([^"]+)\)"/);
+    expect(ref).toBeTruthy();
+    // The captured id must be a single safe token — no stray parens/commas that
+    // would truncate the reference — and must match a real <pattern> def.
+    expect(ref![1]).toMatch(/^[\w.-]+$/);
+    expect(svg).toContain(`<pattern id="${ref![1]}"`);
+    // The tile keeps the actual colour so the hatch renders over the right hue.
+    expect(svg).toContain('fill="rgb(78,121,167)"');
+  });
 });

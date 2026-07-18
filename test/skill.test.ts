@@ -96,6 +96,36 @@ describe("skill pptx renderer — annular sectors", () => {
   });
 });
 
+describe("skill pptx renderer — 8-digit hex colours", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pc-alpha-"));
+  const out = join(dir, "alpha.pptx");
+
+  beforeAll(() => {
+    if (!existsSync("dist-lib/powerchart.js")) {
+      execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
+    }
+    // #RRGGBBAA is a valid, SVG-honoured colour form. A single explicit series
+    // colour paints the column rects with it.
+    const cfg = {
+      kind: "clustered",
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 5], color: "#4e79a780" }] },
+    };
+    const input = join(dir, "cfg.json");
+    writeFileSync(input, JSON.stringify(cfg));
+    execSync(`node skill/scripts/render-pptx.mjs ${input} ${out}`, { stdio: "pipe" });
+  }, 120000);
+
+  it("keeps the hue and folds the alpha into transparency (not solid black)", () => {
+    const xml = execSync(
+      `python3 -c "import zipfile;print(zipfile.ZipFile('${out}').read('ppt/slides/slide1.xml').decode())"`,
+    ).toString();
+    // pptxgenjs only validates 6-digit RGB: an unhandled #RRGGBBAA would have been
+    // rejected and replaced with DEF_FONT_COLOR ("000000"). The hue must survive
+    // as the 6-digit prefix, with the alpha byte (0x80) carried as an <a:alpha>.
+    expect(xml).toMatch(/<a:srgbClr val="4E79A7"><a:alpha val="\d+"\/>/);
+  });
+});
+
 describe("packaged skill layout", () => {
   beforeAll(() => {
     if (!existsSync("dist-lib/powerchart.js")) {
