@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -17,7 +17,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const n = data.categories.length;
   const fs = style.fontSize;
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
   const legendH = decor.seriesLabels && data.series.length > 1 ? fs * 1.6 : 0;
   const cx = cfg.width / 2;
@@ -51,12 +51,8 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     perSpoke ? (Math.max(0, v) / spokeMax[c]) * r : toR(Math.max(min, v));
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
 
   // Grid: concentric polygons (or circles). Per-spoke mode uses fraction
   // rings with no numeric labels (each spoke has its own scale); otherwise
@@ -239,7 +235,7 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const fs = style.fontSize;
   const multi = data.series.length > 1;
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
   const legendH = decor.seriesLabels && multi ? fs * 1.6 : 0;
   const cx = cfg.width / 2;
@@ -259,12 +255,8 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const pad = sector * 0.12;
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
 
   // Concentric value rings + tick labels on the 12 o'clock line.
   for (const t of ticks.filter((t) => t > 0)) {

@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { divergingScale, lerpColor, NO_DATA, sequentialScale } from "../color";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -87,7 +87,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     return calendarLayout(cfg, style, decor, calDays as number[], data.series[0].values, colorOf, min, max, constant, wantSign);
   }
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const headerH = decor.categoryAxis !== false ? fs * 1.5 : 2;
   const rowLabelW = Math.min(cfg.width * 0.28, Math.max(fs, ...data.series.map((s) => textWidth(s.name, fs))) + 8);
   const legendH = fs * 3;
@@ -107,12 +107,8 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const ch = plot.h / Math.max(1, nRows);
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   if (decor.categoryAxis !== false) {
     data.categories.forEach((cat, c) => {
       nodes.push({
@@ -353,7 +349,7 @@ function calendarLayout(
   const weekOf = (d: number) => Math.floor((d - weekStart) / 7);
   const nWeeks = weekOf(maxDay) + 1;
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const wdLabelW = fs * 2.2;
   const monthH = fs * 1.4;
   const legendH = fs * 2.2;
@@ -364,12 +360,8 @@ function calendarLayout(
   const cell = Math.max(4, Math.min(availW / Math.max(1, nWeeks), availH / 7));
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   // Weekday labels (every other row to reduce clutter).
   for (let r = 0; r < 7; r++) {
     if (r % 2 === 0) {

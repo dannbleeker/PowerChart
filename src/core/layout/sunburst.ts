@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { lerpColor } from "../color";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import { PALETTE } from "../style";
 import type { LayoutResult } from "./column";
 
@@ -25,7 +25,7 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
   const groupOf = (label: string) => (label.includes("|") ? label.split("|")[0].trim() : "");
   const labelOf = (label: string) => (label.includes("|") ? label.split("|").slice(1).join("|").trim() : label);
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
   const cx = cfg.width / 2;
   const cy = titleH + (cfg.height - titleH - footH) / 2;
@@ -34,12 +34,8 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
   const rMid = grouped ? r * 0.6 : rInner;
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
 
   const norm = (a: number) => ((a % 360) + 360) % 360;
   const label = (rr: number, midAngle: number, text: string, color: string, name: string, outside: boolean) => {

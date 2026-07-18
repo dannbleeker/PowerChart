@@ -3,6 +3,7 @@ import { textWidth, type SceneNode } from "../scene";
 import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
+import { titleHeight, titleNode } from "./frame";
 
 /**
  * Simplified Gantt / timeline: categories are activities; rows named
@@ -117,7 +118,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     }
   }
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const bracketH = brackets.length ? fs * 1.9 : 0;
   const headerH = fs * 1.6;
   const catW = Math.min(
@@ -214,12 +215,8 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     dates ? `${formatDay(s)}–${formatDay(e)}` : `${formatNumber(s, fmt)}–${formatNumber(e, fmt)}`;
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   // Bracket annotations above the timeline header.
   brackets.forEach((b, i) => {
     const x1 = toX(b.from);

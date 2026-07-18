@@ -3,7 +3,7 @@ import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, parseDateToken, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
-import { baselineNode, categorySlots, chromeNodes, computeFrame, computeFrameHorizontal, footnoteH, valueScale } from "./frame";
+import { baselineNode, categorySlots, chromeNodes, computeFrame, computeFrameHorizontal, footnoteH, titleHeight, titleNode, valueScale } from "./frame";
 import { horizontalChrome, seriesLabelNodes, type LayoutResult } from "./column";
 
 /**
@@ -435,7 +435,7 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
   const gutterL = Math.min(cfg.width * 0.34, Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, 0), fs))) + 10);
   const gutterR = Math.min(cfg.width * 0.34, Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, last), fs))) + 10);
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const headerH = fs * 1.5; // period labels above the rails
   const plot = {
     x: gutterL,
@@ -448,12 +448,8 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
   const xs = data.categories.map((_, c) => plot.x + (n === 1 ? plot.w / 2 : (c / (n - 1)) * plot.w));
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   // Rails and period labels at the two ends only.
   for (const c of [0, last]) {
     nodes.push({ kind: "line", x1: xs[c], y1: plot.y, x2: xs[c], y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 1, name: `slope-rail-${c}` });
@@ -540,7 +536,7 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, decor: Decorations): La
   const { data } = cfg;
   const fs = style.fontSize;
   const n = data.categories.length;
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const headerH = fs * 1.6;
   const maxRank = Math.max(1, ...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)));
   const nameW = Math.max(fs * 3, ...data.series.map((s) => textWidth(s.name, fs))) + fs;
@@ -554,12 +550,8 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, decor: Decorations): La
   const toY = (rank: number) => plot.y + (maxRank === 1 ? plot.h / 2 : ((rank - 1) / (maxRank - 1)) * plot.h);
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   // Period headers along the top.
   data.categories.forEach((cat, c) => {
     nodes.push({

@@ -4,7 +4,7 @@ import { formatNumber, resolveFormat } from "../format";
 import { lerpColor, NO_DATA, sequentialScale } from "../color";
 import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -22,13 +22,9 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const layout = layoutKey ? TILE_LAYOUTS[layoutKey] : undefined;
 
   const nodes: SceneNode[] = [];
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleH = titleHeight(cfg, style);
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
 
   const empty: LayoutResult = {
     nodes,

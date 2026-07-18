@@ -117,6 +117,35 @@ export interface FrameReservations {
   seriesLabelsW: number;
 }
 
+/** Height reserved above the plot for the chart title (0 when untitled). */
+export function titleHeight(cfg: ChartConfig, style: ChartStyle): number {
+  return cfg.title ? style.fontSize * 1.6 + 6 : 0;
+}
+
+/**
+ * The chart-title text node, or null when the chart has no title. Every layout
+ * that draws its own title emitted this exact node inline; sharing it keeps the
+ * title's size/weight/placement from drifting between chart kinds.
+ */
+export function titleNode(cfg: ChartConfig, style: ChartStyle): SceneNode | null {
+  if (!cfg.title) return null;
+  const fs = style.fontSize;
+  return {
+    kind: "text",
+    x: 0,
+    y: 0,
+    w: cfg.width,
+    h: fs * 1.6,
+    text: cfg.title,
+    fontSize: fs * 1.2,
+    bold: true,
+    color: style.text,
+    align: "left",
+    valign: "top",
+    name: "title",
+  };
+}
+
 /** Height reserved at the bottom for the footnote / "100% =" line. */
 export function footnoteH(cfg: ChartConfig, style: ChartStyle, decor: Decorations): number {
   // scatter.spread prints its cap on the footnote line, so it needs the row
@@ -135,7 +164,7 @@ export function computeFrame(
   seriesNames: string[],
 ): { frame: Frame; res: FrameReservations } {
   const fs = style.fontSize;
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const totalsH = decor.totals || decor.cagr || decor.difference ? fs * 1.5 + 4 : fs * 0.8;
   const categoryAxisH = decor.categoryAxis ? fs * 1.5 + 3 : 4;
   const valueAxisW = decor.valueAxis ? 34 : 2;
@@ -167,7 +196,7 @@ export function computeFrameHorizontal(
   decor: Decorations,
 ): Frame {
   const fs = style.fontSize;
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const legendH = decor.seriesLabels && cfg.data.series.length > 1 ? fs * 1.6 + 4 : fs * 0.6;
   const catW = decor.categoryAxis
     ? Math.min(cfg.width * 0.3, Math.max(0, ...cfg.data.categories.map((c) => textWidth(c, fs))) + 8)
@@ -193,22 +222,8 @@ export function chromeNodes(
 ): SceneNode[] {
   const nodes: SceneNode[] = [];
   const fs = style.fontSize;
-  if (cfg.title) {
-    nodes.push({
-      kind: "text",
-      x: 0,
-      y: 0,
-      w: cfg.width,
-      h: fs * 1.6,
-      text: cfg.title,
-      fontSize: fs * 1.2,
-      bold: true,
-      color: style.text,
-      align: "left",
-      valign: "top",
-      name: "title",
-    });
-  }
+  const t = titleNode(cfg, style);
+  if (t) nodes.push(t);
   if (decor.gridlines && scale) {
     for (const t of scale.ticks) {
       if (t === 0) continue;

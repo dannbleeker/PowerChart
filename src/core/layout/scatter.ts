@@ -6,7 +6,7 @@ import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
 import { PALETTE } from "../style";
 import { lerpColor, sequentialScale } from "../color";
-import { footnoteH } from "./frame";
+import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -167,7 +167,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       ? { min: Math.min(...colorNums), max: Math.max(...colorNums), of: sequentialScale(Math.min(...colorNums), Math.max(...colorNums), (cfg.style?.palette ?? PALETTE)[0]) }
       : null;
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const axisW = 34;
   const multiGroup = !colorScale && new Set(pts.map((p) => p.group)).size > 1;
   const legendH = multiGroup || colorScale ? fs * 1.8 : 0;
@@ -213,12 +213,8 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const yFmt = resolveFormat(yTicks, cfg.numberFormat);
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   // Quadrant preset: one X/Y crossing → four tinted zones with corner
   // labels and the crossing lines — BCG-matrix framing in one step.
   if (decor.quadrants) {

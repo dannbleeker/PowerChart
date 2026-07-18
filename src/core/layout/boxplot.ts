@@ -3,7 +3,7 @@ import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
-import { baselineNode, chromeNodes, computeFrame, computeFrameHorizontal, valueScale } from "./frame";
+import { baselineNode, chromeNodes, computeFrame, computeFrameHorizontal, titleHeight, valueScale } from "./frame";
 import { horizontalChrome, type LayoutResult } from "./column";
 
 /** The five-number-summary datasheet rows (think-cell's own boxplot recipe). */
@@ -181,7 +181,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Group legend (grouped mode only).
   if (nG > 1) {
     let lx = frame.x;
-    const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+    const titleH = titleHeight(cfg, style);
     groupNames.forEach((g, gi) => {
       const chip = fs * 0.7;
       nodes.push(

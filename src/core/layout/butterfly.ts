@@ -4,6 +4,7 @@ import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { niceTicks } from "../format";
 import type { LayoutResult } from "./column";
+import { titleHeight, titleNode } from "./frame";
 
 /**
  * Butterfly (tornado) chart: think-cell models this as two bar charts placed
@@ -26,7 +27,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const signedSum = (series: typeof withIdx, c: number) =>
     series.reduce((a, { s }) => a + (s.values[c] ?? 0), 0);
 
-  const titleH = cfg.title ? fs * 1.6 + 6 : 0;
+  const titleH = titleHeight(cfg, style);
   const headerH = fs * 1.6;
   const gutterW = Math.min(
     cfg.width * 0.3,
@@ -56,12 +57,8 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const barH = slotH * (2 / 3);
 
   const nodes: SceneNode[] = [];
-  if (cfg.title) {
-    nodes.push({
-      kind: "text", x: 0, y: 0, w: cfg.width, h: fs * 1.6, text: cfg.title,
-      fontSize: fs * 1.2, bold: true, color: style.text, align: "left", valign: "top", name: "title",
-    });
-  }
+  const titleN = titleNode(cfg, style);
+  if (titleN) nodes.push(titleN);
   if (!stacked) {
     // Series headers above each half (classic two-series butterfly).
     ([[leftSeries[0], plot.x, leftEdge], [rightSeries[0], rightEdge, plot.x + plot.w]] as const).forEach(

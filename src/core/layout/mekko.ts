@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { chromeNodes, computeFrame, computeFrameHorizontal } from "./frame";
+import { chromeNodes, computeFrame, computeFrameHorizontal, titleHeight } from "./frame";
 import { legendRow, seriesLabelNodes, type LayoutResult } from "./column";
 
 /**
@@ -186,7 +186,7 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   if (H) {
     nodes.push({ kind: "line", x1: frame.x, y1: frame.y, x2: frame.x, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
     if (decor.seriesLabels && data.series.length > 1) {
-      nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2));
+      nodes.push(...legendRow(cfg, style, frame.x, titleHeight(cfg, style) + 2));
     }
   } else {
     nodes.push({
