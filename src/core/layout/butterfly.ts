@@ -35,10 +35,12 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const plot = {
     x: valueW,
     y: titleH + headerH + 2,
-    w: cfg.width - valueW * 2,
+    w: Math.max(0, cfg.width - valueW * 2),
     h: cfg.height - titleH - headerH - 6 - axisH,
   };
-  const halfW = (plot.w - gutterW) / 2;
+  // Floor at 0: a very narrow frame can drive plot.w below the gutter, which
+  // would give the header texts and bar rects negative widths.
+  const halfW = Math.max(0, (plot.w - gutterW) / 2);
   const leftEdge = plot.x + halfW; // right edge of the left half
   const rightEdge = leftEdge + gutterW; // left edge of the right half
 
@@ -67,7 +69,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
         kind: "text",
         x: x0,
         y: titleH,
-        w: x1 - x0,
+        w: Math.max(0, x1 - x0),
         h: headerH,
         text: entry?.s.name ?? "",
         fontSize: fs,

@@ -31,7 +31,9 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     h: cfg.height - titleH - 2 - footnoteH(cfg, style, decor) - 4,
   };
   const gap = fs * 1.5; // room for the conversion label between bands
-  const bandH = (plot.h - gap * (n - 1)) / Math.max(1, n);
+  // Floor at a positive height: on a short frame with many stages the gaps can
+  // exceed the plot, driving every band negative (SVG then drops the rects).
+  const bandH = Math.max(1, (plot.h - gap * (n - 1)) / Math.max(1, n));
   const cx = plot.x + plot.w / 2;
 
   const nodes: SceneNode[] = [];

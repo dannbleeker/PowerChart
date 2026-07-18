@@ -329,7 +329,10 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         name: "legend-max",
       },
     );
-    if (mode === "diverging") {
+    // Only mark zero when it actually lies inside the range. A FORCED diverging
+    // mode over single-signed data (auto-diverging can't reach here) would place
+    // the "0" tick off the end of the legend strip.
+    if (mode === "diverging" && min < 0 && max > 0) {
       const zx = plot.x + ((0 - min) / (max - min)) * lw;
       nodes.push({
         kind: "text",
