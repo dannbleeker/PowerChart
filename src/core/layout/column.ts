@@ -14,7 +14,7 @@ import {
 } from "./frame";
 // Combo base kinds. These modules import back from column (LayoutResult /
 // horizontalChrome), but the calls happen at runtime so the ESM cycle resolves.
-import { layoutWaterfall } from "./waterfall";
+import { layoutWaterfall, detailParents } from "./waterfall";
 import { layoutMekko } from "./mekko";
 import { layoutLine } from "./line";
 import { columnNegativeTotal, columnPositiveTotal, columnSignedTotal } from "./totals";
@@ -509,13 +509,20 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // shared-axis line taller than it isn't clipped off the top of the plot.
   const wfMax = (() => {
     const totals = new Set(cfg.waterfall?.totalIndices ?? []);
+    const spacers = new Set(cfg.waterfall?.spacerIndices ?? []);
+    const detailOf = detailParents(cfg);
     let running = 0;
     let max = 0;
     cfg.data.categories.forEach((_, c) => {
-      // Every column series contributes to the running total (layoutWaterfall
-      // stacks them all) — summing only cols[0] understated the peak and pushed
-      // a multi-series waterfall combo off the top of the plot.
-      if (!totals.has(c)) running += cols.reduce((a, s) => a + (s.values[c] ?? 0), 0);
+      // Match waterfallChain exactly: totals redraw the running level (no advance),
+      // spacers carry it across unchanged, and detail-group columns decompose their
+      // parent IN PLACE — none advance the chain. Counting spacer/detail columns
+      // here overstated the peak, so the line-overflow stretch never fired and a
+      // taller shared-axis line clipped off the top. Every column series
+      // contributes to a real step (layoutWaterfall stacks them all).
+      if (!totals.has(c) && !spacers.has(c) && !detailOf.has(c)) {
+        running += cols.reduce((a, s) => a + (s.values[c] ?? 0), 0);
+      }
       max = Math.max(max, running);
     });
     return max;
@@ -564,10 +571,15 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const fs = style.fontSize;
   let lineToY = anchors.valueToY ?? ((v: number) => anchors.plot.y + anchors.plot.h - v);
   if (secondary) {
-    const ticks2 = niceTicks(0, Math.max(1, lineMax), 5);
+    // Span down to any negative line value, not just up from 0 — anchoring the
+    // secondary axis at 0 mapped a negative point below the plot floor. For an
+    // all-positive line min(0, lineMin) is 0, so the domain and mapping are
+    // unchanged (byte-identical); only a negative overlay is rescued.
+    const ticks2 = niceTicks(Math.min(0, lineMin), Math.max(1, lineMax), 5);
+    const min2 = ticks2[0];
     const max2 = ticks2[ticks2.length - 1];
     const plot = anchors.plot;
-    lineToY = (v: number) => plot.y + plot.h - (v / max2) * plot.h;
+    lineToY = (v: number) => plot.y + plot.h - ((v - min2) / (max2 - min2 || 1)) * plot.h;
     const fmt2 = resolveFormat(ticks2, cfg.numberFormat);
     for (const t of ticks2) {
       nodes.push({
