@@ -98,6 +98,10 @@ function nodeToSvg(n: SceneNode): string {
       return `<ellipse cx="${r(n.cx)}" cy="${r(n.cy)}" rx="${r(n.rx)}" ry="${r(n.ry)}" fill="${paint(n.fill)}"${stroke}${name(n)}/>`;
     }
     case "chevron": {
+      // Fixed notch fraction. The PowerPoint renderers instead name the native
+      // chevron/homePlate preset, whose default point depth differs — an
+      // intentional preview-vs-deck approximation (see the parity contract in
+      // scene.ts).
       const notch = n.h * 0.28;
       const left = n.flatLeft
         ? `M ${r(n.x)} ${r(n.y)}`
@@ -144,7 +148,10 @@ function nodeToSvg(n: SceneNode): string {
       return `<polygon points="${pts}"${fill}${stroke}${name(n)}/>`;
     }
     case "arrowhead": {
-      // Triangle with tip at (x, y), pointing along angle.
+      // Narrow isosceles triangle with tip at (x, y), pointing along angle. The
+      // PowerPoint renderers name the native `triangle` preset in a 2*size box,
+      // which is broader — an intentional approximation (see scene.ts parity
+      // contract); only the tip anchor and angle are shared exactly.
       const s = n.size;
       return `<path d="M 0 0 L ${-s * 1.8} ${-s * 0.7} L ${-s * 1.8} ${s * 0.7} Z" fill="${paint(n.fill)}" transform="translate(${r(n.x)} ${r(n.y)}) rotate(${r(n.angle)})"${name(n)}/>`;
     }
