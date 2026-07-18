@@ -131,8 +131,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
             stacked?: boolean },      // stacked radar: series stack cumulatively along each spoke
   combo?: { columns?: "stacked"|"clustered"|"stacked100"|"waterfall"|"mekko"|"area",  // base under the lines
             lineAxes?: "shared"|"independent" },  // "independent": each line its own scale + labels
-  waterfall?: { totalIndices?: number[],    // categories drawn as running totals ("e")
-                spacerIndices?: number[] }, // blank grouping gaps (empty category name)
+  // (waterfall? is documented once above, with detailGroups)
   scale?: { min?: number, max?: number },   // pin the value axis
   axisBreak?: { from: number, to: number }, // compress an out-of-scale range
   logScale?: boolean,                       // clustered/line, positive data

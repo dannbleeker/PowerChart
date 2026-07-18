@@ -41,7 +41,18 @@ if (!engine) {
   );
   process.exit(1);
 }
-const { buildChart, DEFAULT_SIZE, arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints, SYMBOL_PRESET } = engine;
+const { buildChart, buildAgendaScene, DEFAULT_SIZE, arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints, SYMBOL_PRESET } =
+  engine;
+
+// A stale packaged lib (the skill ships no build step) can be missing an export,
+// which otherwise blows up mid-render on the first chart that needs it. Fail
+// fast with an actionable message instead.
+for (const [name, fn] of Object.entries({ buildChart, buildAgendaScene, arrowheadBox, annularSectorPoints })) {
+  if (typeof fn !== "function") {
+    console.error(`powerchart engine is missing export "${name}" — rebuild the lib (npm run build:lib)`);
+    process.exit(1);
+  }
+}
 
 const [, , input, output = "powerchart.pptx"] = process.argv;
 if (!input) {
@@ -49,7 +60,28 @@ if (!input) {
   process.exit(1);
 }
 
-const raw = JSON.parse(readFileSync(input, "utf8"));
+let raw;
+try {
+  raw = JSON.parse(readFileSync(input, "utf8"));
+} catch (err) {
+  console.error(`couldn't read/parse ${input}: ${err?.message ?? err}`);
+  process.exit(1);
+}
+// Accept one config or an array of them. A wrapper object like {"charts":[…]} or
+// a primitive is the common LLM mistake — name it rather than render one blank slide.
+if (raw == null || typeof raw !== "object") {
+  console.error("expected a ChartConfig object or an array of them (got a " + typeof raw + ")");
+  process.exit(1);
+}
+if (!Array.isArray(raw) && !("kind" in raw) && !("data" in raw) && !("chapters" in raw)) {
+  const wrapped = Object.keys(raw).find((k) => Array.isArray(raw[k]));
+  console.error(
+    wrapped
+      ? `expected a ChartConfig or an array — did you mean the "${wrapped}" array inside this object?`
+      : "expected a ChartConfig (with a kind/data) or an array of them",
+  );
+  process.exit(1);
+}
 const configs = Array.isArray(raw) ? raw : [raw];
 
 const IN = 1 / 72; // points → inches
@@ -217,15 +249,60 @@ function addNode(slide, n, dx, dy) {
   }
 }
 
-for (const cfg of configs) {
-  const full = { ...DEFAULT_SIZE, ...cfg };
-  const scene = buildChart(full);
-  const slide = pres.addSlide();
-  slide.background = { color: "FFFFFF" };
-  const dx = (SLIDE.w - scene.width * IN) / 2;
-  const dy = (SLIDE.h - scene.height * IN) / 2;
-  for (const node of scene.nodes) addNode(slide, node, dx, dy);
+/** Build the scene for one config: an agenda slide, or a chart. */
+function sceneFor(cfg) {
+  if (cfg && cfg.kind === "agenda") {
+    // { kind:"agenda", chapters:[…], highlight?, title? } → a chapter-list slide
+    // (highlight the current chapter, or -1 for an overview). Full-slide size.
+    return buildAgendaScene(Array.isArray(cfg.chapters) ? cfg.chapters : [], {
+      highlight: cfg.highlight,
+      title: cfg.title,
+      width: cfg.width,
+      height: cfg.height,
+    });
+  }
+  return buildChart({ ...DEFAULT_SIZE, ...cfg });
 }
 
+/** A visible error slide so a bad config in a batch surfaces instead of vanishing. */
+function errorSlide(i, err) {
+  const slide = pres.addSlide();
+  slide.background = { color: "FFFFFF" };
+  slide.addText(`Chart ${i + 1} failed: ${err?.message ?? err}`, {
+    x: 0.4,
+    y: 0.4,
+    w: SLIDE.w - 0.8,
+    h: 0.6,
+    fontSize: 18,
+    bold: true,
+    color: "C0392B",
+    fill: { color: "FBEAE8" },
+    align: "left",
+    valign: "middle",
+  });
+}
+
+let failed = 0;
+configs.forEach((cfg, i) => {
+  // Isolate each config: one bad chart in a 50-slide batch must not throw away
+  // the other 49 (the Office.js path isolates per item too). Stamp an error
+  // slide and carry on, so partial output always survives.
+  try {
+    const scene = sceneFor(cfg);
+    const slide = pres.addSlide();
+    slide.background = { color: "FFFFFF" };
+    const dx = (SLIDE.w - scene.width * IN) / 2;
+    const dy = (SLIDE.h - scene.height * IN) / 2;
+    for (const node of scene.nodes) addNode(slide, node, dx, dy);
+  } catch (err) {
+    failed++;
+    errorSlide(i, err);
+    console.error(`chart ${i + 1}: ${err?.message ?? err}`);
+  }
+});
+
 await pres.writeFile({ fileName: output });
-console.log(`${output}: ${configs.length} slide(s), native shapes`);
+console.log(
+  `${output}: ${configs.length} slide(s), native shapes` + (failed ? ` (${failed} failed — see error slides)` : ""),
+);
+if (failed) process.exit(1);

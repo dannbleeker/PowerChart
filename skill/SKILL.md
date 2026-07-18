@@ -35,7 +35,18 @@ node scripts/render-pptx.mjs charts.json out.pptx   # native shapes, 1 chart/sli
 node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 ```
 
-`charts.json` may hold one config or an array (one slide each).
+`charts.json` may hold one config or an array (one slide each). A bad config in
+an array is isolated: it becomes a visible error slide and the rest still render.
+
+**Agenda slides** use the same JSON, with `kind: "agenda"`:
+
+```json
+{ "kind": "agenda", "chapters": ["Context", "Findings", "Recommendation"], "highlight": 1 }
+```
+
+`highlight` is the current chapter (0-based; omit or `-1` for an overview). For a
+section-divider before each chapter, pass an array with a different `highlight`
+per slide.
 
 3. **QA visually.** Render the SVGs and inspect them (or convert the pptx to
    images) before delivering: check label overlaps, totals, axis sanity. Fix
@@ -134,7 +145,9 @@ source when you know it.
 - Emit **valid JSON only** for configs; validate values are numbers (dates as
   ISO strings only in Gantt rows).
 - Keep one message of data → one chart. For decks, pass an array.
-- The output shapes are grouped per chart is NOT done here (pptx groups are
-  flat) — that's fine: think-cell users expect to tweak individual shapes.
+- In the headless `.pptx` the shapes are NOT grouped per chart (pptxgenjs has no
+  native shape-group API) — every bar, label and line is a separate editable
+  shape, which is fine since think-cell users tweak individual shapes anyway.
+  The live add-in DOES group each chart into one object.
 - Prefer `waterfall` over generic columns whenever the story is a change
   decomposition. Prefer `mekko` when both share and size matter.
