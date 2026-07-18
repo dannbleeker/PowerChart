@@ -15,7 +15,9 @@ describe("area with negative values", () => {
     sc.nodes.some((n) => n.kind === "text" && n.name === "value-axis" && /^-/.test((n.text ?? "").trim()));
   // The value axis "0" tick sits at toY(0) — the zero baseline in screen y.
   const zeroY = (sc: { nodes: SceneNode[] }) => {
-    const z = sc.nodes.find((n): n is TextNode => n.kind === "text" && n.name === "value-axis" && (n.text ?? "").trim() === "0")!;
+    const z = sc.nodes.find(
+      (n): n is TextNode => n.kind === "text" && n.name === "value-axis" && (n.text ?? "").trim() === "0",
+    )!;
     return z.y + z.h / 2;
   };
   const mk = (values: (number | null)[], cats = ["A", "B", "C"]): ChartConfig => ({

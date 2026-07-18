@@ -26,7 +26,11 @@ cpSync("dist-lib/powerchart.js", `${root}/lib/powerchart.js`);
 cpSync("examples/charts.json", `${root}/examples/charts.json`);
 writeFileSync(
   `${root}/package.json`,
-  JSON.stringify({ name: "powerchart-charts-skill", private: true, type: "module", dependencies: { pptxgenjs: "^4.0.1" } }, null, 2),
+  JSON.stringify(
+    { name: "powerchart-charts-skill", private: true, type: "module", dependencies: { pptxgenjs: "^4.0.1" } },
+    null,
+    2,
+  ),
 );
 
 // render-svg.mjs was written for the repo layout — point it at the bundled lib.
@@ -34,10 +38,7 @@ writeFileSync(
 // script bought nothing and broke on Windows, silently shipping a skill whose
 // renderer imported ../dist-lib/powerchart.js, a path that doesn't exist here.
 const renderSvg = `${root}/scripts/render-svg.mjs`;
-const patched = readFileSync(renderSvg, "utf8").replace(
-  "../dist-lib/powerchart.js",
-  "../lib/powerchart.js",
-);
+const patched = readFileSync(renderSvg, "utf8").replace("../dist-lib/powerchart.js", "../lib/powerchart.js");
 if (!patched.includes("../lib/powerchart.js")) {
   console.error(`${renderSvg}: import of ../dist-lib/powerchart.js not found — skill would ship broken`);
   process.exit(1);

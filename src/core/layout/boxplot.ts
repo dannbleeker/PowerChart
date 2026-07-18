@@ -58,7 +58,12 @@ function quartile(sorted: number[], p: number, method: "exclusive" | "inclusive"
  * two can't drift apart — the mean±SD variant's whiskers reach beyond the raw
  * samples, and an extent taken from the samples alone understates it.
  */
-function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box | null)[][]; all: number[]; drawn: number[] } {
+function boxplotBoxes(cfg: ChartConfig): {
+  groupNames: string[];
+  grouped: (Box | null)[][];
+  all: number[];
+  drawn: number[];
+} {
   const { data } = cfg;
   const opts = cfg.boxplot ?? {};
   // Grouped boxplots: "Min | 2024"-style suffixes split rows into groups.
@@ -89,7 +94,10 @@ function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box |
       return { ...summary, mean: mean ?? undefined, outliers };
     }
     // Raw samples: this category's column across the group's rows.
-    const sample = rowsOf(g).map((srs) => srs.values[c]).filter((v): v is number => v != null).sort((a, b) => a - b);
+    const sample = rowsOf(g)
+      .map((srs) => srs.values[c])
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b);
     if (sample.length < 2) return null;
     // Mean±SD variant: box = mean ± 1·SD, centre = mean, whiskers = mean ± 2·SD.
     if (opts.meanSd) {
@@ -97,8 +105,14 @@ function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box |
       const variance = sample.reduce((a, b) => a + (b - mean) ** 2, 0) / (sample.length - 1);
       const sd = Math.sqrt(variance);
       return {
-        min: mean - 2 * sd, q1: mean - sd, median: mean, q3: mean + sd, max: mean + 2 * sd,
-        mean: undefined, outliers: [], samples: sample,
+        min: mean - 2 * sd,
+        q1: mean - sd,
+        median: mean,
+        q3: mean + sd,
+        max: mean + 2 * sd,
+        mean: undefined,
+        outliers: [],
+        samples: sample,
       };
     }
     const method = opts.quartileMethod ?? "exclusive";
@@ -124,15 +138,15 @@ function boxplotBoxes(cfg: ChartConfig): { groupNames: string[]; grouped: (Box |
 
   // boxes[g][c]
   const grouped = groupNames.map((g) => data.categories.map((_, c) => boxFor(g, c)));
-  const all = grouped.flat().flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
+  const all = grouped
+    .flat()
+    .flatMap((b) => (b ? [b.min, b.max, ...b.outliers, ...(b.mean != null ? [b.mean] : [])] : []));
   // The jitter overlay plots every raw observation. Normally the box already
   // spans them, but the mean±SD variant's whiskers stop at mean ± 2·SD and it
   // reports no outliers, so a sample past 2·SD has nothing covering it. The
   // scale needs those dots; the number format does not (it describes the
   // summary, and the samples it is derived from can only add noise).
-  const drawn = opts.jitter
-    ? [...all, ...grouped.flat().flatMap((b) => b?.samples ?? [])]
-    : all;
+  const drawn = opts.jitter ? [...all, ...grouped.flat().flatMap((b) => b?.samples ?? [])] : all;
   return { groupNames, grouped, all, drawn };
 }
 
@@ -153,26 +167,39 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // them in one chart.
   const scale = valueScale(frame, Math.min(0, ...drawn), Math.max(0, ...drawn), cfg.scale);
   // Value coordinate along the value axis (x when horizontal, y otherwise).
-  const qOf = H
-    ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w
-    : scale.toY;
+  const qOf = H ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w : scale.toY;
 
   const catStart = H ? frame.y : frame.x;
   const catLen = H ? frame.h : frame.w;
   const slotW = catLen / Math.max(1, n);
   const boxW = slotW * 0.55;
-  const capW = boxW * 0.45;
   const centers = data.categories.map((_, c) => catStart + slotW * (c + 0.5));
 
   // Summary rows (Min/Q1/…) are anatomy, not series — never a legend.
   const nodes: SceneNode[] = H
-    ? horizontalChrome(cfg, style, { ...decor, totals: false, seriesLabels: false }, frame, centers, scale, (v) => qOf(v) - frame.x)
+    ? horizontalChrome(
+        cfg,
+        style,
+        { ...decor, totals: false, seriesLabels: false },
+        frame,
+        centers,
+        scale,
+        (v) => qOf(v) - frame.x,
+      )
     : chromeNodes(cfg, style, { ...decor, seriesLabels: false }, frame, centers, scale);
   const columnTop: number[] = [];
 
   /** Category-axis point p + value-axis point q → chart coordinates. */
   const pt = (p: number, q: number) => (H ? { x: q, y: p } : { x: p, y: q });
-  const segLine = (p1: number, q1: number, p2: number, q2: number, weight: number, stroke: string, nm: string): SceneNode => {
+  const segLine = (
+    p1: number,
+    q1: number,
+    p2: number,
+    q2: number,
+    weight: number,
+    stroke: string,
+    nm: string,
+  ): SceneNode => {
     const a = pt(p1, q1);
     const b = pt(p2, q2);
     return { kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke, strokeWidth: weight, name: nm };
@@ -185,117 +212,217 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     groupNames.forEach((g, gi) => {
       const chip = fs * 0.7;
       nodes.push(
-        { kind: "rect", x: lx, y: titleH + fs * 0.3, w: chip, h: chip, fill: seriesColor(style, gi), name: `legend-chip-${gi}` },
         {
-          kind: "text", x: lx + chip + 3, y: titleH, w: textWidth(g, fs) + 6, h: fs * 1.4,
-          text: g, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${gi}`,
+          kind: "rect",
+          x: lx,
+          y: titleH + fs * 0.3,
+          w: chip,
+          h: chip,
+          fill: seriesColor(style, gi),
+          name: `legend-chip-${gi}`,
+        },
+        {
+          kind: "text",
+          x: lx + chip + 3,
+          y: titleH,
+          w: textWidth(g, fs) + 6,
+          h: fs * 1.4,
+          text: g,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `legend-${gi}`,
         },
       );
       lx += chip + 3 + textWidth(g, fs) + 12;
     });
   }
 
-  grouped.forEach((groupBoxes, gi) => groupBoxes.forEach((b, c) => {
-    // Sub-slot offset: groups sit side by side within the category slot.
-    const subW = nG > 1 ? (slotW * 0.7) / nG : boxW;
-    const p0 = nG > 1 ? centers[c] - (slotW * 0.7) / 2 + subW * (gi + 0.5) : centers[c];
-    const gBoxW = nG > 1 ? Math.max(4, subW - 3) : boxW;
-    const gCapW = gBoxW * 0.45;
-    const p = p0;
-    if (!b) {
-      if (gi === 0) columnTop.push(frame.y + frame.h);
-      return;
-    }
-    const gSuffix = nG > 1 ? `-g${gi}` : "";
-    const fill = nG > 1 ? seriesColor(style, gi) : seriesColor(style, 0, data.series.find((s) => s.color)?.color);
-    const boxFill = lerpColor("#ffffff", fill, 0.22);
-    const qQ1 = qOf(b.q1);
-    const qQ3 = qOf(b.q3);
-    const qMed = qOf(b.median);
-    if (gi === 0) columnTop.push(H ? p - gBoxW / 2 : Math.min(qOf(b.max), ...b.outliers.map(qOf)));
-    const boxLo = Math.min(qQ1, qQ3);
-    nodes.push(
-      // Whiskers with caps.
-      segLine(p, qOf(b.max), p, qQ3, 0.75, style.axis, `whisker-hi-${c}${gSuffix}`),
-      segLine(p, qQ1, p, qOf(b.min), 0.75, style.axis, `whisker-lo-${c}${gSuffix}`),
-      segLine(p - gCapW / 2, qOf(b.max), p + gCapW / 2, qOf(b.max), 0.75, style.axis, `cap-hi-${c}${gSuffix}`),
-      segLine(p - gCapW / 2, qOf(b.min), p + gCapW / 2, qOf(b.min), 0.75, style.axis, `cap-lo-${c}${gSuffix}`),
-    );
-    // Q1–Q3 box (notched at the median CI when raw samples give us n).
-    const notch = !!opts.notch && !opts.meanSd && !!b.samples && b.samples.length >= 3;
-    let medHalf = gBoxW / 2;
-    if (notch) {
-      const ci = (1.57 * (b.q3 - b.q1)) / Math.sqrt(b.samples!.length);
-      const qMedHi = qOf(Math.min(b.q3, b.median + ci));
-      const qMedLo = qOf(Math.max(b.q1, b.median - ci));
-      const nx = gBoxW * 0.25;
-      medHalf = nx;
-      nodes.push({
-        kind: "polygon",
-        points: [
-          pt(p - gBoxW / 2, qQ3), pt(p + gBoxW / 2, qQ3),
-          pt(p + gBoxW / 2, qMedHi), pt(p + nx, qMed), pt(p + gBoxW / 2, qMedLo),
-          pt(p + gBoxW / 2, qQ1), pt(p - gBoxW / 2, qQ1),
-          pt(p - gBoxW / 2, qMedLo), pt(p - nx, qMed), pt(p - gBoxW / 2, qMedHi),
-        ],
-        fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}`,
-      });
-    } else {
+  grouped.forEach((groupBoxes, gi) =>
+    groupBoxes.forEach((b, c) => {
+      // Sub-slot offset: groups sit side by side within the category slot.
+      const subW = nG > 1 ? (slotW * 0.7) / nG : boxW;
+      const p0 = nG > 1 ? centers[c] - (slotW * 0.7) / 2 + subW * (gi + 0.5) : centers[c];
+      const gBoxW = nG > 1 ? Math.max(4, subW - 3) : boxW;
+      const gCapW = gBoxW * 0.45;
+      const p = p0;
+      if (!b) {
+        if (gi === 0) columnTop.push(frame.y + frame.h);
+        return;
+      }
+      const gSuffix = nG > 1 ? `-g${gi}` : "";
+      const fill = nG > 1 ? seriesColor(style, gi) : seriesColor(style, 0, data.series.find((s) => s.color)?.color);
+      const boxFill = lerpColor("#ffffff", fill, 0.22);
+      const qQ1 = qOf(b.q1);
+      const qQ3 = qOf(b.q3);
+      const qMed = qOf(b.median);
+      if (gi === 0) columnTop.push(H ? p - gBoxW / 2 : Math.min(qOf(b.max), ...b.outliers.map(qOf)));
+      const boxLo = Math.min(qQ1, qQ3);
       nodes.push(
-        H
-          ? { kind: "rect", x: boxLo, y: p - gBoxW / 2, w: Math.abs(qQ1 - qQ3), h: gBoxW, fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` }
-          : { kind: "rect", x: p - gBoxW / 2, y: boxLo, w: gBoxW, h: Math.abs(qQ1 - qQ3), fill: boxFill, stroke: fill, strokeWidth: 1, name: `box-${c}${gSuffix}` },
+        // Whiskers with caps.
+        segLine(p, qOf(b.max), p, qQ3, 0.75, style.axis, `whisker-hi-${c}${gSuffix}`),
+        segLine(p, qQ1, p, qOf(b.min), 0.75, style.axis, `whisker-lo-${c}${gSuffix}`),
+        segLine(p - gCapW / 2, qOf(b.max), p + gCapW / 2, qOf(b.max), 0.75, style.axis, `cap-hi-${c}${gSuffix}`),
+        segLine(p - gCapW / 2, qOf(b.min), p + gCapW / 2, qOf(b.min), 0.75, style.axis, `cap-lo-${c}${gSuffix}`),
       );
-    }
-    nodes.push(segLine(p - medHalf, qMed, p + medHalf, qMed, 1.75, fill, `median-${c}${gSuffix}`));
-    if (b.mean != null) {
-      const m = pt(p, qOf(b.mean));
-      nodes.push({
-        kind: "text", x: m.x - fs * 0.6, y: m.y - fs * 0.7, w: fs * 1.2, h: fs * 1.4,
-        text: "×", fontSize: fs, bold: true, color: style.neutral,
-        align: "center", valign: "middle", name: `mean-${c}${gSuffix}`,
-      });
-    }
-    // Jitter overlay: every raw observation as a deterministically offset dot
-    // over the box. Golden-ratio spacing keeps it byte-deterministic (no RNG).
-    const jitter = !!opts.jitter && !!b.samples;
-    if (jitter) {
-      const jw = gBoxW * 0.8;
-      b.samples!.forEach((v, j) => {
-        const off = (((j + 1) * 0.6180339887) % 1 - 0.5) * jw;
-        const d = pt(p + off, qOf(v));
-        nodes.push({ kind: "ellipse", cx: d.x, cy: d.y, rx: 1.5, ry: 1.5, fill, stroke: style.background, strokeWidth: 0.5, name: `dot-${c}${gSuffix}-${j}` });
-      });
-    }
-    // Separate outlier dots — skipped when jitter already draws every point.
-    if (!jitter) {
-      b.outliers.forEach((v, i) => {
-        const o = pt(p, qOf(v));
-        nodes.push({ kind: "ellipse", cx: o.x, cy: o.y, rx: 2.2, ry: 2.2, fill, name: `outlier-${c}-${i}${gSuffix}` });
-      });
-    }
-    if (decor.segmentLabels && nG === 1) {
-      const label = formatNumber(b.median, fmt);
-      if (gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, fs * 0.9) + 4)) {
+      // Q1–Q3 box (notched at the median CI when raw samples give us n).
+      const notch = !!opts.notch && !opts.meanSd && !!b.samples && b.samples.length >= 3;
+      let medHalf = gBoxW / 2;
+      if (notch) {
+        const ci = (1.57 * (b.q3 - b.q1)) / Math.sqrt(b.samples!.length);
+        const qMedHi = qOf(Math.min(b.q3, b.median + ci));
+        const qMedLo = qOf(Math.max(b.q1, b.median - ci));
+        const nx = gBoxW * 0.25;
+        medHalf = nx;
+        nodes.push({
+          kind: "polygon",
+          points: [
+            pt(p - gBoxW / 2, qQ3),
+            pt(p + gBoxW / 2, qQ3),
+            pt(p + gBoxW / 2, qMedHi),
+            pt(p + nx, qMed),
+            pt(p + gBoxW / 2, qMedLo),
+            pt(p + gBoxW / 2, qQ1),
+            pt(p - gBoxW / 2, qQ1),
+            pt(p - gBoxW / 2, qMedLo),
+            pt(p - nx, qMed),
+            pt(p - gBoxW / 2, qMedHi),
+          ],
+          fill: boxFill,
+          stroke: fill,
+          strokeWidth: 1,
+          name: `box-${c}${gSuffix}`,
+        });
+      } else {
         nodes.push(
           H
             ? {
-                kind: "text", x: qMed - 30, y: p - gBoxW / 2 - fs * 1.35, w: 60, h: fs * 1.3,
-                text: label, fontSize: fs * 0.9, color: style.text,
-                align: "center", valign: "bottom", name: `median-label-${c}`,
+                kind: "rect",
+                x: boxLo,
+                y: p - gBoxW / 2,
+                w: Math.abs(qQ1 - qQ3),
+                h: gBoxW,
+                fill: boxFill,
+                stroke: fill,
+                strokeWidth: 1,
+                name: `box-${c}${gSuffix}`,
               }
             : {
-                kind: "text", x: p - gBoxW / 2, y: qMed - fs * 1.5, w: gBoxW, h: fs * 1.3,
-                text: label, fontSize: fs * 0.9, color: style.text,
-                align: "center", valign: "bottom", name: `median-label-${c}`,
+                kind: "rect",
+                x: p - gBoxW / 2,
+                y: boxLo,
+                w: gBoxW,
+                h: Math.abs(qQ1 - qQ3),
+                fill: boxFill,
+                stroke: fill,
+                strokeWidth: 1,
+                name: `box-${c}${gSuffix}`,
               },
         );
       }
-    }
-  }));
+      nodes.push(segLine(p - medHalf, qMed, p + medHalf, qMed, 1.75, fill, `median-${c}${gSuffix}`));
+      if (b.mean != null) {
+        const m = pt(p, qOf(b.mean));
+        nodes.push({
+          kind: "text",
+          x: m.x - fs * 0.6,
+          y: m.y - fs * 0.7,
+          w: fs * 1.2,
+          h: fs * 1.4,
+          text: "×",
+          fontSize: fs,
+          bold: true,
+          color: style.neutral,
+          align: "center",
+          valign: "middle",
+          name: `mean-${c}${gSuffix}`,
+        });
+      }
+      // Jitter overlay: every raw observation as a deterministically offset dot
+      // over the box. Golden-ratio spacing keeps it byte-deterministic (no RNG).
+      const jitter = !!opts.jitter && !!b.samples;
+      if (jitter) {
+        const jw = gBoxW * 0.8;
+        b.samples!.forEach((v, j) => {
+          const off = ((((j + 1) * 0.6180339887) % 1) - 0.5) * jw;
+          const d = pt(p + off, qOf(v));
+          nodes.push({
+            kind: "ellipse",
+            cx: d.x,
+            cy: d.y,
+            rx: 1.5,
+            ry: 1.5,
+            fill,
+            stroke: style.background,
+            strokeWidth: 0.5,
+            name: `dot-${c}${gSuffix}-${j}`,
+          });
+        });
+      }
+      // Separate outlier dots — skipped when jitter already draws every point.
+      if (!jitter) {
+        b.outliers.forEach((v, i) => {
+          const o = pt(p, qOf(v));
+          nodes.push({
+            kind: "ellipse",
+            cx: o.x,
+            cy: o.y,
+            rx: 2.2,
+            ry: 2.2,
+            fill,
+            name: `outlier-${c}-${i}${gSuffix}`,
+          });
+        });
+      }
+      if (decor.segmentLabels && nG === 1) {
+        const label = formatNumber(b.median, fmt);
+        if (gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, fs * 0.9) + 4)) {
+          nodes.push(
+            H
+              ? {
+                  kind: "text",
+                  x: qMed - 30,
+                  y: p - gBoxW / 2 - fs * 1.35,
+                  w: 60,
+                  h: fs * 1.3,
+                  text: label,
+                  fontSize: fs * 0.9,
+                  color: style.text,
+                  align: "center",
+                  valign: "bottom",
+                  name: `median-label-${c}`,
+                }
+              : {
+                  kind: "text",
+                  x: p - gBoxW / 2,
+                  y: qMed - fs * 1.5,
+                  w: gBoxW,
+                  h: fs * 1.3,
+                  text: label,
+                  fontSize: fs * 0.9,
+                  color: style.text,
+                  align: "center",
+                  valign: "bottom",
+                  name: `median-label-${c}`,
+                },
+          );
+        }
+      }
+    }),
+  );
 
   if (H) {
-    nodes.push({ kind: "line", x1: frame.x, y1: frame.y, x2: frame.x, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+    nodes.push({
+      kind: "line",
+      x1: frame.x,
+      y1: frame.y,
+      x2: frame.x,
+      y2: frame.y + frame.h,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "baseline",
+    });
   } else {
     nodes.push(baselineNode(frame, frame.y + frame.h, style));
   }

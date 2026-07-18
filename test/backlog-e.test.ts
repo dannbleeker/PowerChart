@@ -160,7 +160,8 @@ describe("KPI tile element", () => {
     expect(none.nodes.some((n) => n.name === "kpi-delta")).toBe(false);
     const long = buildKpiTile({ value: "€1,234,567.89 total" });
     const short = buildKpiTile({ value: "€4m" });
-    const fsOf = (s: ReturnType<typeof buildKpiTile>) => (s.nodes.find((n) => n.name === "kpi-value") as TextNode).fontSize;
+    const fsOf = (s: ReturnType<typeof buildKpiTile>) =>
+      (s.nodes.find((n) => n.name === "kpi-value") as TextNode).fontSize;
     expect(fsOf(long)).toBeLessThan(fsOf(short));
   });
 });

@@ -9,8 +9,7 @@ import type { ChartConfig } from "../src/core/types";
 import type { RectNode, TextNode } from "../src/core/scene";
 
 const rects = (nodes: { kind: string }[]) => nodes.filter((n): n is RectNode => n.kind === "rect");
-const byName = (nodes: { name?: string }[], prefix: string) =>
-  nodes.filter((n) => n.name?.startsWith(prefix));
+const byName = (nodes: { name?: string }[], prefix: string) => nodes.filter((n) => n.name?.startsWith(prefix));
 
 function cfg(partial: Partial<ChartConfig>): ChartConfig {
   return { kind: "stacked", width: 480, height: 300, data: { categories: [], series: [] }, ...partial };

@@ -11,7 +11,14 @@ const hexToRgb = (hex: string): [number, number, number] => {
 };
 
 const rgbToHex = (rgb: number[]): string =>
-  "#" + rgb.map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0")).join("");
+  "#" +
+  rgb
+    .map((c) =>
+      Math.max(0, Math.min(255, Math.round(c)))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("");
 
 const toLin = (c: number) => (c / 255 <= 0.04045 ? c / 255 / 12.92 : Math.pow((c / 255 + 0.055) / 1.055, 2.4));
 const toSrgb = (c: number) => 255 * (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
@@ -20,7 +27,9 @@ const toSrgb = (c: number) => 255 * (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.p
 export function lerpColor(c0: string, c1: string, t: number): string {
   const a = hexToRgb(c0);
   const b = hexToRgb(c1);
-  return rgbToHex([0, 1, 2].map((i) => toSrgb(toLin(a[i]) + (toLin(b[i]) - toLin(a[i])) * Math.max(0, Math.min(1, t)))));
+  return rgbToHex(
+    [0, 1, 2].map((i) => toSrgb(toLin(a[i]) + (toLin(b[i]) - toLin(a[i])) * Math.max(0, Math.min(1, t)))),
+  );
 }
 
 /** Fill for cells/tiles with no data. */

@@ -24,15 +24,11 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const stacked = leftSeries.length > 1 || rightSeries.length > 1;
   const stackSum = (series: typeof withIdx, c: number) =>
     series.reduce((a, { s }) => a + Math.abs(s.values[c] ?? 0), 0);
-  const signedSum = (series: typeof withIdx, c: number) =>
-    series.reduce((a, { s }) => a + (s.values[c] ?? 0), 0);
+  const signedSum = (series: typeof withIdx, c: number) => series.reduce((a, { s }) => a + (s.values[c] ?? 0), 0);
 
   const titleH = titleHeight(cfg, style);
   const headerH = fs * 1.6;
-  const gutterW = Math.min(
-    cfg.width * 0.3,
-    Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12,
-  );
+  const gutterW = Math.min(cfg.width * 0.3, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12);
   const valueW = fs * 3.4; // room for outside value labels on each flank
   // A value axis reserves a strip at the bottom for tick labels on both flanks.
   const axisH = decor.valueAxis ? fs * 1.5 : 0;
@@ -61,25 +57,54 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   if (titleN) nodes.push(titleN);
   if (!stacked) {
     // Series headers above each half (classic two-series butterfly).
-    ([[leftSeries[0], plot.x, leftEdge], [rightSeries[0], rightEdge, plot.x + plot.w]] as const).forEach(
-      ([entry, x0, x1], i) => {
-        nodes.push({
-          kind: "text", x: x0, y: titleH, w: x1 - x0, h: headerH,
-          text: entry?.s.name ?? "", fontSize: fs, bold: true,
-          color: seriesColor(style, entry?.si ?? i, entry?.s.color), align: "center", valign: "middle", name: `header-${i}`,
-        });
-      },
-    );
+    (
+      [
+        [leftSeries[0], plot.x, leftEdge],
+        [rightSeries[0], rightEdge, plot.x + plot.w],
+      ] as const
+    ).forEach(([entry, x0, x1], i) => {
+      nodes.push({
+        kind: "text",
+        x: x0,
+        y: titleH,
+        w: x1 - x0,
+        h: headerH,
+        text: entry?.s.name ?? "",
+        fontSize: fs,
+        bold: true,
+        color: seriesColor(style, entry?.si ?? i, entry?.s.color),
+        align: "center",
+        valign: "middle",
+        name: `header-${i}`,
+      });
+    });
   } else {
     // Stacked flanks: one legend of all series across the top.
     let lx = plot.x;
     for (const { s, si } of [...leftSeries, ...rightSeries]) {
       const chip = fs * 0.7;
       nodes.push(
-        { kind: "rect", x: lx, y: titleH + fs * 0.35, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
         {
-          kind: "text", x: lx + chip + 3, y: titleH, w: textWidth(s.name, fs) + 6, h: headerH,
-          text: s.name, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${si}`,
+          kind: "rect",
+          x: lx,
+          y: titleH + fs * 0.35,
+          w: chip,
+          h: chip,
+          fill: seriesColor(style, si, s.color),
+          name: `legend-chip-${si}`,
+        },
+        {
+          kind: "text",
+          x: lx + chip + 3,
+          y: titleH,
+          w: textWidth(s.name, fs) + 6,
+          h: headerH,
+          text: s.name,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `legend-${si}`,
         },
       );
       lx += chip + 3 + textWidth(s.name, fs) + 12;
@@ -92,7 +117,16 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       if (tk <= 0) continue;
       const q = qOf(tk);
       for (const x of [leftEdge - q, rightEdge + q]) {
-        nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 1, name: `gridline-${tk}` });
+        nodes.push({
+          kind: "line",
+          x1: x,
+          y1: plot.y,
+          x2: x,
+          y2: plot.y + plot.h,
+          stroke: style.gridline,
+          strokeWidth: 1,
+          name: `gridline-${tk}`,
+        });
       }
     }
   }
@@ -103,9 +137,17 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
     columnTop.push(cy - barH / 2);
     // Category label in the center gutter.
     nodes.push({
-      kind: "text", x: leftEdge, y: cy - fs * 0.75, w: gutterW, h: fs * 1.5,
-      text: data.categories[c], fontSize: fs, color: style.text,
-      align: "center", valign: "middle", name: `category-${c}`,
+      kind: "text",
+      x: leftEdge,
+      y: cy - fs * 0.75,
+      w: gutterW,
+      h: fs * 1.5,
+      text: data.categories[c],
+      fontSize: fs,
+      color: style.text,
+      align: "center",
+      valign: "middle",
+      name: `category-${c}`,
     });
     const drawSide = (series: typeof withIdx, dir: -1 | 1, edge: number) => {
       let offset = 0;
@@ -147,7 +189,16 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
 
   // Center axis lines flanking the gutter.
   for (const x of [leftEdge, rightEdge]) {
-    nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+    nodes.push({
+      kind: "line",
+      x1: x,
+      y1: plot.y,
+      x2: x,
+      y2: plot.y + plot.h,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "baseline",
+    });
   }
 
   // Value tick labels on both flanks, in the reserved bottom strip.
@@ -160,9 +211,17 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       const xs = tk === 0 ? [leftEdge, rightEdge] : [leftEdge - q, rightEdge + q];
       xs.forEach((x, side) => {
         nodes.push({
-          kind: "text", x: x - valueW / 2, y: ty, w: valueW, h: axisH,
-          text: label, fontSize: fs * 0.85, color: style.mutedText,
-          align: "center", valign: "middle", name: `tick-${tk}-${side === 0 ? "l" : "r"}`,
+          kind: "text",
+          x: x - valueW / 2,
+          y: ty,
+          w: valueW,
+          h: axisH,
+          text: label,
+          fontSize: fs * 0.85,
+          color: style.mutedText,
+          align: "center",
+          valign: "middle",
+          name: `tick-${tk}-${side === 0 ? "l" : "r"}`,
         });
       });
     }

@@ -72,9 +72,17 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     const ecy = cy + off.y;
     const a0 = ((angle % 360) + 360) % 360;
     nodes.push({
-      kind: "wedge", cx: ecx, cy: ecy, r: rr, innerR: 0,
-      startAngle: a0, endAngle: a0 + span,
-      fill, stroke: style.background, strokeWidth: 1, name: other ? "slice-other" : `slice-${c}`,
+      kind: "wedge",
+      cx: ecx,
+      cy: ecy,
+      r: rr,
+      innerR: 0,
+      startAngle: a0,
+      endAngle: a0 + span,
+      fill,
+      stroke: style.background,
+      strokeWidth: 1,
+      name: other ? "slice-other" : `slice-${c}`,
     });
 
     if (decor.segmentLabels) {
@@ -94,7 +102,16 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         // Leader line from the arc edge toward the label.
         const a = polar(ecx, ecy, rr + 1, mid);
         const b = polar(ecx, ecy, rr + fs * 0.65, mid);
-        nodes.push({ kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: style.mutedText, strokeWidth: 0.75, name: other ? "leader-other" : `leader-${c}` });
+        nodes.push({
+          kind: "line",
+          x1: a.x,
+          y1: a.y,
+          x2: b.x,
+          y2: b.y,
+          stroke: style.mutedText,
+          strokeWidth: 0.75,
+          name: other ? "leader-other" : `leader-${c}`,
+        });
       }
       nodes.push({
         kind: "text",
@@ -125,14 +142,44 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     const eTop = polar(cx, cy, r, otherStart);
     const eBot = polar(cx, cy, r, otherStart + (otherSum / total) * 360);
     nodes.push(
-      { kind: "line", x1: eTop.x, y1: eTop.y, x2: barX, y2: barY, stroke: style.mutedText, strokeWidth: 0.75, dash: [3, 3], name: "breakout-conn-0" },
-      { kind: "line", x1: eBot.x, y1: eBot.y, x2: barX, y2: barY + barH, stroke: style.mutedText, strokeWidth: 0.75, dash: [3, 3], name: "breakout-conn-1" },
+      {
+        kind: "line",
+        x1: eTop.x,
+        y1: eTop.y,
+        x2: barX,
+        y2: barY,
+        stroke: style.mutedText,
+        strokeWidth: 0.75,
+        dash: [3, 3],
+        name: "breakout-conn-0",
+      },
+      {
+        kind: "line",
+        x1: eBot.x,
+        y1: eBot.y,
+        x2: barX,
+        y2: barY + barH,
+        stroke: style.mutedText,
+        strokeWidth: 0.75,
+        dash: [3, 3],
+        name: "breakout-conn-1",
+      },
     );
     let y = barY;
     breakout.forEach((c, j) => {
       const h = (values[c] / otherSum) * barH;
       const fill = data.series[0]?.colors?.[c] ?? style.palette[(mainsCount + j) % style.palette.length];
-      nodes.push({ kind: "rect", x: barX, y, w: barW, h, fill, stroke: style.background, strokeWidth: 1, name: `breakout-seg-${c}` });
+      nodes.push({
+        kind: "rect",
+        x: barX,
+        y,
+        w: barW,
+        h,
+        fill,
+        stroke: style.background,
+        strokeWidth: 1,
+        name: `breakout-seg-${c}`,
+      });
       if (decor.segmentLabels) {
         const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
           value: values[c],
@@ -142,9 +189,17 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
           fmt,
         });
         nodes.push({
-          kind: "text", x: barX + barW + 5, y: y + h / 2 - fs * 0.75,
-          w: cfg.width - barX - barW - 7, h: fs * 1.5, text: label, fontSize: fs,
-          color: style.text, align: "left", valign: "middle", name: `breakout-label-${c}`,
+          kind: "text",
+          x: barX + barW + 5,
+          y: y + h / 2 - fs * 0.75,
+          w: cfg.width - barX - barW - 7,
+          h: fs * 1.5,
+          text: label,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `breakout-label-${c}`,
         });
       }
       y += h;
@@ -154,9 +209,18 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   if (doughnut) {
     nodes.push({ kind: "ellipse", cx, cy, rx: r * 0.55, ry: r * 0.55, fill: style.background, name: "hole" });
     nodes.push({
-      kind: "text", x: cx - r * 0.5, y: cy - fs * 0.9, w: r, h: fs * 1.8,
-      text: formatNumber(total, fmt), fontSize: fs * 1.3, bold: true, color: style.text,
-      align: "center", valign: "middle", name: "hole-label",
+      kind: "text",
+      x: cx - r * 0.5,
+      y: cy - fs * 0.9,
+      w: r,
+      h: fs * 1.8,
+      text: formatNumber(total, fmt),
+      fontSize: fs * 1.3,
+      bold: true,
+      color: style.text,
+      align: "center",
+      valign: "middle",
+      name: "hole-label",
     });
   }
 
@@ -205,30 +269,73 @@ function layoutGauge(
     if (span <= 0) return;
     const fill = data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length];
     const a0 = ((angle % 360) + 360) % 360;
-    nodes.push({ kind: "wedge", cx, cy, r, innerR, startAngle: a0, endAngle: a0 + span, fill, stroke: style.background, strokeWidth: 1, name: `slice-${c}` });
+    nodes.push({
+      kind: "wedge",
+      cx,
+      cy,
+      r,
+      innerR,
+      startAngle: a0,
+      endAngle: a0 + span,
+      fill,
+      stroke: style.background,
+      strokeWidth: 1,
+      name: `slice-${c}`,
+    });
     if (decor.segmentLabels) {
       const mid = angle + span / 2;
       const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
-        value: v, fraction: v / total, series: data.series[0]?.name ?? "", category: data.categories[c], fmt,
+        value: v,
+        fraction: v / total,
+        series: data.series[0]?.name ?? "",
+        category: data.categories[c],
+        fmt,
       });
       const p = polar(cx, cy, r + fs * 0.8, mid);
       const w = textWidth(label, fs) + 4;
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
       const a = polar(cx, cy, r + 1, mid);
       const b = polar(cx, cy, r + fs * 0.65, mid);
-      nodes.push({ kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: style.mutedText, strokeWidth: 0.75, name: `leader-${c}` });
       nodes.push({
-        kind: "text", x: rightHalf ? p.x : p.x - w, y: p.y - fs * 0.75, w, h: fs * 1.5,
-        text: label, fontSize: fs, color: style.text, align: rightHalf ? "left" : "right", valign: "middle", name: `label-${c}`,
+        kind: "line",
+        x1: a.x,
+        y1: a.y,
+        x2: b.x,
+        y2: b.y,
+        stroke: style.mutedText,
+        strokeWidth: 0.75,
+        name: `leader-${c}`,
+      });
+      nodes.push({
+        kind: "text",
+        x: rightHalf ? p.x : p.x - w,
+        y: p.y - fs * 0.75,
+        w,
+        h: fs * 1.5,
+        text: label,
+        fontSize: fs,
+        color: style.text,
+        align: rightHalf ? "left" : "right",
+        valign: "middle",
+        name: `label-${c}`,
       });
     }
     angle += span;
   });
   // Big total in the open centre of the arc.
   nodes.push({
-    kind: "text", x: cx - r, y: cy - fs * 1.7, w: r * 2, h: fs * 2,
-    text: formatNumber(total, fmt), fontSize: fs * 1.7, bold: true, color: style.text,
-    align: "center", valign: "middle", name: "gauge-total",
+    kind: "text",
+    x: cx - r,
+    y: cy - fs * 1.7,
+    w: r * 2,
+    h: fs * 2,
+    text: formatNumber(total, fmt),
+    fontSize: fs * 1.7,
+    bold: true,
+    color: style.text,
+    align: "center",
+    valign: "middle",
+    name: "gauge-total",
   });
 
   return {

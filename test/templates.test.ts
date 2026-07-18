@@ -10,14 +10,11 @@ describe("built-in templates", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it.each(BUILTIN_TEMPLATES.map((t) => [t.name, t] as const))(
-    "%s builds a non-empty, renderable chart",
-    (_name, t) => {
-      const scene = buildChart({ ...DEFAULT_SIZE, ...t.config });
-      expect(scene.nodes.length).toBeGreaterThan(0);
-      const svg = sceneToSvg(scene);
-      expect(svg).toContain("<svg");
-      expect(svg).not.toContain("NaN");
-    },
-  );
+  it.each(BUILTIN_TEMPLATES.map((t) => [t.name, t] as const))("%s builds a non-empty, renderable chart", (_name, t) => {
+    const scene = buildChart({ ...DEFAULT_SIZE, ...t.config });
+    expect(scene.nodes.length).toBeGreaterThan(0);
+    const svg = sceneToSvg(scene);
+    expect(svg).toContain("<svg");
+    expect(svg).not.toContain("NaN");
+  });
 });

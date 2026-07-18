@@ -21,7 +21,8 @@ import type { ChartConfig, MarkerSymbol } from "../src/core/types";
 import type { DemoReport } from "../src/render/powerpoint";
 
 /** The indices a demo run did not render as a real chart (skipped or failed). */
-const failedIndices = (r: DemoReport) => r.results.map((x, i) => (x.status !== "rendered" ? i : -1)).filter((i) => i >= 0);
+const failedIndices = (r: DemoReport) =>
+  r.results.map((x, i) => (x.status !== "rendered" ? i : -1)).filter((i) => i >= 0);
 
 /**
  * Recording doubles for the PowerPoint JS proxy-object API: every shape the
@@ -31,7 +32,11 @@ const failedIndices = (r: DemoReport) => r.results.map((x, i) => (x.status !== "
 
 let idSeq = 0;
 
-function makeShape(type: string, geo: string | undefined, box: { left: number; top: number; width: number; height: number }) {
+function makeShape(
+  type: string,
+  geo: string | undefined,
+  box: { left: number; top: number; width: number; height: number },
+) {
   const tagStore = new Map<string, string>();
   const shape = {
     type,
@@ -71,7 +76,9 @@ function makeShape(type: string, geo: string | undefined, box: { left: number; t
     lineFormat: {} as Record<string, unknown>,
     textFrame: {
       textRange: { font: {} as Record<string, unknown>, paragraphFormat: {} as Record<string, unknown> },
-    } as Record<string, unknown> & { textRange: { font: Record<string, unknown>; paragraphFormat: Record<string, unknown> } },
+    } as Record<string, unknown> & {
+      textRange: { font: Record<string, unknown>; paragraphFormat: Record<string, unknown> };
+    },
     grouped: undefined as unknown[] | undefined,
     delete() {
       shape.deleted = true;
@@ -376,7 +383,10 @@ function installHost(
     ParagraphHorizontalAlignment: { left: "left", center: "center", right: "right" },
   });
   vi.stubGlobal("Office", {
-    context: { host: "PowerPoint", requirements: { isSetSupported: (_set: string, version: string) => supported(version) } },
+    context: {
+      host: "PowerPoint",
+      requirements: { isSetSupported: (_set: string, version: string) => supported(version) },
+    },
   });
   return context;
 }
@@ -455,7 +465,17 @@ describe("scene node mapping", () => {
 
   it("maps ellipses with stroke or hidden outline", async () => {
     const slide = await insert([
-      { kind: "ellipse", cx: 50, cy: 50, rx: 20, ry: 10, fill: "#ff0000", stroke: "#000000", strokeWidth: 2, name: "dot" },
+      {
+        kind: "ellipse",
+        cx: 50,
+        cy: 50,
+        rx: 20,
+        ry: 10,
+        fill: "#ff0000",
+        stroke: "#000000",
+        strokeWidth: 2,
+        name: "dot",
+      },
       { kind: "ellipse", cx: 10, cy: 10, rx: 5, ry: 5, fill: "#00ff00" },
     ]);
     const [a, b] = slide.created.filter((s) => s.geo === "ellipse");
@@ -475,7 +495,17 @@ describe("scene node mapping", () => {
 
   it("draws axis-aligned lines with a clamped non-zero box (never a degenerate diagonal)", async () => {
     const slide = await insert([
-      { kind: "line", x1: 10, y1: 50, x2: 200, y2: 50, stroke: "#333333", strokeWidth: 1, dash: [3, 2], name: "connector" },
+      {
+        kind: "line",
+        x1: 10,
+        y1: 50,
+        x2: 200,
+        y2: 50,
+        stroke: "#333333",
+        strokeWidth: 1,
+        dash: [3, 2],
+        name: "connector",
+      },
     ]);
     const line = slide.created.find((s) => s.type === "line")!;
     // Horizontal line: width spans, height is clamped up from 0 so the web host
@@ -487,14 +517,18 @@ describe("scene node mapping", () => {
 
   it("draws diagonal lines as thin rotated rectangles (direction-correct on every host)", async () => {
     // Up-right and down-right diagonals a bounding box alone can't distinguish.
-    const down = await insert([{ kind: "line", x1: 0, y1: 0, x2: 100, y2: 100, stroke: "#a00000", strokeWidth: 2, name: "d" }]);
+    const down = await insert([
+      { kind: "line", x1: 0, y1: 0, x2: 100, y2: 100, stroke: "#a00000", strokeWidth: 2, name: "d" },
+    ]);
     const dr = down.created.find((s) => s.geo === "rectangle")!;
     expect(dr).toBeTruthy();
     expect(dr.fillColor).toBe("#a00000");
     expect(dr.rotation).toBeCloseTo(45, 0); // down-right
     expect(down.created.some((s) => s.type === "line")).toBe(false);
 
-    const up = await insert([{ kind: "line", x1: 0, y1: 100, x2: 100, y2: 0, stroke: "#00a000", strokeWidth: 2, name: "u" }]);
+    const up = await insert([
+      { kind: "line", x1: 0, y1: 100, x2: 100, y2: 0, stroke: "#00a000", strokeWidth: 2, name: "u" },
+    ]);
     const ur = up.created.find((s) => s.geo === "rectangle")!;
     expect(ur.rotation).toBeCloseTo(-45, 0); // up-right — the case a box would mirror
   });
@@ -503,7 +537,17 @@ describe("scene node mapping", () => {
     // A rotated rectangle carries its colour in its fill, which can't be
     // dashed — scatter trend lines and forecast segments came out solid.
     const down = await insert([
-      { kind: "line", x1: 0, y1: 0, x2: 100, y2: 60, stroke: "#a00000", strokeWidth: 1.25, dash: [4, 2], name: "trend" },
+      {
+        kind: "line",
+        x1: 0,
+        y1: 0,
+        x2: 100,
+        y2: 60,
+        stroke: "#a00000",
+        strokeWidth: 1.25,
+        dash: [4, 2],
+        name: "trend",
+      },
     ]);
     const dl = down.created.find((s) => s.name === "trend")!;
     expect(dl.type).toBe("line"); // not a filled rectangle
@@ -513,7 +557,17 @@ describe("scene node mapping", () => {
     // Up-right: addLine only ever draws the box's top-left→bottom-right
     // diagonal, so this direction needs the lineInverse geometry.
     const up = await insert([
-      { kind: "line", x1: 0, y1: 60, x2: 100, y2: 0, stroke: "#a00000", strokeWidth: 1.25, dash: [4, 2], name: "trend" },
+      {
+        kind: "line",
+        x1: 0,
+        y1: 60,
+        x2: 100,
+        y2: 0,
+        stroke: "#a00000",
+        strokeWidth: 1.25,
+        dash: [4, 2],
+        name: "trend",
+      },
     ]);
     const ul = up.created.find((s) => s.name === "trend")!;
     expect(ul.geo).toBe("lineInverse");
@@ -525,8 +579,16 @@ describe("scene node mapping", () => {
     const slide = await insert([
       {
         kind: "polygon",
-        points: [{ x: 0, y: 40 }, { x: 50, y: 0 }, { x: 100, y: 40 }, { x: 100, y: 40 }],
-        fill: "#eeeeee", stroke: "#3366cc", strokeWidth: 1, name: "violin-0",
+        points: [
+          { x: 0, y: 40 },
+          { x: 50, y: 0 },
+          { x: 100, y: 40 },
+          { x: 100, y: 40 },
+        ],
+        fill: "#eeeeee",
+        stroke: "#3366cc",
+        strokeWidth: 1,
+        name: "violin-0",
       },
     ]);
     const edges = slide.created.filter((s) => s.name?.startsWith("violin-0-e"));
@@ -563,7 +625,19 @@ describe("scene node mapping", () => {
 
   it("renders an annular wedge (sunburst ring / gauge) as a rotated rectangle band", async () => {
     const slide = await insert([
-      { kind: "wedge", cx: 50, cy: 50, r: 30, innerR: 15, startAngle: 0, endAngle: 90, fill: "#333333", stroke: "#ffffff", strokeWidth: 1, name: "ring" },
+      {
+        kind: "wedge",
+        cx: 50,
+        cy: 50,
+        r: 30,
+        innerR: 15,
+        startAngle: 0,
+        endAngle: 90,
+        fill: "#333333",
+        stroke: "#ffffff",
+        strokeWidth: 1,
+        name: "ring",
+      },
     ]);
     const band = slide.created.filter((s) => s.geo === "rectangle" && s.name?.includes("-f"));
     expect(band.length).toBeGreaterThan(2); // the annular band, not a triangle fan
@@ -652,7 +726,10 @@ describe("scene node mapping", () => {
     ctx.presentation.getSelectedSlides = () => {
       throw new Error("no selection");
     };
-    await insertSceneIntoSlide({ width: 10, height: 10, nodes: [{ kind: "rect", x: 0, y: 0, w: 5, h: 5, fill: "#111111" }] } as never, {});
+    await insertSceneIntoSlide(
+      { width: 10, height: 10, nodes: [{ kind: "rect", x: 0, y: 0, w: 5, h: 5, fill: "#111111" }] } as never,
+      {},
+    );
     expect(slide.created).toHaveLength(1);
   });
 });
@@ -780,9 +857,29 @@ describe("insertDemoDeck", () => {
     const slides = [s1];
     installHost(slides);
     const items = [
-      { scene: buildChart({ ...DEFAULT_SIZE, kind: "pie" as const, data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 1] }] } }), tagData: '{"kind":"pie"}' },
-      { scene: buildChart({ ...DEFAULT_SIZE, kind: "clustered" as const, data: { categories: ["A"], series: [{ name: "S", values: [5] }] } }), tagData: '{"kind":"clustered"}' },
-      { scene: { width: 100, height: 40, nodes: [{ kind: "rect" as const, x: 0, y: 0, w: 10, h: 10, fill: "#111111" }] } }, // untagged element
+      {
+        scene: buildChart({
+          ...DEFAULT_SIZE,
+          kind: "pie" as const,
+          data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 1] }] },
+        }),
+        tagData: '{"kind":"pie"}',
+      },
+      {
+        scene: buildChart({
+          ...DEFAULT_SIZE,
+          kind: "clustered" as const,
+          data: { categories: ["A"], series: [{ name: "S", values: [5] }] },
+        }),
+        tagData: '{"kind":"clustered"}',
+      },
+      {
+        scene: {
+          width: 100,
+          height: 40,
+          nodes: [{ kind: "rect" as const, x: 0, y: 0, w: 10, h: 10, fill: "#111111" }],
+        },
+      }, // untagged element
     ];
     await insertDemoDeck(items);
     // Three slides appended after the original.
@@ -861,9 +958,7 @@ describe("marker symbols in the live add-in", () => {
     expect(nodes.length).toBeGreaterThan(0);
     for (const n of nodes) {
       if (n.kind !== "symbol") continue;
-      const s = slide.created.find(
-        (c) => c.geo === "diamond" && Math.abs(c.box.left - (100 + n.cx - n.size)) < 1e-6,
-      );
+      const s = slide.created.find((c) => c.geo === "diamond" && Math.abs(c.box.left - (100 + n.cx - n.size)) < 1e-6);
       expect(s, `no shape at cx=${n.cx}`).toBeTruthy();
       expect(s!.box.top).toBeCloseTo(50 + n.cy - n.size, 9);
       expect(s!.box.width).toBeCloseTo(n.size * 2, 9);
@@ -880,7 +975,11 @@ describe("Office round-trips do not scale with the chart count", () => {
     Array.from({ length: n }, (_, i) => {
       // A real target names a shape that exists on the slide; make one per chart.
       const s = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
-      return { scene: buildChart(cfgFor(i)), target: { slideId: slide.id, shapeId: s.id, left: 10, top: 20 }, opts: { tagData: `{"i":${i}}` } };
+      return {
+        scene: buildChart(cfgFor(i)),
+        target: { slideId: slide.id, shapeId: s.id, left: 10, top: 20 },
+        opts: { tagData: `{"i":${i}}` },
+      };
     });
 
   it("re-renders N charts in ONE context, whatever N is", async () => {
@@ -1007,7 +1106,9 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(seen, `${n} slides`).toHaveLength(n);
       expect(seen.at(-1)).toBe(`${n}/${n}`);
       // Monotonic, never over-counting.
-      expect(seen.map((x) => Number(x.split("/")[0]))).toEqual([...seen.map((x) => Number(x.split("/")[0]))].sort((a, b) => a - b));
+      expect(seen.map((x) => Number(x.split("/")[0]))).toEqual(
+        [...seen.map((x) => Number(x.split("/")[0]))].sort((a, b) => a - b),
+      );
     }
   });
 
@@ -1015,7 +1116,9 @@ describe("Office round-trips do not scale with the chart count", () => {
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const n = 35;
-    const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+    const report = await insertDemoDeck(
+      Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
+    );
     expect(failedIndices(report)).toEqual([]);
     expect(report.slidesAdded).toBe(n);
     // The fake appends a slide per add(); the original + n new ones.
@@ -1096,7 +1199,9 @@ describe("Office round-trips do not scale with the chart count", () => {
     // Fail a single sync partway in (item 1's render, past item 0's layout+add+render).
     failSyncOn = 9;
     try {
-      const report = await insertDemoDeck(Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+      const report = await insertDemoDeck(
+        Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
+      );
       // Nothing ends failed — the one stall was recovered on retry.
       expect(failedIndices(report)).toEqual([]);
       // Exactly the stalled item is flagged retried.
@@ -1127,7 +1232,18 @@ describe("Office round-trips do not scale with the chart count", () => {
     // its chart NOT drawn, and a stamp makes the placeholder unmistakable.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    const dense = { width: 100, height: 100, nodes: Array.from({ length: 120 }, (_, k) => ({ kind: "rect" as const, x: k, y: 0, w: 1, h: 1, fill: "#111111" })) };
+    const dense = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: 120 }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 1,
+        h: 1,
+        fill: "#111111",
+      })),
+    };
     const light = () => buildChart(cfgFor(0)); // a handful of shapes, well under budget
     const report = await insertDemoDeck([{ scene: light() }, { scene: dense }, { scene: light() }]);
     // Only the dense one is reported (as "skipped"); the deck still has all three.
@@ -1159,7 +1275,9 @@ describe("Office round-trips do not scale with the chart count", () => {
     installHost(deck);
     swallowAdds = 2; // dropped on the first item's add AND its retry → gone for good
     try {
-      const report = await insertDemoDeck(Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })));
+      const report = await insertDemoDeck(
+        Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
+      );
       // 4 items asked for, but the deck only grew by 3 — the lost-slide signal.
       expect(report.slidesAdded).toBe(3);
       expect(report.results).toHaveLength(4); // every item is still accounted for
@@ -1186,7 +1304,14 @@ describe("Office round-trips do not scale with the chart count", () => {
     const bigScene = {
       width: 100,
       height: 100,
-      nodes: Array.from({ length: NODES }, (_, k) => ({ kind: "rect" as const, x: k, y: 0, w: 4, h: 4, fill: "#111111" })),
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
     };
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
@@ -1215,7 +1340,10 @@ describe("a stalled host is legible, and does not hang the pane", () => {
     // Real progress: "10 of 40 shapes", ending at the total.
     const commits = seen.filter((s) => s.startsWith("commit:"));
     expect(commits[0]).toMatch(/^commit:\d+ of \d+ shapes$/);
-    const [done, total] = commits.at(-1)!.match(/(\d+) of (\d+)/)!.slice(1);
+    const [done, total] = commits
+      .at(-1)!
+      .match(/(\d+) of (\d+)/)!
+      .slice(1);
     expect(done).toBe(total);
   });
 
@@ -1233,7 +1361,10 @@ describe("a stalled host is legible, and does not hang the pane", () => {
       vi.stubGlobal("PowerPoint", {
         ...(globalThis as unknown as { PowerPoint: Record<string, unknown> }).PowerPoint,
         run: async (cb: (ctx: unknown) => Promise<unknown>) =>
-          cb({ presentation: { slides: { getItemAt: () => slide }, getSelectedSlides: () => ({ getItemAt: () => slide }) }, sync: ctxSync }),
+          cb({
+            presentation: { slides: { getItemAt: () => slide }, getSelectedSlides: () => ({ getItemAt: () => slide }) },
+            sync: ctxSync,
+          }),
       });
       const seen: string[] = [];
       const p = insertSceneIntoSlide(buildChart(config), {}, (ph) => seen.push(ph));
@@ -1276,7 +1407,11 @@ describe("a host that answers late still gets heard", () => {
       expect(heard, "nothing heard before the host answers").toHaveLength(0);
 
       // Now the host finally answers — with a real RichApi-shaped error.
-      rejectSync({ message: "An internal error has occurred.", code: "GeneralException", debugInfo: { errorLocation: "Shape.name" } });
+      rejectSync({
+        message: "An internal error has occurred.",
+        code: "GeneralException",
+        debugInfo: { errorLocation: "Shape.name" },
+      });
       await vi.advanceTimersByTimeAsync(1);
       expect(heard).toHaveLength(1);
       // The generic message alone is useless; code + debugInfo name the bug.
@@ -1328,7 +1463,10 @@ describe("added slides use the blank layout", () => {
     // The master here is Danish ("Tom"), which is the point: matching the name
     // "Blank" would silently do nothing for most of the world.
     installHost([makeSlide("s1")]);
-    await insertAgendaSlides([buildAgendaScene(["Intro", "Body"], { highlight: 0 }), buildAgendaScene(["Intro", "Body"], { highlight: 1 })]);
+    await insertAgendaSlides([
+      buildAgendaScene(["Intro", "Body"], { highlight: 0 }),
+      buildAgendaScene(["Intro", "Body"], { highlight: 1 }),
+    ]);
     expect(addedWithLayout).toEqual(["layout-blank", "layout-blank"]);
   });
 
@@ -1442,12 +1580,18 @@ describe("EVERY insert path batches its shapes", () => {
     expect(scene().nodes.length).toBeGreaterThan(10); // must span batches
 
     const s1 = makeSlide("s1");
-    expect(await maxPerSync(() => insertSceneIntoSlide(scene(), { tagData: "{}" }), [s1]), "insert").toBeLessThanOrEqual(10);
+    expect(
+      await maxPerSync(() => insertSceneIntoSlide(scene(), { tagData: "{}" }), [s1]),
+      "insert",
+    ).toBeLessThanOrEqual(10);
 
     const s2 = makeSlide("s2");
     const old = s2.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
     expect(
-      await maxPerSync(() => updateChartInSlide(scene(), { slideId: "s2", shapeId: old.id, left: 0, top: 0 }, {}), [s2]),
+      await maxPerSync(
+        () => updateChartInSlide(scene(), { slideId: "s2", shapeId: old.id, left: 0, top: 0 }, {}),
+        [s2],
+      ),
       "update",
     ).toBeLessThanOrEqual(11); // +1: the pre-existing shape this test planted
 
@@ -1456,7 +1600,17 @@ describe("EVERY insert path batches its shapes", () => {
 
     const s4 = makeSlide("s4");
     expect(
-      await maxPerSync(() => insertDemoDeck([{ scene: scene() }, { scene: scene() }, { scene: scene() }, { scene: scene() }, { scene: scene() }]), [s4]),
+      await maxPerSync(
+        () =>
+          insertDemoDeck([
+            { scene: scene() },
+            { scene: scene() },
+            { scene: scene() },
+            { scene: scene() },
+            { scene: scene() },
+          ]),
+        [s4],
+      ),
       "demo deck",
     ).toBeLessThanOrEqual(10);
   });
@@ -1476,8 +1630,16 @@ describe("a target whose slide is gone is nothing to do, not a crash", () => {
     const s = live.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
     await expect(
       updateChartsInSlides([
-        { scene: buildChart(config), target: { slideId: "s-deleted", shapeId: "gone", left: 0, top: 0 }, opts: { tagData: "{}" } },
-        { scene: buildChart(config), target: { slideId: "s-live", shapeId: s.id, left: 10, top: 20 }, opts: { tagData: '{"ok":1}' } },
+        {
+          scene: buildChart(config),
+          target: { slideId: "s-deleted", shapeId: "gone", left: 0, top: 0 },
+          opts: { tagData: "{}" },
+        },
+        {
+          scene: buildChart(config),
+          target: { slideId: "s-live", shapeId: s.id, left: 10, top: 20 },
+          opts: { tagData: '{"ok":1}' },
+        },
       ]),
     ).resolves.toBeUndefined();
     // The live chart still got drawn and tagged — one dead target must not take
@@ -1492,7 +1654,9 @@ describe("a target whose slide is gone is nothing to do, not a crash", () => {
     installHost([slide]);
     const before = slide.created.length;
     await expect(
-      updateChartsInSlides([{ scene: buildChart(config), target: { slideId: "nope", shapeId: "nope", left: 0, top: 0 }, opts: {} }]),
+      updateChartsInSlides([
+        { scene: buildChart(config), target: { slideId: "nope", shapeId: "nope", left: 0, top: 0 }, opts: {} },
+      ]),
     ).resolves.toBeUndefined();
     expect(slide.created.length).toBe(before);
   });

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -15,17 +15,23 @@
 
     <section class="section">
       <p class="hint">
-        Select a range (first row = categories, first column = series names),
-        pick a chart type, and copy the generated config. Paste it into
-        PowerChart's <b>Automation</b> box in PowerPoint — re-run after the
-        data changes to refresh the chart. This is the sandbox-safe stand-in
-        for think-cell's live Excel links.
+        Select a range (first row = categories, first column = series names), pick a chart type, and copy the generated
+        config. Paste it into PowerChart's <b>Automation</b> box in PowerPoint — re-run after the data changes to
+        refresh the chart. This is the sandbox-safe stand-in for think-cell's live Excel links.
       </p>
-      <label class="field">Chart type
+      <label class="field"
+        >Chart type
         <select id="kind">
-          <option>stacked</option><option>clustered</option><option>stacked100</option>
-          <option>waterfall</option><option>mekko</option><option>line</option>
-          <option>area</option><option>combo</option><option>pie</option><option>gantt</option>
+          <option>stacked</option>
+          <option>clustered</option>
+          <option>stacked100</option>
+          <option>waterfall</option>
+          <option>mekko</option>
+          <option>line</option>
+          <option>area</option>
+          <option>combo</option>
+          <option>pie</option>
+          <option>gantt</option>
         </select>
       </label>
       <label class="field">Title <input type="text" id="title" placeholder="optional" /></label>

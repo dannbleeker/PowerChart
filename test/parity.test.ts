@@ -40,7 +40,7 @@ describe("clustered-stacked (grouped stacks)", () => {
 
   it("scales to the tallest single stack, not the grand total", () => {
     // Stack 0 totals 30, stack 1 totals 25 → tallest stack (30) sets the top.
-    const s12h = (anchors.baselineY - anchors.columnTop[0]);
+    const s12h = anchors.baselineY - anchors.columnTop[0];
     expect(s12h).toBeGreaterThan(0);
   });
 
@@ -97,8 +97,32 @@ describe("rotated waterfall & mekko", () => {
 describe("global label collisions", () => {
   it("nudges overlapping outside labels apart", () => {
     const nodes: SceneNode[] = [
-      { kind: "text", x: 0, y: 0, w: 60, h: 12, text: "88888", fontSize: 10, color: "#000", align: "center", valign: "middle", name: "total-0" },
-      { kind: "text", x: 0, y: 0, w: 60, h: 12, text: "99999", fontSize: 10, color: "#000", align: "center", valign: "middle", name: "cagr-label" },
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: 60,
+        h: 12,
+        text: "88888",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+        name: "total-0",
+      },
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: 60,
+        h: 12,
+        text: "99999",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+        name: "cagr-label",
+      },
     ];
     resolveLabelCollisions(nodes);
     const [a, b] = nodes as TextNode[];
@@ -181,7 +205,9 @@ describe("datasheet formulas", () => {
 
 describe("smooth pie fan density", () => {
   it("keeps snapshot-level SVG unchanged (fans are a PPT-only concern)", () => {
-    const scene = buildChart(cfg({ kind: "pie", data: { categories: ["A", "B"], series: [{ name: "S", values: [60, 40] }] } }));
+    const scene = buildChart(
+      cfg({ kind: "pie", data: { categories: ["A", "B"], series: [{ name: "S", values: [60, 40] }] } }),
+    );
     expect(scene.nodes.filter((n) => n.kind === "wedge")).toHaveLength(2);
   });
 });

@@ -30,14 +30,19 @@ describe("gantt progress and baselines", () => {
     expect(progress.h).toBeCloseTo(bar.h, 5);
     // 100% fills fully; missing % draws nothing.
     expect((s.nodes.find((n) => n.name === "progress-0") as RectNode).w).toBeCloseTo(
-      (s.nodes.find((n) => n.name === "bar-0") as RectNode).w, 5);
+      (s.nodes.find((n) => n.name === "bar-0") as RectNode).w,
+      5,
+    );
     expect(s.nodes.some((n) => n.name === "progress-2")).toBe(false);
   });
 
   it("accepts 0–1 fractions too, clamped", () => {
     const frac = buildChart({
       ...cfg,
-      data: { ...cfg.data, series: [cfg.data.series[0], cfg.data.series[1], { name: "% Complete", values: [0.5, 150, null] }] },
+      data: {
+        ...cfg.data,
+        series: [cfg.data.series[0], cfg.data.series[1], { name: "% Complete", values: [0.5, 150, null] }],
+      },
     });
     const bar0 = frac.nodes.find((n) => n.name === "bar-0") as RectNode;
     expect((frac.nodes.find((n) => n.name === "progress-0") as RectNode).w / bar0.w).toBeCloseTo(0.5, 5);
@@ -103,8 +108,11 @@ describe("grouped boxplots", () => {
       data: {
         categories: ["A"],
         series: [
-          { name: "Min", values: [2] }, { name: "Q1", values: [3] }, { name: "Median", values: [4] },
-          { name: "Q3", values: [6] }, { name: "Max", values: [8] },
+          { name: "Min", values: [2] },
+          { name: "Q1", values: [3] },
+          { name: "Median", values: [4] },
+          { name: "Q3", values: [6] },
+          { name: "Max", values: [8] },
         ],
       },
     });

@@ -58,8 +58,21 @@ describe("skill pptx renderer — annular sectors", () => {
       execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
     }
     const cfgs = [
-      { kind: "sunburst", data: { categories: ["A", "B"], series: [{ name: "L1", values: [60, 40] }, { name: "L2", values: [30, 30] }] } },
-      { kind: "doughnut", pie: { semi: true }, data: { categories: ["X", "Y", "Z"], series: [{ name: "S", values: [50, 30, 20] }] } },
+      {
+        kind: "sunburst",
+        data: {
+          categories: ["A", "B"],
+          series: [
+            { name: "L1", values: [60, 40] },
+            { name: "L2", values: [30, 30] },
+          ],
+        },
+      },
+      {
+        kind: "doughnut",
+        pie: { semi: true },
+        data: { categories: ["X", "Y", "Z"], series: [{ name: "S", values: [50, 30, 20] }] },
+      },
     ];
     const input = join(dir, "cfgs.json");
     writeFileSync(input, JSON.stringify(cfgs));

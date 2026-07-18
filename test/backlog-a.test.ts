@@ -37,7 +37,10 @@ describe("bullet chart (Target row)", () => {
   });
 
   it("widens the auto scale to cover targets above the data", () => {
-    const withT = buildChart({ ...cfg, data: { ...cfg.data, series: [cfg.data.series[0], { name: "Target", values: [null, null, 90] }] } });
+    const withT = buildChart({
+      ...cfg,
+      data: { ...cfg.data, series: [cfg.data.series[0], { name: "Target", values: [null, null, 90] }] },
+    });
     const tick = withT.nodes.find((n) => n.name === "target-2") as LineNode;
     expect(tick.y1).toBeGreaterThan(0); // inside the plot, not clipped
   });
@@ -128,7 +131,9 @@ describe("forecast styling on lines", () => {
   it("is inert without the option", () => {
     const s = buildChart({ ...line, decorations: { segmentLabels: false } });
     expect(s.nodes.some((n) => n.name === "forecast-divider")).toBe(false);
-    expect(s.nodes.filter((n): n is LineNode => n.kind === "line" && !!n.name?.startsWith("line-0-")).every((l) => !l.dash)).toBe(true);
+    expect(
+      s.nodes.filter((n): n is LineNode => n.kind === "line" && !!n.name?.startsWith("line-0-")).every((l) => !l.dash),
+    ).toBe(true);
   });
 });
 
@@ -148,7 +153,9 @@ describe("scatter quadrants", () => {
 
   it("shades four zones meeting at the crossing, with labels and lines", () => {
     const s = buildChart(scatter);
-    const zones = s.nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("quadrant-") && !n.name.includes("label"));
+    const zones = s.nodes.filter(
+      (n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("quadrant-") && !n.name.includes("label"),
+    );
     expect(zones).toHaveLength(4);
     // TL and TR share a top edge and meet exactly at the crossing x.
     expect(zones[0].x + zones[0].w).toBeCloseTo(zones[1].x, 5);

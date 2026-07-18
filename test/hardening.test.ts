@@ -74,7 +74,12 @@ describe("normalizeConfig", () => {
   });
 
   it("orders a reversed manual scale and drops non-finite ends", () => {
-    const base = { kind: "clustered", width: 480, height: 300, data: { categories: ["A"], series: [{ name: "S", values: [1] }] } };
+    const base = {
+      kind: "clustered",
+      width: 480,
+      height: 300,
+      data: { categories: ["A"], series: [{ name: "S", values: [1] }] },
+    };
     expect(normalizeConfig({ ...base, scale: { min: 5, max: 3 } } as ChartConfig).scale).toEqual({ min: 3, max: 5 });
     expect(normalizeConfig({ ...base, scale: { min: NaN, max: 10 } } as ChartConfig).scale).toEqual({ max: 10 });
   });
@@ -157,9 +162,7 @@ describe("buildChart survives malformed configs", () => {
   });
 
   it("non-finite label offsets are dropped", () => {
-    expectAllFinite(
-      good({ decorations: { totals: true }, labelOffsets: { "total-0": { dx: NaN, dy: -8 } } }),
-    );
+    expectAllFinite(good({ decorations: { totals: true }, labelOffsets: { "total-0": { dx: NaN, dy: -8 } } }));
   });
 
   it("empty data does not throw", () => {
@@ -184,9 +187,27 @@ function rng(seed: number) {
 }
 
 const KINDS: ChartKind[] = [
-  "stacked", "clustered", "stacked100", "waterfall", "mekko", "line", "area",
-  "butterfly", "combo", "pie", "doughnut", "boxplot", "radar", "heatmap",
-  "scatter", "bubble", "cascade", "funnel", "waffle", "treemap", "sunburst",
+  "stacked",
+  "clustered",
+  "stacked100",
+  "waterfall",
+  "mekko",
+  "line",
+  "area",
+  "butterfly",
+  "combo",
+  "pie",
+  "doughnut",
+  "boxplot",
+  "radar",
+  "heatmap",
+  "scatter",
+  "bubble",
+  "cascade",
+  "funnel",
+  "waffle",
+  "treemap",
+  "sunburst",
 ];
 
 describe("malformed-structure fuzz", () => {

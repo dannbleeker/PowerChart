@@ -28,7 +28,14 @@ describe("SVG snapshots", () => {
     expect(sceneToSvg(buildProcessFlow(["Scope", "Build", "Launch"], 1))).toMatchSnapshot();
   });
   it("table", () => {
-    expect(sceneToSvg(buildTableScene([["", "2024", "2025"], ["Revenue", "78", "91"]]))).toMatchSnapshot();
+    expect(
+      sceneToSvg(
+        buildTableScene([
+          ["", "2024", "2025"],
+          ["Revenue", "78", "91"],
+        ]),
+      ),
+    ).toMatchSnapshot();
   });
   it("agenda", () => {
     expect(sceneToSvg(buildAgendaScene(["Intro", "Main"], { highlight: 0 }))).toMatchSnapshot();

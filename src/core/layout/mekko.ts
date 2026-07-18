@@ -20,12 +20,8 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const H = !!cfg.horizontal;
   const units = !!data.xExtent?.some((v) => v != null && v > 0);
 
-  const totals = data.categories.map((_, c) =>
-    data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0),
-  );
-  const extents = units
-    ? data.categories.map((_, c) => Math.max(0, data.xExtent?.[c] ?? 0))
-    : totals;
+  const totals = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const extents = units ? data.categories.map((_, c) => Math.max(0, data.xExtent?.[c] ?? 0)) : totals;
   const maxTotal = Math.max(1e-9, ...totals);
   const fmt = resolveFormat(
     [...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)), ...totals],
@@ -67,9 +63,7 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const v = Math.max(0, s.values[c] ?? 0);
       if (v === 0 || totals[c] === 0) return;
       const segLen = (v / totals[c]) * colLen;
-      const r = H
-        ? { x: acc, y: pos, w: segLen, h: ext }
-        : { x: pos, y: acc - segLen, w: ext, h: segLen };
+      const r = H ? { x: acc, y: pos, w: segLen, h: ext } : { x: pos, y: acc - segLen, w: ext, h: segLen };
       acc = H ? acc + segLen : acc - segLen;
       const fill = seriesColor(style, si, s.color);
       nodes.push({ kind: "rect", ...r, fill, stroke: style.background, strokeWidth: 0.75, name: `seg-${si}-${c}` });
@@ -145,13 +139,17 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
 
   // Chrome: title only via chromeNodes, custom category labels per orientation.
   nodes.push(
-    ...chromeNodes(cfg, style, { ...decorFull, categoryAxis: false, valueAxis: false, gridlines: false }, frame, centers),
+    ...chromeNodes(
+      cfg,
+      style,
+      { ...decorFull, categoryAxis: false, valueAxis: false, gridlines: false },
+      frame,
+      centers,
+    ),
   );
   if (decor.categoryAxis) {
     for (let c = 0; c < n; c++) {
-      const label = units
-        ? data.categories[c]
-        : `${data.categories[c]} (${formatPercent(extents[c] / grand)})`;
+      const label = units ? data.categories[c] : `${data.categories[c]} (${formatPercent(extents[c] / grand)})`;
       if (H) {
         nodes.push({
           kind: "text",
@@ -184,7 +182,16 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     }
   }
   if (H) {
-    nodes.push({ kind: "line", x1: frame.x, y1: frame.y, x2: frame.x, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+    nodes.push({
+      kind: "line",
+      x1: frame.x,
+      y1: frame.y,
+      x2: frame.x,
+      y2: frame.y + frame.h,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "baseline",
+    });
     if (decor.seriesLabels && data.series.length > 1) {
       nodes.push(...legendRow(cfg, style, frame.x, titleHeight(cfg, style) + 2));
     }

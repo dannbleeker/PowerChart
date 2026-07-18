@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE, valueExtent } from "../src/core/chart";
 import { lerpColor, sequentialScale, divergingScale } from "../src/core/color";
-import { detectLayout, EU_TILES, EUROPE_TILES, TILE_LAYOUTS, US_TILES, WORLD_TILES } from "../src/core/layout/tilemap-layouts";
+import {
+  detectLayout,
+  EU_TILES,
+  EUROPE_TILES,
+  TILE_LAYOUTS,
+  US_TILES,
+  WORLD_TILES,
+} from "../src/core/layout/tilemap-layouts";
 import { sceneToSvg } from "../src/render/svg";
 import type { ChartConfig } from "../src/core/types";
 import type { LineNode, PolygonNode, RectNode, TextNode } from "../src/core/scene";
@@ -14,8 +21,6 @@ const cfg = (partial: Partial<ChartConfig>): ChartConfig => ({
   ...DEFAULT_SIZE,
   ...partial,
 });
-
-const named = (c: ChartConfig, prefix: string) => buildChart(c).nodes.filter((n) => n.name?.startsWith(prefix));
 
 describe("boxplot", () => {
   const summary: ChartConfig = cfg({
@@ -91,14 +96,19 @@ describe("boxplot", () => {
     const boxC = s.nodes.find((n) => n.name === "box-2") as RectNode;
     expect(boxC.y).toBeLessThan(boxA.y);
     // Exactly one value axis is generated for the whole chart.
-    const axisLabels = buildChart({ ...shared, decorations: { valueAxis: true, segmentLabels: true } })
-      .nodes.filter((n) => n.name === "value-axis");
+    const axisLabels = buildChart({ ...shared, decorations: { valueAxis: true, segmentLabels: true } }).nodes.filter(
+      (n) => n.name === "value-axis",
+    );
     expect(axisLabels.length).toBeGreaterThan(1); // one shared set of ticks, not per-box
   });
 
   it("renders horizontally: boxes become rows on a bottom value axis", () => {
     const v = buildChart(summary);
-    const h = buildChart({ ...summary, horizontal: true, decorations: { valueAxis: true, categoryAxis: true, segmentLabels: true } });
+    const h = buildChart({
+      ...summary,
+      horizontal: true,
+      decorations: { valueAxis: true, categoryAxis: true, segmentLabels: true },
+    });
     const vBox = v.nodes.find((n) => n.name === "box-0") as RectNode;
     const hBox = h.nodes.find((n) => n.name === "box-0") as RectNode;
     // Vertical: box taller than wide (IQR spans y). Horizontal: wider than tall.
@@ -181,7 +191,9 @@ describe("radar", () => {
     expect(spoke0.x1).toBeCloseTo(spoke0.x2, 5); // straight up
     expect(spoke0.y2).toBeLessThan(spoke0.y1);
     const circles = buildChart({ ...radar, decorations: { gridShape: "circle", segmentLabels: true } });
-    expect(circles.nodes.some((n) => n.kind === "ellipse" && n.name?.startsWith("grid-") && n.fill === "none")).toBe(true);
+    expect(circles.nodes.some((n) => n.kind === "ellipse" && n.name?.startsWith("grid-") && n.fill === "none")).toBe(
+      true,
+    );
   });
 
   it("renders SVG polygons with fill-opacity", () => {
@@ -292,7 +304,9 @@ describe("datamark axes", () => {
   it("draws tick dashes without an axis line", () => {
     const s = buildChart({ ...line, decorations: { valueAxis: "datamarks", segmentLabels: false } });
     expect(s.nodes.filter((n) => n.name === "datamark").length).toBeGreaterThan(1);
-    expect(s.nodes.filter((n): n is TextNode => n.kind === "text" && n.name === "value-axis").length).toBeGreaterThan(1);
+    expect(s.nodes.filter((n): n is TextNode => n.kind === "text" && n.name === "value-axis").length).toBeGreaterThan(
+      1,
+    );
   });
 
   it("tickMode data places marks at the scale extremes (range frame)", () => {

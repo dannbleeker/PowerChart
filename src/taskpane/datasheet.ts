@@ -54,8 +54,7 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
     const r2 = Number(m[4]) - 1;
     const out: number[] = [];
     for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
-      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
-        out.push(cellNumeric(cells, r, c, visiting));
+      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) out.push(cellNumeric(cells, r, c, visiting));
     return out;
   };
 
@@ -150,9 +149,7 @@ export function dataToSheet(data: ChartData): SheetModel {
     const asDate = data.dates && GANTT_DATE_ROW.test(s.name.trim());
     cells.push([
       s.name,
-      ...s.values.map((v) =>
-        v == null ? "" : asDate ? new Date(v * 86400000).toISOString().slice(0, 10) : String(v),
-      ),
+      ...s.values.map((v) => (v == null ? "" : asDate ? new Date(v * 86400000).toISOString().slice(0, 10) : String(v))),
     ]);
   }
   return { cells };
@@ -217,9 +214,7 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
 export function transposeSheet(sheet: SheetModel): SheetModel {
   const rows = sheet.cells.length;
   const cols = Math.max(0, ...sheet.cells.map((r) => r.length));
-  const cells = Array.from({ length: cols }, (_, c) =>
-    Array.from({ length: rows }, (_, r) => sheet.cells[r][c] ?? ""),
-  );
+  const cells = Array.from({ length: cols }, (_, c) => Array.from({ length: rows }, (_, r) => sheet.cells[r][c] ?? ""));
   return { cells };
 }
 
@@ -299,7 +294,11 @@ export function mountDatasheet(
     controls.append(
       button("+ Row", () => {
         const at = Math.min(cursor.row + 1, model.cells.length);
-        model.cells.splice(at, 0, model.cells[0].map(() => ""));
+        model.cells.splice(
+          at,
+          0,
+          model.cells[0].map(() => ""),
+        );
         render();
         onChange(model);
       }),
@@ -337,7 +336,10 @@ export function mountDatasheet(
     const text = e.clipboardData?.getData("text/plain") ?? "";
     if (!text.includes("\t") && !text.includes("\n")) return; // single cell — default behavior
     e.preventDefault();
-    const rows = text.replace(/\r/g, "").split("\n").filter((r) => r.length);
+    const rows = text
+      .replace(/\r/g, "")
+      .split("\n")
+      .filter((r) => r.length);
     rows.forEach((row, dr) => {
       row.split("\t").forEach((val, dc) => {
         const r = ri + dr;

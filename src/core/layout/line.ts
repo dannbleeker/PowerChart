@@ -1,9 +1,19 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { formatNumber, niceTicks, parseDateToken, resolveFormat, segmentLabel } from "../format";
+import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
-import { baselineNode, categorySlots, chromeNodes, computeFrame, computeFrameHorizontal, footnoteH, titleHeight, titleNode, valueScale } from "./frame";
+import {
+  baselineNode,
+  categorySlots,
+  chromeNodes,
+  computeFrame,
+  computeFrameHorizontal,
+  footnoteH,
+  titleHeight,
+  titleNode,
+  valueScale,
+} from "./frame";
 import { horizontalChrome, seriesLabelNodes, type LayoutResult } from "./column";
 
 /**
@@ -58,12 +68,8 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   // Area charts stack (positives above zero, negatives below); lines share
   // one scale. Negative areas dip under the baseline — think-cell parity for
   // P&L-over-time where a series can go negative.
-  const stackedPos = data.categories.map((_, c) =>
-    data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0),
-  );
-  const stackedNeg = data.categories.map((_, c) =>
-    data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0),
-  );
+  const stackedPos = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const stackedNeg = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
   const dataMax = area ? Math.max(0, ...stackedPos) : Math.max(0, ...all);
   const dataMin = area ? Math.min(0, ...stackedNeg) : Math.min(0, ...all);
   const fmt = resolveFormat(all, cfg.numberFormat);
@@ -102,7 +108,15 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
         const t = (k + 0.5) / steps;
         const yT = scale.toY(h0 + (h1 - h0) * t);
         const yB = scale.toY(l0 + (l1 - l0) * t);
-        nodes.push({ kind: "rect", x: slots.centers[c] + k * w, y: Math.min(yT, yB), w: w + 0.5, h: Math.abs(yB - yT), fill, name: `${name}-${c}-${k}` });
+        nodes.push({
+          kind: "rect",
+          x: slots.centers[c] + k * w,
+          y: Math.min(yT, yB),
+          w: w + 0.5,
+          h: Math.abs(yB - yT),
+          fill,
+          name: `${name}-${c}-${k}`,
+        });
       }
     }
   };
@@ -115,7 +129,8 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
     const [ai, bi] = decor.fillBetween;
     const sa = data.series[ai]?.values;
     const sb = data.series[bi]?.values;
-    if (sa && sb) ribbon(sa, sb, lerpColor("#ffffff", seriesColor(style, ai, data.series[ai]?.color), 0.22), "fill-between");
+    if (sa && sb)
+      ribbon(sa, sb, lerpColor("#ffffff", seriesColor(style, ai, data.series[ai]?.color), 0.22), "fill-between");
   }
 
   if (area) {
@@ -166,7 +181,15 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
             yT = yTop0 + (yTop1 - yTop0) * t;
             yB = yBot0 + (yBot1 - yBot0) * t;
           }
-          nodes.push({ kind: "rect", x: slots.centers[c] + k * w, y: Math.min(yT, yB), w: w + 0.5, h: Math.abs(yB - yT), fill, name: `area-${si}-${c}-${k}` });
+          nodes.push({
+            kind: "rect",
+            x: slots.centers[c] + k * w,
+            y: Math.min(yT, yB),
+            w: w + 0.5,
+            h: Math.abs(yB - yT),
+            fill,
+            name: `area-${si}-${c}-${k}`,
+          });
         }
       }
       lastSegMid[si] = n > 0 ? scale.toY((lower[n - 1] + upper[n - 1]) / 2) : null;
@@ -178,7 +201,17 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
     const fc = decor.forecastFrom;
     if (fc != null && fc > 0 && fc < n) {
       const dx = slots.centers[fc - 1] + (slots.centers[fc] - slots.centers[fc - 1]) / 2;
-      nodes.push({ kind: "line", x1: dx, y1: frame.y, x2: dx, y2: frame.y + frame.h, stroke: style.gridline, strokeWidth: 1, dash: [2, 3], name: "forecast-divider" });
+      nodes.push({
+        kind: "line",
+        x1: dx,
+        y1: frame.y,
+        x2: dx,
+        y2: frame.y + frame.h,
+        stroke: style.gridline,
+        strokeWidth: 1,
+        dash: [2, 3],
+        name: "forecast-divider",
+      });
     }
     // Smooth (Catmull-Rom) curves, sampled to a dense polyline. Ignored when
     // stepped is set (mutually exclusive shapes).
@@ -212,9 +245,29 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
               const t = k / STEPS;
               const t2 = t * t;
               const t3 = t2 * t;
-              const cx = 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
-              const cy = 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
-              nodes.push({ kind: "line", x1: pp.x, y1: pp.y, x2: cx, y2: cy, stroke: color, strokeWidth: 2, ...(forecast ? { dash: [4, 3] } : {}), name: `line-${si}-${p2.c}-s${k}` });
+              const cx =
+                0.5 *
+                (2 * p1.x +
+                  (-p0.x + p2.x) * t +
+                  (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+                  (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+              const cy =
+                0.5 *
+                (2 * p1.y +
+                  (-p0.y + p2.y) * t +
+                  (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+                  (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+              nodes.push({
+                kind: "line",
+                x1: pp.x,
+                y1: pp.y,
+                x2: cx,
+                y2: cy,
+                stroke: color,
+                strokeWidth: 2,
+                ...(forecast ? { dash: [4, 3] } : {}),
+                name: `line-${si}-${p2.c}-s${k}`,
+              });
               pp = { x: cx, y: cy };
             }
           }
@@ -236,7 +289,17 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
           const p = prev;
           const dashOpt = forecast ? { dash: [4, 3] } : {};
           const seg = (x1: number, y1: number, x2: number, y2: number, suffix: string) =>
-            nodes.push({ kind: "line", x1, y1, x2, y2, stroke: color, strokeWidth: 2, ...dashOpt, name: `line-${si}-${c}${suffix}` });
+            nodes.push({
+              kind: "line",
+              x1,
+              y1,
+              x2,
+              y2,
+              stroke: color,
+              strokeWidth: 2,
+              ...dashOpt,
+              name: `line-${si}-${c}${suffix}`,
+            });
           if (decor.stepped === "after") {
             seg(p.x, p.y, pt.x, p.y, "a");
             seg(pt.x, p.y, pt.x, pt.y, "b");
@@ -258,10 +321,15 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
         const cellColor = s.colors?.[c];
         const r = cellColor ? 3.4 : 2.4;
         nodes.push({
-          kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2,
+          kind: "rect",
+          x: pt.x - r,
+          y: pt.y - r,
+          w: r * 2,
+          h: r * 2,
           fill: forecast && !cellColor ? style.background : (cellColor ?? color),
           stroke: forecast && !cellColor ? color : style.background,
-          strokeWidth: 1, name: `marker-${si}-${c}`,
+          strokeWidth: 1,
+          name: `marker-${si}-${c}`,
         });
         if (decor.segmentLabels) {
           nodes.push({
@@ -300,7 +368,9 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       categoryX: slots.centers,
       categoryWidth: data.categories.map(() => slots.colWidth || 10),
       columnTop,
-      columnValue: area ? data.categories.map((_, c) => stackedPos[c] + stackedNeg[c]) : data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
+      columnValue: area
+        ? data.categories.map((_, c) => stackedPos[c] + stackedNeg[c])
+        : data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: scale.toY,
@@ -315,7 +385,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
  * trailing value, with dots on the min (red), max (green) and last points.
  * Pair with `multiples` to get a table of sparklines, one per series.
  */
-function layoutSparkline(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+function layoutSparkline(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
   const n = data.categories.length;
@@ -330,9 +400,7 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, decor: Decorations
   // Leading label (title/series name) and trailing last value reserve gutters.
   const label = cfg.title ?? (single ? data.series[0].name : "");
   const labelW = label ? Math.min(cfg.width * 0.38, textWidth(label, fs) + 8) : 0;
-  const lastVal = single
-    ? [...data.series[0].values].reverse().find((v): v is number => v != null) ?? null
-    : null;
+  const lastVal = single ? ([...data.series[0].values].reverse().find((v): v is number => v != null) ?? null) : null;
   const endText = lastVal != null ? formatNumber(lastVal, fmt) : "";
   const endW = endText ? textWidth(endText, fs) + 8 : 0;
   const padY = Math.max(2, cfg.height * 0.16);
@@ -348,8 +416,17 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, decor: Decorations
   const nodes: SceneNode[] = [];
   if (label) {
     nodes.push({
-      kind: "text", x: 0, y: plot.y + plot.h / 2 - fs * 0.75, w: labelW - 6, h: fs * 1.5,
-      text: label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: "spark-label",
+      kind: "text",
+      x: 0,
+      y: plot.y + plot.h / 2 - fs * 0.75,
+      w: labelW - 6,
+      h: fs * 1.5,
+      text: label,
+      fontSize: fs,
+      color: style.text,
+      align: "left",
+      valign: "middle",
+      name: "spark-label",
     });
   }
 
@@ -369,12 +446,29 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, decor: Decorations
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
           const y = pts[i].y + (pts[i + 1].y - pts[i].y) * t;
-          nodes.push({ kind: "rect", x: pts[i].x + k * w, y, w: w + 0.5, h: Math.max(0, floor - y), fill, name: `spark-fill-${si}-${i}-${k}` });
+          nodes.push({
+            kind: "rect",
+            x: pts[i].x + k * w,
+            y,
+            w: w + 0.5,
+            h: Math.max(0, floor - y),
+            fill,
+            name: `spark-fill-${si}-${i}-${k}`,
+          });
         }
       }
     }
     for (let i = 0; i < pts.length - 1; i++) {
-      nodes.push({ kind: "line", x1: pts[i].x, y1: pts[i].y, x2: pts[i + 1].x, y2: pts[i + 1].y, stroke: color, strokeWidth: 1.25, name: `spark-${si}-${pts[i + 1].c}` });
+      nodes.push({
+        kind: "line",
+        x1: pts[i].x,
+        y1: pts[i].y,
+        x2: pts[i + 1].x,
+        y2: pts[i + 1].y,
+        stroke: color,
+        strokeWidth: 1.25,
+        name: `spark-${si}-${pts[i + 1].c}`,
+      });
     }
     // Min / max / last dots (single-series only, to stay uncluttered).
     if (single && pts.length) {
@@ -392,8 +486,18 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, decor: Decorations
       );
       if (endText) {
         nodes.push({
-          kind: "text", x: plot.x + plot.w + 4, y: last.y - fs * 0.75, w: endW, h: fs * 1.5,
-          text: endText, fontSize: fs, bold: true, color, align: "left", valign: "middle", name: `spark-end-${si}`,
+          kind: "text",
+          x: plot.x + plot.w + 4,
+          y: last.y - fs * 0.75,
+          w: endW,
+          h: fs * 1.5,
+          text: endText,
+          fontSize: fs,
+          bold: true,
+          color,
+          align: "left",
+          valign: "middle",
+          name: `spark-end-${si}`,
         });
       }
     }
@@ -432,8 +536,14 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
 
   const endLabel = (s: (typeof data.series)[number], c: number) =>
     s.values[c] == null ? "" : `${s.name} ${formatNumber(s.values[c]!, fmt)}`;
-  const gutterL = Math.min(cfg.width * 0.34, Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, 0), fs))) + 10);
-  const gutterR = Math.min(cfg.width * 0.34, Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, last), fs))) + 10);
+  const gutterL = Math.min(
+    cfg.width * 0.34,
+    Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, 0), fs))) + 10,
+  );
+  const gutterR = Math.min(
+    cfg.width * 0.34,
+    Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, last), fs))) + 10,
+  );
 
   const titleH = titleHeight(cfg, style);
   const headerH = fs * 1.5; // period labels above the rails
@@ -452,10 +562,28 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
   if (titleN) nodes.push(titleN);
   // Rails and period labels at the two ends only.
   for (const c of [0, last]) {
-    nodes.push({ kind: "line", x1: xs[c], y1: plot.y, x2: xs[c], y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 1, name: `slope-rail-${c}` });
     nodes.push({
-      kind: "text", x: xs[c] - 60, y: titleH, w: 120, h: headerH, text: data.categories[c],
-      fontSize: fs, color: style.mutedText, align: "center", valign: "middle", name: `category-${c}`,
+      kind: "line",
+      x1: xs[c],
+      y1: plot.y,
+      x2: xs[c],
+      y2: plot.y + plot.h,
+      stroke: style.gridline,
+      strokeWidth: 1,
+      name: `slope-rail-${c}`,
+    });
+    nodes.push({
+      kind: "text",
+      x: xs[c] - 60,
+      y: titleH,
+      w: 120,
+      h: headerH,
+      text: data.categories[c],
+      fontSize: fs,
+      color: style.mutedText,
+      align: "center",
+      valign: "middle",
+      name: `category-${c}`,
     });
   }
 
@@ -492,22 +620,59 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
       const pt = { x: xs[c], y: toY(v) };
       columnTop[c] = Math.min(columnTop[c], pt.y);
       if (prev) {
-        nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `line-${si}-${c}` });
+        nodes.push({
+          kind: "line",
+          x1: prev.x,
+          y1: prev.y,
+          x2: pt.x,
+          y2: pt.y,
+          stroke: color,
+          strokeWidth: 2,
+          name: `line-${si}-${c}`,
+        });
       }
       const r = 2.4;
-      nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
+      nodes.push({
+        kind: "rect",
+        x: pt.x - r,
+        y: pt.y - r,
+        w: r * 2,
+        h: r * 2,
+        fill: color,
+        stroke: style.background,
+        strokeWidth: 1,
+        name: `marker-${si}-${c}`,
+      });
       prev = pt;
     }
     if (leftYs[si] != null) {
       nodes.push({
-        kind: "text", x: 0, y: leftYs[si]! - fs * 0.75, w: gutterL - 6, h: fs * 1.5,
-        text: endLabel(s, 0), fontSize: fs, color, align: "right", valign: "middle", name: `slope-left-${si}`,
+        kind: "text",
+        x: 0,
+        y: leftYs[si]! - fs * 0.75,
+        w: gutterL - 6,
+        h: fs * 1.5,
+        text: endLabel(s, 0),
+        fontSize: fs,
+        color,
+        align: "right",
+        valign: "middle",
+        name: `slope-left-${si}`,
       });
     }
     if (rightYs[si] != null) {
       nodes.push({
-        kind: "text", x: plot.x + plot.w + 6, y: rightYs[si]! - fs * 0.75, w: gutterR - 6, h: fs * 1.5,
-        text: endLabel(s, last), fontSize: fs, color, align: "left", valign: "middle", name: `slope-right-${si}`,
+        kind: "text",
+        x: plot.x + plot.w + 6,
+        y: rightYs[si]! - fs * 0.75,
+        w: gutterR - 6,
+        h: fs * 1.5,
+        text: endLabel(s, last),
+        fontSize: fs,
+        color,
+        align: "left",
+        valign: "middle",
+        name: `slope-right-${si}`,
       });
     }
   });
@@ -532,7 +697,7 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
  * axis (rank 1 at the top) with thick lines, round markers and a "Name" label
  * at both ends of every line.
  */
-function layoutBump(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
+function layoutBump(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
   const n = data.categories.length;
@@ -555,8 +720,18 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, decor: Decorations): La
   // Period headers along the top.
   data.categories.forEach((cat, c) => {
     nodes.push({
-      kind: "text", x: xs[c] - 40, y: titleH, w: 80, h: headerH,
-      text: cat, fontSize: fs, bold: true, color: style.text, align: "center", valign: "middle", name: `period-${c}`,
+      kind: "text",
+      x: xs[c] - 40,
+      y: titleH,
+      w: 80,
+      h: headerH,
+      text: cat,
+      fontSize: fs,
+      bold: true,
+      color: style.text,
+      align: "center",
+      valign: "middle",
+      name: `period-${c}`,
     });
   });
 
@@ -573,21 +748,67 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, decor: Decorations): La
       if (firstC < 0) firstC = c;
       lastC = c;
       const pt = { x: xs[c], y: toY(v) };
-      if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 3.5, name: `bump-${si}-${c}` });
+      if (prev)
+        nodes.push({
+          kind: "line",
+          x1: prev.x,
+          y1: prev.y,
+          x2: pt.x,
+          y2: pt.y,
+          stroke: color,
+          strokeWidth: 3.5,
+          name: `bump-${si}-${c}`,
+        });
       prev = pt;
     });
     s.values.forEach((v, c) => {
       if (v == null) return;
-      nodes.push({ kind: "ellipse", cx: xs[c], cy: toY(v), rx: 4, ry: 4, fill: color, stroke: style.background, strokeWidth: 1.5, name: `bump-marker-${si}-${c}` });
+      nodes.push({
+        kind: "ellipse",
+        cx: xs[c],
+        cy: toY(v),
+        rx: 4,
+        ry: 4,
+        fill: color,
+        stroke: style.background,
+        strokeWidth: 1.5,
+        name: `bump-marker-${si}-${c}`,
+      });
     });
     // "Name" labels at both ends of the line.
     if (firstC >= 0) {
       const y = toY(s.values[firstC]!);
-      nodes.push({ kind: "text", x: 0, y: y - fs * 0.75, w: nameW - fs * 0.5, h: fs * 1.5, text: s.name, fontSize: fs, bold: true, color, align: "right", valign: "middle", name: `bump-label-l-${si}` });
+      nodes.push({
+        kind: "text",
+        x: 0,
+        y: y - fs * 0.75,
+        w: nameW - fs * 0.5,
+        h: fs * 1.5,
+        text: s.name,
+        fontSize: fs,
+        bold: true,
+        color,
+        align: "right",
+        valign: "middle",
+        name: `bump-label-l-${si}`,
+      });
     }
     if (lastC >= 0) {
       const y = toY(s.values[lastC]!);
-      nodes.push({ kind: "text", x: plot.x + plot.w + fs * 0.5, y: y - fs * 0.75, w: nameW - fs * 0.5, h: fs * 1.5, text: s.name, fontSize: fs, bold: true, color, align: "left", valign: "middle", name: `bump-label-r-${si}` });
+      nodes.push({
+        kind: "text",
+        x: plot.x + plot.w + fs * 0.5,
+        y: y - fs * 0.75,
+        w: nameW - fs * 0.5,
+        h: fs * 1.5,
+        text: s.name,
+        fontSize: fs,
+        bold: true,
+        color,
+        align: "left",
+        valign: "middle",
+        name: `bump-label-r-${si}`,
+      });
     }
   });
 
@@ -639,8 +860,28 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
     data.series.forEach((s, si) => {
       const chip = fs * 0.7;
       nodes.push(
-        { kind: "rect", x: lx, y: ly, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
-        { kind: "text", x: lx + chip + 3, y: ly - fs * 0.3, w: textWidth(s.name, fs) + 6, h: fs * 1.4, text: s.name, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${si}` },
+        {
+          kind: "rect",
+          x: lx,
+          y: ly,
+          w: chip,
+          h: chip,
+          fill: seriesColor(style, si, s.color),
+          name: `legend-chip-${si}`,
+        },
+        {
+          kind: "text",
+          x: lx + chip + 3,
+          y: ly - fs * 0.3,
+          w: textWidth(s.name, fs) + 6,
+          h: fs * 1.4,
+          text: s.name,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `legend-${si}`,
+        },
       );
       lx += chip + 3 + textWidth(s.name, fs) + 12;
     });
@@ -677,7 +918,15 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
           const t = (k + 0.5) / steps;
           const xL = xL0 + (xL1 - xL0) * t;
           const xU = xU0 + (xU1 - xU0) * t;
-          nodes.push({ kind: "rect", x: Math.min(xL, xU), y: centers[c] + k * h, w: Math.abs(xU - xL), h: h + 0.5, fill, name: `area-${si}-${c}-${k}` });
+          nodes.push({
+            kind: "rect",
+            x: Math.min(xL, xU),
+            y: centers[c] + k * h,
+            w: Math.abs(xU - xL),
+            h: h + 0.5,
+            fill,
+            name: `area-${si}-${c}-${k}`,
+          });
         }
       }
     });
@@ -694,11 +943,43 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
         }
         const pt = { x: toX(v), y: centers[c] };
         columnTop[c] = Math.max(columnTop[c], pt.x);
-        if (prev) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `line-${si}-${c}` });
+        if (prev)
+          nodes.push({
+            kind: "line",
+            x1: prev.x,
+            y1: prev.y,
+            x2: pt.x,
+            y2: pt.y,
+            stroke: color,
+            strokeWidth: 2,
+            name: `line-${si}-${c}`,
+          });
         const r = 2.4;
-        nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
+        nodes.push({
+          kind: "rect",
+          x: pt.x - r,
+          y: pt.y - r,
+          w: r * 2,
+          h: r * 2,
+          fill: color,
+          stroke: style.background,
+          strokeWidth: 1,
+          name: `marker-${si}-${c}`,
+        });
         if (decor.segmentLabels) {
-          nodes.push({ kind: "text", x: pt.x + 4, y: pt.y - fs * 0.75, w: fs * 3, h: fs * 1.5, text: formatNumber(v, fmt), fontSize: fs, color: style.text, align: "left", valign: "middle", name: `label-${si}-${c}` });
+          nodes.push({
+            kind: "text",
+            x: pt.x + 4,
+            y: pt.y - fs * 0.75,
+            w: fs * 3,
+            h: fs * 1.5,
+            text: formatNumber(v, fmt),
+            fontSize: fs,
+            color: style.text,
+            align: "left",
+            valign: "middle",
+            name: `label-${si}-${c}`,
+          });
         }
         prev = pt;
       }

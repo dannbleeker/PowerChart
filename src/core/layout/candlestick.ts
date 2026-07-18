@@ -22,7 +22,12 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
   const all = [...open, ...high, ...low, ...close].filter((v): v is number => v != null);
   const fmt = resolveFormat(all, cfg.numberFormat);
   const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
-  const scale = valueScale(frame, Math.min(...(all.length ? all : [0])), Math.max(...(all.length ? all : [1])), cfg.scale);
+  const scale = valueScale(
+    frame,
+    Math.min(...(all.length ? all : [0])),
+    Math.max(...(all.length ? all : [1])),
+    cfg.scale,
+  );
   const slotLen = frame.w / Math.max(1, n);
   const colThick = Math.min(slotLen * 0.5, 24);
   const centers = data.categories.map((_, c) => frame.x + slotLen * (c + 0.5));
@@ -37,7 +42,16 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
     const lo = low[c];
     const x = centers[c];
     if (hi != null && lo != null) {
-      nodes.push({ kind: "line", x1: x, y1: scale.toY(hi), x2: x, y2: scale.toY(lo), stroke: style.text, strokeWidth: 1, name: `wick-${c}` });
+      nodes.push({
+        kind: "line",
+        x1: x,
+        y1: scale.toY(hi),
+        x2: x,
+        y2: scale.toY(lo),
+        stroke: style.text,
+        strokeWidth: 1,
+        name: `wick-${c}`,
+      });
     }
     const o = open[c];
     const cl = close[c];
@@ -46,8 +60,15 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
       const yTop = scale.toY(Math.max(o, cl));
       const yBot = scale.toY(Math.min(o, cl));
       nodes.push({
-        kind: "rect", x: x - colThick / 2, y: yTop, w: colThick, h: Math.max(1, yBot - yTop),
-        fill: rising ? up : down, stroke: style.background, strokeWidth: 0.5, name: `body-${c}`,
+        kind: "rect",
+        x: x - colThick / 2,
+        y: yTop,
+        w: colThick,
+        h: Math.max(1, yBot - yTop),
+        fill: rising ? up : down,
+        stroke: style.background,
+        strokeWidth: 0.5,
+        name: `body-${c}`,
       });
     }
   }

@@ -100,8 +100,14 @@ const extras: ChartConfig[] = [
         "> Build | Cato | at risk",
       ],
       series: [
-        { name: "Start", values: [null, "2026-01-05", "2026-01-19", null, "2026-01-26"].map((d) => (d ? dstr(d) : null)) },
-        { name: "End", values: [null, "2026-01-23", "2026-01-30", null, "2026-02-20"].map((d) => (d ? dstr(d) : null)) },
+        {
+          name: "Start",
+          values: [null, "2026-01-05", "2026-01-19", null, "2026-01-26"].map((d) => (d ? dstr(d) : null)),
+        },
+        {
+          name: "End",
+          values: [null, "2026-01-23", "2026-01-30", null, "2026-02-20"].map((d) => (d ? dstr(d) : null)),
+        },
         { name: "After", values: [null, null, 2, null, 3] },
         { name: "Today", values: [dstr("2026-02-02"), null, null, null, null] },
       ],
@@ -211,10 +217,33 @@ import { buildCheckbox, buildHarveyBall, buildProcessFlow, buildTableScene } fro
 
 const elements = document.getElementById("elements")!;
 const elementScenes: [string, ReturnType<typeof buildHarveyBall>][] = [
-  ["Harvey balls 0 / 25 / 50 / 75 / 100%", combineRow([0, 0.25, 0.5, 0.75, 1].map((f) => buildHarveyBall(f, 28)), 8)],
-  ["Checkboxes", combineRow((["yes", "no", "partial"] as const).map((s) => buildCheckbox(s, 24)), 10)],
+  [
+    "Harvey balls 0 / 25 / 50 / 75 / 100%",
+    combineRow(
+      [0, 0.25, 0.5, 0.75, 1].map((f) => buildHarveyBall(f, 28)),
+      8,
+    ),
+  ],
+  [
+    "Checkboxes",
+    combineRow(
+      (["yes", "no", "partial"] as const).map((s) => buildCheckbox(s, 24)),
+      10,
+    ),
+  ],
   ["Process flow (step 3 active)", buildProcessFlow(["Scope", "Design", "Build", "Test", "Launch"], 2, 520, 44)],
-  ["Table", buildTableScene([["", "2024", "2025", "Δ"], ["Revenue", "78", "91", "+13"], ["EBITDA", "21", "27", "+6"], ["Margin", "27%", "30%", "+3pp"]], 520)],
+  [
+    "Table",
+    buildTableScene(
+      [
+        ["", "2024", "2025", "Δ"],
+        ["Revenue", "78", "91", "+13"],
+        ["EBITDA", "21", "27", "+6"],
+        ["Margin", "27%", "30%", "+3pp"],
+      ],
+      520,
+    ),
+  ],
 ];
 for (const [caption, scene] of elementScenes) {
   const fig = document.createElement("figure");

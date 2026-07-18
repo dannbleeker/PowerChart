@@ -15,9 +15,7 @@ const inputs = (host: HTMLElement) => [...host.querySelectorAll<HTMLInputElement
 const cell = (host: HTMLElement, r: number, c: number) =>
   host.querySelector<HTMLInputElement>(`input[data-row="${r}"][data-col="${c}"]`)!;
 const clickButton = (host: HTMLElement, label: string) =>
-  [...host.querySelectorAll<HTMLButtonElement>(".sheet-controls button")]
-    .find((b) => b.textContent === label)!
-    .click();
+  [...host.querySelectorAll<HTMLButtonElement>(".sheet-controls button")].find((b) => b.textContent === label)!.click();
 
 describe("mountDatasheet", () => {
   it("renders a grid with headers and a disabled corner", () => {
@@ -86,7 +84,12 @@ describe("mountDatasheet", () => {
   it("refuses to delete below the 2×2 minimum or the header row/column", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
-    let model: SheetModel = { cells: [["", "A"], ["S1", "1"]] };
+    const model: SheetModel = {
+      cells: [
+        ["", "A"],
+        ["S1", "1"],
+      ],
+    };
     const onChange = vi.fn();
     mountDatasheet(host, model, onChange);
     cell(host, 1, 1).focus();
@@ -134,7 +137,12 @@ describe("mountDatasheet", () => {
   it("setSheet re-renders with the new model", () => {
     const host = document.createElement("div");
     const api = mountDatasheet(host, sheet(), () => {});
-    api.setSheet({ cells: [["", "X"], ["S", "5"]] });
+    api.setSheet({
+      cells: [
+        ["", "X"],
+        ["S", "5"],
+      ],
+    });
     expect(inputs(host)).toHaveLength(4);
     expect(cell(host, 1, 1).value).toBe("5");
   });

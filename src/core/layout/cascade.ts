@@ -57,8 +57,17 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
           nodes.push(
             { kind: "rect", x: x1, y: titleH, w: x2 - x1, h: fs * 1.5, fill: style.neutral, name: `group-${start}` },
             {
-              kind: "text", x: x1, y: titleH, w: x2 - x1, h: fs * 1.5, text: groups[start],
-              fontSize: fs, bold: true, color: contrastInk(style.neutral), align: "center", valign: "middle",
+              kind: "text",
+              x: x1,
+              y: titleH,
+              w: x2 - x1,
+              h: fs * 1.5,
+              text: groups[start],
+              fontSize: fs,
+              bold: true,
+              color: contrastInk(style.neutral),
+              align: "center",
+              valign: "middle",
               name: `group-label-${start}`,
             },
           );
@@ -85,13 +94,24 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const lines = [
       { text: stages[c], y: plot.y + h * 0.18, bold: false, size: fs },
       { text: formatNumber(v, fmt), y: plot.y + h * 0.5 - fs * 0.75, bold: true, size: fs * 1.05 },
-      ...(pct != null ? [{ text: `(${formatPercent(pct, 1)})`, y: plot.y + h * 0.5 + fs * 0.7, bold: false, size: fs }] : []),
+      ...(pct != null
+        ? [{ text: `(${formatPercent(pct, 1)})`, y: plot.y + h * 0.5 + fs * 0.7, bold: false, size: fs }]
+        : []),
     ];
     for (const [i, line] of lines.entries()) {
       if (h < fs * (2.2 + i * 1.4)) break; // bar too short for more lines
       nodes.push({
-        kind: "text", x: x + 2, y: line.y, w: barW - 4, h: fs * 1.4, text: line.text,
-        fontSize: line.size, bold: line.bold, color: ink, align: "center", valign: "middle",
+        kind: "text",
+        x: x + 2,
+        y: line.y,
+        w: barW - 4,
+        h: fs * 1.4,
+        text: line.text,
+        fontSize: line.size,
+        bold: line.bold,
+        color: ink,
+        align: "center",
+        valign: "middle",
         name: `stage-label-${c}-${i}`,
       });
     }
@@ -113,40 +133,92 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const oneLine = `${caption}: ${numbers}`;
         const ink = contrastInk(style.neutral);
         nodes.push({
-          kind: "rect", x, y: segY, w: barW, h: segH, fill: style.neutral,
-          stroke: style.background, strokeWidth: 0.75, name: `drop-${c}`,
+          kind: "rect",
+          x,
+          y: segY,
+          w: barW,
+          h: segH,
+          fill: style.neutral,
+          stroke: style.background,
+          strokeWidth: 0.75,
+          name: `drop-${c}`,
         });
         // Labels adapt to the segment — never the other way around.
         const fitsOneLine = textWidth(oneLine, fs * 0.9) <= barW - 6;
         const outside = (text: string, name: string): SceneNode => ({
-          kind: "text", x: x - slotW * 0.045, y: segY + segH + 1, w: barW + slotW * 0.09, h: fs * 1.2,
-          text, fontSize: fs * 0.85, color: style.text, align: "center", valign: "top", name,
+          kind: "text",
+          x: x - slotW * 0.045,
+          y: segY + segH + 1,
+          w: barW + slotW * 0.09,
+          h: fs * 1.2,
+          text,
+          fontSize: fs * 0.85,
+          color: style.text,
+          align: "center",
+          valign: "top",
+          name,
         });
         if (segH >= fs * 2.9 && !fitsOneLine) {
           // Tall enough for two lines: caption over numbers, inside.
           nodes.push(
             {
-              kind: "text", x: x + 2, y: segY + segH / 2 - fs * 1.35, w: barW - 4, h: fs * 1.4, text: caption,
-              fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-label-${c}`,
+              kind: "text",
+              x: x + 2,
+              y: segY + segH / 2 - fs * 1.35,
+              w: barW - 4,
+              h: fs * 1.4,
+              text: caption,
+              fontSize: fs * 0.9,
+              color: ink,
+              align: "center",
+              valign: "middle",
+              name: `drop-label-${c}`,
             },
             {
-              kind: "text", x: x + 2, y: segY + segH / 2, w: barW - 4, h: fs * 1.4, text: numbers,
-              fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-value-${c}`,
+              kind: "text",
+              x: x + 2,
+              y: segY + segH / 2,
+              w: barW - 4,
+              h: fs * 1.4,
+              text: numbers,
+              fontSize: fs * 0.9,
+              color: ink,
+              align: "center",
+              valign: "middle",
+              name: `drop-value-${c}`,
             },
           );
         } else if (segH >= fs * 1.3 && fitsOneLine) {
           // One comfortable line, inside.
           nodes.push({
-            kind: "text", x: x + 2, y: segY, w: barW - 4, h: segH, text: oneLine,
-            fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-label-${c}`,
+            kind: "text",
+            x: x + 2,
+            y: segY,
+            w: barW - 4,
+            h: segH,
+            text: oneLine,
+            fontSize: fs * 0.9,
+            color: ink,
+            align: "center",
+            valign: "middle",
+            name: `drop-label-${c}`,
           });
         } else if (segH >= fs * 1.3) {
           // Room for one line but the caption is long: numbers inside,
           // caption just below the block.
           nodes.push(
             {
-              kind: "text", x: x + 2, y: segY, w: barW - 4, h: segH, text: numbers,
-              fontSize: fs * 0.9, color: ink, align: "center", valign: "middle", name: `drop-value-${c}`,
+              kind: "text",
+              x: x + 2,
+              y: segY,
+              w: barW - 4,
+              h: segH,
+              text: numbers,
+              fontSize: fs * 0.9,
+              color: ink,
+              align: "center",
+              valign: "middle",
+              name: `drop-value-${c}`,
             },
             outside(caption, `drop-label-${c}`),
           );

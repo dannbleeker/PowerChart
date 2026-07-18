@@ -1,0 +1,19 @@
+node_modules
+dist
+dist-lib
+skill-dist
+skill/scripts
+examples
+public
+coverage
+package-lock.json
+test/__snapshots__
+*.pptx
+*.svg
+
+# Content-managed docs: the lockstep tests (skill-docs/manual) assert on their
+# exact structure, so they are hand-formatted, not Prettier's to reflow.
+docs/
+skill/reference.md
+skill/SKILL.md
+CHANGELOG.md

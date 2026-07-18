@@ -48,9 +48,17 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
 
     if (decor.categoryAxis) {
       nodes.push({
-        kind: "text", x: 0, y: y + bandH / 2 - fs * 0.75, w: catW - 4, h: fs * 1.5,
-        text: data.categories[c], fontSize: fs, color: style.text,
-        align: "right", valign: "middle", name: `category-${c}`,
+        kind: "text",
+        x: 0,
+        y: y + bandH / 2 - fs * 0.75,
+        w: catW - 4,
+        h: fs * 1.5,
+        text: data.categories[c],
+        fontSize: fs,
+        color: style.text,
+        align: "right",
+        valign: "middle",
+        name: `category-${c}`,
       });
     }
     if (decor.segmentLabels) {
@@ -74,10 +82,17 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     // Conversion rate vs the previous stage, in the gap between bands.
     if (c > 0 && values[c - 1] > 0) {
       nodes.push({
-        kind: "text", x: cx - 40, y: y - gap, w: 80, h: gap,
+        kind: "text",
+        x: cx - 40,
+        y: y - gap,
+        w: 80,
+        h: gap,
         text: `▾ ${formatPercent(v / values[c - 1], 1)}`,
-        fontSize: fs * 0.85, color: style.mutedText,
-        align: "center", valign: "middle", name: `conversion-${c}`,
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "center",
+        valign: "middle",
+        name: `conversion-${c}`,
       });
     }
   });

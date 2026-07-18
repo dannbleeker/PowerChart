@@ -21,8 +21,13 @@ describe("formatNumber", () => {
     // RTL locales prefix an invisible directional mark (U+200E/U+061C) ahead of
     // the sign, and these render digits outside ASCII.
     const zeroOf: Record<string, string> = {
-      "ar-AE": "0", "ur-PK": "0", "he-IL": "0", // ASCII digits behind a mark
-      "ar-EG": "٠", "fa-IR": "۰", "bn-BD": "০", "my-MM": "၀",
+      "ar-AE": "0",
+      "ur-PK": "0",
+      "he-IL": "0", // ASCII digits behind a mark
+      "ar-EG": "٠",
+      "fa-IR": "۰",
+      "bn-BD": "০",
+      "my-MM": "၀",
     };
     for (const [locale, zero] of Object.entries(zeroOf)) {
       expect(formatNumber(-0.4, { decimals: 0, locale }), locale).toBe(zero);
@@ -53,7 +58,11 @@ describe("trendStats", () => {
   // For df = 1 the two-tailed Student-t p-value has the closed form
   // p = 1 - (2/pi)·atan(|t|), which pins the regularized incomplete beta.
   it("matches the exact p-value for df = 1", () => {
-    const r = trendStats([{ x: 1, y: 1 }, { x: 2, y: 2.5 }, { x: 3, y: 2.9 }])!;
+    const r = trendStats([
+      { x: 1, y: 1 },
+      { x: 2, y: 2.5 },
+      { x: 3, y: 2.9 },
+    ])!;
     const t = Math.sqrt((r.r2 * 1) / (1 - r.r2));
     expect(r.p).toBeCloseTo(1 - (2 / Math.PI) * Math.atan(t), 6);
     expect(r.p).toBeCloseTo(0.20536, 4); // NOT ~0.014 — a weak 3-point fit is not significant

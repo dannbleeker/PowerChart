@@ -21,8 +21,15 @@ export function buildHarveyBall(fraction: number, size = 24): Scene {
     nodes.push({ kind: "ellipse", cx, cy, rx: r - 1.5, ry: r - 1.5, fill: S.text, name: "harvey-fill" });
   } else if (f > 0) {
     nodes.push({
-      kind: "wedge", cx, cy, r: r - 1.5, innerR: 0,
-      startAngle: 0, endAngle: f * 360, fill: S.text, name: "harvey-fill",
+      kind: "wedge",
+      cx,
+      cy,
+      r: r - 1.5,
+      innerR: 0,
+      startAngle: 0,
+      endAngle: f * 360,
+      fill: S.text,
+      name: "harvey-fill",
     });
   }
   return { width: size, height: size, nodes };
@@ -38,23 +45,37 @@ export function buildCheckbox(state: CheckState, size = 20): Scene {
     width: size,
     height: size,
     nodes: [
-      { kind: "rect", x: 0.5, y: 0.5, w: size - 1, h: size - 1, fill: "#ffffff", stroke: colors[state], strokeWidth: 1.5, name: "check-box" },
       {
-        kind: "text", x: 0, y: 0, w: size, h: size, text: glyph[state],
-        fontSize: size * 0.62, bold: true, color: colors[state],
-        align: "center", valign: "middle", name: "check-glyph",
+        kind: "rect",
+        x: 0.5,
+        y: 0.5,
+        w: size - 1,
+        h: size - 1,
+        fill: "#ffffff",
+        stroke: colors[state],
+        strokeWidth: 1.5,
+        name: "check-box",
+      },
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: size,
+        h: size,
+        text: glyph[state],
+        fontSize: size * 0.62,
+        bold: true,
+        color: colors[state],
+        align: "center",
+        valign: "middle",
+        name: "check-glyph",
       },
     ],
   };
 }
 
 /** Process flow: a row of chevrons with the active step highlighted. */
-export function buildProcessFlow(
-  steps: string[],
-  highlight = -1,
-  width = 480,
-  height = 40,
-): Scene {
+export function buildProcessFlow(steps: string[], highlight = -1, width = 480, height = 40): Scene {
   const n = Math.max(1, steps.length);
   const overlap = height * 0.28; // chevron notch overlaps the previous step
   const stepW = (width + overlap * (n - 1)) / n;
@@ -107,8 +128,7 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
     opts.direction ??
     (opts.delta ? (/^\s*[-−▼]/.test(opts.delta) ? "down" : /^\s*[+▲]/.test(opts.delta) ? "up" : "flat") : undefined);
   const goodIsUp = opts.goodIsUp ?? true;
-  const deltaColor =
-    dir === "flat" || dir == null ? S.mutedText : (dir === "up") === goodIsUp ? "#0ca30c" : "#d03b3b";
+  const deltaColor = dir === "flat" || dir == null ? S.mutedText : (dir === "up") === goodIsUp ? "#0ca30c" : "#d03b3b";
 
   const pad = 10;
   const labelFs = 10;
@@ -117,33 +137,80 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
   while (valueFs > 11 && textWidth(opts.value, valueFs) > width - pad * 2) valueFs -= 1;
 
   const nodes: SceneNode[] = [
-    { kind: "rect", x: 0.5, y: 0.5, w: width - 1, h: height - 1, fill: "#ffffff", stroke: "#e1e0d9", strokeWidth: 1, name: "kpi-box" },
+    {
+      kind: "rect",
+      x: 0.5,
+      y: 0.5,
+      w: width - 1,
+      h: height - 1,
+      fill: "#ffffff",
+      stroke: "#e1e0d9",
+      strokeWidth: 1,
+      name: "kpi-box",
+    },
   ];
   let y = pad;
   if (opts.label) {
     nodes.push({
-      kind: "text", x: pad, y, w: width - pad * 2, h: labelFs * 1.3, text: opts.label,
-      fontSize: labelFs, color: S.mutedText, align: "left", valign: "top", name: "kpi-label",
+      kind: "text",
+      x: pad,
+      y,
+      w: width - pad * 2,
+      h: labelFs * 1.3,
+      text: opts.label,
+      fontSize: labelFs,
+      color: S.mutedText,
+      align: "left",
+      valign: "top",
+      name: "kpi-label",
     });
     y += labelFs * 1.5;
   }
   nodes.push({
-    kind: "text", x: pad, y, w: width - pad * 2, h: valueFs * 1.25, text: opts.value,
-    fontSize: valueFs, bold: true, color: S.text, align: "left", valign: "top", name: "kpi-value",
+    kind: "text",
+    x: pad,
+    y,
+    w: width - pad * 2,
+    h: valueFs * 1.25,
+    text: opts.value,
+    fontSize: valueFs,
+    bold: true,
+    color: S.text,
+    align: "left",
+    valign: "top",
+    name: "kpi-value",
   });
   if (opts.delta) {
     const dy = height - pad - labelFs * 0.75;
     let dx = pad;
     if (dir && dir !== "flat") {
       const size = labelFs * 0.45;
-      nodes.push({ kind: "arrowhead", x: dx + size, y: dy, angle: dir === "up" ? -90 : 90, size, fill: deltaColor, name: "kpi-arrow" });
+      nodes.push({
+        kind: "arrowhead",
+        x: dx + size,
+        y: dy,
+        angle: dir === "up" ? -90 : 90,
+        size,
+        fill: deltaColor,
+        name: "kpi-arrow",
+      });
       dx += size * 2 + 4;
     }
     // Strip a leading arrow glyph — the arrowhead node already shows it.
     const text = opts.delta.replace(/^\s*[▲▼]\s*/, "");
     nodes.push({
-      kind: "text", x: dx, y: dy - labelFs * 0.75, w: width - dx - pad, h: labelFs * 1.5, text,
-      fontSize: labelFs, bold: true, color: deltaColor, align: "left", valign: "middle", name: "kpi-delta",
+      kind: "text",
+      x: dx,
+      y: dy - labelFs * 0.75,
+      w: width - dx - pad,
+      h: labelFs * 1.5,
+      text,
+      fontSize: labelFs,
+      bold: true,
+      color: deltaColor,
+      align: "left",
+      valign: "middle",
+      name: "kpi-delta",
     });
   }
   return { width, height, nodes };
@@ -194,15 +261,43 @@ function parseCell(raw: string): { text: string; harvey?: number; trend?: "up" |
 }
 
 /** Mini harvey ball + trend arrow glyph nodes for a cell, left of the text. */
-function cellEffectNodes(cell: ReturnType<typeof parseCell>, x: number, cy: number, fs: number, ri: number, c: number): SceneNode[] {
+function cellEffectNodes(
+  cell: ReturnType<typeof parseCell>,
+  x: number,
+  cy: number,
+  fs: number,
+  ri: number,
+  c: number,
+): SceneNode[] {
   const nodes: SceneNode[] = [];
   let gx = x;
   if (cell.harvey != null) {
     const r = fs * 0.5;
-    nodes.push({ kind: "ellipse", cx: gx + r, cy, rx: r, ry: r, fill: "#ffffff", stroke: S.text, strokeWidth: 1, name: `cell-hb-ring-${ri}-${c}` });
-    if (cell.harvey >= 1) nodes.push({ kind: "ellipse", cx: gx + r, cy, rx: r - 1, ry: r - 1, fill: S.text, name: `cell-hb-${ri}-${c}` });
+    nodes.push({
+      kind: "ellipse",
+      cx: gx + r,
+      cy,
+      rx: r,
+      ry: r,
+      fill: "#ffffff",
+      stroke: S.text,
+      strokeWidth: 1,
+      name: `cell-hb-ring-${ri}-${c}`,
+    });
+    if (cell.harvey >= 1)
+      nodes.push({ kind: "ellipse", cx: gx + r, cy, rx: r - 1, ry: r - 1, fill: S.text, name: `cell-hb-${ri}-${c}` });
     else if (cell.harvey > 0)
-      nodes.push({ kind: "wedge", cx: gx + r, cy, r: r - 1, innerR: 0, startAngle: 0, endAngle: cell.harvey * 360, fill: S.text, name: `cell-hb-${ri}-${c}` });
+      nodes.push({
+        kind: "wedge",
+        cx: gx + r,
+        cy,
+        r: r - 1,
+        innerR: 0,
+        startAngle: 0,
+        endAngle: cell.harvey * 360,
+        fill: S.text,
+        name: `cell-hb-${ri}-${c}`,
+      });
     gx += r * 2 + 3;
   }
   if (cell.trend) {
@@ -210,7 +305,6 @@ function cellEffectNodes(cell: ReturnType<typeof parseCell>, x: number, cy: numb
     const angle = cell.trend === "up" ? -90 : cell.trend === "down" ? 90 : 0;
     const fill = cell.trend === "up" ? GOOD : cell.trend === "down" ? BAD : S.mutedText;
     nodes.push({ kind: "arrowhead", x: gx + size, y: cy, angle, size, fill, name: `cell-trend-${ri}-${c}` });
-    gx += size * 2 + 3;
   }
   return nodes;
 }
@@ -242,7 +336,14 @@ export function buildTableScene(cells: string[][], width = 480, opts: TableOptio
   const scale = width / totalW;
   const rules = styleMode === "rules";
   const rule = (y: number, weight: number, name: string): SceneNode => ({
-    kind: "line", x1: 0, y1: y, x2: width, y2: y, stroke: S.text, strokeWidth: weight, name,
+    kind: "line",
+    x1: 0,
+    y1: y,
+    x2: width,
+    y2: y,
+    stroke: S.text,
+    strokeWidth: weight,
+    name,
   });
 
   const nodes: SceneNode[] = [];
@@ -262,7 +363,17 @@ export function buildTableScene(cells: string[][], width = 480, opts: TableOptio
       const w = widths[c] * scale;
       const cell = parsed[ri][c] ?? { text: "" };
       if (!rules) {
-        nodes.push({ kind: "rect", x, y, w, h: rowH, fill, stroke: "#e1e0d9", strokeWidth: 0.75, name: `cell-${ri}-${c}` });
+        nodes.push({
+          kind: "rect",
+          x,
+          y,
+          w,
+          h: rowH,
+          fill,
+          stroke: "#e1e0d9",
+          strokeWidth: 0.75,
+          name: `cell-${ri}-${c}`,
+        });
       }
       const ew = effectW(cell, fs);
       nodes.push(...cellEffectNodes(cell, x + 5, y + rowH / 2, fs, ri, c));

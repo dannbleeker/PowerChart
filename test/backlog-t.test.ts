@@ -59,7 +59,7 @@ describe("heatmap row clustering", () => {
     heatmap: { cluster: true },
   };
   const s = buildChart(cfg);
-  const rowName = (ri: number) => (s.nodes.find((n): n is TextNode => n.kind === "text" && n.name === `row-${ri}`)!).text;
+  const rowName = (ri: number) => s.nodes.find((n): n is TextNode => n.kind === "text" && n.name === `row-${ri}`)!.text;
 
   it("reorders rows so similar rows are adjacent and draws a dendrogram", () => {
     const order = [0, 1, 2, 3].map(rowName);
@@ -75,7 +75,7 @@ describe("heatmap row clustering", () => {
 
   it("leaves rows in sheet order without the flag", () => {
     const plain = buildChart({ ...cfg, heatmap: {} });
-    const name0 = (plain.nodes.find((n): n is TextNode => n.name === "row-0")!).text;
+    const name0 = plain.nodes.find((n): n is TextNode => n.name === "row-0")!.text;
     expect(name0).toBe("Hi1");
     expect(plain.nodes.some((n) => n.name === "dendro-v")).toBe(false);
   });
@@ -109,7 +109,14 @@ describe("combo stacked-area base", () => {
 });
 
 describe("heatmap sign marks", () => {
-  const hm = (heatmap: ChartConfig["heatmap"], vals: number[][] = [[8, -7], [-6, 9]], extra: Partial<ChartConfig> = {}): ChartConfig => ({
+  const hm = (
+    heatmap: ChartConfig["heatmap"],
+    vals: number[][] = [
+      [8, -7],
+      [-6, 9],
+    ],
+    extra: Partial<ChartConfig> = {},
+  ): ChartConfig => ({
     kind: "heatmap",
     ...DEFAULT_SIZE,
     data: {
@@ -125,7 +132,9 @@ describe("heatmap sign marks", () => {
 
   it("is off by default — the heatmap it has always drawn", () => {
     expect(signs(hm({ sizeEncode: true }))).toHaveLength(0);
-    expect(buildChart(hm({ sizeEncode: true })).nodes).toEqual(buildChart(hm({ sizeEncode: true, symbols: undefined })).nodes);
+    expect(buildChart(hm({ sizeEncode: true })).nodes).toEqual(
+      buildChart(hm({ sizeEncode: true, symbols: undefined })).nodes,
+    );
   });
 
   it("marks + on positives and − on negatives", () => {
@@ -146,7 +155,14 @@ describe("heatmap sign marks", () => {
     // cell — and to the greyscale reader, the only one the mark exists for, the
     // glyph is the whole story. Reachable without any opt-out: labels are only
     // drawn if they FIT, so a dense diverging matrix hits this by default.
-    const c = hm({ symbols: "sign" }, [[0, -7], [-6, 9]], { decorations: { segmentLabels: false } });
+    const c = hm(
+      { symbols: "sign" },
+      [
+        [0, -7],
+        [-6, 9],
+      ],
+      { decorations: { segmentLabels: false } },
+    );
     const nodes = buildChart(c).nodes;
     expect((nodes.find((n) => n.name === "cell-0-0") as RectNode).fill).toBe("#ffffff");
     expect(nodes.find((n) => n.name === "cell-sign-0-0")).toBeUndefined();
@@ -175,15 +191,51 @@ describe("heatmap sign marks", () => {
   });
 
   it("stays inert on one-signed data, where every mark would be identical", () => {
-    expect(signs(hm({ sizeEncode: true, symbols: "sign" }, [[8, 7], [6, 9]]))).toHaveLength(0);
-    expect(signs(hm({ sizeEncode: true, symbols: "sign" }, [[-8, -7], [-6, -9]]))).toHaveLength(0);
+    expect(
+      signs(
+        hm({ sizeEncode: true, symbols: "sign" }, [
+          [8, 7],
+          [6, 9],
+        ]),
+      ),
+    ).toHaveLength(0);
+    expect(
+      signs(
+        hm({ sizeEncode: true, symbols: "sign" }, [
+          [-8, -7],
+          [-6, -9],
+        ]),
+      ),
+    ).toHaveLength(0);
   });
 
   it("yields to the value label, which already prints the sign", () => {
     // Labels on and fitting => no marks: two signs in one cell is noise.
-    expect(signs(hm({ symbols: "sign" }, [[8, -7], [-6, 9]], { decorations: { segmentLabels: true } }))).toHaveLength(0);
+    expect(
+      signs(
+        hm(
+          { symbols: "sign" },
+          [
+            [8, -7],
+            [-6, 9],
+          ],
+          { decorations: { segmentLabels: true } },
+        ),
+      ),
+    ).toHaveLength(0);
     // Labels off => the marks are the only sign carrier, so they appear.
-    expect(signs(hm({ symbols: "sign" }, [[8, -7], [-6, 9]], { decorations: { segmentLabels: false } }))).toHaveLength(4);
+    expect(
+      signs(
+        hm(
+          { symbols: "sign" },
+          [
+            [8, -7],
+            [-6, 9],
+          ],
+          { decorations: { segmentLabels: false } },
+        ),
+      ),
+    ).toHaveLength(4);
   });
 
   it("inks each mark against its own cell, like the labels do", () => {
@@ -195,7 +247,10 @@ describe("heatmap sign marks", () => {
   it("keeps every mark inside the cell as DRAWN, however small sizeEncode makes it", () => {
     // A near-zero value shrinks its cell to almost nothing; a mark sized off the
     // slot rather than the drawn square would spill across its neighbours.
-    const c = hm({ sizeEncode: true, symbols: "sign" }, [[100, -0.4], [-0.2, 100]]);
+    const c = hm({ sizeEncode: true, symbols: "sign" }, [
+      [100, -0.4],
+      [-0.2, 100],
+    ]);
     const nodes = buildChart(c).nodes;
     for (const ri of [0, 1]) {
       for (const col of [0, 1]) {
@@ -215,13 +270,22 @@ describe("heatmap sign marks", () => {
   });
 
   it("skips a cell too small to carry a legible mark, and cells with no value", () => {
-    const c = hm({ sizeEncode: true, symbols: "sign" }, [[100, 0], [-0.001, 100]]);
+    const c = hm({ sizeEncode: true, symbols: "sign" }, [
+      [100, 0],
+      [-0.001, 100],
+    ]);
     // A zero-magnitude cell has no square to draw in.
     expect(buildChart(c).nodes.find((n) => n.name === "cell-sign-0-1")).toBeUndefined();
     const nulls: ChartConfig = {
       kind: "heatmap",
       ...DEFAULT_SIZE,
-      data: { categories: ["Q1", "Q2"], series: [{ name: "R0", values: [8, null] }, { name: "R1", values: [-6, 9] }] },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "R0", values: [8, null] },
+          { name: "R1", values: [-6, 9] },
+        ],
+      },
       heatmap: { sizeEncode: true, symbols: "sign" },
     };
     expect(buildChart(nulls).nodes.find((n) => n.name === "cell-sign-0-1")).toBeUndefined();

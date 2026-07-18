@@ -57,7 +57,10 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         decimals: cfg.numberFormat?.decimals,
         locale: cfg.numberFormat?.locale,
       });
-      const label = s.name.trim().replace(/^column\s*:?\s*/i, "").trim();
+      const label = s.name
+        .trim()
+        .replace(/^column\s*:?\s*/i, "")
+        .trim();
       const cells = s.values.map((v) => (v == null ? "" : formatNumber(v, fmt)));
       const w = Math.min(
         cfg.width * 0.12,
@@ -76,9 +79,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const hasOwners = owners.some(Boolean);
   const hasRemarks = remarks.some(Boolean);
   // A row with no bar data at all is a section header.
-  const isHeader = data.categories.map(
-    (_, c) => starts[c] == null && ends[c] == null && milestones[c] == null,
-  );
+  const isHeader = data.categories.map((_, c) => starts[c] == null && ends[c] == null && milestones[c] == null);
 
   // Critical path: over the "After" dependency edges, find the chain with the
   // greatest cumulative duration and flag its activities + connecting arrows.
@@ -90,8 +91,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   };
   const critical = new Set<number>();
   if (decor.criticalPath && after.some((v) => v != null)) {
-    const dur = (c: number) =>
-      starts[c] != null && ends[c] != null ? Math.max(0, ends[c]! - starts[c]!) : 0;
+    const dur = (c: number) => (starts[c] != null && ends[c] != null ? Math.max(0, ends[c]! - starts[c]!) : 0);
     // Longest cumulative duration ending at each activity (memoized; cycle-safe).
     const cum: number[] = data.categories.map(() => -1);
     const seen = new Set<number>();
@@ -121,10 +121,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const titleH = titleHeight(cfg, style);
   const bracketH = brackets.length ? fs * 1.9 : 0;
   const headerH = fs * 1.6;
-  const catW = Math.min(
-    cfg.width * 0.32,
-    Math.max(0, ...acts.map((c) => textWidth(c, fs))) + 10,
-  );
+  const catW = Math.min(cfg.width * 0.32, Math.max(0, ...acts.map((c) => textWidth(c, fs))) + 10);
   const ownerW = hasOwners ? Math.max(0, ...owners.map((o) => textWidth(o, fs))) + 12 : 0;
   const remarkW = hasRemarks ? Math.max(0, ...remarks.map((o) => textWidth(o, fs * 0.9))) + 12 : 0;
   const bottomH = today != null ? fs * 1.6 : 6;
@@ -164,11 +161,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // Calendar only — "working day" means nothing on a numeric timeline.
   const wdCfg = cfg.gantt?.workdays;
   const workSet =
-    wdCfg === true
-      ? new Set([1, 2, 3, 4, 5])
-      : Array.isArray(wdCfg)
-        ? new Set(wdCfg.map((n) => Math.round(n)))
-        : null;
+    wdCfg === true ? new Set([1, 2, 3, 4, 5]) : Array.isArray(wdCfg) ? new Set(wdCfg.map((n) => Math.round(n))) : null;
   // ~55 years. A mistyped date must not allocate a giant array.
   const SPAN_CAP = 20000;
   const workdays = dates && !!workSet && workSet.size > 0 && t1 - t0 <= SPAN_CAP;
@@ -191,8 +184,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // working-day count of [t0, t1), which is what makes toX(t1) land exactly on
   // the right edge, as the linear branch does.
   const workTotal = pre.length ? pre[pre.length - 1] : 0;
-  const workIndex = (v: number) =>
-    pre[Math.max(0, Math.min(pre.length - 1, Math.round(v) - Math.floor(t0)))];
+  const workIndex = (v: number) => pre[Math.max(0, Math.min(pre.length - 1, Math.round(v) - Math.floor(t0)))];
   const toX = (v: number) =>
     workdays
       ? plot.x + (workIndex(v) / Math.max(1, workTotal)) * plot.w
@@ -227,9 +219,18 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       { kind: "line", x1, y1: y, x2: x1, y2: y + 3.5, stroke: style.text, strokeWidth: 1, name: `bracket-tick-a-${i}` },
       { kind: "line", x1: x2, y1: y, x2, y2: y + 3.5, stroke: style.text, strokeWidth: 1, name: `bracket-tick-b-${i}` },
       {
-        kind: "text", x: x1, y: y - fs * 1.35, w: x2 - x1, h: fs * 1.3,
-        text: b.label || spanLabel(b.from, b.to), fontSize: fs * 0.9, bold: true,
-        color: style.text, align: "center", valign: "middle", name: `bracket-label-${i}`,
+        kind: "text",
+        x: x1,
+        y: y - fs * 1.35,
+        w: x2 - x1,
+        h: fs * 1.3,
+        text: b.label || spanLabel(b.from, b.to),
+        fontSize: fs * 0.9,
+        bold: true,
+        color: style.text,
+        align: "center",
+        valign: "middle",
+        name: `bracket-label-${i}`,
       },
     );
   });
@@ -267,10 +268,31 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   let lastLabelX = -1e9;
   ticks.forEach((t, i) => {
     const x = toX(t);
-    nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.gridline, strokeWidth: 0.75, name: "gridline" });
+    nodes.push({
+      kind: "line",
+      x1: x,
+      y1: plot.y,
+      x2: x,
+      y2: plot.y + plot.h,
+      stroke: style.gridline,
+      strokeWidth: 0.75,
+      name: "gridline",
+    });
     // Thin out header labels when months are dense.
     if (x - lastLabelX >= minLabelGap) {
-      nodes.push({ kind: "text", x: x - 24, y: plot.y - headerH, w: 48, h: headerH, text: tickLabel(t, i), fontSize: fs * 0.9, color: style.mutedText, align: "center", valign: "middle", name: "timeline" });
+      nodes.push({
+        kind: "text",
+        x: x - 24,
+        y: plot.y - headerH,
+        w: 48,
+        h: headerH,
+        text: tickLabel(t, i),
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "center",
+        valign: "middle",
+        name: "timeline",
+      });
       lastLabelX = x;
     }
   });
@@ -285,10 +307,28 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     // Section header rows: bold label, light band, no bar.
     if (isHeader[c]) {
       nodes.push(
-        { kind: "rect", x: 0, y: cy - slotH / 2 + 1, w: cfg.width, h: slotH - 2, fill: "#f0efec", name: `section-${c}` },
         {
-          kind: "text", x: 0, y: cy - fs * 0.75, w: cfg.width, h: fs * 1.5,
-          text: acts[c], fontSize: fs, bold: true, color: style.text, align: "left", valign: "middle", name: `category-${c}`,
+          kind: "rect",
+          x: 0,
+          y: cy - slotH / 2 + 1,
+          w: cfg.width,
+          h: slotH - 2,
+          fill: "#f0efec",
+          name: `section-${c}`,
+        },
+        {
+          kind: "text",
+          x: 0,
+          y: cy - fs * 0.75,
+          w: cfg.width,
+          h: fs * 1.5,
+          text: acts[c],
+          fontSize: fs,
+          bold: true,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `category-${c}`,
         },
       );
       // Auto-summary bar: span min(start)→max(end) of the child activities
@@ -309,34 +349,96 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           const x2 = toX(e);
           const sbH = barH * 0.4;
           nodes.push(
-            { kind: "rect", x: x1, y: cy - sbH / 2, w: Math.max(x2 - x1, minW), h: sbH, fill: style.text, name: `summary-${c}` },
-            { kind: "line", x1, y1: cy - sbH / 2, x2: x1, y2: cy + sbH * 1.4, stroke: style.text, strokeWidth: 1.25, name: `summary-cap-a-${c}` },
-            { kind: "line", x1: x2, y1: cy - sbH / 2, x2, y2: cy + sbH * 1.4, stroke: style.text, strokeWidth: 1.25, name: `summary-cap-b-${c}` },
+            {
+              kind: "rect",
+              x: x1,
+              y: cy - sbH / 2,
+              w: Math.max(x2 - x1, minW),
+              h: sbH,
+              fill: style.text,
+              name: `summary-${c}`,
+            },
+            {
+              kind: "line",
+              x1,
+              y1: cy - sbH / 2,
+              x2: x1,
+              y2: cy + sbH * 1.4,
+              stroke: style.text,
+              strokeWidth: 1.25,
+              name: `summary-cap-a-${c}`,
+            },
+            {
+              kind: "line",
+              x1: x2,
+              y1: cy - sbH / 2,
+              x2,
+              y2: cy + sbH * 1.4,
+              stroke: style.text,
+              strokeWidth: 1.25,
+              name: `summary-cap-b-${c}`,
+            },
           );
         }
       }
       return;
     }
     nodes.push({
-      kind: "text", x: indents[c] * 10, y: cy - fs * 0.75, w: catW - 6 - indents[c] * 10, h: fs * 1.5,
-      text: acts[c], fontSize: fs, color: style.text, align: "left", valign: "middle", name: `category-${c}`,
+      kind: "text",
+      x: indents[c] * 10,
+      y: cy - fs * 0.75,
+      w: catW - 6 - indents[c] * 10,
+      h: fs * 1.5,
+      text: acts[c],
+      fontSize: fs,
+      color: style.text,
+      align: "left",
+      valign: "middle",
+      name: `category-${c}`,
     });
     // Responsible + remark columns right of the timeline.
     if (hasOwners && owners[c]) {
       nodes.push({
-        kind: "text", x: plot.x + plot.w + 6, y: cy - fs * 0.75, w: ownerW - 6, h: fs * 1.5,
-        text: owners[c], fontSize: fs, color: style.mutedText, align: "left", valign: "middle", name: `owner-${c}`,
+        kind: "text",
+        x: plot.x + plot.w + 6,
+        y: cy - fs * 0.75,
+        w: ownerW - 6,
+        h: fs * 1.5,
+        text: owners[c],
+        fontSize: fs,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: `owner-${c}`,
       });
     }
     if (hasRemarks && remarks[c]) {
       nodes.push({
-        kind: "text", x: plot.x + plot.w + ownerW + 4, y: cy - fs * 0.7, w: remarkW - 4, h: fs * 1.4,
-        text: remarks[c], fontSize: fs * 0.9, color: style.mutedText, align: "left", valign: "middle", name: `remark-${c}`,
+        kind: "text",
+        x: plot.x + plot.w + ownerW + 4,
+        y: cy - fs * 0.7,
+        w: remarkW - 4,
+        h: fs * 1.4,
+        text: remarks[c],
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: `remark-${c}`,
       });
     }
     // Faint row separator.
     if (c > 0) {
-      nodes.push({ kind: "line", x1: plot.x, y1: cy - slotH / 2, x2: plot.x + plot.w, y2: cy - slotH / 2, stroke: style.gridline, strokeWidth: 0.5, name: `row-${c}` });
+      nodes.push({
+        kind: "line",
+        x1: plot.x,
+        y1: cy - slotH / 2,
+        x2: plot.x + plot.w,
+        y2: cy - slotH / 2,
+        stroke: style.gridline,
+        strokeWidth: 0.5,
+        name: `row-${c}`,
+      });
     }
     const s = starts[c];
     const e = ends[c];
@@ -345,8 +447,13 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const be = baseEnds[c];
     if (bs != null && be != null && be > bs) {
       nodes.push({
-        kind: "rect", x: toX(bs), y: cy + barH * 0.55, w: Math.max(toX(be) - toX(bs), minW), h: barH * 0.4,
-        fill: "#cfcdc5", name: `gantt-baseline-${c}`,
+        kind: "rect",
+        x: toX(bs),
+        y: cy + barH * 0.55,
+        w: Math.max(toX(be) - toX(bs), minW),
+        h: barH * 0.4,
+        fill: "#cfcdc5",
+        name: `gantt-baseline-${c}`,
       });
     }
     if (s != null && e != null && e > s) {
@@ -356,8 +463,13 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // and would vanish. Keep a hairline so it is still visible and clickable.
       const bw = Math.max(toX(e) - bx, minW);
       nodes.push({
-        kind: "rect", x: bx, y: cy - barH / 2, w: bw, h: barH,
-        fill: seriesColor(style, 0), name: `bar-${c}`,
+        kind: "rect",
+        x: bx,
+        y: cy - barH / 2,
+        w: bw,
+        h: barH,
+        fill: seriesColor(style, 0),
+        name: `bar-${c}`,
         ...(isCrit ? { stroke: style.negative, strokeWidth: 1.75 } : {}),
       });
       // Percent-complete fill: a darker inner bar over the elapsed share.
@@ -366,8 +478,13 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         const pct = Math.max(0, Math.min(1, rawPct > 1 ? rawPct / 100 : rawPct));
         if (pct > 0) {
           nodes.push({
-            kind: "rect", x: bx, y: cy - barH / 2, w: bw * pct, h: barH,
-            fill: "#1b4e8a", name: `progress-${c}`,
+            kind: "rect",
+            x: bx,
+            y: cy - barH / 2,
+            w: bw * pct,
+            h: barH,
+            fill: "#1b4e8a",
+            name: `progress-${c}`,
           });
         }
       }
@@ -375,8 +492,17 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         const label = spanLabel(s, e);
         if (bw >= textWidth(label, fs * 0.9) + 4) {
           nodes.push({
-            kind: "text", x: bx, y: cy - fs * 0.7, w: bw, h: fs * 1.4,
-            text: label, fontSize: fs * 0.9, color: "#ffffff", align: "center", valign: "middle", name: `bar-label-${c}`,
+            kind: "text",
+            x: bx,
+            y: cy - fs * 0.7,
+            w: bw,
+            h: fs * 1.4,
+            text: label,
+            fontSize: fs * 0.9,
+            color: "#ffffff",
+            align: "center",
+            valign: "middle",
+            name: `bar-label-${c}`,
           });
         }
       }
@@ -386,8 +512,13 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const r = barH * 0.45;
       // Diamond milestone marker.
       nodes.push({
-        kind: "ellipse", cx: toX(m), cy, rx: r, ry: r,
-        fill: style.text, name: `milestone-${c}`,
+        kind: "ellipse",
+        cx: toX(m),
+        cy,
+        rx: r,
+        ry: r,
+        fill: style.text,
+        name: `milestone-${c}`,
       });
     }
   });
@@ -455,7 +586,15 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     nodes.push(
       { kind: "line", x1, y1: yPred, x2: x1, y2: ySucc, stroke: dcolor, strokeWidth: dw, name: `dep-v-${c}` },
       { kind: "line", x1, y1: ySucc, x2: x2 - 2, y2: ySucc, stroke: dcolor, strokeWidth: dw, name: `dep-h-${c}` },
-      { kind: "arrowhead", x: x2 - 1, y: ySucc, angle: x2 >= x1 ? 0 : 180, size: critEdge ? 4.2 : 3.5, fill: dcolor, name: `dep-head-${c}` },
+      {
+        kind: "arrowhead",
+        x: x2 - 1,
+        y: ySucc,
+        angle: x2 >= x1 ? 0 : 180,
+        size: critEdge ? 4.2 : 3.5,
+        fill: dcolor,
+        name: `dep-head-${c}`,
+      },
     );
   });
 
@@ -463,10 +602,29 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   if (today != null && today >= t0 && today <= t1) {
     const x = toX(today);
     nodes.push(
-      { kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.negative, strokeWidth: 1.25, dash: [3, 2], name: "today-line" },
       {
-        kind: "text", x: x - 24, y: plot.y + plot.h + 1, w: 48, h: fs * 1.3,
-        text: "Today", fontSize: fs * 0.85, color: style.negative, align: "center", valign: "top", name: "today-label",
+        kind: "line",
+        x1: x,
+        y1: plot.y,
+        x2: x,
+        y2: plot.y + plot.h,
+        stroke: style.negative,
+        strokeWidth: 1.25,
+        dash: [3, 2],
+        name: "today-line",
+      },
+      {
+        kind: "text",
+        x: x - 24,
+        y: plot.y + plot.h + 1,
+        w: 48,
+        h: fs * 1.3,
+        text: "Today",
+        fontSize: fs * 0.85,
+        color: style.negative,
+        align: "center",
+        valign: "top",
+        name: "today-label",
       },
     );
   }

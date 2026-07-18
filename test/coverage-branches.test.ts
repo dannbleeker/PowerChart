@@ -70,7 +70,16 @@ describe("scatter edge cases", () => {
 
   it("a single point renders without dividing by zero", () => {
     const s = buildChart(
-      cfg({ kind: "scatter", data: { categories: ["P"], series: [{ name: "X", values: [3] }, { name: "Y", values: [3] }] } }),
+      cfg({
+        kind: "scatter",
+        data: {
+          categories: ["P"],
+          series: [
+            { name: "X", values: [3] },
+            { name: "Y", values: [3] },
+          ],
+        },
+      }),
     );
     expect(s.nodes.some((n) => n.name?.startsWith("point"))).toBe(true);
   });
@@ -177,8 +186,22 @@ describe("sheetToData parsing fallbacks", () => {
     });
     expect(data.series[0].values).toEqual([2, 4, 6]);
     // Out-of-range references read as 0; unparseable formulas become null.
-    expect(sheetToData({ cells: [["", "A"], ["S", "=ZZ99"]] }).series[0].values).toEqual([0]);
-    expect(sheetToData({ cells: [["", "A"], ["S", "=1/"]] }).series[0].values).toEqual([null]);
+    expect(
+      sheetToData({
+        cells: [
+          ["", "A"],
+          ["S", "=ZZ99"],
+        ],
+      }).series[0].values,
+    ).toEqual([0]);
+    expect(
+      sheetToData({
+        cells: [
+          ["", "A"],
+          ["S", "=1/"],
+        ],
+      }).series[0].values,
+    ).toEqual([null]);
   });
 });
 
@@ -188,7 +211,18 @@ describe("SVG annular wedge path", () => {
       width: 100,
       height: 100,
       nodes: [
-        { kind: "wedge", cx: 50, cy: 50, r: 40, innerR: 20, startAngle: 0, endAngle: 120, fill: "#123456", stroke: "#000000", strokeWidth: 1 },
+        {
+          kind: "wedge",
+          cx: 50,
+          cy: 50,
+          r: 40,
+          innerR: 20,
+          startAngle: 0,
+          endAngle: 120,
+          fill: "#123456",
+          stroke: "#000000",
+          strokeWidth: 1,
+        },
       ],
     });
     expect(svg.match(/A /g)!.length).toBe(2);

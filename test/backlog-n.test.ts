@@ -101,7 +101,13 @@ describe("stacked100 negative values", () => {
   it("positive-only stacked100 is unchanged (fills exactly to the top)", () => {
     const pos = buildChart({
       ...cfg,
-      data: { categories: ["Q1"], series: [{ name: "A", values: [60] }, { name: "B", values: [40] }] },
+      data: {
+        categories: ["Q1"],
+        series: [
+          { name: "A", values: [60] },
+          { name: "B", values: [40] },
+        ],
+      },
     });
     // Two segments, no negative region.
     expect(pos.nodes.filter((n) => n.name?.match(/^seg-\d+-0$/))).toHaveLength(2);

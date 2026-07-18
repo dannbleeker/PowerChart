@@ -58,16 +58,13 @@ export function valueScale(
     const min = ticks[0];
     const max = ticks[ticks.length - 1];
     const span = Math.log10(max) - Math.log10(min) || 1;
-    const toY = (v: number) =>
-      frame.y + frame.h - ((Math.log10(Math.max(v, min)) - Math.log10(min)) / span) * frame.h;
+    const toY = (v: number) => frame.y + frame.h - ((Math.log10(Math.max(v, min)) - Math.log10(min)) / span) * frame.h;
     return { min, max, ticks, toY };
   }
   const lo = override?.min ?? Math.min(0, dataMin);
   const hi = override?.max ?? Math.max(0, dataMax);
   let ticks = niceTicks(lo, hi, 5).filter(
-    (t) =>
-      (override?.min == null || t >= override.min - 1e-9) &&
-      (override?.max == null || t <= override.max + 1e-9),
+    (t) => (override?.min == null || t >= override.min - 1e-9) && (override?.max == null || t <= override.max + 1e-9),
   );
   const min = override?.min ?? ticks[0];
   const max = override?.max ?? ticks[ticks.length - 1];
@@ -103,9 +100,35 @@ export function breakMarkerNodes(frame: Frame, scale: ValueScale, style: ChartSt
   const { yLow, yHigh } = scale.breakBand;
   const skew = 2.5;
   return [
-    { kind: "rect", x: frame.x - 2, y: yHigh, w: frame.w + 4, h: yLow - yHigh, fill: style.background, name: "axis-break" },
-    { kind: "line", x1: frame.x - 4, y1: yLow + skew, x2: frame.x + frame.w + 4, y2: yLow - skew, stroke: style.mutedText, strokeWidth: 1, name: "axis-break-lo" },
-    { kind: "line", x1: frame.x - 4, y1: yHigh + skew, x2: frame.x + frame.w + 4, y2: yHigh - skew, stroke: style.mutedText, strokeWidth: 1, name: "axis-break-hi" },
+    {
+      kind: "rect",
+      x: frame.x - 2,
+      y: yHigh,
+      w: frame.w + 4,
+      h: yLow - yHigh,
+      fill: style.background,
+      name: "axis-break",
+    },
+    {
+      kind: "line",
+      x1: frame.x - 4,
+      y1: yLow + skew,
+      x2: frame.x + frame.w + 4,
+      y2: yLow - skew,
+      stroke: style.mutedText,
+      strokeWidth: 1,
+      name: "axis-break-lo",
+    },
+    {
+      kind: "line",
+      x1: frame.x - 4,
+      y1: yHigh + skew,
+      x2: frame.x + frame.w + 4,
+      y2: yHigh - skew,
+      stroke: style.mutedText,
+      strokeWidth: 1,
+      name: "axis-break-hi",
+    },
   ];
 }
 
@@ -169,10 +192,7 @@ export function computeFrame(
   const categoryAxisH = decor.categoryAxis ? fs * 1.5 + 3 : 4;
   const valueAxisW = decor.valueAxis ? 34 : 2;
   const seriesLabelsW = decor.seriesLabels
-    ? Math.min(
-        cfg.width * 0.3,
-        Math.max(0, ...seriesNames.map((s) => textWidth(s, fs))) + 14,
-      )
+    ? Math.min(cfg.width * 0.3, Math.max(0, ...seriesNames.map((s) => textWidth(s, fs))) + 14)
     : 2;
   // Extra headroom when a difference arrow is drawn past the last column.
   const diffW = decor.difference ? 26 : 0;
@@ -190,11 +210,7 @@ export function computeFrame(
  * left, value axis at the bottom, totals to the right of the bar ends,
  * series legend row at the top.
  */
-export function computeFrameHorizontal(
-  cfg: ChartConfig,
-  style: ChartStyle,
-  decor: Decorations,
-): Frame {
+export function computeFrameHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decorations): Frame {
   const fs = style.fontSize;
   const titleH = titleHeight(cfg, style);
   const legendH = decor.seriesLabels && cfg.data.series.length > 1 ? fs * 1.6 + 4 : fs * 0.6;
@@ -228,7 +244,16 @@ export function chromeNodes(
     for (const t of scale.ticks) {
       if (t === 0) continue;
       const y = scale.toY(t);
-      nodes.push({ kind: "line", x1: frame.x, y1: y, x2: frame.x + frame.w, y2: y, stroke: style.gridline, strokeWidth: 0.75, name: "gridline" });
+      nodes.push({
+        kind: "line",
+        x1: frame.x,
+        y1: y,
+        x2: frame.x + frame.w,
+        y2: y,
+        stroke: style.gridline,
+        strokeWidth: 0.75,
+        name: "gridline",
+      });
     }
   }
   if (decor.valueAxis && scale) {
@@ -236,15 +261,21 @@ export function chromeNodes(
     // gridlines; tickMode "data" places them at the data extremes instead
     // of nice round values (the range frame).
     const marks = decor.valueAxis === "datamarks";
-    const ticks =
-      marks && decor.tickMode === "data"
-        ? [...new Set([scale.min, scale.max])]
-        : scale.ticks;
+    const ticks = marks && decor.tickMode === "data" ? [...new Set([scale.min, scale.max])] : scale.ticks;
     const axisFmt = resolveFormat(ticks, cfg.numberFormat);
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {
-        nodes.push({ kind: "line", x1: frame.x - 4, y1: y, x2: frame.x, y2: y, stroke: style.axis, strokeWidth: 1, name: "datamark" });
+        nodes.push({
+          kind: "line",
+          x1: frame.x - 4,
+          y1: y,
+          x2: frame.x,
+          y2: y,
+          stroke: style.axis,
+          strokeWidth: 1,
+          name: "datamark",
+        });
       }
       nodes.push({
         kind: "text",
@@ -299,5 +330,14 @@ export function chromeNodes(
 
 /** Baseline (zero line) — drawn on top of columns, think-cell style. */
 export function baselineNode(frame: Frame, y: number, style: ChartStyle): SceneNode {
-  return { kind: "line", x1: frame.x, y1: y, x2: frame.x + frame.w, y2: y, stroke: style.axis, strokeWidth: 1, name: "baseline" };
+  return {
+    kind: "line",
+    x1: frame.x,
+    y1: y,
+    x2: frame.x + frame.w,
+    y2: y,
+    stroke: style.axis,
+    strokeWidth: 1,
+    name: "baseline",
+  };
 }

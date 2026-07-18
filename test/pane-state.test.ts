@@ -19,10 +19,7 @@ async function bootPane(search = "") {
   // Parse rather than regex out the <script> tags: the office.js tag has no
   // business loading here, and a regex that thinks it can find "</script>"
   // misses "</script >" (CodeQL js/bad-tag-filter).
-  const parsed = new DOMParser().parseFromString(
-    readFileSync("src/taskpane/taskpane.html", "utf8"),
-    "text/html",
-  );
+  const parsed = new DOMParser().parseFromString(readFileSync("src/taskpane/taskpane.html", "utf8"), "text/html");
   parsed.querySelectorAll("script").forEach((s) => s.remove());
   document.body.innerHTML = parsed.body.innerHTML;
   // app.ts holds module-level state and element handles, so it has to re-run
@@ -157,7 +154,6 @@ describe("task pane — accordion headings are translated", () => {
   });
 });
 
-
 /**
  * Boot the pane down its HOST branch, with a PowerPoint.run we control: it
  * parks until we release it, so we can look at the buttons mid-flight — which
@@ -243,7 +239,8 @@ describe("busy-guard on host actions", () => {
 
 describe("the action bar belongs to the Chart tab", () => {
   const bar = () => document.querySelector<HTMLElement>(".action-bar")!;
-  const clickTab = (name: string) => document.querySelector<HTMLButtonElement>(`.tabs .tab[data-tab="${name}"]`)!.click();
+  const clickTab = (name: string) =>
+    document.querySelector<HTMLButtonElement>(`.tabs .tab[data-tab="${name}"]`)!.click();
 
   it("hides itself on every tab that is not Chart", async () => {
     // Every action in this bar reads the CHART's state: "Insert into slide"
@@ -344,7 +341,11 @@ describe("status is pane-wide, and only claims what it knows", () => {
 
   it("clears the bar when the note turns into an error", async () => {
     vi.stubGlobal("Office", { context: { host: "PowerPoint", requirements: { isSetSupported: () => false } } });
-    vi.stubGlobal("PowerPoint", { run: async () => { throw new Error("host refused"); } });
+    vi.stubGlobal("PowerPoint", {
+      run: async () => {
+        throw new Error("host refused");
+      },
+    });
     await bootPane();
     $<HTMLButtonElement>("demo-insert").click();
     await vi.waitFor(() => expect(noteEl().textContent).toMatch(/^Failed:/));

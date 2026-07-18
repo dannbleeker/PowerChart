@@ -269,10 +269,14 @@ const features = [
     data: {
       categories: ["North", "South", "East"],
       series: [
-        { name: "", values: [4, 7, 3] }, { name: "", values: [5, 8, 4] },
-        { name: "", values: [5, 9, 4] }, { name: "", values: [6, 9, 5] },
-        { name: "", values: [6, 10, 5] }, { name: "", values: [7, 11, 6] },
-        { name: "", values: [7, 11, 6] }, { name: "", values: [8, 12, 7] },
+        { name: "", values: [4, 7, 3] },
+        { name: "", values: [5, 8, 4] },
+        { name: "", values: [5, 9, 4] },
+        { name: "", values: [6, 9, 5] },
+        { name: "", values: [6, 10, 5] },
+        { name: "", values: [7, 11, 6] },
+        { name: "", values: [7, 11, 6] },
+        { name: "", values: [8, 12, 7] },
         { name: "", values: [15, 12, 14] },
       ],
     },
@@ -661,7 +665,15 @@ const features = [
     height: 300,
     title: "Gantt with auto-summary bars",
     data: {
-      categories: ["Phase 1: Discovery", "> Research", "> Interviews", "Phase 2: Build", "> Backend", "> Frontend", "> QA"],
+      categories: [
+        "Phase 1: Discovery",
+        "> Research",
+        "> Interviews",
+        "Phase 2: Build",
+        "> Backend",
+        "> Frontend",
+        "> QA",
+      ],
       series: [
         { name: "Start", values: [null, 1, 2, null, 5, 7, 11] },
         { name: "End", values: [null, 4, 5, null, 10, 12, 13] },
@@ -740,7 +752,12 @@ const features = [
         const d = new Date(Date.UTC(2025, 0, 6 + i));
         return d.toISOString().slice(0, 10);
       }),
-      series: [{ name: "Commits", values: [3, 5, 2, 8, 4, 0, 0, 6, 1, 9, 7, 3, 0, 0, 5, 8, 2, 4, 6, 0, 0, 10, 3, 5, 7, 2, 0, 0, 4, 6] }],
+      series: [
+        {
+          name: "Commits",
+          values: [3, 5, 2, 8, 4, 0, 0, 6, 1, 9, 7, 3, 0, 0, 5, 8, 2, 4, 6, 0, 0, 10, 3, 5, 7, 2, 0, 0, 4, 6],
+        },
+      ],
     },
   },
   {
@@ -970,9 +987,14 @@ const features = [
     title: "Two-level treemap (region | product)",
     data: {
       categories: [
-        "EMEA | Cloud", "EMEA | Licenses", "EMEA | Services",
-        "Americas | Cloud", "Americas | Licenses",
-        "APAC | Cloud", "APAC | Hardware", "APAC | Services",
+        "EMEA | Cloud",
+        "EMEA | Licenses",
+        "EMEA | Services",
+        "Americas | Cloud",
+        "Americas | Licenses",
+        "APAC | Cloud",
+        "APAC | Hardware",
+        "APAC | Services",
       ],
       series: [{ name: "Revenue", values: [60, 40, 25, 80, 50, 45, 30, 20] }],
     },
@@ -985,9 +1007,13 @@ const features = [
     title: "Sunburst (region → product)",
     data: {
       categories: [
-        "EMEA | Cloud", "EMEA | Licenses", "EMEA | Services",
-        "Americas | Cloud", "Americas | Licenses",
-        "APAC | Cloud", "APAC | Hardware",
+        "EMEA | Cloud",
+        "EMEA | Licenses",
+        "EMEA | Services",
+        "Americas | Cloud",
+        "Americas | Licenses",
+        "APAC | Cloud",
+        "APAC | Hardware",
       ],
       series: [{ name: "Revenue", values: [60, 40, 25, 80, 50, 45, 30] }],
     },
@@ -1175,7 +1201,14 @@ const features = [
     height: 260,
     title: "Programme plan — cost and effort beside the bars",
     data: {
-      categories: ["Discovery | Ana", "> Research | Ana", "> Concept | Ana", "Delivery | Ben", "> Build | Ben", "> QA | Cara"],
+      categories: [
+        "Discovery | Ana",
+        "> Research | Ana",
+        "> Concept | Ana",
+        "Delivery | Ben",
+        "> Build | Ben",
+        "> QA | Cara",
+      ],
       series: [
         { name: "Start", values: [null, 0, 3, null, 5, 11] },
         { name: "End", values: [null, 3, 5, null, 11, 14] },
@@ -1211,8 +1244,14 @@ const features = [
       categories: Array.from({ length: 40 }, (_, i) => `A${i + 1}`),
       series: [
         // Two loose clusters, so the marginals have a shape worth reading.
-        { name: "X", values: Array.from({ length: 40 }, (_, i) => (i < 22 ? 18 + ((i * 7) % 22) : 55 + ((i * 5) % 30))) },
-        { name: "Y", values: Array.from({ length: 40 }, (_, i) => (i < 22 ? 22 + ((i * 11) % 26) : 52 + ((i * 3) % 34))) },
+        {
+          name: "X",
+          values: Array.from({ length: 40 }, (_, i) => (i < 22 ? 18 + ((i * 7) % 22) : 55 + ((i * 5) % 30))),
+        },
+        {
+          name: "Y",
+          values: Array.from({ length: 40 }, (_, i) => (i < 22 ? 22 + ((i * 11) % 26) : 52 + ((i * 3) % 34))),
+        },
       ],
     },
     decorations: { marginals: "both", segmentLabels: false },
@@ -1240,9 +1279,18 @@ const features = [
     title: "Shape per group — the split survives greyscale and color blindness",
     data: {
       categories: [
-        "Northwind", "Acme", "Globex", "Initech",
-        "Umbra", "Soylent", "Vandelay", "Hooli",
-        "Stark", "Wayne", "Tyrell", "Cyberdyne",
+        "Northwind",
+        "Acme",
+        "Globex",
+        "Initech",
+        "Umbra",
+        "Soylent",
+        "Vandelay",
+        "Hooli",
+        "Stark",
+        "Wayne",
+        "Tyrell",
+        "Cyberdyne",
       ],
       series: [
         { name: "X", values: [12, 18, 22, 15, 44, 51, 47, 55, 74, 81, 78, 85] },
@@ -1290,8 +1338,14 @@ const features = [
     data: {
       categories: ["Spec | Ana", "Build | Ben", "Review | Ana", "Ship | Ben", "Handover"],
       series: [
-        { name: "Start", values: [day("2026-01-05"), day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02")] },
-        { name: "End", values: [day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02"), day("2026-02-05")] },
+        {
+          name: "Start",
+          values: [day("2026-01-05"), day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02")],
+        },
+        {
+          name: "End",
+          values: [day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02"), day("2026-02-05")],
+        },
         { name: "After", values: [null, 1, 2, 3, 4] },
       ],
       dates: true,

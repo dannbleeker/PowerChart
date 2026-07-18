@@ -146,8 +146,31 @@ describe("difference arrow anchored to a value line", () => {
 describe("label collision resolution", () => {
   it("ignores unnamed and immovable nodes", () => {
     const overlapped: SceneNode[] = [
-      { kind: "text", x: 0, y: 0, w: 40, h: 12, text: "a", fontSize: 10, color: "#000", align: "center", valign: "middle" },
-      { kind: "text", x: 0, y: 0, w: 40, h: 12, text: "b", fontSize: 10, color: "#000", align: "center", valign: "middle", name: "segment-label-0-0" },
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 12,
+        text: "a",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+      },
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 12,
+        text: "b",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+        name: "segment-label-0-0",
+      },
     ];
     const before = JSON.stringify(overlapped);
     resolveLabelCollisions(overlapped);
@@ -155,8 +178,32 @@ describe("label collision resolution", () => {
   });
   it("nudges a movable total off a fixed label", () => {
     const nodes: SceneNode[] = [
-      { kind: "text", x: 0, y: 0, w: 40, h: 12, text: "fixed", fontSize: 10, color: "#000", align: "center", valign: "middle", name: "segment-label-0-0" },
-      { kind: "text", x: 0, y: 0, w: 40, h: 12, text: "42", fontSize: 10, color: "#000", align: "center", valign: "middle", name: "total-0" },
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 12,
+        text: "fixed",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+        name: "segment-label-0-0",
+      },
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 12,
+        text: "42",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+        name: "total-0",
+      },
     ];
     resolveLabelCollisions(nodes);
     const total = nodes[1] as TextNode;
