@@ -52,14 +52,18 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
     i += m[0].length;
     return cellNumeric(cells, Number(m[2]) - 1, colIndex(m[1]), visiting);
   };
-  const rangeValues = (m: RegExpExecArray): number[] => {
+  // A blank cell in a range is `null`, not 0: Excel's MIN/MAX/AVG ignore empty
+  // cells (only SUM treats them as 0, which it still does below). Distinguish a
+  // blank from a real 0 by looking at the raw cell before cellNumeric coerces it.
+  const rangeValues = (m: RegExpExecArray): (number | null)[] => {
     const c1 = colIndex(m[1]);
     const r1 = Number(m[2]) - 1;
     const c2 = colIndex(m[3]);
     const r2 = Number(m[4]) - 1;
-    const out: number[] = [];
+    const out: (number | null)[] = [];
     for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
-      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) out.push(cellNumeric(cells, r, c, visiting));
+      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
+        out.push((cells[r]?.[c] ?? "").trim() === "" ? null : cellNumeric(cells, r, c, visiting));
     return out;
   };
 
@@ -95,7 +99,7 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
     const fn = /^(SUM|AVG|MIN|MAX)\(/i.exec(s.slice(i));
     if (fn) {
       i += fn[0].length;
-      const args: number[] = [];
+      const args: (number | null)[] = [];
       while (i < s.length && s[i] !== ")") {
         const range = /^([A-Za-z]{1,2})([0-9]{1,3}):([A-Za-z]{1,2})([0-9]{1,3})/.exec(s.slice(i));
         if (range) {
@@ -109,10 +113,14 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
       i++;
       if (!args.length) return NaN;
       const name = fn[1].toUpperCase();
-      if (name === "SUM") return args.reduce((a, b) => a + b, 0);
-      if (name === "AVG") return args.reduce((a, b) => a + b, 0) / args.length;
-      if (name === "MIN") return Math.min(...args);
-      return Math.max(...args);
+      // SUM counts a blank range cell as 0 (Excel convention); MIN/MAX/AVG ignore
+      // it — an all-negative range with a gap must not report a max of 0.
+      if (name === "SUM") return args.reduce((a: number, b) => a + (b ?? 0), 0);
+      const nums = args.filter((v): v is number => v != null);
+      if (!nums.length) return NaN;
+      if (name === "AVG") return nums.reduce((a, b) => a + b, 0) / nums.length;
+      if (name === "MIN") return Math.min(...nums);
+      return Math.max(...nums);
     }
     const num = /^[0-9]*\.?[0-9]+/.exec(s.slice(i));
     if (num) {
