@@ -3,6 +3,20 @@ import type { Scene, SceneNode } from "../core/scene";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/**
+ * Colours reach the scene graph verbatim from ChartConfig (series color, custom
+ * palette, per-point colors) and are interpolated straight into SVG paint
+ * attributes. A value like `#000"><image href=x onerror=alert(1)>` would break
+ * out of the attribute and inject nodes that execute when this SVG is assigned
+ * via innerHTML (the pane preview) or opened as a standalone document — stored
+ * XSS reachable cross-user through a POWERCHART_CONFIG shape tag. Allow only the
+ * shapes a paint can legitimately take; anything else falls back to a safe ink.
+ * Every colour the engine actually produces (hex, and internally-built url(#…))
+ * passes unchanged, so valid charts render byte-identically.
+ */
+const PAINT_OK = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|url\(#[\w.-]+\)|[a-zA-Z]{1,24})$/;
+const paint = (c: string | undefined): string => (c && PAINT_OK.test(c) ? c : "#000000");
+
 /** Hatch/dot pattern tiles: series-colored base with white strokes over it. */
 const PATTERN_TILE: Record<string, (id: string, color: string) => string> = {
   diagonal: (id, c) =>
@@ -34,13 +48,14 @@ export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): st
   const defs = new Map<string, string>();
   for (const n of scene.nodes) {
     if (n.kind === "rect" && n.pattern && PATTERN_TILE[n.pattern]) {
-      const id = patternId(n.pattern, n.fill);
-      if (!defs.has(id)) defs.set(id, PATTERN_TILE[n.pattern](id, n.fill));
+      const fill = paint(n.fill);
+      const id = patternId(n.pattern, fill);
+      if (!defs.has(id)) defs.set(id, PATTERN_TILE[n.pattern](id, fill));
     }
   }
   if (defs.size) parts.push(`<defs>${[...defs.values()].join("")}</defs>`);
   if (opts.background) {
-    parts.push(`<rect width="100%" height="100%" fill="${opts.background}"/>`);
+    parts.push(`<rect width="100%" height="100%" fill="${paint(opts.background)}"/>`);
   }
   for (const n of scene.nodes) parts.push(nodeToSvg(n));
   parts.push("</svg>");
@@ -50,13 +65,14 @@ export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): st
 function nodeToSvg(n: SceneNode): string {
   switch (n.kind) {
     case "rect": {
-      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
-      const fill = n.pattern && PATTERN_TILE[n.pattern] ? `url(#${patternId(n.pattern, n.fill)})` : n.fill;
+      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      const fill =
+        n.pattern && PATTERN_TILE[n.pattern] ? `url(#${patternId(n.pattern, paint(n.fill))})` : paint(n.fill);
       return `<rect x="${r(n.x)}" y="${r(n.y)}" width="${r(n.w)}" height="${r(n.h)}" fill="${fill}"${stroke}${name(n)}/>`;
     }
     case "line": {
       const dash = n.dash ? ` stroke-dasharray="${n.dash.join(" ")}"` : "";
-      return `<line x1="${r(n.x1)}" y1="${r(n.y1)}" x2="${r(n.x2)}" y2="${r(n.y2)}" stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"${dash}${name(n)}/>`;
+      return `<line x1="${r(n.x1)}" y1="${r(n.y1)}" x2="${r(n.x2)}" y2="${r(n.y2)}" stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"${dash}${name(n)}/>`;
     }
     case "text": {
       const anchor = n.align === "left" ? "start" : n.align === "right" ? "end" : "middle";
@@ -70,11 +86,11 @@ function nodeToSvg(n: SceneNode): string {
             : n.y + n.h / 2 + n.fontSize * 0.36;
       const weight = n.bold ? ` font-weight="600"` : "";
       const family = n.fontFamily ? ` font-family="${esc(n.fontFamily)}"` : "";
-      return `<text x="${r(x)}" y="${r(y)}" font-size="${n.fontSize}" fill="${n.color}" text-anchor="${anchor}"${weight}${family}${name(n)}>${esc(n.text)}</text>`;
+      return `<text x="${r(x)}" y="${r(y)}" font-size="${n.fontSize}" fill="${paint(n.color)}" text-anchor="${anchor}"${weight}${family}${name(n)}>${esc(n.text)}</text>`;
     }
     case "ellipse": {
-      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
-      return `<ellipse cx="${r(n.cx)}" cy="${r(n.cy)}" rx="${r(n.rx)}" ry="${r(n.ry)}" fill="${n.fill}"${stroke}${name(n)}/>`;
+      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      return `<ellipse cx="${r(n.cx)}" cy="${r(n.cy)}" rx="${r(n.rx)}" ry="${r(n.ry)}" fill="${paint(n.fill)}"${stroke}${name(n)}/>`;
     }
     case "chevron": {
       const notch = n.h * 0.28;
@@ -84,10 +100,10 @@ function nodeToSvg(n: SceneNode): string {
       const d = n.flatLeft
         ? `M ${r(n.x)} ${r(n.y)} L ${r(n.x + n.w - notch)} ${r(n.y)} L ${r(n.x + n.w)} ${r(n.y + n.h / 2)} L ${r(n.x + n.w - notch)} ${r(n.y + n.h)} L ${r(n.x)} ${r(n.y + n.h)} Z`
         : `${left} L ${r(n.x)} ${r(n.y + n.h)} L ${r(n.x + n.w - notch)} ${r(n.y + n.h)} L ${r(n.x + n.w)} ${r(n.y + n.h / 2)} L ${r(n.x + n.w - notch)} ${r(n.y)} Z`;
-      return `<path d="${d}" fill="${n.fill}"${name(n)}/>`;
+      return `<path d="${d}" fill="${paint(n.fill)}"${name(n)}/>`;
     }
     case "wedge": {
-      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"` : "";
       // A full 360° span has coincident start/end points, so the arc collapses
       // and SVG draws nothing. Emit an explicit circle (or ring) instead.
       if (n.endAngle - n.startAngle >= 359.9) {
@@ -97,7 +113,7 @@ function nodeToSvg(n: SceneNode): string {
           return `M ${r(a.x)} ${r(a.y)} A ${r(rad)} ${r(rad)} 0 1 ${sweep} ${r(b.x)} ${r(b.y)} A ${r(rad)} ${r(rad)} 0 1 ${sweep} ${r(a.x)} ${r(a.y)} Z`;
         };
         const d = n.innerR > 0 ? `${ring(n.r, 1)} ${ring(n.innerR, 0)}` : ring(n.r, 1);
-        return `<path d="${d}" fill="${n.fill}" fill-rule="evenodd"${stroke}${name(n)}/>`;
+        return `<path d="${d}" fill="${paint(n.fill)}" fill-rule="evenodd"${stroke}${name(n)}/>`;
       }
       const large = n.endAngle - n.startAngle > 180 ? 1 : 0;
       const o1 = polar(n.cx, n.cy, n.r, n.startAngle);
@@ -110,22 +126,22 @@ function nodeToSvg(n: SceneNode): string {
       } else {
         d = `M ${r(n.cx)} ${r(n.cy)} L ${r(o1.x)} ${r(o1.y)} A ${r(n.r)} ${r(n.r)} 0 ${large} 1 ${r(o2.x)} ${r(o2.y)} Z`;
       }
-      return `<path d="${d}" fill="${n.fill}"${stroke}${name(n)}/>`;
+      return `<path d="${d}" fill="${paint(n.fill)}"${stroke}${name(n)}/>`;
     }
     case "polygon": {
       const pts = n.points.map((p) => `${r(p.x)},${r(p.y)}`).join(" ");
       const fill = n.fill
-        ? ` fill="${n.fill}"${n.fillOpacity != null ? ` fill-opacity="${n.fillOpacity}"` : ""}`
+        ? ` fill="${paint(n.fill)}"${n.fillOpacity != null ? ` fill-opacity="${n.fillOpacity}"` : ""}`
         : ` fill="none"`;
       const stroke = n.stroke
-        ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
+        ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
         : "";
       return `<polygon points="${pts}"${fill}${stroke}${name(n)}/>`;
     }
     case "arrowhead": {
       // Triangle with tip at (x, y), pointing along angle.
       const s = n.size;
-      return `<path d="M 0 0 L ${-s * 1.8} ${-s * 0.7} L ${-s * 1.8} ${s * 0.7} Z" fill="${n.fill}" transform="translate(${r(n.x)} ${r(n.y)}) rotate(${r(n.angle)})"${name(n)}/>`;
+      return `<path d="M 0 0 L ${-s * 1.8} ${-s * 0.7} L ${-s * 1.8} ${s * 0.7} Z" fill="${paint(n.fill)}" transform="translate(${r(n.x)} ${r(n.y)}) rotate(${r(n.angle)})"${name(n)}/>`;
     }
     case "symbol": {
       // The other two renderers name a preset; here we draw its outline.
@@ -133,9 +149,9 @@ function nodeToSvg(n: SceneNode): string {
         .map((p) => `${r(p.x)},${r(p.y)}`)
         .join(" ");
       const stroke = n.stroke
-        ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
+        ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
         : "";
-      return `<polygon points="${pts}" fill="${n.fill}"${stroke}${name(n)}/>`;
+      return `<polygon points="${pts}" fill="${paint(n.fill)}"${stroke}${name(n)}/>`;
     }
   }
 }
