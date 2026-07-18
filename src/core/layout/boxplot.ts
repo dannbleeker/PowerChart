@@ -4,7 +4,7 @@ import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import { baselineNode, chromeNodes, computeFrame, computeFrameHorizontal, titleHeight, valueScale } from "./frame";
-import { horizontalChrome, type LayoutResult } from "./column";
+import { horizontalChrome, legendRow, type LayoutResult } from "./column";
 
 /** The five-number-summary datasheet rows (think-cell's own boxplot recipe). */
 const SUMMARY_ROWS: [keyof FiveNum, RegExp][] = [
@@ -209,38 +209,14 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     return { kind: "line", x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke, strokeWidth: weight, name: nm };
   };
 
-  // Group legend (grouped mode only).
+  // Group legend (grouped mode only) — wrapping, via the shared row.
   if (nG > 1) {
-    let lx = frame.x;
-    const titleH = titleHeight(cfg, style);
-    groupNames.forEach((g, gi) => {
-      const chip = fs * 0.7;
-      nodes.push(
-        {
-          kind: "rect",
-          x: lx,
-          y: titleH + fs * 0.3,
-          w: chip,
-          h: chip,
-          fill: seriesColor(style, gi),
-          name: `legend-chip-${gi}`,
-        },
-        {
-          kind: "text",
-          x: lx + chip + 3,
-          y: titleH,
-          w: textWidth(g, fs) + 6,
-          h: fs * 1.4,
-          text: g,
-          fontSize: fs,
-          color: style.text,
-          align: "left",
-          valign: "middle",
-          name: `legend-${gi}`,
-        },
-      );
-      lx += chip + 3 + textWidth(g, fs) + 12;
-    });
+    nodes.push(
+      ...legendRow(cfg, style, frame.x, titleHeight(cfg, style), {
+        maxX: cfg.width - 4,
+        entries: groupNames.map((g, gi) => ({ label: g, color: seriesColor(style, gi), name: `legend-${gi}` })),
+      }),
+    );
   }
 
   grouped.forEach((groupBoxes, gi) =>

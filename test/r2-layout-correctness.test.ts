@@ -3,9 +3,10 @@ import { buildChart } from "../src/core/chart";
 import { boxplotExtent } from "../src/core/layout/boxplot";
 import { DEFAULT_STYLE } from "../src/core/style";
 import { layoutViolin } from "../src/core/layout/violin";
+import { legendRow } from "../src/core/layout/column";
 import { DEFAULT_DECOR } from "../src/core/style";
 import type { ChartConfig } from "../src/core/types";
-import type { TextNode } from "../src/core/scene";
+import type { RectNode, TextNode } from "../src/core/scene";
 
 describe("boxplot data-driven domain (no forced zero)", () => {
   it("does not pin the value axis to zero for far-from-zero data", () => {
@@ -82,5 +83,28 @@ describe("violin honours a custom palette length", () => {
     expect(body9).toBeDefined();
     // palette[9 % 5] = "#555555"; the old (9 % 8) % 5 = 1 would give "#222222".
     expect(body9!.stroke).toBe("#555555");
+  });
+});
+
+describe("legend wraps instead of marching off-canvas", () => {
+  const seriesCfg = (n: number, width: number): ChartConfig => ({
+    kind: "stacked",
+    width,
+    height: 200,
+    data: {
+      categories: ["A"],
+      series: Array.from({ length: n }, (_, i) => ({ name: `Series ${i + 1}`, values: [1] })),
+    },
+  });
+  const chipYs = (nodes: ReturnType<typeof legendRow>) =>
+    new Set(nodes.filter((n) => n.name?.startsWith("legend-chip-")).map((n) => (n as RectNode).y));
+
+  it("puts overflowing chips on a second row", () => {
+    // 12 wide chips cannot fit one 300pt row — they must span multiple rows.
+    expect(chipYs(legendRow(seriesCfg(12, 300), DEFAULT_STYLE, 0, 0, { maxX: 300 })).size).toBeGreaterThan(1);
+  });
+
+  it("stays a single row (byte-identical) when everything fits", () => {
+    expect(chipYs(legendRow(seriesCfg(2, 800), DEFAULT_STYLE, 0, 0, { maxX: 796 })).size).toBe(1);
   });
 });

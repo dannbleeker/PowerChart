@@ -193,7 +193,7 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       name: "baseline",
     });
     if (decor.seriesLabels && data.series.length > 1) {
-      nodes.push(...legendRow(cfg, style, frame.x, titleHeight(cfg, style) + 2));
+      nodes.push(...legendRow(cfg, style, frame.x, titleHeight(cfg, style) + 2, { maxX: cfg.width - 4 }));
     }
   } else {
     nodes.push({
