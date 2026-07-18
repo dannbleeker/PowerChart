@@ -140,15 +140,7 @@ export interface ArrowheadNode {
 }
 
 export type SceneNode =
-  | RectNode
-  | LineNode
-  | TextNode
-  | EllipseNode
-  | WedgeNode
-  | ChevronNode
-  | ArrowheadNode
-  | PolygonNode
-  | SymbolNode;
+  RectNode | LineNode | TextNode | EllipseNode | WedgeNode | ChevronNode | ArrowheadNode | PolygonNode | SymbolNode;
 
 // Circle/wedge math lives in ./geometry (shared with the renderers); re-exported
 // here so scene consumers (layouts) keep importing `polar` from the scene module.

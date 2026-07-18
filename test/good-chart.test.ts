@@ -20,8 +20,7 @@ const base: ChartConfig = {
   },
 };
 
-const byPrefix = (cfg: ChartConfig, prefix: string) =>
-  buildChart(cfg).nodes.filter((n) => n.name?.startsWith(prefix));
+const byPrefix = (cfg: ChartConfig, prefix: string) => buildChart(cfg).nodes.filter((n) => n.name?.startsWith(prefix));
 
 describe("connector lines", () => {
   it("joins each segment boundary between adjacent stacked columns", () => {
@@ -34,7 +33,13 @@ describe("connector lines", () => {
   it("connects negative-side boundaries separately", () => {
     const cfg: ChartConfig = {
       ...base,
-      data: { categories: ["A", "B"], series: [{ name: "S", values: [10, 12] }, { name: "T", values: [-4, -6] }] },
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "S", values: [10, 12] },
+          { name: "T", values: [-4, -6] },
+        ],
+      },
       decorations: { connectors: true, segmentLabels: true },
     };
     const names = byPrefix(cfg, "connector-").map((n) => n.name);
@@ -46,7 +51,9 @@ describe("connector lines", () => {
   });
 
   it("works in horizontal orientation and stays off by default", () => {
-    expect(byPrefix({ ...base, horizontal: true, decorations: { connectors: true, segmentLabels: true } }, "connector-")).toHaveLength(4);
+    expect(
+      byPrefix({ ...base, horizontal: true, decorations: { connectors: true, segmentLabels: true } }, "connector-"),
+    ).toHaveLength(4);
     expect(byPrefix(base, "connector-")).toHaveLength(0);
   });
 
@@ -89,7 +96,10 @@ describe("per-cell highlight colors", () => {
     const line: ChartConfig = {
       ...base,
       kind: "line",
-      data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [1, 5, 3], colors: [null, "#e34948", null] }] },
+      data: {
+        categories: ["A", "B", "C"],
+        series: [{ name: "S", values: [1, 5, 3], colors: [null, "#e34948", null] }],
+      },
     };
     const markers = byPrefix(line, "marker-0-") as RectNode[];
     expect(markers[1].fill).toBe("#e34948");
@@ -99,7 +109,10 @@ describe("per-cell highlight colors", () => {
 
 describe("callouts", () => {
   it("draws a tail, box, and centered text anchored above the column", () => {
-    const cfg: ChartConfig = { ...base, decorations: { segmentLabels: true, callouts: [{ text: "One-off", category: 1 }] } };
+    const cfg: ChartConfig = {
+      ...base,
+      decorations: { segmentLabels: true, callouts: [{ text: "One-off", category: 1 }] },
+    };
     const s = buildChart(cfg);
     const box = s.nodes.find((n) => n.name === "callout-box-0") as RectNode;
     const tail = s.nodes.find((n) => n.name === "callout-tail-0");
@@ -117,7 +130,10 @@ describe("callouts", () => {
       ...base,
       decorations: { segmentLabels: true, callouts: [{ text: "x", category: 0, series: 0, dx: 20, dy: 5 }] },
     };
-    const plain = buildChart({ ...base, decorations: { segmentLabels: true, callouts: [{ text: "x", category: 0, series: 0 }] } });
+    const plain = buildChart({
+      ...base,
+      decorations: { segmentLabels: true, callouts: [{ text: "x", category: 0, series: 0 }] },
+    });
     const nudged = buildChart(cfg);
     const b0 = plain.nodes.find((n) => n.name === "callout-box-0") as RectNode;
     const b1 = nudged.nodes.find((n) => n.name === "callout-box-0") as RectNode;
@@ -194,7 +210,8 @@ describe("footnote and 100% note", () => {
   it("reserves space so the plot does not collide with the footnote", () => {
     const plain = buildChart(base);
     const withFn = buildChart({ ...base, footnote: "src" });
-    const bottom = (sc: typeof plain) => Math.max(...sc.nodes.filter((n) => n.name?.startsWith("seg-")).map((n) => (n as RectNode).y + (n as RectNode).h));
+    const bottom = (sc: typeof plain) =>
+      Math.max(...sc.nodes.filter((n) => n.name?.startsWith("seg-")).map((n) => (n as RectNode).y + (n as RectNode).h));
     expect(bottom(withFn)).toBeLessThan(bottom(plain));
   });
 

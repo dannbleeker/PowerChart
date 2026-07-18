@@ -39,8 +39,7 @@ function clampDim(v: number | undefined, fallback: number): number {
 function normalizeData(data: ChartData): ChartData {
   const categories = Array.isArray(data?.categories) ? data.categories : [];
   const n = categories.length;
-  const cell = (v: number | null | undefined): number | null =>
-    v == null ? null : Number.isFinite(v) ? v : null;
+  const cell = (v: number | null | undefined): number | null => (v == null ? null : Number.isFinite(v) ? v : null);
   const series = (Array.isArray(data?.series) ? data.series : []).map((s) => {
     const raw = Array.isArray(s?.values) ? s.values : [];
     const values = Array.from({ length: n }, (_, c) => cell(raw[c]));
@@ -105,12 +104,10 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
   // Sort runs before error/target rows are extracted; those carried rows are
   // not real stack contributors, so exclude them from the ranking totals.
   const ranked = data.series.filter((s) => !CARRIED_ROW.test(s.name.trim()));
-  const totals = data.categories.map((_, c) =>
-    ranked.reduce((a, s) => a + (s.values[c] ?? 0), 0),
-  );
+  const totals = data.categories.map((_, c) => ranked.reduce((a, s) => a + (s.values[c] ?? 0), 0));
   const sign = cfg.categorySort === "ascending" ? 1 : -1;
   const order = data.categories.map((_, c) => c).sort((a, b) => sign * (totals[a] - totals[b]));
-  const pick = <T,>(arr: T[] | undefined) => (arr ? order.map((c) => arr[c]) : undefined);
+  const pick = <T>(arr: T[] | undefined) => (arr ? order.map((c) => arr[c]) : undefined);
   return {
     ...cfg,
     data: {
@@ -169,7 +166,7 @@ function applyPareto(cfg: ChartConfig): ChartConfig {
   const bar = cfg.data.series.find((s) => s.type !== "line" && s.type !== "marker");
   if (!bar) return cfg;
   const order = cfg.data.categories.map((_, c) => c).sort((a, b) => (bar.values[b] ?? 0) - (bar.values[a] ?? 0));
-  const pick = <T,>(arr: T[] | undefined) => (arr ? order.map((c) => arr[c]) : undefined);
+  const pick = <T>(arr: T[] | undefined) => (arr ? order.map((c) => arr[c]) : undefined);
   const barVals = order.map((c) => bar.values[c] ?? 0);
   const total = barVals.reduce((a, v) => a + Math.max(0, v), 0) || 1;
   let run = 0;
@@ -414,10 +411,11 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
       });
     }
     if (targets) {
-      for (const t of targets) if (t != null) {
-        max = Math.max(max, t);
-        min = Math.min(min, t);
-      }
+      for (const t of targets)
+        if (t != null) {
+          max = Math.max(max, t);
+          min = Math.min(min, t);
+        }
     }
     return { min, max };
   };
@@ -443,9 +441,17 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
   });
   if (cfg.footnote) {
     nodes.push({
-      kind: "text", x: 2, y: cfg.height - fs * 1.15, w: cfg.width - 4, h: fs * 1.1,
-      text: cfg.footnote, fontSize: fs * 0.85, color: style.mutedText,
-      align: "left", valign: "bottom", name: "footnote",
+      kind: "text",
+      x: 2,
+      y: cfg.height - fs * 1.15,
+      w: cfg.width - 4,
+      h: fs * 1.1,
+      text: cfg.footnote,
+      fontSize: fs * 0.85,
+      color: style.mutedText,
+      align: "left",
+      valign: "bottom",
+      name: "footnote",
     });
   }
   return { width: cfg.width, height: cfg.height, nodes };
@@ -495,7 +501,8 @@ export function describeChart(cfg: ChartConfig): string {
   const list = (xs: string[], n = 4) =>
     xs.length <= n ? xs.join(", ") : `${xs.slice(0, n).join(", ")} and ${xs.length - n} more`;
   const bits: string[] = [`${label}${cfg.horizontal ? " (horizontal)" : ""}`];
-  if (seriesNames.length) bits.push(`${seriesNames.length} data ${seriesNames.length === 1 ? "series" : "series"}: ${list(seriesNames)}`);
+  if (seriesNames.length)
+    bits.push(`${seriesNames.length} data ${seriesNames.length === 1 ? "series" : "series"}: ${list(seriesNames)}`);
   if (cats.length) bits.push(`${cats.length} ${cats.length === 1 ? "category" : "categories"}: ${list(cats)}`);
   return bits.join(". ") + ".";
 }
@@ -594,7 +601,20 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // and butterfly charts.
   const skipDecor =
     cfg.horizontal ||
-    ["butterfly", "scatter", "bubble", "gantt", "pie", "doughnut", "radar", "heatmap", "tilemap", "cascade", "funnel", "waffle"].includes(cfg.kind);
+    [
+      "butterfly",
+      "scatter",
+      "bubble",
+      "gantt",
+      "pie",
+      "doughnut",
+      "radar",
+      "heatmap",
+      "tilemap",
+      "cascade",
+      "funnel",
+      "waffle",
+    ].includes(cfg.kind);
   // Background bands go BEFORE the layout's nodes so they render behind the
   // data (scatter/bubble draw their own, in value units).
   const bands = !skipDecor && decor.bands?.length ? bandNodes(cfg, style, decor, result.anchors) : [];
@@ -615,9 +635,38 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       const capW = Math.min(a.categoryWidth[c] * 0.35, 10);
       const yHi = a.valueToY!(base + (plus ?? 0));
       const yLo = a.valueToY!(base - (minus ?? 0));
-      nodes.push({ kind: "line", x1: x, y1: yHi, x2: x, y2: yLo, stroke: style.axis, strokeWidth: 1, name: `error-${c}` });
-      if (plus != null) nodes.push({ kind: "line", x1: x - capW / 2, y1: yHi, x2: x + capW / 2, y2: yHi, stroke: style.axis, strokeWidth: 1, name: `error-cap-hi-${c}` });
-      if (minus != null) nodes.push({ kind: "line", x1: x - capW / 2, y1: yLo, x2: x + capW / 2, y2: yLo, stroke: style.axis, strokeWidth: 1, name: `error-cap-lo-${c}` });
+      nodes.push({
+        kind: "line",
+        x1: x,
+        y1: yHi,
+        x2: x,
+        y2: yLo,
+        stroke: style.axis,
+        strokeWidth: 1,
+        name: `error-${c}`,
+      });
+      if (plus != null)
+        nodes.push({
+          kind: "line",
+          x1: x - capW / 2,
+          y1: yHi,
+          x2: x + capW / 2,
+          y2: yHi,
+          stroke: style.axis,
+          strokeWidth: 1,
+          name: `error-cap-hi-${c}`,
+        });
+      if (minus != null)
+        nodes.push({
+          kind: "line",
+          x1: x - capW / 2,
+          y1: yLo,
+          x2: x + capW / 2,
+          y2: yLo,
+          stroke: style.axis,
+          strokeWidth: 1,
+          name: `error-cap-lo-${c}`,
+        });
     });
   }
 
@@ -631,7 +680,16 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       const x = a.categoryX[c];
       const half = Math.min(a.categoryWidth[c] * 0.62, 26);
       const y = a.valueToY!(t);
-      nodes.push({ kind: "line", x1: x - half, y1: y, x2: x + half, y2: y, stroke: style.text, strokeWidth: 2.25, name: `target-${c}` });
+      nodes.push({
+        kind: "line",
+        x1: x - half,
+        y1: y,
+        x2: x + half,
+        y2: y,
+        stroke: style.text,
+        strokeWidth: 2.25,
+        name: `target-${c}`,
+      });
       // Budget-vs-actual bridge: on a waterfall, a hatched gap segment shows
       // the distance from the achieved level to the target.
       if (cfg.kind === "waterfall") {
@@ -641,16 +699,31 @@ export function buildChart(rawCfg: ChartConfig): Scene {
           const yA = a.valueToY!(actual);
           const w = a.categoryWidth[c];
           nodes.push({
-            kind: "rect", x: x - w / 2, y: Math.min(y, yA), w, h: Math.abs(yA - y),
-            fill: style.neutral, pattern: "diagonal", stroke: style.mutedText, strokeWidth: 0.75,
+            kind: "rect",
+            x: x - w / 2,
+            y: Math.min(y, yA),
+            w,
+            h: Math.abs(yA - y),
+            fill: style.neutral,
+            pattern: "diagonal",
+            stroke: style.mutedText,
+            strokeWidth: 0.75,
             name: `target-gap-${c}`,
           });
           const fs = style.fontSize;
           nodes.push({
-            kind: "text", x: x - w / 2 - 4, y: Math.min(y, yA) - fs * 1.5, w: w + 8, h: fs * 1.4,
+            kind: "text",
+            x: x - w / 2 - 4,
+            y: Math.min(y, yA) - fs * 1.5,
+            w: w + 8,
+            h: fs * 1.4,
             text: `Gap ${formatNumber(gap, { ...resolveFormat([t, actual], cfg.numberFormat), forceSign: true })}`,
-            fontSize: fs * 0.95, bold: true, color: style.text,
-            align: "center", valign: "bottom", name: `target-gap-label-${c}`,
+            fontSize: fs * 0.95,
+            bold: true,
+            color: style.text,
+            align: "center",
+            valign: "bottom",
+            name: `target-gap-label-${c}`,
           });
         }
       }
@@ -719,9 +792,7 @@ function hundredPercentTotal(cfg: ChartConfig): number | null {
   if (kind === "stacked100") {
     const denominators = data.categories.map((_, c) => {
       const d = data.hundredPercent?.[c];
-      return d != null && d > 0
-        ? d
-        : data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0);
+      return d != null && d > 0 ? d : data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0);
     });
     if (!denominators.length || denominators[0] <= 0) return null;
     return denominators.every((d) => Math.abs(d - denominators[0]) < 1e-9) ? denominators[0] : null;

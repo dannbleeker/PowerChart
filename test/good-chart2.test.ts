@@ -76,18 +76,34 @@ describe("trend statistics", () => {
 
   it("computes a plausible p for noisy data and null for tiny samples", () => {
     const noisy = [
-      { x: 1, y: 2 }, { x: 2, y: 4.2 }, { x: 3, y: 5.4 }, { x: 4, y: 8.9 },
-      { x: 5, y: 9.6 }, { x: 6, y: 12.4 }, { x: 7, y: 13.1 },
+      { x: 1, y: 2 },
+      { x: 2, y: 4.2 },
+      { x: 3, y: 5.4 },
+      { x: 4, y: 8.9 },
+      { x: 5, y: 9.6 },
+      { x: 6, y: 12.4 },
+      { x: 7, y: 13.1 },
     ];
     const s = trendStats(noisy)!;
     expect(s.r2).toBeGreaterThan(0.95);
     expect(s.p).not.toBeNull();
     expect(s.p!).toBeLessThan(0.001);
     // Uncorrelated data → high p.
-    const flat = trendStats([{ x: 1, y: 5 }, { x: 2, y: 1 }, { x: 3, y: 6 }, { x: 4, y: 2 }, { x: 5, y: 5 }])!;
+    const flat = trendStats([
+      { x: 1, y: 5 },
+      { x: 2, y: 1 },
+      { x: 3, y: 6 },
+      { x: 4, y: 2 },
+      { x: 5, y: 5 },
+    ])!;
     expect(flat.p!).toBeGreaterThan(0.3);
     // Two points: fit exists, no significance (df = 0).
-    expect(trendStats([{ x: 1, y: 1 }, { x: 2, y: 3 }])!.p).toBeNull();
+    expect(
+      trendStats([
+        { x: 1, y: 1 },
+        { x: 2, y: 3 },
+      ])!.p,
+    ).toBeNull();
   });
 
   it("formats p against the conventional cuts", () => {

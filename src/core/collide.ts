@@ -18,7 +18,14 @@ interface Box {
 }
 
 /** Movable label name prefixes, in nudge-priority order (later = moves). */
-const MOVABLE = [/^total-/, /^value-line-label/, /^series-label-/, /^combo-series-label-/, /^diff-label$/, /^cagr-label$/];
+const MOVABLE = [
+  /^total-/,
+  /^value-line-label/,
+  /^series-label-/,
+  /^combo-series-label-/,
+  /^diff-label$/,
+  /^cagr-label$/,
+];
 
 const movableRank = (name: string | undefined): number => {
   if (!name) return -1;
@@ -34,8 +41,7 @@ function tightBox(n: TextNode): Box {
   return { x, y, w, h };
 }
 
-const overlaps = (a: Box, b: Box) =>
-  a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 export function resolveLabelCollisions(nodes: SceneNode[]): void {
   const texts = nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text);

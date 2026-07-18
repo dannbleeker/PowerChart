@@ -36,8 +36,7 @@ export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string
   if (!Number.isFinite(v)) return "";
   const f = { ...DEFAULT_FORMAT, ...fmt };
   const abs = Math.abs(v);
-  const decimals =
-    f.decimals === "auto" ? (abs !== 0 && abs < 1 ? 2 : abs < 10 ? 1 : 0) : f.decimals;
+  const decimals = f.decimals === "auto" ? (abs !== 0 && abs < 1 ? 2 : abs < 10 ? 1 : 0) : f.decimals;
   // A small negative that rounds toward zero would print as "-0". Normalise the
   // VALUE, not the formatted string: Intl renders the sign as U+2212 in some
   // locales, prefixes an invisible directional mark in RTL ones, and uses
@@ -232,8 +231,7 @@ export function formatP(p: number): string {
 function betaI(a: number, b: number, x: number): number {
   if (x <= 0) return 0;
   if (x >= 1) return 1;
-  const lnBeta =
-    lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x);
+  const lnBeta = lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x);
   const front = Math.exp(lnBeta);
   const symmetric = x >= (a + 1) / (a + b + 2);
   const [aa, bb, xx] = symmetric ? [b, a, 1 - x] : [a, b, x];
@@ -271,8 +269,8 @@ function betaI(a: number, b: number, x: number): number {
 /** Lanczos log-gamma. */
 function lnGamma(z: number): number {
   const g = [
-    676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
-    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+    676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
   ];
   if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnGamma(1 - z);
   z -= 1;

@@ -88,7 +88,11 @@ describe("bar styles on clustered", () => {
 
   it("stays plain bars by default and on stacked charts", () => {
     expect(buildChart(base).nodes.some((n) => n.kind === "rect" && n.name === "seg-0-0")).toBe(true);
-    const stacked = buildChart({ ...base, kind: "stacked", decorations: { barStyle: "lollipop", segmentLabels: true } });
+    const stacked = buildChart({
+      ...base,
+      kind: "stacked",
+      decorations: { barStyle: "lollipop", segmentLabels: true },
+    });
     expect(stacked.nodes.some((n) => n.name?.startsWith("stem-"))).toBe(false);
   });
 });

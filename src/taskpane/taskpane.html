@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -36,7 +36,8 @@
     <div class="status-strip" id="status-strip" hidden>
       <div class="status-bar" id="status-bar" hidden><i></i></div>
       <p class="status-line">
-        <span class="hint" id="host-note" role="status" aria-live="polite"></span><span class="status-elapsed" id="status-elapsed" aria-hidden="true"></span>
+        <span class="hint" id="host-note" role="status" aria-live="polite"></span
+        ><span class="status-elapsed" id="status-elapsed" aria-hidden="true"></span>
       </p>
     </div>
 
@@ -52,8 +53,24 @@
           <summary><span class="acc-title">1 · Chart type</span><span class="acc-sub" id="type-sub"></span></summary>
           <div class="acc-body">
             <div class="type-search">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 14 14" /></svg>
-              <input type="text" id="type-search-input" placeholder="Search chart types…" aria-label="Search chart types" />
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                aria-hidden="true"
+              >
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="M10.5 10.5 14 14" />
+              </svg>
+              <input
+                type="text"
+                id="type-search-input"
+                placeholder="Search chart types…"
+                aria-label="Search chart types"
+              />
             </div>
             <div id="gallery"></div>
             <p class="no-type-result" id="type-noresult" style="display: none">No chart type matches that search.</p>
@@ -71,8 +88,8 @@
           <details class="rows-help">
             <summary>Paste straight from Excel — special data rows</summary>
             <p class="hint" id="sheet-hint">
-              Rows are recognised by name: <code>e</code> cell = waterfall total,
-              <code>100%=</code> row = 100%-chart denominator, <code>X extent</code> row = Mekko widths,
+              Rows are recognised by name: <code>e</code> cell = waterfall total, <code>100%=</code> row = 100%-chart
+              denominator, <code>X extent</code> row = Mekko widths,
               <code>X</code>/<code>Y</code>/<code>Size</code>/<code>Group</code> rows = scatter &amp; bubble,
               <code>Start</code>/<code>End</code>/<code>Milestone</code> rows = Gantt.
             </p>
@@ -91,8 +108,10 @@
           <summary><span class="acc-title">Preview &amp; size</span></summary>
           <div class="acc-body">
             <div class="element-row">
-              <label>Size <input type="number" id="chart-w" value="480" min="80" style="width: 52px" /> ×
-                <input type="number" id="chart-h" value="300" min="60" style="width: 52px" /> pt</label>
+              <label
+                >Size <input type="number" id="chart-w" value="480" min="80" style="width: 52px" /> ×
+                <input type="number" id="chart-h" value="300" min="60" style="width: 52px" /> pt</label
+              >
               <label><input type="checkbox" id="auto-update" /> Auto-update chart</label>
             </div>
             <div id="preview" class="preview"></div>
@@ -106,33 +125,58 @@
           <h2>Elements</h2>
           <div class="el-grid">
             <div class="el-card">
-              <div class="el-top"><span class="el-name">Harvey ball</span><button id="harvey-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-top">
+                <span class="el-name">Harvey ball</span
+                ><button id="harvey-insert" class="el-insert" disabled>Insert</button>
+              </div>
               <div class="el-body">
-                <label class="el-ctl">Fill <input type="range" id="harvey-pct" min="0" max="100" value="75" /> <span id="harvey-val">75%</span></label>
+                <label class="el-ctl"
+                  >Fill <input type="range" id="harvey-pct" min="0" max="100" value="75" />
+                  <span id="harvey-val">75%</span></label
+                >
                 <span id="harvey-preview" class="element-preview"></span>
               </div>
             </div>
             <div class="el-card">
-              <div class="el-top"><span class="el-name">Checkbox</span><button id="check-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-top">
+                <span class="el-name">Checkbox</span
+                ><button id="check-insert" class="el-insert" disabled>Insert</button>
+              </div>
               <div class="el-body">
-                <label class="el-ctl">State
-                  <select id="check-state"><option value="yes">✓ yes</option><option value="no">✗ no</option><option value="partial">– partial</option></select>
+                <label class="el-ctl"
+                  >State
+                  <select id="check-state">
+                    <option value="yes">✓ yes</option>
+                    <option value="no">✗ no</option>
+                    <option value="partial">– partial</option>
+                  </select>
                 </label>
                 <span id="check-preview" class="element-preview"></span>
               </div>
             </div>
             <div class="el-card">
-              <div class="el-top"><span class="el-name">Process flow</span><button id="flow-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-top">
+                <span class="el-name">Process flow</span
+                ><button id="flow-insert" class="el-insert" disabled>Insert</button>
+              </div>
               <div class="el-body el-col">
                 <div class="el-ctl-row">
-                  <input type="text" id="flow-steps" class="el-grow" value="Scope, Design, Build, Launch" aria-label="Process-flow steps" />
+                  <input
+                    type="text"
+                    id="flow-steps"
+                    class="el-grow"
+                    value="Scope, Design, Build, Launch"
+                    aria-label="Process-flow steps"
+                  />
                   <label>step <input type="number" id="flow-highlight" min="0" value="2" style="width: 38px" /></label>
                 </div>
                 <div id="flow-preview" class="element-flow-preview"></div>
               </div>
             </div>
             <div class="el-card">
-              <div class="el-top"><span class="el-name">KPI tile</span><button id="kpi-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-top">
+                <span class="el-name">KPI tile</span><button id="kpi-insert" class="el-insert" disabled>Insert</button>
+              </div>
               <div class="el-body el-col">
                 <div class="el-ctl-row">
                   <input type="text" id="kpi-label" value="Revenue" style="width: 84px" aria-label="KPI label" />
@@ -144,13 +188,19 @@
               </div>
             </div>
             <div class="el-card">
-              <div class="el-top"><span class="el-name">Table from datasheet</span><button id="table-insert" class="el-insert" disabled>Insert</button></div>
+              <div class="el-top">
+                <span class="el-name">Table from datasheet</span
+                ><button id="table-insert" class="el-insert" disabled>Insert</button>
+              </div>
               <div class="el-body">
                 <label class="el-ctl"><input type="checkbox" id="table-total" /> Total row</label>
               </div>
             </div>
           </div>
-          <p class="hint">Cells accept <code>[hb:0.75]</code> harvey balls, <code>[up]</code>/<code>[down]</code>/<code>[flat]</code> arrows, <code>[good]</code>/<code>[bad]</code> colors.</p>
+          <p class="hint">
+            Cells accept <code>[hb:0.75]</code> harvey balls, <code>[up]</code>/<code>[down]</code>/<code>[flat]</code>
+            arrows, <code>[good]</code>/<code>[bad]</code> colors.
+          </p>
         </section>
       </div>
 
@@ -158,8 +208,15 @@
       <div class="tab-panel" data-panel="agenda">
         <section class="section">
           <h2>Agenda</h2>
-          <p class="hint">One chapter per line. Inserts one agenda slide per chapter (appended at the end of the deck — move them into place), each with its chapter highlighted.</p>
-          <textarea id="agenda-chapters" rows="4" placeholder="Introduction&#10;Market overview&#10;Strategy&#10;Financials"></textarea>
+          <p class="hint">
+            One chapter per line. Inserts one agenda slide per chapter (appended at the end of the deck — move them into
+            place), each with its chapter highlighted.
+          </p>
+          <textarea
+            id="agenda-chapters"
+            rows="4"
+            placeholder="Introduction&#10;Market overview&#10;Strategy&#10;Financials"
+          ></textarea>
           <div id="agenda-preview" class="preview agenda-preview"></div>
           <div class="actions">
             <button id="agenda-insert" class="primary" disabled>Insert agenda slides</button>
@@ -171,7 +228,10 @@
       <div class="tab-panel" data-panel="automation">
         <section class="section">
           <h2>Automation (JSON)</h2>
-          <p class="hint">Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an array of configs and insert them all. Same schema as <code>npm run render</code>.</p>
+          <p class="hint">
+            Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an
+            array of configs and insert them all. Same schema as <code>npm run render</code>.
+          </p>
           <textarea id="json-io" rows="5" spellcheck="false"></textarea>
           <div class="actions">
             <button id="json-export">Export current</button>
@@ -184,7 +244,10 @@
 
         <section class="section">
           <h2>Testing</h2>
-          <p class="hint">Drop a demo of every chart kind plus key features and elements onto fresh slides (appended at the end of the deck) for quick visual testing. Each chart stays editable — delete the slides when you're done.</p>
+          <p class="hint">
+            Drop a demo of every chart kind plus key features and elements onto fresh slides (appended at the end of the
+            deck) for quick visual testing. Each chart stays editable — delete the slides when you're done.
+          </p>
           <div class="actions">
             <button id="demo-insert" disabled>Insert demo deck</button>
             <label><input type="checkbox" id="demo-smoke" /> Smoke test (10 slides)</label>
@@ -198,12 +261,30 @@
     <footer class="action-bar">
       <button id="insert" class="primary">Insert into slide</button>
       <div class="more-wrap">
-        <button id="more-actions" class="more-btn" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More actions">⋯</button>
+        <button
+          id="more-actions"
+          class="more-btn"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-label="More actions"
+          title="More actions"
+        >
+          ⋯
+        </button>
         <div class="actions-menu" id="actions-menu" role="menu" hidden>
           <button id="insert-new" role="menuitem" style="display: none">Insert as new</button>
           <button id="load-selection" role="menuitem">Edit selected chart</button>
-          <button id="same-scale" role="menuitem" disabled title="Pin every value-axis chart in the deck to a shared scale">Same scale (deck)</button>
-          <button id="same-scale-sel" role="menuitem" disabled title="Pin the selected charts to a shared scale">Same scale (selection)</button>
+          <button
+            id="same-scale"
+            role="menuitem"
+            disabled
+            title="Pin every value-axis chart in the deck to a shared scale"
+          >
+            Same scale (deck)
+          </button>
+          <button id="same-scale-sel" role="menuitem" disabled title="Pin the selected charts to a shared scale">
+            Same scale (selection)
+          </button>
           <button id="download" role="menuitem">Download SVG</button>
         </div>
       </div>

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BoxHash, gridCellFor, type GridBox } from "../src/core/grid";
 
-const overlaps = (a: GridBox, b: GridBox) =>
-  a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const overlaps = (a: GridBox, b: GridBox) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 function rng(seed: number) {
   return () => {

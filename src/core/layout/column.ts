@@ -1,11 +1,10 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
-import { formatNumber, formatPercent, niceTicks, resolveFormat, segmentLabel } from "../format";
+import { formatNumber, niceTicks, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
 import {
   baselineNode,
   breakMarkerNodes,
-  categorySlots,
   chromeNodes,
   computeFrame,
   computeFrameHorizontal,
@@ -61,15 +60,9 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const overlapFrac = Math.max(-100, Math.min(100, cfg.overlap ?? 0)) / 100;
   const centers = Array.from({ length: n }, (_, i) => catStart + slotLen * (i + 0.5));
 
-  const posTotals = data.categories.map((_, c) =>
-    data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0),
-  );
-  const negTotals = data.categories.map((_, c) =>
-    data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0),
-  );
-  const signedTotals = data.categories.map((_, c) =>
-    data.series.reduce((a, s) => a + (s.values[c] ?? 0), 0),
-  );
+  const posTotals = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const negTotals = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
+  const signedTotals = data.categories.map((_, c) => data.series.reduce((a, s) => a + (s.values[c] ?? 0), 0));
   // Per-category denominator for 100% charts (think-cell's "100%=" row).
   const denominators = data.categories.map((_, c) => {
     const d = data.hundredPercent?.[c];
@@ -179,8 +172,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const barStyle = !stacked && !H ? (decor.barStyle ?? "bar") : "bar";
       if (raw != null && v !== 0) {
         if (stacked) {
-          const catPos =
-            nStacks > 1 ? centers[c] - colThick / 2 + (sp + 0.5) * stackThick : centers[c];
+          const catPos = nStacks > 1 ? centers[c] - colThick / 2 + (sp + 0.5) * stackThick : centers[c];
           const thick = nStacks > 1 ? stackThick - 1 : colThick;
           if (v >= 0) {
             r = segRect(catPos, thick, ups[sp], ups[sp] + v);
@@ -210,19 +202,55 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const dotY = v >= 0 ? r.y : r.y + r.h;
         const dotR = 4;
         if (barStyle === "lollipop") {
-          nodes.push({ kind: "line", x1: dotX, y1: frame.y + frame.h - qOf(0), x2: dotX, y2: dotY, stroke: fill, strokeWidth: 1.5, name: `stem-${si}-${c}` });
+          nodes.push({
+            kind: "line",
+            x1: dotX,
+            y1: frame.y + frame.h - qOf(0),
+            x2: dotX,
+            y2: dotY,
+            stroke: fill,
+            strokeWidth: 1.5,
+            name: `stem-${si}-${c}`,
+          });
         }
         if (barStyle === "range" && si === 1 && data.series[0].values[c] != null) {
           const y0r = frame.y + frame.h - qOf(data.series[0].values[c]!);
-          nodes.push({ kind: "line", x1: dotX, y1: y0r, x2: dotX, y2: dotY, stroke: style.mutedText, strokeWidth: 1.5, name: `range-${c}` });
+          nodes.push({
+            kind: "line",
+            x1: dotX,
+            y1: y0r,
+            x2: dotX,
+            y2: dotY,
+            stroke: style.mutedText,
+            strokeWidth: 1.5,
+            name: `range-${c}`,
+          });
         }
-        nodes.push({ kind: "ellipse", cx: dotX, cy: dotY, rx: dotR, ry: dotR, fill, stroke: style.background, strokeWidth: 1, name: `seg-${si}-${c}` });
+        nodes.push({
+          kind: "ellipse",
+          cx: dotX,
+          cy: dotY,
+          rx: dotR,
+          ry: dotR,
+          fill,
+          stroke: style.background,
+          strokeWidth: 1,
+          name: `seg-${si}-${c}`,
+        });
         if (c === n - 1) lastSegMid[si] = dotY;
         if (decor.segmentLabels) {
           const label = formatNumber(raw!, fmt);
           nodes.push({
-            kind: "text", x: dotX + dotR + 2, y: dotY - fs * 0.7, w: textWidth(label, fs) + 4, h: fs * 1.4,
-            text: label, fontSize: fs, color: style.text, align: "left", valign: "middle",
+            kind: "text",
+            x: dotX + dotR + 2,
+            y: dotY - fs * 0.7,
+            w: textWidth(label, fs) + 4,
+            h: fs * 1.4,
+            text: label,
+            fontSize: fs,
+            color: style.text,
+            align: "left",
+            valign: "middle",
             name: `label-${si}-${c}`,
           });
         }
@@ -377,7 +405,16 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   // Zero baseline: horizontal line (vertical charts) or vertical line (bars).
   if (H) {
-    nodes.push({ kind: "line", x1: y0, y1: frame.y, x2: y0, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+    nodes.push({
+      kind: "line",
+      x1: y0,
+      y1: frame.y,
+      x2: y0,
+      y2: frame.y + frame.h,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "baseline",
+    });
   } else {
     nodes.push(baselineNode(frame, y0, style));
   }
@@ -414,11 +451,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // Unmarked combo: the last series is the line, the rest are columns. A lone
   // series is a plain column, not both a column *and* a line (which would
   // double-render it).
-  const lines = marked
-    ? cfg.data.series.filter(isOverlay)
-    : nSeries > 1
-      ? cfg.data.series.slice(-1)
-      : [];
+  const lines = marked ? cfg.data.series.filter(isOverlay) : nSeries > 1 ? cfg.data.series.slice(-1) : [];
   const cols = marked
     ? cfg.data.series.filter((s) => !isOverlay(s))
     : nSeries > 1
@@ -516,7 +549,10 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       });
     }
   }
-  const fmt = resolveFormat(lines.flatMap((s) => s.values.filter((v): v is number => v != null)), cfg.numberFormat);
+  const fmt = resolveFormat(
+    lines.flatMap((s) => s.values.filter((v): v is number => v != null)),
+    cfg.numberFormat,
+  );
   lines.forEach((s, li) => {
     const color = seriesColor(style, cols.length + li, s.color);
     // Independent axis: zoom this line to its own value range (a nice-ticked
@@ -526,7 +562,9 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const ownTicks = independent && nums.length ? niceTicks(Math.min(...nums), Math.max(...nums)) : [0, 1];
     const lo = ownTicks[0];
     const hi = ownTicks[ownTicks.length - 1];
-    const toY = independent ? (v: number) => anchors.plot.y + anchors.plot.h - ((v - lo) / (hi - lo || 1)) * anchors.plot.h : lineToY;
+    const toY = independent
+      ? (v: number) => anchors.plot.y + anchors.plot.h - ((v - lo) / (hi - lo || 1)) * anchors.plot.h
+      : lineToY;
     const labelOn = decor.segmentLabels || independent;
     // A marker series is this same overlay minus the connecting segments: the
     // values are per-category facts (a benchmark, a target, a consensus), and a
@@ -541,14 +579,42 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         return;
       }
       const pt = { x: anchors.categoryX[c], y: toY(v) };
-      if (prev && !markersOnly) nodes.push({ kind: "line", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y, stroke: color, strokeWidth: 2, name: `combo-line-${li}-${c}` });
+      if (prev && !markersOnly)
+        nodes.push({
+          kind: "line",
+          x1: prev.x,
+          y1: prev.y,
+          x2: pt.x,
+          y2: pt.y,
+          stroke: color,
+          strokeWidth: 2,
+          name: `combo-line-${li}-${c}`,
+        });
       const r = markersOnly ? 3.2 : 2.4;
-      nodes.push({ kind: "rect", x: pt.x - r, y: pt.y - r, w: r * 2, h: r * 2, fill: color, stroke: style.background, strokeWidth: 1, name: `combo-marker-${li}-${c}` });
+      nodes.push({
+        kind: "rect",
+        x: pt.x - r,
+        y: pt.y - r,
+        w: r * 2,
+        h: r * 2,
+        fill: color,
+        stroke: style.background,
+        strokeWidth: 1,
+        name: `combo-marker-${li}-${c}`,
+      });
       if (labelOn) {
         nodes.push({
-          kind: "text", x: pt.x - 30, y: pt.y - fs * 1.65, w: 60, h: fs * 1.4,
-          text: formatNumber(v, fmt), fontSize: fs, color: independent ? color : style.text,
-          align: "center", valign: "bottom", name: `combo-label-${li}-${c}`,
+          kind: "text",
+          x: pt.x - 30,
+          y: pt.y - fs * 1.65,
+          w: 60,
+          h: fs * 1.4,
+          text: formatNumber(v, fmt),
+          fontSize: fs,
+          color: independent ? color : style.text,
+          align: "center",
+          valign: "bottom",
+          name: `combo-label-${li}-${c}`,
         });
       }
       prev = pt;
@@ -595,7 +661,16 @@ export function horizontalChrome(
     for (const t of scale.ticks) {
       if (t === 0) continue;
       const x = frame.x + qOf(t);
-      nodes.push({ kind: "line", x1: x, y1: frame.y, x2: x, y2: frame.y + frame.h, stroke: style.gridline, strokeWidth: 0.75, name: "gridline" });
+      nodes.push({
+        kind: "line",
+        x1: x,
+        y1: frame.y,
+        x2: x,
+        y2: frame.y + frame.h,
+        stroke: style.gridline,
+        strokeWidth: 0.75,
+        name: "gridline",
+      });
     }
   }
   if (decor.valueAxis) {
@@ -648,7 +723,15 @@ export function legendRow(cfg: ChartConfig, style: ChartStyle, x0: number, y: nu
   cfg.data.series.forEach((s, si) => {
     const chip = fs * 0.7;
     nodes.push(
-      { kind: "rect", x, y: y + fs * 0.35, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
+      {
+        kind: "rect",
+        x,
+        y: y + fs * 0.35,
+        w: chip,
+        h: chip,
+        fill: seriesColor(style, si, s.color),
+        name: `legend-chip-${si}`,
+      },
       {
         kind: "text",
         x: x + chip + 3,

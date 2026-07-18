@@ -21,7 +21,9 @@ describe("error bars", () => {
     const s = buildChart(col([{ name: "Error", values: [4, 6, null] }]));
     // Only the data series renders segments.
     expect(s.nodes.filter((n) => n.name?.startsWith("seg-1"))).toHaveLength(0);
-    const bars = s.nodes.filter((n): n is LineNode => n.kind === "line" && !!n.name?.startsWith("error-") && !n.name.includes("cap"));
+    const bars = s.nodes.filter(
+      (n): n is LineNode => n.kind === "line" && !!n.name?.startsWith("error-") && !n.name.includes("cap"),
+    );
     expect(bars).toHaveLength(2); // C has no delta
     const bar = bars[0];
     const seg = s.nodes.find((n) => n.name === "seg-0-0") as RectNode;
@@ -33,10 +35,12 @@ describe("error bars", () => {
   });
 
   it("Error+/Error− rows give asymmetric whiskers with only their own caps", () => {
-    const s = buildChart(col([
-      { name: "Error+", values: [8, null, null] },
-      { name: "Error-", values: [2, null, null] },
-    ]));
+    const s = buildChart(
+      col([
+        { name: "Error+", values: [8, null, null] },
+        { name: "Error-", values: [2, null, null] },
+      ]),
+    );
     const bar = s.nodes.find((n): n is LineNode => n.kind === "line" && n.name === "error-0")!;
     const seg = s.nodes.find((n) => n.name === "seg-0-0") as RectNode;
     expect(seg.y - bar.y1).toBeGreaterThan((bar.y2 - seg.y) * 2); // +8 vs −2
@@ -74,7 +78,7 @@ describe("loadThemePalette", () => {
       },
       sync: async () => {},
     };
-    vi.stubGlobal("PowerPoint", { run: async <T,>(cb: (c: typeof context) => Promise<T>) => cb(context) });
+    vi.stubGlobal("PowerPoint", { run: async <T>(cb: (c: typeof context) => Promise<T>) => cb(context) });
   };
 
   it("reads Accent1–6 and normalizes to #rrggbb", async () => {

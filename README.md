@@ -33,153 +33,153 @@ editable PowerPoint shapes**, never pictures or opaque OLE objects.
 **[User manual](docs/MANUAL.md)** — how to use the pane, the datasheet
 conventions, and every option.
 
-| think-cell feature | PowerChart |
-|---|---|
-| Stacked / clustered / 100% column charts | ✅ |
-| Stacked waterfall (multi-series deltas) | ✅ |
-| Clustered-stacked charts (blank datasheet rows split stacks) | ✅ |
-| Rotation for waterfall & Mekko (not just columns) | ✅ |
-| Global label de-collision pass (outside labels never overlap) | ✅ |
-| Datasheet formulas (`=B2-B3`, `SUM`/`AVG`/`MIN`/`MAX`, ranges) | ✅ |
-| Saved chart templates | ✅ (localStorage) |
-| Corporate style file (import/export JSON defaults) | ✅ |
-| Same Scale on the current selection | ✅ |
-| Scatter partition lines, trend line, group legend | ✅ (`X line`/`Y line`/`Trend` rows) |
-| Gantt weeks + weekend shading, section headers, indent, remarks | ✅ (`>` prefix, `Activity \| Owner \| Remark`) |
-| Gantt holidays + bracket annotations | ✅ (`Holiday`, `Bracket <label>` rows) |
-| Gantt numeric table columns (cost / FTE / days) | ✅ (`Column <label>` rows, beside the task labels) |
-| Gantt working-day timeline (bar length = working days) | ✅ (`gantt.workdays`; `true` = Mon–Fri, or ISO weekday numbers) |
-| Scatter/bubble marginal distribution histograms | ✅ (`decorations.marginals: "x"/"y"/"both"`; bins subdivide the axis ticks) |
-| Bubble overlap relief along one axis (disclosed) | ✅ (`scatter.spread: "x"/"y"` + `spreadLimit`; cap printed in the footnote) |
-| Scatter/bubble marker symbols per group | ✅ (`scatter.markers`; preset geometry, area-matched, legend draws the shapes) |
-| Heatmap sign marks (greyscale-safe diverging) | ✅ (`heatmap.symbols: "sign"`; +/− where no value label carries the sign) |
-| Combo benchmark markers (points, no connecting line) | ✅ (`type: "marker"` on a combo series; shares the columns' scale) |
-| Waterfall "of which" detail columns (off the chain) | ✅ (`waterfall.detailGroups: [{of, indices}]`; the bridge steps over them) |
-| Gantt lanes grouped by owner | ✅ (`gantt.lanes: "owner"`; opt-in, stable, `After` renumbered) |
-| Category sorting by total | ✅ |
-| Combo secondary (right) value axis | ✅ |
-| Label content menu on line & scatter labels | ✅ |
-| Connector lines on stacked columns/bars | ✅ (`decorations.connectors`) |
-| Single data-point highlight color | ✅ (per-cell `series.colors`) |
-| Speech-bubble callouts on a value | ✅ (`decorations.callouts`) |
-| Shaded background bands (axis regions) | ✅ (`decorations.bands`, incl. scatter) |
-| Exploding pie slice | ✅ (`pie.explode`) |
-| Footnote/source line + "100% = N" note | ✅ (`footnote`, `decorations.hundredPercentNote`) |
-| Rule-based tables (no side borders, group gaps, totals row) | ✅ (default table style; `{style:"grid"}` keeps the old look) |
-| In-cell table effects (harvey balls, trend arrows, semantic colors) | ✅ (`[hb:0.75]`, `[up]`/`[down]`/`[flat]`, `[good]`/`[bad]`) |
-| Trend line fit statistics (R², p-value) | ✅ (automatic with the `Trend` row) |
-| Pattern/hatch fills on series | ✅ (`series.pattern`, SVG/preview; solid in PPT) |
-| Boxplot (five-number rows or raw samples with Tukey whiskers) | ✅ (`boxplot` kind, vertical & horizontal, shared axis across boxes) |
-| Radar/spider chart (translucent polygons) | ✅ (`radar` kind; filled in SVG+pptx, outline in live add-in) |
-| Heatmap (sequential/diverging color matrix) | ✅ (`heatmap` kind) |
-| Map charts as tile-grid cartograms (US / EU / Europe / World) | ✅ (`tilemap` kind, auto-detected layouts) |
-| Tufte datamark axes (ticks only, range-frame option) | ✅ (`valueAxis: "datamarks"`, `tickMode: "data"`) |
-| Error bars (symmetric or asymmetric) | ✅ (`Error` / `Error+` / `Error-` datasheet rows) |
-| Palette from the presentation theme (Accent1-6) | ✅ (pane → "Use deck theme", PowerPointApi 1.10) |
-| Cascade / decomposition chart (stage-by-stage breakdown) | ✅ (`cascade` kind) |
-| Bullet charts (target ticks + range bands) | ✅ (`Target` row + `decorations.bands`) |
-| Combo with clustered or 100% columns | ✅ (`combo.columns`) |
-| Bubble size legend (automatic) | ✅ |
-| Forecast styling on lines (dashed + hollow markers) | ✅ (`decorations.forecastFrom`) |
-| Scatter quadrant matrix (zones + labels in one step) | ✅ (`decorations.quadrants`) |
-| Funnel / pyramid chart with conversion rates | ✅ (`funnel` kind) |
-| Lollipop, dot-plot, and dumbbell-range styles | ✅ (`decorations.barStyle` on clustered) |
-| Gantt progress fill + plan-vs-actual baselines | ✅ (`% Complete`, `Baseline start`/`end` rows) |
-| Grouped boxplots (two categorical dimensions) | ✅ (`Min \| 2024`-style row suffixes) |
-| Waterfall budget-vs-actual (hatched gap to target) | ✅ (`Target` row on waterfalls) |
-| Confidence bands + plan-vs-actual ribbons on lines | ✅ (`Band low`/`Band high` rows, `decorations.fillBetween`) |
-| Heatmap marginal totals | ✅ (`heatmap.totals`) |
-| Slope chart (before/after, labels both ends) | ✅ (`decorations.slope` on line) |
-| Waffle chart (10×10 unit grid, one dominant share) | ✅ (`waffle` kind) |
-| KPI / number tile (big number + delta arrow) | ✅ (Elements section, `↓ good` flip) |
-| Bar-of-pie breakout (top-N + "Other" detailed) | ✅ (`pie.breakout`) |
-| Small multiples (grid of panels, one shared scale) | ✅ (`multiples: {columns?}`) |
-| Stepped line & area (staircase, jump before/after/center) | ✅ (`decorations.stepped`) |
-| Column gap width & clustered bar overlap (Excel-style) | ✅ (`gapWidth` 0–500, `overlap` −100…100) |
-| Butterfly value ticks & gridlines on both flanks | ✅ (`valueAxis`/`gridlines` on `butterfly`) |
-| Area charts with negative values (dip below the baseline) | ✅ (`area`, positives up / negatives down) |
-| Scatter/bubble trajectory trail (Gapminder-style path) | ✅ (`decorations.trajectory`) |
-| Boxplot jittered raw-data dots over the box | ✅ (`boxplot.jitter`, raw-sample mode) |
-| Scatter/bubble continuous color scale (a third variable) | ✅ (`Color` row → sequential ramp + gradient legend) |
-| Smoothed line charts (Catmull-Rom curves) | ✅ (`decorations.smooth`) |
-| Waterfall grouping spacers (section gaps in the bridge) | ✅ (`waterfall.spacerIndices`) |
-| Gantt auto-summary bars on section rows | ✅ (`decorations.summaryBars`) |
-| Notched boxplots (median confidence interval) | ✅ (`boxplot.notch`, raw-sample mode) |
-| Radar min–max "peer range + us" band | ✅ (`decorations.radarBand`) |
-| Automatic "Other" bucket for long-tail series | ✅ (`otherBucket: {max}`) |
-| Calendar heatmap (weekday × week contributions grid) | ✅ (`heatmap.calendar`) |
-| Butterfly with stacked flanks (>1 series per side) | ✅ (`butterfly: {split}`) |
-| Radar per-spoke scales (mixed KPI units) | ✅ (`radar: {perSpoke}`) |
-| Missing-data bridge on line charts | ✅ (`decorations.bridgeGaps`) |
-| Transparent floating column segments | ✅ (series `color: "transparent"`) |
-| Combo with a waterfall or Mekko base under the lines | ✅ (`combo.columns: "waterfall" \| "mekko"`) |
-| Combo with independent per-line axes (mixed-unit KPIs) | ✅ (`combo.lineAxes: "independent"`) |
-| Hexagonal tile maps | ✅ (`tilemap.shape: "hex"`) |
-| Per-region mini-glyphs (bars) on tile maps | ✅ (`tilemap.glyph: "bars"`) |
-| 100% charts with negative segments (below the axis) | ✅ (`stacked100`) |
-| Semi-circle / gauge-style half doughnut | ✅ (`doughnut` + `pie.semi`) |
-| Pareto chart (sorted bars + cumulative % line) | ✅ (`pareto: true`) |
-| Bump chart (rank over time) | ✅ (`line` + `decorations.bump`) |
-| Horizontal profile chart (rotated line/area) | ✅ (`horizontal` on `line`/`area`) |
-| Treemap (squarified, area ∝ value, 2-level grouping) | ✅ (`treemap` kind, `"Group \| Item"` categories) |
-| Sunburst (nested hierarchical rings) | ✅ (`sunburst` kind, `"Group \| Item"` categories) |
-| Violin plot (kernel-density distributions) | ✅ (`violin` kind, raw samples; outline-only in the live add-in) |
-| Candlestick / OHLC financial chart | ✅ (`candlestick` kind, `Open`/`High`/`Low`/`Close` rows) |
-| Gantt critical-path highlight | ✅ (`decorations.criticalPath`, over `After` edges) |
-| Mean±SD boxplot variant | ✅ (`boxplot.meanSd`, raw-sample mode) |
-| Sparklines (word-sized trend lines) | ✅ (`decorations.sparkline` on `line`/`area`; pair with `multiples`) |
-| Radial bar chart / Nightingale rose | ✅ (`radar` + `radar.bars`; series stack outward) |
-| Stacked radar (part-to-whole per spoke) | ✅ (`radar` + `radar.stacked`) |
-| Variable-radius pie (angle + radius encode two metrics) | ✅ (`pie.variableRadius` or a `Radius` row) |
-| Cell-size heatmap (corrplot: area = magnitude) | ✅ (`heatmap.sizeEncode`) |
-| Heatmap row clustering + dendrogram | ✅ (`heatmap.cluster`, average linkage) |
-| Combo stacked-area base under the lines | ✅ (`combo.columns: "area"`) |
-| Selection awareness (select a chart → edit banner) | ✅ |
-| Insert into selected placeholder bounds; chart size controls | ✅ |
-| Datasheet keyboard navigation + insert/delete at cursor | ✅ |
-| Auto-update mode (edits push to the slide live) | ✅ |
-| Ribbon menu with per-chart-type entries | ✅ (`?kind=` deep links) |
-| Dark-mode pane, busy/status feedback, German UI localization | ✅ |
-| **Claude Agent Skill** (charts as native shapes from any Claude surface) | ✅ download from the [skill-latest release](../../releases/tag/skill-latest) (rebuilt by CI on every merge), or `npm run skill` locally |
-| Claude integration research & plan | 📋 [docs/CLAUDE-INTEGRATION.md](docs/CLAUDE-INTEGRATION.md) |
-| Combo chart (stacked columns + line series) | ✅ (`type: "line"` on a series) |
-| Pie & doughnut | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.10 rotation) |
-| Bar charts as rotated column charts, butterfly charts | ✅ (`horizontal` toggle, `butterfly` kind) |
-| Waterfall with computed totals (`e` cells) and connectors | ✅ |
-| Mekko (Marimekko) with %-axis and column totals | ✅ |
-| Mekko with units (`X extent` row) | ✅ |
-| Line & area charts | ✅ |
-| Smart segment labels (auto-hidden when they don't fit, auto contrast ink) | ✅ |
-| Column totals | ✅ |
-| CAGR arrow (`+x.x% p.a.`) | ✅ |
-| Total & level difference arrows (%/absolute delta) | ✅ |
-| Value lines (multiple; fixed values or mean Ø) | ✅ |
-| Series labels placed at the last column (de-overlapped) | ✅ |
-| Excel-style datasheet with TSV paste, transpose, `100%=` row | ✅ (task pane grid) |
-| Scatter & bubble with collision-avoiding point labels | ✅ (`X`/`Y`/`Size`/`Group` rows) |
-| Gantt / timeline with milestones — numeric or **calendar dates** | ✅ (`Start`/`End`/`Milestone` rows; ISO/`dd.mm.yyyy`/"Jan 2026" dates) |
-| Value-axis breaks (compress an out-of-scale range) | ✅ |
-| Same Scale across all charts in the deck | ✅ (re-renders every chart to a shared scale) |
-| Segment order menu (sheet / reversed / ascending / descending) | ✅ |
-| Manual value-axis scale (pin min and/or max) | ✅ |
-| Number format control (decimals, suffix, locale) | ✅ |
-| Label content menu (value / % / series / category combos) | ✅ |
-| Palette presets + per-series color pickers | ✅ |
-| Axis title, log scale, date-spaced line x-axis | ✅ |
-| Difference arrows anchored to value lines, per-series CAGR | ✅ |
-| JSON automation (export/import/batch insert + `npm run render` CLI) | ✅ (open take on `.ppttc`) |
-| Datasheet undo/redo (Ctrl+Z / Ctrl+Y) | ✅ |
-| Agenda / chapter slides (one per chapter, current highlighted) | ✅ (appended to the deck) |
-| Harvey balls, checkboxes, process flow, table element | ✅ (Elements section) |
-| Gantt: responsible column, dependency arrows, today line, quarter scale | ✅ (`Activity \| Owner`, `After`/`Today` rows) |
-| Excel data bridge (selection → chart JSON → paste to refresh) | ✅ (`manifest-excel.xml` companion) |
-| Manual label nudging (config-driven) | ✅ (`labelOffsets`) |
-| Pie leader lines for outside labels | ✅ |
-| Visual-regression snapshots + fuzz tests in CI | ✅ |
-| Visual chart gallery (Elements-style thumbnails) | ✅ |
-| Output as native, editable PowerPoint shapes | ✅ (grouped) |
-| Re-edit inserted charts (config persisted in shape tags) | ✅ ("Edit selected chart") |
-| *Live* Excel data links, in-canvas drag handles | 🚧 out of Office.js reach (see docs/RESEARCH.md; the Excel bridge above is the sandbox-safe substitute) |
+| think-cell feature                                                        | PowerChart                                                                                                                              |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Stacked / clustered / 100% column charts                                  | ✅                                                                                                                                      |
+| Stacked waterfall (multi-series deltas)                                   | ✅                                                                                                                                      |
+| Clustered-stacked charts (blank datasheet rows split stacks)              | ✅                                                                                                                                      |
+| Rotation for waterfall & Mekko (not just columns)                         | ✅                                                                                                                                      |
+| Global label de-collision pass (outside labels never overlap)             | ✅                                                                                                                                      |
+| Datasheet formulas (`=B2-B3`, `SUM`/`AVG`/`MIN`/`MAX`, ranges)            | ✅                                                                                                                                      |
+| Saved chart templates                                                     | ✅ (localStorage)                                                                                                                       |
+| Corporate style file (import/export JSON defaults)                        | ✅                                                                                                                                      |
+| Same Scale on the current selection                                       | ✅                                                                                                                                      |
+| Scatter partition lines, trend line, group legend                         | ✅ (`X line`/`Y line`/`Trend` rows)                                                                                                     |
+| Gantt weeks + weekend shading, section headers, indent, remarks           | ✅ (`>` prefix, `Activity \| Owner \| Remark`)                                                                                          |
+| Gantt holidays + bracket annotations                                      | ✅ (`Holiday`, `Bracket <label>` rows)                                                                                                  |
+| Gantt numeric table columns (cost / FTE / days)                           | ✅ (`Column <label>` rows, beside the task labels)                                                                                      |
+| Gantt working-day timeline (bar length = working days)                    | ✅ (`gantt.workdays`; `true` = Mon–Fri, or ISO weekday numbers)                                                                         |
+| Scatter/bubble marginal distribution histograms                           | ✅ (`decorations.marginals: "x"/"y"/"both"`; bins subdivide the axis ticks)                                                             |
+| Bubble overlap relief along one axis (disclosed)                          | ✅ (`scatter.spread: "x"/"y"` + `spreadLimit`; cap printed in the footnote)                                                             |
+| Scatter/bubble marker symbols per group                                   | ✅ (`scatter.markers`; preset geometry, area-matched, legend draws the shapes)                                                          |
+| Heatmap sign marks (greyscale-safe diverging)                             | ✅ (`heatmap.symbols: "sign"`; +/− where no value label carries the sign)                                                               |
+| Combo benchmark markers (points, no connecting line)                      | ✅ (`type: "marker"` on a combo series; shares the columns' scale)                                                                      |
+| Waterfall "of which" detail columns (off the chain)                       | ✅ (`waterfall.detailGroups: [{of, indices}]`; the bridge steps over them)                                                              |
+| Gantt lanes grouped by owner                                              | ✅ (`gantt.lanes: "owner"`; opt-in, stable, `After` renumbered)                                                                         |
+| Category sorting by total                                                 | ✅                                                                                                                                      |
+| Combo secondary (right) value axis                                        | ✅                                                                                                                                      |
+| Label content menu on line & scatter labels                               | ✅                                                                                                                                      |
+| Connector lines on stacked columns/bars                                   | ✅ (`decorations.connectors`)                                                                                                           |
+| Single data-point highlight color                                         | ✅ (per-cell `series.colors`)                                                                                                           |
+| Speech-bubble callouts on a value                                         | ✅ (`decorations.callouts`)                                                                                                             |
+| Shaded background bands (axis regions)                                    | ✅ (`decorations.bands`, incl. scatter)                                                                                                 |
+| Exploding pie slice                                                       | ✅ (`pie.explode`)                                                                                                                      |
+| Footnote/source line + "100% = N" note                                    | ✅ (`footnote`, `decorations.hundredPercentNote`)                                                                                       |
+| Rule-based tables (no side borders, group gaps, totals row)               | ✅ (default table style; `{style:"grid"}` keeps the old look)                                                                           |
+| In-cell table effects (harvey balls, trend arrows, semantic colors)       | ✅ (`[hb:0.75]`, `[up]`/`[down]`/`[flat]`, `[good]`/`[bad]`)                                                                            |
+| Trend line fit statistics (R², p-value)                                   | ✅ (automatic with the `Trend` row)                                                                                                     |
+| Pattern/hatch fills on series                                             | ✅ (`series.pattern`, SVG/preview; solid in PPT)                                                                                        |
+| Boxplot (five-number rows or raw samples with Tukey whiskers)             | ✅ (`boxplot` kind, vertical & horizontal, shared axis across boxes)                                                                    |
+| Radar/spider chart (translucent polygons)                                 | ✅ (`radar` kind; filled in SVG+pptx, outline in live add-in)                                                                           |
+| Heatmap (sequential/diverging color matrix)                               | ✅ (`heatmap` kind)                                                                                                                     |
+| Map charts as tile-grid cartograms (US / EU / Europe / World)             | ✅ (`tilemap` kind, auto-detected layouts)                                                                                              |
+| Tufte datamark axes (ticks only, range-frame option)                      | ✅ (`valueAxis: "datamarks"`, `tickMode: "data"`)                                                                                       |
+| Error bars (symmetric or asymmetric)                                      | ✅ (`Error` / `Error+` / `Error-` datasheet rows)                                                                                       |
+| Palette from the presentation theme (Accent1-6)                           | ✅ (pane → "Use deck theme", PowerPointApi 1.10)                                                                                        |
+| Cascade / decomposition chart (stage-by-stage breakdown)                  | ✅ (`cascade` kind)                                                                                                                     |
+| Bullet charts (target ticks + range bands)                                | ✅ (`Target` row + `decorations.bands`)                                                                                                 |
+| Combo with clustered or 100% columns                                      | ✅ (`combo.columns`)                                                                                                                    |
+| Bubble size legend (automatic)                                            | ✅                                                                                                                                      |
+| Forecast styling on lines (dashed + hollow markers)                       | ✅ (`decorations.forecastFrom`)                                                                                                         |
+| Scatter quadrant matrix (zones + labels in one step)                      | ✅ (`decorations.quadrants`)                                                                                                            |
+| Funnel / pyramid chart with conversion rates                              | ✅ (`funnel` kind)                                                                                                                      |
+| Lollipop, dot-plot, and dumbbell-range styles                             | ✅ (`decorations.barStyle` on clustered)                                                                                                |
+| Gantt progress fill + plan-vs-actual baselines                            | ✅ (`% Complete`, `Baseline start`/`end` rows)                                                                                          |
+| Grouped boxplots (two categorical dimensions)                             | ✅ (`Min \| 2024`-style row suffixes)                                                                                                   |
+| Waterfall budget-vs-actual (hatched gap to target)                        | ✅ (`Target` row on waterfalls)                                                                                                         |
+| Confidence bands + plan-vs-actual ribbons on lines                        | ✅ (`Band low`/`Band high` rows, `decorations.fillBetween`)                                                                             |
+| Heatmap marginal totals                                                   | ✅ (`heatmap.totals`)                                                                                                                   |
+| Slope chart (before/after, labels both ends)                              | ✅ (`decorations.slope` on line)                                                                                                        |
+| Waffle chart (10×10 unit grid, one dominant share)                        | ✅ (`waffle` kind)                                                                                                                      |
+| KPI / number tile (big number + delta arrow)                              | ✅ (Elements section, `↓ good` flip)                                                                                                    |
+| Bar-of-pie breakout (top-N + "Other" detailed)                            | ✅ (`pie.breakout`)                                                                                                                     |
+| Small multiples (grid of panels, one shared scale)                        | ✅ (`multiples: {columns?}`)                                                                                                            |
+| Stepped line & area (staircase, jump before/after/center)                 | ✅ (`decorations.stepped`)                                                                                                              |
+| Column gap width & clustered bar overlap (Excel-style)                    | ✅ (`gapWidth` 0–500, `overlap` −100…100)                                                                                               |
+| Butterfly value ticks & gridlines on both flanks                          | ✅ (`valueAxis`/`gridlines` on `butterfly`)                                                                                             |
+| Area charts with negative values (dip below the baseline)                 | ✅ (`area`, positives up / negatives down)                                                                                              |
+| Scatter/bubble trajectory trail (Gapminder-style path)                    | ✅ (`decorations.trajectory`)                                                                                                           |
+| Boxplot jittered raw-data dots over the box                               | ✅ (`boxplot.jitter`, raw-sample mode)                                                                                                  |
+| Scatter/bubble continuous color scale (a third variable)                  | ✅ (`Color` row → sequential ramp + gradient legend)                                                                                    |
+| Smoothed line charts (Catmull-Rom curves)                                 | ✅ (`decorations.smooth`)                                                                                                               |
+| Waterfall grouping spacers (section gaps in the bridge)                   | ✅ (`waterfall.spacerIndices`)                                                                                                          |
+| Gantt auto-summary bars on section rows                                   | ✅ (`decorations.summaryBars`)                                                                                                          |
+| Notched boxplots (median confidence interval)                             | ✅ (`boxplot.notch`, raw-sample mode)                                                                                                   |
+| Radar min–max "peer range + us" band                                      | ✅ (`decorations.radarBand`)                                                                                                            |
+| Automatic "Other" bucket for long-tail series                             | ✅ (`otherBucket: {max}`)                                                                                                               |
+| Calendar heatmap (weekday × week contributions grid)                      | ✅ (`heatmap.calendar`)                                                                                                                 |
+| Butterfly with stacked flanks (>1 series per side)                        | ✅ (`butterfly: {split}`)                                                                                                               |
+| Radar per-spoke scales (mixed KPI units)                                  | ✅ (`radar: {perSpoke}`)                                                                                                                |
+| Missing-data bridge on line charts                                        | ✅ (`decorations.bridgeGaps`)                                                                                                           |
+| Transparent floating column segments                                      | ✅ (series `color: "transparent"`)                                                                                                      |
+| Combo with a waterfall or Mekko base under the lines                      | ✅ (`combo.columns: "waterfall" \| "mekko"`)                                                                                            |
+| Combo with independent per-line axes (mixed-unit KPIs)                    | ✅ (`combo.lineAxes: "independent"`)                                                                                                    |
+| Hexagonal tile maps                                                       | ✅ (`tilemap.shape: "hex"`)                                                                                                             |
+| Per-region mini-glyphs (bars) on tile maps                                | ✅ (`tilemap.glyph: "bars"`)                                                                                                            |
+| 100% charts with negative segments (below the axis)                       | ✅ (`stacked100`)                                                                                                                       |
+| Semi-circle / gauge-style half doughnut                                   | ✅ (`doughnut` + `pie.semi`)                                                                                                            |
+| Pareto chart (sorted bars + cumulative % line)                            | ✅ (`pareto: true`)                                                                                                                     |
+| Bump chart (rank over time)                                               | ✅ (`line` + `decorations.bump`)                                                                                                        |
+| Horizontal profile chart (rotated line/area)                              | ✅ (`horizontal` on `line`/`area`)                                                                                                      |
+| Treemap (squarified, area ∝ value, 2-level grouping)                      | ✅ (`treemap` kind, `"Group \| Item"` categories)                                                                                       |
+| Sunburst (nested hierarchical rings)                                      | ✅ (`sunburst` kind, `"Group \| Item"` categories)                                                                                      |
+| Violin plot (kernel-density distributions)                                | ✅ (`violin` kind, raw samples; outline-only in the live add-in)                                                                        |
+| Candlestick / OHLC financial chart                                        | ✅ (`candlestick` kind, `Open`/`High`/`Low`/`Close` rows)                                                                               |
+| Gantt critical-path highlight                                             | ✅ (`decorations.criticalPath`, over `After` edges)                                                                                     |
+| Mean±SD boxplot variant                                                   | ✅ (`boxplot.meanSd`, raw-sample mode)                                                                                                  |
+| Sparklines (word-sized trend lines)                                       | ✅ (`decorations.sparkline` on `line`/`area`; pair with `multiples`)                                                                    |
+| Radial bar chart / Nightingale rose                                       | ✅ (`radar` + `radar.bars`; series stack outward)                                                                                       |
+| Stacked radar (part-to-whole per spoke)                                   | ✅ (`radar` + `radar.stacked`)                                                                                                          |
+| Variable-radius pie (angle + radius encode two metrics)                   | ✅ (`pie.variableRadius` or a `Radius` row)                                                                                             |
+| Cell-size heatmap (corrplot: area = magnitude)                            | ✅ (`heatmap.sizeEncode`)                                                                                                               |
+| Heatmap row clustering + dendrogram                                       | ✅ (`heatmap.cluster`, average linkage)                                                                                                 |
+| Combo stacked-area base under the lines                                   | ✅ (`combo.columns: "area"`)                                                                                                            |
+| Selection awareness (select a chart → edit banner)                        | ✅                                                                                                                                      |
+| Insert into selected placeholder bounds; chart size controls              | ✅                                                                                                                                      |
+| Datasheet keyboard navigation + insert/delete at cursor                   | ✅                                                                                                                                      |
+| Auto-update mode (edits push to the slide live)                           | ✅                                                                                                                                      |
+| Ribbon menu with per-chart-type entries                                   | ✅ (`?kind=` deep links)                                                                                                                |
+| Dark-mode pane, busy/status feedback, German UI localization              | ✅                                                                                                                                      |
+| **Claude Agent Skill** (charts as native shapes from any Claude surface)  | ✅ download from the [skill-latest release](../../releases/tag/skill-latest) (rebuilt by CI on every merge), or `npm run skill` locally |
+| Claude integration research & plan                                        | 📋 [docs/CLAUDE-INTEGRATION.md](docs/CLAUDE-INTEGRATION.md)                                                                             |
+| Combo chart (stacked columns + line series)                               | ✅ (`type: "line"` on a series)                                                                                                         |
+| Pie & doughnut                                                            | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.10 rotation)                                                                       |
+| Bar charts as rotated column charts, butterfly charts                     | ✅ (`horizontal` toggle, `butterfly` kind)                                                                                              |
+| Waterfall with computed totals (`e` cells) and connectors                 | ✅                                                                                                                                      |
+| Mekko (Marimekko) with %-axis and column totals                           | ✅                                                                                                                                      |
+| Mekko with units (`X extent` row)                                         | ✅                                                                                                                                      |
+| Line & area charts                                                        | ✅                                                                                                                                      |
+| Smart segment labels (auto-hidden when they don't fit, auto contrast ink) | ✅                                                                                                                                      |
+| Column totals                                                             | ✅                                                                                                                                      |
+| CAGR arrow (`+x.x% p.a.`)                                                 | ✅                                                                                                                                      |
+| Total & level difference arrows (%/absolute delta)                        | ✅                                                                                                                                      |
+| Value lines (multiple; fixed values or mean Ø)                            | ✅                                                                                                                                      |
+| Series labels placed at the last column (de-overlapped)                   | ✅                                                                                                                                      |
+| Excel-style datasheet with TSV paste, transpose, `100%=` row              | ✅ (task pane grid)                                                                                                                     |
+| Scatter & bubble with collision-avoiding point labels                     | ✅ (`X`/`Y`/`Size`/`Group` rows)                                                                                                        |
+| Gantt / timeline with milestones — numeric or **calendar dates**          | ✅ (`Start`/`End`/`Milestone` rows; ISO/`dd.mm.yyyy`/"Jan 2026" dates)                                                                  |
+| Value-axis breaks (compress an out-of-scale range)                        | ✅                                                                                                                                      |
+| Same Scale across all charts in the deck                                  | ✅ (re-renders every chart to a shared scale)                                                                                           |
+| Segment order menu (sheet / reversed / ascending / descending)            | ✅                                                                                                                                      |
+| Manual value-axis scale (pin min and/or max)                              | ✅                                                                                                                                      |
+| Number format control (decimals, suffix, locale)                          | ✅                                                                                                                                      |
+| Label content menu (value / % / series / category combos)                 | ✅                                                                                                                                      |
+| Palette presets + per-series color pickers                                | ✅                                                                                                                                      |
+| Axis title, log scale, date-spaced line x-axis                            | ✅                                                                                                                                      |
+| Difference arrows anchored to value lines, per-series CAGR                | ✅                                                                                                                                      |
+| JSON automation (export/import/batch insert + `npm run render` CLI)       | ✅ (open take on `.ppttc`)                                                                                                              |
+| Datasheet undo/redo (Ctrl+Z / Ctrl+Y)                                     | ✅                                                                                                                                      |
+| Agenda / chapter slides (one per chapter, current highlighted)            | ✅ (appended to the deck)                                                                                                               |
+| Harvey balls, checkboxes, process flow, table element                     | ✅ (Elements section)                                                                                                                   |
+| Gantt: responsible column, dependency arrows, today line, quarter scale   | ✅ (`Activity \| Owner`, `After`/`Today` rows)                                                                                          |
+| Excel data bridge (selection → chart JSON → paste to refresh)             | ✅ (`manifest-excel.xml` companion)                                                                                                     |
+| Manual label nudging (config-driven)                                      | ✅ (`labelOffsets`)                                                                                                                     |
+| Pie leader lines for outside labels                                       | ✅                                                                                                                                      |
+| Visual-regression snapshots + fuzz tests in CI                            | ✅                                                                                                                                      |
+| Visual chart gallery (Elements-style thumbnails)                          | ✅                                                                                                                                      |
+| Output as native, editable PowerPoint shapes                              | ✅ (grouped)                                                                                                                            |
+| Re-edit inserted charts (config persisted in shape tags)                  | ✅ ("Edit selected chart")                                                                                                              |
+| _Live_ Excel data links, in-canvas drag handles                           | 🚧 out of Office.js reach (see docs/RESEARCH.md; the Excel bridge above is the sandbox-safe substitute)                                 |
 
 ## How it works
 

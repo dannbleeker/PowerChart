@@ -2,14 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import {
-  baselineNode,
-  breakMarkerNodes,
-  chromeNodes,
-  computeFrame,
-  computeFrameHorizontal,
-  valueScale,
-} from "./frame";
+import { baselineNode, breakMarkerNodes, chromeNodes, computeFrame, computeFrameHorizontal, valueScale } from "./frame";
 import { horizontalChrome, type LayoutResult } from "./column";
 
 /**
@@ -122,9 +115,7 @@ export function waterfallExtent(cfg: ChartConfig): { min: number; max: number } 
 export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const n = data.categories.length;
-  const nSeries = Math.max(1, data.series.length);
   const stacked = data.series.length > 1;
-  const totalSet = new Set(cfg.waterfall?.totalIndices ?? []);
   const spacerSet = new Set(cfg.waterfall?.spacerIndices ?? []);
   const H = !!cfg.horizontal;
   const detailOf = detailParents(cfg);
@@ -140,7 +131,10 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const allLevels = bars.flatMap((b) => b.segs.flatMap((s) => [s.from, s.to]));
   const hi = Math.max(0, ...allLevels);
   const lo = Math.min(0, ...allLevels);
-  const fmt = resolveFormat(bars.flatMap((b) => b.segs.map((s) => s.value)), cfg.numberFormat);
+  const fmt = resolveFormat(
+    bars.flatMap((b) => b.segs.map((s) => s.value)),
+    cfg.numberFormat,
+  );
 
   const frame = H
     ? computeFrameHorizontal(cfg, style, { ...decor, seriesLabels: false })
@@ -187,7 +181,9 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
             ? style.palette[0]
             : style.negative;
       nodes.push({
-        kind: "rect", ...r, fill,
+        kind: "rect",
+        ...r,
+        fill,
         stroke: stacked ? style.background : undefined,
         strokeWidth: stacked ? 0.75 : 0,
         name: `bar-${c}${stacked && !b.isTotal ? `-s${seg.series}` : ""}`,
@@ -218,9 +214,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
         });
       }
     });
-    columnTop.push(
-      b.segs.length ? (H ? frame.x + topQ : frame.y + frame.h - topQ) : y0,
-    );
+    columnTop.push(b.segs.length ? (H ? frame.x + topQ : frame.y + frame.h - topQ) : y0);
 
     // Spacer slot: bridge the connector across the empty gap at the running
     // level so the dashed line reads as continuous through the section break.
@@ -228,10 +222,30 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
       const levelQ = qOf(b.level);
       if (H) {
         const x = frame.x + levelQ;
-        nodes.push({ kind: "line", x1: x, y1: centers[c] - colThick / 2, x2: x, y2: centers[c] + colThick / 2, stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `spacer-bridge-${c}` });
+        nodes.push({
+          kind: "line",
+          x1: x,
+          y1: centers[c] - colThick / 2,
+          x2: x,
+          y2: centers[c] + colThick / 2,
+          stroke: style.mutedText,
+          strokeWidth: 0.75,
+          dash: [1.5, 1.5],
+          name: `spacer-bridge-${c}`,
+        });
       } else {
         const y = frame.y + frame.h - levelQ;
-        nodes.push({ kind: "line", x1: centers[c] - colThick / 2, y1: y, x2: centers[c] + colThick / 2, y2: y, stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `spacer-bridge-${c}` });
+        nodes.push({
+          kind: "line",
+          x1: centers[c] - colThick / 2,
+          y1: y,
+          x2: centers[c] + colThick / 2,
+          y2: y,
+          stroke: style.mutedText,
+          strokeWidth: 0.75,
+          dash: [1.5, 1.5],
+          name: `spacer-bridge-${c}`,
+        });
       }
     }
 
@@ -248,17 +262,27 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
         const x = frame.x + levelQ;
         nodes.push({
           kind: "line",
-          x1: x, y1: centers[c] + colThick / 2,
-          x2: x, y2: centers[to] - colThick / 2,
-          stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `connector-${c}`,
+          x1: x,
+          y1: centers[c] + colThick / 2,
+          x2: x,
+          y2: centers[to] - colThick / 2,
+          stroke: style.mutedText,
+          strokeWidth: 0.75,
+          dash: [1.5, 1.5],
+          name: `connector-${c}`,
         });
       } else {
         const y = frame.y + frame.h - levelQ;
         nodes.push({
           kind: "line",
-          x1: centers[c] + colThick / 2, y1: y,
-          x2: centers[to] - colThick / 2, y2: y,
-          stroke: style.mutedText, strokeWidth: 0.75, dash: [1.5, 1.5], name: `connector-${c}`,
+          x1: centers[c] + colThick / 2,
+          y1: y,
+          x2: centers[to] - colThick / 2,
+          y2: y,
+          stroke: style.mutedText,
+          strokeWidth: 0.75,
+          dash: [1.5, 1.5],
+          name: `connector-${c}`,
         });
       }
     }
@@ -266,7 +290,16 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
 
   if (!H) nodes.push(...breakMarkerNodes(frame, scale, style));
   if (H) {
-    nodes.push({ kind: "line", x1: y0, y1: frame.y, x2: y0, y2: frame.y + frame.h, stroke: style.axis, strokeWidth: 1, name: "baseline" });
+    nodes.push({
+      kind: "line",
+      x1: y0,
+      y1: frame.y,
+      x2: y0,
+      y2: frame.y + frame.h,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "baseline",
+    });
   } else {
     nodes.push(baselineNode(frame, y0, style));
   }

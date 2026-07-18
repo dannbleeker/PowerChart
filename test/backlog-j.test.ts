@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import type { ChartConfig } from "../src/core/types";
-import type { PolygonNode, RectNode, SceneNode } from "../src/core/scene";
+import type { PolygonNode, RectNode } from "../src/core/scene";
 
 /**
  * Backlog batch J — more §2 within-kind gaps: gantt auto-summary bars,

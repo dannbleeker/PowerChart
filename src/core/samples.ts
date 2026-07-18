@@ -90,7 +90,9 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
           series: [
             { name: "X", values: [12, 25, 40, 55, 62, 74, 30, 48] },
             { name: "Y", values: [30, 55, 42, 70, 35, 60, 22, 50] },
-            ...(kind === "bubble" ? [{ name: "Size", values: [10, 40, 90, 25, 55, 70, 15, 35] as (number | null)[] }] : []),
+            ...(kind === "bubble"
+              ? [{ name: "Size", values: [10, 40, 90, 25, 55, 70, 15, 35] as (number | null)[] }]
+              : []),
             { name: "Group", values: [1, 1, 2, 2, 3, 3, 1, 2] },
           ],
         },
@@ -219,9 +221,13 @@ export function sampleConfig(kind: ChartKind): ChartConfig {
         title: "Revenue by region and product",
         data: {
           categories: [
-            "EMEA | Cloud", "EMEA | Licenses", "EMEA | Services",
-            "Americas | Cloud", "Americas | Licenses",
-            "APAC | Cloud", "APAC | Hardware",
+            "EMEA | Cloud",
+            "EMEA | Licenses",
+            "EMEA | Services",
+            "Americas | Cloud",
+            "Americas | Licenses",
+            "APAC | Cloud",
+            "APAC | Hardware",
           ],
           series: [{ name: "Revenue", values: [60, 40, 25, 80, 50, 45, 30] }],
         },

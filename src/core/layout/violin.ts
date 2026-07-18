@@ -24,14 +24,18 @@ const quantile = (sorted: number[], p: number): number => {
 export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const n = data.categories.length;
-  const fs = style.fontSize;
   const samplesOf = (c: number) => data.series.map((s) => s.values[c]).filter((v): v is number => v != null);
   const allSamples = data.categories.flatMap((_, c) => samplesOf(c));
   const fmt = resolveFormat(allSamples, cfg.numberFormat);
   void fmt;
 
   const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
-  const scale = valueScale(frame, Math.min(...(allSamples.length ? allSamples : [0])), Math.max(...(allSamples.length ? allSamples : [1])), cfg.scale);
+  const scale = valueScale(
+    frame,
+    Math.min(...(allSamples.length ? allSamples : [0])),
+    Math.max(...(allSamples.length ? allSamples : [1])),
+    cfg.scale,
+  );
   const slotLen = frame.w / Math.max(1, n);
   const halfW = slotLen * 0.42;
   const centers = data.categories.map((_, c) => frame.x + slotLen * (c + 0.5));
@@ -75,13 +79,30 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     const cxc = centers[c];
     const points: { x: number; y: number }[] = [];
     for (const lv of levels) points.push({ x: cxc + (lv.d / maxD) * halfW, y: scale.toY(lv.y) });
-    for (let k = levels.length - 1; k >= 0; k--) points.push({ x: cxc - (levels[k].d / maxD) * halfW, y: scale.toY(levels[k].y) });
+    for (let k = levels.length - 1; k >= 0; k--)
+      points.push({ x: cxc - (levels[k].d / maxD) * halfW, y: scale.toY(levels[k].y) });
 
     const color = seriesColor(style, c % 8, data.series.find((s) => s.color)?.color);
-    nodes.push({ kind: "polygon", points, fill: lerpColor("#ffffff", color, 0.32), stroke: color, strokeWidth: 1, name: `violin-${c}` });
+    nodes.push({
+      kind: "polygon",
+      points,
+      fill: lerpColor("#ffffff", color, 0.32),
+      stroke: color,
+      strokeWidth: 1,
+      name: `violin-${c}`,
+    });
     // Median tick.
     const med = quantile(sorted, 0.5);
-    nodes.push({ kind: "line", x1: cxc - halfW * 0.35, y1: scale.toY(med), x2: cxc + halfW * 0.35, y2: scale.toY(med), stroke: style.text, strokeWidth: 1.75, name: `median-${c}` });
+    nodes.push({
+      kind: "line",
+      x1: cxc - halfW * 0.35,
+      y1: scale.toY(med),
+      x2: cxc + halfW * 0.35,
+      y2: scale.toY(med),
+      stroke: style.text,
+      strokeWidth: 1.75,
+      name: `median-${c}`,
+    });
   });
 
   return {
@@ -92,7 +113,12 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
       columnTop: data.categories.map((_, c) => scale.toY(Math.max(...(samplesOf(c).length ? samplesOf(c) : [0])))),
       columnValue: data.categories.map((_, c) => {
         const s = samplesOf(c);
-        return s.length ? quantile(s.slice().sort((a, b) => a - b), 0.5) : 0;
+        return s.length
+          ? quantile(
+              s.slice().sort((a, b) => a - b),
+              0.5,
+            )
+          : 0;
       }),
       baselineY: frame.y + frame.h,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },

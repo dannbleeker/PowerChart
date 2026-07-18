@@ -77,7 +77,13 @@ describe("transparent floating segments", () => {
     expect(range).toBeTruthy();
     const solid = buildChart({
       ...cfg,
-      data: { ...cfg.data, series: [{ name: "base", values: [10, 14] }, { name: "Range", values: [20, 18] }] },
+      data: {
+        ...cfg.data,
+        series: [
+          { name: "base", values: [10, 14] },
+          { name: "Range", values: [20, 18] },
+        ],
+      },
     });
     const solidRange = solid.nodes.find((n): n is RectNode => n.name === "seg-1-0")!;
     // Same height, but the floating one sits higher (smaller y) is false — same y
@@ -95,7 +101,13 @@ describe("transparent floating segments", () => {
     // by the (undrawn) base segment. Compare Q1 (base 10) vs a base-0 build.
     const grounded = buildChart({
       ...cfg,
-      data: { categories: ["Q1", "Q2"], series: [{ name: "base", color: "transparent", values: [0, 0] }, { name: "Range", values: [20, 18] }] },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "base", color: "transparent", values: [0, 0] },
+          { name: "Range", values: [20, 18] },
+        ],
+      },
     });
     const gRange = grounded.nodes.find((n): n is RectNode => n.name === "seg-1-0")!;
     expect(range.y + range.h).toBeLessThan(gRange.y + gRange.h - 1); // floats above the grounded bar's base

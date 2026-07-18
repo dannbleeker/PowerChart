@@ -24,10 +24,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const cy = titleH + legendH + (cfg.height - titleH - legendH - footH) / 2;
   // Perimeter labels need a margin around the web.
   const labelW = Math.max(0, ...data.categories.map((c) => textWidth(c, fs)));
-  const r = Math.max(
-    10,
-    Math.min(cfg.width / 2 - labelW - fs, (cfg.height - titleH - legendH - footH) / 2 - fs * 1.9),
-  );
+  const r = Math.max(10, Math.min(cfg.width / 2 - labelW - fs, (cfg.height - titleH - legendH - footH) / 2 - fs * 1.9));
 
   // Stacked radar: series stack cumulatively along each spoke, so the scale
   // must reach the per-spoke sums, not the largest single value.
@@ -47,8 +44,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const spokeMax = data.categories.map((_, c) =>
     perSpoke ? Math.max(1, ...data.series.map((s) => s.values[c] ?? 0)) : max,
   );
-  const toRc = (v: number, c: number) =>
-    perSpoke ? (Math.max(0, v) / spokeMax[c]) * r : toR(Math.max(min, v));
+  const toRc = (v: number, c: number) => (perSpoke ? (Math.max(0, v) / spokeMax[c]) * r : toR(Math.max(min, v)));
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
@@ -58,10 +54,22 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // rings with no numeric labels (each spoke has its own scale); otherwise
   // rings sit at the value ticks and the 12 o'clock spoke is labelled.
   const gridShape = decor.gridShape ?? "polygon";
-  const rings = perSpoke ? [0.25, 0.5, 0.75, 1].map((f) => ({ rr: f * r, t: f })) : ticks.filter((t) => t > min).map((t) => ({ rr: toR(t), t }));
+  const rings = perSpoke
+    ? [0.25, 0.5, 0.75, 1].map((f) => ({ rr: f * r, t: f }))
+    : ticks.filter((t) => t > min).map((t) => ({ rr: toR(t), t }));
   for (const { rr, t } of rings) {
     if (gridShape === "circle") {
-      nodes.push({ kind: "ellipse", cx, cy, rx: rr, ry: rr, fill: "none", stroke: style.gridline, strokeWidth: 0.75, name: `grid-${t}` });
+      nodes.push({
+        kind: "ellipse",
+        cx,
+        cy,
+        rx: rr,
+        ry: rr,
+        fill: "none",
+        stroke: style.gridline,
+        strokeWidth: 0.75,
+        name: `grid-${t}`,
+      });
     } else {
       nodes.push({
         kind: "polygon",
@@ -74,15 +82,32 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     if (!perSpoke) {
       // Tick label on the 12 o'clock spoke only.
       nodes.push({
-        kind: "text", x: cx + 3, y: cy - rr - fs * 0.6, w: fs * 3.4, h: fs * 1.2,
-        text: formatNumber(t, fmt), fontSize: fs * 0.85, color: style.mutedText,
-        align: "left", valign: "middle", name: `tick-${t}`,
+        kind: "text",
+        x: cx + 3,
+        y: cy - rr - fs * 0.6,
+        w: fs * 3.4,
+        h: fs * 1.2,
+        text: formatNumber(t, fmt),
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: `tick-${t}`,
       });
     }
   }
   data.categories.forEach((cat, c) => {
     const end = polar(cx, cy, r, angle(c));
-    nodes.push({ kind: "line", x1: cx, y1: cy, x2: end.x, y2: end.y, stroke: style.gridline, strokeWidth: 0.75, name: `spoke-${c}` });
+    nodes.push({
+      kind: "line",
+      x1: cx,
+      y1: cy,
+      x2: end.x,
+      y2: end.y,
+      stroke: style.gridline,
+      strokeWidth: 0.75,
+      name: `spoke-${c}`,
+    });
     // Perimeter category label, anchored by which side of the web it sits on.
     const p = polar(cx, cy, r + fs * 0.6, angle(c));
     const a = angle(c) % 360;
@@ -120,7 +145,13 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const maxPts = data.categories.map((_, c) => polar(cx, cy, toRc(peerMax[c], c), angle(c)));
     for (let c = 0; c < n; c++) {
       const c2 = (c + 1) % n;
-      nodes.push({ kind: "polygon", points: [minPts[c], minPts[c2], maxPts[c2], maxPts[c]], fill: style.mutedText, fillOpacity: 0.16, name: `band-${c}` });
+      nodes.push({
+        kind: "polygon",
+        points: [minPts[c], minPts[c2], maxPts[c2], maxPts[c]],
+        fill: style.mutedText,
+        fillOpacity: 0.16,
+        name: `band-${c}`,
+      });
     }
     nodes.push(
       { kind: "polygon", points: maxPts, stroke: style.mutedText, strokeWidth: 1, name: "band-max" },
@@ -179,7 +210,17 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
     pts.forEach((p, c) => {
       if (s.values[c] == null) return;
-      nodes.push({ kind: "ellipse", cx: p.x, cy: p.y, rx: 2.4, ry: 2.4, fill: color, stroke: style.background, strokeWidth: 1, name: `marker-${si}-${c}` });
+      nodes.push({
+        kind: "ellipse",
+        cx: p.x,
+        cy: p.y,
+        rx: 2.4,
+        ry: 2.4,
+        fill: color,
+        stroke: style.background,
+        strokeWidth: 1,
+        name: `marker-${si}-${c}`,
+      });
     });
   });
 
@@ -194,15 +235,36 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const entries: { label: string; color: string; name: string }[] = band
       ? [
           { label: "Peer range", color: style.mutedText, name: "legend-band" },
-          { label: data.series[data.series.length - 1].name, color: seriesColor(style, data.series.length - 1, data.series[data.series.length - 1].color), name: "legend-us" },
+          {
+            label: data.series[data.series.length - 1].name,
+            color: seriesColor(style, data.series.length - 1, data.series[data.series.length - 1].color),
+            name: "legend-us",
+          },
         ]
       : data.series.map((s, si) => ({ label: s.name, color: seriesColor(style, si, s.color), name: `legend-${si}` }));
     entries.forEach((e, i) => {
       nodes.push(
-        { kind: "rect", x, y: titleH + fs * 0.35, w: chip, h: chip, fill: e.color, name: band ? e.name : `legend-chip-${i}` },
         {
-          kind: "text", x: x + chip + 3, y: titleH, w: textWidth(e.label, fs) + 6, h: fs * 1.4,
-          text: e.label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: e.name,
+          kind: "rect",
+          x,
+          y: titleH + fs * 0.35,
+          w: chip,
+          h: chip,
+          fill: e.color,
+          name: band ? e.name : `legend-chip-${i}`,
+        },
+        {
+          kind: "text",
+          x: x + chip + 3,
+          y: titleH,
+          w: textWidth(e.label, fs) + 6,
+          h: fs * 1.4,
+          text: e.label,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: e.name,
         },
       );
       x += chip + 3 + textWidth(e.label, fs) + 12;
@@ -260,15 +322,34 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
 
   // Concentric value rings + tick labels on the 12 o'clock line.
   for (const t of ticks.filter((t) => t > 0)) {
-    nodes.push({ kind: "ellipse", cx, cy, rx: toR(t), ry: toR(t), fill: "none", stroke: style.gridline, strokeWidth: 0.75, name: `grid-${t}` });
     nodes.push({
-      kind: "text", x: cx + 3, y: cy - toR(t) - fs * 0.6, w: fs * 3.4, h: fs * 1.2,
-      text: formatNumber(t, fmt), fontSize: fs * 0.85, color: style.mutedText, align: "left", valign: "middle", name: `tick-${t}`,
+      kind: "ellipse",
+      cx,
+      cy,
+      rx: toR(t),
+      ry: toR(t),
+      fill: "none",
+      stroke: style.gridline,
+      strokeWidth: 0.75,
+      name: `grid-${t}`,
+    });
+    nodes.push({
+      kind: "text",
+      x: cx + 3,
+      y: cy - toR(t) - fs * 0.6,
+      w: fs * 3.4,
+      h: fs * 1.2,
+      text: formatNumber(t, fmt),
+      fontSize: fs * 0.85,
+      color: style.mutedText,
+      align: "left",
+      valign: "middle",
+      name: `tick-${t}`,
     });
   }
 
   data.categories.forEach((cat, c) => {
-    const a0 = ((angle(c) + pad / 2) % 360 + 360) % 360;
+    const a0 = (((angle(c) + pad / 2) % 360) + 360) % 360;
     const aSpan = sector - pad;
     let base = 0;
     data.series.forEach((s, si) => {
@@ -277,11 +358,20 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       const rin = toR(base);
       const rout = toR(base + v);
       base += v;
-      const color = multi ? seriesColor(style, si, s.color) : (s.colors?.[c] ?? style.palette[c % style.palette.length]);
+      const color = multi
+        ? seriesColor(style, si, s.color)
+        : (s.colors?.[c] ?? style.palette[c % style.palette.length]);
       nodes.push({
-        kind: "wedge", cx, cy, r: rout, innerR: rin,
-        startAngle: a0, endAngle: a0 + aSpan,
-        fill: color, stroke: style.background, strokeWidth: 1,
+        kind: "wedge",
+        cx,
+        cy,
+        r: rout,
+        innerR: rin,
+        startAngle: a0,
+        endAngle: a0 + aSpan,
+        fill: color,
+        stroke: style.background,
+        strokeWidth: 1,
         name: multi ? `bar-${c}-${si}` : `bar-${c}`,
       });
     });
@@ -295,7 +385,14 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       kind: "text",
       x: align === "center" ? p.x - w / 2 : align === "left" ? p.x : p.x - w,
       y: p.y - (am < 10 || am > 350 ? fs * 1.4 : Math.abs(am - 180) < 10 ? 0 : fs * 0.7),
-      w, h: fs * 1.4, text: cat, fontSize: fs, color: style.text, align, valign: "middle", name: `category-${c}`,
+      w,
+      h: fs * 1.4,
+      text: cat,
+      fontSize: fs,
+      color: style.text,
+      align,
+      valign: "middle",
+      name: `category-${c}`,
     });
   });
 
@@ -308,8 +405,17 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       nodes.push(
         { kind: "rect", x, y: titleH + fs * 0.35, w: chip, h: chip, fill: color, name: `legend-chip-${si}` },
         {
-          kind: "text", x: x + chip + 3, y: titleH, w: textWidth(s.name, fs) + 6, h: fs * 1.4,
-          text: s.name, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${si}`,
+          kind: "text",
+          x: x + chip + 3,
+          y: titleH,
+          w: textWidth(s.name, fs) + 6,
+          h: fs * 1.4,
+          text: s.name,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `legend-${si}`,
         },
       );
       x += chip + 3 + textWidth(s.name, fs) + 12;

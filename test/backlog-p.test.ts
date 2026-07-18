@@ -80,7 +80,9 @@ describe("radar vertex markers (scene → add-in path)", () => {
         series: [{ name: "S", values: [3, 4, 2] }],
       },
     });
-    const markers = s.nodes.filter((n): n is EllipseNode => n.kind === "ellipse" && !!n.name?.match(/^marker-\d+-\d+$/));
+    const markers = s.nodes.filter(
+      (n): n is EllipseNode => n.kind === "ellipse" && !!n.name?.match(/^marker-\d+-\d+$/),
+    );
     // One marker per (series × category); rendered by powerpoint.ts's ellipse
     // case, so they appear in the live add-in as well as SVG/pptx.
     expect(markers).toHaveLength(3);

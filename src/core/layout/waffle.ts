@@ -34,9 +34,7 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const quotas = values.map((v) => (v / denom) * 100);
   const cells = quotas.map(Math.floor);
   const target = Math.min(100, Math.round(quotas.reduce((a, b) => a + b, 0)));
-  const byRemainder = quotas
-    .map((q, i) => ({ r: q - Math.floor(q), i }))
-    .sort((a, b) => b.r - a.r);
+  const byRemainder = quotas.map((q, i) => ({ r: q - Math.floor(q), i })).sort((a, b) => b.r - a.r);
   for (let k = 0; cells.reduce((a, b) => a + b, 0) < target && k < byRemainder.length; k++) {
     cells[byRemainder[k].i]++;
   }
@@ -47,9 +45,10 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     pct: formatPercent(values[c] / denom, quotas[c] > 0 && quotas[c] < 1 ? 1 : 0),
     color: data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length],
   }));
-  const legendW = decor.seriesLabels === false
-    ? 0
-    : Math.max(...legendEntries.map((e) => textWidth(`${e.name}  ${e.pct}`, fs))) + fs * 2.2;
+  const legendW =
+    decor.seriesLabels === false
+      ? 0
+      : Math.max(...legendEntries.map((e) => textWidth(`${e.name}  ${e.pct}`, fs))) + fs * 2.2;
 
   const availH = cfg.height - titleH - footnoteH(cfg, style, decor) - 8;
   const availW = cfg.width - legendW - 8;
@@ -89,25 +88,58 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     const lx = gx + gridSize + fs;
     if (single) {
       nodes.push({
-        kind: "text", x: lx, y: gy + gridSize / 2 - fs * 2.4, w: cfg.width - lx - 2, h: fs * 3.2,
-        text: legendEntries[0].pct, fontSize: fs * 2.6, bold: true, color: legendEntries[0].color,
-        align: "left", valign: "middle", name: "waffle-big-pct",
+        kind: "text",
+        x: lx,
+        y: gy + gridSize / 2 - fs * 2.4,
+        w: cfg.width - lx - 2,
+        h: fs * 3.2,
+        text: legendEntries[0].pct,
+        fontSize: fs * 2.6,
+        bold: true,
+        color: legendEntries[0].color,
+        align: "left",
+        valign: "middle",
+        name: "waffle-big-pct",
       });
       nodes.push({
-        kind: "text", x: lx, y: gy + gridSize / 2 + fs * 0.9, w: cfg.width - lx - 2, h: fs * 1.5,
-        text: legendEntries[0].name, fontSize: fs, color: style.mutedText,
-        align: "left", valign: "middle", name: "legend-label-0",
+        kind: "text",
+        x: lx,
+        y: gy + gridSize / 2 + fs * 0.9,
+        w: cfg.width - lx - 2,
+        h: fs * 1.5,
+        text: legendEntries[0].name,
+        fontSize: fs,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: "legend-label-0",
       });
     } else {
       const rowH = fs * 1.7;
       const ly = gy + gridSize / 2 - (legendEntries.length * rowH) / 2;
       legendEntries.forEach((e, c) => {
         const y = ly + c * rowH;
-        nodes.push({ kind: "rect", x: lx, y: y + rowH / 2 - fs * 0.45, w: fs * 0.9, h: fs * 0.9, fill: e.color, name: `legend-chip-${c}` });
         nodes.push({
-          kind: "text", x: lx + fs * 1.3, y, w: cfg.width - lx - fs * 1.3 - 2, h: rowH,
-          text: `${e.name}  ${e.pct}`, fontSize: fs, color: style.text,
-          align: "left", valign: "middle", name: `legend-label-${c}`,
+          kind: "rect",
+          x: lx,
+          y: y + rowH / 2 - fs * 0.45,
+          w: fs * 0.9,
+          h: fs * 0.9,
+          fill: e.color,
+          name: `legend-chip-${c}`,
+        });
+        nodes.push({
+          kind: "text",
+          x: lx + fs * 1.3,
+          y,
+          w: cfg.width - lx - fs * 1.3 - 2,
+          h: rowH,
+          text: `${e.name}  ${e.pct}`,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `legend-label-${c}`,
         });
       });
     }

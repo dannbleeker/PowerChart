@@ -27,7 +27,9 @@ describe("automatic Other bucket", () => {
 
   it("keeps max−1 largest series and sums the rest into Other", () => {
     const s = buildChart({ ...base, otherBucket: { max: 3 } });
-    const labels = s.nodes.filter((n): n is TextNode => n.kind === "text" && n.name?.startsWith("series-label") === true).map((n) => n.text);
+    const labels = s.nodes
+      .filter((n): n is TextNode => n.kind === "text" && n.name?.startsWith("series-label") === true)
+      .map((n) => n.text);
     // Series labels aren't on; assert by segment count instead: 3 series → 3 segments per category.
     const segs0 = s.nodes.filter((n) => n.name?.match(/^seg-\d+-0$/));
     expect(segs0).toHaveLength(3); // Big, Mid, Other
@@ -35,13 +37,21 @@ describe("automatic Other bucket", () => {
   });
 
   it("Other sums the collapsed tail", () => {
-    const s = buildChart({ ...base, otherBucket: { max: 3 }, decorations: { seriesLabels: true, segmentLabels: false } });
+    const s = buildChart({
+      ...base,
+      otherBucket: { max: 3 },
+      decorations: { seriesLabels: true, segmentLabels: false },
+    });
     // Other = Small A+B+C at Y1 = 8+5+3 = 16; it is the top (last) segment.
     const other = s.nodes.find((n): n is TextNode => n.kind === "text" && n.text === "Other");
     expect(other).toBeTruthy();
     // Top segment height corresponds to 16 vs Big 50 → ratio ~0.32.
     const segNames = [0, 1, 2].map((i) => `seg-${i}-0`);
-    const heights = segNames.map((nm) => (buildChart({ ...base, otherBucket: { max: 3 } }).nodes.find((n): n is RectNode => n.name === nm) as RectNode).h);
+    const heights = segNames.map(
+      (nm) =>
+        (buildChart({ ...base, otherBucket: { max: 3 } }).nodes.find((n): n is RectNode => n.name === nm) as RectNode)
+          .h,
+    );
     // seg-2 is Other (16), seg-0 is Big (50).
     expect(heights[2] / heights[0]).toBeCloseTo(16 / 50, 1);
   });

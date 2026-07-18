@@ -20,7 +20,10 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
     .map((c, i) => ({ label: c, value: Math.max(0, data.series[0]?.values[i] ?? 0), i }))
     .filter((r) => r.value > 0);
   const total = items.reduce((a, r) => a + r.value, 0) || 1;
-  const fmt = resolveFormat(items.map((r) => r.value), cfg.numberFormat);
+  const fmt = resolveFormat(
+    items.map((r) => r.value),
+    cfg.numberFormat,
+  );
   const grouped = items.some((r) => r.label.includes("|"));
   const groupOf = (label: string) => (label.includes("|") ? label.split("|")[0].trim() : "");
   const labelOf = (label: string) => (label.includes("|") ? label.split("|").slice(1).join("|").trim() : label);
@@ -75,14 +78,38 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
       const span = (g.total / total) * 360;
       const gColor = palette[gi % palette.length];
       const a0 = norm(angle);
-      nodes.push({ kind: "wedge", cx, cy, r: rMid, innerR: rInner, startAngle: a0, endAngle: a0 + span, fill: gColor, stroke: style.background, strokeWidth: 1, name: `group-${gi}` });
+      nodes.push({
+        kind: "wedge",
+        cx,
+        cy,
+        r: rMid,
+        innerR: rInner,
+        startAngle: a0,
+        endAngle: a0 + span,
+        fill: gColor,
+        stroke: style.background,
+        strokeWidth: 1,
+        name: `group-${gi}`,
+      });
       if (span >= 16) label((rInner + rMid) / 2, angle + span / 2, g.name, "#ffffff", `group-label-${gi}`, false);
       let a2 = angle;
       g.members.forEach((m, mi) => {
         const mspan = (m.value / g.total) * span;
         const mColor = lerpColor(gColor, "#ffffff", 0.16 + 0.12 * (mi % 4));
         const ma0 = norm(a2);
-        nodes.push({ kind: "wedge", cx, cy, r, innerR: rMid, startAngle: ma0, endAngle: ma0 + mspan, fill: mColor, stroke: style.background, strokeWidth: 1, name: `slice-${m.i}` });
+        nodes.push({
+          kind: "wedge",
+          cx,
+          cy,
+          r,
+          innerR: rMid,
+          startAngle: ma0,
+          endAngle: ma0 + mspan,
+          fill: mColor,
+          stroke: style.background,
+          strokeWidth: 1,
+          name: `slice-${m.i}`,
+        });
         if (mspan >= 12) label(r + fs * 0.7, a2 + mspan / 2, labelOf(m.label), style.text, `label-${m.i}`, true);
         a2 += mspan;
       });
@@ -93,8 +120,28 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
     items.forEach((m) => {
       const span = (m.value / total) * 360;
       const a0 = norm(angle);
-      nodes.push({ kind: "wedge", cx, cy, r, innerR: rInner, startAngle: a0, endAngle: a0 + span, fill: palette[m.i % palette.length], stroke: style.background, strokeWidth: 1, name: `slice-${m.i}` });
-      if (span >= 12) label(r + fs * 0.7, angle + span / 2, `${m.label} ${formatNumber(m.value, fmt)}`, style.text, `label-${m.i}`, true);
+      nodes.push({
+        kind: "wedge",
+        cx,
+        cy,
+        r,
+        innerR: rInner,
+        startAngle: a0,
+        endAngle: a0 + span,
+        fill: palette[m.i % palette.length],
+        stroke: style.background,
+        strokeWidth: 1,
+        name: `slice-${m.i}`,
+      });
+      if (span >= 12)
+        label(
+          r + fs * 0.7,
+          angle + span / 2,
+          `${m.label} ${formatNumber(m.value, fmt)}`,
+          style.text,
+          `label-${m.i}`,
+          true,
+        );
       angle += span;
     });
   }

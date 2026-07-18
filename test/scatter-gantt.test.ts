@@ -74,8 +74,7 @@ describe("scatter & bubble", () => {
     const { nodes } = layoutScatter(c, DEFAULT_STYLE, DEFAULT_DECOR);
     // By name, not by position: markers paint back-to-front (largest first), so
     // the emission order is deliberately not the datasheet order.
-    const pt = (i: number) =>
-      nodes.find((n): n is EllipseNode => n.kind === "ellipse" && n.name === `point-${i}`)!;
+    const pt = (i: number) => nodes.find((n): n is EllipseNode => n.kind === "ellipse" && n.name === `point-${i}`)!;
     // Area ∝ size → radius ratio = sqrt(100/25) = 2.
     expect(pt(1).rx / pt(0).rx).toBeCloseTo(2, 1);
   });
@@ -100,16 +99,13 @@ describe("scatter & bubble", () => {
     // Datasheet order would emit the big one first and paint the small one
     // under it — invisible in all three renderers.
     expect(order).toEqual(["point-0", "point-1"]);
-    const rx = (i: number) =>
-      (nodes.find((n) => n.name === `point-${i}`) as EllipseNode).rx;
+    const rx = (i: number) => (nodes.find((n) => n.name === `point-${i}`) as EllipseNode).rx;
     expect(rx(0)).toBeGreaterThan(rx(1)); // point-0 IS the big one, drawn first
   });
 
   it("labels points without overlaps", () => {
     const scene = buildChart(sampleConfig("bubble"));
-    const labels = scene.nodes.filter(
-      (n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("label-"),
-    );
+    const labels = scene.nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("label-"));
     expect(labels.length).toBeGreaterThan(3);
     for (let i = 0; i < labels.length; i++) {
       for (let j = i + 1; j < labels.length; j++) {
@@ -144,7 +140,7 @@ describe("gantt", () => {
     expect(nodes.find((n) => n.name === "milestone-1")).toBeTruthy();
   });
 
-  describe("gutter columns (\"Column <label>\" rows)", () => {
+  describe('gutter columns ("Column <label>" rows)', () => {
     const withColumns = (extra: Record<string, unknown> = {}) =>
       cfg({
         kind: "gantt",
@@ -215,22 +211,14 @@ describe("segment order & manual scale", () => {
     ],
   };
   it("descending puts the largest segment at the baseline", () => {
-    const { nodes, anchors } = layoutColumns(
-      cfg({ data, segmentOrder: "descending" }),
-      DEFAULT_STYLE,
-      DEFAULT_DECOR,
-    );
+    const { nodes, anchors } = layoutColumns(cfg({ data, segmentOrder: "descending" }), DEFAULT_STYLE, DEFAULT_DECOR);
     const segs = nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("seg-"));
     const bottom = segs.reduce((a, b) => (a.y + a.h > b.y + b.h ? a : b));
     expect(bottom.name).toBe("seg-1-0"); // S2 = 30, the largest
     expect(bottom.y + bottom.h).toBeCloseTo(anchors.baselineY, 5);
   });
   it("pins the axis max", () => {
-    const { anchors } = layoutColumns(
-      cfg({ data, scale: { max: 120 } }),
-      DEFAULT_STYLE,
-      DEFAULT_DECOR,
-    );
+    const { anchors } = layoutColumns(cfg({ data, scale: { max: 120 } }), DEFAULT_STYLE, DEFAULT_DECOR);
     // Total 60 of max 120 → column fills half the plot.
     expect((anchors.baselineY - anchors.columnTop[0]) / anchors.plot.h).toBeCloseTo(0.5, 2);
   });
@@ -334,7 +322,13 @@ describe("gantt working-day timeline (gantt.workdays)", () => {
           width: 500,
           height: 200,
           ...(gantt ? { gantt } : {}),
-          data: { categories: ["A"], series: [{ name: "Start", values: [0] }, { name: "End", values: [5] }] },
+          data: {
+            categories: ["A"],
+            series: [
+              { name: "Start", values: [0] },
+              { name: "End", values: [5] },
+            ],
+          },
         }),
         DEFAULT_STYLE,
         DEFAULT_DECOR,
@@ -369,9 +363,7 @@ describe("scatter marginal histograms (decorations.marginals)", () => {
     const { nodes, anchors } = build(pts(40), "x");
     const bars = nodes.filter((n) => n.name?.startsWith("marginal-x-")) as RectNode[];
     expect(bars.length).toBeGreaterThan(0);
-    const gridX = nodes
-      .filter((n) => n.kind === "line" && n.name?.startsWith("gridline-x"))
-      .map((n) => (n as any).x1);
+    const gridX = nodes.filter((n) => n.kind === "line" && n.name?.startsWith("gridline-x")).map((n) => (n as any).x1);
     const plot = anchors.plot!;
     const bw = plot.w / ((gridX.length - 1) * 2); // 40 points → 2 sub-bins per interval
     for (const gx of gridX) {
@@ -571,7 +563,7 @@ describe("scatter overlap relief (scatter.spread)", () => {
   });
 });
 
-describe("combo marker series (Series.type: \"marker\")", () => {
+describe('combo marker series (Series.type: "marker")', () => {
   const combo = (markerType: "marker" | "line", extra: Partial<ChartConfig> = {}) =>
     cfg({
       kind: "combo",
@@ -655,8 +647,14 @@ describe("gantt owner lanes (gantt.lanes)", () => {
       data: {
         categories: ["Spec | Ana", "Build | Ben", "Review | Ana", "Ship | Ben", "Handover"],
         series: [
-          { name: "Start", values: [day("2026-01-05"), day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02")] },
-          { name: "End", values: [day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02"), day("2026-02-05")] },
+          {
+            name: "Start",
+            values: [day("2026-01-05"), day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02")],
+          },
+          {
+            name: "End",
+            values: [day("2026-01-12"), day("2026-01-19"), day("2026-01-26"), day("2026-02-02"), day("2026-02-05")],
+          },
           { name: "After", values: [null, 1, 2, 3, 4] },
         ],
         dates: true,
@@ -682,7 +680,15 @@ describe("gantt owner lanes (gantt.lanes)", () => {
       const name = new Map<number, string>();
       nodes
         .filter((n) => n.kind === "text" && /^category-\d+$/.test(n.name ?? ""))
-        .forEach((t) => name.set(+t.name!.split("-")[1], String((t as TextNode).text).replace(/^>\s*/, "").split("|")[0].trim()));
+        .forEach((t) =>
+          name.set(
+            +t.name!.split("-")[1],
+            String((t as TextNode).text)
+              .replace(/^>\s*/, "")
+              .split("|")[0]
+              .trim(),
+          ),
+        );
       const bars = nodes.filter((n) => /^bar-\d+$/.test(n.name ?? "")) as RectNode[];
       return nodes
         .filter((n) => /^dep-v-\d+$/.test(n.name ?? ""))
@@ -819,7 +825,9 @@ describe("scatter marker symbols", () => {
       if (n.kind === "rect") return n.w * n.h;
       if (n.kind !== "symbol") throw new Error(`unexpected ${n.kind}`);
       const p = symbolPoints(n.shape, n.cx, n.cy, n.size);
-      return Math.abs(p.reduce((a, c, i) => a + (c.x * p[(i + 1) % p.length].y - p[(i + 1) % p.length].x * c.y), 0)) / 2;
+      return (
+        Math.abs(p.reduce((a, c, i) => a + (c.x * p[(i + 1) % p.length].y - p[(i + 1) % p.length].x * c.y), 0)) / 2
+      );
     });
     for (const a of areas) expect(a).toBeCloseTo(areas[0], 6);
   });
@@ -896,8 +904,8 @@ describe("scatter group ids are whatever a datasheet cell holds", () => {
   });
 
   it("rounds a fractional id rather than indexing between shapes", () => {
-    const shapes = buildChart(withGroups([1.4, 2.6], ["circle", "diamond", "triangle"])).nodes
-      .filter((n) => n.name?.startsWith("point-"))
+    const shapes = buildChart(withGroups([1.4, 2.6], ["circle", "diamond", "triangle"]))
+      .nodes.filter((n) => n.name?.startsWith("point-"))
       .map((n) => (n.kind === "symbol" ? n.shape : n.kind));
     expect(shapes).toEqual(["ellipse", "triangle"]); // 1.4 -> 1, 2.6 -> 3
   });

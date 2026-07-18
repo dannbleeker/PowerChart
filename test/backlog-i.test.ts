@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import type { ChartConfig } from "../src/core/types";
-import type { EllipseNode, LineNode, RectNode, TextNode } from "../src/core/scene";
+import type { EllipseNode, LineNode, TextNode } from "../src/core/scene";
 
 /**
  * Backlog batch I — more §2 within-kind gaps: scatter/bubble continuous
@@ -44,7 +44,13 @@ describe("scatter/bubble continuous color scale", () => {
   it("no color row → no gradient legend (plain scatter)", () => {
     const s = buildChart({
       ...base,
-      data: { categories: ["A", "B"], series: [{ name: "X", values: [1, 2] }, { name: "Y", values: [3, 4] }] },
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "X", values: [1, 2] },
+          { name: "Y", values: [3, 4] },
+        ],
+      },
     });
     expect(s.nodes.some((n) => n.name?.startsWith("color-legend"))).toBe(false);
   });

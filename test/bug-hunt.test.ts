@@ -140,10 +140,16 @@ describe("value extents and auto-scales", () => {
 
   it("negative small-multiples areas stay inside the scene", () => {
     const scene = buildChart({
-      kind: "area", width: 480, height: 300, multiples: {},
+      kind: "area",
+      width: 480,
+      height: 300,
+      multiples: {},
       data: {
         categories: ["Q1", "Q2", "Q3"],
-        series: [{ name: "A", values: [10, -40, 20] }, { name: "B", values: [5, -30, 10] }],
+        series: [
+          { name: "A", values: [10, -40, 20] },
+          { name: "B", values: [5, -30, 10] },
+        ],
       },
     } as ChartConfig);
     const { top, bottom } = rectSpan(scene);
@@ -153,10 +159,15 @@ describe("value extents and auto-scales", () => {
 
   it("a target below the data range widens the scale down, not just up", () => {
     const scene = buildChart({
-      kind: "clustered", width: 480, height: 300,
+      kind: "clustered",
+      width: 480,
+      height: 300,
       data: {
         categories: ["A", "B", "C"],
-        series: [{ name: "Actual", values: [10, 20, 30] }, { name: "Target", values: [-50, -50, -50] }],
+        series: [
+          { name: "Actual", values: [10, 20, 30] },
+          { name: "Target", values: [-50, -50, -50] },
+        ],
       },
     } as ChartConfig);
     const ticks = scene.nodes.filter((n: any) => n.kind === "line" && n.name?.startsWith("target-"));
@@ -169,7 +180,9 @@ describe("value extents and auto-scales", () => {
 
   it("a multi-series waterfall combo keeps its columns on canvas", () => {
     const scene = buildChart({
-      kind: "combo", ...DEFAULT_SIZE, combo: { columns: "waterfall" },
+      kind: "combo",
+      ...DEFAULT_SIZE,
+      combo: { columns: "waterfall" },
       data: {
         categories: ["A", "B", "C"],
         series: [
@@ -186,10 +199,17 @@ describe("value extents and auto-scales", () => {
 
   it("small-multiples panels share one category order under categorySort", () => {
     const scene = buildChart({
-      kind: "clustered", width: 480, height: 300, multiples: { columns: 2 }, categorySort: "descending",
+      kind: "clustered",
+      width: 480,
+      height: 300,
+      multiples: { columns: 2 },
+      categorySort: "descending",
       data: {
         categories: ["A", "B", "C"],
-        series: [{ name: "S1", values: [1, 9, 5] }, { name: "S2", values: [9, 1, 5] }],
+        series: [
+          { name: "S1", values: [1, 9, 5] },
+          { name: "S2", values: [9, 1, 5] },
+        ],
       },
       decorations: { categoryAxis: true },
     } as ChartConfig);
@@ -198,7 +218,8 @@ describe("value extents and auto-scales", () => {
         .filter((n: any) => n.kind === "text" && n.name?.startsWith(`${p}-category-`))
         .sort((a: any, b: any) => a.x - b.x)
         .map((n: any) => n.text);
-    const p0 = axisOf("p0"), p1 = axisOf("p1");
+    const p0 = axisOf("p0"),
+      p1 = axisOf("p1");
     expect(p0.length).toBeGreaterThan(0);
     expect(p1).toEqual(p0); // panels used to rank by their own series and disagree
   });
@@ -207,7 +228,9 @@ describe("value extents and auto-scales", () => {
 describe("layout indexing", () => {
   it("grouped treemap tiles get the rectangle for their own value", () => {
     const scene = buildChart({
-      kind: "treemap", width: 600, height: 400,
+      kind: "treemap",
+      width: 600,
+      height: 400,
       data: { categories: ["G | a", "G | b", "G | c"], series: [{ name: "S", values: [1, 50, 100] }] },
     } as ChartConfig);
     const area = (name: string) => {
@@ -223,8 +246,15 @@ describe("layout indexing", () => {
 
   it("stacked connectors join the same series across a zero segment", () => {
     const scene = buildChart({
-      kind: "stacked", ...DEFAULT_SIZE,
-      data: { categories: ["A", "B"], series: [{ name: "S1", values: [0, 10] }, { name: "S2", values: [20, 30] }] },
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "S1", values: [0, 10] },
+          { name: "S2", values: [20, 30] },
+        ],
+      },
       decorations: { connectors: true },
     } as ChartConfig);
     const conns = scene.nodes.filter((n: any) => n.kind === "line" && n.name?.startsWith("connector-")) as any[];
@@ -236,12 +266,16 @@ describe("layout indexing", () => {
 
   it("a tight-spread violin category still renders", () => {
     const scene = buildChart({
-      kind: "violin", width: 480, height: 300,
+      kind: "violin",
+      width: 480,
+      height: 300,
       data: {
         categories: ["Wide", "Tight"],
         series: [
-          { name: "o1", values: [0, 3] }, { name: "o2", values: [30, 3.1] },
-          { name: "o3", values: [60, 3] }, { name: "o4", values: [90, 3.05] },
+          { name: "o1", values: [0, 3] },
+          { name: "o2", values: [30, 3.1] },
+          { name: "o3", values: [60, 3] },
+          { name: "o4", values: [90, 3.05] },
           { name: "o5", values: [120, 3.02] },
         ],
       },
@@ -254,8 +288,17 @@ describe("layout indexing", () => {
   it("horizontal mekko hides labels in rows thinner than the font", () => {
     const cats = Array.from({ length: 16 }, (_, i) => `C${i + 1}`);
     const cfg = {
-      kind: "mekko", width: 600, height: 160, horizontal: true,
-      data: { categories: cats, series: [{ name: "S1", values: cats.map(() => 50) }, { name: "S2", values: cats.map(() => 50) }] },
+      kind: "mekko",
+      width: 600,
+      height: 160,
+      horizontal: true,
+      data: {
+        categories: cats,
+        series: [
+          { name: "S1", values: cats.map(() => 50) },
+          { name: "S2", values: cats.map(() => 50) },
+        ],
+      },
       decorations: { segmentLabels: true },
     } as ChartConfig;
     const scene = buildChart(cfg);
@@ -279,12 +322,17 @@ describe("layout indexing", () => {
     // wide columns but let three 3.8pt segments each print a 5.4pt "4",
     // overlapping their neighbours by 1.6pt.
     const scene = buildChart({
-      kind: "mekko", width: 400, height: 300, horizontal: true,
+      kind: "mekko",
+      width: 400,
+      height: 300,
+      horizontal: true,
       data: {
         categories: ["EMEA"],
         series: [
-          { name: "A", values: [4] }, { name: "B", values: [4] },
-          { name: "C", values: [4] }, { name: "D", values: [300] },
+          { name: "A", values: [4] },
+          { name: "B", values: [4] },
+          { name: "C", values: [4] },
+          { name: "D", values: [300] },
         ],
       },
     } as ChartConfig);
@@ -304,7 +352,9 @@ describe("layout indexing", () => {
 
 describe("boxplot extent reports the boxes, not the rows", () => {
   const meanSd = (values: number[]): ChartConfig => ({
-    kind: "boxplot", ...DEFAULT_SIZE, boxplot: { meanSd: true },
+    kind: "boxplot",
+    ...DEFAULT_SIZE,
+    boxplot: { meanSd: true },
     data: { categories: ["A"], series: values.map((v, i) => ({ name: `o${i}`, values: [v] })) },
   });
 
@@ -331,7 +381,8 @@ describe("boxplot extent reports the boxes, not the rows", () => {
   it("still reports the raw range for a plain Tukey boxplot", () => {
     // Tukey whiskers and outliers are real observations, so nothing moves here.
     const cfg: ChartConfig = {
-      kind: "boxplot", ...DEFAULT_SIZE,
+      kind: "boxplot",
+      ...DEFAULT_SIZE,
       data: { categories: ["A"], series: [10, 20, 30, 40].map((v, i) => ({ name: `o${i}`, values: [v] })) },
     };
     expect(valueExtent(cfg)).toEqual({ min: 0, max: 40 });
@@ -353,8 +404,16 @@ describe("valueExtent reports what the layout draws", () => {
 
   it("treats an Error row as a whisker, not as a data point", () => {
     const cfg = {
-      kind: "clustered", width: 480, height: 300,
-      data: { categories: ["A"], series: [{ name: "S", values: [10] }, { name: "Error", values: [30] }] },
+      kind: "clustered",
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "S", values: [10] },
+          { name: "Error", values: [30] },
+        ],
+      },
     } as ChartConfig;
     // The whisker spans 10±30. The old extent was {0,30}: 30 was the Error row's
     // own magnitude mistaken for a value — neither the data range nor the drawn one.
@@ -368,10 +427,16 @@ describe("valueExtent reports what the layout draws", () => {
 
   it("covers a waterfall's Target row", () => {
     const cfg = {
-      kind: "waterfall", width: 480, height: 300, waterfall: { totalIndices: [2] },
+      kind: "waterfall",
+      width: 480,
+      height: 300,
+      waterfall: { totalIndices: [2] },
       data: {
         categories: ["Start", "Up", "End"],
-        series: [{ name: "V", values: [100, 20, 0] }, { name: "Target", values: [null, null, 200] }],
+        series: [
+          { name: "V", values: [100, 20, 0] },
+          { name: "Target", values: [null, null, 200] },
+        ],
       },
     } as ChartConfig;
     expect(valueExtent(cfg)!.max).toBeGreaterThanOrEqual(200); // was 120 — the running total only
@@ -381,8 +446,15 @@ describe("valueExtent reports what the layout draws", () => {
 
   it("does not sum a Target row into a stack", () => {
     const cfg = {
-      kind: "stacked", ...DEFAULT_SIZE,
-      data: { categories: ["A"], series: [{ name: "S", values: [10] }, { name: "Target", values: [5] }] },
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "S", values: [10] },
+          { name: "Target", values: [5] },
+        ],
+      },
     } as ChartConfig;
     // The Target is a tick at 5, not another 5pt of stack: the column totals 10.
     expect(valueExtent(cfg)).toEqual({ min: 0, max: 10 });
@@ -390,7 +462,9 @@ describe("valueExtent reports what the layout draws", () => {
 
   it("covers an explicit threshold line above the data", () => {
     const cfg = {
-      kind: "clustered", width: 480, height: 300,
+      kind: "clustered",
+      width: 480,
+      height: 300,
       decorations: { valueLines: [{ mode: "value", value: 500 }] },
       data: { categories: ["A"], series: [{ name: "S", values: [10] }] },
     } as ChartConfig;
@@ -398,7 +472,11 @@ describe("valueExtent reports what the layout draws", () => {
   });
 
   it("a mean value line needs no widening — it is inside the data by construction", () => {
-    const plain = { kind: "clustered", ...DEFAULT_SIZE, data: { categories: ["A", "B"], series: [{ name: "S", values: [10, 20] }] } } as ChartConfig;
+    const plain = {
+      kind: "clustered",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [10, 20] }] },
+    } as ChartConfig;
     const withMean = { ...plain, decorations: { valueLines: [{ mode: "mean" }] } } as ChartConfig;
     expect(valueExtent(withMean)).toEqual(valueExtent(plain));
   });
@@ -419,14 +497,22 @@ describe("reordering categories carries the per-category colors", () => {
   };
 
   it("categorySort moves a highlight with its data point", () => {
-    const scene = buildChart({ kind: "clustered", width: 480, height: 300, categorySort: "descending", data } as ChartConfig);
+    const scene = buildChart({
+      kind: "clustered",
+      width: 480,
+      height: 300,
+      categorySort: "descending",
+      data,
+    } as ChartConfig);
     const order = scene.nodes
       .filter((n: any) => n.kind === "text" && n.name?.startsWith("category-"))
       .sort((a: any, b: any) => a.x - b.x)
       .map((n: any) => n.text);
     expect(order).toEqual(["B", "C", "A"]);
     // Red belongs to A, now rightmost. It used to stay at position 0 and paint B.
-    const red = fills(scene).map((f, i) => [i, f]).filter(([, f]) => f === "#ff0000");
+    const red = fills(scene)
+      .map((f, i) => [i, f])
+      .filter(([, f]) => f === "#ff0000");
     expect(red).toEqual([[order.indexOf("A"), "#ff0000"]]);
   });
 
@@ -437,7 +523,9 @@ describe("reordering categories carries the per-category colors", () => {
       .sort((a: any, b: any) => a.x - b.x)
       .map((n: any) => n.text);
     expect(order).toEqual(["B", "C", "A"]);
-    const red = fills(scene).map((f, i) => [i, f]).filter(([, f]) => f === "#ff0000");
+    const red = fills(scene)
+      .map((f, i) => [i, f])
+      .filter(([, f]) => f === "#ff0000");
     expect(red).toEqual([[order.indexOf("A"), "#ff0000"]]);
   });
 });
@@ -447,7 +535,10 @@ describe("boxplot jitter dots are inside the plot", () => {
   // spans only [-38.3, 50.2] and reports no outliers. The jitter overlay still
   // plots the 100.
   const cfg = {
-    kind: "boxplot", width: 480, height: 300, boxplot: { meanSd: true, jitter: true },
+    kind: "boxplot",
+    width: 480,
+    height: 300,
+    boxplot: { meanSd: true, jitter: true },
     data: {
       categories: ["A"],
       series: [...Array(19).fill(1), 100].map((v, i) => ({ name: `o${i}`, values: [v] })),
@@ -488,7 +579,9 @@ describe("boxplot jitter dots are inside the plot", () => {
 
 describe("waterfall extent walks the same chain the layout draws", () => {
   const stacked = {
-    kind: "waterfall", ...DEFAULT_SIZE, waterfall: { totalIndices: [3] },
+    kind: "waterfall",
+    ...DEFAULT_SIZE,
+    waterfall: { totalIndices: [3] },
     data: {
       categories: ["FY23", "Organic", "M&A", "FY24"],
       series: [
@@ -516,7 +609,8 @@ describe("waterfall extent walks the same chain the layout draws", () => {
     // The old extent ignored spacerIndices entirely; it only got away with it
     // because a spacer's cell is usually null.
     const withSpacer = {
-      kind: "waterfall", ...DEFAULT_SIZE,
+      kind: "waterfall",
+      ...DEFAULT_SIZE,
       waterfall: { totalIndices: [4], spacerIndices: [2] },
       data: {
         categories: ["Start", "Up", "", "Up2", "End"],
@@ -528,11 +622,13 @@ describe("waterfall extent walks the same chain the layout draws", () => {
   });
 });
 
-describe("waterfall \"of which\" detail groups", () => {
+describe('waterfall "of which" detail groups', () => {
   /** Cost (-12) decomposed into Labour/Freight/Energy (-7/-3/-2). */
   const bridge = (detail: boolean) =>
     ({
-      kind: "waterfall", width: 560, height: 300,
+      kind: "waterfall",
+      width: 560,
+      height: 300,
       data: {
         categories: ["FY23", "Volume", "Cost", "> Labour", "> Freight", "> Energy", "FX", "FY24"],
         series: [{ name: "Delta", values: [86, 14, -12, -7, -3, -2, -4, 0] }],
@@ -564,7 +660,9 @@ describe("waterfall \"of which\" detail groups", () => {
 
   it("steps the connector over the group, without burying it", () => {
     const c = bridge(true);
-    const names = buildChart(c).nodes.filter((n) => n.name?.startsWith("connector-")).map((n) => n.name);
+    const names = buildChart(c)
+      .nodes.filter((n) => n.name?.startsWith("connector-"))
+      .map((n) => n.name);
     // A detail has no outgoing level to carry, so it draws no connector.
     expect(names).toEqual(["connector-0", "connector-1", "connector-2", "connector-6"]);
     // The parent's connector reaches the next CHAIN column, not the next index.

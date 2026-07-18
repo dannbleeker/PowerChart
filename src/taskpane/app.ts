@@ -22,7 +22,14 @@ import {
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScene, type ResultRow, type ResultsSummary } from "../core/demo";
-import { buildCheckbox, buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
+import {
+  buildCheckbox,
+  buildHarveyBall,
+  buildKpiTile,
+  buildProcessFlow,
+  buildTableScene,
+  type CheckState,
+} from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 import { BUILTIN_TEMPLATES } from "./templates";
@@ -100,14 +107,19 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     labelContent: cfg.decorations?.labelContent?.join(",") ?? "",
     paletteName: paletteNameFor(cfg.style?.palette),
     style: cfg.style ? { ...cfg.style } : undefined,
-    seriesColors: Object.fromEntries(
-      cfg.data.series.filter((s) => s.color).map((s) => [s.name, s.color!]),
-    ),
+    seriesColors: Object.fromEntries(cfg.data.series.filter((s) => s.color).map((s) => [s.name, s.color!])),
     axisTitle: cfg.valueAxisTitle ?? "",
     logScale: !!cfg.logScale,
     footnote: cfg.footnote ?? "",
     pieExplode: (cfg.pie?.explode ?? []).map((i) => i + 1).join(","),
-    extras: { boxplot: cfg.boxplot, heatmap: cfg.heatmap, map: cfg.map, combo: cfg.combo, gapWidth: cfg.gapWidth, overlap: cfg.overlap },
+    extras: {
+      boxplot: cfg.boxplot,
+      heatmap: cfg.heatmap,
+      map: cfg.map,
+      combo: cfg.combo,
+      gapWidth: cfg.gapWidth,
+      overlap: cfg.overlap,
+    },
   };
 }
 
@@ -212,6 +224,7 @@ const preview = $("preview");
 const optionsHost = $("options");
 const hostNote = $("host-note");
 
+// eslint-disable-next-line prefer-const -- forward-declared; assigned once after wiring
 let sheetApi: { setSheet(next: SheetModel): void };
 
 /**
@@ -337,7 +350,10 @@ const thumbnails = new Map<ChartKind, string>();
  *  Elements menu). Any CHART_KINDS entry not listed here still renders under a
  *  trailing "Other" group, so a new kind can never silently disappear. */
 const CHART_GROUPS: { label: string; kinds: ChartKind[] }[] = [
-  { label: "Columns & bars", kinds: ["stacked", "clustered", "stacked100", "waterfall", "mekko", "butterfly", "cascade", "funnel"] },
+  {
+    label: "Columns & bars",
+    kinds: ["stacked", "clustered", "stacked100", "waterfall", "mekko", "butterfly", "cascade", "funnel"],
+  },
   { label: "Line & area", kinds: ["line", "area", "combo"] },
   { label: "Parts of a whole", kinds: ["pie", "doughnut", "treemap", "sunburst", "waffle"] },
   { label: "Distribution", kinds: ["boxplot", "violin", "candlestick"] },
@@ -496,7 +512,8 @@ function wireActionsMenu() {
   const setOpen = (open: boolean, restoreFocus = false) => {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", String(open));
-    if (open) focusItem(0); // move into the menu so the keyboard lands there
+    if (open)
+      focusItem(0); // move into the menu so the keyboard lands there
     else if (restoreFocus) btn.focus(); // Escape/close returns focus to the trigger
   };
   btn.addEventListener("click", (e) => {
@@ -718,7 +735,10 @@ function renderOptions() {
   sc.className = "wide";
   const scMin = document.createElement("input");
   const scMax = document.createElement("input");
-  for (const [el, val] of [[scMin, state.scaleMin], [scMax, state.scaleMax]] as const) {
+  for (const [el, val] of [
+    [scMin, state.scaleMin],
+    [scMax, state.scaleMax],
+  ] as const) {
     el.type = "text";
     el.style.width = "48px";
     el.placeholder = "auto";
@@ -739,7 +759,10 @@ function renderOptions() {
   ab.className = "wide";
   const abFrom = document.createElement("input");
   const abTo = document.createElement("input");
-  for (const [el, val] of [[abFrom, state.breakFrom], [abTo, state.breakTo]] as const) {
+  for (const [el, val] of [
+    [abFrom, state.breakFrom],
+    [abTo, state.breakTo],
+  ] as const) {
     el.type = "text";
     el.style.width = "48px";
     el.placeholder = "none";
@@ -967,8 +990,7 @@ function pairControl(
   cb.checked = !!current;
   const from = numInput((current?.from ?? 0) + 1);
   const to = numInput((current?.to ?? Math.max(0, nCats - 1)) + 1);
-  const emit = () =>
-    onChange(cb.checked ? { from: Number(from.value) - 1, to: Number(to.value) - 1 } : undefined);
+  const emit = () => onChange(cb.checked ? { from: Number(from.value) - 1, to: Number(to.value) - 1 } : undefined);
   cb.addEventListener("change", emit);
   from.addEventListener("input", emit);
   to.addEventListener("input", emit);
@@ -1189,7 +1211,10 @@ function checkScene() {
   return buildCheckbox(($("check-state") as HTMLSelectElement).value as CheckState, 20);
 }
 function flowScene() {
-  const steps = ($("flow-steps") as HTMLInputElement).value.split(",").map((s) => s.trim()).filter(Boolean);
+  const steps = ($("flow-steps") as HTMLInputElement).value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const hl = Number(($("flow-highlight") as HTMLInputElement).value) - 1;
   return buildProcessFlow(steps, hl, 480, 40);
 }
@@ -1208,7 +1233,16 @@ function renderElementPreviews() {
   $("flow-preview").innerHTML = sceneToSvg(flowScene());
   $("kpi-preview").innerHTML = sceneToSvg(kpiScene());
 }
-for (const id of ["harvey-pct", "check-state", "flow-steps", "flow-highlight", "kpi-label", "kpi-value", "kpi-delta", "kpi-down-good"]) {
+for (const id of [
+  "harvey-pct",
+  "check-state",
+  "flow-steps",
+  "flow-highlight",
+  "kpi-label",
+  "kpi-value",
+  "kpi-delta",
+  "kpi-down-good",
+]) {
   $(id).addEventListener("input", renderElementPreviews);
 }
 renderElementPreviews();
@@ -1265,10 +1299,7 @@ $("template-list").addEventListener("change", () => {
   if (!value) return;
   const sep = value.indexOf(":");
   const [source, name] = [value.slice(0, sep), value.slice(sep + 1)];
-  const cfg =
-    source === "builtin"
-      ? BUILTIN_TEMPLATES.find((t) => t.name === name)?.config
-      : loadTemplates()[name];
+  const cfg = source === "builtin" ? BUILTIN_TEMPLATES.find((t) => t.name === name)?.config : loadTemplates()[name];
   if (cfg) applyConfig({ ...DEFAULT_SIZE, ...cfg }, null);
 });
 $("template-delete").addEventListener("click", () => {
@@ -1367,8 +1398,7 @@ function watchSelection() {
       try {
         const found = await loadChartFromSelection();
         const banner = $("selection-banner");
-        banner.style.display =
-          found && found.target.shapeId !== state.editTarget?.shapeId ? "" : "none";
+        banner.style.display = found && found.target.shapeId !== state.editTarget?.shapeId ? "" : "none";
       } catch {
         /* selection API hiccup — ignore */
       }
@@ -1442,17 +1472,29 @@ function wireInsert() {
           for (const b of lock) b.disabled = false;
         }
       };
-    insertBtn.addEventListener("click", guard(() => doInsert(false)));
-    insertNewBtn.addEventListener("click", guard(() => doInsert(true)));
+    insertBtn.addEventListener(
+      "click",
+      guard(() => doInsert(false)),
+    );
+    insertNewBtn.addEventListener(
+      "click",
+      guard(() => doInsert(true)),
+    );
     loadBtn.addEventListener("click", guard(doLoadSelection));
     $("selection-banner-load").addEventListener("click", guard(doLoadSelection));
     watchSelection();
     const sameScaleBtn = $("same-scale") as HTMLButtonElement;
     sameScaleBtn.disabled = false;
-    sameScaleBtn.addEventListener("click", guard(() => doSameScale("deck")));
+    sameScaleBtn.addEventListener(
+      "click",
+      guard(() => doSameScale("deck")),
+    );
     const sameScaleSelBtn = $("same-scale-sel") as HTMLButtonElement;
     sameScaleSelBtn.disabled = false;
-    sameScaleSelBtn.addEventListener("click", guard(() => doSameScale("selection")));
+    sameScaleSelBtn.addEventListener(
+      "click",
+      guard(() => doSameScale("selection")),
+    );
     const batchBtn = $("json-insert-batch") as HTMLButtonElement;
     batchBtn.disabled = false;
     batchBtn.addEventListener(
@@ -1473,11 +1515,17 @@ function wireInsert() {
       ["check-insert", checkScene],
       ["flow-insert", flowScene],
       ["kpi-insert", kpiScene],
-      ["table-insert", () => buildTableScene(state.sheet.cells, 480, { totalRow: ($("table-total") as HTMLInputElement).checked })],
+      [
+        "table-insert",
+        () => buildTableScene(state.sheet.cells, 480, { totalRow: ($("table-total") as HTMLInputElement).checked }),
+      ],
     ] as const) {
       const btn = $(id) as HTMLButtonElement;
       btn.disabled = false;
-      btn.addEventListener("click", guard(() => insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote)));
+      btn.addEventListener(
+        "click",
+        guard(() => insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote)),
+      );
     }
     agendaBtn.disabled = false;
     agendaBtn.addEventListener(
@@ -1527,23 +1575,49 @@ function wireInsert() {
         const lost = Math.max(0, addsIssued - slidesAdded);
         const secs = (totalMs / 1000).toFixed(1);
         console.log("PowerChart demo self-check:");
-        console.table(results.map((r, i) => ({ chart: items[i].title, shapes: r.created, status: r.status, retried: !!r.retried, ms: r.ms })));
-        console.log(`deck grew by ${slidesAdded}, issued ${addsIssued} adds${lost > 0 ? ` — ${lost} LOST` : ""}; blank slots ${blankSlides.length ? blankSlides.join(", ") : "none"}${blanksRead ? "" : " (blank check incomplete)"} · total ${secs}s`);
+        console.table(
+          results.map((r, i) => ({
+            chart: items[i].title,
+            shapes: r.created,
+            status: r.status,
+            retried: !!r.retried,
+            ms: r.ms,
+          })),
+        );
+        console.log(
+          `deck grew by ${slidesAdded}, issued ${addsIssued} adds${lost > 0 ? ` — ${lost} LOST` : ""}; blank slots ${blankSlides.length ? blankSlides.join(", ") : "none"}${blanksRead ? "" : " (blank check incomplete)"} · total ${secs}s`,
+        );
         let msg = `Inserted ${rendered} of ${items.length} in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (recovered) msg += ` ${recovered} recovered on retry.`;
-        if (lost > 0) msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
+        if (lost > 0)
+          msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
         // Blank slides are reported by DECK POSITION, not item name: a blank slide
         // has no content to identify it, and a scrambled deck breaks any mapping.
-        if (blankSlides.length) msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK (deck slide${blankSlides.length === 1 ? "" : "s"} ${blankSlides.join(", ")}).`;
+        if (blankSlides.length)
+          msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK (deck slide${blankSlides.length === 1 ? "" : "s"} ${blankSlides.join(", ")}).`;
         else if (!blanksRead) msg += ` (Blank check did not finish.)`;
         // Close the deck with a self-contained results slide so the exported PDF is
         // a complete run record. A second insertDemoDeck reuses the same add/render/
         // self-check machinery; wrap it so a host stall here can't swallow the run's
         // own summary (its failure is itself just another data point).
-        const rows: ResultRow[] = results.map((r, i) => ({ title: items[i].title, status: r.status, shapes: r.created, ms: r.ms }));
-        const summary: ResultsSummary = { buildStamp, items: items.length, rendered, skipped: skipped.length, failed: failedNames.length, lost, retried: recovered, totalMs };
+        const rows: ResultRow[] = results.map((r, i) => ({
+          title: items[i].title,
+          status: r.status,
+          shapes: r.created,
+          ms: r.ms,
+        }));
+        const summary: ResultsSummary = {
+          buildStamp,
+          items: items.length,
+          rendered,
+          skipped: skipped.length,
+          failed: failedNames.length,
+          lost,
+          retried: recovered,
+          totalMs,
+        };
         try {
           await insertDemoDeck([{ scene: buildResultsScene(rows, summary) }]);
         } catch (e) {
@@ -1557,9 +1631,7 @@ function wireInsert() {
     insertBtn.disabled = true;
     loadBtn.disabled = true;
     ($("agenda-insert") as HTMLButtonElement).disabled = true;
-    note(
-      "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.",
-    );
+    note("Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.");
   }
 }
 

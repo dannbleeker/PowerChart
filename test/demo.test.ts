@@ -42,7 +42,10 @@ describe("demo deck", () => {
   });
 
   it("stamps the running build AND host onto the title slide so a test PDF is self-identifying", () => {
-    const stamped = demoItems({ buildStamp: "abc1234 · 2026-07-17 20:00Z", host: "PowerPoint · OfficeOnline · 16.0.1" });
+    const stamped = demoItems({
+      buildStamp: "abc1234 · 2026-07-17 20:00Z",
+      host: "PowerPoint · OfficeOnline · 16.0.1",
+    });
     const titleTexts = stamped[0].scene.nodes.filter((n) => n.kind === "text").map((n) => n.text);
     expect(titleTexts.some((t) => t.includes("abc1234 · 2026-07-17 20:00Z"))).toBe(true);
     expect(titleTexts.some((t) => t.includes("PowerPoint · OfficeOnline · 16.0.1"))).toBe(true);
@@ -132,10 +135,12 @@ describe("results slide", () => {
 
   it("notes recovered-on-retry items in the summary, and omits the note when none", () => {
     const withRetries = buildResultsScene([], summary({ retried: 2 }))
-      .nodes.filter((n) => n.kind === "text").map((n) => n.text);
+      .nodes.filter((n) => n.kind === "text")
+      .map((n) => n.text);
     expect(withRetries.some((t) => /2 recovered/.test(t))).toBe(true);
     const noRetries = buildResultsScene([], summary())
-      .nodes.filter((n) => n.kind === "text").map((n) => n.text);
+      .nodes.filter((n) => n.kind === "text")
+      .map((n) => n.text);
     expect(noRetries.some((t) => /recovered/.test(t))).toBe(false);
   });
 });

@@ -248,7 +248,11 @@ export async function updateChartsInSlides(
 
     const live = found.filter(({ slide }) => !slide.isNullObject);
     if (!live.length) return;
-    const withOld = live.map(({ it, slide }) => ({ it, slide, old: slide.shapes.getItemOrNullObject(it.target.shapeId) }));
+    const withOld = live.map(({ it, slide }) => ({
+      it,
+      slide,
+      old: slide.shapes.getItemOrNullObject(it.target.shapeId),
+    }));
     await context.sync();
 
     // 2. Drop the old shapes — one sync for all of them.
@@ -312,7 +316,12 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
  * Bounds of the currently selected shape when it is NOT a PowerChart —
  * used to insert a new chart into a selected placeholder/frame.
  */
-export async function getSelectionBounds(): Promise<{ left: number; top: number; width: number; height: number } | null> {
+export async function getSelectionBounds(): Promise<{
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} | null> {
   try {
     return await PowerPoint.run(async (context) => {
       const shapes = context.presentation.getSelectedShapes();
@@ -467,7 +476,12 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
     // what the host refuses. Off-screen slides tolerate more than the live
     // canvas does, but "more" is not a number worth betting on twice.
     for (let i = 0; i < scenes.length; i++) {
-      await renderShapesChunked(context, slideThunks[i], scenes[i], { left: 0, top: 0, group: false, tagData: undefined });
+      await renderShapesChunked(context, slideThunks[i], scenes[i], {
+        left: 0,
+        top: 0,
+        group: false,
+        tagData: undefined,
+      });
     }
   });
 }
@@ -492,10 +506,17 @@ const DEMO_SHAPE_BUDGET = 90;
  * the banner. Best-effort styling: a host that lacks a property skips it, the
  * text still lands.
  */
-async function stampSlide(context: PowerPoint.RequestContext, getSlide: SlideThunk, title: string, detail: string): Promise<void> {
-  const box = (getSlide().shapes as unknown as {
-    addTextBox(text: string, box: { left: number; top: number; width: number; height: number }): PowerPoint.Shape;
-  }).addTextBox(`${title} — ${detail}`, { left: 24, top: 12, width: 912, height: 46 });
+async function stampSlide(
+  context: PowerPoint.RequestContext,
+  getSlide: SlideThunk,
+  title: string,
+  detail: string,
+): Promise<void> {
+  const box = (
+    getSlide().shapes as unknown as {
+      addTextBox(text: string, box: { left: number; top: number; width: number; height: number }): PowerPoint.Shape;
+    }
+  ).addTextBox(`${title} — ${detail}`, { left: 24, top: 12, width: 912, height: 46 });
   box.name = "PowerChart:not-complete";
   try {
     box.fill.setSolidColor("#c0392b");
@@ -625,7 +646,12 @@ async function addAndRenderItem(
     const [getSlide] = await addSlides(context, 1, layout.id);
     if (tooDense) {
       // Leave a stamped placeholder so the slide count and order still line up.
-      await stampSlide(context, getSlide, "NOT COMPLETE", `Too dense for this host — ${shapeCount} shapes, not rendered`);
+      await stampSlide(
+        context,
+        getSlide,
+        "NOT COMPLETE",
+        `Too dense for this host — ${shapeCount} shapes, not rendered`,
+      );
       return;
     }
     const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: item.tagData };
@@ -737,14 +763,19 @@ async function shapeCounts(start: number, end: number): Promise<number[]> {
  * carries no config tag to identify it. This flags empty SLOTS; naming the
  * missing/merged charts via their tags is a documented follow-up.
  */
-async function findBlankAddedSlides(before: number, after: number): Promise<{ positions: number[]; complete: boolean }> {
+async function findBlankAddedSlides(
+  before: number,
+  after: number,
+): Promise<{ positions: number[]; complete: boolean }> {
   const candidates: number[] = [];
   let complete = true;
   for (let start = before; start < after; start += READBACK_PAGE) {
     const end = Math.min(start + READBACK_PAGE, after);
     try {
       const counts = await shapeCounts(start, end);
-      counts.forEach((n, k) => { if (n === 0) candidates.push(start + k); });
+      counts.forEach((n, k) => {
+        if (n === 0) candidates.push(start + k);
+      });
     } catch {
       complete = false; // a page we could not read — do not claim it as clean
     }
@@ -759,7 +790,9 @@ async function findBlankAddedSlides(before: number, after: number): Promise<{ po
         await context.sync();
         return cs.map((c) => c.value);
       });
-      page.forEach((i, k) => { if (again[k] === 0) positions.push(i + 1); }); // 1-based deck position
+      page.forEach((i, k) => {
+        if (again[k] === 0) positions.push(i + 1);
+      }); // 1-based deck position
     } catch {
       complete = false;
     }
@@ -775,7 +808,6 @@ function supports(version: string): boolean {
     return false;
   }
 }
-
 
 /**
  * Shapes committed per sync when drawing onto the slide the user is LOOKING at.
@@ -869,7 +901,9 @@ async function groupAndTagAll(context: PowerPoint.RequestContext, items: Groupin
       for (const { it, i } of groupable) {
         // Fresh slide proxy: grouping runs a sync after the render, by which time
         // a held proxy to a new slide could be stale — see SlideThunk.
-        const group = (it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }).addGroup(it.created);
+        const group = (
+          it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }
+        ).addGroup(it.created);
         group.name = "PowerChart";
         tagTargets[i] = group;
       }
@@ -1167,12 +1201,7 @@ function addText(
  * older hosts get no wedge. Doughnut holes are separate ellipse nodes
  * emitted by the layout, so wedges here are always full slices.
  */
-function addWedgeFan(
-  shapes: PowerPoint.ShapeCollection,
-  n: WedgeNode,
-  dx: number,
-  dy: number,
-): PowerPoint.Shape[] {
+function addWedgeFan(shapes: PowerPoint.ShapeCollection, n: WedgeNode, dx: number, dy: number): PowerPoint.Shape[] {
   const created: PowerPoint.Shape[] = [];
   const cx = dx + n.cx;
   const cy = dy + n.cy;
@@ -1274,9 +1303,5 @@ export async function loadThemePalette(): Promise<string[] | null> {
 
 /** True when running inside an Office host with the PowerPoint JS API. */
 export function isPowerPointHost(): boolean {
-  return (
-    typeof Office !== "undefined" &&
-    typeof PowerPoint !== "undefined" &&
-    !!Office.context?.host
-  );
+  return typeof Office !== "undefined" && typeof PowerPoint !== "undefined" && !!Office.context?.host;
 }

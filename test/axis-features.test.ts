@@ -115,6 +115,8 @@ describe("valueExtent (Same Scale)", () => {
   });
 
   it("returns null for charts without a value axis", () => {
-    expect(valueExtent(cfg({ kind: "mekko", data: { categories: ["A"], series: [{ name: "S", values: [1] }] } }))).toBeNull();
+    expect(
+      valueExtent(cfg({ kind: "mekko", data: { categories: ["A"], series: [{ name: "S", values: [1] }] } })),
+    ).toBeNull();
   });
 });

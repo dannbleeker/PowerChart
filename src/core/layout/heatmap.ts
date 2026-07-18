@@ -84,7 +84,18 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // weekday × week grid (the GitHub-contributions view).
   const calDays = data.categories.map((c) => parseDateToken(c));
   if (opts.calendar && data.series.length >= 1 && calDays.every((d): d is number => d != null)) {
-    return calendarLayout(cfg, style, decor, calDays as number[], data.series[0].values, colorOf, min, max, constant, wantSign);
+    return calendarLayout(
+      cfg,
+      style,
+      decor,
+      calDays as number[],
+      data.series[0].values,
+      colorOf,
+      min,
+      max,
+      constant,
+      wantSign,
+    );
   }
 
   const titleH = titleHeight(cfg, style);
@@ -112,16 +123,34 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (decor.categoryAxis !== false) {
     data.categories.forEach((cat, c) => {
       nodes.push({
-        kind: "text", x: plot.x + c * cw, y: titleH, w: cw, h: headerH,
-        text: cat, fontSize: fs, color: style.text, align: "center", valign: "middle", name: `col-${c}`,
+        kind: "text",
+        x: plot.x + c * cw,
+        y: titleH,
+        w: cw,
+        h: headerH,
+        text: cat,
+        fontSize: fs,
+        color: style.text,
+        align: "center",
+        valign: "middle",
+        name: `col-${c}`,
       });
     });
   }
 
   rows.forEach((s, ri) => {
     nodes.push({
-      kind: "text", x: dendroW, y: plot.y + ri * ch, w: rowLabelW - 4, h: ch,
-      text: s.name, fontSize: fs, color: style.text, align: "right", valign: "middle", name: `row-${ri}`,
+      kind: "text",
+      x: dendroW,
+      y: plot.y + ri * ch,
+      w: rowLabelW - 4,
+      h: ch,
+      text: s.name,
+      fontSize: fs,
+      color: style.text,
+      align: "right",
+      valign: "middle",
+      name: `row-${ri}`,
     });
     data.categories.forEach((_, c) => {
       const v = s.values[c];
@@ -145,8 +174,17 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         if (cw >= textWidth(label, fs) + 4 && ch >= fs * 1.3) {
           labelled = true;
           nodes.push({
-            kind: "text", x, y, w: cw - 1, h: ch - 1, text: label, fontSize: fs,
-            color: contrastInk(fill), align: "center", valign: "middle", name: `cell-label-${ri}-${c}`,
+            kind: "text",
+            x,
+            y,
+            w: cw - 1,
+            h: ch - 1,
+            text: label,
+            fontSize: fs,
+            color: contrastInk(fill),
+            align: "center",
+            valign: "middle",
+            name: `cell-label-${ri}-${c}`,
           });
         }
       }
@@ -166,10 +204,28 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     rows.forEach((s, ri) => {
       const y = plot.y + ri * ch;
       nodes.push(
-        { kind: "rect", x: plot.x + plot.w + 2, y, w: totalsW - 4, h: ch - 1, fill: "#f0efec", name: `row-total-bg-${ri}` },
         {
-          kind: "text", x: plot.x + plot.w + 2, y, w: totalsW - 6, h: ch - 1, text: formatNumber(sum(s.values), fmt),
-          fontSize: fs * 0.95, bold: true, color: style.text, align: "center", valign: "middle", name: `row-total-${ri}`,
+          kind: "rect",
+          x: plot.x + plot.w + 2,
+          y,
+          w: totalsW - 4,
+          h: ch - 1,
+          fill: "#f0efec",
+          name: `row-total-bg-${ri}`,
+        },
+        {
+          kind: "text",
+          x: plot.x + plot.w + 2,
+          y,
+          w: totalsW - 6,
+          h: ch - 1,
+          text: formatNumber(sum(s.values), fmt),
+          fontSize: fs * 0.95,
+          bold: true,
+          color: style.text,
+          align: "center",
+          valign: "middle",
+          name: `row-total-${ri}`,
         },
       );
     });
@@ -179,10 +235,28 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const x = plot.x + c * cw;
       const total = sum(data.series.map((s) => s.values[c]));
       nodes.push(
-        { kind: "rect", x, y: plot.y + plot.h + 2, w: cw - 1, h: totalsH - 4, fill: "#f0efec", name: `col-total-bg-${c}` },
         {
-          kind: "text", x, y: plot.y + plot.h + 2, w: cw - 1, h: totalsH - 4, text: formatNumber(total, fmt),
-          fontSize: fs * 0.95, bold: true, color: style.text, align: "center", valign: "middle", name: `col-total-${c}`,
+          kind: "rect",
+          x,
+          y: plot.y + plot.h + 2,
+          w: cw - 1,
+          h: totalsH - 4,
+          fill: "#f0efec",
+          name: `col-total-bg-${c}`,
+        },
+        {
+          kind: "text",
+          x,
+          y: plot.y + plot.h + 2,
+          w: cw - 1,
+          h: totalsH - 4,
+          text: formatNumber(total, fmt),
+          fontSize: fs * 0.95,
+          bold: true,
+          color: style.text,
+          align: "center",
+          valign: "middle",
+          name: `col-total-${c}`,
         },
       );
     });
@@ -194,9 +268,17 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     nodes.push(
       { kind: "rect", x: plot.x, y: ly, w: fs * 1.6, h: fs * 0.9, fill: colorOf(min), name: "legend-swatch" },
       {
-        kind: "text", x: plot.x + fs * 1.9, y: ly - fs * 0.25, w: fs * 8, h: fs * 1.4,
-        text: all.length ? formatNumber(min, fmt) : "no data", fontSize: fs * 0.9,
-        color: style.mutedText, align: "left", valign: "middle", name: "legend-min",
+        kind: "text",
+        x: plot.x + fs * 1.9,
+        y: ly - fs * 0.25,
+        w: fs * 8,
+        h: fs * 1.4,
+        text: all.length ? formatNumber(min, fmt) : "no data",
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: "legend-min",
       },
     );
   } else {
@@ -204,23 +286,58 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const steps = 24;
     for (let i = 0; i < steps; i++) {
       const v = min + ((max - min) * i) / (steps - 1);
-      nodes.push({ kind: "rect", x: plot.x + (lw / steps) * i, y: ly, w: lw / steps + 0.5, h: fs * 0.9, fill: colorOf(v), name: `legend-step-${i}` });
+      nodes.push({
+        kind: "rect",
+        x: plot.x + (lw / steps) * i,
+        y: ly,
+        w: lw / steps + 0.5,
+        h: fs * 0.9,
+        fill: colorOf(v),
+        name: `legend-step-${i}`,
+      });
     }
     nodes.push(
       {
-        kind: "text", x: plot.x, y: ly + fs * 0.95, w: lw / 2, h: fs * 1.2,
-        text: formatNumber(min, fmt), fontSize: fs * 0.85, color: style.mutedText, align: "left", valign: "top", name: "legend-min",
+        kind: "text",
+        x: plot.x,
+        y: ly + fs * 0.95,
+        w: lw / 2,
+        h: fs * 1.2,
+        text: formatNumber(min, fmt),
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "left",
+        valign: "top",
+        name: "legend-min",
       },
       {
-        kind: "text", x: plot.x + lw / 2, y: ly + fs * 0.95, w: lw / 2, h: fs * 1.2,
-        text: formatNumber(max, fmt), fontSize: fs * 0.85, color: style.mutedText, align: "right", valign: "top", name: "legend-max",
+        kind: "text",
+        x: plot.x + lw / 2,
+        y: ly + fs * 0.95,
+        w: lw / 2,
+        h: fs * 1.2,
+        text: formatNumber(max, fmt),
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "right",
+        valign: "top",
+        name: "legend-max",
       },
     );
     if (mode === "diverging") {
       const zx = plot.x + ((0 - min) / (max - min)) * lw;
       nodes.push({
-        kind: "text", x: zx - fs, y: ly + fs * 0.95, w: fs * 2, h: fs * 1.2,
-        text: "0", fontSize: fs * 0.85, color: style.mutedText, align: "center", valign: "top", name: "legend-zero",
+        kind: "text",
+        x: zx - fs,
+        y: ly + fs * 0.95,
+        w: fs * 2,
+        h: fs * 1.2,
+        text: "0",
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "center",
+        valign: "top",
+        name: "legend-zero",
       });
     }
   }
@@ -366,8 +483,17 @@ function calendarLayout(
   for (let r = 0; r < 7; r++) {
     if (r % 2 === 0) {
       nodes.push({
-        kind: "text", x: 0, y: gridY + r * cell, w: wdLabelW - 3, h: cell,
-        text: WEEKDAYS[r], fontSize: fs * 0.8, color: style.mutedText, align: "right", valign: "middle", name: `weekday-${r}`,
+        kind: "text",
+        x: 0,
+        y: gridY + r * cell,
+        w: wdLabelW - 3,
+        h: cell,
+        text: WEEKDAYS[r],
+        fontSize: fs * 0.8,
+        color: style.mutedText,
+        align: "right",
+        valign: "middle",
+        name: `weekday-${r}`,
       });
     }
   }
@@ -377,8 +503,17 @@ function calendarLayout(
     const mon = new Date((weekStart + w * 7) * 86400000).getUTCMonth();
     if (mon !== lastMonth) {
       nodes.push({
-        kind: "text", x: gridX + w * cell, y: titleH, w: cell * 5, h: monthH,
-        text: MONTHS[mon], fontSize: fs * 0.85, color: style.mutedText, align: "left", valign: "middle", name: `month-${w}`,
+        kind: "text",
+        x: gridX + w * cell,
+        y: titleH,
+        w: cell * 5,
+        h: monthH,
+        text: MONTHS[mon],
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: `month-${w}`,
       });
       lastMonth = mon;
     }
@@ -403,11 +538,43 @@ function calendarLayout(
   if (!constant) {
     const steps = 12;
     const sw = cell * 0.8;
-    nodes.push({ kind: "text", x: gridX - fs * 3, y: ly, w: fs * 2.6, h: sw, text: "Less", fontSize: fs * 0.8, color: style.mutedText, align: "right", valign: "middle", name: "legend-less" });
+    nodes.push({
+      kind: "text",
+      x: gridX - fs * 3,
+      y: ly,
+      w: fs * 2.6,
+      h: sw,
+      text: "Less",
+      fontSize: fs * 0.8,
+      color: style.mutedText,
+      align: "right",
+      valign: "middle",
+      name: "legend-less",
+    });
     for (let i = 0; i < steps; i++) {
-      nodes.push({ kind: "rect", x: gridX + i * (sw + 1), y: ly, w: sw, h: sw, fill: colorOf(min + ((max - min) * i) / (steps - 1)), name: `legend-step-${i}` });
+      nodes.push({
+        kind: "rect",
+        x: gridX + i * (sw + 1),
+        y: ly,
+        w: sw,
+        h: sw,
+        fill: colorOf(min + ((max - min) * i) / (steps - 1)),
+        name: `legend-step-${i}`,
+      });
     }
-    nodes.push({ kind: "text", x: gridX + steps * (sw + 1) + 2, y: ly, w: fs * 3, h: sw, text: "More", fontSize: fs * 0.8, color: style.mutedText, align: "left", valign: "middle", name: "legend-more" });
+    nodes.push({
+      kind: "text",
+      x: gridX + steps * (sw + 1) + 2,
+      y: ly,
+      w: fs * 3,
+      h: sw,
+      text: "More",
+      fontSize: fs * 0.8,
+      color: style.mutedText,
+      align: "left",
+      valign: "middle",
+      name: "legend-more",
+    });
   }
 
   return {

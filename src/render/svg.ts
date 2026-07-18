@@ -1,8 +1,7 @@
 import { polar, symbolPoints } from "../core/geometry";
 import type { Scene, SceneNode } from "../core/scene";
 
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** Hatch/dot pattern tiles: series-colored base with white strokes over it. */
 const PATTERN_TILE: Record<string, (id: string, color: string) => string> = {
@@ -79,7 +78,9 @@ function nodeToSvg(n: SceneNode): string {
     }
     case "chevron": {
       const notch = n.h * 0.28;
-      const left = n.flatLeft ? `M ${r(n.x)} ${r(n.y)}` : `M ${r(n.x)} ${r(n.y)} L ${r(n.x + notch)} ${r(n.y + n.h / 2)} L ${r(n.x)} ${r(n.y + n.h)}`;
+      const left = n.flatLeft
+        ? `M ${r(n.x)} ${r(n.y)}`
+        : `M ${r(n.x)} ${r(n.y)} L ${r(n.x + notch)} ${r(n.y + n.h / 2)} L ${r(n.x)} ${r(n.y + n.h)}`;
       const d = n.flatLeft
         ? `M ${r(n.x)} ${r(n.y)} L ${r(n.x + n.w - notch)} ${r(n.y)} L ${r(n.x + n.w)} ${r(n.y + n.h / 2)} L ${r(n.x + n.w - notch)} ${r(n.y + n.h)} L ${r(n.x)} ${r(n.y + n.h)} Z`
         : `${left} L ${r(n.x)} ${r(n.y + n.h)} L ${r(n.x + n.w - notch)} ${r(n.y + n.h)} L ${r(n.x + n.w)} ${r(n.y + n.h / 2)} L ${r(n.x + n.w - notch)} ${r(n.y)} Z`;
@@ -113,8 +114,12 @@ function nodeToSvg(n: SceneNode): string {
     }
     case "polygon": {
       const pts = n.points.map((p) => `${r(p.x)},${r(p.y)}`).join(" ");
-      const fill = n.fill ? ` fill="${n.fill}"${n.fillOpacity != null ? ` fill-opacity="${n.fillOpacity}"` : ""}` : ` fill="none"`;
-      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"` : "";
+      const fill = n.fill
+        ? ` fill="${n.fill}"${n.fillOpacity != null ? ` fill-opacity="${n.fillOpacity}"` : ""}`
+        : ` fill="none"`;
+      const stroke = n.stroke
+        ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
+        : "";
       return `<polygon points="${pts}"${fill}${stroke}${name(n)}/>`;
     }
     case "arrowhead": {
@@ -127,7 +132,9 @@ function nodeToSvg(n: SceneNode): string {
       const pts = symbolPoints(n.shape, n.cx, n.cy, n.size)
         .map((p) => `${r(p.x)},${r(p.y)}`)
         .join(" ");
-      const stroke = n.stroke ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"` : "";
+      const stroke = n.stroke
+        ? ` stroke="${n.stroke}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
+        : "";
       return `<polygon points="${pts}" fill="${n.fill}"${stroke}${name(n)}/>`;
     }
   }

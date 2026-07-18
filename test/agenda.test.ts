@@ -8,9 +8,7 @@ describe("agenda slides", () => {
   it("lists every chapter with the highlighted one emphasized", () => {
     const scene = buildAgendaScene(chapters, { highlight: 1 });
     expect(scene.width).toBe(SLIDE.width);
-    const items = scene.nodes.filter(
-      (n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("agenda-item-"),
-    );
+    const items = scene.nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("agenda-item-"));
     expect(items.map((i) => i.text)).toEqual(chapters);
     expect(items[1].bold).toBe(true);
     expect(items[0].bold).toBe(false);

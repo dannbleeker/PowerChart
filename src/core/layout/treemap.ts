@@ -37,8 +37,16 @@ function squarify<T extends { area: number; key: number }>(items: T[], rect: Rec
     let rowArea = items[i].area;
     while (end < items.length) {
       const next = rowArea + items[end].area;
-      const withNext = worst(items.slice(i, end + 1).map((t) => t.area), side, next);
-      const without = worst(items.slice(i, end).map((t) => t.area), side, rowArea);
+      const withNext = worst(
+        items.slice(i, end + 1).map((t) => t.area),
+        side,
+        next,
+      );
+      const without = worst(
+        items.slice(i, end).map((t) => t.area),
+        side,
+        rowArea,
+      );
       if (withNext <= without) {
         rowArea = next;
         end++;
@@ -48,7 +56,10 @@ function squarify<T extends { area: number; key: number }>(items: T[], rect: Rec
     let off = 0;
     for (let t = i; t < end; t++) {
       const len = items[t].area / (thickness || 1);
-      out.set(items[t].key, dx >= dy ? { x, y: y + off, w: thickness, h: len } : { x: x + off, y, w: len, h: thickness });
+      out.set(
+        items[t].key,
+        dx >= dy ? { x, y: y + off, w: thickness, h: len } : { x: x + off, y, w: len, h: thickness },
+      );
       off += len;
     }
     if (dx >= dy) {
@@ -75,7 +86,10 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const raw = data.categories.map((c, i) => ({ label: c, value: Math.max(0, data.series[0]?.values[i] ?? 0), i }));
   const items = raw.filter((r) => r.value > 0);
   const total = items.reduce((a, r) => a + r.value, 0) || 1;
-  const fmt = resolveFormat(items.map((r) => r.value), cfg.numberFormat);
+  const fmt = resolveFormat(
+    items.map((r) => r.value),
+    cfg.numberFormat,
+  );
 
   const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
@@ -91,15 +105,50 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const labelOf = (label: string) => (label.includes("|") ? label.split("|").slice(1).join("|").trim() : label);
 
   const drawTile = (r: Rect, fill: string, label: string, value: number, name: string, headerH = 0) => {
-    nodes.push({ kind: "rect", x: r.x, y: r.y, w: Math.max(0, r.w - 1), h: Math.max(0, r.h - 1), fill, stroke: style.background, strokeWidth: 1, name });
+    nodes.push({
+      kind: "rect",
+      x: r.x,
+      y: r.y,
+      w: Math.max(0, r.w - 1),
+      h: Math.max(0, r.h - 1),
+      fill,
+      stroke: style.background,
+      strokeWidth: 1,
+      name,
+    });
     if (!decor.segmentLabels) return;
     const text = `${label}`;
     const valText = formatNumber(value, fmt);
     const ink = contrastInk(fill);
     if (r.w - 4 >= textWidth(text, fs * 0.85) && r.h - headerH >= fs * 2.2) {
-      nodes.push({ kind: "text", x: r.x + 3, y: r.y + headerH + 2, w: r.w - 6, h: fs * 1.3, text, fontSize: fs * 0.85, bold: true, color: ink, align: "left", valign: "top", name: `${name}-label` });
+      nodes.push({
+        kind: "text",
+        x: r.x + 3,
+        y: r.y + headerH + 2,
+        w: r.w - 6,
+        h: fs * 1.3,
+        text,
+        fontSize: fs * 0.85,
+        bold: true,
+        color: ink,
+        align: "left",
+        valign: "top",
+        name: `${name}-label`,
+      });
       if (r.h - headerH >= fs * 3.4) {
-        nodes.push({ kind: "text", x: r.x + 3, y: r.y + headerH + fs * 1.4, w: r.w - 6, h: fs * 1.3, text: valText, fontSize: fs * 0.8, color: ink, align: "left", valign: "top", name: `${name}-value` });
+        nodes.push({
+          kind: "text",
+          x: r.x + 3,
+          y: r.y + headerH + fs * 1.4,
+          w: r.w - 6,
+          h: fs * 1.3,
+          text: valText,
+          fontSize: fs * 0.8,
+          color: ink,
+          align: "left",
+          valign: "top",
+          name: `${name}-value`,
+        });
       }
     }
   };
@@ -107,7 +156,10 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (!grouped) {
     const sorted = items.map((r, k) => ({ ...r, key: k })).sort((a, b) => b.value - a.value);
     const scale = (plot.w * plot.h) / total;
-    const rects = squarify(sorted.map((r) => ({ area: r.value * scale, key: r.key })), plot);
+    const rects = squarify(
+      sorted.map((r) => ({ area: r.value * scale, key: r.key })),
+      plot,
+    );
     sorted.forEach((r) => {
       const rect = rects.get(r.key);
       if (rect) drawTile(rect, palette[r.i % palette.length], r.label, r.value, `tile-${r.i}`);
@@ -126,27 +178,62 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       entry.members.push(r);
     }
     const gscale = (plot.w * plot.h) / total;
-    const grects = squarify(groups.map((g) => ({ area: g.total * gscale, key: g.gi })), plot);
+    const grects = squarify(
+      groups.map((g) => ({ area: g.total * gscale, key: g.gi })),
+      plot,
+    );
     const headerH = fs * 1.5;
     groups.forEach((g) => {
       const gr = grects.get(g.gi);
       if (!gr) return;
       const gColor = palette[g.gi % palette.length];
       // Group header band + border.
-      nodes.push({ kind: "rect", x: gr.x, y: gr.y, w: Math.max(0, gr.w - 1), h: Math.max(0, gr.h - 1), fill: lerpColor("#ffffff", gColor, 0.14), stroke: gColor, strokeWidth: 1, name: `group-${g.gi}` });
-      nodes.push({ kind: "text", x: gr.x + 3, y: gr.y + 1, w: gr.w - 6, h: headerH, text: g.name, fontSize: fs * 0.9, bold: true, color: style.text, align: "left", valign: "middle", name: `group-label-${g.gi}` });
+      nodes.push({
+        kind: "rect",
+        x: gr.x,
+        y: gr.y,
+        w: Math.max(0, gr.w - 1),
+        h: Math.max(0, gr.h - 1),
+        fill: lerpColor("#ffffff", gColor, 0.14),
+        stroke: gColor,
+        strokeWidth: 1,
+        name: `group-${g.gi}`,
+      });
+      nodes.push({
+        kind: "text",
+        x: gr.x + 3,
+        y: gr.y + 1,
+        w: gr.w - 6,
+        h: headerH,
+        text: g.name,
+        fontSize: fs * 0.9,
+        bold: true,
+        color: style.text,
+        align: "left",
+        valign: "middle",
+        name: `group-label-${g.gi}`,
+      });
       // Level 2: squarify this group's members within the cell below the header.
-      const inner: Rect = { x: gr.x + 2, y: gr.y + headerH, w: Math.max(1, gr.w - 4), h: Math.max(1, gr.h - headerH - 2) };
+      const inner: Rect = {
+        x: gr.x + 2,
+        y: gr.y + headerH,
+        w: Math.max(1, gr.w - 4),
+        h: Math.max(1, gr.h - headerH - 2),
+      };
       const sorted = g.members.map((r, k) => ({ ...r, key: k })).sort((a, b) => b.value - a.value);
       const iscale = (inner.w * inner.h) / (g.total || 1);
-      const rects = squarify(sorted.map((r) => ({ area: r.value * iscale, key: r.key })), inner);
+      const rects = squarify(
+        sorted.map((r) => ({ area: r.value * iscale, key: r.key })),
+        inner,
+      );
       sorted.forEach((r, k) => {
         // squarify keys its rects by the item's own key (the pre-sort index), so
         // look up by r.key — using the post-sort loop index handed each tile the
         // rectangle sized for a different member's value whenever the group's
         // members weren't already in descending order.
         const rect = rects.get(r.key);
-        if (rect) drawTile(rect, lerpColor(gColor, "#ffffff", 0.15 + 0.12 * (k % 4)), labelOf(r.label), r.value, `tile-${r.i}`);
+        if (rect)
+          drawTile(rect, lerpColor(gColor, "#ffffff", 0.15 + 0.12 * (k % 4)), labelOf(r.label), r.value, `tile-${r.i}`);
       });
     });
   }

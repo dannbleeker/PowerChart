@@ -128,7 +128,8 @@ function markerNode(
 ): SceneNode {
   const m = markerExtent(shape, r);
   if (shape === "circle") return { kind: "ellipse", cx, cy, rx: m, ry: m, fill, stroke, strokeWidth, name };
-  if (shape === "square") return { kind: "rect", x: cx - m, y: cy - m, w: m * 2, h: m * 2, fill, stroke, strokeWidth, name };
+  if (shape === "square")
+    return { kind: "rect", x: cx - m, y: cy - m, w: m * 2, h: m * 2, fill, stroke, strokeWidth, name };
   return { kind: "symbol", shape, cx, cy, size: m, fill, stroke, strokeWidth, name };
 }
 
@@ -151,7 +152,14 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const wantTrend = (find(/^trend$/i)?.values ?? []).some((v) => v != null);
 
   const pts = data.categories
-    .map((label, i) => ({ label, x: xs[i], y: ys[i], size: sizes[i] ?? null, group: groupOf(groups[i]), color: colorVals[i] ?? null }))
+    .map((label, i) => ({
+      label,
+      x: xs[i],
+      y: ys[i],
+      size: sizes[i] ?? null,
+      group: groupOf(groups[i]),
+      color: colorVals[i] ?? null,
+    }))
     .filter((p): p is typeof p & { x: number; y: number } => p.x != null && p.y != null);
 
   // Shape per group, cycled like the palette. Off => every point a circle,
@@ -164,7 +172,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const colorNums = pts.map((p) => p.color).filter((v): v is number => v != null);
   const colorScale =
     colorNums.length > 0
-      ? { min: Math.min(...colorNums), max: Math.max(...colorNums), of: sequentialScale(Math.min(...colorNums), Math.max(...colorNums), (cfg.style?.palette ?? PALETTE)[0]) }
+      ? {
+          min: Math.min(...colorNums),
+          max: Math.max(...colorNums),
+          of: sequentialScale(Math.min(...colorNums), Math.max(...colorNums), (cfg.style?.palette ?? PALETTE)[0]),
+        }
       : null;
 
   const titleH = titleHeight(cfg, style);
@@ -234,15 +246,44 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const label = labels?.[i];
       if (label) {
         nodes.push({
-          kind: "text", x: z.x + 4, y: z.y + 2, w: Math.max(20, z.w - 8), h: fs * 1.3,
-          text: label, fontSize: fs * 0.9, bold: true, color: style.mutedText,
-          align: i === 1 || i === 3 ? "right" : "left", valign: "top", name: `quadrant-label-${i}`,
+          kind: "text",
+          x: z.x + 4,
+          y: z.y + 2,
+          w: Math.max(20, z.w - 8),
+          h: fs * 1.3,
+          text: label,
+          fontSize: fs * 0.9,
+          bold: true,
+          color: style.mutedText,
+          align: i === 1 || i === 3 ? "right" : "left",
+          valign: "top",
+          name: `quadrant-label-${i}`,
         });
       }
     });
     nodes.push(
-      { kind: "line", x1: cx, y1: plot.y, x2: cx, y2: plot.y + plot.h, stroke: style.mutedText, strokeWidth: 1, dash: [3, 2], name: "quadrant-x" },
-      { kind: "line", x1: plot.x, y1: cy, x2: plot.x + plot.w, y2: cy, stroke: style.mutedText, strokeWidth: 1, dash: [3, 2], name: "quadrant-y" },
+      {
+        kind: "line",
+        x1: cx,
+        y1: plot.y,
+        x2: cx,
+        y2: plot.y + plot.h,
+        stroke: style.mutedText,
+        strokeWidth: 1,
+        dash: [3, 2],
+        name: "quadrant-x",
+      },
+      {
+        kind: "line",
+        x1: plot.x,
+        y1: cy,
+        x2: plot.x + plot.w,
+        y2: cy,
+        stroke: style.mutedText,
+        strokeWidth: 1,
+        dash: [3, 2],
+        name: "quadrant-y",
+      },
     );
   }
 
@@ -252,14 +293,33 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const clampY = (v: number) => Math.max(plot.y, Math.min(plot.y + plot.h, toY(v)));
     const r =
       band.axis === "x"
-        ? { x: Math.min(clampX(band.from), clampX(band.to)), y: plot.y, w: Math.abs(clampX(band.to) - clampX(band.from)), h: plot.h }
-        : { x: plot.x, y: Math.min(clampY(band.from), clampY(band.to)), w: plot.w, h: Math.abs(clampY(band.to) - clampY(band.from)) };
+        ? {
+            x: Math.min(clampX(band.from), clampX(band.to)),
+            y: plot.y,
+            w: Math.abs(clampX(band.to) - clampX(band.from)),
+            h: plot.h,
+          }
+        : {
+            x: plot.x,
+            y: Math.min(clampY(band.from), clampY(band.to)),
+            w: plot.w,
+            h: Math.abs(clampY(band.to) - clampY(band.from)),
+          };
     if (r.w <= 0 || r.h <= 0) return;
     nodes.push({ kind: "rect", ...r, fill: band.color ?? "#f2f1ec", name: `band-${i}` });
     if (band.label) {
       nodes.push({
-        kind: "text", x: r.x + 3, y: r.y + 1, w: Math.max(20, r.w - 6), h: fs * 1.3,
-        text: band.label, fontSize: fs * 0.9, color: style.mutedText, align: "left", valign: "top", name: `band-label-${i}`,
+        kind: "text",
+        x: r.x + 3,
+        y: r.y + 1,
+        w: Math.max(20, r.w - 6),
+        h: fs * 1.3,
+        text: band.label,
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "left",
+        valign: "top",
+        name: `band-label-${i}`,
       });
     }
   });
@@ -268,30 +328,98 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   for (const t of yTicks) {
     const y = toY(t);
     nodes.push(
-      { kind: "line", x1: plot.x, y1: y, x2: plot.x + plot.w, y2: y, stroke: style.gridline, strokeWidth: 0.75, name: "gridline-y" },
-      { kind: "text", x: 0, y: y - fs * 0.7, w: plot.x - 4, h: fs * 1.4, text: formatNumber(t, yFmt), fontSize: fs * 0.9, color: style.mutedText, align: "right", valign: "middle", name: "y-axis" },
+      {
+        kind: "line",
+        x1: plot.x,
+        y1: y,
+        x2: plot.x + plot.w,
+        y2: y,
+        stroke: style.gridline,
+        strokeWidth: 0.75,
+        name: "gridline-y",
+      },
+      {
+        kind: "text",
+        x: 0,
+        y: y - fs * 0.7,
+        w: plot.x - 4,
+        h: fs * 1.4,
+        text: formatNumber(t, yFmt),
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: "right",
+        valign: "middle",
+        name: "y-axis",
+      },
     );
   }
   for (const t of xTicks) {
     const x = toX(t);
     nodes.push({
-      kind: "text", x: x - 24, y: plot.y + plot.h + 2, w: 48, h: fs * 1.4,
-      text: formatNumber(t, xFmt), fontSize: fs * 0.9, color: style.mutedText, align: "center", valign: "top", name: "x-axis",
+      kind: "text",
+      x: x - 24,
+      y: plot.y + plot.h + 2,
+      w: 48,
+      h: fs * 1.4,
+      text: formatNumber(t, xFmt),
+      fontSize: fs * 0.9,
+      color: style.mutedText,
+      align: "center",
+      valign: "top",
+      name: "x-axis",
     });
   }
   nodes.push(
-    { kind: "line", x1: plot.x, y1: plot.y + plot.h, x2: plot.x + plot.w, y2: plot.y + plot.h, stroke: style.axis, strokeWidth: 1, name: "baseline" },
-    { kind: "line", x1: toX(0) >= plot.x ? toX(0) : plot.x, y1: plot.y, x2: toX(0) >= plot.x ? toX(0) : plot.x, y2: plot.y + plot.h, stroke: style.axis, strokeWidth: 1, name: "y-axis-line" },
+    {
+      kind: "line",
+      x1: plot.x,
+      y1: plot.y + plot.h,
+      x2: plot.x + plot.w,
+      y2: plot.y + plot.h,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "baseline",
+    },
+    {
+      kind: "line",
+      x1: toX(0) >= plot.x ? toX(0) : plot.x,
+      y1: plot.y,
+      x2: toX(0) >= plot.x ? toX(0) : plot.x,
+      y2: plot.y + plot.h,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "y-axis-line",
+    },
   );
 
   // Partition lines (dashed) at fixed x / y values.
   for (const v of xLines) {
     const x = toX(v);
-    nodes.push({ kind: "line", x1: x, y1: plot.y, x2: x, y2: plot.y + plot.h, stroke: style.mutedText, strokeWidth: 1, dash: [3, 2], name: "x-line" });
+    nodes.push({
+      kind: "line",
+      x1: x,
+      y1: plot.y,
+      x2: x,
+      y2: plot.y + plot.h,
+      stroke: style.mutedText,
+      strokeWidth: 1,
+      dash: [3, 2],
+      name: "x-line",
+    });
   }
   for (const v of yLines) {
     const y = toY(v);
-    nodes.push({ kind: "line", x1: plot.x, y1: y, x2: plot.x + plot.w, y2: y, stroke: style.mutedText, strokeWidth: 1, dash: [3, 2], name: "y-line" });
+    nodes.push({
+      kind: "line",
+      x1: plot.x,
+      y1: y,
+      x2: plot.x + plot.w,
+      y2: y,
+      stroke: style.mutedText,
+      strokeWidth: 1,
+      dash: [3, 2],
+      name: "y-line",
+    });
   }
 
   // OLS trend line across all points — always stating fit and significance.
@@ -304,8 +432,14 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const at = (x: number) => my + slope * (x - mx);
       nodes.push({
         kind: "line",
-        x1: toX(x0), y1: toY(at(x0)), x2: toX(x1), y2: toY(at(x1)),
-        stroke: style.negative, strokeWidth: 1.25, dash: [4, 2], name: "trend",
+        x1: toX(x0),
+        y1: toY(at(x0)),
+        x2: toX(x1),
+        y2: toY(at(x1)),
+        stroke: style.negative,
+        strokeWidth: 1.25,
+        dash: [4, 2],
+        name: "trend",
       });
       const stats = trendStats(pts);
       if (stats) {
@@ -342,13 +476,57 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const by = chromeTop - fs * (mTop > 0 ? 1.75 : 1.35);
     for (let i = 0; i < steps; i++) {
       const t = (i + 0.5) / steps;
-      nodes.push({ kind: "rect", x: bx + i * cell, y: by, w: cell + 0.5, h: fs * 0.7, fill: colorScale.of(colorScale.min + t * (colorScale.max - colorScale.min)), name: `color-legend-${i}` });
+      nodes.push({
+        kind: "rect",
+        x: bx + i * cell,
+        y: by,
+        w: cell + 0.5,
+        h: fs * 0.7,
+        fill: colorScale.of(colorScale.min + t * (colorScale.max - colorScale.min)),
+        name: `color-legend-${i}`,
+      });
     }
     const colorName = find(/^colou?r$/i)?.name ?? "Color";
     nodes.push(
-      { kind: "text", x: bx - 40, y: by - fs * 0.15, w: 38, h: fs, text: colorName, fontSize: fs * 0.85, color: style.mutedText, align: "right", valign: "middle", name: "color-legend-title" },
-      { kind: "text", x: bx, y: by + fs * 0.75, w: barW, h: fs, text: formatNumber(colorScale.min, cFmt), fontSize: fs * 0.75, color: style.mutedText, align: "left", valign: "middle", name: "color-legend-min" },
-      { kind: "text", x: bx, y: by + fs * 0.75, w: barW, h: fs, text: formatNumber(colorScale.max, cFmt), fontSize: fs * 0.75, color: style.mutedText, align: "right", valign: "middle", name: "color-legend-max" },
+      {
+        kind: "text",
+        x: bx - 40,
+        y: by - fs * 0.15,
+        w: 38,
+        h: fs,
+        text: colorName,
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "right",
+        valign: "middle",
+        name: "color-legend-title",
+      },
+      {
+        kind: "text",
+        x: bx,
+        y: by + fs * 0.75,
+        w: barW,
+        h: fs,
+        text: formatNumber(colorScale.min, cFmt),
+        fontSize: fs * 0.75,
+        color: style.mutedText,
+        align: "left",
+        valign: "middle",
+        name: "color-legend-min",
+      },
+      {
+        kind: "text",
+        x: bx,
+        y: by + fs * 0.75,
+        w: barW,
+        h: fs,
+        text: formatNumber(colorScale.max, cFmt),
+        fontSize: fs * 0.75,
+        color: style.mutedText,
+        align: "right",
+        valign: "middle",
+        name: "color-legend-max",
+      },
     );
   }
 
@@ -356,8 +534,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // supersedes group coloring and suppresses this — but markers put group on
   // the SHAPE channel, which the color legend says nothing about, so the legend
   // has to come back or the shapes stand unexplained.
-  const groupIds =
-    colorScale && !markers ? [] : [...new Set(pts.map((p) => p.group))].sort((a, b) => a - b);
+  const groupIds = colorScale && !markers ? [] : [...new Set(pts.map((p) => p.group))].sort((a, b) => a - b);
   if (groupIds.length > 1) {
     // Clear the gradient bar when both legends are up — they share this row and
     // both anchor at plot.x, so without the offset the chips land on the ramp.
@@ -375,9 +552,38 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const drawn = markers ? markerExtent(markerFor(g), chip / 2) * 2 : chip;
       nodes.push(
         markers
-          ? markerNode(markerFor(g), lx + drawn / 2, chromeTop - fs * 1.2 + chip / 2, chip / 2, chipFill, style.background, 0, `legend-chip-${g}`)
-          : { kind: "rect", x: lx, y: chromeTop - fs * 1.2, w: chip, h: chip, fill: chipFill, name: `legend-chip-${g}` },
-        { kind: "text", x: lx + drawn + 3, y: chromeTop - fs * 1.55, w: textWidth(label, fs) + 6, h: fs * 1.4, text: label, fontSize: fs, color: style.text, align: "left", valign: "middle", name: `legend-${g}` },
+          ? markerNode(
+              markerFor(g),
+              lx + drawn / 2,
+              chromeTop - fs * 1.2 + chip / 2,
+              chip / 2,
+              chipFill,
+              style.background,
+              0,
+              `legend-chip-${g}`,
+            )
+          : {
+              kind: "rect",
+              x: lx,
+              y: chromeTop - fs * 1.2,
+              w: chip,
+              h: chip,
+              fill: chipFill,
+              name: `legend-chip-${g}`,
+            },
+        {
+          kind: "text",
+          x: lx + drawn + 3,
+          y: chromeTop - fs * 1.55,
+          w: textWidth(label, fs) + 6,
+          h: fs * 1.4,
+          text: label,
+          fontSize: fs,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `legend-${g}`,
+        },
       );
       lx += drawn + 3 + textWidth(label, fs) + 14;
     }
@@ -397,9 +603,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (cap) {
     const byX = cap.axis === "x";
     // The cap is quoted in data units; the relaxation works in px.
-    const limitPx = byX
-      ? (cap.limit / (x1 - x0 || 1)) * plot.w
-      : (cap.limit / (y1 - y0 || 1)) * plot.h;
+    const limitPx = byX ? (cap.limit / (x1 - x0 || 1)) * plot.w : (cap.limit / (y1 - y0 || 1)) * plot.h;
     const disp = spreadAlongAxis(
       pts.map((p) => ({ m: byX ? toX(p.x) : toY(p.y), c: byX ? toY(p.y) : toX(p.x), r: radius(p) })),
       byX
@@ -416,7 +620,10 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // outline reference circles (a nice maximum and its half), top-right.
   const legendBoxes: Box[] = [];
   if (cfg.kind === "bubble" && pts.some((p) => p.size != null)) {
-    const sizeFmt = resolveFormat(pts.map((p) => Math.abs(p.size ?? 0)), cfg.numberFormat);
+    const sizeFmt = resolveFormat(
+      pts.map((p) => Math.abs(p.size ?? 0)),
+      cfg.numberFormat,
+    );
     const refMax = niceTicks(0, maxSize, 3).pop()!;
     const refs = [refMax, refMax / 2];
     let lx = plot.x + plot.w - 4;
@@ -425,11 +632,29 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const cx = lx - r;
       const cy = plot.y + maxR * 1.1 + (Math.sqrt(refMax / maxSize) * maxR - r); // bottom-aligned circles
       nodes.push(
-        { kind: "ellipse", cx, cy, rx: r, ry: r, fill: "none", stroke: style.mutedText, strokeWidth: 1, name: `size-legend-${i}` },
         {
-          kind: "text", x: cx - r, y: cy - Math.sqrt(refMax / maxSize) * maxR - fs * 1.35, w: r * 2, h: fs * 1.2,
-          text: formatNumber(v, sizeFmt), fontSize: fs * 0.8, color: style.mutedText,
-          align: "center", valign: "bottom", name: `size-legend-label-${i}`,
+          kind: "ellipse",
+          cx,
+          cy,
+          rx: r,
+          ry: r,
+          fill: "none",
+          stroke: style.mutedText,
+          strokeWidth: 1,
+          name: `size-legend-${i}`,
+        },
+        {
+          kind: "text",
+          x: cx - r,
+          y: cy - Math.sqrt(refMax / maxSize) * maxR - fs * 1.35,
+          w: r * 2,
+          h: fs * 1.2,
+          text: formatNumber(v, sizeFmt),
+          fontSize: fs * 0.8,
+          color: style.mutedText,
+          align: "center",
+          valign: "bottom",
+          name: `size-legend-label-${i}`,
         },
       );
       legendBoxes.push({ x: cx - r, y: cy - r - fs * 1.4, w: r * 2, h: r * 2 + fs * 1.4 });
@@ -446,9 +671,26 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const ay = toY(pts[i].y);
       const bx = toX(pts[i + 1].x);
       const by = toY(pts[i + 1].y);
-      nodes.push({ kind: "line", x1: ax, y1: ay, x2: bx, y2: by, stroke: style.mutedText, strokeWidth: 1.5, name: `trajectory-${i}` });
+      nodes.push({
+        kind: "line",
+        x1: ax,
+        y1: ay,
+        x2: bx,
+        y2: by,
+        stroke: style.mutedText,
+        strokeWidth: 1.5,
+        name: `trajectory-${i}`,
+      });
       const angle = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
-      nodes.push({ kind: "arrowhead", x: (ax + bx) / 2, y: (ay + by) / 2, angle, size: 4, fill: style.mutedText, name: `trajectory-head-${i}` });
+      nodes.push({
+        kind: "arrowhead",
+        x: (ax + bx) / 2,
+        y: (ay + by) / 2,
+        angle,
+        size: 4,
+        fill: style.mutedText,
+        name: `trajectory-head-${i}`,
+      });
     }
   }
 
@@ -463,20 +705,35 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const binMult = pts.length >= 15 ? 2 : 1;
     const fill = lerpColor("#ffffff", (cfg.style?.palette ?? PALETTE)[0], 0.35);
     if (mTop > 0) {
-      const counts = histogramBins(pts.map((p) => p.x), x0, x1, (xTicks.length - 1) * binMult);
+      const counts = histogramBins(
+        pts.map((p) => p.x),
+        x0,
+        x1,
+        (xTicks.length - 1) * binMult,
+      );
       const peak = Math.max(1, ...counts);
       const bw = plot.w / counts.length;
       counts.forEach((n, i) => {
         if (!n) return;
         const h = (n / peak) * (mTop - 5);
         nodes.push({
-          kind: "rect", x: plot.x + i * bw, y: plot.y - 3 - h, w: Math.max(0.5, bw - 1), h,
-          fill, name: `marginal-x-${i}`,
+          kind: "rect",
+          x: plot.x + i * bw,
+          y: plot.y - 3 - h,
+          w: Math.max(0.5, bw - 1),
+          h,
+          fill,
+          name: `marginal-x-${i}`,
         });
       });
     }
     if (mRight > 0) {
-      const counts = histogramBins(pts.map((p) => p.y), y0, y1, (yTicks.length - 1) * binMult);
+      const counts = histogramBins(
+        pts.map((p) => p.y),
+        y0,
+        y1,
+        (yTicks.length - 1) * binMult,
+      );
       const peak = Math.max(1, ...counts);
       const bh = plot.h / counts.length;
       counts.forEach((n, i) => {
@@ -484,8 +741,13 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const w = (n / peak) * (mRight - 5);
         // Bin 0 is the bottom of the y axis, so it is the LAST band down the plot.
         nodes.push({
-          kind: "rect", x: plot.x + plot.w + 3, y: plot.y + plot.h - (i + 1) * bh, w, h: Math.max(0.5, bh - 1),
-          fill, name: `marginal-y-${i}`,
+          kind: "rect",
+          x: plot.x + plot.w + 3,
+          y: plot.y + plot.h - (i + 1) * bh,
+          w,
+          h: Math.max(0.5, bh - 1),
+          fill,
+          name: `marginal-y-${i}`,
         });
       });
     }
@@ -506,7 +768,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const r = radius(p);
     const gi = p.group - 1;
     const fill =
-      colorScale && p.color != null ? colorScale.of(p.color) : colorScale ? style.mutedText : (cfg.style?.palette ?? PALETTE)[gi % 8];
+      colorScale && p.color != null
+        ? colorScale.of(p.color)
+        : colorScale
+          ? style.mutedText
+          : (cfg.style?.palette ?? PALETTE)[gi % 8];
     nodes.push(markerNode(markerFor(p.group), px(p, i), py(p, i), r, fill, style.background, 1, `point-${i}`));
     // Keep labels off the mark as DRAWN: an area-matched star reaches ~1.67x
     // its data radius, and a keep-out box built from `r` would let a label sit
@@ -524,7 +790,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const fmt = resolveFormat([p.x, p.y], cfg.numberFormat);
       return parts
         .map((part) =>
-          part === "category" ? p.label : part === "value" ? `(${formatNumber(p.x, fmt)}, ${formatNumber(p.y, fmt)})` : null,
+          part === "category"
+            ? p.label
+            : part === "value"
+              ? `(${formatNumber(p.x, fmt)}, ${formatNumber(p.y, fmt)})`
+              : null,
         )
         .filter(Boolean)
         .join(" ");

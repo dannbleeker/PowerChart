@@ -97,7 +97,13 @@ describe("label content & locale", () => {
   it("applies segment label content in stacked charts", () => {
     const scene = buildChart(
       cfg({
-        data: { categories: ["A"], series: [{ name: "S1", values: [60] }, { name: "S2", values: [40] }] },
+        data: {
+          categories: ["A"],
+          series: [
+            { name: "S1", values: [60] },
+            { name: "S2", values: [40] },
+          ],
+        },
         decorations: { labelContent: ["value", "percent"] },
       }),
     );

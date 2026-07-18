@@ -31,7 +31,13 @@ describe("radial bar chart (coxcomb)", () => {
   it("stacks multiple series outward within each sector", () => {
     const multi = buildChart({
       ...cfg,
-      data: { categories: ["A", "B"], series: [{ name: "X", values: [10, 5] }, { name: "Y", values: [8, 12] }] },
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "X", values: [10, 5] },
+          { name: "Y", values: [8, 12] },
+        ],
+      },
     });
     const x0 = multi.nodes.find((n): n is WedgeNode => n.name === "bar-0-0")!;
     const y0 = multi.nodes.find((n): n is WedgeNode => n.name === "bar-0-1")!;

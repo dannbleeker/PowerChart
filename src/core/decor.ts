@@ -57,7 +57,8 @@ export function decorationNodes(
   if (decor.difference) {
     const { from, to } = clampPair(decor.difference, a);
     const si = decor.difference.series;
-    const useLevel = si != null && a.seriesLevels != null && a.valueToY != null && si >= 0 && si < (a.seriesLevels[0]?.length ?? 0);
+    const useLevel =
+      si != null && a.seriesLevels != null && a.valueToY != null && si >= 0 && si < (a.seriesLevels[0]?.length ?? 0);
     let vFrom = useLevel ? a.seriesLevels![from][si!] : a.columnValue[from];
     let yFrom = useLevel ? a.valueToY!(vFrom) : a.columnTop[from];
     const vTo = useLevel ? a.seriesLevels![to][si!] : a.columnValue[to];
@@ -67,10 +68,7 @@ export function decorationNodes(
     const vls = decor.valueLines ?? (decor.valueLine ? [decor.valueLine] : []);
     if (vlIdx != null && vls[vlIdx] && a.valueToY) {
       const vl = vls[vlIdx];
-      vFrom =
-        vl.mode === "mean"
-          ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1)
-          : vl.value;
+      vFrom = vl.mode === "mean" ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1) : vl.value;
       yFrom = a.valueToY(vFrom);
     }
     const x = a.categoryX[to] + a.categoryWidth[to] / 2 + 10;
@@ -115,9 +113,7 @@ export function decorationNodes(
   if (valueLines.length && a.valueToY) {
     valueLines.forEach((vl, i) => {
       const value =
-        vl.mode === "mean"
-          ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1)
-          : vl.value;
+        vl.mode === "mean" ? a.columnValue.reduce((s, v) => s + v, 0) / (a.columnValue.length || 1) : vl.value;
       const y = a.valueToY!(value);
       nodes.push(
         {
@@ -161,8 +157,27 @@ export function decorationNodes(
     const bx = ax + (co.dx ?? 0);
     const by = ay - fs * 4.2 + (co.dy ?? 0);
     nodes.push(
-      { kind: "line", x1: bx, y1: by + h / 2 - 1, x2: ax, y2: ay - 2, stroke: style.text, strokeWidth: 0.75, name: `callout-tail-${i}` },
-      { kind: "rect", x: bx - w / 2, y: by - h / 2, w, h, fill: style.background, stroke: style.text, strokeWidth: 1, name: `callout-box-${i}` },
+      {
+        kind: "line",
+        x1: bx,
+        y1: by + h / 2 - 1,
+        x2: ax,
+        y2: ay - 2,
+        stroke: style.text,
+        strokeWidth: 0.75,
+        name: `callout-tail-${i}`,
+      },
+      {
+        kind: "rect",
+        x: bx - w / 2,
+        y: by - h / 2,
+        w,
+        h,
+        fill: style.background,
+        stroke: style.text,
+        strokeWidth: 1,
+        name: `callout-box-${i}`,
+      },
       {
         kind: "text",
         x: bx - w / 2,
@@ -187,12 +202,7 @@ export function decorationNodes(
  * data (the caller prepends these to the scene). axis "y" spans a value
  * range; axis "x" spans category indices.
  */
-export function bandNodes(
-  cfg: ChartConfig,
-  style: ChartStyle,
-  decor: Decorations,
-  a: LayoutAnchors,
-): SceneNode[] {
+export function bandNodes(cfg: ChartConfig, style: ChartStyle, decor: Decorations, a: LayoutAnchors): SceneNode[] {
   const nodes: SceneNode[] = [];
   const fs = style.fontSize;
   decor.bands?.forEach((band, i) => {

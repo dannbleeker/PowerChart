@@ -39,9 +39,17 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   };
   if (!layout) {
     nodes.push({
-      kind: "text", x: 0, y: titleH + fs, w: cfg.width, h: fs * 1.5,
+      kind: "text",
+      x: 0,
+      y: titleH + fs,
+      w: cfg.width,
+      h: fs * 1.5,
       text: 'No recognized region codes — set map: "us" | "eu" | "europe" | "world"',
-      fontSize: fs, color: style.mutedText, align: "center", valign: "middle", name: "tilemap-error",
+      fontSize: fs,
+      color: style.mutedText,
+      align: "center",
+      valign: "middle",
+      name: "tilemap-error",
     });
     return empty;
   }
@@ -68,7 +76,11 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (glyph) {
     data.categories.forEach((code, c) => {
       const key = code.trim().toUpperCase();
-      if (key in layout) seriesVals.set(key, data.series.map((s) => s.values[c] ?? null));
+      if (key in layout)
+        seriesVals.set(
+          key,
+          data.series.map((s) => s.values[c] ?? null),
+        );
     });
   }
   const glyphMax = glyph ? Math.max(1, ...[...seriesVals.values()].flat().filter((v): v is number => v != null)) : 1;
@@ -91,7 +103,10 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const rowsBottom = hex ? y0 + (rows - 1) * tile * 0.87 + tile : y0 + rows * (tile + gutter);
 
   const hexPts = (cx: number, cy: number, R: number) =>
-    [90, 150, 210, 270, 330, 30].map((a) => ({ x: cx + R * Math.cos((a * Math.PI) / 180), y: cy - R * Math.sin((a * Math.PI) / 180) }));
+    [90, 150, 210, 270, 330, 30].map((a) => ({
+      x: cx + R * Math.cos((a * Math.PI) / 180),
+      y: cy - R * Math.sin((a * Math.PI) / 180),
+    }));
   for (const [code, [col, row]] of Object.entries(layout)) {
     const v = values.get(code);
     // In glyph mode the tile is a faint backdrop for the bars; otherwise it
@@ -100,7 +115,14 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const x = x0 + col * (tile + gutter) + (hex && row % 2 === 1 ? (tile + gutter) / 2 : 0);
     const y = hex ? y0 + row * tile * 0.87 : y0 + row * (tile + gutter);
     if (hex) {
-      nodes.push({ kind: "polygon", points: hexPts(x + tile / 2, y + tile / 2, tile / 2), fill: tileFill, stroke: style.background, strokeWidth: 1, name: `tile-${code}` });
+      nodes.push({
+        kind: "polygon",
+        points: hexPts(x + tile / 2, y + tile / 2, tile / 2),
+        fill: tileFill,
+        stroke: style.background,
+        strokeWidth: 1,
+        name: `tile-${code}`,
+      });
     } else {
       nodes.push({ kind: "rect", x, y, w: tile, h: tile, fill: tileFill, name: `tile-${code}` });
     }
@@ -117,26 +139,62 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         svals.forEach((sv, si) => {
           if (sv == null) return;
           const h = (Math.max(0, sv) / glyphMax) * bMax;
-          nodes.push({ kind: "rect", x: bx0 + si * bw, y: bBase - h, w: Math.max(1, bw - 0.5), h, fill: seriesColor(style, si), name: `glyph-${code}-${si}` });
+          nodes.push({
+            kind: "rect",
+            x: bx0 + si * bw,
+            y: bBase - h,
+            w: Math.max(1, bw - 0.5),
+            h,
+            fill: seriesColor(style, si),
+            name: `glyph-${code}-${si}`,
+          });
         });
       }
       nodes.push({
-        kind: "text", x, y: y + tile * 0.06, w: tile, h: fs * 1.2,
-        text: code, fontSize: Math.min(fs * 0.85, tile * 0.3), bold: true, color: ink,
-        align: "center", valign: "middle", name: `tile-code-${code}`,
+        kind: "text",
+        x,
+        y: y + tile * 0.06,
+        w: tile,
+        h: fs * 1.2,
+        text: code,
+        fontSize: Math.min(fs * 0.85, tile * 0.3),
+        bold: true,
+        color: ink,
+        align: "center",
+        valign: "middle",
+        name: `tile-code-${code}`,
       });
       continue;
     }
-    const showValue = v != null && decor.segmentLabels && tile >= fs * 2.6 && textWidth(formatNumber(v, fmt), fs * 0.8) <= tile - 2;
+    const showValue =
+      v != null && decor.segmentLabels && tile >= fs * 2.6 && textWidth(formatNumber(v, fmt), fs * 0.8) <= tile - 2;
     nodes.push({
-      kind: "text", x, y: showValue ? y + tile / 2 - fs * 1.25 : y, w: tile, h: showValue ? fs * 1.3 : tile,
-      text: code, fontSize: Math.min(fs, tile * 0.34), bold: true, color: ink,
-      align: "center", valign: "middle", name: `tile-code-${code}`,
+      kind: "text",
+      x,
+      y: showValue ? y + tile / 2 - fs * 1.25 : y,
+      w: tile,
+      h: showValue ? fs * 1.3 : tile,
+      text: code,
+      fontSize: Math.min(fs, tile * 0.34),
+      bold: true,
+      color: ink,
+      align: "center",
+      valign: "middle",
+      name: `tile-code-${code}`,
     });
     if (showValue) {
       nodes.push({
-        kind: "text", x, y: y + tile / 2, w: tile, h: fs * 1.2, text: formatNumber(v, fmt),
-        fontSize: fs * 0.8, color: ink, align: "center", valign: "top", name: `tile-value-${code}`,
+        kind: "text",
+        x,
+        y: y + tile / 2,
+        w: tile,
+        h: fs * 1.2,
+        text: formatNumber(v, fmt),
+        fontSize: fs * 0.8,
+        color: ink,
+        align: "center",
+        valign: "top",
+        name: `tile-value-${code}`,
       });
     }
   }
@@ -147,8 +205,28 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     data.series.forEach((s, si) => {
       const chip = fs * 0.7;
       nodes.push(
-        { kind: "rect", x: lx, y: rowsBottom + fs * 0.6, w: chip, h: chip, fill: seriesColor(style, si, s.color), name: `legend-chip-${si}` },
-        { kind: "text", x: lx + chip + 3, y: rowsBottom + fs * 0.3, w: textWidth(s.name, fs) + 6, h: fs * 1.4, text: s.name, fontSize: fs * 0.85, color: style.text, align: "left", valign: "middle", name: `legend-${si}` },
+        {
+          kind: "rect",
+          x: lx,
+          y: rowsBottom + fs * 0.6,
+          w: chip,
+          h: chip,
+          fill: seriesColor(style, si, s.color),
+          name: `legend-chip-${si}`,
+        },
+        {
+          kind: "text",
+          x: lx + chip + 3,
+          y: rowsBottom + fs * 0.3,
+          w: textWidth(s.name, fs) + 6,
+          h: fs * 1.4,
+          text: s.name,
+          fontSize: fs * 0.85,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `legend-${si}`,
+        },
       );
       lx += chip + 3 + textWidth(s.name, fs) + 12;
     });
@@ -160,18 +238,59 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const steps = 24;
     for (let i = 0; i < steps; i++) {
       const v = min + ((max - min) * i) / (steps - 1);
-      nodes.push({ kind: "rect", x: x0 + (lw / steps) * i, y: ly, w: lw / steps + 0.5, h: fs * 0.9, fill: fill(v), name: `legend-step-${i}` });
+      nodes.push({
+        kind: "rect",
+        x: x0 + (lw / steps) * i,
+        y: ly,
+        w: lw / steps + 0.5,
+        h: fs * 0.9,
+        fill: fill(v),
+        name: `legend-step-${i}`,
+      });
     }
     nodes.push(
-      { kind: "text", x: x0, y: ly + fs * 0.95, w: lw / 2, h: fs * 1.2, text: formatNumber(min, fmt), fontSize: fs * 0.85, color: style.mutedText, align: "left", valign: "top", name: "legend-min" },
-      { kind: "text", x: x0 + lw / 2, y: ly + fs * 0.95, w: lw / 2, h: fs * 1.2, text: formatNumber(max, fmt), fontSize: fs * 0.85, color: style.mutedText, align: "right", valign: "top", name: "legend-max" },
+      {
+        kind: "text",
+        x: x0,
+        y: ly + fs * 0.95,
+        w: lw / 2,
+        h: fs * 1.2,
+        text: formatNumber(min, fmt),
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "left",
+        valign: "top",
+        name: "legend-min",
+      },
+      {
+        kind: "text",
+        x: x0 + lw / 2,
+        y: ly + fs * 0.95,
+        w: lw / 2,
+        h: fs * 1.2,
+        text: formatNumber(max, fmt),
+        fontSize: fs * 0.85,
+        color: style.mutedText,
+        align: "right",
+        valign: "top",
+        name: "legend-max",
+      },
     );
     if (values.size < Object.keys(layout).length) {
       nodes.push(
         { kind: "rect", x: x0 + lw + fs, y: ly, w: fs * 0.9, h: fs * 0.9, fill: NO_DATA, name: "legend-nodata" },
         {
-          kind: "text", x: x0 + lw + fs * 2.1, y: ly - fs * 0.2, w: fs * 6, h: fs * 1.3,
-          text: "no data", fontSize: fs * 0.85, color: style.mutedText, align: "left", valign: "middle", name: "legend-nodata-label",
+          kind: "text",
+          x: x0 + lw + fs * 2.1,
+          y: ly - fs * 0.2,
+          w: fs * 6,
+          h: fs * 1.3,
+          text: "no data",
+          fontSize: fs * 0.85,
+          color: style.mutedText,
+          align: "left",
+          valign: "middle",
+          name: "legend-nodata-label",
         },
       );
     }

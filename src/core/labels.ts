@@ -31,8 +31,7 @@ export interface PlacedLabel {
   slot: number;
 }
 
-const overlaps = (a: Box, b: Box) =>
-  a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 /** Candidate offsets: E, W, N, S, NE, NW, SE, SW of the anchor. */
 function candidates(req: LabelRequest, pad: number): Box[] {
@@ -56,12 +55,7 @@ function candidates(req: LabelRequest, pad: number): Box[] {
  * that found a spot — the rest are hidden, as think-cell does when a chart
  * gets too dense.
  */
-export function placeLabels(
-  requests: LabelRequest[],
-  bounds: Box,
-  obstacles: Box[] = [],
-  pad = 2,
-): PlacedLabel[] {
+export function placeLabels(requests: LabelRequest[], bounds: Box, obstacles: Box[] = [], pad = 2): PlacedLabel[] {
   const placed: PlacedLabel[] = [];
   // Spatial hash over the taken boxes so a dense scatter's candidate test stays
   // near-linear instead of scanning every placed label/marker (the old

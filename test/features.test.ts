@@ -9,8 +9,7 @@ import type { RectNode, TextNode } from "../src/core/scene";
 import { dataToSheet, sheetToData, transposeSheet } from "../src/taskpane/datasheet";
 
 const rects = (nodes: { kind: string }[]) => nodes.filter((n): n is RectNode => n.kind === "rect");
-const byName = (nodes: { name?: string }[], prefix: string) =>
-  nodes.filter((n) => n.name?.startsWith(prefix));
+const byName = (nodes: { name?: string }[], prefix: string) => nodes.filter((n) => n.name?.startsWith(prefix));
 
 function cfg(partial: Partial<ChartConfig>): ChartConfig {
   return { kind: "stacked", width: 480, height: 300, data: { categories: [], series: [] }, ...partial };
@@ -174,7 +173,13 @@ describe("datasheet special rows and transpose", () => {
   });
 
   it("transposes rows and columns", () => {
-    const t = transposeSheet({ cells: [["", "A", "B"], ["S1", "1", "2"], ["S2", "3", "4"]] });
+    const t = transposeSheet({
+      cells: [
+        ["", "A", "B"],
+        ["S1", "1", "2"],
+        ["S2", "3", "4"],
+      ],
+    });
     expect(t.cells).toEqual([
       ["", "S1", "S2"],
       ["A", "1", "3"],
