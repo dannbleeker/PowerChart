@@ -1,6 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
+import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import { baselineNode, chromeNodes, computeFrame, computeFrameHorizontal, titleHeight, valueScale } from "./frame";
@@ -167,8 +168,8 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // them in one chart.
   // Data-driven domain (no forced zero): a boxplot of scores 40–95 must not be
   // squashed against 0 — matches violin/candlestick. cfg.scale still overrides.
-  const lo = drawn.length ? Math.min(...drawn) : 0;
-  const hi = drawn.length ? Math.max(...drawn) : 1;
+  const lo = drawn.length ? minOf(drawn) : 0;
+  const hi = drawn.length ? maxOf(drawn) : 1;
   const scale = valueScale(frame, lo, hi, cfg.scale);
   // Value coordinate along the value axis (x when horizontal, y otherwise).
   const qOf = H ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w : scale.toY;
@@ -427,5 +428,5 @@ export function boxplotExtent(cfg: ChartConfig): { min: number; max: number } | 
   // outside the samples, and "Same scale" turns this extent into a hard scale
   // override — understating it pushed those whiskers off the plot.
   const { drawn } = boxplotBoxes(cfg);
-  return drawn.length ? { min: Math.min(...drawn), max: Math.max(...drawn) } : null;
+  return drawn.length ? { min: minOf(drawn), max: maxOf(drawn) } : null;
 }

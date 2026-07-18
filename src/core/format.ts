@@ -1,4 +1,5 @@
 import type { NumberFormat } from "./types";
+import { maxOf } from "./agg";
 
 export const DEFAULT_FORMAT: NumberFormat = { decimals: "auto" };
 
@@ -67,7 +68,7 @@ export function resolveFormat(values: number[], fmt: Partial<NumberFormat> = {})
   if (fmt.decimals != null && fmt.decimals !== "auto") {
     return { ...DEFAULT_FORMAT, ...fmt, decimals: fmt.decimals };
   }
-  const maxAbs = Math.max(0, ...values.filter((v) => Number.isFinite(v)).map(Math.abs));
+  const maxAbs = maxOf(values.filter((v) => Number.isFinite(v)).map(Math.abs), 0);
   const decimals = maxAbs >= 10 ? 0 : maxAbs >= 1 ? 1 : 2;
   return { ...DEFAULT_FORMAT, ...fmt, decimals };
 }

@@ -1,6 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
+import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { baselineNode, breakMarkerNodes, chromeNodes, computeFrame, computeFrameHorizontal, valueScale } from "./frame";
 import { horizontalChrome, type LayoutResult } from "./column";
@@ -109,7 +110,7 @@ export function waterfallChain(cfg: ChartConfig): Bar[] {
 /** The value range a waterfall's bars actually occupy. */
 export function waterfallExtent(cfg: ChartConfig): { min: number; max: number } {
   const vals = waterfallChain(cfg).flatMap((b) => [b.level, ...b.segs.flatMap((s) => [s.from, s.to])]);
-  return { min: Math.min(0, ...vals), max: Math.max(0, ...vals) };
+  return { min: minOf(vals, 0), max: maxOf(vals, 0) };
 }
 
 export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
@@ -129,8 +130,8 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const bars = waterfallChain(cfg);
 
   const allLevels = bars.flatMap((b) => b.segs.flatMap((s) => [s.from, s.to]));
-  const hi = Math.max(0, ...allLevels);
-  const lo = Math.min(0, ...allLevels);
+  const hi = maxOf(allLevels, 0);
+  const lo = minOf(allLevels, 0);
   const fmt = resolveFormat(
     bars.flatMap((b) => b.segs.map((s) => s.value)),
     cfg.numberFormat,

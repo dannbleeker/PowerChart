@@ -2,6 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { divergingScale, lerpColor, NO_DATA, sequentialScale } from "../color";
+import { maxOf, minOf } from "../agg";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -55,8 +56,8 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const opts = cfg.heatmap ?? {};
 
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
-  const min = Math.min(...all);
-  const max = Math.max(...all);
+  const min = minOf(all);
+  const max = maxOf(all);
   const positive = opts.color ?? style.palette[0];
   const negative = opts.negativeColor ?? style.negative;
   const mode = opts.mode && opts.mode !== "auto" ? opts.mode : min < 0 && max > 0 ? "diverging" : "sequential";

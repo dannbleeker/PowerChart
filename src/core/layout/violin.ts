@@ -1,6 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { type SceneNode } from "../scene";
 import { resolveFormat } from "../format";
+import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import { chromeNodes, computeFrame, valueScale } from "./frame";
@@ -43,8 +44,8 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const { frame } = computeFrame(cfg, style, { ...decor, seriesLabels: false }, []);
   const scale = valueScale(
     frame,
-    Math.min(...(allSamples.length ? allSamples : [0])),
-    Math.max(...(allSamples.length ? allSamples : [1])),
+    minOf(allSamples.length ? allSamples : [0]),
+    maxOf(allSamples.length ? allSamples : [1]),
     cfg.scale,
   );
   const slotLen = frame.w / Math.max(1, n);
