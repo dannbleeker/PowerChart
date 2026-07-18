@@ -22,8 +22,15 @@ const patternId = (pattern: string, color: string) => `p-${pattern}-${color.repl
 export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): string {
   const parts: string[] = [];
   parts.push(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" font-family="Segoe UI, Arial, sans-serif">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" font-family="Segoe UI, Arial, sans-serif" role="img">`,
   );
+  // Accessible name + text alternative as the first children of the root, so a
+  // screen reader announces the chart under role="img" instead of skipping it
+  // (WCAG 1.1.1). First-child <title>/<desc> are the accessible name/description
+  // per the SVG mapping — no id/aria wiring needed, so multiple inline charts on
+  // one page can't collide on ids.
+  if (scene.title) parts.push(`<title>${esc(scene.title)}</title>`);
+  if (scene.desc) parts.push(`<desc>${esc(scene.desc)}</desc>`);
   // One <pattern> def per (pattern, color) pair used by the scene's rects.
   const defs = new Map<string, string>();
   for (const n of scene.nodes) {
