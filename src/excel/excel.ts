@@ -5,17 +5,21 @@
  * whenever the data changes — the feasible substitute for live data links.
  */
 import type { ChartConfig, ChartKind } from "../core/types";
-import { sheetToData } from "../taskpane/datasheet";
+import { sheetToData, transposeSheet } from "../taskpane/datasheet";
 import { DEFAULT_SIZE } from "../core/chart";
 
 /* global Excel, Office */
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-function rangeToConfig(values: unknown[][], kind: ChartKind, title: string): ChartConfig {
+function rangeToConfig(values: unknown[][], kind: ChartKind, title: string, transpose: boolean): ChartConfig {
   const cells = values.map((row) => row.map((v) => (v == null ? "" : String(v))));
+  // The datasheet convention is row 1 = categories, column A = series. A user
+  // whose sheet is laid out the other way (series across the top) would silently
+  // get a transposed chart — the transpose toggle swaps axes before parsing.
+  const sheet = transpose ? transposeSheet({ cells }) : { cells };
   const totals = new Set<number>();
-  const data = sheetToData({ cells }, kind === "waterfall" ? totals : undefined);
+  const data = sheetToData(sheet, kind === "waterfall" ? totals : undefined);
   return {
     kind,
     data,
@@ -36,6 +40,7 @@ async function generate() {
         range.values as unknown[][],
         ($("kind") as HTMLSelectElement).value as ChartKind,
         ($("title") as HTMLInputElement).value,
+        ($("transpose") as HTMLInputElement | null)?.checked ?? false,
       );
       ($("output") as HTMLTextAreaElement).value = JSON.stringify(cfg, null, 2);
       note.textContent = `Generated from ${range.address}. Paste into PowerChart → Automation → Import.`;
