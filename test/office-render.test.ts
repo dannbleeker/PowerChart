@@ -420,6 +420,19 @@ describe("insertSceneIntoSlide", () => {
     expect(group.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
   });
 
+  it("describes the chart group with accessible alt text", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const scene = buildChart(config);
+    await insertSceneIntoSlide(scene, { tagData: JSON.stringify(config) });
+    const group = slide.created.find((s) => s.type === "group") as FakeShape & {
+      altTextDescription?: string;
+      altTextTitle?: string;
+    };
+    expect(group.altTextDescription).toBe(scene.desc);
+    if (scene.title) expect(group.altTextTitle).toBe(scene.title);
+  });
+
   it("renders a pie as a rotated triangle fan", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
