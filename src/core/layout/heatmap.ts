@@ -395,10 +395,25 @@ interface ClusterNode {
  */
 function clusterRows(vecs: number[][]): { order: number[]; root: ClusterNode; maxH: number } {
   const dist = (a: number[], b: number[]) => Math.sqrt(a.reduce((s, v, k) => s + (v - b[k]) ** 2, 0));
+  // Precompute the row-to-row distance matrix ONCE. The linkage evaluation below
+  // re-reads the same leaf-pair distances on every merge scan (an O(rows³) sweep);
+  // recomputing each Euclidean distance there made every read cost another O(cols).
+  // `dist` is symmetric bit-for-bit — (v-b)² === (b-v)² and the reduce runs over the
+  // same indices — so caching D[i][j] leaves the linkage sums byte-identical.
+  const n = vecs.length;
+  const D: number[][] = vecs.map(() => new Array<number>(n));
+  for (let i = 0; i < n; i++) {
+    D[i][i] = 0;
+    for (let j = i + 1; j < n; j++) {
+      const d = dist(vecs[i], vecs[j]);
+      D[i][j] = d;
+      D[j][i] = d;
+    }
+  }
   let clusters: ClusterNode[] = vecs.map((_, i) => ({ height: 0, members: [i], leaf: i }));
   const linkage = (A: ClusterNode, B: ClusterNode) => {
     let s = 0;
-    for (const i of A.members) for (const j of B.members) s += dist(vecs[i], vecs[j]);
+    for (const i of A.members) for (const j of B.members) s += D[i][j];
     return s / (A.members.length * B.members.length);
   };
   let maxH = 0;

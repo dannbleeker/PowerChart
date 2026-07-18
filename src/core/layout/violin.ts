@@ -24,7 +24,18 @@ const quantile = (sorted: number[], p: number): number => {
 export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const n = data.categories.length;
-  const samplesOf = (c: number) => data.series.map((s) => s.values[c]).filter((v): v is number => v != null);
+  // Each category's observations get read repeatedly — the KDE loop, the flattened
+  // allSamples, and both anchor builders below all ask for the same column. Memoize
+  // per category so the series scan (map + filter over every row) runs once each.
+  const sampleCache = new Map<number, number[]>();
+  const samplesOf = (c: number): number[] => {
+    let s = sampleCache.get(c);
+    if (!s) {
+      s = data.series.map((ser) => ser.values[c]).filter((v): v is number => v != null);
+      sampleCache.set(c, s);
+    }
+    return s;
+  };
   const allSamples = data.categories.flatMap((_, c) => samplesOf(c));
   const fmt = resolveFormat(allSamples, cfg.numberFormat);
   void fmt;
