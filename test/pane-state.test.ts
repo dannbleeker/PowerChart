@@ -354,6 +354,63 @@ describe("status is pane-wide, and only claims what it knows", () => {
   });
 });
 
+describe("task pane — tab accessibility (ARIA tabs pattern)", () => {
+  beforeEach(async () => {
+    await bootPane();
+  });
+  const tabs = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".tabs .tab"));
+
+  it("marks the active tab aria-selected and roves tabindex", () => {
+    const t = tabs();
+    const active = t.find((x) => x.classList.contains("active"))!;
+    expect(active.getAttribute("aria-selected")).toBe("true");
+    expect(active.tabIndex).toBe(0);
+    const inactive = t.find((x) => !x.classList.contains("active"))!;
+    expect(inactive.getAttribute("aria-selected")).toBe("false");
+    expect(inactive.tabIndex).toBe(-1);
+  });
+
+  it("moves the selection with the arrow keys and follows focus", () => {
+    const t = tabs();
+    t[0].focus();
+    t[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(t[1].getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(t[1]);
+    // Home jumps back to the first.
+    t[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    expect(t[0].getAttribute("aria-selected")).toBe("true");
+  });
+});
+
+describe("task pane — overflow menu accessibility (ARIA menu pattern)", () => {
+  beforeEach(async () => {
+    await bootPane();
+  });
+
+  it("exposes menuitems, opens into the menu, and returns focus to the trigger on Escape", () => {
+    const btn = $("more-actions") as HTMLButtonElement;
+    const menu = document.getElementById("actions-menu")!;
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>("button"));
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.getAttribute("role") === "menuitem")).toBe(true);
+
+    btn.click();
+    expect(menu.hidden).toBe(false);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(items[0]);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it("announces status through a polite live region", () => {
+    const n = $("host-note");
+    expect(n.getAttribute("role")).toBe("status");
+    expect(n.getAttribute("aria-live")).toBe("polite");
+  });
+});
+
 describe("element previews are sized for their own shape", () => {
   it("does not stretch the KPI tile like the process flow", async () => {
     // The flow is 480x44 and built to shrink, so it wants width:100%. The KPI

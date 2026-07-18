@@ -23,7 +23,7 @@ import {
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScene, type ResultRow, type ResultsSummary } from "../core/demo";
 import { buildCheckbox, buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene, type CheckState } from "../core/elements";
-import { localizePane, localizeTree } from "./i18n";
+import { localizePane, localizeTree, t } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 import { BUILTIN_TEMPLATES } from "./templates";
 
@@ -232,7 +232,11 @@ const statusBar = document.getElementById("status-bar");
 const statusElapsed = document.getElementById("status-elapsed");
 
 function note(text: string, status: "ok" | "err" | "busy" | "none" = "none") {
-  hostNote.textContent = text;
+  // Route status text through the runtime translator so a localized pane
+  // announces it in the user's language (exact-match messages; interpolated
+  // ones fall through to English until the catalog carries params). The
+  // aria-live host-note then reads the change to a screen reader.
+  hostNote.textContent = t(text);
   hostNote.className = status === "none" ? "hint" : `hint status-${status}`;
   // The strip carries the note now, so it has to follow it: shown whenever
   // there is something to say, collapsed when there is not.
@@ -433,17 +437,43 @@ function wireTabs() {
    * buttons, so hiding it there removes a trap rather than a feature.
    */
   const showBarFor = (name?: string) => bar?.toggleAttribute("hidden", name !== "chart");
-  for (const tab of tabs) {
-    tab.addEventListener("click", () => {
-      const name = tab.dataset.tab;
-      tabs.forEach((t) => t.classList.toggle("active", t === tab));
-      panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === name));
-      showBarFor(name);
+  // Select a tab and mirror it into the ARIA tab pattern: one tab is
+  // aria-selected and in the tab order (tabindex 0), the rest are out of it
+  // (tabindex -1) and reachable only via the arrow keys. Without this a screen
+  // reader can't tell which mode is active and keyboard users tab through every
+  // one. `focus` is false for the initial paint (don't steal focus on boot).
+  const select = (tab: HTMLButtonElement, focus: boolean) => {
+    const name = tab.dataset.tab;
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
     });
-  }
-  // No initial call: the bar ships visible and Chart ships active, so the
-  // default is already right — and a ?tab= deep link CLICKS its tab, which
-  // runs the listener above. Setting it here as well only looked prudent.
+    panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === name));
+    showBarFor(name);
+    if (focus) tab.focus();
+  };
+  tabs.forEach((tab, i) => {
+    tab.addEventListener("click", () => select(tab, false));
+    tab.addEventListener("keydown", (e) => {
+      // Left/Right move between tabs (wrapping); Home/End jump to the ends —
+      // the WAI-ARIA tabs keyboard model.
+      const delta = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      let next = -1;
+      if (delta) next = (i + delta + tabs.length) % tabs.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = tabs.length - 1;
+      if (next >= 0) {
+        e.preventDefault();
+        select(tabs[next], true);
+      }
+    });
+  });
+  // Seed the ARIA state to match the markup's default active tab, without
+  // moving focus. A ?tab= deep link CLICKS its tab afterwards, re-running select.
+  const initial = tabs.find((t) => t.classList.contains("active")) ?? tabs[0];
+  if (initial) select(initial, false);
 }
 
 /** The footer "⋯" overflow menu holding the secondary actions (edit selected,
@@ -453,20 +483,48 @@ function wireActionsMenu() {
   const btn = document.getElementById("more-actions");
   const menu = document.getElementById("actions-menu");
   if (!btn || !menu) return;
-  const setOpen = (open: boolean) => {
+  // Give the popup the ARIA menu role so a screen reader announces it as a menu
+  // and its entries as menu items, reachable with the arrow keys.
+  btn.setAttribute("aria-haspopup", "menu");
+  menu.setAttribute("role", "menu");
+  const items = Array.from(menu.querySelectorAll<HTMLButtonElement>("button"));
+  items.forEach((it) => {
+    it.setAttribute("role", "menuitem");
+    it.tabIndex = -1;
+  });
+  const focusItem = (i: number) => items[(i + items.length) % items.length]?.focus();
+  const setOpen = (open: boolean, restoreFocus = false) => {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", String(open));
+    if (open) focusItem(0); // move into the menu so the keyboard lands there
+    else if (restoreFocus) btn.focus(); // Escape/close returns focus to the trigger
   };
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     setOpen(menu.hidden);
   });
-  menu.addEventListener("click", () => setOpen(false));
+  menu.addEventListener("click", () => setOpen(false, true));
+  menu.addEventListener("keydown", (e) => {
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      focusItem(i + 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      focusItem(i - 1);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      focusItem(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      focusItem(items.length - 1);
+    }
+  });
   document.addEventListener("click", (e) => {
     if (!menu.hidden && e.target !== btn && !menu.contains(e.target as Node)) setOpen(false);
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !menu.hidden) setOpen(false);
+    if (e.key === "Escape" && !menu.hidden) setOpen(false, true);
   });
 }
 
