@@ -1,5 +1,6 @@
 import type { SceneNode, TextNode } from "./scene";
 import { textWidth } from "./scene";
+import { BoxHash, gridCellFor } from "./grid";
 
 /**
  * Global label de-collision pass (a lightweight take on think-cell's
@@ -48,15 +49,20 @@ export function resolveLabelCollisions(nodes: SceneNode[]): void {
   // Lower rank settles first and becomes an obstacle for the rest.
   movable.sort((a, b) => a.rank - b.rank);
 
-  const settled: Box[] = [...fixed];
+  // Spatial hash over the settled boxes so each movable label tests only its
+  // neighbourhood, not the whole settled set on every one of its ≤10 nudges. The
+  // exact `overlaps` test still decides, so the nudged positions are identical.
+  const cell = gridCellFor([...fixed, ...movable.map((m) => tightBox(m.node))]);
+  const settled = new BoxHash<Box>(cell);
+  for (const b of fixed) settled.insert(b, b);
   for (const { node } of movable) {
     let box = tightBox(node);
     let tries = 0;
-    while (settled.some((s) => overlaps(box, s)) && tries < 10) {
+    while (settled.some(box, (s) => overlaps(box, s)) && tries < 10) {
       node.y -= node.fontSize * 0.55; // nudge upward
       box = tightBox(node);
       tries++;
     }
-    settled.push(box);
+    settled.insert(box, box);
   }
 }

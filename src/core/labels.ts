@@ -5,6 +5,8 @@
  * Points are processed as given (callers can pre-sort by importance).
  */
 
+import { BoxHash, gridCellFor } from "./grid";
+
 export interface Box {
   x: number;
   y: number;
@@ -61,7 +63,13 @@ export function placeLabels(
   pad = 2,
 ): PlacedLabel[] {
   const placed: PlacedLabel[] = [];
-  const taken: Box[] = [...obstacles];
+  // Spatial hash over the taken boxes so a dense scatter's candidate test stays
+  // near-linear instead of scanning every placed label/marker (the old
+  // `taken.some(...)` was 8·n² across all points). The exact `overlaps` test
+  // still decides, so placement is byte-identical to the full scan.
+  const cell = gridCellFor([...obstacles, ...requests.map((r) => ({ w: r.w, h: r.h }))]);
+  const taken = new BoxHash<Box>(cell);
+  for (const o of obstacles) taken.insert(o, o);
   requests.forEach((req, index) => {
     const options = candidates(req, pad);
     for (let slot = 0; slot < options.length; slot++) {
@@ -74,9 +82,9 @@ export function placeLabels(
       ) {
         continue;
       }
-      if (taken.some((t) => overlaps(box, t))) continue;
+      if (taken.some(box, (t) => overlaps(box, t))) continue;
       placed.push({ index, box, slot });
-      taken.push(box);
+      taken.insert(box, box);
       return;
     }
   });

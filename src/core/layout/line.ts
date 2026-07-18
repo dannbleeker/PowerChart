@@ -6,6 +6,22 @@ import { lerpColor } from "../color";
 import { baselineNode, categorySlots, chromeNodes, computeFrame, computeFrameHorizontal, footnoteH, valueScale } from "./frame";
 import { horizontalChrome, seriesLabelNodes, type LayoutResult } from "./column";
 
+/**
+ * Slab count for a filled area/ribbon segment.
+ *
+ * The renderers have no polygon fill, so a segment is tiled with thin rects.
+ * This was a flat 24 regardless of on-screen width, which put sub-pixel rects on
+ * narrow charts and multiplied the Office.js shape count ~24× per segment (a
+ * 30×5 stacked area is ~3,500 rects, right against the host's shape budget).
+ * Scale to the segment's pixel span (~4px per slab, the eye can't resolve a
+ * finer staircase) and cap at the old 24 so a wide segment never GAINS shapes;
+ * a stepped (staircase) segment has a flat top and needs no tessellation.
+ */
+function slabSteps(spanPx: number, stepped?: "before" | "after" | "center"): number {
+  if (stepped) return stepped === "center" ? 2 : 1;
+  return Math.max(2, Math.min(24, Math.ceil(Math.abs(spanPx) / 4)));
+}
+
 /** Line and area charts over categories. Lines are 2pt with ≥3pt markers. */
 export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   if ((cfg.kind === "line" || cfg.kind === "area") && decor.sparkline) {
@@ -79,8 +95,9 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       const h0 = highs[c];
       const h1 = highs[c + 1];
       if (l0 == null || l1 == null || h0 == null || h1 == null) continue;
-      const steps = 24;
-      const w = (slots.centers[c + 1] - slots.centers[c]) / steps;
+      const span = slots.centers[c + 1] - slots.centers[c];
+      const steps = slabSteps(span);
+      const w = span / steps;
       for (let k = 0; k < steps; k++) {
         const t = (k + 0.5) / steps;
         const yT = scale.toY(h0 + (h1 - h0) * t);
@@ -130,8 +147,9 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
         const yTop1 = scale.toY(upper[c + 1]);
         const yBot0 = scale.toY(lower[c]);
         const yBot1 = scale.toY(lower[c + 1]);
-        const steps = 24;
-        const w = (slots.centers[c + 1] - slots.centers[c]) / steps;
+        const span = slots.centers[c + 1] - slots.centers[c];
+        const steps = slabSteps(span, decor.stepped);
+        const w = span / steps;
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
           // Stepped areas hold a flat top across the interval (staircase);
@@ -345,8 +363,9 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, decor: Decorations
       const fill = lerpColor("#ffffff", color, 0.16);
       const floor = plot.y + plot.h;
       for (let i = 0; i < pts.length - 1; i++) {
-        const steps = 8;
-        const w = (pts[i + 1].x - pts[i].x) / steps;
+        const span = pts[i + 1].x - pts[i].x;
+        const steps = slabSteps(span);
+        const w = span / steps;
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
           const y = pts[i].y + (pts[i + 1].y - pts[i].y) * t;
@@ -659,8 +678,9 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const xL1 = toX(lower[c + 1]);
         const xU0 = toX(upper[c]);
         const xU1 = toX(upper[c + 1]);
-        const steps = 24;
-        const h = (centers[c + 1] - centers[c]) / steps;
+        const span = centers[c + 1] - centers[c];
+        const steps = slabSteps(span);
+        const h = span / steps;
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
           const xL = xL0 + (xL1 - xL0) * t;
