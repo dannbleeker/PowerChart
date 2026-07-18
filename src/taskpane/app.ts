@@ -79,8 +79,37 @@ interface AppState {
   footnote: string;
   /** Comma-separated slice indices to explode (pie/doughnut), 1-based in the UI. */
   pieExplode: string;
-  /** Kind-specific config without pane controls, preserved across edits. */
-  extras: Pick<ChartConfig, "boxplot" | "heatmap" | "map" | "combo" | "gapWidth" | "overlap">;
+  /**
+   * Kind-specific / advanced config that has no pane control, preserved verbatim
+   * across a load→edit→export (and the shape-tag re-save). Without this, importing
+   * an authored chart and re-saving it silently strips these shipped features.
+   * pie / waterfall / numberFormat are carried here too but MERGED with their
+   * pane-driven parts (explode, total "e" tokens, decimals/suffix/locale) in
+   * currentConfig, so the control still wins for the fields it owns.
+   */
+  extras: Pick<
+    ChartConfig,
+    | "boxplot"
+    | "heatmap"
+    | "map"
+    | "combo"
+    | "gapWidth"
+    | "overlap"
+    | "multiples"
+    | "scatter"
+    | "radar"
+    | "gantt"
+    | "butterfly"
+    | "tilemap"
+    | "otherBucket"
+    | "pareto"
+    | "categorySort"
+    | "secondaryAxis"
+    | "labelOffsets"
+    | "pie"
+    | "waterfall"
+    | "numberFormat"
+  >;
   /** When set, "Update chart" replaces this shape in place. */
   editTarget: EditTarget | null;
 }
@@ -131,6 +160,20 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
       combo: cfg.combo,
       gapWidth: cfg.gapWidth,
       overlap: cfg.overlap,
+      multiples: cfg.multiples,
+      scatter: cfg.scatter,
+      radar: cfg.radar,
+      gantt: cfg.gantt,
+      butterfly: cfg.butterfly,
+      tilemap: cfg.tilemap,
+      otherBucket: cfg.otherBucket,
+      pareto: cfg.pareto,
+      categorySort: cfg.categorySort,
+      secondaryAxis: cfg.secondaryAxis,
+      labelOffsets: cfg.labelOffsets,
+      pie: cfg.pie,
+      waterfall: cfg.waterfall,
+      numberFormat: cfg.numberFormat,
     },
   };
 }
@@ -204,34 +247,45 @@ function currentConfig(): ChartConfig {
     .split(",")
     .map((v) => Number(v.trim()) - 1)
     .filter((v) => Number.isInteger(v) && v >= 0);
+  // pie / waterfall / numberFormat are half pane-driven, half carried in extras:
+  // the control owns explode / total "e" tokens / decimals+suffix+locale, but an
+  // imported chart's semi, breakout, variableRadius, detailGroups, spacerIndices
+  // and forceSign live only in extras and would be lost if the control overwrote
+  // the whole object. Merge so the pane wins its own fields and the rest survives.
+  const pieBase = { ...(state.extras.pie ?? {}) };
+  delete pieBase.explode;
+  const pie =
+    explode.length || Object.keys(pieBase).length ? { ...pieBase, ...(explode.length ? { explode } : {}) } : undefined;
+  const numberFormat: ChartConfig["numberFormat"] =
+    state.decimals !== "auto" || state.suffix || state.locale !== "en-US" || state.extras.numberFormat
+      ? {
+          ...(state.extras.numberFormat ?? {}),
+          decimals: state.decimals === "auto" ? "auto" : Number(state.decimals),
+          suffix: state.suffix || undefined,
+          locale: state.locale !== "en-US" ? state.locale : undefined,
+        }
+      : undefined;
   return {
     kind: state.kind,
     data,
+    ...state.extras,
     horizontal: state.horizontal || undefined,
     footnote: state.footnote || undefined,
-    pie: explode.length ? { explode } : undefined,
-    ...state.extras,
+    pie,
     valueAxisTitle: state.axisTitle || undefined,
     logScale: state.logScale || undefined,
     style: mergedStyle(),
     ...size,
     title: state.title || undefined,
     decorations: { ...state.decorations, labelContent: labelParts },
-    waterfall: { totalIndices: [...totals] },
+    waterfall: { ...(state.extras.waterfall ?? {}), totalIndices: [...totals] },
     segmentOrder: state.segmentOrder === "sheet" ? undefined : state.segmentOrder,
     axisBreak,
     scale:
       (min != null && Number.isFinite(min)) || (max != null && Number.isFinite(max))
         ? { min: Number.isFinite(min!) ? min : undefined, max: Number.isFinite(max!) ? max : undefined }
         : undefined,
-    numberFormat:
-      state.decimals !== "auto" || state.suffix || state.locale !== "en-US"
-        ? {
-            decimals: state.decimals === "auto" ? "auto" : Number(state.decimals),
-            suffix: state.suffix || undefined,
-            locale: state.locale !== "en-US" ? state.locale : undefined,
-          }
-        : undefined,
+    numberFormat,
   };
 }
 
