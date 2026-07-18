@@ -52,7 +52,10 @@ export function valueScale(
   if (logScale && dataMax > 0) {
     const minPos = Math.max(dataMin > 0 ? dataMin : dataMax / 1000, 1e-12);
     const lo10 = Math.floor(Math.log10(override?.min && override.min > 0 ? override.min : minPos));
-    const hi10 = Math.ceil(Math.log10(override?.max && override.max > 0 ? override.max : dataMax));
+    // Never let the top decade fall below the bottom one: a manual scale.min set
+    // above the data would give an empty tick list → undefined min → NaN toY for
+    // the whole axis. Clamp to at least one decade.
+    const hi10 = Math.max(lo10, Math.ceil(Math.log10(override?.max && override.max > 0 ? override.max : dataMax)));
     const ticks: number[] = [];
     for (let e = lo10; e <= hi10; e++) ticks.push(Math.pow(10, e));
     const min = ticks[0];
