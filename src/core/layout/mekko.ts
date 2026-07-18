@@ -4,6 +4,7 @@ import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { chromeNodes, computeFrame, computeFrameHorizontal, titleHeight } from "./frame";
 import { legendRow, seriesLabelNodes, type LayoutResult } from "./column";
+import { columnPositiveTotal } from "./totals";
 
 /**
  * Mekko (Marimekko) chart, think-cell style. Two variants:
@@ -20,7 +21,7 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const H = !!cfg.horizontal;
   const units = !!data.xExtent?.some((v) => v != null && v > 0);
 
-  const totals = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
+  const totals = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const extents = units ? data.categories.map((_, c) => Math.max(0, data.xExtent?.[c] ?? 0)) : totals;
   const maxTotal = Math.max(1e-9, ...totals);
   const fmt = resolveFormat(

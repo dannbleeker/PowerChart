@@ -17,6 +17,7 @@ import {
 import { layoutWaterfall } from "./waterfall";
 import { layoutMekko } from "./mekko";
 import { layoutLine } from "./line";
+import { columnNegativeTotal, columnPositiveTotal, columnSignedTotal } from "./totals";
 
 export interface LayoutResult {
   nodes: SceneNode[];
@@ -60,9 +61,9 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const overlapFrac = Math.max(-100, Math.min(100, cfg.overlap ?? 0)) / 100;
   const centers = Array.from({ length: n }, (_, i) => catStart + slotLen * (i + 0.5));
 
-  const posTotals = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
-  const negTotals = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
-  const signedTotals = data.categories.map((_, c) => data.series.reduce((a, s) => a + (s.values[c] ?? 0), 0));
+  const posTotals = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
+  const negTotals = data.categories.map((_, c) => columnNegativeTotal(data.series, c));
+  const signedTotals = data.categories.map((_, c) => columnSignedTotal(data.series, c));
   // Per-category denominator for 100% charts (think-cell's "100%=" row).
   const denominators = data.categories.map((_, c) => {
     const d = data.hundredPercent?.[c];
