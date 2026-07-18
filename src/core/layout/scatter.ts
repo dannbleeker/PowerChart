@@ -5,7 +5,7 @@ import { formatNumber, formatP, histogramBins, niceTicks, resolveFormat, trendSt
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
-import { lerpColor, sequentialScale } from "../color";
+import { lerpColor, sequentialScale, zoneFill } from "../color";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -242,7 +242,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     zones.forEach((z, i) => {
       if (z.w <= 0 || z.h <= 0) return;
       // Checkerboard tint so adjacent zones read as distinct regions.
-      nodes.push({ kind: "rect", ...z, fill: i === 0 || i === 3 ? "#f2f1ec" : "#faf9f6", name: `quadrant-${i}` });
+      nodes.push({
+        kind: "rect",
+        ...z,
+        fill: zoneFill(style.background, i === 0 || i === 3 ? "#f2f1ec" : "#faf9f6"),
+        name: `quadrant-${i}`,
+      });
       const label = labels?.[i];
       if (label) {
         nodes.push({
@@ -306,7 +311,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
             h: Math.abs(clampY(band.to) - clampY(band.from)),
           };
     if (r.w <= 0 || r.h <= 0) return;
-    nodes.push({ kind: "rect", ...r, fill: band.color ?? "#f2f1ec", name: `band-${i}` });
+    nodes.push({ kind: "rect", ...r, fill: band.color ?? zoneFill(style.background, "#f2f1ec"), name: `band-${i}` });
     if (band.label) {
       nodes.push({
         kind: "text",

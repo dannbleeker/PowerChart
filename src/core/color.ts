@@ -35,6 +35,29 @@ export function lerpColor(c0: string, c1: string, t: number): string {
 /** Fill for cells/tiles with no data. */
 export const NO_DATA = "#e6e6e6";
 
+/** Perceptual (linear-light) relative luminance of a hex colour, 0..1. */
+const relLuminance = (hex: string): number => {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+/**
+ * A background panel/zone tint (weekend shading, marginal-total strips, scatter
+ * quadrants) that stays subtle on either theme. The charts hardcode tints tuned
+ * for a light canvas; on a LIGHT background this returns that literal UNCHANGED
+ * (so default charts are byte-identical), but on a DARK background a light-grey
+ * box would glare, so mirror the tint's small step away from white into an equal
+ * step away from black — a faint lift off the dark canvas instead.
+ */
+export function zoneFill(background: string, lightFill: string): string {
+  if (relLuminance(background) >= 0.5) return lightFill;
+  const drop = Math.min(1, Math.max(0, 1 - relLuminance(lightFill)));
+  return lerpColor(background, "#ffffff", drop);
+}
+
 /**
  * Sequential scale: 12% tint of the color (kept off pure white so a low
  * value never reads as "no data") → the full color.
