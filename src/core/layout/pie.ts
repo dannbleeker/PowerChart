@@ -40,9 +40,16 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const footH = footnoteH(cfg, style, decor);
   const cx = hasBreakout ? cfg.width * 0.3 : cfg.width / 2;
   const cy = titleH + (cfg.height - titleH - footH) / 2;
-  const r = hasBreakout
-    ? Math.min(cfg.width * 0.24, (cfg.height - titleH - footH) / 2 - fs * 2.2)
-    : Math.min(cfg.width * 0.5 - fs * 7, (cfg.height - titleH - footH) / 2 - fs * 2.2);
+  // Floor at a positive radius: on a very narrow/short frame the width or height
+  // term can go negative, which would mirror wedges through the centre and hand
+  // the doughnut hole negative radii. Every sibling round chart (gauge, sunburst,
+  // radar) clamps the same way.
+  const r = Math.max(
+    1,
+    hasBreakout
+      ? Math.min(cfg.width * 0.24, (cfg.height - titleH - footH) / 2 - fs * 2.2)
+      : Math.min(cfg.width * 0.5 - fs * 7, (cfg.height - titleH - footH) / 2 - fs * 2.2),
+  );
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);

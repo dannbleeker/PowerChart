@@ -4,7 +4,7 @@ import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatP, histogramBins, niceTicks, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
-import { PALETTE } from "../style";
+import { PALETTE, paletteColor } from "../style";
 import { lerpColor, sequentialScale } from "../color";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
@@ -544,7 +544,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const label = `Group ${g}`;
       // Under a color scale the chip's color would be a lie (color means the
       // Color row there), so the shape carries the legend in neutral ink.
-      const chipFill = colorScale ? style.mutedText : (cfg.style?.palette ?? PALETTE)[(g - 1) % 8];
+      const chipFill = colorScale ? style.mutedText : paletteColor(cfg.style?.palette ?? PALETTE, g - 1);
       // The chip is drawn like the points it explains, area and all — so an
       // area-matched star is 1.67x wider than `chip` and would sit on its own
       // label. Advance by what was actually drawn. Without markers the drawn
@@ -772,7 +772,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         ? colorScale.of(p.color)
         : colorScale
           ? style.mutedText
-          : (cfg.style?.palette ?? PALETTE)[gi % 8];
+          : paletteColor(cfg.style?.palette ?? PALETTE, gi);
     nodes.push(markerNode(markerFor(p.group), px(p, i), py(p, i), r, fill, style.background, 1, `point-${i}`));
     // Keep labels off the mark as DRAWN: an area-matched star reaches ~1.67x
     // its data radius, and a keep-out box built from `r` would let a label sit

@@ -3,6 +3,14 @@ import type { NumberFormat } from "./types";
 export const DEFAULT_FORMAT: NumberFormat = { decimals: "auto" };
 
 /**
+ * Coerce a decimals count into the range `toFixed`/`Intl.NumberFormat` accept
+ * (0–100). An authored or hand-edited `numberFormat.decimals` of -1 or 500
+ * would otherwise throw a RangeError out of `toFixed`, aborting the whole
+ * render — the same class of bad input the locale try/catch already repairs.
+ */
+const safeDecimals = (d: number): number => (Number.isFinite(d) ? Math.min(100, Math.max(0, Math.trunc(d))) : 0);
+
+/**
  * Intl.NumberFormat instances are expensive to construct but immutable and
  * reusable, and a chart formats hundreds of labels sharing a handful of
  * (locale, decimals) pairs. `Number.prototype.toLocaleString(locale, opts)` is
@@ -36,7 +44,9 @@ export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string
   if (!Number.isFinite(v)) return "";
   const f = { ...DEFAULT_FORMAT, ...fmt };
   const abs = Math.abs(v);
-  const decimals = f.decimals === "auto" ? (abs !== 0 && abs < 1 ? 2 : abs < 10 ? 1 : 0) : f.decimals;
+  // Exact zero takes no fractional digits — "0", not "0.0". (The old test
+  // `abs !== 0 && abs < 1` fell through to the `< 10 → 1 decimal` branch for 0.)
+  const decimals = f.decimals === "auto" ? (abs === 0 ? 0 : abs < 1 ? 2 : abs < 10 ? 1 : 0) : safeDecimals(f.decimals);
   // A small negative that rounds toward zero would print as "-0". Normalise the
   // VALUE, not the formatted string: Intl renders the sign as U+2212 in some
   // locales, prefixes an invisible directional mark in RTL ones, and uses
@@ -64,6 +74,7 @@ export function resolveFormat(values: number[], fmt: Partial<NumberFormat> = {})
 
 export function formatPercent(v: number, decimals = 0, forceSign = false): string {
   if (!Number.isFinite(v)) return "";
+  decimals = safeDecimals(decimals);
   // toFixed is not locale-aware, so the "-0" it can produce is always ASCII.
   let n = (v * 100).toFixed(decimals);
   if (/^-0(\.0+)?$/.test(n)) n = n.slice(1);
