@@ -454,11 +454,61 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
   return { width: cfg.width, height: cfg.height, nodes };
 }
 
+/** Human-readable chart-kind names for the accessible description. */
+const KIND_LABEL: Record<ChartKind, string> = {
+  stacked: "stacked column chart",
+  clustered: "clustered column chart",
+  stacked100: "100% stacked column chart",
+  waterfall: "waterfall chart",
+  mekko: "Mekko chart",
+  line: "line chart",
+  area: "area chart",
+  butterfly: "butterfly chart",
+  scatter: "scatter plot",
+  bubble: "bubble chart",
+  gantt: "Gantt chart",
+  combo: "combination chart",
+  pie: "pie chart",
+  doughnut: "doughnut chart",
+  boxplot: "box-and-whisker plot",
+  radar: "radar chart",
+  heatmap: "heatmap",
+  tilemap: "tile-grid map",
+  cascade: "cascade chart",
+  funnel: "funnel chart",
+  waffle: "waffle chart",
+  treemap: "treemap",
+  sunburst: "sunburst chart",
+  violin: "violin plot",
+  candlestick: "candlestick chart",
+};
+
+/**
+ * A one-line text alternative for the chart — the accessible description a
+ * screen reader reads after the title. Names the kind, the series and the
+ * categories (scatter/bubble rows and points read as series/categories, which
+ * is what the data model calls them). Deliberately concise; it is a summary,
+ * not a data table.
+ */
+export function describeChart(cfg: ChartConfig): string {
+  const label = KIND_LABEL[cfg.kind] ?? "chart";
+  const cats = (cfg.data?.categories ?? []).filter(Boolean);
+  const series = cfg.data?.series ?? [];
+  const seriesNames = series.map((s) => s.name).filter(Boolean);
+  const list = (xs: string[], n = 4) =>
+    xs.length <= n ? xs.join(", ") : `${xs.slice(0, n).join(", ")} and ${xs.length - n} more`;
+  const bits: string[] = [`${label}${cfg.horizontal ? " (horizontal)" : ""}`];
+  if (seriesNames.length) bits.push(`${seriesNames.length} data ${seriesNames.length === 1 ? "series" : "series"}: ${list(seriesNames)}`);
+  if (cats.length) bits.push(`${cats.length} ${cats.length === 1 ? "category" : "categories"}: ${list(cats)}`);
+  return bits.join(". ") + ".";
+}
+
 /** Build a renderer-agnostic scene from a chart config. Pure and synchronous. */
 export function buildChart(rawCfg: ChartConfig): Scene {
   const cfg0 = normalizeConfig(rawCfg);
+  const a11y = { title: cfg0.title, desc: describeChart(cfg0) };
   const multiples = buildMultiples(cfg0);
-  if (multiples) return multiples;
+  if (multiples) return { ...multiples, ...a11y };
   const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(cfg0))));
   let cfg = collapseOther(extracted.cfg);
   const errors = extracted.errors;
@@ -655,7 +705,7 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       }
     }
   }
-  return { width: cfg.width, height: cfg.height, nodes };
+  return { width: cfg.width, height: cfg.height, nodes, ...a11y };
 }
 
 /**

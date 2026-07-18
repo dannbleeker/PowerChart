@@ -160,6 +160,14 @@ export interface Scene {
   width: number;
   height: number;
   nodes: SceneNode[];
+  /**
+   * Accessible name (the chart title) and a one-line text alternative
+   * summarising the data. Emitted by the SVG renderer as `<title>`/`<desc>`
+   * under `role="img"`, so a screen reader announces the chart instead of
+   * silence. Set by buildChart; optional so hand-built scenes stay valid.
+   */
+  title?: string;
+  desc?: string;
 }
 
 /**
