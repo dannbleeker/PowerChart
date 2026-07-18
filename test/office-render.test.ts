@@ -498,6 +498,28 @@ describe("scene node mapping", () => {
     expect(b.lineFormat.visible).toBe(false);
   });
 
+  it("honours an 8-digit #RRGGBBAA fill: 6-digit hue + transparency, never mis-parsed", async () => {
+    // #RRGGBBAA is a valid hand-authored colour that the SVG preview and the
+    // skill's pptx render translucent. Office.js setSolidColor validates 6-digit
+    // hex only, so the alpha byte has to move to fill.transparency (1.4) or the
+    // live add-in would mis-parse the value and lose the colour.
+    const slide = await insert([{ kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: "#4e79a780", name: "band" }]);
+    const rect = slide.created.find((s) => s.geo === "rectangle") as (typeof slide.created)[number] & {
+      fill: { transparency?: number };
+    };
+    expect(rect.fillColor).toBe("#4e79a7"); // hue survives, no 8-digit string reaches Office.js
+    expect(rect.fill.transparency).toBeCloseTo(1 - 128 / 255, 3);
+  });
+
+  it("leaves an opaque 6-digit fill untouched (no transparency set)", async () => {
+    const slide = await insert([{ kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: "#4e79a7", name: "bar" }]);
+    const rect = slide.created.find((s) => s.geo === "rectangle") as (typeof slide.created)[number] & {
+      fill: { transparency?: number };
+    };
+    expect(rect.fillColor).toBe("#4e79a7");
+    expect(rect.fill.transparency).toBeUndefined();
+  });
+
   it("maps chevrons to chevron/homePlate geometry", async () => {
     const slide = await insert([
       { kind: "chevron", x: 0, y: 0, w: 40, h: 20, fill: "#123456", flatLeft: true },
