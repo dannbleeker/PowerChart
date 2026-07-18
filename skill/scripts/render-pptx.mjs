@@ -41,7 +41,7 @@ if (!engine) {
   );
   process.exit(1);
 }
-const { buildChart, buildAgendaScene, DEFAULT_SIZE, arrowheadBox, sceneToOoxmlPieAngle, annularSectorPoints, SYMBOL_PRESET } =
+const { buildChart, buildAgendaScene, DEFAULT_SIZE, arrowheadBox, annularSectorPoints, SYMBOL_PRESET } =
   engine;
 
 // A stale packaged lib (the skill ships no build step) can be missing an export,
@@ -196,21 +196,23 @@ function addNode(slide, n, dx, dy) {
         fill: { color: hex(n.fill) },
         line: n.stroke ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
       };
-      if (n.innerR > 0) {
-        // Sunburst ring / gauge: a real filled annular sector via custGeom
-        // (OOXML's "pie" shape can't express an inner radius) — see
-        // annularSectorPoints (outer arc forward, then inner arc back).
+      if (span >= 359.9 && n.innerR <= 0) {
+        slide.addShape("ellipse", box);
+      } else {
+        // Filled sector via custGeom for BOTH the doughnut/gauge ring (innerR>0)
+        // and the solid pie wedge (innerR=0, which annularSectorPoints degenerates
+        // to a fan from the centre — outer arc forward, then the centre point back).
+        // The OOXML "pie" preset can't be used for the solid case: it takes two
+        // independently-normalized angles and draws swAng = end − start, so any
+        // slice crossing 3 o'clock (every pie has exactly one) gets a negative
+        // sweep and renders the wrong wedge. custGeom samples polar() directly, so
+        // it's correct across the boundary — the same reason the ring uses it.
         const rel = (p) => ({ x: (p.x - x0) * IN, y: (p.y - y0) * IN });
-        const arc = annularSectorPoints(n.cx, n.cy, n.innerR, n.r, n.startAngle, n.endAngle);
+        const arc = annularSectorPoints(n.cx, n.cy, Math.max(0, n.innerR), n.r, n.startAngle, n.endAngle);
         const half = arc.length / 2; // outer points carry moveTo; inner points don't.
         const pts = arc.map((p, i) => (i < half ? { ...rel(p), moveTo: i === 0 } : rel(p)));
         pts.push({ close: true });
         slide.addShape("custGeom", { ...box, points: pts });
-      } else if (span >= 359.9) {
-        slide.addShape("ellipse", box);
-      } else {
-        // Scene angles: 0 = 12 o'clock, clockwise; OOXML pie: 0 = 3 o'clock.
-        slide.addShape("pie", { ...box, angleRange: [sceneToOoxmlPieAngle(n.startAngle), sceneToOoxmlPieAngle(n.endAngle)] });
       }
       break;
     }
