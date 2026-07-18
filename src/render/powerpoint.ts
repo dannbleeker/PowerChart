@@ -29,6 +29,14 @@ export interface InsertOptions {
    * the chart — the think-cell "live chart" pattern.
    */
   tagData?: string;
+  /**
+   * Accessible description set on the chart group (Shape.altTextDescription), so
+   * a screen reader announces the chart in PowerPoint instead of reading a pile
+   * of unnamed shapes. Comes from the scene's `desc` (see describeChart).
+   */
+  altText?: string;
+  /** Accessible title (Shape.altTextTitle); comes from the chart title. */
+  altTitle?: string;
 }
 
 /** Tag key under which the chart's serialized config is persisted. */
@@ -202,7 +210,9 @@ export async function insertSceneIntoSlide(
     // Shapes are committed by now, so grouping/tagging (which some hosts,
     // notably PowerPoint on the web, don't support) can't roll back the chart.
     onPhase?.("group");
-    await groupAndTagAll(context, [{ getSlide, created, opts }]);
+    await groupAndTagAll(context, [
+      { getSlide, created, opts: { ...opts, altText: scene.desc, altTitle: scene.title } },
+    ]);
     onPhase?.("done");
   });
 }
@@ -266,7 +276,13 @@ export async function updateChartsInSlides(
     //    all reach the same slide.
     const rendered: Grouping[] = [];
     for (const { it, slide } of withOld) {
-      const opts: InsertOptions = { ...it.opts, left: it.target.left, top: it.target.top };
+      const opts: InsertOptions = {
+        ...it.opts,
+        left: it.target.left,
+        top: it.target.top,
+        altText: it.scene.desc,
+        altTitle: it.scene.title,
+      };
       // An existing slide's proxy is stable across syncs — hold it. Only a
       // freshly-added slide needs a per-batch fresh proxy; see SlideThunk.
       const getSlide: SlideThunk = () => slide;
@@ -654,7 +670,14 @@ async function addAndRenderItem(
       );
       return;
     }
-    const opts: InsertOptions = { left: 60, top: 90, group: true, tagData: item.tagData };
+    const opts: InsertOptions = {
+      left: 60,
+      top: 90,
+      group: true,
+      tagData: item.tagData,
+      altText: item.scene.desc,
+      altTitle: item.scene.title,
+    };
     const drawn = await renderShapesChunked(context, getSlide, item.scene, opts);
     created = drawn.length;
     // Shapes are committed by now, so grouping cannot roll them back.
@@ -905,6 +928,16 @@ async function groupAndTagAll(context: PowerPoint.RequestContext, items: Groupin
           it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }
         ).addGroup(it.created);
         group.name = "PowerChart";
+        // Accessible alt text on the group, queued in this same grouping sync so
+        // a screen reader announces the chart — the description the engine built.
+        // Best-effort: a host without these props just ignores the assignment.
+        try {
+          const a = group as unknown as { altTextDescription?: string; altTextTitle?: string };
+          if (it.opts.altText) a.altTextDescription = it.opts.altText;
+          if (it.opts.altTitle) a.altTextTitle = it.opts.altTitle;
+        } catch {
+          /* alt text unsupported on this host */
+        }
         tagTargets[i] = group;
       }
       await context.sync();
