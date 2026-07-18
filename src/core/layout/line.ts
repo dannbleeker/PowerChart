@@ -122,7 +122,12 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   };
   // Confidence/uncertainty band from Band low / Band high rows.
   if (!area && bandLow && bandHigh) {
-    ribbon(bandLow, bandHigh, lerpColor("#ffffff", seriesColor(style, 0, data.series[0]?.color), 0.18), "band-ribbon");
+    ribbon(
+      bandLow,
+      bandHigh,
+      lerpColor(style.background, seriesColor(style, 0, data.series[0]?.color), 0.18),
+      "band-ribbon",
+    );
   }
   // Filled gap between two named series (plan-vs-actual ribbon).
   if (!area && decor.fillBetween) {
@@ -130,7 +135,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
     const sa = data.series[ai]?.values;
     const sb = data.series[bi]?.values;
     if (sa && sb)
-      ribbon(sa, sb, lerpColor("#ffffff", seriesColor(style, ai, data.series[ai]?.color), 0.22), "fill-between");
+      ribbon(sa, sb, lerpColor(style.background, seriesColor(style, ai, data.series[ai]?.color), 0.22), "fill-between");
   }
 
   if (area) {
@@ -437,7 +442,7 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, _decor: Decoration
       .filter((p): p is { x: number; y: number; v: number; c: number } => p != null);
     // Light area fill under the line (area kind only), per-segment rects to the floor.
     if (area) {
-      const fill = lerpColor("#ffffff", color, 0.16);
+      const fill = lerpColor(style.background, color, 0.16);
       const floor = plot.y + plot.h;
       for (let i = 0; i < pts.length - 1; i++) {
         const span = pts[i + 1].x - pts[i].x;

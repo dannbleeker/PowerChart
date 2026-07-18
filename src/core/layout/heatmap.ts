@@ -62,7 +62,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const mode = opts.mode && opts.mode !== "auto" ? opts.mode : min < 0 && max > 0 ? "diverging" : "sequential";
   const constant = !all.length || min === max;
   const colorOf = constant
-    ? () => lerpColor("#ffffff", positive, 0.5)
+    ? () => lerpColor(style.background, positive, 0.5)
     : mode === "diverging"
       ? divergingScale(min, max, positive, negative)
       : sequentialScale(min, max, positive);

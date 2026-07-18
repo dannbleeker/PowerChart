@@ -233,7 +233,13 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // members weren't already in descending order.
         const rect = rects.get(r.key);
         if (rect)
-          drawTile(rect, lerpColor(gColor, "#ffffff", 0.15 + 0.12 * (k % 4)), labelOf(r.label), r.value, `tile-${r.i}`);
+          drawTile(
+            rect,
+            lerpColor(gColor, style.background, 0.15 + 0.12 * (k % 4)),
+            labelOf(r.label),
+            r.value,
+            `tile-${r.i}`,
+          );
       });
     });
   }

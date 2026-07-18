@@ -65,7 +65,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const max = Math.max(...vals);
   const base = data.series[0]?.color ?? style.palette[0];
   // Constant data: a flat mid-tone beats a zero-width ramp.
-  const fill = min === max ? () => lerpColor("#ffffff", base, 0.5) : sequentialScale(min, max, base);
+  const fill = min === max ? () => lerpColor(style.background, base, 0.5) : sequentialScale(min, max, base);
   const fmt = resolveFormat(vals, cfg.numberFormat);
 
   const topts = cfg.tilemap ?? {};
@@ -111,7 +111,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const v = values.get(code);
     // In glyph mode the tile is a faint backdrop for the bars; otherwise it
     // carries the value color.
-    const tileFill = glyph ? lerpColor("#ffffff", base, 0.1) : v == null || !vals.length ? NO_DATA : fill(v);
+    const tileFill = glyph ? lerpColor(style.background, base, 0.1) : v == null || !vals.length ? NO_DATA : fill(v);
     const x = x0 + col * (tile + gutter) + (hex && row % 2 === 1 ? (tile + gutter) / 2 : 0);
     const y = hex ? y0 + row * tile * 0.87 : y0 + row * (tile + gutter);
     if (hex) {

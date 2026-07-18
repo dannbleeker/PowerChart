@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
+import { DEFAULT_STYLE } from "../src/core/style";
 import type { ChartConfig } from "../src/core/types";
 import type { LineNode, PolygonNode, RectNode, WedgeNode } from "../src/core/scene";
 
@@ -96,11 +97,15 @@ describe("candlestick", () => {
     expect(s.nodes.some((n) => n.name === "body-1")).toBe(true);
   });
 
-  it("colours rising periods green and falling periods red", () => {
+  it("encodes rising vs falling redundantly: hollow green up, solid red down", () => {
     const up = s.nodes.find((n): n is RectNode => n.name === "body-0")!; // close 46 > open 40
     const down = s.nodes.find((n): n is RectNode => n.name === "body-1")!; // close 43 < open 46
+    // Rising is HOLLOW (background fill, green outline); falling is SOLID red —
+    // so direction reads without colour (greyscale / CVD safe), colour reinforces.
+    expect(up.fill).toBe(DEFAULT_STYLE.background); // hollow body
+    expect(up.stroke).toBe("#1a9e6e"); // green outline
+    expect(down.fill).toBe(DEFAULT_STYLE.negative); // solid red
     expect(up.fill).not.toBe(down.fill);
-    expect(up.fill).toBe("#1a9e6e"); // green
   });
 
   it("the wick spans the full high–low range", () => {
