@@ -15,7 +15,14 @@ function numberFormatter(locale: string, decimals: number): Intl.NumberFormat {
   const key = `${locale} ${decimals}`;
   let nf = NUMBER_FORMATTERS.get(key);
   if (!nf) {
-    nf = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    // A malformed BCP-47 tag (an authored config, a hand-edited shape tag)
+    // makes the Intl constructor throw a RangeError — fall back to en-US
+    // rather than let one bad locale abort the whole render.
+    try {
+      nf = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    } catch {
+      nf = new Intl.NumberFormat("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
     NUMBER_FORMATTERS.set(key, nf);
   }
   return nf;
@@ -23,6 +30,10 @@ function numberFormatter(locale: string, decimals: number): Intl.NumberFormat {
 
 /** Format a value the way think-cell's default label format does: compact, thousands-separated. */
 export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string {
+  // A non-finite value (a divide-by-zero, an empty average, a stray Infinity in
+  // authored data) would otherwise print the literal "NaN"/"Infinity" as chart
+  // text — suppress the label instead of drawing a broken one.
+  if (!Number.isFinite(v)) return "";
   const f = { ...DEFAULT_FORMAT, ...fmt };
   const abs = Math.abs(v);
   const decimals =
@@ -53,6 +64,7 @@ export function resolveFormat(values: number[], fmt: Partial<NumberFormat> = {})
 }
 
 export function formatPercent(v: number, decimals = 0, forceSign = false): string {
+  if (!Number.isFinite(v)) return "";
   // toFixed is not locale-aware, so the "-0" it can produce is always ASCII.
   let n = (v * 100).toFixed(decimals);
   if (/^-0(\.0+)?$/.test(n)) n = n.slice(1);
@@ -65,6 +77,12 @@ export function formatPercent(v: number, decimals = 0, forceSign = false): strin
  * Returns the tick values including the padded ends.
  */
 export function niceTicks(min: number, max: number, count = 5): number[] {
+  // A non-finite bound (from a NaN in the data extent) or an inverted range
+  // (a reversed manual scale.min>max) makes `Math.log10(span)` NaN and turns
+  // every tick into NaN — invisible geometry for the whole value axis. Repair
+  // to a usable range instead of propagating the poison.
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  if (min > max) [min, max] = [max, min];
   if (min === max) {
     if (min === 0) return [0, 1];
     min = Math.min(0, min);
