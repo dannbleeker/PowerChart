@@ -54,3 +54,14 @@ export const DEFAULT_DECOR: Decorations = {
 export function seriesColor(style: ChartStyle, index: number, override?: string): string {
   return override ?? style.palette[index % style.palette.length];
 }
+
+/**
+ * Wrap `index` into `palette` by its ACTUAL length. Scatter's group colouring
+ * hardcoded `% 8` (the default palette length), so a custom palette shorter than
+ * 8 handed out `undefined` for high group ids, and a longer one wrapped early —
+ * the same modulo-length bug fixed for the violin. Guards an empty palette.
+ */
+export function paletteColor(palette: string[], index: number): string {
+  const n = palette.length;
+  return n ? palette[((index % n) + n) % n] : "#888888";
+}
