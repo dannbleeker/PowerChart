@@ -972,7 +972,7 @@ exports[`SVG snapshots > sample sunburst 1`] = `
 <path d="M 147.53 257.98 A 134 134 0 0 1 107.36 141.93 L 160.42 149.56 A 80.4 80.4 0 0 0 184.52 219.19 Z" fill="#92caad" stroke="#ffffff" stroke-width="1" data-name="slice-4"/>
 <text x="106.75" y="210.18" font-size="8.5" fill="#0b0b0b" text-anchor="end" data-name="label-4">Licenses</text>
 <path d="M 160.42 149.56 A 80.4 80.4 0 0 1 240 80.6 L 240 118.12 A 42.88 42.88 0 0 0 197.56 154.9 Z" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="group-2"/>
-<text x="199.63" y="117.48" font-size="8.5" fill="#ffffff" text-anchor="middle" data-name="group-label-2">APAC</text>
+<text x="199.63" y="117.48" font-size="8.5" fill="#0b0b0b" text-anchor="middle" data-name="group-label-2">APAC</text>
 <path d="M 107.36 141.93 A 134 134 0 0 1 167.55 48.27 L 196.53 93.36 A 80.4 80.4 0 0 0 160.42 149.56 Z" fill="#f0b56f" stroke="#ffffff" stroke-width="1" data-name="slice-5"/>
 <text x="121.38" y="87.83" font-size="8.5" fill="#0b0b0b" text-anchor="end" data-name="label-5">Cloud</text>
 <path d="M 167.55 48.27 A 134 134 0 0 1 240 27 L 240 80.6 A 80.4 80.4 0 0 0 196.53 93.36 Z" fill="#f2c290" stroke="#ffffff" stroke-width="1" data-name="slice-6"/>
