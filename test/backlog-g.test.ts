@@ -58,15 +58,18 @@ describe("stepped area", () => {
   };
 
   it("default interpolates the slab top; stepped holds it flat", () => {
-    const plain = buildChart(base);
-    const p0 = plain.nodes.find((n) => n.name === "area-0-0-0") as RectNode;
-    const p23 = plain.nodes.find((n) => n.name === "area-0-0-23") as RectNode;
-    expect(Math.abs(p0.y - p23.y)).toBeGreaterThan(0.5); // sloped top
+    const slabs = (scene: ReturnType<typeof buildChart>) =>
+      scene.nodes.filter((n) => n.name?.startsWith("area-0-0-")) as RectNode[];
 
-    const stepped = buildChart({ ...base, decorations: { segmentLabels: false, stepped: "before" } });
-    const s0 = stepped.nodes.find((n) => n.name === "area-0-0-0") as RectNode;
-    const s23 = stepped.nodes.find((n) => n.name === "area-0-0-23") as RectNode;
-    expect(s0.y).toBeCloseTo(s23.y, 5); // flat top across the interval
+    const plain = slabs(buildChart(base));
+    // A sloped (interpolated) top: the first and last slab of the segment differ.
+    expect(plain.length).toBeGreaterThan(1);
+    expect(Math.abs(plain[0].y - plain[plain.length - 1].y)).toBeGreaterThan(0.5);
+
+    // A stepped area has a flat top across the interval, so the slab-fill needs
+    // no tessellation at all — the segment collapses to a single slab.
+    const stepped = slabs(buildChart({ ...base, decorations: { segmentLabels: false, stepped: "before" } }));
+    expect(stepped.length).toBe(1);
   });
 });
 
