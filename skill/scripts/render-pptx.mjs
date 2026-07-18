@@ -41,13 +41,13 @@ if (!engine) {
   );
   process.exit(1);
 }
-const { buildChart, buildAgendaScene, DEFAULT_SIZE, arrowheadBox, annularSectorPoints, SYMBOL_PRESET } =
+const { buildChart, buildAgendaScene, DEFAULT_SIZE, arrowheadBox, annularSectorPoints, SYMBOL_PRESET, dashKind } =
   engine;
 
 // A stale packaged lib (the skill ships no build step) can be missing an export,
 // which otherwise blows up mid-render on the first chart that needs it. Fail
 // fast with an actionable message instead.
-for (const [name, fn] of Object.entries({ buildChart, buildAgendaScene, arrowheadBox, annularSectorPoints })) {
+for (const [name, fn] of Object.entries({ buildChart, buildAgendaScene, arrowheadBox, annularSectorPoints, dashKind })) {
   if (typeof fn !== "function") {
     console.error(`powerchart engine is missing export "${name}" — rebuild the lib (npm run build:lib)`);
     process.exit(1);
@@ -145,7 +145,7 @@ function addNode(slide, n, dx, dy) {
         line: {
           color: hex(n.stroke),
           width: n.strokeWidth ?? 1,
-          ...(n.dash ? { dashType: "dash" } : {}),
+          ...(n.dash ? { dashType: dashKind(n.dash) === "dot" ? "sysDot" : "dash" } : {}),
         },
       });
       break;
