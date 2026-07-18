@@ -44,6 +44,22 @@ export function arrowheadBox(
 }
 
 /**
+ * Classify a stroke-dash array into the nearest native line style the PowerPoint
+ * renderers can name. The SVG renderer honours the exact `stroke-dasharray`, but
+ * Office.js (`ShapeLineDashStyle`) and PptxgenJS (`dashType`) expose enums, not
+ * arbitrary arrays — so both used to flatten EVERY pattern to a single generic
+ * dash, turning a dotted preview line (e.g. a waterfall carry connector) into a
+ * dashed one in the deck. This keeps the one distinction the enums can express:
+ * a short on-segment roughly equal to its gap reads as dots, everything else as
+ * dashes. `dot` maps to `roundDot`/`sysDot`, `dash` to `dash`, in each renderer.
+ */
+export function dashKind(dash: number[]): "dot" | "dash" {
+  const on = dash[0] ?? 0;
+  const gap = dash[1] ?? on;
+  return on <= 1.5 && on <= gap ? "dot" : "dash";
+}
+
+/**
  * Scene angle (0 = 12 o'clock, clockwise) → OOXML pie preset angle
  * (0 = 3 o'clock, clockwise), normalised to [0, 360). Feeds the PptxgenJS pie
  * shape's `angleRange`.

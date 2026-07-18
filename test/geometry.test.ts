@@ -8,6 +8,7 @@ import {
   annularSectorPoints,
   symbolPoints,
   markerScale,
+  dashKind,
   SYMBOL_PRESET,
   type MarkerSymbol,
   type SymbolShape,
@@ -255,5 +256,37 @@ describe("marker symbols", () => {
   it("markerScale covers every MarkerSymbol", () => {
     const all: MarkerSymbol[] = ["circle", "square", ...SHAPES];
     for (const m of all) expect(markerScale(m)).toBeGreaterThan(0);
+  });
+});
+
+describe("dashKind — map a stroke-dash array to the nearest native line style", () => {
+  it("classifies the dotted waterfall connector pattern as dots", () => {
+    // [1.5,1.5] is the thin carry connector between waterfall bars — dotted, not
+    // dashed. Both PowerPoint renderers used to flatten it to a generic dash.
+    expect(dashKind([1.5, 1.5])).toBe("dot");
+  });
+
+  it("classifies the real dash patterns as dashes", () => {
+    // Every other array the layouts emit is a dash of some length.
+    for (const d of [
+      [2, 2],
+      [2, 3],
+      [3, 2],
+      [3, 3],
+      [4, 2],
+      [4, 3],
+    ]) {
+      expect(dashKind(d)).toBe("dash");
+    }
+  });
+
+  it("treats a long on-segment as a dash even against a large gap", () => {
+    expect(dashKind([6, 6])).toBe("dash");
+  });
+
+  it("survives a malformed one-element or empty array without throwing", () => {
+    expect(dashKind([2])).toBe("dash"); // gap defaults to on → 2 > 1.5
+    expect(dashKind([1])).toBe("dot"); // on 1 ≤ 1.5, gap defaults to 1
+    expect(dashKind([])).toBe("dot"); // on 0, gap 0 → dot (harmless default)
   });
 });

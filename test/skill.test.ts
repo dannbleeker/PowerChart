@@ -96,6 +96,36 @@ describe("skill pptx renderer — annular sectors", () => {
   });
 });
 
+describe("skill pptx renderer — dotted lines stay dotted", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pc-dash-"));
+  const out = join(dir, "dash.pptx");
+
+  beforeAll(() => {
+    if (!existsSync("dist-lib/powerchart.js")) {
+      execSync("npx vite build --config vite.config.lib.ts", { stdio: "pipe" });
+    }
+    // A waterfall draws thin [1.5,1.5] dotted carry connectors between bars.
+    const cfg = {
+      kind: "waterfall",
+      data: { categories: ["A", "B", "C"], series: [{ name: "D", values: [50, 20, 0] }] },
+      waterfall: { totalIndices: [2] },
+    };
+    const input = join(dir, "cfg.json");
+    writeFileSync(input, JSON.stringify(cfg));
+    execSync(`node skill/scripts/render-pptx.mjs ${input} ${out}`, { stdio: "pipe" });
+  }, 120000);
+
+  it("emits sysDot for the dotted connector, not a generic dash", () => {
+    const xml = execSync(
+      `python3 -c "import zipfile;print(zipfile.ZipFile('${out}').read('ppt/slides/slide1.xml').decode())"`,
+    ).toString();
+    // The dotted carry connector must survive as a dot preset; a plain waterfall
+    // has no other dashed line, so there should be no generic "dash".
+    expect(xml).toContain('<a:prstDash val="sysDot"/>');
+    expect(xml).not.toContain('<a:prstDash val="dash"/>');
+  });
+});
+
 describe("skill pptx renderer — 8-digit hex colours", () => {
   const dir = mkdtempSync(join(tmpdir(), "pc-alpha-"));
   const out = join(dir, "alpha.pptx");

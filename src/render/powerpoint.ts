@@ -10,7 +10,7 @@
  * addTextBox) — marker symbols are preset geometry, so they need only 1.4 too.
  * Grouping (1.8+) and shape rotation (1.10+) degrade gracefully on older hosts.
  */
-import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET } from "../core/geometry";
+import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
 import type { Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 
@@ -1010,7 +1010,10 @@ function addSegment(
   const setDash = (shape: PowerPoint.Shape) => {
     if (!s.dash) return;
     try {
-      shape.lineFormat.dashStyle = PowerPoint.ShapeLineDashStyle.dash;
+      // Map to the nearest native line style: a dotted array (e.g. waterfall
+      // carry connectors) stays dotted instead of flattening to a generic dash.
+      shape.lineFormat.dashStyle =
+        dashKind(s.dash) === "dot" ? PowerPoint.ShapeLineDashStyle.roundDot : PowerPoint.ShapeLineDashStyle.dash;
     } catch {
       /* dash style unsupported on this host */
     }

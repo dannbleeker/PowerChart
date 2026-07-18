@@ -377,7 +377,7 @@ function installHost(
     ),
     SlideLayoutType: { blank: "blank", titleSlide: "titleSlide", object: "object" },
     ConnectorType: { straight: "straight" },
-    ShapeLineDashStyle: { dash: "dash" },
+    ShapeLineDashStyle: { dash: "dash", roundDot: "roundDot" },
     ShapeAutoSize: { autoSizeNone: "none" },
     TextVerticalAlignment: { top: "top", middle: "middle", bottom: "bottom" },
     ParagraphHorizontalAlignment: { left: "left", center: "center", right: "right" },
@@ -607,6 +607,27 @@ describe("scene node mapping", () => {
     const ul = up.created.find((s) => s.name === "trend")!;
     expect(ul.geo).toBe("lineInverse");
     expect(ul.lineFormat.dashStyle).toBe("dash");
+  });
+
+  it("renders a dotted array as roundDot, not a generic dash", async () => {
+    // [1.5,1.5] is the dotted waterfall carry connector. It used to flatten to
+    // the same dash enum as every other pattern, so the deck lost the dotted
+    // look the SVG preview shows.
+    const slide = await insert([
+      {
+        kind: "line",
+        x1: 10,
+        y1: 50,
+        x2: 200,
+        y2: 50,
+        stroke: "#333",
+        strokeWidth: 1,
+        dash: [1.5, 1.5],
+        name: "carry",
+      },
+    ]);
+    const line = slide.created.find((s) => s.name === "carry")!;
+    expect(line.lineFormat.dashStyle).toBe("roundDot");
   });
 
   it("draws polygon edges direction-correct, with no zero-thickness boxes", async () => {
