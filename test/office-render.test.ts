@@ -55,6 +55,9 @@ function makeShape(type: string, geo: string | undefined, box: { left: number; t
         isNullObject: !tagStore.has(k),
         value: tagStore.get(k) ?? "",
         load() {},
+        untrack() {
+          untracked.tags++;
+        },
       }),
     },
     fill: {
@@ -72,6 +75,9 @@ function makeShape(type: string, geo: string | undefined, box: { left: number; t
     grouped: undefined as unknown[] | undefined,
     delete() {
       shape.deleted = true;
+    },
+    untrack() {
+      untracked.shapes++;
     },
   };
   return shape;
@@ -201,6 +207,9 @@ function freshWindowedHandle(real: FakeSlide) {
  */
 const trips = { syncs: 0, contexts: 0 };
 
+/** Proxy objects the renderer released via untrack(), by kind. */
+const untracked = { shapes: 0, tags: 0 };
+
 /**
  * Make the Nth context.sync() of the next run throw. Office.js queues commands
  * and only reports their errors at sync — so this, not a throwing addGroup, is
@@ -319,6 +328,8 @@ function installHost(
   };
   trips.syncs = 0;
   trips.contexts = 0;
+  untracked.shapes = 0;
+  untracked.tags = 0;
   pendingHostError = null;
   swallowAdds = 0;
   failSyncsOn.clear();
@@ -727,6 +738,23 @@ describe("listChartsInDeck", () => {
     const found = await listChartsInDeck();
     expect(found).toHaveLength(2);
     expect(found.map((f) => f.target.slideId).sort()).toEqual(["s1", "s2"]);
+    // The deck-wide sweep releases its proxy objects (one tag + one shape per
+    // shape on every slide) once their values are read.
+    expect(untracked.tags).toBeGreaterThan(0);
+    expect(untracked.shapes).toBeGreaterThan(0);
+  });
+});
+
+describe("proxy lifecycle", () => {
+  it("listChartsInSelection untracks the shape and tag proxies it scans", async () => {
+    const slide = makeSlide("s1");
+    const a = makeShape("group", undefined, { left: 1, top: 1, width: 1, height: 1 });
+    a.tagStore.set(CHART_TAG, "{}");
+    const b = makeShape("geometric", "rectangle", { left: 2, top: 2, width: 1, height: 1 });
+    installHost([slide], [a, b]);
+    await listChartsInSelection();
+    expect(untracked.tags).toBe(2); // both selected shapes' tags
+    expect(untracked.shapes).toBe(2);
   });
 });
 

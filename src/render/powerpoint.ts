@@ -34,6 +34,22 @@ export interface InsertOptions {
 /** Tag key under which the chart's serialized config is persisted. */
 export const CHART_TAG = "POWERCHART_CONFIG";
 
+/**
+ * Release a proxy object's client-side memory once its loaded values have been
+ * read. Office.js keeps every proxy touched in a `run` alive until the context
+ * is disposed, and the docs call out a "noticeable performance benefit when
+ * using large numbers of proxy objects" from untracking — a deck-wide scan
+ * creates one shape proxy and one tag proxy PER shape ON EVERY SLIDE, which is
+ * exactly that case. Best-effort: a null-object proxy may not expose untrack.
+ */
+function untrack(obj: unknown): void {
+  try {
+    (obj as { untrack?: () => void })?.untrack?.();
+  } catch {
+    /* not a tracked proxy on this host */
+  }
+}
+
 const DEFAULT_FONT = "Segoe UI";
 
 /** Where an existing PowerChart lives on the deck, for in-place update. */
@@ -329,13 +345,16 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
       return tag;
     });
     await context.sync();
-    return shapes.items
+    const charts = shapes.items
       .map((s, i) => ({ s, tag: tags[i] }))
       .filter(({ tag }) => !tag.isNullObject && tag.value)
       .map(({ s, tag }) => ({
         configJson: tag.value,
         target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top },
       }));
+    for (const t of tags) untrack(t);
+    for (const s of shapes.items) untrack(s);
+    return charts;
   });
 }
 
@@ -365,12 +384,19 @@ export async function listChartsInDeck(): Promise<{ configJson: string; target: 
     }
     await context.sync();
 
-    return lookups
+    const charts = lookups
       .filter((l) => !l.tag.isNullObject && l.tag.value)
       .map((l) => ({
         configJson: l.tag.value,
         target: { slideId: l.slideId, shapeId: l.shape.id, left: l.shape.left, top: l.shape.top },
       }));
+    // Every value we need is now a plain string/number in `charts`; drop the
+    // whole proxy sweep (one shape + one tag per shape, deck-wide) from memory.
+    for (const l of lookups) {
+      untrack(l.tag);
+      untrack(l.shape);
+    }
+    return charts;
   });
 }
 
