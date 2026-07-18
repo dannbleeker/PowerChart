@@ -29,7 +29,12 @@ function cellNumeric(cells: string[][], row: number, col: number, visiting: Set<
     return v ?? NaN;
   }
   const n = Number(raw.replace(/,/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  // A non-numeric NON-blank cell (text, an error token) is not a value — return
+  // NaN so it propagates as an error, the same stance parseRow takes when it
+  // returns null for the same cell in place. (A BLANK cell stays 0 above, so SUM
+  // still treats gaps as zero — Excel's convention.) The old silent 0 meant a
+  // stray "n/a" in a referenced cell vanished into a computed total.
+  return Number.isFinite(n) ? n : NaN;
 }
 
 /**
