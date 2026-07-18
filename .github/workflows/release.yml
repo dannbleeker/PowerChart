@@ -30,7 +30,8 @@ jobs:
       - run: npm run showcase
       # Regenerate the production manifests (custom-domain URLs) fresh for the release.
       - run: npm run build:manifest
-      - uses: softprops/action-gh-release@v2
+      # Pinned to a full commit SHA (current target of the v2 tag) — see ci.yml.
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ inputs.version || github.ref_name }}
           generate_release_notes: true
