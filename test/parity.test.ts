@@ -201,6 +201,26 @@ describe("datasheet formulas", () => {
     expect(data.series[2].values).toEqual([60, 70]);
     expect(evaluateFormula([["=A1"]], "A1")).toBeNull();
   });
+  it("a referenced non-numeric cell errors instead of silently becoming 0", () => {
+    const c = [
+      ["", "X"],
+      ["A", "n/a"],
+      ["B", "=B2*2"],
+    ];
+    const data = sheetToData({ cells: c });
+    // "n/a" in place is not a value (null); referenced through =B2*2 it must not
+    // silently read as 0 — it errors (NaN), consistent with the in-place null.
+    expect(data.series[0].values[0]).toBeNull();
+    expect(Number.isFinite(data.series[1].values[0] as number)).toBe(false);
+  });
+  it("still treats a blank referenced cell as 0 (SUM semantics)", () => {
+    const c = [
+      ["", "X", "Y"],
+      ["A", "", "5"],
+      ["B", "=SUM(B2:C2)"],
+    ];
+    expect(sheetToData({ cells: c }).series[1].values[0]).toBe(5);
+  });
 });
 
 describe("smooth pie fan density", () => {
