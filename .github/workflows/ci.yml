@@ -69,7 +69,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run skill
-      - uses: softprops/action-gh-release@v2
+      # Pinned to a full commit SHA (the current target of the v2 tag): a mutable
+      # tag on a third-party action can be repointed to hostile code, and this job
+      # runs with contents:write + the release token. Bump deliberately.
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: skill-latest
           name: PowerChart Agent Skill (latest)

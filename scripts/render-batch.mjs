@@ -19,7 +19,13 @@ if (!input) {
   process.exit(1);
 }
 
-const raw = JSON.parse(readFileSync(input, "utf8"));
+let raw;
+try {
+  raw = JSON.parse(readFileSync(input, "utf8"));
+} catch (err) {
+  console.error(`Could not read ${input} as JSON: ${err.message}`);
+  process.exit(1);
+}
 const configs = Array.isArray(raw) ? raw : [raw];
 mkdirSync(outDir, { recursive: true });
 
