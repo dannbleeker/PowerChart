@@ -59,6 +59,18 @@ const DE: Record<string, string> = {
   "Colours & style": "Farben & Stil",
   // Datasheet help.
   "Paste straight from Excel — special data rows": "Direkt aus Excel einfügen — besondere Datenzeilen",
+  // Runtime status messages (announced via the aria-live status strip). Routed
+  // through t(); interpolated messages that carry a count or an error detail are
+  // not keyed and stay in English until the status catalog grows params.
+  "Working…": "Arbeite…",
+  "Done.": "Fertig.",
+  "Chart loaded — edits will update it in place.": "Diagramm geladen — Änderungen aktualisieren es direkt.",
+  "Style exported — share the JSON as your corporate style file.":
+    "Stil exportiert — teilen Sie das JSON als Ihre Firmen-Stildatei.",
+  "Style imported — applied to every chart from this pane.":
+    "Stil importiert — auf jedes Diagramm aus diesem Bereich angewendet.",
+  "The selection is not a PowerChart — select an inserted chart group first.":
+    "Die Auswahl ist kein PowerChart — wählen Sie zuerst eine eingefügte Diagrammgruppe.",
 };
 
 const DICTS: Record<string, Record<string, string>> = { de: DE };
@@ -100,4 +112,14 @@ export function localizePane(language: string | undefined): void {
  *  gallery and Format groups are rebuilt in English on every render. */
 export function localizeTree(root: ParentNode): void {
   if (activeDict) translateTree(root, activeDict);
+}
+
+/**
+ * Translate a runtime string (a status message) built in code rather than markup
+ * — the DOM-sweep translateTree never sees these. Returns the source string
+ * unchanged when there's no active language or no matching entry, so callers can
+ * wrap unconditionally.
+ */
+export function t(s: string): string {
+  return activeDict?.[s] ?? s;
 }
