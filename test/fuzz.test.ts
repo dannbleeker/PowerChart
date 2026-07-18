@@ -69,6 +69,13 @@ describe("layout engine properties", () => {
     { weight: 1, arbitrary: fc.constant(null) },
   );
 
+  // Indices are drawn from a range that DELIBERATELY overshoots the data on both
+  // ends (negative and past-the-end), so every decoration that anchors to a
+  // category/series index is stressed against its bounds guard — the exact class
+  // of the callout/difference NaN bugs. clampPair and the range guards must absorb
+  // them without producing NaN or off-frame geometry.
+  const idx = fc.integer({ min: -2, max: 10 });
+
   const configArb: fc.Arbitrary<ChartConfig> = fc
     .record({
       kind: fc.constantFrom(...KINDS),
@@ -77,7 +84,19 @@ describe("layout engine properties", () => {
       totals: fc.boolean(),
       wantCagr: fc.boolean(),
       wantDiff: fc.boolean(),
+      diffSeries: fc.option(idx, { nil: undefined }),
       wantValueLine: fc.boolean(),
+      wantCallout: fc.boolean(),
+      calloutCat: idx,
+      calloutSeries: fc.option(idx, { nil: undefined }),
+      wantBand: fc.boolean(),
+      bandAxis: fc.constantFrom("x" as const, "y" as const),
+      bandFrom: fc.integer({ min: -2, max: 10 }),
+      bandTo: fc.integer({ min: -2, max: 10 }),
+      wantQuadrants: fc.boolean(),
+      from: idx,
+      to: idx,
+      perPointColor: fc.boolean(),
       horizontal: fc.boolean(),
       descending: fc.boolean(),
     })
@@ -88,20 +107,30 @@ describe("layout engine properties", () => {
           maxLength: base.nSeries,
         })
         .map((matrix): ChartConfig => {
-          const span = { from: 0, to: base.nCats - 1 };
+          const span = { from: base.from, to: base.to };
           return {
             kind: base.kind,
             width: 480,
             height: 300,
             data: {
               categories: Array.from({ length: base.nCats }, (_, i) => `C${i}`),
-              series: matrix.map((values, s) => ({ name: `S${s}`, values })),
+              series: matrix.map((values, s) => ({
+                name: `S${s}`,
+                values,
+                // A per-point highlight on some categories (exercises series.colors).
+                ...(base.perPointColor ? { colors: values.map((_, c) => (c % 2 ? "#ff0000" : null)) } : {}),
+              })),
             },
             decorations: {
               totals: base.totals,
               cagr: base.wantCagr ? span : undefined,
-              difference: base.wantDiff ? span : undefined,
+              difference: base.wantDiff ? { ...span, series: base.diffSeries } : undefined,
               valueLines: base.wantValueLine ? [{ mode: "mean" }] : undefined,
+              callouts: base.wantCallout
+                ? [{ text: "note", category: base.calloutCat, series: base.calloutSeries }]
+                : undefined,
+              bands: base.wantBand ? [{ axis: base.bandAxis, from: base.bandFrom, to: base.bandTo }] : undefined,
+              quadrants: base.wantQuadrants ? { x: 0, y: 0 } : undefined,
             },
             horizontal: base.kind !== "waterfall" && base.horizontal ? true : undefined,
             segmentOrder: base.descending ? "descending" : undefined,
@@ -127,7 +156,7 @@ describe("layout engine properties", () => {
           }
         }
       }),
-      { numRuns: 400, seed: 20260718 },
+      { numRuns: 600, seed: 20260718 },
     );
   });
 
