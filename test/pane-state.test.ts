@@ -70,6 +70,18 @@ describe("task pane — loading a chart config", () => {
     expect([out.width, out.height]).toEqual([720, 400]);
   });
 
+  it("writes edited size inputs back into the exported config", () => {
+    importConfig({ kind: "clustered", width: 480, height: 300, data: baseData });
+    const w = $("chart-w") as HTMLInputElement;
+    w.value = "640";
+    w.dispatchEvent(new Event("input"));
+    expect(exportConfig().width).toBe(640);
+    // A sub-usable value is ignored — the last good size holds.
+    w.value = "5";
+    w.dispatchEvent(new Event("input"));
+    expect(exportConfig().width).toBe(640);
+  });
+
   it("keeps a loaded chart's style rather than falling back to pane defaults", () => {
     const style = {
       fontFamily: "Georgia",
