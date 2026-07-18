@@ -1,5 +1,5 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
-import { polar, textWidth, type SceneNode } from "../scene";
+import { contrastInk, polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { lerpColor } from "../color";
 import { footnoteH, titleHeight, titleNode } from "./frame";
@@ -91,7 +91,8 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
         strokeWidth: 1,
         name: `group-${gi}`,
       });
-      if (span >= 16) label((rInner + rMid) / 2, angle + span / 2, g.name, "#ffffff", `group-label-${gi}`, false);
+      if (span >= 16)
+        label((rInner + rMid) / 2, angle + span / 2, g.name, contrastInk(gColor), `group-label-${gi}`, false);
       let a2 = angle;
       g.members.forEach((m, mi) => {
         const mspan = (m.value / g.total) * span;

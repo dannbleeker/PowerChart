@@ -165,7 +165,11 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
     : computeFrame(cfg, style, { ...decor, seriesLabels: false }, []).frame;
   // One shared value scale across every box — that is the point of putting
   // them in one chart.
-  const scale = valueScale(frame, Math.min(0, ...drawn), Math.max(0, ...drawn), cfg.scale);
+  // Data-driven domain (no forced zero): a boxplot of scores 40–95 must not be
+  // squashed against 0 — matches violin/candlestick. cfg.scale still overrides.
+  const lo = drawn.length ? Math.min(...drawn) : 0;
+  const hi = drawn.length ? Math.max(...drawn) : 1;
+  const scale = valueScale(frame, lo, hi, cfg.scale);
   // Value coordinate along the value axis (x when horizontal, y otherwise).
   const qOf = H ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w : scale.toY;
 
@@ -447,5 +451,5 @@ export function boxplotExtent(cfg: ChartConfig): { min: number; max: number } | 
   // outside the samples, and "Same scale" turns this extent into a hard scale
   // override — understating it pushed those whiskers off the plot.
   const { drawn } = boxplotBoxes(cfg);
-  return drawn.length ? { min: Math.min(0, ...drawn), max: Math.max(0, ...drawn) } : null;
+  return drawn.length ? { min: Math.min(...drawn), max: Math.max(...drawn) } : null;
 }

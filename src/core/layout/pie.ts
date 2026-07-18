@@ -14,7 +14,11 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const { data } = cfg;
   const fs = style.fontSize;
   const values = data.categories.map((_, c) => Math.max(0, data.series[0]?.values[c] ?? 0));
-  const total = values.reduce((a, b) => a + b, 0) || 1;
+  // `total` is the honest sum shown in the doughnut hole / gauge centre;
+  // `denom` guards the angle math against all-zero data (which used to display
+  // the fallback "1" as the headline number).
+  const total = values.reduce((a, b) => a + b, 0);
+  const denom = total || 1;
   const fmt = resolveFormat(values, cfg.numberFormat);
   const doughnut = cfg.kind === "doughnut";
   // Semi-circle gauge: a half-doughnut scorecard (180° arc).
@@ -52,10 +56,10 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     ...values.map((v, c) => ({ v, c: c as number | "other" })).filter((s) => !breakout.includes(s.c as number)),
     ...(hasBreakout ? [{ v: otherSum, c: "other" as const }] : []),
   ];
-  let angle = hasBreakout ? 90 + ((otherSum / total) * 360) / 2 : 0;
+  let angle = hasBreakout ? 90 + ((otherSum / denom) * 360) / 2 : 0;
   let otherStart = 0;
   slices.forEach(({ v, c }) => {
-    const span = (v / total) * 360;
+    const span = (v / denom) * 360;
     if (span <= 0) return;
     const other = c === "other";
     if (other) otherStart = angle;
@@ -89,7 +93,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       const mid = angle + span / 2;
       const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
         value: v,
-        fraction: v / total,
+        fraction: v / denom,
         series: data.series[0]?.name ?? "",
         category: other ? "Other" : data.categories[c as number],
         fmt,
@@ -140,7 +144,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     // Other's boundary edges → bar corners. The slice is centered at
     // 3 o'clock, so its start edge (90° − span/2) is the upper one.
     const eTop = polar(cx, cy, r, otherStart);
-    const eBot = polar(cx, cy, r, otherStart + (otherSum / total) * 360);
+    const eBot = polar(cx, cy, r, otherStart + (otherSum / denom) * 360);
     nodes.push(
       {
         kind: "line",
@@ -183,7 +187,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       if (decor.segmentLabels) {
         const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
           value: values[c],
-          fraction: values[c] / total,
+          fraction: values[c] / denom,
           series: data.series[0]?.name ?? "",
           category: data.categories[c],
           fmt,
@@ -252,6 +256,7 @@ function layoutGauge(
 ): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
+  const denom = total || 1;
   const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
   const availH = cfg.height - titleH - footH;
@@ -265,7 +270,7 @@ function layoutGauge(
   if (titleN) nodes.push(titleN);
   let angle = 270; // start at 9 o'clock, sweep clockwise over the top to 3 o'clock
   values.forEach((v, c) => {
-    const span = (v / total) * 180;
+    const span = (v / denom) * 180;
     if (span <= 0) return;
     const fill = data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length];
     const a0 = ((angle % 360) + 360) % 360;
@@ -286,7 +291,7 @@ function layoutGauge(
       const mid = angle + span / 2;
       const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
         value: v,
-        fraction: v / total,
+        fraction: v / denom,
         series: data.series[0]?.name ?? "",
         category: data.categories[c],
         fmt,

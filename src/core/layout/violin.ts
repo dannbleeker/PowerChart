@@ -82,7 +82,7 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     for (let k = levels.length - 1; k >= 0; k--)
       points.push({ x: cxc - (levels[k].d / maxD) * halfW, y: scale.toY(levels[k].y) });
 
-    const color = seriesColor(style, c % 8, data.series.find((s) => s.color)?.color);
+    const color = seriesColor(style, c, data.series.find((s) => s.color)?.color);
     nodes.push({
       kind: "polygon",
       points,
