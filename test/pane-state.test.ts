@@ -580,6 +580,53 @@ describe("task pane — PNG export", () => {
   });
 });
 
+describe("task pane — shareable chart link", () => {
+  it("reopens the exact chart from a #c= share link on boot", async () => {
+    const cfg = {
+      kind: "radar",
+      data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [1, 2, 3] }] },
+      radar: { perSpoke: true },
+    };
+    const hash = "#c=" + btoa(encodeURIComponent(JSON.stringify(cfg)));
+    await bootPane(hash);
+    const out = exportConfig();
+    expect(out.kind).toBe("radar");
+    expect(out.radar!.perSpoke).toBe(true);
+  });
+
+  it("ignores a malformed share link and boots the default chart", async () => {
+    await bootPane("#c=not-valid-base64!!");
+    expect(() => exportConfig()).not.toThrow();
+    expect($("host-note").className).not.toContain("status-err");
+  });
+
+  it("copies a link that round-trips the current chart through the clipboard", async () => {
+    await bootPane();
+    importConfig({ kind: "clustered", data: baseData, decorations: { grandTotal: true } });
+    let copied = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (t: string) => {
+          copied = t;
+        },
+      },
+    });
+    try {
+      $("copy-link").click();
+      await new Promise((r) => setTimeout(r, 5));
+      expect(copied).toContain("#c=");
+      const encoded = copied.slice(copied.indexOf("#c=") + 3);
+      const cfg = JSON.parse(decodeURIComponent(atob(encoded)));
+      expect(cfg.kind).toBe("clustered");
+      expect(cfg.decorations.grandTotal).toBe(true);
+    } finally {
+      // @ts-expect-error — remove the stub
+      delete navigator.clipboard;
+    }
+  });
+});
+
 describe("element previews are sized for their own shape", () => {
   it("does not stretch the KPI tile like the process flow", async () => {
     // The flow is 480x44 and built to shrink, so it wants width:100%. The KPI

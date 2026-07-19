@@ -173,6 +173,7 @@ conventions, and every option.
 | Difference arrows anchored to value lines, per-series CAGR                | ✅                                                                                                                                      |
 | JSON automation (export/import/batch insert + `npm run render` CLI)       | ✅ (open take on `.ppttc`)                                                                                                              |
 | Download the preview as SVG or PNG (for email / chat)                     | ✅ (overflow menu; PNG rasterized at 2×)                                                                                                |
+| Copy a shareable chart link (config in the URL hash)                      | ✅ (reopens the exact chart on the hosted gallery)                                                                                      |
 | Datasheet undo/redo (Ctrl+Z / Ctrl+Y)                                     | ✅                                                                                                                                      |
 | Agenda / chapter slides (one per chapter, current highlighted)            | ✅ (appended to the deck)                                                                                                               |
 | Harvey balls, checkboxes, process flow, table element                     | ✅ (Elements section)                                                                                                                   |
