@@ -19,6 +19,7 @@ const DE: Record<string, string> = {
   "Same scale (selection)": "Gleiche Skala (Auswahl)",
   "Download SVG": "SVG herunterladen",
   "Download PNG": "PNG herunterladen",
+  "Copy chart link": "Diagrammlink kopieren",
   "Update chart": "Diagramm aktualisieren",
   "Insert agenda slides": "Agenda-Folien einfügen",
   "Export current": "Aktuelles exportieren",

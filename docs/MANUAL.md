@@ -319,6 +319,9 @@ count of how many of its options are currently on.
 - **Download SVG / Download PNG** (overflow menu) save the preview as a vector
   or a 2× raster image — handy for email or chat, where the native-shape output
   can't go. The real deliverable is still **Insert into slide** (editable shapes).
+- **Copy chart link** (overflow menu) copies a URL that reopens the exact chart
+  on the hosted gallery — the config rides in the link's `#c=` hash (never a
+  server log). Good for support or sharing a config without a file.
 - **Small multiples** (`multiples: {columns?}`, JSON): splits a multi-series
   chart into a grid of single-series panels titled by series name, on one
   shared value scale (column family, line/area, waterfall, radar).

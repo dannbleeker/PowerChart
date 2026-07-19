@@ -1236,6 +1236,27 @@ $("download-png").addEventListener("click", () => {
   img.src = url;
 });
 
+/**
+ * Encode the current chart into a shareable deep link. The config rides in the
+ * URL hash (base64 of the JSON) so it never hits a server log, and the hash is
+ * decoded on boot — reopening the exact chart on the hosted gallery. Round-trips
+ * are UTF-8-safe via encodeURIComponent before btoa.
+ */
+const CONFIG_HASH = "#c=";
+$("copy-link").addEventListener("click", async () => {
+  const json = JSON.stringify(currentConfig());
+  const link = location.origin + location.pathname + location.search + CONFIG_HASH + btoa(encodeURIComponent(json));
+  try {
+    await navigator.clipboard.writeText(link);
+    note("Shareable chart link copied to the clipboard.", "ok");
+  } catch {
+    // Clipboard blocked (no permission / not focused): drop the link into the
+    // JSON box so it can still be copied by hand.
+    ($("json-io") as HTMLTextAreaElement).value = link;
+    note("Clipboard blocked — the link is in the JSON box, copy it from there.", "err");
+  }
+});
+
 /** Cascading default insert position so repeated inserts don't pile up. */
 let insertOffset = 0;
 
@@ -1775,6 +1796,19 @@ const deepLink = new URLSearchParams(location.search);
 const requestedKind = deepLink.get("kind");
 if (requestedKind && CHART_KINDS.some((k) => k.kind === requestedKind)) {
   applyConfig(sampleConfig(requestedKind as ChartKind), null);
+}
+// A shared chart link (#c=<base64 config>) reopens the exact chart. Applied
+// after ?kind so an explicit link wins; malformed links are ignored silently.
+if (location.hash.startsWith(CONFIG_HASH)) {
+  try {
+    const cfg = JSON.parse(decodeURIComponent(atob(location.hash.slice(CONFIG_HASH.length)))) as ChartConfig;
+    if (cfg && typeof cfg === "object" && cfg.kind) {
+      applyConfig({ ...DEFAULT_SIZE, ...cfg }, null);
+      note("Chart loaded from a shared link.", "ok");
+    }
+  } catch {
+    /* malformed share link — fall through to the default chart */
+  }
 }
 const requestedTab = deepLink.get("tab");
 if (requestedTab) {
