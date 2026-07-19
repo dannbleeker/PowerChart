@@ -18,11 +18,43 @@ patterns.
 
 ## 1. Open
 
-Nothing. The second sweep's six candidates all shipped (grand total label,
-IBCS scenario notation + the stroke-only hollow-column primitive, IBCS variance
-tier, polynomial scatter trendlines, PNG export, copy-config-as-URL) — see the
-README feature table and git for what landed. Whatever surfaces next starts from
-a fresh research pass.
+- **SVG/PNG image output as an alternative render mode** — offer, beside the
+  native-shapes renderer, a mode that inserts the whole chart as a *single image
+  object*. The scene→SVG renderer already exists (`src/render/svg.ts`) and the
+  canvas rasterisation primitive now ships too (the pane's PNG download does
+  `drawImage`→`toDataURL` on the preview SVG), so the pixels are free on both
+  paths; the remaining work is the *insert* side. The scene graph is pure
+  geometry/text with no `foreignObject` or remote assets, so the canvas stays
+  untainted. The motive is performance/reliability, not looks — one object
+  sidesteps the PowerPoint-**web** wall where the live canvas stops answering past
+  ~20 shapes per `context.sync()` (office-js #4272, #5022, #6498), which is
+  exactly what caps the densest kinds today (`DEMO_SHAPE_BUDGET = 90`,
+  `SHAPES_PER_SYNC = 10`). Insert paths, all shipped: `setSelectedDataAsync(png,
+  {coercionType: Image})` (ImageCoercion 1.1, widest host reach) or
+  `addGeometricShape` + `ShapeFill.setImage(png)` (PowerPointApi 1.8) — the latter
+  returns a tracked `Shape`, so the `POWERCHART_CONFIG` tag round-trips onto the
+  picture exactly as it does now, keeping the chart re-editable. Native-vector SVG
+  via `setSelectedDataAsync(svg, {coercionType: XmlSvg})` (ImageCoercion 1.2) is
+  the best quality/size answer — PowerPoint can even "Convert to Shape" it — but
+  it's flaky (office-js #4967 open: vertical shift; #2881: complex SVG; #412: no
+  iOS), so gate it behind a flag with a PNG fallback. The cost is real: an image
+  is not editable in PowerPoint, ignores theme colours, and blurs on rescale
+  unless rasterised high-DPI — so pair it with an **"explode to native shapes"**
+  command that reads the tag, deletes the picture, and draws the real shapes on
+  demand (paying the web cost only when the user actually edits). This is distinct
+  from the rejected per-point **image / icon node** in §2: that was one bitmap
+  *per data point* inside the scene graph, unreachable at the 1.4 pin; this is one
+  image for the *whole chart* as an output format, with the `1.8`/ImageCoercion
+  gates degrading to the native-shapes path on older hosts (like grouping
+  already does). Feasibility: medium — needs Phase-2 real-host validation first,
+  since the `setSelectedDataAsync` base64 size cap (office-js #225, fixed, no
+  published threshold) and the shape-tag value-size limit are both undocumented.
+
+Otherwise nothing new: the second sweep's six candidates all shipped (grand total
+label, IBCS scenario notation + the stroke-only hollow-column primitive, IBCS
+variance tier, polynomial scatter trendlines, PNG export, copy-config-as-URL) —
+see the README feature table and git for what landed. Whatever else surfaces
+starts from a fresh research pass.
 
 **Considered and dropped in that sweep** (so they aren't re-proposed): a
 screen-reader data-table alternative to `describeChart` — real WCAG best practice
