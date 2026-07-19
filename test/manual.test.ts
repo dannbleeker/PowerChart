@@ -56,6 +56,7 @@ describe("user manual coverage", () => {
       "Grand total",
       "IBCS scenario",
       "IBCS variance",
+      "polynomial",
       "Value axis",
       "Gridlines",
       "Connector lines",

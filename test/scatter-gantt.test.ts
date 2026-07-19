@@ -910,3 +910,61 @@ describe("scatter group ids are whatever a datasheet cell holds", () => {
     expect(shapes).toEqual(["ellipse", "triangle"]); // 1.4 -> 1, 2.6 -> 3
   });
 });
+
+describe("polynomial scatter trendlines", () => {
+  const curved = (deg?: number): ChartConfig => ({
+    kind: "scatter",
+    width: 480,
+    height: 320,
+    scatter: deg ? { trendDegree: deg } : undefined,
+    decorations: { valueAxis: true },
+    data: {
+      categories: ["1", "2", "3", "4", "5", "6", "7"],
+      series: [
+        { name: "X", values: [1, 2, 3, 4, 5, 6, 7] },
+        { name: "Y", values: [10, 4, 1, 0, 1, 4, 10] }, // parabola
+        { name: "Trend", values: [1, null, null, null, null, null, null] },
+      ],
+    },
+  });
+
+  it("draws a single straight trend line by default (degree 1, unchanged)", () => {
+    const nodes = layoutScatter(curved(), DEFAULT_STYLE, DEFAULT_DECOR).nodes;
+    expect(nodes.filter((n) => n.name === "trend")).toHaveLength(1);
+    expect(nodes.some((n) => n.name?.startsWith("trend-seg-"))).toBe(false);
+    const stats = nodes.find((n) => n.name === "trend-stats") as { text: string };
+    expect(stats.text).toMatch(/^R² = /);
+  });
+
+  it("draws a sampled polynomial curve and names the degree at higher degrees", () => {
+    const nodes = layoutScatter(curved(2), DEFAULT_STYLE, DEFAULT_DECOR).nodes;
+    expect(nodes.some((n) => n.name === "trend")).toBe(false); // not the single straight line
+    const segs = nodes.filter((n) => n.name?.startsWith("trend-seg-"));
+    expect(segs.length).toBeGreaterThan(10); // a smooth curve of segments
+    for (const s of segs) expect(s.kind).toBe("line");
+    const stats = nodes.find((n) => n.name === "trend-stats") as { text: string };
+    expect(stats.text).toContain("quadratic");
+    expect(stats.text).toMatch(/R² = (0\.9\d|1\.00)/); // a parabola fits the parabola well
+  });
+
+  it("clamps the drawn degree to the point count (no interpolation)", () => {
+    // 3 points, quartic requested → the fit clamps to degree 2, still a curve.
+    const cfg: ChartConfig = {
+      kind: "scatter",
+      width: 480,
+      height: 320,
+      scatter: { trendDegree: 4 },
+      data: {
+        categories: ["a", "b", "c"],
+        series: [
+          { name: "X", values: [0, 1, 2] },
+          { name: "Y", values: [0, 1, 4] },
+          { name: "Trend", values: [1, null, null] },
+        ],
+      },
+    };
+    const nodes = layoutScatter(cfg, DEFAULT_STYLE, DEFAULT_DECOR).nodes;
+    const stats = nodes.find((n) => n.name === "trend-stats") as { text: string };
+    expect(stats.text).toContain("quadratic"); // not "quartic"
+  });
+});

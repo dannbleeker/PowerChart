@@ -184,6 +184,22 @@ const features = [
     },
   },
   {
+    kind: "scatter",
+    width: 480,
+    height: 300,
+    title: "Scatter — quadratic (degree 2) trend fit",
+    decorations: { valueAxis: true, gridlines: true },
+    scatter: { trendDegree: 2 },
+    data: {
+      categories: ["1", "2", "3", "4", "5", "6", "7", "8"],
+      series: [
+        { name: "X", values: [1, 2, 3, 4, 5, 6, 7, 8] },
+        { name: "Y", values: [30, 16, 8, 5, 6, 12, 22, 38] },
+        { name: "Trend", values: [1, null, null, null, null, null, null, null] },
+      ],
+    },
+  },
+  {
     kind: "gantt",
     width: 480,
     height: 300,

@@ -58,7 +58,7 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
 | Line | trends | date categories ("2025-01", "Jan 2025") space proportionally to time; forecast periods draw dashed with hollow markers; `decorations.slope: true` turns two-period data into a slope chart (end rails, "Name value" labels both ends, no axis) |
 | Area | stacked trends | |
 | Butterfly | two-sided comparison (pyramids) | first two series, back to back, one scale |
-| Scatter | correlation | `X`/`Y` rows; `Group` colors points; `X line`/`Y line` partitions; `Trend` fits an OLS line labelled with R² and p; quadrants shade a 2×2 matrix |
+| Scatter | correlation | `X`/`Y` rows; `Group` colors points; `X line`/`Y line` partitions; `Trend` fits an OLS line labelled with R² and p, or a **polynomial** curve (`scatter.trendDegree` 2–4, quadratic/cubic/quartic); quadrants shade a 2×2 matrix |
 | Bubble | scatter + size | add a `Size` row; a size legend with reference circles appears automatically |
 | Gantt | project plans | `Start`/`End`/`Milestone` rows; see [Gantt](#gantt) |
 | Combo | columns + line | mark a series with type "line"; secondary axis optional; columns can be stacked, clustered, or 100% |

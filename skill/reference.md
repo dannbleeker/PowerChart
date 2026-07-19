@@ -104,7 +104,9 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       // corrupt both of a marker's readings at once.
               spreadLimit?: number,   // hard cap, in DATA UNITS of the spread axis (default 2% of its
                                       // tick range, max 10%)
-              markers?: ("circle"|"square"|"diamond"|"triangle"|"plus")[] },
+              markers?: ("circle"|"square"|"diamond"|"triangle"|"plus")[],
+              trendDegree?: number },  // Trend row fit: 1 linear (default) … 4 quartic; a polynomial
+                                      // above 1 draws as a sampled curve, clamped to points−1, R² stated
                                       // point shape per Group row, cycled like the palette; the legend
                                       // draws the shapes. Off => every point a circle. Shape is a
                                       // channel color cannot carry: it survives greyscale printing and

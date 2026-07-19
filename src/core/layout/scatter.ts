@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations, MarkerSymbol } from "../types";
 import { markerScale } from "../geometry";
 import { textWidth, type SceneNode } from "../scene";
-import { formatNumber, formatP, histogramBins, niceTicks, resolveFormat, trendStats } from "../format";
+import { formatNumber, formatP, histogramBins, niceTicks, polyTrend, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
@@ -427,8 +427,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
   }
 
-  // OLS trend line across all points — always stating fit and significance.
-  if (wantTrend && pts.length >= 2) {
+  // Trend line across all points, always stating the fit. Linear (default) is a
+  // straight OLS line; a higher `scatter.trendDegree` fits a polynomial drawn as
+  // a sampled curve.
+  const trendDeg = Math.max(1, Math.min(4, Math.floor(cfg.scatter?.trendDegree ?? 1)));
+  if (wantTrend && pts.length >= 2 && (trendDeg <= 1 || pts.length < 3)) {
     const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
     const my = pts.reduce((s, p) => s + p.y, 0) / pts.length;
     const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
@@ -464,6 +467,52 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           name: "trend-stats",
         });
       }
+    }
+  } else if (wantTrend && pts.length >= 3) {
+    const fit = polyTrend(pts, trendDeg);
+    if (fit && fit.degree >= 2) {
+      // Sample within the data's x-range (extrapolating a polynomial past the
+      // data is meaningless), clamping y to the plot so an overshoot rides the
+      // edge instead of drawing over the rest of the chart.
+      const lo = Math.max(x0, Math.min(...pts.map((p) => p.x)));
+      const hi = Math.min(x1, Math.max(...pts.map((p) => p.x)));
+      const clampY = (y: number) => Math.max(plot.y - 2, Math.min(plot.y + plot.h + 2, toY(y)));
+      const SAMPLES = 40;
+      let px = toX(lo);
+      let py = clampY(fit.at(lo));
+      for (let i = 1; i <= SAMPLES; i++) {
+        const x = lo + ((hi - lo) * i) / SAMPLES;
+        const nx = toX(x);
+        const ny = clampY(fit.at(x));
+        nodes.push({
+          kind: "line",
+          x1: px,
+          y1: py,
+          x2: nx,
+          y2: ny,
+          stroke: style.negative,
+          strokeWidth: 1.25,
+          dash: [4, 2],
+          name: `trend-seg-${i}`,
+        });
+        px = nx;
+        py = ny;
+      }
+      const names: Record<number, string> = { 2: "quadratic", 3: "cubic", 4: "quartic" };
+      const label = `R² = ${fit.r2.toFixed(2)} · ${names[fit.degree] ?? `deg ${fit.degree}`}`;
+      nodes.push({
+        kind: "text",
+        x: plot.x + plot.w - textWidth(label, fs * 0.9) - 4,
+        y: plot.y + 2,
+        w: textWidth(label, fs * 0.9) + 4,
+        h: fs * 1.3,
+        text: label,
+        fontSize: fs * 0.9,
+        color: style.negative,
+        align: "right",
+        valign: "top",
+        name: "trend-stats",
+      });
     }
   }
 
