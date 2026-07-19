@@ -567,6 +567,14 @@ export interface ChartConfig {
      * else and the group legend would otherwise be suppressed.
      */
     markers?: MarkerSymbol[];
+    /**
+     * Degree of the `Trend` row's least-squares fit: 1 (linear, default) through
+     * 4 (quartic). A degree above 1 fits a polynomial and draws it as a sampled
+     * curve, still reporting R². Clamped to points − 1 so it never interpolates
+     * noise. Distinct from `decorations.smooth`, which visually smooths a line
+     * series (Catmull-Rom) rather than regressing the scatter.
+     */
+    trendDegree?: number;
   };
   /** Gantt options — the timeline itself; task data stays in datasheet rows. */
   gantt?: {

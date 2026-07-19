@@ -131,6 +131,7 @@ describe("skill documentation coverage", () => {
       "detailGroups",
       "lanes",
       "markers",
+      "trendDegree",
       "symbols",
       "variableRadius",
       "bars",

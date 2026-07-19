@@ -233,6 +233,77 @@ export function trendStats(pts: { x: number; y: number }[]): { r2: number; p: nu
   return { r2, p: betaI(df / 2, 0.5, df / (df + t2)) };
 }
 
+/**
+ * Least-squares polynomial fit of degree `degree` (2–4 for scatter's higher-order
+ * trend lines). Solves the normal equations of the Vandermonde system, centered
+ * on the mean x for conditioning, and returns an evaluator plus the fit's R² and
+ * the degree actually used — clamped to points − 1, so it never interpolates
+ * noise (a degree-n fit through n points has a meaningless R² of 1).
+ */
+export function polyTrend(
+  pts: { x: number; y: number }[],
+  degree: number,
+): { at: (x: number) => number; r2: number; degree: number } | null {
+  const n = pts.length;
+  if (n < 2) return null;
+  const d = Math.max(1, Math.min(Math.floor(degree), n - 1));
+  const mx = pts.reduce((s, p) => s + p.x, 0) / n;
+  const my = pts.reduce((s, p) => s + p.y, 0) / n;
+  const m = d + 1;
+  // Power sums in u = x − mx: S[k] = Σ uᵏ (k=0..2d), T[k] = Σ uᵏ·y (k=0..d).
+  const S = new Array(2 * d + 1).fill(0);
+  const T = new Array(m).fill(0);
+  for (const p of pts) {
+    const u = p.x - mx;
+    let up = 1;
+    for (let k = 0; k <= 2 * d; k++) {
+      S[k] += up;
+      if (k < m) T[k] += up * p.y;
+      up *= u;
+    }
+  }
+  const A = Array.from({ length: m }, (_, i) => S.slice(i, i + m));
+  const c = gaussSolve(A, T.slice());
+  if (!c) return null;
+  const at = (x: number) => {
+    const u = x - mx;
+    let up = 1;
+    let y = 0;
+    for (let k = 0; k < m; k++) {
+      y += c[k] * up;
+      up *= u;
+    }
+    return y;
+  };
+  let ssRes = 0;
+  let ssTot = 0;
+  for (const p of pts) {
+    ssRes += (p.y - at(p.x)) ** 2;
+    ssTot += (p.y - my) ** 2;
+  }
+  const r2 = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 1;
+  return { at, r2, degree: d };
+}
+
+/** Gaussian elimination with partial pivoting; null if the matrix is singular. */
+function gaussSolve(A: number[][], b: number[]): number[] | null {
+  const n = b.length;
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+    if (Math.abs(A[piv][col]) < 1e-12) return null;
+    [A[col], A[piv]] = [A[piv], A[col]];
+    [b[col], b[piv]] = [b[piv], b[col]];
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for (let k = col; k < n; k++) A[r][k] -= f * A[col][k];
+      b[r] -= f * b[col];
+    }
+  }
+  return b.map((v, i) => v / A[i][i]);
+}
+
 /** Human p-value: "< 0.001", "< 0.01", "< 0.05", or "= 0.31". */
 export function formatP(p: number): string {
   for (const cut of [0.001, 0.01, 0.05]) if (p < cut) return `< ${cut}`;

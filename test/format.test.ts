@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cagr, formatNumber, formatPercent, niceTicks, trendStats } from "../src/core/format";
+import { cagr, formatNumber, formatPercent, niceTicks, polyTrend, trendStats } from "../src/core/format";
 
 describe("formatNumber", () => {
   it("picks decimals by magnitude", () => {
@@ -110,5 +110,40 @@ describe("cagr", () => {
     expect(cagr(0, 10, 2)).toBeNull();
     expect(cagr(10, -5, 2)).toBeNull();
     expect(cagr(10, 20, 0)).toBeNull();
+  });
+});
+
+describe("polyTrend — least-squares polynomial fit", () => {
+  it("recovers an exact quadratic (R² = 1, correct evaluation)", () => {
+    // y = 2x² − 3x + 1 sampled exactly.
+    const pts = [-2, -1, 0, 1, 2, 3].map((x) => ({ x, y: 2 * x * x - 3 * x + 1 }));
+    const fit = polyTrend(pts, 2)!;
+    expect(fit.degree).toBe(2);
+    expect(fit.r2).toBeCloseTo(1, 6);
+    expect(fit.at(4)).toBeCloseTo(2 * 16 - 12 + 1, 4); // = 21
+    expect(fit.at(-3)).toBeCloseTo(2 * 9 + 9 + 1, 4); // = 28
+  });
+
+  it("clamps the degree to points − 1 so it never interpolates noise", () => {
+    // 3 points, ask for quartic → degree clamps to 2.
+    const fit = polyTrend(
+      [
+        { x: 0, y: 0 },
+        { x: 1, y: 1 },
+        { x: 2, y: 3 },
+      ],
+      4,
+    )!;
+    expect(fit.degree).toBe(2);
+  });
+
+  it("returns a lower R² for an underfit (line through a parabola)", () => {
+    const pts = [-2, -1, 0, 1, 2].map((x) => ({ x, y: x * x }));
+    expect(polyTrend(pts, 1)!.r2).toBeLessThan(polyTrend(pts, 2)!.r2);
+    expect(polyTrend(pts, 2)!.r2).toBeCloseTo(1, 6);
+  });
+
+  it("returns null for fewer than two points", () => {
+    expect(polyTrend([{ x: 1, y: 1 }], 2)).toBeNull();
   });
 });

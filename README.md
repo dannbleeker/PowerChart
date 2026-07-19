@@ -130,6 +130,7 @@ conventions, and every option.
 | Grand total label (sum of all category totals)                            | ✅ (`decorations.grandTotal`, stacked/clustered columns)                                                                                |
 | IBCS scenario notation (AC/PY/PL/BU/FC by fill)                           | ✅ (`series.scenario`; solid / lighter / hollow / hatched)                                                                              |
 | IBCS variance tier (Δ / Δ% vs plan or prior year)                         | ✅ (`decorations.variance`; signed bars below the columns, green/red)                                                                   |
+| Polynomial scatter trendlines (quadratic / cubic / quartic)               | ✅ (`scatter.trendDegree` 2–4; sampled curve, R² stated)                                                                                |
 | Sparklines (word-sized trend lines)                                       | ✅ (`decorations.sparkline` on `line`/`area`; pair with `multiples`)                                                                    |
 | Radial bar chart / Nightingale rose                                       | ✅ (`radar` + `radar.bars`; series stack outward)                                                                                       |
 | Stacked radar (part-to-whole per spoke)                                   | ✅ (`radar` + `radar.stacked`)                                                                                                          |
