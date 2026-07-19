@@ -2,6 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "../typ
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
+import { lerpColor } from "../color";
 import {
   baselineNode,
   breakMarkerNodes,
@@ -262,13 +263,28 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       // Transparent "no-fill" segment: it still occupies the stack (the level
       // was already advanced) but draws nothing, floating the segments above.
       if (fill === "transparent") return;
+      // IBCS scenario notation restyles the segment by the data's nature: PY a
+      // lighter solid, PL/BU an outlined/hollow bar, FC a hatch. AC/none stay solid.
+      let segFill = fill;
+      let segStroke: string = style.background;
+      let segStrokeWidth = stacked ? 0.75 : 0;
+      let segPattern = s.pattern;
+      if (s.scenario === "PY") {
+        segFill = lerpColor(fill, "#ffffff", 0.5);
+      } else if (s.scenario === "PL" || s.scenario === "BU") {
+        segFill = "none";
+        segStroke = fill;
+        segStrokeWidth = 1.5;
+      } else if (s.scenario === "FC") {
+        segPattern = "diagonal";
+      }
       nodes.push({
         kind: "rect",
         ...r,
-        fill,
-        stroke: style.background,
-        strokeWidth: stacked ? 0.75 : 0,
-        pattern: s.pattern,
+        fill: segFill,
+        stroke: segStroke,
+        strokeWidth: segStrokeWidth,
+        pattern: segPattern,
         name: `seg-${si}-${c}`,
       });
       if (c === n - 1) lastSegMid[si] = H ? r.x + r.w : r.y + r.h / 2;
@@ -817,7 +833,11 @@ export function legendRow(
   const maxX = opts.maxX ?? Infinity;
   const entries: LegendEntry[] =
     opts.entries ??
-    cfg.data.series.map((s, si) => ({ label: s.name, color: seriesColor(style, si, s.color), name: `legend-${si}` }));
+    cfg.data.series.map((s, si) => ({
+      label: s.scenario ? `${s.name} (${s.scenario})` : s.name,
+      color: seriesColor(style, si, s.color),
+      name: `legend-${si}`,
+    }));
   let x = x0;
   let row = 0;
   entries.forEach((e, si) => {
@@ -862,7 +882,11 @@ export function seriesLabelNodes(
   const fs = style.fontSize;
   const lineH = fs * 1.35;
   const entries = cfg.data.series
-    .map((s, i) => ({ name: s.name, color: seriesColor(style, i, s.color), y: midYs[i] }))
+    .map((s, i) => ({
+      name: s.scenario ? `${s.name} (${s.scenario})` : s.name,
+      color: seriesColor(style, i, s.color),
+      y: midYs[i],
+    }))
     .filter((e): e is { name: string; color: string; y: number } => e.y != null)
     .sort((a, b) => a.y - b.y);
   // Push overlapping labels apart, then clamp back into the frame.

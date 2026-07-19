@@ -322,6 +322,12 @@ count of how many of its options are currently on.
 - **Small multiples** (`multiples: {columns?}`, JSON): splits a multi-series
   chart into a grid of single-series panels titled by series name, on one
   shared value scale (column family, line/area, waterfall, radar).
+- **IBCS scenario notation** (`series.scenario`, JSON, column family): encodes
+  the data's nature in the fill so actual vs plan vs forecast reads without a
+  legend — **AC** solid, **PY** lighter, **PL** / **BU** outlined/hollow, **FC**
+  hatched (solid in the live add-in). The two-letter code is appended to the
+  legend/label; give each scenario series the same `color` for the single-hue
+  IBCS look.
 - Advanced (JSON-only, survive re-editing): callouts (speech bubbles),
   background bands, per-cell highlight colors, pattern fills, log scale
   presets — see `skill/reference.md` for the full schema.

@@ -72,7 +72,7 @@ interface AppState {
    * from the sheet on every preview/insert — without this these fields would be
    * silently dropped from an imported chart and destroyed on re-save.
    */
-  seriesMeta: Record<string, Pick<Series, "type" | "pattern" | "colors">>;
+  seriesMeta: Record<string, Pick<Series, "type" | "pattern" | "colors" | "scenario">>;
   axisTitle: string;
   logScale: boolean;
   /** Footnote / source line ("Kilde: …"). */
@@ -146,8 +146,8 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     seriesColors: Object.fromEntries(cfg.data.series.filter((s) => s.color).map((s) => [s.name, s.color!])),
     seriesMeta: Object.fromEntries(
       cfg.data.series
-        .filter((s) => s.type || s.pattern || s.colors)
-        .map((s) => [s.name, { type: s.type, pattern: s.pattern, colors: s.colors }]),
+        .filter((s) => s.type || s.pattern || s.colors || s.scenario)
+        .map((s) => [s.name, { type: s.type, pattern: s.pattern, colors: s.colors, scenario: s.scenario }]),
     ),
     axisTitle: cfg.valueAxisTitle ?? "",
     logScale: !!cfg.logScale,
@@ -238,6 +238,7 @@ function currentConfig(): ChartConfig {
       if (m.type) s.type = m.type;
       if (m.pattern) s.pattern = m.pattern;
       if (m.colors) s.colors = m.colors;
+      if (m.scenario) s.scenario = m.scenario;
     }
   }
   const labelParts = state.labelContent

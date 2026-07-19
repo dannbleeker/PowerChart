@@ -69,6 +69,17 @@ export interface Series {
    * different indices sit side by side within each category.
    */
   stack?: number;
+  /**
+   * IBCS scenario (International Business Communication Standards) — encodes the
+   * data's nature in the FILL, so actual vs plan vs forecast reads without a
+   * legend lookup. Column family only:
+   *   AC (actual)        → solid fill
+   *   PY (previous year) → lighter solid
+   *   PL / BU (plan/budget) → outlined / hollow (fill + a coloured border)
+   *   FC (forecast)      → hatched (diagonal pattern; solid in the live add-in)
+   * The two-letter code is appended to the series' legend/label.
+   */
+  scenario?: "AC" | "PY" | "PL" | "BU" | "FC";
 }
 
 export interface ChartData {

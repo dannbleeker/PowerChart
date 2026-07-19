@@ -54,6 +54,7 @@ describe("user manual coverage", () => {
       "Series labels",
       "totals",
       "Grand total",
+      "IBCS scenario",
       "Value axis",
       "Gridlines",
       "Connector lines",

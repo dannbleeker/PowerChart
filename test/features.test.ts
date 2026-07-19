@@ -249,3 +249,66 @@ describe("grand total label (think-cell 14)", () => {
     expect(grand(horiz.nodes)).toBeUndefined();
   });
 });
+
+describe("IBCS scenario notation (Series.scenario)", () => {
+  const seg = (nodes: { name?: string }[], si: number) =>
+    nodes.find((n) => n.name === `seg-${si}-0`) as RectNode | undefined;
+  const build = (scenarios: (string | undefined)[]) =>
+    layoutColumns(
+      cfg({
+        kind: "clustered",
+        data: {
+          categories: ["Q1"],
+          series: scenarios.map((sc, i) => ({
+            name: "Sales",
+            color: "#3b6ea5",
+            values: [80 + i],
+            ...(sc ? { scenario: sc as "AC" | "PY" | "PL" | "BU" | "FC" } : {}),
+          })),
+        },
+      }),
+      DEFAULT_STYLE,
+      DEFAULT_DECOR,
+    ).nodes;
+
+  it("AC is a solid fill of the series colour", () => {
+    const r = seg(build(["AC"]), 0)!;
+    expect(r.fill).toBe("#3b6ea5");
+    expect(r.pattern).toBeUndefined();
+  });
+
+  it("PY is a lighter solid (not the base, not white/none)", () => {
+    const r = seg(build(["PY"]), 0)!;
+    expect(r.fill).not.toBe("#3b6ea5");
+    expect(r.fill).not.toBe("none");
+    expect(r.fill).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+
+  it("PL / BU are outlined/hollow: no fill, coloured border", () => {
+    for (const sc of ["PL", "BU"]) {
+      const r = seg(build([sc]), 0)!;
+      expect(r.fill).toBe("none");
+      expect(r.stroke).toBe("#3b6ea5");
+      expect(r.strokeWidth).toBeGreaterThan(0);
+    }
+  });
+
+  it("FC is hatched (diagonal pattern) over the fill", () => {
+    const r = seg(build(["FC"]), 0)!;
+    expect(r.pattern).toBe("diagonal");
+    expect(r.fill).toBe("#3b6ea5");
+  });
+
+  it("appends the two-letter scenario code to the legend label", () => {
+    const nodes = layoutColumns(
+      cfg({
+        kind: "clustered",
+        data: { categories: ["Q1"], series: [{ name: "Sales", scenario: "AC", values: [80] }] },
+      }),
+      DEFAULT_STYLE,
+      { ...DEFAULT_DECOR, seriesLabels: true },
+    ).nodes;
+    const labels = nodes.filter((n): n is TextNode => n.kind === "text").map((n) => n.text);
+    expect(labels.some((t) => t.includes("Sales (AC)"))).toBe(true);
+  });
+});
