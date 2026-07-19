@@ -44,6 +44,9 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     seriesLabels?: boolean,           // default true (right of last column / legend)
     totals?: boolean,                 // column totals
     grandTotal?: boolean,             // sum of all category totals, top-right (stacked/clustered columns)
+    variance?: { actual: number, reference: number, mode?: "absolute"|"percent", goodIsUp?: boolean },
+                                      // IBCS variance tier below the columns: signed Δ (or Δ%) of the
+                                      // actual series vs a reference (plan/PY), green favourable / red not
     categoryAxis?: boolean,           // default true
     valueAxis?: boolean | "datamarks", gridlines?: boolean,  // default false;
                                       // "datamarks" = Tufte ticks-only axis, no line

@@ -141,6 +141,13 @@ export interface FrameReservations {
   categoryAxisH: number;
   valueAxisW: number;
   seriesLabelsW: number;
+  /** Height of the IBCS variance tier below the plot (0 when off). */
+  varianceH: number;
+}
+
+/** Height reserved below the plot for the IBCS variance tier (0 when off). */
+export function varianceBandHeight(decor: Decorations, style: ChartStyle): number {
+  return decor.variance ? style.fontSize * 4.5 : 0;
 }
 
 /** Height reserved above the plot for the chart title (0 when untitled). */
@@ -199,13 +206,14 @@ export function computeFrame(
     : 2;
   // Extra headroom when a difference arrow is drawn past the last column.
   const diffW = decor.difference ? 26 : 0;
+  const varianceH = varianceBandHeight(decor, style);
   const frame: Frame = {
     x: valueAxisW,
     y: titleH + totalsH,
     w: cfg.width - valueAxisW - Math.max(seriesLabelsW, diffW + 2) - 2,
-    h: cfg.height - titleH - totalsH - categoryAxisH - footnoteH(cfg, style, decor),
+    h: cfg.height - titleH - totalsH - varianceH - categoryAxisH - footnoteH(cfg, style, decor),
   };
-  return { frame, res: { titleH, totalsH, categoryAxisH, valueAxisW, seriesLabelsW } };
+  return { frame, res: { titleH, totalsH, categoryAxisH, valueAxisW, seriesLabelsW, varianceH } };
 }
 
 /**
@@ -312,11 +320,13 @@ export function chromeNodes(
   }
   if (decor.categoryAxis) {
     const slotW = centers.length > 1 ? centers[1] - centers[0] : frame.w;
+    // Sit the category axis below the IBCS variance tier's reserved band (0 off).
+    const catY = frame.y + frame.h + varianceBandHeight(decor, style) + 3;
     cfg.data.categories.forEach((cat, i) => {
       nodes.push({
         kind: "text",
         x: centers[i] - slotW / 2,
-        y: frame.y + frame.h + 3,
+        y: catY,
         w: slotW,
         h: fs * 1.4,
         text: cat,
