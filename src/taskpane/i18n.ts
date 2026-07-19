@@ -18,6 +18,7 @@ const DE: Record<string, string> = {
   "Same scale (deck)": "Gleiche Skala (Deck)",
   "Same scale (selection)": "Gleiche Skala (Auswahl)",
   "Download SVG": "SVG herunterladen",
+  "Download PNG": "PNG herunterladen",
   "Update chart": "Diagramm aktualisieren",
   "Insert agenda slides": "Agenda-Folien einfügen",
   "Export current": "Aktuelles exportieren",

@@ -169,6 +169,7 @@ conventions, and every option.
 | Axis title, log scale, date-spaced line x-axis                            | ✅                                                                                                                                      |
 | Difference arrows anchored to value lines, per-series CAGR                | ✅                                                                                                                                      |
 | JSON automation (export/import/batch insert + `npm run render` CLI)       | ✅ (open take on `.ppttc`)                                                                                                              |
+| Download the preview as SVG or PNG (for email / chat)                     | ✅ (overflow menu; PNG rasterized at 2×)                                                                                                |
 | Datasheet undo/redo (Ctrl+Z / Ctrl+Y)                                     | ✅                                                                                                                                      |
 | Agenda / chapter slides (one per chapter, current highlighted)            | ✅ (appended to the deck)                                                                                                               |
 | Harvey balls, checkboxes, process flow, table element                     | ✅ (Elements section)                                                                                                                   |

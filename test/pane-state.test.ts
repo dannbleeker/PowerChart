@@ -506,6 +506,72 @@ describe("task pane — overflow menu accessibility (ARIA menu pattern)", () => 
   });
 });
 
+describe("task pane — PNG export", () => {
+  it("exposes a Download PNG menuitem beside Download SVG", async () => {
+    await bootPane();
+    const btn = $("download-png");
+    expect(btn).toBeTruthy();
+    expect(btn.getAttribute("role")).toBe("menuitem");
+  });
+
+  it("rasterizes the preview to a powerchart.png download", async () => {
+    await bootPane();
+    // jsdom decodes no SVG image and has no 2D canvas, so stand both in.
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_v: string) {
+        Promise.resolve().then(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("Image", FakeImage);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      scale() {},
+      drawImage() {},
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (cb: BlobCallback) {
+      cb(new Blob(["png"], { type: "image/png" }));
+    });
+    const clicks: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicks.push(this.download);
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:x");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    try {
+      $("download-png").click();
+      await new Promise((r) => setTimeout(r, 5));
+      expect(clicks).toContain("powerchart.png");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("surfaces an error note when the browser can't decode the SVG", async () => {
+    await bootPane();
+    class FailImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_v: string) {
+        Promise.resolve().then(() => this.onerror?.());
+      }
+    }
+    vi.stubGlobal("Image", FailImage);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:x");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    try {
+      $("download-png").click();
+      await new Promise((r) => setTimeout(r, 5));
+      expect($("host-note").textContent).toMatch(/PNG/);
+      expect($("host-note").className).toContain("status-err");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
+  });
+});
+
 describe("element previews are sized for their own shape", () => {
   it("does not stretch the KPI tile like the process flow", async () => {
     // The flow is 480x44 and built to shrink, so it wants width:100%. The KPI

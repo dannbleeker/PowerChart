@@ -1188,6 +1188,53 @@ $("download").addEventListener("click", () => {
   URL.revokeObjectURL(a.href);
 });
 
+/**
+ * PNG export: the native-shapes output is the real deliverable, but SVG doesn't
+ * render in email/chat, so a rasterized fallback earns its place. Rasterize the
+ * SAME preview SVG through a canvas at 2× for a crisp bitmap. The SVG carries no
+ * foreignObject or external refs, so the canvas never tags as tainted and
+ * toBlob() is allowed. Best-effort: a decode failure surfaces as an error note
+ * rather than a silent no-op.
+ */
+$("download-png").addEventListener("click", () => {
+  const scene = buildChart(currentConfig());
+  const svg = sceneToSvg(scene, { background: "#ffffff" });
+  const scale = 2;
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(scene.width * scale);
+      canvas.height = Math.round(scene.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d canvas context");
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, scene.width, scene.height);
+      canvas.toBlob((png) => {
+        if (!png) {
+          note("Couldn't encode the PNG on this browser.", "err");
+          return;
+        }
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(png);
+        a.download = "powerchart.png";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }, "image/png");
+    } catch (err) {
+      note(`Couldn't render PNG: ${err instanceof Error ? err.message : String(err)}`, "err");
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    note("Couldn't render the preview to PNG.", "err");
+  };
+  img.src = url;
+});
+
 /** Cascading default insert position so repeated inserts don't pile up. */
 let insertOffset = 0;
 
