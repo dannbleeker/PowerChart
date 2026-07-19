@@ -18,69 +18,13 @@ patterns.
 
 ## 1. Open
 
-A second sweep (2026, against think-cell 13/14's 2025 additions, the IBCS
-notation standard, and the FT/Zelazny/Few design canon) surfaced the candidates
-below. The chart-*type* space stays saturated — these are notation, a summary
-label, an analytic fit, and two conveniences. None is started; each needs the
-owner's go-ahead before it graduates to a PR. Ranked by value ÷ effort.
+Nothing. The second sweep's six candidates all shipped (grand total label,
+IBCS scenario notation + the stroke-only hollow-column primitive, IBCS variance
+tier, polynomial scatter trendlines, PNG export, copy-config-as-URL) — see the
+README feature table and git for what landed. Whatever surfaces next starts from
+a fresh research pass.
 
-- **IBCS scenario notation for the column/bar family** — *high value, medium
-  effort.* A per-series `scenario` tag (`AC` actual / `PY` previous-year / `PL`
-  plan / `BU` budget / `FC` forecast) that maps to IBCS's standard fill
-  semantics: actual = solid dark, previous-year = lighter solid, plan/budget =
-  **outlined/hollow**, forecast = **hatched**, plus the two-letter tags and an
-  auto-legend. This is the project's stated "business communication standards"
-  identity made systematic: the ad-hoc pieces already exist (line
-  `forecastFrom`, waterfall Target-gap, Gantt baseline ghost, `series.pattern`
-  hatch), but there is no scenario encoding for columns/bars. All primitives are
-  present **except one**: an outlined/hollow column. `fill: "transparent"`
-  currently drops the rect entirely (`column.ts`), so a framed-empty column is
-  not expressible — the foundational sub-task is a **stroke-only fill mode**
-  (rect with `fill:none` + `stroke`), which is native in all three renderers and
-  unblocks Plan/Budget. FC-hatch degrades to solid in the live add-in — the
-  already-accepted pattern-degrade path. Lockstep cost: a new top-level/decoration
-  key across SKILL/reference/MANUAL/showcase/README. (IBCS v1.1 §notation.)
-
-- **Grand total label** — *high value, low effort, low risk.* A single label at
-  the top-right of a stacked/clustered column chart (and %-axis Mekko) showing
-  the **sum of every category total**, distinct from the per-column totals that
-  already ship. New in think-cell 14. A pure `text` scene node — no new
-  primitive, identical in all three renderers, round-trips as a decoration key
-  automatically. Only nuance is placement/de-collision against the value axis and
-  the top segment label, which the existing `collide.ts` pass already handles for
-  `total-` names. The cleanest quick win in this list.
-
-- **IBCS variance columns (absolute Δ and relative Δ%)** — *medium value, medium
-  effort.* Given a primary (AC) and a reference (PL/PY) series, append a small
-  variance tier: signed Δ columns and/or Δ% with a zero reference line. Native
-  rects + a line, a defined IBCS chart family. Partially pre-empted by the
-  existing difference arrows and waterfall budget-gap; the new part is a
-  *systematic per-category* tier. Best sequenced **after** scenario notation, so
-  the `scenario` tags identify which series is actual vs reference.
-
-- **Polynomial scatter trendlines (quadratic / cubic / quartic)** — *medium
-  value, medium effort.* Extend the scatter `Trend` row beyond OLS-linear to a
-  degree 2–4 least-squares fit, still reporting R². New in think-cell 14. Drawn
-  as a **fine polyline** (sample ~40 x-positions → `line` segments), the same way
-  the live add-in already renders any curve — no Bézier needed. Distinct from the
-  `smooth` decoration, which is Catmull-Rom *data* smoothing, not a regression.
-  Needs an overfitting guard (degree ≤ points − 1) and a sane default degree; the
-  live add-in pays in shape count for the polyline.
-
-- **PNG export of the preview** — *low–medium value, low effort.* A "Download
-  PNG" beside the existing "Download SVG": rasterize the preview SVG through a
-  canvas (`drawImage` → `toBlob`). Pure browser, no Office API; the SVG uses no
-  `foreignObject`/external refs so the canvas won't taint. Useful for pasting
-  into email/chat where SVG doesn't render. A convenience on a fallback path
-  (the product's real output is native shapes), not a gap of principle.
-
-- **Copy-config-as-URL (deep-link share)** — *low–medium value, low effort.*
-  "Copy shareable link" that base64-encodes `currentConfig()` into the URL hash;
-  the pane hydrates from it on load (the `?kind=` deep-link plumbing already
-  exists). Overlaps JSON export / localStorage templates, and long configs make
-  long URLs, but it is cheap and good for support/collaboration.
-
-**Considered and dropped this sweep** (so they aren't re-proposed): a
+**Considered and dropped in that sweep** (so they aren't re-proposed): a
 screen-reader data-table alternative to `describeChart` — real WCAG best practice
 beyond ~6 points, but the primary output is native PPT shapes where alt text is
 linear only, so the gain is confined to the downloaded SVG; **CSV file import** —
