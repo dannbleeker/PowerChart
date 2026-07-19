@@ -1093,7 +1093,10 @@ function addNode(
         width: Math.max(0.2, n.w),
         height: Math.max(0.2, n.h),
       });
-      solidFill(shape.fill, n.fill);
+      // A "none" fill is an outlined/hollow rect (IBCS plan/budget columns) — no
+      // fill, just the border below.
+      if (n.fill === "none") shape.fill.clear();
+      else solidFill(shape.fill, n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
         shape.lineFormat.color = hex6(n.stroke);
         shape.lineFormat.weight = n.strokeWidth ?? 1;

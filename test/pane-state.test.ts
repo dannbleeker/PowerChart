@@ -101,7 +101,14 @@ describe("task pane — loading a chart config", () => {
         categories: ["A", "B"],
         series: [
           { name: "Rev", values: [100, 120] },
-          { name: "Margin", values: [30, 40], type: "line", pattern: "diagonal", colors: ["#ff0000", null] },
+          {
+            name: "Margin",
+            values: [30, 40],
+            type: "line",
+            pattern: "diagonal",
+            colors: ["#ff0000", null],
+            scenario: "FC",
+          },
         ],
       },
     });
@@ -109,6 +116,7 @@ describe("task pane — loading a chart config", () => {
     expect(margin.type).toBe("line");
     expect(margin.pattern).toBe("diagonal");
     expect(margin.colors).toEqual(["#ff0000", null]);
+    expect(margin.scenario).toBe("FC"); // IBCS scenario survives the sheet round-trip too
   });
 
   it("keeps those series fields through a datasheet edit (round-trip on rebuild)", () => {

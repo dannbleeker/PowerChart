@@ -29,7 +29,11 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
                                       // scale, so it only means what it looks like on the columns'
                                       // own scale: not with secondaryAxis or lineAxes:"independent",
                                       // and pareto keeps only the bars + the cumulative line.
-      stack?: number                  // clustered-stacked: stack group index
+      stack?: number,                 // clustered-stacked: stack group index
+      scenario?: "AC"|"PY"|"PL"|"BU"|"FC"  // IBCS notation (column family): the fill encodes the
+                                      // data's nature — AC solid, PY lighter, PL/BU outlined/hollow,
+                                      // FC hatched; the code is appended to the legend/label. Set the
+                                      // same `color` on each scenario series for the single-hue look.
     }],
     hundredPercent?: (number|null)[], // "100%=" row: denominators for 100% charts
     xExtent?: (number|null)[],        // "X extent" row: Mekko-with-units widths

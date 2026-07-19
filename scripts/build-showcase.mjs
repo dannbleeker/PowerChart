@@ -39,6 +39,22 @@ const features = [
     decorations: { totals: true, grandTotal: true, categoryAxis: true },
   },
   {
+    kind: "clustered",
+    width: 560,
+    height: 320,
+    title: "IBCS scenarios — PY / AC / FC / PL by fill",
+    decorations: { categoryAxis: true, seriesLabels: false, valueAxis: true },
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "Sales", scenario: "PY", color: "#3b6ea5", values: [80, 85, 90, 95] },
+        { name: "Sales", scenario: "AC", color: "#3b6ea5", values: [82, 88, 96, null] },
+        { name: "Sales", scenario: "FC", color: "#3b6ea5", values: [null, null, null, 102] },
+        { name: "Sales", scenario: "PL", color: "#3b6ea5", values: [85, 90, 95, 100] },
+      ],
+    },
+  },
+  {
     ...sampleConfig("stacked"),
     title: "Level difference (series) + label content Value+%",
     decorations: {

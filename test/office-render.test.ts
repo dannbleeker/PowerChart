@@ -520,6 +520,16 @@ describe("scene node mapping", () => {
     expect(rect.fill.transparency).toBeUndefined();
   });
 
+  it("renders a fill:'none' rect as an outlined/hollow shape (IBCS plan columns)", async () => {
+    const slide = await insert([
+      { kind: "rect", x: 0, y: 0, w: 20, h: 40, fill: "none", stroke: "#3b6ea5", strokeWidth: 1.5, name: "pl" },
+    ]);
+    const rect = slide.created.find((s) => s.geo === "rectangle")!;
+    expect(rect.fillCleared).toBe(true); // no fill
+    expect(rect.fillColor).toBeNull(); // never mis-parsed as a colour
+    expect(rect.lineFormat).toMatchObject({ color: "#3b6ea5", weight: 1.5 });
+  });
+
   it("maps chevrons to chevron/homePlate geometry", async () => {
     const slide = await insert([
       { kind: "chevron", x: 0, y: 0, w: 40, h: 20, fill: "#123456", flatLeft: true },

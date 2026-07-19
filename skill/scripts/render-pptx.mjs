@@ -128,7 +128,8 @@ function addNode(slide, n, dx, dy) {
         y: dy + n.y * IN,
         w: Math.max(0.003, n.w * IN),
         h: Math.max(0.003, n.h * IN),
-        fill: fillOf(n.fill),
+        // A "none" fill is an outlined/hollow rect (IBCS plan/budget columns).
+        fill: n.fill === "none" ? { type: "none" } : fillOf(n.fill),
         line: n.stroke && (n.strokeWidth ?? 0) > 0 ? { color: hex(n.stroke), width: n.strokeWidth } : { type: "none" },
       });
       break;
