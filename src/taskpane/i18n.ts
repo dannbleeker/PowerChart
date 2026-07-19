@@ -31,6 +31,7 @@ const DE: Record<string, string> = {
   "Segment labels": "Segmentbeschriftungen",
   "Series labels": "Reihenbeschriftungen",
   "Column totals": "Säulensummen",
+  "Grand total": "Gesamtsumme",
   "Category labels": "Kategoriebeschriftungen",
   "Value axis": "Werteachse",
   Gridlines: "Gitterlinien",

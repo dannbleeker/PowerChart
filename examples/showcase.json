@@ -1177,6 +1177,45 @@
     }
   },
   {
+    "kind": "clustered",
+    "width": 480,
+    "height": 300,
+    "title": "Grand total — sum of all category totals (top-right)",
+    "data": {
+      "categories": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "series": [
+        {
+          "name": "2024",
+          "values": [
+            42,
+            48,
+            45,
+            61
+          ]
+        },
+        {
+          "name": "2025",
+          "values": [
+            51,
+            55,
+            58,
+            70
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "totals": true,
+      "grandTotal": true,
+      "categoryAxis": true
+    }
+  },
+  {
     "kind": "stacked",
     "width": 480,
     "height": 300,

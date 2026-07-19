@@ -190,3 +190,62 @@ describe("datasheet special rows and transpose", () => {
     expect(data.series.map((s) => s.name)).toEqual(["A", "B"]);
   });
 });
+
+describe("grand total label (think-cell 14)", () => {
+  const base = cfg({
+    kind: "stacked",
+    data: {
+      categories: ["Q1", "Q2", "Q3"],
+      series: [
+        { name: "A", values: [10, 20, 30] },
+        { name: "B", values: [5, 10, 15] },
+      ],
+    },
+  });
+  const grand = (nodes: { name?: string }[]) => nodes.find((n) => n.name === "grand-total") as TextNode | undefined;
+
+  it("emits one top-right label summing every category total", () => {
+    const { nodes } = layoutColumns(base, DEFAULT_STYLE, { ...DEFAULT_DECOR, totals: true, grandTotal: true });
+    const g = grand(nodes);
+    expect(g).toBeTruthy();
+    expect(g!.text).toBe("90"); // 15 + 30 + 45
+    // Top-right: right-aligned, near the top of the frame, past the last column's centre.
+    expect(g!.align).toBe("right");
+    const totals = byName(nodes, "total-") as TextNode[];
+    for (const t of totals) expect(g!.y).toBeLessThanOrEqual(t.y + 1); // grand total sits at/above the column totals row
+  });
+
+  it("is independent of per-column totals (can show without them)", () => {
+    const { nodes } = layoutColumns(
+      { ...base, decorations: { ...DEFAULT_DECOR, totals: false, grandTotal: true } },
+      DEFAULT_STYLE,
+      { ...DEFAULT_DECOR, totals: false, grandTotal: true },
+    );
+    expect(grand(nodes)).toBeTruthy();
+    expect(byName(nodes, "total-")).toHaveLength(0); // no per-column totals
+  });
+
+  it("clustered sums across every series and category", () => {
+    const { nodes } = layoutColumns(
+      { ...base, kind: "clustered", decorations: { ...DEFAULT_DECOR, grandTotal: true } },
+      DEFAULT_STYLE,
+      { ...DEFAULT_DECOR, grandTotal: true },
+    );
+    expect(grand(nodes)!.text).toBe("90");
+  });
+
+  it("is suppressed on a 100% chart (every column totals the same) and when horizontal", () => {
+    const pct = layoutColumns(
+      { ...base, kind: "stacked100", decorations: { ...DEFAULT_DECOR, grandTotal: true } },
+      DEFAULT_STYLE,
+      { ...DEFAULT_DECOR, grandTotal: true },
+    );
+    expect(grand(pct.nodes)).toBeUndefined();
+    const horiz = layoutColumns(
+      { ...base, horizontal: true, decorations: { ...DEFAULT_DECOR, grandTotal: true } },
+      DEFAULT_STYLE,
+      { ...DEFAULT_DECOR, grandTotal: true },
+    );
+    expect(grand(horiz.nodes)).toBeUndefined();
+  });
+});

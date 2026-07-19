@@ -98,6 +98,7 @@ describe("skill documentation coverage", () => {
       "barStyle",
       "fillBetween",
       "totals",
+      "grandTotal",
       "slope",
       "breakout",
       "multiples",
