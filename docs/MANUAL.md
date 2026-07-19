@@ -316,6 +316,9 @@ count of how many of its options are currently on.
   touch for a histogram look; overlap (−100…100) sets how much clustered bars
   within a category overlap or gap.
 - **Same scale** (deck-wide or selection) re-renders charts on a common axis.
+- **Download SVG / Download PNG** (overflow menu) save the preview as a vector
+  or a 2× raster image — handy for email or chat, where the native-shape output
+  can't go. The real deliverable is still **Insert into slide** (editable shapes).
 - **Small multiples** (`multiples: {columns?}`, JSON): splits a multi-series
   chart into a grid of single-series panels titled by series name, on one
   shared value scale (column family, line/area, waterfall, radar).
