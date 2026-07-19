@@ -328,6 +328,11 @@ count of how many of its options are currently on.
   hatched (solid in the live add-in). The two-letter code is appended to the
   legend/label; give each scenario series the same `color` for the single-hue
   IBCS look.
+- **IBCS variance tier** (`decorations.variance`, JSON, column family): a strip
+  below the columns showing an `actual` series' deviation from a `reference`
+  (plan / previous year) per category, as signed bars from a zero line — absolute
+  Δ (default) or relative `mode:"percent"`. `goodIsUp` (default true) colours the
+  sign green (favourable) / red (not); set it false for cost-like metrics.
 - Advanced (JSON-only, survive re-editing): callouts (speech bubbles),
   background bands, per-cell highlight colors, pattern fills, log scale
   presets — see `skill/reference.md` for the full schema.

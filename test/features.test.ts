@@ -312,3 +312,96 @@ describe("IBCS scenario notation (Series.scenario)", () => {
     expect(labels.some((t) => t.includes("Sales (AC)"))).toBe(true);
   });
 });
+
+describe("IBCS variance tier (decorations.variance)", () => {
+  const base = cfg({
+    kind: "clustered",
+    data: {
+      categories: ["Q1", "Q2"],
+      series: [
+        { name: "AC", values: [82, 91] },
+        { name: "PL", values: [85, 100] },
+      ],
+    },
+  });
+  const bar = (nodes: { name?: string }[], c: number) =>
+    nodes.find((n) => n.name === `variance-bar-${c}`) as RectNode | undefined;
+  const label = (nodes: { name?: string }[], c: number) =>
+    nodes.find((n) => n.name === `variance-label-${c}`) as TextNode | undefined;
+
+  it("draws a signed absolute-Δ bar + label per category, plus a zero line", () => {
+    const { nodes } = layoutColumns(base, DEFAULT_STYLE, {
+      ...DEFAULT_DECOR,
+      variance: { actual: 0, reference: 1 },
+    });
+    expect(nodes.find((n) => n.name === "variance-zero")).toBeTruthy();
+    expect(label(nodes, 0)!.text).toBe("-3"); // 82 − 85
+    expect(label(nodes, 1)!.text).toBe("-9"); // 91 − 100
+    expect(bar(nodes, 0)).toBeTruthy();
+  });
+
+  it("colours a favourable delta green and an unfavourable one red (goodIsUp default)", () => {
+    const up = cfg({
+      kind: "clustered",
+      data: {
+        categories: ["Q1"],
+        series: [
+          { name: "AC", values: [90] },
+          { name: "PL", values: [80] },
+        ],
+      },
+    });
+    const { nodes } = layoutColumns(up, DEFAULT_STYLE, { ...DEFAULT_DECOR, variance: { actual: 0, reference: 1 } });
+    expect(label(nodes, 0)!.text).toBe("+10");
+    expect(bar(nodes, 0)!.fill).toBe("#0ca30c"); // green (favourable)
+  });
+
+  it("flips the sign colouring for cost-like metrics (goodIsUp:false)", () => {
+    const { nodes } = layoutColumns(
+      cfg({
+        kind: "clustered",
+        data: {
+          categories: ["Q1"],
+          series: [
+            { name: "AC", values: [90] },
+            { name: "PL", values: [80] },
+          ],
+        },
+      }),
+      DEFAULT_STYLE,
+      { ...DEFAULT_DECOR, variance: { actual: 0, reference: 1, goodIsUp: false } },
+    );
+    expect(bar(nodes, 0)!.fill).toBe(DEFAULT_STYLE.negative); // +10 is now unfavourable
+  });
+
+  it("computes relative Δ% in percent mode", () => {
+    const { nodes } = layoutColumns(base, DEFAULT_STYLE, {
+      ...DEFAULT_DECOR,
+      variance: { actual: 0, reference: 1, mode: "percent" },
+    });
+    expect(label(nodes, 0)!.text).toBe("-4%"); // (82−85)/85 = −3.5% → −4%
+  });
+
+  it("skips a category with a null on either side, and is suppressed when horizontal", () => {
+    const withNull = cfg({
+      kind: "clustered",
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "AC", values: [82, null] },
+          { name: "PL", values: [85, 100] },
+        ],
+      },
+    });
+    const { nodes } = layoutColumns(withNull, DEFAULT_STYLE, {
+      ...DEFAULT_DECOR,
+      variance: { actual: 0, reference: 1 },
+    });
+    expect(bar(nodes, 1)).toBeUndefined(); // null actual → no bar
+    const horiz = layoutColumns({ ...base, horizontal: true }, DEFAULT_STYLE, {
+      ...DEFAULT_DECOR,
+      variance: { actual: 0, reference: 1 },
+    });
+    expect(horiz.nodes.find((n) => n.name === "variance-zero")).toBeUndefined();
+  });
+});

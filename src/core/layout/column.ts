@@ -45,9 +45,8 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const nStacks = stacked && !pct ? stackIds.length : 1;
   const stackPos = new Map(stackIds.map((id, i) => [id, i]));
 
-  const frame = H
-    ? computeFrameHorizontal(cfg, style, decor)
-    : computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []).frame;
+  const vframe = H ? null : computeFrame(cfg, style, decor, decor.seriesLabels ? data.series.map((s) => s.name) : []);
+  const frame = H ? computeFrameHorizontal(cfg, style, decor) : vframe!.frame;
   const fs = style.fontSize;
 
   // Category slots run along x (vertical) or y (horizontal).
@@ -409,6 +408,74 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       align: "right",
       valign: "bottom",
       name: "grand-total",
+    });
+  }
+
+  // IBCS variance tier: a strip below the columns showing an actual series'
+  // deviation from a reference (plan / previous year) as signed bars from a zero
+  // line. Vertical only; the band height was reserved in computeFrame.
+  if (decor.variance && !H && vframe && vframe.res.varianceH > 0) {
+    const { actual, reference, mode = "absolute", goodIsUp = true } = decor.variance;
+    const av = data.series[actual]?.values ?? [];
+    const rv = data.series[reference]?.values ?? [];
+    const deltas = data.categories.map((_, c) => {
+      const a = av[c];
+      const r = rv[c];
+      if (a == null || r == null) return null;
+      return mode === "percent" ? (r !== 0 ? ((a - r) / Math.abs(r)) * 100 : null) : a - r;
+    });
+    const maxAbs = maxOf(
+      deltas.filter((d): d is number => d != null).map((d) => Math.abs(d)),
+      0,
+    );
+    const bandTop = frame.y + frame.h;
+    const bandH = vframe.res.varianceH;
+    const zeroY = bandTop + bandH * 0.5;
+    const halfH = bandH * 0.24; // leaves room for the delta label at the bar tip
+    const scale = maxAbs > 0 ? halfH / maxAbs : 0;
+    nodes.push({
+      kind: "line",
+      x1: frame.x,
+      y1: zeroY,
+      x2: frame.x + frame.w,
+      y2: zeroY,
+      stroke: style.axis,
+      strokeWidth: 1,
+      name: "variance-zero",
+    });
+    const GOOD = "#0ca30c";
+    deltas.forEach((d, c) => {
+      if (d == null) return;
+      const favorable = goodIsUp ? d >= 0 : d <= 0;
+      const color = d === 0 ? style.mutedText : favorable ? GOOD : style.negative;
+      const barLen = Math.abs(d) * scale;
+      const barW = Math.min(colThick, slotLen * 0.5);
+      const up = d >= 0;
+      const barY = up ? zeroY - barLen : zeroY;
+      nodes.push({
+        kind: "rect",
+        x: centers[c] - barW / 2,
+        y: barY,
+        w: barW,
+        h: barLen,
+        fill: color,
+        name: `variance-bar-${c}`,
+      });
+      const text = (d >= 0 ? "+" : "") + (mode === "percent" ? `${Math.round(d)}%` : formatNumber(d, fmt));
+      nodes.push({
+        kind: "text",
+        x: centers[c] - slotLen / 2,
+        y: up ? barY - fs * 1.05 : barY + barLen + 1,
+        w: slotLen,
+        h: fs * 1.05,
+        text,
+        fontSize: fs * 0.85,
+        bold: true,
+        color,
+        align: "center",
+        valign: up ? "bottom" : "top",
+        name: `variance-label-${c}`,
+      });
     });
   }
 

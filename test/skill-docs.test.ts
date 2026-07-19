@@ -100,6 +100,7 @@ describe("skill documentation coverage", () => {
       "fillBetween",
       "totals",
       "grandTotal",
+      "variance",
       "slope",
       "breakout",
       "multiples",

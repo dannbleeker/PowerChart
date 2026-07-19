@@ -147,6 +147,21 @@ export interface Decorations {
    * meaningful on a 100%-stacked chart (every column totals 100%), so ignored there.
    */
   grandTotal?: boolean;
+  /**
+   * IBCS variance tier: a strip below the columns showing the deviation of an
+   * `actual` series from a `reference` (plan / previous year) per category, as
+   * signed bars from a zero line — the IBCS "integrated variance" convention.
+   * `actual`/`reference` are series indices. `mode` is the absolute Δ (default)
+   * or relative Δ%. `goodIsUp` colours the sign (default true = up is favourable,
+   * green; down unfavourable, red) — set false for cost-like metrics. Vertical
+   * column family only.
+   */
+  variance?: {
+    actual: number;
+    reference: number;
+    mode?: "absolute" | "percent";
+    goodIsUp?: boolean;
+  };
   /** Category labels below the baseline. */
   categoryAxis: boolean;
   /**

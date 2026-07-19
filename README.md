@@ -129,6 +129,7 @@ conventions, and every option.
 | Mean±SD boxplot variant                                                   | ✅ (`boxplot.meanSd`, raw-sample mode)                                                                                                  |
 | Grand total label (sum of all category totals)                            | ✅ (`decorations.grandTotal`, stacked/clustered columns)                                                                                |
 | IBCS scenario notation (AC/PY/PL/BU/FC by fill)                           | ✅ (`series.scenario`; solid / lighter / hollow / hatched)                                                                              |
+| IBCS variance tier (Δ / Δ% vs plan or prior year)                         | ✅ (`decorations.variance`; signed bars below the columns, green/red)                                                                   |
 | Sparklines (word-sized trend lines)                                       | ✅ (`decorations.sparkline` on `line`/`area`; pair with `multiples`)                                                                    |
 | Radial bar chart / Nightingale rose                                       | ✅ (`radar` + `radar.bars`; series stack outward)                                                                                       |
 | Stacked radar (part-to-whole per spoke)                                   | ✅ (`radar` + `radar.stacked`)                                                                                                          |

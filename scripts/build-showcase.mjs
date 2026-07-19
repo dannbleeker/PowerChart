@@ -55,6 +55,20 @@ const features = [
     },
   },
   {
+    kind: "clustered",
+    width: 560,
+    height: 340,
+    title: "IBCS variance tier — actual vs plan (Δ below)",
+    decorations: { categoryAxis: true, valueAxis: true, variance: { actual: 0, reference: 1 } },
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "Actual", scenario: "AC", color: "#3b6ea5", values: [82, 88, 96, 91] },
+        { name: "Plan", scenario: "PL", color: "#3b6ea5", values: [85, 86, 95, 100] },
+      ],
+    },
+  },
+  {
     ...sampleConfig("stacked"),
     title: "Level difference (series) + label content Value+%",
     decorations: {
