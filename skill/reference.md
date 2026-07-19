@@ -39,6 +39,7 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     segmentLabels?: boolean,          // default true, auto-hidden when too small
     seriesLabels?: boolean,           // default true (right of last column / legend)
     totals?: boolean,                 // column totals
+    grandTotal?: boolean,             // sum of all category totals, top-right (stacked/clustered columns)
     categoryAxis?: boolean,           // default true
     valueAxis?: boolean | "datamarks", gridlines?: boolean,  // default false;
                                       // "datamarks" = Tufte ticks-only axis, no line

@@ -221,7 +221,9 @@ The *Format* section organises these into five collapsible groups — **Labels**
 count of how many of its options are currently on.
 
 - **Toggles**: Segment labels (auto-hidden when they don't fit),
-  Series labels, Column totals, Category labels, Value axis, Gridlines,
+  Series labels, Column totals, **Grand total** (one label at the top-right of
+  a stacked/clustered column chart summing every category total — think-cell 14;
+  independent of the per-column totals), Category labels, Value axis, Gridlines,
   **Connector lines** (joins stacked-segment boundaries between columns),
   **100% = note**, **Datamark axis (ticks only)** — Tufte-style tick dashes
   with no axis line.

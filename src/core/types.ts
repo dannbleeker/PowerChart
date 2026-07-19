@@ -129,6 +129,13 @@ export interface Decorations {
   seriesLabels: boolean;
   /** Column totals above each column. */
   totals: boolean;
+  /**
+   * Grand total: one label at the top-right of a stacked/clustered column chart
+   * showing the sum of every category total (think-cell 14). Independent of
+   * `totals` — you can show the grand total without the per-column ones. Not
+   * meaningful on a 100%-stacked chart (every column totals 100%), so ignored there.
+   */
+  grandTotal?: boolean;
   /** Category labels below the baseline. */
   categoryAxis: boolean;
   /**

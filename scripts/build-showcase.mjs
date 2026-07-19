@@ -34,6 +34,11 @@ const features = [
     },
   },
   {
+    ...sampleConfig("clustered"),
+    title: "Grand total — sum of all category totals (top-right)",
+    decorations: { totals: true, grandTotal: true, categoryAxis: true },
+  },
+  {
     ...sampleConfig("stacked"),
     title: "Level difference (series) + label content Value+%",
     decorations: {

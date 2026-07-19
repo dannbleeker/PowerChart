@@ -678,6 +678,7 @@ function renderOptions() {
     { key: "segmentLabels", label: "Segment labels", group: G.labels },
     { key: "seriesLabels", label: "Series labels", group: G.labels },
     { key: "totals", label: "Column totals", group: G.labels },
+    { key: "grandTotal", label: "Grand total", group: G.labels },
     { key: "categoryAxis", label: "Category labels", group: G.labels },
     { key: "valueAxis", label: "Value axis", group: G.axes },
     { key: "gridlines", label: "Gridlines", group: G.axes },

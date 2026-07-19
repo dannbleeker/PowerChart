@@ -127,6 +127,7 @@ conventions, and every option.
 | Candlestick / OHLC financial chart                                        | ✅ (`candlestick` kind, `Open`/`High`/`Low`/`Close` rows)                                                                               |
 | Gantt critical-path highlight                                             | ✅ (`decorations.criticalPath`, over `After` edges)                                                                                     |
 | Mean±SD boxplot variant                                                   | ✅ (`boxplot.meanSd`, raw-sample mode)                                                                                                  |
+| Grand total label (sum of all category totals)                            | ✅ (`decorations.grandTotal`, stacked/clustered columns)                                                                                |
 | Sparklines (word-sized trend lines)                                       | ✅ (`decorations.sparkline` on `line`/`area`; pair with `multiples`)                                                                    |
 | Radial bar chart / Nightingale rose                                       | ✅ (`radar` + `radar.bars`; series stack outward)                                                                                       |
 | Stacked radar (part-to-whole per spoke)                                   | ✅ (`radar` + `radar.stacked`)                                                                                                          |

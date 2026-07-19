@@ -191,7 +191,7 @@ export function computeFrame(
 ): { frame: Frame; res: FrameReservations } {
   const fs = style.fontSize;
   const titleH = titleHeight(cfg, style);
-  const totalsH = decor.totals || decor.cagr || decor.difference ? fs * 1.5 + 4 : fs * 0.8;
+  const totalsH = decor.totals || decor.cagr || decor.difference || decor.grandTotal ? fs * 1.5 + 4 : fs * 0.8;
   const categoryAxisH = decor.categoryAxis ? fs * 1.5 + 3 : 4;
   const valueAxisW = decor.valueAxis ? 34 : 2;
   const seriesLabelsW = decor.seriesLabels

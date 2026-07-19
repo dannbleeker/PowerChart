@@ -372,6 +372,30 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
   }
 
+  // Grand total (think-cell 14): one label at the top-right showing the sum of
+  // every category total. A FIXED anchor in the de-collision pass, so a tall
+  // right-hand column's own (movable) total nudges around it. Vertical only, and
+  // never on a 100% chart, where every column totals the same 100%.
+  if (decor.grandTotal && !pct && !H && n > 0) {
+    const grand = signedTotals.reduce((a, b) => a + b, 0);
+    const gtext = formatNumber(grand, fmt);
+    const gw = Math.min(frame.w, textWidth(gtext, fs, true) + 8);
+    nodes.push({
+      kind: "text",
+      x: frame.x + frame.w - gw,
+      y: frame.y - fs * 1.5,
+      w: gw,
+      h: fs * 1.4,
+      text: gtext,
+      fontSize: fs,
+      bold: true,
+      color: style.text,
+      align: "right",
+      valign: "bottom",
+      name: "grand-total",
+    });
+  }
+
   // Connector lines between adjacent stacked columns: one per segment
   // boundary, so the development of each segment is easy to follow.
   if (decor.connectors && stacked && nStacks === 1) {

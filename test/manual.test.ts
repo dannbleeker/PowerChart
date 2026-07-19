@@ -53,6 +53,7 @@ describe("user manual coverage", () => {
       "Segment labels",
       "Series labels",
       "totals",
+      "Grand total",
       "Value axis",
       "Gridlines",
       "Connector lines",
