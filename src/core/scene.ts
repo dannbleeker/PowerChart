@@ -189,6 +189,7 @@ export type SceneNode =
 // here so scene consumers (layouts) keep importing `polar` from the scene module.
 export { polar } from "./geometry";
 import { wedgeFanSteps, type SymbolShape } from "./geometry";
+import { toRgb } from "./color";
 export type { SymbolShape };
 
 export interface Scene {
@@ -232,11 +233,14 @@ export function textWidth(text: string, fontSize: number, bold = false): number 
   return text.length * fontSize * (bold ? 0.58 : 0.54);
 }
 
-/** Pick black or white ink for a given fill so segment labels stay readable. */
+/**
+ * Pick black or white ink for a given fill so segment labels stay readable.
+ * Parses via the shared `toRgb` — this used to carry its own hex-only copy, which
+ * read every rgb()/hsl() fill as pure black and so chose WHITE ink for a
+ * near-white segment.
+ */
 export function contrastInk(fill: string): string {
-  const hex = fill.replace("#", "");
-  const n = parseInt(hex.length === 3 ? hex.replace(/./g, "$&$&") : hex, 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => {
+  const [r, g, b] = toRgb(fill).map((c) => {
     const s = c / 255;
     return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
   });

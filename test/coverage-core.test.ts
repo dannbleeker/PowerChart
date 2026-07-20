@@ -3,6 +3,7 @@ import { buildChart, valueExtent, DEFAULT_SIZE } from "../src/core/chart";
 import { isTotalToken } from "../src/core/layout/waterfall";
 import { contrastInk, type Scene, type SceneNode, type TextNode } from "../src/core/scene";
 import { resolveLabelCollisions } from "../src/core/collide";
+import { toRgb } from "../src/core/color";
 import { sceneToSvg } from "../src/render/svg";
 import type { ChartConfig, ChartData } from "../src/core/types";
 
@@ -97,6 +98,28 @@ describe("contrastInk", () => {
   it("expands 3-digit hex and picks readable ink", () => {
     expect(contrastInk("#fff")).toBe(contrastInk("#ffffff"));
     expect(contrastInk("#000")).not.toBe(contrastInk("#fff"));
+  });
+
+  it("reads rgb()/hsl() fills, not as black", () => {
+    // A hex-only parser returned NaN->0 (pure black) for functional colours, so
+    // a near-white rgb() fill wrongly got WHITE ink. These forms are valid config
+    // (Series.color etc. are plain strings the renderer's PAINT_OK admits).
+    expect(contrastInk("rgb(250,250,250)")).toBe(contrastInk("#fafafa"));
+    expect(contrastInk("rgb(250,250,250)")).toBe("#0b0b0b"); // dark ink on near-white
+    expect(contrastInk("rgb(20,20,20)")).toBe("#ffffff"); // white ink on near-black
+    expect(contrastInk("hsl(0,0%,100%)")).toBe("#0b0b0b"); // hsl white
+  });
+});
+
+describe("toRgb parses every allow-listed colour form", () => {
+  it("matches hex for the equivalent rgb()/hsl(), strips alpha, expands short hex", () => {
+    expect(toRgb("rgb(78,121,167)")).toEqual(toRgb("#4e79a7"));
+    expect(toRgb("#abc")).toEqual(toRgb("#aabbcc"));
+    expect(toRgb("#4e79a780")).toEqual(toRgb("#4e79a7")); // alpha byte dropped
+    expect(toRgb("rgb(50%,50%,50%)")).toEqual([127, 127, 127]);
+    expect(toRgb("hsl(0,0%,0%)")).toEqual([0, 0, 0]);
+    // A malformed paint falls back to mid grey, never NaN/black.
+    expect(toRgb("not-a-color")).toEqual([128, 128, 128]);
   });
 });
 

@@ -4,11 +4,58 @@
  * sequential / diverging value→color scales.
  */
 
-const hexToRgb = (hex: string): [number, number, number] => {
-  const h = hex.replace("#", "");
-  const n = parseInt(h.length === 3 ? h.replace(/./g, "$&$&") : h, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-};
+/**
+ * Parse any paint the renderer's allow-list accepts into RGB.
+ *
+ * A hex-only `parseInt(h, 16)` yields NaN for `rgb()`/`hsl()`, and the bitwise
+ * ops then coerce that NaN to 0 — so every functional colour silently read as
+ * PURE BLACK. Those forms are legitimate config (Series.color / Series.colors /
+ * style.palette are plain strings, and svg.ts's PAINT_OK admits them), so the
+ * mis-read reached contrastInk (white ink chosen for a near-white fill) and
+ * lerpColor (tints lerping toward black instead of the real hue).
+ *
+ * Named CSS colours stay a known gap: PAINT_OK admits any bare word, and a
+ * 148-entry table is not worth carrying here. They fall back to mid grey, which
+ * at least yields a sane ink instead of asserting black.
+ */
+export function toRgb(color: string): [number, number, number] {
+  const c = (color ?? "").trim();
+  if (c.startsWith("#")) {
+    const h = c.slice(1);
+    // 4/8-digit forms carry an alpha byte the colour math has no use for.
+    const rgb = h.length === 3 || h.length === 4 ? h.slice(0, 3).replace(/./g, "$&$&") : h.slice(0, 6);
+    const n = parseInt(rgb, 16);
+    return Number.isNaN(n) ? [128, 128, 128] : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const nums = (s: string) => (s.match(/-?[\d.]+%?/g) ?? []).map((v) => parseFloat(v));
+  if (/^rgba?\(/i.test(c)) {
+    const [r = 0, g = 0, b = 0] = nums(c);
+    const scale = /%/.test(c) ? 2.55 : 1; // percentages are 0–100, bare numbers 0–255
+    return [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v * scale)))) as [number, number, number];
+  }
+  if (/^hsla?\(/i.test(c)) {
+    const [h = 0, s = 0, l = 0] = nums(c);
+    return hslToRgb(((h % 360) + 360) % 360, Math.max(0, Math.min(1, s / 100)), Math.max(0, Math.min(1, l / 100)));
+  }
+  return [128, 128, 128];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - chroma / 2;
+  const [r, g, b] = [
+    [chroma, x, 0],
+    [x, chroma, 0],
+    [0, chroma, x],
+    [0, x, chroma],
+    [x, 0, chroma],
+    [chroma, 0, x],
+  ][Math.floor(h / 60) % 6];
+  return [r, g, b].map((v) => Math.round((v + m) * 255)) as [number, number, number];
+}
+
+const hexToRgb = toRgb;
 
 const rgbToHex = (rgb: number[]): string =>
   "#" +
