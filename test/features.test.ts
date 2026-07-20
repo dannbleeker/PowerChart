@@ -309,10 +309,70 @@ describe("IBCS scenario notation (Series.scenario)", () => {
     }
   });
 
-  it("FC is hatched (diagonal pattern) over the fill", () => {
+  it("FC is hatched AND carries a fill/border encoding that survives export", () => {
     const r = seg(build(["FC"]), 0)!;
+    // SVG shows the true IBCS hatch…
     expect(r.pattern).toBe("diagonal");
-    expect(r.fill).toBe("#3b6ea5");
+    // …but rect.pattern is SVG-only: both PowerPoint renderers drop it, which
+    // made FC pixel-identical to AC in the actual deliverable. So the fill and
+    // border must ALSO distinguish it, using only what all three can express.
+    expect(r.fill).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(r.fill).not.toBe("#3b6ea5"); // not AC's solid
+    expect(r.fill).not.toBe("none"); // not PL/BU's hollow
+    expect(r.stroke).toBe("#3b6ea5");
+    expect(r.strokeWidth).toBeGreaterThan(0);
+  });
+
+  it("keeps all four scenario codes visually distinct", () => {
+    const nodes = build(["AC", "PY", "PL", "FC"]);
+    const sig = [0, 1, 2, 3].map((i) => {
+      const r = seg(nodes, i)!;
+      return `${r.fill}|${r.stroke}|${r.strokeWidth}`;
+    });
+    expect(new Set(sig).size).toBe(4);
+  });
+
+  it("inks the segment label against the PAINTED fill, not the series colour", () => {
+    // #168 restyles the segment (PL/BU hollow, PY/FC tinted) but the label ink
+    // was still chosen from the original dark series colour — so a hollow PL bar
+    // got white text on the white canvas, and a light PY tint got white on light.
+    const nodes = layoutColumns(
+      cfg({
+        kind: "stacked",
+        data: {
+          categories: ["Q1"],
+          series: [
+            { name: "Plan", scenario: "PL" as const, color: "#1f3d7a", values: [30] },
+            { name: "Prev", scenario: "PY" as const, color: "#1f3d7a", values: [30] },
+          ],
+        },
+      }),
+      DEFAULT_STYLE,
+      { ...DEFAULT_DECOR, segmentLabels: true },
+    ).nodes;
+    for (const si of [0, 1]) {
+      const label = nodes.find((n) => n.name === `label-${si}-0`) as TextNode | undefined;
+      // Dark ink on a hollow bar (white canvas) and on a light tint.
+      expect(label?.color, `series ${si}`).toBe("#0b0b0b");
+    }
+  });
+
+  it("tints PY toward the canvas, so a dark theme does not wash it white", () => {
+    // #138 moved every tint onto style.background; #168 reintroduced a hardcoded
+    // "#ffffff" at a new site, which blows out on a dark canvas.
+    const dark = layoutColumns(
+      cfg({
+        kind: "clustered",
+        data: { categories: ["Q1"], series: [{ name: "S", scenario: "PY" as const, color: "#3b6ea5", values: [80] }] },
+      }),
+      { ...DEFAULT_STYLE, background: "#1b1b1b" },
+      DEFAULT_DECOR,
+    ).nodes;
+    const r = seg(dark, 0)!;
+    // Halfway to a near-black surface must be DARKER than the series colour,
+    // never lighter (which is what lerping toward white produced).
+    const lum = (c: string) => parseInt(c.slice(1, 3), 16) + parseInt(c.slice(3, 5), 16) + parseInt(c.slice(5, 7), 16);
+    expect(lum(r.fill)).toBeLessThan(lum("#3b6ea5"));
   });
 
   it("appends the two-letter scenario code to the legend label", () => {

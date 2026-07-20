@@ -279,13 +279,21 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       let segStrokeWidth = stacked ? 0.75 : 0;
       let segPattern = s.pattern;
       if (s.scenario === "PY") {
-        segFill = lerpColor(fill, "#ffffff", 0.5);
+        segFill = lerpColor(style.background, fill, 0.5);
       } else if (s.scenario === "PL" || s.scenario === "BU") {
         segFill = "none";
         segStroke = fill;
         segStrokeWidth = 1.5;
       } else if (s.scenario === "FC") {
+        // SVG keeps the true IBCS hatch, but rect.pattern is SVG-only — both
+        // PowerPoint renderers drop it, which made FC pixel-identical to AC in
+        // the actual deliverable. Back the hatch with a fill/border encoding all
+        // three renderers can express: a light tint (distinct from PY's heavier
+        // 0.5) plus a series-coloured edge (distinct from PL/BU's hollow bar).
         segPattern = "diagonal";
+        segFill = lerpColor(style.background, fill, 0.75);
+        segStroke = fill;
+        segStrokeWidth = 1;
       }
       nodes.push({
         kind: "rect",
@@ -321,7 +329,9 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
             h: fs * 1.5,
             text: label,
             fontSize: fs,
-            color: contrastInk(fill),
+            // Against the painted fill, not the original series colour: a hollow
+            // PL/BU bar shows the canvas, and a PY/FC tint is far lighter than `fill`.
+            color: contrastInk(segFill === "none" ? style.background : segFill),
             align: "center",
             valign: "middle",
             name: `label-${si}-${c}`,
