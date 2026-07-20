@@ -213,9 +213,15 @@ export function bandNodes(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     const fill = band.color ?? "#f2f1ec";
     let r: { x: number; y: number; w: number; h: number } | null = null;
     if (band.axis === "y" && a.valueToY) {
+      // Clip to the plot: band.from/to are data values that may fall outside the
+      // value domain, and valueToY extrapolates past the axis, so an unclamped
+      // band renders off-frame. (The x-branch below already clamps its indices;
+      // a band entirely outside the plot collapses to h<=0 and is dropped below.)
       const y1 = a.valueToY(band.from);
       const y2 = a.valueToY(band.to);
-      r = { x: a.plot.x, y: Math.min(y1, y2), w: a.plot.w, h: Math.abs(y1 - y2) };
+      const top = Math.max(a.plot.y, Math.min(y1, y2));
+      const bot = Math.min(a.plot.y + a.plot.h, Math.max(y1, y2));
+      r = { x: a.plot.x, y: top, w: a.plot.w, h: bot - top };
     } else if (band.axis === "x" && a.categoryX.length) {
       const c1 = Math.max(0, Math.min(a.categoryX.length - 1, Math.min(band.from, band.to)));
       const c2 = Math.max(0, Math.min(a.categoryX.length - 1, Math.max(band.from, band.to)));

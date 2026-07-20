@@ -145,9 +145,17 @@ export interface FrameReservations {
   varianceH: number;
 }
 
-/** Height reserved below the plot for the IBCS variance tier (0 when off). */
-export function varianceBandHeight(decor: Decorations, style: ChartStyle): number {
-  return decor.variance ? style.fontSize * 4.5 : 0;
+/**
+ * Height reserved below the plot for the IBCS variance tier. Only the vertical
+ * column family (stacked/clustered/100%, drawn by layoutColumns) actually paints
+ * it, so gate the reservation on that — otherwise a line/area/waterfall/boxplot/
+ * violin/candlestick chart with `decorations.variance` lost 4.5×fontSize of plot
+ * to a strip that drew nothing.
+ */
+export function varianceBandHeight(cfg: ChartConfig, decor: Decorations, style: ChartStyle): number {
+  const drawsTier =
+    !cfg.horizontal && (cfg.kind === "stacked" || cfg.kind === "clustered" || cfg.kind === "stacked100");
+  return decor.variance && drawsTier ? style.fontSize * 4.5 : 0;
 }
 
 /** Height reserved above the plot for the chart title (0 when untitled). */
@@ -206,7 +214,7 @@ export function computeFrame(
     : 2;
   // Extra headroom when a difference arrow is drawn past the last column.
   const diffW = decor.difference ? 26 : 0;
-  const varianceH = varianceBandHeight(decor, style);
+  const varianceH = varianceBandHeight(cfg, decor, style);
   const frame: Frame = {
     x: valueAxisW,
     y: titleH + totalsH,
@@ -321,7 +329,7 @@ export function chromeNodes(
   if (decor.categoryAxis) {
     const slotW = centers.length > 1 ? centers[1] - centers[0] : frame.w;
     // Sit the category axis below the IBCS variance tier's reserved band (0 off).
-    const catY = frame.y + frame.h + varianceBandHeight(decor, style) + 3;
+    const catY = frame.y + frame.h + varianceBandHeight(cfg, decor, style) + 3;
     cfg.data.categories.forEach((cat, i) => {
       nodes.push({
         kind: "text",
