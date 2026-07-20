@@ -62,12 +62,22 @@ export function resolveLabelCollisions(nodes: SceneNode[]): void {
   const settled = new BoxHash<Box>(cell);
   for (const b of fixed) settled.insert(b, b);
   for (const { node } of movable) {
+    const startY = node.y;
     let box = tightBox(node);
     let tries = 0;
     while (settled.some(box, (s) => overlaps(box, s)) && tries < 10) {
       node.y -= node.fontSize * 0.55; // nudge upward
       box = tightBox(node);
       tries++;
+      if (box.y < 0) {
+        // Nudging would push the label off the top of the canvas (y=0 for every
+        // chart). An overlapping label still reads; an off-canvas one is lost — so
+        // give up and restore. Without this, a column total sharing the totals row
+        // with the fixed grand-total label was nudged clean off the top.
+        node.y = startY;
+        box = tightBox(node);
+        break;
+      }
     }
     settled.insert(box, box);
   }

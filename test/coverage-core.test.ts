@@ -199,7 +199,45 @@ describe("label collision resolution", () => {
     resolveLabelCollisions(overlapped);
     expect(JSON.stringify(overlapped)).toBe(before);
   });
-  it("nudges a movable total off a fixed label", () => {
+  it("nudges a movable total up off a fixed label when there is room", () => {
+    const nodes: SceneNode[] = [
+      {
+        kind: "text",
+        x: 0,
+        y: 40,
+        w: 40,
+        h: 12,
+        text: "fixed",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+        name: "segment-label-0-0",
+      },
+      {
+        kind: "text",
+        x: 0,
+        y: 40,
+        w: 40,
+        h: 12,
+        text: "42",
+        fontSize: 10,
+        color: "#000",
+        align: "center",
+        valign: "middle",
+        name: "total-0",
+      },
+    ];
+    resolveLabelCollisions(nodes);
+    const total = nodes[1] as TextNode;
+    expect(total.y).toBeLessThan(40); // moved up, clear of the fixed label
+    expect(total.y).toBeGreaterThanOrEqual(0); // but still on the canvas
+  });
+
+  it("does not nudge a movable total off the top of the canvas", () => {
+    // A total pinned against the top with no room (e.g. sharing the totals row
+    // with the fixed grand-total label) must NOT escape the canvas: an
+    // overlapping label reads, an off-canvas one is lost. It gives up in place.
     const nodes: SceneNode[] = [
       {
         kind: "text",
@@ -229,8 +267,7 @@ describe("label collision resolution", () => {
       },
     ];
     resolveLabelCollisions(nodes);
-    const total = nodes[1] as TextNode;
-    expect(total.y).toBeLessThan(0);
+    expect((nodes[1] as TextNode).y).toBeGreaterThanOrEqual(0);
   });
 });
 
