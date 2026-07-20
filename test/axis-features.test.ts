@@ -120,3 +120,29 @@ describe("valueExtent (Same Scale)", () => {
     ).toBeNull();
   });
 });
+
+describe("valueScale zero floor", () => {
+  const frame2 = { x: 0, y: 0, w: 100, h: 100 };
+
+  it("includes zero by default (column charts baseline at 0)", () => {
+    const s = valueScale(frame2, 40, 95);
+    expect(s.min).toBeLessThanOrEqual(0);
+    expect(s.max).toBeGreaterThanOrEqual(95);
+  });
+
+  it("keeps the domain data-driven when zeroFloor is false (distributions)", () => {
+    // A boxplot/violin/candlestick of 40–95 must not be squashed against 0.
+    const s = valueScale(frame2, 40, 95, undefined, undefined, undefined, false);
+    expect(s.min).toBeGreaterThan(0); // niceTicks rounds down from 40, still well above 0
+    expect(s.max).toBeGreaterThanOrEqual(95);
+    // The data occupies a real fraction of the plot, not a thin sliver at the top.
+    const frac = (s.toY(40) - s.toY(95)) / frame2.h;
+    expect(frac).toBeGreaterThan(0.6);
+  });
+
+  it("still honours a manual cfg.scale override with zeroFloor off", () => {
+    const s = valueScale(frame2, 40, 95, { min: 0, max: 100 }, undefined, undefined, false);
+    expect(s.min).toBe(0);
+    expect(s.max).toBe(100);
+  });
+});

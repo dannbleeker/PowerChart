@@ -47,6 +47,11 @@ export function valueScale(
   override?: { min?: number; max?: number },
   axisBreak?: { from: number; to: number },
   logScale?: boolean,
+  // Column charts baseline at zero, so their axis must always include it. But a
+  // distribution chart (boxplot/violin/candlestick) of e.g. scores 40–95 forcing
+  // 0 into the range squashes the data into the top of the plot — those callers
+  // pass zeroFloor:false to keep the domain data-driven. cfg.scale still overrides.
+  zeroFloor = true,
 ): ValueScale {
   // Logarithmic axis: decade ticks; requires positive data (falls back otherwise).
   if (logScale && dataMax > 0) {
@@ -64,8 +69,8 @@ export function valueScale(
     const toY = (v: number) => frame.y + frame.h - ((Math.log10(Math.max(v, min)) - Math.log10(min)) / span) * frame.h;
     return { min, max, ticks, toY };
   }
-  const lo = override?.min ?? Math.min(0, dataMin);
-  const hi = override?.max ?? Math.max(0, dataMax);
+  const lo = override?.min ?? (zeroFloor ? Math.min(0, dataMin) : dataMin);
+  const hi = override?.max ?? (zeroFloor ? Math.max(0, dataMax) : dataMax);
   let ticks = niceTicks(lo, hi, 5).filter(
     (t) => (override?.min == null || t >= override.min - 1e-9) && (override?.max == null || t <= override.max + 1e-9),
   );
