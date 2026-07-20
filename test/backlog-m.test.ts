@@ -99,3 +99,39 @@ describe("combo independent line axes", () => {
     expect(shared.nodes.some((n) => n.name === "secondary-axis")).toBe(true);
   });
 });
+
+describe("combo waterfall base — shared-axis line overflow/underflow", () => {
+  const mk = (line: number[]): ChartConfig => ({
+    kind: "combo",
+    ...DEFAULT_SIZE,
+    combo: { columns: "waterfall" }, // shared axis (no secondaryAxis)
+    data: {
+      categories: ["A", "B", "C", "D"],
+      series: [
+        { name: "Cols", values: [100, 20, 30, 10] }, // running peak 160, trough 0
+        { name: "Line", type: "line", values: line },
+      ],
+    },
+    decorations: { segmentLabels: false, seriesLabels: false },
+  });
+
+  const lineYs = (s: ReturnType<typeof buildChart>) =>
+    s.nodes
+      .filter((n) => n.name?.startsWith("combo-marker-0-"))
+      .map((n) => (n.kind === "rect" ? n.y : n.kind === "ellipse" ? n.cy : NaN))
+      .filter((y) => !Number.isNaN(y));
+
+  it("keeps a line that dips below the waterfall trough on-plot", () => {
+    // #157 stretched the axis MAX for an overflowing line but left the floor at 0,
+    // so a negative line point plotted off the bottom of the plot.
+    const s = buildChart(mk([-80, -40, 10, 50]));
+    const ys = lineYs(s);
+    expect(ys.length).toBe(4);
+    for (const y of ys) expect(y).toBeLessThanOrEqual(DEFAULT_SIZE.height + 1); // not off the bottom
+  });
+
+  it("still keeps a line that overshoots the peak on-plot (unchanged)", () => {
+    const s = buildChart(mk([200, 40, 30, 10]));
+    for (const y of lineYs(s)) expect(y).toBeGreaterThanOrEqual(-1); // not off the top
+  });
+});

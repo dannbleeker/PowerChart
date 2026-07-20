@@ -636,12 +636,13 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // Waterfall columns reach their running cumulative total, not the per-category
   // positive sum, so `stackMax` understates them; track the cumulative peak so a
   // shared-axis line taller than it isn't clipped off the top of the plot.
-  const wfMax = (() => {
+  const wf = (() => {
     const totals = new Set(cfg.waterfall?.totalIndices ?? []);
     const spacers = new Set(cfg.waterfall?.spacerIndices ?? []);
     const detailOf = detailParents(cfg);
     let running = 0;
     let max = 0;
+    let min = 0;
     cfg.data.categories.forEach((_, c) => {
       // Match waterfallChain exactly: totals redraw the running level (no advance),
       // spacers carry it across unchanged, and detail-group columns decompose their
@@ -653,8 +654,9 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         running += cols.reduce((a, s) => a + (s.values[c] ?? 0), 0);
       }
       max = Math.max(max, running);
+      min = Math.min(min, running);
     });
-    return max;
+    return { max, min };
   })();
   // Secondary axis: line series get their own right-hand scale. A 100% / mekko
   // base forces it. Independent axes replace the shared secondary axis.
@@ -663,7 +665,25 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // column scale stretched to fit it (only then — otherwise leave the
   // waterfall's own auto scale untouched to preserve existing layouts).
   const waterfallLineOverflow =
-    columnsKind === "waterfall" && !secondary && !independent && cfg.scale?.max == null && lineMax > wfMax;
+    columnsKind === "waterfall" && !secondary && !independent && cfg.scale?.max == null && lineMax > wf.max;
+  // The mirror case #157 missed: a shared-axis line dipping BELOW the waterfall's
+  // running trough (or below 0) needs the floor stretched down, or its low points
+  // plot off the bottom of the plot.
+  const waterfallLineUnderflow =
+    columnsKind === "waterfall" && !secondary && !independent && cfg.scale?.min == null && lineMin < wf.min;
+  // Overflow keeps its exact prior form (snapshot-neutral); underflow only adds a
+  // min. When both fire, one niceTicks over the combined range keeps ticks aligned.
+  const wfScale =
+    waterfallLineOverflow && waterfallLineUnderflow
+      ? (() => {
+          const t = niceTicks(Math.min(lineMin, wf.min), Math.max(lineMax, wf.max, 1));
+          return { ...cfg.scale, min: t[0], max: t[t.length - 1] };
+        })()
+      : waterfallLineOverflow
+        ? { ...cfg.scale, max: niceTicks(0, Math.max(lineMax, wf.max, 1)).pop() }
+        : waterfallLineUnderflow
+          ? { ...cfg.scale, min: niceTicks(Math.min(lineMin, wf.min), Math.max(lineMax, wf.max, 1))[0] }
+          : cfg.scale;
   const colCfg: ChartConfig = {
     ...cfg,
     kind: columnsKind,
@@ -674,9 +694,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         : columnsKind === "mekko"
           ? cfg.scale
           : columnsKind === "waterfall"
-            ? waterfallLineOverflow
-              ? { ...cfg.scale, max: niceTicks(0, Math.max(lineMax, wfMax, 1)).pop() }
-              : cfg.scale
+            ? wfScale
             : cfg.scale?.max != null || secondary
               ? cfg.scale
               : {
