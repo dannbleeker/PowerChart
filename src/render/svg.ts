@@ -17,6 +17,25 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const PAINT_OK = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|url\(#[\w.-]+\)|[a-zA-Z]{1,24})$/;
 const paint = (c: string | undefined): string => (c && PAINT_OK.test(c) ? c : "#000000");
 
+/**
+ * NUMERIC attributes are the second injection surface, and the one the colour
+ * allow-list above does not cover. Sizes, widths and opacities reach the markup
+ * by raw interpolation, and ChartConfig's numeric fields (`style.fontSize`,
+ * `decorations.fillOpacity`, …) are only `number` in TypeScript — a type erased
+ * at runtime. Untrusted JSON therefore carries a STRING straight into an
+ * attribute: `fontSize: '10"><image href=x onerror=alert(1) /><text x="'` closes
+ * the element and injects an executing node. That JSON is genuinely untrusted —
+ * a `#c=` share link, an imported config, or a POWERCHART_CONFIG shape tag
+ * authored in another deck — and the pane assigns this SVG via innerHTML.
+ *
+ * Coerce to a finite number or fall back. Every value the engine actually
+ * produces is already numeric, so valid charts render byte-identically.
+ */
+const num = (v: unknown, fallback: number): number => {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 /** Hatch/dot pattern tiles: series-colored base with white strokes over it. */
 const PATTERN_TILE: Record<string, (id: string, color: string) => string> = {
   diagonal: (id, c) =>
@@ -40,7 +59,7 @@ const patternId = (pattern: string, color: string) => `p-${pattern}-${color.repl
 export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): string {
   const parts: string[] = [];
   parts.push(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" font-family="Segoe UI, Arial, sans-serif" role="img">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${num(scene.width, 480)}" height="${num(scene.height, 300)}" viewBox="0 0 ${num(scene.width, 480)} ${num(scene.height, 300)}" font-family="Segoe UI, Arial, sans-serif" role="img">`,
   );
   // Accessible name + text alternative as the first children of the root, so a
   // screen reader announces the chart under role="img" instead of skipping it
@@ -70,14 +89,15 @@ export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): st
 function nodeToSvg(n: SceneNode): string {
   switch (n.kind) {
     case "rect": {
-      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}"` : "";
       const fill =
         n.pattern && PATTERN_TILE[n.pattern] ? `url(#${patternId(n.pattern, paint(n.fill))})` : paint(n.fill);
       return `<rect x="${r(n.x)}" y="${r(n.y)}" width="${r(n.w)}" height="${r(n.h)}" fill="${fill}"${stroke}${name(n)}/>`;
     }
     case "line": {
-      const dash = n.dash ? ` stroke-dasharray="${n.dash.join(" ")}"` : "";
-      return `<line x1="${r(n.x1)}" y1="${r(n.y1)}" x2="${r(n.x2)}" y2="${r(n.y2)}" stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"${dash}${name(n)}/>`;
+      const dash =
+        Array.isArray(n.dash) && n.dash.length ? ` stroke-dasharray="${n.dash.map((d) => num(d, 0)).join(" ")}"` : "";
+      return `<line x1="${r(n.x1)}" y1="${r(n.y1)}" x2="${r(n.x2)}" y2="${r(n.y2)}" stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}"${dash}${name(n)}/>`;
     }
     case "text": {
       const anchor = n.align === "left" ? "start" : n.align === "right" ? "end" : "middle";
@@ -91,10 +111,10 @@ function nodeToSvg(n: SceneNode): string {
             : n.y + n.h / 2 + n.fontSize * 0.36;
       const weight = n.bold ? ` font-weight="600"` : "";
       const family = n.fontFamily ? ` font-family="${esc(n.fontFamily)}"` : "";
-      return `<text x="${r(x)}" y="${r(y)}" font-size="${n.fontSize}" fill="${paint(n.color)}" text-anchor="${anchor}"${weight}${family}${name(n)}>${esc(n.text)}</text>`;
+      return `<text x="${r(x)}" y="${r(y)}" font-size="${num(n.fontSize, 12)}" fill="${paint(n.color)}" text-anchor="${anchor}"${weight}${family}${name(n)}>${esc(n.text)}</text>`;
     }
     case "ellipse": {
-      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}"` : "";
       return `<ellipse cx="${r(n.cx)}" cy="${r(n.cy)}" rx="${r(n.rx)}" ry="${r(n.ry)}" fill="${paint(n.fill)}"${stroke}${name(n)}/>`;
     }
     case "chevron": {
@@ -112,7 +132,7 @@ function nodeToSvg(n: SceneNode): string {
       return `<path d="${d}" fill="${paint(n.fill)}"${name(n)}/>`;
     }
     case "wedge": {
-      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}"` : "";
+      const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}"` : "";
       // A full 360° span has coincident start/end points, so the arc collapses
       // and SVG draws nothing. Emit an explicit circle (or ring) instead.
       if (n.endAngle - n.startAngle >= 359.9) {
@@ -140,10 +160,10 @@ function nodeToSvg(n: SceneNode): string {
     case "polygon": {
       const pts = n.points.map((p) => `${r(p.x)},${r(p.y)}`).join(" ");
       const fill = n.fill
-        ? ` fill="${paint(n.fill)}"${n.fillOpacity != null ? ` fill-opacity="${n.fillOpacity}"` : ""}`
+        ? ` fill="${paint(n.fill)}"${n.fillOpacity != null ? ` fill-opacity="${num(n.fillOpacity, 1)}"` : ""}`
         : ` fill="none"`;
       const stroke = n.stroke
-        ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
+        ? ` stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}" stroke-linejoin="round"`
         : "";
       return `<polygon points="${pts}"${fill}${stroke}${name(n)}/>`;
     }
@@ -161,7 +181,7 @@ function nodeToSvg(n: SceneNode): string {
         .map((p) => `${r(p.x)},${r(p.y)}`)
         .join(" ");
       const stroke = n.stroke
-        ? ` stroke="${paint(n.stroke)}" stroke-width="${n.strokeWidth ?? 1}" stroke-linejoin="round"`
+        ? ` stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}" stroke-linejoin="round"`
         : "";
       return `<polygon points="${pts}" fill="${paint(n.fill)}"${stroke}${name(n)}/>`;
     }

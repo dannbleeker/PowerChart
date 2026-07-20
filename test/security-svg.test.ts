@@ -120,3 +120,76 @@ describe("svg renderer neutralizes injected colours", () => {
     expect(svg).toContain('fill="rgb(78,121,167)"');
   });
 });
+
+/**
+ * The colour allow-list above guards PAINT attributes. NUMERIC attributes are the
+ * other half of the same surface: font-size / fill-opacity / stroke-width /
+ * stroke-dasharray are interpolated straight into the markup, and ChartConfig's
+ * numeric fields are only `number` in TypeScript — erased at runtime. A config
+ * from an untrusted source (a `#c=` share link, an imported JSON, a
+ * POWERCHART_CONFIG shape tag authored in another deck) can put a STRING there.
+ */
+describe("svg renderer neutralizes injected numerics", () => {
+  const BREAKOUT = '10"><image href=x onerror=alert(1) /><text x="';
+
+  it("does not let style.fontSize break out of the font-size attribute", () => {
+    const cfg = {
+      kind: "clustered",
+      width: 480,
+      height: 300,
+      style: { fontSize: BREAKOUT },
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 2] }] },
+    } as unknown as ChartConfig;
+    const svg = sceneToSvg(buildChart(cfg));
+    expect(svg).not.toContain("<image");
+    expect(svg).not.toContain("onerror");
+    // Falls back to a usable size rather than emitting the hostile string.
+    expect(svg).toMatch(/font-size="\d+(\.\d+)?"/);
+  });
+
+  it("does not let decorations.fillOpacity break out of the fill-opacity attribute", () => {
+    const cfg = {
+      kind: "radar",
+      width: 300,
+      height: 300,
+      decorations: { fillOpacity: '0.5" onmouseover="alert(1)' },
+      data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [1, 2, 3] }] },
+    } as unknown as ChartConfig;
+    const svg = sceneToSvg(buildChart(cfg));
+    expect(svg).not.toContain("onmouseover");
+    expect(svg).not.toContain('"><');
+  });
+
+  it("coerces a hostile strokeWidth and dash array on a raw scene", () => {
+    const scene = {
+      width: 100,
+      height: 100,
+      nodes: [
+        {
+          kind: "line",
+          x1: 0,
+          y1: 0,
+          x2: 10,
+          y2: 10,
+          stroke: "#111",
+          strokeWidth: '1" onload="alert(1)',
+          dash: ['2" onload="alert(1)'],
+        },
+        {
+          kind: "rect",
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          fill: "#111",
+          stroke: "#222",
+          strokeWidth: '1"><script>alert(1)</script><rect x="',
+        },
+      ],
+    } as unknown as Scene;
+    const svg = sceneToSvg(scene);
+    expect(svg).not.toContain("onload");
+    expect(svg).not.toContain("<script");
+    expect(svg).not.toContain('"><');
+  });
+});
