@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
 import { layoutColumns } from "../src/core/layout/column";
 import { layoutMekko } from "../src/core/layout/mekko";
 import { layoutButterfly } from "../src/core/layout/butterfly";
@@ -170,6 +171,21 @@ describe("datasheet special rows and transpose", () => {
     expect(back.xExtent).toEqual([3, 4]);
     expect(back.series).toHaveLength(1);
     expect(back.series[0].values).toEqual([1, 2]);
+  });
+
+  it("keeps a scatter/bubble X series out of xExtent on a round trip", () => {
+    // A lenient X-extent row pattern swallowed the scatter/bubble "X" SERIES into
+    // the Mekko-only xExtent field, so every pane edit silently destroyed the X
+    // data (layout/scatter.ts finds its X via /^x$/i) and renamed the visible row
+    // to "X extent". Kept beside the Mekko case above so neither can drift.
+    for (const kind of ["scatter", "bubble"] as const) {
+      const back = sheetToData(dataToSheet(sampleConfig(kind).data));
+      expect(
+        back.series.map((s) => s.name),
+        kind,
+      ).toContain("X");
+      expect(back.xExtent, kind).toBeUndefined();
+    }
   });
 
   it("transposes rows and columns", () => {
