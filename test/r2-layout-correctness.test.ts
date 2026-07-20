@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
-import { boxplotExtent } from "../src/core/layout/boxplot";
+import { boxplotExtent, layoutBoxplot } from "../src/core/layout/boxplot";
 import { DEFAULT_STYLE } from "../src/core/style";
 import { layoutViolin } from "../src/core/layout/violin";
 import { legendRow } from "../src/core/layout/column";
@@ -153,5 +153,102 @@ describe("legend wraps instead of marching off-canvas", () => {
 
   it("stays a single row (byte-identical) when everything fits", () => {
     expect(chipYs(legendRow(seriesCfg(2, 800), DEFAULT_STYLE, 0, 0, { maxX: 796 })).size).toBe(1);
+  });
+});
+
+describe("a wrapped legend reserves its rows and never overlaps the plot", () => {
+  // Horizontal bars, a narrow canvas, and six long series names: the legend
+  // cannot fit one row, so #139's wrap advances it downward. Until the frame
+  // reserved those extra rows, the wrapped rows painted on top of the bars.
+  const cfg: ChartConfig = {
+    kind: "stacked",
+    horizontal: true,
+    width: 360,
+    height: 320,
+    data: {
+      categories: ["North", "South"],
+      series: [
+        { name: "Northern Europe Wholesale", values: [12, 9] },
+        { name: "Central Europe Retail", values: [8, 11] },
+        { name: "Southern Europe Online", values: [6, 7] },
+        { name: "Nordics Direct-to-Consumer", values: [5, 4] },
+        { name: "Baltics Partner Channel", values: [3, 6] },
+        { name: "Iberia Marketplace", values: [4, 5] },
+      ],
+    },
+    decorations: { seriesLabels: true, categoryAxis: true },
+  };
+  const nodes = buildChart(cfg).nodes;
+  const box = (n: RectNode | TextNode) => ({ x: n.x, y: n.y, r: n.x + n.w, b: n.y + n.h });
+  const overlaps = (a: ReturnType<typeof box>, c: ReturnType<typeof box>) =>
+    a.x < c.r && c.x < a.r && a.y < c.b && c.y < a.b;
+  const legendNodes = nodes.filter(
+    (n): n is RectNode | TextNode => (n.kind === "rect" || n.kind === "text") && !!n.name?.startsWith("legend-"),
+  );
+  const plotRects = nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("seg-"));
+
+  it("actually wraps to more than one row (non-vacuous)", () => {
+    const chipRows = new Set(legendNodes.filter((n) => n.name?.startsWith("legend-chip-")).map((n) => n.y));
+    expect(chipRows.size).toBeGreaterThan(1);
+    expect(plotRects.length).toBeGreaterThan(0);
+  });
+
+  it("puts no legend chip or label on top of a bar segment", () => {
+    for (const l of legendNodes) {
+      for (const p of plotRects) {
+        expect(overlaps(box(l), box(p))).toBe(false);
+      }
+    }
+  });
+
+  it("keeps every legend node inside the canvas height", () => {
+    for (const l of legendNodes) {
+      expect(l.y + l.h).toBeLessThanOrEqual(cfg.height + 1e-6);
+    }
+  });
+});
+
+describe("grouped boxplot reserves its wrapped group-legend rows", () => {
+  // Grouped boxplots draw their own wrapping group legend; the frame must drop
+  // the boxes below the extra rows the same way the column frame does.
+  const boxplotCfg = (groups: string[]): ChartConfig => ({
+    kind: "boxplot",
+    width: 320,
+    height: 320,
+    data: {
+      categories: ["Scores"],
+      series: groups.flatMap((g) => [
+        { name: `Min | ${g}`, values: [10] },
+        { name: `Q1 | ${g}`, values: [20] },
+        { name: `Median | ${g}`, values: [30] },
+        { name: `Q3 | ${g}`, values: [40] },
+        { name: `Max | ${g}`, values: [50] },
+      ]),
+    },
+  });
+  const laid = (cfg: ChartConfig) => layoutBoxplot(cfg, DEFAULT_STYLE, DEFAULT_DECOR);
+  const chipRowCount = (cfg: ChartConfig) =>
+    new Set(
+      laid(cfg)
+        .nodes.filter((n) => n.name?.startsWith("legend-chip-"))
+        .map((n) => (n as RectNode).y),
+    ).size;
+  const rowH = DEFAULT_STYLE.fontSize * 1.6;
+
+  it("drops the plot exactly one row per wrapped legend row (nothing extra at one row)", () => {
+    const oneRow = boxplotCfg(["A", "B"]); // two short groups fit a single row
+    const wrapped = boxplotCfg([
+      "Northern Europe Wholesale",
+      "Central Europe Retail Partners",
+      "Southern Europe Online Direct",
+      "Nordics Consumer Marketplace",
+    ]);
+    expect(chipRowCount(oneRow)).toBe(1);
+    const rows = chipRowCount(wrapped);
+    expect(rows).toBeGreaterThan(1);
+    // The wrapped plot top sits exactly (rows-1) legend rows below the one-row
+    // plot top — the extra rows are reserved, not painted over the boxes. At one
+    // row the reservation is zero, so existing decks stay byte-identical.
+    expect(laid(wrapped).anchors.plot.y - laid(oneRow).anchors.plot.y).toBeCloseTo((rows - 1) * rowH, 5);
   });
 });

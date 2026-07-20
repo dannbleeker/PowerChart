@@ -199,6 +199,54 @@ export function footnoteH(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   return cfg.footnote || decor.hundredPercentNote || cfg.scatter?.spread ? style.fontSize * 1.3 : 0;
 }
 
+/** One legend entry's placement: its top-left x and 0-based wrap row. */
+export interface LegendSlot {
+  x: number;
+  row: number;
+}
+
+/**
+ * The wrap walk shared by `legendRow` (which places the chips) and
+ * `legendRowCount` (which reserves the vertical space they need). Extracting it
+ * means the drawer and the reserver can never disagree on how many rows a legend
+ * occupies. Chips march left-to-right; one that would cross `maxX` starts a new
+ * row (never the first entry of a row, so a single over-wide label still draws).
+ */
+export function legendWrapWalk(labels: string[], fs: number, x0: number, maxX: number): LegendSlot[] {
+  const chip = fs * 0.7;
+  const slots: LegendSlot[] = [];
+  let x = x0;
+  let row = 0;
+  for (const label of labels) {
+    const wLabel = textWidth(label, fs);
+    if (x > x0 && x + chip + 3 + wLabel > maxX) {
+      x = x0;
+      row++;
+    }
+    slots.push({ x, row });
+    x += chip + 3 + wLabel + 12;
+  }
+  return slots;
+}
+
+/** Number of rows the wrapping legend occupies (0 when there are no labels). */
+export function legendRowCount(labels: string[], fs: number, x0: number, maxX: number): number {
+  const slots = legendWrapWalk(labels, fs, x0, maxX);
+  return slots.length ? slots[slots.length - 1].row + 1 : 0;
+}
+
+/**
+ * Labels for the default series legend (the one `horizontalChrome` and the
+ * horizontal mekko draw): a scenario-qualified series name, and only when there
+ * is more than one series to tell apart. The height-reserving frame code and the
+ * chip-drawing `legendRow` both derive their labels here so they legend the same
+ * set and their wrap walks land on the same row count.
+ */
+export function seriesLegendLabels(cfg: ChartConfig): string[] {
+  if (cfg.data.series.length <= 1) return [];
+  return cfg.data.series.map((s) => (s.scenario ? `${s.name} (${s.scenario})` : s.name));
+}
+
 /**
  * Compute the plot rectangle by reserving margins for the enabled decorations
  * (title, totals row, category labels, value axis, right-hand series labels).
@@ -237,10 +285,18 @@ export function computeFrame(
 export function computeFrameHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decorations): Frame {
   const fs = style.fontSize;
   const titleH = titleHeight(cfg, style);
-  const legendH = decor.seriesLabels && cfg.data.series.length > 1 ? fs * 1.6 + 4 : fs * 0.6;
   const catW = decor.categoryAxis
     ? Math.min(cfg.width * 0.3, Math.max(0, ...cfg.data.categories.map((c) => textWidth(c, fs))) + 8)
     : 2;
+  // Reserve one row per wrapped legend row, not a fixed single row: many/long
+  // series names on a narrow chart make legendRow wrap (same walk), and each
+  // extra row must push the plot down or the legend draws on top of the bars.
+  // The walk runs at the legend's own x0 (frame.x === catW) and maxX
+  // (cfg.width - 4), so this reservation and legendRow agree on the row count. A
+  // one-row legend keeps the old fs*1.6+4 exactly, so snapshots stay identical.
+  const legendLabels = decor.seriesLabels ? seriesLegendLabels(cfg) : [];
+  const legendRows = legendLabels.length ? legendRowCount(legendLabels, fs, catW, cfg.width - 4) : 0;
+  const legendH = legendRows > 0 ? legendRows * (fs * 1.6) + 4 : fs * 0.6;
   const valueAxisH = decor.valueAxis ? fs * 1.6 : 4;
   const totalsW = decor.totals ? fs * 4 : fs * 0.8;
   return {

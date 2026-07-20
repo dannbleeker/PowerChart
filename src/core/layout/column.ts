@@ -9,6 +9,8 @@ import {
   chromeNodes,
   computeFrame,
   computeFrameHorizontal,
+  legendWrapWalk,
+  seriesLegendLabels,
   valueScale,
   type Frame,
   type ValueScale,
@@ -903,8 +905,9 @@ export interface LegendEntry {
  * Horizontal legend of coloured chips, wrapping to new rows so a chart with many
  * series/groups never marches its chips off the right edge (`opts.maxX`). Custom
  * entries (group names, a "Peer range" swatch) come via `opts.entries`; without
- * them it legends `cfg.data.series`. Called with no opts it is byte-identical to
- * the old single-row version (maxX defaults to no wrap).
+ * them it legends the multi-series set from `seriesLegendLabels`. Called with no
+ * opts it is byte-identical to the old single-row version (maxX defaults to no
+ * wrap).
  */
 export function legendRow(
   cfg: ChartConfig,
@@ -920,20 +923,22 @@ export function legendRow(
   const maxX = opts.maxX ?? Infinity;
   const entries: LegendEntry[] =
     opts.entries ??
-    cfg.data.series.map((s, si) => ({
-      label: s.scenario ? `${s.name} (${s.scenario})` : s.name,
-      color: seriesColor(style, si, s.color),
+    seriesLegendLabels(cfg).map((label, si) => ({
+      label,
+      color: seriesColor(style, si, cfg.data.series[si].color),
       name: `legend-${si}`,
     }));
-  let x = x0;
-  let row = 0;
+  // Shared wrap walk (frame.ts) so the row count here matches what the frame
+  // reserved via legendRowCount.
+  const slots = legendWrapWalk(
+    entries.map((e) => e.label),
+    fs,
+    x0,
+    maxX,
+  );
   entries.forEach((e, si) => {
     const wLabel = textWidth(e.label, fs);
-    // Wrap before an entry that would cross maxX — never on the first of a row.
-    if (x > x0 && x + chip + 3 + wLabel > maxX) {
-      x = x0;
-      row++;
-    }
+    const { x, row } = slots[si];
     const ry = y + row * rowH;
     nodes.push(
       { kind: "rect", x, y: ry + fs * 0.35, w: chip, h: chip, fill: e.color, name: `legend-chip-${si}` },
@@ -951,7 +956,6 @@ export function legendRow(
         name: e.name ?? `legend-${si}`,
       },
     );
-    x += chip + 3 + wLabel + 12;
   });
   return nodes;
 }
