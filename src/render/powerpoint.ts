@@ -12,6 +12,7 @@
  */
 import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
+import { toHex6, alphaOf } from "../core/color";
 import type { Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 
 /* global PowerPoint, Office */
@@ -1025,7 +1026,7 @@ function addSegment(
       w < 0.5 || h < 0.5 || downRight
         ? shapes.addLine(PowerPoint.ConnectorType.straight, box)
         : shapes.addGeometricShape(PowerPoint.GeometricShapeType.lineInverse, box);
-    line.lineFormat.color = hex6(s.stroke);
+    strokeColor(line.lineFormat, s.stroke);
     line.lineFormat.weight = s.strokeWidth ?? 1;
     setDash(line);
     if (s.name) line.name = s.name;
@@ -1052,31 +1053,50 @@ function addSegment(
 }
 
 /**
- * Set a solid fill, honouring an 8-digit `#RRGGBBAA` colour. Office.js
- * `setSolidColor` validates a 6-digit `#RRGGBB` hex or a named HTML colour, so an
- * 8-digit value — valid in a hand-authored config, and rendered translucent by
- * both the SVG preview and the skill's pptx — would be mis-parsed here. Split the
- * alpha off into `fill.transparency` (PowerPointApi 1.4, the pinned set) so the
- * live add-in matches the other two renderers instead of dropping the colour.
+ * A colour Office.js will accept. `setSolidColor` / `lineFormat.color` validate
+ * only a 6-digit `#RRGGBB` or a named HTML colour — but the engine's allow-list
+ * also passes rgb()/hsl()/3-digit/8-digit forms, which would mis-render or be
+ * dropped. Named colours go through verbatim (Office.js knows them, and toHex6
+ * would flatten them to grey); everything else normalises to `#RRGGBB`.
+ */
+const officeHex = (color: string): string => (/^[a-zA-Z]+$/.test(color.trim()) ? color.trim() : toHex6(color));
+
+/**
+ * Set a solid fill, splitting any alpha (8-digit hex, rgba/hsla) off into
+ * `fill.transparency` (PowerPointApi 1.4, the pinned set) so a translucent colour
+ * authored in the config matches the SVG preview and the skill's pptx instead of
+ * being dropped.
  */
 function solidFill(fill: PowerPoint.ShapeFill, color: string): void {
-  const m = /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})$/.exec(color);
-  fill.setSolidColor(m ? `#${m[1]}` : color);
-  if (m) {
-    const t = 1 - parseInt(m[2], 16) / 255;
-    if (t > 0.0001) fill.transparency = t;
+  fill.setSolidColor(officeHex(color));
+  const t = 1 - alphaOf(color);
+  if (t > 0.0001) {
+    try {
+      fill.transparency = t;
+    } catch {
+      /* transparency unsupported on this host — solid is the graceful floor */
+    }
   }
 }
 
 /**
- * Drop an 8-digit hex's alpha byte for a line- or font-colour sink, which carries
- * no alpha channel here. A no-op for the 6-digit hex and named colours the engine
- * actually emits, so valid charts are unaffected.
+ * Set a line/border colour AND its alpha. addSegment used to set a line's colour
+ * with a bare hex (dropping any alpha) while its rotated-rect fallback went
+ * through solidFill (which kept the alpha) — so one series colour rendered at two
+ * different opacities depending on segment slope. Routing both through this keeps
+ * them consistent, and picks up the rgb()/hsl()/3-digit forms too.
  */
-const hex6 = (color: string): string => {
-  const m = /^#([0-9a-fA-F]{6})[0-9a-fA-F]{2}$/.exec(color);
-  return m ? `#${m[1]}` : color;
-};
+function strokeColor(lf: PowerPoint.ShapeLineFormat, color: string): void {
+  lf.color = officeHex(color);
+  const t = 1 - alphaOf(color);
+  if (t > 0.0001) {
+    try {
+      lf.transparency = t;
+    } catch {
+      /* line transparency unsupported — opaque is the graceful floor */
+    }
+  }
+}
 
 function addNode(
   shapes: PowerPoint.ShapeCollection,
@@ -1098,7 +1118,7 @@ function addNode(
       if (n.fill === "none") shape.fill.clear();
       else solidFill(shape.fill, n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
-        shape.lineFormat.color = hex6(n.stroke);
+        strokeColor(shape.lineFormat, n.stroke);
         shape.lineFormat.weight = n.strokeWidth ?? 1;
       } else {
         shape.lineFormat.visible = false;
@@ -1119,7 +1139,7 @@ function addNode(
       if (n.fill === "none") shape.fill.clear();
       else solidFill(shape.fill, n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
-        shape.lineFormat.color = hex6(n.stroke);
+        strokeColor(shape.lineFormat, n.stroke);
         shape.lineFormat.weight = n.strokeWidth ?? 1;
       } else {
         shape.lineFormat.visible = false;
@@ -1152,7 +1172,7 @@ function addNode(
       });
       solidFill(shape.fill, n.fill);
       if (n.stroke && (n.strokeWidth ?? 0) > 0) {
-        shape.lineFormat.color = hex6(n.stroke);
+        strokeColor(shape.lineFormat, n.stroke);
         shape.lineFormat.weight = n.strokeWidth ?? 1;
       } else {
         shape.lineFormat.visible = false;
@@ -1244,7 +1264,7 @@ function addText(
   }
   const font = tf.textRange.font;
   font.size = n.fontSize;
-  font.color = hex6(n.color);
+  font.color = officeHex(n.color);
   font.bold = !!n.bold;
   font.name = n.fontFamily ?? opts.fontFamily ?? DEFAULT_FONT;
   try {

@@ -57,6 +57,42 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 
 const hexToRgb = toRgb;
 
+/**
+ * Any allow-listed paint → a plain 6-digit `#RRGGBB` (no alpha). The PowerPoint
+ * renderers' colour sinks accept only `#RRGGBB` (or a named colour), so rgb()/
+ * hsl()/3-digit/8-digit forms — all valid config — must be normalised here or
+ * they mis-render (Office.js) or fall back to black (pptx). Named colours are a
+ * known gap and resolve to mid grey via toRgb; the office renderer passes named
+ * colours through natively instead of calling this.
+ */
+export function toHex6(color: string): string {
+  return rgbToHex(toRgb(color));
+}
+
+/**
+ * Opacity in [0, 1] carried by a paint (8-digit `#RRGGBBAA`, `rgba()`, `hsla()`);
+ * 1 for every opaque form. The PowerPoint renderers split this into a shape's
+ * `transparency` so an alpha authored in the config isn't silently dropped.
+ */
+export function alphaOf(color: string): number {
+  const c = (color ?? "").trim();
+  const hex = /^#([0-9a-fA-F]{4}|[0-9a-fA-F]{8})$/.exec(c);
+  if (hex) {
+    const h = hex[1];
+    const aa = h.length === 4 ? h[3] + h[3] : h.slice(6, 8);
+    return parseInt(aa, 16) / 255;
+  }
+  const fn = /^(?:rgba|hsla)\(([^)]*)\)$/i.exec(c);
+  if (fn) {
+    const parts = fn[1].split(/[,/]/).map((s) => s.trim());
+    if (parts.length >= 4) {
+      const a = parts[3].endsWith("%") ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
+      return Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 1;
+    }
+  }
+  return 1;
+}
+
 const rgbToHex = (rgb: number[]): string =>
   "#" +
   rgb

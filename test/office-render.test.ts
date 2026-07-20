@@ -560,6 +560,23 @@ describe("scene node mapping", () => {
     expect(line.lineFormat.dashStyle).toBe("dash");
   });
 
+  it("honours a translucent stroke on BOTH the line and the rotated-rect branch", async () => {
+    // The two branches of addSegment diverged: the axis-aligned/dashed line
+    // dropped the alpha byte while the diagonal rotated-rect folded it into
+    // transparency, so one series colour rendered at two opacities. Both must now
+    // agree — a 50% alpha (#…80) → transparency ≈ 0.498, colour a bare 6-digit hex.
+    const alpha = "#33333380";
+    const horiz = await insert([{ kind: "line", x1: 10, y1: 50, x2: 200, y2: 50, stroke: alpha, name: "h" }]);
+    const line = horiz.created.find((s) => s.type === "line")!;
+    expect(line.lineFormat.color).toBe("#333333"); // alpha byte stripped off the colour
+    expect(line.lineFormat.transparency).toBeCloseTo(1 - 0x80 / 255, 4); // …but carried here
+
+    const diag = await insert([{ kind: "line", x1: 0, y1: 0, x2: 100, y2: 100, stroke: alpha, name: "d" }]);
+    const rect = diag.created.find((s) => s.geo === "rectangle")!;
+    expect(rect.fillColor).toBe("#333333");
+    expect((rect.fill as unknown as { transparency?: number }).transparency).toBeCloseTo(1 - 0x80 / 255, 4);
+  });
+
   it("draws diagonal lines as thin rotated rectangles (direction-correct on every host)", async () => {
     // Up-right and down-right diagonals a bounding box alone can't distinguish.
     const down = await insert([

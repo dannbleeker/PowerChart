@@ -3,7 +3,7 @@ import { buildChart, valueExtent, DEFAULT_SIZE } from "../src/core/chart";
 import { isTotalToken } from "../src/core/layout/waterfall";
 import { contrastInk, type Scene, type SceneNode, type TextNode } from "../src/core/scene";
 import { resolveLabelCollisions } from "../src/core/collide";
-import { toRgb } from "../src/core/color";
+import { toRgb, toHex6, alphaOf } from "../src/core/color";
 import { sceneToSvg } from "../src/render/svg";
 import type { ChartConfig, ChartData } from "../src/core/types";
 
@@ -108,6 +108,25 @@ describe("contrastInk", () => {
     expect(contrastInk("rgb(250,250,250)")).toBe("#0b0b0b"); // dark ink on near-white
     expect(contrastInk("rgb(20,20,20)")).toBe("#ffffff"); // white ink on near-black
     expect(contrastInk("hsl(0,0%,100%)")).toBe("#0b0b0b"); // hsl white
+  });
+});
+
+describe("toHex6 / alphaOf normalize colours for the PowerPoint renderers", () => {
+  it("normalizes every allow-listed form to a 6-digit hex", () => {
+    expect(toHex6("#4e79a7")).toBe("#4e79a7"); // identity for the hex the engine emits
+    expect(toHex6("#abc")).toBe("#aabbcc");
+    expect(toHex6("#4e79a780")).toBe("#4e79a7"); // alpha byte dropped
+    expect(toHex6("rgb(78,121,167)")).toBe("#4e79a7");
+    expect(toHex6("hsl(0,0%,100%)")).toBe("#ffffff");
+    expect(toHex6("not-a-color")).toBe("#808080"); // named/unknown → grey, never black
+  });
+
+  it("reads the opacity a paint carries, 1 when opaque", () => {
+    expect(alphaOf("#4e79a7")).toBe(1);
+    expect(alphaOf("#4e79a780")).toBeCloseTo(128 / 255, 5);
+    expect(alphaOf("rgba(1,2,3,0.5)")).toBe(0.5);
+    expect(alphaOf("hsla(0,0%,0%,0.25)")).toBe(0.25);
+    expect(alphaOf("rgb(1,2,3)")).toBe(1);
   });
 });
 
