@@ -124,17 +124,51 @@ describe("polyTrend — least-squares polynomial fit", () => {
     expect(fit.at(-3)).toBeCloseTo(2 * 9 + 9 + 1, 4); // = 28
   });
 
-  it("clamps the degree to points − 1 so it never interpolates noise", () => {
-    // 3 points, ask for quartic → degree clamps to 2.
-    const fit = polyTrend(
-      [
-        { x: 0, y: 0 },
-        { x: 1, y: 1 },
-        { x: 2, y: 3 },
-      ],
-      4,
-    )!;
-    expect(fit.degree).toBe(2);
+  it("clamps the degree to points − 2 so a residual dof always remains", () => {
+    // A degree n−1 polynomial interpolates n points exactly (R²=1, meaningless),
+    // so the fit must leave at least one degree of freedom: max degree = n−2.
+    expect(
+      polyTrend(
+        [
+          { x: 0, y: 0 },
+          { x: 1, y: 1 },
+          { x: 2, y: 3 },
+          { x: 3, y: 4 },
+        ],
+        4,
+      )!.degree,
+    ).toBe(2); // 4 pts
+    expect(
+      polyTrend(
+        [
+          { x: 0, y: 0 },
+          { x: 1, y: 1 },
+          { x: 2, y: 3 },
+        ],
+        4,
+      )!.degree,
+    ).toBe(1); // 3 pts → line
+    // With the clamp, a genuinely noisy set is NOT interpolated to R²=1.
+    const noisy = [
+      { x: 0, y: 1.1 },
+      { x: 1, y: 1.9 },
+      { x: 2, y: 3.2 },
+      { x: 3, y: 3.8 },
+      { x: 4, y: 5.3 },
+    ];
+    expect(polyTrend(noisy, 4)!.r2).toBeLessThan(1);
+  });
+
+  it("fits a small x-span instead of collapsing the pivot to null", () => {
+    // Power sums scale as span^k, so a small span drove S[2d] under the solver's
+    // 1e-12 pivot floor and the trendline silently vanished. Unit-scaling fixes it.
+    const small = Array.from({ length: 8 }, (_, i) => ({ x: i * 0.001, y: (i * 0.001) ** 2 + 0.5 }));
+    const fit = polyTrend(small, 3);
+    expect(fit).not.toBeNull();
+    expect(fit!.at(0.004)).toBeCloseTo(0.004 ** 2 + 0.5, 6);
+    // A large span must still fit (centering intact).
+    const large = Array.from({ length: 8 }, (_, i) => ({ x: 2e6 + i * 1000, y: i * i }));
+    expect(polyTrend(large, 3)).not.toBeNull();
   });
 
   it("returns a lower R² for an underfit (line through a parabola)", () => {
