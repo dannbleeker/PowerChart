@@ -5,6 +5,7 @@ import { seriesColor } from "../style";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 import { columnPositiveTotal } from "./totals";
+import { maxOf } from "../agg";
 
 /**
  * Radar (spider) chart: categories = spokes (first at 12 o'clock,
@@ -32,7 +33,9 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const stacked = !!cfg.radar?.stacked && data.series.length >= 2;
   const spokeSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
-  const tickMax = stacked ? Math.max(1, ...spokeSum) : Math.max(1, ...all);
+  // `all` is cells-scaled (series x categories) so it must be FOLDED, not spread —
+  // a large grid overflows the argument list. `spokeSum` is category-scaled and safe.
+  const tickMax = stacked ? Math.max(1, ...spokeSum) : maxOf(all, 1);
   const ticks = niceTicks(Math.min(0, cfg.scale?.min ?? 0), Math.max(cfg.scale?.max ?? tickMax, 1), 4);
   const min = cfg.scale?.min ?? ticks[0];
   const max = cfg.scale?.max ?? ticks[ticks.length - 1];

@@ -139,7 +139,11 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
 
 /** think-cell's special datasheet rows, matched by row name. */
 const HUNDRED_ROW = /^100\s*%\s*=?$/i;
-const XEXTENT_ROW = /^x(\s*extent)?$/i;
+// "extent" is REQUIRED: scatter/bubble use a series literally named "X"
+// (layout/scatter.ts matches /^x$/i), and a lenient pattern here silently ate it
+// into the Mekko-only xExtent field on every pane round-trip. dataToSheet only
+// ever writes the full "X extent", so nothing legitimate depends on the short form.
+const XEXTENT_ROW = /^x\s*extent$/i;
 
 const GANTT_DATE_ROW = /^(start|end|milestone)$/i;
 

@@ -57,4 +57,44 @@ describe("buildChart survives a large within-cap grid (no RangeError)", () => {
     };
     expect(() => buildChart(cfg)).not.toThrow();
   });
+  it("clustered-stacked: a large categories x stacks grid does not blow the argument list", () => {
+    // The stacked && nStacks > 1 branch flattens categories x DISTINCT STACKS,
+    // which #150 left as a spread while converting its siblings — so a valid
+    // in-cap grid still threw RangeError from layoutColumns.
+    const nCats = 1024;
+    const nSeries = 128;
+    const cfg: ChartConfig = {
+      kind: "stacked",
+      width: 960,
+      height: 600,
+      data: {
+        categories: Array.from({ length: nCats }, (_, i) => `C${i}`),
+        series: Array.from({ length: nSeries }, (_, s) => ({
+          name: `S${s}`,
+          stack: s, // distinct stack per series => nStacks > 1
+          values: Array.from({ length: nCats }, (_, c) => (s * c) % 100),
+        })),
+      },
+    };
+    expect(() => buildChart(cfg)).not.toThrow();
+  });
+
+  it("radar: a large cells-scaled grid does not blow the argument list", () => {
+    // radar's tickMax spread was skipped by #150 entirely.
+    const nCats = 512;
+    const nSeries = 256;
+    const cfg: ChartConfig = {
+      kind: "radar",
+      width: 600,
+      height: 600,
+      data: {
+        categories: Array.from({ length: nCats }, (_, i) => `C${i}`),
+        series: Array.from({ length: nSeries }, (_, s) => ({
+          name: `S${s}`,
+          values: Array.from({ length: nCats }, (_, c) => (s + c) % 50),
+        })),
+      },
+    };
+    expect(() => buildChart(cfg)).not.toThrow();
+  });
 });

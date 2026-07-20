@@ -90,8 +90,18 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     dataMin = 0;
     dataMax = 1;
   } else if (stacked && nStacks > 1) {
-    dataMin = Math.min(0, ...data.categories.flatMap((_, c) => stackIds.map((id) => stackNegTotals(c, id))));
-    dataMax = Math.max(0, ...data.categories.flatMap((_, c) => stackIds.map((id) => stackPosTotals(c, id))));
+    // Folded, not spread: this array is categories x stacks (up to 4096 x 256),
+    // which overflows the argument list and throws RangeError. The sibling
+    // branches below spread at most MAX_CATEGORIES or MAX_SERIES values, so they
+    // stay safe as-is.
+    dataMin = minOf(
+      data.categories.flatMap((_, c) => stackIds.map((id) => stackNegTotals(c, id))),
+      0,
+    );
+    dataMax = maxOf(
+      data.categories.flatMap((_, c) => stackIds.map((id) => stackPosTotals(c, id))),
+      0,
+    );
   } else if (stacked) {
     dataMin = Math.min(0, ...negTotals);
     dataMax = Math.max(0, ...posTotals);
