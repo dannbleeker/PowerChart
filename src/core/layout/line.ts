@@ -447,7 +447,10 @@ function layoutSparkline(cfg: ChartConfig, style: ChartStyle, _decor: Decoration
       const floor = plot.y + plot.h;
       for (let i = 0; i < pts.length - 1; i++) {
         const span = pts[i + 1].x - pts[i].x;
-        const steps = slabSteps(span);
+        // Cap at the sparkline's pre-#128 fixed count: slabSteps' 24 is the
+        // column/area budget, so a wide sparkline segment tripled its shape count
+        // and blew the Office.js budget a sparkline exists to stay well under.
+        const steps = Math.min(8, slabSteps(span));
         const w = span / steps;
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
