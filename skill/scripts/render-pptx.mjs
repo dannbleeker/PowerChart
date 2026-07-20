@@ -91,24 +91,72 @@ const pres = new pptxgen();
 pres.defineLayout({ name: "WIDE", width: SLIDE.w, height: SLIDE.h });
 pres.layout = "WIDE";
 
-// Validate, don't just strip "#": the colour comes from arbitrary authored JSON
-// and is interpolated into OOXML by pptxgenjs without escaping, so an unchecked
-// value like `000"/><a:x` could inject markup (corrupting the .pptx). Accept a
-// bare 6- or 8-digit hex only; anything else falls back to black.
-const hex = (c) => {
-  const h = (c ?? "").replace("#", "");
-  if (/^[0-9a-fA-F]{3}$/.test(h)) return h.replace(/./g, "$&$&"); // #abc → aabbcc
-  // Accept a bare 6- or 8-digit hex; drop the 8-digit alpha byte here. pptxgenjs
-  // validates 6-digit RGB only, so an #RRGGBBAA value would otherwise be rejected
-  // and replaced with solid black — fillOf() folds the alpha into transparency.
-  return /^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(h) ? h.slice(0, 6) : "000000";
+const to2 = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+const hslToHex = (h, s, l) => {
+  h = ((h % 360) + 360) % 360;
+  s = Math.max(0, Math.min(1, s / 100));
+  l = Math.max(0, Math.min(1, l / 100));
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - chroma / 2;
+  const [r, g, b] = [
+    [chroma, x, 0],
+    [x, chroma, 0],
+    [0, chroma, x],
+    [0, x, chroma],
+    [x, 0, chroma],
+    [chroma, 0, x],
+  ][Math.floor(h / 60) % 6];
+  return to2((r + m) * 255) + to2((g + m) * 255) + to2((b + m) * 255);
 };
 
-// Opacity 0..1 carried in an 8-digit #RRGGBBAA paint (else fully opaque). The SVG
-// renderer honours the alpha natively; here it has to become OOXML transparency.
+// Normalise ANY paint the SVG allow-list accepts to a validated 6-digit hex, so
+// the headless pptx matches the preview instead of falling back to black for
+// rgb()/hsl()/named colours. SECURITY: the colour is interpolated into OOXML
+// unescaped, so this MUST always return exactly six hex digits — a value like
+// `000"/><a:x` could otherwise inject markup. rgb()/hsl() are parsed; a named
+// colour resolves to mid grey (a documented gap, better than black); anything
+// unrecognised is black. fillOf() folds any alpha into transparency.
+const hex = (c) => {
+  const raw = (c ?? "").trim();
+  const h = raw.replace("#", "");
+  if (/^[0-9a-fA-F]{3,4}$/.test(h))
+    return h
+      .slice(0, 3)
+      .replace(/./g, "$&$&"); // #abc / #abcd → aabbcc
+  if (/^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(h)) return h.slice(0, 6);
+  const nums = (str) => (str.match(/-?[\d.]+%?/g) ?? []).map((v) => parseFloat(v));
+  let m;
+  if ((m = /^rgba?\(([^)]*)\)$/i.exec(raw))) {
+    const [r = 0, g = 0, b = 0] = nums(m[1]);
+    const sc = /%/.test(m[1]) ? 2.55 : 1;
+    return to2(r * sc) + to2(g * sc) + to2(b * sc);
+  }
+  if ((m = /^hsla?\(([^)]*)\)$/i.exec(raw))) {
+    const [hh = 0, ss = 0, ll = 0] = nums(m[1]);
+    return hslToHex(hh, ss, ll);
+  }
+  if (/^[a-zA-Z]+$/.test(raw)) return "808080"; // named — documented grey fallback
+  return "000000";
+};
+
+// Opacity 0..1 carried by a paint (8-digit #RRGGBBAA, rgba(), hsla()); 1 when
+// opaque. The SVG renderer honours the alpha natively; here it becomes OOXML
+// transparency.
 const alphaOf = (c) => {
-  const h = (c ?? "").replace("#", "");
-  return /^[0-9a-fA-F]{8}$/.test(h) ? parseInt(h.slice(6), 16) / 255 : 1;
+  const raw = (c ?? "").trim();
+  const h = raw.replace("#", "");
+  if (/^[0-9a-fA-F]{8}$/.test(h)) return parseInt(h.slice(6), 16) / 255;
+  if (/^[0-9a-fA-F]{4}$/.test(h)) return parseInt(h[3] + h[3], 16) / 255;
+  const m = /^(?:rgba|hsla)\(([^)]*)\)$/i.exec(raw);
+  if (m) {
+    const parts = m[1].split(/[,/]/).map((s) => s.trim());
+    if (parts.length >= 4) {
+      const a = parts[3].endsWith("%") ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
+      return Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 1;
+    }
+  }
+  return 1;
 };
 
 // A pptxgenjs solid fill folding an 8-digit-hex alpha and any scene fillOpacity
