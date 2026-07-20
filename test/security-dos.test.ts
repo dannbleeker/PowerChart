@@ -9,23 +9,26 @@ import type { ChartConfig } from "../src/core/types";
  */
 
 describe("grid-size caps bound abusive configs", () => {
-  it("truncates an over-cap category count instead of allocating it", () => {
+  it("truncates an over-cap category count to exactly MAX_CATEGORIES", () => {
     const cfg: ChartConfig = {
       kind: "stacked",
       width: 480,
       height: 300,
       data: {
+        // Non-null values, or every padded cell is null and NO seg- node is emitted —
+        // which made the old `<= 4096` assertion trivially 0 <= 4096, passing even
+        // with the cap deleted.
         categories: Array.from({ length: 100_000 }, (_, i) => `C${i}`),
-        series: [{ name: "S", values: [] }],
+        series: [{ name: "S", values: Array.from({ length: 100_000 }, () => 1) }],
       },
     };
     const scene = buildChart(cfg);
-    // Renders (does not OOM) and the per-category node count is bounded.
+    // One segment per surviving category: the cap is OBSERVED, not just an upper bound.
     const cols = scene.nodes.filter((n) => n.name?.startsWith("seg-")).length;
-    expect(cols).toBeLessThanOrEqual(4096);
+    expect(cols).toBe(4096); // === MAX_CATEGORIES
   });
 
-  it("truncates an over-cap series count", () => {
+  it("truncates an over-cap series count to exactly MAX_SERIES", () => {
     const cfg: ChartConfig = {
       kind: "clustered",
       width: 480,
@@ -35,8 +38,14 @@ describe("grid-size caps bound abusive configs", () => {
         series: Array.from({ length: 5000 }, (_, i) => ({ name: `S${i}`, values: [1, 2] })),
       },
     };
-    // Completes quickly and doesn't throw.
-    expect(() => buildChart(cfg)).not.toThrow();
+    const scene = buildChart(cfg);
+    // Highest surviving series index proves the cap fired (256 series, 0-based → 255),
+    // instead of the old "does not throw" which held whether or not the cap existed.
+    const maxSeries = Math.max(
+      -1,
+      ...scene.nodes.map((n) => Number(/^seg-(\d+)-/.exec(n.name ?? "")?.[1] ?? -1)).filter((i) => i >= 0),
+    );
+    expect(maxSeries).toBe(255); // MAX_SERIES - 1
   });
 
   it("skips heatmap clustering above the row cap (no CPU blow-up, no dendrogram)", () => {

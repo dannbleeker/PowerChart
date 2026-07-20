@@ -15,6 +15,12 @@ export function decorationNodes(
   const nodes: SceneNode[] = [];
   const fs = style.fontSize;
 
+  // Every decoration here anchors to the category geometry (categoryX / columnTop
+  // / seriesLevels). A chart that drew NO segments — a single-0 pie or sunburst,
+  // say — has empty anchor arrays, so any anchored read comes back undefined and
+  // the decoration would emit NaN geometry. There is nothing to annotate.
+  if (!a.categoryX.length) return nodes;
+
   // --- CAGR arrow: diagonal arrow between two column tops with "+x.x% p.a." ---
   if (decor.cagr) {
     const { from, to } = clampPair(decor.cagr, a);
