@@ -3,28 +3,38 @@ import fc from "fast-check";
 import { buildChart } from "../src/core/chart";
 import type { ChartConfig, ChartKind } from "../src/core/types";
 
-const KINDS: ChartKind[] = [
-  "stacked",
-  "clustered",
-  "stacked100",
-  "waterfall",
-  "mekko",
-  "line",
-  "area",
-  "butterfly",
-  "combo",
-  "pie",
-  "doughnut",
-  "boxplot",
-  "radar",
-  "heatmap",
-  "cascade",
-  "funnel",
-  "waffle",
-  "violin",
-  "candlestick",
-  "gantt",
-];
+// Keyed by EVERY ChartKind so the fuzzer can never silently skip a kind: the
+// Record makes TS error if a kind is missing here or a stale one lingers. The
+// hand-maintained array used to omit scatter/bubble/tilemap/treemap/sunburst —
+// exactly the kinds recent perf/colour work touched.
+const ALL_KINDS: Record<ChartKind, true> = {
+  stacked: true,
+  clustered: true,
+  stacked100: true,
+  waterfall: true,
+  mekko: true,
+  line: true,
+  area: true,
+  butterfly: true,
+  scatter: true,
+  bubble: true,
+  gantt: true,
+  combo: true,
+  pie: true,
+  doughnut: true,
+  boxplot: true,
+  radar: true,
+  heatmap: true,
+  tilemap: true,
+  cascade: true,
+  funnel: true,
+  waffle: true,
+  treemap: true,
+  sunburst: true,
+  violin: true,
+  candlestick: true,
+};
+const KINDS = Object.keys(ALL_KINDS) as ChartKind[];
 
 /** Every numeric coordinate a node carries, flattened for invariant checks. */
 function coordsOf(n: import("../src/core/scene").SceneNode): number[] {
@@ -152,13 +162,21 @@ describe("layout engine properties", () => {
         for (const node of scene.nodes) {
           for (const c of coordsOf(node)) {
             expect(Number.isFinite(c)).toBe(true);
-            expect(Math.abs(c)).toBeLessThan(5000);
+            // Tightened from 5000 to ~2× the 480×300 canvas: enough slack for a
+            // label or decoration that legitimately overhangs the edge, but tight
+            // enough to actually CATCH off-frame geometry — the old bound could not
+            // see a whole series translated 1000px off the canvas.
+            expect(Math.abs(c)).toBeLessThan(1000);
           }
         }
       }),
+      // Fixed seed for DETERMINISTIC CI (a red build always reproduces locally);
+      // fast-check still shrinks a failure to a minimal config. The generous
+      // per-test timeout absorbs the 600 runs under coverage instrumentation,
+      // which intermittently exceeded vitest's 5s default and flaked the build.
       { numRuns: 600, seed: 20260718 },
     );
-  });
+  }, 30_000);
 
   it("is deterministic — the same config renders byte-identically twice", () => {
     fc.assert(
