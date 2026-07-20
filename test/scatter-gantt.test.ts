@@ -947,24 +947,25 @@ describe("polynomial scatter trendlines", () => {
     expect(stats.text).toMatch(/R² = (0\.9\d|1\.00)/); // a parabola fits the parabola well
   });
 
-  it("clamps the drawn degree to the point count (no interpolation)", () => {
-    // 3 points, quartic requested → the fit clamps to degree 2, still a curve.
+  it("clamps the drawn degree to points − 2 (never interpolates)", () => {
+    // 4 points, quartic requested → clamps to degree 2 (n−2), still a curve.
+    // (A quartic through 4 points would interpolate exactly — meaningless.)
     const cfg: ChartConfig = {
       kind: "scatter",
       width: 480,
       height: 320,
       scatter: { trendDegree: 4 },
       data: {
-        categories: ["a", "b", "c"],
+        categories: ["a", "b", "c", "d"],
         series: [
-          { name: "X", values: [0, 1, 2] },
-          { name: "Y", values: [0, 1, 4] },
-          { name: "Trend", values: [1, null, null] },
+          { name: "X", values: [0, 1, 2, 3] },
+          { name: "Y", values: [0, 1, 4, 9] },
+          { name: "Trend", values: [1, null, null, null] },
         ],
       },
     };
     const nodes = layoutScatter(cfg, DEFAULT_STYLE, DEFAULT_DECOR).nodes;
     const stats = nodes.find((n) => n.name === "trend-stats") as { text: string };
-    expect(stats.text).toContain("quadratic"); // not "quartic"
+    expect(stats.text).toContain("quadratic"); // clamped from quartic
   });
 });

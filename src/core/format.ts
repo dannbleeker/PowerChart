@@ -235,10 +235,11 @@ export function trendStats(pts: { x: number; y: number }[]): { r2: number; p: nu
 
 /**
  * Least-squares polynomial fit of degree `degree` (2–4 for scatter's higher-order
- * trend lines). Solves the normal equations of the Vandermonde system, centered
- * on the mean x for conditioning, and returns an evaluator plus the fit's R² and
- * the degree actually used — clamped to points − 1, so it never interpolates
- * noise (a degree-n fit through n points has a meaningless R² of 1).
+ * trend lines). Solves the normal equations of the Vandermonde system in a
+ * centered AND unit-scaled variable u = (x − mx) / sx, and returns an evaluator
+ * plus the fit's R² and the degree actually used — clamped to points − 2, so at
+ * least one residual degree of freedom remains and the fit never interpolates
+ * noise (a degree n−1 fit through n points has a meaningless R² of 1).
  */
 export function polyTrend(
   pts: { x: number; y: number }[],
@@ -246,15 +247,21 @@ export function polyTrend(
 ): { at: (x: number) => number; r2: number; degree: number } | null {
   const n = pts.length;
   if (n < 2) return null;
-  const d = Math.max(1, Math.min(Math.floor(degree), n - 1));
+  const d = Math.max(1, Math.min(Math.floor(degree), n - 2));
   const mx = pts.reduce((s, p) => s + p.x, 0) / n;
   const my = pts.reduce((s, p) => s + p.y, 0) / n;
+  // Unit-scale the centered abscissa. Centering fixes LARGE-x conditioning, but
+  // the power sums S[k] scale as span^k, so a SMALL x-span drives S[2d] below the
+  // solver's 1e-12 pivot floor and the whole trendline silently vanished. In u the
+  // sums are O(1) regardless of span; `at` divides by the same sx, so the fit is
+  // identical, only better conditioned.
+  const sx = pts.reduce((s, p) => Math.max(s, Math.abs(p.x - mx)), 0) || 1;
   const m = d + 1;
-  // Power sums in u = x − mx: S[k] = Σ uᵏ (k=0..2d), T[k] = Σ uᵏ·y (k=0..d).
+  // Power sums in u = (x − mx) / sx: S[k] = Σ uᵏ (k=0..2d), T[k] = Σ uᵏ·y (k=0..d).
   const S = new Array(2 * d + 1).fill(0);
   const T = new Array(m).fill(0);
   for (const p of pts) {
-    const u = p.x - mx;
+    const u = (p.x - mx) / sx;
     let up = 1;
     for (let k = 0; k <= 2 * d; k++) {
       S[k] += up;
@@ -266,7 +273,7 @@ export function polyTrend(
   const c = gaussSolve(A, T.slice());
   if (!c) return null;
   const at = (x: number) => {
-    const u = x - mx;
+    const u = (x - mx) / sx;
     let up = 1;
     let y = 0;
     for (let k = 0; k < m; k++) {
