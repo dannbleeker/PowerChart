@@ -4,7 +4,15 @@ import { formatNumber, resolveFormat } from "../format";
 import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
-import { baselineNode, chromeNodes, computeFrame, computeFrameHorizontal, titleHeight, valueScale } from "./frame";
+import {
+  baselineNode,
+  chromeNodes,
+  computeFrame,
+  computeFrameHorizontal,
+  legendRowCount,
+  titleHeight,
+  valueScale,
+} from "./frame";
 import { horizontalChrome, legendRow, type LayoutResult } from "./column";
 
 /** The five-number-summary datasheet rows (think-cell's own boxplot recipe). */
@@ -161,9 +169,20 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const boxes = grouped[0] ?? []; // group 0 keeps the single-group code path's shape
   const fmt = resolveFormat(all, cfg.numberFormat);
   const H = !!cfg.horizontal;
-  const frame = H
+  let frame = H
     ? computeFrameHorizontal(cfg, style, { ...decor, seriesLabels: false, totals: false })
     : computeFrame(cfg, style, { ...decor, seriesLabels: false }, []).frame;
+  // Grouped boxplots draw a wrapping group legend at the top (below); the frame
+  // above only budgets its usual single-row headroom, so reserve one extra row
+  // per wrapped row and push the plot down. A one-row legend reserves nothing
+  // extra, keeping existing decks byte-identical.
+  if (nG > 1) {
+    const extraRows = legendRowCount(groupNames, fs, frame.x, cfg.width - 4) - 1;
+    if (extraRows > 0) {
+      const band = extraRows * fs * 1.6;
+      frame = { ...frame, y: frame.y + band, h: frame.h - band };
+    }
+  }
   // One shared value scale across every box — that is the point of putting
   // them in one chart.
   // Data-driven domain (no forced zero): a boxplot of scores 40–95 must not be
