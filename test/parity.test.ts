@@ -96,11 +96,13 @@ describe("rotated waterfall & mekko", () => {
 
 describe("global label collisions", () => {
   it("nudges overlapping outside labels apart", () => {
+    // Placed mid-canvas so there is room to nudge up; a label pinned at y=0 must
+    // instead give up in place rather than escape the canvas (see collide.ts).
     const nodes: SceneNode[] = [
       {
         kind: "text",
         x: 0,
-        y: 0,
+        y: 30,
         w: 60,
         h: 12,
         text: "88888",
@@ -113,7 +115,7 @@ describe("global label collisions", () => {
       {
         kind: "text",
         x: 0,
-        y: 0,
+        y: 30,
         w: 60,
         h: 12,
         text: "99999",
@@ -127,6 +129,8 @@ describe("global label collisions", () => {
     resolveLabelCollisions(nodes);
     const [a, b] = nodes as TextNode[];
     expect(Math.abs(a.y - b.y)).toBeGreaterThan(10); // no longer overlapping
+    expect(a.y).toBeGreaterThanOrEqual(0); // and still on the canvas
+    expect(b.y).toBeGreaterThanOrEqual(0);
   });
 });
 
