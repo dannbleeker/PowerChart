@@ -47,6 +47,9 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     minOf(allSamples.length ? allSamples : [0]),
     maxOf(allSamples.length ? allSamples : [1]),
     cfg.scale,
+    undefined,
+    undefined,
+    false, // no forced zero: a distribution's domain is its data range
   );
   const slotLen = frame.w / Math.max(1, n);
   const halfW = slotLen * 0.42;

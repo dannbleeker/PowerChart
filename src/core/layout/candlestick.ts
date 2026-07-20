@@ -27,6 +27,9 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
     Math.min(...(all.length ? all : [0])),
     Math.max(...(all.length ? all : [1])),
     cfg.scale,
+    undefined,
+    undefined,
+    false, // no forced zero: OHLC prices rarely include 0
   );
   const slotLen = frame.w / Math.max(1, n);
   const colThick = Math.min(slotLen * 0.5, 24);
