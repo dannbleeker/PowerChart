@@ -146,3 +146,71 @@ describe("valueScale zero floor", () => {
     expect(s.max).toBe(100);
   });
 });
+
+describe("degenerate manual scale", () => {
+  const frame2 = { x: 0, y: 0, w: 100, h: 100 };
+
+  it("keeps a positive span when the scale cannot hold the data", () => {
+    // scale.min at/above the auto max filtered the ticks down to one value, so
+    // `max - min || 1` mapped one data unit to one point.
+    for (const override of [{ min: 100 }, { min: 100, max: 100 }, { min: 0, max: 0 }]) {
+      const s = valueScale(frame2, 0, 20, override);
+      expect(s.max, JSON.stringify(override)).toBeGreaterThan(s.min);
+      // ...and the ink lands on the plot, not tens of canvas heights away.
+      for (const v of [0, 10, 20]) {
+        expect(s.toY(v), JSON.stringify(override)).toBeGreaterThanOrEqual(frame2.y - frame2.h);
+        expect(s.toY(v), JSON.stringify(override)).toBeLessThanOrEqual(frame2.y + 2 * frame2.h);
+      }
+    }
+  });
+
+  it("draws the columns inside the chart for scale:{min:100} on data 10/20", () => {
+    const c = cfg({
+      kind: "clustered",
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [10, 20] }] },
+      scale: { min: 100 },
+    });
+    const { nodes } = layoutColumns(c, DEFAULT_STYLE, DEFAULT_DECOR);
+    const segs = nodes.filter((n) => n.name?.startsWith("seg-")) as { y: number; h: number }[];
+    expect(segs.length).toBe(2);
+    for (const s of segs) {
+      expect(s.y).toBeGreaterThanOrEqual(0);
+      expect(s.y + s.h).toBeLessThanOrEqual(c.height);
+    }
+  });
+});
+
+describe("value-axis tick labels", () => {
+  const labelsOf = (partial: Partial<ChartConfig>): string[] =>
+    layoutColumns(cfg({ kind: "clustered", ...partial }), DEFAULT_STYLE, { ...DEFAULT_DECOR, valueAxis: true })
+      .nodes.filter((n): n is TextNode => n.kind === "text" && n.name === "value-axis")
+      .map((n) => n.text);
+
+  it("are distinct on a narrow axis (precision from the step, not the magnitude)", () => {
+    // 7.444–7.471 used to print ["7.4","7.5","7.5","7.5","7.5"]: five gridlines,
+    // two labels, and a top tick named as a value outside the scale.
+    const labels = labelsOf({
+      data: { categories: ["Mon", "Tue"], series: [{ name: "DKK/EUR", values: [7.4442, 7.4708] }] },
+      scale: { min: 7.44, max: 7.48 },
+    });
+    expect(labels).toEqual(["7.44", "7.45", "7.46", "7.47", "7.48"]);
+  });
+
+  it("never prints a log-axis decade below 1 as '0'", () => {
+    const labels = labelsOf({
+      data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [3, 30, 300] }] },
+      logScale: true,
+    });
+    expect(labels).not.toContain("0");
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("still reads plain on an ordinary axis", () => {
+    expect(labelsOf({ data: { categories: ["A", "B"], series: [{ name: "S", values: [10, 2500] }] } })).toEqual([
+      "0",
+      "1,000",
+      "2,000",
+      "3,000",
+    ]);
+  });
+});

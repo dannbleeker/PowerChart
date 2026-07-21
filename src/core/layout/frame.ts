@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { niceTicks, formatNumber, resolveFormat } from "../format";
+import { niceTicks, formatNumber, resolveAxisFormat } from "../format";
 
 export interface Frame {
   /** Plot rectangle in chart coordinates. */
@@ -69,13 +69,27 @@ export function valueScale(
     const toY = (v: number) => frame.y + frame.h - ((Math.log10(Math.max(v, min)) - Math.log10(min)) / span) * frame.h;
     return { min, max, ticks, toY };
   }
-  const lo = override?.min ?? (zeroFloor ? Math.min(0, dataMin) : dataMin);
-  const hi = override?.max ?? (zeroFloor ? Math.max(0, dataMax) : dataMax);
+  const autoLo = zeroFloor ? Math.min(0, dataMin) : dataMin;
+  const autoHi = zeroFloor ? Math.max(0, dataMax) : dataMax;
+  const lo = override?.min ?? autoLo;
+  const hi = override?.max ?? autoHi;
   let ticks = niceTicks(lo, hi, 5).filter(
     (t) => (override?.min == null || t >= override.min - 1e-9) && (override?.max == null || t <= override.max + 1e-9),
   );
-  const min = override?.min ?? ticks[0];
-  const max = override?.max ?? ticks[ticks.length - 1];
+  let min = override?.min ?? ticks[0];
+  let max = override?.max ?? ticks[ticks.length - 1];
+  // A manual scale the data cannot live in — scale.min at or above the auto max
+  // (the filter then leaves a single tick, so max collapses onto min), or an
+  // outright degenerate {min:0,max:0} — makes the `max - min || 1` fallback below
+  // map ONE data unit to ONE point: a 300pt chart emitted its columns ~83 canvas
+  // heights down the slide. normalizeConfig already repairs an inverted or
+  // non-finite scale; repair an unusable one the same way, by falling back to the
+  // range the data itself asks for.
+  if (!(max > min)) {
+    ticks = niceTicks(autoLo, autoHi, 5);
+    min = ticks[0];
+    max = ticks[ticks.length - 1];
+  }
   let toY = (v: number) => frame.y + frame.h - ((v - min) / (max - min || 1)) * frame.h;
   let breakBand: ValueScale["breakBand"];
 
@@ -342,7 +356,10 @@ export function chromeNodes(
     // of nice round values (the range frame).
     const marks = decor.valueAxis === "datamarks";
     const ticks = marks && decor.tickMode === "data" ? [...new Set([scale.min, scale.max])] : scale.ticks;
-    const axisFmt = resolveFormat(ticks, cfg.numberFormat);
+    // Tick labels are read against each other, so their precision comes from the
+    // tick step, not the tick magnitude (resolveAxisFormat) — otherwise a narrow
+    // axis prints the same label at several heights.
+    const axisFmt = resolveAxisFormat(ticks, cfg.numberFormat);
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {
