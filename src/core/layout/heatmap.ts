@@ -560,7 +560,18 @@ function calendarLayout(
   const ly = gridY + 7 * cell + fs * 0.5;
   if (!constant) {
     const steps = 12;
-    const sw = cell * 0.8;
+    // The legend band is a CONSTANT reserve (legendH) while `cell` grows as the
+    // range shortens, so an unclamped `cell * 0.8` swatch fell out of the frame
+    // for any calendar under ~13 week-columns. Clamp to the room actually left
+    // below the grid and to the width the strip plus its "More" label may use.
+    const sw = Math.max(
+      3,
+      Math.min(
+        cell * 0.8,
+        cfg.height - footnoteH(cfg, style, decor) - ly - 1,
+        (cfg.width - gridX - fs * 3.4) / steps - 1,
+      ),
+    );
     nodes.push({
       kind: "text",
       x: gridX - fs * 3,

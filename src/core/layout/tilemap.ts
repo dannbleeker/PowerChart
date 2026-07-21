@@ -84,12 +84,13 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         );
     });
   }
-  const glyphMax = glyph
-    ? maxOf(
-        [...seriesVals.values()].flat().filter((v): v is number => v != null),
-        1,
-      )
-    : 1;
+  const glyphVals = glyph ? [...seriesVals.values()].flat().filter((v): v is number => v != null) : [];
+  const glyphMax = maxOf(glyphVals, 1);
+  // The mini-bar scale spans zero: a negative value draws BELOW the tile's zero
+  // line instead of clamping to zero height, which was pixel-identical to "no
+  // change". All-positive data keeps glyphMin = 0, i.e. the original scale.
+  const glyphMin = Math.min(0, minOf(glyphVals, 0));
+  const glyphSpan = glyphMax - glyphMin;
 
   // Fit uniform square tiles into the plot area.
   const cols = Math.max(...Object.values(layout).map(([c]) => c)) + 1;
@@ -125,7 +126,13 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         kind: "polygon",
         points: hexPts(x + tile / 2, y + tile / 2, tile / 2),
         fill: tileFill,
-        stroke: style.background,
+        // Outline in the tile's OWN colour, not the background: Office.js has no
+        // freeform fill and degrades a polygon to its stroke (scene.ts's parity
+        // contract), so a background-coloured edge left the whole cartogram
+        // white-on-white in the add-in. The tiles never touch — the grid steps
+        // tile+gutter across and 0.87·tile down, both wider than the hex — so
+        // the separator the background stroke used to draw is not needed.
+        stroke: tileFill,
         strokeWidth: 1,
         name: `tile-${code}`,
       });
@@ -142,15 +149,16 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const bx0 = x + tile * 0.11;
         const bBase = y + tile * 0.86;
         const bMax = tile * 0.5;
+        const zeroY = bBase + (glyphMin / glyphSpan) * bMax;
         svals.forEach((sv, si) => {
           if (sv == null) return;
-          const h = (Math.max(0, sv) / glyphMax) * bMax;
+          const vy = bBase - ((sv - glyphMin) / glyphSpan) * bMax;
           nodes.push({
             kind: "rect",
             x: bx0 + si * bw,
-            y: bBase - h,
+            y: Math.min(vy, zeroY),
             w: Math.max(1, bw - 0.5),
-            h,
+            h: Math.abs(vy - zeroY),
             fill: seriesColor(style, si),
             name: `glyph-${code}-${si}`,
           });

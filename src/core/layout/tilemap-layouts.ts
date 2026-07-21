@@ -173,10 +173,19 @@ export function detectLayout(codes: string[]): "us" | "eu" | "europe" | null {
   if (!codes.length) return null;
   const upper = codes.map((c) => c.trim().toUpperCase());
   const score = (layout: TileLayout) => upper.filter((c) => c in layout).length / upper.length;
-  // Checked most-specific first; the EU grid is a subset of Europe, so an
-  // EU-only dataset prefers the tighter frame without the empty margins.
-  if (score(US_TILES) >= 0.9) return "us";
-  if (score(EU_TILES) >= 0.9) return "eu";
-  if (score(EUROPE_TILES) >= 0.9) return "europe";
+  const us = score(US_TILES);
+  const eu = score(EU_TILES);
+  const europe = score(EUROPE_TILES);
+  // The runner-up margin, across geographies only: the EU grid is a subset of
+  // Europe, so an EU-only set matches both by construction and the tighter
+  // frame is the intended pick. But codes like DE/MD/ME/MT are valid ISO-2 AND
+  // US postal codes, and first-match-wins painted that European dataset onto
+  // the US map. When both geographies clear the bar the codes do not name one —
+  // fall through to the "set map: …" hint rather than guess.
+  if (us >= 0.9 && Math.max(eu, europe) >= 0.9) return null;
+  // Otherwise most-specific first.
+  if (us >= 0.9) return "us";
+  if (eu >= 0.9) return "eu";
+  if (europe >= 0.9) return "europe";
   return null;
 }
