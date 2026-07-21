@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sheetToData } from "../src/taskpane/datasheet";
+import { sheetToData, dataToSheet } from "../src/taskpane/datasheet";
 import { parseDateToken } from "../src/core/format";
 
 /**
@@ -62,8 +62,37 @@ describe("datasheet + date parsing hardening", () => {
         ["A", "50%", "60%"],
       ],
     });
-    expect(d.series[0].values).toEqual([null, null]);
+    expect(d.series[0].values).toEqual([50, 60]); // read as shares, not epoch days
     expect((d as { dates?: boolean }).dates).toBeFalsy();
+  });
+
+  it("reads a pasted Excel percent column as numbers (Excel copies the DISPLAYED text)", () => {
+    // A share table is the canonical source for a 100%/stacked chart, and Excel
+    // puts "35%" on the clipboard — not 0.35. Dropping it to a blank gap would
+    // render an empty chart, so the % is stripped like the thousands separator.
+    const d = sheetToData({
+      cells: [
+        ["", "2024", "2025"],
+        ["Online", "35%", "42%"],
+        ["Wholesale", "65%", "58%"],
+      ],
+    });
+    expect(d.series.map((s) => s.values)).toEqual([
+      [35, 42],
+      [65, 58],
+    ]);
+    expect((d as { dates?: boolean }).dates).toBeFalsy();
+    // The user's typed value survives the round trip — it used to be overwritten
+    // in the datasheet with the garbage epoch day.
+    expect(dataToSheet(d).cells[1]).toEqual(["Online", "35", "42"]);
+    // Signed / spaced / fractional percents parse too.
+    const misc = sheetToData({
+      cells: [
+        ["", "a", "b", "c"],
+        ["r", "50 %", "1.5%", "-20%"],
+      ],
+    });
+    expect(misc.series[0].values).toEqual([50, 1.5, -20]);
   });
 
   it("parses a full ISO-8601 date-time, not just a bare date", () => {

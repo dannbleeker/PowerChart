@@ -200,7 +200,13 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
       if (raw.startsWith("=") && raw.length > 1) {
         return evaluateFormula(sheet.cells, raw.slice(1));
       }
-      const num = Number(raw.replace(/,/g, ""));
+      // Strip a trailing percent sign the same way the thousands separator is
+      // stripped. Excel copies a percent-formatted cell to the clipboard as its
+      // DISPLAYED text ("35%"), so pasting a share table — the canonical source
+      // for a 100%/stacked chart — arrives percent-suffixed. Read "35%" as 35,
+      // matching how a think-cell datasheet holds a share (and how dataToSheet
+      // writes it back). Without this the value is dropped to a blank gap.
+      const num = Number(raw.replace(/,/g, "").replace(/\s*%$/, ""));
       if (Number.isFinite(num)) return num;
       // Calendar dates (for Gantt timelines) become days since the epoch.
       const day = parseDateToken(raw);
