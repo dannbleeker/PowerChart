@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { mountDatasheet, type SheetModel } from "../src/taskpane/datasheet";
+import { mountDatasheet, sheetToData, type SheetModel } from "../src/taskpane/datasheet";
 import { localizePane, localizeTree } from "../src/taskpane/i18n";
 
 const sheet = (): SheetModel => ({
@@ -68,7 +68,9 @@ describe("mountDatasheet", () => {
     cell(host, 1, 1).focus();
     clickButton(host, "+ Row");
     expect(model.cells).toHaveLength(4);
-    expect(model.cells[2]).toEqual(["", "", ""]);
+    // The name cell is seeded (see the stack-separator test below); the values
+    // are blank.
+    expect(model.cells[2]).toEqual(["Series 2", "", ""]);
     clickButton(host, "− Row");
     expect(model.cells).toHaveLength(3);
     cell(host, 1, 1).focus();
@@ -78,6 +80,23 @@ describe("mountDatasheet", () => {
     cell(host, 1, 2).focus();
     clickButton(host, "− Column");
     expect(model.cells[0]).toEqual(["", "A", "B"]);
+    host.remove();
+  });
+
+  it("names the row it adds, so it is not read as a stack separator", () => {
+    // A FULLY blank row is sheetToData's clustered-stacked separator, so "+ Row"
+    // used to split a stacked chart into two stacks — restructuring the preview
+    // — before the user had typed anything. Nothing in the pane documents blank
+    // rows as stack breaks, so the button must not create one by itself.
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    let model = sheet();
+    mountDatasheet(host, model, (m) => (model = m));
+    cell(host, 1, 1).focus();
+    clickButton(host, "+ Row");
+    const series = sheetToData(model).series;
+    expect(series.map((s) => s.name)).toEqual(["S1", "Series 2", "S2"]);
+    expect(series.every((s) => s.stack === undefined)).toBe(true);
     host.remove();
   });
 

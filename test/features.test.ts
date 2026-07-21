@@ -205,6 +205,27 @@ describe("datasheet special rows and transpose", () => {
     expect(data.categories).toEqual(["S1", "S2"]);
     expect(data.series.map((s) => s.name)).toEqual(["A", "B"]);
   });
+
+  it("remaps A1 references on transpose, so formula cells keep their numbers", () => {
+    // The formula TEXT used to move verbatim, so "=SUM(B2:B3)" summed a whole
+    // different pair of cells after the swap: the Total row went from 40/60 to
+    // 30/70. A transpose swaps the axes, it must not change the values.
+    const t = transposeSheet({
+      cells: [
+        ["", "Q1", "Q2"],
+        ["North", "10", "20"],
+        ["South", "30", "40"],
+        ["Total", "=SUM(B2:B3)", "=SUM(C2:C3)"],
+      ],
+    });
+    expect(t.cells[1]).toEqual(["Q1", "10", "30", "=SUM(B2:C2)"]);
+    expect(sheetToData(t).series.map((s) => s.values)).toEqual([
+      [10, 30, 40],
+      [20, 40, 60],
+    ]);
+    // Transposing back is the identity, formulas included.
+    expect(transposeSheet(t).cells[3]).toEqual(["Total", "=SUM(B2:B3)", "=SUM(C2:C3)"]);
+  });
 });
 
 describe("grand total label (think-cell 14)", () => {

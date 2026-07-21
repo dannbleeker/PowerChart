@@ -64,15 +64,21 @@ interface AppState {
    * `paletteName` still wins over `style.palette` once the user picks one.
    */
   style?: NonNullable<ChartConfig["style"]>;
-  /** Per-series color overrides, keyed by series name. */
-  seriesColors: Record<string, string>;
+  /** Per-series color overrides, by ROW INDEX (see seriesMeta). */
+  seriesColors: (string | undefined)[];
   /**
    * Series fields the datasheet can't carry (combo `type`, hatch `pattern`,
-   * per-point `colors`), keyed by series name. The pane rebuilds ChartConfig
-   * from the sheet on every preview/insert — without this these fields would be
-   * silently dropped from an imported chart and destroyed on re-save.
+   * per-point `colors`). The pane rebuilds ChartConfig from the sheet on every
+   * preview/insert — without this these fields would be silently dropped from an
+   * imported chart and destroyed on re-save.
+   *
+   * Indexed by ROW, not by series NAME: renaming a series in the datasheet is the
+   * sheet's core edit, and a name key meant the rename found no entry, so the
+   * overlay line collapsed back into a column and lost its colour/pattern/
+   * scenario. (Two series sharing a name collapsed onto one entry for the same
+   * reason.) The row index is what the datasheet actually preserves.
    */
-  seriesMeta: Record<string, Pick<Series, "type" | "pattern" | "colors" | "scenario">>;
+  seriesMeta: (Pick<Series, "type" | "pattern" | "colors" | "scenario"> | undefined)[];
   axisTitle: string;
   logScale: boolean;
   /** Footnote / source line ("Kilde: …"). */
@@ -143,11 +149,11 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     labelContent: cfg.decorations?.labelContent?.join(",") ?? "",
     paletteName: paletteNameFor(cfg.style?.palette),
     style: cfg.style ? { ...cfg.style } : undefined,
-    seriesColors: Object.fromEntries(cfg.data.series.filter((s) => s.color).map((s) => [s.name, s.color!])),
-    seriesMeta: Object.fromEntries(
-      cfg.data.series
-        .filter((s) => s.type || s.pattern || s.colors || s.scenario)
-        .map((s) => [s.name, { type: s.type, pattern: s.pattern, colors: s.colors, scenario: s.scenario }]),
+    seriesColors: cfg.data.series.map((s) => s.color),
+    seriesMeta: cfg.data.series.map((s) =>
+      s.type || s.pattern || s.colors || s.scenario
+        ? { type: s.type, pattern: s.pattern, colors: s.colors, scenario: s.scenario }
+        : undefined,
     ),
     axisTitle: cfg.valueAxisTitle ?? "",
     logScale: !!cfg.logScale,
@@ -228,19 +234,19 @@ function currentConfig(): ChartConfig {
     state.breakFrom.trim() && state.breakTo.trim() && Number.isFinite(bFrom) && Number.isFinite(bTo) && bTo > bFrom
       ? { from: bFrom, to: bTo }
       : undefined;
-  for (const s of data.series) {
-    const c = state.seriesColors[s.name];
+  data.series.forEach((s, i) => {
+    const c = state.seriesColors[i];
     if (c) s.color = c;
     // Re-attach the fields the datasheet can't carry (combo type, pattern,
     // per-point colors) so an imported chart survives the sheet round-trip.
-    const m = state.seriesMeta[s.name];
+    const m = state.seriesMeta[i];
     if (m) {
       if (m.type) s.type = m.type;
       if (m.pattern) s.pattern = m.pattern;
       if (m.colors) s.colors = m.colors;
       if (m.scenario) s.scenario = m.scenario;
     }
-  }
+  });
   const labelParts = state.labelContent
     ? (state.labelContent.split(",") as NonNullable<Decorations["labelContent"]>)
     : undefined;
@@ -724,9 +730,14 @@ function renderOptions() {
   rot.append(rotCb, "Horizontal (bar)");
   G.layout.togs.appendChild(rot);
 
+  // pairControl only knows from/to, but decorations.cagr also carries the series
+  // the arrow is anchored to — and core/decor.ts reads it. Emitting the bare pair
+  // dropped that anchor the moment the spinner was touched, so the arrow silently
+  // switched to the column totals and printed a different growth rate.
+  const cagrSeries = d.cagr?.series;
   G.analysis.body.appendChild(
     pairControl("CAGR arrow", d.cagr, nCats(), (pair) => {
-      d.cagr = pair;
+      d.cagr = pair ? { ...pair, series: cagrSeries } : undefined;
       renderPreview();
     }),
   );
@@ -858,7 +869,13 @@ function renderOptions() {
   const nf = document.createElement("label");
   nf.className = "wide";
   const nfDec = document.createElement("select");
-  for (const v of ["auto", "0", "1", "2"]) {
+  const decOptions = ["auto", "0", "1", "2"];
+  // An imported chart may carry decimals outside the four presets (3, say).
+  // Without an option of its own the select falls to value "", and emitNf — which
+  // writes BOTH controls — then rewrote decimals to 0 as soon as the suffix box
+  // was touched. Carry the loaded value as its own option instead.
+  if (!decOptions.includes(state.decimals)) decOptions.push(state.decimals);
+  for (const v of decOptions) {
     const opt = document.createElement("option");
     opt.value = v;
     opt.textContent = v === "auto" ? "auto" : `${v} dp`;
@@ -1025,9 +1042,9 @@ function renderOptions() {
     const wrap = document.createElement("label");
     const input = document.createElement("input");
     input.type = "color";
-    input.value = state.seriesColors[name] ?? palette[i % palette.length];
+    input.value = state.seriesColors[i] ?? palette[i % palette.length];
     input.addEventListener("input", () => {
-      state.seriesColors[name] = input.value;
+      state.seriesColors[i] = input.value;
       renderPreview();
     });
     wrap.append(input, name);
@@ -1074,10 +1091,20 @@ function pairControl(
   return wrap;
 }
 
+/**
+ * The canvas colour an SVG is painted on. Forcing white here put a dark-theme
+ * config's light text on a white rect (1.13:1 contrast) in the preview AND in
+ * both downloads, while insertSceneIntoSlide drops the same shapes onto the real
+ * (dark) slide with no background rect at all — canvas != export. Default charts
+ * are byte-identical: style.background already defaults to #ffffff.
+ */
+const canvasColor = (cfg: ChartConfig) => cfg.style?.background ?? "#ffffff";
+
 function renderPreviewNow() {
   try {
-    const scene = buildChart(currentConfig());
-    preview.innerHTML = sceneToSvg(scene, { background: "#ffffff" });
+    const cfg = currentConfig();
+    const scene = buildChart(cfg);
+    preview.innerHTML = sceneToSvg(scene, { background: canvasColor(cfg) });
   } catch (err) {
     // textContent, not innerHTML: the error message can carry config-derived
     // strings, and an innerHTML sink here would be a second injection path.
@@ -1180,7 +1207,8 @@ renderPreview();
 renderActionState();
 
 $("download").addEventListener("click", () => {
-  const svg = sceneToSvg(buildChart(currentConfig()), { background: "#ffffff" });
+  const cfg = currentConfig();
+  const svg = sceneToSvg(buildChart(cfg), { background: canvasColor(cfg) });
   const blob = new Blob([svg], { type: "image/svg+xml" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1198,8 +1226,9 @@ $("download").addEventListener("click", () => {
  * rather than a silent no-op.
  */
 $("download-png").addEventListener("click", () => {
-  const scene = buildChart(currentConfig());
-  const svg = sceneToSvg(scene, { background: "#ffffff" });
+  const cfg = currentConfig();
+  const scene = buildChart(cfg);
+  const svg = sceneToSvg(scene, { background: canvasColor(cfg) });
   const scale = 2;
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
   const img = new Image();
@@ -1812,7 +1841,14 @@ if (location.hash.startsWith(CONFIG_HASH)) {
 }
 const requestedTab = deepLink.get("tab");
 if (requestedTab) {
-  document.querySelector<HTMLButtonElement>(`.tabs .tab[data-tab="${requestedTab}"]`)?.click();
+  // Match on the dataset value rather than interpolating the parameter into a
+  // selector: ?tab=chart"] made querySelector THROW at module top level, which
+  // aborted the rest of boot — no build stamp, no size inputs, and no
+  // wireInsert(), leaving the Insert button enabled with no click handler.
+  // An unknown tab is now ignored silently, like a malformed share link.
+  [...document.querySelectorAll<HTMLButtonElement>(".tabs .tab")]
+    .find((el) => el.dataset.tab === requestedTab)
+    ?.click();
 }
 const requestedEl = deepLink.get("el");
 if (requestedEl) {
