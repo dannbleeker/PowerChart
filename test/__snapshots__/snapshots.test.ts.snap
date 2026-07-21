@@ -765,7 +765,7 @@ exports[`SVG snapshots > sample pie 1`] = `
 <path d="M 240 161 L 352.62 192.73 A 117 117 0 0 1 134.67 211.93 Z" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="slice-1"/>
 <text x="246.37" y="236.86" font-size="10" fill="#ffffff" text-anchor="middle" data-name="label-1">Americas 38%</text>
 <path d="M 240 161 L 134.67 211.93 A 117 117 0 0 1 185.63 57.4 Z" fill="#eda100" stroke="#ffffff" stroke-width="1" data-name="slice-2"/>
-<text x="171.11" y="141.88" font-size="10" fill="#ffffff" text-anchor="middle" data-name="label-2">APAC 24%</text>
+<text x="171.11" y="141.88" font-size="10" fill="#0b0b0b" text-anchor="middle" data-name="label-2">APAC 24%</text>
 <path d="M 240 161 L 185.63 57.4 A 117 117 0 0 1 240 44 Z" fill="#008300" stroke="#ffffff" stroke-width="1" data-name="slice-3"/>
 <line x1="211.76" y1="46.43" x2="210.44" y2="41.09" stroke="#52514e" stroke-width="0.75" data-name="leader-3"/>
 <text x="210.09" y="43.23" font-size="10" fill="#0b0b0b" text-anchor="end" data-name="label-3">Other 8%</text>

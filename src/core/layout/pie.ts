@@ -1,5 +1,5 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
-import { polar, textWidth, type SceneNode } from "../scene";
+import { contrastInk, polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat, segmentLabel } from "../format";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
@@ -132,7 +132,10 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         h: fs * 1.5,
         text: label,
         fontSize: fs,
-        color: inside ? "#ffffff" : style.text,
+        // Inside a slice the ink must contrast with THAT slice: a pale fill (the
+        // default palette's #eda100, or any custom/per-point colour) printed white
+        // on light — invisible. Outside, the label sits on the canvas.
+        color: inside ? contrastInk(fill) : style.text,
         align: inside ? "center" : rightHalf ? "left" : "right",
         valign: "middle",
         name: other ? "label-other" : `label-${c}`,
