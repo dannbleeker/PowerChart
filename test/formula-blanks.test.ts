@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sheetToData } from "../src/taskpane/datasheet";
+import { parseDateToken } from "../src/core/format";
 
 /**
  * The datasheet formula evaluator treated a blank cell as 0 for every aggregate.
@@ -43,5 +44,53 @@ describe("MIN/MAX/AVG ignore blank cells; SUM still counts them as 0", () => {
   it("aggregates over an all-blank range resolve to no-data, not 0", () => {
     // MAX over only blanks → NaN → the datasheet turns it into a null (gap).
     expect(evalFormula(withRow(["", "", ""]), "=MAX(B3:D3)")).toBeNull();
+  });
+});
+
+/**
+ * Bugs found by an adversarial hunt over the datasheet/date layer.
+ */
+describe("datasheet + date parsing hardening", () => {
+  it("does not read a percentage cell as a calendar date", () => {
+    // `Date.parse("50% UTC")` returns a finite garbage instant, so an ordinary
+    // "50%" cell became epoch day -7305 AND flipped the chart into date mode.
+    expect(parseDateToken("50%")).toBeNull();
+    expect(parseDateToken("5%")).toBeNull();
+    const d = sheetToData({
+      cells: [
+        ["", "Q1", "Q2"],
+        ["A", "50%", "60%"],
+      ],
+    });
+    expect(d.series[0].values).toEqual([null, null]);
+    expect((d as { dates?: boolean }).dates).toBeFalsy();
+  });
+
+  it("parses a full ISO-8601 date-time, not just a bare date", () => {
+    // Appending " UTC" to a date-time made Date.parse NaN, so every task in a
+    // pasted ISO export was silently dropped.
+    const bare = parseDateToken("2026-01-05");
+    expect(bare).not.toBeNull();
+    expect(parseDateToken("2026-01-05T00:00:00.000Z")).toBe(bare);
+    expect(parseDateToken("2026-01-05T09:30:00Z")).toBe(bare);
+  });
+
+  it("floors a date-time to its calendar day instead of rounding up", () => {
+    const day = parseDateToken("2026-01-15")!;
+    expect(parseDateToken("2026-01-15T18:00:00Z")).toBe(day); // was day + 1
+    expect(parseDateToken("2026-01-15T00:00:00Z")).toBe(day);
+  });
+
+  it("ignores a blank cell in comma-separated aggregate args, as the range form does", () => {
+    // =MIN(B2,C2,D2) counted the blank C2 as a real 0 while =MIN(B2:D2) ignored it.
+    const cells = [
+      ["", "c1", "c2", "c3"],
+      ["r", "10", "", "20"],
+      ["out", "=MIN(B2,C2,D2)", "=MIN(B2:D2)", "=AVG(B2,C2,D2)"],
+    ];
+    const out = sheetToData({ cells }).series[1].values;
+    expect(out[0]).toBe(10); // comma form — was 0
+    expect(out[1]).toBe(10); // range form (already correct)
+    expect(out[2]).toBe(15); // AVG ignores the blank — was 10
   });
 });

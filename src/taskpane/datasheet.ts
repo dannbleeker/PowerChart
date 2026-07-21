@@ -106,7 +106,19 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
           i += range[0].length;
           args.push(...rangeValues(range));
         } else {
-          args.push(expr0());
+          // A BARE cell reference must contribute the cell's EMPTINESS, not
+          // expr0()'s 0 — otherwise MIN/MAX/AVG over comma-separated args counted a
+          // blank as a real 0 while the range form correctly ignores it, so
+          // =MIN(B2,C2,D2) returned 0 where =MIN(B2:D2) returned 10.
+          const one = /^([A-Za-z]{1,2})([0-9]{1,3})\s*(?=[,)])/.exec(s.slice(i));
+          if (one) {
+            i += one[0].length;
+            const rr = Number(one[2]) - 1;
+            const cc = colIndex(one[1]);
+            args.push((cells[rr]?.[cc] ?? "").trim() === "" ? null : cellNumeric(cells, rr, cc, visiting));
+          } else {
+            args.push(expr0());
+          }
         }
         if (s[i] === ",") i++;
       }
