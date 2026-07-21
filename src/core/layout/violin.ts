@@ -101,7 +101,7 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     nodes.push({
       kind: "polygon",
       points,
-      fill: lerpColor("#ffffff", color, 0.32),
+      fill: lerpColor(style.background, color, 0.32),
       stroke: color,
       strokeWidth: 1,
       name: `violin-${c}`,

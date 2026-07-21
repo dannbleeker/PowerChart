@@ -195,7 +195,7 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         y: gr.y,
         w: Math.max(0, gr.w - 1),
         h: Math.max(0, gr.h - 1),
-        fill: lerpColor("#ffffff", gColor, 0.14),
+        fill: lerpColor(style.background, gColor, 0.14),
         stroke: gColor,
         strokeWidth: 1,
         name: `group-${g.gi}`,
