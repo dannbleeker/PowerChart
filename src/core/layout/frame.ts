@@ -40,6 +40,24 @@ export interface ValueScale {
  * Linear scale mapping [min, max] onto the plot height, snapped to nice ticks.
  * `override` pins either end manually (think-cell's axis-handle dragging).
  */
+/**
+ * The floor a LOG axis should be given.
+ *
+ * Every caller derives `dataMin` with a zero seed (`minOf(all, 0)`) because a
+ * linear value axis baselines at zero — which means valueScale's `dataMin > 0`
+ * branch is unreachable from real code and EVERY log axis fell back to
+ * `dataMax / 1000`: three decades below the top, whatever the data does. Values
+ * of 200–300 got the axis 0.1…1,000 and drew inside the top 4% of the plot,
+ * with two decades of gridlines under them that no datum can reach.
+ *
+ * Return the smallest POSITIVE value instead, or `dataMin` when there is none
+ * (valueScale then declines the log branch anyway, since dataMax ≤ 0).
+ */
+export const logFloor = (values: readonly number[], dataMin: number): number => {
+  const lo = values.reduce((m, v) => (v > 0 && v < m ? v : m), Infinity);
+  return Number.isFinite(lo) ? lo : dataMin;
+};
+
 export function valueScale(
   frame: Frame,
   dataMin: number,

@@ -11,6 +11,7 @@ import {
   computeFrame,
   computeFrameHorizontal,
   footnoteH,
+  logFloor,
   titleHeight,
   titleNode,
   valueScale,
@@ -87,7 +88,8 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       slots.centers[c] = frame.x + inset + (((days[c] as number) - d0) / (d1 - d0 || 1)) * (frame.w - inset * 2);
     }
   }
-  const scale = valueScale(frame, dataMin, dataMax, cfg.scale, undefined, !area && cfg.logScale);
+  const logOn = !area && !!cfg.logScale;
+  const scale = valueScale(frame, logOn ? logFloor(all, dataMin) : dataMin, dataMax, cfg.scale, undefined, logOn);
   const y0 = scale.toY(0);
 
   const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, slots.centers, scale);

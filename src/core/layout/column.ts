@@ -11,6 +11,7 @@ import {
   computeFrameHorizontal,
   legendWrapWalk,
   seriesLegendLabels,
+  logFloor,
   valueScale,
   type Frame,
   type ValueScale,
@@ -133,6 +134,8 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const stackNegTotals = (c: number, id: number) =>
     data.series.reduce((a, s) => a + ((s.stack ?? 0) === id ? Math.min(0, s.values[c] ?? 0) : 0), 0);
 
+  const allValues = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  const logOn = !stacked && !H && !!cfg.logScale;
   let dataMin: number, dataMax: number;
   if (pct) {
     dataMin = 0;
@@ -154,9 +157,8 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     dataMin = Math.min(0, ...negTotals);
     dataMax = Math.max(0, ...posTotals);
   } else {
-    const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
-    dataMin = minOf(all, 0);
-    dataMax = maxOf(all, 0);
+    dataMin = minOf(allValues, 0);
+    dataMax = maxOf(allValues, 0);
   }
   // 100% charts: negatives are shares below the zero line. The axis drops to
   // the most-negative column share (0 when all data is positive → unchanged).
@@ -170,7 +172,14 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         ticks: pctNegMin < 0 ? niceTicks(pctNegMin, 1, 5) : [0, 0.25, 0.5, 0.75, 1],
         toY: (v: number) => frame.y + frame.h - ((v - pctNegMin) / (1 - pctNegMin)) * frame.h,
       }
-    : valueScale(frame, dataMin, dataMax, cfg.scale, H ? undefined : cfg.axisBreak, !stacked && !H && cfg.logScale);
+    : valueScale(
+        frame,
+        logOn ? logFloor(allValues, dataMin) : dataMin,
+        dataMax,
+        cfg.scale,
+        H ? undefined : cfg.axisBreak,
+        logOn,
+      );
 
   // Value coordinate: distance along the value axis from the scale minimum.
   // Vertical charts route through toY so axis breaks apply; horizontal stays linear.

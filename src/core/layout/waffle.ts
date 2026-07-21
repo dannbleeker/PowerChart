@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatPercent } from "../format";
-import { NO_DATA } from "../color";
+import { noDataFill } from "../color";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -74,7 +74,7 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   legendEntries.forEach((e, c) => {
     for (let k = 0; k < cells[c] && fills.length < 100; k++) fills.push(e.color);
   });
-  while (fills.length < 100) fills.push(NO_DATA);
+  while (fills.length < 100) fills.push(noDataFill(style.background));
 
   for (let k = 0; k < 100; k++) {
     const row = Math.floor(k / 10); // 0 = bottom row
