@@ -1,4 +1,6 @@
 import type { Scene, SceneNode } from "./scene";
+import { textWidth } from "./scene";
+import { clipToWidth } from "./elements";
 import { DEFAULT_STYLE } from "./style";
 
 /** Standard 16:9 slide in points. */
@@ -29,7 +31,14 @@ export function buildAgendaScene(chapters: string[], opts: AgendaOptions = {}): 
   const listY = height * 0.28;
   const rowH = Math.min(46, (height * 0.62) / Math.max(1, chapters.length));
   const fsTitle = 28;
-  const fs = Math.min(18, rowH * 0.42);
+  // The chapter text starts after the number column (fs * 2.6) and its box ends
+  // at width - marginX. The row font came from the chapter COUNT alone, so a
+  // long title ran off the right edge of the slide — and neither PowerPoint
+  // renderer wraps it. Shrink until the widest title fits, then ellipsize.
+  const itemW = (f: number) => width - marginX * 2 - f * 2.6;
+  let fs = Math.min(18, rowH * 0.42);
+  const overflows = (f: number) => chapters.some((c, i) => textWidth(c, f, i === highlight) > itemW(f));
+  while (fs > 9 && overflows(fs)) fs -= 0.5;
 
   const nodes: SceneNode[] = [
     {
@@ -91,9 +100,9 @@ export function buildAgendaScene(chapters: string[], opts: AgendaOptions = {}): 
         kind: "text",
         x: marginX + fs * 2.6,
         y,
-        w: width - marginX * 2 - fs * 2.6,
+        w: itemW(fs),
         h: rowH * 0.7,
-        text: chapter,
+        text: clipToWidth(chapter, fs, itemW(fs), active),
         fontSize: fs,
         bold: active,
         color: active ? s.text : s.mutedText,
