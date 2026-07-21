@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { CHART_KINDS } from "../src/core/samples";
+import { DEFAULT_STYLE } from "../src/core/style";
 
 /**
  * Keeps the Agent Skill honest: whenever the feature set grows, the skill's
@@ -29,6 +30,19 @@ describe("skill documentation coverage", () => {
     // milestone markers, the boxplot mean marker), so assert the quoted
     // Series.type value — the thing that actually has to be documented.
     expect(reference).toContain('"marker"');
+  });
+
+  it("reference.md's style schema names every ink field, and no dead one", () => {
+    // The schema line drifted both ways: it promised `fontFamily` (no renderer
+    // reads ChartStyle.fontFamily — the deck font is fixed) while omitting the
+    // five ink fields that DO change the output, so an author could not
+    // discover them. Derived from DEFAULT_STYLE so a new field must be documented.
+    const schema = /style\?: \{[^}]*\}/.exec(reference)?.[0] ?? "";
+    for (const key of Object.keys(DEFAULT_STYLE)) {
+      if (key === "fontFamily") continue;
+      expect(schema).toContain(key);
+    }
+    expect(schema).not.toContain("fontFamily");
   });
 
   it("reference.md documents the special datasheet rows", () => {

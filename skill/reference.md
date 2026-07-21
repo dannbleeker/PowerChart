@@ -154,7 +154,8 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   labelOffsets?: { [nodeName]: {dx, dy} },  // manual label nudges
   numberFormat?: { decimals?: number|"auto", suffix?: string,
                    forceSign?: boolean, locale?: "de-DE"|... },
-  style?: { palette?: string[], fontFamily?, fontSize?, negative?, neutral? }
+  style?: { palette?: string[], fontSize?, negative?, neutral?,   // series ink
+            text?, mutedText?, axis?, gridline?, background? }    // canvas ink
 }
 ```
 
@@ -457,4 +458,14 @@ totals `#898781`. Override via `style.palette` or per-series `color`.
 
 `scripts/render-pptx.mjs` emits one 13.33×7.5in slide per config with the chart
 centered, every bar/label/line as a native PowerPoint shape, and exact
-adjustable pie geometry. `scripts/render-svg.mjs` emits SVGs for fast visual QA.
+adjustable pie geometry. The slide takes the chart's own `style.background`
+(white by default), so a dark-styled config stays readable.
+`scripts/render-svg.mjs` emits SVGs for fast visual QA. Both accept an
+`"agenda"` config and isolate a failing one, so a single bad entry cannot throw
+away the rest of the batch.
+
+Two known limits of the headless pptx: the chart's text alternative
+(`<title>`/`<desc>` in the SVG, alt text in the live add-in) is not carried —
+pptxgenjs exposes alt text on pictures and native charts only, not on the
+shapes this renderer draws; and the deck font is Segoe UI (no config field
+selects it — set the font in the deck's theme after inserting).
