@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { maxOf, minOf } from "../agg";
-import { lerpColor, NO_DATA, sequentialScale } from "../color";
+import { lerpColor, noDataFill, sequentialScale } from "../color";
 import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
 import { footnoteH, titleHeight, titleNode } from "./frame";
@@ -66,7 +66,8 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const max = maxOf(vals);
   const base = data.series[0]?.color ?? style.palette[0];
   // Constant data: a flat mid-tone beats a zero-width ramp.
-  const fill = min === max ? () => lerpColor(style.background, base, 0.5) : sequentialScale(min, max, base);
+  const fill =
+    min === max ? () => lerpColor(style.background, base, 0.5) : sequentialScale(min, max, base, style.background);
   const fmt = resolveFormat(vals, cfg.numberFormat);
 
   const topts = cfg.tilemap ?? {};
@@ -118,7 +119,11 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const v = values.get(code);
     // In glyph mode the tile is a faint backdrop for the bars; otherwise it
     // carries the value color.
-    const tileFill = glyph ? lerpColor(style.background, base, 0.1) : v == null || !vals.length ? NO_DATA : fill(v);
+    const tileFill = glyph
+      ? lerpColor(style.background, base, 0.1)
+      : v == null || !vals.length
+        ? noDataFill(style.background)
+        : fill(v);
     const x = x0 + col * (tile + gutter) + (hex && row % 2 === 1 ? (tile + gutter) / 2 : 0);
     const y = hex ? y0 + row * tile * 0.87 : y0 + row * (tile + gutter);
     if (hex) {
@@ -292,7 +297,15 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     );
     if (values.size < Object.keys(layout).length) {
       nodes.push(
-        { kind: "rect", x: x0 + lw + fs, y: ly, w: fs * 0.9, h: fs * 0.9, fill: NO_DATA, name: "legend-nodata" },
+        {
+          kind: "rect",
+          x: x0 + lw + fs,
+          y: ly,
+          w: fs * 0.9,
+          h: fs * 0.9,
+          fill: noDataFill(style.background),
+          name: "legend-nodata",
+        },
         {
           kind: "text",
           x: x0 + lw + fs * 2.1,

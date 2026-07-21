@@ -115,7 +115,7 @@ export function lerpColor(c0: string, c1: string, t: number): string {
   );
 }
 
-/** Fill for cells/tiles with no data. */
+/** Fill for cells/tiles with no data, on a light canvas. */
 export const NO_DATA = "#e6e6e6";
 
 /** Perceptual (linear-light) relative luminance of a hex colour, 0..1. */
@@ -142,20 +142,62 @@ export function zoneFill(background: string, lightFill: string): string {
 }
 
 /**
- * Sequential scale: 12% tint of the color (kept off pure white so a low
- * value never reads as "no data") → the full color.
+ * "No data" fill for the canvas in play. A missing cell must read as ABSENT —
+ * quieter than every value on the scale — and the light-canvas grey is instead
+ * the brightest thing on a dark slide, which makes the gaps the loudest marks
+ * in the grid. Light canvases keep the literal, so default charts are
+ * byte-identical.
+ *
+ * Not zoneFill: that mirrors the tint's LINEAR-LIGHT step away from white into
+ * an equal step away from black, which is accurate for the faint panel tints it
+ * serves (#f5f5f5 and friends) but overshoots badly this far down — #e6e6e6
+ * came back as #808080, a 4.3:1 block against a #1b1b1b slide where the light
+ * pair is 1.25:1. Match the CONTRAST RATIO instead, so "absent" is equally
+ * recessive on either canvas.
  */
-export function sequentialScale(min: number, max: number, color: string): (v: number) => string {
-  const lo = lerpColor("#ffffff", color, 0.12);
+export function noDataFill(background: string): string {
+  const bg = relLuminance(background);
+  if (bg >= 0.5) return NO_DATA;
+  // The ratio NO_DATA keeps against a white canvas, re-solved against this one.
+  const ratio = 1.05 / (relLuminance(NO_DATA) + 0.05);
+  const target = Math.max(0, Math.min(1, ratio * (bg + 0.05) - 0.05));
+  const c = Math.round(255 * (target <= 0.0031308 ? target * 12.92 : 1.055 * Math.pow(target, 1 / 2.4) - 0.055));
+  return rgbToHex([c, c, c]);
+}
+
+/**
+ * Sequential scale: 12% tint of the CANVAS (kept off the bare canvas so a low
+ * value never reads as "no data") → the full color.
+ *
+ * The empty end is the background, not a hardcoded white: on a dark slide a
+ * near-white low cell is the BRIGHTEST mark on the chart, so the scale reads
+ * inverted — the smallest value shouts and the largest recedes. Defaulting to
+ * white keeps every light-theme chart byte-identical.
+ */
+export function sequentialScale(
+  min: number,
+  max: number,
+  color: string,
+  background = "#ffffff",
+): (v: number) => string {
+  const lo = lerpColor(background, color, 0.12);
   const span = max - min || 1;
   return (v) => lerpColor(lo, color, (v - min) / span);
 }
 
 /**
- * Diverging scale through white, symmetric around zero so equal distances
- * from zero get equal intensity on both sides.
+ * Diverging scale through the canvas colour, symmetric around zero so equal
+ * distances from zero get equal intensity on both sides. Zero must vanish into
+ * the slide — a hardcoded white zero cell on a dark canvas is a glaring block
+ * exactly where the data says "neutral".
  */
-export function divergingScale(min: number, max: number, positive: string, negative: string): (v: number) => string {
+export function divergingScale(
+  min: number,
+  max: number,
+  positive: string,
+  negative: string,
+  background = "#ffffff",
+): (v: number) => string {
   const extent = Math.max(Math.abs(min), Math.abs(max)) || 1;
-  return (v) => (v >= 0 ? lerpColor("#ffffff", positive, v / extent) : lerpColor("#ffffff", negative, -v / extent));
+  return (v) => (v >= 0 ? lerpColor(background, positive, v / extent) : lerpColor(background, negative, -v / extent));
 }

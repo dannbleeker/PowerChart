@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
-import { divergingScale, lerpColor, NO_DATA, sequentialScale, zoneFill } from "../color";
+import { divergingScale, lerpColor, noDataFill, sequentialScale, zoneFill } from "../color";
 import { maxOf, minOf } from "../agg";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
@@ -65,8 +65,8 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const colorOf = constant
     ? () => lerpColor(style.background, positive, 0.5)
     : mode === "diverging"
-      ? divergingScale(min, max, positive, negative)
-      : sequentialScale(min, max, positive);
+      ? divergingScale(min, max, positive, negative, style.background)
+      : sequentialScale(min, max, positive, style.background);
   const fmt = resolveFormat(all, cfg.numberFormat);
   const maxAbs = Math.max(1e-9, Math.abs(min), Math.abs(max));
   const sizeEncode = !!opts.sizeEncode;
@@ -159,7 +159,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
     data.categories.forEach((_, c) => {
       const v = s.values[c];
-      const fill = v == null ? NO_DATA : colorOf(v);
+      const fill = v == null ? noDataFill(style.background) : colorOf(v);
       const x = plot.x + c * cw;
       const y = plot.y + ri * ch;
       // The cell as DRAWN — sizeEncode shrinks it, and the sign mark has to sit
@@ -546,7 +546,7 @@ function calendarLayout(
     const v = values[i];
     const x = gridX + weekOf(d) * cell;
     const y = gridY + weekdayOf(d) * cell;
-    const fill = v == null ? NO_DATA : colorOf(v);
+    const fill = v == null ? noDataFill(style.background) : colorOf(v);
     const box = { x, y, w: cell - 1.5, h: cell - 1.5 };
     nodes.push({ kind: "rect", ...box, fill, name: `cell-${i}` });
     // A calendar never draws value labels, so colour is its ONLY sign carrier —
