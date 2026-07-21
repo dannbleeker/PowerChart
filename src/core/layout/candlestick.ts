@@ -82,7 +82,15 @@ export function layoutCandlestick(cfg: ChartConfig, style: ChartStyle, decor: De
     anchors: {
       categoryX: centers,
       categoryWidth: data.categories.map(() => colThick),
-      columnTop: data.categories.map((_, c) => scale.toY(high[c] ?? 0)),
+      // Top of the period's drawn ink. A blank High must NOT fall back to
+      // value 0: this scale is deliberately zero-free, so toY(0) lands
+      // thousands of points below the frame and drags every callout / CAGR /
+      // difference anchor off the canvas with it. Use the highest price the
+      // period actually has; a wholly empty period sits on the plot floor.
+      columnTop: data.categories.map((_, c) => {
+        const priced = [high[c], open[c], close[c], low[c]].filter((v): v is number => v != null);
+        return priced.length ? scale.toY(Math.max(...priced)) : frame.y + frame.h;
+      }),
       columnValue: data.categories.map((_, c) => close[c] ?? 0),
       baselineY: frame.y + frame.h,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },

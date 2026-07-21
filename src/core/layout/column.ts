@@ -1,4 +1,4 @@
-import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "../types";
+import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors, Series } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, resolveFormat, segmentLabel } from "../format";
 import { seriesColor } from "../style";
@@ -30,6 +30,52 @@ export interface LayoutResult {
 
 /** Minimum segment thickness (relative to font size) before its label is hidden. */
 const LABEL_FIT = 1.25;
+
+/** How one series' rectangles are painted, once IBCS notation is applied. */
+interface MarkPaint {
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
+  pattern?: Series["pattern"];
+}
+
+/**
+ * IBCS scenario notation restyles a series by the data's nature: PY a lighter
+ * solid, PL/BU an outlined/hollow bar, FC a hatch. AC/none stay solid, carrying
+ * only the series' own `pattern`.
+ *
+ * Shared by the plotted segment and its legend chip: a hollow PL bar keyed by a
+ * solid block — or two same-coloured series told apart only by a hatch, keyed by
+ * two identical squares — hides exactly the redundant encoding the notation
+ * exists to provide for greyscale and colour-blind readers.
+ */
+function markPaint(
+  style: ChartStyle,
+  fill: string,
+  s: Pick<Series, "scenario" | "pattern">,
+  baseStroke?: string,
+  baseStrokeWidth?: number,
+): MarkPaint {
+  const paint: MarkPaint = { fill, stroke: baseStroke, strokeWidth: baseStrokeWidth, pattern: s.pattern };
+  if (s.scenario === "PY") {
+    paint.fill = lerpColor(style.background, fill, 0.5);
+  } else if (s.scenario === "PL" || s.scenario === "BU") {
+    paint.fill = "none";
+    paint.stroke = fill;
+    paint.strokeWidth = 1.5;
+  } else if (s.scenario === "FC") {
+    // SVG keeps the true IBCS hatch, but rect.pattern is SVG-only — both
+    // PowerPoint renderers drop it, which made FC pixel-identical to AC in
+    // the actual deliverable. Back the hatch with a fill/border encoding all
+    // three renderers can express: a light tint (distinct from PY's heavier
+    // 0.5) plus a series-coloured edge (distinct from PL/BU's hollow bar).
+    paint.pattern = "diagonal";
+    paint.fill = lerpColor(style.background, fill, 0.75);
+    paint.stroke = fill;
+    paint.strokeWidth = 1;
+  }
+  return paint;
+}
 
 /**
  * Stacked / clustered / 100% column charts — and, following think-cell's
@@ -274,36 +320,14 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       // Transparent "no-fill" segment: it still occupies the stack (the level
       // was already advanced) but draws nothing, floating the segments above.
       if (fill === "transparent") return;
-      // IBCS scenario notation restyles the segment by the data's nature: PY a
-      // lighter solid, PL/BU an outlined/hollow bar, FC a hatch. AC/none stay solid.
-      let segFill = fill;
-      let segStroke: string = style.background;
-      let segStrokeWidth = stacked ? 0.75 : 0;
-      let segPattern = s.pattern;
-      if (s.scenario === "PY") {
-        segFill = lerpColor(style.background, fill, 0.5);
-      } else if (s.scenario === "PL" || s.scenario === "BU") {
-        segFill = "none";
-        segStroke = fill;
-        segStrokeWidth = 1.5;
-      } else if (s.scenario === "FC") {
-        // SVG keeps the true IBCS hatch, but rect.pattern is SVG-only — both
-        // PowerPoint renderers drop it, which made FC pixel-identical to AC in
-        // the actual deliverable. Back the hatch with a fill/border encoding all
-        // three renderers can express: a light tint (distinct from PY's heavier
-        // 0.5) plus a series-coloured edge (distinct from PL/BU's hollow bar).
-        segPattern = "diagonal";
-        segFill = lerpColor(style.background, fill, 0.75);
-        segStroke = fill;
-        segStrokeWidth = 1;
-      }
+      const seg = markPaint(style, fill, s, style.background, stacked ? 0.75 : 0);
       nodes.push({
         kind: "rect",
         ...r,
-        fill: segFill,
-        stroke: segStroke,
-        strokeWidth: segStrokeWidth,
-        pattern: segPattern,
+        fill: seg.fill,
+        stroke: seg.stroke,
+        strokeWidth: seg.strokeWidth,
+        pattern: seg.pattern,
         name: `seg-${si}-${c}`,
       });
       if (c === n - 1) lastSegMid[si] = H ? r.x + r.w : r.y + r.h / 2;
@@ -333,7 +357,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
             fontSize: fs,
             // Against the painted fill, not the original series colour: a hollow
             // PL/BU bar shows the canvas, and a PY/FC tint is far lighter than `fill`.
-            color: contrastInk(segFill === "none" ? style.background : segFill),
+            color: contrastInk(seg.fill === "none" ? style.background : seg.fill),
             align: "center",
             valign: "middle",
             name: `label-${si}-${c}`,
@@ -914,7 +938,12 @@ export function horizontalChrome(
 /** One legend entry: a coloured chip and a label. */
 export interface LegendEntry {
   label: string;
+  /** Chip fill, as the mark it labels is painted ("none" for a hollow bar). */
   color: string;
+  /** Chip outline / hatch, so the chip is a miniature of that mark. */
+  stroke?: string;
+  strokeWidth?: number;
+  pattern?: Series["pattern"];
   /** Node name for the text (defaults to `legend-${index}`). */
   name?: string;
 }
@@ -941,11 +970,19 @@ export function legendRow(
   const maxX = opts.maxX ?? Infinity;
   const entries: LegendEntry[] =
     opts.entries ??
-    seriesLegendLabels(cfg).map((label, si) => ({
-      label,
-      color: seriesColor(style, si, cfg.data.series[si].color),
-      name: `legend-${si}`,
-    }));
+    seriesLegendLabels(cfg).map((label, si) => {
+      // Key the chip with the paint the segments actually get, not the raw
+      // series colour — pattern and IBCS scenario are half the encoding.
+      const paint = markPaint(style, seriesColor(style, si, cfg.data.series[si].color), cfg.data.series[si]);
+      return {
+        label,
+        color: paint.fill,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        pattern: paint.pattern,
+        name: `legend-${si}`,
+      };
+    });
   // Shared wrap walk (frame.ts) so the row count here matches what the frame
   // reserved via legendRowCount.
   const slots = legendWrapWalk(
@@ -959,7 +996,18 @@ export function legendRow(
     const { x, row } = slots[si];
     const ry = y + row * rowH;
     nodes.push(
-      { kind: "rect", x, y: ry + fs * 0.35, w: chip, h: chip, fill: e.color, name: `legend-chip-${si}` },
+      {
+        kind: "rect",
+        x,
+        y: ry + fs * 0.35,
+        w: chip,
+        h: chip,
+        fill: e.color,
+        stroke: e.stroke,
+        strokeWidth: e.strokeWidth,
+        pattern: e.pattern,
+        name: `legend-chip-${si}`,
+      },
       {
         kind: "text",
         x: x + chip + 3,
