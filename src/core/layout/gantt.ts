@@ -1,10 +1,10 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
-import { textWidth, type SceneNode } from "../scene";
+import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
-import { titleHeight, titleNode } from "./frame";
-import { zoneFill } from "../color";
+import { footnoteH, titleHeight, titleNode } from "./frame";
+import { lerpColor, zoneFill } from "../color";
 
 /**
  * Simplified Gantt / timeline: categories are activities; rows named
@@ -72,7 +72,6 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       );
       return { label, cells, w };
     });
-  const colsW = columns.reduce((a, c) => a + c.w, 0);
 
   // "Activity | Owner | Remark" category convention; ">" prefix indents.
   const parts = data.categories.map((c) => c.split("|").map((p) => p.trim()));
@@ -125,14 +124,36 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const titleH = titleHeight(cfg, style);
   const bracketH = brackets.length ? fs * 1.9 : 0;
   const headerH = fs * 1.6;
-  const catW = Math.min(cfg.width * 0.32, Math.max(0, ...acts.map((c) => textWidth(c, fs))) + 10);
-  const ownerW = hasOwners ? Math.max(0, ...owners.map((o) => textWidth(o, fs))) + 12 : 0;
-  const remarkW = hasRemarks ? Math.max(0, ...remarks.map((o) => textWidth(o, fs * 0.9))) + 12 : 0;
-  const bottomH = today != null ? fs * 1.6 : 6;
+  const catW0 = Math.min(cfg.width * 0.32, Math.max(0, ...acts.map((c) => textWidth(c, fs))) + 10);
+  const ownerW0 = hasOwners ? Math.max(0, ...owners.map((o) => textWidth(o, fs))) + 12 : 0;
+  const remarkW0 = hasRemarks ? Math.max(0, ...remarks.map((o) => textWidth(o, fs * 0.9))) + 12 : 0;
+  // Nothing capped what the gutters take TOGETHER: a "Column" row is capped at
+  // 12% of the width but their COUNT is not, and the owner/remark gutters grow
+  // with their longest string, so enough of them drove plot.w NEGATIVE — which
+  // inverts toX, and bars came out zero-wide and left of the plot. Keep a fifth
+  // of the width for the timeline: drop whole gutter columns once they no longer
+  // fit (a sliver column shows nothing anyway), then shrink the text gutters if
+  // the labels alone still overflow.
+  const gutterBudget = Math.max(0, cfg.width * 0.8 - 6);
+  let room = Math.max(0, gutterBudget - catW0 - ownerW0 - remarkW0);
+  const fitted = columns.filter((c) => {
+    if (c.w > room) return false;
+    room -= c.w;
+    return true;
+  });
+  const colsW = fitted.reduce((a, c) => a + c.w, 0);
+  const textGutters = catW0 + ownerW0 + remarkW0;
+  const gutterScale = textGutters > gutterBudget ? gutterBudget / textGutters : 1;
+  const catW = catW0 * gutterScale;
+  const ownerW = ownerW0 * gutterScale;
+  const remarkW = remarkW0 * gutterScale;
+  const bottomH = (today != null ? fs * 1.6 : 6) + footnoteH(cfg, style, decor);
   const plot = {
     x: catW + colsW,
     y: titleH + bracketH + headerH,
-    w: cfg.width - catW - colsW - ownerW - remarkW - 6,
+    // Math.max: at an absurdly small cfg.width even zero gutters overrun the 6pt
+    // right margin, and a negative width would invert the timeline again.
+    w: Math.max(0, cfg.width - catW - colsW - ownerW - remarkW - 6),
     h: cfg.height - titleH - bracketH - headerH - bottomH,
   };
 
@@ -141,6 +162,10 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     ...starts,
     ...ends,
     ...milestones,
+    // A plan that slipped has its baseline OUTSIDE the actual span; leaving the
+    // ghost bars out of the extent drew them off the plot (and off the canvas).
+    ...baseStarts,
+    ...baseEnds,
     ...(today != null ? [today] : []),
     ...holidays,
     ...brackets.flatMap((b) => [b.from, b.to]),
@@ -194,11 +219,16 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       ? plot.x + (workIndex(v) / Math.max(1, workTotal)) * plot.w
       : plot.x + ((v - t0) / (t1 - t0 || 1)) * plot.w;
   /**
-   * Minimum width for a span that collapses to nothing. Only a working-day
-   * scale can do that (a weekend-only task), so it stays 0 otherwise and no
-   * existing output moves. A constant, so the result stays deterministic.
+   * Width for a span that collapses to nothing: a weekend-only task on a
+   * working-day scale, or a single-day activity (Start === End) on any scale.
+   * A constant, so the result stays deterministic.
    */
-  const minW = workdays ? 1.5 : 0;
+  const HAIRLINE = 1.5;
+  /**
+   * Only a working-day scale can collapse a span that covers real days, so this
+   * stays 0 otherwise and no existing output moves.
+   */
+  const minW = workdays ? HAIRLINE : 0;
   const fmt = resolveFormat(ticks, cfg.numberFormat);
   const tickLabel = (t: number, i: number) => {
     if (!dates) return formatNumber(t, fmt);
@@ -460,8 +490,12 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         name: `row-${c}`,
       });
     }
-    const s = starts[c];
-    const e = ends[c];
+    // A pair typed end-before-start is a data-entry slip, not a reason to draw
+    // nothing: take the span in the order the two dates actually run.
+    const s0 = starts[c];
+    const e0 = ends[c];
+    const s = s0 != null && e0 != null ? Math.min(s0, e0) : s0;
+    const e = s0 != null && e0 != null ? Math.max(s0, e0) : e0;
     // Baseline ghost bar (the original plan), thin, beneath the actual bar.
     const bs = baseStarts[c];
     const be = baseEnds[c];
@@ -472,27 +506,36 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         y: cy + barH * 0.55,
         w: Math.max(toX(be) - toX(bs), minW),
         h: barH * 0.4,
-        fill: "#cfcdc5",
+        // Like every other background tint in this file: unchanged on a light
+        // canvas, a faint lift off a dark one instead of a light-grey glare.
+        fill: zoneFill(style.background, "#cfcdc5"),
         name: `gantt-baseline-${c}`,
       });
     }
-    if (s != null && e != null && e > s) {
+    if (s != null && e != null && e >= s) {
       const isCrit = critical.has(c);
+      const barFill = seriesColor(style, 0);
       const bx = toX(s);
-      // A task living entirely inside non-working days has zero working length
-      // and would vanish. Keep a hairline so it is still visible and clickable.
-      const bw = Math.max(toX(e) - bx, minW);
+      // A task living entirely inside non-working days has zero working length,
+      // and a one-day activity (a cutover typed with the same date twice) has no
+      // span at all. Both would vanish; keep a hairline so the row still shows
+      // its activity instead of reading as empty.
+      const bw = Math.max(toX(e) - bx, e === s ? HAIRLINE : minW);
       nodes.push({
         kind: "rect",
         x: bx,
         y: cy - barH / 2,
         w: bw,
         h: barH,
-        fill: seriesColor(style, 0),
+        fill: barFill,
         name: `bar-${c}`,
         ...(isCrit ? { stroke: style.negative, strokeWidth: 1.75 } : {}),
       });
-      // Percent-complete fill: a darker inner bar over the elapsed share.
+      // Percent-complete fill: a denser shade OF the bar over the elapsed share.
+      // A fixed blue read as a foreign series on any other palette, and on a
+      // dark canvas it was BRIGHTER than the bar it sat in — the opposite of
+      // what it promises. Blending toward the text ink darkens it on a light
+      // canvas and brightens it on a dark one, always in the bar's own hue.
       const rawPct = completes[c];
       if (rawPct != null) {
         const pct = Math.max(0, Math.min(1, rawPct > 1 ? rawPct / 100 : rawPct));
@@ -503,7 +546,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
             y: cy - barH / 2,
             w: bw * pct,
             h: barH,
-            fill: "#1b4e8a",
+            fill: lerpColor(barFill, style.text, 0.35),
             name: `progress-${c}`,
           });
         }
@@ -519,7 +562,9 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
             h: fs * 1.4,
             text: label,
             fontSize: fs * 0.9,
-            color: "#ffffff",
+            // Ink chosen for the bar it sits on, like every other in-shape
+            // label: white vanished on a light palette colour.
+            color: contrastInk(barFill),
             align: "center",
             valign: "middle",
             name: `bar-label-${c}`,
@@ -548,9 +593,9 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // w: cfg.width) and would paint straight over cells emitted alongside it.
   // A header row shows whatever value it carries — nothing is auto-summed here
   // (summaryBars sums spans, not money).
-  columns.forEach((col, i) => {
+  fitted.forEach((col, i) => {
     let cx = catW;
-    for (let k = 0; k < i; k++) cx += columns[k].w;
+    for (let k = 0; k < i; k++) cx += fitted[k].w;
     nodes.push({
       kind: "text",
       x: cx,
@@ -592,8 +637,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     if (pred == null) return;
     const p = Math.round(pred) - 1;
     if (p < 0 || p >= data.categories.length || p === c) return;
-    const predEnd = ends[p];
-    const succStart = starts[c];
+    // A gate row carries only a Milestone, and it is the most natural thing to
+    // depend on ("Build starts after the Kickoff gate"); anchoring on End alone
+    // dropped the arrow the author asked for. Same on the successor side.
+    const predEnd = ends[p] ?? milestones[p] ?? starts[p];
+    const succStart = starts[c] ?? milestones[c];
     if (predEnd == null || succStart == null) return;
     const x1 = toX(predEnd);
     const yPred = plot.y + slotH * (p + 0.5);
