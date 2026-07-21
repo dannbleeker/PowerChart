@@ -8,6 +8,31 @@ import { DEFAULT_STYLE, PALETTE } from "./style";
 
 const S = DEFAULT_STYLE;
 
+/**
+ * Shorten `text` with an ellipsis until it fits `maxW`. Neither PowerPoint
+ * renderer wraps or clips a text box (wrap/wordWrap are off), so a label wider
+ * than its shape is drawn straight over its neighbours — the last resort once
+ * shrinking the font has hit its floor. Shared with the agenda slide.
+ */
+export function clipToWidth(text: string, fs: number, maxW: number, bold = false): string {
+  if (textWidth(text, fs, bold) <= maxW) return text;
+  let t = text;
+  while (t.length > 0 && textWidth(`${t}…`, fs, bold) > maxW) t = t.slice(0, -1);
+  return t ? `${t}…` : "";
+}
+
+/**
+ * An arrowhead node's (x, y) is its TIP, and its body extends 1.8*size back
+ * along `angle` (see the parity contract in scene.ts). Passing the text's
+ * centre line therefore hangs the whole triangle to one side of it — an [up]
+ * row and a [down] row end up 1.8*size apart. Convert the glyph's intended
+ * visual centre into the tip the node wants.
+ */
+function arrowheadTip(cx: number, cy: number, angle: number, size: number): { x: number; y: number } {
+  const rad = (angle * Math.PI) / 180;
+  return { x: cx + Math.cos(rad) * size * 0.9, y: cy + Math.sin(rad) * size * 0.9 };
+}
+
 /** Harvey ball: fraction filled clockwise from 12 o'clock (0..1). */
 export function buildHarveyBall(fraction: number, size = 24): Scene {
   const f = Math.max(0, Math.min(1, fraction));
@@ -79,6 +104,13 @@ export function buildProcessFlow(steps: string[], highlight = -1, width = 480, h
   const n = Math.max(1, steps.length);
   const overlap = height * 0.28; // chevron notch overlaps the previous step
   const stepW = (width + overlap * (n - 1)) / n;
+  const labelW = stepW - overlap * 1.6; // the flat part of the chevron
+  // Shrink the labels to fit their own chevron (as buildKpiTile does for its
+  // number): at a fixed 11pt a crowded flow drew each label over its neighbour
+  // and the first one off the left edge of the scene.
+  let fontSize = Math.min(11, height * 0.3);
+  const overflows = (f: number) => steps.some((s, i) => textWidth(s, f, i === highlight) > labelW);
+  while (fontSize > 6 && overflows(fontSize)) fontSize -= 0.5;
   const nodes: SceneNode[] = [];
   steps.forEach((label, i) => {
     const x = i * (stepW - overlap);
@@ -90,10 +122,10 @@ export function buildProcessFlow(steps: string[], highlight = -1, width = 480, h
         kind: "text",
         x: x + overlap * 0.8,
         y: 0,
-        w: stepW - overlap * 1.6,
+        w: labelW,
         h: height,
-        text: label,
-        fontSize: Math.min(11, height * 0.3),
+        text: clipToWidth(label, fontSize, labelW, active),
+        fontSize,
         bold: active,
         color: contrastInk(fill),
         align: "center",
@@ -185,11 +217,14 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
     let dx = pad;
     if (dir && dir !== "flat") {
       const size = labelFs * 0.45;
+      const angle = dir === "up" ? -90 : 90;
+      // dy is the delta text's centre line; centre the glyph on it too.
+      const tip = arrowheadTip(dx + size, dy, angle, size);
       nodes.push({
         kind: "arrowhead",
-        x: dx + size,
-        y: dy,
-        angle: dir === "up" ? -90 : 90,
+        x: tip.x,
+        y: tip.y,
+        angle,
         size,
         fill: deltaColor,
         name: "kpi-arrow",
@@ -306,7 +341,9 @@ function cellEffectNodes(
     const size = fs * 0.42;
     const angle = cell.trend === "up" ? -90 : cell.trend === "down" ? 90 : 0;
     const fill = cell.trend === "up" ? GOOD : cell.trend === "down" ? BAD : S.mutedText;
-    nodes.push({ kind: "arrowhead", x: gx + size, y: cy, angle, size, fill, name: `cell-trend-${ri}-${c}` });
+    // Centred on the text line and in its reserved slot, like the harvey ball above.
+    const tip = arrowheadTip(gx + size, cy, angle, size);
+    nodes.push({ kind: "arrowhead", x: tip.x, y: tip.y, angle, size, fill, name: `cell-trend-${ri}-${c}` });
   }
   return nodes;
 }
@@ -325,6 +362,10 @@ export function buildTableScene(cells: string[][], width = 480, opts: TableOptio
   const styleMode = opts.style ?? "rules";
   const groupEvery = opts.groupRows ?? 5;
   const rows = cells.length;
+  // No rows: the closing rule would be drawn at y = -0.5, i.e. above the top of
+  // a zero-height scene (and at a negative offset from the insertion point in
+  // the PowerPoint renderers). Nothing to draw.
+  if (rows === 0) return { width, height: 0, nodes: [] };
   const cols = Math.max(1, ...cells.map((r) => r.length));
   const fs = 10;
   const rowH = fs * 2.1;
@@ -378,7 +419,13 @@ export function buildTableScene(cells: string[][], width = 480, opts: TableOptio
         });
       }
       const ew = effectW(cell, fs);
-      nodes.push(...cellEffectNodes(cell, x + 5, y + rowH / 2, fs, ri, c));
+      // Every column but the first is right-aligned, so its text sits at the
+      // cell's right edge: anchoring the glyph at the left edge orphaned it
+      // from its own value and parked it next to the previous column's number.
+      const alignRight = c !== 0;
+      const bold = header || total;
+      const gx = alignRight ? Math.max(x + 5, x + w - 5 - textWidth(cell.text, fs, bold) - ew) : x + 5;
+      nodes.push(...cellEffectNodes(cell, gx, y + rowH / 2, fs, ri, c));
       nodes.push({
         kind: "text",
         x: x + 5 + ew,
@@ -387,9 +434,9 @@ export function buildTableScene(cells: string[][], width = 480, opts: TableOptio
         h: rowH,
         text: cell.text,
         fontSize: fs,
-        bold: header || total,
+        bold,
         color: cell.color ?? (!rules && header ? contrastInk(fill) : S.text),
-        align: c === 0 ? "left" : "right",
+        align: alignRight ? "right" : "left",
         valign: "middle",
         name: `cell-text-${ri}-${c}`,
       });
