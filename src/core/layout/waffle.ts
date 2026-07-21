@@ -14,7 +14,8 @@ import type { LayoutResult } from "./column";
  *
  * Denominator: `100%=` row value when present, else the sum of the values —
  * except a single category ≤100 with no denominator, which reads as a
- * literal percentage ("68" → 68 filled cells).
+ * literal percentage ("68" → 68 filled cells). A stated denominator below the
+ * parts' sum is inconsistent and undrawable, so the sum wins.
  */
 export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
@@ -22,12 +23,18 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const values = data.categories.map((_, c) => Math.max(0, data.series[0]?.values[c] ?? 0));
   const sum = values.reduce((a, b) => a + b, 0);
   const single = data.categories.length === 1;
-  const denom =
+  const stated =
     data.hundredPercent?.[0] && data.hundredPercent[0] > 0
       ? data.hundredPercent[0]
       : single && sum <= 100
         ? 100
         : sum || 1;
+  // A denominator smaller than the parts cannot be drawn: the quotas sum past
+  // 100 cells, the largest-remainder pass is skipped and the 100-cell cap
+  // truncated whichever categories came LAST in input order — two equal values
+  // then got wildly different areas while the legend printed the same percent.
+  // Fall back to the parts' own sum so the picture and the printed shares agree.
+  const denom = Math.max(stated, sum);
 
   // Whole cells per category via largest remainder, so the filled count is
   // exactly round(100 · sum/denom).

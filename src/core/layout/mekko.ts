@@ -67,6 +67,12 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const r = H ? { x: acc, y: pos, w: segLen, h: ext } : { x: pos, y: acc - segLen, w: ext, h: segLen };
       acc = H ? acc + segLen : acc - segLen;
       const fill = seriesColor(style, si, s.color);
+      // Transparent "no-fill" segment: it still occupies the column (`acc` has
+      // moved past it) but draws nothing, floating the segments above — same
+      // contract as the stacked column (column.ts). Emitting the rect made both
+      // PowerPoint sinks paint it: the pptx maps a bare word to mid grey and
+      // Office.js hands "transparent" to setSolidColor, which it rejects.
+      if (fill === "transparent") return;
       nodes.push({ kind: "rect", ...r, fill, stroke: style.background, strokeWidth: 0.75, name: `seg-${si}-${c}` });
       if (c === n - 1) lastSegMid[si] = H ? r.x + r.w / 2 : r.y + r.h / 2;
       // The label is centred in r.h and spans r.w in BOTH orientations, so the
