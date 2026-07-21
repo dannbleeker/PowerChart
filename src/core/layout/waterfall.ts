@@ -166,6 +166,11 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
     : chromeNodes(cfg, style, decor, frame, centers, scale);
   const zeroQ = qOf(0);
   const y0 = H ? frame.x + zeroQ : frame.y + frame.h - zeroQ;
+  // The bridge's opening column rises from the zero baseline, so it reads as a
+  // LEVEL and takes an unsigned label — but only it. Gating on `from === 0`
+  // instead misread any mid-chain delta whose incoming running total happened
+  // to be zero (…, -100, +50) as a base column and dropped its "+".
+  const openingBar = bars.findIndex((b) => b.segs.length > 0);
   const columnTop: number[] = [];
 
   bars.forEach((b, c) => {
@@ -190,8 +195,9 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
         name: `bar-${c}${stacked && !b.isTotal ? `-s${seg.series}` : ""}`,
       });
 
-      // Base columns (stack starting at zero) get unsigned labels throughout.
-      const floating = !b.isTotal && b.segs[0]?.from !== 0;
+      // Base columns (the opening column and explicit totals) get unsigned
+      // labels throughout; every other column is a delta and keeps its sign.
+      const floating = !b.isTotal && c !== openingBar;
       const label = formatNumber(seg.value, {
         ...fmt,
         forceSign: floating && (cfg.numberFormat?.forceSign ?? true),

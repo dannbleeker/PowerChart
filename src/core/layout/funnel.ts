@@ -85,15 +85,18 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
         name: `stage-value-${c}`,
       });
     }
-    // Conversion rate vs the previous stage, in the gap between bands.
+    // Conversion rate vs the previous stage, in the gap between bands. The
+    // marker follows the direction: a fixed ▾ contradicted itself on the
+    // ascending (pyramid) ordering this file recommends, printing "▾ 500.0%".
     if (c > 0 && values[c - 1] > 0) {
+      const marker = v > values[c - 1] ? "▴ " : v < values[c - 1] ? "▾ " : "";
       nodes.push({
         kind: "text",
         x: cx - 40,
         y: y - gap,
         w: 80,
         h: gap,
-        text: `▾ ${formatPercent(v / values[c - 1], 1)}`,
+        text: `${marker}${formatPercent(v / values[c - 1], 1)}`,
         fontSize: fs * 0.85,
         color: style.mutedText,
         align: "center",

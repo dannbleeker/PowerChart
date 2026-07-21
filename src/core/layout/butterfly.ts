@@ -3,8 +3,8 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { niceTicks } from "../format";
-import type { LayoutResult } from "./column";
-import { titleHeight, titleNode } from "./frame";
+import { legendRow, type LayoutResult, type LegendEntry } from "./column";
+import { legendRowCount, titleHeight, titleNode } from "./frame";
 
 /**
  * Butterfly (tornado) chart: think-cell models this as two bar charts placed
@@ -27,16 +27,39 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const signedSum = (series: typeof withIdx, c: number) => series.reduce((a, { s }) => a + (s.values[c] ?? 0), 0);
 
   const titleH = titleHeight(cfg, style);
-  const headerH = fs * 1.6;
-  const gutterW = Math.min(cfg.width * 0.3, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12);
   const valueW = fs * 3.4; // room for outside value labels on each flank
+  // Stacked flanks legend the whole series set across the top; it wraps (shared
+  // walk), so the header band has to be as tall as the rows it will occupy.
+  const legendEntries: LegendEntry[] = stacked
+    ? [...leftSeries, ...rightSeries].map(({ s, si }) => ({
+        label: s.name,
+        color: seriesColor(style, si, s.color),
+        name: `legend-${si}`,
+      }))
+    : [];
+  const headerH =
+    fs *
+    1.6 *
+    Math.max(
+      1,
+      legendRowCount(
+        legendEntries.map((e) => e.label),
+        fs,
+        valueW,
+        cfg.width - 4,
+      ),
+    );
+  const gutterW = Math.min(cfg.width * 0.3, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12);
   // A value axis reserves a strip at the bottom for tick labels on both flanks.
   const axisH = decor.valueAxis ? fs * 1.5 : 0;
   const plot = {
     x: valueW,
     y: titleH + headerH + 2,
     w: Math.max(0, cfg.width - valueW * 2),
-    h: cfg.height - titleH - headerH - 6 - axisH,
+    // Floor at 0 for the same reason halfW is floored below: a chart too short
+    // for its title/header/axis chrome would otherwise give every bar rect a
+    // NEGATIVE height, which SVG drops and PowerPoint clamps to a sliver.
+    h: Math.max(0, cfg.height - titleH - headerH - 6 - axisH),
   };
   // Floor at 0: a very narrow frame can drive plot.w below the gutter, which
   // would give the header texts and bar rects negative widths.
@@ -81,36 +104,9 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       });
     });
   } else {
-    // Stacked flanks: one legend of all series across the top.
-    let lx = plot.x;
-    for (const { s, si } of [...leftSeries, ...rightSeries]) {
-      const chip = fs * 0.7;
-      nodes.push(
-        {
-          kind: "rect",
-          x: lx,
-          y: titleH + fs * 0.35,
-          w: chip,
-          h: chip,
-          fill: seriesColor(style, si, s.color),
-          name: `legend-chip-${si}`,
-        },
-        {
-          kind: "text",
-          x: lx + chip + 3,
-          y: titleH,
-          w: textWidth(s.name, fs) + 6,
-          h: headerH,
-          text: s.name,
-          fontSize: fs,
-          color: style.text,
-          align: "left",
-          valign: "middle",
-          name: `legend-${si}`,
-        },
-      );
-      lx += chip + 3 + textWidth(s.name, fs) + 12;
-    }
+    // Stacked flanks: one legend of all series across the top, via the shared
+    // wrapping row — the forked single-row walk marched chips off the canvas.
+    nodes.push(...legendRow(cfg, style, plot.x, titleH, { maxX: cfg.width - 4, entries: legendEntries }));
   }
 
   // Value gridlines mirrored on both flanks, drawn behind the bars.

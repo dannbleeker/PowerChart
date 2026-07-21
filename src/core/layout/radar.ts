@@ -2,8 +2,8 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { footnoteH, titleHeight, titleNode } from "./frame";
-import type { LayoutResult } from "./column";
+import { footnoteH, legendRowCount, titleHeight, titleNode } from "./frame";
+import { legendRow, type LayoutResult, type LegendEntry } from "./column";
 import { columnPositiveTotal } from "./totals";
 import { maxOf } from "../agg";
 
@@ -21,16 +21,40 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
 
   const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
-  const legendH = decor.seriesLabels && data.series.length > 1 ? fs * 1.6 : 0;
+  // Stacked radar: series stack cumulatively along each spoke, so the scale
+  // must reach the per-spoke sums, not the largest single value.
+  const stacked = !!cfg.radar?.stacked && data.series.length >= 2;
+  // Min–max band: shade the per-spoke envelope of the peer series (all but the
+  // last) and draw the last series ("us") on top — the "peer range + us" view.
+  const band = !!decor.radarBand && !stacked && data.series.length >= 2;
+  // Legend entries are needed up here because the wrap walk decides how many
+  // rows to reserve, and band mode legends two swatches, not one per series.
+  const legendEntries: LegendEntry[] = band
+    ? [
+        { label: "Peer range", color: style.mutedText, name: "legend-band" },
+        {
+          label: data.series[data.series.length - 1].name,
+          color: seriesColor(style, data.series.length - 1, data.series[data.series.length - 1].color),
+          name: "legend-us",
+        },
+      ]
+    : data.series.map((s, si) => ({ label: s.name, color: seriesColor(style, si, s.color), name: `legend-${si}` }));
+  const legendRows =
+    decor.seriesLabels && data.series.length > 1
+      ? legendRowCount(
+          legendEntries.map((e) => e.label),
+          fs,
+          0,
+          cfg.width - 4,
+        )
+      : 0;
+  const legendH = legendRows * fs * 1.6;
   const cx = cfg.width / 2;
   const cy = titleH + legendH + (cfg.height - titleH - legendH - footH) / 2;
   // Perimeter labels need a margin around the web.
   const labelW = Math.max(0, ...data.categories.map((c) => textWidth(c, fs)));
   const r = Math.max(10, Math.min(cfg.width / 2 - labelW - fs, (cfg.height - titleH - legendH - footH) / 2 - fs * 1.9));
 
-  // Stacked radar: series stack cumulatively along each spoke, so the scale
-  // must reach the per-spoke sums, not the largest single value.
-  const stacked = !!cfg.radar?.stacked && data.series.length >= 2;
   const spokeSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
   // `all` is cells-scaled (series x categories) so it must be FOLDED, not spread —
@@ -45,9 +69,14 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // Per-spoke scales: normalise each spoke to its own maximum so spokes in
   // different KPI units become comparable in shape (numeric ticks dropped).
   const perSpoke = !!cfg.radar?.perSpoke && !stacked && data.series.length >= 1;
-  const spokeMax = data.categories.map((_, c) =>
-    perSpoke ? Math.max(1, ...data.series.map((s) => s.values[c] ?? 0)) : max,
-  );
+  const spokeMax = data.categories.map((_, c) => {
+    if (!perSpoke) return max;
+    // Each spoke normalises against its OWN maximum — that is the whole point
+    // of perSpoke (a 0–1 rate beside a count). The floor only guards a
+    // non-positive divisor; clamping at 1 kept any sub-1 spoke off its rim.
+    const m = Math.max(0, ...data.series.map((s) => s.values[c] ?? 0));
+    return m > 0 ? m : 1;
+  });
   const toRc = (v: number, c: number) => (perSpoke ? (Math.max(0, v) / spokeMax[c]) * r : toR(Math.max(min, v)));
 
   const nodes: SceneNode[] = [];
@@ -132,10 +161,9 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
   });
 
-  // Min–max band: shade the per-spoke envelope of the peer series (all but
-  // the last) as an annulus of per-sector quads, then draw the last series
-  // ("us") prominently on top — the "peer range + us" view.
-  const band = !!decor.radarBand && !stacked && data.series.length >= 2;
+  // Min–max band (declared above with the legend entries it changes): shade the
+  // per-spoke envelope of the peer series as an annulus of per-sector quads,
+  // then draw the last series ("us") prominently on top.
   if (band) {
     const peers = data.series.slice(0, -1);
     const peerMin: number[] = [];
@@ -232,47 +260,11 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // it collapses the peers into one "Peer range" swatch plus the "us" series.
   if (legendH) drawLegend();
 
-  // Hoisted so the stacked-radar early return can reuse it.
+  // Hoisted so the stacked-radar early return can reuse it. Routed through the
+  // shared wrapping legend rather than a forked single-row walk, so the chips
+  // wrap inside cfg.width and land on exactly the rows legendRows reserved.
   function drawLegend() {
-    let x = 0;
-    const chip = fs * 0.7;
-    const entries: { label: string; color: string; name: string }[] = band
-      ? [
-          { label: "Peer range", color: style.mutedText, name: "legend-band" },
-          {
-            label: data.series[data.series.length - 1].name,
-            color: seriesColor(style, data.series.length - 1, data.series[data.series.length - 1].color),
-            name: "legend-us",
-          },
-        ]
-      : data.series.map((s, si) => ({ label: s.name, color: seriesColor(style, si, s.color), name: `legend-${si}` }));
-    entries.forEach((e, i) => {
-      nodes.push(
-        {
-          kind: "rect",
-          x,
-          y: titleH + fs * 0.35,
-          w: chip,
-          h: chip,
-          fill: e.color,
-          name: band ? e.name : `legend-chip-${i}`,
-        },
-        {
-          kind: "text",
-          x: x + chip + 3,
-          y: titleH,
-          w: textWidth(e.label, fs) + 6,
-          h: fs * 1.4,
-          text: e.label,
-          fontSize: fs,
-          color: style.text,
-          align: "left",
-          valign: "middle",
-          name: e.name,
-        },
-      );
-      x += chip + 3 + textWidth(e.label, fs) + 12;
-    });
+    nodes.push(...legendRow(cfg, style, 0, titleH, { maxX: cfg.width - 4, entries: legendEntries }));
   }
 
   return {
@@ -303,7 +295,21 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
 
   const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
-  const legendH = decor.seriesLabels && multi ? fs * 1.6 : 0;
+  const legendEntries: LegendEntry[] = data.series.map((s, si) => ({
+    label: s.name,
+    color: seriesColor(style, si, s.color),
+    name: `legend-${si}`,
+  }));
+  const legendRows =
+    decor.seriesLabels && multi
+      ? legendRowCount(
+          legendEntries.map((e) => e.label),
+          fs,
+          0,
+          cfg.width - 4,
+        )
+      : 0;
+  const legendH = legendRows * fs * 1.6;
   const cx = cfg.width / 2;
   const cy = titleH + legendH + (cfg.height - titleH - legendH - footH) / 2;
   const labelW = Math.max(0, ...data.categories.map((c) => textWidth(c, fs)));
@@ -400,30 +406,9 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     });
   });
 
-  // Series legend (multi-series stacks).
+  // Series legend (multi-series stacks) — shared wrapping row, same as above.
   if (legendH) {
-    let x = 0;
-    const chip = fs * 0.7;
-    data.series.forEach((s, si) => {
-      const color = seriesColor(style, si, s.color);
-      nodes.push(
-        { kind: "rect", x, y: titleH + fs * 0.35, w: chip, h: chip, fill: color, name: `legend-chip-${si}` },
-        {
-          kind: "text",
-          x: x + chip + 3,
-          y: titleH,
-          w: textWidth(s.name, fs) + 6,
-          h: fs * 1.4,
-          text: s.name,
-          fontSize: fs,
-          color: style.text,
-          align: "left",
-          valign: "middle",
-          name: `legend-${si}`,
-        },
-      );
-      x += chip + 3 + textWidth(s.name, fs) + 12;
-    });
+    nodes.push(...legendRow(cfg, style, 0, titleH, { maxX: cfg.width - 4, entries: legendEntries }));
   }
 
   return {

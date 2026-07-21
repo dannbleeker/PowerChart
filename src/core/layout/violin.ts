@@ -125,7 +125,14 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     anchors: {
       categoryX: centers,
       categoryWidth: data.categories.map(() => halfW * 2),
-      columnTop: data.categories.map((_, c) => scale.toY(Math.max(...(samplesOf(c).length ? samplesOf(c) : [0])))),
+      // A category with no observations must NOT stand in value 0: this scale
+      // is data-driven (no forced zero), so toY(0) can be hundreds of points
+      // below the frame and would take any callout on that category with it.
+      // Anchor an empty category on the plot floor instead.
+      columnTop: data.categories.map((_, c) => {
+        const s = samplesOf(c);
+        return s.length ? scale.toY(Math.max(...s)) : frame.y + frame.h;
+      }),
       columnValue: data.categories.map((_, c) => {
         const s = samplesOf(c);
         return s.length
