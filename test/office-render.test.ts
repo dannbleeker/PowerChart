@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CHART_PARTS_TAG,
   CHART_TAG,
   getSelectionBounds,
   insertAgendaSlides,
@@ -48,6 +49,9 @@ function makeShape(
     name: undefined as string | undefined,
     rotation: undefined as number | undefined,
     deleted: false,
+    // A created shape's id exists only on the host: the renderer must load()
+    // it back before it can write one down (see the parts tag).
+    load() {},
     id: `shape-${++idSeq}`,
     left: box.left,
     top: box.top,
@@ -431,6 +435,33 @@ describe("insertSceneIntoSlide", () => {
     };
     expect(group.altTextDescription).toBe(scene.desc);
     if (scene.title) expect(group.altTextTitle).toBe(scene.title);
+  });
+
+  it("describes the chart even when it is NOT grouped", async () => {
+    // The alt text used to be assigned only on the group object, so every
+    // ungrouped chart (group:false, a refused addGroup, a one-shape chart)
+    // silently lost its text alternative. It belongs on whatever shape stands
+    // for the chart — the same one the config tag lands on.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const scene = buildChart(config);
+    await insertSceneIntoSlide(scene, { tagData: "cfg", group: false });
+    expect(slide.created.some((s) => s.type === "group")).toBe(false);
+    const anchor = slide.created[0] as FakeShape & { altTextDescription?: string; altTextTitle?: string };
+    expect(anchor.altTextDescription).toBe(scene.desc);
+    expect(anchor.tagStore.get(CHART_TAG)).toBe("cfg");
+  });
+
+  it("skips alt text on a host below 1.10 instead of losing the group with it", async () => {
+    // Shape.altTextDescription is PowerPointApi 1.10. Assigning it on an older
+    // host is a queued command rejected at the next sync — the same sync that
+    // carries the grouping, so an ungated assignment costs the group.
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, (v) => v !== "1.10");
+    await insertSceneIntoSlide(buildChart(config), { tagData: "cfg" });
+    const group = slide.created.find((s) => s.type === "group") as FakeShape & { altTextDescription?: string };
+    expect(group).toBeDefined();
+    expect(group.altTextDescription).toBeUndefined();
   });
 
   it("renders a pie as a rotated triangle fan", async () => {
@@ -830,6 +861,44 @@ describe("updateChartInSlide", () => {
     expect(fresh.length).toBeGreaterThan(0);
     expect(Math.min(...fresh.map((s) => s.box.left))).toBeGreaterThanOrEqual(33);
   });
+
+  it("deletes the WHOLE chart, not just its tagged shape, when it is ungrouped", async () => {
+    // PowerPoint on the web: no grouping, so the config tag can only sit on ONE
+    // of the chart's shapes. The update deleted exactly that shape and redrew
+    // the chart, leaving the other twelve underneath — 13 shapes became 25, then
+    // 37, on successive edits, as stacked misaligned duplicates.
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, (v) => v !== "1.8");
+    const scene = buildChart(config);
+    await insertSceneIntoSlide(scene, { tagData: "cfg" });
+    expect(slide.created.some((s) => s.type === "group")).toBe(false);
+    const drawn = slide.created.length;
+    expect(drawn).toBeGreaterThan(1);
+    // The tagged shape carries the rest of the chart with it.
+    expect(JSON.parse(slide.created[0].tagStore.get(CHART_PARTS_TAG)!)).toHaveLength(drawn - 1);
+
+    const live = () => slide.created.filter((s) => !s.deleted);
+    for (const edit of [1, 2]) {
+      // Same Scale: read the deck back, re-render every chart it finds.
+      const found = (await listChartsInDeck()).filter((c) => live().some((s) => s.id === c.target.shapeId));
+      expect(found, `edit ${edit}`).toHaveLength(1);
+      await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
+      expect(live(), `edit ${edit}`).toHaveLength(drawn);
+    }
+  });
+
+  it("does not resurrect a chart whose shape the user deleted", async () => {
+    // The pane still holds an editTarget for a chart the user has since removed
+    // from the slide. A stale SLIDE id is already treated as nothing to do; a
+    // stale SHAPE id redrew the chart at its old position instead.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: "cfg" });
+    const group = slide.created.find((s) => s.type === "group")!;
+    for (const s of slide.created) s.delete(); // the user deletes the chart
+    await updateChartInSlide(buildChart(config), { slideId: "s1", shapeId: group.id, left: 10, top: 20 });
+    expect(slide.created.filter((s) => !s.deleted)).toHaveLength(0);
+  });
 });
 
 describe("selection readers", () => {
@@ -913,7 +982,7 @@ describe("proxy lifecycle", () => {
     const b = makeShape("geometric", "rectangle", { left: 2, top: 2, width: 1, height: 1 });
     installHost([slide], [a, b]);
     await listChartsInSelection();
-    expect(untracked.tags).toBe(2); // both selected shapes' tags
+    expect(untracked.tags).toBe(4); // both selected shapes' config AND parts tags
     expect(untracked.shapes).toBe(2);
   });
 });

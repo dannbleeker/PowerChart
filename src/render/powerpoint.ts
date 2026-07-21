@@ -44,6 +44,20 @@ export interface InsertOptions {
 export const CHART_TAG = "POWERCHART_CONFIG";
 
 /**
+ * Tag key under which an UNGROUPED chart records its other shapes' ids.
+ *
+ * A grouped chart is one shape, so deleting the tagged shape deletes the chart.
+ * Without grouping (PowerPoint on the web, or an addGroup the host refuses) the
+ * config tag can only sit on ONE of the chart's shapes — and an in-place update
+ * that deletes just that one leaves the other twelve on the slide, underneath
+ * the redraw, so the slide gains a whole chart's worth of orphans on every edit.
+ * The tagged shape therefore also carries its siblings' ids: the group the host
+ * would not make, written down. Absent on a grouped chart, and absent on charts
+ * inserted before this existed — both fall back to deleting the tagged shape.
+ */
+export const CHART_PARTS_TAG = "POWERCHART_PARTS";
+
+/**
  * Release a proxy object's client-side memory once its loaded values have been
  * read. Office.js keeps every proxy touched in a `run` alive until the context
  * is disposed, and the docs call out a "noticeable performance benefit when
@@ -67,6 +81,12 @@ export interface EditTarget {
   shapeId: string;
   left: number;
   top: number;
+  /**
+   * The rest of the chart's shapes when it is UNGROUPED — read back from the
+   * parts tag, so an in-place update deletes the whole chart. See
+   * CHART_PARTS_TAG.
+   */
+  partIds?: string[];
 }
 
 /**
@@ -263,11 +283,26 @@ export async function updateChartsInSlides(
       it,
       slide,
       old: slide.shapes.getItemOrNullObject(it.target.shapeId),
+      // An ungrouped chart is more than its tagged shape (see CHART_PARTS_TAG).
+      // Resolved in this same sync, so the delete below already knows which of
+      // them the user has since removed by hand.
+      parts: (it.target.partIds ?? []).map((id) => slide.shapes.getItemOrNullObject(id)),
     }));
     await context.sync();
 
-    // 2. Drop the old shapes — one sync for all of them.
-    for (const { old } of withOld) if (!old.isNullObject) old.delete();
+    // A target whose SHAPE is gone gets the same treatment as one whose slide
+    // is gone: nothing to do. Re-rendering it would resurrect a chart the user
+    // deleted — an in-place update that inserts is not an update.
+    const alive = withOld.filter(({ old }) => !old.isNullObject);
+    if (!alive.length) return;
+
+    // 2. Drop the old shapes — one sync for all of them, siblings included:
+    //    deleting only the tagged shape of an ungrouped chart leaves the rest
+    //    of it on the slide, under the redraw.
+    for (const { old, parts } of alive) {
+      old.delete();
+      for (const p of parts) if (!p.isNullObject) p.delete();
+    }
     await context.sync();
 
     // 3. Redraw each chart in batches. One of these charts is on the slide the
@@ -276,7 +311,7 @@ export async function updateChartsInSlides(
     //    way the shapes arrive at all. Per chart, because a chart's shapes must
     //    all reach the same slide.
     const rendered: Grouping[] = [];
-    for (const { it, slide } of withOld) {
+    for (const { it, slide } of alive) {
       const opts: InsertOptions = {
         ...it.opts,
         left: it.target.left,
@@ -309,24 +344,61 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
     shapes.load("items/id,items/left,items/top");
     await context.sync();
 
-    const tags = shapes.items.map((s) => {
-      const tag = s.tags.getItemOrNullObject(CHART_TAG);
-      tag.load("value");
-      return tag;
-    });
+    const tags = shapes.items.map((s) => chartTagsOf(s));
     await context.sync();
 
     for (let i = 0; i < shapes.items.length; i++) {
-      if (!tags[i].isNullObject && tags[i].value) {
+      const { config, parts } = tags[i];
+      if (!config.isNullObject && config.value) {
         const s = shapes.items[i];
         return {
-          configJson: tags[i].value,
-          target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top },
+          configJson: config.value,
+          target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top, partIds: partIdsOf(parts) },
         };
       }
     }
     return null;
   });
+}
+
+/** Both PowerChart tags of one shape, queued for the next sync. */
+interface ChartTags {
+  config: PowerPoint.Tag;
+  parts: PowerPoint.Tag;
+}
+
+/**
+ * Queue a shape's PowerChart tags for reading: the config, and the sibling ids
+ * an ungrouped chart carries alongside it. Both in the same sync — an update
+ * needs the parts wherever it needs the config, and a second round-trip per
+ * scan is exactly what the batching elsewhere in this file exists to avoid.
+ */
+function chartTagsOf(shape: PowerPoint.Shape): ChartTags {
+  const config = shape.tags.getItemOrNullObject(CHART_TAG);
+  config.load("value");
+  const parts = shape.tags.getItemOrNullObject(CHART_PARTS_TAG);
+  parts.load("value");
+  return { config, parts };
+}
+
+/**
+ * The sibling shape ids a parts tag carries, or undefined for anything else.
+ *
+ * Parsed defensively although we wrote it: a shape tag is editable in the host,
+ * survives a copy into another deck, and reaches this code from a file we did
+ * not author — a malformed one must degrade to "no siblings", never throw
+ * inside the update's first sync.
+ */
+function partIdsOf(parts: PowerPoint.Tag): string[] | undefined {
+  if (parts.isNullObject || !parts.value) return undefined;
+  try {
+    const ids: unknown = JSON.parse(parts.value);
+    if (!Array.isArray(ids)) return undefined;
+    const ok = ids.filter((id): id is string => typeof id === "string" && id.length > 0);
+    return ok.length ? ok : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -365,20 +437,19 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
     const shapes = context.presentation.getSelectedShapes();
     shapes.load("items/id,items/left,items/top");
     await context.sync();
-    const tags = shapes.items.map((s) => {
-      const tag = s.tags.getItemOrNullObject(CHART_TAG);
-      tag.load("value");
-      return tag;
-    });
+    const tags = shapes.items.map((s) => chartTagsOf(s));
     await context.sync();
     const charts = shapes.items
-      .map((s, i) => ({ s, tag: tags[i] }))
-      .filter(({ tag }) => !tag.isNullObject && tag.value)
-      .map(({ s, tag }) => ({
-        configJson: tag.value,
-        target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top },
+      .map((s, i) => ({ s, ...tags[i] }))
+      .filter(({ config }) => !config.isNullObject && config.value)
+      .map(({ s, config, parts }) => ({
+        configJson: config.value,
+        target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top, partIds: partIdsOf(parts) },
       }));
-    for (const t of tags) untrack(t);
+    for (const t of tags) {
+      untrack(t.config);
+      untrack(t.parts);
+    }
     for (const s of shapes.items) untrack(s);
     return charts;
   });
@@ -400,26 +471,31 @@ export async function listChartsInDeck(): Promise<{ configJson: string; target: 
     });
     await context.sync();
 
-    const lookups: { slideId: string; shape: PowerPoint.Shape; tag: PowerPoint.Tag }[] = [];
+    const lookups: ({ slideId: string; shape: PowerPoint.Shape } & ChartTags)[] = [];
     for (const slide of perSlide) {
       for (const shape of slide.shapes.items) {
-        const tag = shape.tags.getItemOrNullObject(CHART_TAG);
-        tag.load("value");
-        lookups.push({ slideId: slide.id, shape, tag });
+        lookups.push({ slideId: slide.id, shape, ...chartTagsOf(shape) });
       }
     }
     await context.sync();
 
     const charts = lookups
-      .filter((l) => !l.tag.isNullObject && l.tag.value)
+      .filter((l) => !l.config.isNullObject && l.config.value)
       .map((l) => ({
-        configJson: l.tag.value,
-        target: { slideId: l.slideId, shapeId: l.shape.id, left: l.shape.left, top: l.shape.top },
+        configJson: l.config.value,
+        target: {
+          slideId: l.slideId,
+          shapeId: l.shape.id,
+          left: l.shape.left,
+          top: l.shape.top,
+          partIds: partIdsOf(l.parts),
+        },
       }));
     // Every value we need is now a plain string/number in `charts`; drop the
-    // whole proxy sweep (one shape + one tag per shape, deck-wide) from memory.
+    // whole proxy sweep (one shape + its tags per shape, deck-wide) from memory.
     for (const l of lookups) {
-      untrack(l.tag);
+      untrack(l.config);
+      untrack(l.parts);
       untrack(l.shape);
     }
     return charts;
@@ -916,6 +992,9 @@ interface Grouping {
  */
 async function groupAndTagAll(context: PowerPoint.RequestContext, items: Grouping[]): Promise<void> {
   const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
+  // Which charts actually ended up as one shape. The rest hang everything the
+  // group would have carried off their first shape instead — see below.
+  const grouped = new Set<number>();
   // Grouping is PowerPointApi 1.8+; skip entirely where unsupported.
   const groupable = items
     .map((it, i) => ({ it, i }))
@@ -931,32 +1010,100 @@ async function groupAndTagAll(context: PowerPoint.RequestContext, items: Groupin
         group.name = "PowerChart";
         // Accessible alt text on the group, queued in this same grouping sync so
         // a screen reader announces the chart — the description the engine built.
-        // Best-effort: a host without these props just ignores the assignment.
-        try {
-          const a = group as unknown as { altTextDescription?: string; altTextTitle?: string };
-          if (it.opts.altText) a.altTextDescription = it.opts.altText;
-          if (it.opts.altTitle) a.altTextTitle = it.opts.altTitle;
-        } catch {
-          /* alt text unsupported on this host */
-        }
+        applyAltText(group, it.opts);
         tagTargets[i] = group;
+        grouped.add(i);
       }
       await context.sync();
     } catch {
       /* grouping failed — shapes stay ungrouped, charts are already on the slide */
       for (const { i } of groupable) tagTargets[i] = items[i].created[0];
+      grouped.clear();
     }
   }
+  const partsJson = await ungroupedFallback(context, items, tagTargets, grouped);
   // Tags are PowerPointApi 1.3+; keep the chart re-editable where supported.
-  const taggable = items.map((it, i) => ({ it, target: tagTargets[i] })).filter((t) => t.it.opts.tagData && t.target);
+  const taggable = items
+    .map((it, i) => ({ it, i, target: tagTargets[i] }))
+    .filter((t) => t.it.opts.tagData && t.target);
   if (taggable.length && supports("1.3")) {
     try {
-      for (const { it, target } of taggable) target!.tags.add(CHART_TAG, it.opts.tagData!);
+      for (const { it, i, target } of taggable) {
+        target!.tags.add(CHART_TAG, it.opts.tagData!);
+        // The rest of an ungrouped chart travels with the tagged shape, so an
+        // in-place update can delete all of it — see CHART_PARTS_TAG.
+        if (partsJson[i]) target!.tags.add(CHART_PARTS_TAG, partsJson[i]!);
+      }
       await context.sync();
     } catch {
       /* tags unavailable — charts are inserted but not re-editable */
     }
   }
+}
+
+/**
+ * Set the accessible alt text on the shape that stands for the chart.
+ *
+ * `Shape.altTextDescription` is PowerPointApi **1.10** — assigning it on an
+ * older host is a queued command the host rejects at the NEXT sync, and a sync
+ * carries more than this: the grouping, or the config tag. So it is gated
+ * rather than merely wrapped, because losing a chart's group (or its
+ * re-editability) to gain alt text is the wrong trade.
+ */
+function applyAltText(shape: PowerPoint.Shape, opts: InsertOptions): void {
+  if (!wantsAltText(opts)) return;
+  try {
+    const a = shape as unknown as { altTextDescription?: string; altTextTitle?: string };
+    if (opts.altText) a.altTextDescription = opts.altText;
+    if (opts.altTitle) a.altTextTitle = opts.altTitle;
+  } catch {
+    /* alt text unsupported on this host */
+  }
+}
+
+const wantsAltText = (opts: InsertOptions): boolean => Boolean(opts.altText || opts.altTitle) && supports("1.10");
+
+/**
+ * Give an UNGROUPED chart what the group would have carried: the alt text, and
+ * the ids of its other shapes (returned as the tag value to write, per item).
+ *
+ * The ids have to be read back from the host — a shape's id does not exist
+ * client-side until it has been committed — so this costs one sync, paid only
+ * where grouping was unavailable or refused. Without them an in-place update
+ * deletes 1 of the chart's 13 shapes and redraws all 13, so an ungrouped chart
+ * grows by a whole chart on every edit; with them the update deletes the set.
+ *
+ * Best-effort throughout: if this sync fails, the charts are already on the
+ * slide and the config tag still lands in the phase after — only the alt text
+ * and the leak-free update are lost, which is exactly today's behaviour.
+ */
+async function ungroupedFallback(
+  context: PowerPoint.RequestContext,
+  items: Grouping[],
+  tagTargets: (PowerPoint.Shape | undefined)[],
+  grouped: Set<number>,
+): Promise<(string | undefined)[]> {
+  const partsJson: (string | undefined)[] = items.map(() => undefined);
+  const loose = (i: number) => !grouped.has(i) && tagTargets[i];
+  // Only a re-editable chart (one that gets a config tag, so a host with tags)
+  // needs its parts written down; the update path is what reads them.
+  const hasTags = supports("1.3");
+  const siblings = items.map((it, i) => (hasTags && loose(i) && it.opts.tagData ? it.created.slice(1) : []));
+  const alt = items.map((it, i) => ({ it, i })).filter(({ it, i }) => loose(i) && wantsAltText(it.opts));
+  if (!alt.length && !siblings.some((s) => s.length)) return partsJson;
+  for (const s of siblings.flat()) s.load("id");
+  for (const { it, i } of alt) applyAltText(tagTargets[i]!, it.opts);
+  try {
+    await context.sync();
+  } catch {
+    /* no alt text or id read-back here — the chart is on the slide regardless */
+    return partsJson;
+  }
+  siblings.forEach((shapes, i) => {
+    const ids = shapes.map((s) => s.id).filter((id) => typeof id === "string" && id.length > 0);
+    if (ids.length) partsJson[i] = JSON.stringify(ids);
+  });
+  return partsJson;
 }
 
 function getTargetSlide(context: PowerPoint.RequestContext): PowerPoint.Slide {

@@ -33,11 +33,16 @@ describe("SVG accessibility", () => {
     expect(svg).toContain("<title>A &amp; B &lt;chart&gt;</title>");
   });
 
-  it("still describes an untitled chart via <desc> (no <title>)", () => {
-    const svg = sceneToSvg(buildChart({ ...base, title: undefined }));
+  it("names an untitled chart with its generated summary", () => {
+    // role="img" with a <desc> but no <title> has a description and no NAME —
+    // the axe-core role-img-alt failure. The summary becomes the name instead,
+    // and is not then repeated as the description.
+    const cfg = { ...base, title: undefined };
+    const svg = sceneToSvg(buildChart(cfg));
     expect(svg).toContain('role="img"');
-    expect(svg).not.toContain("<title>");
-    expect(svg).toContain("<desc>");
+    expect(svg).toContain(`<title>${describeChart(cfg)}</title>`);
+    expect(svg).not.toContain("<desc>");
+    expect(svg.indexOf("<title>")).toBeLessThan(svg.indexOf("<rect"));
   });
 
   it("describeChart names the kind, series and categories", () => {
