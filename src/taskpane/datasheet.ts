@@ -16,6 +16,24 @@ function colIndex(letters: string): number {
   return v - 1;
 }
 
+/** 0-based index → column letters (0=A, 25=Z, 26=AA …), colIndex's inverse. */
+function colLetters(index: number): string {
+  let s = "";
+  for (let i = index; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s;
+  return s;
+}
+
+/**
+ * A cell's number, accepting the US thousands grouping Excel copies ("1,234").
+ * A comma ANYWHERE ELSE is not a separator we can read: stripping every comma
+ * turned a European "1.234,5" into 1.2345 (a silent 1000× error) and "1,5" into
+ * 15. Refuse those instead — a visible gap beats a wrong number.
+ */
+function numericValue(text: string): number {
+  if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(text)) return Number(text.replace(/,/g, ""));
+  return text.includes(",") ? NaN : Number(text);
+}
+
 /** Numeric value of a cell, following "=" formulas with cycle protection. */
 function cellNumeric(cells: string[][], row: number, col: number, visiting: Set<string>): number {
   const key = `${row},${col}`;
@@ -28,7 +46,7 @@ function cellNumeric(cells: string[][], row: number, col: number, visiting: Set<
     visiting.delete(key);
     return v ?? NaN;
   }
-  const n = Number(raw.replace(/,/g, ""));
+  const n = numericValue(raw);
   // A non-numeric NON-blank cell (text, an error token) is not a value — return
   // NaN so it propagates as an error, the same stance parseRow takes when it
   // returns null for the same cell in place. (A BLANK cell stays 0 above, so SUM
@@ -157,7 +175,12 @@ const HUNDRED_ROW = /^100\s*%\s*=?$/i;
 // ever writes the full "X extent", so nothing legitimate depends on the short form.
 const XEXTENT_ROW = /^x\s*extent$/i;
 
-const GANTT_DATE_ROW = /^(start|end|milestone)$/i;
+// Every Gantt row whose values are calendar positions — the same set layoutGantt
+// feeds through its time scale (core/layout/gantt.ts). With only start/end/
+// milestone here, re-opening your own calendar Gantt showed the raw epoch day
+// ("20494") where you had typed "2026-02-10", so the row could only be edited in
+// epoch days. "% complete" and "After" are NOT dates and stay out.
+const GANTT_DATE_ROW = /^(?:start|end|milestone|today|holidays?|baseline\s*(?:start|end))$|^bracket\b/i;
 
 export function dataToSheet(data: ChartData): SheetModel {
   const cells: string[][] = [["", ...data.categories]];
@@ -206,7 +229,7 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
       // for a 100%/stacked chart — arrives percent-suffixed. Read "35%" as 35,
       // matching how a think-cell datasheet holds a share (and how dataToSheet
       // writes it back). Without this the value is dropped to a blank gap.
-      const num = Number(raw.replace(/,/g, "").replace(/\s*%$/, ""));
+      const num = numericValue(raw.replace(/\s*%$/, ""));
       if (Number.isFinite(num)) return num;
       // Calendar dates (for Gantt timelines) become days since the epoch.
       const day = parseDateToken(raw);
@@ -245,11 +268,30 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
   return { categories, series, hundredPercent, xExtent, dates: sawDate || undefined };
 }
 
+/**
+ * Swap the row and column of every A1 reference in a formula. A cell at (r,c)
+ * lands at (c,r) after a transpose, so each of its references has to make the
+ * same move — carrying "=SUM(B2:B3)" over verbatim left it summing a different
+ * set of cells, silently changing the very numbers the transpose preserves.
+ */
+function transposeFormula(text: string): string {
+  return text.replace(/([A-Za-z]{1,2})([0-9]{1,3})/g, (_m, letters: string, digits: string) => {
+    const c = colIndex(letters);
+    const r = Number(digits) - 1;
+    return `${colLetters(r)}${c + 1}`;
+  });
+}
+
 /** Swap rows and columns (think-cell's Transpose): series become categories. */
 export function transposeSheet(sheet: SheetModel): SheetModel {
   const rows = sheet.cells.length;
   const cols = Math.max(0, ...sheet.cells.map((r) => r.length));
-  const cells = Array.from({ length: cols }, (_, c) => Array.from({ length: rows }, (_, r) => sheet.cells[r][c] ?? ""));
+  const cells = Array.from({ length: cols }, (_, c) =>
+    Array.from({ length: rows }, (_, r) => {
+      const v = sheet.cells[r][c] ?? "";
+      return v.startsWith("=") ? transposeFormula(v) : v;
+    }),
+  );
   return { cells };
 }
 
@@ -329,10 +371,17 @@ export function mountDatasheet(
     controls.append(
       button("+ Row", () => {
         const at = Math.min(cursor.row + 1, model.cells.length);
+        // Seed the name cell: a FULLY blank row is sheetToData's stack separator,
+        // so "+ Row" used to split a stacked chart into two stacks before the
+        // user had typed anything. A placeholder name (unique, so it cannot
+        // collide with an existing series) reads as a new empty series instead.
+        const used = new Set(model.cells.map((r) => (r[0] ?? "").trim()));
+        let n = at;
+        while (used.has(`Series ${n}`)) n++;
         model.cells.splice(
           at,
           0,
-          model.cells[0].map(() => ""),
+          model.cells[0].map((_, i) => (i === 0 ? `Series ${n}` : "")),
         );
         render();
         onChange(model);

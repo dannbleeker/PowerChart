@@ -206,6 +206,84 @@ describe("task pane — loading a chart config", () => {
     // leaving a chart whose data belonged to neither.
     expect(exportConfig().data).toEqual(loaded.data);
   });
+
+  it("keeps a renamed series' colour, combo type, pattern and scenario", () => {
+    // Renaming a row is the datasheet's core edit. The side-channel used to be
+    // keyed by series NAME, so the new name matched nothing and the overlay line
+    // collapsed back into a plain column — silently, on one keystroke.
+    importConfig({
+      kind: "combo",
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "Rev", values: [10, 12] },
+          { name: "Margin %", values: [3, 4], type: "line", color: "#ff0000", pattern: "dots", scenario: "FC" },
+        ],
+      },
+    });
+    type(2, 0, "Margin"); // the NAME cell of the second series row
+    expect(exportConfig().data.series[1]).toMatchObject({
+      name: "Margin",
+      values: [3, 4],
+      color: "#ff0000",
+      type: "line",
+      pattern: "dots",
+      scenario: "FC",
+    });
+  });
+
+  it("keeps two same-named series apart", () => {
+    // The same name key collapsed both rows onto one entry, so they rendered in
+    // a single colour.
+    importConfig({
+      kind: "clustered",
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "S", values: [1], color: "#ff0000" },
+          { name: "S", values: [2], color: "#00ff00" },
+        ],
+      },
+    });
+    expect(exportConfig().data.series.map((s) => s.color)).toEqual(["#ff0000", "#00ff00"]);
+  });
+
+  it("keeps the CAGR arrow's series anchor when the from/to spinner moves", () => {
+    // pairControl only knows from/to, so touching a spinner dropped
+    // decorations.cagr.series — and core/decor.ts then measured the column
+    // TOTALS instead of the anchored series, printing a different growth rate.
+    importConfig({
+      kind: "clustered",
+      data: {
+        categories: ["FY21", "FY22", "FY23"],
+        series: [
+          { name: "A", values: [10, 20, 40] },
+          { name: "B", values: [100, 100, 100] },
+        ],
+      },
+      decorations: { cagr: { from: 0, to: 2, series: 0 } },
+    });
+    const label = [...document.querySelectorAll<HTMLElement>("#options label")].find((l) =>
+      l.textContent?.includes("CAGR arrow"),
+    )!;
+    const to = label.querySelectorAll<HTMLInputElement>("input[type=number]")[1];
+    to.value = "2"; // 1-based in the UI → to: 1
+    to.dispatchEvent(new Event("input"));
+    expect(exportConfig().decorations!.cagr).toEqual({ from: 0, to: 1, series: 0 });
+  });
+
+  it("keeps a decimals value the select has no option for when the suffix is edited", () => {
+    // The <select> offers auto/0/1/2 only. A loaded decimals:3 left it at value
+    // "", and emitNf — which writes BOTH controls — turned that into 0 the
+    // moment the suffix box was touched, so every label lost its decimals.
+    importConfig({ kind: "clustered", data: baseData, numberFormat: { decimals: 3, forceSign: true } });
+    const suffix = [...document.querySelectorAll<HTMLInputElement>("#options input[type=text]")].find(
+      (i) => i.placeholder === "e.g. €m",
+    )!;
+    suffix.value = "%";
+    suffix.dispatchEvent(new Event("input"));
+    expect(exportConfig().numberFormat).toMatchObject({ decimals: 3, suffix: "%", forceSign: true });
+  });
 });
 
 describe("task pane — localisation survives re-renders", () => {
@@ -580,6 +658,40 @@ describe("task pane — PNG export", () => {
   });
 });
 
+describe("task pane — the canvas is the chart's own colour", () => {
+  it("previews and downloads a dark-theme chart on its own background, not white", async () => {
+    // A forced white canvas put the dark theme's light text at 1.13:1 contrast
+    // in the preview and in both downloads, while insertSceneIntoSlide drops the
+    // same shapes onto the real (dark) slide with no background at all — the
+    // preview contradicted the deck it is a preview of.
+    await bootPane();
+    importConfig({ kind: "clustered", data: baseData, style: { background: "#1b1b1a", text: "#f2f1ec" } });
+    await new Promise((r) => setTimeout(r, 150)); // renderPreview is debounced
+    expect($("preview").innerHTML).toContain('fill="#1b1b1a"');
+
+    let blob: Blob | undefined;
+    vi.spyOn(URL, "createObjectURL").mockImplementation((b: Blob | MediaSource) => {
+      blob = b as Blob;
+      return "blob:x";
+    });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      $("download").click();
+      expect(await blob!.text()).toContain('fill="#1b1b1a"');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("still paints a default chart white", async () => {
+    await bootPane();
+    importConfig({ kind: "clustered", data: baseData });
+    await new Promise((r) => setTimeout(r, 150));
+    expect($("preview").innerHTML).toContain('fill="#ffffff"');
+  });
+});
+
 describe("task pane — shareable chart link", () => {
   it("reopens the exact chart from a #c= share link on boot", async () => {
     const cfg = {
@@ -598,6 +710,19 @@ describe("task pane — shareable chart link", () => {
     await bootPane("#c=not-valid-base64!!");
     expect(() => exportConfig()).not.toThrow();
     expect($("host-note").className).not.toContain("status-err");
+  });
+
+  it("ignores a malformed ?tab deep link instead of aborting the rest of boot", async () => {
+    // ?tab is a shipped public deep link (the ribbon uses it). Interpolating it
+    // into a selector made querySelector THROW at module top level on a quote,
+    // and everything after that line was skipped: no build stamp, no size
+    // inputs, and no wireInsert() — leaving Insert enabled with no handler.
+    await bootPane("?tab=" + encodeURIComponent('chart"]'));
+    expect($("build-stamp").textContent).not.toBe("");
+    expect(($("chart-w") as HTMLInputElement).value).not.toBe("");
+    // wireInsert() ran: outside PowerPoint it disables Insert and says so.
+    expect(($("insert") as HTMLButtonElement).disabled).toBe(true);
+    expect($("host-note").textContent).toMatch(/PowerPoint/);
   });
 
   it("copies a link that round-trips the current chart through the clipboard", async () => {

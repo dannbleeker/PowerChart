@@ -110,6 +110,49 @@ describe("datasheet + date parsing hardening", () => {
     expect(parseDateToken("2026-01-15T00:00:00Z")).toBe(day);
   });
 
+  it("refuses a comma-decimal number instead of mangling it by 1000x", () => {
+    // Excel in de-DE/da-DK copies a number to the clipboard as "1.234,5".
+    // Stripping EVERY comma read that as 1.2345 — a value off by a factor of
+    // 1000 with nothing on the slide to reveal it — and "1,5" as 15. A comma we
+    // cannot read as US grouping now yields a visible gap instead.
+    const d = sheetToData({
+      cells: [
+        ["", "a", "b", "c", "d"],
+        ["r", "1.234,5", "1,5", "1,234", "1,234,567.5"],
+      ],
+    });
+    expect(d.series[0].values).toEqual([null, null, 1234, 1234567.5]);
+    expect((d as { dates?: boolean }).dates).toBeFalsy(); // and not a date either
+    // The formula layer reads its operands through the same parser, so a cell
+    // reference cannot inherit the mangled value behind the datasheet's back.
+    const f = sheetToData({
+      cells: [
+        ["", "a"],
+        ["r", "1.234,5"],
+        ["out", "=B2*2"],
+      ],
+    });
+    expect(f.series[1].values[0]).toBeNull();
+  });
+
+  it("round-trips every calendar Gantt row as an ISO date, not a raw epoch day", () => {
+    // Only Start/End/Milestone used to be re-serialised as dates, so re-opening
+    // your own calendar Gantt showed "20494" where you had typed "2026-02-10"
+    // and the row could then only be edited in epoch days. layoutGantt puts
+    // today / holidays / baseline / bracket rows through the same time scale.
+    const cells = [
+      ["", "Task A", "Task B"],
+      ["Start", "2026-01-05", "2026-02-02"],
+      ["End", "2026-01-30", "2026-03-06"],
+      ["Today", "2026-02-10", ""],
+      ["Holiday", "2026-01-01", "2026-04-03"],
+      ["Baseline start", "2026-01-01", "2026-01-22"],
+      ["Bracket Phase 1", "2026-01-05", "2026-02-20"],
+      ["% complete", "40", "10"], // not a date — stays a number
+    ];
+    expect(dataToSheet(sheetToData({ cells })).cells).toEqual(cells);
+  });
+
   it("ignores a blank cell in comma-separated aggregate args, as the range form does", () => {
     // =MIN(B2,C2,D2) counted the blank C2 as a real 0 while =MIN(B2:D2) ignored it.
     const cells = [
