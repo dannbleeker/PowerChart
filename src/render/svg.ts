@@ -66,8 +66,17 @@ export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): st
   // (WCAG 1.1.1). First-child <title>/<desc> are the accessible name/description
   // per the SVG mapping — no id/aria wiring needed, so multiple inline charts on
   // one page can't collide on ids.
-  if (scene.title) parts.push(`<title>${esc(scene.title)}</title>`);
-  if (scene.desc) parts.push(`<desc>${esc(scene.desc)}</desc>`);
+  //
+  // An UNTITLED chart (the pane's own gallery shape) has only the generated
+  // summary, and <desc> maps to the description alone: role="img" with no name
+  // is exactly what axe-core's role-img-alt reports as a 1.1.1 failure. So the
+  // summary becomes the name in that case — announced once, not twice.
+  if (scene.title) {
+    parts.push(`<title>${esc(scene.title)}</title>`);
+    if (scene.desc) parts.push(`<desc>${esc(scene.desc)}</desc>`);
+  } else if (scene.desc) {
+    parts.push(`<title>${esc(scene.desc)}</title>`);
+  }
   // One <pattern> def per (pattern, color) pair used by the scene's rects.
   const defs = new Map<string, string>();
   for (const n of scene.nodes) {
