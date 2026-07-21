@@ -156,14 +156,25 @@ export function parseDateToken(raw: string): number | null {
   if (!t) return null;
   const dmy = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (!dmy && /^[-+]?[\d,.]+$/.test(t)) return null; // plain numbers are not dates
+  // A percentage is never a date. Without this `Date.parse("50% UTC")` yields a
+  // finite garbage instant, so a perfectly ordinary "50%" cell became epoch day
+  // -7305 AND flipped the whole chart into date mode.
+  if (/%/.test(t)) return null;
   // Numeric ranges ("3-5", "10–20") are category labels, not dates — Date.parse
   // would otherwise misread them as partial ISO dates.
   if (/^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t)) return null;
   const ms = dmy
     ? Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
-    : Date.parse(/^\d{4}-\d{2}(-\d{2})?$/.test(t) ? t : `${t} UTC`);
+    : // An ISO token (bare date OR a full date-time with T/offset) parses as-is;
+      // appending " UTC" to a date-time made Date.parse return NaN, so every task
+      // in a pasted ISO-8601 export was silently dropped. Other shapes ("Jan 2026")
+      // still need the UTC anchor to avoid local-timezone drift.
+      Date.parse(/^\d{4}-\d{2}(-\d{2})?([T ][\d:.]+([Zz]|[+-]\d{2}:?\d{2})?)?$/.test(t) ? t : `${t} UTC`);
   if (!Number.isFinite(ms)) return null;
-  return Math.round(ms / DAY_MS);
+  // Floor, not round: a token carrying a time of day at/after 12:00 would round UP
+  // to the next calendar day. Bare dates are exact midnights, so this is a no-op
+  // for them.
+  return Math.floor(ms / DAY_MS);
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
