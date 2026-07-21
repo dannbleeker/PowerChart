@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { cagr, formatNumber, formatPercent, niceTicks, polyTrend, trendStats } from "../src/core/format";
+import {
+  cagr,
+  formatNumber,
+  formatPercent,
+  niceTicks,
+  polyTrend,
+  resolveAxisFormat,
+  trendStats,
+} from "../src/core/format";
 
 describe("formatNumber", () => {
   it("picks decimals by magnitude", () => {
@@ -51,6 +59,57 @@ describe("formatPercent", () => {
   it("normalises a negative that rounds to zero", () => {
     expect(formatPercent(-0.001)).toBe("0%");
     expect(formatPercent(-0.00004, 2)).toBe("0.00%");
+    // ...in the locales whose sign glyph / digits a string match would miss.
+    for (const locale of ["de-DE", "sv-SE", "ar-EG"]) {
+      expect(formatPercent(-0.001, 0, false, locale), locale).not.toMatch(/[-−]/);
+    }
+  });
+  it("honours the chart's locale, so one chart prints one number system", () => {
+    // The funnel's conversion label sits beside formatNumber stage values; with
+    // an en-US-only percent, a de-DE chart printed "12.000" next to "35.8%".
+    expect(formatPercent(0.358, 1, false, "de-DE")).toBe("35,8 %");
+    expect(formatPercent(0.149, 1, true, "de-DE")).toBe("+14,9 %");
+    expect(formatNumber(12000, { decimals: 0, locale: "de-DE" })).toBe("12.000");
+    // An unusable tag falls back to en-US rather than throwing (as formatNumber does).
+    expect(formatPercent(0.358, 1, false, "not a locale")).toBe("35.8%");
+  });
+  it("groups a percentage past 1000%", () => {
+    expect(formatPercent(35.5)).toBe("3,550%"); // was "3550%" beside formatNumber's "3,550"
+  });
+});
+
+describe("resolveAxisFormat", () => {
+  it("takes precision from the tick STEP, not the tick magnitude", () => {
+    // Magnitude alone gave one decimal for a 0.01 step: ["7.4","7.5","7.5",…].
+    expect(resolveAxisFormat([7.44, 7.45, 7.46, 7.47, 7.48]).decimals).toBe(2);
+    expect(resolveAxisFormat([99, 99.5, 100, 100.5, 101]).decimals).toBe(1);
+    expect(resolveAxisFormat([9.9, 9.95, 10, 10.05, 10.1]).decimals).toBe(2);
+    // A coarse step keeps the magnitude precision (never coarser than before).
+    expect(resolveAxisFormat([0, 0.1, 0.2, 0.3]).decimals).toBe(2);
+    expect(resolveAxisFormat([0, 500, 1000]).decimals).toBe(0);
+  });
+  it("labels every tick distinctly and correctly", () => {
+    for (const ticks of [
+      [7.44, 7.45, 7.46, 7.47, 7.48],
+      [88, 88.2, 88.4, 88.6, 88.8, 89],
+      [1.02, 1.04, 1.06, 1.08, 1.1],
+      [0.1, 1, 10, 100, 1000], // a log axis: 0.1 must not print as "0"
+      niceTicks(1000.5, 1002.5, 5),
+    ]) {
+      const fmt = resolveAxisFormat(ticks);
+      const labels = ticks.map((t) => formatNumber(t, fmt));
+      expect(new Set(labels).size, labels.join("|")).toBe(new Set(ticks).size);
+      for (let i = 0; i < ticks.length; i++) {
+        expect(Number(labels[i].replace(/,/g, "")), labels[i]).toBeCloseTo(ticks[i], 9);
+      }
+    }
+  });
+  it("leaves an authored decimals count alone", () => {
+    expect(resolveAxisFormat([7.44, 7.45], { decimals: 0 }).decimals).toBe(0);
+  });
+  it("falls back to magnitude when there is nothing to step between", () => {
+    expect(resolveAxisFormat([]).decimals).toBe(2);
+    expect(resolveAxisFormat([5, 5]).decimals).toBe(1);
   });
 });
 
@@ -99,6 +158,24 @@ describe("niceTicks", () => {
   it("handles degenerate ranges", () => {
     expect(niceTicks(5, 5).length).toBeGreaterThan(1);
     expect(niceTicks(0, 0)).toEqual([0, 1]);
+  });
+  it("keeps ticks distinct past 12 significant digits", () => {
+    // The FP-drift cleanup used to round to a fixed 12 significant digits, so an
+    // axis around 1e13 collapsed onto ONE value: every gridline drawn on top of
+    // the others and a top tick below the data max.
+    for (const [min, max] of [
+      [1e13, 1e13 + 4],
+      [123456789012345, 123456789012350],
+    ]) {
+      const t = niceTicks(min, max, 5);
+      expect(new Set(t).size, t.join("|")).toBe(t.length);
+      expect(t[t.length - 1]).toBeGreaterThanOrEqual(max);
+      expect(t[0]).toBeLessThanOrEqual(min);
+    }
+  });
+  it("still cleans the FP drift of a fractional step", () => {
+    expect(niceTicks(0, 0.5, 5)).toEqual([0, 0.2, 0.4, 0.6]);
+    expect(niceTicks(-0.06, 0.06, 5)).toContain(0);
   });
 });
 

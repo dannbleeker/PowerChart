@@ -14,23 +14,28 @@ const safeDecimals = (d: number): number => (Number.isFinite(d) ? Math.min(100, 
 /**
  * Intl.NumberFormat instances are expensive to construct but immutable and
  * reusable, and a chart formats hundreds of labels sharing a handful of
- * (locale, decimals) pairs. `Number.prototype.toLocaleString(locale, opts)` is
- * specified to construct a fresh NumberFormat on every call, so caching by
- * (locale, decimals) and reusing `.format()` is byte-identical output at a
- * fraction of the cost.
+ * (locale, decimals, style) triples. `Number.prototype.toLocaleString(locale,
+ * opts)` is specified to construct a fresh NumberFormat on every call, so caching
+ * by that triple and reusing `.format()` is byte-identical output at a fraction
+ * of the cost.
  */
 const NUMBER_FORMATTERS = new Map<string, Intl.NumberFormat>();
-function numberFormatter(locale: string, decimals: number): Intl.NumberFormat {
-  const key = `${locale} ${decimals}`;
+function numberFormatter(locale: string, decimals: number, style?: "percent"): Intl.NumberFormat {
+  const key = `${locale} ${decimals} ${style ?? ""}`;
   let nf = NUMBER_FORMATTERS.get(key);
   if (!nf) {
+    const opts: Intl.NumberFormatOptions = {
+      style,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    };
     // A malformed BCP-47 tag (an authored config, a hand-edited shape tag)
     // makes the Intl constructor throw a RangeError — fall back to en-US
     // rather than let one bad locale abort the whole render.
     try {
-      nf = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      nf = new Intl.NumberFormat(locale, opts);
     } catch {
-      nf = new Intl.NumberFormat("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      nf = new Intl.NumberFormat("en-US", opts);
     }
     NUMBER_FORMATTERS.set(key, nf);
   }
@@ -73,13 +78,53 @@ export function resolveFormat(values: number[], fmt: Partial<NumberFormat> = {})
   return { ...DEFAULT_FORMAT, ...fmt, decimals };
 }
 
-export function formatPercent(v: number, decimals = 0, forceSign = false): string {
+/**
+ * Same, for an AXIS's tick labels, where magnitude alone is not enough.
+ *
+ * A tick strip must let the reader tell one tick from the next: an axis over
+ * 7.444–7.471 has ticks 0.01 apart, but its magnitude (≥1) buys one decimal, so
+ * five gridlines printed ["7.4","7.5","7.5","7.5","7.5"] — two distinct labels,
+ * and a top tick named as a value outside the scale. Take the finer of the
+ * magnitude precision and the precision the tick STEP needs, so no two ticks
+ * share a label and every label names its own tick. Data labels keep the plain
+ * magnitude rule: they are read one at a time, not against each other.
+ */
+export function resolveAxisFormat(ticks: number[], fmt: Partial<NumberFormat> = {}): NumberFormat {
+  const resolved = resolveFormat(ticks, fmt);
+  // An explicit `decimals` is the author's call — never widen it.
+  if (fmt.decimals != null && fmt.decimals !== "auto") return resolved;
+  const sorted = ticks.filter((t) => Number.isFinite(t)).sort((a, b) => a - b);
+  let step = Infinity;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i] - sorted[i - 1];
+    if (gap > 0) step = Math.min(step, gap);
+  }
+  if (!Number.isFinite(step)) return resolved;
+  // The epsilon absorbs log10's FP error on exact decades (log10(0.001) can come
+  // back a hair below -3, which would buy a spurious fourth decimal).
+  const stepDecimals = Math.min(20, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
+  const decimals = typeof resolved.decimals === "number" ? resolved.decimals : 0;
+  return { ...resolved, decimals: Math.max(decimals, stepDecimals) };
+}
+
+/**
+ * A share (0.358 → "35.8%") in the chart's own locale.
+ *
+ * Percent labels sit next to `formatNumber` ones — the funnel's conversion rate
+ * beside its stage value, the CAGR arrow beside the value axis — so they must
+ * share the locale, or one chart prints two number systems ("12.000" beside
+ * "35.8%"). Routing through the same cached Intl formatter also grouped the
+ * thousands a hand-rolled `toFixed` never did ("3550%" → "3,550%").
+ */
+export function formatPercent(v: number, decimals = 0, forceSign = false, locale?: string): string {
   if (!Number.isFinite(v)) return "";
   decimals = safeDecimals(decimals);
-  // toFixed is not locale-aware, so the "-0" it can produce is always ASCII.
-  let n = (v * 100).toFixed(decimals);
-  if (/^-0(\.0+)?$/.test(n)) n = n.slice(1);
-  const s = n + "%";
+  // A small negative that rounds toward zero would print as "-0%". Normalise the
+  // VALUE, not the formatted string — the same reason formatNumber does: the
+  // sign glyph, digits and percent spacing are all locale-dependent, so no
+  // pattern match on the output survives every locale.
+  if (Number((v * 100).toFixed(decimals)) === 0) v = 0;
+  const s = numberFormatter(locale ?? "en-US", decimals, "percent").format(v);
   return forceSign && v > 0 ? "+" + s : s;
 }
 
@@ -108,9 +153,15 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
   const lo = Math.floor(min / step) * step;
   const hi = Math.ceil(max / step) * step;
   const ticks: number[] = [];
+  // Clean the accumulated FP drift at the STEP's own precision, not at a fixed
+  // 12 significant digits: a step of 1 around 1e13 needs 14 of them, and
+  // `toPrecision(12)` collapsed every tick of such an axis onto one value —
+  // gridlines stacked on top of each other and a top tick below the data max.
+  // (Steps are always 1/2/5 × 10ᵏ, so this rounds to the tick grid exactly.)
+  const stepDecimals = Math.min(100, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
   // Guard against FP drift producing an extra/short tick.
   for (let i = 0; i <= Math.round((hi - lo) / step); i++) {
-    ticks.push(+(lo + i * step).toPrecision(12));
+    ticks.push(+(lo + i * step).toFixed(stepDecimals));
   }
   return ticks;
 }
@@ -129,7 +180,7 @@ export function segmentLabel(
         case "value":
           return formatNumber(ctx.value, ctx.fmt);
         case "percent":
-          return ctx.fraction == null ? null : formatPercent(ctx.fraction);
+          return ctx.fraction == null ? null : formatPercent(ctx.fraction, 0, false, ctx.fmt.locale);
         case "series":
           return ctx.series;
         case "category":
