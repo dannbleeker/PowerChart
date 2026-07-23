@@ -8,6 +8,7 @@ import { chromeNodes, computeFrame, valueScale } from "./frame";
 import type { LayoutResult } from "./column";
 
 const quantile = (sorted: number[], p: number): number => {
+  /* v8 ignore next -- defensive: every caller guards samples.length >= 2 first */
   if (!sorted.length) return 0;
   const idx = p * (sorted.length - 1);
   const lo = Math.floor(idx);
@@ -78,6 +79,7 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     // no violin and no median tick at all despite having valid observations.
     const gLo = Math.max(vmin, lo - h);
     const gHi = Math.min(vmax, hi + h);
+    /* v8 ignore next -- unreachable: valueScale guarantees vmax > vmin and h > 0, so the window never collapses */
     if (!(gHi > gLo)) return;
     const levels: { y: number; d: number }[] = [];
     let maxD = 0;
@@ -89,6 +91,7 @@ export function layoutViolin(cfg: ChartConfig, style: ChartStyle, decor: Decorat
       levels.push({ y, d });
       if (d > maxD) maxD = d;
     }
+    /* v8 ignore next -- unreachable: the loop always fills M+1 levels and a Gaussian KDE sum is > 0 */
     if (levels.length < 2 || maxD <= 0) return;
 
     const cxc = centers[c];
