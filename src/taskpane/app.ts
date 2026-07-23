@@ -22,17 +22,12 @@ import {
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScene, type ResultRow, type ResultsSummary } from "../core/demo";
-import {
-  buildCheckbox,
-  buildHarveyBall,
-  buildKpiTile,
-  buildProcessFlow,
-  buildTableScene,
-  type CheckState,
-} from "../core/elements";
+import { buildTableScene } from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 import { BUILTIN_TEMPLATES } from "./templates";
+import { harveyScene, checkScene, flowScene, kpiScene, wireElementPreviews } from "./elements-ui";
+import { agendaChapters, wireAgendaPreview } from "./agenda-ui";
 
 interface AppState {
   kind: ChartKind;
@@ -1383,48 +1378,7 @@ async function doLoadSelection() {
 
 // --- Elements (harvey balls, checkboxes, process flow, table) -----------------
 
-function harveyScene() {
-  return buildHarveyBall(Number(($("harvey-pct") as HTMLInputElement).value) / 100, 24);
-}
-function checkScene() {
-  return buildCheckbox(($("check-state") as HTMLSelectElement).value as CheckState, 20);
-}
-function flowScene() {
-  const steps = ($("flow-steps") as HTMLInputElement).value
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const hl = Number(($("flow-highlight") as HTMLInputElement).value) - 1;
-  return buildProcessFlow(steps, hl, 480, 40);
-}
-function kpiScene() {
-  return buildKpiTile({
-    label: ($("kpi-label") as HTMLInputElement).value,
-    value: ($("kpi-value") as HTMLInputElement).value,
-    delta: ($("kpi-delta") as HTMLInputElement).value || undefined,
-    goodIsUp: !($("kpi-down-good") as HTMLInputElement).checked,
-  });
-}
-function renderElementPreviews() {
-  $("harvey-val").textContent = `${($("harvey-pct") as HTMLInputElement).value}%`;
-  $("harvey-preview").innerHTML = sceneToSvg(harveyScene());
-  $("check-preview").innerHTML = sceneToSvg(checkScene());
-  $("flow-preview").innerHTML = sceneToSvg(flowScene());
-  $("kpi-preview").innerHTML = sceneToSvg(kpiScene());
-}
-for (const id of [
-  "harvey-pct",
-  "check-state",
-  "flow-steps",
-  "flow-highlight",
-  "kpi-label",
-  "kpi-value",
-  "kpi-delta",
-  "kpi-down-good",
-]) {
-  $(id).addEventListener("input", renderElementPreviews);
-}
-renderElementPreviews();
+wireElementPreviews();
 
 // --- Templates & style file ----------------------------------------------------
 
@@ -1534,23 +1488,7 @@ $("json-import").addEventListener("click", () => {
 
 // --- Agenda ------------------------------------------------------------------
 
-function agendaChapters(): string[] {
-  return ($("agenda-chapters") as HTMLTextAreaElement).value
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-}
-
-function renderAgendaPreview() {
-  const chapters = agendaChapters();
-  const host = $("agenda-preview");
-  host.innerHTML = chapters.length
-    ? sceneToSvg(buildAgendaScene(chapters, { highlight: 0 }), { background: "#ffffff" })
-    : "";
-}
-
-$("agenda-chapters").addEventListener("input", renderAgendaPreview);
-renderAgendaPreview();
+wireAgendaPreview();
 
 // Auto-update: push edits to the slide shortly after each change.
 function maybeAutoUpdate() {
