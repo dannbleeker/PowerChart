@@ -161,3 +161,66 @@ describe("render-pptx.mjs — paints", () => {
     expect(slides[3]).not.toContain('val="000000"');
   });
 });
+
+describe("render-pptx.mjs — exotic node kinds and error isolation", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pc-exotic-"));
+  const out = join(dir, "exotic.pptx");
+  const slides: string[] = [];
+  let status: number | null = null;
+  let stderr = "";
+
+  beforeAll(async () => {
+    ensureLib();
+    // Kinds the other pptx suites never route through this renderer, so the
+    // ellipse / symbol / polygon / chevron / arrowhead arms of addNode were
+    // painted only by the live Office.js path and this headless one silently.
+    // The bad config in the middle exercises the per-config try/catch: it must
+    // stamp an error slide and carry on, not abort the surviving four.
+    const input = write(dir, "exotic.json", [
+      {
+        kind: "scatter", // markers → ellipse / symbol nodes
+        data: {
+          categories: ["a", "b", "c"],
+          series: [{ name: "P", values: [10, 30, 20], x: [1, 2, 3], marker: "circle" }],
+        },
+      },
+      {
+        kind: "radar", // closed series ring → polygon node
+        data: { categories: ["N", "E", "S", "W"], series: [{ name: "R", values: [3, 5, 2, 4] }] },
+      },
+      {
+        kind: "gantt", // bars + dependency arrows → chevron / arrowhead nodes
+        data: { categories: ["Design", "Build"], series: [{ name: "T", values: [2, 3] }] },
+        gantt: { start: [0, 2], duration: [2, 3] },
+      },
+      { kind: "pie" }, // no data → throws inside buildChart → error slide
+      {
+        kind: "clustered", // a plain survivor after the failure
+        data: { categories: ["Q1"], series: [{ name: "S", values: [10] }] },
+      },
+    ]);
+    const r = run(["skill/scripts/render-pptx.mjs", input, out]);
+    status = r.status;
+    stderr = r.stderr;
+    const zip = await JSZip.loadAsync(readFileSync(out));
+    for (let i = 1; i <= 5; i++) slides.push(await zip.file(`ppt/slides/slide${i}.xml`)!.async("string"));
+  }, 180000);
+
+  it("isolates the failing chart to an error slide and reports a non-zero exit", () => {
+    expect(status).toBe(1);
+    expect(stderr).toContain("chart 4:");
+    // Slide 4 is the stamped error slide; the surrounding four are real charts.
+    expect(slides[3]).toContain("failed:");
+    expect(slides.filter((s) => s.includes("failed:"))).toHaveLength(1);
+  });
+
+  it("still renders every chart around the failure, including custom geometry", () => {
+    // The exotic kinds land as native shapes (custGeom for the closed polygon /
+    // sector arcs), not as pictures — the whole point of the renderer.
+    expect(slides).toHaveLength(5);
+    const painted = slides.filter((s) => s.includes("custGeom") || s.includes("<p:sp>"));
+    expect(painted.length).toBeGreaterThanOrEqual(4);
+    // The plain survivor after the error slide really rendered.
+    expect(slides[4]).toContain("<p:sp>");
+  });
+});

@@ -42,6 +42,24 @@ describe("sunburst", () => {
     expect(slices).toHaveLength(2);
     expect(slices.every((w) => w.innerR > 0)).toBe(true);
   });
+
+  it("mixes a loose (ungrouped) label into the grouped ring without throwing", () => {
+    // One "|"-less label makes the chart grouped (some label has a "|") yet sends
+    // that item through groupOf/labelOf's no-"|" branch — an unnamed "" group.
+    const mixed = buildChart({
+      ...cfg,
+      data: { categories: ["G1 | A", "loose", "G2 | B"], series: [{ name: "V", values: [20, 15, 25] }] },
+    });
+    // Still a two-ring sunburst: group wedges on the inner ring, items on the outer.
+    expect(mixed.nodes.some((n) => n.name?.startsWith("group-"))).toBe(true);
+    const slices = mixed.nodes.filter((n): n is WedgeNode => n.kind === "wedge" && !!n.name?.startsWith("slice-"));
+    expect(slices).toHaveLength(3);
+    // Every wedge angle is finite (the loose item did not produce NaN spans).
+    for (const w of mixed.nodes.filter((n): n is WedgeNode => n.kind === "wedge")) {
+      expect(Number.isFinite(w.startAngle)).toBe(true);
+      expect(Number.isFinite(w.endAngle)).toBe(true);
+    }
+  });
 });
 
 describe("violin", () => {
