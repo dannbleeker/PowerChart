@@ -68,3 +68,45 @@ describe("treemap (two-level)", () => {
     expect(a.x + a.w).toBeLessThanOrEqual(g0.x + g0.w + 1);
   });
 });
+
+describe("treemap (two-level edge cases)", () => {
+  // Ungrouped labels mixed in with grouped ones fall into an unnamed "" group,
+  // and a zero-value member squarifies to nothing — the grouped path's guards
+  // (groupOf/labelOf's no-"|" branch, the skipped-tile branch) that a clean
+  // all-grouped fixture never reaches.
+  const cfg: ChartConfig = {
+    kind: "treemap",
+    ...DEFAULT_SIZE,
+    data: {
+      categories: ["North | Apples", "North | Pears", "loose", "South | Figs", "South | Zero"],
+      series: [{ name: "V", values: [80, 40, 25, 30, 0] }],
+    },
+    decorations: { segmentLabels: true },
+  };
+  const s = buildChart(cfg);
+
+  it("renders a group for the loose (ungrouped) label alongside the named groups", () => {
+    // Three groups: "North", "" (loose), "South" — each gets a box.
+    expect(s.nodes.some((n) => n.name === "group-0")).toBe(true);
+    expect(s.nodes.some((n) => n.name === "group-1")).toBe(true);
+    expect(s.nodes.some((n) => n.name === "group-2")).toBe(true);
+  });
+
+  it("draws a tile for every non-zero member and skips the zero-value one", () => {
+    // The four non-zero members each get a tile; the zero member (index 4) has
+    // no area, so squarify hands it no rect and no tile is drawn.
+    [0, 1, 2, 3].forEach((i) => expect(s.nodes.some((n) => n.name === `tile-${i}`)).toBe(true));
+    expect(s.nodes.some((n) => n.name === "tile-4")).toBe(false);
+  });
+
+  it("never throws and produces only finite geometry", () => {
+    for (const n of s.nodes) {
+      if (n.kind === "rect") {
+        expect(Number.isFinite(n.w)).toBe(true);
+        expect(Number.isFinite(n.h)).toBe(true);
+        expect(n.w).toBeGreaterThanOrEqual(0);
+        expect(n.h).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+});
