@@ -23,7 +23,7 @@ function recorder() {
 
 /** A stand-in engine: the four helpers makeAddNode binds, with predictable output. */
 const engine = {
-  dashKind: (d: string) => (d === "dotted" ? "dot" : "dash"),
+  dashKind: (d: number[]): "dot" | "dash" => (d[0] < 2 ? "dot" : "dash"),
   // Outer points first (they carry moveTo), then inner — even length, half each.
   annularSectorPoints: (cx: number, cy: number, innerR: number, r: number) => [
     { x: cx + r, y: cy },
@@ -122,7 +122,7 @@ describe("addNode — maps each scene node kind to PptxgenJS", () => {
 
   it("line: flips vertically for a rising segment and maps a dotted dash", () => {
     const rising = recorder();
-    addNode(rising, { kind: "line", x1: 0, y1: 10, x2: 10, y2: 0, stroke: "#000000", dash: "dotted" }, 0, 0);
+    addNode(rising, { kind: "line", x1: 0, y1: 10, x2: 10, y2: 0, stroke: "#000000", dash: [1, 1] }, 0, 0);
     expect(rising.shapes[0].type).toBe("line");
     expect(rising.shapes[0].opts.flipV).toBe(true);
     expect((rising.shapes[0].opts.line as { dashType: string }).dashType).toBe("sysDot");
