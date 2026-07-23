@@ -1,13 +1,88 @@
 import { describe, expect, it } from "vitest";
-import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
-import type { ChartConfig } from "../src/core/types";
+import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import type { LineNode, RectNode, TextNode } from "../src/core/scene";
+import type { ChartConfig } from "../src/core/types";
+
+/** Heatmap — cell-size encoding, clustering, calendar, marginal totals, sign marks. */
+
+describe("heatmap marginal totals", () => {
+  const heat: ChartConfig = {
+    kind: "heatmap",
+    ...DEFAULT_SIZE,
+    heatmap: { totals: "both" },
+    data: {
+      categories: ["Q1", "Q2"],
+      series: [
+        { name: "North", values: [10, 40] },
+        { name: "South", values: [20, 30] },
+      ],
+    },
+  };
+
+  it("adds row and column sum strips outside the color scale", () => {
+    const s = buildChart(heat);
+    expect((s.nodes.find((n) => n.name === "row-total-0") as TextNode).text).toBe("50");
+    expect((s.nodes.find((n) => n.name === "col-total-1") as TextNode).text).toBe("70");
+    // Totals sit outside the matrix: right of the last cell / below the last row.
+    const cell = s.nodes.find((n) => n.name === "cell-0-1") as RectNode;
+    const rowTotal = s.nodes.find((n) => n.name === "row-total-bg-0") as RectNode;
+    expect(rowTotal.x).toBeGreaterThanOrEqual(cell.x + cell.w);
+    // Neutral fill, not the value color scale.
+    expect(rowTotal.fill).toBe("#f0efec");
+  });
+
+  it("row-only mode omits the column strip; default has neither", () => {
+    const rowOnly = buildChart({ ...heat, heatmap: { totals: "row" } });
+    expect(rowOnly.nodes.some((n) => n.name === "row-total-0")).toBe(true);
+    expect(rowOnly.nodes.some((n) => n.name === "col-total-0")).toBe(false);
+    const plain = buildChart({ ...heat, heatmap: {} });
+    expect(plain.nodes.some((n) => n.name?.includes("total"))).toBe(false);
+  });
+});
+
+describe("heatmap calendar layout", () => {
+  const days = Array.from({ length: 21 }, (_, i) => {
+    const d = new Date(Date.UTC(2025, 0, 6 + i));
+    return d.toISOString().slice(0, 10);
+  });
+  const base: ChartConfig = {
+    kind: "heatmap",
+    ...DEFAULT_SIZE,
+    heatmap: { calendar: true },
+    data: { categories: days, series: [{ name: "Commits", values: days.map((_, i) => (i % 7) + 1) }] },
+  };
+
+  it("lays days out on a weekday × week grid", () => {
+    const s = buildChart(base);
+    expect(s.nodes.filter((n) => n.name?.match(/^cell-\d+$/))).toHaveLength(21);
+    expect(s.nodes.some((n) => n.name?.startsWith("weekday-"))).toBe(true);
+    expect(s.nodes.some((n) => n.name?.startsWith("month-"))).toBe(true);
+    // 2025-01-06 is a Monday → first cell at the top-left of the grid.
+    const c0 = s.nodes.find((n): n is RectNode => n.name === "cell-0")!;
+    const c1 = s.nodes.find((n): n is RectNode => n.name === "cell-1")!; // Tuesday, same week
+    expect(c1.x).toBeCloseTo(c0.x, 3); // same column (week)
+    expect(c1.y).toBeGreaterThan(c0.y); // next weekday row down
+  });
+
+  it("advances a column across the week boundary", () => {
+    const s = buildChart(base);
+    const c0 = s.nodes.find((n): n is RectNode => n.name === "cell-0")!; // Mon wk0
+    const c7 = s.nodes.find((n): n is RectNode => n.name === "cell-7")!; // +7 days = next Mon (wk1)
+    expect(c7.x).toBeGreaterThan(c0.x);
+    expect(c7.y).toBeCloseTo(c0.y, 3);
+  });
+
+  it("falls back to the matrix layout without date categories", () => {
+    const s = buildChart({ ...base, data: { categories: ["Q1", "Q2"], series: [{ name: "R", values: [1, 2] }] } });
+    expect(s.nodes.some((n) => n.name?.startsWith("weekday-"))).toBe(false);
+    expect(s.nodes.some((n) => n.name === "cell-0-0")).toBe(true); // matrix cell naming
+  });
+});
 
 /**
  * Batch T — heatmap cell-size encoding, heatmap row clustering (dendrogram),
  * and the stacked-area combo base.
  */
-
 describe("heatmap cell-size encoding", () => {
   const cfg: ChartConfig = {
     kind: "heatmap",
@@ -78,33 +153,6 @@ describe("heatmap row clustering", () => {
     const name0 = plain.nodes.find((n): n is TextNode => n.name === "row-0")!.text;
     expect(name0).toBe("Hi1");
     expect(plain.nodes.some((n) => n.name === "dendro-v")).toBe(false);
-  });
-});
-
-describe("combo stacked-area base", () => {
-  const cfg: ChartConfig = {
-    kind: "combo",
-    ...DEFAULT_SIZE,
-    data: {
-      categories: ["Jan", "Feb", "Mar"],
-      series: [
-        { name: "Cloud", values: [20, 24, 28] },
-        { name: "Licenses", values: [15, 14, 16] },
-        { name: "Margin %", type: "line", values: [22, 24, 26] },
-      ],
-    },
-    combo: { columns: "area" },
-    secondaryAxis: true,
-  };
-  const s = buildChart(cfg);
-
-  it("draws a stacked area base with the line overlaid", () => {
-    // The area base emits filled area slabs...
-    expect(s.nodes.some((n) => n.name?.startsWith("area-"))).toBe(true);
-    // ...and a secondary axis for the line series.
-    expect(s.nodes.some((n) => n.name === "secondary-axis")).toBe(true);
-    // ...and line segments over the top.
-    expect(s.nodes.some((n): n is LineNode => n.kind === "line" && !!n.name?.startsWith("combo-line-"))).toBe(true);
   });
 });
 
@@ -289,5 +337,84 @@ describe("heatmap sign marks", () => {
       heatmap: { sizeEncode: true, symbols: "sign" },
     };
     expect(buildChart(nulls).nodes.find((n) => n.name === "cell-sign-0-1")).toBeUndefined();
+  });
+});
+
+describe("heatmap forced-diverging on single-signed data draws no phantom zero", () => {
+  it("omits the 0 tick when zero is outside the data range", () => {
+    const cfg: ChartConfig = {
+      kind: "heatmap",
+      width: 640,
+      height: 400,
+      heatmap: { mode: "diverging" },
+      data: { categories: ["A", "B", "C"], series: [{ name: "r", values: [10, 55, 100] }] },
+    };
+    expect(buildChart(cfg).nodes.some((n) => n.name === "legend-zero")).toBe(false);
+  });
+
+  it("still draws the 0 tick, on-strip, when the data spans zero", () => {
+    const cfg: ChartConfig = {
+      kind: "heatmap",
+      width: 640,
+      height: 400,
+      heatmap: { mode: "diverging" },
+      data: { categories: ["A", "B", "C"], series: [{ name: "r", values: [-40, 0, 60] }] },
+    };
+    const zero = buildChart(cfg).nodes.find((n) => n.name === "legend-zero") as TextNode | undefined;
+    expect(zero).toBeDefined();
+    expect(zero!.x).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * PR8 replaced two hot loops with cached equivalents — the heatmap's row
+ * clustering now reads a precomputed distance matrix instead of recomputing
+ * each Euclidean distance on every merge scan, and the violin memoizes each
+ * category's samples. Both are meant to be byte-identical; these tests pin the
+ * observable behaviour so a future edit that changes the arithmetic is caught.
+ */
+describe("heatmap row clustering (precomputed distance matrix)", () => {
+  // Two obvious groups: rows 0/1/2 are ~flat-low, rows 3/4/5 are ~flat-high.
+  // Interleaved on input; average-linkage clustering must pull each group's
+  // members adjacent in the rendered row order.
+  const cfg: ChartConfig = {
+    kind: "heatmap",
+    width: 600,
+    height: 400,
+    heatmap: { cluster: true },
+    data: {
+      categories: ["c0", "c1", "c2", "c3"],
+      series: [
+        { name: "lowA", values: [1, 2, 1, 2] },
+        { name: "highA", values: [90, 91, 89, 92] },
+        { name: "lowB", values: [2, 1, 2, 1] },
+        { name: "highB", values: [88, 90, 91, 89] },
+        { name: "lowC", values: [1, 1, 2, 2] },
+        { name: "highC", values: [92, 88, 90, 90] },
+      ],
+    },
+  };
+
+  it("reorders rows so similar rows are adjacent and draws the dendrogram", () => {
+    const nodes = buildChart(cfg).nodes;
+    const rowOrder = nodes
+      .filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("row-"))
+      .sort((a, b) => Number(a.name!.slice(4)) - Number(b.name!.slice(4)))
+      .map((t) => t.text);
+    // Every "low*" row must sit in one contiguous block and every "high*" in
+    // the other — the clustering separated the two groups.
+    const lowIdx = rowOrder.map((n, i) => (n.startsWith("low") ? i : -1)).filter((i) => i >= 0);
+    const highIdx = rowOrder.map((n, i) => (n.startsWith("high") ? i : -1)).filter((i) => i >= 0);
+    const contiguous = (idx: number[]) => idx[idx.length - 1] - idx[0] === idx.length - 1;
+    expect(lowIdx).toHaveLength(3);
+    expect(highIdx).toHaveLength(3);
+    expect(contiguous(lowIdx)).toBe(true);
+    expect(contiguous(highIdx)).toBe(true);
+    // The dendrogram gutter is drawn.
+    expect(nodes.some((n) => n.name === "dendro-v")).toBe(true);
+  });
+
+  it("is deterministic across rebuilds (no shared mutable state)", () => {
+    expect(JSON.stringify(buildChart(cfg).nodes)).toBe(JSON.stringify(buildChart(cfg).nodes));
   });
 });

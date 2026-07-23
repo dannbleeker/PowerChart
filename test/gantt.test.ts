@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { buildChart } from "../src/core/chart";
+import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import { layoutGantt } from "../src/core/layout/gantt";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
-import type { ChartConfig, ChartStyle } from "../src/core/types";
 import type { EllipseNode, LineNode, RectNode, TextNode } from "../src/core/scene";
+import type { ChartConfig, ChartStyle } from "../src/core/types";
+
+/** Gantt — progress, baselines, critical path, dependencies, gutters, footnote row. */
+
+function cfg(partial: Partial<ChartConfig>): ChartConfig {
+  return { kind: "stacked", width: 480, height: 300, data: { categories: [], series: [] }, ...partial };
+}
+
+const byName = (nodes: { name?: string }[], p: string) => nodes.filter((n) => n.name?.startsWith(p));
 
 /**
  * Gantt bug-hunt guards: frame clearance (baselines, footnote, gutter columns),
  * spans that collapse to nothing, milestone dependencies, and the two fills that
  * ignored the palette/theme.
  */
-
 const day = (iso: string) => Math.round(Date.parse(iso) / 86400000);
 
 function gantt(partial: Partial<ChartConfig>): ChartConfig {
@@ -24,9 +31,183 @@ function gantt(partial: Partial<ChartConfig>): ChartConfig {
 }
 
 const node = (nodes: { name?: string }[], name: string) => nodes.find((n) => n.name === name);
+
 /** Channel sum — enough to compare two shades of the same hue. */
 const ink = (hex: string) =>
   parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
+
+/** Backlog batch C: gantt progress + baselines, grouped boxplots. */
+describe("gantt progress and baselines", () => {
+  const cfg: ChartConfig = {
+    kind: "gantt",
+    ...DEFAULT_SIZE,
+    data: {
+      categories: ["Design", "Build", "Test"],
+      series: [
+        { name: "Start", values: [1, 4, 9] },
+        { name: "End", values: [4, 10, 13] },
+        { name: "% Complete", values: [100, 40, null] },
+        { name: "Baseline start", values: [1, 3, 8] },
+        { name: "Baseline end", values: [3, 8, 12] },
+      ],
+    },
+  };
+  const s = buildChart(cfg);
+
+  it("fills the elapsed share of each bar", () => {
+    const bar = s.nodes.find((n) => n.name === "bar-1") as RectNode;
+    const progress = s.nodes.find((n) => n.name === "progress-1") as RectNode;
+    expect(progress.x).toBeCloseTo(bar.x, 5);
+    expect(progress.w / bar.w).toBeCloseTo(0.4, 5);
+    expect(progress.h).toBeCloseTo(bar.h, 5);
+    // 100% fills fully; missing % draws nothing.
+    expect((s.nodes.find((n) => n.name === "progress-0") as RectNode).w).toBeCloseTo(
+      (s.nodes.find((n) => n.name === "bar-0") as RectNode).w,
+      5,
+    );
+    expect(s.nodes.some((n) => n.name === "progress-2")).toBe(false);
+  });
+
+  it("accepts 0–1 fractions too, clamped", () => {
+    const frac = buildChart({
+      ...cfg,
+      data: {
+        ...cfg.data,
+        series: [cfg.data.series[0], cfg.data.series[1], { name: "% Complete", values: [0.5, 150, null] }],
+      },
+    });
+    const bar0 = frac.nodes.find((n) => n.name === "bar-0") as RectNode;
+    expect((frac.nodes.find((n) => n.name === "progress-0") as RectNode).w / bar0.w).toBeCloseTo(0.5, 5);
+    // 150% clamps to full.
+    const bar1 = frac.nodes.find((n) => n.name === "bar-1") as RectNode;
+    expect((frac.nodes.find((n) => n.name === "progress-1") as RectNode).w / bar1.w).toBeCloseTo(1, 2);
+  });
+
+  it("draws thin baseline ghost bars beneath the actual bars", () => {
+    const bar = s.nodes.find((n) => n.name === "bar-1") as RectNode;
+    const ghost = s.nodes.find((n) => n.name === "gantt-baseline-1") as RectNode;
+    expect(ghost.y).toBeGreaterThan(bar.y + bar.h - 1); // below the bar
+    expect(ghost.h).toBeLessThan(bar.h); // thinner
+    // Baseline spans its own dates (3→8), shifted vs the actual (4→10).
+    expect(ghost.x).toBeLessThan(bar.x);
+    // The plan-vs-actual slip is visible: ghost ends before the bar does.
+    expect(ghost.x + ghost.w).toBeLessThan(bar.x + bar.w);
+  });
+
+  it("baseline rows never render as task bars", () => {
+    expect(s.nodes.filter((n) => n.name?.startsWith("bar-"))).toHaveLength(6); // 3 bars + 3 bar-labels
+  });
+});
+
+/**
+ * Backlog batch J — more §2 within-kind gaps: gantt auto-summary bars,
+ * notched boxplots, radar min–max (peer range + us) band.
+ */
+describe("gantt auto-summary bars", () => {
+  const cfg: ChartConfig = {
+    kind: "gantt",
+    ...DEFAULT_SIZE,
+    data: {
+      categories: ["Phase 1", "> Research", "> Interviews", "Phase 2", "> Build"],
+      series: [
+        { name: "Start", values: [null, 1, 3, null, 6] },
+        { name: "End", values: [null, 4, 8, null, 12] },
+      ],
+    },
+    decorations: { summaryBars: true, segmentLabels: false },
+  };
+
+  it("draws a capped summary bar spanning the section's children", () => {
+    const s = buildChart(cfg);
+    const summary = s.nodes.find((n): n is RectNode => n.kind === "rect" && n.name === "summary-0");
+    expect(summary).toBeTruthy();
+    // Children of Phase 1 are rows 1–2: min start = 1, max end = 8.
+    const r1 = s.nodes.find((n): n is RectNode => n.name === "bar-1")!;
+    const r2 = s.nodes.find((n): n is RectNode => n.name === "bar-2")!;
+    expect(summary!.x).toBeCloseTo(r1.x, 1); // starts at the earliest child start
+    expect(summary!.x + summary!.w).toBeCloseTo(r2.x + r2.w, 1); // ends at the latest child end
+    expect(s.nodes.some((n) => n.name === "summary-cap-a-0")).toBe(true);
+    expect(s.nodes.some((n) => n.name === "summary-cap-b-0")).toBe(true);
+  });
+
+  it("no summary bars without the decoration", () => {
+    const s = buildChart({ ...cfg, decorations: { segmentLabels: false } });
+    expect(s.nodes.some((n) => n.name?.startsWith("summary-"))).toBe(false);
+  });
+});
+
+/**
+ * Batch R — three low/niche §2 gaps: critical-path Gantt highlight, the
+ * mean±SD boxplot variant, and sparklines.
+ */
+describe("critical-path Gantt", () => {
+  // Two chains from Research: the long one (Design→Build→QA→Launch) and a
+  // short branch (Copywriting). Durations make the long chain critical.
+  const cfg: ChartConfig = {
+    kind: "gantt",
+    ...DEFAULT_SIZE,
+    data: {
+      categories: ["Research", "Design", "Build", "Copywriting", "QA", "Launch"],
+      series: [
+        { name: "Start", values: [1, 3, 8, 3, 14, 18] },
+        { name: "End", values: [3, 8, 14, 5, 18, 20] },
+        { name: "After", values: [null, 1, 2, 1, 3, 5] },
+      ],
+    },
+    decorations: { criticalPath: true },
+  };
+  const s = buildChart(cfg);
+  const bar = (c: number) => s.nodes.find((n): n is RectNode => n.kind === "rect" && n.name === `bar-${c}`)!;
+
+  it("outlines the critical activities in red and leaves the branch plain", () => {
+    // Critical chain: Research(0) Design(1) Build(2) QA(4) Launch(5).
+    for (const c of [0, 1, 2, 4, 5]) {
+      expect(bar(c).stroke).toBe("#e34948");
+    }
+    // Copywriting(3) is on the shorter branch — no critical outline.
+    expect(bar(3).stroke).toBeUndefined();
+  });
+
+  it("draws the critical dependency arrows thicker and red", () => {
+    const critHead = s.nodes.find((n) => n.name === "dep-head-2")!; // Build ← Design edge
+    const branchHead = s.nodes.find((n) => n.name === "dep-head-3")!; // Copywriting ← Research edge
+    expect((critHead as { fill: string }).fill).toBe("#e34948");
+    expect((branchHead as { fill: string }).fill).not.toBe("#e34948");
+  });
+
+  it("is a no-op without the decoration", () => {
+    const plain = buildChart({ ...cfg, decorations: {} });
+    const b0 = plain.nodes.find((n): n is RectNode => n.kind === "rect" && n.name === "bar-0")!;
+    expect(b0.stroke).toBeUndefined();
+  });
+});
+
+describe("gantt holidays & brackets", () => {
+  const day = (iso: string) => Math.round(Date.parse(iso) / 86400000);
+  const c = cfg({
+    kind: "gantt",
+    data: {
+      categories: ["Build"],
+      series: [
+        { name: "Start", values: [day("2026-01-05")] },
+        { name: "End", values: [day("2026-01-30")] },
+        { name: "Holiday", values: [day("2026-01-15")] },
+        { name: "Bracket Sprint 1", values: [day("2026-01-05"), day("2026-01-19")] },
+      ],
+      dates: true,
+    },
+  });
+  const { nodes } = layoutGantt(c, DEFAULT_STYLE, DEFAULT_DECOR);
+
+  it("shades holidays", () => {
+    expect(byName(nodes, "holiday-")).toHaveLength(1);
+  });
+  it("draws labelled bracket annotations", () => {
+    expect(nodes.find((n) => n.name === "bracket-0")).toBeTruthy();
+    const label = nodes.find((n) => n.name === "bracket-label-0") as TextNode;
+    expect(label.text).toBe("Sprint 1");
+  });
+});
 
 describe("gantt baselines join the timeline extent", () => {
   const slipped = gantt({

@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
 import { divergingScale, noDataFill, sequentialScale } from "../src/core/color";
-import { logFloor } from "../src/core/layout/frame";
-import type { ChartConfig } from "../src/core/types";
+import { logFloor, valueScale } from "../src/core/layout/frame";
 import type { RectNode, TextNode } from "../src/core/scene";
+import type { ChartConfig } from "../src/core/types";
+
+/** Axis & scale — log floors, canvas-relative scales, manual-min guards. */
+
+/**
+ * Degenerate-frame / degenerate-scale guards found by a layout bug-hunt. Each is
+ * byte-identical for normal charts (snapshots unchanged) and only repairs an edge
+ * that previously emitted negative geometry or NaN coordinates.
+ */
+const negDims = (nodes: ReturnType<typeof buildChart>["nodes"]) =>
+  nodes.filter(
+    (n) =>
+      ((n.kind === "rect" || n.kind === "text") && ((n as RectNode).w < 0 || (n as RectNode).h < 0)) ||
+      Object.entries(n).some(([k, v]) => ["x", "y", "w", "h"].includes(k) && typeof v === "number" && Number.isNaN(v)),
+  );
 
 const DARK = { background: "#1b1b1b", text: "#f2f1ec" };
 
@@ -14,6 +28,20 @@ const axisLabels = (cfg: ChartConfig) =>
 
 const rects = (cfg: ChartConfig, prefix: string) =>
   buildChart(cfg).nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith(prefix));
+
+describe("log scale with a manual min above the data does not blank the axis", () => {
+  it("clamps to at least one decade instead of producing NaN geometry", () => {
+    const cfg: ChartConfig = {
+      kind: "clustered",
+      width: 640,
+      height: 400,
+      logScale: true,
+      scale: { min: 1_000_000 }, // far above the data → empty ticks → NaN toY
+      data: { categories: ["A", "B"], series: [{ name: "s", values: [3, 9] }] },
+    };
+    expect(negDims(buildChart(cfg).nodes)).toHaveLength(0);
+  });
+});
 
 describe("log axis floors on the data, not three decades below its own max", () => {
   // Both callers derive dataMin with a zero seed, so valueScale's `dataMin > 0`
@@ -94,5 +122,15 @@ describe("value scales resolve against the canvas, not a hardcoded white", () =>
   it("leaves light-canvas output byte-identical", () => {
     expect(sequentialScale(0, 10, "#2a78d6")(0)).toBe(sequentialScale(0, 10, "#2a78d6", "#ffffff")(0));
     expect(sequentialScale(0, 10, "#2a78d6")(0)).toBe("#f1f4fb");
+  });
+});
+
+describe("log scale", () => {
+  it("uses decade ticks and log positions", () => {
+    const s = valueScale({ x: 0, y: 0, w: 100, h: 100 }, 4, 1900, undefined, undefined, true);
+    expect(s.ticks[0]).toBe(1);
+    expect(s.ticks[s.ticks.length - 1]).toBe(10000);
+    // 100 sits halfway between 1 and 10000 in log space.
+    expect(s.toY(100)).toBeCloseTo(50, 1);
   });
 });
