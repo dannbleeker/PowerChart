@@ -21,6 +21,9 @@ mkdirSync(`${root}/lib`, { recursive: true });
 cpSync("skill/SKILL.md", `${root}/SKILL.md`);
 cpSync("skill/reference.md", `${root}/reference.md`);
 cpSync("skill/scripts/render-pptx.mjs", `${root}/scripts/render-pptx.mjs`);
+// render-pptx.mjs imports its paint/node helpers from this sibling — ship both,
+// so the relative "./pptx-paint.mjs" import resolves in the packaged layout too.
+cpSync("skill/scripts/pptx-paint.mjs", `${root}/scripts/pptx-paint.mjs`);
 cpSync("scripts/render-batch.mjs", `${root}/scripts/render-svg.mjs`);
 cpSync("dist-lib/powerchart.js", `${root}/lib/powerchart.js`);
 cpSync("examples/charts.json", `${root}/examples/charts.json`);

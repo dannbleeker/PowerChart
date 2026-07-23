@@ -24,6 +24,16 @@ const host = vi.hoisted(() => ({
   deckCharts: [] as { configJson: string; target: unknown }[],
   selectionCharts: [] as { configJson: string; target: unknown }[],
   loadSelectionResult: null as null | { configJson: string; target: unknown },
+  // When set, insertSceneIntoSlide awaits this before resolving — lets a test
+  // observe the pane's mid-flight state (buttons disabled) before the action ends.
+  gate: null as null | Promise<void>,
+  // insertSceneIntoSlide throws this once, if set — drives the guard's catch path.
+  failInsertOnce: false,
+  // The selection-change listener app.ts registers via addHandlerAsync, captured
+  // so a test can fire it the way PowerPoint would.
+  selectionListener: null as null | (() => unknown),
+  agendaSlides: [] as unknown[][],
+  demoRuns: 0,
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number }[],
     updateChart: [] as { target: unknown; opts: { tagData?: string } }[],
@@ -35,6 +45,11 @@ vi.mock("../src/render/powerpoint", () => ({
   isPowerPointHost: () => true,
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
   insertSceneIntoSlide: vi.fn(async (_scene: unknown, opts: { tagData?: string; left?: number; top?: number }) => {
+    if (host.gate) await host.gate;
+    if (host.failInsertOnce) {
+      host.failInsertOnce = false;
+      throw new Error("host refused the insert");
+    }
     host.calls.insertScene.push(opts);
   }),
   updateChartInSlide: vi.fn(async (_scene: unknown, target: unknown, opts: { tagData?: string }) => {
@@ -46,8 +61,13 @@ vi.mock("../src/render/powerpoint", () => ({
   listChartsInDeck: vi.fn(async () => host.deckCharts),
   listChartsInSelection: vi.fn(async () => host.selectionCharts),
   loadChartFromSelection: vi.fn(async () => host.loadSelectionResult),
-  insertAgendaSlides: vi.fn(async () => {}),
-  insertDemoDeck: vi.fn(async () => ({ results: [] })),
+  insertAgendaSlides: vi.fn(async (scenes: unknown[][]) => {
+    host.agendaSlides.push(scenes);
+  }),
+  insertDemoDeck: vi.fn(async () => {
+    host.demoRuns++;
+    return { results: [] };
+  }),
   loadThemePalette: vi.fn(async () => null),
   onLateSync: vi.fn(),
   errorText: (e: unknown) => String(e),
@@ -68,6 +88,11 @@ async function bootHostPane() {
   host.deckCharts = [];
   host.selectionCharts = [];
   host.loadSelectionResult = null;
+  host.gate = null;
+  host.failInsertOnce = false;
+  host.selectionListener = null;
+  host.agendaSlides = [];
+  host.demoRuns = 0;
   host.calls.insertScene = [];
   host.calls.updateChart = [];
   host.calls.updateCharts = [];
@@ -84,9 +109,11 @@ async function bootHostPane() {
       host: "PowerPoint",
       displayLanguage: "en-US",
       document: {
-        // watchSelection() registers a selection listener; a no-op is enough —
-        // the handlers under test are driven through the buttons, not selection.
-        addHandlerAsync: () => {},
+        // watchSelection() registers a selection listener; capture it so a test
+        // can fire it the way PowerPoint does when the user clicks a shape.
+        addHandlerAsync: (_type: string, handler: () => unknown) => {
+          host.selectionListener = handler;
+        },
       },
     },
   });
@@ -229,5 +256,93 @@ describe("Same scale", () => {
     await settle();
     expect(host.calls.updateCharts).toHaveLength(0);
     expect($("host-note").textContent?.toLowerCase()).toContain("two");
+  });
+
+  it("scopes to the selection and guides the user when too few are selected", async () => {
+    host.selectionCharts = [
+      { configJson: chartJson([1, 2]), target: { slideId: "s1", shapeId: "a", left: 0, top: 0 } },
+    ];
+    $("same-scale-sel").click();
+    await settle();
+    expect(host.calls.updateCharts).toHaveLength(0);
+    // The selection-scoped guard names Ctrl-click, not the deck message.
+    expect($("host-note").textContent?.toLowerCase()).toContain("ctrl-click");
+  });
+});
+
+describe("Elements and batch insert", () => {
+  beforeEach(bootHostPane);
+
+  // The five element buttons (harvey balls, checkboxes, process flow, KPI row,
+  // table) all drop a compact scene at the same fixed offset through the guard.
+  for (const id of ["harvey-insert", "check-insert", "flow-insert", "kpi-insert", "table-insert"]) {
+    it(`${id} inserts a compact element scene at the element offset`, async () => {
+      $(id).click();
+      await settle();
+      expect(host.calls.insertScene).toHaveLength(1);
+      expect(host.calls.insertScene[0].left).toBe(120);
+      expect(host.calls.insertScene[0].top).toBe(160);
+    });
+  }
+
+  it("batch-inserts every config in the JSON box onto the current slide", async () => {
+    ($("json-io") as HTMLTextAreaElement).value = JSON.stringify([
+      { kind: "pie", data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 1] }] } },
+      { kind: "stacked", data: { categories: ["A"], series: [{ name: "S", values: [3] }] } },
+    ]);
+    $("json-insert-batch").click();
+    await settle();
+    expect(host.calls.insertScene).toHaveLength(2);
+    expect($("host-note").textContent?.toLowerCase()).toContain("2 chart");
+  });
+});
+
+describe("guard — busy lockout and error surfacing", () => {
+  beforeEach(bootHostPane);
+
+  it("disables the button while the action runs and re-enables it after", async () => {
+    // Hold the insert open so the mid-flight state is observable.
+    let release!: () => void;
+    host.gate = new Promise<void>((r) => (release = r));
+    const insertBtn = $<HTMLButtonElement>("insert");
+
+    insertBtn.click();
+    await settle();
+    expect(insertBtn.disabled).toBe(true); // locked out mid-action
+
+    release();
+    await settle();
+    expect(insertBtn.disabled).toBe(false); // restored once the action settles
+    expect(host.calls.insertScene).toHaveLength(1);
+  });
+
+  it("surfaces a host failure as a Failed note instead of throwing", async () => {
+    host.failInsertOnce = true;
+    $("insert").click();
+    await settle();
+    expect($("host-note").textContent?.toLowerCase()).toContain("failed");
+    expect(host.calls.insertScene).toHaveLength(0);
+  });
+});
+
+describe("watchSelection", () => {
+  beforeEach(bootHostPane);
+
+  it("offers the edit banner when a PowerChart is selected", async () => {
+    expect(host.selectionListener).toBeTypeOf("function");
+    host.loadSelectionResult = {
+      configJson: chartJson([1, 2, 3]),
+      target: { slideId: "s1", shapeId: "sel-1", left: 0, top: 0 },
+    };
+    await host.selectionListener!();
+    await settle();
+    expect($("selection-banner").style.display).toBe(""); // shown
+  });
+
+  it("hides the banner when the selection is not a PowerChart", async () => {
+    host.loadSelectionResult = null;
+    await host.selectionListener!();
+    await settle();
+    expect($("selection-banner").style.display).toBe("none");
   });
 });
