@@ -155,19 +155,32 @@ export function registerLanguage(code: string, dict: Record<StringKey, string>):
 const LOCALIZE_SELECTOR =
   "h2, button, label, .banner, option, .tagline, figcaption, summary, .acc-title, .group-label, .fgroup-name, .no-type-result";
 
+/**
+ * Own-property lookup. These dictionaries are plain objects and the key is
+ * arbitrary text — DOM content, or a status string — so "toString" reached
+ * Object.prototype and returned a FUNCTION: a template named `toString` rendered
+ * as "[object Undefined]", a placeholder named `valueOf` became
+ * "function valueOf() { [native code] }", and t() threw outright once it tried
+ * to interpolate into one.
+ */
+const lookup = (dict: Record<string, string> | undefined, key: string): string | undefined =>
+  dict && Object.prototype.hasOwnProperty.call(dict, key) && typeof dict[key] === "string" ? dict[key] : undefined;
+
 function translateTree(root: ParentNode, dict: Record<string, string>): void {
   for (const el of root.querySelectorAll<HTMLElement>(LOCALIZE_SELECTOR)) {
     // Only translate an element's direct text, so child inputs/spans survive.
     for (const child of el.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) {
         const key = child.textContent?.trim();
-        if (key && dict[key]) child.textContent = child.textContent!.replace(key, dict[key]);
+        const hit = key ? lookup(dict, key) : undefined;
+        if (key && hit) child.textContent = child.textContent!.replace(key, hit);
       }
     }
   }
   for (const input of root.querySelectorAll<HTMLInputElement>("input[placeholder]")) {
     const p = input.placeholder.trim();
-    if (p && dict[p]) input.placeholder = dict[p];
+    const hit = lookup(dict, p);
+    if (p && hit) input.placeholder = hit;
   }
 }
 
@@ -188,7 +201,7 @@ export function localizeTree(root: ParentNode): void {
  * raw key, so callers can wrap unconditionally and dynamic text passes through.
  */
 export function t(key: string, params?: Record<string, string | number>): string {
-  let s: string = activeDict?.[key as StringKey] ?? EN[key as StringKey] ?? key;
+  let s: string = lookup(activeDict, key) ?? lookup(EN as unknown as Record<string, string>, key) ?? key;
   if (params) for (const [k, v] of Object.entries(params)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }

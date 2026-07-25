@@ -1,7 +1,26 @@
 import { polar, symbolPoints } from "../core/geometry";
 import type { Scene, SceneNode } from "../core/scene";
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/**
+ * Characters XML 1.0 forbids OUTRIGHT — they cannot be escaped, only removed.
+ * The C0 controls except tab/LF/CR, UNPAIRED surrogates (a well-formed pair is a
+ * legal astral character — an emoji — and must survive), and the two permanently
+ * unassigned code points. A single one makes the whole document unparseable, so
+ * a chart label carrying (say) a U+000B line break from a Word paste produced an
+ * .svg no strict parser would open, and a .pptx PowerPoint calls corrupt — while
+ * the renderer reported success. Escaping `& < > "` never covered this: they are
+ * not markup, they are simply illegal.
+ */
+/* eslint-disable no-control-regex -- matching control characters is the point */
+const XML_ILLEGAL =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+/* eslint-enable no-control-regex */
+
+/** Drop what XML cannot represent, then escape what it can. */
+export const xmlText = (s: string) => s.replace(XML_ILLEGAL, "");
+
+const esc = (s: string) =>
+  xmlText(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
  * Colours reach the scene graph verbatim from ChartConfig (series color, custom
