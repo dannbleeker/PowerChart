@@ -1318,7 +1318,13 @@ async function doInsert(asNew: boolean) {
   let cfg = currentConfig();
   if (!asNew && state.editTarget) {
     const scene = buildChart(cfg);
-    await updateChartInSlide(scene, state.editTarget, { tagData: JSON.stringify(cfg) });
+    // Adopt the target the update hands back. Every shape was replaced, so the
+    // one we just used is dead: keeping it made the SECOND update resolve a
+    // shape id that no longer existed, get filtered out as "the user deleted
+    // this chart", and do nothing — silently. With auto-update on, that meant
+    // only the first debounced push ever landed.
+    const next = await updateChartInSlide(scene, state.editTarget, { tagData: JSON.stringify(cfg) });
+    if (next) state.editTarget = next;
     return;
   }
   // New chart: use the selected placeholder's bounds when one is selected.
