@@ -67,3 +67,18 @@ describe("EN catalogue is well-formed (a translation can build against it safely
     expect(Object.keys(fake).sort()).toEqual(Object.keys(EN).sort());
   });
 });
+
+describe("prototype-named keys (regression)", () => {
+  // The catalogue and the dictionaries are plain objects, and the key is
+  // arbitrary text — DOM content or a status string. "toString" reached
+  // Object.prototype and t() returned a FUNCTION; with params it threw outright.
+  it.each(["toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"])(
+    "t(%s) returns a string and never throws",
+    (key) => {
+      expect(typeof t(key)).toBe("string");
+      expect(t(key)).toBe(key); // unknown key passes through unchanged
+      expect(() => t(key, { n: 1 })).not.toThrow();
+      expect(typeof t(key, { n: 1 })).toBe("string");
+    },
+  );
+});

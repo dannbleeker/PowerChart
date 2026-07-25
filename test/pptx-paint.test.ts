@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // subprocess (unmeasurable by v8); this module is imported in-process, so the
 // third renderer's colour normalisation and scene→pptx node mapping finally get
 // direct assertions and coverage instead of only black-box XML checks.
-import { hex, alphaOf, fillOf, visible, hslToHex, makeAddNode } from "../skill/scripts/pptx-paint.mjs";
+import { hex, alphaOf, fillOf, visible, hslToHex, makeAddNode, xmlText } from "../skill/scripts/pptx-paint.mjs";
 
 /** Records the PptxgenJS calls a node mapping makes, so the mapping is assertable. */
 function recorder() {
@@ -290,5 +290,25 @@ describe("addNode — maps each scene node kind to PptxgenJS", () => {
     const r = recorder();
     expect(() => addNode(r, { kind: "mystery" } as unknown as { kind: string }, 0, 0)).not.toThrow();
     expect(r.shapes).toHaveLength(0);
+  });
+});
+
+describe("hostile input never breaks the OOXML contract (regression)", () => {
+  it("hex() stays six hex digits for prototype-named colours", () => {
+    // CSS_NAMES is a plain object, so these reached Object.prototype and hex()
+    // returned a FUNCTION / an object — which detonated inside pptxgenjs at
+    // writeFile, OUTSIDE every per-chart guard, destroying the whole batch.
+    for (const c of ["__proto__", "constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      const out = hex(c);
+      expect(typeof out, `hex(${c}) type`).toBe("string");
+      expect(out, `hex(${c})`).toMatch(/^[0-9a-f]{6}$/i);
+    }
+  });
+
+  it("xmlText drops what XML forbids and keeps what it allows", () => {
+    expect(xmlText(`a${String.fromCharCode(11)}b`)).toBe("ab");
+    expect(xmlText("tab\tnewline\n")).toBe("tab\tnewline\n"); // legal whitespace survives
+    expect(xmlText("emoji \u{1F4C8}")).toBe("emoji \u{1F4C8}"); // a valid surrogate PAIR survives
+    expect(xmlText(`lone \uD83D`)).toBe("lone "); // an unpaired surrogate does not
   });
 });

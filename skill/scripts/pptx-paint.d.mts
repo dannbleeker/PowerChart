@@ -18,6 +18,9 @@ export function fillOf(
   fillOpacity?: number,
 ): { color: string; transparency?: number } | { type: "none" };
 
+/** Text with XML-illegal characters removed (C0 controls, unpaired surrogates). */
+export function xmlText(s: unknown): string;
+
 /** True only for a present, non-transparent paint. */
 export function visible(paint: string | null | undefined): boolean;
 

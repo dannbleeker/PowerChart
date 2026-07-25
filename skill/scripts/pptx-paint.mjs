@@ -95,7 +95,14 @@ export const hex = (c) => {
     const [hh = 0, ss = 0, ll = 0] = nums(m[1]);
     return hslToHex(hh, ss, ll);
   }
-  return CSS_NAMES[raw.toLowerCase()] ?? "000000";
+  // Own-property only. CSS_NAMES is a plain object, so a colour literally named
+  // "constructor" or "__proto__" reached Object.prototype and this returned a
+  // FUNCTION (or an object) — violating the six-hex-digit guarantee above and
+  // detonating inside pptxgenjs at writeFile, which is outside every per-chart
+  // guard, so one bad colour destroyed the entire batch.
+  const key = raw.toLowerCase();
+  const named = Object.prototype.hasOwnProperty.call(CSS_NAMES, key) ? CSS_NAMES[key] : undefined;
+  return typeof named === "string" ? named : "000000";
 };
 
 // Opacity 0..1 carried by a paint (8-digit #RRGGBBAA, rgba(), hsla(), or the
@@ -129,6 +136,22 @@ export const fillOf = (color, fillOpacity = 1) => {
   if (t >= 100) return { type: "none" };
   return t > 0 ? { color: hex(color), transparency: t } : { color: hex(color) };
 };
+
+/**
+ * Characters XML 1.0 forbids outright — they cannot be escaped, only removed, and
+ * a single one makes the slide unparseable. A U+000B (a Word line break) in a
+ * chart label produced a .pptx that PowerPoint calls corrupt while this renderer
+ * reported success. Unpaired surrogates go too; a well-formed pair (an emoji) is
+ * a legal character and survives. Mirrors src/render/svg.ts — duplicated because
+ * this module ships standalone inside the skill zip.
+ */
+/* eslint-disable no-control-regex -- matching control characters is the point */
+const XML_ILLEGAL =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+/* eslint-enable no-control-regex */
+
+/** Text safe to place in an OOXML slide. */
+export const xmlText = (s) => String(s ?? "").replace(XML_ILLEGAL, "");
 
 /** A paint that would actually draw: present, and not fully transparent. */
 export const visible = (paint) => !!paint && alphaOf(paint) > 0;
@@ -176,7 +199,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, SYMBOL_PRESET, arro
         break;
       }
       case "text": {
-        slide.addText(n.text, {
+        slide.addText(xmlText(n.text), {
           x: dx + n.x * IN,
           y: dy + n.y * IN,
           w: Math.max(0.05, n.w * IN),

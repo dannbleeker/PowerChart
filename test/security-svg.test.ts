@@ -193,3 +193,40 @@ describe("svg renderer neutralizes injected numerics", () => {
     expect(svg).not.toContain('"><');
   });
 });
+
+describe("XML-illegal characters (regression)", () => {
+  // XML 1.0 forbids the C0 controls outright — they cannot be escaped, only
+  // removed. One in a chart label produced an .svg no conforming parser would
+  // open (and a .pptx PowerPoint calls corrupt) while the renderer reported
+  // success. Reachable from any imported config: JSON preserves them happily.
+  const VT = String.fromCharCode(11); // a Word line break
+  const render = (title: string) =>
+    sceneToSvg(
+      buildChart({
+        kind: "clustered",
+        width: 480,
+        height: 320,
+        title,
+        data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 2] }] },
+      } as unknown as ChartConfig),
+    );
+
+  const illegal = (s: string) =>
+    [...s].filter((ch) => {
+      const c = ch.codePointAt(0)!;
+      return c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d;
+    });
+
+  it("strips control characters from the document", () => {
+    const svg = render(`Q1${VT}Report`);
+    expect(illegal(svg), "illegal XML characters reached the SVG").toEqual([]);
+  });
+
+  it("keeps every LEGAL character — emoji, CJK, accents", () => {
+    const svg = render("Growth \u{1F4C8} 売上 Ærø");
+    // A naive surrogate-range strip would eat the emoji's two code units.
+    expect(svg).toContain("\u{1F4C8}");
+    expect(svg).toContain("売上");
+    expect(svg).toContain("Ærø");
+  });
+});
