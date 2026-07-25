@@ -286,17 +286,17 @@ describe("task pane — loading a chart config", () => {
   });
 });
 
-describe("task pane — localisation survives re-renders", () => {
-  it("keeps the action button translated after a chart loads", async () => {
-    await bootPane("?lang=de");
+describe("task pane — action label survives re-renders", () => {
+  it("keeps the insert button label correct after a chart loads", async () => {
+    await bootPane();
     const insert = () => $("insert").textContent;
-    expect(insert()).toBe("In Folie einfügen");
+    expect(insert()).toBe("Insert into slide");
 
-    // renderActionState rewrites this label whenever the edit target changes —
-    // which happens long after localizePane ran — and used to stamp the English
-    // string straight back into a German pane.
+    // renderActionState rewrites this label whenever the edit target changes
+    // (then re-applies the active language via localizeTree). Loading a fresh,
+    // non-edit chart must leave it as the insert label — English-only today.
     importConfig({ kind: "clustered", data: baseData });
-    expect(insert()).toBe("In Folie einfügen");
+    expect(insert()).toBe("Insert into slide");
   });
 });
 
@@ -321,16 +321,15 @@ describe("task pane — status colour and headings", () => {
   });
 });
 
-describe("task pane — accordion headings are translated", () => {
-  it("translates the numbered step headings", async () => {
-    await bootPane("?lang=de");
+describe("task pane — accordion step headings", () => {
+  it("renders the numbered step headings", async () => {
+    await bootPane();
     const titles = [...document.querySelectorAll(".acc-title")].map((e) => e.textContent);
-    // These live in a <span> inside the <summary>; matching the <summary> alone
-    // never reached them, so the dictionary entries were dead.
-    expect(titles).toContain("1 · Diagrammtyp");
-    expect(titles).toContain("3 · Dekorationen");
-    expect(titles).toContain("Vorschau & Größe");
-    expect(titles).not.toContain("1 · Chart type");
+    // These live in a <span> inside the <summary> — the pane renders them; a
+    // future language re-skins them via the .acc-title selector (see i18n.ts).
+    expect(titles).toContain("1 · Chart type");
+    expect(titles).toContain("3 · Decorations");
+    expect(titles).toContain("Preview & size");
   });
 });
 

@@ -639,6 +639,15 @@ export interface ChartConfig {
   waterfall?: WaterfallOptions;
   numberFormat?: Partial<NumberFormat>;
   style?: Partial<ChartStyle>;
+  /**
+   * Overrides for the few labels the engine injects itself (everything else in a
+   * chart is user data). Lets a localized caller pass a translated word in; the
+   * engine stays language-agnostic and defaults to English.
+   */
+  labels?: {
+    /** The auto-collapsed long-tail bucket in column/pie families. Default "Other". */
+    other?: string;
+  };
 }
 
 /** Geometry the decoration pass needs from a layout: where each column lives. */

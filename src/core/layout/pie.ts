@@ -102,7 +102,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         value: v,
         fraction: v / denom,
         series: data.series[0]?.name ?? "",
-        category: other ? "Other" : data.categories[c as number],
+        category: other ? (cfg.labels?.other ?? "Other") : data.categories[c as number],
         fmt,
       });
       const inside = span >= 30 && !doughnut && !varR;

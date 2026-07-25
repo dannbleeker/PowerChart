@@ -160,7 +160,7 @@ function collapseOther(cfg: ChartConfig): ChartConfig {
   );
   return {
     ...cfg,
-    data: { ...cfg.data, series: [...kept, { name: "Other", values: otherVals }] },
+    data: { ...cfg.data, series: [...kept, { name: cfg.labels?.other ?? "Other", values: otherVals }] },
   };
 }
 

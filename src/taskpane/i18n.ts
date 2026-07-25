@@ -1,91 +1,157 @@
 /**
- * Minimal pane localization: translate static UI strings when Office reports
- * a matching display language. Chart output localization (separators) is
- * handled separately via NumberFormat.locale.
+ * Pane localization. The app ships English-only, but every user-facing string is
+ * catalogued here so a new language is a translation-only, type-checked drop-in.
+ *
+ * ── Adding a language ────────────────────────────────────────────────────────
+ * 1. Add one entry to `DICTS`, e.g. `de: { ...every key of EN, translated }`.
+ *    Its type is `Record<StringKey, string>`, so TypeScript refuses to compile
+ *    the dict until EVERY key is present — a missing translation is a build error,
+ *    not a silent English fallback. `test/i18n.test.ts` double-checks at runtime.
+ * 2. That's it. `localizePane` auto-selects it from the host display language
+ *    (or `?lang=`), the DOM sweep re-skins static markup, and `t()` covers the
+ *    runtime status strings — including the `{placeholder}` templates.
+ *
+ * Chart OUTPUT is already language-neutral: its text is user data, its numbers
+ * and dates localize via `NumberFormat.locale`, and the one engine-injected word
+ * ("Other") is fed in through `ChartConfig.labels.other` — the pane sets it to
+ * `t("Other")`, the pure engine just uses whatever it's given.
  */
 
-const DE: Record<string, string> = {
-  "1 · Chart type": "1 · Diagrammtyp",
-  "2 · Data": "2 · Daten",
-  "3 · Decorations": "3 · Dekorationen",
-  "Preview & size": "Vorschau & Größe",
-  Elements: "Elemente",
-  "Automation (JSON)": "Automatisierung (JSON)",
+/**
+ * The canonical catalogue of every translatable string — UI chrome, runtime
+ * status messages, `{placeholder}` templates, insert-phase words, and the one
+ * engine label. English maps to itself; this object IS the key set a language
+ * must cover.
+ */
+export const EN = {
+  // Step headings, panel & tab titles.
+  "1 · Chart type": "1 · Chart type",
+  "2 · Data": "2 · Data",
+  "3 · Decorations": "3 · Decorations",
+  "Preview & size": "Preview & size",
+  Elements: "Elements",
+  "Automation (JSON)": "Automation (JSON)",
   Agenda: "Agenda",
-  "Insert into slide": "In Folie einfügen",
-  "Insert as new": "Als neu einfügen",
-  "Edit selected chart": "Ausgewähltes Diagramm bearbeiten",
-  "Same scale (deck)": "Gleiche Skala (Deck)",
-  "Same scale (selection)": "Gleiche Skala (Auswahl)",
-  "Download SVG": "SVG herunterladen",
-  "Download PNG": "PNG herunterladen",
-  "Copy chart link": "Diagrammlink kopieren",
-  "Update chart": "Diagramm aktualisieren",
-  "Insert agenda slides": "Agenda-Folien einfügen",
-  "Export current": "Aktuelles exportieren",
-  Import: "Importieren",
-  "Insert batch": "Stapel einfügen",
-  "Export style": "Stil exportieren",
-  "Import style": "Stil importieren",
-  "Save as template": "Als Vorlage speichern",
-  Delete: "Löschen",
-  "Chart title": "Diagrammtitel",
-  "Segment labels": "Segmentbeschriftungen",
-  "Series labels": "Reihenbeschriftungen",
-  "Column totals": "Säulensummen",
-  "Grand total": "Gesamtsumme",
-  "Category labels": "Kategoriebeschriftungen",
-  "Value axis": "Werteachse",
-  Gridlines: "Gitterlinien",
-  "Horizontal (bar)": "Horizontal (Balken)",
-  "Connector lines": "Verbindungslinien",
-  "100% = note": "100%-Hinweis",
-  "Auto-update chart": "Diagramm automatisch aktualisieren",
-  Insert: "Einfügen",
-  "Edit it": "Bearbeiten",
-  "Total row": "Summenzeile",
-  "Datamark axis (ticks only)": "Datenmarken-Achse (nur Striche)",
-  "Use deck theme": "Design der Präsentation",
+  // Action buttons.
+  "Insert into slide": "Insert into slide",
+  "Insert as new": "Insert as new",
+  "Edit selected chart": "Edit selected chart",
+  "Same scale (deck)": "Same scale (deck)",
+  "Same scale (selection)": "Same scale (selection)",
+  "Download SVG": "Download SVG",
+  "Download PNG": "Download PNG",
+  "Copy chart link": "Copy chart link",
+  "Update chart": "Update chart",
+  "Insert agenda slides": "Insert agenda slides",
+  "Export current": "Export current",
+  Import: "Import",
+  "Insert batch": "Insert batch",
+  "Export style": "Export style",
+  "Import style": "Import style",
+  "Save as template": "Save as template",
+  Delete: "Delete",
+  Insert: "Insert",
+  "Edit it": "Edit it",
+  // Decoration & option labels.
+  "Chart title": "Chart title",
+  "Segment labels": "Segment labels",
+  "Series labels": "Series labels",
+  "Column totals": "Column totals",
+  "Grand total": "Grand total",
+  "Category labels": "Category labels",
+  "Value axis": "Value axis",
+  Gridlines: "Gridlines",
+  "Horizontal (bar)": "Horizontal (bar)",
+  "Connector lines": "Connector lines",
+  "100% = note": "100% = note",
+  "Auto-update chart": "Auto-update chart",
+  "Total row": "Total row",
+  "Datamark axis (ticks only)": "Datamark axis (ticks only)",
+  "Use deck theme": "Use deck theme",
   // Chart-type families (grouped picker) + its search.
-  "Columns & bars": "Säulen & Balken",
-  "Line & area": "Linien & Flächen",
-  "Parts of a whole": "Anteile am Ganzen",
-  Distribution: "Verteilung",
-  Correlation: "Korrelation",
-  "Matrix & spatial": "Matrix & Raum",
-  "Search chart types…": "Diagrammtypen suchen…",
-  "No chart type matches that search.": "Kein Diagrammtyp passt zu dieser Suche.",
-  // Format groups (Layout is spelled the same in German).
-  Labels: "Beschriftungen",
-  "Axes & scale": "Achsen & Skala",
-  Analysis: "Analyse",
-  "Colours & style": "Farben & Stil",
+  "Columns & bars": "Columns & bars",
+  "Line & area": "Line & area",
+  "Parts of a whole": "Parts of a whole",
+  Distribution: "Distribution",
+  Correlation: "Correlation",
+  "Matrix & spatial": "Matrix & spatial",
+  "Search chart types…": "Search chart types…",
+  "No chart type matches that search.": "No chart type matches that search.",
+  // Format group names.
+  Labels: "Labels",
+  "Axes & scale": "Axes & scale",
+  Analysis: "Analysis",
+  "Colours & style": "Colours & style",
   // Datasheet help.
-  "Paste straight from Excel — special data rows": "Direkt aus Excel einfügen — besondere Datenzeilen",
-  // Runtime status messages (announced via the aria-live status strip). Routed
-  // through t(); interpolated messages that carry a count or an error detail are
-  // not keyed and stay in English until the status catalog grows params.
-  "Working…": "Arbeite…",
-  "Done.": "Fertig.",
-  "Chart loaded — edits will update it in place.": "Diagramm geladen — Änderungen aktualisieren es direkt.",
+  "Paste straight from Excel — special data rows": "Paste straight from Excel — special data rows",
+
+  // Runtime status — plain messages.
+  "Working…": "Working…",
+  "Done.": "Done.",
+  "Chart loaded — edits will update it in place.": "Chart loaded — edits will update it in place.",
+  "Chart loaded from a shared link.": "Chart loaded from a shared link.",
+  "Chart config loaded.": "Chart config loaded.",
   "Style exported — share the JSON as your corporate style file.":
-    "Stil exportiert — teilen Sie das JSON als Ihre Firmen-Stildatei.",
-  "Style imported — applied to every chart from this pane.":
-    "Stil importiert — auf jedes Diagramm aus diesem Bereich angewendet.",
+    "Style exported — share the JSON as your corporate style file.",
+  "Style imported — applied to every chart from this pane.": "Style imported — applied to every chart from this pane.",
   "The selection is not a PowerChart — select an inserted chart group first.":
-    "Die Auswahl ist kein PowerChart — wählen Sie zuerst eine eingefügte Diagrammgruppe.",
-};
+    "The selection is not a PowerChart — select an inserted chart group first.",
+  "Same scale needs at least two value-axis charts in the deck.":
+    "Same scale needs at least two value-axis charts in the deck.",
+  "Select two or more PowerCharts (Ctrl-click), then apply Same scale.":
+    "Select two or more PowerCharts (Ctrl-click), then apply Same scale.",
+  "Couldn't encode the PNG on this browser.": "Couldn't encode the PNG on this browser.",
+  "Couldn't render the preview to PNG.": "Couldn't render the preview to PNG.",
+  "Shareable chart link copied to the clipboard.": "Shareable chart link copied to the clipboard.",
+  "Clipboard blocked — the link is in the JSON box, copy it from there.":
+    "Clipboard blocked — the link is in the JSON box, copy it from there.",
+  "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.":
+    "Not running inside PowerPoint — use Download SVG, or sideload the manifest to insert native shapes.",
 
-const DICTS: Record<string, Record<string, string>> = { de: DE };
+  // Runtime status — {placeholder} templates (filled by t(key, params)).
+  "Failed: {error}": "Failed: {error}",
+  "Couldn't render PNG: {error}": "Couldn't render PNG: {error}",
+  "Style import failed: {error}": "Style import failed: {error}",
+  "Invalid JSON: {error}": "Invalid JSON: {error}",
+  "Host answered late — {message}": "Host answered late — {message}",
+  "Same scale applied to {n} charts (max {max}).": "Same scale applied to {n} charts (max {max}).",
+  "Inserted {n} chart(s) on the current slide.": "Inserted {n} chart(s) on the current slide.",
+  "Inserting demo slides… {done} of {total}": "Inserting demo slides… {done} of {total}",
+  'Loaded chart 1 of {total} — use "Insert batch" for all.': 'Loaded chart 1 of {total} — use "Insert batch" for all.',
+  "Working… {phase}": "Working… {phase}",
+  // Insert-phase words (the {phase} fill above).
+  "opening PowerPoint…": "opening PowerPoint…",
+  "building shapes…": "building shapes…",
+  "sending to PowerPoint…": "sending to PowerPoint…",
+  "grouping…": "grouping…",
+  done: "done",
 
-let activeDict: Record<string, string> | undefined;
+  // Engine-injected chart label (threaded into the pure core via ChartConfig.labels.other).
+  Other: "Other",
+} as const;
 
-/* The picker families, Format group names, the datasheet-help summary, and the
-   search placeholder are added to the base selector; input placeholders are
-   translated too. */
-// .acc-title is the accordion step heading. It sits in a <span> inside the
-// <summary>, and translateTree only rewrites an element's DIRECT text, so
-// matching the <summary> alone never reaches it.
+/** Every translatable key. A language dictionary must cover all of these. */
+export type StringKey = keyof typeof EN;
+
+/**
+ * Shipped languages. Empty today (English-only). Add `de: { …Record<StringKey> }`
+ * to localize; the type makes an incomplete dictionary a compile error.
+ */
+const DICTS: Record<string, Record<StringKey, string>> = {};
+
+let activeDict: Record<StringKey, string> | undefined;
+
+/**
+ * Register a language dictionary at runtime, keyed by its 2-letter code. A seam
+ * for dynamically-loaded translations (and how the tests exercise the DOM sweep
+ * without a language shipping). Still `Record<StringKey, string>`, so a caller
+ * cannot register an incomplete dictionary.
+ */
+export function registerLanguage(code: string, dict: Record<StringKey, string>): void {
+  DICTS[code.slice(0, 2).toLowerCase()] = dict;
+}
+
+// Static markup elements whose direct text (and input placeholders) get re-skinned.
 const LOCALIZE_SELECTOR =
   "h2, button, label, .banner, option, .tagline, figcaption, summary, .acc-title, .group-label, .fgroup-name, .no-type-result";
 
@@ -94,8 +160,8 @@ function translateTree(root: ParentNode, dict: Record<string, string>): void {
     // Only translate an element's direct text, so child inputs/spans survive.
     for (const child of el.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) {
-        const t = child.textContent?.trim();
-        if (t && dict[t]) child.textContent = child.textContent!.replace(t, dict[t]);
+        const key = child.textContent?.trim();
+        if (key && dict[key]) child.textContent = child.textContent!.replace(key, dict[key]);
       }
     }
   }
@@ -105,24 +171,24 @@ function translateTree(root: ParentNode, dict: Record<string, string>): void {
   }
 }
 
-/** Translate visible UI text in place; no-op for unsupported languages. */
+/** Translate visible UI text in place; a no-op for English / unsupported languages. */
 export function localizePane(language: string | undefined): void {
   activeDict = DICTS[(language ?? "").slice(0, 2).toLowerCase()];
   if (activeDict) translateTree(document, activeDict);
 }
 
-/** Re-apply the active translation to a freshly-rendered subtree — the chart
- *  gallery and Format groups are rebuilt in English on every render. */
+/** Re-apply the active translation to a freshly-rendered subtree (gallery, format groups). */
 export function localizeTree(root: ParentNode): void {
   if (activeDict) translateTree(root, activeDict);
 }
 
 /**
- * Translate a runtime string (a status message) built in code rather than markup
- * — the DOM-sweep translateTree never sees these. Returns the source string
- * unchanged when there's no active language or no matching entry, so callers can
- * wrap unconditionally.
+ * Translate a runtime string built in code (a status message) and fill any
+ * `{placeholder}` from `params`. Falls back to the English catalogue, then to the
+ * raw key, so callers can wrap unconditionally and dynamic text passes through.
  */
-export function t(s: string): string {
-  return activeDict?.[s] ?? s;
+export function t(key: string, params?: Record<string, string | number>): string {
+  let s: string = activeDict?.[key as StringKey] ?? EN[key as StringKey] ?? key;
+  if (params) for (const [k, v] of Object.entries(params)) s = s.split(`{${k}}`).join(String(v));
+  return s;
 }
