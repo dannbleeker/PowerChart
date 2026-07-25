@@ -411,3 +411,36 @@ describe("combo secondary axis spans negative line values", () => {
     }
   });
 });
+
+describe("small multiples + pareto (regression)", () => {
+  // buildMultiples clears categorySort per panel precisely so the panels cannot
+  // disagree about their x-axis — but pareto is a category-reordering transform
+  // too and was passed straight through, so each single-series panel re-sorted
+  // itself: A,B,C became B,C,A beside A,C,B.
+  const build = (pareto: boolean) =>
+    buildChart({
+      kind: "clustered",
+      width: 640,
+      height: 320,
+      ...(pareto ? { pareto: true } : {}),
+      multiples: { columns: 2 },
+      data: {
+        categories: ["A", "B", "C"],
+        series: [
+          { name: "S1", values: [10, 40, 20] },
+          { name: "S2", values: [50, 5, 30] },
+        ],
+      },
+    } as unknown as ChartConfig);
+
+  const order = (pareto: boolean) =>
+    (build(pareto).nodes as { kind: string; text?: string; x?: number }[])
+      .filter((n) => n.kind === "text" && ["A", "B", "C"].includes(n.text ?? ""))
+      .sort((a, b) => (a.x ?? 0) - (b.x ?? 0))
+      .map((n) => n.text)
+      .join(",");
+
+  it("every panel keeps the same category order", () => {
+    expect(order(true), "panels disagree about their category order").toBe(order(false));
+  });
+});

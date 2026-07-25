@@ -249,3 +249,31 @@ describe("radar perSpoke normalises against each spoke's own maximum", () => {
     });
   });
 });
+
+describe("pinned scale keeps the web closed (regression)", () => {
+  // Ticks came from the AUTO range while min/max came from cfg.scale, so any
+  // tick beyond scale.max was mapped past the outer radius: a grid ring drawn
+  // outside the web, with its label off the top of the canvas.
+  it.each(["radar", "radial-bar"])("%s draws no ring outside its own radius", (variant) => {
+    const s = buildChart({
+      kind: variant === "radar" ? "radar" : "radialBar",
+      width: 480,
+      height: 300,
+      scale: { max: 80 },
+      data: { categories: ["A", "B", "C", "D", "E"], series: [{ name: "S", values: [70, 60, 80, 40, 50] }] },
+    } as unknown as ChartConfig);
+    const outer = Math.max(
+      0,
+      ...(s.nodes as { name?: string; r?: number }[]).filter((n) => n.r != null).map((n) => n.r!),
+    );
+    const strays = (s.nodes as { name?: string; r?: number; y?: number }[])
+      .filter((n) => n.name?.startsWith("grid-") && n.r != null && n.r > outer + 0.5)
+      .map((n) => `${n.name}@r=${n.r!.toFixed(1)}`);
+    expect(strays, `rings outside the web: ${strays.join(", ")}`).toEqual([]);
+    // …and nothing the scale excludes is labelled off the canvas.
+    const offCanvas = (s.nodes as { name?: string; y?: number }[])
+      .filter((n) => n.name?.startsWith("tick-") && typeof n.y === "number" && (n.y < -0.5 || n.y > 300.5))
+      .map((n) => `${n.name}@y=${n.y!.toFixed(1)}`);
+    expect(offCanvas, `ticks off canvas: ${offCanvas.join(", ")}`).toEqual([]);
+  });
+});

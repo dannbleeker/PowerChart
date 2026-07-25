@@ -60,9 +60,15 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // `all` is cells-scaled (series x categories) so it must be FOLDED, not spread —
   // a large grid overflows the argument list. `spokeSum` is category-scaled and safe.
   const tickMax = stacked ? Math.max(1, ...spokeSum) : maxOf(all, 1);
-  const ticks = niceTicks(Math.min(0, cfg.scale?.min ?? 0), Math.max(cfg.scale?.max ?? tickMax, 1), 4);
-  const min = cfg.scale?.min ?? ticks[0];
-  const max = cfg.scale?.max ?? ticks[ticks.length - 1];
+  const rawTicks = niceTicks(Math.min(0, cfg.scale?.min ?? 0), Math.max(cfg.scale?.max ?? tickMax, 1), 4);
+  const min = cfg.scale?.min ?? rawTicks[0];
+  const max = cfg.scale?.max ?? rawTicks[rawTicks.length - 1];
+  // Clamp to the RESOLVED domain, as valueScale does. niceTicks rounds outward
+  // from the auto range while min/max come from cfg.scale, so a pinned scale
+  // left rings mapped past the outer radius — a grid circle 25% outside the web
+  // and its tick label off the top of the canvas.
+  const ticks = rawTicks.filter((t) => t >= min - 1e-9 && t <= max + 1e-9);
+  if (!ticks.length) ticks.push(max);
   const fmt = resolveFormat(ticks, cfg.numberFormat);
   const toR = (v: number) => ((v - min) / (max - min || 1)) * r;
   const angle = (c: number) => (360 / Math.max(1, n)) * c;
@@ -318,8 +324,12 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
 
   // Scale reaches the per-category stack sums (a single series is its own sum).
   const catSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
-  const ticks = niceTicks(0, Math.max(cfg.scale?.max ?? Math.max(1, ...catSum), 1), 4);
-  const max = cfg.scale?.max ?? ticks[ticks.length - 1];
+  const rawTicks = niceTicks(0, Math.max(cfg.scale?.max ?? Math.max(1, ...catSum), 1), 4);
+  const max = cfg.scale?.max ?? rawTicks[rawTicks.length - 1];
+  // Same clamp as the radar web above: a pinned scale.max must not leave rings
+  // outside the outer radius.
+  const ticks = rawTicks.filter((t) => t <= max + 1e-9);
+  if (!ticks.length) ticks.push(max);
   const fmt = resolveFormat(ticks, cfg.numberFormat);
   const toR = (v: number) => innerR + (Math.max(0, v) / (max || 1)) * (r - innerR);
   const sector = 360 / Math.max(1, n);

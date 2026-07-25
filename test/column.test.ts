@@ -192,3 +192,69 @@ describe("stacked100 with an all-negative category", () => {
     expect(hasNaN(scene.nodes as never)).toBe(false);
   });
 });
+
+describe("clustered level-anchored decorations (regression)", () => {
+  // seriesLevels only advanced in the STACKED branch, so on a clustered chart it
+  // was an array of zeros — while decor.ts still opted into "stack level" mode
+  // because the array existed. The difference arrow silently collapsed onto the
+  // baseline and read "0".
+  const base = {
+    width: 480,
+    height: 300,
+    data: {
+      categories: ["A", "B"],
+      series: [
+        { name: "S1", values: [100, 150] },
+        { name: "S2", values: [50, 50] },
+      ],
+    },
+    decorations: { difference: { from: 0, to: 1, series: 0 } },
+  };
+
+  it.each(["stacked", "clustered"])("%s anchors the arrow to the series mark, not the axis", (kind) => {
+    const s = buildChart({ ...base, kind } as unknown as ChartConfig);
+    const label = s.nodes.find((n) => n.name?.startsWith("diff-label")) as { text?: string } | undefined;
+    const line = s.nodes.find((n) => n.name?.startsWith("diff-line")) as { y1?: number; y2?: number } | undefined;
+    expect(label?.text, `${kind} difference label`).toBe("+50%");
+    expect(line, `${kind} difference line`).toBeTruthy();
+    expect(Math.abs(line!.y1! - line!.y2!), `${kind} arrow collapsed to zero length`).toBeGreaterThan(1);
+  });
+});
+
+describe("stacked100 value axis (regression)", () => {
+  const cfg = (negatives: boolean): ChartConfig =>
+    ({
+      kind: "stacked100",
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "New", values: [60, 70] },
+          { name: "Renewal", values: [40, 45] },
+          ...(negatives ? [{ name: "Returns", values: [-40, -10] }] : []),
+        ],
+      },
+      decorations: { valueAxis: true, gridlines: true },
+    }) as unknown as ChartConfig;
+
+  it.each([false, true])("keeps every tick and gridline on the canvas (negatives=%s)", (negatives) => {
+    const s = buildChart(cfg(negatives));
+    const offCanvas = s.nodes
+      .map((n) => ({ n, y: (n as { y?: number }).y ?? (n as { y1?: number }).y1 }))
+      .filter(({ y }) => typeof y === "number" && (y < -0.5 || y > s.height + 0.5))
+      .map(({ n, y }) => `${n.name}@${y!.toFixed(1)}`);
+    // niceTicks rounds OUTWARD from pctNegMin, and nothing filtered it back into
+    // the domain — a gridline landed at y=301.6 on a 300pt canvas.
+    expect(offCanvas, `off-canvas: ${offCanvas.join(", ")}`).toEqual([]);
+  });
+
+  it("labels the share axis in percent, each label naming its own tick", () => {
+    const labels = (buildChart(cfg(false)).nodes as { name?: string; text?: string }[])
+      .filter((n) => n.name === "value-axis")
+      .map((n) => n.text);
+    // Was 0.0 / 0.3 / 0.5 / 0.8 / 1.0 — fractions on a chart whose segments read
+    // "60%", and 0.25/0.75 rounded to labels that name no tick on the axis.
+    expect(labels).toEqual(["0%", "25%", "50%", "75%", "100%"]);
+  });
+});

@@ -396,6 +396,12 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
     ...cfg,
     multiples: undefined,
     categorySort: undefined, // already applied above, on the full data
+    // Pareto reorders categories too, and each panel holds ONE series — so left
+    // on, every panel sorted itself by its own values and the small multiples
+    // ended up with different category orders (A,B,C became B,C,A beside A,C,B),
+    // which is exactly the contradictory-axes failure categorySort is cleared to
+    // avoid. Each panel also silently grew its own cumulative-% line.
+    pareto: undefined,
     title: s.name,
     footnote: undefined,
     width: panelW,
