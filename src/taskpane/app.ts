@@ -110,6 +110,7 @@ interface AppState {
     | "pie"
     | "waterfall"
     | "numberFormat"
+    | "labels"
   >;
   /** When set, "Update chart" replaces this shape in place. */
   editTarget: EditTarget | null;
@@ -175,6 +176,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
       pie: cfg.pie,
       waterfall: cfg.waterfall,
       numberFormat: cfg.numberFormat,
+      labels: cfg.labels,
     },
   };
 }
@@ -267,10 +269,18 @@ function currentConfig(): ChartConfig {
           locale: state.locale !== "en-US" ? state.locale : undefined,
         }
       : undefined;
+  // The engine's one injected word ("Other"); pass a localized override only when
+  // a non-English pane is active, so English configs stay byte-identical.
+  const otherLabel = t("Other");
+  const labels =
+    otherLabel !== "Other" || state.extras.labels
+      ? { ...state.extras.labels, ...(otherLabel !== "Other" ? { other: otherLabel } : {}) }
+      : undefined;
   return {
     kind: state.kind,
     data,
     ...state.extras,
+    labels,
     horizontal: state.horizontal || undefined,
     footnote: state.footnote || undefined,
     pie,
@@ -320,12 +330,13 @@ const statusStrip = document.getElementById("status-strip");
 const statusBar = document.getElementById("status-bar");
 const statusElapsed = document.getElementById("status-elapsed");
 
-function note(text: string, status: "ok" | "err" | "busy" | "none" = "none") {
+function note(text: string, status: "ok" | "err" | "busy" | "none" = "none", params?: Record<string, string | number>) {
   // Route status text through the runtime translator so a localized pane
-  // announces it in the user's language (exact-match messages; interpolated
-  // ones fall through to English until the catalog carries params). The
-  // aria-live host-note then reads the change to a screen reader.
-  hostNote.textContent = t(text);
+  // announces it in the user's language. `text` is the English source string
+  // (an EN catalogue key), optionally carrying {placeholders} that `params`
+  // fills after translation. The aria-live host-note reads the change to a
+  // screen reader.
+  hostNote.textContent = t(text, params);
   hostNote.className = status === "none" ? "hint" : `hint status-${status}`;
   // The strip carries the note now, so it has to follow it: shown whenever
   // there is something to say, collapsed when there is not.
@@ -1248,7 +1259,7 @@ $("download-png").addEventListener("click", () => {
         URL.revokeObjectURL(a.href);
       }, "image/png");
     } catch (err) {
-      note(`Couldn't render PNG: ${err instanceof Error ? err.message : String(err)}`, "err");
+      note("Couldn't render PNG: {error}", "err", { error: err instanceof Error ? err.message : String(err) });
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -1298,7 +1309,9 @@ function phaseNote(phase: InsertPhase, detail?: string) {
     group: "grouping…",
     done: "done",
   };
-  note(`Working… ${said[phase]}${detail ? ` (${detail})` : ""}`, "busy");
+  // The phase word is itself a catalogue key; the detail (a dynamic id) trails
+  // untranslated in parentheses.
+  note("Working… {phase}", "busy", { phase: t(said[phase]) + (detail ? ` (${detail})` : "") });
 }
 
 async function doInsert(asNew: boolean) {
@@ -1359,7 +1372,7 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
       return { scene: buildChart(c.cfg), target: c.target, opts: { tagData: JSON.stringify(c.cfg) } };
     }),
   );
-  note(`Same scale applied to ${parsed.length} charts (max ${max}).`, "ok");
+  note("Same scale applied to {n} charts (max {max}).", "ok", { n: parsed.length, max });
 }
 
 async function doLoadSelection() {
@@ -1462,7 +1475,7 @@ $("style-import").addEventListener("click", () => {
     renderPreview();
     note("Style imported — applied to every chart from this pane.", "ok");
   } catch (err) {
-    note(`Style import failed: ${err instanceof Error ? err.message : String(err)}`, "err");
+    note("Style import failed: {error}", "err", { error: err instanceof Error ? err.message : String(err) });
   }
 });
 
@@ -1475,14 +1488,11 @@ $("json-import").addEventListener("click", () => {
   try {
     const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
     applyConfig({ ...DEFAULT_SIZE, ...(Array.isArray(parsed) ? parsed[0] : parsed) }, null);
-    note(
-      Array.isArray(parsed)
-        ? `Loaded chart 1 of ${parsed.length} — use "Insert batch" for all.`
-        : "Chart config loaded.",
-      "ok",
-    );
+    if (Array.isArray(parsed))
+      note('Loaded chart 1 of {total} — use "Insert batch" for all.', "ok", { total: parsed.length });
+    else note("Chart config loaded.", "ok");
   } catch (err) {
-    note(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`, "err");
+    note("Invalid JSON: {error}", "err", { error: err instanceof Error ? err.message : String(err) });
   }
 });
 
@@ -1585,7 +1595,7 @@ function wireInsert() {
           // errorText, not err.message: a RichApi.Error's message is generic
           // ("An internal error has occurred") and the useful part is in code
           // and debugInfo, which String(err) throws away.
-          note(`Failed: ${errorText(err)}`, "err");
+          note("Failed: {error}", "err", { error: errorText(err) });
         } finally {
           stopElapsed();
           // Only re-enable what this call disabled — never resurrect a button
@@ -1627,7 +1637,7 @@ function wireInsert() {
           const cfg = { ...DEFAULT_SIZE, ...c };
           await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
         }
-        note(`Inserted ${configs.length} chart(s) on the current slide.`, "ok");
+        note("Inserted {n} chart(s) on the current slide.", "ok", { n: configs.length });
       }),
     );
     // Elements insert at a small default offset (they're compact shapes).
@@ -1662,7 +1672,7 @@ function wireInsert() {
     // evidence we get about a host that went quiet, so surface it even though
     // the action has already failed — the note is stale by then, but the
     // information is what a bug report needs.
-    onLateSync((msg) => note(`Host answered late — ${msg}`, "err"));
+    onLateSync((msg) => note("Host answered late — {message}", "err", { message: msg }));
     const demoBtn = $("demo-insert") as HTMLButtonElement;
     demoBtn.disabled = false;
     demoBtn.addEventListener(
@@ -1677,7 +1687,7 @@ function wireInsert() {
         const { results, slidesAdded, addsIssued, blankSlides, blanksRead, totalMs } = await insertDemoDeck(
           items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
           (done, total) => {
-            note(`Inserting demo slides… ${done} of ${total}`, "busy");
+            note("Inserting demo slides… {done} of {total}", "busy", { done, total });
             setProgress(done / total); // one slide per context, so a real bar
           },
         );

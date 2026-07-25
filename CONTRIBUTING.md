@@ -28,6 +28,24 @@ Three artifacts must always match the feature set, and CI enforces all of them:
 3. **The user manual** (`docs/MANUAL.md`) — `test/manual.test.ts` fails if a
    chart kind, datasheet row, pane control, or element is missing from it.
 
+## Adding a language
+
+The pane ships English-only, but the localization is live and type-gated — a new
+language is translation-only, no code changes:
+
+1. In `src/taskpane/i18n.ts`, add one entry to `DICTS`, e.g.
+   `de: { ...every key of EN, translated }`. The type is `Record<StringKey, string>`,
+   so **TypeScript refuses to compile until every catalogue key is translated** —
+   a missing string is a build error, not a silent English fallback.
+2. Run `npm test` (`test/i18n.test.ts` checks the catalogue and interpolation).
+
+`localizePane` auto-selects the dictionary from the host display language (or
+`?lang=`); `t()` covers runtime status strings, including `{placeholder}`
+templates; and the one engine-injected word ("Other") is passed into the pure
+core via `ChartConfig.labels.other`. Chart numbers and dates already localize
+via `NumberFormat.locale`. Right-to-left scripts need engine layout work and are
+out of scope for a translation-only add.
+
 ## Snapshots
 
 `test/snapshots.test.ts` freezes every sample chart's SVG. If your change

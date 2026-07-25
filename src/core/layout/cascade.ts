@@ -128,7 +128,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const segY = plot.y + h;
         const segH = toH(rem);
         const remPct = values[c - 1] > 0 ? rem / values[c - 1] : null;
-        const caption = dropLabels[c] || "Other";
+        const caption = dropLabels[c] || cfg.labels?.other || "Other";
         const numbers = `${formatNumber(rem, fmt)}${remPct != null ? ` (${formatPercent(remPct, 1)})` : ""}`;
         const oneLine = `${caption}: ${numbers}`;
         const ink = contrastInk(style.neutral);

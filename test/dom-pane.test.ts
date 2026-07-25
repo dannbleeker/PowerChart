@@ -1,7 +1,17 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { mountDatasheet, sheetToData, type SheetModel } from "../src/taskpane/datasheet";
-import { localizePane, localizeTree } from "../src/taskpane/i18n";
+import { EN, localizePane, localizeTree, registerLanguage, type StringKey } from "../src/taskpane/i18n";
+
+// A synthetic, fully-populated language: every catalogue key mapped to a marker.
+// The app ships English-only, so this is how the DOM-sweep mechanism (which only
+// runs when a language is registered) stays exercised. `«key»` makes a translated
+// node obvious and proves the sweep matched the right source string.
+const MARKER = Object.fromEntries((Object.keys(EN) as StringKey[]).map((k) => [k, `«${k}»`])) as Record<
+  StringKey,
+  string
+>;
+registerLanguage("xx", MARKER);
 
 const sheet = (): SheetModel => ({
   cells: [
@@ -176,23 +186,23 @@ describe("localizePane", () => {
       <button>Not translated</button>`;
   };
 
-  it("translates matching visible strings for German", () => {
+  it("translates matching visible strings for a registered language", () => {
     build();
-    localizePane("de-DE");
-    expect(document.querySelector("h2")!.textContent).toBe("2 · Daten");
-    expect(document.querySelector("button")!.textContent).toBe("In Folie einfügen");
+    localizePane("xx");
+    expect(document.querySelector("h2")!.textContent).toBe("«2 · Data»");
+    expect(document.querySelector("button")!.textContent).toBe("«Insert into slide»");
   });
 
   it("keeps child inputs and unknown strings intact", () => {
     build();
-    localizePane("de");
+    localizePane("xx");
     const label = document.querySelector("label")!;
     expect(label.querySelector("input")).not.toBeNull();
-    expect(label.textContent).toContain("Gitterlinien");
+    expect(label.textContent).toContain("«Gridlines»");
     expect(document.querySelectorAll("button")[1].textContent).toBe("Not translated");
   });
 
-  it("is a no-op for unsupported or missing languages", () => {
+  it("is a no-op for unsupported or missing languages (English default)", () => {
     build();
     localizePane("fr-FR");
     localizePane(undefined);
@@ -206,20 +216,20 @@ describe("localizePane", () => {
       <p class="no-type-result">No chart type matches that search.</p>
       <details><summary>Paste straight from Excel — special data rows</summary></details>
       <input placeholder="Search chart types…" />`;
-    localizePane("de-DE");
-    expect(document.querySelector(".group-label")!.textContent).toBe("Säulen & Balken");
-    expect(document.querySelector(".fgroup-name")!.textContent).toBe("Achsen & Skala");
-    expect(document.querySelector(".no-type-result")!.textContent).toBe("Kein Diagrammtyp passt zu dieser Suche.");
-    expect(document.querySelector("summary")!.textContent).toBe("Direkt aus Excel einfügen — besondere Datenzeilen");
-    expect(document.querySelector("input")!.placeholder).toBe("Diagrammtypen suchen…");
+    localizePane("xx");
+    expect(document.querySelector(".group-label")!.textContent).toBe("«Columns & bars»");
+    expect(document.querySelector(".fgroup-name")!.textContent).toBe("«Axes & scale»");
+    expect(document.querySelector(".no-type-result")!.textContent).toBe("«No chart type matches that search.»");
+    expect(document.querySelector("summary")!.textContent).toBe("«Paste straight from Excel — special data rows»");
+    expect(document.querySelector("input")!.placeholder).toBe("«Search chart types…»");
   });
 
   it("localizeTree re-applies the active language to a freshly rendered subtree", () => {
-    localizePane("de"); // sets the active language
+    localizePane("xx"); // sets the active language
     const root = document.createElement("div");
     root.innerHTML = `<div class="group-label">Distribution</div><span class="fgroup-name">Analysis</span>`;
     localizeTree(root);
-    expect(root.querySelector(".group-label")!.textContent).toBe("Verteilung");
-    expect(root.querySelector(".fgroup-name")!.textContent).toBe("Analyse");
+    expect(root.querySelector(".group-label")!.textContent).toBe("«Distribution»");
+    expect(root.querySelector(".fgroup-name")!.textContent).toBe("«Analysis»");
   });
 });
