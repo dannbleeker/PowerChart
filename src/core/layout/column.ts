@@ -169,7 +169,15 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     ? {
         min: pctNegMin,
         max: 1,
-        ticks: pctNegMin < 0 ? niceTicks(pctNegMin, 1, 5) : [0, 0.25, 0.5, 0.75, 1],
+        percent: true,
+        // Clamped to the domain, the way valueScale already filters its own:
+        // niceTicks rounds OUTWARD, so it returned ticks below pctNegMin, and
+        // toY mapped those past the plot — a gridline at y=301.6 on a 300pt
+        // canvas, with its label sitting on the category row.
+        ticks:
+          pctNegMin < 0
+            ? niceTicks(pctNegMin, 1, 5).filter((t) => t >= pctNegMin - 1e-9 && t <= 1 + 1e-9)
+            : [0, 0.25, 0.5, 0.75, 1],
         toY: (v: number) => frame.y + frame.h - ((v - pctNegMin) / (1 - pctNegMin)) * frame.h,
       }
     : valueScale(
@@ -260,7 +268,13 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           r = segRect(pos, barThick - 1, 0, v);
         }
       }
-      levels[si] = ups[sp] + downs[sp];
+      // Where THIS series' mark tops out, in value units — what a level-anchored
+      // decoration (difference arrow, callout) points at. Stacked, that is the
+      // cumulative level; clustered, each bar stands on the baseline, so it is
+      // the bar's own value. Publishing the cumulative sum for clustered too left
+      // it 0 for every series (ups/downs only advance in the stacked branch), so
+      // the arrow silently collapsed onto the axis instead of the bar top.
+      levels[si] = stacked ? ups[sp] + downs[sp] : v;
       if (!r) return;
 
       if (barStyle !== "bar") {
@@ -902,7 +916,10 @@ export function horizontalChrome(
     }
   }
   if (decor.valueAxis) {
-    const axisFmt = resolveFormat(scale.ticks, cfg.numberFormat);
+    // Share axis (a horizontal 100% bar) is labelled in percent, matching its
+    // own segment labels — see ValueScale.percent.
+    const axisFmt = resolveFormat(scale.percent ? scale.ticks.map((t) => t * 100) : scale.ticks, cfg.numberFormat);
+    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, axisFmt)}%` : formatNumber(t, axisFmt));
     for (const t of scale.ticks) {
       const x = frame.x + qOf(t);
       nodes.push({
@@ -911,7 +928,7 @@ export function horizontalChrome(
         y: frame.y + frame.h + 2,
         w: 48,
         h: fs * 1.4,
-        text: formatNumber(t, axisFmt),
+        text: axisLabel(t),
         fontSize: fs * 0.9,
         color: style.mutedText,
         align: "center",

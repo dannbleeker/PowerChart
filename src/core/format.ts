@@ -100,9 +100,15 @@ export function resolveAxisFormat(ticks: number[], fmt: Partial<NumberFormat> = 
     if (gap > 0) step = Math.min(step, gap);
   }
   if (!Number.isFinite(step)) return resolved;
-  // The epsilon absorbs log10's FP error on exact decades (log10(0.001) can come
-  // back a hair below -3, which would buy a spurious fourth decimal).
-  const stepDecimals = Math.min(20, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
+  // The fewest decimals that render EVERY tick exactly — the contract above is
+  // "every label names its own tick", and only the ticks themselves can settle
+  // that. Deriving it from log10(step) assumed the 1/2/5×10^k steps niceTicks
+  // emits; a hand-built tick list (the 100% axis's 0/.25/.5/.75/1) breaks that
+  // assumption, and 0.25 came back as "0.3" — a label naming no tick on the axis.
+  let stepDecimals = 0;
+  while (stepDecimals < 6 && !sorted.every((t) => Math.abs(t - Number(t.toFixed(stepDecimals))) < 1e-9)) {
+    stepDecimals++;
+  }
   const decimals = typeof resolved.decimals === "number" ? resolved.decimals : 0;
   return { ...resolved, decimals: Math.max(decimals, stepDecimals) };
 }

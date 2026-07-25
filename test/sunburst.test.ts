@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
 import type { WedgeNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
@@ -59,5 +60,46 @@ describe("sunburst", () => {
       expect(Number.isFinite(w.startAngle)).toBe(true);
       expect(Number.isFinite(w.endAngle)).toBe(true);
     }
+  });
+});
+
+describe("outer labels stay on the canvas (regression)", () => {
+  // The radius reserved a fixed fs*0.5 vertical / fs*4 horizontal margin, but
+  // outer labels sit at r + fs*0.7 in an fs*1.4-tall box as wide as their text.
+  // The SHIPPED sample overflowed: label-3 ran y 295 -> 309 on a 300pt canvas.
+  const overflowing = (s: ReturnType<typeof buildChart>) =>
+    (s.nodes as { name?: string; x?: number; y?: number; w?: number; h?: number }[])
+      .filter((n) => n.name?.startsWith("label-") || n.name?.startsWith("group-label"))
+      .filter(
+        (n) =>
+          (n.y ?? 0) < -0.5 ||
+          (n.y ?? 0) + (n.h ?? 0) > s.height + 0.5 ||
+          (n.x ?? 0) < -0.5 ||
+          (n.x ?? 0) + (n.w ?? 0) > s.width + 0.5,
+      )
+      .map((n) => `${n.name} y ${n.y?.toFixed(1)}->${((n.y ?? 0) + (n.h ?? 0)).toFixed(1)}`);
+
+  it("the shipped sample fits", () => {
+    const s = buildChart(sampleConfig("sunburst"));
+    expect(overflowing(s), `overflowing: ${overflowing(s).join(" | ")}`).toEqual([]);
+  });
+
+  it("long labels fit too", () => {
+    const s = buildChart({
+      kind: "sunburst",
+      width: 480,
+      height: 300,
+      data: {
+        categories: [
+          "EMEA | Enterprise segment",
+          "EMEA | SMB segment",
+          "APAC | Enterprise segment",
+          "APAC | Consumer segment",
+        ],
+        series: [{ name: "V", values: [40, 30, 20, 10] }],
+      },
+      decorations: { segmentLabels: true },
+    } as unknown as ChartConfig);
+    expect(overflowing(s), `overflowing: ${overflowing(s).join(" | ")}`).toEqual([]);
   });
 });

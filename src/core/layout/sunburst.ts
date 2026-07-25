@@ -32,7 +32,18 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
   const footH = footnoteH(cfg, style, decor);
   const cx = cfg.width / 2;
   const cy = titleH + (cfg.height - titleH - footH) / 2;
-  const r = Math.max(20, Math.min(cfg.width / 2 - fs * 4, (cfg.height - titleH - footH) / 2 - fs * 0.5));
+  // Reserve what the OUTER labels actually occupy, not a fixed guess. They sit
+  // at radius r + fs*0.7 in a box fs*1.4 tall and as wide as their text, so the
+  // old fs*0.5 vertical / fs*4 horizontal margins were always short: the stock
+  // sample put its bottom label at y 295-309 on a 300pt canvas, and a long side
+  // label ate the entire left margin.
+  const outerLabels = decor.segmentLabels ? items.map((r0) => labelOf(r0.label)) : [];
+  const labelW = outerLabels.reduce((m, t) => Math.max(m, textWidth(t, fs * 0.85) + 4), 0);
+  // Only the label's own half-height clears the canvas edge; the rest of the box
+  // is centred on the label anchor.
+  const marginY = outerLabels.length ? fs * 1.4 : fs * 0.5;
+  const marginX = outerLabels.length ? labelW + fs * 0.9 : fs * 4;
+  const r = Math.max(20, Math.min(cfg.width / 2 - marginX, (cfg.height - titleH - footH) / 2 - marginY));
   const rInner = r * 0.32;
   const rMid = grouped ? r * 0.6 : rInner;
 

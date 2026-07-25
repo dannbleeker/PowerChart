@@ -34,6 +34,12 @@ export interface ValueScale {
   toY: (v: number) => number;
   /** Present when an axis break compresses part of the range: the band's y extent. */
   breakBand?: { yLow: number; yHigh: number };
+  /**
+   * The axis measures SHARES (a 100% chart), so its ticks are fractions that
+   * must be labelled as percentages. Without this the axis of a chart whose
+   * segments read "60%" was itself labelled 0.00-1.00.
+   */
+  percent?: boolean;
 }
 
 /**
@@ -377,7 +383,11 @@ export function chromeNodes(
     // Tick labels are read against each other, so their precision comes from the
     // tick step, not the tick magnitude (resolveAxisFormat) — otherwise a narrow
     // axis prints the same label at several heights.
-    const axisFmt = resolveAxisFormat(ticks, cfg.numberFormat);
+    // A share axis is labelled in percent — the ticks are fractions, and the
+    // segments beside them already read "60%". Precision comes from the SCALED
+    // ticks so each label still names its own tick.
+    const axisFmt = resolveAxisFormat(scale.percent ? ticks.map((t) => t * 100) : ticks, cfg.numberFormat);
+    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, axisFmt)}%` : formatNumber(t, axisFmt));
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {
@@ -398,7 +408,7 @@ export function chromeNodes(
         y: y - fs * 0.7,
         w: marks ? frame.x - 6 : frame.x - 4,
         h: fs * 1.4,
-        text: formatNumber(t, axisFmt),
+        text: axisLabel(t),
         fontSize: fs * 0.9,
         color: style.mutedText,
         align: "right",
