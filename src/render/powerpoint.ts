@@ -13,7 +13,7 @@
 import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
 import { toHex6, alphaOf } from "../core/color";
-import type { Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
+import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 
 /* global PowerPoint, Office */
 
@@ -58,6 +58,24 @@ export const CHART_TAG = "POWERCHART_CONFIG";
 export const CHART_PARTS_TAG = "POWERCHART_PARTS";
 
 /**
+ * Tag key under which a chart records the FRAME ORIGIN it was drawn at.
+ *
+ * An in-place update re-renders the scene at an origin, and the only origin it
+ * had was the tagged shape's `left`/`top` — which is not the frame origin. For a
+ * grouped chart that is the group's bounding box, i.e. the frame origin plus the
+ * scene's ink offset; ungrouped it is whatever `created[0]` happens to be. Either
+ * way, feeding it back as the frame origin shifts the chart by that offset, and
+ * the shift COMPOUNDS: every Same Scale run or select-and-update cycle moved the
+ * chart again (measured: +8pt per cycle grouped, +285pt ungrouped — off the slide
+ * in one run on the web host).
+ *
+ * Writing the origin down makes the update idempotent: re-rendering lands the
+ * chart exactly where it already was. Absent on charts inserted before this
+ * existed, which fall back to the old shape-position behaviour.
+ */
+export const CHART_ORIGIN_TAG = "POWERCHART_ORIGIN";
+
+/**
  * Release a proxy object's client-side memory once its loaded values have been
  * read. Office.js keeps every proxy touched in a `run` alive until the context
  * is disposed, and the docs call out a "noticeable performance benefit when
@@ -87,6 +105,12 @@ export interface EditTarget {
    * CHART_PARTS_TAG.
    */
   partIds?: string[];
+  /**
+   * The frame origin the chart was drawn at, from CHART_ORIGIN_TAG. Present on
+   * charts inserted since that tag existed; an in-place update re-renders here
+   * so it lands where it already is instead of walking across the slide.
+   */
+  origin?: { left: number; top: number };
 }
 
 /**
@@ -239,8 +263,13 @@ export async function insertSceneIntoSlide(
 }
 
 /** Replace an existing PowerChart group with a re-rendered scene, in place. */
-export async function updateChartInSlide(scene: Scene, target: EditTarget, opts: InsertOptions = {}): Promise<void> {
-  await updateChartsInSlides([{ scene, target, opts }]);
+export async function updateChartInSlide(
+  scene: Scene,
+  target: EditTarget,
+  opts: InsertOptions = {},
+): Promise<EditTarget | null> {
+  const [next] = await updateChartsInSlides([{ scene, target, opts }]);
+  return next ?? null;
 }
 
 /**
@@ -260,9 +289,9 @@ export async function updateChartInSlide(scene: Scene, target: EditTarget, opts:
  */
 export async function updateChartsInSlides(
   items: { scene: Scene; target: EditTarget; opts?: InsertOptions }[],
-): Promise<void> {
-  if (!items.length) return;
-  await PowerPoint.run(async (context) => {
+): Promise<EditTarget[]> {
+  if (!items.length) return [];
+  return PowerPoint.run(async (context) => {
     // 1. Resolve every old shape — one sync for all of them.
     //
     // getItemOrNullObject, never getItem: a target names a slide that the user
@@ -278,7 +307,7 @@ export async function updateChartsInSlides(
     await context.sync();
 
     const live = found.filter(({ slide }) => !slide.isNullObject);
-    if (!live.length) return;
+    if (!live.length) return [];
     const withOld = live.map(({ it, slide }) => ({
       it,
       slide,
@@ -294,7 +323,7 @@ export async function updateChartsInSlides(
     // is gone: nothing to do. Re-rendering it would resurrect a chart the user
     // deleted — an in-place update that inserts is not an update.
     const alive = withOld.filter(({ old }) => !old.isNullObject);
-    if (!alive.length) return;
+    if (!alive.length) return [];
 
     // 2. Drop the old shapes — one sync for all of them, siblings included:
     //    deleting only the tagged shape of an ungrouped chart leaves the rest
@@ -314,8 +343,11 @@ export async function updateChartsInSlides(
     for (const { it, slide } of alive) {
       const opts: InsertOptions = {
         ...it.opts,
-        left: it.target.left,
-        top: it.target.top,
+        // The recorded frame origin, NOT the tagged shape's corner — see
+        // CHART_ORIGIN_TAG. Charts tagged before that existed still fall back to
+        // the shape position (unchanged behaviour, including its drift).
+        left: it.target.origin?.left ?? it.target.left,
+        top: it.target.origin?.top ?? it.target.top,
         altText: it.scene.desc,
         altTitle: it.scene.title,
       };
@@ -326,7 +358,21 @@ export async function updateChartsInSlides(
     }
 
     // 4-5. Group, then tag — one sync each, however many charts.
-    await groupAndTagAll(context, rendered);
+    const tagged = await groupAndTagAll(context, rendered);
+
+    // 6. Hand back the NEW targets. An update replaces every shape, so the
+    //    caller's target is dead as soon as this returns: the pane used to keep
+    //    the old one, and its next update resolved a shape id that no longer
+    //    existed, was filtered out as "the user deleted this chart", and did
+    //    nothing at all — silently. Auto-update died the same way after its
+    //    first push. Returning the new target is what lets a caller stay live.
+    return alive.map(({ it }, i) => {
+      const t = tagged[i]?.target;
+      const origin = { left: it.target.origin?.left ?? it.target.left, top: it.target.origin?.top ?? it.target.top };
+      return t
+        ? { slideId: it.target.slideId, shapeId: t.id, left: t.left, top: t.top, partIds: tagged[i]?.partIds, origin }
+        : { ...it.target, origin };
+    });
   });
 }
 
@@ -348,12 +394,19 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
     await context.sync();
 
     for (let i = 0; i < shapes.items.length; i++) {
-      const { config, parts } = tags[i];
+      const { config, parts, origin } = tags[i];
       if (!config.isNullObject && config.value) {
         const s = shapes.items[i];
         return {
           configJson: config.value,
-          target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top, partIds: partIdsOf(parts) },
+          target: {
+            slideId: slide.id,
+            shapeId: s.id,
+            left: s.left,
+            top: s.top,
+            partIds: partIdsOf(parts),
+            origin: originOf(origin),
+          },
         };
       }
     }
@@ -365,6 +418,7 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
 interface ChartTags {
   config: PowerPoint.Tag;
   parts: PowerPoint.Tag;
+  origin: PowerPoint.Tag;
 }
 
 /**
@@ -378,7 +432,9 @@ function chartTagsOf(shape: PowerPoint.Shape): ChartTags {
   config.load("value");
   const parts = shape.tags.getItemOrNullObject(CHART_PARTS_TAG);
   parts.load("value");
-  return { config, parts };
+  const origin = shape.tags.getItemOrNullObject(CHART_ORIGIN_TAG);
+  origin.load("value");
+  return { config, parts, origin };
 }
 
 /**
@@ -396,6 +452,26 @@ function partIdsOf(parts: PowerPoint.Tag): string[] | undefined {
     if (!Array.isArray(ids)) return undefined;
     const ok = ids.filter((id): id is string => typeof id === "string" && id.length > 0);
     return ok.length ? ok : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The frame origin a chart recorded, or undefined for anything else. Parsed as
+ * defensively as partIdsOf: a shape tag is editable in the host and can arrive
+ * from a deck we did not author, so a malformed one must degrade to "no recorded
+ * origin" (falling back to the shape position), never throw inside a sync.
+ */
+function originOf(origin: PowerPoint.Tag): { left: number; top: number } | undefined {
+  if (origin.isNullObject || !origin.value) return undefined;
+  try {
+    const v: unknown = JSON.parse(origin.value);
+    if (!Array.isArray(v) || v.length < 2) return undefined;
+    const [left, top] = v;
+    if (typeof left !== "number" || typeof top !== "number") return undefined;
+    if (!Number.isFinite(left) || !Number.isFinite(top)) return undefined;
+    return { left, top };
   } catch {
     return undefined;
   }
@@ -442,13 +518,21 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
     const charts = shapes.items
       .map((s, i) => ({ s, ...tags[i] }))
       .filter(({ config }) => !config.isNullObject && config.value)
-      .map(({ s, config, parts }) => ({
+      .map(({ s, config, parts, origin }) => ({
         configJson: config.value,
-        target: { slideId: slide.id, shapeId: s.id, left: s.left, top: s.top, partIds: partIdsOf(parts) },
+        target: {
+          slideId: slide.id,
+          shapeId: s.id,
+          left: s.left,
+          top: s.top,
+          partIds: partIdsOf(parts),
+          origin: originOf(origin),
+        },
       }));
     for (const t of tags) {
       untrack(t.config);
       untrack(t.parts);
+      untrack(t.origin);
     }
     for (const s of shapes.items) untrack(s);
     return charts;
@@ -488,6 +572,7 @@ export async function listChartsInDeck(): Promise<{ configJson: string; target: 
           shapeId: l.shape.id,
           left: l.shape.left,
           top: l.shape.top,
+          origin: originOf(l.origin),
           partIds: partIdsOf(l.parts),
         },
       }));
@@ -900,6 +985,20 @@ async function findBlankAddedSlides(
   return { positions: positions.sort((a, b) => a - b), complete };
 }
 
+/**
+ * `Shape.rotation` is PowerPointApi **1.10**, and the manifests admit hosts from
+ * 1.4 — so it must be GATED, not merely wrapped in try/catch.
+ *
+ * Wrapping catches nothing: Office.js proxy setters do not throw synchronously.
+ * The assignment is a queued command the host rejects at the NEXT
+ * `context.sync()`, and that sync carries the whole batch — so on a 1.4–1.9 host
+ * a single rotated shape took down every pie, doughnut, sunburst, gauge,
+ * arrowhead and diagonal line with it, instead of degrading. This is exactly the
+ * reasoning `wantsAltText` already applies to `altTextDescription` (same 1.10
+ * set); rotation simply never got the same treatment.
+ */
+const canRotate = (): boolean => supports("1.10");
+
 /** True when the host advertises the given PowerPointApi requirement set. */
 function supports(version: string): boolean {
   try {
@@ -945,15 +1044,40 @@ async function renderShapesChunked(
   const left = opts.left ?? 60;
   const top = opts.top ?? 90;
   const created: PowerPoint.Shape[] = [];
-  const total = scene.nodes.length;
-  for (let i = 0; i < total; i += SHAPES_PER_SYNC) {
+  // SHAPES, not nodes. One node is not one shape: a wedge fans out into up to 62
+  // triangles and a polygon becomes one line per edge, so slicing scene.nodes by
+  // SHAPES_PER_SYNC handed the host ~50 shapes for a pie and 253 for a violin —
+  // exactly the flood this batching exists to prevent. (Every batching test used
+  // the all-rect `stacked` config, where nodes and shapes happen to be 1:1, so
+  // none of them saw it.) Big polygons are split across batches too; each edge is
+  // an independent shape, so there is nothing to keep together.
+  const steps: ((shapes: PowerPoint.ShapeCollection) => PowerPoint.Shape[])[] = [];
+  for (const n of scene.nodes) {
+    if (n.kind === "polygon" && n.points.length > SHAPES_PER_SYNC) {
+      for (let from = 0; from < n.points.length; from += SHAPES_PER_SYNC) {
+        steps.push((sh) => addPolygonEdges(sh, n, left, top, from, SHAPES_PER_SYNC));
+      }
+    } else {
+      steps.push((sh) => addNode(sh, n, left, top, opts));
+    }
+  }
+
+  const total = estimateOfficeShapes(scene);
+  let sent = 0;
+  let s = 0;
+  while (s < steps.length) {
     // Fresh slide proxy per batch: a proxy held across the previous sync may have
     // been rewritten to an unusable getItem(id) — see SlideThunk.
     const shapes = getSlide().shapes;
-    for (const n of scene.nodes.slice(i, i + SHAPES_PER_SYNC)) {
-      created.push(...addNode(shapes, n, left, top, opts));
-    }
-    const upTo = Math.min(i + SHAPES_PER_SYNC, total);
+    const before = created.length;
+    // Always draw at least one step, then keep going while the batch stays under
+    // budget — a single indivisible node (a 16-triangle wedge fan) is its own
+    // floor, and drawing it alone is the smallest batch available.
+    do {
+      created.push(...steps[s++](shapes));
+    } while (s < steps.length && created.length - before < SHAPES_PER_SYNC);
+    sent += created.length - before;
+    const upTo = Math.min(sent, total);
     // Reported BEFORE the sync, and deliberately: the sync is where a bad host
     // stops answering, so this is the number that has to be on screen WHILE we
     // wait. Reporting after would leave the pane naming the previous phase and
@@ -961,7 +1085,11 @@ async function renderShapesChunked(
     onBatch?.(upTo, total);
     // Budget per BATCH, not per chart: a stalled host must still be caught, but
     // the limit now measures a batch we know the host can swallow.
-    await withTimeout(context.sync(), BATCH_TIMEOUT_MS, `drawing shapes ${i + 1}-${upTo} of ${total}`);
+    await withTimeout(
+      context.sync(),
+      BATCH_TIMEOUT_MS,
+      `drawing shapes ${upTo - (created.length - before) + 1}-${upTo} of ${total}`,
+    );
   }
   return created;
 }
@@ -990,7 +1118,10 @@ interface Grouping {
  * outcome the per-chart catch already produced, just wider — and in both cases
  * the charts are on the slide, because their shapes committed a phase earlier.
  */
-async function groupAndTagAll(context: PowerPoint.RequestContext, items: Grouping[]): Promise<void> {
+async function groupAndTagAll(
+  context: PowerPoint.RequestContext,
+  items: Grouping[],
+): Promise<{ target?: PowerPoint.Shape; partIds?: string[] }[]> {
   const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
   // Which charts actually ended up as one shape. The rest hang everything the
   // group would have carried off their first shape instead — see below.
@@ -1033,12 +1164,25 @@ async function groupAndTagAll(context: PowerPoint.RequestContext, items: Groupin
         // The rest of an ungrouped chart travels with the tagged shape, so an
         // in-place update can delete all of it — see CHART_PARTS_TAG.
         if (partsJson[i]) target!.tags.add(CHART_PARTS_TAG, partsJson[i]!);
+        // The origin this chart was actually drawn at, so a later in-place
+        // update re-renders here instead of at the shape's own corner — see
+        // CHART_ORIGIN_TAG. Same defaults renderShapesChunked resolves.
+        target!.tags.add(CHART_ORIGIN_TAG, JSON.stringify([it.opts.left ?? 60, it.opts.top ?? 90]));
+        // Queued in the SAME sync as the tags, so handing the caller a usable
+        // new target costs no extra round-trip. An update replaces every shape,
+        // so the caller's old target is dead the moment this returns — see
+        // updateChartsInSlides.
+        target!.load("id,left,top");
       }
       await context.sync();
     } catch {
       /* tags unavailable — charts are inserted but not re-editable */
     }
   }
+  return items.map((_, i) => ({
+    target: tagTargets[i],
+    partIds: partsJson[i] ? (JSON.parse(partsJson[i]!) as string[]) : undefined,
+  }));
 }
 
 /**
@@ -1139,6 +1283,43 @@ interface SegmentStyle {
  * - Solid diagonal (line-chart series, the common case): a thin rotated
  *   rectangle, which is direction-correct on every host.
  */
+/**
+ * Draw a RANGE of a polygon's edges. No freeform paths in Office.js, so the
+ * outline becomes connected line segments (translucent fills degrade to
+ * outline-only in PowerPoint). These go through addSegment like any other line —
+ * passing each edge's bounding box straight to addLine mirrored every up-right
+ * edge and gave horizontal ones a zero-height box.
+ *
+ * The range exists because a single polygon can be far bigger than one batch: a
+ * violin body is one node but 82 edges, i.e. 82 shapes. Each edge is an
+ * independent shape with no ordering constraint, so the renderer splits them
+ * across syncs rather than handing the host 82 at once (see renderShapesChunked).
+ */
+function addPolygonEdges(
+  shapes: PowerPoint.ShapeCollection,
+  n: PolygonNode,
+  dx: number,
+  dy: number,
+  from = 0,
+  count = Number.POSITIVE_INFINITY,
+): PowerPoint.Shape[] {
+  const created: PowerPoint.Shape[] = [];
+  const pts = n.points;
+  const end = Math.min(pts.length, from + count);
+  for (let i = from; i < end; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    created.push(
+      addSegment(shapes, dx + a.x, dy + a.y, dx + b.x, dy + b.y, {
+        stroke: n.stroke ?? n.fill ?? "#000000",
+        strokeWidth: n.strokeWidth,
+        name: n.name ? `${n.name}-e${i}` : undefined,
+      }),
+    );
+  }
+  return created;
+}
+
 function addSegment(
   shapes: PowerPoint.ShapeCollection,
   x1: number,
@@ -1190,11 +1371,8 @@ function addSegment(
   });
   solidFill(rect.fill, s.stroke);
   rect.lineFormat.visible = false;
-  try {
-    rect.rotation = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
-  } catch {
-    /* rotation unsupported — line renders horizontally */
-  }
+  // Gated, not wrapped — see canRotate. Without it the line renders horizontally.
+  if (canRotate()) rect.rotation = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
   if (s.name) rect.name = s.name;
   return rect;
 }
@@ -1329,27 +1507,8 @@ function addNode(
     }
     case "wedge":
       return addWedgeFan(shapes, n, dx, dy);
-    case "polygon": {
-      // No freeform paths in Office.js: draw the outline as connected line
-      // segments (translucent fills degrade to outline-only in PowerPoint).
-      // These go through addSegment like any other line — passing each edge's
-      // bounding box straight to addLine mirrored every up-right edge and gave
-      // horizontal ones a zero-height box.
-      const created: PowerPoint.Shape[] = [];
-      const pts = n.points;
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[i];
-        const b = pts[(i + 1) % pts.length];
-        created.push(
-          addSegment(shapes, dx + a.x, dy + a.y, dx + b.x, dy + b.y, {
-            stroke: n.stroke ?? n.fill ?? "#000000",
-            strokeWidth: n.strokeWidth,
-            name: n.name ? `${n.name}-e${i}` : undefined,
-          }),
-        );
-      }
-      return created;
-    }
+    case "polygon":
+      return addPolygonEdges(shapes, n, dx, dy);
     case "text":
       return [addText(shapes, n, dx, dy, opts)];
     case "arrowhead": {
@@ -1364,13 +1523,9 @@ function addNode(
       });
       solidFill(shape.fill, n.fill);
       shape.lineFormat.visible = false;
-      try {
-        // Geometric 'triangle' points up (= -90° in scene terms); rotation is
-        // exposed from PowerPointApi 1.10 — best effort on older hosts.
-        (shape as unknown as { rotation: number }).rotation = box.rotation;
-      } catch {
-        /* rotation unsupported — arrowhead stays axis-aligned */
-      }
+      // Geometric 'triangle' points up (= -90° in scene terms). Gated, not
+      // wrapped — see canRotate; without it the arrowhead stays axis-aligned.
+      if (canRotate()) (shape as unknown as { rotation: number }).rotation = box.rotation;
       if (n.name) shape.name = n.name;
       return [shape];
     }
@@ -1436,6 +1591,10 @@ function addText(
  */
 function addWedgeFan(shapes: PowerPoint.ShapeCollection, n: WedgeNode, dx: number, dy: number): PowerPoint.Shape[] {
   const created: PowerPoint.Shape[] = [];
+  // Every shape in the fan is rotated, so on a host without 1.10 there is no fan
+  // to draw. Checked ONCE, up front: gated rather than wrapped, because the
+  // rejection would otherwise land on the shared sync — see canRotate.
+  if (!canRotate()) return created;
   const cx = dx + n.cx;
   const cy = dy + n.cy;
   const span = n.endAngle - n.startAngle;

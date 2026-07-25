@@ -17,6 +17,7 @@ import {
   updateChartsInSlides,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
 import { buildAgendaScene } from "../src/core/agenda";
 import type { ChartConfig, MarkerSymbol } from "../src/core/types";
 import type { DemoReport } from "../src/render/powerpoint";
@@ -86,6 +87,10 @@ function makeShape(
     grouped: undefined as unknown[] | undefined,
     delete() {
       shape.deleted = true;
+      // Deleting a group deletes what it contains — otherwise an in-place update
+      // leaves every child on the slide and the fake shows orphans the host
+      // would never have.
+      for (const child of (shape.grouped ?? []) as { deleted: boolean }[]) child.deleted = true;
     },
     untrack() {
       untracked.shapes++;
@@ -123,7 +128,11 @@ function makeSlide(id: string) {
     isNullObject: false,
     load() {},
     shapes: {
-      items: created,
+      // A deleted shape is gone from the host's collection; keeping it in `items`
+      // let readbacks (listChartsInDeck) count a chart that no longer exists.
+      get items() {
+        return created.filter((s) => !s.deleted);
+      },
       load() {},
       addGeometricShape(geo: string, box: FakeShape["box"]) {
         const s = makeShape("geometric", geo, box);
@@ -142,7 +151,20 @@ function makeSlide(id: string) {
         return s;
       },
       addGroup(items: FakeShape[]) {
-        const g = makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 });
+        // A real group's frame is the BOUNDING BOX of its children, not the
+        // origin the caller drew at. Returning {0,0,0,0} made a group's position
+        // meaningless and hid the update-drift bug entirely: the renderer reads
+        // this back as an EditTarget and (before CHART_ORIGIN_TAG) fed it in as
+        // the next render's frame origin, walking the chart down the slide.
+        const box = items.length
+          ? {
+              left: Math.min(...items.map((s) => s.left)),
+              top: Math.min(...items.map((s) => s.top)),
+              width: Math.max(...items.map((s) => s.left + s.width)) - Math.min(...items.map((s) => s.left)),
+              height: Math.max(...items.map((s) => s.top + s.height)) - Math.min(...items.map((s) => s.top)),
+            }
+          : { left: 0, top: 0, width: 0, height: 0 };
+        const g = makeShape("group", undefined, box);
         g.grouped = items;
         created.push(g);
         return g;
@@ -780,6 +802,40 @@ describe("scene node mapping", () => {
     expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
   });
 
+  // Shape.rotation is PowerPointApi 1.10 and the manifests admit hosts from 1.4.
+  // A try/catch around the assignment catches NOTHING on a real host: Office.js
+  // proxy setters do not throw synchronously — the host rejects the queued
+  // command at the next context.sync(), which carries the whole batch. So the
+  // fake here rejects at SYNC, the way PowerPoint does, not at the setter.
+  it.each(["pie", "doughnut", "sunburst"])(
+    "%s still inserts on a pre-1.10 host (rotation gated, not wrapped)",
+    async (kind) => {
+      const slide = makeSlide("s-old");
+      const ctx = installHost([slide], [], slide, (v) => v !== "1.10");
+      const realSync = ctx.sync;
+      ctx.sync = async () => {
+        // Any rotation assigned on a host without 1.10 poisons the whole batch.
+        if (slide.created.some((sh) => sh.rotation !== undefined)) {
+          throw new Error("PropertyNotSupported: Shape.rotation requires PowerPointApi 1.10");
+        }
+        return realSync();
+      };
+      const scene = buildChart(sampleConfig(kind as never));
+      // Must not reject: the chart degrades (no wedges) instead of failing.
+      let failure: unknown = null;
+      try {
+        await insertSceneIntoSlide(scene, { tagData: "{}" });
+      } catch (e) {
+        failure = e;
+      }
+      expect(failure, `insert rejected on a pre-1.10 host: ${String(failure)}`).toBeNull();
+      // The rest of the chart — labels, leader lines — still lands on the slide.
+      expect(slide.created.length).toBeGreaterThan(0);
+      // …and nothing carries a rotation the host cannot accept.
+      expect(slide.created.every((sh) => sh.rotation === undefined)).toBe(true);
+    },
+  );
+
   it("degrades gracefully when the host lacks grouping and rotation", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
@@ -982,8 +1038,75 @@ describe("proxy lifecycle", () => {
     const b = makeShape("geometric", "rectangle", { left: 2, top: 2, width: 1, height: 1 });
     installHost([slide], [a, b]);
     await listChartsInSelection();
-    expect(untracked.tags).toBe(4); // both selected shapes' config AND parts tags
+    expect(untracked.tags).toBe(6); // both selected shapes' config, parts AND origin tags
     expect(untracked.shapes).toBe(2);
+  });
+});
+
+describe("in-place update keeps the chart where it is", () => {
+  // The tagged shape's left/top is NOT the frame origin: grouped it is the
+  // group's bounding box, ungrouped it is whatever created[0] happens to be.
+  // Feeding it back as the next render's origin shifted the chart by the scene's
+  // ink offset — and compounded, so Same Scale walked charts off the slide.
+  const cfg: ChartConfig = {
+    kind: "stacked",
+    ...DEFAULT_SIZE,
+    data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 4] }] },
+  };
+
+  const cycle = async (grouped: boolean) => {
+    const slide = makeSlide("s1");
+    installHost([slide], [], slide, grouped ? () => true : (v) => v !== "1.8");
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const charts = await listChartsInDeck();
+      expect(charts).toHaveLength(1);
+      const t = charts[0].target;
+      seen.push(`${Math.round(t.left)},${Math.round(t.top)}`);
+      await updateChartsInSlides([{ scene: buildChart(cfg), target: t, opts: { tagData: JSON.stringify(cfg) } }]);
+    }
+    return seen;
+  };
+
+  it("does not drift when the host groups (desktop)", async () => {
+    const seen = await cycle(true);
+    expect(new Set(seen).size, `chart moved across update cycles: ${seen.join(" -> ")}`).toBe(1);
+  });
+
+  it("does not drift when the host cannot group (web)", async () => {
+    const seen = await cycle(false);
+    expect(new Set(seen).size, `chart moved across update cycles: ${seen.join(" -> ")}`).toBe(1);
+  });
+});
+
+describe("repeated in-place updates keep landing", () => {
+  // An update replaces every shape, so the caller's EditTarget is dead the
+  // moment it returns. Before updateChartsInSlides handed back a fresh one, the
+  // SECOND update named a shape that no longer existed, was filtered out as
+  // "the user deleted this chart", and did nothing — with no error. Auto-update
+  // (which fires 900ms after every control change) died the same way after one
+  // push, so the pane looked like "Update stopped working".
+  it("a second update against the returned target still lands", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg: ChartConfig = {
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 2] }] },
+    };
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: '{"v":0}' });
+    let target = (await listChartsInDeck())[0].target;
+
+    for (const v of [1, 2, 3]) {
+      const next = await updateChartInSlide(buildChart(cfg), target, { tagData: `{"v":${v}}` });
+      expect(next, `update ${v} returned no target`).toBeTruthy();
+      target = next!;
+      // The edit actually reached the slide, every time.
+      const live = await listChartsInDeck();
+      expect(live, `update ${v} lost the chart`).toHaveLength(1);
+      expect(JSON.parse(live[0].configJson).v, `update ${v} silently did nothing`).toBe(v);
+    }
   });
 });
 
@@ -1228,7 +1351,8 @@ describe("Office round-trips do not scale with the chart count", () => {
     failSyncOn = 3 + batches * 3 /* 3 charts */ + 1;
     try {
       const items = targetsOn(slide, 3);
-      await expect(updateChartsInSlides(items)).resolves.toBeUndefined();
+      // One refreshed target per chart — the caller needs them to stay live.
+      await expect(updateChartsInSlides(items)).resolves.toHaveLength(items.length);
       // Each chart's OWN config, back on each chart's OWN first shape.
       const tagged = slide.created.filter((s) => s.tagStore.has(CHART_TAG));
       expect(tagged.map((s) => s.tagStore.get(CHART_TAG))).toEqual(['{"i":0}', '{"i":1}', '{"i":2}']);
@@ -1684,6 +1808,29 @@ describe("the wait budget scales with the work", () => {
     expect(Math.max(...perSync), `handed over at once: ${perSync.join(",")}`).toBeLessThanOrEqual(10);
   });
 
+  // The batching above counts SHAPES. A node is not a shape: a wedge fans into
+  // triangles and a polygon becomes one line per edge, so the kinds that flood
+  // the host are exactly the ones the all-rect `stacked` config cannot exercise.
+  it.each(["pie", "doughnut", "sunburst", "radar", "violin"])(
+    "batches %s by shapes, not nodes — the wedge/polygon flood",
+    async (kind) => {
+      const slide = makeSlide(`s-${kind}`);
+      const perSync: number[] = [];
+      let last = 0;
+      const ctx = installHost([slide]);
+      ctx.sync = async () => {
+        trips.syncs++;
+        perSync.push(slide.created.length - last);
+        last = slide.created.length;
+      };
+      const scene = buildChart(sampleConfig(kind as never));
+      await insertSceneIntoSlide(scene, { tagData: "{}" });
+      // A single indivisible node (a wedge fan) may exceed the budget on its own;
+      // nothing may exceed the host's measured breaking point of ~18.
+      expect(Math.max(...perSync), `${kind} handed over at once: ${perSync.join(",")}`).toBeLessThanOrEqual(18);
+    },
+  );
+
   it("still bounds a trivial insert — the floor, not zero", async () => {
     vi.useFakeTimers();
     try {
@@ -1793,7 +1940,9 @@ describe("a target whose slide is gone is nothing to do, not a crash", () => {
           opts: { tagData: '{"ok":1}' },
         },
       ]),
-    ).resolves.toBeUndefined();
+      // One refreshed target back: the live chart's. The dead one contributes
+      // nothing, and must not take the live one down with it.
+    ).resolves.toHaveLength(1);
     // The live chart still got drawn and tagged — one dead target must not take
     // the others down.
     const group = live.created.find((c) => c.type === "group");
@@ -1809,7 +1958,7 @@ describe("a target whose slide is gone is nothing to do, not a crash", () => {
       updateChartsInSlides([
         { scene: buildChart(config), target: { slideId: "nope", shapeId: "nope", left: 0, top: 0 }, opts: {} },
       ]),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual([]);
     expect(slide.created.length).toBe(before);
   });
 });
