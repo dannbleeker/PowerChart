@@ -348,7 +348,9 @@ export async function updateChartsInSlides(
         // delta is zero and the chart re-renders exactly where it is; moved, it
         // follows the move. Charts with no usable origin tag fall back to the
         // shape position — see CHART_ORIGIN_TAG.
-        left: it.target.origin ? it.target.origin.left + (it.target.left - it.target.origin.anchorLeft) : it.target.left,
+        left: it.target.origin
+          ? it.target.origin.left + (it.target.left - it.target.origin.anchorLeft)
+          : it.target.left,
         top: it.target.origin ? it.target.origin.top + (it.target.top - it.target.origin.anchorTop) : it.target.top,
         altText: it.scene.desc,
         altTitle: it.scene.title,

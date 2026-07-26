@@ -1099,9 +1099,7 @@ describe("in-place update keeps the chart where it is", () => {
     const moved = (await listChartsInDeck())[0].target;
     expect(moved.left).toBeCloseTo(before.left + dx, 5);
 
-    await updateChartsInSlides([
-      { scene: buildChart(cfg), target: moved, opts: { tagData: JSON.stringify(cfg) } },
-    ]);
+    await updateChartsInSlides([{ scene: buildChart(cfg), target: moved, opts: { tagData: JSON.stringify(cfg) } }]);
     const after = (await listChartsInDeck())[0].target;
     expect(after.left, "update dragged the chart back to its insert position").toBeCloseTo(moved.left, 5);
     expect(after.top, "update dragged the chart back to its insert position").toBeCloseTo(moved.top, 5);
