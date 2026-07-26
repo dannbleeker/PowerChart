@@ -95,7 +95,14 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
       { text: stages[c], y: plot.y + h * 0.18, bold: false, size: fs },
       { text: formatNumber(v, fmt), y: plot.y + h * 0.5 - fs * 0.75, bold: true, size: fs * 1.05 },
       ...(pct != null
-        ? [{ text: `(${formatPercent(pct, 1)})`, y: plot.y + h * 0.5 + fs * 0.7, bold: false, size: fs }]
+        ? [
+            {
+              text: `(${formatPercent(pct, 1, false, cfg.numberFormat?.locale)})`,
+              y: plot.y + h * 0.5 + fs * 0.7,
+              bold: false,
+              size: fs,
+            },
+          ]
         : []),
     ];
     for (const [i, line] of lines.entries()) {
@@ -129,7 +136,9 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const segH = toH(rem);
         const remPct = values[c - 1] > 0 ? rem / values[c - 1] : null;
         const caption = dropLabels[c] || cfg.labels?.other || "Other";
-        const numbers = `${formatNumber(rem, fmt)}${remPct != null ? ` (${formatPercent(remPct, 1)})` : ""}`;
+        const numbers = `${formatNumber(rem, fmt)}${
+          remPct != null ? ` (${formatPercent(remPct, 1, false, cfg.numberFormat?.locale)})` : ""
+        }`;
         const oneLine = `${caption}: ${numbers}`;
         const ink = contrastInk(style.neutral);
         nodes.push({

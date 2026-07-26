@@ -460,3 +460,18 @@ describe("dense slope chart keeps every end label on the canvas", () => {
     expect(s.nodes.filter((n) => n.name?.startsWith("slope-left-"))).toHaveLength(12);
   });
 });
+
+describe("date-spaced line categories", () => {
+  it("spaces category centers proportionally to time", () => {
+    const s = buildChart({
+      kind: "line",
+      ...DEFAULT_SIZE,
+      data: { categories: ["2025-01", "2025-02", "2025-12"], series: [{ name: "S", values: [1, 2, 3] }] },
+    } as ChartConfig);
+    const pts = s.nodes.filter((n) => n.name?.startsWith("marker-0-"));
+    expect(pts).toHaveLength(3);
+    const xs = pts.map((p) => (p.kind === "rect" ? p.x : 0));
+    // Jan→Feb gap must be far smaller than Feb→Dec.
+    expect(xs[1] - xs[0]).toBeLessThan((xs[2] - xs[1]) / 5);
+  });
+});

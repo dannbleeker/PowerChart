@@ -4,6 +4,7 @@ import { divergingScale, noDataFill, sequentialScale } from "../src/core/color";
 import { logFloor, valueScale } from "../src/core/layout/frame";
 import type { RectNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
+import { niceTicks as niceTicksFn } from "../src/core/format";
 
 /** Axis & scale — log floors, canvas-relative scales, manual-min guards. */
 
@@ -132,5 +133,18 @@ describe("log scale", () => {
     expect(s.ticks[s.ticks.length - 1]).toBe(10000);
     // 100 sits halfway between 1 and 10000 in log space.
     expect(s.toY(100)).toBeCloseTo(50, 1);
+  });
+});
+
+describe("niceTicks edge cases", () => {
+  it("degenerate ranges still produce a usable axis", () => {
+    expect(niceTicksFn(5, 5).length).toBeGreaterThan(1);
+    expect(niceTicksFn(0, 0)).toEqual([0, 1]);
+  });
+  it("picks 1/2/5/10 steps across magnitudes", () => {
+    expect(niceTicksFn(0, 10, 5)).toEqual([0, 5, 10]);
+    expect(niceTicksFn(0, 7, 5)).toEqual([0, 2, 4, 6, 8]);
+    expect(niceTicksFn(0, 3, 5)).toEqual([0, 1, 2, 3]);
+    expect(niceTicksFn(0, 0.4, 5)).toContain(0.1);
   });
 });

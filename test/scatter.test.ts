@@ -234,3 +234,49 @@ describe("point labels follow a spread marker", () => {
     }
   });
 });
+
+describe("scatter edge cases", () => {
+  const scatterData = (over: Partial<ChartConfig["data"]> = {}): ChartConfig["data"] => ({
+    categories: ["P1", "P2"],
+    series: [
+      { name: "X", values: [1, 4] },
+      { name: "Y", values: [2, 8] },
+    ],
+    ...over,
+  });
+  const c = (partial: Partial<ChartConfig>): ChartConfig =>
+    ({ kind: "scatter", ...DEFAULT_SIZE, data: scatterData(), ...partial }) as ChartConfig;
+
+  it("a single point renders without dividing by zero", () => {
+    const s = buildChart(
+      c({
+        data: {
+          categories: ["P"],
+          series: [
+            { name: "X", values: [3] },
+            { name: "Y", values: [3] },
+          ],
+        },
+      }),
+    );
+    expect(s.nodes.some((n) => n.name?.startsWith("point"))).toBe(true);
+  });
+
+  it("uses a custom palette for group colors", () => {
+    const s = buildChart(
+      c({
+        style: { palette: ["#111111", "#222222"] },
+        data: scatterData({ series: [...scatterData().series, { name: "Group", values: [1, 2] }] }),
+      }),
+    );
+    const chips = s.nodes.filter((n) => n.name?.startsWith("legend-chip"));
+    expect(chips.length).toBe(2);
+    expect(chips.some((ch) => ch.kind === "rect" && ch.fill === "#111111")).toBe(true);
+  });
+
+  it("labelContent controls point labels", () => {
+    const s = buildChart(c({ decorations: { segmentLabels: true, labelContent: ["category", "value"] } }));
+    const labels = s.nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("label-"));
+    expect(labels.map((l) => l.text)).toContain("P1 (1.0, 2.0)");
+  });
+});

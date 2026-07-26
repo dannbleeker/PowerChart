@@ -121,6 +121,31 @@ export function resolveAxisFormat(ticks: number[], fmt: Partial<NumberFormat> = 
 }
 
 /**
+ * The label function for a value axis's tick strip.
+ *
+ * The one place a value-axis tick becomes text, shared by the vertical chrome
+ * and the horizontal (bar) chrome — they had drifted twice over. Only the
+ * vertical one used `resolveAxisFormat`, so a narrow horizontal axis printed
+ * the duplicate labels that function exists to prevent; and the share branch's
+ * suffix fix had to be made in both places.
+ *
+ * A share axis is labelled in percent: the ticks are fractions and the segments
+ * beside them already read "60%", so precision comes from the SCALED ticks and
+ * each label still names its own tick. A share is also unitless — `formatNumber`
+ * appends `numberFormat.suffix` (the documented way to say "millions"), which
+ * labelled a 100% axis "25 m%".
+ */
+export function axisTickLabel(
+  ticks: number[],
+  percent: boolean | undefined,
+  fmt: Partial<NumberFormat> = {},
+): (t: number) => string {
+  const axisFmt = resolveAxisFormat(percent ? ticks.map((t) => t * 100) : ticks, fmt);
+  const shareFmt = { ...axisFmt, suffix: undefined };
+  return (t: number) => (percent ? `${formatNumber(t * 100, shareFmt)}%` : formatNumber(t, axisFmt));
+}
+
+/**
  * A share (0.358 → "35.8%") in the chart's own locale.
  *
  * Percent labels sit next to `formatNumber` ones — the funnel's conversion rate

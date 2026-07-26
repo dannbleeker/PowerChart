@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
-import { niceTicks, formatNumber, resolveAxisFormat } from "../format";
+import { niceTicks, axisTickLabel } from "../format";
 
 export interface Frame {
   /** Plot rectangle in chart coordinates. */
@@ -381,17 +381,9 @@ export function chromeNodes(
     const marks = decor.valueAxis === "datamarks";
     const ticks = marks && decor.tickMode === "data" ? [...new Set([scale.min, scale.max])] : scale.ticks;
     // Tick labels are read against each other, so their precision comes from the
-    // tick step, not the tick magnitude (resolveAxisFormat) — otherwise a narrow
-    // axis prints the same label at several heights.
-    // A share axis is labelled in percent — the ticks are fractions, and the
-    // segments beside them already read "60%". Precision comes from the SCALED
-    // ticks so each label still names its own tick.
-    const axisFmt = resolveAxisFormat(scale.percent ? ticks.map((t) => t * 100) : ticks, cfg.numberFormat);
-    // A share is unitless: formatNumber appends numberFormat.suffix (the
-    // documented way to say "millions"), which labelled a 100% axis "25 m%"
-    // while its own segment labels correctly read "25%".
-    const shareFmt = { ...axisFmt, suffix: undefined };
-    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, shareFmt)}%` : formatNumber(t, axisFmt));
+    // tick step, not the tick magnitude — otherwise a narrow axis prints the same
+    // label at several heights. See axisTickLabel for that and for the share case.
+    const axisLabel = axisTickLabel(ticks, scale.percent, cfg.numberFormat);
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {

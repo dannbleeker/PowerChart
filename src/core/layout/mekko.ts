@@ -156,7 +156,9 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   );
   if (decor.categoryAxis) {
     for (let c = 0; c < n; c++) {
-      const label = units ? data.categories[c] : `${data.categories[c]} (${formatPercent(extents[c] / grand)})`;
+      const label = units
+        ? data.categories[c]
+        : `${data.categories[c]} (${formatPercent(extents[c] / grand, 0, false, cfg.numberFormat?.locale)})`;
       if (H) {
         nodes.push({
           kind: "text",

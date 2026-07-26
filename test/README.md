@@ -10,7 +10,9 @@ it.** A chart kind's tests live in `<kind>.test.ts`; a cross-cutting feature's
 tests live in `<feature>.test.ts`. If you add a kind or feature, add or extend
 the matching file — don't start a `batch-N` / `backlog-x` grab-bag. (The old
 `backlog-a…t`, `bug-hunt`, `hunt-*`, `r2-*` files were exactly that, and were
-split back out into the topic files below.)
+split back out into the topic files below. So were `coverage-core` /
+`coverage-branches`, which named a _mechanism_ rather than a topic — a test
+belongs with the thing it tests, not with the reason it was written.)
 
 ## Where things live
 
@@ -23,11 +25,13 @@ split back out into the topic files below.)
   floors), `format` / `format-edge` (number & label formatting), `dates`,
   `palette`, `data-sorting`, `legend-layout`, `decor-guards` /
   `decoration-layout` (decoration clipping & anchoring), `value-extent`
-  (cross-kind extent/auto-scale invariants), `geometry`, `good-chart*`.
+  (cross-kind extent/auto-scale invariants), `geometry`, `color` (paint parsing
+  & contrast ink), `collide` (label collision resolution), `good-chart*`.
 - **Renderers & app** — `office-render` (Office.js fake host), `pptx-paint`
-  (headless pptx node mapping), `pane-state` / `pane-host-actions` /
-  `pane-widgets` / `dom-pane` (task pane), `skill*`, `parity`, `snapshots`,
-  `a11y-svg`, `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
+  (headless pptx node mapping), `svg-render` (SVG node emission — paths,
+  polygons, options), `pane-state` / `pane-host-actions` / `pane-widgets` /
+  `dom-pane` (task pane), `skill*`, `parity`, `snapshots`, `a11y-svg`,
+  `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
 
 ## Lockstep-gated files — do not rename
 

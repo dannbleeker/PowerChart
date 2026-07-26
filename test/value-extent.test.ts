@@ -351,3 +351,45 @@ describe("valueExtent reports what the layout draws", () => {
     expect(valueExtent(withMean)).toEqual(valueExtent(plain));
   });
 });
+
+describe("valueExtent (Same Scale)", () => {
+  const data2 = (a: number[], b: number[]): ChartConfig["data"] => ({
+    categories: ["A", "B", "C"].slice(0, a.length),
+    series: [
+      { name: "S1", values: a },
+      { name: "S2", values: b },
+    ],
+  });
+  const c = (partial: Partial<ChartConfig>): ChartConfig => ({
+    kind: "stacked",
+    data: data2([10, 20, 30], [5, 5, 5]),
+    ...DEFAULT_SIZE,
+    ...partial,
+  });
+
+  it("stacked sums positives and negatives per category", () => {
+    expect(valueExtent(c({ data: data2([10, -4, 30], [5, -6, 5]) }))).toEqual({ min: -10, max: 35 });
+  });
+  it("clustered/line use the raw value range", () => {
+    expect(valueExtent(c({ kind: "clustered" }))).toEqual({ min: 0, max: 30 });
+    expect(valueExtent(c({ kind: "line", data: data2([-2, 8, 4], [1, 1, 1]) }))).toEqual({ min: -2, max: 8 });
+  });
+  it("area stacks positive values from zero", () => {
+    expect(valueExtent(c({ kind: "area" }))).toEqual({ min: 0, max: 35 });
+  });
+  it("waterfall tracks the running level", () => {
+    expect(
+      valueExtent(
+        c({
+          kind: "waterfall",
+          data: { categories: ["Start", "Up", "Down", "End"], series: [{ name: "S", values: [50, 20, -30, 0] }] },
+          waterfall: { totalIndices: [3] },
+        }),
+      ),
+    ).toEqual({ min: 0, max: 70 });
+  });
+  it("returns null when there is nothing to measure", () => {
+    expect(valueExtent(c({ data: { categories: [], series: [] } }))).toBeNull();
+    expect(valueExtent(c({ kind: "pie" }))).toBeNull();
+  });
+});

@@ -202,3 +202,56 @@ describe("callouts stay on the canvas", () => {
     expect(box.y!).toBeLessThan(anchor.y!);
   });
 });
+
+describe("difference arrow anchored to a value line", () => {
+  const c = (partial: Partial<ChartConfig>): ChartConfig => ({
+    kind: "stacked",
+    data: {
+      categories: ["A", "B", "C"],
+      series: [
+        { name: "S1", values: [10, 20, 30] },
+        { name: "S2", values: [5, 5, 5] },
+      ],
+    },
+    ...DEFAULT_SIZE,
+    ...partial,
+  });
+  const texts = (s: ReturnType<typeof buildChart>) => s.nodes.filter((n): n is TextNode => n.kind === "text");
+
+  const pair = { from: 0, to: 2 };
+  const hasDiffLabel = (decorations: ChartConfig["decorations"]) =>
+    texts(buildChart(c({ decorations }))).some((t) => t.name === "diff-label");
+
+  it("anchors at a mean value line", () => {
+    expect(
+      hasDiffLabel({
+        segmentLabels: true,
+        valueLines: [{ mode: "mean" }],
+        difference: { ...pair, fromValueLine: 0 },
+      }),
+    ).toBe(true);
+  });
+
+  it("anchors at a fixed value line", () => {
+    expect(
+      hasDiffLabel({
+        segmentLabels: true,
+        valueLines: [{ mode: "value", value: 20 }],
+        difference: { ...pair, fromValueLine: 0 },
+      }),
+    ).toBe(true);
+  });
+
+  it("normalizes the deprecated single valueLine field", () => {
+    const s = buildChart(
+      c({
+        decorations: {
+          segmentLabels: true,
+          valueLine: { mode: "mean" },
+          difference: { ...pair, fromValueLine: 0 },
+        },
+      }),
+    );
+    expect(s.nodes.some((n) => n.name?.startsWith("value-line"))).toBe(true);
+  });
+});
