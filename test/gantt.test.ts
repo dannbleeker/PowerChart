@@ -36,7 +36,6 @@ const node = (nodes: { name?: string }[], name: string) => nodes.find((n) => n.n
 const ink = (hex: string) =>
   parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
 
-/** Backlog batch C: gantt progress + baselines, grouped boxplots. */
 describe("gantt progress and baselines", () => {
   const cfg: ChartConfig = {
     kind: "gantt",
@@ -99,10 +98,6 @@ describe("gantt progress and baselines", () => {
   });
 });
 
-/**
- * Backlog batch J — more §2 within-kind gaps: gantt auto-summary bars,
- * notched boxplots, radar min–max (peer range + us) band.
- */
 describe("gantt auto-summary bars", () => {
   const cfg: ChartConfig = {
     kind: "gantt",
@@ -136,10 +131,6 @@ describe("gantt auto-summary bars", () => {
   });
 });
 
-/**
- * Batch R — three low/niche §2 gaps: critical-path Gantt highlight, the
- * mean±SD boxplot variant, and sparklines.
- */
 describe("critical-path Gantt", () => {
   // Two chains from Research: the long one (Design→Build→QA→Launch) and a
   // short branch (Copywriting). Durations make the long chain critical.

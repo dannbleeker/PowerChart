@@ -86,7 +86,6 @@ describe("line confidence bands and fill-between", () => {
   });
 });
 
-/** Backlog batch E: slope chart option, waffle kind, KPI tile element. */
 describe("slope chart (decorations.slope on line)", () => {
   const cfg: ChartConfig = {
     kind: "line",
@@ -150,10 +149,6 @@ describe("slope chart (decorations.slope on line)", () => {
   });
 });
 
-/**
- * Backlog batch G — gaps within existing kinds: stepped line/area,
- * Excel-style column gap width & clustered overlap, butterfly value ticks.
- */
 describe("stepped line", () => {
   const base: ChartConfig = {
     kind: "line",
@@ -219,10 +214,6 @@ describe("stepped area", () => {
   });
 });
 
-/**
- * Backlog batch H — more §2 within-kind gaps: area with negative values,
- * scatter/bubble trajectory trail, boxplot jittered raw-data dots.
- */
 describe("area with negative values", () => {
   const areaRects = (sc: { nodes: SceneNode[] }) =>
     sc.nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("area-"));
@@ -378,10 +369,6 @@ describe("line missing-data bridge", () => {
   });
 });
 
-/**
- * Backlog batch P — the deferred §2-tail items: horizontal profile chart
- * (line/area) and radar vertex markers (verified in the scene → add-in path).
- */
 describe("horizontal profile chart — line", () => {
   const cfg: ChartConfig = {
     kind: "line",

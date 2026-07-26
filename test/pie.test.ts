@@ -12,7 +12,6 @@ function cfg(partial: Partial<ChartConfig>): ChartConfig {
   return { kind: "stacked", width: 480, height: 300, data: { categories: [], series: [] }, ...partial };
 }
 
-/** Backlog batch F: pie-of-pie breakout, small multiples. */
 describe("pie breakout (bar-of-pie)", () => {
   const cfg: ChartConfig = {
     kind: "pie",
