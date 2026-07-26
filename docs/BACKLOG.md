@@ -7,7 +7,7 @@ Vocabulary taxonomies and competitor add-ins (Zebra BI, Vizzlo, UpSlide).
 
 **This is the only backlog document.** Items graduate from here into PRs and are
 deleted when they ship — what has shipped is recorded by the README feature
-table and by git, not here. Rejected ideas stay in §3 so they aren't
+table and by git, not here. Rejected ideas stay in §2 so they aren't
 re-proposed.
 
 Feasibility is judged against the live-add-in constraint: rects, lines, text,
@@ -42,7 +42,7 @@ patterns.
   unless rasterised high-DPI — so pair it with an **"explode to native shapes"**
   command that reads the tag, deletes the picture, and draws the real shapes on
   demand (paying the web cost only when the user actually edits). This is distinct
-  from the rejected per-point **image / icon node** in §3: that was one bitmap
+  from the rejected per-point **image / icon node** in §2: that was one bitmap
   *per data point* inside the scene graph, unreachable at the 1.4 pin; this is one
   image for the *whole chart* as an output format, with the `1.8`/ImageCoercion
   gates degrading to the native-shapes path on older hosts (like grouping
@@ -56,6 +56,11 @@ variance tier, polynomial scatter trendlines, PNG export, copy-config-as-URL) �
 see the README feature table and git for what landed. Whatever else surfaces
 starts from a fresh research pass.
 
+**No open defects.** Four adversarial bug hunts have run (PRs #186–#197,
+#202–#210); every confirmed finding is fixed with a regression guard proven
+non-vacuous against the pre-fix file. What shipped is recorded in the CHANGELOG
+and in git, not here.
+
 **Considered and dropped in that sweep** (so they aren't re-proposed): a
 screen-reader data-table alternative to `describeChart` — real WCAG best practice
 beyond ~6 points, but the primary output is native PPT shapes where alt text is
@@ -63,27 +68,9 @@ linear only, so the gain is confined to the downloaded SVG; **CSV file import** 
 already covered by the datasheet's TSV clipboard paste, which is what
 Excel/Sheets put on the clipboard; **variance/integrated bars as a new kind**,
 tornado, icicle, fan, Venn — recipes of shipped kinds or off-genre/curve-bound
-(see §3's standing rejections of recipe-of-existing-kind proposals).
+(see §2's standing rejections of recipe-of-existing-kind proposals).
 
-## 2. Residue of the July 2026 adversarial bug hunt
-
-The hunt found 59 defects across 12 lenses, each reproduced by execution and
-each re-verified by an adversarial verifier that defaulted to REFUTED. All 59
-are fixed (PRs #186-#197) with a regression guard apiece, every guard proven
-non-vacuous against the pre-fix file. What ships is recorded in the CHANGELOG
-and in git; only what is still OPEN is listed here.
-
-- **`formatPercent`'s locale is threaded through the axis/segment path but not
-  the rest** — `src/core/decor.ts`, `funnel.ts`, `cascade.ts`, `mekko.ts`,
-  `waffle.ts`. #193 made `formatPercent` locale-aware and passed
-  `numberFormat.locale` from `segmentLabel`, which fixed the case the hunt
-  measured (a de-DE funnel printing "35.8%" beside formatNumber's "12.000").
-  The remaining call sites — the CAGR and difference arrows, and the four
-  layouts' own percent labels — still call it without the locale, so a
-  localized chart can mix number systems if those decorations are on. Small and
-  mechanical; needs one fixture per call site so the guard isn't vacuous.
-
-## 3. Rejected or already covered (do not re-propose)
+## 2. Rejected or already covered (do not re-propose)
 
 - **An image / icon node** — not reachable in the live add-in, so nothing can
   be built on it. PowerPoint's `ShapeCollection` exposes exactly

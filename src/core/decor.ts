@@ -46,7 +46,7 @@ export function decorationNodes(
         y: Math.min(y1, y2) - fs * 1.6,
         w: 90,
         h: fs * 1.4,
-        text: rate == null ? "CAGR n/a" : `${formatPercent(rate, 1, true)} p.a.`,
+        text: rate == null ? "CAGR n/a" : `${formatPercent(rate, 1, true, cfg.numberFormat?.locale)} p.a.`,
         fontSize: fs,
         bold: true,
         color: style.text,
@@ -96,7 +96,7 @@ export function decorationNodes(
     const usePct = decor.difference.percent ?? true;
     const label =
       usePct && vFrom !== 0
-        ? formatPercent(vTo / vFrom - 1, 0, true)
+        ? formatPercent(vTo / vFrom - 1, 0, true, cfg.numberFormat?.locale)
         : formatNumber(vTo - vFrom, { ...cfg.numberFormat, forceSign: true });
     nodes.push({
       kind: "text",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildChart } from "../src/core/chart";
+import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import { layoutColumns } from "../src/core/layout/column";
 import { layoutWaterfall } from "../src/core/layout/waterfall";
 import { layoutMekko } from "../src/core/layout/mekko";
@@ -171,4 +171,52 @@ describe("samples build cleanly", () => {
       }
     });
   }
+});
+
+describe("horizontal bar chrome", () => {
+  const c = (partial: Partial<ChartConfig>): ChartConfig => ({
+    kind: "stacked",
+    data: {
+      categories: ["A", "B", "C"],
+      series: [
+        { name: "S1", values: [10, 20, 30] },
+        { name: "S2", values: [5, 5, 5] },
+      ],
+    },
+    ...DEFAULT_SIZE,
+    ...partial,
+  });
+  const texts = (s: ReturnType<typeof buildChart>) => s.nodes.filter((n): n is TextNode => n.kind === "text");
+
+  it("draws vertical gridlines and a bottom value axis", () => {
+    const s = buildChart(
+      c({
+        horizontal: true,
+        decorations: { gridlines: true, valueAxis: true, categoryAxis: true, segmentLabels: true },
+      }),
+    );
+    const grid = s.nodes.filter((n) => n.name === "gridline");
+    expect(grid.length).toBeGreaterThan(1);
+    // Horizontal chart gridlines are vertical strokes spanning the plot.
+    for (const g of grid) if (g.kind === "line") expect(g.x1).toBe(g.x2);
+    expect(texts(s).some((t) => t.name === "value-axis")).toBe(true);
+    expect(texts(s).some((t) => t.name?.startsWith("category-"))).toBe(true);
+  });
+
+  it("reserves a legend row on horizontal charts with series labels", () => {
+    const s = buildChart(
+      c({
+        horizontal: true,
+        data: {
+          categories: ["A", "B"],
+          series: [
+            { name: "S1", values: [1, 2] },
+            { name: "S2", values: [3, 4] },
+          ],
+        },
+        decorations: { seriesLabels: true, segmentLabels: true },
+      }),
+    );
+    expect(texts(s).map((t) => t.text)).toContain("S1");
+  });
 });

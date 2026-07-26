@@ -96,7 +96,7 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
         y: y - gap,
         w: 80,
         h: gap,
-        text: `${marker}${formatPercent(v / values[c - 1], 1)}`,
+        text: `${marker}${formatPercent(v / values[c - 1], 1, false, cfg.numberFormat?.locale)}`,
         fontSize: fs * 0.85,
         color: style.mutedText,
         align: "center",

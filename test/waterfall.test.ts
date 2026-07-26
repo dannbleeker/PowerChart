@@ -4,6 +4,7 @@ import { layoutWaterfall } from "../src/core/layout/waterfall";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import type { LineNode, RectNode, SceneNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
+import { isTotalToken } from "../src/core/layout/waterfall";
 
 /** Waterfall — chains, budget-vs-actual, grouping spacers, stacked, deltas across zero. */
 
@@ -387,5 +388,14 @@ describe("combo waterfall wfMax ignores off-chain columns", () => {
     const ys = markerYs(cfg);
     expect(ys.length).toBeGreaterThan(0);
     for (const y of ys) expect(y).toBeGreaterThanOrEqual(-1);
+  });
+});
+
+describe("waterfall total token", () => {
+  it("accepts e, =, and Σ in any case with padding", () => {
+    for (const t of ["e", "E", " e ", "=", "Σ", "σ"]) expect(isTotalToken(t), t).toBe(true);
+  });
+  it("rejects data-looking cells", () => {
+    for (const t of ["", "12", "e2", "==", "sum"]) expect(isTotalToken(t), t).toBe(false);
   });
 });

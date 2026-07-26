@@ -2,7 +2,7 @@
 
 Open-source think-cell clone: a PowerPoint charting add-in whose charts are
 **native, editable shapes** (never pictures), plus a Claude Agent Skill that
-renders the same charts headlessly. 18 chart kinds, think-cell's signature
+renders the same charts headlessly. 25 chart kinds, think-cell's signature
 decorations, and "the good chart" design formalia are all implemented — see
 the README feature table for the authoritative list.
 
@@ -34,7 +34,7 @@ Any feature change must update, in the same PR:
 
 ```bash
 npm run dev        # gallery + pane at localhost:3000
-npm test           # full suite (380+); npm run coverage enforces thresholds
+npm test           # full suite (1500+); npm run coverage enforces thresholds
 npm run typecheck
 npm run showcase   # regenerate the showcase deck (required after feature work)
 npm run skill      # build skill-dist/powerchart-charts.zip
@@ -42,9 +42,10 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 
 ## Working conventions (established with the repo owner)
 
-- **Branch flow**: develop on `claude/think-cell-clone-research-5tgx3v`; after
-  each merge, reset it onto `origin/main` (`git checkout -B <branch>
-origin/main`) — never stack on merged history. One PR per increment.
+- **Branch flow**: develop on the session's designated `claude/*` branch (the
+  task prompt names it); after each merge, reset it onto `origin/main`
+  (`git checkout -B <branch> origin/main`) — never stack on merged history.
+  One PR per increment.
 - **Auto-merge is authorized**: once CI is green on the exact pushed commit
   (verify `head_sha` matches local HEAD), merge the PR to main without asking.
 - **Snapshots** (`test/snapshots.test.ts`) freeze every sample chart's SVG.
@@ -52,6 +53,16 @@ origin/main`) — never stack on merged history. One PR per increment.
   Playwright (`/opt/pw-browsers/chromium`) and inspect before accepting.
 - **Visual QA is part of done**: render new features to SVG → PNG and look at
   them; several real bugs were only caught this way.
+- **A regression test must be proven to fail without its fix.** Stash the
+  source file, re-run, confirm the new test goes red, restore. A guard that
+  passes against the pre-fix file is not a guard — it is decoration.
+- **Test files are named by topic, never by increment** (`test/README.md` has
+  the map). No `batch-N` / `bug-hunt-N` / `coverage-*` grab-bags: a test
+  belongs with the thing it tests, not with the reason it was written.
+- **When moving tests between files, pin the total first and check it after.**
+  A reorg once silently deleted 43 tests — the suite still went green because
+  the count was never compared. `npx vitest run | grep "Tests "` before and
+  after; if the number moved and you did not add or remove a case, stop.
 - **Releases**: merges to main refresh the rolling `skill-latest` prerelease.
   Versioned releases via the Release workflow's manual dispatch (the git proxy
   rejects tag pushes — dispatch creates the tag server-side).
@@ -77,8 +88,21 @@ origin/main`) — never stack on merged history. One PR per increment.
   or the `state.extras` passthrough in `src/taskpane/app.ts`.
 - All sample/showcase data is invented dummy data (`src/core/samples.ts`,
   `scripts/build-showcase.mjs`) — keep it that way; the repo will go public.
-- GitHub MCP `actions_list` responses exceed the token cap — parse the saved
-  JSON file with python instead of reading it.
+- GitHub MCP `actions_list` and `list_pull_requests` responses exceed the token
+  cap — parse the saved JSON file with python instead of reading it. In
+  `list_pull_requests` the `merged` field is unreliable; read `merged_at`.
+- **Squash-merge hides ancestry.** A merged `claude/*` branch is NOT an
+  ancestor of `main`, so `git branch --merged` reports nothing and
+  `--contains` proves nothing. Confirm a branch is safe to delete from its
+  PR's `merged_at`, not from git.
+- Object lookups keyed by a config string must use
+  `Object.prototype.hasOwnProperty.call` — a pattern/colour/marker named
+  `__proto__` or `constructor` otherwise reaches `Object.prototype` and either
+  crashes the renderer or gets CALLED. Guarded in `svg.ts`, `pptx-paint.mjs`,
+  `geometry.ts`, `i18n.ts`; apply it to any new table.
+- `Date.parse` is far looser than a date cell: `parseDateToken` therefore
+  gates on shape (date punctuation + month/weekday words only) before parsing.
+  Don't route new cell input around it.
 
 ## Out of scope (decided, don't revisit without the owner)
 
@@ -93,7 +117,10 @@ origin/main`) — never stack on merged history. One PR per increment.
 
 `docs/BACKLOG.md` is the single curated backlog (researched candidates with
 feasibility/priority, plus a rejected list — don't re-propose those). Items
-graduate from there into PRs and are removed when shipped.
+graduate from there into PRs and are removed when shipped. As of v0.2.0 it
+carries **one** open candidate (image-output render mode) and **no open
+defects**: four adversarial bug hunts have run and every confirmed finding is
+fixed with a non-vacuous guard.
 
 ## Pending / user-gated
 
@@ -106,7 +133,10 @@ What is left needs the owner, not the agent:
 
 - **Phase 2 — sideload + validate in real PowerPoint.** Nothing has ever run
   in a real host: every Office.js assertion in this repo is against a fake.
-  Expect the first real run to surface things the mocked tests cannot.
+  Expect the first real run to surface things the mocked tests cannot. The two
+  areas with the least mock fidelity are chart **positioning** (the
+  `POWERCHART_ORIGIN` drag-delta round trip) and **grouping** on hosts that
+  gate it behind `supports("1.8")`.
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 
 Follow it phase by phase; retire items from it and from this list as they

@@ -49,7 +49,7 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const titleH = titleHeight(cfg, style);
   const legendEntries = data.categories.map((name, c) => ({
     name,
-    pct: formatPercent(values[c] / denom, quotas[c] > 0 && quotas[c] < 1 ? 1 : 0),
+    pct: formatPercent(values[c] / denom, quotas[c] > 0 && quotas[c] < 1 ? 1 : 0, false, cfg.numberFormat?.locale),
     color: data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length],
   }));
   const legendW =

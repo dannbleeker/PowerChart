@@ -274,3 +274,44 @@ describe("dataToSheet survives an unrepresentable date value", () => {
     expect(dataToSheet(gantt(20494)).cells[1][1]).toBe("2026-02-10");
   });
 });
+
+describe("sheetToData parsing fallbacks", () => {
+  it("parses calendar dates and rejects garbage text", () => {
+    const data = sheetToData({
+      cells: [
+        ["", "T1", "T2"],
+        ["Start", "2026-01-15", "not-a-date"],
+      ],
+    });
+    expect(data.dates).toBe(true);
+    expect(data.series[0].values[0]).toBeGreaterThan(20000);
+    expect(data.series[0].values[1]).toBeNull();
+  });
+
+  it("evaluates formulas and survives bad references", () => {
+    const data = sheetToData({
+      cells: [
+        ["", "A", "B", "C"],
+        ["S", "2", "=B2*2", "=SUM(B2:C2)"],
+      ],
+    });
+    expect(data.series[0].values).toEqual([2, 4, 6]);
+    // Out-of-range references read as 0; unparseable formulas become null.
+    expect(
+      sheetToData({
+        cells: [
+          ["", "A"],
+          ["S", "=ZZ99"],
+        ],
+      }).series[0].values,
+    ).toEqual([0]);
+    expect(
+      sheetToData({
+        cells: [
+          ["", "A"],
+          ["S", "=1/"],
+        ],
+      }).series[0].values,
+    ).toEqual([null]);
+  });
+});

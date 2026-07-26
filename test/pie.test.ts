@@ -212,3 +212,15 @@ describe("pie / doughnut all-zero total", () => {
     expect(texts.some((t) => t.text === "100")).toBe(true);
   });
 });
+
+describe("pie fallbacks", () => {
+  it("tolerates missing values and empty series names", () => {
+    const s = buildChart({
+      kind: "pie",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B", "C"], series: [{ name: "", values: [3, 2] }] },
+      decorations: { segmentLabels: true },
+    } as ChartConfig);
+    expect(s.nodes.some((n) => n.kind === "wedge")).toBe(true);
+  });
+});

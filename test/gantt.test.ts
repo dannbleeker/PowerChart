@@ -444,3 +444,42 @@ describe("gantt bar fills follow the palette and the theme", () => {
     expect(ink(onDark)).toBeGreaterThan(ink("#1a1a1a"));
   });
 });
+
+describe("gantt edge cases", () => {
+  const gantt = (extraRows: { name: string; values: (number | null)[] }[], startDay = 20500, span = 30): ChartConfig =>
+    ({
+      kind: "gantt",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["Design", "Build"],
+        dates: true,
+        series: [
+          { name: "Start", values: [startDay, startDay + span / 3] },
+          { name: "End", values: [startDay + span / 2, startDay + span] },
+          ...extraRows,
+        ],
+      },
+    }) as ChartConfig;
+
+  it("uses quarter labels for long timelines", () => {
+    const s = buildChart(gantt([], 20500, 700));
+    const ticks = s.nodes.filter((n): n is TextNode => n.kind === "text" && n.name === "timeline");
+    expect(ticks.some((t) => /^Q[1-4] \d\d$/.test(t.text))).toBe(true);
+  });
+
+  it("labels an unlabeled bracket with its date span", () => {
+    const s = buildChart(gantt([{ name: "Bracket", values: [20500, 20515] }]));
+    expect(s.nodes.some((n) => n.name === "bracket-label-0")).toBe(true);
+  });
+
+  it("ignores invalid dependency references", () => {
+    // Self-reference, out-of-range, and missing predecessors must not draw elbows.
+    const s = buildChart(gantt([{ name: "After", values: [1, 99] }]));
+    expect(s.nodes.some((n) => n.name?.startsWith("dep-"))).toBe(false);
+  });
+
+  it("draws a dependency elbow for a valid predecessor", () => {
+    const s = buildChart(gantt([{ name: "After", values: [null, 1] }]));
+    expect(s.nodes.some((n) => n.name?.startsWith("dep"))).toBe(true);
+  });
+});

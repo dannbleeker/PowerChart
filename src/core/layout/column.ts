@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors, Series } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
-import { formatNumber, niceTicks, resolveFormat, segmentLabel } from "../format";
+import { formatNumber, niceTicks, resolveFormat, segmentLabel, axisTickLabel } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import {
@@ -804,39 +804,23 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // The base chart's own axis sits below (horizontal) or left (vertical), so
       // the secondary strip goes on the opposite side: above the plot for bars,
       // right of it for columns. Drawn at plot right on a bar chart it ran off
-      // the canvas edge.
-      nodes.push(
-        H
-          ? {
-              kind: "text",
-              x: Math.max(0, Math.min(lineToY(t) - fs * 1.7, cfg.width - fs * 3.4)),
-              // Above the plot when the chrome left room (a title, a legend),
-              // otherwise pinned to the canvas top — an untitled bar chart plots
-              // from y≈0, and plot.y − 1.5em put the whole strip off the canvas.
-              y: Math.max(0, plot.y - fs * 1.5),
-              w: fs * 3.4,
-              h: fs * 1.4,
-              text: formatNumber(t, fmt2),
-              fontSize: fs * 0.9,
-              color: style.mutedText,
-              align: "center",
-              valign: "middle",
-              name: "secondary-axis",
-            }
-          : {
-              kind: "text",
-              x: plot.x + plot.w + 2,
-              y: lineToY(t) - fs * 0.7,
-              w: fs * 3.4,
-              h: fs * 1.4,
-              text: formatNumber(t, fmt2),
-              fontSize: fs * 0.9,
-              color: style.mutedText,
-              align: "left",
-              valign: "middle",
-              name: "secondary-axis",
-            },
-      );
+      // the canvas edge. On a bar chart it is also pinned to the canvas top when
+      // the chrome left no room — an untitled one plots from y≈0, and
+      // plot.y − 1.5em put the whole strip off the canvas.
+      const q = lineToY(t);
+      nodes.push({
+        kind: "text",
+        x: H ? Math.max(0, Math.min(q - fs * 1.7, cfg.width - fs * 3.4)) : plot.x + plot.w + 2,
+        y: H ? Math.max(0, plot.y - fs * 1.5) : q - fs * 0.7,
+        w: fs * 3.4,
+        h: fs * 1.4,
+        text: formatNumber(t, fmt2),
+        fontSize: fs * 0.9,
+        color: style.mutedText,
+        align: H ? "center" : "left",
+        valign: "middle",
+        name: "secondary-axis",
+      });
     }
   }
   const fmt = resolveFormat(
@@ -985,14 +969,10 @@ export function horizontalChrome(
     }
   }
   if (decor.valueAxis) {
-    // Share axis (a horizontal 100% bar) is labelled in percent, matching its
-    // own segment labels — see ValueScale.percent.
-    const axisFmt = resolveFormat(scale.percent ? scale.ticks.map((t) => t * 100) : scale.ticks, cfg.numberFormat);
-    // A share is unitless: formatNumber appends numberFormat.suffix (the
-    // documented way to say "millions"), which labelled a 100% axis "25 m%"
-    // while its own segment labels correctly read "25%".
-    const shareFmt = { ...axisFmt, suffix: undefined };
-    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, shareFmt)}%` : formatNumber(t, axisFmt));
+    // Same labeller as the vertical chrome: a bar chart's value axis is the same
+    // tick strip rotated, so it earns the same step-derived precision and the
+    // same unitless share branch (see axisTickLabel).
+    const axisLabel = axisTickLabel(scale.ticks, scale.percent, cfg.numberFormat);
     for (const t of scale.ticks) {
       const x = frame.x + qOf(t);
       nodes.push({
