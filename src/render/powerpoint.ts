@@ -308,21 +308,35 @@ export async function updateChartsInSlides(
 
     const live = found.filter(({ slide }) => !slide.isNullObject);
     if (!live.length) return [];
-    const withOld = live.map(({ it, slide }) => ({
-      it,
-      slide,
-      old: slide.shapes.getItemOrNullObject(it.target.shapeId),
-      // An ungrouped chart is more than its tagged shape (see CHART_PARTS_TAG).
-      // Resolved in this same sync, so the delete below already knows which of
-      // them the user has since removed by hand.
-      parts: (it.target.partIds ?? []).map((id) => slide.shapes.getItemOrNullObject(id)),
-    }));
+    const withOld = live.map(({ it, slide }) => {
+      const old = slide.shapes.getItemOrNullObject(it.target.shapeId);
+      // The shape's LIVE position, queued in the sync this resolution already
+      // costs. The caller's EditTarget is a snapshot — the task pane holds one
+      // from whenever the chart was loaded — so measuring the user's drag against
+      // it reports no movement for a chart that has since been dragged, and the
+      // update puts it back where it was. Only the host knows where the shape is
+      // now.
+      old.load("left,top");
+      return {
+        it,
+        slide,
+        old,
+        // An ungrouped chart is more than its tagged shape (see CHART_PARTS_TAG).
+        // Resolved in this same sync, so the delete below already knows which of
+        // them the user has since removed by hand.
+        parts: (it.target.partIds ?? []).map((id) => slide.shapes.getItemOrNullObject(id)),
+      };
+    });
     await context.sync();
 
     // A target whose SHAPE is gone gets the same treatment as one whose slide
     // is gone: nothing to do. Re-rendering it would resurrect a chart the user
     // deleted — an in-place update that inserts is not an update.
-    const alive = withOld.filter(({ old }) => !old.isNullObject);
+    // Read the live positions off the proxies BEFORE the delete below detaches
+    // them; from here on `at` is where each chart actually sits on the slide.
+    const alive = withOld
+      .filter(({ old }) => !old.isNullObject)
+      .map((e) => ({ ...e, at: { left: e.old.left, top: e.old.top } }));
     if (!alive.length) return [];
 
     // 2. Drop the old shapes — one sync for all of them, siblings included:
@@ -340,18 +354,19 @@ export async function updateChartsInSlides(
     //    way the shapes arrive at all. Per chart, because a chart's shapes must
     //    all reach the same slide.
     const rendered: Grouping[] = [];
-    for (const { it, slide } of alive) {
+    for (const { it, slide, at } of alive) {
       const opts: InsertOptions = {
         ...it.opts,
         // The recorded frame origin, shifted by however far the user has dragged
-        // the chart since it was tagged (currentPos - anchor). Untouched, that
-        // delta is zero and the chart re-renders exactly where it is; moved, it
-        // follows the move. Charts with no usable origin tag fall back to the
-        // shape position — see CHART_ORIGIN_TAG.
-        left: it.target.origin
-          ? it.target.origin.left + (it.target.left - it.target.origin.anchorLeft)
-          : it.target.left,
-        top: it.target.origin ? it.target.origin.top + (it.target.top - it.target.origin.anchorTop) : it.target.top,
+        // the chart since it was tagged (livePos - anchor). Untouched, that delta
+        // is zero and the chart re-renders exactly where it is; dragged, it
+        // follows the drag. Measured against the LIVE shape (`at`), never the
+        // caller's snapshot — the pane holds one EditTarget from when the chart
+        // was loaded and reuses it for every update, so a snapshot-based delta
+        // reports no movement and puts a dragged chart back. Charts with no
+        // usable origin tag fall back to the shape's own position.
+        left: it.target.origin ? it.target.origin.left + (at.left - it.target.origin.anchorLeft) : at.left,
+        top: it.target.origin ? it.target.origin.top + (at.top - it.target.origin.anchorTop) : at.top,
         altText: it.scene.desc,
         altTitle: it.scene.title,
       };
@@ -370,7 +385,7 @@ export async function updateChartsInSlides(
     //    existed, was filtered out as "the user deleted this chart", and did
     //    nothing at all — silently. Auto-update died the same way after its
     //    first push. Returning the new target is what lets a caller stay live.
-    return alive.map(({ it }, i) => {
+    return alive.map(({ it, at }, i) => {
       const t = tagged[i]?.target;
       if (!t) return it.target;
       // The origin this pass actually rendered at, paired with where the tagged
@@ -384,8 +399,8 @@ export async function updateChartsInSlides(
         top: t.top,
         partIds: tagged[i]?.partIds,
         origin: {
-          left: o ? o.left + (it.target.left - o.anchorLeft) : it.target.left,
-          top: o ? o.top + (it.target.top - o.anchorTop) : it.target.top,
+          left: o ? o.left + (at.left - o.anchorLeft) : at.left,
+          top: o ? o.top + (at.top - o.anchorTop) : at.top,
           anchorLeft: t.left,
           anchorTop: t.top,
         },
