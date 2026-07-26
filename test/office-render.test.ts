@@ -170,7 +170,11 @@ function makeSlide(id: string) {
         return g;
       },
       getItemOrNullObject(id: string) {
-        return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, delete() {} };
+        // A null-object proxy still accepts load() in real Office.js — queuing a
+        // load on it is the normal pattern, and only isNullObject tells you it
+        // resolved to nothing. Without load() here the fake threw where the host
+        // would not.
+        return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, load() {}, delete() {} };
       },
       // Top-level shape count the host reports on readback — non-deleted shapes.
       getCount: () => {
@@ -1072,6 +1076,66 @@ describe("in-place update keeps the chart where it is", () => {
   it("does not drift when the host groups (desktop)", async () => {
     const seen = await cycle(true);
     expect(new Set(seen).size, `chart moved across update cycles: ${seen.join(" -> ")}`).toBe(1);
+  });
+
+  it("follows a chart the user has DRAGGED, instead of teleporting it back", async () => {
+    // Re-rendering at the tagged shape's corner drifts; re-rendering at the
+    // recorded origin teleports a moved chart back to where it was first
+    // inserted, silently undoing the user's drag. The origin tag therefore also
+    // records the ANCHOR (where the tagged shape landed), so an update shifts the
+    // origin by exactly how far the shape has moved since.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg: ChartConfig = {
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 4] }] },
+    };
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
+
+    const before = (await listChartsInDeck())[0].target;
+    // The user drags the whole chart across the slide.
+    const [dx, dy] = [240, 110];
+    for (const sh of slide.created) {
+      sh.left += dx;
+      sh.top += dy;
+    }
+    const moved = (await listChartsInDeck())[0].target;
+    expect(moved.left).toBeCloseTo(before.left + dx, 5);
+
+    await updateChartsInSlides([{ scene: buildChart(cfg), target: moved, opts: { tagData: JSON.stringify(cfg) } }]);
+    const after = (await listChartsInDeck())[0].target;
+    expect(after.left, "update dragged the chart back to its insert position").toBeCloseTo(moved.left, 5);
+    expect(after.top, "update dragged the chart back to its insert position").toBeCloseTo(moved.top, 5);
+  });
+
+  it("follows a drag even when the caller reuses a CACHED target (what the pane does)", async () => {
+    // The pane captures state.editTarget once, when the chart is loaded, and
+    // re-uses it for every subsequent "Update chart". Measuring the drag against
+    // that snapshot reports no movement, so the update put the chart back where
+    // it was — the same teleport, just reached through the pane's real flow
+    // rather than a fresh deck read.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg: ChartConfig = {
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 4] }] },
+    };
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
+    const held = (await listChartsInDeck())[0].target; // captured once, then kept
+
+    for (const sh of slide.created.filter((s) => !s.deleted)) {
+      sh.left += 200;
+      sh.top += 60;
+    }
+    const moved = (await listChartsInDeck())[0].target;
+
+    // The pane updates with the STALE target it has been holding all along.
+    await updateChartInSlide(buildChart(cfg), held, { tagData: JSON.stringify(cfg) });
+    const after = (await listChartsInDeck())[0].target;
+    expect(after.left, "update teleported the chart back").toBeCloseTo(moved.left, 5);
+    expect(after.top, "update teleported the chart back").toBeCloseTo(moved.top, 5);
   });
 
   it("does not drift when the host cannot group (web)", async () => {
