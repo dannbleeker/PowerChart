@@ -1074,6 +1074,39 @@ describe("in-place update keeps the chart where it is", () => {
     expect(new Set(seen).size, `chart moved across update cycles: ${seen.join(" -> ")}`).toBe(1);
   });
 
+  it("follows a chart the user has DRAGGED, instead of teleporting it back", async () => {
+    // Re-rendering at the tagged shape's corner drifts; re-rendering at the
+    // recorded origin teleports a moved chart back to where it was first
+    // inserted, silently undoing the user's drag. The origin tag therefore also
+    // records the ANCHOR (where the tagged shape landed), so an update shifts the
+    // origin by exactly how far the shape has moved since.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg: ChartConfig = {
+      kind: "stacked",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 4] }] },
+    };
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
+
+    const before = (await listChartsInDeck())[0].target;
+    // The user drags the whole chart across the slide.
+    const [dx, dy] = [240, 110];
+    for (const sh of slide.created) {
+      sh.left += dx;
+      sh.top += dy;
+    }
+    const moved = (await listChartsInDeck())[0].target;
+    expect(moved.left).toBeCloseTo(before.left + dx, 5);
+
+    await updateChartsInSlides([
+      { scene: buildChart(cfg), target: moved, opts: { tagData: JSON.stringify(cfg) } },
+    ]);
+    const after = (await listChartsInDeck())[0].target;
+    expect(after.left, "update dragged the chart back to its insert position").toBeCloseTo(moved.left, 5);
+    expect(after.top, "update dragged the chart back to its insert position").toBeCloseTo(moved.top, 5);
+  });
+
   it("does not drift when the host cannot group (web)", async () => {
     const seen = await cycle(false);
     expect(new Set(seen).size, `chart moved across update cycles: ${seen.join(" -> ")}`).toBe(1);

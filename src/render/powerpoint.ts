@@ -110,7 +110,7 @@ export interface EditTarget {
    * charts inserted since that tag existed; an in-place update re-renders here
    * so it lands where it already is instead of walking across the slide.
    */
-  origin?: { left: number; top: number };
+  origin?: { left: number; top: number; anchorLeft: number; anchorTop: number };
 }
 
 /**
@@ -343,11 +343,13 @@ export async function updateChartsInSlides(
     for (const { it, slide } of alive) {
       const opts: InsertOptions = {
         ...it.opts,
-        // The recorded frame origin, NOT the tagged shape's corner — see
-        // CHART_ORIGIN_TAG. Charts tagged before that existed still fall back to
-        // the shape position (unchanged behaviour, including its drift).
-        left: it.target.origin?.left ?? it.target.left,
-        top: it.target.origin?.top ?? it.target.top,
+        // The recorded frame origin, shifted by however far the user has dragged
+        // the chart since it was tagged (currentPos - anchor). Untouched, that
+        // delta is zero and the chart re-renders exactly where it is; moved, it
+        // follows the move. Charts with no usable origin tag fall back to the
+        // shape position — see CHART_ORIGIN_TAG.
+        left: it.target.origin ? it.target.origin.left + (it.target.left - it.target.origin.anchorLeft) : it.target.left,
+        top: it.target.origin ? it.target.origin.top + (it.target.top - it.target.origin.anchorTop) : it.target.top,
         altText: it.scene.desc,
         altTitle: it.scene.title,
       };
@@ -368,10 +370,24 @@ export async function updateChartsInSlides(
     //    first push. Returning the new target is what lets a caller stay live.
     return alive.map(({ it }, i) => {
       const t = tagged[i]?.target;
-      const origin = { left: it.target.origin?.left ?? it.target.left, top: it.target.origin?.top ?? it.target.top };
-      return t
-        ? { slideId: it.target.slideId, shapeId: t.id, left: t.left, top: t.top, partIds: tagged[i]?.partIds, origin }
-        : { ...it.target, origin };
+      if (!t) return it.target;
+      // The origin this pass actually rendered at, paired with where the tagged
+      // shape landed — the same (origin, anchor) contract groupAndTagAll wrote to
+      // the tag, so the caller's in-memory target and the on-slide tag agree.
+      const o = it.target.origin;
+      return {
+        slideId: it.target.slideId,
+        shapeId: t.id,
+        left: t.left,
+        top: t.top,
+        partIds: tagged[i]?.partIds,
+        origin: {
+          left: o ? o.left + (it.target.left - o.anchorLeft) : it.target.left,
+          top: o ? o.top + (it.target.top - o.anchorTop) : it.target.top,
+          anchorLeft: t.left,
+          anchorTop: t.top,
+        },
+      };
     });
   });
 }
@@ -463,15 +479,17 @@ function partIdsOf(parts: PowerPoint.Tag): string[] | undefined {
  * from a deck we did not author, so a malformed one must degrade to "no recorded
  * origin" (falling back to the shape position), never throw inside a sync.
  */
-function originOf(origin: PowerPoint.Tag): { left: number; top: number } | undefined {
+function originOf(origin: PowerPoint.Tag): EditTarget["origin"] {
   if (origin.isNullObject || !origin.value) return undefined;
   try {
     const v: unknown = JSON.parse(origin.value);
-    if (!Array.isArray(v) || v.length < 2) return undefined;
-    const [left, top] = v;
-    if (typeof left !== "number" || typeof top !== "number") return undefined;
-    if (!Number.isFinite(left) || !Number.isFinite(top)) return undefined;
-    return { left, top };
+    // [originLeft, originTop, anchorLeft, anchorTop]. All four or nothing: without
+    // the anchor an update cannot tell "untouched" from "the user dragged it",
+    // so a partial tag falls back to the shape's own position.
+    if (!Array.isArray(v) || v.length < 4) return undefined;
+    const [left, top, anchorLeft, anchorTop] = v;
+    if (![left, top, anchorLeft, anchorTop].every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
+    return { left, top, anchorLeft, anchorTop };
   } catch {
     return undefined;
   }
@@ -1164,15 +1182,31 @@ async function groupAndTagAll(
         // The rest of an ungrouped chart travels with the tagged shape, so an
         // in-place update can delete all of it — see CHART_PARTS_TAG.
         if (partsJson[i]) target!.tags.add(CHART_PARTS_TAG, partsJson[i]!);
-        // The origin this chart was actually drawn at, so a later in-place
-        // update re-renders here instead of at the shape's own corner — see
-        // CHART_ORIGIN_TAG. Same defaults renderShapesChunked resolves.
-        target!.tags.add(CHART_ORIGIN_TAG, JSON.stringify([it.opts.left ?? 60, it.opts.top ?? 90]));
         // Queued in the SAME sync as the tags, so handing the caller a usable
         // new target costs no extra round-trip. An update replaces every shape,
         // so the caller's old target is dead the moment this returns — see
         // updateChartsInSlides.
         target!.load("id,left,top");
+      }
+      await context.sync();
+
+      // The frame origin the chart was drawn at, AND the position its tagged
+      // shape ended up at ("anchor"). Both are needed, and the anchor is only
+      // knowable once the sync above has resolved the shape — hence a second
+      // round-trip, batched across every chart in the run.
+      //
+      // Why both: an update must land the chart where the user LAST LEFT IT.
+      // Re-rendering at the tagged shape's corner drifts (that corner is a
+      // bounding box, not the frame origin), but re-rendering at the recorded
+      // origin teleports a chart the user has since dragged back to where it was
+      // first inserted. Storing the anchor lets the update shift the origin by
+      // exactly how far the shape has moved since — stable when untouched,
+      // faithful when moved.
+      for (const { it, target } of taggable) {
+        target!.tags.add(
+          CHART_ORIGIN_TAG,
+          JSON.stringify([it.opts.left ?? 60, it.opts.top ?? 90, target!.left, target!.top]),
+        );
       }
       await context.sync();
     } catch {
