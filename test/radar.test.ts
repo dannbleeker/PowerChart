@@ -80,10 +80,6 @@ describe("radar min–max band (peer range + us)", () => {
   });
 });
 
-/**
- * Backlog batch L — §2 tail: radar per-spoke scales, transparent floating
- * segments, line missing-data bridge.
- */
 describe("radar per-spoke scales", () => {
   const base: ChartConfig = {
     kind: "radar",

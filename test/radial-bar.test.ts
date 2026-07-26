@@ -5,7 +5,6 @@ import type { ChartConfig } from "../src/core/types";
 
 /** Radial bar (coxcomb) and variable-radius pie. */
 
-/** Batch S — polar family: radial bars, stacked radar, variable-radius pie. */
 const dist = (w: WedgeNode) => w.r - w.innerR;
 
 describe("radial bar chart (coxcomb)", () => {

@@ -5,10 +5,6 @@ import type { ChartConfig } from "../src/core/types";
 
 /** Semi-circle gauge. */
 
-/**
- * Backlog §3 (new chart types), batch O: semi-circle gauge, Pareto helper,
- * bump chart.
- */
 describe("semi-circle gauge", () => {
   const base: ChartConfig = {
     kind: "doughnut",

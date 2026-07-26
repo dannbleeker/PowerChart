@@ -6,10 +6,6 @@ import type { ChartConfig } from "../src/core/types";
 
 /** Sunburst rings. */
 
-/**
- * Batch Q — three new kinds (owner-requested, previously in §2/§4): sunburst,
- * violin, candlestick.
- */
 describe("sunburst", () => {
   const cfg: ChartConfig = {
     kind: "sunburst",

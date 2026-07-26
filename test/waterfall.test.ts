@@ -44,7 +44,6 @@ const markerYs = (cfg: ChartConfig) =>
     .nodes.filter((n) => n.name?.startsWith("combo-marker") || n.name?.startsWith("combo-line"))
     .flatMap((n) => (n.kind === "rect" ? [n.y, n.y + n.h] : n.kind === "line" ? [n.y1, n.y2] : []));
 
-/** Backlog batch D: waterfall gap-to-target, bands, fillBetween, heatmap totals. */
 describe("waterfall budget-vs-actual (Target row)", () => {
   const cfg: ChartConfig = {
     kind: "waterfall",
@@ -124,10 +123,6 @@ describe("waterfall grouping spacers", () => {
   });
 });
 
-/**
- * Backlog batch M — combo family: waterfall/mekko base under a line overlay,
- * and independent per-line-series axes.
- */
 describe("combo waterfall base", () => {
   const cfg: ChartConfig = {
     kind: "combo",

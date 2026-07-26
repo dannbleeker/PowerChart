@@ -45,7 +45,6 @@ const base = (partial: Partial<ChartConfig>): ChartConfig => ({
  */
 const W_offframeguards = 480;
 
-/** Backlog batch B: funnel kind + lollipop/dot/range bar styles. */
 describe("funnel", () => {
   const s = buildChart(sampleConfig("funnel"));
 

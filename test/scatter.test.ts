@@ -117,10 +117,6 @@ describe("scatter/bubble trajectory", () => {
   });
 });
 
-/**
- * Backlog batch I — more §2 within-kind gaps: scatter/bubble continuous
- * color scale, smoothed lines, waterfall grouping spacers.
- */
 describe("scatter/bubble continuous color scale", () => {
   const base: ChartConfig = {
     kind: "scatter",

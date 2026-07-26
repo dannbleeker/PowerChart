@@ -5,10 +5,6 @@ import type { ChartConfig } from "../src/core/types";
 
 /** Tilemap cartogram — hex tiles and mini-glyphs. */
 
-/**
- * Backlog batch N — §2 tail: tilemap hex tiles, tilemap mini-glyphs,
- * stacked100 negative values.
- */
 describe("tilemap hex tiles", () => {
   const base: ChartConfig = {
     kind: "tilemap",

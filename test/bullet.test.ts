@@ -5,7 +5,6 @@ import type { ChartConfig } from "../src/core/types";
 
 /** Bullet chart (target row). */
 
-/** Backlog batch A: bullet targets, combo modes, size legend, forecast, quadrants. */
 const base: ChartConfig = {
   kind: "clustered",
   ...DEFAULT_SIZE,

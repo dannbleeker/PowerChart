@@ -11,10 +11,6 @@ function cfg(partial: Partial<ChartConfig>): ChartConfig {
 
 const byName = (nodes: { name?: string }[], p: string) => nodes.filter((n) => n.name?.startsWith(p));
 
-/**
- * Backlog batch K — more §2 within-kind gaps: automatic "Other" bucket,
- * heatmap calendar layout, butterfly stacked flanks.
- */
 describe("automatic Other bucket", () => {
   const base: ChartConfig = {
     kind: "stacked",

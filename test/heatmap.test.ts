@@ -79,10 +79,6 @@ describe("heatmap calendar layout", () => {
   });
 });
 
-/**
- * Batch T — heatmap cell-size encoding, heatmap row clustering (dendrogram),
- * and the stacked-area combo base.
- */
 describe("heatmap cell-size encoding", () => {
   const cfg: ChartConfig = {
     kind: "heatmap",
