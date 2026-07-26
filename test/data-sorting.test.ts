@@ -125,3 +125,57 @@ describe("category sorting", () => {
     expect(cats.map((c) => c.text)).toEqual(["A", "B"]);
   });
 });
+
+/**
+ * A reorder moves `colors` because "a highlight belongs to a data point, not to
+ * a screen position" (test/palette.test.ts states the same contract). The
+ * decorations were copied through untouched, so a callout and its arrows stayed
+ * on the SLOT the category used to occupy — and the arrows, which read
+ * `columnValue` at those indices, printed a number for a pair the author never
+ * named.
+ */
+describe("decorations travel with a reordered category", () => {
+  const data = { categories: ["Small", "Big", "Mid"], series: [{ name: "S", values: [10, 90, 50] }] };
+  const centerOf = (scene: ReturnType<typeof buildChart>, name: string) => {
+    const n = scene.nodes.find((x) => x.name === name) as RectNode;
+    return n.x + n.w / 2;
+  };
+  const categoryCenter = (scene: ReturnType<typeof buildChart>, text: string) => {
+    const n = (byName(scene.nodes, "category-") as TextNode[]).find((c) => c.text === text)!;
+    return n.x + n.w / 2;
+  };
+
+  it.each(["descending", "ascending"] as const)("keeps a callout on its own column (%s)", (categorySort) => {
+    const scene = buildChart(
+      cfg({
+        categorySort,
+        data,
+        decorations: { categoryAxis: true, callouts: [{ category: 1, text: "peak" }] },
+      }),
+    );
+    // Category 1 is "Big" — wherever the sort puts it, the bubble goes with it.
+    expect(centerOf(scene, "callout-box-0")).toBeCloseTo(categoryCenter(scene, "Big"), 0);
+  });
+
+  it("computes CAGR from the columns the author named, not the slots they vacated", () => {
+    const scene = buildChart(cfg({ categorySort: "descending", data, decorations: { cagr: { from: 0, to: 2 } } }));
+    // Categories 0 and 2 are Small (10) and Mid (50). Descending puts Mid before
+    // Small, and the arrow reads left-to-right, so the rate is 50 → 10 over one
+    // period. Reading slots 0 and 2 instead gave the rate between Big and Small.
+    const label = (scene.nodes as TextNode[]).find((n) => n.name === "cagr-label")!;
+    expect(label.text).toBe("-80.0% p.a.");
+  });
+
+  it("moves a Pareto chart's callout with the ranked bar", () => {
+    const scene = buildChart(
+      cfg({
+        kind: "clustered",
+        pareto: true,
+        data,
+        decorations: { categoryAxis: true, callouts: [{ category: 0, text: "tail" }] },
+      }),
+    );
+    // Category 0 is "Small" — last in a Pareto ranking.
+    expect(centerOf(scene, "callout-box-0")).toBeCloseTo(categoryCenter(scene, "Small"), 0);
+  });
+});

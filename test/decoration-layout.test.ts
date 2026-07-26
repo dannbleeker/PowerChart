@@ -155,3 +155,50 @@ describe("variance tier reserves height only where it is drawn", () => {
     expect(scene.nodes.some((n) => n.name?.startsWith("variance"))).toBe(true);
   });
 });
+
+/**
+ * A callout bubble hovers 4.2 font sizes above its anchor. When the anchor is at
+ * the plot ceiling there is no room there, and box, text and tail all landed off
+ * the top of the canvas. 100% and Mekko charts expose no `valueToY`, so EVERY
+ * callout on them falls back to `columnTop` — which on those kinds is the plot
+ * ceiling for every column by construction, making the failure unconditional.
+ */
+describe("callouts stay on the canvas", () => {
+  const withCallout = (over: Partial<ChartConfig>) =>
+    buildChart({
+      ...DEFAULT_SIZE,
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "x", values: [3, 4] },
+          { name: "y", values: [1, 2] },
+        ],
+      },
+      decorations: { callouts: [{ category: 0, text: "worth a note" }] },
+      ...over,
+    } as unknown as ChartConfig);
+
+  it.each(["stacked100", "mekko", "stacked"] as const)("fits the bubble on a %s chart", (kind) => {
+    const s = withCallout({ kind });
+    const off = (s.nodes as { name?: string; x?: number; y?: number; w?: number; h?: number }[])
+      .filter((n) => n.name?.startsWith("callout-"))
+      .filter(
+        (n) =>
+          (n.y ?? 0) < -0.5 ||
+          (n.y ?? 0) + (n.h ?? 0) > s.height + 0.5 ||
+          (n.x ?? 0) < -0.5 ||
+          (n.x ?? 0) + (n.w ?? 0) > s.width + 0.5,
+      )
+      .map((n) => `${n.name}@${n.x?.toFixed(1)},${n.y?.toFixed(1)}`);
+    expect(off, `off-canvas: ${off.join(", ")}`).toEqual([]);
+  });
+
+  it("still hovers above an anchor that has room", () => {
+    const s = withCallout({ kind: "stacked", decorations: { callouts: [{ category: 0, text: "note" }] } });
+    const box = (s.nodes as { name?: string; y?: number }[]).find((n) => n.name === "callout-box-0")!;
+    const anchor = (s.nodes as { name?: string; y?: number }[]).find((n) => n.name === "seg-0-0")!;
+    expect(box.y!).toBeLessThan(anchor.y!);
+  });
+});

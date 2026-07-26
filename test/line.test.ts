@@ -443,3 +443,33 @@ describe("horizontal profile chart — stacked area", () => {
     expect(b0.x).toBeGreaterThanOrEqual(a0.x + a0.w - 1);
   });
 });
+
+/**
+ * Slope end labels were clamped only at the BOTTOM: the upward propagation that
+ * enforces the minimum gap then walked past the plot top, past the title and off
+ * the canvas, losing the topmost labels outright.
+ */
+describe("dense slope chart keeps every end label on the canvas", () => {
+  const s = buildChart({
+    kind: "line",
+    ...DEFAULT_SIZE,
+    // Twelve series over a 300pt canvas: more labels than the minimum gap fits.
+    data: {
+      categories: ["2020", "2025"],
+      series: Array.from({ length: 12 }, (_, i) => ({ name: `S${i}`, values: [50 + i * 0.1, 60 + i * 0.1] })),
+    },
+    decorations: { slope: true },
+  } as unknown as ChartConfig);
+
+  it.each(["slope-left", "slope-right"])("fits every %s label", (side) => {
+    const off = (s.nodes as TextNode[])
+      .filter((n) => n.name?.startsWith(side))
+      .filter((n) => n.y < -0.5 || n.y + n.h > s.height + 0.5)
+      .map((n) => `${n.name}@${n.y.toFixed(1)}`);
+    expect(off, `off-canvas: ${off.join(", ")}`).toEqual([]);
+  });
+
+  it("still draws all twelve", () => {
+    expect(s.nodes.filter((n) => n.name?.startsWith("slope-left-"))).toHaveLength(12);
+  });
+});

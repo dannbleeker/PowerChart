@@ -444,3 +444,72 @@ describe("small multiples + pareto (regression)", () => {
     expect(order(true), "panels disagree about their category order").toBe(order(false));
   });
 });
+
+/**
+ * Horizontal (bar) combos. `layoutCombo` never looked at `cfg.horizontal`, and a
+ * horizontal base returns `valueToY: undefined` — so a shared-axis bar combo
+ * dropped its overlay entirely, and a secondary-axis one drew every point with
+ * the category's Y coordinate in the X slot. `pareto: true` reaches both
+ * without the author ever typing `kind: "combo"`.
+ */
+describe("horizontal combo overlay", () => {
+  const points = (s: ReturnType<typeof buildChart>) =>
+    (s.nodes as RectNode[]).filter((n) => n.name?.startsWith("combo-marker-")).map((n) => ({ x: n.x, y: n.y }));
+
+  const bars = (over?: Partial<ChartConfig>) =>
+    buildChart(
+      cfg({
+        kind: "combo",
+        horizontal: true,
+        data: {
+          categories: ["A", "B", "C"],
+          series: [
+            { name: "bars", values: [40, 30, 20] },
+            { name: "line", type: "line", values: [35, 25, 45] },
+          ],
+        },
+        decorations: { valueAxis: true },
+        ...over,
+      }) as ChartConfig,
+    );
+
+  it("draws the overlay on a shared axis instead of dropping it", () => {
+    const pts = points(bars());
+    // Was []: the bail-out read valueToY, which no horizontal base defines.
+    expect(pts).toHaveLength(3);
+  });
+
+  it("runs the overlay down the categories and along the value axis", () => {
+    for (const s of [bars(), bars({ secondaryAxis: true })]) {
+      const pts = points(s);
+      // Categories run top-to-bottom on a bar chart, so y must increase with the
+      // category index and x must track the VALUE (35 < 45 → point 0 left of 2).
+      expect(pts[0].y).toBeLessThan(pts[1].y);
+      expect(pts[1].y).toBeLessThan(pts[2].y);
+      expect(pts[0].x).toBeLessThan(pts[2].x);
+    }
+  });
+
+  it("keeps a horizontal Pareto's cumulative line on the canvas", () => {
+    const s = buildChart(
+      cfg({
+        kind: "clustered",
+        horizontal: true,
+        pareto: true,
+        data: { categories: ["A", "B", "C", "D"], series: [{ name: "n", values: [40, 30, 20, 10] }] },
+        decorations: { valueAxis: true },
+      }) as unknown as ChartConfig,
+    );
+    const pts = points(s);
+    expect(pts).toHaveLength(4);
+    // The cumulative share only rises, so the line runs left-to-right…
+    expect(pts.map((p) => p.x)).toEqual([...pts.map((p) => p.x)].sort((a, b) => a - b));
+    // …and every mark, plus the secondary tick strip, stays on the canvas. The
+    // strip was drawn at plot.x + plot.w + 2, off the right edge of a bar chart.
+    const off = (s.nodes as (RectNode | TextNode)[])
+      .filter((n) => n.name?.startsWith("combo-") || n.name === "secondary-axis")
+      .filter((n) => n.x < -0.5 || n.y < -0.5 || n.x + (n.w ?? 0) > s.width + 0.5 || n.y + (n.h ?? 0) > s.height + 0.5)
+      .map((n) => `${n.name}@${n.x.toFixed(1)},${n.y.toFixed(1)}`);
+    expect(off, `off-canvas: ${off.join(", ")}`).toEqual([]);
+  });
+});

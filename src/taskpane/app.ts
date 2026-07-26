@@ -1190,11 +1190,47 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-sheetApi = mountDatasheet($("datasheet"), state.sheet, (sheet) => {
-  state.sheet = sheet;
-  snapshot();
-  renderPreview();
-});
+sheetApi = mountDatasheet(
+  $("datasheet"),
+  state.sheet,
+  (sheet) => {
+    state.sheet = sheet;
+    snapshot();
+    renderPreview();
+  },
+  // seriesColors / seriesMeta are POSITIONAL, so a row or column the grid
+  // splices in or out has to move them too — otherwise every series below the
+  // edit inherits its neighbour's colour and combo type, and a routine
+  // datasheet edit silently changes what the chart draws.
+  (change) => {
+    const colorsOf = (m: AppState["seriesMeta"][number]) => m?.colors;
+    switch (change.kind) {
+      case "series-insert":
+        state.seriesColors.splice(change.index, 0, undefined);
+        state.seriesMeta.splice(change.index, 0, undefined);
+        break;
+      case "series-remove":
+        state.seriesColors.splice(change.index, 1);
+        state.seriesMeta.splice(change.index, 1);
+        break;
+      case "category-insert":
+      case "category-remove":
+        // Per-point colours are indexed by CATEGORY, so they follow the column.
+        for (const m of state.seriesMeta) {
+          const cs = colorsOf(m);
+          if (!cs) continue;
+          if (change.kind === "category-insert") cs.splice(change.index, 0, null);
+          else cs.splice(change.index, 1);
+        }
+        break;
+      case "reset":
+        // A transpose turns series into categories: no positional mapping survives.
+        state.seriesColors = [];
+        state.seriesMeta = [];
+        break;
+    }
+  },
+);
 snapshot();
 
 const titleInput = $("chart-title") as HTMLInputElement;
@@ -1324,7 +1360,18 @@ async function doInsert(asNew: boolean) {
     // this chart", and do nothing — silently. With auto-update on, that meant
     // only the first debounced push ever landed.
     const next = await updateChartInSlide(scene, state.editTarget, { tagData: JSON.stringify(cfg) });
-    if (next) state.editTarget = next;
+    if (next) {
+      state.editTarget = next;
+      return;
+    }
+    // null means the target slide or shape is gone — nothing was written. The
+    // caller's guard saw an unchanged note and printed "Done." in green, and the
+    // stale target kept the button reading "Update chart", so every later push
+    // (including every auto-update) no-opped just as silently. Say so, and fall
+    // back to inserting a new chart.
+    state.editTarget = null;
+    renderActionState();
+    note("That chart is no longer on the slide — insert it again.", "err");
     return;
   }
   // New chart: use the selected placeholder's bounds when one is selected.

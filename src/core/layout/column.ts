@@ -165,20 +165,29 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const pctNegMin = pct
     ? Math.min(0, ...data.categories.map((_, c) => (denominators[c] > 0 ? negTotals[c] / denominators[c] : 0)))
     : 0;
+  // …and the ceiling is not always 100%. An authored "100% =" denominator can be
+  // SMALLER than the column it normalises — a multi-select survey ("100% = 500
+  // respondents", answers totalling 180%), or a typo. Pinning max at 1 painted
+  // those segments outside the plot and outside the chart frame; `waffle` already
+  // handles the same input. Left at exactly 1 whenever no column overflows, so
+  // every well-formed 100% chart is untouched.
+  const pctPosMax = pct
+    ? Math.max(1, ...data.categories.map((_, c) => (denominators[c] > 0 ? posTotals[c] / denominators[c] : 0)))
+    : 1;
   const scale: ValueScale = pct
     ? {
         min: pctNegMin,
-        max: 1,
+        max: pctPosMax,
         percent: true,
         // Clamped to the domain, the way valueScale already filters its own:
         // niceTicks rounds OUTWARD, so it returned ticks below pctNegMin, and
         // toY mapped those past the plot — a gridline at y=301.6 on a 300pt
         // canvas, with its label sitting on the category row.
         ticks:
-          pctNegMin < 0
-            ? niceTicks(pctNegMin, 1, 5).filter((t) => t >= pctNegMin - 1e-9 && t <= 1 + 1e-9)
+          pctNegMin < 0 || pctPosMax > 1
+            ? niceTicks(pctNegMin, pctPosMax, 5).filter((t) => t >= pctNegMin - 1e-9 && t <= pctPosMax + 1e-9)
             : [0, 0.25, 0.5, 0.75, 1],
-        toY: (v: number) => frame.y + frame.h - ((v - pctNegMin) / (1 - pctNegMin)) * frame.h,
+        toY: (v: number) => frame.y + frame.h - ((v - pctNegMin) / (pctPosMax - pctNegMin)) * frame.h,
       }
     : valueScale(
         frame,
@@ -612,6 +621,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: pct || H ? undefined : scale.toY,
+      valueToX: H && !pct ? (v: number) => frame.x + qOf(v) : undefined,
     },
   };
 }
@@ -759,11 +769,24 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           ? layoutLine(colCfg, style, decor)
           : layoutColumns(colCfg, style, decor);
   const { anchors, nodes } = result;
-  // No value→y map and no line axis at all → nothing to overlay.
-  if (!anchors.valueToY && !secondary && !independent) return result;
+  // Horizontal (bar) base: the value axis runs left-to-right, and `categoryX`
+  // holds each category's Y centre. The overlay is the same line drawn against
+  // the other axis — before this it was drawn with the category's Y in the X
+  // slot, so a horizontal Pareto (`pareto: true` keeps `horizontal`) rendered
+  // its bars correctly and its cumulative-% line at ninety degrees to them.
+  const H = !!cfg.horizontal;
+  // No value→q map on the base and no line axis at all → nothing to overlay.
+  // Read the map that matches the ORIENTATION: `valueToY` is undefined on every
+  // horizontal base, which used to drop each overlay series silently, while the
+  // chart's accessible description still listed it.
+  const baseMap = H ? anchors.valueToX : anchors.valueToY;
+  if (!baseMap && !secondary && !independent) return result;
 
   const fs = style.fontSize;
-  let lineToY = anchors.valueToY ?? ((v: number) => anchors.plot.y + anchors.plot.h - v);
+  /** Value → coordinate along the value axis (x when horizontal, y when not). */
+  let lineToY = baseMap ?? ((v: number) => (H ? anchors.plot.x + v : anchors.plot.y + anchors.plot.h - v));
+  /** Point for a value at a category, in the base chart's orientation. */
+  const pointAt = (q: number, c: number) => (H ? { x: q, y: anchors.categoryX[c] } : { x: anchors.categoryX[c], y: q });
   if (secondary) {
     // Span down to any negative line value, not just up from 0 — anchoring the
     // secondary axis at 0 mapped a negative point below the plot floor. For an
@@ -773,22 +796,47 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const min2 = ticks2[0];
     const max2 = ticks2[ticks2.length - 1];
     const plot = anchors.plot;
-    lineToY = (v: number) => plot.y + plot.h - ((v - min2) / (max2 - min2 || 1)) * plot.h;
+    lineToY = H
+      ? (v: number) => plot.x + ((v - min2) / (max2 - min2 || 1)) * plot.w
+      : (v: number) => plot.y + plot.h - ((v - min2) / (max2 - min2 || 1)) * plot.h;
     const fmt2 = resolveFormat(ticks2, cfg.numberFormat);
     for (const t of ticks2) {
-      nodes.push({
-        kind: "text",
-        x: plot.x + plot.w + 2,
-        y: lineToY(t) - fs * 0.7,
-        w: fs * 3.4,
-        h: fs * 1.4,
-        text: formatNumber(t, fmt2),
-        fontSize: fs * 0.9,
-        color: style.mutedText,
-        align: "left",
-        valign: "middle",
-        name: "secondary-axis",
-      });
+      // The base chart's own axis sits below (horizontal) or left (vertical), so
+      // the secondary strip goes on the opposite side: above the plot for bars,
+      // right of it for columns. Drawn at plot right on a bar chart it ran off
+      // the canvas edge.
+      nodes.push(
+        H
+          ? {
+              kind: "text",
+              x: Math.max(0, Math.min(lineToY(t) - fs * 1.7, cfg.width - fs * 3.4)),
+              // Above the plot when the chrome left room (a title, a legend),
+              // otherwise pinned to the canvas top — an untitled bar chart plots
+              // from y≈0, and plot.y − 1.5em put the whole strip off the canvas.
+              y: Math.max(0, plot.y - fs * 1.5),
+              w: fs * 3.4,
+              h: fs * 1.4,
+              text: formatNumber(t, fmt2),
+              fontSize: fs * 0.9,
+              color: style.mutedText,
+              align: "center",
+              valign: "middle",
+              name: "secondary-axis",
+            }
+          : {
+              kind: "text",
+              x: plot.x + plot.w + 2,
+              y: lineToY(t) - fs * 0.7,
+              w: fs * 3.4,
+              h: fs * 1.4,
+              text: formatNumber(t, fmt2),
+              fontSize: fs * 0.9,
+              color: style.mutedText,
+              align: "left",
+              valign: "middle",
+              name: "secondary-axis",
+            },
+      );
     }
   }
   const fmt = resolveFormat(
@@ -805,7 +853,9 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const lo = ownTicks[0];
     const hi = ownTicks[ownTicks.length - 1];
     const toY = independent
-      ? (v: number) => anchors.plot.y + anchors.plot.h - ((v - lo) / (hi - lo || 1)) * anchors.plot.h
+      ? H
+        ? (v: number) => anchors.plot.x + ((v - lo) / (hi - lo || 1)) * anchors.plot.w
+        : (v: number) => anchors.plot.y + anchors.plot.h - ((v - lo) / (hi - lo || 1)) * anchors.plot.h
       : lineToY;
     const labelOn = decor.segmentLabels || independent;
     // A marker series is this same overlay minus the connecting segments: the
@@ -814,13 +864,13 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     // larger, since it has no line to carry it.
     const markersOnly = s.type === "marker";
     let prev: { x: number; y: number } | null = null;
-    let lastY: number | null = null;
+    let last: { x: number; y: number } | null = null;
     s.values.forEach((v, c) => {
       if (v == null || c >= anchors.categoryX.length) {
         prev = null;
         return;
       }
-      const pt = { x: anchors.categoryX[c], y: toY(v) };
+      const pt = pointAt(toY(v), c);
       if (prev && !markersOnly)
         nodes.push({
           kind: "line",
@@ -845,34 +895,53 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         name: `combo-marker-${li}-${c}`,
       });
       if (labelOn) {
-        nodes.push({
-          kind: "text",
-          x: pt.x - 30,
-          y: pt.y - fs * 1.65,
-          w: 60,
-          h: fs * 1.4,
-          text: formatNumber(v, fmt),
-          fontSize: fs,
-          color: independent ? color : style.text,
-          align: "center",
-          valign: "bottom",
-          name: `combo-label-${li}-${c}`,
-        });
+        // Categories run down a bar chart, so a label ABOVE its point would sit
+        // on the neighbouring category's row; put it beside the mark instead.
+        nodes.push(
+          H
+            ? {
+                kind: "text",
+                x: Math.min(pt.x + r + 2, cfg.width - 60),
+                y: pt.y - fs * 0.7,
+                w: 60,
+                h: fs * 1.4,
+                text: formatNumber(v, fmt),
+                fontSize: fs,
+                color: independent ? color : style.text,
+                align: "left",
+                valign: "middle",
+                name: `combo-label-${li}-${c}`,
+              }
+            : {
+                kind: "text",
+                x: pt.x - 30,
+                y: pt.y - fs * 1.65,
+                w: 60,
+                h: fs * 1.4,
+                text: formatNumber(v, fmt),
+                fontSize: fs,
+                color: independent ? color : style.text,
+                align: "center",
+                valign: "bottom",
+                name: `combo-label-${li}-${c}`,
+              },
+        );
       }
       prev = pt;
-      lastY = pt.y;
+      last = pt;
     });
-    if (decor.seriesLabels && lastY != null) {
+    if (decor.seriesLabels && last != null) {
+      const end: { x: number; y: number } = last;
       nodes.push({
         kind: "text",
-        x: anchors.plot.x + anchors.plot.w + 4,
-        y: lastY - fs * 1.6,
-        w: cfg.width - (anchors.plot.x + anchors.plot.w) - 4,
+        x: H ? Math.max(0, Math.min(end.x - 40, cfg.width - 80)) : anchors.plot.x + anchors.plot.w + 4,
+        y: H ? Math.max(0, end.y + fs * 0.9) : end.y - fs * 1.6,
+        w: H ? 80 : cfg.width - (anchors.plot.x + anchors.plot.w) - 4,
         h: fs * 1.4,
         text: s.name,
         fontSize: fs,
         color: style.text,
-        align: "left",
+        align: H ? "center" : "left",
         valign: "middle",
         name: `combo-series-label-${li}`,
       });
@@ -919,7 +988,11 @@ export function horizontalChrome(
     // Share axis (a horizontal 100% bar) is labelled in percent, matching its
     // own segment labels — see ValueScale.percent.
     const axisFmt = resolveFormat(scale.percent ? scale.ticks.map((t) => t * 100) : scale.ticks, cfg.numberFormat);
-    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, axisFmt)}%` : formatNumber(t, axisFmt));
+    // A share is unitless: formatNumber appends numberFormat.suffix (the
+    // documented way to say "millions"), which labelled a 100% axis "25 m%"
+    // while its own segment labels correctly read "25%".
+    const shareFmt = { ...axisFmt, suffix: undefined };
+    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, shareFmt)}%` : formatNumber(t, axisFmt));
     for (const t of scale.ticks) {
       const x = frame.x + qOf(t);
       nodes.push({

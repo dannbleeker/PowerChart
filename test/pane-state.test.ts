@@ -232,6 +232,58 @@ describe("task pane — loading a chart config", () => {
     });
   });
 
+  /**
+   * seriesColors / seriesMeta are POSITIONAL. The grid's row buttons spliced
+   * rows in and out of the sheet without touching them, so every series below
+   * the edit inherited its neighbour's colour and combo type — a routine
+   * datasheet edit silently changed what the chart drew.
+   */
+  describe("a row or column edit carries the per-series side-channel with it", () => {
+    const sheetButton = (label: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>("#datasheet .sheet-controls button")]
+        .find((b) => b.textContent === label)!
+        .click();
+
+    const threeSeries = () =>
+      importConfig({
+        kind: "combo",
+        data: {
+          categories: ["A", "B"],
+          series: [
+            { name: "One", values: [1, 2], color: "#111111" },
+            { name: "Two", values: [3, 4], color: "#222222" },
+            { name: "Three", values: [5, 6], color: "#333333", type: "line" },
+          ],
+        },
+      });
+
+    it("keeps each colour and combo type on its own series after a row delete", () => {
+      threeSeries();
+      cell(1, 1).focus(); // the "One" row
+      sheetButton("− Row");
+      const series = exportConfig().data.series;
+      expect(series.map((s) => s.name)).toEqual(["Two", "Three"]);
+      expect(series.map((s) => s.color)).toEqual(["#222222", "#333333"]);
+      expect(series[1].type).toBe("line");
+    });
+
+    it("keeps them after a row insert", () => {
+      threeSeries();
+      cell(1, 1).focus();
+      sheetButton("+ Row"); // a new empty series between One and Two
+      const series = exportConfig().data.series;
+      expect(series.map((s) => s.color)).toEqual(["#111111", undefined, "#222222", "#333333"]);
+      // The overlay line is still the LAST series, not the new empty one.
+      expect(series.filter((s) => s.type === "line").map((s) => s.name)).toEqual(["Three"]);
+    });
+
+    it("drops the mapping on a transpose, where nothing positional survives", () => {
+      threeSeries();
+      sheetButton("⇄ Transpose");
+      expect(exportConfig().data.series.some((s) => s.type === "line")).toBe(false);
+    });
+  });
+
   it("keeps two same-named series apart", () => {
     // The same name key collapsed both rows onto one entry, so they rendered in
     // a single colour.

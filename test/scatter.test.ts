@@ -196,3 +196,45 @@ describe("scatter group colouring honours a short palette", () => {
     }
   });
 });
+
+/**
+ * `scatter.spread` nudges co-located markers apart along one axis. The labels
+ * were anchored to the UNDISPLACED position — and the vacated spot is, by
+ * construction, exactly where a neighbouring marker moved to, so a label named
+ * one point while sitting on another.
+ */
+describe("point labels follow a spread marker", () => {
+  const s = buildChart({
+    kind: "scatter",
+    ...DEFAULT_SIZE,
+    scatter: { spread: "x", spreadLimit: 8 },
+    data: {
+      // Two points piled up on one coordinate: both markers must be nudged off
+      // it. The third only widens the domain the cap is measured against.
+      categories: ["P0", "P1", "P2"],
+      series: [
+        { name: "x", values: [50, 50, 10] },
+        { name: "y", values: [20, 20, 60] },
+      ],
+    },
+    decorations: { segmentLabels: true },
+  } as unknown as ChartConfig);
+
+  const marker = (i: number) => s.nodes.find((n) => n.name === `point-${i}`) as EllipseNode;
+  const label = (text: string) => (s.nodes as TextNode[]).find((n) => n.kind === "text" && n.text === text)!;
+
+  it("spreads the markers apart in the first place", () => {
+    expect(marker(0).cx).not.toBeCloseTo(marker(1).cx, 1);
+  });
+
+  it("puts each label nearer its own marker than any other", () => {
+    for (let i = 0; i < 3; i++) {
+      const l = label(`P${i}`);
+      const cx = l.x + l.w / 2;
+      const cy = l.y + l.h / 2;
+      const d = (j: number) => Math.hypot(cx - marker(j).cx, cy - marker(j).cy);
+      const nearest = [0, 1, 2].reduce((best, j) => (d(j) < d(best) ? j : best), 0);
+      expect(nearest, `label P${i} sits closest to point-${nearest}`).toBe(i);
+    }
+  });
+});

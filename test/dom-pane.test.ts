@@ -153,6 +153,82 @@ describe("mountDatasheet", () => {
     expect(model.cells[0]).toHaveLength(4);
   });
 
+  /**
+   * Excel appends a trailing newline to a copy. Filtering EVERY empty line
+   * dropped interior ones too — and in a single-column copy a blank cell IS an
+   * empty line, so a gap pulled every later value up a row and onto the wrong
+   * category. No error, no visual cue, just wrong numbers.
+   */
+  it("keeps the gap when a single-column paste has a blank cell", () => {
+    const host = document.createElement("div");
+    let model = sheet();
+    mountDatasheet(host, model, (m) => (model = m));
+    const e = new Event("paste") as ClipboardEvent;
+    // 10, blank, 30 — with Excel's trailing newline.
+    Object.defineProperty(e, "clipboardData", { value: { getData: () => "10\n\n30\n" } });
+    cell(host, 1, 1).dispatchEvent(e);
+    expect(model.cells[1][1]).toBe("10");
+    expect(model.cells[2][1]).toBe("");
+    expect(model.cells[3][1]).toBe("30");
+  });
+
+  /**
+   * seriesColors / seriesMeta in the pane are POSITIONAL. The grid buttons
+   * spliced rows in and out without reporting it, so every series below the edit
+   * inherited its neighbour's colour and combo type.
+   */
+  describe("structural edits are reported so positional state can follow", () => {
+    const threeSeries = (): SheetModel => ({
+      cells: [
+        ["", "A", "B"],
+        ["100%=", "10", "10"],
+        ["S1", "1", "2"],
+        ["S2", "3", "4"],
+        ["S3", "5", "6"],
+      ],
+    });
+
+    const events = (focus: { row: number; col: number }, label: string) => {
+      // Attached: a detached element cannot take focus in jsdom, and the grid's
+      // row/column operations act at the focused cell.
+      const host = document.body.appendChild(document.createElement("div"));
+      const seen: unknown[] = [];
+      mountDatasheet(
+        host,
+        threeSeries(),
+        () => {},
+        (c) => seen.push(c),
+      );
+      cell(host, focus.row, focus.col).focus();
+      clickButton(host, label);
+      host.remove();
+      return seen;
+    };
+
+    it("reports a row insert as a SERIES index, skipping the 100%= row", () => {
+      // Cursor on S1 (sheet row 2) → "+ Row" inserts after it, at series 1.
+      expect(events({ row: 2, col: 1 }, "+ Row")).toEqual([{ kind: "series-insert", index: 1 }]);
+    });
+
+    it("reports a row delete as a series index", () => {
+      // Cursor on S2 (sheet row 3) → series 1.
+      expect(events({ row: 3, col: 1 }, "− Row")).toEqual([{ kind: "series-remove", index: 1 }]);
+    });
+
+    it("says nothing when the deleted row is not a series", () => {
+      expect(events({ row: 1, col: 1 }, "− Row")).toEqual([]);
+    });
+
+    it("reports column edits as category indices", () => {
+      expect(events({ row: 1, col: 1 }, "+ Column")).toEqual([{ kind: "category-insert", index: 1 }]);
+      expect(events({ row: 1, col: 2 }, "− Column")).toEqual([{ kind: "category-remove", index: 1 }]);
+    });
+
+    it("reports a transpose as a full reset", () => {
+      expect(events({ row: 1, col: 1 }, "⇄ Transpose")).toEqual([{ kind: "reset" }]);
+    });
+  });
+
   it("leaves single-cell pastes to the browser default", () => {
     const host = document.createElement("div");
     const onChange = vi.fn();

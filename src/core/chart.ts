@@ -108,6 +108,38 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
 
 const SORTABLE: ChartKind[] = ["stacked", "clustered", "stacked100", "mekko", "pie", "doughnut", "butterfly"];
 
+/**
+ * Move every per-category decoration through a category permutation.
+ *
+ * `order[newPosition] = oldIndex`. Sorting and Pareto already carry `colors`
+ * along for the stated reason that a highlight belongs to a data point, not to
+ * a screen position — but the decorations were copied through untouched, so a
+ * callout, a CAGR arrow or a difference arrow stayed on the slot the category
+ * used to occupy. That is worse than misplaced ink: `decorationNodes` reads
+ * `columnValue[from]`/`[to]` at those indices, so the arrows also PRINTED a
+ * growth rate for a pair of categories the author never named.
+ *
+ * An x-band spans a range, and an arbitrary permutation does not keep a range
+ * contiguous; its endpoints are moved and re-ordered, which is the best a
+ * span can do.
+ */
+function remapDecorations<T extends Partial<Decorations> | undefined>(decor: T, order: number[]): T {
+  if (!decor) return decor;
+  const pos = new Map(order.map((oldIdx, newIdx) => [oldIdx, newIdx]));
+  const at = (i: number) => pos.get(i) ?? i;
+  const pair = <T extends { from: number; to: number }>(p: T): T => {
+    const [from, to] = [at(p.from), at(p.to)].sort((a, b) => a - b);
+    return { ...p, from, to };
+  };
+  return {
+    ...decor,
+    ...(decor.callouts ? { callouts: decor.callouts.map((c) => ({ ...c, category: at(c.category) })) } : {}),
+    ...(decor.cagr ? { cagr: pair(decor.cagr) } : {}),
+    ...(decor.difference ? { difference: pair(decor.difference) } : {}),
+    ...(decor.bands ? { bands: decor.bands.map((b) => (b.axis === "x" ? pair(b) : b)) } : {}),
+  };
+}
+
 /** Reorder categories (and every per-category array) by column total. */
 function sortCategories(cfg: ChartConfig): ChartConfig {
   if (!cfg.categorySort || !SORTABLE.includes(cfg.kind)) return cfg;
@@ -134,6 +166,7 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
       hundredPercent: pick(data.hundredPercent),
       xExtent: pick(data.xExtent),
     },
+    decorations: remapDecorations(cfg.decorations, order),
   };
 }
 
@@ -200,6 +233,7 @@ function applyPareto(cfg: ChartConfig): ChartConfig {
       ],
       hundredPercent: pick(cfg.data.hundredPercent),
     },
+    decorations: remapDecorations(cfg.decorations, order),
   };
 }
 

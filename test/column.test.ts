@@ -257,4 +257,79 @@ describe("stacked100 value axis (regression)", () => {
     // "60%", and 0.25/0.75 rounded to labels that name no tick on the axis.
     expect(labels).toEqual(["0%", "25%", "50%", "75%", "100%"]);
   });
+
+  it.each([false, true])("keeps the unit suffix off the share axis (horizontal=%s)", (horizontal) => {
+    // A share is unitless. numberFormat.suffix is how an author says "millions"
+    // — routed through the axis it labelled the 100% strip "25 m%", while the
+    // segments beside it correctly read "25%".
+    const labels = (
+      buildChart({
+        ...cfg(false),
+        horizontal,
+        numberFormat: { suffix: " m", decimals: "auto" },
+      } as unknown as ChartConfig).nodes as { name?: string; text?: string }[]
+    )
+      .filter((n) => n.name === "value-axis")
+      .map((n) => n.text);
+    expect(labels).toEqual(["0%", "25%", "50%", "75%", "100%"]);
+  });
+});
+
+/**
+ * An authored "100% =" denominator can be SMALLER than the column it normalises
+ * (a multi-select survey — "100% = 500 respondents", answers totalling 180% — or
+ * a typo). The 100% scale was hard-pinned to max: 1, so those segments were
+ * painted outside the plot AND outside the chart frame. `waffle` already handles
+ * the same input (test/spatial-layouts.test.ts).
+ */
+describe("stacked100 honors an inconsistent 100%= denominator", () => {
+  const s = buildChart({
+    kind: "stacked100",
+    ...DEFAULT_SIZE,
+    width: 480,
+    height: 300,
+    data: {
+      categories: ["A"],
+      series: [
+        { name: "x", values: [300] },
+        { name: "y", values: [600] },
+      ],
+      hundredPercent: [500],
+    },
+  } as unknown as ChartConfig);
+
+  it("keeps the over-100% stack inside the canvas", () => {
+    const off = (s.nodes as { name?: string; x?: number; y?: number; w?: number; h?: number }[])
+      .filter((n) => n.name?.startsWith("seg-"))
+      .filter((n) => (n.y ?? 0) < -0.5 || (n.y ?? 0) + (n.h ?? 0) > s.height + 0.5)
+      .map((n) => `${n.name}@${n.y?.toFixed(1)}`);
+    expect(off, `off-canvas: ${off.join(", ")}`).toEqual([]);
+  });
+
+  it("keeps the segments proportional to their shares", () => {
+    const seg = (name: string) => (s.nodes as { name?: string; h?: number }[]).find((n) => n.name === name)!;
+    // 600 : 300 — the taller segment is exactly twice the shorter one.
+    expect(seg("seg-1-0").h! / seg("seg-0-0").h!).toBeCloseTo(2, 1);
+  });
+
+  it("leaves a well-formed 100% chart on the plain 0/25/50/75/100 strip", () => {
+    const ok = buildChart({
+      kind: "stacked100",
+      ...DEFAULT_SIZE,
+      width: 480,
+      height: 300,
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "x", values: [3] },
+          { name: "y", values: [7] },
+        ],
+      },
+      decorations: { valueAxis: true },
+    } as unknown as ChartConfig);
+    const labels = (ok.nodes as { name?: string; text?: string }[])
+      .filter((n) => n.name === "value-axis")
+      .map((n) => n.text);
+    expect(labels).toEqual(["0%", "25%", "50%", "75%", "100%"]);
+  });
 });

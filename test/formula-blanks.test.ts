@@ -166,3 +166,111 @@ describe("datasheet + date parsing hardening", () => {
     expect(out[2]).toBe(15); // AVG ignores the blank — was 10
   });
 });
+
+/**
+ * `parseRow` and `cellNumeric` each coerced a cell to a number their own way and
+ * had drifted apart: only parseRow stripped a trailing "%" and only parseRow read
+ * a date. So the same cell was a value to the chart and an error to a formula
+ * over it — `=SUM` across a pasted share table came back blank, and so did a
+ * Gantt duration `=B3-B2` over two ISO dates.
+ */
+describe("a formula reads the same cell the chart does", () => {
+  const valueOf = (cells: string[][], series = 0) => sheetToData({ cells }).series[series].values;
+
+  it("sums percent-formatted cells", () => {
+    expect(
+      valueOf(
+        [
+          ["", "A"],
+          ["Share", "35%"],
+          ["Rest", "65%"],
+          ["Total", "=SUM(B2:B3)"],
+        ],
+        2,
+      ),
+    ).toEqual([100]);
+  });
+
+  it("subtracts two ISO date cells into a duration", () => {
+    expect(
+      valueOf(
+        [
+          ["", "Task"],
+          ["Start", "2026-01-05"],
+          ["End", "2026-01-15"],
+          ["Days", "=B3-B2"],
+        ],
+        2,
+      ),
+    ).toEqual([10]);
+  });
+
+  it("still refuses a genuinely non-numeric cell", () => {
+    expect(
+      valueOf(
+        [
+          ["", "A"],
+          ["Raw", "n/a"],
+          ["Calc", "=B2+1"],
+        ],
+        1,
+      ),
+    ).toEqual([null]);
+  });
+});
+
+/**
+ * The cycle guard is added before a descent and removed after, so a formula
+ * naming the same cell twice re-walked its whole subtree twice — a chain of such
+ * cells cost 2^depth evaluations, on the UI thread, on every keystroke. A 24-row
+ * chain took minutes; memoised it is instant.
+ */
+describe("formula evaluation does not blow up exponentially", () => {
+  it("resolves a deep doubly-referencing chain quickly", () => {
+    const depth = 24;
+    const cells: string[][] = [["", "A"]];
+    for (let r = 1; r <= depth; r++) cells.push([`R${r}`, `=B${r + 2}+B${r + 2}`]);
+    cells.push([`R${depth + 1}`, "1"]);
+    const started = performance.now();
+    const values = sheetToData({ cells }).series.map((s) => s.values[0]);
+    expect(performance.now() - started).toBeLessThan(2000);
+    // Each level doubles the one below it: the top is 2^depth.
+    expect(values[0]).toBe(2 ** depth);
+    expect(values[depth]).toBe(1);
+  });
+
+  it("still returns null for a genuine cycle", () => {
+    expect(
+      sheetToData({
+        cells: [
+          ["", "A"],
+          ["X", "=B3"],
+          ["Y", "=B2"],
+        ],
+      }).series[0].values,
+    ).toEqual([null]);
+  });
+});
+
+/**
+ * `new Date(v * 86400000).toISOString()` THROWS past the Date range, and a Gantt
+ * date row can hold anything a cell can — an epoch-second timestamp pasted from
+ * an export, or a typo. The exception escaped through applyConfig into the
+ * template/selection listeners: the chart never loaded and nothing was reported.
+ */
+describe("dataToSheet survives an unrepresentable date value", () => {
+  const gantt = (v: number) => ({
+    categories: ["Task"],
+    series: [{ name: "Start", values: [v] }],
+    dates: true,
+  });
+
+  it.each([1e12, 1.7e9, 20260105, -1e12, Number.MAX_SAFE_INTEGER])("writes %s back as a number", (v) => {
+    const sheet = dataToSheet(gantt(v));
+    expect(sheet.cells[1][1]).toBe(String(v));
+  });
+
+  it("still writes a real epoch day as an ISO date", () => {
+    expect(dataToSheet(gantt(20494)).cells[1][1]).toBe("2026-02-10");
+  });
+});

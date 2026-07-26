@@ -163,9 +163,17 @@ export function decorationNodes(
     const ay = useLevel ? a.valueToY!(a.seriesLevels![c][co.series!]) : a.columnTop[c];
     const w = textWidth(co.text, fs) + fs * 1.2;
     const h = fs * 1.9;
-    // Bubble center defaults to hovering above the anchor.
-    const bx = ax + (co.dx ?? 0);
-    const by = ay - fs * 4.2 + (co.dy ?? 0);
+    // Bubble center defaults to hovering above the anchor — but "above" is only
+    // available when the anchor has room above it. A 100% or Mekko chart exposes
+    // no valueToY, so EVERY callout falls back to columnTop, which on those kinds
+    // is the plot ceiling for every column by construction; the same happens on
+    // any chart when the callout names the tallest column. Lifting 4.2 font sizes
+    // from there put the box, its text and its tail entirely off the top of the
+    // canvas. Keep the bubble on the canvas — a bubble overlapping its column
+    // still reads; one at y = -30 is simply lost.
+    const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
+    const bx = clamp(ax + (co.dx ?? 0), w / 2, cfg.width - w / 2);
+    const by = clamp(ay - fs * 4.2 + (co.dy ?? 0), h / 2, cfg.height - h / 2);
     nodes.push(
       {
         kind: "line",
