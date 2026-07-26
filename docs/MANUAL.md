@@ -87,7 +87,10 @@ toggle — the axis and every decoration rotate with them.
   Excel-style. **+ Row / + Column** insert at the cursor; **− Row / −
   Column** delete at the cursor; **⇄ Transpose** swaps rows and columns.
 - **Formulas**: cells starting with `=` evaluate A1-style references,
-  `+ - * /`, and `SUM`/`AVG`/`MIN`/`MAX` over ranges (`=SUM(B2:E2)`).
+  `+ - * /`, and `SUM`/`AVG`/`MIN`/`MAX` over ranges (`=SUM(B2:E2)`). A
+  reference reads a cell exactly as the chart does, so a percent-formatted
+  cell (`35%`) counts as 35 and a date cell counts as its day — `=B3-B2`
+  over two dates is a duration in days.
 - **Blank rows split stacks**: in a stacked chart, series separated by a
   blank row form side-by-side sub-stacks (clustered-stacked).
 - **Dates**: ISO (`2026-01-15`), `15.01.2026`, and `Jan 2026` parse as

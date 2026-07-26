@@ -88,6 +88,7 @@ export const EN = {
   // Runtime status — plain messages.
   "Working…": "Working…",
   "Done.": "Done.",
+  "That chart is no longer on the slide — insert it again.": "That chart is no longer on the slide — insert it again.",
   "Chart loaded — edits will update it in place.": "Chart loaded — edits will update it in place.",
   "Chart loaded from a shared link.": "Chart loaded from a shared link.",
   "Chart config loaded.": "Chart config loaded.",

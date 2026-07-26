@@ -34,25 +34,59 @@ function numericValue(text: string): number {
   return text.includes(",") ? NaN : Number(text);
 }
 
+/**
+ * The number a raw cell holds, and whether it got there as a calendar date.
+ *
+ * The single place a typed cell becomes a number. `parseRow` and `cellNumeric`
+ * each carried their own version and they had drifted: only parseRow stripped a
+ * trailing "%" (how Excel copies a share table, the canonical source for a 100%
+ * chart) and only parseRow read a date, so "35%" was 35 to the chart and an
+ * error to `=SUM` over it, and a Gantt duration `=B3-B2` over two ISO dates came
+ * back blank.
+ */
+function rawCellValue(raw: string): { n: number; date: boolean } {
+  const num = numericValue(raw.replace(/\s*%$/, ""));
+  if (Number.isFinite(num)) return { n: num, date: false };
+  const day = parseDateToken(raw);
+  return day != null ? { n: day, date: true } : { n: NaN, date: false };
+}
+
+/** Shared state for one formula evaluation pass: cycle guard + value cache. */
+interface EvalContext {
+  visiting: Set<string>;
+  memo: Map<string, number>;
+}
+
 /** Numeric value of a cell, following "=" formulas with cycle protection. */
-function cellNumeric(cells: string[][], row: number, col: number, visiting: Set<string>): number {
+function cellNumeric(cells: string[][], row: number, col: number, ctx: EvalContext): number {
   const key = `${row},${col}`;
-  if (visiting.has(key)) return NaN; // circular reference
+  // Memoised: the cycle guard is added before a descent and removed after, so a
+  // formula naming the same cell twice re-walked its whole subtree twice, and a
+  // chain of such cells cost 2^depth evaluations — a ~25-row sheet froze the
+  // pane for minutes, on the UI thread, on every debounced keystroke. Only
+  // FINITE results are cached: a NaN can come from a cycle, and a cycle's answer
+  // depends on the path that reached it.
+  const hit = ctx.memo.get(key);
+  if (hit !== undefined) return hit;
+  if (ctx.visiting.has(key)) return NaN; // circular reference
   const raw = (cells[row]?.[col] ?? "").trim();
-  if (raw === "") return 0;
-  if (raw.startsWith("=")) {
-    visiting.add(key);
-    const v = evaluateFormula(cells, raw.slice(1), visiting);
-    visiting.delete(key);
-    return v ?? NaN;
+  let v: number;
+  if (raw === "") {
+    v = 0;
+  } else if (raw.startsWith("=")) {
+    ctx.visiting.add(key);
+    v = evaluateFormula(cells, raw.slice(1), ctx.visiting, ctx.memo) ?? NaN;
+    ctx.visiting.delete(key);
+  } else {
+    // A non-numeric NON-blank cell (text, an error token) is not a value — NaN
+    // propagates as an error, the same stance parseRow takes when it returns
+    // null for the same cell in place. (A BLANK cell stays 0 above, so SUM still
+    // treats gaps as zero — Excel's convention.) The old silent 0 meant a stray
+    // "n/a" in a referenced cell vanished into a computed total.
+    v = rawCellValue(raw).n;
   }
-  const n = numericValue(raw);
-  // A non-numeric NON-blank cell (text, an error token) is not a value — return
-  // NaN so it propagates as an error, the same stance parseRow takes when it
-  // returns null for the same cell in place. (A BLANK cell stays 0 above, so SUM
-  // still treats gaps as zero — Excel's convention.) The old silent 0 meant a
-  // stray "n/a" in a referenced cell vanished into a computed total.
-  return Number.isFinite(n) ? n : NaN;
+  if (Number.isFinite(v)) ctx.memo.set(key, v);
+  return v;
 }
 
 /**
@@ -60,7 +94,13 @@ function cellNumeric(cells: string[][], row: number, col: number, visiting: Set<
  * (row 1 = the category header row), + - * / ( ), and SUM/AVG/MIN/MAX
  * over ranges like B2:E2. Returns null on parse errors or cycles.
  */
-export function evaluateFormula(cells: string[][], expr: string, visiting: Set<string> = new Set()): number | null {
+export function evaluateFormula(
+  cells: string[][],
+  expr: string,
+  visiting: Set<string> = new Set(),
+  memo: Map<string, number> = new Map(),
+): number | null {
+  const ctx: EvalContext = { visiting, memo };
   const s = expr.replace(/\s+/g, "");
   let i = 0;
 
@@ -68,7 +108,7 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
     const m = /^([A-Za-z]{1,2})([0-9]{1,3})/.exec(s.slice(i));
     if (!m) return null;
     i += m[0].length;
-    return cellNumeric(cells, Number(m[2]) - 1, colIndex(m[1]), visiting);
+    return cellNumeric(cells, Number(m[2]) - 1, colIndex(m[1]), ctx);
   };
   // A blank cell in a range is `null`, not 0: Excel's MIN/MAX/AVG ignore empty
   // cells (only SUM treats them as 0, which it still does below). Distinguish a
@@ -81,7 +121,7 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
     const out: (number | null)[] = [];
     for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
       for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
-        out.push((cells[r]?.[c] ?? "").trim() === "" ? null : cellNumeric(cells, r, c, visiting));
+        out.push((cells[r]?.[c] ?? "").trim() === "" ? null : cellNumeric(cells, r, c, ctx));
     return out;
   };
 
@@ -133,7 +173,7 @@ export function evaluateFormula(cells: string[][], expr: string, visiting: Set<s
             i += one[0].length;
             const rr = Number(one[2]) - 1;
             const cc = colIndex(one[1]);
-            args.push((cells[rr]?.[cc] ?? "").trim() === "" ? null : cellNumeric(cells, rr, cc, visiting));
+            args.push((cells[rr]?.[cc] ?? "").trim() === "" ? null : cellNumeric(cells, rr, cc, ctx));
           } else {
             args.push(expr0());
           }
@@ -182,6 +222,25 @@ const XEXTENT_ROW = /^x\s*extent$/i;
 // epoch days. "% complete" and "After" are NOT dates and stay out.
 const GANTT_DATE_ROW = /^(?:start|end|milestone|today|holidays?|baseline\s*(?:start|end))$|^bracket\b/i;
 
+/**
+ * An epoch-day value as "YYYY-MM-DD", or null when it is not a calendar day.
+ *
+ * `new Date(v * 86400000).toISOString()` THROWS RangeError past the Date range,
+ * and a Gantt row can hold anything a cell can: an epoch-second or -millisecond
+ * timestamp pasted from an export, or a typo. The exception escaped through
+ * applyConfig into the template/selection change listeners, so the chart never
+ * loaded and nothing was reported. Values that survive Date but leave its
+ * four-digit-year window ("20260105" → "+057440-04-…") are equally unusable, so
+ * the check is on the rendered string, not on the number.
+ */
+function isoDay(v: number): string | null {
+  if (!Number.isFinite(v) || Math.abs(v) > 1e8) return null;
+  const d = new Date(v * 86400000);
+  if (Number.isNaN(d.getTime())) return null;
+  const s = d.toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
 export function dataToSheet(data: ChartData): SheetModel {
   const cells: string[][] = [["", ...data.categories]];
   const numRow = (name: string, values: (number | null)[]) => [
@@ -201,7 +260,9 @@ export function dataToSheet(data: ChartData): SheetModel {
     const asDate = data.dates && GANTT_DATE_ROW.test(s.name.trim());
     cells.push([
       s.name,
-      ...s.values.map((v) => (v == null ? "" : asDate ? new Date(v * 86400000).toISOString().slice(0, 10) : String(v))),
+      // A date row cell that is not a representable day falls back to its raw
+      // number, which round-trips as a number rather than taking the load down.
+      ...s.values.map((v) => (v == null ? "" : ((asDate ? isoDay(v) : null) ?? String(v)))),
     ]);
   }
   return { cells };
@@ -223,21 +284,15 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
       if (raw.startsWith("=") && raw.length > 1) {
         return evaluateFormula(sheet.cells, raw.slice(1));
       }
-      // Strip a trailing percent sign the same way the thousands separator is
-      // stripped. Excel copies a percent-formatted cell to the clipboard as its
-      // DISPLAYED text ("35%"), so pasting a share table — the canonical source
-      // for a 100%/stacked chart — arrives percent-suffixed. Read "35%" as 35,
-      // matching how a think-cell datasheet holds a share (and how dataToSheet
-      // writes it back). Without this the value is dropped to a blank gap.
-      const num = numericValue(raw.replace(/\s*%$/, ""));
-      if (Number.isFinite(num)) return num;
-      // Calendar dates (for Gantt timelines) become days since the epoch.
-      const day = parseDateToken(raw);
-      if (day != null) {
-        sawDate = true;
-        return day;
-      }
-      return null;
+      // A trailing percent sign is stripped the same way the thousands separator
+      // is: Excel copies a percent-formatted cell as its DISPLAYED text ("35%"),
+      // so a pasted share table — the canonical source for a 100%/stacked chart
+      // — arrives percent-suffixed. Calendar dates (Gantt timelines) become days
+      // since the epoch. Both live in rawCellValue, which formulas read too.
+      const { n, date } = rawCellValue(raw);
+      if (!Number.isFinite(n)) return null;
+      if (date) sawDate = true;
+      return n;
     });
 
   let hundredPercent: (number | null)[] | undefined;
@@ -296,6 +351,46 @@ export function transposeSheet(sheet: SheetModel): SheetModel {
 }
 
 /**
+ * A row/column edit that MOVES data, reported so the caller can carry its own
+ * per-series and per-category state along.
+ *
+ * `state.seriesColors` / `state.seriesMeta` in the pane are positional, and the
+ * grid buttons spliced rows in and out without telling anyone: every series
+ * below the edit picked up its neighbour's colour and combo type, so a routine
+ * datasheet edit silently changed what the chart drew. "reset" is a transpose,
+ * after which no positional mapping survives.
+ */
+export type SheetStructureChange =
+  | { kind: "series-insert" | "series-remove" | "category-insert" | "category-remove"; index: number }
+  | { kind: "reset" };
+
+/**
+ * How many SERIES rows precede sheet row `row` — i.e. the series index a row
+ * edit at that row lands on. Blank separator rows and the "100%=" / "X extent"
+ * rows are not series, so a raw row number is not a series number.
+ */
+export function seriesIndexOfRow(cells: string[][], row: number): number {
+  let n = 0;
+  for (let r = 1; r < Math.min(row, cells.length); r++) {
+    const cs = cells[r] ?? [];
+    if (cs.every((c) => (c ?? "").trim() === "")) continue;
+    const name = (cs[0] ?? "").trim();
+    if (HUNDRED_ROW.test(name) || XEXTENT_ROW.test(name)) continue;
+    n++;
+  }
+  return n;
+}
+
+/** Whether sheet row `row` is itself a series row (see seriesIndexOfRow). */
+function isSeriesRow(cells: string[][], row: number): boolean {
+  const cs = cells[row];
+  if (!cs || row < 1) return false;
+  if (cs.every((c) => (c ?? "").trim() === "")) return false;
+  const name = (cs[0] ?? "").trim();
+  return !HUNDRED_ROW.test(name) && !XEXTENT_ROW.test(name);
+}
+
+/**
  * Editable datasheet grid: an HTML table of inputs with Excel-style TSV paste.
  * Calls onChange with the raw sheet on every edit.
  */
@@ -303,6 +398,7 @@ export function mountDatasheet(
   host: HTMLElement,
   sheet: SheetModel,
   onChange: (sheet: SheetModel) => void,
+  onStructure: (change: SheetStructureChange) => void = () => {},
 ): { setSheet(next: SheetModel): void } {
   let model = sheet;
   /** Last focused cell, so row/column operations act at the cursor. */
@@ -378,23 +474,29 @@ export function mountDatasheet(
         const used = new Set(model.cells.map((r) => (r[0] ?? "").trim()));
         let n = at;
         while (used.has(`Series ${n}`)) n++;
+        const si = seriesIndexOfRow(model.cells, at);
         model.cells.splice(
           at,
           0,
           model.cells[0].map((_, i) => (i === 0 ? `Series ${n}` : "")),
         );
+        onStructure({ kind: "series-insert", index: si });
         render();
         onChange(model);
       }),
       button("+ Column", () => {
         const at = Math.min(cursor.col + 1, model.cells[0].length);
         model.cells.forEach((r) => r.splice(at, 0, ""));
+        onStructure({ kind: "category-insert", index: at - 1 });
         render();
         onChange(model);
       }),
       button("− Row", () => {
         if (model.cells.length > 2 && cursor.row > 0) {
-          model.cells.splice(Math.min(cursor.row, model.cells.length - 1), 1);
+          const at = Math.min(cursor.row, model.cells.length - 1);
+          const si = isSeriesRow(model.cells, at) ? seriesIndexOfRow(model.cells, at) : null;
+          model.cells.splice(at, 1);
+          if (si != null) onStructure({ kind: "series-remove", index: si });
           render();
           onChange(model);
         }
@@ -403,12 +505,15 @@ export function mountDatasheet(
         if (model.cells[0].length > 2 && cursor.col > 0) {
           const at = Math.min(cursor.col, model.cells[0].length - 1);
           model.cells.forEach((r) => r.splice(at, 1));
+          onStructure({ kind: "category-remove", index: at - 1 });
           render();
           onChange(model);
         }
       }),
       button("⇄ Transpose", () => {
         model = transposeSheet(model);
+        // Series become categories: nothing positional survives.
+        onStructure({ kind: "reset" });
         render();
         onChange(model);
       }),
@@ -420,10 +525,13 @@ export function mountDatasheet(
     const text = e.clipboardData?.getData("text/plain") ?? "";
     if (!text.includes("\t") && !text.includes("\n")) return; // single cell — default behavior
     e.preventDefault();
-    const rows = text
-      .replace(/\r/g, "")
-      .split("\n")
-      .filter((r) => r.length);
+    // Drop only the TRAILING blank lines Excel appends. Filtering every empty
+    // line dropped interior ones too — and in a single-column copy a blank cell
+    // IS an empty line, so a gap in the data silently pulled every later value
+    // up a row and onto the wrong category. (A multi-column blank row arrives as
+    // "\t\t", which is why this only ever bit single-column pastes.)
+    const rows = text.replace(/\r/g, "").split("\n");
+    while (rows.length && rows[rows.length - 1] === "") rows.pop();
     rows.forEach((row, dr) => {
       row.split("\t").forEach((val, dc) => {
         const r = ri + dr;

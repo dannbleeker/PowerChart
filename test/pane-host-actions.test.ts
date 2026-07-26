@@ -192,6 +192,35 @@ describe("Insert updates in place after loading a chart", () => {
     expect(host.calls.insertScene).toHaveLength(0);
   });
 
+  /**
+   * `updateChartInSlide` returns null when the target slide or shape is gone —
+   * deliberately, since "a chart whose slide is gone is not an error, it is
+   * nothing to do". Nothing consumed the null: the guard saw an unchanged note
+   * and printed "Done." in green, and the stale target kept the button reading
+   * "Update chart", so every later push no-opped just as silently.
+   */
+  it("says so, instead of Done., when the target chart is gone", async () => {
+    host.loadSelectionResult = {
+      configJson: chartJson([1, 2, 3]),
+      target: { slideId: "s1", shapeId: "shape-9", left: 10, top: 20 },
+    };
+    $("load-selection").click();
+    await settle();
+    expect($("insert").textContent).toBe("Update chart");
+
+    // The mocked update returns undefined — the "nothing to do" answer.
+    $("insert").click();
+    await settle();
+    const note = $("host-note");
+    expect(note.textContent).not.toBe("Done.");
+    expect(note.className).toContain("status-err");
+    // And the pane falls back to inserting, rather than pushing into thin air.
+    expect($("insert").textContent).toBe("Insert into slide");
+    $("insert").click();
+    await settle();
+    expect(host.calls.insertScene).toHaveLength(1);
+  });
+
   it("Insert-new always drops a fresh chart even with a chart loaded", async () => {
     host.loadSelectionResult = {
       configJson: chartJson([4, 5]),
