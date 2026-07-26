@@ -186,7 +186,22 @@ const MARKER_AREA: Record<MarkerSymbol, number> = {
  * replaces, which is the correct trade — ink is what the eye measures.
  */
 export function markerScale(shape: MarkerSymbol): number {
-  return Math.sqrt(Math.PI / MARKER_AREA[shape]);
+  return Math.sqrt(Math.PI / MARKER_AREA[markerSymbolOf(shape)]);
+}
+
+/**
+ * A config-supplied marker name, narrowed to one this codebase can draw.
+ *
+ * `MarkerSymbol` is a TypeScript union and nothing else — erased at runtime,
+ * while `scatter.markers` is whatever the JSON held. An unknown name travelled
+ * all the way to the renderers as a SymbolNode shape: `symbolPoints` has no
+ * default case, so the SVG renderer threw on `.map()` of undefined, and both
+ * PowerPoint renderers looked up an undefined preset. Unknown reads as "circle"
+ * — the same bucket a point with no marker already falls into — and the
+ * own-property check keeps `"constructor"`/`"__proto__"` out of the table.
+ */
+export function markerSymbolOf(v: unknown): MarkerSymbol {
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(MARKER_AREA, v) ? (v as MarkerSymbol) : "circle";
 }
 
 /**
@@ -245,5 +260,11 @@ export function symbolPoints(shape: SymbolShape, cx: number, cy: number, size: n
         { x: cx - s, y: cy + a },
       ];
     }
+    default:
+      // Unreachable through `markerSymbolOf`, which is the only way a shape name
+      // gets here from config — but the switch had no default at all, so a stray
+      // name returned `undefined` and every caller crashed on `.map()`. An empty
+      // outline draws nothing instead of taking the render down with it.
+      return [];
   }
 }

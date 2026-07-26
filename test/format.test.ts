@@ -107,6 +107,23 @@ describe("resolveAxisFormat", () => {
   it("leaves an authored decimals count alone", () => {
     expect(resolveAxisFormat([7.44, 7.45], { decimals: 0 }).decimals).toBe(0);
   });
+  it("keeps a small-magnitude axis distinct instead of giving up at the ceiling", () => {
+    // The exactness search stopped at six decimals, so every tick on an axis
+    // finer than 1e-6 rendered "0.000000" — one identical label per gridline.
+    const ticks = [0, 1e-7, 2e-7, 3e-7];
+    const labels = ticks.map((t) => formatNumber(t, resolveAxisFormat(ticks)));
+    expect(new Set(labels).size, labels.join("|")).toBe(ticks.length);
+  });
+  it("does not spend seventeen decimals on a non-terminating tick list", () => {
+    // Exactness is measured against the STEP, not an absolute epsilon: 1/3 is
+    // never a finite decimal, and an absolute epsilon ran the search to the
+    // ceiling ("0.33333333333333331").
+    const ticks = [1 / 3, 2 / 3, 1];
+    const fmt = resolveAxisFormat(ticks);
+    expect(fmt.decimals).toBeLessThanOrEqual(6);
+    const labels = ticks.map((t) => formatNumber(t, fmt));
+    expect(new Set(labels).size, labels.join("|")).toBe(ticks.length);
+  });
   it("falls back to magnitude when there is nothing to step between", () => {
     expect(resolveAxisFormat([]).decimals).toBe(2);
     expect(resolveAxisFormat([5, 5]).decimals).toBe(1);

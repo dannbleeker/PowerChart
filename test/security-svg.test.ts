@@ -230,3 +230,55 @@ describe("XML-illegal characters (regression)", () => {
     expect(svg).toContain("Ærø");
   });
 });
+
+/**
+ * `PATTERN_TILE` and the marker-shape tables are plain object literals indexed
+ * with a raw string out of ChartConfig. Inherited Object.prototype members made
+ * the truthiness guard pass: `__proto__` yielded a non-callable object (the
+ * whole render threw), `constructor`/`toString` yielded functions that were
+ * CALLED as tile builders. The sibling pptx renderer already guards its colour
+ * table this way.
+ */
+describe("prototype keys in paint and shape tables", () => {
+  const patterned = (pattern: string): ChartConfig =>
+    ({
+      kind: "stacked",
+      width: 480,
+      height: 300,
+      data: { categories: ["A"], series: [{ name: "S", values: [10], pattern }] },
+    }) as unknown as ChartConfig;
+
+  it.each(["__proto__", "constructor", "toString", "valueOf", "hasOwnProperty", "nonsense"])(
+    "renders a chart whose pattern is %s without throwing",
+    (pattern) => {
+      const svg = sceneToSvg(buildChart(patterned(pattern)));
+      // Falls back to the solid fill: no <pattern> def, and no dangling url(#…).
+      expect(svg).not.toContain("<pattern");
+      expect(svg).not.toContain("url(#");
+    },
+  );
+
+  it("still emits a real pattern for a known name", () => {
+    expect(sceneToSvg(buildChart(patterned("diagonal")))).toContain("<pattern");
+  });
+
+  it.each(["__proto__", "constructor", "star", ""])("renders a scatter whose marker is %s", (marker) => {
+    const cfg = {
+      kind: "scatter",
+      width: 480,
+      height: 300,
+      scatter: { markers: [marker] },
+      data: {
+        categories: ["a", "b"],
+        series: [
+          { name: "x", values: [1, 2] },
+          { name: "y", values: [3, 4] },
+        ],
+      },
+    } as unknown as ChartConfig;
+    const svg = sceneToSvg(buildChart(cfg));
+    // Unknown shapes fall back to the circle, which is an <ellipse>.
+    expect(svg).toContain("<ellipse");
+    expect(svg).not.toContain('points=""');
+  });
+});

@@ -387,7 +387,11 @@ export function chromeNodes(
     // segments beside them already read "60%". Precision comes from the SCALED
     // ticks so each label still names its own tick.
     const axisFmt = resolveAxisFormat(scale.percent ? ticks.map((t) => t * 100) : ticks, cfg.numberFormat);
-    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, axisFmt)}%` : formatNumber(t, axisFmt));
+    // A share is unitless: formatNumber appends numberFormat.suffix (the
+    // documented way to say "millions"), which labelled a 100% axis "25 m%"
+    // while its own segment labels correctly read "25%".
+    const shareFmt = { ...axisFmt, suffix: undefined };
+    const axisLabel = (t: number) => (scale.percent ? `${formatNumber(t * 100, shareFmt)}%` : formatNumber(t, axisFmt));
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {

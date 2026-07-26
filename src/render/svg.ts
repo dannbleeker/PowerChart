@@ -74,6 +74,19 @@ const PATTERN_TILE: Record<string, (id: string, color: string) => string> = {
 // (byte-identical output) and produces a resolvable id for the rest.
 const patternId = (pattern: string, color: string) => `p-${pattern}-${color.replace("#", "").replace(/[^\w-]/g, "-")}`;
 
+/**
+ * The tile builder for a pattern name, or undefined.
+ *
+ * `PATTERN_TILE[name]` alone reaches Object.prototype: `pattern: "__proto__"`
+ * came back as an object (truthy, not callable → the whole render threw), and
+ * `"constructor"` / `"toString"` came back as functions that were then CALLED as
+ * tile builders, writing garbage into <defs> and a url(#…) reference to a
+ * <pattern> that was never emitted. The name is unvalidated config. The sibling
+ * pptx renderer already guards its colour-name table the same way.
+ */
+const patternTile = (pattern: string) =>
+  Object.prototype.hasOwnProperty.call(PATTERN_TILE, pattern) ? PATTERN_TILE[pattern] : undefined;
+
 /** Render a scene to a standalone SVG string (1pt = 1px). */
 export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): string {
   const parts: string[] = [];
@@ -99,10 +112,11 @@ export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): st
   // One <pattern> def per (pattern, color) pair used by the scene's rects.
   const defs = new Map<string, string>();
   for (const n of scene.nodes) {
-    if (n.kind === "rect" && n.pattern && PATTERN_TILE[n.pattern]) {
+    const tile = n.kind === "rect" && n.pattern ? patternTile(n.pattern) : undefined;
+    if (tile && n.kind === "rect" && n.pattern) {
       const fill = paint(n.fill);
       const id = patternId(n.pattern, fill);
-      if (!defs.has(id)) defs.set(id, PATTERN_TILE[n.pattern](id, fill));
+      if (!defs.has(id)) defs.set(id, tile(id, fill));
     }
   }
   if (defs.size) parts.push(`<defs>${[...defs.values()].join("")}</defs>`);
@@ -118,8 +132,7 @@ function nodeToSvg(n: SceneNode): string {
   switch (n.kind) {
     case "rect": {
       const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}"` : "";
-      const fill =
-        n.pattern && PATTERN_TILE[n.pattern] ? `url(#${patternId(n.pattern, paint(n.fill))})` : paint(n.fill);
+      const fill = n.pattern && patternTile(n.pattern) ? `url(#${patternId(n.pattern, paint(n.fill))})` : paint(n.fill);
       return `<rect x="${r(n.x)}" y="${r(n.y)}" width="${r(n.w)}" height="${r(n.h)}" fill="${fill}"${stroke}${name(n)}/>`;
     }
     case "line": {

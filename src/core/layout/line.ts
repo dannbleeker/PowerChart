@@ -606,10 +606,23 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
       .filter((e): e is { y: number; i: number } => e.y != null)
       .sort((a, b) => a.y - b.y);
     const minGap = fs * 1.5;
+    // `y` is the label's CENTRE and the box is fs*1.5 tall, so half a box of
+    // headroom keeps it on the canvas.
+    const top = Math.max(plot.y, fs * 0.75);
+    const bottom = Math.min(plot.y + plot.h, cfg.height - fs * 0.75);
     for (let k = 1; k < idx.length; k++) idx[k].y = Math.max(idx[k].y, idx[k - 1].y + minGap);
     if (idx.length) {
-      idx[idx.length - 1].y = Math.min(idx[idx.length - 1].y, plot.y + plot.h);
+      idx[idx.length - 1].y = Math.min(idx[idx.length - 1].y, bottom);
       for (let k = idx.length - 2; k >= 0; k--) idx[k].y = Math.min(idx[k].y, idx[k + 1].y - minGap);
+      // Only the BOTTOM was clamped, and the upward propagation then walked
+      // straight past the plot top, past the title and off the canvas — on a
+      // dense slope chart the topmost labels were simply lost. Spread evenly
+      // over the plot when the gap cannot be honoured: an overlapping label
+      // still reads, an off-canvas one does not (collide.ts's own rule).
+      if (idx[0].y < top) {
+        const step = idx.length > 1 ? (bottom - top) / (idx.length - 1) : 0;
+        idx.forEach((e, k) => (e.y = top + k * step));
+      }
     }
     const out: (number | null)[] = ys.map(() => null);
     idx.forEach((e) => (out[e.i] = e.y));

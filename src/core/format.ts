@@ -105,8 +105,15 @@ export function resolveAxisFormat(ticks: number[], fmt: Partial<NumberFormat> = 
   // that. Deriving it from log10(step) assumed the 1/2/5×10^k steps niceTicks
   // emits; a hand-built tick list (the 100% axis's 0/.25/.5/.75/1) breaks that
   // assumption, and 0.25 came back as "0.3" — a label naming no tick on the axis.
+  // "Exactly" is only meaningful against the STEP: ticks 1e-7 apart need seven
+  // decimals to stay distinct, ticks 1/3 apart need four. A fixed absolute
+  // epsilon answered neither — it ran to the ceiling on a small-magnitude axis
+  // (which then printed one identical label on every gridline, the exact
+  // contract this function exists to keep) and spent seventeen decimals on a
+  // non-terminating tick list.
+  const tol = step * 1e-3;
   let stepDecimals = 0;
-  while (stepDecimals < 6 && !sorted.every((t) => Math.abs(t - Number(t.toFixed(stepDecimals))) < 1e-9)) {
+  while (stepDecimals < 20 && !sorted.every((t) => Math.abs(t - Number(t.toFixed(stepDecimals))) < tol)) {
     stepDecimals++;
   }
   const decimals = typeof resolved.decimals === "number" ? resolved.decimals : 0;
@@ -204,6 +211,17 @@ function p2sep(parts: string[]): string {
 
 const DAY_MS = 86400000;
 
+/** The only words a date token may contain — see `parseDateToken`. */
+const DATE_WORDS = new Set([
+  ..."jan feb mar apr may jun jul aug sep oct nov dec".split(" "),
+  ..."january february march april june july august september october november december".split(" "),
+  ..."mon tue tues wed thu thur thurs fri sat sun".split(" "),
+  ..."monday tuesday wednesday thursday friday saturday sunday".split(" "),
+  // Date-time markers Date.parse understands: the ISO separator/zone letters,
+  // named zones, and the meridiem.
+  ..."t z utc gmt am pm".split(" "),
+]);
+
 /**
  * Parse a calendar-date cell ("2026-01-15", "15.01.2026", "Jan 2026", …)
  * into days since the Unix epoch. Returns null for non-dates.
@@ -220,6 +238,17 @@ export function parseDateToken(raw: string): number | null {
   // Numeric ranges ("3-5", "10–20") are category labels, not dates — Date.parse
   // would otherwise misread them as partial ISO dates.
   if (/^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t)) return null;
+  // Everything below reaches `Date.parse`, which is far more lenient than a date
+  // cell has any right to be: "#DIV/0! UTC" comes back as 2000-01-01, "Store 5"
+  // as 2001-05-01, "<0.1" as 2000-01-01. So an Excel error cell, a shop name or
+  // a threshold became epoch day 10957 AND flipped the whole ChartData into date
+  // mode. Two shape rules first — a date is spelled with digits and date
+  // punctuation only, and every word in it names a month, a weekday, or a
+  // timezone/meridiem marker.
+  if (/[^A-Za-z0-9 ,./:+\-–]/.test(t)) return null;
+  for (const w of t.match(/[A-Za-z]+/g) ?? []) {
+    if (!DATE_WORDS.has(w.toLowerCase())) return null;
+  }
   const ms = dmy
     ? Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
     : // An ISO token (bare date OR a full date-time with T/offset) parses as-is;

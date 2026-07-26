@@ -1,5 +1,5 @@
 import type { ChartConfig, ChartStyle, Decorations, MarkerSymbol } from "../types";
-import { markerScale } from "../geometry";
+import { markerScale, markerSymbolOf } from "../geometry";
 import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatP, histogramBins, niceTicks, polyTrend, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
@@ -165,7 +165,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Shape per group, cycled like the palette. Off => every point a circle,
   // which is the ellipse the layout has always emitted.
   const markers = cfg.scatter?.markers?.length ? cfg.scatter.markers : null;
-  const markerFor = (group: number): MarkerSymbol => (markers ? markers[(group - 1) % markers.length] : "circle");
+  // Narrowed, not trusted: `markers` is config, and MarkerSymbol is erased at
+  // runtime — an unknown name reached the renderers as a SymbolNode shape they
+  // have no geometry for and threw mid-render.
+  const markerFor = (group: number): MarkerSymbol =>
+    markers ? markerSymbolOf(markers[(group - 1) % markers.length]) : "circle";
 
   // Continuous color scale (a "Color" row): maps each point onto a sequential
   // ramp; supersedes group coloring and swaps the chip legend for a gradient.
@@ -853,9 +857,13 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         .filter(Boolean)
         .join(" ");
     };
+    // Anchored to the mark as DRAWN (px/py), not to the undisplaced position:
+    // beeswarm relief exists precisely to separate co-located points, so the
+    // spot a spread point vacated is typically taken by a NEIGHBOUR — and a
+    // label placed there named one bubble while sitting on another.
     const reqs: LabelRequest[] = order.map((i) => ({
-      cx: toX(pts[i].x),
-      cy: toY(pts[i].y),
+      cx: px(pts[i], i),
+      cy: py(pts[i], i),
       r: radius(pts[i]),
       w: textWidth(pointLabel(pts[i]), fs) + 2,
       h: fs * 1.3,

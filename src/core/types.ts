@@ -668,4 +668,10 @@ export interface LayoutAnchors {
   plot: { x: number; y: number; w: number; h: number };
   /** Value → y mapping used by the layout (absent for 100% charts). */
   valueToY?: (v: number) => number;
+  /**
+   * Value → x mapping, for horizontal (bar) orientation — where the value axis
+   * runs left-to-right and `categoryX` holds the category's Y centre. Absent
+   * for vertical charts and for 100% bars.
+   */
+  valueToX?: (v: number) => number;
 }
