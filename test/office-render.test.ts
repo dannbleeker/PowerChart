@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  _setBatchTimeoutForTest,
   CHART_PARTS_TAG,
   CHART_TAG,
   getSelectionBounds,
@@ -271,6 +272,14 @@ const blankReadbackAt = new Set<number>();
  * the report must come back blanksRead:false rather than an empty "no blanks". */
 let faultShapeGetCount = false;
 
+/** Sync indices that STALL — the promise resolves after `stallSyncDelayMs`, but
+ * withTimeout (shortened via _setBatchTimeoutForTest) fires first and abandons
+ * it. Models the real-host bug: sync at 60s, shapes on the slide, no error to
+ * blame. When the abandoned promise later settles, withTimeout records
+ * `lastLateSync = "…SUCCEEDED after Ns"` — the signal PR 1 gates on. */
+const stallSyncOn = new Set<number>();
+let stallSyncDelayMs = 40;
+
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
  * — pass a predicate to simulate e.g. PowerPoint on the web lacking grouping. */
@@ -349,6 +358,18 @@ function installHost(
     sync: async () => {
       trips.syncs++;
       if (trips.syncs === failSyncOn || failSyncsOn.has(trips.syncs)) throw new Error("host refused a queued command");
+      if (stallSyncOn.has(trips.syncs)) {
+        // Sleep past withTimeout's deadline, then settle successfully. The
+        // queued shapes were pushed into the slide's `items` array by the
+        // add*() proxy calls the moment they were queued, so they're already
+        // observable to a fresh-context readback — same as real Office.js
+        // where a slow sync eventually commits.
+        await new Promise((r) => setTimeout(r, stallSyncDelayMs));
+        for (const r of pendingCounts) r.value = committedCount;
+        pendingCounts.length = 0;
+        committedCount = slides.length;
+        return;
+      }
       // A queued-command failure (e.g. drawing on a poisoned getItemAt handle)
       // surfaces here, at the sync, exactly as Office.js reports it.
       if (pendingHostError) {
@@ -370,6 +391,7 @@ function installHost(
   pendingHostError = null;
   swallowAdds = 0;
   failSyncsOn.clear();
+  stallSyncOn.clear();
   blankReadbackAt.clear();
   faultShapeGetCount = false;
   addedWithLayout.length = 0;
@@ -1527,6 +1549,42 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(report.blankSlides).toEqual([]);
     // The run itself still succeeded — a readback fault is not a render failure.
     expect(report.results.every((r) => r.status === "rendered")).toBe(true);
+  });
+
+  it("treats a timed-out sync as rendered when the readback shows the shapes actually landed", async () => {
+    // The real-host bug PR 1 exists for: withTimeout rejected at 45s, but the
+    // sync had queued every shape and the host settled a moment later. Marking
+    // it "failed" both wastes a retry (adds a duplicate slide) and stamps a
+    // real chart NOT COMPLETE. The fix waits for the abandoned promise to
+    // report its outcome, reads the slide back, and — when every shape landed
+    // — records it as rendered with lateSettled=true.
+    _setBatchTimeoutForTest(5);
+    stallSyncDelayMs = 40; // safely past the 5ms timeout
+    try {
+      const deck: FakeSlide[] = [makeSlide("s1")];
+      installHost(deck);
+      // Sync map for the first item: #1=slideCount, #2=blankLayoutId,
+      // #3=addSlides.getCount, #4=addSlides.add, #5=renderShapesChunked's only
+      // batch (cfgFor's scene fits in one). Stall #5 — the render sync — so the
+      // shapes are already on the fake slide when withTimeout gives up.
+      stallSyncOn.add(5);
+      const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: `{"i":0}` }]);
+      // Late-settled path: rendered without retry, with lateOutcome captured.
+      expect(report.results[0].status).toBe("rendered");
+      expect(report.results[0].lateSettled).toBe(true);
+      expect(report.results[0].retried).toBeFalsy();
+      expect(report.results[0].lateOutcome).toMatch(/eventually SUCCEEDED/);
+      expect(failedIndices(report)).toEqual([]);
+      // No duplicate slide from a bogus retry.
+      expect(report.slidesAdded).toBe(1);
+      expect(report.addsIssued).toBe(1);
+      // And the slide is NOT stamped — stamping a complete chart NOT COMPLETE
+      // is the false-negative the fix eliminates.
+      expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncDelayMs = 40;
+    }
   });
 
   it("retries a slide the host stalls on once, and the transient stall recovers", async () => {

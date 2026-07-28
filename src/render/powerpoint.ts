@@ -135,6 +135,32 @@ export function onLateSync(cb: (msg: string) => void): void {
 }
 
 /**
+ * The most recent abandoned sync's settle promise — resolves when the sync
+ * eventually reports success OR a RichApi error. Callers that catch a timeout
+ * can `await waitForLateSync()` before deciding what to do, so `lastLateSync`
+ * carries the host's actual verdict rather than a stale null.
+ */
+let pendingLateSyncSettle: Promise<void> | null = null;
+
+/**
+ * Wait up to `maxMs` for the last abandoned sync (see `withTimeout`) to report
+ * its outcome, so `lastLateSync` reflects reality before the caller reads it.
+ * No-op if nothing is outstanding. Returns whether the settle actually landed.
+ */
+export async function waitForLateSync(maxMs = 5_000): Promise<boolean> {
+  if (!pendingLateSyncSettle) return false;
+  const p = pendingLateSyncSettle;
+  let settled = false;
+  await Promise.race([
+    p.then(() => {
+      settled = true;
+    }),
+    new Promise<void>((r) => setTimeout(r, maxMs)),
+  ]);
+  return settled;
+}
+
+/**
  * Reject if `p` has not settled within `ms` — a hung host must not hang the
  * pane.
  *
@@ -145,29 +171,52 @@ export function onLateSync(cb: (msg: string) => void): void {
  * that error names the real bug and would otherwise be lost forever, because
  * Office.js reports queued-command failures HERE and nowhere else. So keep
  * listening after giving up, and record what arrives.
+ *
+ * On timeout, `pendingLateSyncSettle` tracks the abandoned promise's eventual
+ * outcome so a caller can `await waitForLateSync()` before reading
+ * `lastLateSync` — the difference between "sync at 60s, chart on the slide"
+ * (rendered late) and "sync never returned" (a real host death).
  */
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  let abandoned = false;
   const started = Date.now();
-  const describe = (outcome: string) => {
-    if (!abandoned) return;
+  const describe = (outcome: string): void => {
     lastLateSync = `${what}: ${outcome} after ${Math.round((Date.now() - started) / 1000)}s`;
     lateSubscriber?.(lastLateSync);
   };
-  p.then(
-    () => describe("the host eventually SUCCEEDED"),
-    (err: unknown) => describe(`the host eventually FAILED — ${errorText(err)}`),
-  );
-  return Promise.race([
-    p.finally(() => clearTimeout(timer)),
-    new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        abandoned = true;
-        reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
-      }, ms);
-    }),
-  ]);
+  return new Promise<T>((resolve, reject) => {
+    let done = false;
+    p.then(
+      (v) => {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          resolve(v);
+        } else {
+          describe("the host eventually SUCCEEDED");
+        }
+      },
+      (err: unknown) => {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          reject(err);
+        } else {
+          describe(`the host eventually FAILED — ${errorText(err)}`);
+        }
+      },
+    );
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      // Track the abandoned promise's eventual settle so waitForLateSync can
+      // await it before the caller reads lastLateSync.
+      pendingLateSyncSettle = p.then(
+        () => undefined,
+        () => undefined,
+      );
+      reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
+    }, ms);
+  });
 }
 
 /**
@@ -204,7 +253,16 @@ export function errorText(err: unknown): string {
  * Generous, because its only job is to stop an infinite spinner. Being late
  * costs a user nothing; being wrong costs them their chart.
  */
-const BATCH_TIMEOUT_MS = 45_000;
+let BATCH_TIMEOUT_MS = 45_000;
+
+/**
+ * Test-only: shorten the batch timeout so a stalled-sync scenario is testable
+ * inside a normal vitest run. Production callers never touch it; the default is
+ * the 45s ceiling above. Restore by passing 45_000 back in.
+ */
+export function _setBatchTimeoutForTest(ms: number): void {
+  BATCH_TIMEOUT_MS = ms;
+}
 
 /**
  * The blank layout of the presentation's first master, or undefined if the host
@@ -785,6 +843,15 @@ export interface DemoResult {
   /** The item stalled on its first attempt but a single retry recovered it. The
    *  first attempt may have left a stray partial slide (see slidesAdded). */
   retried?: boolean;
+  /** The item's sync timed out but a slide readback showed every shape had
+   *  landed — the host settled after we gave up, so the chart is real. Counted
+   *  as "rendered", NOT "failed": stamping a complete chart NOT COMPLETE is
+   *  the false-negative this exists to prevent. */
+  lateSettled?: boolean;
+  /** The `lastLateSync` value observed during this item, if any — an abandoned
+   *  sync that later reported success or a real RichApi error. Read the run's
+   *  console.table to see which item stalled and how it eventually resolved. */
+  lateOutcome?: string;
 }
 
 /** A demo-deck insert's self-verification report. */
@@ -825,6 +892,20 @@ export interface DemoReport {
 async function slideCount(): Promise<number> {
   return PowerPoint.run(async (context) => {
     const c = context.presentation.slides.getCount();
+    await context.sync();
+    return c.value;
+  });
+}
+
+/**
+ * Top-level shape count of a slide, in a fresh settled sync. Used after an
+ * addAndRenderItem throw to see what actually landed — a sync that timed out
+ * (see `withTimeout`) may leave every shape on the slide anyway, and treating
+ * that as a failure both wastes a retry and stamps a real chart NOT COMPLETE.
+ */
+async function slideShapeCount(index: number): Promise<number> {
+  return PowerPoint.run(async (context) => {
+    const c = context.presentation.slides.getItemAt(index).shapes.getCount();
     await context.sync();
     return c.value;
   });
@@ -894,43 +975,101 @@ export async function insertDemoDeck(
   // deck grew by exactly one slide per item — the lost-slide check.
   const before = await slideCount();
   const runStart = Date.now();
+  // Running slide count, refreshed with a settled getCount only on the failure
+  // path. On the happy path (addAndRenderItem returns) we know exactly one slide
+  // landed — no extra round-trip per item.
+  let runningCount = before;
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
     let retried = false;
+    let lateSettled = false;
+    const lateBefore = lastLateSync;
     const t0 = Date.now();
     try {
       created = await addAndRenderItem(items[i], tooDense, shapeCount, layout);
+      runningCount++;
     } catch (err) {
-      // A host stall is often transient, so retry the RENDER once — a fresh run
-      // and a NEW slide, because we must NOT delete the first failed slide: a
-      // mis-identified last-slide delete could destroy a good one. A recovered
-      // item may thus leave a stray partial slide from attempt 1; slidesAdded
-      // surfaces that. Too-dense items only stamp a placeholder — nothing to
-      // re-render — so they fail straight through.
-      let recovered = false;
-      if (!tooDense) {
-        try {
-          created = await addAndRenderItem(items[i], false, shapeCount, layout);
-          recovered = true;
-        } catch {
-          /* stalled again — fall through to the failed stamp */
+      // A throw is not always proof the chart is missing. When `withTimeout`
+      // races a slow sync and abandons it, the queued shapes STILL commit —
+      // the sync just resolves late. Real host: sync at 60s, shapes on the
+      // slide, no error to blame. Readback in a fresh context proves it.
+      //
+      // Gate on lastLateSync changing: a plain RichApi rejection means the
+      // queued commands did NOT commit, and skipping the readback keeps sync
+      // counts stable for the existing failure-path tests (no extra syncs on
+      // the retry's chosen index). Too-dense items never rendered — skip too.
+      // Wait for the abandoned sync (if any) to report its outcome so
+      // lastLateSync reflects reality — a timeout that resolves late means
+      // the host settled; a plain rejection means nothing to wait for.
+      if (!tooDense) await waitForLateSync();
+      const lateFired = lastLateSync !== lateBefore;
+      if (!tooDense && lateFired && shapeCount > 0) {
+        const afterFail = await slideCount().catch(() => runningCount);
+        const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
+        const readback = failedSlideIndex >= 0
+          ? await slideShapeCount(failedSlideIndex).catch(() => 0)
+          : 0;
+        runningCount = afterFail;
+        if (readback >= shapeCount) {
+          // The host settled after the timeout — every shape is on the slide.
+          // Don't retry, don't stamp. The grouping/tagging did not run (the
+          // failed context is dead), so this chart is real but ungrouped —
+          // groupAndTagAll's own path is what promotes re-editability.
+          created = readback;
+          lateSettled = true;
         }
       }
-      if (recovered) {
-        retried = true; // status stays "rendered"
-      } else {
-        // One chart the host would not draw does not sink the rest of the deck.
-        // Mark the half-rendered slide so a partial chart is not mistaken for a
-        // real one. A fresh context, because the failed render poisoned its own.
-        lastError = err;
-        status = "failed";
-        await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
+      if (!lateSettled) {
+        // A host stall is often transient, so retry the RENDER once — a fresh run
+        // and a NEW slide, because we must NOT delete the first failed slide: a
+        // mis-identified last-slide delete could destroy a good one. A recovered
+        // item may thus leave a stray partial slide from attempt 1; slidesAdded
+        // surfaces that. Too-dense items only stamp a placeholder — nothing to
+        // re-render — so they fail straight through.
+        let recovered = false;
+        if (!tooDense) {
+          try {
+            created = await addAndRenderItem(items[i], false, shapeCount, layout);
+            recovered = true;
+            runningCount++;
+          } catch (err2) {
+            // Second attempt may also be a late-success — recheck before giving up.
+            await waitForLateSync();
+            const lateFired2 = lastLateSync !== lateBefore;
+            if (lateFired2 && shapeCount > 0) {
+              const afterFail2 = await slideCount().catch(() => runningCount);
+              const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
+              const readback2 = failedSlideIndex2 >= 0
+                ? await slideShapeCount(failedSlideIndex2).catch(() => 0)
+                : 0;
+              runningCount = afterFail2;
+              if (readback2 >= shapeCount) {
+                created = readback2;
+                recovered = true;
+                lateSettled = true;
+              }
+            }
+            /* stalled again — fall through to the failed stamp */
+            if (!recovered) lastError = err2;
+          }
+        }
+        if (recovered) {
+          retried = true; // status stays "rendered"
+        } else {
+          // One chart the host would not draw does not sink the rest of the deck.
+          // Mark the half-rendered slide so a partial chart is not mistaken for a
+          // real one. A fresh context, because the failed render poisoned its own.
+          if (lastError === undefined) lastError = err;
+          status = "failed";
+          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
+        }
       }
     }
-    results.push({ created, status, ms: Date.now() - t0, retried });
+    const lateOutcome = lastLateSync && lastLateSync !== lateBefore ? lastLateSync : undefined;
+    results.push({ created, status, ms: Date.now() - t0, retried, lateSettled, lateOutcome });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
