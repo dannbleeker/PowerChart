@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   _setBatchTimeoutForTest,
+  _setBlankReReadDelayForTest,
   CHART_PARTS_TAG,
   CHART_TAG,
   getSelectionBounds,
@@ -123,11 +124,21 @@ let contextBaseCount = 0;
 
 function makeSlide(id: string) {
   const created: FakeShape[] = [];
+  const slideTagStore = new Map<string, string>();
   const slide = {
     id,
     created,
     isNullObject: false,
     load() {},
+    tags: {
+      add: (k: string, v: string) => void slideTagStore.set(k, v),
+      getItemOrNullObject: (k: string) => ({
+        isNullObject: !slideTagStore.has(k),
+        value: slideTagStore.get(k) ?? "",
+        load() {},
+      }),
+    },
+    tagStore: slideTagStore,
     shapes: {
       // A deleted shape is gone from the host's collection; keeping it in `items`
       // let readbacks (listChartsInDeck) count a chart that no longer exists.
@@ -218,6 +229,7 @@ function freshWindowedHandle(real: FakeSlide) {
     id: real.id,
     isNullObject: false,
     load() {},
+    tags: real.tags,
     shapes: {
       items: real.shapes.items,
       load() {},
@@ -1519,6 +1531,31 @@ describe("Office round-trips do not scale with the chart count", () => {
     // A blank slide has no content/tag to name it — reported as the 1-based deck position (index 2 → slide 3).
     expect(report.blankSlides).toEqual([3]);
     expect(report.blanksRead).toBe(true);
+  });
+
+  it("names a blank slide from its slot tag when the item carries a title", async () => {
+    // A blank readback used to say only "slide 3". Every demo slide now gets a
+    // POWERCHART_DEMO_SLOT tag on creation, so the readback can name the missing
+    // chart by title. blankReadbackAt makes index 2 report 0 shapes; the slot
+    // tag survives (we never emptied the tag store) and gives us the item name.
+    _setBlankReReadDelayForTest(0); // no wall-clock sleep in the test
+    try {
+      const deck = [makeSlide("s1")];
+      installHost(deck);
+      const n = 3;
+      blankReadbackAt.add(2);
+      const report = await insertDemoDeck(
+        Array.from({ length: n }, (_, i) => ({
+          scene: buildChart(cfgFor(i)),
+          title: `chart-${i}`,
+        })),
+      );
+      expect(report.blankSlides).toEqual([3]);
+      // Index 2 corresponds to item 1 (item 0 is index 1, item 1 is index 2, ...).
+      expect(report.blankItems).toEqual([{ position: 3, title: "chart-1" }]);
+    } finally {
+      _setBlankReReadDelayForTest(200);
+    }
   });
 
   it("un-masks a lost slide that a retry stray hid from the deck-growth count", async () => {

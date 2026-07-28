@@ -1737,13 +1737,14 @@ function wireInsert() {
         const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        const { results, slidesAdded, addsIssued, blankSlides, blanksRead, totalMs } = await insertDemoDeck(
-          items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
-          (done, total) => {
-            note("Inserting demo slides… {done} of {total}", "busy", { done, total });
-            setProgress(done / total); // one slide per context, so a real bar
-          },
-        );
+        const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs } =
+          await insertDemoDeck(
+            items.map((i) => ({ scene: i.scene, tagData: i.configJson, title: i.title })),
+            (done, total) => {
+              note("Inserting demo slides… {done} of {total}", "busy", { done, total });
+              setProgress(done / total); // one slide per context, so a real bar
+            },
+          );
         // Self-check: the deck is a regression harness, so report what the HOST
         // actually did, not what we asked for. The full table goes to the console.
         const named = (s: "skipped" | "failed") =>
@@ -1777,11 +1778,13 @@ function wireInsert() {
         if (recovered) msg += ` ${recovered} recovered on retry.`;
         if (lost > 0)
           msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
-        // Blank slides are reported by DECK POSITION, not item name: a blank slide
-        // has no content to identify it, and a scrambled deck breaks any mapping.
-        if (blankSlides.length)
-          msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK (deck slide${blankSlides.length === 1 ? "" : "s"} ${blankSlides.join(", ")}).`;
-        else if (!blanksRead) msg += ` (Blank check did not finish.)`;
+        // Blank slides carry the slot tag (item title) where the host has 1.3
+        // slide tags; without them the entry has title null and only its deck
+        // position is shown, same as before slot tags landed.
+        if (blankSlides.length) {
+          const named = blankItems.map((b) => (b.title ? `${b.title} (slide ${b.position})` : `slide ${b.position}`));
+          msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK: ${named.join(", ")}.`;
+        } else if (!blanksRead) msg += ` (Blank check did not finish.)`;
         // Close the deck with a self-contained results slide so the exported PDF is
         // a complete run record. A second insertDemoDeck reuses the same add/render/
         // self-check machinery; wrap it so a host stall here can't swallow the run's

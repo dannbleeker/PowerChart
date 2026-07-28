@@ -76,6 +76,15 @@ export const CHART_PARTS_TAG = "POWERCHART_PARTS";
 export const CHART_ORIGIN_TAG = "POWERCHART_ORIGIN";
 
 /**
+ * Slide-level tag written on every demo-deck slide at creation time — a JSON
+ * envelope carrying the item's title so a blank readback can NAME the missing
+ * chart instead of just its 1-based deck position. Requires PowerPointApi 1.3;
+ * a host without slide tags silently skips it and blanks stay position-only.
+ * Not read by the update path — this exists purely for regression self-check.
+ */
+export const DEMO_SLOT_TAG = "POWERCHART_DEMO_SLOT";
+
+/**
  * Release a proxy object's client-side memory once its loaded values have been
  * read. Office.js keeps every proxy touched in a `run` alive until the context
  * is disposed, and the docs call out a "noticeable performance benefit when
@@ -872,15 +881,21 @@ export interface DemoReport {
   /**
    * 1-based deck positions of ADDED slides that read back with ZERO shapes — the
    * host committed the slide but its content detached (a silent partial a visual
-   * scan misses). Position-only BY DESIGN: a blank slide has no content and no
-   * config tag, so it cannot be attributed to a named item. Each 0 is re-read
-   * once (a struggling host can report a transient 0) before being recorded.
-   * Honest limits: it cannot see a chart grouped onto ONE shape that then lost
-   * some children, a MERGE of two items onto one slide (that slide isn't blank),
-   * or a paint-only blank (office-js#2699 — shapes exist, getCount > 0). Naming
-   * the missing/merged charts by their config tag is a documented follow-up.
+   * scan misses). Each candidate 0 is re-read once after a short backoff (a
+   * struggling host reports transient zeros for hundreds of ms after commit),
+   * then recorded only if it re-reads as 0. Honest limits: it cannot see a chart
+   * grouped onto ONE shape that lost children, a MERGE of two items onto one
+   * slide (that slide isn't blank), or a paint-only blank (office-js#2699 —
+   * shapes exist, getCount > 0).
    */
   blankSlides: number[];
+  /**
+   * Named blanks — same slides as `blankSlides`, enriched with the item title
+   * carried on the slot tag (see `DEMO_SLOT_TAG`). A slide without a slot tag
+   * (host lacks PowerPointApi 1.3, or the tag itself was lost) appears here
+   * with `title: null` — position-only, same as before.
+   */
+  blankItems: { position: number; title: string | null }[];
   /** False if the blank readback faulted mid-pass — so an empty `blankSlides` is
    *  not mistaken for "no blanks" when it really means "not fully measured". */
   blanksRead: boolean;
@@ -926,7 +941,7 @@ interface LayoutRef {
  * the failed attempt's context is already discarded.
  */
 async function addAndRenderItem(
-  item: { scene: Scene; tagData?: string },
+  item: { scene: Scene; tagData?: string; slotTag?: string },
   tooDense: boolean,
   shapeCount: number,
   layout: LayoutRef,
@@ -938,6 +953,16 @@ async function addAndRenderItem(
       layout.resolved = true;
     }
     const [getSlide] = await addSlides(context, 1, layout.id);
+    // Slot tag first, so identity survives even a render that later stalls —
+    // the blank readback can then name the missing chart, not just its position.
+    // Best-effort: a host without Slide.tags (pre-1.3) silently skips.
+    if (item.slotTag && supports("1.3")) {
+      try {
+        (getSlide().tags as unknown as { add(k: string, v: string): unknown }).add(DEMO_SLOT_TAG, item.slotTag);
+      } catch {
+        /* no slide tags on this host — position-only identity, as before */
+      }
+    }
     if (tooDense) {
       // Leave a stamped placeholder so the slide count and order still line up.
       await stampSlide(
@@ -965,7 +990,7 @@ async function addAndRenderItem(
 }
 
 export async function insertDemoDeck(
-  items: { scene: Scene; tagData?: string }[],
+  items: { scene: Scene; tagData?: string; title?: string }[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<DemoReport> {
   const results: DemoResult[] = [];
@@ -988,8 +1013,13 @@ export async function insertDemoDeck(
     let lateSettled = false;
     const lateBefore = lastLateSync;
     const t0 = Date.now();
+    // Slot tag: JSON envelope with the deck-position index and the item title.
+    // Written on both attempts (a retry lands on a NEW slide, so its tag has to
+    // land too or the retry's slide reads as "unknown item" in a blank check).
+    const slotTag = JSON.stringify({ i, title: items[i].title ?? null });
+    const itemWithTag = { ...items[i], slotTag };
     try {
-      created = await addAndRenderItem(items[i], tooDense, shapeCount, layout);
+      created = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout);
       runningCount++;
     } catch (err) {
       // A throw is not always proof the chart is missing. When `withTimeout`
@@ -1030,7 +1060,7 @@ export async function insertDemoDeck(
         let recovered = false;
         if (!tooDense) {
           try {
-            created = await addAndRenderItem(items[i], false, shapeCount, layout);
+            created = await addAndRenderItem(itemWithTag, false, shapeCount, layout);
             recovered = true;
             runningCount++;
           } catch (err2) {
@@ -1089,8 +1119,12 @@ export async function insertDemoDeck(
   // slides, plus retry strays) breaks any positional item mapping, and a blank
   // slide has no tag to identify it anyway. Best-effort: a fault leaves
   // blanksRead false so an empty list is not read as "no blanks".
-  const { positions: blankSlides, complete: blanksRead } = await findBlankAddedSlides(before, after);
-  return { results, slidesAdded, addsIssued, blankSlides, blanksRead, totalMs };
+  const {
+    positions: blankSlides,
+    items: blankItems,
+    complete: blanksRead,
+  } = await findBlankAddedSlides(before, after);
+  return { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs };
 }
 
 /** Slides read per sync in the readback — kept modest to stay clear of the web
@@ -1108,22 +1142,54 @@ async function shapeCounts(start: number, end: number): Promise<number[]> {
 }
 
 /**
+ * Backoff before the blank re-read. A struggling host reports transient zeros
+ * for hundreds of ms after a shape commit — the first pass may see 0, the
+ * settled slide has content. The 200ms wall-clock is under the observed 3%
+ * false-blank rate on the real deck; tuneable so tests can pass 0 and skip it.
+ */
+let BLANK_REREAD_DELAY_MS = 200;
+
+/** Test-only: change the backoff between the blank readback and its re-read. */
+export function _setBlankReReadDelayForTest(ms: number): void {
+  BLANK_REREAD_DELAY_MS = ms;
+}
+
+/**
+ * Fetch the slot tag value from a slide by position, in a settled sync. Absent
+ * when the host lacks Slide.tags (pre-1.3) or the tag write itself was lost.
+ */
+async function readSlotTag(index: number): Promise<string | null> {
+  return PowerPoint.run(async (context) => {
+    const slide = context.presentation.slides.getItemAt(index) as unknown as {
+      tags: { getItemOrNullObject(k: string): { isNullObject: boolean; value: string; load(): void } };
+    };
+    try {
+      const tag = slide.tags.getItemOrNullObject(DEMO_SLOT_TAG);
+      tag.load();
+      await context.sync();
+      if (tag.isNullObject) return null;
+      return tag.value;
+    } catch {
+      return null;
+    }
+  });
+}
+
+/**
  * Find the ADDED slides (indices [before, after)) the host kept but left EMPTY,
  * returned as 1-based deck positions. Paged to stay clear of the web load ceiling.
- * A struggling host can report a transient 0 for a slide whose shapes have not yet
- * reconciled, so every candidate 0 is RE-READ once in a fresh settled sync before
- * it counts. `complete` is false if any page's read faulted — so callers don't read
- * an empty list as "no blanks" when it really means "not fully measured".
+ * A struggling host can report a transient 0 for a slide whose shapes have not
+ * yet reconciled — a settled re-read after `BLANK_REREAD_DELAY_MS` catches this.
+ * `complete` is false if any page's read faulted — so callers don't read an
+ * empty list as "no blanks" when it really means "not fully measured".
  *
- * Position-only by design: the host scrambles order under load (lost/merged/
- * reordered slides), which defeats any slide↔item mapping, and a blank slide
- * carries no config tag to identify it. This flags empty SLOTS; naming the
- * missing/merged charts via their tags is a documented follow-up.
+ * Enriched: each confirmed blank's slot tag is read back, so a caller can name
+ * the missing chart by title rather than only its deck position.
  */
 async function findBlankAddedSlides(
   before: number,
   after: number,
-): Promise<{ positions: number[]; complete: boolean }> {
+): Promise<{ positions: number[]; items: { position: number; title: string | null }[]; complete: boolean }> {
   const candidates: number[] = [];
   let complete = true;
   for (let start = before; start < after; start += READBACK_PAGE) {
@@ -1137,7 +1203,10 @@ async function findBlankAddedSlides(
       complete = false; // a page we could not read — do not claim it as clean
     }
   }
-  // Re-read each candidate once: a transient 0 under load clears on a settled retry.
+  if (candidates.length && BLANK_REREAD_DELAY_MS > 0) {
+    // Let the host reconcile before re-reading — see BLANK_REREAD_DELAY_MS.
+    await new Promise((r) => setTimeout(r, BLANK_REREAD_DELAY_MS));
+  }
   const positions: number[] = [];
   for (let start = 0; start < candidates.length; start += READBACK_PAGE) {
     const page = candidates.slice(start, start + READBACK_PAGE);
@@ -1154,7 +1223,23 @@ async function findBlankAddedSlides(
       complete = false;
     }
   }
-  return { positions: positions.sort((a, b) => a - b), complete };
+  positions.sort((a, b) => a - b);
+  // Name each confirmed blank via its slot tag (best-effort; null if untagged).
+  const items: { position: number; title: string | null }[] = [];
+  for (const pos of positions) {
+    const raw = await readSlotTag(pos - 1);
+    let title: string | null = null;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { title?: string | null };
+        title = parsed.title ?? null;
+      } catch {
+        /* not our shape of tag — leave title null */
+      }
+    }
+    items.push({ position: pos, title });
+  }
+  return { positions, items, complete };
 }
 
 /**
