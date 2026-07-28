@@ -21,7 +21,7 @@ import {
   type InsertPhase,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
-import { demoItems, buildResultsScene, type ResultRow, type ResultsSummary } from "../core/demo";
+import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } from "../core/demo";
 import { buildTableScene } from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
@@ -1737,8 +1737,19 @@ function wireInsert() {
         const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        const { results, slidesAdded, addsIssued, blankSlides, blanksRead, totalMs } = await insertDemoDeck(
-          items.map((i) => ({ scene: i.scene, tagData: i.configJson })),
+        // Title / Contents / Results are text scenes — their shape count is
+        // cheap on the host, but a large deck's contents pushes them past the
+        // ~90 budget. Bypass the too-dense check for these; the render's
+        // batching still keeps each sync inside the host's swallow limit.
+        const isHarnessSlot = (t: string): boolean =>
+          t === "Title" || t.startsWith("Contents") || t.startsWith("Results");
+        const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs } = await insertDemoDeck(
+          items.map((i) => ({
+            scene: i.scene,
+            tagData: i.configJson,
+            title: i.title,
+            bypassBudget: isHarnessSlot(i.title),
+          })),
           (done, total) => {
             note("Inserting demo slides… {done} of {total}", "busy", { done, total });
             setProgress(done / total); // one slide per context, so a real bar
@@ -1765,7 +1776,10 @@ function wireInsert() {
             shapes: r.created,
             status: r.status,
             retried: !!r.retried,
+            grouped: !!r.grouped,
+            lateSettled: !!r.lateSettled,
             ms: r.ms,
+            lateOutcome: r.lateOutcome ?? "",
           })),
         );
         console.log(
@@ -1775,13 +1789,23 @@ function wireInsert() {
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (recovered) msg += ` ${recovered} recovered on retry.`;
+        // A rendered but ungrouped chart is not re-editable — flag them so
+        // Phase 2 doesn't quietly count them as full successes.
+        const ungrouped = results.filter(
+          (r, i) => r.status === "rendered" && !r.grouped && items[i].scene.nodes.length > 1,
+        ).length;
+        if (ungrouped) msg += ` ⚠ ${ungrouped} chart${ungrouped === 1 ? "" : "s"} landed ungrouped (not re-editable).`;
+        const lateN = results.filter((r) => r.lateSettled).length;
+        if (lateN) msg += ` ${lateN} late-settled (sync timed out but shapes landed).`;
         if (lost > 0)
           msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
-        // Blank slides are reported by DECK POSITION, not item name: a blank slide
-        // has no content to identify it, and a scrambled deck breaks any mapping.
-        if (blankSlides.length)
-          msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK (deck slide${blankSlides.length === 1 ? "" : "s"} ${blankSlides.join(", ")}).`;
-        else if (!blanksRead) msg += ` (Blank check did not finish.)`;
+        // Blank slides carry the slot tag (item title) where the host has 1.3
+        // slide tags; without them the entry has title null and only its deck
+        // position is shown, same as before slot tags landed.
+        if (blankSlides.length) {
+          const named = blankItems.map((b) => (b.title ? `${b.title} (slide ${b.position})` : `slide ${b.position}`));
+          msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK: ${named.join(", ")}.`;
+        } else if (!blanksRead) msg += ` (Blank check did not finish.)`;
         // Close the deck with a self-contained results slide so the exported PDF is
         // a complete run record. A second insertDemoDeck reuses the same add/render/
         // self-check machinery; wrap it so a host stall here can't swallow the run's
@@ -1803,7 +1827,14 @@ function wireInsert() {
           totalMs,
         };
         try {
-          await insertDemoDeck([{ scene: buildResultsScene(rows, summary) }]);
+          const resultsPages = buildResultsScenes(rows, summary);
+          await insertDemoDeck(
+            resultsPages.map((scene, i) => ({
+              scene,
+              title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
+              bypassBudget: true,
+            })),
+          );
         } catch (e) {
           console.warn("PowerChart: results slide failed to insert", e);
           msg += " (results slide not added)";

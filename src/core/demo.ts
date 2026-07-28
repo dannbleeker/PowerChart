@@ -216,25 +216,37 @@ function buildTitleScene(buildStamp: string, host: string): Scene {
   };
 }
 
+/** Body rows per contents page — deliberately conservative so each page fits
+ *  under the ~90 web shape budget even with buildTableScene's row rects/rules. */
+const INDEX_ROWS_PER_PAGE = 18;
+
 /**
  * A contents table listing every chart with its shape count — doubles as the
- * regression manifest (shape count vs the ~90 web budget shows which are skipped).
- * Two name/count pairs side by side so all ~35 rows fit one slide, under budget.
+ * regression manifest (shape count vs the ~90 web budget shows which are
+ * skipped). Paginated: two name/count pairs side by side per page, so a small
+ * deck fits one slide (as before) and a larger one spreads across N slides
+ * rather than truncating.
  */
-function buildIndexScene(charts: DemoItem[]): Scene {
-  const per = Math.ceil(charts.length / 2);
-  const rows: string[][] = [["Chart", "Shapes", "Chart", "Shapes"]];
-  for (let i = 0; i < per; i++) {
-    const left = charts[i];
-    const right = charts[i + per];
-    rows.push([
-      left ? `${i + 1}. ${left.title}` : "",
-      left ? String(estimateOfficeShapes(left.scene)) : "",
-      right ? `${i + per + 1}. ${right.title}` : "",
-      right ? String(estimateOfficeShapes(right.scene)) : "",
-    ]);
+function buildIndexScenes(charts: DemoItem[]): Scene[] {
+  if (charts.length === 0) return [];
+  const pages: Scene[] = [];
+  for (let start = 0; start < charts.length; start += INDEX_ROWS_PER_PAGE * 2) {
+    const slice = charts.slice(start, start + INDEX_ROWS_PER_PAGE * 2);
+    const per = Math.ceil(slice.length / 2);
+    const rows: string[][] = [["Chart", "Shapes", "Chart", "Shapes"]];
+    for (let i = 0; i < per; i++) {
+      const left = slice[i];
+      const right = slice[i + per];
+      rows.push([
+        left ? `${start + i + 1}. ${left.title}` : "",
+        left ? String(estimateOfficeShapes(left.scene)) : "",
+        right ? `${start + i + per + 1}. ${right.title}` : "",
+        right ? String(estimateOfficeShapes(right.scene)) : "",
+      ]);
+    }
+    pages.push(buildTableScene(rows, 840));
   }
-  return buildTableScene(rows, 840);
+  return pages;
 }
 
 /** Options for {@link demoItems}. All optional so `demoItems()` still works. */
@@ -284,9 +296,13 @@ export function demoItems(opts: DemoOptions = {}): DemoItem[] {
     charts.push({ title, scene });
   }
   const selected = smoke ? charts.filter((c) => SMOKE_TITLES.has(c.title)) : charts;
+  const indexPages = buildIndexScenes(selected);
   return [
     { title: "Title", scene: buildTitleScene(buildStamp, host) },
-    { title: "Contents", scene: buildIndexScene(selected) },
+    ...indexPages.map((scene, i) => ({
+      title: indexPages.length === 1 ? "Contents" : `Contents (page ${i + 1} of ${indexPages.length})`,
+      scene,
+    })),
     ...selected,
   ];
 }
@@ -312,14 +328,45 @@ export interface ResultsSummary {
   totalMs: number;
 }
 
+/** Row cap per results page — 4 nodes per row × 20 rows = 80, safely under
+ *  the ~90 shape budget so each page still lands as a real chart. */
+const RESULTS_ROWS_PER_PAGE = 20;
+
+/**
+ * Paginate the results table so a failure-heavy run's own summary doesn't get
+ * skipped as too dense — the exact bug in Presentation_2.pptx where 32 failures
+ * pushed the scene to 135 shapes and the results slide came back as a stamped
+ * placeholder. Returns ONE scene when the failures fit, otherwise Page N of M
+ * scenes each with the run summary at top and a slice of the failure table.
+ * A clean run still produces one page saying so.
+ */
+export function buildResultsScenes(rows: ResultRow[], summary: ResultsSummary): Scene[] {
+  const failures = rows.filter((r) => r.status !== "rendered");
+  if (failures.length <= RESULTS_ROWS_PER_PAGE) return [buildResultsScene(rows, summary)];
+  const pages: Scene[] = [];
+  const totalPages = Math.ceil(failures.length / RESULTS_ROWS_PER_PAGE);
+  for (let p = 0; p < totalPages; p++) {
+    const slice = failures.slice(p * RESULTS_ROWS_PER_PAGE, (p + 1) * RESULTS_ROWS_PER_PAGE);
+    // Reconstruct a ResultRow[] the single-page builder can consume — pass ONLY
+    // the failures for this page (buildResultsScene filters by status).
+    pages.push(buildResultsScene(slice, { ...summary }, { page: p + 1, totalPages }));
+  }
+  return pages;
+}
+
 /**
  * The closing results slide: a self-contained record of one regression run —
  * a summary line, the build stamp, and a table of ONLY the skipped/failed items
- * (chart · status · shapes · ms). Failures are few, so this stays well under the
- * ~90 web shape budget; a clean run just says so. The contents slide already
- * lists every chart, so there's no need to repeat the whole 37-row manifest here.
+ * (chart · status · shapes · ms). Paginated by `buildResultsScenes` when the
+ * failure count would push it past the web shape budget; a clean run still fits
+ * one slide. The contents slide already lists every chart, so there's no need
+ * to repeat the whole 37-row manifest here.
  */
-export function buildResultsScene(rows: ResultRow[], summary: ResultsSummary): Scene {
+export function buildResultsScene(
+  rows: ResultRow[],
+  summary: ResultsSummary,
+  page?: { page: number; totalPages: number },
+): Scene {
   const ink = "#52514e";
   const grey = "#8a8984";
   const secs = (summary.totalMs / 1000).toFixed(1);
@@ -332,7 +379,7 @@ export function buildResultsScene(rows: ResultRow[], summary: ResultsSummary): S
       y: 40,
       w: 840,
       h: 40,
-      text: "Regression results",
+      text: page ? `Regression results (page ${page.page} of ${page.totalPages})` : "Regression results",
       fontSize: 28,
       bold: true,
       color: PALETTE[0],

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { demoItems, buildResultsScene, type ResultRow, type ResultsSummary } from "../src/core/demo";
+import {
+  demoItems,
+  buildResultsScene,
+  buildResultsScenes,
+  type ResultRow,
+  type ResultsSummary,
+} from "../src/core/demo";
 import { CHART_KINDS } from "../src/core/samples";
 import { sceneToSvg } from "../src/render/svg";
 import { estimateOfficeShapes } from "../src/core/scene";
@@ -131,6 +137,41 @@ describe("results slide", () => {
     }));
     const scene = buildResultsScene(rows, summary({ items: 12, rendered: 0, skipped: 0, failed: 12, lost: 0 }));
     expect(estimateOfficeShapes(scene)).toBeLessThan(90);
+  });
+
+  it("paginates when the failure count would push one page past the budget", () => {
+    // Presentation_2.pptx: 32 failures pushed the single-page scene to ~135
+    // shapes; the run's own summary was the first casualty. Pagination splits
+    // into ~20-row pages, each safely under the ~90 web shape budget.
+    const rows: ResultRow[] = Array.from({ length: 32 }, (_, i) => ({
+      title: `Chart ${i}`,
+      status: "failed" as const,
+      shapes: 50 + i,
+      ms: 100 + i,
+    }));
+    const pages = buildResultsScenes(rows, summary({ items: 32, rendered: 0, skipped: 0, failed: 32, lost: 0 }));
+    expect(pages.length).toBeGreaterThan(1);
+    for (const p of pages) expect(estimateOfficeShapes(p)).toBeLessThan(90);
+    // Every failure appears on some page — no rows dropped by the split.
+    const titles = pages.flatMap((p) => p.nodes.filter((n) => n.kind === "text").map((n) => n.text));
+    for (let i = 0; i < 32; i++) expect(titles).toContain(`Chart ${i}`);
+    // Each page's title flags which page of the run it is.
+    const first = pages[0].nodes.find((n) => n.kind === "text" && /Regression results/.test(n.text));
+    expect(first && "text" in first ? first.text : "").toMatch(/page 1 of \d+/);
+  });
+
+  it("a clean or lightly-failing run still returns exactly one page", () => {
+    const rows: ResultRow[] = Array.from({ length: 3 }, (_, i) => ({
+      title: `Chart ${i}`,
+      status: "failed" as const,
+      shapes: 50 + i,
+      ms: 100 + i,
+    }));
+    const pages = buildResultsScenes(rows, summary({ items: 3, rendered: 0, skipped: 0, failed: 3, lost: 0 }));
+    expect(pages).toHaveLength(1);
+    // No page-of-N marker on the single-page path.
+    const title = pages[0].nodes.find((n) => n.kind === "text" && /Regression results/.test(n.text));
+    expect(title && "text" in title ? title.text : "").toBe("Regression results");
   });
 
   it("notes recovered-on-retry items in the summary, and omits the note when none", () => {

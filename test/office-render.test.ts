@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  _setBatchTimeoutForTest,
+  _setBlankReReadDelayForTest,
   CHART_PARTS_TAG,
   CHART_TAG,
   getSelectionBounds,
@@ -50,6 +52,11 @@ function makeShape(
     name: undefined as string | undefined,
     rotation: undefined as number | undefined,
     deleted: false,
+    // The sync count at proxy creation — used to model the web host's
+    // getItem(id) rewrite: a shape proxy is valid within the sync that queued
+    // it plus the immediately following commit sync, and stale beyond that.
+    // A hardened addGroup checks each member's age.
+    syncCreated: trips.syncs,
     // A created shape's id exists only on the host: the renderer must load()
     // it back before it can write one down (see the parts tag).
     load() {},
@@ -122,16 +129,31 @@ let contextBaseCount = 0;
 
 function makeSlide(id: string) {
   const created: FakeShape[] = [];
+  const slideTagStore = new Map<string, string>();
   const slide = {
     id,
     created,
     isNullObject: false,
     load() {},
+    tags: {
+      add: (k: string, v: string) => void slideTagStore.set(k, v),
+      getItemOrNullObject: (k: string) => ({
+        isNullObject: !slideTagStore.has(k),
+        value: slideTagStore.get(k) ?? "",
+        load() {},
+      }),
+    },
+    tagStore: slideTagStore,
     shapes: {
       // A deleted shape is gone from the host's collection; keeping it in `items`
       // let readbacks (listChartsInDeck) count a chart that no longer exists.
+      // Accessing .items refreshes each shape's syncCreated: real Office.js
+      // returns fresh proxies from shapes.items after a load+sync, valid in
+      // the current sync — that's exactly what the PR 3 re-fetch relies on.
       get items() {
-        return created.filter((s) => !s.deleted);
+        const live = created.filter((s) => !s.deleted);
+        for (const s of live) s.syncCreated = trips.syncs;
+        return live;
       },
       load() {},
       addGeometricShape(geo: string, box: FakeShape["box"]) {
@@ -151,6 +173,17 @@ function makeSlide(id: string) {
         return s;
       },
       addGroup(items: FakeShape[]) {
+        // Model the web-host stale-proxy trap: a Shape proxy is valid within
+        // the sync that queued it plus its immediately following commit sync,
+        // and stale (getItem(id) rewrite, non-round-trippable id) beyond that.
+        // addGroup(theseStaleProxies) silently loses grouping on real Office —
+        // no group appears on the slide. Enable via strictGroup.
+        if (strictGroup && items.some((s) => trips.syncs > s.syncCreated + 1)) {
+          const g = makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 });
+          // Not pushed to `created` — no group lands on the slide, exactly
+          // what the web host does for a stale-proxy addGroup call.
+          return g;
+        }
         // A real group's frame is the BOUNDING BOX of its children, not the
         // origin the caller drew at. Returning {0,0,0,0} made a group's position
         // meaningless and hid the update-drift bug entirely: the renderer reads
@@ -217,8 +250,14 @@ function freshWindowedHandle(real: FakeSlide) {
     id: real.id,
     isNullObject: false,
     load() {},
+    tags: real.tags,
     shapes: {
-      items: real.shapes.items,
+      // Lazy — evaluating this at handle-creation would fire the .items
+      // getter's syncCreated refresh, keeping every shape perpetually fresh
+      // and hiding the stale-proxy trap the fake exists to model.
+      get items() {
+        return real.shapes.items;
+      },
       load() {},
       addGeometricShape: (geo: string, box: FakeShape["box"]) =>
         ok() ? real.shapes.addGeometricShape(geo, box) : makeShape("geometric", geo, box),
@@ -270,6 +309,19 @@ const blankReadbackAt = new Set<number>();
 /** When true, shapes.getCount() throws — models the blank readback faulting, so
  * the report must come back blanksRead:false rather than an empty "no blanks". */
 let faultShapeGetCount = false;
+
+/** Sync indices that STALL — the promise resolves after `stallSyncDelayMs`, but
+ * withTimeout (shortened via _setBatchTimeoutForTest) fires first and abandons
+ * it. Models the real-host bug: sync at 60s, shapes on the slide, no error to
+ * blame. When the abandoned promise later settles, withTimeout records
+ * `lastLateSync = "…SUCCEEDED after Ns"` — the signal PR 1 gates on. */
+const stallSyncOn = new Set<number>();
+let stallSyncDelayMs = 40;
+
+/** When true, addGroup silently drops the group if any member proxy is more
+ * than one sync stale — the exact web-host behavior that made multi-batch
+ * charts land ungrouped. See PR 3's re-fetch fix.  */
+let strictGroup = false;
 
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
@@ -349,6 +401,18 @@ function installHost(
     sync: async () => {
       trips.syncs++;
       if (trips.syncs === failSyncOn || failSyncsOn.has(trips.syncs)) throw new Error("host refused a queued command");
+      if (stallSyncOn.has(trips.syncs)) {
+        // Sleep past withTimeout's deadline, then settle successfully. The
+        // queued shapes were pushed into the slide's `items` array by the
+        // add*() proxy calls the moment they were queued, so they're already
+        // observable to a fresh-context readback — same as real Office.js
+        // where a slow sync eventually commits.
+        await new Promise((r) => setTimeout(r, stallSyncDelayMs));
+        for (const r of pendingCounts) r.value = committedCount;
+        pendingCounts.length = 0;
+        committedCount = slides.length;
+        return;
+      }
       // A queued-command failure (e.g. drawing on a poisoned getItemAt handle)
       // surfaces here, at the sync, exactly as Office.js reports it.
       if (pendingHostError) {
@@ -370,6 +434,8 @@ function installHost(
   pendingHostError = null;
   swallowAdds = 0;
   failSyncsOn.clear();
+  stallSyncOn.clear();
+  strictGroup = false;
   blankReadbackAt.clear();
   faultShapeGetCount = false;
   addedWithLayout.length = 0;
@@ -1499,6 +1565,31 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(report.blanksRead).toBe(true);
   });
 
+  it("names a blank slide from its slot tag when the item carries a title", async () => {
+    // A blank readback used to say only "slide 3". Every demo slide now gets a
+    // POWERCHART_DEMO_SLOT tag on creation, so the readback can name the missing
+    // chart by title. blankReadbackAt makes index 2 report 0 shapes; the slot
+    // tag survives (we never emptied the tag store) and gives us the item name.
+    _setBlankReReadDelayForTest(0); // no wall-clock sleep in the test
+    try {
+      const deck = [makeSlide("s1")];
+      installHost(deck);
+      const n = 3;
+      blankReadbackAt.add(2);
+      const report = await insertDemoDeck(
+        Array.from({ length: n }, (_, i) => ({
+          scene: buildChart(cfgFor(i)),
+          title: `chart-${i}`,
+        })),
+      );
+      expect(report.blankSlides).toEqual([3]);
+      // Index 2 corresponds to item 1 (item 0 is index 1, item 1 is index 2, ...).
+      expect(report.blankItems).toEqual([{ position: 3, title: "chart-1" }]);
+    } finally {
+      _setBlankReReadDelayForTest(200);
+    }
+  });
+
   it("un-masks a lost slide that a retry stray hid from the deck-growth count", async () => {
     // The exact real-host coincidence: the host loses one item's slide while a
     // retry leaves a stray, so net growth == items.length and the naive
@@ -1527,6 +1618,76 @@ describe("Office round-trips do not scale with the chart count", () => {
     expect(report.blankSlides).toEqual([]);
     // The run itself still succeeded — a readback fault is not a render failure.
     expect(report.results.every((r) => r.status === "rendered")).toBe(true);
+  });
+
+  it("treats a timed-out sync as rendered when the readback shows the shapes actually landed", async () => {
+    // The real-host bug PR 1 exists for: withTimeout rejected at 45s, but the
+    // sync had queued every shape and the host settled a moment later. Marking
+    // it "failed" both wastes a retry (adds a duplicate slide) and stamps a
+    // real chart NOT COMPLETE. The fix waits for the abandoned promise to
+    // report its outcome, reads the slide back, and — when every shape landed
+    // — records it as rendered with lateSettled=true.
+    _setBatchTimeoutForTest(5);
+    stallSyncDelayMs = 40; // safely past the 5ms timeout
+    try {
+      const deck: FakeSlide[] = [makeSlide("s1")];
+      installHost(deck);
+      // Sync map for the first item: #1=slideCount, #2=blankLayoutId,
+      // #3=addSlides.getCount, #4=addSlides.add, #5=renderShapesChunked's only
+      // batch (cfgFor's scene fits in one). Stall #5 — the render sync — so the
+      // shapes are already on the fake slide when withTimeout gives up.
+      stallSyncOn.add(5);
+      const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: `{"i":0}` }]);
+      // Late-settled path: rendered without retry, with lateOutcome captured.
+      expect(report.results[0].status).toBe("rendered");
+      expect(report.results[0].lateSettled).toBe(true);
+      expect(report.results[0].retried).toBeFalsy();
+      expect(report.results[0].lateOutcome).toMatch(/eventually SUCCEEDED/);
+      expect(failedIndices(report)).toEqual([]);
+      // No duplicate slide from a bogus retry.
+      expect(report.slidesAdded).toBe(1);
+      expect(report.addsIssued).toBe(1);
+      // And the slide is NOT stamped — stamping a complete chart NOT COMPLETE
+      // is the false-negative the fix eliminates.
+      expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncDelayMs = 40;
+    }
+  });
+
+  it("bypassBudget lets a text-heavy scene render even when its shape count is over the budget", async () => {
+    // The results/contents slide bug: 32 failures pushed the results scene to
+    // 135 shapes — over DEMO_SHAPE_BUDGET (90) — and the run's own summary
+    // came back as a red "NOT COMPLETE" stamp. Text-only scenes don't hit the
+    // wedge/polygon flood the budget guards against; they should render.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const denseTextScene = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: 120 }, (_, k) => ({
+        kind: "text" as const,
+        x: k,
+        y: 0,
+        w: 40,
+        h: 20,
+        text: `row ${k}`,
+        fontSize: 12,
+        color: "#000000",
+        align: "left" as const,
+        valign: "top" as const,
+      })),
+    };
+    // With bypassBudget: the scene renders as a real chart, no stamp.
+    const withBypass = await insertDemoDeck([{ scene: denseTextScene, title: "Results", bypassBudget: true }]);
+    expect(withBypass.results[0].status).toBe("rendered");
+    expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+    expect(deck[1].created.filter((s) => s.type === "text").length).toBeGreaterThanOrEqual(120);
+    // Without bypassBudget: the scene is stamped instead of drawn.
+    installHost([makeSlide("s1")]);
+    const withoutBypass = await insertDemoDeck([{ scene: denseTextScene, title: "Results" }]);
+    expect(withoutBypass.results[0].status).toBe("skipped");
   });
 
   it("retries a slide the host stalls on once, and the transient stall recovers", async () => {
@@ -1624,6 +1785,46 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(failedIndices(report).length).toBeGreaterThanOrEqual(1); // the dropped one is flagged
     } finally {
       swallowAdds = 0;
+    }
+  });
+
+  it("re-fetches the slide's shape collection before addGroup on a multi-batch chart", async () => {
+    // The real-host bug this guards: a >10-shape chart commits in multiple
+    // batches, and the Shape proxies returned by earlier batches have their
+    // object paths rewritten to getItem(id) by the time the group sync runs.
+    // The web host silently drops addGroup(theseStaleProxies), leaving the
+    // chart loose and unable to carry its POWERCHART_CONFIG tag. In the run
+    // behind this fix, agenda / KPI+flow / table all landed ungrouped and
+    // therefore un-re-editable. Fix: re-load slide.shapes.items right before
+    // addGroup and pass those fresh proxies to addGroup.
+    const NODES = 25; // 3 batches at SHAPES_PER_SYNC=10
+    const bigScene = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    strictGroup = true; // web-host stale-proxy semantics — without the re-fetch, no group appears
+    try {
+      const report = await insertDemoDeck([{ scene: bigScene, tagData: '{"i":0}', title: "multi-batch" }]);
+      expect(report.results[0].status).toBe("rendered");
+      // Every appended chart is grouped — the new field flowed through.
+      expect(report.results[0].grouped).toBe(true);
+      // The slide holds ONE native group carrying the CHART_TAG — proving the
+      // group survived and the tag landed on it (not on a stray first shape).
+      const groups = deck[1].created.filter((s) => s.type === "group");
+      expect(groups).toHaveLength(1);
+      expect(groups[0].tagStore.get(CHART_TAG)).toBe('{"i":0}');
+    } finally {
+      strictGroup = false;
     }
   });
 
@@ -1938,7 +2139,12 @@ describe("EVERY insert path batches its shapes", () => {
     // The demo deck kept handing over ~200 shapes (4 slides at once) and sat at
     // "Working… 845s" having added nothing — and reported no progress, because
     // progress only fires when a chunk COMPLETES and the first never did.
-    // A per-path test would have missed it; this asserts the invariant.
+    //
+    // Live-canvas paths stay at ≤10 (repaints choke past that). Off-screen
+    // append paths use a larger batch — the host tolerates far more when it
+    // isn't repainting — but still bounded; they must NOT hand over the whole
+    // scene, so a value at or under SHAPES_PER_SYNC_OFFSCREEN (40) is the
+    // invariant, not the old flat 10.
     const scene = () => buildChart(config);
     expect(scene().nodes.length).toBeGreaterThan(10); // must span batches
 
@@ -1959,7 +2165,7 @@ describe("EVERY insert path batches its shapes", () => {
     ).toBeLessThanOrEqual(11); // +1: the pre-existing shape this test planted
 
     const s3 = makeSlide("s3");
-    expect(await maxPerSync(() => insertAgendaSlides([scene(), scene()]), [s3]), "agenda").toBeLessThanOrEqual(10);
+    expect(await maxPerSync(() => insertAgendaSlides([scene(), scene()]), [s3]), "agenda").toBeLessThanOrEqual(40);
 
     const s4 = makeSlide("s4");
     expect(
@@ -1975,7 +2181,35 @@ describe("EVERY insert path batches its shapes", () => {
         [s4],
       ),
       "demo deck",
-    ).toBeLessThanOrEqual(10);
+    ).toBeLessThanOrEqual(40);
+  });
+
+  it("off-screen demo/agenda batches larger than the live canvas — cuts syncs per chart", async () => {
+    // The live canvas caps at 10 shapes per batch (repaint mid-render kills the
+    // host past that). Off-screen slides don't repaint, so demo/agenda push a
+    // larger batch — 40 — cutting ~4x round-trips per chart. This asserts the
+    // demo path ACTUALLY sends more than the live-canvas ceiling for a scene
+    // that could fit in one 40-batch.
+    const scene = () => ({
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: 25 }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    });
+    installHost([makeSlide("s-live")]);
+    // Live canvas: caps at 10.
+    const live = await maxPerSync(() => insertSceneIntoSlide(scene(), { tagData: "{}" }), [makeSlide("s-live")]);
+    expect(live, "live canvas ≤10").toBeLessThanOrEqual(10);
+    // Off-screen demo: uses ≥15 in some batch — proves the flat 10 cap is gone.
+    installHost([makeSlide("s-off")]);
+    const off = await maxPerSync(() => insertDemoDeck([{ scene: scene() }]), [makeSlide("s-off")]);
+    expect(off, "off-screen batches larger than live").toBeGreaterThan(10);
   });
 });
 
