@@ -2139,7 +2139,12 @@ describe("EVERY insert path batches its shapes", () => {
     // The demo deck kept handing over ~200 shapes (4 slides at once) and sat at
     // "Working… 845s" having added nothing — and reported no progress, because
     // progress only fires when a chunk COMPLETES and the first never did.
-    // A per-path test would have missed it; this asserts the invariant.
+    //
+    // Live-canvas paths stay at ≤10 (repaints choke past that). Off-screen
+    // append paths use a larger batch — the host tolerates far more when it
+    // isn't repainting — but still bounded; they must NOT hand over the whole
+    // scene, so a value at or under SHAPES_PER_SYNC_OFFSCREEN (40) is the
+    // invariant, not the old flat 10.
     const scene = () => buildChart(config);
     expect(scene().nodes.length).toBeGreaterThan(10); // must span batches
 
@@ -2160,7 +2165,7 @@ describe("EVERY insert path batches its shapes", () => {
     ).toBeLessThanOrEqual(11); // +1: the pre-existing shape this test planted
 
     const s3 = makeSlide("s3");
-    expect(await maxPerSync(() => insertAgendaSlides([scene(), scene()]), [s3]), "agenda").toBeLessThanOrEqual(10);
+    expect(await maxPerSync(() => insertAgendaSlides([scene(), scene()]), [s3]), "agenda").toBeLessThanOrEqual(40);
 
     const s4 = makeSlide("s4");
     expect(
@@ -2176,7 +2181,35 @@ describe("EVERY insert path batches its shapes", () => {
         [s4],
       ),
       "demo deck",
-    ).toBeLessThanOrEqual(10);
+    ).toBeLessThanOrEqual(40);
+  });
+
+  it("off-screen demo/agenda batches larger than the live canvas — cuts syncs per chart", async () => {
+    // The live canvas caps at 10 shapes per batch (repaint mid-render kills the
+    // host past that). Off-screen slides don't repaint, so demo/agenda push a
+    // larger batch — 40 — cutting ~4x round-trips per chart. This asserts the
+    // demo path ACTUALLY sends more than the live-canvas ceiling for a scene
+    // that could fit in one 40-batch.
+    const scene = () => ({
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: 25 }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    });
+    installHost([makeSlide("s-live")]);
+    // Live canvas: caps at 10.
+    const live = await maxPerSync(() => insertSceneIntoSlide(scene(), { tagData: "{}" }), [makeSlide("s-live")]);
+    expect(live, "live canvas ≤10").toBeLessThanOrEqual(10);
+    // Off-screen demo: uses ≥15 in some batch — proves the flat 10 cap is gone.
+    installHost([makeSlide("s-off")]);
+    const off = await maxPerSync(() => insertDemoDeck([{ scene: scene() }]), [makeSlide("s-off")]);
+    expect(off, "off-screen batches larger than live").toBeGreaterThan(10);
   });
 });
 

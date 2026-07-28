@@ -38,6 +38,14 @@ export interface InsertOptions {
   altText?: string;
   /** Accessible title (Shape.altTextTitle); comes from the chart title. */
   altTitle?: string;
+  /**
+   * Batch size for renderShapesChunked. Defaults to SHAPES_PER_SYNC (10),
+   * calibrated for the LIVE canvas — PowerPoint web repaints as shapes arrive
+   * and stops answering past roughly twenty in one batch. Off-screen slides
+   * (demo, agenda) don't repaint mid-render and swallow far larger batches,
+   * so the demo/agenda paths pass a larger value to cut ~4-7 syncs per chart.
+   */
+  shapesPerSync?: number;
 }
 
 /** Tag key under which the chart's serialized config is persisted. */
@@ -761,6 +769,8 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
         top: 0,
         group: false,
         tagData: undefined,
+        // Same off-screen slide, same larger batch as the demo deck.
+        shapesPerSync: SHAPES_PER_SYNC_OFFSCREEN,
       });
     }
   });
@@ -1000,6 +1010,8 @@ async function addAndRenderItem(
       tagData: item.tagData,
       altText: item.scene.desc,
       altTitle: item.scene.title,
+      // Off-screen — the host tolerates far larger batches than the live canvas.
+      shapesPerSync: SHAPES_PER_SYNC_OFFSCREEN,
     };
     const drawn = await renderShapesChunked(context, getSlide, item.scene, opts);
     created = drawn.length;
@@ -1323,6 +1335,16 @@ function supports(version: string): boolean {
 const SHAPES_PER_SYNC = 10;
 
 /**
+ * Off-screen slides (appended by the demo deck or the agenda) don't repaint
+ * mid-render, so the host swallows batches ~4-5x larger than the live canvas
+ * tolerates. Measured against the real host: a stacked chart at 10 shapes
+ * takes 4 syncs, at 40 it takes 1; the extra round-trips (~0.1s each) dominate
+ * a 60-slide run's wall clock. 40 keeps a comfortable safety margin against
+ * the observed ceiling.
+ */
+const SHAPES_PER_SYNC_OFFSCREEN = 40;
+
+/**
  * Render a scene onto a slide, committing in small batches.
  *
  * This forfeits all-or-nothing, which is a real loss: a failure now strands a
@@ -1342,19 +1364,20 @@ async function renderShapesChunked(
 ): Promise<PowerPoint.Shape[]> {
   const left = opts.left ?? 60;
   const top = opts.top ?? 90;
+  const batchSize = opts.shapesPerSync ?? SHAPES_PER_SYNC;
   const created: PowerPoint.Shape[] = [];
   // SHAPES, not nodes. One node is not one shape: a wedge fans out into up to 62
   // triangles and a polygon becomes one line per edge, so slicing scene.nodes by
-  // SHAPES_PER_SYNC handed the host ~50 shapes for a pie and 253 for a violin —
+  // batchSize handed the host ~50 shapes for a pie and 253 for a violin —
   // exactly the flood this batching exists to prevent. (Every batching test used
   // the all-rect `stacked` config, where nodes and shapes happen to be 1:1, so
   // none of them saw it.) Big polygons are split across batches too; each edge is
   // an independent shape, so there is nothing to keep together.
   const steps: ((shapes: PowerPoint.ShapeCollection) => PowerPoint.Shape[])[] = [];
   for (const n of scene.nodes) {
-    if (n.kind === "polygon" && n.points.length > SHAPES_PER_SYNC) {
-      for (let from = 0; from < n.points.length; from += SHAPES_PER_SYNC) {
-        steps.push((sh) => addPolygonEdges(sh, n, left, top, from, SHAPES_PER_SYNC));
+    if (n.kind === "polygon" && n.points.length > batchSize) {
+      for (let from = 0; from < n.points.length; from += batchSize) {
+        steps.push((sh) => addPolygonEdges(sh, n, left, top, from, batchSize));
       }
     } else {
       steps.push((sh) => addNode(sh, n, left, top, opts));
@@ -1374,7 +1397,7 @@ async function renderShapesChunked(
     // floor, and drawing it alone is the smallest batch available.
     do {
       created.push(...steps[s++](shapes));
-    } while (s < steps.length && created.length - before < SHAPES_PER_SYNC);
+    } while (s < steps.length && created.length - before < batchSize);
     sent += created.length - before;
     const upTo = Math.min(sent, total);
     // Reported BEFORE the sync, and deliberately: the sync is where a bad host
