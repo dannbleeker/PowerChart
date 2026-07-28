@@ -1009,9 +1009,7 @@ export async function insertDemoDeck(
       if (!tooDense && lateFired && shapeCount > 0) {
         const afterFail = await slideCount().catch(() => runningCount);
         const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
-        const readback = failedSlideIndex >= 0
-          ? await slideShapeCount(failedSlideIndex).catch(() => 0)
-          : 0;
+        const readback = failedSlideIndex >= 0 ? await slideShapeCount(failedSlideIndex).catch(() => 0) : 0;
         runningCount = afterFail;
         if (readback >= shapeCount) {
           // The host settled after the timeout — every shape is on the slide.
@@ -1042,9 +1040,7 @@ export async function insertDemoDeck(
             if (lateFired2 && shapeCount > 0) {
               const afterFail2 = await slideCount().catch(() => runningCount);
               const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
-              const readback2 = failedSlideIndex2 >= 0
-                ? await slideShapeCount(failedSlideIndex2).catch(() => 0)
-                : 0;
+              const readback2 = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
               runningCount = afterFail2;
               if (readback2 >= shapeCount) {
                 created = readback2;
@@ -1064,7 +1060,9 @@ export async function insertDemoDeck(
           // real one. A fresh context, because the failed render poisoned its own.
           if (lastError === undefined) lastError = err;
           status = "failed";
-          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(() => {});
+          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(
+            () => {},
+          );
         }
       }
     }
