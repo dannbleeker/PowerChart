@@ -52,6 +52,11 @@ function makeShape(
     name: undefined as string | undefined,
     rotation: undefined as number | undefined,
     deleted: false,
+    // The sync count at proxy creation — used to model the web host's
+    // getItem(id) rewrite: a shape proxy is valid within the sync that queued
+    // it plus the immediately following commit sync, and stale beyond that.
+    // A hardened addGroup checks each member's age.
+    syncCreated: trips.syncs,
     // A created shape's id exists only on the host: the renderer must load()
     // it back before it can write one down (see the parts tag).
     load() {},
@@ -142,8 +147,13 @@ function makeSlide(id: string) {
     shapes: {
       // A deleted shape is gone from the host's collection; keeping it in `items`
       // let readbacks (listChartsInDeck) count a chart that no longer exists.
+      // Accessing .items refreshes each shape's syncCreated: real Office.js
+      // returns fresh proxies from shapes.items after a load+sync, valid in
+      // the current sync — that's exactly what the PR 3 re-fetch relies on.
       get items() {
-        return created.filter((s) => !s.deleted);
+        const live = created.filter((s) => !s.deleted);
+        for (const s of live) s.syncCreated = trips.syncs;
+        return live;
       },
       load() {},
       addGeometricShape(geo: string, box: FakeShape["box"]) {
@@ -163,6 +173,17 @@ function makeSlide(id: string) {
         return s;
       },
       addGroup(items: FakeShape[]) {
+        // Model the web-host stale-proxy trap: a Shape proxy is valid within
+        // the sync that queued it plus its immediately following commit sync,
+        // and stale (getItem(id) rewrite, non-round-trippable id) beyond that.
+        // addGroup(theseStaleProxies) silently loses grouping on real Office —
+        // no group appears on the slide. Enable via strictGroup.
+        if (strictGroup && items.some((s) => trips.syncs > s.syncCreated + 1)) {
+          const g = makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 });
+          // Not pushed to `created` — no group lands on the slide, exactly
+          // what the web host does for a stale-proxy addGroup call.
+          return g;
+        }
         // A real group's frame is the BOUNDING BOX of its children, not the
         // origin the caller drew at. Returning {0,0,0,0} made a group's position
         // meaningless and hid the update-drift bug entirely: the renderer reads
@@ -231,7 +252,12 @@ function freshWindowedHandle(real: FakeSlide) {
     load() {},
     tags: real.tags,
     shapes: {
-      items: real.shapes.items,
+      // Lazy — evaluating this at handle-creation would fire the .items
+      // getter's syncCreated refresh, keeping every shape perpetually fresh
+      // and hiding the stale-proxy trap the fake exists to model.
+      get items() {
+        return real.shapes.items;
+      },
       load() {},
       addGeometricShape: (geo: string, box: FakeShape["box"]) =>
         ok() ? real.shapes.addGeometricShape(geo, box) : makeShape("geometric", geo, box),
@@ -291,6 +317,11 @@ let faultShapeGetCount = false;
  * `lastLateSync = "…SUCCEEDED after Ns"` — the signal PR 1 gates on. */
 const stallSyncOn = new Set<number>();
 let stallSyncDelayMs = 40;
+
+/** When true, addGroup silently drops the group if any member proxy is more
+ * than one sync stale — the exact web-host behavior that made multi-batch
+ * charts land ungrouped. See PR 3's re-fetch fix.  */
+let strictGroup = false;
 
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
@@ -404,6 +435,7 @@ function installHost(
   swallowAdds = 0;
   failSyncsOn.clear();
   stallSyncOn.clear();
+  strictGroup = false;
   blankReadbackAt.clear();
   faultShapeGetCount = false;
   addedWithLayout.length = 0;
@@ -1719,6 +1751,46 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(failedIndices(report).length).toBeGreaterThanOrEqual(1); // the dropped one is flagged
     } finally {
       swallowAdds = 0;
+    }
+  });
+
+  it("re-fetches the slide's shape collection before addGroup on a multi-batch chart", async () => {
+    // The real-host bug this guards: a >10-shape chart commits in multiple
+    // batches, and the Shape proxies returned by earlier batches have their
+    // object paths rewritten to getItem(id) by the time the group sync runs.
+    // The web host silently drops addGroup(theseStaleProxies), leaving the
+    // chart loose and unable to carry its POWERCHART_CONFIG tag. In the run
+    // behind this fix, agenda / KPI+flow / table all landed ungrouped and
+    // therefore un-re-editable. Fix: re-load slide.shapes.items right before
+    // addGroup and pass those fresh proxies to addGroup.
+    const NODES = 25; // 3 batches at SHAPES_PER_SYNC=10
+    const bigScene = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    strictGroup = true; // web-host stale-proxy semantics — without the re-fetch, no group appears
+    try {
+      const report = await insertDemoDeck([{ scene: bigScene, tagData: '{"i":0}', title: "multi-batch" }]);
+      expect(report.results[0].status).toBe("rendered");
+      // Every appended chart is grouped — the new field flowed through.
+      expect(report.results[0].grouped).toBe(true);
+      // The slide holds ONE native group carrying the CHART_TAG — proving the
+      // group survived and the tag landed on it (not on a stray first shape).
+      const groups = deck[1].created.filter((s) => s.type === "group");
+      expect(groups).toHaveLength(1);
+      expect(groups[0].tagStore.get(CHART_TAG)).toBe('{"i":0}');
+    } finally {
+      strictGroup = false;
     }
   });
 

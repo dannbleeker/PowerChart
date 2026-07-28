@@ -1765,7 +1765,10 @@ function wireInsert() {
             shapes: r.created,
             status: r.status,
             retried: !!r.retried,
+            grouped: !!r.grouped,
+            lateSettled: !!r.lateSettled,
             ms: r.ms,
+            lateOutcome: r.lateOutcome ?? "",
           })),
         );
         console.log(
@@ -1775,6 +1778,14 @@ function wireInsert() {
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (recovered) msg += ` ${recovered} recovered on retry.`;
+        // A rendered but ungrouped chart is not re-editable — flag them so
+        // Phase 2 doesn't quietly count them as full successes.
+        const ungrouped = results.filter(
+          (r, i) => r.status === "rendered" && !r.grouped && items[i].scene.nodes.length > 1,
+        ).length;
+        if (ungrouped) msg += ` ⚠ ${ungrouped} chart${ungrouped === 1 ? "" : "s"} landed ungrouped (not re-editable).`;
+        const lateN = results.filter((r) => r.lateSettled).length;
+        if (lateN) msg += ` ${lateN} late-settled (sync timed out but shapes landed).`;
         if (lost > 0)
           msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
         // Blank slides carry the slot tag (item title) where the host has 1.3

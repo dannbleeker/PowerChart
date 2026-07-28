@@ -861,6 +861,14 @@ export interface DemoResult {
    *  sync that later reported success or a real RichApi error. Read the run's
    *  console.table to see which item stalled and how it eventually resolved. */
   lateOutcome?: string;
+  /**
+   * The shapes made it onto one native PowerPoint group — the state that makes
+   * a chart re-editable, drags-as-one, and lands its POWERCHART_CONFIG tag.
+   * False on: hosts without PowerPointApi 1.8 (grouping unsupported),
+   * single-shape items (nothing to group), addGroup rejected by the host, or a
+   * late-settled render where the group sync never got the chance to run.
+   */
+  grouped?: boolean;
 }
 
 /** A demo-deck insert's self-verification report. */
@@ -940,13 +948,25 @@ interface LayoutRef {
  * decides whether to retry. A fresh context per call is what makes a retry safe —
  * the failed attempt's context is already discarded.
  */
+/**
+ * Outcome of one `addAndRenderItem` attempt — the shape count actually drawn,
+ * and whether the addGroup landed. The demo self-check surfaces "N landed
+ * ungrouped" so a chart that isn't re-editable doesn't silently pass for one
+ * that is.
+ */
+interface AddAndRenderOutcome {
+  created: number;
+  grouped: boolean;
+}
+
 async function addAndRenderItem(
   item: { scene: Scene; tagData?: string; slotTag?: string },
   tooDense: boolean,
   shapeCount: number,
   layout: LayoutRef,
-): Promise<number> {
+): Promise<AddAndRenderOutcome> {
   let created = 0;
+  let grouped = false;
   await PowerPoint.run(async (context) => {
     if (!layout.resolved) {
       layout.id = await blankLayoutId(context);
@@ -983,10 +1003,21 @@ async function addAndRenderItem(
     };
     const drawn = await renderShapesChunked(context, getSlide, item.scene, opts);
     created = drawn.length;
-    // Shapes are committed by now, so grouping cannot roll them back.
-    await groupAndTagAll(context, [{ getSlide, created: drawn, opts }]);
+    // Shapes are committed by now, so grouping cannot roll them back. Ask
+    // groupAndTagAll to re-fetch the shape collection before addGroup — the
+    // proxies in `drawn` came from earlier syncs and the web host will silently
+    // drop addGroup(theseStaleProxies), leaving the chart loose and untagged.
+    // A demo slide is blank at start, so the last N shapes ARE the chart's.
+    // Refresh only when the render spanned more than one batch: a single-batch
+    // chart's proxies are still in their sync's window at group time, so the
+    // reload sync adds no safety and just costs a round-trip. Multi-batch
+    // charts (>SHAPES_PER_SYNC) are the ones the web host tripped on — every
+    // ungrouped chart in the real run has more than 10 native shapes.
+    const needsRefresh = drawn.length > SHAPES_PER_SYNC;
+    const [result] = await groupAndTagAll(context, [{ getSlide, created: drawn, opts, refreshShapes: needsRefresh }]);
+    grouped = !!result?.grouped;
   });
-  return created;
+  return { created, grouped };
 }
 
 export async function insertDemoDeck(
@@ -1008,6 +1039,7 @@ export async function insertDemoDeck(
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
+    let grouped = false;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
     let retried = false;
     let lateSettled = false;
@@ -1019,7 +1051,7 @@ export async function insertDemoDeck(
     const slotTag = JSON.stringify({ i, title: items[i].title ?? null });
     const itemWithTag = { ...items[i], slotTag };
     try {
-      created = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout);
+      ({ created, grouped } = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout));
       runningCount++;
     } catch (err) {
       // A throw is not always proof the chart is missing. When `withTimeout`
@@ -1060,7 +1092,7 @@ export async function insertDemoDeck(
         let recovered = false;
         if (!tooDense) {
           try {
-            created = await addAndRenderItem(itemWithTag, false, shapeCount, layout);
+            ({ created, grouped } = await addAndRenderItem(itemWithTag, false, shapeCount, layout));
             recovered = true;
             runningCount++;
           } catch (err2) {
@@ -1097,7 +1129,7 @@ export async function insertDemoDeck(
       }
     }
     const lateOutcome = lastLateSync && lastLateSync !== lateBefore ? lastLateSync : undefined;
-    results.push({ created, status, ms: Date.now() - t0, retried, lateSettled, lateOutcome });
+    results.push({ created, status, ms: Date.now() - t0, retried, lateSettled, lateOutcome, grouped });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
@@ -1352,6 +1384,16 @@ interface Grouping {
   getSlide: SlideThunk;
   created: PowerPoint.Shape[];
   opts: InsertOptions;
+  /**
+   * Re-load the slide's shape collection right before addGroup, taking the LAST
+   * `created.length` shapes as the group's members. The Shape proxies returned
+   * by earlier syncs' add*() calls have their object paths rewritten to
+   * getItem(id) by the time this sync runs, and the web host can't
+   * round-trip those ids — addGroup(theseStaleProxies) silently drops the group.
+   * Set true whenever the caller can guarantee the target N shapes are the last
+   * N on the slide (a fresh demo slide is the canonical case).
+   */
+  refreshShapes?: boolean;
 }
 
 /**
@@ -1374,7 +1416,7 @@ interface Grouping {
 async function groupAndTagAll(
   context: PowerPoint.RequestContext,
   items: Grouping[],
-): Promise<{ target?: PowerPoint.Shape; partIds?: string[] }[]> {
+): Promise<{ target?: PowerPoint.Shape; partIds?: string[]; grouped?: boolean }[]> {
   const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
   // Which charts actually ended up as one shape. The rest hang everything the
   // group would have carried off their first shape instead — see below.
@@ -1383,14 +1425,38 @@ async function groupAndTagAll(
   const groupable = items
     .map((it, i) => ({ it, i }))
     .filter(({ it }) => it.opts.group !== false && it.created.length > 1);
+  // Re-load shape collections for items that asked to refresh — one sync for
+  // all of them, then take the last N shapes as the group's members. See
+  // Grouping.refreshShapes: bypasses the stale-proxy trap the web host trips on.
+  const refresher = groupable.filter(({ it }) => it.refreshShapes);
+  const freshMembers = new Map<number, PowerPoint.Shape[]>();
+  if (refresher.length) {
+    const collections = refresher.map(({ it }) => it.getSlide().shapes);
+    for (const c of collections) c.load("items");
+    try {
+      await context.sync();
+      refresher.forEach(({ it, i }, k) => {
+        const items = collections[k].items;
+        // The chart's shapes are the LAST N on the slide (fresh demo slides
+        // start blank). If items are fewer than expected — e.g. a batch was
+        // lost — fall back to `it.created` and hope for the best.
+        if (items.length >= it.created.length) {
+          freshMembers.set(i, items.slice(items.length - it.created.length));
+        }
+      });
+    } catch {
+      /* re-load faulted — fall through to the stale proxies */
+    }
+  }
   if (groupable.length && supports("1.8")) {
     try {
       for (const { it, i } of groupable) {
         // Fresh slide proxy: grouping runs a sync after the render, by which time
         // a held proxy to a new slide could be stale — see SlideThunk.
+        const members = freshMembers.get(i) ?? it.created;
         const group = (
           it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }
-        ).addGroup(it.created);
+        ).addGroup(members);
         group.name = "PowerChart";
         // Accessible alt text on the group, queued in this same grouping sync so
         // a screen reader announces the chart — the description the engine built.
@@ -1451,6 +1517,7 @@ async function groupAndTagAll(
   return items.map((_, i) => ({
     target: tagTargets[i],
     partIds: partsJson[i] ? (JSON.parse(partsJson[i]!) as string[]) : undefined,
+    grouped: grouped.has(i),
   }));
 }
 
