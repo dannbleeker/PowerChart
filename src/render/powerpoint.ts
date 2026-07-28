@@ -1119,11 +1119,7 @@ export async function insertDemoDeck(
   // slides, plus retry strays) breaks any positional item mapping, and a blank
   // slide has no tag to identify it anyway. Best-effort: a fault leaves
   // blanksRead false so an empty list is not read as "no blanks".
-  const {
-    positions: blankSlides,
-    items: blankItems,
-    complete: blanksRead,
-  } = await findBlankAddedSlides(before, after);
+  const { positions: blankSlides, items: blankItems, complete: blanksRead } = await findBlankAddedSlides(before, after);
   return { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs };
 }
 

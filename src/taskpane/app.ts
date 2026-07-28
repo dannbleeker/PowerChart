@@ -1737,14 +1737,13 @@ function wireInsert() {
         const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs } =
-          await insertDemoDeck(
-            items.map((i) => ({ scene: i.scene, tagData: i.configJson, title: i.title })),
-            (done, total) => {
-              note("Inserting demo slides… {done} of {total}", "busy", { done, total });
-              setProgress(done / total); // one slide per context, so a real bar
-            },
-          );
+        const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs } = await insertDemoDeck(
+          items.map((i) => ({ scene: i.scene, tagData: i.configJson, title: i.title })),
+          (done, total) => {
+            note("Inserting demo slides… {done} of {total}", "busy", { done, total });
+            setProgress(done / total); // one slide per context, so a real bar
+          },
+        );
         // Self-check: the deck is a regression harness, so report what the HOST
         // actually did, not what we asked for. The full table goes to the console.
         const named = (s: "skipped" | "failed") =>
