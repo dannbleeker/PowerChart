@@ -1656,6 +1656,40 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
+  it("bypassBudget lets a text-heavy scene render even when its shape count is over the budget", async () => {
+    // The results/contents slide bug: 32 failures pushed the results scene to
+    // 135 shapes — over DEMO_SHAPE_BUDGET (90) — and the run's own summary
+    // came back as a red "NOT COMPLETE" stamp. Text-only scenes don't hit the
+    // wedge/polygon flood the budget guards against; they should render.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const denseTextScene = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: 120 }, (_, k) => ({
+        kind: "text" as const,
+        x: k,
+        y: 0,
+        w: 40,
+        h: 20,
+        text: `row ${k}`,
+        fontSize: 12,
+        color: "#000000",
+        align: "left" as const,
+        valign: "top" as const,
+      })),
+    };
+    // With bypassBudget: the scene renders as a real chart, no stamp.
+    const withBypass = await insertDemoDeck([{ scene: denseTextScene, title: "Results", bypassBudget: true }]);
+    expect(withBypass.results[0].status).toBe("rendered");
+    expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+    expect(deck[1].created.filter((s) => s.type === "text").length).toBeGreaterThanOrEqual(120);
+    // Without bypassBudget: the scene is stamped instead of drawn.
+    installHost([makeSlide("s1")]);
+    const withoutBypass = await insertDemoDeck([{ scene: denseTextScene, title: "Results" }]);
+    expect(withoutBypass.results[0].status).toBe("skipped");
+  });
+
   it("retries a slide the host stalls on once, and the transient stall recovers", async () => {
     // A single refused sync (a transient host stall) must not lose the slide: the
     // item is retried once in a fresh context, its later syncs land, and the deck

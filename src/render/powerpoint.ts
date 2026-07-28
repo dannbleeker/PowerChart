@@ -1021,7 +1021,21 @@ async function addAndRenderItem(
 }
 
 export async function insertDemoDeck(
-  items: { scene: Scene; tagData?: string; title?: string }[],
+  items: {
+    scene: Scene;
+    tagData?: string;
+    title?: string;
+    /**
+     * Skip the DEMO_SHAPE_BUDGET too-dense check for this item. The budget
+     * exists to bail on charts whose wedge/polygon flood times out the web
+     * host; text-only scenes (title, contents, results) are much cheaper per
+     * shape and should always be attempted, even when the row count pushes
+     * them past 90. Without this, the run's own results slide is the first
+     * casualty of a failure-heavy run — it's over budget precisely BECAUSE
+     * there were failures to record.
+     */
+    bypassBudget?: boolean;
+  }[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<DemoReport> {
   const results: DemoResult[] = [];
@@ -1037,7 +1051,7 @@ export async function insertDemoDeck(
   let runningCount = before;
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
-    const tooDense = shapeCount > DEMO_SHAPE_BUDGET;
+    const tooDense = !items[i].bypassBudget && shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
     let grouped = false;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";

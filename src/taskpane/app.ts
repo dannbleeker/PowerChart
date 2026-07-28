@@ -21,7 +21,7 @@ import {
   type InsertPhase,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
-import { demoItems, buildResultsScene, type ResultRow, type ResultsSummary } from "../core/demo";
+import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } from "../core/demo";
 import { buildTableScene } from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
@@ -1737,8 +1737,19 @@ function wireInsert() {
         const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
+        // Title / Contents / Results are text scenes — their shape count is
+        // cheap on the host, but a large deck's contents pushes them past the
+        // ~90 budget. Bypass the too-dense check for these; the render's
+        // batching still keeps each sync inside the host's swallow limit.
+        const isHarnessSlot = (t: string): boolean =>
+          t === "Title" || t.startsWith("Contents") || t.startsWith("Results");
         const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs } = await insertDemoDeck(
-          items.map((i) => ({ scene: i.scene, tagData: i.configJson, title: i.title })),
+          items.map((i) => ({
+            scene: i.scene,
+            tagData: i.configJson,
+            title: i.title,
+            bypassBudget: isHarnessSlot(i.title),
+          })),
           (done, total) => {
             note("Inserting demo slides… {done} of {total}", "busy", { done, total });
             setProgress(done / total); // one slide per context, so a real bar
@@ -1816,7 +1827,14 @@ function wireInsert() {
           totalMs,
         };
         try {
-          await insertDemoDeck([{ scene: buildResultsScene(rows, summary) }]);
+          const resultsPages = buildResultsScenes(rows, summary);
+          await insertDemoDeck(
+            resultsPages.map((scene, i) => ({
+              scene,
+              title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
+              bypassBudget: true,
+            })),
+          );
         } catch (e) {
           console.warn("PowerChart: results slide failed to insert", e);
           msg += " (results slide not added)";
