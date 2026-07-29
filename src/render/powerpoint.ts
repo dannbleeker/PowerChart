@@ -1185,10 +1185,9 @@ export async function insertDemoDeck(
       // catch that fired before addSlides (its getCount rejected) still pays
       // only one round-trip.
       let readback = 0;
-      let failedSlideIndex = -1;
       if (!tooDense && shapeCount > 0) {
         const afterFail = await slideCount().catch(() => runningCount);
-        failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
+        const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
         readback = failedSlideIndex >= 0 ? await slideShapeCount(failedSlideIndex).catch(() => 0) : 0;
         runningCount = afterFail;
       }
