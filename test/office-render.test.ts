@@ -1540,9 +1540,11 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(failedIndices(report), `${n} slides`).toEqual([]);
       // Self-check: the deck grew by exactly one slide per item, nothing lost.
       expect(report.slidesAdded, `${n} slides`).toBe(n);
-      // One context per SLIDE, the two settled slideCount reads (before/after),
-      // and the paged on-slide readback (nothing lost, so it runs).
-      expect(trips.contexts, `${n} slides`).toBe(n + 2 + Math.ceil(n / READBACK_PAGE));
+      // One context per SLIDE, plus one more per slide for addSlides' settled
+      // fresh-context verify (nothing lost, so no retry context), the two
+      // settled slideCount reads (before/after), and the paged on-slide
+      // readback (nothing lost, so it runs).
+      expect(trips.contexts, `${n} slides`).toBe(2 * n + 2 + Math.ceil(n / READBACK_PAGE));
       expect(seen, `${n} slides`).toHaveLength(n);
       expect(seen.at(-1)).toBe(`${n}/${n}`);
       // Monotonic, never over-counting.
@@ -1630,14 +1632,18 @@ describe("Office round-trips do not scale with the chart count", () => {
     // (items.length − slidesAdded) reads 0. addsIssued − slidesAdded surfaces it.
     const deck = [makeSlide("s1")];
     installHost(deck);
-    // item0 strays: attempt-1 render (#5) fails after its add lands, retry recovers → 2 slides.
-    // item1 is lost: both attempts fail at their getCount (#12/#14), before any add → 0 slides.
+    // Neither item carries tagData, so groupAndTagAll's tag/origin syncs never
+    // fire — each item's steady-state cost is getCount, add, addSlides' settled
+    // fresh-context verify, render, group (5 syncs; item 0 pays one more for
+    // blankLayoutId). item0 strays: attempt-1 render (#6) fails after its add
+    // lands, retry recovers → 2 slides. item1 is lost: both attempts fail at
+    // their getCount (#14/#16), before any add → 0 slides.
     // (Sync numbers include catch-path readbacks: slideCount + slideShapeCount
     // per attempt-1 catch, plus one slideCount per addSlides-refused catch —
     // the softer PR-8 gate reads the slide back on every non-tooDense throw.)
-    failSyncsOn.add(5);
-    failSyncsOn.add(12);
+    failSyncsOn.add(6);
     failSyncsOn.add(14);
+    failSyncsOn.add(16);
     const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)) }, { scene: buildChart(cfgFor(1)) }]);
     expect(report.results[0].retried).toBe(true); // the stray item recovered
     expect(report.results[1].status).toBe("failed"); // the lost item
@@ -1670,10 +1676,11 @@ describe("Office round-trips do not scale with the chart count", () => {
       const deck: FakeSlide[] = [makeSlide("s1")];
       installHost(deck);
       // Sync map for the first item: #1=slideCount, #2=blankLayoutId,
-      // #3=addSlides.getCount, #4=addSlides.add, #5=renderShapesChunked's only
-      // batch (cfgFor's scene fits in one). Stall #5 — the render sync — so the
-      // shapes are already on the fake slide when withTimeout gives up.
-      stallSyncOn.add(5);
+      // #3=addSlides.getCount, #4=addSlides.add, #5=addSlides' settled
+      // fresh-context verify (nothing lost, no retry), #6=renderShapesChunked's
+      // only batch (cfgFor's scene fits in one). Stall #6 — the render sync —
+      // so the shapes are already on the fake slide when withTimeout gives up.
+      stallSyncOn.add(6);
       const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: `{"i":0}` }]);
       // Late-settled path: rendered without retry, with lateOutcome captured.
       expect(report.results[0].status).toBe("rendered");
@@ -1706,7 +1713,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       installHost(deck);
       // Stall the render sync (see the lateSettled test above) so the
       // addAndRenderItem context dies before groupAndTagAll runs.
-      stallSyncOn.add(5);
+      stallSyncOn.add(6);
       const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: `{"i":0}` }]);
       expect(report.results[0].status).toBe("rendered");
       expect(report.results[0].lateSettled).toBe(true);
@@ -1747,8 +1754,9 @@ describe("Office round-trips do not scale with the chart count", () => {
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     // Sync map: #1 outer slideCount, #2 blankLayoutId, #3 addSlides getCount,
-    // #4 addSlides add, #5 render batch 1 (40 shapes), #6 render batch 2 (FAIL).
-    failSyncOn = 6;
+    // #4 addSlides add, #5 addSlides' settled fresh-context verify (nothing
+    // lost, no retry), #6 render batch 1 (40 shapes), #7 render batch 2 (FAIL).
+    failSyncOn = 7;
     try {
       const report = await insertDemoDeck([{ scene, tagData: '{"i":0}', title: "big" }]);
       expect(report.results[0].status).toBe("rendered");
@@ -1782,16 +1790,17 @@ describe("Office round-trips do not scale with the chart count", () => {
     // 60 rect nodes, multi-batch at the off-screen batch size (40): batch 1 =
     // 40 shapes, batch 2 = 20 shapes.
     //
-    // Sync map: #1 outer slideCount, #2 blankLayoutId, #3 addSlides getCount,
-    // #4 addSlides add, #5 attempt-1 render batch 1 (FAIL — 0 shapes commit,
-    // batch discarded). Attempt-1 catch's readback: #6 slideCount, #7
-    // slideShapeCount (reads 0) — below the partial threshold, so it falls
-    // through to the retry. Retry: #8 addSlides getCount, #9 addSlides add,
-    // #10 render batch 1 (40 shapes, OK), #11 render batch 2 (FAIL — 20
-    // shapes discarded). Retry catch's readback: #12 slideCount, #13
-    // slideShapeCount (reads 40 = 66% of 60, under the 85% gate) — still not
-    // enough to call rendered-partial, so status ends "failed" and
-    // stampLastSlide stamps the retry's slide (#14 getCount, #15 stamp sync).
+    // Sync map (addSlides opens ITS OWN verify sync — see the lost-adds
+    // self-heal): #1 outer slideCount, #2 blankLayoutId, #3 addSlides
+    // getCount, #4 addSlides add, #5 addSlides verify, #6 attempt-1 render
+    // batch 1 (FAIL — 0 shapes commit, batch discarded). Attempt-1 catch's
+    // readback: #7 slideCount, #8 slideShapeCount (reads 0) — below the
+    // partial threshold, falls through to the retry. Retry: #9 addSlides
+    // getCount, #10 addSlides add, #11 addSlides verify, #12 render batch 1
+    // (40 shapes, OK), #13 render batch 2 (FAIL — 20 shapes discarded).
+    // Retry catch's readback: #14 slideCount, #15 slideShapeCount (reads 40
+    // = 66% of 60, under the 85% gate) — still not enough to call
+    // rendered-partial, so status ends "failed" and stampLastSlide stamps.
     const NODES = 60;
     const scene = {
       width: 100,
@@ -1807,8 +1816,8 @@ describe("Office round-trips do not scale with the chart count", () => {
     };
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    failSyncsOn.add(5);
-    failSyncsOn.add(11);
+    failSyncsOn.add(6);
+    failSyncsOn.add(13);
     try {
       const report = await insertDemoDeck([{ scene, tagData: '{"i":0}', title: "big" }]);
       expect(report.results[0].status).toBe("rendered");
@@ -1873,8 +1882,12 @@ describe("Office round-trips do not scale with the chart count", () => {
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     const n = 6;
-    // Fail a single sync partway in (item 1's render, past item 0's layout+add+render).
-    failSyncOn = 9;
+    // Fail a single sync partway in — item 1's render sync. Steady-state per
+    // item (layout resolved once, on item 0) is 7 syncs: addSlides getCount,
+    // add, its settled fresh-context verify, render, group, tag, origin-tag.
+    // Item 0 additionally pays for blankLayoutId (+1, syncs 2-9); item 1 then
+    // runs syncs 10 (getCount) .. 16 (origin), so its render sync is #13.
+    failSyncOn = 13;
     try {
       const report = await insertDemoDeck(
         Array.from({ length: n }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
@@ -1949,9 +1962,16 @@ describe("Office round-trips do not scale with the chart count", () => {
     // add() that never lands leaves the deck one slide short with no error the
     // user sees. The report's slidesAdded is read back from the host, so the
     // shortfall is caught — and the dropped item shows up as not rendered.
+    //
+    // addSlides now self-heals a SINGLE dropped add with its own fresh-context
+    // retry (see the addSlides retry/verify tests below), so a genuinely lost
+    // slide here needs BOTH addSlides attempts (the item's own outer retry
+    // makes a second full attempt) to exhaust their own add-then-retry pairs:
+    // attempt 1's add + its in-addSlides retry (2), attempt 2's add + its
+    // in-addSlides retry (2 more) — 4 drops before the deck is truly one short.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    swallowAdds = 2; // dropped on the first item's add AND its retry → gone for good
+    swallowAdds = 4; // both outer attempts' addSlides calls fully exhausted → gone for good
     try {
       const report = await insertDemoDeck(
         Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
@@ -1962,6 +1982,63 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(failedIndices(report).length).toBeGreaterThanOrEqual(1); // the dropped one is flagged
     } finally {
       swallowAdds = 0;
+    }
+  });
+
+  it("addSlides self-heals one dropped add via its own fresh-context retry, and surfaces it when the retry also fails", async () => {
+    // addSlides now verifies its own adds landed (a settled getCount() in a
+    // FRESH context, after the existing 2 syncs) and gets ONE retry round
+    // before giving up — the fix for the Presentation_3.pptx bug where
+    // PowerPoint web silently dropped ~half of 20 issued add()s. A single
+    // dropped add should never even reach insertDemoDeck's own item-level
+    // retry: it should be invisible, recovered inside addSlides itself.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    swallowAdds = 1; // the FIRST add() call anywhere is dropped, none after
+    try {
+      const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: '{"i":0}' }]);
+      // The retry landed: the deck grew by exactly the one slide asked for.
+      expect(report.slidesAdded).toBe(1);
+      // Recovered INSIDE addSlides — insertDemoDeck's own item-level retry
+      // never had to fire.
+      expect(report.results[0].retried).toBeFalsy();
+      expect(report.results[0].status).toBe("rendered");
+      // Nothing was lost AT COMMIT: the one drop was fully recovered.
+      expect(report.addsLostAtCommit).toBe(0);
+    } finally {
+      swallowAdds = 0;
+    }
+
+    // Second sub-case: the drop persists through addSlides' one retry round
+    // too. A single insertDemoDeck attempt only issues 2 adds per addSlides
+    // call (the original + the in-addSlides retry), and a failed attempt
+    // itself triggers insertDemoDeck's OWN item-level retry — a second full
+    // addAndRenderItem attempt, i.e. a second addSlides call with its own
+    // add + retry pair. So defeating item 0 entirely takes 4 dropped adds:
+    // attempt 1's add + retry (2), attempt 2's add + retry (2 more). A second
+    // item follows so the run is not a TOTAL loss (which insertDemoDeck itself
+    // would throw on, per "A whole deck lost to HOST errors" below) — item 1
+    // renders normally once swallowAdds is exhausted.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const deck2: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck2);
+    swallowAdds = 4;
+    try {
+      const report = await insertDemoDeck([
+        { scene: buildChart(cfgFor(0)), tagData: '{"i":0}' },
+        { scene: buildChart(cfgFor(1)), tagData: '{"i":1}' },
+      ]);
+      // Item 0 is a genuine total loss; item 1 landed once swallowAdds ran out.
+      expect(report.slidesAdded).toBe(1);
+      expect(report.results[0].status).toBe("failed");
+      expect(report.results[1].status).toBe("rendered");
+      // addSlides confirmed the loss (not recovered by its own retry) on
+      // BOTH item 0's outer attempt and its own item-level retry.
+      expect(report.addsLostAtCommit).toBeGreaterThanOrEqual(1);
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      swallowAdds = 0;
+      warnSpy.mockRestore();
     }
   });
 
@@ -2300,11 +2377,18 @@ describe("EVERY insert path batches its shapes", () => {
     const worst = { n: 0 };
     let last = 0;
     const ctx = installHost(slides);
+    // Wrap, don't replace: addSlides now verifies its adds via a settled
+    // getCount() in a fresh context (see the addSlides retry/verify test),
+    // which needs the real sync's committedCount/pendingCounts bookkeeping.
+    // A bare replacement (as this used to be) freezes getCount() at its
+    // initial value forever, which reads as "every add() was lost" and
+    // starves insertAgendaSlides/insertDemoDeck of slides to render onto.
+    const realSync = ctx.sync;
     const count = () => slides.reduce((a, s) => a + s.created.length, 0);
     ctx.sync = async () => {
-      trips.syncs++;
       worst.n = Math.max(worst.n, count() - last);
       last = count();
+      await realSync();
     };
     await run();
     return worst.n;

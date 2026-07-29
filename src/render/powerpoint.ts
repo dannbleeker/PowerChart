@@ -727,19 +727,45 @@ export async function listChartsInDeck(): Promise<{ configJson: string; target: 
 type SlideThunk = () => PowerPoint.Slide;
 
 /**
+ * How many `slides.add()` calls issued by `addSlides` did NOT survive to a
+ * settled, fresh-context readback — even after the one retry round. This is a
+ * DIFFERENT count from `DemoReport.addsIssued − slidesAdded`: that pair
+ * measures overall deck-growth shortfall across a whole `insertDemoDeck` run
+ * (a retry/fail elsewhere can cancel it out — see the comment on
+ * `addsIssued`). `lastAddsLost` instead accumulates only the adds `addSlides`
+ * itself confirmed missing at commit time, post-retry — the corruption the
+ * fresh verify below exists to catch and recover from. Reset by
+ * `insertDemoDeck` at the start of every run; surfaced via
+ * `DemoReport.addsLostAtCommit` once the run finishes.
+ */
+let lastAddsLost = 0;
+
+/** At most one retry round after the initial add — see `addSlides`. */
+const MAX_ADD_RETRY_ROUNDS = 1;
+
+/**
  * Append `count` blank slides and return a fresh-proxy thunk for each.
  *
  * By index, off a `getCount()` taken in its OWN sync BEFORE the adds —
  * `slides.add()` always appends to the end, so the new slides are
- * `start .. start+count-1`. The adds then get their own commit sync, and the
- * positional thunks need nothing more.
+ * `start .. start+count-1`. The adds then get their own commit sync.
  *
- * There is deliberately NO post-add count check. `getCount()` queued in the SAME
- * sync as the adds returns the PRE-add total on PowerPoint web — the adds are
- * queued but not yet reflected in the count — so a delta assertion there throws
- * "added 0 of N" while the slides are in fact appearing. `start` is read cleanly
- * before any add is queued, which is the only count reading this host reports
- * reliably.
+ * The count as seen by THIS context right after that commit sync is not
+ * trusted: `getCount()` queued in the SAME sync as the adds returns the
+ * PRE-add total on PowerPoint web — the adds are queued but not yet reflected
+ * in the count — so a delta assertion there throws "added 0 of N" while the
+ * slides are in fact appearing. Instead, once the 2 syncs above land, open a
+ * FRESH context (the same settled-read trick as `slideCount()`) and compare
+ * its count against `start + count`. PowerPoint on the web silently drops some
+ * `slides.add()` calls under load — observed in Presentation_3.pptx, where
+ * the deck grew by 10 slides for 20 issued adds — and a fresh context is the
+ * only reliable way to see that it happened.
+ *
+ * A deficit gets ONE retry round: issue the missing adds in another fresh
+ * context and re-verify from a third. If the deficit persists (the drop was
+ * not transient, or the retry itself got dropped), give up — log via
+ * `console.warn`, add whatever is still missing to `lastAddsLost`, and return
+ * thunks for only the slides that actually landed (fewer than `count`).
  *
  * Also NOT via `slides.items` (a snapshot, stale in the adds' sync — the bug that
  * returned zero new slides) and NOT by loading ids to re-acquire `getItem(id)`
@@ -757,7 +783,30 @@ async function addSlides(
   const start = before.value;
   for (let i = 0; i < count; i++) slides.add(layoutId ? { layoutId } : undefined);
   await context.sync();
-  return Array.from({ length: count }, (_, i) => () => context.presentation.slides.getItemAt(start + i));
+
+  let landed = await slideCount();
+  let have = landed - start;
+  let deficit = count - have;
+  for (let round = 0; deficit > 0 && round < MAX_ADD_RETRY_ROUNDS; round++) {
+    const toAdd = deficit;
+    await PowerPoint.run(async (retryContext) => {
+      const retrySlides = retryContext.presentation.slides;
+      for (let i = 0; i < toAdd; i++) retrySlides.add(layoutId ? { layoutId } : undefined);
+      await retryContext.sync();
+    });
+    landed = await slideCount();
+    have = landed - start;
+    deficit = count - have;
+  }
+  if (deficit > 0) {
+    lastAddsLost += deficit;
+    console.warn(
+      `PowerChart: addSlides lost ${deficit} of ${count} requested slide${count === 1 ? "" : "s"} — ` +
+        `the host dropped the add() and the retry did not recover it. Returning ${have} thunk${have === 1 ? "" : "s"}.`,
+    );
+  }
+  const actual = Math.min(have, count);
+  return Array.from({ length: actual }, (_, i) => () => context.presentation.slides.getItemAt(start + i));
 }
 
 /**
@@ -913,6 +962,17 @@ export interface DemoReport {
    * land (a stray that landed cancels; a swallowed/lost add does not).
    */
   addsIssued: number;
+  /**
+   * How many of THIS run's `slides.add()` calls `addSlides` itself confirmed
+   * missing at a settled, fresh-context readback — even after its one retry
+   * round (see `addSlides`, module-scope `lastAddsLost`). A DIFFERENT metric
+   * from `addsIssued − slidesAdded`: that pair reads overall deck-growth
+   * shortfall for the whole run (a stray from an unrelated retry/fail can
+   * cancel a lost slide out of it), while this one is a direct, per-add
+   * confirmed-vs-verified deficit — 0 whenever every add either landed or was
+   * recovered by the retry.
+   */
+  addsLostAtCommit: number;
   /**
    * 1-based deck positions of ADDED slides that read back with ZERO shapes — the
    * host committed the slide but its content detached (a silent partial a visual
@@ -1180,6 +1240,10 @@ export async function insertDemoDeck(
   }[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<DemoReport> {
+  // Reset the module-scope lost-adds counter at the start of every run, so
+  // `addsLostAtCommit` below reports only THIS run's confirmed losses, not a
+  // stale accumulation from an earlier insertDemoDeck call.
+  lastAddsLost = 0;
   const results: DemoResult[] = [];
   let lastError: unknown;
   const layout: LayoutRef = { resolved: false };
@@ -1385,7 +1449,16 @@ export async function insertDemoDeck(
   // slide has no tag to identify it anyway. Best-effort: a fault leaves
   // blanksRead false so an empty list is not read as "no blanks".
   const { positions: blankSlides, items: blankItems, complete: blanksRead } = await findBlankAddedSlides(before, after);
-  return { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs };
+  return {
+    results,
+    slidesAdded,
+    addsIssued,
+    addsLostAtCommit: lastAddsLost,
+    blankSlides,
+    blankItems,
+    blanksRead,
+    totalMs,
+  };
 }
 
 /** Slides read per sync in the readback — kept modest to stay clear of the web
