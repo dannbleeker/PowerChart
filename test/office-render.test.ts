@@ -129,10 +129,18 @@ let contextBaseCount = 0;
 
 function makeSlide(id: string) {
   const created: FakeShape[] = [];
+  // Shapes queued since the last successful sync. On success the pending list
+  // is cleared (they're committed). On a failed sync the fake removes them
+  // from `created` — the real host discards queued commands whose sync
+  // rejected, and modeling that faithfully is what lets a mid-render
+  // failure-mode test distinguish "40 batches committed, 41st batch dropped"
+  // from "all 47 shapes on the slide" (the PR-8 partial-landed threshold).
+  const pending: FakeShape[] = [];
   const slideTagStore = new Map<string, string>();
   const slide = {
     id,
     created,
+    pending,
     isNullObject: false,
     load() {},
     tags: {
@@ -159,17 +167,20 @@ function makeSlide(id: string) {
       addGeometricShape(geo: string, box: FakeShape["box"]) {
         const s = makeShape("geometric", geo, box);
         created.push(s);
+        pending.push(s);
         return s;
       },
       addLine(_kind: string, box: FakeShape["box"]) {
         const s = makeShape("line", undefined, box);
         created.push(s);
+        pending.push(s);
         return s;
       },
       addTextBox(text: string, box: FakeShape["box"]) {
         const s = makeShape("text", undefined, box);
         s.text = text;
         created.push(s);
+        pending.push(s);
         return s;
       },
       addGroup(items: FakeShape[]) {
@@ -200,6 +211,7 @@ function makeSlide(id: string) {
         const g = makeShape("group", undefined, box);
         g.grouped = items;
         created.push(g);
+        pending.push(g);
         return g;
       },
       getItemOrNullObject(id: string) {
@@ -400,17 +412,37 @@ function installHost(
     },
     sync: async () => {
       trips.syncs++;
-      if (trips.syncs === failSyncOn || failSyncsOn.has(trips.syncs)) throw new Error("host refused a queued command");
+      // Commit or discard the shapes each slide has queued since the last
+      // sync. On success, mark them "committed" (leave in `created`, drop
+      // from `pending`). On failure, remove them from `created` — the real
+      // host discards a batch of queued commands whose sync rejects, and the
+      // PR-8 partial-landed gate reads back only the committed count.
+      const commit = () => {
+        for (const s of slides) s.pending.length = 0;
+      };
+      const discard = () => {
+        for (const s of slides) {
+          for (const p of s.pending) {
+            const i = s.created.indexOf(p);
+            if (i >= 0) s.created.splice(i, 1);
+          }
+          s.pending.length = 0;
+        }
+      };
+      if (trips.syncs === failSyncOn || failSyncsOn.has(trips.syncs)) {
+        discard();
+        throw new Error("host refused a queued command");
+      }
       if (stallSyncOn.has(trips.syncs)) {
         // Sleep past withTimeout's deadline, then settle successfully. The
-        // queued shapes were pushed into the slide's `items` array by the
-        // add*() proxy calls the moment they were queued, so they're already
-        // observable to a fresh-context readback — same as real Office.js
-        // where a slow sync eventually commits.
+        // queued shapes commit at settle time — same as real Office.js where
+        // a slow sync eventually reports success and the shapes are on the
+        // slide by then.
         await new Promise((r) => setTimeout(r, stallSyncDelayMs));
         for (const r of pendingCounts) r.value = committedCount;
         pendingCounts.length = 0;
         committedCount = slides.length;
+        commit();
         return;
       }
       // A queued-command failure (e.g. drawing on a poisoned getItemAt handle)
@@ -418,6 +450,7 @@ function installHost(
       if (pendingHostError) {
         const err = pendingHostError;
         pendingHostError = null;
+        discard();
         throw err;
       }
       // Each getCount from this batch resolves to the PRE-batch committed count,
@@ -425,6 +458,7 @@ function installHost(
       for (const r of pendingCounts) r.value = committedCount;
       pendingCounts.length = 0;
       committedCount = slides.length;
+      commit();
     },
   };
   trips.syncs = 0;
@@ -1597,10 +1631,13 @@ describe("Office round-trips do not scale with the chart count", () => {
     const deck = [makeSlide("s1")];
     installHost(deck);
     // item0 strays: attempt-1 render (#5) fails after its add lands, retry recovers → 2 slides.
-    // item1 is lost: both attempts fail at their getCount (#10/#11), before any add → 0 slides.
+    // item1 is lost: both attempts fail at their getCount (#12/#14), before any add → 0 slides.
+    // (Sync numbers include catch-path readbacks: slideCount + slideShapeCount
+    // per attempt-1 catch, plus one slideCount per addSlides-refused catch —
+    // the softer PR-8 gate reads the slide back on every non-tooDense throw.)
     failSyncsOn.add(5);
-    failSyncsOn.add(10);
-    failSyncsOn.add(11);
+    failSyncsOn.add(12);
+    failSyncsOn.add(14);
     const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)) }, { scene: buildChart(cfgFor(1)) }]);
     expect(report.results[0].retried).toBe(true); // the stray item recovered
     expect(report.results[1].status).toBe("failed"); // the lost item
@@ -1684,6 +1721,56 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
+  it("treats a mid-render failure with ≥85% shapes on the slide as rendered-partial, no retry, no stamp", async () => {
+    // Presentation_3.pptx: Line landed 31/36 shapes (86%) — PR 1's strict
+    // `readback >= shapeCount` gate missed it, retried into a duplicate
+    // slide, stamped both NOT COMPLETE. The softer PR-8 gate treats a
+    // readback ≥ ceil(shapeCount * 0.85) as rendered-partial: no retry, no
+    // stamp, rescue groups whatever landed.
+    //
+    // Multi-batch scene at the off-screen batch size (40): 47 rect nodes
+    // means batch 1 = 40 shapes (sync OK), batch 2 = 7 shapes (sync FAIL).
+    // With the fake's discard-on-throw fidelity, readback = 40 = ceil(47 * 0.85).
+    const NODES = 47;
+    const scene = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    // Sync map: #1 outer slideCount, #2 blankLayoutId, #3 addSlides getCount,
+    // #4 addSlides add, #5 render batch 1 (40 shapes), #6 render batch 2 (FAIL).
+    failSyncOn = 6;
+    try {
+      const report = await insertDemoDeck([{ scene, tagData: '{"i":0}', title: "big" }]);
+      expect(report.results[0].status).toBe("rendered");
+      expect(report.results[0].partialLanded).toBe(true);
+      expect(report.results[0].retried).toBeFalsy();
+      expect(report.results[0].lateSettled).toBeFalsy();
+      // No duplicate slide from a bogus retry.
+      expect(report.slidesAdded).toBe(1);
+      expect(report.addsIssued).toBe(1);
+      // Slide has the 40 shapes that committed — no stamp banner.
+      const stamps = deck[1].created.filter((s) => s.name === "PowerChart:not-complete");
+      expect(stamps).toHaveLength(0);
+      // Rescue grouped whatever landed → chart is re-editable.
+      expect(report.results[0].grouped).toBe(true);
+      const groups = deck[1].created.filter((s) => s.type === "group");
+      expect(groups).toHaveLength(1);
+      expect(groups[0].tagStore.get(CHART_TAG)).toBe('{"i":0}');
+    } finally {
+      failSyncOn = 0;
+    }
+  });
+
   it("bypassBudget lets a text-heavy scene render even when its shape count is over the budget", async () => {
     // The results/contents slide bug: 32 failures pushed the results scene to
     // 135 shapes — over DEMO_SHAPE_BUDGET (90) — and the run's own summary
@@ -1744,11 +1831,12 @@ describe("Office round-trips do not scale with the chart count", () => {
     // A chart the host genuinely cannot draw stalls BOTH the first attempt and the
     // retry. It must then be given up (status failed) without aborting the deck —
     // the remaining slides still render. failSyncsOn hits each attempt's first
-    // propagating sync (the addSlides getCount): #3 = item 0 attempt 1, #4 = its retry.
+    // propagating sync (the addSlides getCount): #3 = item 0 attempt 1, #5 = its
+    // retry. (Sync #4 is the catch-path slideCount readback the PR-8 gate adds.)
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
     failSyncsOn.add(3);
-    failSyncsOn.add(4);
+    failSyncsOn.add(5);
     const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)) }, { scene: buildChart(cfgFor(1)) }]);
     expect(report.results[0].status).toBe("failed");
     expect(report.results[0].retried).toBeFalsy(); // a retry that also failed is not a recovery

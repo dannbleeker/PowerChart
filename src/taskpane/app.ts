@@ -1779,6 +1779,7 @@ function wireInsert() {
             retried: !!r.retried,
             grouped: !!r.grouped,
             lateSettled: !!r.lateSettled,
+            partial: !!r.partialLanded,
             ms: r.ms,
             lateOutcome: r.lateOutcome ?? "",
           })),
@@ -1798,6 +1799,8 @@ function wireInsert() {
         if (ungrouped) msg += ` ⚠ ${ungrouped} chart${ungrouped === 1 ? "" : "s"} landed ungrouped (not re-editable).`;
         const lateN = results.filter((r) => r.lateSettled).length;
         if (lateN) msg += ` ${lateN} late-settled (sync timed out but shapes landed).`;
+        const partialN = results.filter((r) => r.partialLanded).length;
+        if (partialN) msg += ` ${partialN} rendered-partial (sync threw with most shapes on the slide — no retry).`;
         if (lost > 0)
           msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
         // Blank slides carry the slot tag (item title) where the host has 1.3
