@@ -878,6 +878,12 @@ export interface DemoResult {
    *  as "rendered", NOT "failed": stamping a complete chart NOT COMPLETE is
    *  the false-negative this exists to prevent. */
   lateSettled?: boolean;
+  /** The item's sync threw but a readback showed most (≥ PARTIAL_RENDER_THRESHOLD)
+   *  of the expected shapes on the slide. A retry would only add a duplicate
+   *  slide, so the item is counted as "rendered" and a rescue attempts to
+   *  group whatever landed. `created` carries the actual on-slide count so a
+   *  console.table row shows "created 31 of 36". */
+  partialLanded?: boolean;
   /** The `lastLateSync` value observed during this item, if any — an abandoned
    *  sync that later reported success or a real RichApi error. Read the run's
    *  console.table to see which item stalled and how it eventually resolved. */
@@ -1146,6 +1152,7 @@ export async function insertDemoDeck(
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
     let retried = false;
     let lateSettled = false;
+    let partialLanded = false;
     const lateSeqBefore = lastLateSyncSeq;
     const t0 = Date.now();
     // Slot tag: JSON envelope with the deck-position index and the item title.
@@ -1171,21 +1178,44 @@ export async function insertDemoDeck(
       // the host settled; a plain rejection means nothing to wait for.
       if (!tooDense) await waitForLateSync();
       const lateFired = lastLateSyncSeq !== lateSeqBefore;
-      if (!tooDense && lateFired && shapeCount > 0) {
+      // Read back the failed slide's shape count in a fresh context: the same
+      // number decides BOTH "late-settled" (100% + lateFired) and
+      // "partial-landed" (>= threshold, < 100%, no lateFired needed). Only
+      // opens the shape-count sync when a NEW slide actually appeared, so a
+      // catch that fired before addSlides (its getCount rejected) still pays
+      // only one round-trip.
+      let readback = 0;
+      if (!tooDense && shapeCount > 0) {
         const afterFail = await slideCount().catch(() => runningCount);
         const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
-        const readback = failedSlideIndex >= 0 ? await slideShapeCount(failedSlideIndex).catch(() => 0) : 0;
+        readback = failedSlideIndex >= 0 ? await slideShapeCount(failedSlideIndex).catch(() => 0) : 0;
         runningCount = afterFail;
-        if (readback >= shapeCount) {
-          // The host settled after the timeout — every shape is on the slide.
-          // Don't retry, don't stamp. The grouping/tagging did not run (the
-          // failed context is dead), so this chart is real but ungrouped —
-          // groupAndTagAll's own path is what promotes re-editability.
-          created = readback;
-          lateSettled = true;
-        }
       }
-      if (!lateSettled) {
+      if (readback >= shapeCount && shapeCount > 0 && lateFired) {
+        // The host settled after the timeout — every shape is on the slide.
+        // Don't retry, don't stamp. The grouping/tagging did not run (the
+        // failed context is dead), so this chart is real but ungrouped —
+        // the fresh-context rescue below promotes it to re-editable.
+        created = readback;
+        lateSettled = true;
+      } else if (
+        !lateSettled &&
+        readback > 0 &&
+        readback < shapeCount &&
+        readback >= Math.ceil(shapeCount * PARTIAL_RENDER_THRESHOLD)
+      ) {
+        // Most of the chart is on the slide. A retry lands a duplicate slide
+        // and rarely helps — the host dropped the LAST batch's sync, not the
+        // whole render. Presentation_3.pptx: Line 31/36 shapes (86%), Gantt
+        // 23/24 (96%); today's strict `>= shapeCount` gate turned both into
+        // dup-slide pairs stamped NOT COMPLETE. Now: rendered-partial, no
+        // retry, rescue below groups whatever landed. lateFired NOT required
+        // — a plain RichApi rejection can still leave most shapes committed
+        // because the batches before it already synced.
+        created = readback;
+        partialLanded = true;
+      }
+      if (!lateSettled && !partialLanded) {
         // A host stall is often transient, so retry the RENDER once — a fresh run
         // and a NEW slide, because we must NOT delete the first failed slide: a
         // mis-identified last-slide delete could destroy a good one. A recovered
@@ -1199,19 +1229,29 @@ export async function insertDemoDeck(
             recovered = true;
             runningCount++;
           } catch (err2) {
-            // Second attempt may also be a late-success — recheck before giving up.
+            // Second attempt may also be a late-success or a partial-landing —
+            // recheck before giving up. Same threshold gate as attempt 1.
             await waitForLateSync();
             const lateFired2 = lastLateSyncSeq !== lateSeqBefore;
-            if (lateFired2 && shapeCount > 0) {
+            let readback2 = 0;
+            if (shapeCount > 0) {
               const afterFail2 = await slideCount().catch(() => runningCount);
               const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
-              const readback2 = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
+              readback2 = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
               runningCount = afterFail2;
-              if (readback2 >= shapeCount) {
-                created = readback2;
-                recovered = true;
-                lateSettled = true;
-              }
+            }
+            if (readback2 >= shapeCount && shapeCount > 0 && lateFired2) {
+              created = readback2;
+              recovered = true;
+              lateSettled = true;
+            } else if (
+              readback2 > 0 &&
+              readback2 < shapeCount &&
+              readback2 >= Math.ceil(shapeCount * PARTIAL_RENDER_THRESHOLD)
+            ) {
+              created = readback2;
+              recovered = true;
+              partialLanded = true;
             }
             /* stalled again — fall through to the failed stamp */
             if (!recovered) lastError = err2;
@@ -1243,7 +1283,16 @@ export async function insertDemoDeck(
       if (rescued) grouped = true;
     }
     const lateOutcome = lastLateSync && lastLateSyncSeq !== lateSeqBefore ? lastLateSync : undefined;
-    results.push({ created, status, ms: Date.now() - t0, retried, lateSettled, lateOutcome, grouped });
+    results.push({
+      created,
+      status,
+      ms: Date.now() - t0,
+      retried,
+      lateSettled,
+      partialLanded,
+      lateOutcome,
+      grouped,
+    });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
@@ -1431,6 +1480,15 @@ const SHAPES_PER_SYNC = 10;
  * the observed ceiling.
  */
 const SHAPES_PER_SYNC_OFFSCREEN = 40;
+
+/**
+ * Minimum readback-vs-expected ratio for a caught insert to count as
+ * "rendered-partial" instead of retried+stamped. Set at 85% so a single
+ * dropped batch (SHAPES_PER_SYNC_OFFSCREEN = 40 / typical ~40-shape chart) is
+ * still a visible chart, not a NOT COMPLETE banner. Presentation_3.pptx:
+ * Line at 31/36 = 86% and Gantt at 23/24 = 96% both qualify.
+ */
+const PARTIAL_RENDER_THRESHOLD = 0.85;
 
 /**
  * Render a scene onto a slide, committing in small batches.
