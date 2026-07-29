@@ -1656,6 +1656,34 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
+  it("rescues an ungrouped rendered slide by regrouping in a fresh context", async () => {
+    // Presentation_3.pptx: PR 3's in-context regroup fires only if the render
+    // itself finishes. A lateSettled render — sync timed out but shapes landed
+    // — dies with the context and never groups; the chart ends up loose,
+    // untagged, not re-editable. The rescue reopens a fresh context, loads
+    // slide.shapes.items, and addGroups them so the chart is one shape again.
+    _setBatchTimeoutForTest(5);
+    stallSyncDelayMs = 40;
+    try {
+      const deck: FakeSlide[] = [makeSlide("s1")];
+      installHost(deck);
+      // Stall the render sync (see the lateSettled test above) so the
+      // addAndRenderItem context dies before groupAndTagAll runs.
+      stallSyncOn.add(5);
+      const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: `{"i":0}` }]);
+      expect(report.results[0].status).toBe("rendered");
+      expect(report.results[0].lateSettled).toBe(true);
+      // The rescue ran and the chart is now one group carrying its config tag.
+      expect(report.results[0].grouped).toBe(true);
+      const groups = deck[1].created.filter((s) => s.type === "group");
+      expect(groups).toHaveLength(1);
+      expect(groups[0].tagStore.get(CHART_TAG)).toBe('{"i":0}');
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncDelayMs = 40;
+    }
+  });
+
   it("bypassBudget lets a text-heavy scene render even when its shape count is over the budget", async () => {
     // The results/contents slide bug: 32 failures pushed the results scene to
     // 135 shapes — over DEMO_SHAPE_BUDGET (90) — and the run's own summary
