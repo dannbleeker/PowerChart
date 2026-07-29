@@ -1771,6 +1771,67 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
+  it("unstamps and rescues a genuinely-failed item whose last attempt still landed real shapes", async () => {
+    // Both attempt 1 AND its retry fail below PARTIAL_RENDER_THRESHOLD (85%),
+    // so the item would normally end status:"failed" with a NOT-COMPLETE
+    // stamp over whatever landed. But the retry's failure still left real
+    // chart shapes on the slide (just not enough to qualify as
+    // rendered-partial) — the unstamp-and-rescue path should delete that
+    // banner and group those shapes instead of leaving them hidden under it.
+    //
+    // 60 rect nodes, multi-batch at the off-screen batch size (40): batch 1 =
+    // 40 shapes, batch 2 = 20 shapes.
+    //
+    // Sync map: #1 outer slideCount, #2 blankLayoutId, #3 addSlides getCount,
+    // #4 addSlides add, #5 attempt-1 render batch 1 (FAIL — 0 shapes commit,
+    // batch discarded). Attempt-1 catch's readback: #6 slideCount, #7
+    // slideShapeCount (reads 0) — below the partial threshold, so it falls
+    // through to the retry. Retry: #8 addSlides getCount, #9 addSlides add,
+    // #10 render batch 1 (40 shapes, OK), #11 render batch 2 (FAIL — 20
+    // shapes discarded). Retry catch's readback: #12 slideCount, #13
+    // slideShapeCount (reads 40 = 66% of 60, under the 85% gate) — still not
+    // enough to call rendered-partial, so status ends "failed" and
+    // stampLastSlide stamps the retry's slide (#14 getCount, #15 stamp sync).
+    const NODES = 60;
+    const scene = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    failSyncsOn.add(5);
+    failSyncsOn.add(11);
+    try {
+      const report = await insertDemoDeck([{ scene, tagData: '{"i":0}', title: "big" }]);
+      expect(report.results[0].status).toBe("rendered");
+      expect(report.results[0].partialLanded).toBe(true);
+      expect(report.results[0].grouped).toBe(true);
+      expect(report.results[0].created).toBe(40);
+      // The retry's stray slide is where the 40 shapes and the stamp landed —
+      // the LAST slide in the deck (index 2: preexisting + attempt-1's empty
+      // stray + the retry's slide).
+      // The fake models a real Office.js delete: the shape is flagged deleted,
+      // not spliced out of `created` (see `getCount`/`items` on FakeSlide,
+      // which both filter `!deleted` — the same lens a real readback uses).
+      const rescuedSlide = deck[deck.length - 1];
+      const stamps = rescuedSlide.created.filter((s) => s.name === "PowerChart:not-complete" && !s.deleted);
+      expect(stamps).toHaveLength(0);
+      const groups = rescuedSlide.created.filter((s) => s.type === "group" && !s.deleted);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].tagStore.get(CHART_TAG)).toBe('{"i":0}');
+    } finally {
+      failSyncsOn.clear();
+    }
+  });
+
   it("bypassBudget lets a text-heavy scene render even when its shape count is over the budget", async () => {
     // The results/contents slide bug: 32 failures pushed the results scene to
     // 135 shapes — over DEMO_SHAPE_BUDGET (90) — and the run's own summary

@@ -1027,6 +1027,53 @@ async function rescueGroupAndTag(
   }
 }
 
+/**
+ * Fresh-context unstamp-and-rescue for a slide whose item ended up "failed" —
+ * both the render and its retry stalled, but the LAST attempt's readback
+ * showed real chart shapes on the slide, just under `PARTIAL_RENDER_THRESHOLD`.
+ * The slide already carries the NOT-COMPLETE banner `stampLastSlide` left on
+ * it; this deletes that banner and hands the slide to `rescueGroupAndTag` to
+ * group + tag whatever chart shapes remain, so a genuinely-partial chart is
+ * re-editable instead of permanently hidden under a red stripe.
+ *
+ * Two fresh contexts, not one: the banner has to be gone (and that deletion
+ * committed) before `rescueGroupAndTag` re-loads the shape collection, or its
+ * addGroup would sweep the banner into the chart's own group.
+ *
+ * Returns true only when BOTH steps land: the stamp shape is found and its
+ * deletion sync succeeds, AND `rescueGroupAndTag` itself returns true. Any
+ * other outcome (no stamp shape found, the delete sync rejects, grouping
+ * unsupported/refused) leaves the slide exactly as "failed" left it — still
+ * stamped, still ungrouped — so the caller's status/grouped fields stay
+ * untouched.
+ */
+async function unstampAndRescue(
+  slideIndex: number,
+  tagData: string | undefined,
+  origin: { left: number; top: number },
+): Promise<boolean> {
+  let unstamped: boolean;
+  try {
+    unstamped = await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemAt(slideIndex);
+      const shapes = slide.shapes as unknown as PowerPoint.ShapeCollection & {
+        items: (PowerPoint.Shape & { name: string; delete(): void })[];
+      };
+      shapes.load("items/name");
+      await context.sync();
+      const stamp = shapes.items.find((s) => s.name === "PowerChart:not-complete");
+      if (!stamp) return false;
+      stamp.delete();
+      await context.sync();
+      return true;
+    });
+  } catch {
+    unstamped = false;
+  }
+  if (!unstamped) return false;
+  return rescueGroupAndTag(slideIndex, tagData, origin);
+}
+
 /** The blank-layout id, resolved lazily on the first slide's context and reused. */
 interface LayoutRef {
   id?: string;
@@ -1153,6 +1200,12 @@ export async function insertDemoDeck(
     let retried = false;
     let lateSettled = false;
     let partialLanded = false;
+    // Shape count read back off the LAST failed attempt's slide (attempt 1, or
+    // the retry if it also failed). Declared here, not inside the catch, so a
+    // "failed" outcome below still knows whether the stamped slide has real
+    // chart shapes worth rescuing — see the unstamp-and-rescue block after the
+    // retried/grouped rescue.
+    let readback = 0;
     const lateSeqBefore = lastLateSyncSeq;
     const t0 = Date.now();
     // Slot tag: JSON envelope with the deck-position index and the item title.
@@ -1184,7 +1237,6 @@ export async function insertDemoDeck(
       // opens the shape-count sync when a NEW slide actually appeared, so a
       // catch that fired before addSlides (its getCount rejected) still pays
       // only one round-trip.
-      let readback = 0;
       if (!tooDense && shapeCount > 0) {
         const afterFail = await slideCount().catch(() => runningCount);
         const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
@@ -1233,23 +1285,22 @@ export async function insertDemoDeck(
             // recheck before giving up. Same threshold gate as attempt 1.
             await waitForLateSync();
             const lateFired2 = lastLateSyncSeq !== lateSeqBefore;
-            let readback2 = 0;
             if (shapeCount > 0) {
               const afterFail2 = await slideCount().catch(() => runningCount);
               const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
-              readback2 = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
+              readback = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
               runningCount = afterFail2;
             }
-            if (readback2 >= shapeCount && shapeCount > 0 && lateFired2) {
-              created = readback2;
+            if (readback >= shapeCount && shapeCount > 0 && lateFired2) {
+              created = readback;
               recovered = true;
               lateSettled = true;
             } else if (
-              readback2 > 0 &&
-              readback2 < shapeCount &&
-              readback2 >= Math.ceil(shapeCount * PARTIAL_RENDER_THRESHOLD)
+              readback > 0 &&
+              readback < shapeCount &&
+              readback >= Math.ceil(shapeCount * PARTIAL_RENDER_THRESHOLD)
             ) {
-              created = readback2;
+              created = readback;
               recovered = true;
               partialLanded = true;
             }
@@ -1281,6 +1332,25 @@ export async function insertDemoDeck(
         () => false,
       );
       if (rescued) grouped = true;
+    }
+    // Unstamp-and-rescue: a "failed" item whose last attempt still left real
+    // chart shapes on the slide (readback > 0) — just under
+    // PARTIAL_RENDER_THRESHOLD, so it didn't qualify as rendered-partial above.
+    // The slide is currently a stamp banner sitting over a genuine, if
+    // incomplete, chart. Delete the banner and group whatever landed, in a
+    // fresh context per `unstampAndRescue`. Only promotes a "failed" item —
+    // never touches "skipped" (nothing rendered) or an already-"rendered" one
+    // (handled by the rescue above).
+    if (status === "failed" && readback > 0 && runningCount > before) {
+      const rescued = await unstampAndRescue(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
+        () => false,
+      );
+      if (rescued) {
+        status = "rendered";
+        partialLanded = true;
+        grouped = true;
+        created = readback;
+      }
     }
     const lateOutcome = lastLateSync && lastLateSyncSeq !== lateSeqBefore ? lastLateSync : undefined;
     results.push({

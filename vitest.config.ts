@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Exclude in-repo agent worktrees (.claude/worktrees/**) so vitest doesn't
+    // discover duplicate test files copied into each worktree.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**"],
     coverage: {
       provider: "v8",
       // src plus the one skill script that is pure and importable: pptx-paint.mjs

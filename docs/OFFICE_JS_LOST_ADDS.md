@@ -1,0 +1,133 @@
+# PowerPoint web silently drops `SlideCollection.add()` under load
+
+## Environment
+
+- **Host**: PowerPoint on the web (Office Online), accessed via
+  office.com.
+- **Office.js requirement set**: PowerPointApi 1.3+ (`slides.add()` itself
+  requires only 1.3; the PowerChart add-in's manifest requests up through
+  1.10 for other features, but this bug reproduces using nothing beyond the
+  base `slides.add()` / `slides.getCount()` API surface).
+- **Add-in**: PowerChart, sideloaded via `manifest-prod.xml` (Phase 2 of
+  `docs/PUBLISHING.md`), hosted at
+  `https://powerchart.struktureretsundfornuft.dk/`.
+- **Client**: browser-hosted Office Online session, not a desktop build.
+
+## Observed behavior
+
+Two independent Phase-2 validation runs of the PowerChart add-in against a
+real PowerPoint-web deck both show slides going missing after
+`context.presentation.slides.add()` calls that completed their
+`context.sync()` with no thrown error.
+
+### Run 1 — `Presentation_3.pptx` (smoke subset, 2026-07-29)
+
+- Smoke subset: 12 items (Title, Contents, then 8 charts + 2 elements).
+- The harness issued **20** `slides.add()` calls in total: 12 first
+  attempts plus 8 retries after the harness's own self-check detected
+  missing slides.
+- The deck grew by only **10** slides.
+- **10 adds vanished silently** — no exception, no rejected promise; the
+  `context.sync()` that queued each add returned successfully.
+- Harness self-check reported: `addsIssued: 20, slidesAdded: 10`.
+- Wall clock for the run: **773.4 seconds** (~65s average per item), with
+  long stalls between adds — timeouts in the harness appear to race with
+  when the host actually commits a sync.
+- Pattern: loss correlates with the host being "under load" in the same
+  session — adds issued early in the run tend to succeed, adds issued
+  later in the same session fail more often.
+
+### Run 2 — `Presentation_2.pptx` (full deck, 2026-07-28)
+
+- Full deck: 37 items, deck grew by 63 slides.
+- Different failure shape: rather than vanishing outright, some
+  `slides.add()` calls landed content at the **wrong position** — the
+  content intended for item *N* appeared on slide *N+1*, leaving slide *N*
+  empty.
+- **5 of 63** slides were misplaced this way.
+
+Taken together, the two runs suggest at least two related failure modes
+under the same root cause (adds not landing where/when the caller expects
+them to): outright silent loss (Run 1) and off-by-one placement (Run 2).
+
+## Expected behavior
+
+Every queued `slides.add()` whose `context.sync()` resolves without error
+should result in exactly one new slide appended (or inserted at the
+requested index) in the presentation. A successful `sync()` should be a
+reliable signal that the operation took effect — callers should not need
+to re-read `slides.getCount()` afterward to find out whether it actually
+did.
+
+## Minimal repro
+
+```js
+PowerPoint.run(async (context) => {
+  const before = context.presentation.slides.getCount();
+  await context.sync();
+
+  for (let i = 0; i < 20; i++) {
+    context.presentation.slides.add();
+  }
+  await context.sync();
+
+  const after = context.presentation.slides.getCount();
+  await context.sync();
+
+  console.log(`before=${before.value}, after=${after.value}, expected +20`);
+});
+```
+
+Run this block roughly 10 times in a row within the **same** PowerPoint-web
+session (same deck, same browser tab, don't reload between runs). Some
+runs will report `after - before < 20` with no error ever thrown along the
+way. The failure rate appears to increase as the session accumulates more
+slides / more prior operations ("under load"), matching the Run 1 pattern
+where later adds in a long-running session fail more often than early
+ones.
+
+## Workaround
+
+PowerChart's harness works around this by verifying the settled slide
+count after each batch of adds and re-issuing `slides.add()` for whatever
+is missing:
+
+1. Record `slides.getCount()` before issuing a batch of adds.
+2. Issue the adds, `sync()`.
+3. Re-read `slides.getCount()` after the sync settles.
+4. If the observed growth is less than the number of adds issued, retry
+   the shortfall (this is where Run 1's 8 retries came from).
+5. For the misplacement mode seen in Run 2, the harness additionally
+   verifies slide *content* (not just count) matches the expected item at
+   each index before moving on, since a count-only check would not catch
+   content landing one slide off from where it belongs.
+
+This is a workaround, not a fix — retries still cost the ~65s/item wall
+clock seen in Run 1, and a false-negative verify could in principle mask a
+different bug. The PR that hardens the Phase-2 harness with this
+retry-and-verify logic should be linked here once opened
+(`PowerChart` repo, TBD — not yet filed as of this writing).
+
+## Related
+
+- [OfficeDev/office-js#2699](https://github.com/OfficeDev/office-js/issues/2699) —
+  shapes created successfully but not painted on PowerPoint web until a
+  zoom/repaint (see `docs/repro/ellipse-web-repro.yaml` in this repo for a
+  minimal isolation of that bug). It's plausible this is a related class of
+  bug: both involve the web client's rendering/commit pipeline losing track
+  of state under some conditions, rather than the Office.js API layer
+  itself rejecting the call. Worth checking whether the "missing" slides in
+  Run 1 are truly absent from the deck's underlying model, or present but
+  unpainted/unlisted the way #2699's shapes are.
+
+## How to submit
+
+1. Copy this document's content into a new office-js issue.
+2. Attach screenshots from `Presentation_2.pptx` and `Presentation_3.pptx`
+   (the two decks uploaded to the current Claude Code session) showing the
+   missing/misplaced slides described above.
+3. Submit at
+   <https://github.com/OfficeDev/office-js/issues/new/choose>, picking the
+   bug-report template.
+4. Link back the resulting issue number here and from the retry-workaround
+   PR once it exists, per the lockstep convention in `CLAUDE.md`.
