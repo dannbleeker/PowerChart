@@ -20,6 +20,7 @@ export default tseslint.config(
       "examples/**",
       "public/**",
       "node_modules/**",
+      ".claude/**",
       "**/*.snap",
     ],
   },
