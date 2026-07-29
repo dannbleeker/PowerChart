@@ -4,3 +4,4 @@ dist/
 dist-lib/
 skill-dist/
 coverage/
+.claude/
