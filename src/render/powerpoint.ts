@@ -144,6 +144,16 @@ export type InsertPhase = "context" | "queue" | "commit" | "group" | "done";
  */
 export let lastLateSync: string | null = null;
 
+/**
+ * Monotonically incremented each time `describe` fires — an abandoned sync
+ * reported success or a RichApi error. Callers snapshot it before an item and
+ * compare after, so an identical `lastLateSync` string across two consecutive
+ * items (same `what` + same rounded seconds) doesn't read as "no late-sync
+ * happened". Two identical stalls back-to-back would silently miss lateFired
+ * otherwise — a real ordering bug the pane's test fleet surfaced.
+ */
+export let lastLateSyncSeq = 0;
+
 let lateSubscriber: ((msg: string) => void) | null = null;
 
 /** Be told when a call we already gave up on finally settles. */
@@ -198,6 +208,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   const started = Date.now();
   const describe = (outcome: string): void => {
     lastLateSync = `${what}: ${outcome} after ${Math.round((Date.now() - started) / 1000)}s`;
+    lastLateSyncSeq += 1;
     lateSubscriber?.(lastLateSync);
   };
   return new Promise<T>((resolve, reject) => {
@@ -944,6 +955,72 @@ async function slideShapeCount(index: number): Promise<number> {
   });
 }
 
+/**
+ * Fresh-context group+tag rescue for a slide whose addAndRenderItem context died
+ * with shapes on the slide but no group (a lateSettled render, or a retry whose
+ * grouping sync was swallowed). The original context is dead by the time we
+ * decide to rescue; open a new one, re-load the slide's shape collection,
+ * addGroup them, and write the CHART_TAG so the chart is re-editable.
+ *
+ * Best-effort: returns false when the host lacks grouping (pre-1.8), addGroup
+ * throws, the slide has fewer than 2 shapes, or any sync in the rescue path
+ * rejects. Called AFTER the per-item status has been decided — never used to
+ * turn a "failed" into a "rendered", only to lift a "rendered" that stayed
+ * ungrouped into a re-editable one.
+ */
+async function rescueGroupAndTag(
+  slideIndex: number,
+  tagData: string | undefined,
+  origin: { left: number; top: number },
+): Promise<boolean> {
+  if (!supports("1.8")) return false;
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemAt(slideIndex);
+      const shapes = slide.shapes as unknown as PowerPoint.ShapeCollection & {
+        items: PowerPoint.Shape[];
+        addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape;
+      };
+      shapes.load("items");
+      await context.sync();
+      const items = shapes.items;
+      if (items.length < 2) return false;
+      let group: PowerPoint.Shape;
+      try {
+        group = shapes.addGroup(items);
+      } catch {
+        return false;
+      }
+      group.name = "PowerChart";
+      const canTag = supports("1.3") && !!tagData;
+      if (canTag) {
+        group.tags.add(CHART_TAG, tagData);
+        // load left/top to write the CHART_ORIGIN_TAG below.
+        group.load("id,left,top");
+      }
+      try {
+        await context.sync();
+      } catch {
+        // Group did not commit (host refused the addGroup) — leave the slide
+        // with its loose shapes. Caller's `grouped` stays false.
+        return false;
+      }
+      if (canTag) {
+        group.tags.add(CHART_ORIGIN_TAG, JSON.stringify([origin.left, origin.top, group.left, group.top]));
+        try {
+          await context.sync();
+        } catch {
+          /* origin tag didn't land — chart is grouped and re-editable, drag
+           * behavior degrades gracefully to updating without an anchor. */
+        }
+      }
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
 /** The blank-layout id, resolved lazily on the first slide's context and reused. */
 interface LayoutRef {
   id?: string;
@@ -1069,7 +1146,7 @@ export async function insertDemoDeck(
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
     let retried = false;
     let lateSettled = false;
-    const lateBefore = lastLateSync;
+    const lateSeqBefore = lastLateSyncSeq;
     const t0 = Date.now();
     // Slot tag: JSON envelope with the deck-position index and the item title.
     // Written on both attempts (a retry lands on a NEW slide, so its tag has to
@@ -1093,7 +1170,7 @@ export async function insertDemoDeck(
       // lastLateSync reflects reality — a timeout that resolves late means
       // the host settled; a plain rejection means nothing to wait for.
       if (!tooDense) await waitForLateSync();
-      const lateFired = lastLateSync !== lateBefore;
+      const lateFired = lastLateSyncSeq !== lateSeqBefore;
       if (!tooDense && lateFired && shapeCount > 0) {
         const afterFail = await slideCount().catch(() => runningCount);
         const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
@@ -1124,7 +1201,7 @@ export async function insertDemoDeck(
           } catch (err2) {
             // Second attempt may also be a late-success — recheck before giving up.
             await waitForLateSync();
-            const lateFired2 = lastLateSync !== lateBefore;
+            const lateFired2 = lastLateSyncSeq !== lateSeqBefore;
             if (lateFired2 && shapeCount > 0) {
               const afterFail2 = await slideCount().catch(() => runningCount);
               const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
@@ -1154,7 +1231,18 @@ export async function insertDemoDeck(
         }
       }
     }
-    const lateOutcome = lastLateSync && lastLateSync !== lateBefore ? lastLateSync : undefined;
+    // Rescue: a "rendered" item that landed ungrouped — its addAndRenderItem
+    // context died (lateSettled path) or the group sync was swallowed by the
+    // host — gets one more attempt in a fresh context to group + tag its
+    // shapes. Turns a loose chart into a re-editable one. Skip for "failed"
+    // (its slide has a stamp banner we don't want to group in) and "skipped".
+    if (status === "rendered" && !grouped && created > 1 && runningCount > before) {
+      const rescued = await rescueGroupAndTag(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
+        () => false,
+      );
+      if (rescued) grouped = true;
+    }
+    const lateOutcome = lastLateSync && lastLateSyncSeq !== lateSeqBefore ? lastLateSync : undefined;
     results.push({ created, status, ms: Date.now() - t0, retried, lateSettled, lateOutcome, grouped });
     onProgress?.(i + 1, items.length);
   }

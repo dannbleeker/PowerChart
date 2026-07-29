@@ -22,6 +22,7 @@ import {
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } from "../core/demo";
+import type { Scene } from "../core/scene";
 import { buildTableScene } from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
@@ -1826,19 +1827,41 @@ function wireInsert() {
           retried: recovered,
           totalMs,
         };
+        // Each results page inserts in its OWN insertDemoDeck call. A single
+        // page failing must NOT drop the rest — insertDemoDeck throws when
+        // every item in its batch failed, so batching all pages together
+        // meant page 2's failure lost page 1. Presentation_3.pptx surfaced
+        // this: "(results slide not added)" with zero pages landed.
+        // Each results page inserts in its OWN insertDemoDeck call. A single
+        // page failing must NOT drop the rest — insertDemoDeck throws when
+        // every item in its batch failed, so batching all pages together
+        // meant page 2's failure lost page 1. Presentation_3.pptx surfaced
+        // this: "(results slide not added)" with zero pages landed.
+        let resultsPages: Scene[] = [];
         try {
-          const resultsPages = buildResultsScenes(rows, summary);
-          await insertDemoDeck(
-            resultsPages.map((scene, i) => ({
-              scene,
-              title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
-              bypassBudget: true,
-            })),
-          );
+          resultsPages = buildResultsScenes(rows, summary);
         } catch (e) {
-          console.warn("PowerChart: results slide failed to insert", e);
-          msg += " (results slide not added)";
+          console.warn("PowerChart: results scene build failed", e);
         }
+        let resultsLanded = 0;
+        for (const [i, scene] of resultsPages.entries()) {
+          try {
+            await insertDemoDeck([
+              {
+                scene,
+                title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
+                bypassBudget: true,
+              },
+            ]);
+            resultsLanded += 1;
+          } catch (e) {
+            console.warn(`PowerChart: results page ${i + 1} failed to insert`, e);
+          }
+        }
+        if (!resultsPages.length) msg += " (results slide not added)";
+        else if (resultsLanded === 0) msg += " (results slide not added)";
+        else if (resultsLanded < resultsPages.length)
+          msg += ` (${resultsLanded} of ${resultsPages.length} results pages added)`;
         note(msg, lost > 0 || failedNames.length || blankSlides.length ? "err" : "ok");
       }),
     );

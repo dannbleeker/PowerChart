@@ -34,6 +34,9 @@ const host = vi.hoisted(() => ({
   selectionListener: null as null | (() => unknown),
   agendaSlides: [] as unknown[][],
   demoRuns: 0,
+  demoDeckCalls: [] as unknown[][],
+  demoDeckPageFailures: new Set<number>(),
+  demoDeckStatusOverride: null as null | "rendered" | "failed" | "skipped",
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number }[],
     updateChart: [] as { target: unknown; opts: { tagData?: string } }[],
@@ -64,9 +67,25 @@ vi.mock("../src/render/powerpoint", () => ({
   insertAgendaSlides: vi.fn(async (scenes: unknown[][]) => {
     host.agendaSlides.push(scenes);
   }),
-  insertDemoDeck: vi.fn(async () => {
+  insertDemoDeck: vi.fn(async (items: { title?: string; scene: { nodes: unknown[] } }[]) => {
     host.demoRuns++;
-    return { results: [] };
+    const call = host.demoRuns;
+    host.demoDeckCalls.push(items);
+    if (host.demoDeckPageFailures.has(call)) throw new Error(`page ${call} refused`);
+    // Fabricated report — each item counted as failed so the pane's results
+    // path has rows to render. Callers that need a specific status set
+    // demoDeckStatusOverride.
+    const status = host.demoDeckStatusOverride ?? "failed";
+    const results = items.map(() => ({ created: 5, status, ms: 100 }));
+    return {
+      results,
+      slidesAdded: items.length,
+      addsIssued: items.length,
+      blankSlides: [],
+      blankItems: [],
+      blanksRead: true,
+      totalMs: items.length * 100,
+    };
   }),
   loadThemePalette: vi.fn(async () => null),
   onLateSync: vi.fn(),
@@ -93,6 +112,9 @@ async function bootHostPane() {
   host.selectionListener = null;
   host.agendaSlides = [];
   host.demoRuns = 0;
+  host.demoDeckCalls = [];
+  host.demoDeckPageFailures = new Set();
+  host.demoDeckStatusOverride = null;
   host.calls.insertScene = [];
   host.calls.updateChart = [];
   host.calls.updateCharts = [];
@@ -351,6 +373,45 @@ describe("guard — busy lockout and error surfacing", () => {
     await settle();
     expect($("host-note").textContent?.toLowerCase()).toContain("failed");
     expect(host.calls.insertScene).toHaveLength(0);
+  });
+});
+
+describe("demo-insert results pages", () => {
+  beforeEach(bootHostPane);
+
+  it("attempts each results page in its own insertDemoDeck call — a failing page does not drop the rest", async () => {
+    // Presentation_3.pptx: one failing results page threw insertDemoDeck's
+    // "everything failed" guard and NO pages landed. Fix: pane loops over
+    // pages, per-page try/catch, so page 2 still gets attempted after page 1
+    // throws.
+    //
+    // With the fake mock returning "failed" for every item and demoItems()'s
+    // 32-ish failure-count on the full deck, buildResultsScenes emits multiple
+    // pages (≥2). Fail the FIRST results page's insertDemoDeck call; the
+    // pane must still call insertDemoDeck at least once more for page 2.
+    host.demoDeckPageFailures.add(2); // main deck = call #1, results page 1 = call #2
+    $("demo-insert").click();
+    await settle();
+    // At least 3 calls: main deck + results page 1 (thrown) + results page 2.
+    // If the pane batched all results into one call (the old behavior), only
+    // 2 calls would happen and the failure at #2 would drop the rest.
+    expect(host.demoRuns).toBeGreaterThanOrEqual(3);
+    // Each results-page call carries exactly ONE item (per-page loop), NOT
+    // the whole batch — the load-bearing property of the fix.
+    const resultsCalls = host.demoDeckCalls.slice(1); // drop the main deck call
+    for (const call of resultsCalls) expect(call).toHaveLength(1);
+    // The pane's note reflects that some pages landed and some did not.
+    const noteText = $("host-note").textContent ?? "";
+    expect(noteText).toMatch(/results page/i);
+  });
+
+  it("all results pages land ⇒ no 'results slide not added' warning", async () => {
+    $("demo-insert").click();
+    await settle();
+    const noteText = $("host-note").textContent ?? "";
+    expect(noteText).not.toMatch(/results slide not added/i);
+    // At least the main deck + at least one results page.
+    expect(host.demoRuns).toBeGreaterThanOrEqual(2);
   });
 });
 
