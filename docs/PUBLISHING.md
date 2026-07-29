@@ -102,6 +102,41 @@ Record anything broken as issues; fix per the lockstep rules. Real-host
 degradation paths that are *expected* (not bugs): radar fills are
 outline-only, pattern fills render solid.
 
+### Reading the demo-deck self-check (post-#212–#216)
+
+The **Insert demo deck** button runs every chart kind, appends a results
+slide, and posts a summary in the pane note. Ten harness-reliability PRs
+since v0.2.0 mean the note now carries strictly more signal than "N of M
+rendered":
+
+- **`rendered`** — chart landed with every expected shape and was grouped.
+- **`late-settled`** — a sync timed out but the shapes committed anyway;
+  the harness read back the slide and trusted the count (no dup slide, no
+  NOT COMPLETE stamp). Counted as rendered.
+- **`rendered-partial`** — a sync threw with ≥85 % of the expected shapes
+  on the slide. Counted as rendered; the fresh-context rescue groups what
+  landed so the chart is still re-editable.
+- **`ungrouped`** — chart shapes are on the slide but not one group. Not
+  re-editable via the `POWERCHART_CONFIG` tag; a rescue attempt already
+  ran. Flag for investigation.
+- **`failed`** — under the 85 % gate after both attempts AND the
+  unstamp+rescue path could not group what landed; slide carries the red
+  NOT COMPLETE banner.
+- **`BLANK: <title>`** — slide committed but readback showed zero shapes,
+  and the slot tag names which item was on it (host lost the content).
+- **`N of M results pages added`** — the run's own results slide
+  paginated; each page is attempted independently, so a partial landing
+  no longer drops the record.
+- **`addsLostAtCommit=N`** — `addSlides` confirmed N `slides.add()` calls
+  never landed even after its own retry. Correlates with the office-js
+  bug documented in `OFFICE_JS_LOST_ADDS.md`. `addsIssued − slidesAdded`
+  is the wider gap, including item-level retries.
+
+A clean run reports every chart rendered + grouped, no ungrouped/blank/
+`addsLostAtCommit`. The full console.table dump under **F12** carries
+`retried`, `lateSettled`, `partialLanded`, `grouped`, `lateOutcome`, and
+`ms` per item — useful for filing a Phase-2 regression.
+
 ## Phase 3 — Activate the Claude skill ([owner])
 
 1. Download `powerchart-charts.zip` from the latest release (the rolling

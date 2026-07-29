@@ -58,8 +58,14 @@ starts from a fresh research pass.
 
 **No open defects.** Four adversarial bug hunts have run (PRs #186–#197,
 #202–#210); every confirmed finding is fixed with a regression guard proven
-non-vacuous against the pre-fix file. What shipped is recorded in the CHANGELOG
-and in git, not here.
+non-vacuous against the pre-fix file. Ten additional harness-reliability PRs
+(#212–#216) closed the Phase-2 sideload observations from Presentation_2.pptx
+and Presentation_3.pptx — trust-the-readback, slot-tag naming, fresh-context
+group+tag rescue, results/contents pagination, larger off-screen batch size,
+unstamp+rescue for failed items, and `addSlides` self-heal for the silent
+`slides.add()` drop pattern (bug prep in `docs/OFFICE_JS_LOST_ADDS.md` for
+office-js submission). What shipped is recorded in the CHANGELOG and in git,
+not here.
 
 **Considered and dropped in that sweep** (so they aren't re-proposed): a
 screen-reader data-table alternative to `describeChart` — real WCAG best practice
