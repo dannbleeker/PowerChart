@@ -2045,6 +2045,42 @@ describe("Office round-trips do not scale with the chart count", () => {
     ).toBe(false);
   });
 
+  it("does not report a phantom lost slide for a too-dense item whose stamp was refused", async () => {
+    // `addsIssued` used to be inferred as "one per item, plus one more for every
+    // retried or failed item". A too-dense item never re-renders — there is
+    // nothing to re-render, only a placeholder to stamp — so when its stamp sync
+    // is refused it ends "failed" having issued exactly ONE add. The inference
+    // then charged it a second, and `addsIssued − slidesAdded` accused the host
+    // of losing a slide it had actually kept. This harness exists to stop
+    // inventing failures, so a false ⚠ is the bug.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const dense = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: 120 }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 1,
+        h: 1,
+        fill: "#111111",
+      })),
+    };
+    failSyncsOn.add(6); // the too-dense item's stampSlide — see the test above
+    const report = await insertDemoDeck([
+      { scene: dense, title: "too dense" },
+      { scene: buildChart(cfgFor(1)), tagData: '{"i":1}', title: "fine" },
+    ]);
+    expect(report.results[0].status).toBe("failed"); // the premise: stamped, refused
+    expect(report.results[0].retried, "a too-dense item never re-renders").toBeFalsy();
+    expect(report.results[0].attempts, "one add issued, not two").toBe(1);
+    // Both slides are on the deck, so nothing was lost — and the report agrees.
+    expect(report.slidesAdded).toBe(2);
+    expect(report.addsIssued).toBe(2);
+    expect(report.addsIssued - report.slidesAdded, "no phantom loss").toBe(0);
+  });
+
   it("self-check catches a slide the host silently drops (deck grew by less than asked)", async () => {
     // The corruption a visual scan misses and today cost us 3 lost slides: an
     // add() that never lands leaves the deck one slide short with no error the

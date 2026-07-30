@@ -964,6 +964,15 @@ export interface DemoResult {
    * late-settled render where the group sync never got the chance to run.
    */
   grouped?: boolean;
+  /**
+   * Slide-adds this item actually issued: 1 normally, 2 when it made a second
+   * attempt. Recorded rather than inferred from `retried`/`status`, because the
+   * two do not imply each other: a too-dense item whose stamp sync is refused
+   * ends "failed" having issued only ONE add (there is nothing to re-render, so
+   * it never retries), and inferring a second one from the status reported a
+   * slide as lost that the host had in fact kept. See `DemoReport.addsIssued`.
+   */
+  attempts: number;
 }
 
 /** A demo-deck insert's self-verification report. */
@@ -972,8 +981,9 @@ export interface DemoReport {
   /** How much the deck ACTUALLY grew (settled getCount, after − before). */
   slidesAdded: number;
   /**
-   * How many slide-adds the run ISSUED: one per item, plus one more for each
-   * retried or failed item (both make a second attempt). Comparing this to
+   * How many slide-adds the run ISSUED: the sum of every item's `attempts` (one
+   * per item, plus one more for each that made a second attempt — see
+   * `DemoResult.attempts` for why this is counted, not inferred). Comparing this to
    * `slidesAdded` — NOT `results.length` — is what un-masks a lost slide: a
    * retry/fail leaves a stray that inflates `slidesAdded`, so measuring loss
    * against `results.length` reads 0 during real corruption when a stray happens
@@ -1287,6 +1297,9 @@ export async function insertDemoDeck(
     let grouped = false;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
     let retried = false;
+    // Slide-adds issued for this item. Attempt 1 always runs, even when its very
+    // first sync is refused — matching what `addsIssued` has always meant.
+    let attempts = 1;
     let lateSettled = false;
     let partialLanded = false;
     // Shape count read back off the LAST failed attempt's slide (attempt 1, or
@@ -1379,6 +1392,7 @@ export async function insertDemoDeck(
         // re-render — so they fail straight through.
         let recovered = false;
         if (!tooDense) {
+          attempts++;
           try {
             ({ created, grouped } = await addAndRenderItem(itemWithTag, false, shapeCount, layout));
             recovered = true;
@@ -1471,17 +1485,20 @@ export async function insertDemoDeck(
       partialLanded,
       lateOutcome,
       grouped,
+      attempts,
     });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
   const after = await slideCount();
   const slidesAdded = after - before;
-  // One add per item, plus a second for every retried/failed item — the count of
-  // adds we ISSUED. Loss is `addsIssued − slidesAdded`, never `items.length −
-  // slidesAdded`: a stray from a retry/fail cancels a lost slide against the
-  // latter, hiding corruption (observed on a real run: 2 slides lost, reported 0).
-  const addsIssued = results.length + results.filter((r) => r.retried || r.status === "failed").length;
+  // The adds we actually ISSUED, summed per item rather than inferred from
+  // retried/failed — a too-dense item whose stamp sync is refused ends "failed"
+  // on ONE add, and inferring a second reported a phantom lost slide. Loss is
+  // `addsIssued − slidesAdded`, never `items.length − slidesAdded`: a stray from
+  // a retry/fail cancels a lost slide against the latter, hiding corruption
+  // (observed on a real run: 2 slides lost, reported 0).
+  const addsIssued = results.reduce((n, r) => n + r.attempts, 0);
   // A whole deck lost to HOST errors (not just skipped-as-dense) is a real
   // failure — surface it so the pane says "Failed", not "inserted 0 of N". If
   // everything was merely skipped, there is no error to throw.
