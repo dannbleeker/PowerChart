@@ -155,7 +155,12 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
   numberFormat?: { decimals?: number|"auto", suffix?: string,
                    forceSign?: boolean, locale?: "de-DE"|... },
   style?: { palette?: string[], fontSize?, negative?, neutral?,   // series ink
-            text?, mutedText?, axis?, gridline?, background? }    // canvas ink
+            text?, mutedText?, axis?, gridline?, background? },   // canvas ink
+  render?: "shapes"|"image"                 // "shapes" (default): native, editable PPT shapes.
+                                            // "image": one raster picture per chart —
+                                            //   sidesteps the PowerPoint-web dense-shape wall,
+                                            //   but the chart is no longer editable.
+                                            //   Needs @resvg/resvg-js installed.
 }
 ```
 

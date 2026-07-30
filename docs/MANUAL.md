@@ -379,6 +379,16 @@ drives the CLI (`npm run render`) and the **Claude Agent Skill**
 Capabilities → Skills, then ask Claude for "a waterfall of …" on any
 surface, including Claude for PowerPoint).
 
+**`render` (per config, optional; skill CLI only for now):** `"shapes"`
+(default) inserts native, editable PowerPoint shapes — the think-cell pattern
+this add-in is built for. `"image"` rasterises the whole chart into one
+picture object: the chart still displays on the slide but is no longer
+editable. Reach for `"image"` only on the densest kinds (area, violin,
+sunburst, tile-map, waffle) when a shapes-mode render would push the deck
+past the PowerPoint-web dense-shape wall. The Office.js insert path in the
+pane always draws native shapes today; image-mode support there ships in a
+follow-up.
+
 ### Testing
 
 **Insert demo deck** appends a fresh slide for every chart kind plus a set of

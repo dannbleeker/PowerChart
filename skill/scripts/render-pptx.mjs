@@ -44,17 +44,58 @@ if (!engine) {
   );
   process.exit(1);
 }
-const { buildChart, buildAgendaScene, DEFAULT_SIZE, arrowheadBox, annularSectorPoints, SYMBOL_PRESET, dashKind } =
-  engine;
+const {
+  buildChart,
+  buildAgendaScene,
+  DEFAULT_SIZE,
+  arrowheadBox,
+  annularSectorPoints,
+  SYMBOL_PRESET,
+  dashKind,
+  sceneToSvg,
+} = engine;
 
 // A stale packaged lib (the skill ships no build step) can be missing an export,
 // which otherwise blows up mid-render on the first chart that needs it. Fail
 // fast with an actionable message instead.
-for (const [name, fn] of Object.entries({ buildChart, buildAgendaScene, arrowheadBox, annularSectorPoints, dashKind })) {
+for (const [name, fn] of Object.entries({
+  buildChart,
+  buildAgendaScene,
+  arrowheadBox,
+  annularSectorPoints,
+  dashKind,
+  sceneToSvg,
+})) {
   if (typeof fn !== "function") {
     console.error(`powerchart engine is missing export "${name}" — rebuild the lib (npm run build:lib)`);
     process.exit(1);
   }
+}
+
+/**
+ * Rasterise a scene to PNG bytes. Lazy-loaded so a `render:"shapes"`-only run
+ * never pays the @resvg/resvg-js require cost (native binding, ~50ms cold).
+ * Returns the PNG buffer at 2× the scene's point size so it stays crisp on a
+ * widescreen slide without ballooning the file.
+ */
+let RESVG;
+async function rasterScene(scene, background) {
+  if (!RESVG) {
+    try {
+      ({ Resvg: RESVG } = await import("@resvg/resvg-js"));
+    } catch (err) {
+      throw new Error(
+        `image render mode needs @resvg/resvg-js installed (npm install @resvg/resvg-js): ${err?.message ?? err}`,
+        { cause: err },
+      );
+    }
+  }
+  const svg = sceneToSvg(scene, background ? { background } : undefined);
+  // 2× oversample: the scene is authored in points (72 dpi native), so a PNG at
+  // point-size looks fuzzy on any zoomed slide. 2× = 144 dpi, matching what the
+  // pane's PNG download uses via canvas.toDataURL.
+  const png = new RESVG(svg, { fitTo: { mode: "width", value: Math.ceil(scene.width * 2) } }).render().asPng();
+  return png;
 }
 
 const [, , input, output = "powerchart.pptx"] = process.argv;
@@ -130,7 +171,9 @@ function errorSlide(i, err) {
 }
 
 let failed = 0;
-configs.forEach((cfg, i) => {
+let imageSlides = 0;
+for (let i = 0; i < configs.length; i++) {
+  const cfg = configs[i];
   // Isolate each config: one bad chart in a 50-slide batch must not throw away
   // the other 49 (the Office.js path isolates per item too). Stamp an error
   // slide and carry on, so partial output always survives.
@@ -140,19 +183,36 @@ configs.forEach((cfg, i) => {
     // The chart's own canvas colour, not a fixed white: a dark-styled config
     // paints its ink for `style.background`, so a white slide under it put white
     // labels on white. Default (no style.background) stays FFFFFF.
-    slide.background = { color: hex(cfg?.style?.background ?? "#ffffff") };
-    const dx = (SLIDE.w - scene.width * IN) / 2;
-    const dy = (SLIDE.h - scene.height * IN) / 2;
-    for (const node of scene.nodes) addNode(slide, node, dx, dy);
+    const bgHex = hex(cfg?.style?.background ?? "#ffffff");
+    slide.background = { color: bgHex };
+    if (cfg?.render === "image") {
+      // Rasterise the whole scene into one picture object. Skips the per-node
+      // shape flood — the escape hatch for dense charts (violin, area, sunburst)
+      // whose native-shape counts trip the PowerPoint-web dense-shape wall.
+      const png = await rasterScene(scene, `#${bgHex}`);
+      const dataUri = `image/png;base64,${png.toString("base64")}`;
+      // Match the shapes-path centering: same dx/dy as below, same width/height.
+      const dx = (SLIDE.w - scene.width * IN) / 2;
+      const dy = (SLIDE.h - scene.height * IN) / 2;
+      slide.addImage({ data: dataUri, x: dx, y: dy, w: scene.width * IN, h: scene.height * IN });
+      imageSlides++;
+    } else {
+      const dx = (SLIDE.w - scene.width * IN) / 2;
+      const dy = (SLIDE.h - scene.height * IN) / 2;
+      for (const node of scene.nodes) addNode(slide, node, dx, dy);
+    }
   } catch (err) {
     failed++;
     errorSlide(i, err);
     console.error(`chart ${i + 1}: ${err?.message ?? err}`);
   }
-});
+}
 
 await pres.writeFile({ fileName: output });
+const modeSummary = imageSlides
+  ? `${configs.length - imageSlides} native shapes + ${imageSlides} image`
+  : "native shapes";
 console.log(
-  `${output}: ${configs.length} slide(s), native shapes` + (failed ? ` (${failed} failed — see error slides)` : ""),
+  `${output}: ${configs.length} slide(s), ${modeSummary}` + (failed ? ` (${failed} failed — see error slides)` : ""),
 );
 if (failed) process.exit(1);

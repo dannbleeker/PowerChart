@@ -145,6 +145,7 @@ conventions, and every option.
 | Ribbon menu with per-chart-type entries                                   | ✅ (`?kind=` deep links)                                                                                                                |
 | Dark-mode pane, busy/status feedback, German UI localization              | ✅                                                                                                                                      |
 | **Claude Agent Skill** (charts as native shapes from any Claude surface)  | ✅ download from the [skill-latest release](../../releases/tag/skill-latest) (rebuilt by CI on every merge), or `npm run skill` locally |
+| Image render mode (`render: "image"`, one raster per chart)               | ✅ skill CLI (dense charts sidestep the web dense-shape wall — non-editable); Office.js image insert lands in a follow-up               |
 | Claude integration research & plan                                        | 📋 [docs/CLAUDE-INTEGRATION.md](docs/CLAUDE-INTEGRATION.md)                                                                             |
 | Combo chart (stacked columns + line series)                               | ✅ (`type: "line"` on a series)                                                                                                         |
 | Pie & doughnut                                                            | ✅ (SVG exact; PowerPoint via triangle fans, needs 1.10 rotation)                                                                       |

@@ -29,6 +29,7 @@ collision-avoiding labels.
 ```
 
 2. **Render.** One-time setup: `npm install pptxgenjs` (in this skill's folder).
+   For `render: "image"` charts also `npm install @resvg/resvg-js`.
 
 ```bash
 node scripts/render-pptx.mjs charts.json out.pptx   # native shapes, 1 chart/slide
@@ -37,6 +38,15 @@ node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 
 `charts.json` may hold one config or an array (one slide each). A bad config in
 an array is isolated: it becomes a visible error slide and the rest still render.
+
+**`render` (per config, optional):** `"shapes"` (default) inserts native,
+editable PowerPoint shapes — the think-cell pattern. `"image"` rasterises the
+scene into one picture object; the chart stays visible on the slide but is no
+longer editable in PowerPoint. Reach for `"image"` only on the densest kinds
+(area, violin, sunburst, tile-map, waffle) when a shapes-mode render would
+push the deck past the PowerPoint-web shape wall — a picture sidesteps the
+`slides.add()` drops and the "we ran into a problem" crash. Everything else
+should stay `"shapes"` so the recipient can edit the chart.
 
 **Agenda slides** use the same JSON, with `kind: "agenda"`:
 

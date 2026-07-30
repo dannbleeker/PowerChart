@@ -30,7 +30,18 @@ cpSync("examples/charts.json", `${root}/examples/charts.json`);
 writeFileSync(
   `${root}/package.json`,
   JSON.stringify(
-    { name: "powerchart-charts-skill", private: true, type: "module", dependencies: { pptxgenjs: "^4.0.1" } },
+    {
+      name: "powerchart-charts-skill",
+      private: true,
+      type: "module",
+      dependencies: {
+        pptxgenjs: "^4.0.1",
+        // Rasteriser for render:"image" mode. Optional at runtime — the CLI
+        // only imports it when a config sets render:"image", so a shapes-only
+        // skill install still works if npm can't pull the native binary.
+        "@resvg/resvg-js": "^2.6.2",
+      },
+    },
     null,
     2,
   ),
