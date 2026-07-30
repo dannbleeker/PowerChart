@@ -198,6 +198,14 @@ function makeSlide(id: string) {
         return s;
       },
       addGroup(items: FakeShape[]) {
+        // A host that refuses to group at all — the call throws where the API
+        // exists but the host declines. Consumed per call, so a test can refuse
+        // the render's own grouping and still let the fresh-context rescue's
+        // addGroup work, which is the whole point of the rescue.
+        if (refuseGroups > 0) {
+          refuseGroups--;
+          throw new Error("host refused addGroup");
+        }
         // Model the web-host stale-proxy trap: a Shape proxy is valid within
         // the sync that queued it plus its immediately following commit sync,
         // and stale (getItem(id) rewrite, non-round-trippable id) beyond that.
@@ -349,6 +357,11 @@ let stallSyncDelayMs = 40;
  * charts land ungrouped. See PR 3's re-fetch fix.  */
 let strictGroup = false;
 
+/** Make the next N addGroup calls THROW — a host that declines to group even
+ * though the API is there. Decremented per call, so refusing 1 leaves a chart
+ * rendered-but-ungrouped and still lets the fresh-context rescue group it. */
+let refuseGroups = 0;
+
 /** When true, `fill.setImage` throws on access — a pre-1.8 host, where the
  * method does not exist at all. Drives the picture-insert fall-through. */
 let refusePictureFill = false;
@@ -488,6 +501,7 @@ function installHost(
   failSyncsOn.clear();
   stallSyncOn.clear();
   strictGroup = false;
+  refuseGroups = 0;
   refusePictureFill = false;
   blankReadbackAt.clear();
   faultShapeGetCount = false;
@@ -1974,6 +1988,61 @@ describe("Office round-trips do not scale with the chart count", () => {
     // The light neighbours rendered as real charts (no stamp).
     expect(deck[1].created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
     expect(deck[3].created.length).toBeGreaterThan(1);
+  });
+
+  it("keeps the rescue aimed at the right slide after a failure whose slide still landed", async () => {
+    // The drift: `runningCount` is only re-synced on the failure paths that ALSO
+    // read the failed slide's shapes (`!tooDense && shapeCount > 0`). A too-dense
+    // item whose stamp sync rejects lands its slide but takes neither branch — so
+    // the count stays one behind FOR THE REST OF THE RUN, and every later rescue
+    // (which indexes `runningCount - 1`) reaches the PREVIOUS slide. Best case it
+    // finds the 1-shape NOT-COMPLETE placeholder and bails, leaving a real chart
+    // ungrouped; worst case it groups a neighbour's chart and writes THIS chart's
+    // POWERCHART_CONFIG onto it, so editing one chart silently opens another.
+    //
+    // Sync map (deck of 1, item 0 pays for blankLayoutId): 1 = the run's opening
+    // slideCount, 2 = blankLayoutId, 3-5 = addSlides (getCount, add, settled
+    // verify), 6 = the too-dense item's stampSlide. Failing 6 leaves its slide on
+    // the deck with only the fresh-context NOT-COMPLETE banner.
+    //
+    // Item 1 is then made to land ungrouped by refusing ONE addGroup — a knob,
+    // not a sync index, because the fix itself adds a sync on the failure path
+    // and any index pinned past it would move.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const dense = {
+      width: 100,
+      height: 100,
+      nodes: Array.from({ length: 120 }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 1,
+        h: 1,
+        fill: "#111111",
+      })),
+    };
+    failSyncsOn.add(6);
+    refuseGroups = 1; // item 1's own grouping only — the rescue's addGroup still works
+    const report = await insertDemoDeck([
+      { scene: dense, title: "too dense" },
+      { scene: buildChart(cfgFor(1)), tagData: '{"i":1}', title: "ungrouped" },
+    ]);
+    // Premise: the dense item's slide is on the deck, stamped, chart-less.
+    expect(deck.length).toBe(3);
+    expect(report.results[0].status).toBe("failed");
+    expect(deck[1].created.map((s) => s.name)).toEqual(["PowerChart:not-complete"]);
+    // The rescue found item 1's OWN slide: its chart is one group carrying its
+    // own config tag, and nothing was grouped onto the placeholder next door.
+    expect(report.results[1].status).toBe("rendered");
+    expect(report.results[1].grouped, "item 1 was rescued into a group").toBe(true);
+    const groups = deck[2].created.filter((s) => s.type === "group");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].tagStore.get(CHART_TAG)).toBe('{"i":1}');
+    expect(
+      deck[1].created.some((s) => s.type === "group"),
+      "placeholder untouched",
+    ).toBe(false);
   });
 
   it("self-check catches a slide the host silently drops (deck grew by less than asked)", async () => {

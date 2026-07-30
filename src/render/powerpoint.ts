@@ -1274,6 +1274,12 @@ export async function insertDemoDeck(
   // path. On the happy path (addAndRenderItem returns) we know exactly one slide
   // landed — no extra round-trip per item.
   let runningCount = before;
+  // False once a failure-path getCount rejected: `runningCount` is then a guess,
+  // and the rescues below index slides BY it. Grouping the wrong slide writes
+  // this item's config tag onto a neighbour's chart — silent cross-chart
+  // corruption — so an untrusted count disables the rescues for the rest of the
+  // run instead of aiming them at a number we know is stale.
+  let countTrusted = true;
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = !items[i].bypassBudget && shapeCount > DEMO_SHAPE_BUDGET;
@@ -1314,6 +1320,21 @@ export async function insertDemoDeck(
       // the host settled; a plain rejection means nothing to wait for.
       if (!tooDense) await waitForLateSync();
       const lateFired = lastLateSyncSeq !== lateSeqBefore;
+      // Re-read the settled slide count on EVERY failure, not only when the
+      // shape readback below is worth opening. `runningCount` is what both
+      // rescues index slides by, and a throw whose slide DID land (a too-dense
+      // item whose stamp sync rejected, a zero-shape scene) otherwise leaves the
+      // count one behind for the WHOLE REST of the run: the next ungrouped
+      // chart's rescue then reaches the previous item's slide and stamps this
+      // chart's config tag onto that one's shapes.
+      const afterFail = await slideCount().then(
+        (n) => n,
+        () => {
+          // Nothing settled to trust — freeze the rescues rather than aim them.
+          countTrusted = false;
+          return runningCount;
+        },
+      );
       // Read back the failed slide's shape count in a fresh context: the same
       // number decides BOTH "late-settled" (100% + lateFired) and
       // "partial-landed" (>= threshold, < 100%, no lateFired needed). Only
@@ -1321,11 +1342,10 @@ export async function insertDemoDeck(
       // catch that fired before addSlides (its getCount rejected) still pays
       // only one round-trip.
       if (!tooDense && shapeCount > 0) {
-        const afterFail = await slideCount().catch(() => runningCount);
         const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
         readback = failedSlideIndex >= 0 ? await slideShapeCount(failedSlideIndex).catch(() => 0) : 0;
-        runningCount = afterFail;
       }
+      runningCount = afterFail;
       if (readback >= shapeCount && shapeCount > 0 && lateFired) {
         // The host settled after the timeout — every shape is on the slide.
         // Don't retry, don't stamp. The grouping/tagging did not run (the
@@ -1368,12 +1388,18 @@ export async function insertDemoDeck(
             // recheck before giving up. Same threshold gate as attempt 1.
             await waitForLateSync();
             const lateFired2 = lastLateSyncSeq !== lateSeqBefore;
+            const afterFail2 = await slideCount().then(
+              (n) => n,
+              () => {
+                countTrusted = false;
+                return runningCount;
+              },
+            );
             if (shapeCount > 0) {
-              const afterFail2 = await slideCount().catch(() => runningCount);
               const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
               readback = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
-              runningCount = afterFail2;
             }
+            runningCount = afterFail2;
             if (readback >= shapeCount && shapeCount > 0 && lateFired2) {
               created = readback;
               recovered = true;
@@ -1410,7 +1436,7 @@ export async function insertDemoDeck(
     // host — gets one more attempt in a fresh context to group + tag its
     // shapes. Turns a loose chart into a re-editable one. Skip for "failed"
     // (its slide has a stamp banner we don't want to group in) and "skipped".
-    if (status === "rendered" && !grouped && created > 1 && runningCount > before) {
+    if (status === "rendered" && !grouped && created > 1 && runningCount > before && countTrusted) {
       const rescued = await rescueGroupAndTag(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
         () => false,
       );
@@ -1424,7 +1450,7 @@ export async function insertDemoDeck(
     // fresh context per `unstampAndRescue`. Only promotes a "failed" item —
     // never touches "skipped" (nothing rendered) or an already-"rendered" one
     // (handled by the rescue above).
-    if (status === "failed" && readback > 0 && runningCount > before) {
+    if (status === "failed" && readback > 0 && runningCount > before && countTrusted) {
       const rescued = await unstampAndRescue(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
         () => false,
       );
