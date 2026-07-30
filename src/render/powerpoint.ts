@@ -964,6 +964,15 @@ export interface DemoResult {
    * late-settled render where the group sync never got the chance to run.
    */
   grouped?: boolean;
+  /**
+   * Slide-adds this item actually issued: 1 normally, 2 when it made a second
+   * attempt. Recorded rather than inferred from `retried`/`status`, because the
+   * two do not imply each other: a too-dense item whose stamp sync is refused
+   * ends "failed" having issued only ONE add (there is nothing to re-render, so
+   * it never retries), and inferring a second one from the status reported a
+   * slide as lost that the host had in fact kept. See `DemoReport.addsIssued`.
+   */
+  attempts: number;
 }
 
 /** A demo-deck insert's self-verification report. */
@@ -972,8 +981,9 @@ export interface DemoReport {
   /** How much the deck ACTUALLY grew (settled getCount, after − before). */
   slidesAdded: number;
   /**
-   * How many slide-adds the run ISSUED: one per item, plus one more for each
-   * retried or failed item (both make a second attempt). Comparing this to
+   * How many slide-adds the run ISSUED: the sum of every item's `attempts` (one
+   * per item, plus one more for each that made a second attempt — see
+   * `DemoResult.attempts` for why this is counted, not inferred). Comparing this to
    * `slidesAdded` — NOT `results.length` — is what un-masks a lost slide: a
    * retry/fail leaves a stray that inflates `slidesAdded`, so measuring loss
    * against `results.length` reads 0 during real corruption when a stray happens
@@ -1274,6 +1284,12 @@ export async function insertDemoDeck(
   // path. On the happy path (addAndRenderItem returns) we know exactly one slide
   // landed — no extra round-trip per item.
   let runningCount = before;
+  // False once a failure-path getCount rejected: `runningCount` is then a guess,
+  // and the rescues below index slides BY it. Grouping the wrong slide writes
+  // this item's config tag onto a neighbour's chart — silent cross-chart
+  // corruption — so an untrusted count disables the rescues for the rest of the
+  // run instead of aiming them at a number we know is stale.
+  let countTrusted = true;
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = !items[i].bypassBudget && shapeCount > DEMO_SHAPE_BUDGET;
@@ -1281,6 +1297,9 @@ export async function insertDemoDeck(
     let grouped = false;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
     let retried = false;
+    // Slide-adds issued for this item. Attempt 1 always runs, even when its very
+    // first sync is refused — matching what `addsIssued` has always meant.
+    let attempts = 1;
     let lateSettled = false;
     let partialLanded = false;
     // Shape count read back off the LAST failed attempt's slide (attempt 1, or
@@ -1314,6 +1333,21 @@ export async function insertDemoDeck(
       // the host settled; a plain rejection means nothing to wait for.
       if (!tooDense) await waitForLateSync();
       const lateFired = lastLateSyncSeq !== lateSeqBefore;
+      // Re-read the settled slide count on EVERY failure, not only when the
+      // shape readback below is worth opening. `runningCount` is what both
+      // rescues index slides by, and a throw whose slide DID land (a too-dense
+      // item whose stamp sync rejected, a zero-shape scene) otherwise leaves the
+      // count one behind for the WHOLE REST of the run: the next ungrouped
+      // chart's rescue then reaches the previous item's slide and stamps this
+      // chart's config tag onto that one's shapes.
+      const afterFail = await slideCount().then(
+        (n) => n,
+        () => {
+          // Nothing settled to trust — freeze the rescues rather than aim them.
+          countTrusted = false;
+          return runningCount;
+        },
+      );
       // Read back the failed slide's shape count in a fresh context: the same
       // number decides BOTH "late-settled" (100% + lateFired) and
       // "partial-landed" (>= threshold, < 100%, no lateFired needed). Only
@@ -1321,11 +1355,10 @@ export async function insertDemoDeck(
       // catch that fired before addSlides (its getCount rejected) still pays
       // only one round-trip.
       if (!tooDense && shapeCount > 0) {
-        const afterFail = await slideCount().catch(() => runningCount);
         const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
         readback = failedSlideIndex >= 0 ? await slideShapeCount(failedSlideIndex).catch(() => 0) : 0;
-        runningCount = afterFail;
       }
+      runningCount = afterFail;
       if (readback >= shapeCount && shapeCount > 0 && lateFired) {
         // The host settled after the timeout — every shape is on the slide.
         // Don't retry, don't stamp. The grouping/tagging did not run (the
@@ -1359,6 +1392,7 @@ export async function insertDemoDeck(
         // re-render — so they fail straight through.
         let recovered = false;
         if (!tooDense) {
+          attempts++;
           try {
             ({ created, grouped } = await addAndRenderItem(itemWithTag, false, shapeCount, layout));
             recovered = true;
@@ -1368,12 +1402,18 @@ export async function insertDemoDeck(
             // recheck before giving up. Same threshold gate as attempt 1.
             await waitForLateSync();
             const lateFired2 = lastLateSyncSeq !== lateSeqBefore;
+            const afterFail2 = await slideCount().then(
+              (n) => n,
+              () => {
+                countTrusted = false;
+                return runningCount;
+              },
+            );
             if (shapeCount > 0) {
-              const afterFail2 = await slideCount().catch(() => runningCount);
               const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
               readback = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
-              runningCount = afterFail2;
             }
+            runningCount = afterFail2;
             if (readback >= shapeCount && shapeCount > 0 && lateFired2) {
               created = readback;
               recovered = true;
@@ -1410,7 +1450,7 @@ export async function insertDemoDeck(
     // host — gets one more attempt in a fresh context to group + tag its
     // shapes. Turns a loose chart into a re-editable one. Skip for "failed"
     // (its slide has a stamp banner we don't want to group in) and "skipped".
-    if (status === "rendered" && !grouped && created > 1 && runningCount > before) {
+    if (status === "rendered" && !grouped && created > 1 && runningCount > before && countTrusted) {
       const rescued = await rescueGroupAndTag(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
         () => false,
       );
@@ -1424,7 +1464,7 @@ export async function insertDemoDeck(
     // fresh context per `unstampAndRescue`. Only promotes a "failed" item —
     // never touches "skipped" (nothing rendered) or an already-"rendered" one
     // (handled by the rescue above).
-    if (status === "failed" && readback > 0 && runningCount > before) {
+    if (status === "failed" && readback > 0 && runningCount > before && countTrusted) {
       const rescued = await unstampAndRescue(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
         () => false,
       );
@@ -1445,17 +1485,20 @@ export async function insertDemoDeck(
       partialLanded,
       lateOutcome,
       grouped,
+      attempts,
     });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
   const after = await slideCount();
   const slidesAdded = after - before;
-  // One add per item, plus a second for every retried/failed item — the count of
-  // adds we ISSUED. Loss is `addsIssued − slidesAdded`, never `items.length −
-  // slidesAdded`: a stray from a retry/fail cancels a lost slide against the
-  // latter, hiding corruption (observed on a real run: 2 slides lost, reported 0).
-  const addsIssued = results.length + results.filter((r) => r.retried || r.status === "failed").length;
+  // The adds we actually ISSUED, summed per item rather than inferred from
+  // retried/failed — a too-dense item whose stamp sync is refused ends "failed"
+  // on ONE add, and inferring a second reported a phantom lost slide. Loss is
+  // `addsIssued − slidesAdded`, never `items.length − slidesAdded`: a stray from
+  // a retry/fail cancels a lost slide against the latter, hiding corruption
+  // (observed on a real run: 2 slides lost, reported 0).
+  const addsIssued = results.reduce((n, r) => n + r.attempts, 0);
   // A whole deck lost to HOST errors (not just skipped-as-dense) is a real
   // failure — surface it so the pane says "Failed", not "inserted 0 of N". If
   // everything was merely skipped, there is no error to throw.

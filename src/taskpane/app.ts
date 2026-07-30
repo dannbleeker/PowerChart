@@ -2019,11 +2019,6 @@ function wireInsert() {
         // every item in its batch failed, so batching all pages together
         // meant page 2's failure lost page 1. Presentation_3.pptx surfaced
         // this: "(results slide not added)" with zero pages landed.
-        // Each results page inserts in its OWN insertDemoDeck call. A single
-        // page failing must NOT drop the rest — insertDemoDeck throws when
-        // every item in its batch failed, so batching all pages together
-        // meant page 2's failure lost page 1. Presentation_3.pptx surfaced
-        // this: "(results slide not added)" with zero pages landed.
         let resultsPages: Scene[] = [];
         try {
           resultsPages = buildResultsScenes(rows, summary);
