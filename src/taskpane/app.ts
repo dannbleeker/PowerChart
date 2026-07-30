@@ -108,6 +108,7 @@ interface AppState {
     | "categorySort"
     | "secondaryAxis"
     | "labelOffsets"
+    | "render"
     | "pie"
     | "waterfall"
     | "numberFormat"
@@ -174,6 +175,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
       categorySort: cfg.categorySort,
       secondaryAxis: cfg.secondaryAxis,
       labelOffsets: cfg.labelOffsets,
+      render: cfg.render,
       pie: cfg.pie,
       waterfall: cfg.waterfall,
       numberFormat: cfg.numberFormat,
