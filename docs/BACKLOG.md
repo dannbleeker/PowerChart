@@ -18,22 +18,50 @@ patterns.
 
 ## 1. Open
 
-- **Office.js image insert + "Explode to native shapes"** — the skill-CLI half
-  of image-mode shipped (`render: "image"` rasterises the scene via
-  `@resvg/resvg-js` and inserts one `pptxgen.addImage` per chart). What's left
-  is the *live* insert path in the pane: `addGeometricShape` +
-  `ShapeFill.setImage(png)` on the target slide (PowerPointApi 1.8), with the
-  `POWERCHART_CONFIG` tag round-tripping onto the picture-shape so a companion
-  "Explode to native shapes" command can read it back, delete the picture, and
-  draw the real shapes on demand. Gate on `supports("1.8")` and fall back to
-  the shapes-mode insert on older hosts (like grouping already does). Native-
-  vector SVG via `setSelectedDataAsync(svg, {coercionType: XmlSvg})`
-  (ImageCoercion 1.2) is the best quality/size answer — PowerPoint can even
-  "Convert to Shape" it — but flaky (office-js #4967, #2881, #412), so gate
-  behind a flag with the PNG path as the default. Also open: the
-  `setSelectedDataAsync` base64 size cap (office-js #225 fixed but no
-  published threshold) and the shape-tag value-size limit are both
-  undocumented; needs Phase-2 real-host validation.
+- **Pane wiring for image mode + "Explode to native shapes"** — the engine and
+  both renderers are done. The skill CLI rasterises via `@resvg/resvg-js` and
+  inserts one `pptxgen.addImage` per chart; the Office.js renderer takes
+  `InsertOptions.pictureBase64` and draws one `addGeometricShape` +
+  `ShapeFill.setImage`, gated on `canInsertPicture()` (PowerPointApi 1.8) with a
+  fall-through to native shapes on refusal, over-budget payload, or an older
+  host (`PC-IMG-NO-1.8` / `PC-IMG-TOOBIG` / `PC-IMG-REFUSED` on the console).
+  The `POWERCHART_CONFIG` and `POWERCHART_ORIGIN` tags land on the picture via
+  the existing ungrouped-chart path, so update-in-place, Same scale and the
+  selection banner already work on one.
+
+  What is left is entirely in `src/taskpane/`:
+  1. **A rasteriser.** Promisify the `download-png` pipeline (`app.ts`
+     "download-png" handler) into `rasterizeScene(scene, cfg)` returning bare
+     base64. Must resolve BEFORE `PowerPoint.run` opens. `sceneToSvg` output is
+     already canvas-taint-safe (no `foreignObject`, no remote href/font).
+  2. **A control** (`#render-image`) so `render` is reachable; the key already
+     round-trips through `state.extras`.
+  3. **Pass it through all four insert call sites** — `doInsert`'s two branches,
+     the edit-in-place update, and `#json-insert-batch`, which calls
+     `insertSceneIntoSlide` directly and would otherwise silently draw shapes.
+     Same-scale rasterises inside its `map`, so it must raster the POST-scale
+     config, not the imported one.
+  4. **`doExplode`** — `loadChartFromSelection` → force `render: "shapes"` →
+     `updateChartInSlide` with no `pictureBase64`. That omission is the explode;
+     it needs no renderer code.
+  5. **Keep the degradation note visible.** `insertSceneIntoSlide`'s first act is
+     `onPhase("context")`, which overwrites the pane note — so a "degraded to
+     shapes" message posted before the insert is wiped. Post it after, or route
+     it around `phaseNote`.
+
+  Deliberately still out: native-vector SVG via `setSelectedDataAsync(svg,
+  {coercionType: XmlSvg})` (ImageCoercion 1.2) — best quality/size and
+  PowerPoint can "Convert to Shape" it, but flaky (office-js #4967, #2881,
+  #412) and it writes to the *selection*, so it cannot honour `opts.left/top`
+  or target an off-screen slide. Needs an `ImageCoercion` manifest entry (owner
+  re-sideload) too.
+
+  Unverifiable until a real host: whether a `PictureAndTexture` fill stretches
+  or tiles, whether `lineFormat.visible = false` survives it, and the true
+  payload cap (`MAX_PICTURE_BASE64` is a 4 MB guard at ~30x the worst measured
+  payload, not a measurement). Also unfixed by design: an image chart is opaque
+  to a screen reader below PowerPointApi 1.10 — no alt text and no text shapes
+  either, the one axis where image mode is strictly worse than shapes.
 
 Otherwise nothing new: the second sweep's six candidates all shipped (grand total
 label, IBCS scenario notation + the stroke-only hollow-column primitive, IBCS

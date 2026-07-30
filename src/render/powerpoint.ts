@@ -46,6 +46,25 @@ export interface InsertOptions {
    * so the demo/agenda paths pass a larger value to cut ~4-7 syncs per chart.
    */
   shapesPerSync?: number;
+  /**
+   * A PNG of the WHOLE scene, base64. Accepts a bare payload, a `data:` URI, or
+   * the prefix-without-scheme form the skill's pptxgen path emits
+   * (`image/png;base64,…`) — `barePng` normalises all three, because Office.js
+   * wants the bare payload ("A string that is a Base64 encoding of the image
+   * data", @types/office-js).
+   *
+   * When set, AND the host advertises PowerPointApi 1.8 (`ShapeFill.setImage`),
+   * AND the payload is under MAX_PICTURE_BASE64, the chart is inserted as ONE
+   * picture shape instead of the scene's nodes. Otherwise it is ignored and the
+   * native-shape path runs unchanged — see `wantsPicture`.
+   *
+   * The raster MUST be of the same scene that sizes the box: the rect is
+   * `scene.width` x `scene.height` points, so a caller that resizes between
+   * rasterising and inserting distorts the chart. Never stored in ChartConfig
+   * and therefore never in a shape tag — it is derived from the config at
+   * insert time and thrown away.
+   */
+  pictureBase64?: string;
 }
 
 /** Tag key under which the chart's serialized config is persisted. */
@@ -1590,6 +1609,77 @@ async function findBlankAddedSlides(
  */
 const canRotate = (): boolean => supports("1.10");
 
+/**
+ * True when the host can paint pixels into a shape: `ShapeFill.setImage` is
+ * PowerPointApi **1.8** (@types/office-js: "Sets the fill formatting of the
+ * shape to an image. This changes the fill type to `PictureAndTexture`") and the
+ * manifests admit hosts from 1.4. Same gate-not-wrap reasoning as `canRotate`.
+ *
+ * Exported so a caller can skip a pointless rasterisation AND say so: an image
+ * insert that silently became native shapes is the failure mode that would be
+ * undiagnosable from a bug report.
+ */
+export const canInsertPicture = (): boolean => supports("1.8");
+
+/**
+ * Ceiling on the base64 payload handed to one sync — a GUARD, not a limit we
+ * measured on the host. The real cap is undocumented (office-js #225 is fixed
+ * with no published threshold), and `BATCH_TIMEOUT_MS`'s rationale ("the budget
+ * measures a batch we know the host can swallow") stops holding for a
+ * multi-megabyte payload.
+ *
+ * 4 MB is ~30x the worst payload this engine actually produces. Measured across
+ * all 25 kinds at the shipping 480x300pt frame, 2x oversample: 20-58 KB base64
+ * (median 31.5 KB); at 4x: 48-133 KB; a full-slide 960x540pt violin at 4x —
+ * the densest kind at the largest sane frame — is 0.11 MB. So this fires only
+ * for a pathological custom width/height, which is exactly why crossing it
+ * emits a specific, greppable code rather than degrading quietly.
+ */
+const MAX_PICTURE_BASE64 = 4_000_000;
+
+/**
+ * Normalise any of the three base64 spellings in circulation to the bare
+ * payload Office.js wants:
+ *   - `data:image/png;base64,AAAA`  (a browser `canvas.toDataURL`)
+ *   - `image/png;base64,AAAA`       (what skill/scripts/render-pptx.mjs passes
+ *                                    to pptxgen — no `data:` scheme)
+ *   - `AAAA`                        (already bare)
+ * Splitting on the LAST comma rather than testing for a `data:` prefix is what
+ * makes the middle form work; a `startsWith("data:")` guard would hand the host
+ * a payload with `image/png;base64,` still glued to the front.
+ */
+function barePng(png: string): string {
+  const comma = png.lastIndexOf(",");
+  return comma >= 0 ? png.slice(comma + 1) : png;
+}
+
+/**
+ * Whether this insert should draw ONE picture instead of the scene's nodes.
+ *
+ * Re-checks the requirement set even though callers are expected to, so a caller
+ * that passes a payload on a 1.4 host still degrades instead of poisoning the
+ * sync. Over-budget payloads and the unsupported host both log a specific code
+ * before falling through, because the fallback is otherwise invisible: the chart
+ * appears, just made of shapes.
+ */
+function wantsPicture(opts: InsertOptions, scene: Scene): boolean {
+  const png = opts.pictureBase64;
+  if (!png) return false;
+  if (!canInsertPicture()) {
+    console.warn(`PC-IMG-NO-1.8 host lacks PowerPointApi 1.8 (ShapeFill.setImage) — inserted native shapes instead.`);
+    return false;
+  }
+  const bytes = barePng(png).length;
+  if (bytes > MAX_PICTURE_BASE64) {
+    console.warn(
+      `PC-IMG-TOOBIG picture payload ${bytes} B over the ${MAX_PICTURE_BASE64} B guard ` +
+        `(chart ${scene.width}x${scene.height}pt) — inserted native shapes instead.`,
+    );
+    return false;
+  }
+  return true;
+}
+
 /** True when the host advertises the given PowerPointApi requirement set. */
 function supports(version: string): boolean {
   try {
@@ -1634,6 +1724,70 @@ const SHAPES_PER_SYNC_OFFSCREEN = 40;
 const PARTIAL_RENDER_THRESHOLD = 0.85;
 
 /**
+ * Draw the whole scene as ONE picture: a rectangle the size of the chart frame,
+ * its fill set to the caller's PNG. Returns the single shape, or `[]` when the
+ * host refused — the caller then falls through to the native-shape path in the
+ * SAME request context, which is safe because this sync carries only this
+ * shape's own queued commands (tags come later by design, and
+ * updateChartsInSlides renders charts one at a time).
+ *
+ * The `try` encloses the QUEUEING calls, not just the `await`. Office.js proxy
+ * setters do not throw synchronously as a rule, but `setImage` is absent
+ * outright on a pre-1.8 host, so the property access itself can throw — and a
+ * throw outside the try would take the whole insert down instead of degrading.
+ */
+async function renderPictureShape(
+  context: PowerPoint.RequestContext,
+  getSlide: SlideThunk,
+  scene: Scene,
+  opts: InsertOptions,
+): Promise<PowerPoint.Shape[]> {
+  const left = opts.left ?? 60;
+  const top = opts.top ?? 90;
+  let shape: PowerPoint.Shape | undefined;
+  try {
+    const shapes = getSlide().shapes;
+    shape = shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+      left,
+      top,
+      width: scene.width,
+      height: scene.height,
+    });
+    // Named like a chart group, so the Selection Pane reads the same either way.
+    shape.name = "PowerChart";
+    (shape.fill as unknown as { setImage(b64: string): void }).setImage(barePng(opts.pictureBase64!));
+    // A picture-filled shape must not wear PowerPoint's default outline.
+    // UNVERIFIED on a real host: every existing precedent for this assignment is
+    // a solid-fill shape, and whether a PictureAndTexture fill keeps the outline
+    // suppressed is not knowable from the typings. Wrapped with the rest, so if
+    // the host rejects it the whole picture degrades to shapes rather than
+    // landing with a stray border.
+    shape.lineFormat.visible = false;
+    await context.sync();
+    return [shape];
+  } catch (err) {
+    console.warn(
+      `PC-IMG-REFUSED host rejected the picture insert — inserting native shapes instead. ${errorText(err)}`,
+    );
+    // Best-effort cleanup. Whether the rectangle survived is genuinely
+    // ambiguous: this repo's fake host models a rejected sync as discarding the
+    // whole batch (test/office-render.test.ts), while the partial-landed logic
+    // in insertDemoDeck exists precisely because EARLIER batches do commit. Both
+    // can be true — the open question is only what happens to commands queued
+    // before the failing one in the SAME batch. So: try to delete, ignore the
+    // outcome, and never let cleanup failure mask the fallback.
+    try {
+      shape?.delete();
+      await context.sync();
+    } catch {
+      /* nothing landed, or the context is poisoned — either way the caller
+       * draws native shapes next and a stray rect would be visible there. */
+    }
+    return [];
+  }
+}
+
+/**
  * Render a scene onto a slide, committing in small batches.
  *
  * This forfeits all-or-nothing, which is a real loss: a failure now strands a
@@ -1643,6 +1797,10 @@ const PARTIAL_RENDER_THRESHOLD = 0.85;
  *
  * The batches also make progress REAL: shapes committed over shapes total is a
  * fact, not the estimate a single opaque sync would force us to invent.
+ *
+ * `opts.pictureBase64` short-circuits all of that: one picture, one sync, no
+ * batching to do — see `wantsPicture` for when that applies and
+ * `renderPictureShape` for the fall-through when the host refuses.
  */
 async function renderShapesChunked(
   context: PowerPoint.RequestContext,
@@ -1651,6 +1809,14 @@ async function renderShapesChunked(
   opts: InsertOptions,
   onBatch?: (sending: number, total: number) => void,
 ): Promise<PowerPoint.Shape[]> {
+  if (wantsPicture(opts, scene)) {
+    // Report the picture as a single unit of work so a caller's progress bar
+    // doesn't sit at zero and then jump — the picture IS the whole chart.
+    onBatch?.(1, 1);
+    const picture = await renderPictureShape(context, getSlide, scene, opts);
+    if (picture.length) return picture;
+    // Refused: fall through and draw the nodes instead, in this same context.
+  }
   const left = opts.left ?? 60;
   const top = opts.top ?? 90;
   const batchSize = opts.shapesPerSync ?? SHAPES_PER_SYNC;
