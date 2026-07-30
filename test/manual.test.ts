@@ -130,6 +130,8 @@ describe("user manual coverage", () => {
       "Import",
       "Insert batch",
       "Horizontal (bar)",
+      "Insert as picture",
+      "Explode to native shapes",
       "formulas".toLowerCase(),
     ]) {
       expect(lower, `workflow ${flow}`).toContain(flow.toLowerCase());

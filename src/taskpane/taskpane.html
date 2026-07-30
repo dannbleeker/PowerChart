@@ -113,6 +113,10 @@
                 <input type="number" id="chart-h" value="300" min="60" style="width: 52px" /> pt</label
               >
               <label><input type="checkbox" id="auto-update" /> Auto-update chart</label>
+              <label
+                title="Insert one picture instead of native shapes. Use only for very dense charts that PowerPoint on the web can't draw as shapes — the picture is not editable, ignores the deck theme, blurs when rescaled, and is invisible to screen readers below PowerPointApi 1.10. Explode to native shapes turns it back."
+                ><input type="checkbox" id="render-image" /> Insert as picture</label
+              >
             </div>
             <div id="preview" class="preview"></div>
           </div>
@@ -274,6 +278,14 @@
         <div class="actions-menu" id="actions-menu" role="menu" hidden>
           <button id="insert-new" role="menuitem" style="display: none">Insert as new</button>
           <button id="load-selection" role="menuitem">Edit selected chart</button>
+          <button
+            id="explode"
+            role="menuitem"
+            disabled
+            title="Re-draw the selected picture chart as native, editable shapes"
+          >
+            Explode to native shapes
+          </button>
           <button
             id="same-scale"
             role="menuitem"

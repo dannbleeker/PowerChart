@@ -4,6 +4,7 @@ import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types"
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
 import {
+  canInsertPicture,
   getSelectionBounds,
   insertAgendaSlides,
   insertDemoDeck,
@@ -77,6 +78,9 @@ interface AppState {
   seriesMeta: (Pick<Series, "type" | "pattern" | "colors" | "scenario"> | undefined)[];
   axisTitle: string;
   logScale: boolean;
+  /** `render: "image"` — insert one raster picture instead of native shapes.
+   *  Owns the key outright now that #render-image exists, so it leaves `extras`. */
+  renderImage: boolean;
   /** Footnote / source line ("Kilde: …"). */
   footnote: string;
   /** Comma-separated slice indices to explode (pie/doughnut), 1-based in the UI. */
@@ -108,7 +112,6 @@ interface AppState {
     | "categorySort"
     | "secondaryAxis"
     | "labelOffsets"
-    | "render"
     | "pie"
     | "waterfall"
     | "numberFormat"
@@ -155,6 +158,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     ),
     axisTitle: cfg.valueAxisTitle ?? "",
     logScale: !!cfg.logScale,
+    renderImage: cfg.render === "image",
     footnote: cfg.footnote ?? "",
     pieExplode: (cfg.pie?.explode ?? []).map((i) => i + 1).join(","),
     extras: {
@@ -175,7 +179,6 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
       categorySort: cfg.categorySort,
       secondaryAxis: cfg.secondaryAxis,
       labelOffsets: cfg.labelOffsets,
-      render: cfg.render,
       pie: cfg.pie,
       waterfall: cfg.waterfall,
       numberFormat: cfg.numberFormat,
@@ -289,6 +292,10 @@ function currentConfig(): ChartConfig {
     pie,
     valueAxisTitle: state.axisTitle || undefined,
     logScale: state.logScale || undefined,
+    // Omitted rather than written as "shapes": the key is optional and the
+    // engine treats undefined as shapes, so spelling out the default would add
+    // noise to every exported config.
+    render: state.renderImage ? "image" : undefined,
     style: mergedStyle(),
     ...size,
     title: state.title || undefined,
@@ -403,6 +410,8 @@ function applyConfig(cfg: ChartConfig, editTarget: EditTarget | null) {
   };
   sizeField("chart-w", cfg.width ?? DEFAULT_SIZE.width);
   sizeField("chart-h", cfg.height ?? DEFAULT_SIZE.height);
+  const renderBox = document.getElementById("render-image") as HTMLInputElement | null;
+  if (renderBox) renderBox.checked = state.renderImage;
   resetHistory();
   renderGallery();
   renderOptions();
@@ -1262,6 +1271,83 @@ $("download").addEventListener("click", () => {
   URL.revokeObjectURL(a.href);
 });
 
+/** Oversample for rasterized output: 2× the scene's point size, i.e. 144 dpi.
+ *  A point-for-pixel PNG looks fuzzy the moment a slide is zoomed. */
+const RASTER_SCALE = 2;
+
+/**
+ * Rasterize a scene to a bare base64 PNG for `InsertOptions.pictureBase64`.
+ *
+ * Deliberately **transparent** — no background is painted. Shapes mode drops the
+ * chart's ink straight onto the real slide with no background rect at all (see
+ * `canvasColor`), so painting one here would make image mode land an opaque
+ * white box over a themed or dark slide. Transparency is what keeps the two
+ * modes visually interchangeable, which is the whole promise of the flag.
+ *
+ * The `download-png` handler below does the same SVG→Image→canvas dance but ends
+ * in `toBlob` for a file download; this one ends in `toDataURL` because Office.js
+ * wants base64. The shared middle is three lines, and factoring it would couple
+ * an export button to the insert path for no real gain.
+ *
+ * Resolves with the payload after the comma; rejects on a decode failure, a
+ * missing 2D context, or a `toDataURL` that hands back something that isn't a
+ * PNG data URI (jsdom returns null). The caller degrades to native shapes.
+ */
+function rasterizeScene(scene: Scene): Promise<string> {
+  const svg = sceneToSvg(scene);
+  return new Promise<string>((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(scene.width * RASTER_SCALE);
+        canvas.height = Math.round(scene.height * RASTER_SCALE);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("no 2d canvas context");
+        ctx.scale(RASTER_SCALE, RASTER_SCALE);
+        ctx.drawImage(img, 0, 0, scene.width, scene.height);
+        const uri = canvas.toDataURL("image/png");
+        if (!uri || !uri.startsWith("data:image/png")) throw new Error("canvas could not encode a PNG");
+        resolve(uri.slice(uri.indexOf(",") + 1));
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("the browser could not decode the chart SVG"));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * The picture payload for one insert, plus the reason there isn't one.
+ *
+ * `warn` is returned rather than noted here on purpose: every insert path posts
+ * `phaseNote` as its first act, which would immediately overwrite a note posted
+ * before the insert. The caller notes it AFTER the insert resolves, where it
+ * survives — `guard` only prints "Done." when the note is unchanged from the
+ * busy text, and any phase note has already changed it.
+ */
+async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: string; warn?: string }> {
+  if (cfg.render !== "image") return {};
+  if (!canInsertPicture()) {
+    return {
+      warn: "This PowerPoint can't insert pictures (needs PowerPointApi 1.8) — inserted native shapes instead.",
+    };
+  }
+  try {
+    return { png: await rasterizeScene(scene) };
+  } catch (err) {
+    console.warn(`PC-IMG-RASTER could not rasterize the chart in the browser. ${errorText(err)}`);
+    return { warn: "Couldn't rasterize the chart — inserted native shapes instead." };
+  }
+}
+
 /**
  * PNG export: the native-shapes output is the real deliverable, but SVG doesn't
  * render in email/chat, so a rasterized fallback earns its place. Rasterize the
@@ -1357,14 +1443,19 @@ async function doInsert(asNew: boolean) {
   let cfg = currentConfig();
   if (!asNew && state.editTarget) {
     const scene = buildChart(cfg);
+    const { png, warn } = await chartPicture(cfg, scene);
     // Adopt the target the update hands back. Every shape was replaced, so the
     // one we just used is dead: keeping it made the SECOND update resolve a
     // shape id that no longer existed, get filtered out as "the user deleted
     // this chart", and do nothing — silently. With auto-update on, that meant
     // only the first debounced push ever landed.
-    const next = await updateChartInSlide(scene, state.editTarget, { tagData: JSON.stringify(cfg) });
+    const next = await updateChartInSlide(scene, state.editTarget, {
+      tagData: JSON.stringify(cfg),
+      pictureBase64: png,
+    });
     if (next) {
       state.editTarget = next;
+      if (warn) note(warn, "err");
       return;
     }
     // null means the target slide or shape is gone — nothing was written. The
@@ -1379,23 +1470,36 @@ async function doInsert(asNew: boolean) {
   }
   // New chart: use the selected placeholder's bounds when one is selected.
   const bounds = await getSelectionBounds();
+  // Resize BEFORE building the scene, so the raster matches the frame that sizes
+  // the picture's rect — a raster of a differently-sized scene would be stretched.
   if (bounds && bounds.width > 40 && bounds.height > 40) {
     cfg = { ...cfg, width: bounds.width, height: bounds.height };
+  }
+  const scene = buildChart(cfg);
+  const { png, warn } = await chartPicture(cfg, scene);
+  if (bounds && bounds.width > 40 && bounds.height > 40) {
     await insertSceneIntoSlide(
-      buildChart(cfg),
-      { tagData: JSON.stringify(cfg), left: bounds.left, top: bounds.top },
+      scene,
+      { tagData: JSON.stringify(cfg), left: bounds.left, top: bounds.top, pictureBase64: png },
       phaseNote,
     );
   } else {
     await insertSceneIntoSlide(
-      buildChart(cfg),
-      { tagData: JSON.stringify(cfg), left: 60 + insertOffset, top: 90 + insertOffset },
+      scene,
+      {
+        tagData: JSON.stringify(cfg),
+        left: 60 + insertOffset,
+        top: 90 + insertOffset,
+        pictureBase64: png,
+      },
       phaseNote,
     );
     insertOffset = (insertOffset + 14) % 84;
   }
   state.editTarget = null;
   renderActionState();
+  // After the insert, never before: phaseNote would have overwritten it.
+  if (warn) note(warn, "err");
 }
 
 /**
@@ -1422,13 +1526,29 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
   // One request context for the whole deck, not one per chart: each chart's
   // update costs four round-trips to PowerPoint, and awaiting them in a loop
   // made Same Scale across 20 charts eighty of them.
+  // Apply the shared scale FIRST, then build. Rasterising inside the same map
+  // would capture the pre-scale scene — an image chart would be re-inserted
+  // showing the old axis while the pane reported success.
+  const rescaled = parsed.map((c) => {
+    c.cfg.scale = { min: min < 0 ? min : undefined, max };
+    return { ...c, scene: buildChart(c.cfg) };
+  });
+  // Rasterise every image-mode chart before opening the request context — one
+  // context for the whole deck is the property doSameScale exists to protect,
+  // and awaiting a canvas inside it would be both slower and unsafe.
+  const pictures = await Promise.all(rescaled.map((c) => chartPicture(c.cfg, c.scene)));
   await updateChartsInSlides(
-    parsed.map((c) => {
-      c.cfg.scale = { min: min < 0 ? min : undefined, max };
-      return { scene: buildChart(c.cfg), target: c.target, opts: { tagData: JSON.stringify(c.cfg) } };
-    }),
+    rescaled.map((c, i) => ({
+      scene: c.scene,
+      target: c.target,
+      opts: { tagData: JSON.stringify(c.cfg), pictureBase64: pictures[i].png },
+    })),
   );
   note("Same scale applied to {n} charts (max {max}).", "ok", { n: parsed.length, max });
+  const degraded = pictures.filter((p) => p.warn).length;
+  if (degraded) {
+    note("Same scale applied, but {n} image chart(s) fell back to native shapes.", "err", { n: degraded });
+  }
 }
 
 async function doLoadSelection() {
@@ -1443,6 +1563,44 @@ async function doLoadSelection() {
   // is stale. Hiding it here rather than in the banner's own click handler
   // covers the other way in — the "Edit selected chart" button.
   $("selection-banner").style.display = "none";
+}
+
+/**
+ * Turn the selected picture chart back into native, editable shapes.
+ *
+ * The whole cost of image mode is that the chart stops being editable, so this
+ * is the door back. It adds NO renderer code: read the config off the picture's
+ * tag, force `render: "shapes"`, and hand it to the ordinary in-place update
+ * with **no** `pictureBase64`. That omission is the explode — `wantsPicture`
+ * goes false and the node loop runs instead.
+ *
+ * Works on a shapes-mode chart too, where it is an idempotent redraw rather than
+ * a special case worth refusing. Acts on the SELECTION, which need not be the
+ * chart the pane is currently editing.
+ */
+async function doExplode() {
+  const found = await loadChartFromSelection();
+  if (!found) {
+    note("Select an inserted PowerChart first — Explode re-draws it as native shapes.", "err");
+    return;
+  }
+  const cfg = { ...(JSON.parse(found.configJson) as ChartConfig), render: "shapes" as const };
+  const next = await updateChartInSlide(buildChart(cfg), found.target, { tagData: JSON.stringify(cfg) });
+  if (!next) {
+    // The picture is gone from the slide. Only clear the pane's edit target if
+    // it was pointing at this same shape — Explode works on the selection.
+    if (state.editTarget?.shapeId === found.target.shapeId) {
+      state.editTarget = null;
+      renderActionState();
+    }
+    note("That chart is no longer on the slide.", "err");
+    return;
+  }
+  // Adopt the returned target: every shape was replaced, so the old one is dead
+  // (the trap doInsert documents — a stale target makes the NEXT update no-op).
+  applyConfig(cfg, next);
+  $("selection-banner").style.display = "none";
+  note("Exploded to native shapes — edits now update them in place.", "ok");
 }
 
 // --- Elements (harvey balls, checkboxes, process flow, table) -----------------
@@ -1574,6 +1732,13 @@ $("auto-update").addEventListener("change", () => {
   if (!($("auto-update") as HTMLInputElement).checked) clearTimeout(autoUpdateTimer);
 });
 
+// The picture/shapes choice changes nothing about the SCENE, so the preview is
+// unaffected — it always shows the vector chart. It only changes what the next
+// insert hands PowerPoint, which is why this touches state and nothing else.
+$("render-image").addEventListener("change", () => {
+  state.renderImage = ($("render-image") as HTMLInputElement).checked;
+});
+
 /** think-cell's "click the chart" feel: watch the slide selection. */
 function watchSelection() {
   try {
@@ -1669,6 +1834,11 @@ function wireInsert() {
     );
     loadBtn.addEventListener("click", guard(doLoadSelection));
     $("selection-banner-load").addEventListener("click", guard(doLoadSelection));
+    // Explode needs the same host surface as "Edit selected chart" (it reads the
+    // selection's tag), so it lives or dies with the same gate.
+    const explodeBtn = $("explode") as HTMLButtonElement;
+    explodeBtn.disabled = false;
+    explodeBtn.addEventListener("click", guard(doExplode));
     watchSelection();
     const sameScaleBtn = $("same-scale") as HTMLButtonElement;
     sameScaleBtn.disabled = false;
@@ -1689,11 +1859,23 @@ function wireInsert() {
       guard(async () => {
         const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
         const configs: ChartConfig[] = Array.isArray(parsed) ? parsed : [parsed];
+        let degraded = 0;
         for (const c of configs) {
           const cfg = { ...DEFAULT_SIZE, ...c };
-          await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+          const scene = buildChart(cfg);
+          // Batch insert honours render:"image" per config — without this a
+          // pasted image-mode array silently drew native shapes.
+          const { png, warn } = await chartPicture(cfg, scene);
+          if (warn) degraded++;
+          await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg), pictureBase64: png });
         }
         note("Inserted {n} chart(s) on the current slide.", "ok", { n: configs.length });
+        if (degraded) {
+          note("Inserted {n} chart(s), but {d} image chart(s) fell back to native shapes.", "err", {
+            n: configs.length,
+            d: degraded,
+          });
+        }
       }),
     );
     // Elements insert at a small default offset (they're compact shapes).

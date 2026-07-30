@@ -157,9 +157,9 @@ describe("task pane — loading a chart config", () => {
   });
 
   it('preserves render: "image" through import → export and the shape-tag re-save', () => {
-    // `render` selects the OUTPUT format (native shapes vs one raster picture)
-    // and has no pane control yet, so it lives in state.extras like every other
-    // controlless key. It was missing from the Pick, which meant importing an
+    // `render` selects the OUTPUT format (native shapes vs one raster picture).
+    // It began life in state.extras (no control) and now has #render-image, but
+    // the contract this pins is the same either way: importing an
     // image-mode config and exporting it — or letting the pane re-save it into
     // POWERCHART_CONFIG on an update — silently downgraded the chart to shapes.
     // A silent format change is worse than a refusal: the skill CLI honours the
@@ -178,6 +178,30 @@ describe("task pane — loading a chart config", () => {
     importConfig({ kind: "stacked", data: baseData, render: "image" });
     type(1, 1, "150");
     expect(exportConfig().render).toBe("image");
+  });
+
+  it("syncs the #render-image checkbox both ways with the config", () => {
+    // The checkbox now OWNS `render` (it left state.extras when it got a
+    // control), so the two directions are separate failure modes: a loaded
+    // image config that leaves the box unticked lies to the user about what the
+    // next insert will do, and a ticked box that doesn't reach the config makes
+    // the control inert.
+    const box = () => $("render-image") as HTMLInputElement;
+
+    importConfig({ kind: "stacked", data: baseData, render: "image" });
+    expect(box().checked, "loading an image config ticks the box").toBe(true);
+
+    importConfig({ kind: "stacked", data: baseData });
+    expect(box().checked, "loading a shapes config unticks it").toBe(false);
+
+    // Ticking it by hand reaches the exported config.
+    box().checked = true;
+    box().dispatchEvent(new Event("change"));
+    expect(exportConfig().render).toBe("image");
+
+    box().checked = false;
+    box().dispatchEvent(new Event("change"));
+    expect(exportConfig().render).toBeUndefined();
   });
 
   it("merges pane-owned fields with import-only ones for pie/waterfall/numberFormat", () => {
