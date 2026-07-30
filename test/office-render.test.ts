@@ -77,14 +77,28 @@ function makeShape(
         },
       }),
     },
+    // Set by fill.setImage — the bare base64 the host received. Records what the
+    // renderer actually handed over, so a test can prove the data:/image-prefix
+    // stripping happened rather than just that setImage was reached.
+    imageBase64: undefined as string | undefined,
     fill: {
       setSolidColor(c: string) {
         shape.fillColor = c;
+      },
+      setImage(b64: string) {
+        // Model the real API's one visible side effect: "This changes the fill
+        // type to PictureAndTexture" (@types/office-js). `refusePictureFill`
+        // makes the property access itself throw, which is what a pre-1.8 host
+        // does — the method simply is not there.
+        if (refusePictureFill) throw new Error("setImage is not available on this host");
+        shape.imageBase64 = b64;
+        shape.fillType = "PictureAndTexture";
       },
       clear() {
         shape.fillCleared = true;
       },
     },
+    fillType: undefined as string | undefined,
     lineFormat: {} as Record<string, unknown>,
     textFrame: {
       textRange: { font: {} as Record<string, unknown>, paragraphFormat: {} as Record<string, unknown> },
@@ -335,6 +349,10 @@ let stallSyncDelayMs = 40;
  * charts land ungrouped. See PR 3's re-fetch fix.  */
 let strictGroup = false;
 
+/** When true, `fill.setImage` throws on access — a pre-1.8 host, where the
+ * method does not exist at all. Drives the picture-insert fall-through. */
+let refusePictureFill = false;
+
 /** Install a fake PowerPoint global whose run() drives the mocked context.
  * `supported(version)` models the host's requirement-set support (default: all)
  * — pass a predicate to simulate e.g. PowerPoint on the web lacking grouping. */
@@ -470,6 +488,7 @@ function installHost(
   failSyncsOn.clear();
   stallSyncOn.clear();
   strictGroup = false;
+  refusePictureFill = false;
   blankReadbackAt.clear();
   faultShapeGetCount = false;
   addedWithLayout.length = 0;
@@ -2040,6 +2059,183 @@ describe("Office round-trips do not scale with the chart count", () => {
       swallowAdds = 0;
       warnSpy.mockRestore();
     }
+  });
+
+  it('render:"image" draws ONE picture shape instead of the scene nodes', async () => {
+    // The whole point of image mode: a dense chart becomes one shape, so the
+    // PowerPoint-web dense-shape wall (office-js #4272 / #5022 / #6498) never
+    // gets hit. A violin-sized scene is ~250 native shapes; here it must be 1.
+    const NODES = 25;
+    const scene = {
+      width: 480,
+      height: 300,
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(scene, { tagData: "{}", pictureBase64: "AAAA", left: 60, top: 90 });
+    // Exactly one shape, geometry rectangle, sized to the FRAME (not the nodes).
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live).toHaveLength(1);
+    expect(live[0].geo).toBe("rectangle");
+    expect(live[0].box).toEqual({ left: 60, top: 90, width: 480, height: 300 });
+    // The fill became a picture, carrying the payload, and the outline is off.
+    expect(live[0].imageBase64).toBe("AAAA");
+    expect(live[0].fillType).toBe("PictureAndTexture");
+    expect(live[0].lineFormat.visible).toBe(false);
+    // Named like a chart group so the Selection Pane reads the same either way,
+    // and it carries the config tag — the picture IS the re-editable chart.
+    expect(live[0].name).toBe("PowerChart");
+    expect(live[0].tagStore.get(CHART_TAG)).toBe("{}");
+  });
+
+  it("strips every base64 spelling down to the bare payload the host wants", async () => {
+    // Three forms circulate: a browser toDataURL (`data:image/png;base64,…`),
+    // what render-pptx.mjs hands pptxgen (`image/png;base64,…` — NO data:
+    // scheme), and already-bare. A `startsWith("data:")` guard would pass the
+    // middle one through with `image/png;base64,` still glued on, and the host
+    // would get a corrupt payload. Splitting on the last comma handles all three.
+    const scene = { width: 100, height: 100, nodes: [{ kind: "rect" as const, x: 0, y: 0, w: 4, h: 4, fill: "#111" }] };
+    for (const [input, expected] of [
+      ["data:image/png;base64,PAYLOAD", "PAYLOAD"],
+      ["image/png;base64,PAYLOAD", "PAYLOAD"],
+      ["PAYLOAD", "PAYLOAD"],
+    ] as const) {
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      await insertSceneIntoSlide(scene, { tagData: "{}", pictureBase64: input });
+      expect(slide.created.filter((s) => !s.deleted)[0].imageBase64, input).toBe(expected);
+    }
+  });
+
+  it("falls back to native shapes on a host without PowerPointApi 1.8", async () => {
+    // setImage is 1.8 and the manifests admit hosts from 1.4, so this must be
+    // GATED, not attempted-and-caught: a queued command the host rejects takes
+    // the whole sync with it. The chart must still land, as shapes.
+    const NODES = 12;
+    const scene = {
+      width: 480,
+      height: 300,
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const slide = makeSlide("s1");
+    // Everything except 1.8 — so grouping is off too, exactly like the web host.
+    installHost([slide], [], slide, (v) => v !== "1.8");
+    await insertSceneIntoSlide(scene, { tagData: "{}", pictureBase64: "AAAA" });
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live.length).toBeGreaterThanOrEqual(NODES); // the nodes, not a picture
+    expect(live.some((s) => s.imageBase64 !== undefined)).toBe(false);
+    // Still re-editable: the config tag landed on the first shape (no group at 1.4).
+    expect(live.some((s) => s.tagStore.get(CHART_TAG) === "{}")).toBe(true);
+  });
+
+  it("falls back to native shapes when the host refuses the picture fill", async () => {
+    // A 1.8-advertising host that still rejects setImage (wrong payload format,
+    // host quirk). renderPictureShape catches, best-effort deletes the rect, and
+    // renderShapesChunked draws the nodes in the SAME request context.
+    const NODES = 12;
+    const scene = {
+      width: 480,
+      height: 300,
+      nodes: Array.from({ length: NODES }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    refusePictureFill = true;
+    try {
+      await insertSceneIntoSlide(scene, { tagData: "{}", pictureBase64: "AAAA" });
+      const live = slide.created.filter((s) => !s.deleted);
+      // The nodes landed, and no picture-filled shape survived.
+      expect(live.some((s) => s.imageBase64 !== undefined)).toBe(false);
+      expect(live.filter((s) => s.geo === "rectangle").length).toBeGreaterThanOrEqual(NODES);
+      expect(live.some((s) => s.tagStore.get(CHART_TAG) === "{}")).toBe(true);
+    } finally {
+      refusePictureFill = false;
+    }
+  });
+
+  it("refuses an over-budget payload rather than burning the batch timeout", async () => {
+    // MAX_PICTURE_BASE64 is a guard against a pathological custom frame size,
+    // not a measured host limit — real payloads are 20-133 KB. Crossing it
+    // degrades to shapes; the code that says so is PC-IMG-TOOBIG on the console,
+    // because the chart still appears and the fallback is otherwise invisible.
+    const scene = {
+      width: 480,
+      height: 300,
+      nodes: Array.from({ length: 12 }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await insertSceneIntoSlide(scene, { tagData: "{}", pictureBase64: "A".repeat(4_000_001) });
+      const live = slide.created.filter((s) => !s.deleted);
+      expect(live.some((s) => s.imageBase64 !== undefined)).toBe(false);
+      expect(live.length).toBeGreaterThanOrEqual(12);
+      // A specific, greppable code — so a real bug report teaches us the number.
+      expect(warn.mock.calls.flat().join(" ")).toContain("PC-IMG-TOOBIG");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("costs ONE sync for the drawing, however dense the scene", async () => {
+    // The reliability claim: image mode replaces N/batchSize render syncs with
+    // exactly one, so a chart that could never commit as shapes lands in a
+    // single round trip. Compare a 60-node scene both ways.
+    const scene = {
+      width: 480,
+      height: 300,
+      nodes: Array.from({ length: 60 }, (_, k) => ({
+        kind: "rect" as const,
+        x: k,
+        y: 0,
+        w: 4,
+        h: 4,
+        fill: "#111111",
+      })),
+    };
+    installHost([makeSlide("shapes")]);
+    await insertSceneIntoSlide(scene, { tagData: "{}" });
+    const shapesSyncs = trips.syncs;
+
+    installHost([makeSlide("picture")]);
+    await insertSceneIntoSlide(scene, { tagData: "{}", pictureBase64: "AAAA" });
+    const pictureSyncs = trips.syncs;
+
+    // 60 nodes at SHAPES_PER_SYNC=10 is 6 render syncs; the picture is 1. Both
+    // pay the same tag/group syncs afterwards, so the picture must be strictly
+    // and substantially cheaper.
+    expect(pictureSyncs).toBeLessThan(shapesSyncs);
+    expect(shapesSyncs - pictureSyncs).toBeGreaterThanOrEqual(4);
   });
 
   it("re-fetches the slide's shape collection before addGroup on a multi-batch chart", async () => {
