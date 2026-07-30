@@ -6403,5 +6403,105 @@
     "decorations": {
       "summaryBars": true
     }
+  },
+  {
+    "kind": "violin",
+    "render": "image",
+    "width": 480,
+    "height": 300,
+    "title": "Latency distribution (as one picture)",
+    "data": {
+      "categories": [
+        "API",
+        "Web",
+        "Batch"
+      ],
+      "series": [
+        {
+          "name": "s1",
+          "values": [
+            95,
+            150,
+            310
+          ]
+        },
+        {
+          "name": "s2",
+          "values": [
+            100,
+            158,
+            330
+          ]
+        },
+        {
+          "name": "s3",
+          "values": [
+            105,
+            166,
+            350
+          ]
+        },
+        {
+          "name": "s4",
+          "values": [
+            110,
+            174,
+            370
+          ]
+        },
+        {
+          "name": "s5",
+          "values": [
+            115,
+            182,
+            390
+          ]
+        },
+        {
+          "name": "s6",
+          "values": [
+            120,
+            190,
+            410
+          ]
+        },
+        {
+          "name": "s7",
+          "values": [
+            125,
+            198,
+            430
+          ]
+        },
+        {
+          "name": "s8",
+          "values": [
+            130,
+            206,
+            450
+          ]
+        },
+        {
+          "name": "s9",
+          "values": [
+            135,
+            214,
+            470
+          ]
+        },
+        {
+          "name": "s10",
+          "values": [
+            140,
+            222,
+            490
+          ]
+        }
+      ]
+    },
+    "decorations": {
+      "categoryAxis": true,
+      "valueAxis": true
+    }
   }
 ]

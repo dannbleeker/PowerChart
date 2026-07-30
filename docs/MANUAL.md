@@ -387,7 +387,10 @@ editable. Reach for `"image"` only on the densest kinds (area, violin,
 sunburst, tile-map, waffle) when a shapes-mode render would push the deck
 past the PowerPoint-web dense-shape wall. The Office.js insert path in the
 pane always draws native shapes today; image-mode support there ships in a
-follow-up.
+follow-up. The pane has no control for `render`, but it does **preserve** it:
+importing an image-mode config, editing it, and exporting (or letting an
+in-place update re-save it) keeps the key, so a config authored for the skill
+CLI is not silently downgraded to shapes by a round trip through the pane.
 
 ### Testing
 

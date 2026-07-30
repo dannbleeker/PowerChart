@@ -1404,6 +1404,29 @@ const features = [
     gantt: { lanes: "owner" },
     decorations: { summaryBars: true },
   },
+  {
+    // render:"image" — the whole chart as ONE raster picture instead of native
+    // shapes. Deliberately a violin: at ~250 native shapes it is the densest
+    // kind in the deck and therefore the exact case image mode exists for (the
+    // PowerPoint-web dense-shape wall). Slide-wise this proves only that a
+    // <p:pic> lands — the CI byte-diff gate compares slide XML, never
+    // ppt/media — but `npm run showcase` shells out to render-pptx.mjs with
+    // execFileSync, so a rasteriser that throws fails the build. That build-time
+    // smoke test is what this slide is really for.
+    kind: "violin",
+    render: "image",
+    width: 480,
+    height: 300,
+    title: "Latency distribution (as one picture)",
+    data: {
+      categories: ["API", "Web", "Batch"],
+      series: Array.from({ length: 10 }, (_, i) => ({
+        name: `s${i + 1}`,
+        values: [95 + i * 5, 150 + i * 8, 310 + i * 20],
+      })),
+    },
+    decorations: { categoryAxis: true, valueAxis: true },
+  },
 ];
 
 const configs = [...kinds, ...features];

@@ -156,6 +156,30 @@ describe("task pane — loading a chart config", () => {
     expect(out.labelOffsets).toEqual({ "S1@0": { dx: 4, dy: -2 } });
   });
 
+  it('preserves render: "image" through import → export and the shape-tag re-save', () => {
+    // `render` selects the OUTPUT format (native shapes vs one raster picture)
+    // and has no pane control yet, so it lives in state.extras like every other
+    // controlless key. It was missing from the Pick, which meant importing an
+    // image-mode config and exporting it — or letting the pane re-save it into
+    // POWERCHART_CONFIG on an update — silently downgraded the chart to shapes.
+    // A silent format change is worse than a refusal: the skill CLI honours the
+    // key, so a config that round-tripped through the pane stopped rasterising
+    // with nothing to indicate why.
+    importConfig({ kind: "stacked", data: baseData, render: "image" });
+    expect(exportConfig().render).toBe("image");
+
+    // The default stays absent rather than becoming an explicit "shapes" — the
+    // key is optional and the engine treats undefined as shapes, so writing it
+    // out would add noise to every exported config.
+    importConfig({ kind: "stacked", data: baseData });
+    expect(exportConfig().render).toBeUndefined();
+
+    // Survives a datasheet edit, which rebuilds the config from sheet state.
+    importConfig({ kind: "stacked", data: baseData, render: "image" });
+    type(1, 1, "150");
+    expect(exportConfig().render).toBe("image");
+  });
+
   it("merges pane-owned fields with import-only ones for pie/waterfall/numberFormat", () => {
     // These three are split: the control owns explode / total "e" tokens /
     // decimals+suffix+locale, but semi/breakout/variableRadius, detailGroups/
