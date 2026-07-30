@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 import type { ChartConfig } from "../src/core/types";
+import { buildChart } from "../src/core/chart";
+import { sceneToSvg } from "../src/render/svg";
 
 /**
  * Pane ↔ host command handlers. `pane-state.test.ts` boots app.ts under jsdom
@@ -37,6 +39,14 @@ const host = vi.hoisted(() => ({
   demoDeckCalls: [] as unknown[][],
   demoDeckPageFailures: new Set<number>(),
   demoDeckStatusOverride: null as null | "rendered" | "failed" | "skipped",
+  /** What canInsertPicture() reports — false models a host below PowerPointApi 1.8. */
+  canPicture: true,
+  /**
+   * What updateChartInSlide resolves to. Defaults to undefined because the
+   * existing "target is gone" test depends on that; the explode tests opt in to
+   * a live EditTarget, which is what a real successful update hands back.
+   */
+  updateResult: undefined as undefined | { slideId: string; shapeId: string; left: number; top: number },
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number }[],
     updateChart: [] as { target: unknown; opts: { tagData?: string } }[],
@@ -46,6 +56,7 @@ const host = vi.hoisted(() => ({
 
 vi.mock("../src/render/powerpoint", () => ({
   isPowerPointHost: () => true,
+  canInsertPicture: vi.fn(() => host.canPicture),
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
   insertSceneIntoSlide: vi.fn(async (_scene: unknown, opts: { tagData?: string; left?: number; top?: number }) => {
     if (host.gate) await host.gate;
@@ -57,6 +68,7 @@ vi.mock("../src/render/powerpoint", () => ({
   }),
   updateChartInSlide: vi.fn(async (_scene: unknown, target: unknown, opts: { tagData?: string }) => {
     host.calls.updateChart.push({ target, opts });
+    return host.updateResult;
   }),
   updateChartsInSlides: vi.fn(async (items: { scene: unknown; target: unknown; opts?: { tagData?: string } }[]) => {
     host.calls.updateCharts.push(items);
@@ -115,6 +127,8 @@ async function bootHostPane() {
   host.demoDeckCalls = [];
   host.demoDeckPageFailures = new Set();
   host.demoDeckStatusOverride = null;
+  host.canPicture = true;
+  host.updateResult = undefined;
   host.calls.insertScene = [];
   host.calls.updateChart = [];
   host.calls.updateCharts = [];
@@ -155,6 +169,219 @@ const chartJson = (values: number[]): string =>
   } satisfies ChartConfig);
 
 afterEach(() => vi.unstubAllGlobals());
+
+/**
+ * Stand in for the browser rasteriser. jsdom decodes no SVG, `getContext("2d")`
+ * returns null and `toDataURL` returns null, so every step of `rasterizeScene`
+ * needs a double. Pass `{ decode: false }` to model a browser that cannot decode
+ * the SVG, or `{ encode: false }` for one whose canvas cannot produce a PNG.
+ * Returns a restore function.
+ */
+function stubRaster({ decode = true, encode = true } = {}) {
+  class FakeImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_v: string) {
+      Promise.resolve().then(() => (decode ? this.onload?.() : this.onerror?.()));
+    }
+  }
+  vi.stubGlobal("Image", FakeImage);
+  const ctx = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    scale() {},
+    drawImage() {},
+  } as unknown as CanvasRenderingContext2D);
+  const url = vi
+    .spyOn(HTMLCanvasElement.prototype, "toDataURL")
+    .mockReturnValue(encode ? "data:image/png;base64,RASTER" : (null as unknown as string));
+  // Capture the SVG each rasterisation was handed. Without this a test can only
+  // see THAT a payload was produced, never OF WHAT — and the stub returns the
+  // same bytes whatever it is given, so "a payload exists" passes even when the
+  // wrong scene was rasterised.
+  const svgs: Blob[] = [];
+  const c = vi.spyOn(URL, "createObjectURL").mockImplementation((blob: Blob | MediaSource) => {
+    if (blob instanceof Blob) svgs.push(blob);
+    return "blob:x";
+  });
+  const r = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  return {
+    rasterizedSvgs: () => Promise.all(svgs.map((b) => b.text())),
+    restore: () => {
+      for (const s of [ctx, url, c, r]) s.mockRestore();
+    },
+  };
+}
+
+/** Tick "Insert as picture", the way a user does. */
+const tickPicture = () => {
+  const box = $("render-image") as HTMLInputElement;
+  box.checked = true;
+  box.dispatchEvent(new Event("change"));
+};
+
+describe("image render mode", () => {
+  beforeEach(bootHostPane);
+
+  it("hands the insert a rasterised PNG when Insert as picture is ticked", async () => {
+    const raster = stubRaster();
+    try {
+      tickPicture();
+      $("insert").click();
+      await settle();
+      expect(host.calls.insertScene).toHaveLength(1);
+      // The payload reached the renderer, bare — the pane strips the data: URI.
+      expect((host.calls.insertScene[0] as { pictureBase64?: string }).pictureBase64).toBe("RASTER");
+      // And the config it tagged says image mode, so a re-edit knows what it is.
+      expect(JSON.parse(host.calls.insertScene[0].tagData!).render).toBe("image");
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("sends no payload at all in shapes mode, so nothing pays for the canvas", async () => {
+    const raster = stubRaster();
+    try {
+      $("insert").click();
+      await settle();
+      expect((host.calls.insertScene[0] as { pictureBase64?: string }).pictureBase64).toBeUndefined();
+      expect(JSON.parse(host.calls.insertScene[0].tagData!).render).toBeUndefined();
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("skips the raster and SAYS SO on a host below PowerPointApi 1.8", async () => {
+    // The note must survive to the end: insertSceneIntoSlide's first act is
+    // onPhase("context"), which overwrites the pane note, so a warning posted
+    // BEFORE the insert would be wiped. It is posted after, on purpose.
+    const raster = stubRaster();
+    try {
+      host.canPicture = false;
+      tickPicture();
+      $("insert").click();
+      await settle();
+      expect((host.calls.insertScene[0] as { pictureBase64?: string }).pictureBase64).toBeUndefined();
+      expect($("host-note").textContent).toMatch(/can't insert pictures/i);
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("degrades to native shapes, visibly, when the browser cannot rasterise", async () => {
+    for (const mode of [{ decode: false }, { encode: false }] as const) {
+      await bootHostPane();
+      const raster = stubRaster(mode);
+      try {
+        tickPicture();
+        $("insert").click();
+        await settle();
+        // The chart still landed — as shapes, with no payload.
+        expect(host.calls.insertScene, JSON.stringify(mode)).toHaveLength(1);
+        expect((host.calls.insertScene[0] as { pictureBase64?: string }).pictureBase64).toBeUndefined();
+        expect($("host-note").textContent, JSON.stringify(mode)).toMatch(/rasterize/i);
+      } finally {
+        raster.restore();
+      }
+    }
+  });
+
+  it("batch insert honours render per config, not the checkbox", async () => {
+    // #json-insert-batch calls insertSceneIntoSlide directly and used to ignore
+    // the mode outright, so a pasted image-mode array silently drew shapes.
+    const raster = stubRaster();
+    try {
+      ($("json-io") as HTMLTextAreaElement).value = JSON.stringify([
+        { kind: "stacked", render: "image", data: { categories: ["A"], series: [{ name: "S", values: [1] }] } },
+        { kind: "stacked", data: { categories: ["A"], series: [{ name: "S", values: [1] }] } },
+      ]);
+      $("json-insert-batch").click();
+      await settle();
+      expect(host.calls.insertScene).toHaveLength(2);
+      const payloads = host.calls.insertScene.map((o) => (o as { pictureBase64?: string }).pictureBase64);
+      expect(payloads).toEqual(["RASTER", undefined]);
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("Same scale rasterises the RESCALED chart, not the one it loaded", async () => {
+    // The scale mutation happens inside the map that builds each scene, so
+    // rasterising in the same pass captures the PRE-scale chart: the picture
+    // shows the old axis while the pane reports success.
+    //
+    // Asserting "a payload exists" does NOT catch that — the stub returns the
+    // same bytes for any input, and tagData reads the same mutated object either
+    // way. So compare the SVG actually handed to the rasteriser against the two
+    // candidate renders. A chart whose own extent is [1,5] rescaled to max 90
+    // draws visibly different bars, so the two SVGs differ.
+    const raster = stubRaster();
+    try {
+      const own = JSON.parse(chartJson([1, 5])) as ChartConfig;
+      host.deckCharts = [
+        { configJson: JSON.stringify({ ...own, render: "image" }), target: { shapeId: "a" } },
+        { configJson: chartJson([2, 90]), target: { shapeId: "b" } },
+      ];
+      $("same-scale").click();
+      await settle();
+
+      const [rasterized] = await raster.rasterizedSvgs();
+      expect(rasterized, "exactly one chart was rasterised").toBeTruthy();
+      const svgOf = (cfg: ChartConfig) => sceneToSvg(buildChart(cfg));
+      const preScale = svgOf({ ...own, render: "image" });
+      const postScale = svgOf({ ...own, render: "image", scale: { min: undefined, max: 90 } });
+      expect(preScale, "the two candidates must actually differ").not.toBe(postScale);
+      expect(rasterized).toBe(postScale);
+      expect(rasterized).not.toBe(preScale);
+    } finally {
+      raster.restore();
+    }
+  });
+});
+
+describe("Explode to native shapes", () => {
+  beforeEach(bootHostPane);
+
+  it("re-draws the selected picture chart as shapes by OMITTING the payload", async () => {
+    // The omission is the explode: no pictureBase64 means wantsPicture is false
+    // in the renderer, so the node loop runs. Nothing else about the update
+    // differs, which is why this needs no renderer code.
+    host.loadSelectionResult = {
+      configJson: JSON.stringify({ ...JSON.parse(chartJson([1, 2])), render: "image" }),
+      target: { slideId: "s1", shapeId: "pic-1", left: 10, top: 20 },
+    };
+    host.updateResult = { slideId: "s1", shapeId: "grp-1", left: 10, top: 20 };
+    $("explode").click();
+    await settle();
+    expect(host.calls.updateChart).toHaveLength(1);
+    const { opts } = host.calls.updateChart[0];
+    expect((opts as { pictureBase64?: string }).pictureBase64).toBeUndefined();
+    // The re-saved config says shapes, so the chart does not turn back into a
+    // picture on the next ordinary update.
+    expect(JSON.parse(opts.tagData!).render).toBe("shapes");
+    expect($("host-note").textContent).toMatch(/native shapes/i);
+    // The checkbox follows the exploded config — the pane must not still claim
+    // the next insert will be a picture.
+    expect(($("render-image") as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("refuses politely when the selection is not a PowerChart", async () => {
+    host.loadSelectionResult = null;
+    $("explode").click();
+    await settle();
+    expect(host.calls.updateChart).toHaveLength(0);
+    expect($("host-note").textContent).toMatch(/select an inserted powerchart/i);
+  });
+
+  it("says so when the picture is already gone from the slide", async () => {
+    host.loadSelectionResult = {
+      configJson: JSON.stringify({ ...JSON.parse(chartJson([1, 2])), render: "image" }),
+      target: { slideId: "s1", shapeId: "pic-1", left: 10, top: 20 },
+    };
+    host.updateResult = undefined; // the update found nothing to replace
+    $("explode").click();
+    await settle();
+    expect($("host-note").textContent).toMatch(/no longer on the slide/i);
+  });
+});
 
 describe("Insert", () => {
   beforeEach(bootHostPane);

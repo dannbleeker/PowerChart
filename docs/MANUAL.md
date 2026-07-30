@@ -379,18 +379,29 @@ drives the CLI (`npm run render`) and the **Claude Agent Skill**
 Capabilities → Skills, then ask Claude for "a waterfall of …" on any
 surface, including Claude for PowerPoint).
 
-**`render` (per config, optional; skill CLI only for now):** `"shapes"`
-(default) inserts native, editable PowerPoint shapes — the think-cell pattern
-this add-in is built for. `"image"` rasterises the whole chart into one
-picture object: the chart still displays on the slide but is no longer
-editable. Reach for `"image"` only on the densest kinds (area, violin,
-sunburst, tile-map, waffle) when a shapes-mode render would push the deck
-past the PowerPoint-web dense-shape wall. The Office.js insert path in the
-pane always draws native shapes today; image-mode support there ships in a
-follow-up. The pane has no control for `render`, but it does **preserve** it:
-importing an image-mode config, editing it, and exporting (or letting an
-in-place update re-save it) keeps the key, so a config authored for the skill
-CLI is not silently downgraded to shapes by a round trip through the pane.
+**`render` (per config, optional):** `"shapes"` (default) inserts native,
+editable PowerPoint shapes — the think-cell pattern this add-in is built for.
+`"image"` rasterises the whole chart into one picture object. In the pane it is
+the **Insert as picture** checkbox beside Auto-update; in JSON it is the
+`render` key, honoured by Insert, Update chart, Insert batch (per config),
+Same scale and the skill CLI alike.
+
+Reach for it only on the densest kinds (area, violin, sunburst, tile-map,
+waffle) when a shapes-mode render would push the deck past the PowerPoint-web
+dense-shape wall — one picture always lands, where 250 shapes may not. The
+costs are real and worth reading before you tick it:
+
+- The chart is **not editable** in PowerPoint. **Explode to native shapes**
+  (⋯ menu) turns it back — it reads the config off the picture and re-draws the
+  real shapes in place, so nothing is lost, but it is a manual step.
+- It ignores the deck theme and blurs when rescaled (it is rasterised at 2×).
+- Below PowerPointApi 1.10 it is **invisible to screen readers** — no alt text
+  and no text shapes either. This is the one axis where picture mode is strictly
+  worse than shapes.
+
+If the host can't insert pictures (needs PowerPointApi 1.8) or the browser
+can't rasterise, the chart still lands as native shapes and the pane says which
+happened rather than failing.
 
 ### Testing
 
