@@ -86,6 +86,7 @@ async function rasterScene(scene, background) {
     } catch (err) {
       throw new Error(
         `image render mode needs @resvg/resvg-js installed (npm install @resvg/resvg-js): ${err?.message ?? err}`,
+        { cause: err },
       );
     }
   }
