@@ -648,6 +648,24 @@ export interface ChartConfig {
     /** The auto-collapsed long-tail bucket in column/pie families. Default "Other". */
     other?: string;
   };
+  /**
+   * How to insert the chart:
+   * - `"shapes"` (default): native, editable PowerPoint shapes — the think-cell
+   *   pattern the engine was built for. Re-editable via `POWERCHART_CONFIG`.
+   * - `"image"`: one raster picture per chart, sidesteps the web host's
+   *   dense-shape wall (office-js #4272 / #5022 / #6498) and every
+   *   `slides.add()` drop that a chart-shape's own render can't. Not editable
+   *   in PowerPoint after insert; loses theme colours and blurs on rescale.
+   *   The config tag round-trips onto the picture, so a future "Explode to
+   *   shapes" command can re-render as native shapes on demand.
+   *
+   * Renderer support:
+   * - Skill (`skill/scripts/render-pptx.mjs`): both modes.
+   * - Office.js (`src/render/powerpoint.ts`): image mode ships in a follow-up.
+   * - SVG (`src/render/svg.ts`): mode is ignored — the preview is always the
+   *   vector scene.
+   */
+  render?: "shapes" | "image";
 }
 
 /** Geometry the decoration pass needs from a layout: where each column lives. */

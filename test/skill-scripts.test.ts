@@ -162,6 +162,67 @@ describe("render-pptx.mjs — paints", () => {
   });
 });
 
+describe('render-pptx.mjs — render:"image" mode', () => {
+  const dir = mkdtempSync(join(tmpdir(), "pc-image-"));
+  const out = join(dir, "image.pptx");
+  let zip: JSZip;
+
+  beforeAll(async () => {
+    ensureLib();
+    // A native-shapes chart AND an image-mode chart in the same batch, so we
+    // can prove image-mode collapses to one <p:pic> while a sibling
+    // shapes-mode chart in the same run still emits its 20+ <p:sp> elements.
+    const input = write(dir, "image.json", [
+      {
+        kind: "stacked",
+        data: { categories: ["Q1", "Q2"], series: [{ name: "A", values: [10, 20] }] },
+      },
+      {
+        kind: "violin",
+        render: "image",
+        data: { categories: ["North", "South"], series: [{ name: "sample", values: [1, 2] }] },
+      },
+    ]);
+    const r = run(["skill/scripts/render-pptx.mjs", input, out]);
+    if (r.status !== 0) throw new Error(`render-pptx failed: ${r.stderr}`);
+    zip = await JSZip.loadAsync(readFileSync(out));
+  }, 180000);
+
+  it("collapses an image-mode chart to a single <p:pic> — no chart shapes", async () => {
+    // The escape hatch: a whole scene as one picture object, so a dense chart
+    // stays under the PowerPoint-web shape wall (office-js #4272 / #5022 /
+    // #6498). Violin at native shapes is ~250 <p:sp>; at render:"image", zero.
+    const slide2 = await zip.file("ppt/slides/slide2.xml")!.async("string");
+    expect(slide2).toContain("<p:pic>");
+    expect(slide2).not.toContain("<p:sp>");
+  });
+
+  it("keeps shapes mode intact when another item in the same batch went image", async () => {
+    // Cross-contamination check: the image-mode branch is opt-in per config;
+    // a sibling shapes-mode chart must not accidentally get rasterised.
+    const slide1 = await zip.file("ppt/slides/slide1.xml")!.async("string");
+    expect(slide1).not.toContain("<p:pic>");
+    expect((slide1.match(/<p:sp>/g) ?? []).length).toBeGreaterThan(5);
+  });
+
+  it("embeds the picture as a real media part, not a broken relationship", async () => {
+    // pptxgenjs writes the PNG under ppt/media/ and links it via slide rels;
+    // if the base64 wire-through failed the relationship would dangle.
+    const rels = await zip.file("ppt/slides/_rels/slide2.xml.rels")!.async("string");
+    expect(rels).toMatch(/Target="[^"]+\.png"/);
+    const media = zip.file(/ppt\/media\/image.*\.png/);
+    expect(media.length).toBeGreaterThan(0);
+    const pngBuf = await media[0].async("uint8array");
+    // Real PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A. Guards against a
+    // "raster silently returned empty" regression.
+    expect(pngBuf[0]).toBe(0x89);
+    expect(pngBuf[1]).toBe(0x50);
+    expect(pngBuf[2]).toBe(0x4e);
+    expect(pngBuf[3]).toBe(0x47);
+    expect(pngBuf.length).toBeGreaterThan(500);
+  });
+});
+
 describe("render-pptx.mjs — exotic node kinds and error isolation", () => {
   const dir = mkdtempSync(join(tmpdir(), "pc-exotic-"));
   const out = join(dir, "exotic.pptx");
