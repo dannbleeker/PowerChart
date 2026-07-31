@@ -869,7 +869,32 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
  * rest are well under. Tunable — the point is to skip the few that can't land,
  * not to trim the deck.
  */
-const DEMO_SHAPE_BUDGET = 90;
+export const DEMO_SHAPE_BUDGET = 90;
+
+/**
+ * Should this chart go on as a picture even though nobody asked?
+ *
+ * Yes on exactly one host, for exactly one reason. PowerPoint on the web has
+ * no resource limits — Microsoft's CPU/memory/crash-tolerance ceilings are
+ * scoped to Windows and Mac and explicitly not to a browser — so nothing
+ * throttles an add-in that asks too much: the tab dies. The densest chart
+ * kinds are far past what it will take as shapes (violin 253, area 176, tile
+ * map 122, waffle 103), and `DEMO_SHAPE_BUDGET` is the number this renderer
+ * has always used to call a chart too dense for this host. It used to skip
+ * those and stamp a placeholder. A picture is strictly better than nothing —
+ * it carries the config tag, so the chart stays re-editable, and Explode
+ * turns it back on a host that can take it.
+ *
+ * Pure and exported so the rule can be tested without a DOM, a canvas or a
+ * host — the three things that make the pane's own paths awkward to pin down.
+ */
+export function wantsAutoPicture(
+  shapes: number,
+  opts: { web: boolean; canPicture: boolean; alreadyPicture: boolean; budget?: number },
+): boolean {
+  if (opts.alreadyPicture || !opts.web || !opts.canPicture) return false;
+  return shapes > (opts.budget ?? DEMO_SHAPE_BUDGET);
+}
 
 /**
  * Draw a bold red banner ACROSS THE TOP of a slide so an incomplete one is

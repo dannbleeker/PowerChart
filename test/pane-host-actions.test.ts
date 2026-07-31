@@ -126,6 +126,7 @@ vi.mock("../src/render/powerpoint", () => ({
   // exercising the shape-by-shape renderer they were written for.
   canInsertSlidesFromBase64: vi.fn(() => host.canInsertFile),
   traceEnvironment: vi.fn(),
+  wantsAutoPicture: vi.fn(() => false),
   // Selection juggling around an in-place redraw. The fake host has no view,
   // so it just runs the body — with `deselected` false, which is the honest
   // answer for a host that cannot move the selection.

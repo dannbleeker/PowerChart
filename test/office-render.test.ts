@@ -15,6 +15,7 @@ import {
   loadChartFromSelection,
   onLateSync,
   READBACK_PAGE,
+  wantsAutoPicture,
   DEMO_SLOT_TAG,
   reconcileDeck,
   snapshotAddedSlides,
@@ -2861,6 +2862,41 @@ describe("a target whose slide is gone is nothing to do, not a crash", () => {
  * The repair pass, against the host fake — `src/core/reconcile.ts` decides
  * what to do, this is the half that talks to PowerPoint and has to survive it.
  */
+describe("charts too dense for the web to draw", () => {
+  const web = { web: true, canPicture: true, alreadyPicture: false };
+
+  it("rasterises a chart past the budget on the web", () => {
+    // Violin is 253 native shapes; area 176; tile map 122; waffle 103. On the
+    // host with no resource limits at all, those are the charts that take the
+    // tab down rather than merely drawing slowly.
+    expect(wantsAutoPicture(253, web)).toBe(true);
+    expect(wantsAutoPicture(91, web)).toBe(true);
+  });
+
+  it("leaves an ordinary chart alone", () => {
+    // Gantt at 31 and Heatmap at 67 have drawn as shapes on the web all along.
+    expect(wantsAutoPicture(31, web)).toBe(false);
+    expect(wantsAutoPicture(67, web)).toBe(false);
+    expect(wantsAutoPicture(90, web)).toBe(false);
+  });
+
+  it("never overrides the user's own choice of picture mode", () => {
+    expect(wantsAutoPicture(253, { ...web, alreadyPicture: true })).toBe(false);
+  });
+
+  it("draws shapes on desktop however dense the chart is", () => {
+    // Desktop has the resource limits the web lacks: Office throttles or
+    // restarts the ADD-IN there rather than letting the client die, so the
+    // native shapes the user actually wants stay the right answer.
+    expect(wantsAutoPicture(253, { ...web, web: false })).toBe(false);
+  });
+
+  it("does not promise a picture a host cannot insert", () => {
+    // Below PowerPointApi 1.8 there is no setImage to call.
+    expect(wantsAutoPicture(253, { ...web, canPicture: false })).toBe(false);
+  });
+});
+
 describe("reading a demo deck back and repairing it", () => {
   /** A slide as a damaged run leaves it: some shapes, maybe a banner, maybe a group. */
   function demoSlide(

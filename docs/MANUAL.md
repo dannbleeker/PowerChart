@@ -446,6 +446,17 @@ is off.
 what the host did to each slide, and the repair pass's verdicts, plus the trace. Attach
 it to a bug report instead of retyping the summary line.
 
+### Very dense charts on the web
+
+A violin is 253 native shapes; an area chart 176, a tile map 122, a waffle 103.
+PowerPoint on the web will not draw those reliably — it is the one host with no
+resource limits of its own, so an add-in that asks too much takes the whole tab
+down rather than being throttled. On the web only, and only past ~90 shapes,
+PowerChart inserts such a chart as a picture and says so. It still carries its
+configuration, so **Edit selected chart** works as usual and **Explode to native
+shapes** turns it back into shapes on a host that can take them. Ticking
+**Insert as picture** yourself always wins; this never overrides your choice.
+
 ### When PowerPoint won't redraw a chart
 
 Updating a chart in place is the heaviest thing the add-in does on the web: every

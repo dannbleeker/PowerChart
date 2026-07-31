@@ -176,6 +176,7 @@ conventions, and every option.
 | Download the preview as SVG or PNG (for email / chat)                      | ✅ (overflow menu; PNG rasterized at 2×)                                                                                                 |
 | Copy a shareable chart link (config in the URL hash)                       | ✅ (reopens the exact chart on the hosted gallery)                                                                                       |
 | Datasheet undo/redo (Ctrl+Z / Ctrl+Y)                                      | ✅                                                                                                                                       |
+| Very dense charts auto-insert as a picture on the web (still editable)     | ✅ (past ~90 shapes; **Explode** turns them back)                                                                                        |
 | Whole deck inserted as one generated .pptx (grouped + tagged in the file)  | ✅ (**Fast path**, on by default; falls back to shape-by-shape when the host can't take it)                                              |
 | Update survives a host that won't redraw (off-screen, slide swap, picture) | ✅ (three fallbacks, least disruptive first)                                                                                             |
 | Demo deck self-repair (duplicate slides, false banners, loose charts)      | ✅ (automatic at the end of every run)                                                                                                   |

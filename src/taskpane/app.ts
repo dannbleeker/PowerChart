@@ -20,6 +20,7 @@ import {
   slideCount,
   snapshotAddedSlides,
   traceEnvironment,
+  wantsAutoPicture,
   listChartsInDeck,
   listChartsInSelection,
   loadChartFromSelection,
@@ -1350,6 +1351,30 @@ function rasterizeScene(scene: Scene): Promise<string> {
  * busy text, and any phase note has already changed it.
  */
 async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: string; warn?: string }> {
+  // A chart nobody asked to rasterize, on the one host that cannot survive
+  // drawing it. The densest kinds are far past what PowerPoint on the web will
+  // take as shapes — violin 253, area 176, tile map 122, waffle 103 — and the
+  // budget below is the same number the demo deck has always used to decide a
+  // chart "too dense for this host". It used to skip those and stamp a
+  // placeholder; drawing a picture is strictly better than not drawing.
+  const shapes = estimateOfficeShapes(scene);
+  if (
+    wantsAutoPicture(shapes, {
+      web: isWebHost(),
+      canPicture: canInsertPicture(),
+      alreadyPicture: cfg.render === "image",
+    })
+  ) {
+    try {
+      return {
+        png: await rasterizeScene(scene),
+        warn: `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw. Inserted as a picture; "Explode to native shapes" turns it back.`,
+      };
+    } catch {
+      // Could not rasterize — fall through and draw the shapes. Slow and
+      // risky beats refusing to insert the user's chart.
+    }
+  }
   if (cfg.render !== "image") return {};
   if (!canInsertPicture()) {
     return {
