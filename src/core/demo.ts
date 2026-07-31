@@ -216,9 +216,39 @@ function buildTitleScene(buildStamp: string, host: string): Scene {
   };
 }
 
-/** Body rows per contents page — deliberately conservative so each page fits
- *  under the ~90 web shape budget even with buildTableScene's row rects/rules. */
+/**
+ * Shape ceiling for the harness's own slides — contents and results.
+ *
+ * NOT the ~90 web shape budget, which these pages already fitted under and
+ * which turned out to be too generous for a slide made almost entirely of
+ * text. On 2026-07-31 the full deck's contents page — 79 shapes, listing all
+ * 37 charts, and explicitly exempted from the budget check so it could never
+ * be skipped — was the second thing a shape-by-shape run drew, and PowerPoint
+ * on the web crashed five seconds in. The twelve-item run's 27-shape contents
+ * page, same path and session, rendered fine.
+ *
+ * 45 sits between those two observations, and below the ~40-shape charts that
+ * have always drawn cleanly. Pages are MEASURED against it rather than
+ * estimated from a row count, because a row's cost depends on what is in it.
+ */
+const HARNESS_PAGE_SHAPES = 45;
+
+/** Upper bound on rows tried per page before measuring shrinks it. */
 const INDEX_ROWS_PER_PAGE = 18;
+
+/**
+ * Largest page size, in items, whose built scene stays within the budget.
+ *
+ * Linear from the top down: the counts involved are small, the builder is
+ * pure, and a measured answer cannot drift from the thing it measures the way
+ * a hand-tuned row count did.
+ */
+function fitPageSize(max: number, build: (size: number) => Scene): number {
+  for (let size = max; size > 1; size--) {
+    if (estimateOfficeShapes(build(size)) <= HARNESS_PAGE_SHAPES) return size;
+  }
+  return 1;
+}
 
 /**
  * A contents table listing every chart with its shape count — doubles as the
@@ -229,9 +259,8 @@ const INDEX_ROWS_PER_PAGE = 18;
  */
 function buildIndexScenes(charts: DemoItem[]): Scene[] {
   if (charts.length === 0) return [];
-  const pages: Scene[] = [];
-  for (let start = 0; start < charts.length; start += INDEX_ROWS_PER_PAGE * 2) {
-    const slice = charts.slice(start, start + INDEX_ROWS_PER_PAGE * 2);
+  const page = (start: number, size: number): Scene => {
+    const slice = charts.slice(start, start + size);
     const per = Math.ceil(slice.length / 2);
     const rows: string[][] = [["Chart", "Shapes", "Chart", "Shapes"]];
     for (let i = 0; i < per; i++) {
@@ -244,8 +273,11 @@ function buildIndexScenes(charts: DemoItem[]): Scene[] {
         right ? String(estimateOfficeShapes(right.scene)) : "",
       ]);
     }
-    pages.push(buildTableScene(rows, 840));
-  }
+    return buildTableScene(rows, 840);
+  };
+  const size = fitPageSize(INDEX_ROWS_PER_PAGE * 2, (n) => page(0, n));
+  const pages: Scene[] = [];
+  for (let start = 0; start < charts.length; start += size) pages.push(page(start, size));
   return pages;
 }
 
@@ -328,8 +360,7 @@ export interface ResultsSummary {
   totalMs: number;
 }
 
-/** Row cap per results page — 4 nodes per row × 20 rows = 80, safely under
- *  the ~90 shape budget so each page still lands as a real chart. */
+/** Upper bound on failure rows per results page before measuring shrinks it. */
 const RESULTS_ROWS_PER_PAGE = 20;
 
 /**
@@ -342,11 +373,16 @@ const RESULTS_ROWS_PER_PAGE = 20;
  */
 export function buildResultsScenes(rows: ResultRow[], summary: ResultsSummary): Scene[] {
   const failures = rows.filter((r) => r.status !== "rendered");
-  if (failures.length <= RESULTS_ROWS_PER_PAGE) return [buildResultsScene(rows, summary)];
+  if (failures.length && estimateOfficeShapes(buildResultsScene(rows, summary)) <= HARNESS_PAGE_SHAPES)
+    return [buildResultsScene(rows, summary)];
+  if (!failures.length) return [buildResultsScene(rows, summary)];
+  const perPage = fitPageSize(Math.min(RESULTS_ROWS_PER_PAGE, failures.length), (n) =>
+    buildResultsScene(failures.slice(0, n), summary, { page: 1, totalPages: 9 }),
+  );
   const pages: Scene[] = [];
-  const totalPages = Math.ceil(failures.length / RESULTS_ROWS_PER_PAGE);
+  const totalPages = Math.ceil(failures.length / perPage);
   for (let p = 0; p < totalPages; p++) {
-    const slice = failures.slice(p * RESULTS_ROWS_PER_PAGE, (p + 1) * RESULTS_ROWS_PER_PAGE);
+    const slice = failures.slice(p * perPage, (p + 1) * perPage);
     // Reconstruct a ResultRow[] the single-page builder can consume — pass ONLY
     // the failures for this page (buildResultsScene filters by status).
     pages.push(buildResultsScene(slice, { ...summary }, { page: p + 1, totalPages }));

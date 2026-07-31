@@ -1896,19 +1896,54 @@ function demoExpectation(snapshots: SlideSnapshot[]): {
 async function repairDeckSpan(
   expected: ExpectedItem[],
   tagFor: (slot: number) => string | undefined,
-): Promise<ReconcileOutcome | null> {
-  const count = await slideCount();
-  const snapshots = await snapshotAddedSlides(0, count);
+): Promise<VerifyResult> {
+  let snapshots: SlideSnapshot[];
+  try {
+    const count = await slideCount();
+    snapshots = await snapshotAddedSlides(0, count);
+  } catch (err) {
+    return { kind: "error", why: errorText(err) };
+  }
   const tagged = snapshots.filter((s) => s.slot !== null);
-  if (!tagged.length) return null;
+  // No slot tag anywhere means the read found slides but could not identify
+  // one of them. Saying "verified" would be a lie and saying nothing is how a
+  // whole verification pass went missing from a run report without anyone
+  // noticing — so name it.
+  if (!tagged.length) {
+    return {
+      kind: "unidentified",
+      why: snapshots.length
+        ? `read ${snapshots.length} slide(s), none carrying a PowerChart slot tag`
+        : "read no slides at all",
+    };
+  }
   const first = Math.min(...tagged.map((s) => s.index));
   const last = Math.max(...tagged.map((s) => s.index));
   const inSpan = snapshots.filter((s) => s.index >= first && s.index <= last);
   const plan = planReconcile(inSpan, expected, { dropOrphanBlanks: true });
-  if (!plan.actions.length)
-    return { snapshots: inSpan, plan, applied: { unstamped: 0, regrouped: 0, deleted: 0 }, refused: 0 };
-  return applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, inSpan);
+  try {
+    if (!plan.actions.length)
+      return {
+        kind: "ok",
+        outcome: { snapshots: inSpan, plan, applied: { unstamped: 0, regrouped: 0, deleted: 0 }, refused: 0 },
+      };
+    return { kind: "ok", outcome: await applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, inSpan) };
+  } catch (err) {
+    return { kind: "error", why: errorText(err) };
+  }
 }
+
+/**
+ * Why a verification pass produced no verdict, when it produced none.
+ *
+ * A `null` here used to mean three different things — nothing tagged, a host
+ * that would not answer, and a repair that threw — and the caller could tell
+ * them apart from none of them. The first fast-path run reported a raw slide
+ * count instead of a settled verdict and gave no hint why, which is precisely
+ * the failure mode this whole line of work exists to eliminate.
+ */
+type VerifyResult =
+  { kind: "ok"; outcome: ReconcileOutcome } | { kind: "unidentified"; why: string } | { kind: "error"; why: string };
 
 async function doRepairDeck() {
   const count = await slideCount();
@@ -2058,13 +2093,15 @@ async function insertDemoDeckAsFile(
   // its own grouping and tags, so anything missing here is the host's doing.
   // Located by slot tag, not by position — where the host puts the slides is
   // its business, and on the first real run it put them at the FRONT.
-  const outcome = await repairDeckSpan(expected, (slot) => items[slot]?.configJson).catch(() => undefined);
+  const verified = await repairDeckSpan(expected, (slot) => items[slot]?.configJson);
+  const outcome = verified.kind === "ok" ? verified.outcome : undefined;
 
   let text = outcome
     ? `Inserted as one file in ${secs}s${smoke ? " (smoke subset)" : ""} — ${describeReconcile(outcome.plan)}.`
     : `Inserted ${added} of ${items.length} slides as one file in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
+  if (verified.kind !== "ok") text += ` (Not verified: ${verified.why}.)`;
   if (added < items.length) text += ` ⚠ the host took ${added} of ${items.length} slides.`;
-  const clean = added >= items.length && (!outcome || outcome.plan.summary.lost === 0);
+  const clean = added >= items.length && !!outcome && outcome.plan.summary.lost === 0;
   return { text, status: clean ? "ok" : "err" };
 }
 
@@ -2217,6 +2254,28 @@ function wireInsert() {
     // the action has already failed — the note is stale by then, but the
     // information is what a bug report needs.
     onLateSync((msg) => note("Host answered late — {message}", "err", { message: msg }));
+    // Turning the fast path OFF on the web is a decision worth flagging. At
+    // volume the shape-by-shape path there does not merely stall: the full
+    // 37-item deck took the whole web client down five seconds in on
+    // 2026-07-31 — "Sorry, we ran into a problem. Please try again." The
+    // twelve-item subset survived, so this is a warning and not a block.
+    const fileToggle = $("demo-file") as HTMLInputElement | null;
+    fileToggle?.addEventListener("change", () => {
+      if (fileToggle.checked || !canInsertSlidesFromBase64()) return;
+      const web = (() => {
+        try {
+          return Office.context?.diagnostics?.platform === Office.PlatformType.OfficeOnline;
+        } catch {
+          return false;
+        }
+      })();
+      if (web) {
+        note(
+          "Heads up: the full deck drawn shape by shape has crashed PowerPoint on the web. The smoke subset survives it; the fast path handles both.",
+          "err",
+        );
+      }
+    });
     const repairBtn = $("demo-repair") as HTMLButtonElement;
     repairBtn.disabled = false;
     repairBtn.addEventListener("click", guard(doRepairDeck));
@@ -2241,10 +2300,6 @@ function wireInsert() {
         const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        // Title / Contents / Results are text scenes — their shape count is
-        // cheap on the host, but a large deck's contents pushes them past the
-        // ~90 budget. Bypass the too-dense check for these; the render's
-        // batching still keeps each sync inside the host's swallow limit.
         // Fast path first: one generated .pptx, one host call. Falls through
         // to the shape-by-shape renderer when the host cannot take it, or when
         // the attempt landed nothing — never after a partial insert, which
@@ -2258,15 +2313,20 @@ function wireInsert() {
           }
           note("The host would not take a generated deck — drawing it shape by shape instead.", "busy");
         }
-        const isHarnessSlot = (t: string): boolean =>
-          t === "Title" || t.startsWith("Contents") || t.startsWith("Results");
+        // NO budget exemption for the harness's own slides any more. It existed
+        // because a large deck's contents page ran past the limit, and it is
+        // what let a 79-shape text slide through as the SECOND thing a run
+        // drew — five seconds before PowerPoint on the web crashed on
+        // 2026-07-31. `buildIndexScenes` and `buildResultsScenes` now measure
+        // their pages and split them instead, so there is nothing left to
+        // exempt: a harness page that somehow still runs over is a page worth
+        // skipping, exactly like any other.
         const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, reconcile, totalMs } =
           await insertDemoDeck(
             items.map((i) => ({
               scene: i.scene,
               tagData: i.configJson,
               title: i.title,
-              bypassBudget: isHarnessSlot(i.title),
             })),
             (done, total) => {
               note("Inserting demo slides… {done} of {total}", "busy", { done, total });
@@ -2323,8 +2383,17 @@ function wireInsert() {
         if (reconcile) {
           if (missing.length) msg += ` Never landed: ${missing.join(", ")}.`;
           const { deleted, unstamped, regrouped } = reconcile.applied;
+          // Deletions are NOT all duplicates — most are usually empty slides a
+          // lost add left behind. Calling nine removals "9 duplicate slide(s)"
+          // in the same breath as the plan's own "1 duplicate slide removed ·
+          // 8 orphan slides" made the run contradict itself in one sentence.
+          const dupPlanned = reconcile.plan.actions.filter((a) => a.kind === "delete" && a.slot !== null).length;
+          const emptyPlanned = reconcile.plan.actions.filter((a) => a.kind === "delete" && a.slot === null).length;
           if (deleted || unstamped || regrouped)
-            msg += ` Repaired ${deleted} duplicate slide(s), ${unstamped} false banner(s), ${regrouped} loose chart(s).`;
+            msg +=
+              ` Repaired: removed ${deleted} slide(s)` +
+              (deleted ? ` (${dupPlanned} duplicate, ${emptyPlanned} empty)` : "") +
+              `, cleared ${unstamped} false banner(s), re-grouped ${regrouped} chart(s).`;
           if (reconcile.refused) msg += ` ⚠ ${reconcile.refused} repair step(s) the host refused.`;
         } else if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (recovered) msg += ` ${recovered} recovered on retry.`;
@@ -2410,7 +2479,6 @@ function wireInsert() {
               {
                 scene,
                 title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
-                bypassBudget: true,
               },
             ]);
             resultsLanded += 1;

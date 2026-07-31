@@ -33,15 +33,20 @@ describe("demo deck", () => {
 
   it("opens with a title slide and a contents/manifest table", () => {
     expect(items[0].title).toBe("Title");
-    expect(items[1].title).toBe("Contents");
+    expect(items[1].title).toMatch(/^Contents/);
     // Title slide names the deck.
     expect(items[0].scene.nodes.some((n) => n.kind === "text" && /chart gallery/i.test(n.text))).toBe(true);
-    // The contents table must itself stay UNDER the ~90 web shape budget, or the
-    // manifest would be the first thing skipped. It lists ~35 charts in two pairs.
-    expect(items[1].scene.nodes.length).toBeLessThan(90);
-    const idxText = items[1].scene.nodes.filter((n) => n.kind === "text").map((n) => n.text);
+    // Every contents page stays within the harness page budget. Not the ~90
+    // web budget it used to fit: at 79 shapes the full deck's single contents
+    // page crashed PowerPoint on the web, while the 27-shape one did not.
+    const contents = items.filter((i) => /^Contents/.test(i.title));
+    for (const page of contents) expect(estimateOfficeShapes(page.scene)).toBeLessThanOrEqual(45);
+    const idxText = contents.flatMap((p) => p.scene.nodes.filter((n) => n.kind === "text").map((n) => n.text));
     expect(idxText).toContain("Shapes");
+    // Every chart is listed somewhere across the pages — pagination drops none.
     expect(idxText.some((t) => /Doughnut/.test(t))).toBe(true);
+    expect(idxText.some((t) => /Stacked/.test(t))).toBe(true);
+    expect(idxText.some((t) => /Table/.test(t))).toBe(true);
     // Neither structural slide is a re-editable chart.
     expect(items[0].configJson).toBeUndefined();
     expect(items[1].configJson).toBeUndefined();
@@ -151,7 +156,9 @@ describe("results slide", () => {
     }));
     const pages = buildResultsScenes(rows, summary({ items: 32, rendered: 0, skipped: 0, failed: 32, lost: 0 }));
     expect(pages.length).toBeGreaterThan(1);
-    for (const p of pages) expect(estimateOfficeShapes(p)).toBeLessThan(90);
+    // Against the harness page budget, not the ~90 web one — see
+    // HARNESS_PAGE_SHAPES for why a text-only slide needs the tighter number.
+    for (const p of pages) expect(estimateOfficeShapes(p)).toBeLessThanOrEqual(45);
     // Every failure appears on some page — no rows dropped by the split.
     const titles = pages.flatMap((p) => p.nodes.filter((n) => n.kind === "text").map((n) => n.text));
     for (let i = 0; i < 32; i++) expect(titles).toContain(`Chart ${i}`);

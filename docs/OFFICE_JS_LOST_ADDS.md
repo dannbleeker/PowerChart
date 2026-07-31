@@ -77,7 +77,30 @@ gives the abandoned call 5 seconds to report back; the observed commits
 arrive far later than that, so every readback taken during the run is a
 snapshot of a host still mid-flight.
 
-Taken together, the three runs show at least three related failure modes
+### Run 4 — the client itself, 2026-07-31
+
+With the add-in's one-call insert path *disabled* — the **full 37-item
+deck**, drawn shape by shape as in Runs 1-3 — PowerPoint on the web did not
+stall. It **crashed**, roughly five seconds in:
+
+> Microsoft PowerPoint — Sorry, we ran into a problem. Please try again.
+> [Refresh]
+
+The twelve-item smoke subset on the same path, same session, did start
+rendering — so the crash is a function of the volume of queued work, not of
+the API being touched at all. It is the same load-dependence Run 1 records
+for silently dropped adds, one step further along: enough of it and the
+client does not lose an add, it goes down.
+
+The same decks inserted instead as a single generated `.pptx` through
+`insertSlidesFromBase64`, on the same host in the same session, land in
+**4.1 seconds** for the twelve and **6.4 seconds** for all thirty-seven,
+with every chart grouped and tagged and nothing lost. That contrast is the
+sharpest evidence in this document: the shape-by-shape API surface is not
+merely slow on the web client, at volume it is capable of taking the client
+down, while the file-insert path on the identical host and deck is not.
+
+Taken together, the four runs show at least three related failure modes
 under the same root cause (adds and commits not landing where/when the
 caller expects them to): outright silent loss (Run 1), off-by-one placement
 (Run 2), and commit-after-abandonment producing duplicate slides plus false
