@@ -411,9 +411,7 @@ as native shapes in your PowerPoint. Each chart stays editable (click it and
 **Edit selected chart**); delete the slides when you're done. The deck opens
 with a title slide stamping the build and host, and closes with a results slide
 summarising what rendered, what the host skipped or failed, and how long the run
-took — so an exported PDF is a self-contained regression record. Tick **Smoke
-test (10 slides)** first for a fast pass over one representative chart per family
-instead of the full deck.
+took — so an exported PDF is a self-contained regression record.
 
 **Fast path (one file insert)**, on by default, builds the whole deck as a
 .pptx in the pane and hands it to PowerPoint in a single call, instead of

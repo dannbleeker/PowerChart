@@ -15,10 +15,6 @@ plus a table of only the skipped/failed items. So an exported PDF is a complete,
 comparable record of one run without opening the console: which build, which host,
 what failed, how long it took.
 
-Tick **Smoke test (10 slides)** in the pane for a fast pass over one
-representative chart per family (`demoItems({ smoke: true })`) instead of the
-full deck.
-
 A stalled slide is NOT retried. It was, once, and that retry is where every
 duplicate slide in this project came from: the readback that judged the first
 attempt "short" ran while the host was still committing, so it was routinely

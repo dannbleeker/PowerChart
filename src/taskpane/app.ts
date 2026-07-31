@@ -1913,7 +1913,6 @@ let lastRunLog: RunLog | undefined;
 interface RunLog {
   build: string;
   host: string;
-  smoke: boolean;
   totalMs: number;
   items: {
     title: string;
@@ -2116,7 +2115,6 @@ async function updateChartResilient(
  */
 async function insertDemoDeckAsFile(
   items: { scene: Scene; title: string; configJson?: string }[],
-  smoke: boolean,
 ): Promise<{ text: string; status: "ok" | "err"; added: number; totalMs: number; verified: VerifyResult } | null> {
   const t0 = Date.now();
   const before = await slideCount();
@@ -2186,8 +2184,8 @@ async function insertDemoDeckAsFile(
   const outcome = verified.kind === "ok" ? verified.outcome : undefined;
 
   let text = outcome
-    ? `Inserted as one file in ${secs}s${smoke ? " (smoke subset)" : ""} — ${describeReconcile(outcome.plan)}.`
-    : `Inserted ${added} of ${items.length} slides as one file in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
+    ? `Inserted as one file in ${secs}s — ${describeReconcile(outcome.plan)}.`
+    : `Inserted ${added} of ${items.length} slides as one file in ${secs}s.`;
   if (verified.kind !== "ok") text += ` (Not verified: ${verified.why}.)`;
   // A slide the readback could not see puts its item in the `lost` column for
   // want of evidence. Saying so is the difference between "the host dropped
@@ -2400,7 +2398,7 @@ function wireInsert() {
       if (fileToggle.checked || !canInsertSlidesFromBase64()) return;
       if (isWebHost()) {
         note(
-          "Heads up: the full deck drawn shape by shape has crashed PowerPoint on the web. The smoke subset survives it; the fast path handles both.",
+          "Heads up: the full deck drawn shape by shape has crashed PowerPoint on the web. The fast path handles it in seconds.",
           "err",
         );
       }
@@ -2440,8 +2438,7 @@ function wireInsert() {
       guard(async () => {
         const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
         const host = describeHost();
-        const smoke = ($("demo-smoke") as HTMLInputElement | null)?.checked ?? false;
-        const items = demoItems({ buildStamp, host, smoke });
+        const items = demoItems({ buildStamp, host });
         // Drop the previous run's log before this one starts. It used to
         // survive, so a run that produced no log of its own left "Download run
         // log" enabled and handing out an OLDER run's file, with nothing on
@@ -2456,7 +2453,7 @@ function wireInsert() {
         // would draw the whole deck again on top of what is already there.
         const useFile = ($("demo-file") as HTMLInputElement | null)?.checked ?? true;
         if (useFile && canInsertSlidesFromBase64()) {
-          const outcome = await insertDemoDeckAsFile(items, smoke);
+          const outcome = await insertDemoDeckAsFile(items);
           if (outcome) {
             // A log for THIS path too. The fast path is the default — the
             // checkbox ships checked and every current host advertises
@@ -2468,7 +2465,6 @@ function wireInsert() {
             lastRunLog = {
               build: buildStamp,
               host,
-              smoke,
               totalMs: outcome.totalMs,
               items: items.map((it, i) => {
                 const v = verdicts.find((x) => x.slot === i);
@@ -2591,8 +2587,8 @@ function wireInsert() {
         const verdicts = reconcile?.plan.verdicts ?? [];
         const missing = verdicts.filter((v) => v.status === "lost" || v.status === "empty").map((v) => v.title);
         let msg = reconcile
-          ? `Deck settled: ${describeReconcile(reconcile.plan)} — in ${secs}s${smoke ? " (smoke subset)" : ""}.`
-          : `Inserted ${rendered} of ${items.length} in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
+          ? `Deck settled: ${describeReconcile(reconcile.plan)} — in ${secs}s.`
+          : `Inserted ${rendered} of ${items.length} in ${secs}s.`;
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (reconcile) {
           if (missing.length) msg += ` Never landed: ${missing.join(", ")}.`;
@@ -2708,7 +2704,6 @@ function wireInsert() {
         lastRunLog = {
           build: buildStamp,
           host,
-          smoke,
           totalMs,
           items: results.map((r, i) => ({
             title: items[i].title,

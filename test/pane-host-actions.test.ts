@@ -971,7 +971,7 @@ describe("demo-insert one-shot deck insert", () => {
   });
 
   it("says WHY when it could not verify, instead of quietly reporting a raw count", async () => {
-    // The smoke run reported "Inserted 12 of 12 slides as one file" — the
+    // A real run reported "Inserted 12 of 12 slides as one file" — the
     // fallback wording — because the verification pass returned null and the
     // pane shrugged. Three different failures produced that same null and the
     // message named none of them.
