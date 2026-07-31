@@ -2300,10 +2300,6 @@ function wireInsert() {
         const items = demoItems({ buildStamp, host, smoke });
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
-        // Title / Contents / Results are text scenes — their shape count is
-        // cheap on the host, but a large deck's contents pushes them past the
-        // ~90 budget. Bypass the too-dense check for these; the render's
-        // batching still keeps each sync inside the host's swallow limit.
         // Fast path first: one generated .pptx, one host call. Falls through
         // to the shape-by-shape renderer when the host cannot take it, or when
         // the attempt landed nothing — never after a partial insert, which
@@ -2317,15 +2313,20 @@ function wireInsert() {
           }
           note("The host would not take a generated deck — drawing it shape by shape instead.", "busy");
         }
-        const isHarnessSlot = (t: string): boolean =>
-          t === "Title" || t.startsWith("Contents") || t.startsWith("Results");
+        // NO budget exemption for the harness's own slides any more. It existed
+        // because a large deck's contents page ran past the limit, and it is
+        // what let a 79-shape text slide through as the SECOND thing a run
+        // drew — five seconds before PowerPoint on the web crashed on
+        // 2026-07-31. `buildIndexScenes` and `buildResultsScenes` now measure
+        // their pages and split them instead, so there is nothing left to
+        // exempt: a harness page that somehow still runs over is a page worth
+        // skipping, exactly like any other.
         const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, reconcile, totalMs } =
           await insertDemoDeck(
             items.map((i) => ({
               scene: i.scene,
               tagData: i.configJson,
               title: i.title,
-              bypassBudget: isHarnessSlot(i.title),
             })),
             (done, total) => {
               note("Inserting demo slides… {done} of {total}", "busy", { done, total });
@@ -2478,7 +2479,6 @@ function wireInsert() {
               {
                 scene,
                 title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
-                bypassBudget: true,
               },
             ]);
             resultsLanded += 1;
