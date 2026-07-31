@@ -1613,10 +1613,14 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     (item) => stalled.push(item.scene.title || "an untitled chart"),
   );
   if (stalled.length) {
-    note("Same scale: PowerPoint would not redraw {n} chart(s) — {which}. They are now empty; undo (Ctrl+Z) restores them.", "err", {
-      n: stalled.length,
-      which: stalled.join(", "),
-    });
+    note(
+      "Same scale: PowerPoint would not redraw {n} chart(s) — {which}. They are now empty; undo (Ctrl+Z) restores them.",
+      "err",
+      {
+        n: stalled.length,
+        which: stalled.join(", "),
+      },
+    );
     return;
   }
   note("Same scale applied to {n} charts (max {max}).", "ok", { n: parsed.length, max });
