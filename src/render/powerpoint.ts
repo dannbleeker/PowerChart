@@ -1161,6 +1161,55 @@ export async function slideCount(): Promise<number> {
  * turn a "failed" into a "rendered", only to lift a "rendered" that stayed
  * ungrouped into a re-editable one.
  */
+/**
+ * Write the config tag onto a slide's single PowerChart object.
+ *
+ * The other half of `rescueGroupAndTag`, for the case where there is nothing
+ * to group: a degraded picture, or a group whose tagging sync was dropped
+ * while the shapes themselves committed. Both are ONE shape named
+ * `PowerChart` carrying no `POWERCHART_CONFIG` — visibly a chart, and not
+ * re-editable, with no repair that could reach them until this existed.
+ *
+ * Needs only PowerPointApi 1.3 (shape tags), not 1.8 — there is no grouping
+ * here, so a host that cannot group can still have its charts made editable.
+ */
+async function retagSlideChart(
+  slideIndex: number,
+  tagData: string | undefined,
+  origin: { left: number; top: number },
+): Promise<boolean> {
+  if (!supports("1.3") || !tagData) return false;
+  try {
+    return await PowerPoint.run(async (context) => {
+      const shapes = context.presentation.slides.getItemAt(slideIndex).shapes;
+      shapes.load("items/name");
+      await context.sync();
+      // The chart object, never the banner: tagging the NOT COMPLETE stripe
+      // would make the stripe the editable "chart".
+      const target = shapes.items.find((sh) => (sh as unknown as { name?: string }).name === GROUP_NAME) as
+        PowerPoint.Shape | undefined;
+      if (!target) return false;
+      target.tags.add(CHART_TAG, tagData);
+      target.load("left,top");
+      try {
+        await context.sync();
+      } catch {
+        return false;
+      }
+      target.tags.add(CHART_ORIGIN_TAG, JSON.stringify([origin.left, origin.top, target.left, target.top]));
+      try {
+        await context.sync();
+      } catch {
+        /* origin tag didn't land — the chart is re-editable either way, and
+         * drag tracking degrades to updating without an anchor. */
+      }
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function rescueGroupAndTag(
   slideIndex: number,
   tagData: string | undefined,
@@ -1414,7 +1463,21 @@ async function runDemoDeck(
   let lostAdsSeen = 0;
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
-    const tooDense = !items[i].bypassBudget && shapeCount > DEMO_SHAPE_BUDGET;
+    // Once the run has degraded, every remaining item goes on as a picture:
+    // ONE shape, whatever the chart's native count. Asked for first, because
+    // whether we have a picture is what decides the density question below.
+    const degradedPicture = degradedAt !== undefined ? await runOpts.pictureFor?.(i).catch(() => undefined) : undefined;
+    // The budget exists to stop a wedge/polygon flood timing the host out. A
+    // picture is not a flood — it is one shape — so a run that has already
+    // degraded must not still be skipping its densest charts.
+    //
+    // It did. A real 38-item run degraded at item 2 and then skipped and
+    // stamped Area (176), Tile map (122), Waffle (103), Sunburst (101),
+    // Violin (253) and Smoothed line (101): six charts drawn as nothing,
+    // while the other thirty went on as one-shape pictures in ~1s each.
+    // Those six are precisely the charts picture mode exists for, and they
+    // were the six it refused.
+    const tooDense = !items[i].bypassBudget && !degradedPicture && shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
     let grouped = false;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
@@ -1432,11 +1495,9 @@ async function runDemoDeck(
     // written at creation so the reconcile pass can pair a slide back to the
     // item it was drawn for however the deck ends up ordered.
     const slotTag = JSON.stringify({ i, title: items[i].title ?? null, run: runId });
-    // Once the run has degraded, every remaining item goes on as a picture:
-    // one shape per slide instead of forty. The chart stays re-editable — the
-    // config tag rides on the picture exactly as it does on a group — and
-    // "Explode to native shapes" turns it back when the host is willing.
-    const degradedPicture = degradedAt !== undefined ? await runOpts.pictureFor?.(i).catch(() => undefined) : undefined;
+    // The chart stays re-editable — the config tag rides on the picture
+    // exactly as it does on a group — and "Explode to native shapes" turns it
+    // back when the host is willing.
     const itemWithTag = { ...items[i], slotTag, pictureBase64: degradedPicture };
     try {
       ({ created, grouped } = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout));
@@ -2023,6 +2084,9 @@ export async function applyReconcilePlan(
       else refused++;
     } else if (action.kind === "regroup") {
       if (await rescueGroupAndTag(action.index, tagFor(action.slot), origin)) applied.regrouped++;
+      else refused++;
+    } else if (action.kind === "retag") {
+      if (await retagSlideChart(action.index, tagFor(action.slot), origin)) applied.regrouped++;
       else refused++;
     } else {
       // Deletes are checked against the snapshot that authorised them. The
@@ -2766,8 +2830,18 @@ async function groupAndTagAll(
         );
       }
       await context.sync();
-    } catch {
-      /* tags unavailable — charts are inserted but not re-editable */
+    } catch (err) {
+      // The charts are on the slide but carry no config, so they are not
+      // re-editable — and this used to be entirely silent, which is why a real
+      // run shipped 19 untagged charts with nothing in the log to say when or
+      // why. No retry here on purpose: a retry against a host that just
+      // dropped a sync is how this project got its duplicate slides. The
+      // settled repair pass re-reads the deck and plans a `retag`, which is
+      // the same job done with evidence.
+      trace("group", "tagging failed — charts are not re-editable until repaired", {
+        charts: taggable.length,
+        error: errorText(err),
+      });
     }
   }
   return items.map((_, i) => ({

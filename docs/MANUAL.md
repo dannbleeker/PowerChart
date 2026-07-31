@@ -430,7 +430,9 @@ add-in has given up waiting for it — so the chart is on the slide, but the
 "NOT COMPLETE" banner stamped while it still looked empty says otherwise. The
 closing pass compares each slide against the item it was drawn for, deletes
 duplicate slides, clears banners that contradict the shapes underneath them,
-and re-groups charts that landed loose so they are editable again. The run's
+and restores the config tag on charts that lost it — re-grouping the ones that
+landed as loose shapes, and re-tagging the ones that are already a single
+object — so every chart is editable again. The run's
 summary is written from what the deck actually holds, not from what the add-in
 believed while the host was still catching up.
 

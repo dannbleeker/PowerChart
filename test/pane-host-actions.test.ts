@@ -40,6 +40,11 @@ const host = vi.hoisted(() => ({
   agendaSlides: [] as unknown[][],
   demoRuns: 0,
   demoDeckCalls: [] as unknown[][],
+  /** The runOpts each insertDemoDeck call was given, in order. */
+  demoDeckOpts: [] as ({ reconcile?: boolean } | undefined)[],
+  /** insertDemoDeck awaits this on the Nth call — lets a test act mid-run. */
+  demoDeckGateOn: 0,
+  demoDeckGate: null as null | Promise<void>,
   demoDeckPageFailures: new Set<number>(),
   demoDeckStatusOverride: null as null | "rendered" | "failed" | "skipped",
   /** What canInsertPicture() reports — false models a host below PowerPointApi 1.8. */
@@ -111,27 +116,35 @@ vi.mock("../src/render/powerpoint", () => ({
   insertAgendaSlides: vi.fn(async (scenes: unknown[][]) => {
     host.agendaSlides.push(scenes);
   }),
-  insertDemoDeck: vi.fn(async (items: { title?: string; scene: { nodes: unknown[] } }[]) => {
-    host.demoRuns++;
-    const call = host.demoRuns;
-    host.demoDeckCalls.push(items);
-    if (host.demoDeckPageFailures.has(call)) throw new Error(`page ${call} refused`);
-    // Fabricated report — each item counted as failed so the pane's results
-    // path has rows to render. Callers that need a specific status set
-    // demoDeckStatusOverride.
-    const status = host.demoDeckStatusOverride ?? "failed";
-    const results = items.map(() => ({ created: 5, status, ms: 100 }));
-    return {
-      results,
-      slidesAdded: items.length,
-      addsIssued: items.length,
-      blankSlides: [],
-      blankItems: [],
-      blanksRead: true,
-      reconcile: host.demoReconcile,
-      totalMs: items.length * 100,
-    };
-  }),
+  insertDemoDeck: vi.fn(
+    async (
+      items: { title?: string; scene: { nodes: unknown[] } }[],
+      _onProgress?: unknown,
+      runOpts?: { reconcile?: boolean },
+    ) => {
+      host.demoRuns++;
+      const call = host.demoRuns;
+      host.demoDeckCalls.push(items);
+      host.demoDeckOpts.push(runOpts);
+      if (host.demoDeckGate && call === host.demoDeckGateOn) await host.demoDeckGate;
+      if (host.demoDeckPageFailures.has(call)) throw new Error(`page ${call} refused`);
+      // Fabricated report — each item counted as failed so the pane's results
+      // path has rows to render. Callers that need a specific status set
+      // demoDeckStatusOverride.
+      const status = host.demoDeckStatusOverride ?? "failed";
+      const results = items.map(() => ({ created: 5, status, ms: 100 }));
+      return {
+        results,
+        slidesAdded: items.length,
+        addsIssued: items.length,
+        blankSlides: [],
+        blankItems: [],
+        blanksRead: true,
+        reconcile: host.demoReconcile,
+        totalMs: items.length * 100,
+      };
+    },
+  ),
   loadThemePalette: vi.fn(async () => null),
   onLateSync: vi.fn(),
   errorText: (e: unknown) => String(e),
@@ -203,6 +216,9 @@ async function bootHostPane() {
   host.agendaSlides = [];
   host.demoRuns = 0;
   host.demoDeckCalls = [];
+  host.demoDeckOpts = [];
+  host.demoDeckGate = null;
+  host.demoDeckGateOn = 0;
   host.demoDeckPageFailures = new Set();
   host.demoDeckStatusOverride = null;
   host.canInsertFile = false;
@@ -724,6 +740,37 @@ describe("demo-insert results pages", () => {
     // The pane's note reflects that some pages landed and some did not.
     const noteText = $("host-note").textContent ?? "";
     expect(noteText).toMatch(/results page/i);
+  });
+
+  it("reconciles each results page, so a half-landed one cannot be orphaned", async () => {
+    // The results insert runs at the worst possible moment — right after a run
+    // that has just finished exhausting the host — and used to get none of the
+    // run's own protections. A page whose add landed but whose shapes did not
+    // left a stamped, untagged slide at the END of the deck that nothing ever
+    // cleaned: the main run's repair had already finished, and its range
+    // stopped short of that slide. A real 38-item web run ended exactly so.
+    $("demo-insert").click();
+    await settle();
+    const resultsOpts = host.demoDeckOpts.slice(1); // drop the main deck call
+    expect(resultsOpts.length).toBeGreaterThan(0);
+    for (const o of resultsOpts) expect(o?.reconcile).toBe(true);
+  });
+
+  it("writes the run log after the results pages, not before them", async () => {
+    // Taken before, the log's trace ended at the repair read — so when a
+    // results page then failed, the file said "(results slide not added)" with
+    // nothing in it about why. The log has to outlast the run it describes.
+    let release!: () => void;
+    host.demoDeckGate = new Promise<void>((r) => (release = r));
+    host.demoDeckGateOn = 2; // the first results page
+    $("demo-insert").click();
+    await settle();
+    // Mid-run, held inside the results insert: no log yet.
+    expect(($("demo-log") as HTMLButtonElement).disabled).toBe(true);
+    release();
+    host.demoDeckGate = null;
+    await settle();
+    expect(($("demo-log") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("all results pages land ⇒ no 'results slide not added' warning", async () => {

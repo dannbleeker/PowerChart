@@ -17,6 +17,7 @@ import {
   READBACK_PAGE,
   wantsAutoPicture,
   DEMO_SLOT_TAG,
+  DEMO_SHAPE_BUDGET,
   applyReconcilePlan,
   readAddedSlides,
   lastLateSyncOwner,
@@ -31,6 +32,7 @@ import {
 import { setTracing, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
+import { estimateOfficeShapes } from "../src/core/scene";
 import { sampleConfig } from "../src/core/samples";
 import { buildAgendaScene } from "../src/core/agenda";
 import type { ChartConfig, MarkerSymbol } from "../src/core/types";
@@ -2692,10 +2694,23 @@ describe("reading a demo deck back and repairing it", () => {
       stamped?: boolean;
       tagged?: boolean;
       grouped?: boolean;
+      /**
+       * A degraded picture: ONE shape named PowerChart that is NOT a group.
+       * The readback calls it `grouped` (it matches the name) but cannot count
+       * children, so the slide comes back unmeasured — exactly the state a run
+       * that fell back to pictures leaves behind.
+       */
+      picture?: boolean;
     },
   ): FakeSlide {
     const slide = makeSlide(id);
     if (opts.slot) slide.tags.add(DEMO_SLOT_TAG, JSON.stringify(opts.slot));
+    if (opts.picture) {
+      const pic = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 100, height: 100 });
+      pic.name = "PowerChart";
+      if (opts.tagged) pic.tags.add(CHART_TAG, `{"kind":"line"}`);
+      return slide;
+    }
     const parts: FakeShape[] = [];
     for (let i = 0; i < (opts.shapes ?? 0); i++) {
       const shape = slide.shapes.addTextBox(`n${i}`, { left: 0, top: 0, width: 10, height: 10 });
@@ -2787,6 +2802,36 @@ describe("reading a demo deck back and repairing it", () => {
     } finally {
       failSyncsOn.clear();
     }
+  });
+
+  it("writes the config tag onto a chart that is whole but untagged", async () => {
+    // A degraded picture is one shape named PowerChart carrying no config.
+    // Nothing to group — only the tag is missing — and until `retag` existed
+    // there was no repair that could reach it.
+    const deck = [demoSlide("pic", { slot: { i: 0, title: "Line" }, picture: true })];
+    installHost(deck);
+    const outcome = await reconcileDeck([expect3(0, "Line")], { before: 0, after: 1 }, () => `{"kind":"line"}`, {});
+    expect(outcome.plan.actions.map((a) => a.kind)).toEqual(["retag"]);
+    expect(outcome.applied.regrouped).toBe(1);
+    expect(outcome.refused).toBe(0);
+    // The chart object itself now carries the config — re-editable again.
+    const chart = deck[0].created.filter((s) => !s.deleted).find((s) => s.name === "PowerChart");
+    expect(chart?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
+    // And nothing was grouped, because there was nothing to group.
+    expect(deck[0].created.filter((s) => !s.deleted && s.type === "group")).toHaveLength(0);
+  });
+
+  it("refuses the retag when there is no PowerChart object to put it on", async () => {
+    const deck = [demoSlide("bare", { slot: { i: 0, title: "Line" }, shapes: 1 })];
+    installHost(deck);
+    // Shapes present but loose and unnamed: this is a regroup, not a retag.
+    const outcome = await reconcileDeck(
+      [{ slot: 0, title: "Line", shapes: 1, chart: true }],
+      { before: 0, after: 1 },
+      () => `{"kind":"line"}`,
+      {},
+    );
+    expect(outcome.plan.actions.map((a) => a.kind)).toEqual(["regroup"]);
   });
 
   it("refuses to delete a slide that is no longer the one it profiled", async () => {
@@ -3013,6 +3058,49 @@ describe("reading a demo deck back and repairing it", () => {
       _setBatchTimeoutForTest(45_000);
       stallSyncOn.clear();
     }
+  }, 20_000);
+
+  it("draws a too-dense chart as a picture once the run has degraded", async () => {
+    // The density budget exists to stop a wedge/polygon flood timing the host
+    // out. A picture is ONE shape — not a flood — so a run already drawing
+    // pictures must not still be skipping its densest charts.
+    //
+    // It did. A real 38-item web run degraded at item 2 and then skipped and
+    // stamped Area (176), Tile map (122), Waffle (103), Sunburst (101),
+    // Violin (253) and Smoothed line (101), while the other thirty went on as
+    // one-shape pictures in about a second each. Those six are exactly the
+    // charts picture mode exists for, and they were the six it refused.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const dense = buildChart({ ...sampleConfig("waffle"), title: "Waffle" });
+    expect(estimateOfficeShapes(dense)).toBeGreaterThan(DEMO_SHAPE_BUDGET);
+    const report = await insertDemoDeck(
+      [
+        { scene: buildChart(tinyChart()), title: "One", tagData: `{"i":0}` },
+        { scene: dense, title: "Waffle", tagData: `{"i":1}` },
+      ],
+      undefined,
+      // Budget 0 degrades the run after the first item, so the dense chart is
+      // reached with a picture available.
+      { pictureFor: async () => "iVBORw0KGgo=", shapeBudget: 0 },
+    );
+    expect(report.degradedAt).toBe(1);
+    // Drawn, not skipped — and as exactly one shape.
+    expect(report.results[1].status).toBe("rendered");
+    expect(report.results[1].created).toBe(1);
+    const last = deck[deck.length - 1].created.filter((sh) => !sh.deleted);
+    expect(last.some((sh) => sh.imageBase64 === "iVBORw0KGgo=")).toBe(true);
+    expect(last.some((sh) => sh.name === "PowerChart:not-complete")).toBe(false);
+  }, 20_000);
+
+  it("still skips a too-dense chart when there is no picture to fall back on", async () => {
+    // The budget must keep working on a host that offers no rasterizer —
+    // otherwise the flood it exists to prevent goes straight through.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const dense = buildChart({ ...sampleConfig("waffle"), title: "Waffle" });
+    const report = await insertDemoDeck([{ scene: dense, title: "Waffle", tagData: `{"i":0}` }], undefined, {});
+    expect(report.results[0].status).toBe("skipped");
   }, 20_000);
 
   it("keeps drawing shapes when the host is keeping up", async () => {

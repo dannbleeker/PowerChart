@@ -2618,25 +2618,6 @@ function wireInsert() {
         // Keep the whole run, not just the sentence. A run that ends badly is
         // the one worth reporting, and it is also the one whose results slide
         // is most likely to be the thing the host drops.
-        lastRunLog = {
-          build: buildStamp,
-          host,
-          smoke,
-          totalMs,
-          items: results.map((r, i) => ({
-            title: items[i].title,
-            status: r.status,
-            shapes: r.created,
-            ms: r.ms,
-            grouped: !!r.grouped,
-            lateOutcome: r.lateOutcome ?? "",
-          })),
-          deck: { slidesAdded, addsIssued, lost, blank: blankItems },
-          reconcile,
-          path: "shapes",
-          trace: tracing() ? traceLog() : undefined,
-        };
-        ($("demo-log") as HTMLButtonElement).disabled = false;
         // Close the deck with a self-contained results slide so the exported PDF is
         // a complete run record. A second insertDemoDeck reuses the same add/render/
         // self-check machinery; wrap it so a host stall here can't swallow the run's
@@ -2670,12 +2651,31 @@ function wireInsert() {
         let resultsLanded = 0;
         for (const [i, scene] of resultsPages.entries()) {
           try {
-            await insertDemoDeck([
+            await insertDemoDeck(
+              [
+                {
+                  scene,
+                  title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
+                },
+              ],
+              undefined,
               {
-                scene,
-                title: resultsPages.length === 1 ? "Results" : `Results (page ${i + 1} of ${resultsPages.length})`,
+                // The same protections the run itself gets. This insert runs at
+                // the WORST moment — right after a run that has just finished
+                // exhausting the host — and it used to get none of them.
+                //
+                // Without `reconcile`, a page whose add landed but whose shapes
+                // did not left a stamped, untagged slide at the end of the deck
+                // that nothing ever cleaned: the main run's repair had already
+                // finished, and its range stopped short of this slide. A real
+                // 38-item run ended exactly that way.
+                reconcile: true,
+                // And without a picture to fall back on, the run's own summary
+                // is the first casualty of a failure-heavy run — it is being
+                // drawn precisely because things went badly.
+                pictureFor: isWebHost() ? () => boundedRaster(scene) : undefined,
               },
-            ]);
+            );
             resultsLanded += 1;
           } catch (e) {
             console.warn(`PowerChart: results page ${i + 1} failed to insert`, e);
@@ -2685,6 +2685,29 @@ function wireInsert() {
         else if (resultsLanded === 0) msg += " (results slide not added)";
         else if (resultsLanded < resultsPages.length)
           msg += ` (${resultsLanded} of ${resultsPages.length} results pages added)`;
+        // Written LAST, so the trace it carries covers the whole run including
+        // the results pages. Taken before them, the log ended at the repair
+        // read — and when a results page then failed, the file said
+        // "(results slide not added)" with nothing in it about why.
+        lastRunLog = {
+          build: buildStamp,
+          host,
+          smoke,
+          totalMs,
+          items: results.map((r, i) => ({
+            title: items[i].title,
+            status: r.status,
+            shapes: r.created,
+            ms: r.ms,
+            grouped: !!r.grouped,
+            lateOutcome: r.lateOutcome ?? "",
+          })),
+          deck: { slidesAdded, addsIssued, lost, blank: blankItems },
+          reconcile,
+          path: "shapes",
+          trace: tracing() ? traceLog() : undefined,
+        };
+        ($("demo-log") as HTMLButtonElement).disabled = false;
         note(msg, lost > 0 || failedNames.length || blankSlides.length ? "err" : "ok");
       }),
     );
