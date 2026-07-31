@@ -432,7 +432,9 @@ closing pass compares each slide against the item it was drawn for, deletes
 duplicate slides, clears banners that contradict the shapes underneath them,
 and restores the config tag on charts that lost it — re-grouping the ones that
 landed as loose shapes, and re-tagging the ones that are already a single
-object — so every chart is editable again. The run's
+object — so every chart is editable again. A chart the host would not let it
+measure is reported rather than repaired: acting on a read that came back
+empty once rewrote fourteen charts whose config was already correct. The run's
 summary is written from what the deck actually holds, not from what the add-in
 believed while the host was still catching up.
 

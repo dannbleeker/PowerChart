@@ -377,6 +377,33 @@ describe("reconcile: a chart that is whole but carries no tag", () => {
     expect(plan.verdicts.every((v) => v.tagged)).toBe(true);
   });
 
+  it("repairs nothing when the readback could not see the slide at all", () => {
+    // `tagRead: false` means the tag pass saw fewer shapes than the previous
+    // pass had just counted, so it learned nothing either way. A real run read
+    // 3 shapes on a page where 19 had been counted moments before, called the
+    // missing ones untagged, and rewrote fourteen charts whose config was
+    // already correct — one of them being wrong is a repair; fourteen of them
+    // being right is damage.
+    const plan = planReconcile(
+      [slide(1, { slot: 0, title: "Line", shapes: 1, grouped: true, tagged: false, tagRead: false })],
+      [item(0, "Line", 36)],
+    );
+    expect(plan.actions).toEqual([]);
+    // …and says so, rather than reporting the chart as broken.
+    expect(plan.summary.undetermined).toBe(1);
+    expect(describeReconcile(plan)).toMatch(/would not let us check/);
+  });
+
+  it("still repairs when the readback DID see the slide and found no tag", () => {
+    // The other half: suppressing on uncertainty must not suppress on evidence.
+    const plan = planReconcile(
+      [slide(1, { slot: 0, title: "Line", shapes: 1, grouped: true, tagged: false, tagRead: true })],
+      [item(0, "Line", 36)],
+    );
+    expect(kinds(plan.actions, "retag")).toEqual([1]);
+    expect(plan.summary.undetermined).toBe(0);
+  });
+
   it("does not retag something that was never a chart", () => {
     // Contents, Agenda, KPI tile: no config exists for them, so an untagged
     // one is correct, not broken.

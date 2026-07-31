@@ -1185,11 +1185,7 @@ export async function slideCount(): Promise<number> {
  * Needs only PowerPointApi 1.3 (shape tags), not 1.8 — there is no grouping
  * here, so a host that cannot group can still have its charts made editable.
  */
-async function retagSlideChart(
-  slideIndex: number,
-  tagData: string | undefined,
-  origin: { left: number; top: number },
-): Promise<boolean> {
+async function retagSlideChart(slideIndex: number, tagData: string | undefined): Promise<boolean> {
   if (!supports("1.3") || !tagData) return false;
   try {
     return await PowerPoint.run(async (context) => {
@@ -1201,19 +1197,27 @@ async function retagSlideChart(
       const target = shapes.items.find((sh) => (sh as unknown as { name?: string }).name === GROUP_NAME) as
         PowerPoint.Shape | undefined;
       if (!target) return false;
+      // ONLY the config tag. The origin is deliberately not written here, and
+      // takes no parameter, so it cannot be.
+      //
+      // It used to write `[caller.left, caller.top, shape.left, shape.top]`
+      // using the repair's DEFAULT origin of (60, 90). That is not where the
+      // chart was drawn — a generated deck centres its charts — so the pair
+      // stopped agreeing and `origin + (live - anchor)` no longer resolved to
+      // where the chart sits. On a real 38-slide run it rewrote 14 charts to
+      // `[60, 90, 239.988, 120]` against a correct `[239.988, 120, 239.988,
+      // 120]`, which would have teleported every one of them ~180pt left on
+      // its first edit.
+      //
+      // A repair pass reads a settled deck; it cannot know where a chart was
+      // originally drawn, so it must not claim to. Left absent or untouched,
+      // an update falls back to the shape's own position — a slightly
+      // different corner, not a different place on the slide.
       target.tags.add(CHART_TAG, tagData);
-      target.load("left,top");
       try {
         await context.sync();
       } catch {
         return false;
-      }
-      target.tags.add(CHART_ORIGIN_TAG, JSON.stringify([origin.left, origin.top, target.left, target.top]));
-      try {
-        await context.sync();
-      } catch {
-        /* origin tag didn't land — the chart is re-editable either way, and
-         * drag tracking degrades to updating without an anchor. */
       }
       return true;
     });
@@ -1929,59 +1933,97 @@ export function newRunId(): string {
 /** Pass B: does any shape on the slide carry a config tag (i.e. re-editable). */
 async function markTaggedSlides(snapshots: SlideSnapshot[]): Promise<void> {
   if (!supports("1.3")) return;
+  // Slides whose tag state this pass could not establish, for one more try.
+  let undetermined = snapshots;
+  for (let attempt = 0; attempt < 2 && undetermined.length; attempt++) {
+    undetermined = await tagPass(undetermined, attempt);
+  }
+  // Still unknown after a second look. NOT "untagged": see `SlideSnapshot.tagRead`.
+  for (const s of undetermined) s.tagRead = false;
+  if (undetermined.length)
+    trace("repair", "tag state undetermined after re-read", {
+      slides: undetermined.length,
+      indexes: undetermined.map((s) => s.index),
+    });
+}
+
+/**
+ * One sweep of the tag readback. Returns the slides it could NOT determine.
+ *
+ * The host has been observed answering this read with collections far shorter
+ * than the ones pass A had just counted: on a real 38-slide run, page 2 asked
+ * about 19 slides carrying 19 shapes and saw 3. Every shape it did see was
+ * interrogated correctly, so the tag lookups are sound — it is the shape
+ * collection that arrives hollow.
+ *
+ * Read naively, a hollow collection has no shapes, therefore no tags,
+ * therefore "this chart is not re-editable" — and the repair then rewrites 14
+ * tags that were already correct. Pass A's count is the check that catches it:
+ * a slide that had shapes a moment ago and reports none now has not been read,
+ * whatever else is true.
+ */
+async function tagPass(snapshots: SlideSnapshot[], attempt: number): Promise<SlideSnapshot[]> {
+  const undetermined: SlideSnapshot[] = [];
   for (let start = 0; start < snapshots.length; start += READBACK_PAGE) {
     const page = snapshots.slice(start, start + READBACK_PAGE).filter((s) => s.shapes > 0);
     if (!page.length) continue;
     try {
-      const tagged = await PowerPoint.run(async (context) => {
+      const result = await PowerPoint.run(async (context) => {
         const perSlide = page.map((s) => {
           const shapes = context.presentation.slides.getItemAt(s.index).shapes;
           shapes.load("items/id");
-          return { index: s.index, shapes };
+          return { want: s, shapes };
         });
         await context.sync();
-        const lookups = perSlide.map((p) => ({
-          index: p.index,
-          tags: p.shapes.items.map((shape) => {
-            const t = shape.tags.getItemOrNullObject(CHART_TAG);
-            t.load("value");
-            return t;
-          }),
-        }));
+        const lookups = perSlide.map((p) => {
+          // Read the collection ONCE. Asking twice is a second round-trip's
+          // worth of answer from a host that has already been observed giving
+          // two different ones, and the count below has to describe the same
+          // shapes the tags were taken from.
+          const items = p.shapes.items;
+          return {
+            want: p.want,
+            seen: items.length,
+            tags: items.map((shape) => {
+              const t = shape.tags.getItemOrNullObject(CHART_TAG);
+              t.load("value");
+              return t;
+            }),
+          };
+        });
         await context.sync();
         const hit = new Set<number>();
+        const short: SlideSnapshot[] = [];
+        let shapesSeen = 0;
         for (const l of lookups) {
-          if (l.tags.some((t) => !t.isNullObject && !!t.value)) hit.add(l.index);
+          shapesSeen += l.seen;
+          if (l.tags.some((t) => !t.isNullObject && !!t.value)) hit.add(l.want.index);
+          // Fewer shapes than pass A counted: this slide was not read, so it
+          // has told us nothing about its tags either way.
+          else if (l.seen < l.want.shapes) short.push(l.want);
           for (const t of l.tags) untrack(t);
         }
-        // Shapes this pass SAW, against what pass A counted on the same
-        // slides moments earlier. The two disagreeing means this read came
-        // back hollow — which is the open question this instrumentation
-        // exists to answer, so it is measured rather than assumed.
-        return { hit, shapesSeen: perSlide.reduce((n, p) => n + p.shapes.items.length, 0) };
+        return { hit, short, shapesSeen };
       });
-      for (const s of page) if (tagged.hit.has(s.index)) s.tagged = true;
-      // A real 39-slide run reported 20 tagged charts where the file provably
-      // carried 31 — every miss in the SECOND page, from its fifth slide on.
-      // No mechanism has been confirmed: the payload was tiny (~7.4 KB of
-      // config across the whole page) and pass A read the same slides without
-      // trouble. These three numbers separate the two candidates — collections
-      // coming back short, versus collections full but tag lookups resolving
-      // null — which need different fixes.
+      for (const s of page) if (result.hit.has(s.index)) s.tagged = true;
+      undetermined.push(...result.short);
       trace("repair", "tag pass over a page", {
+        attempt,
         from: page[0]?.index,
         to: page[page.length - 1]?.index,
         slides: page.length,
         shapesExpected: page.reduce((n, s) => n + s.shapes, 0),
-        shapesSeen: tagged.shapesSeen,
-        tagsFound: tagged.hit.size,
+        shapesSeen: result.shapesSeen,
+        tagsFound: result.hit.size,
+        undetermined: result.short.length,
       });
     } catch {
-      /* unread tags stay false — the pass may re-tag a chart that already had
-       * one, which `rescueGroupAndTag` handles idempotently (it declines a
-       * slide that is already a single group). */
+      // A page that threw told us nothing at all — every slide on it is
+      // undetermined, not untagged.
+      undetermined.push(...page);
     }
   }
+  return undetermined;
 }
 
 /**
@@ -2137,7 +2179,7 @@ export async function applyReconcilePlan(
       if (await rescueGroupAndTag(action.index, tagFor(action.slot), origin)) applied.regrouped++;
       else refused++;
     } else if (action.kind === "retag") {
-      if (await retagSlideChart(action.index, tagFor(action.slot), origin)) applied.regrouped++;
+      if (await retagSlideChart(action.index, tagFor(action.slot))) applied.regrouped++;
       else refused++;
     } else {
       // Deletes are checked against the snapshot that authorised them. The
