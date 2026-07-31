@@ -415,7 +415,16 @@ took — so an exported PDF is a self-contained regression record. Tick **Smoke
 test (10 slides)** first for a fast pass over one representative chart per family
 instead of the full deck. A slide that stalls is retried once automatically.
 
-Every run now ends by reading the deck back and repairing it. This matters on
+**Fast path (one file insert)**, on by default, builds the whole deck as a
+.pptx in the pane and hands it to PowerPoint in a single call, instead of
+drawing it shape by shape through hundreds of round trips. Charts arrive
+already grouped and already tagged, so they are editable exactly as before.
+Untick it to compare against the shape-by-shape path; the add-in also falls
+back to that path on its own if the host cannot take a generated deck, or if
+the attempt landed nothing. Once any slide has landed it will not fall back —
+that would insert the deck twice.
+
+Every run ends by reading the deck back and repairing it. This matters on
 PowerPoint for the web, where a `context.sync()` can commit minutes after the
 add-in has given up waiting for it: the retry that was issued in the meantime
 lands a second copy of the same chart, and the "NOT COMPLETE" banner stamped on

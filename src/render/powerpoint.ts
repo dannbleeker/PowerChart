@@ -2046,6 +2046,75 @@ function wantsPicture(opts: InsertOptions, scene: Scene): boolean {
   return true;
 }
 
+/**
+ * Whole-deck insert in ONE host call: `Presentation.insertSlidesFromBase64`.
+ *
+ * Everything else in this file draws a chart the only way Office.js allows —
+ * shape by shape, batch by batch, sync by sync — and that is precisely what
+ * PowerPoint on the web cannot be trusted with. A 12-item run issues 19 slide
+ * adds and hundreds of queued commands, and every one of them is a chance for
+ * the host to drop an add, stall a sync past its timeout, or refuse a group.
+ * The 2026-07-30 run took 680 seconds and shipped duplicate slides.
+ *
+ * A .pptx handed over as base64 has none of those failure surfaces. The
+ * grouping is in the file. The tags are in the file. There is one call to
+ * lose, and a slide-count delta proves whether it landed.
+ *
+ * The requirement set is deliberately probed rather than asserted: Microsoft's
+ * own docs disagree about which set carries this method (the 1.2 "what's new"
+ * page announces slide insertion; the API reference cites 1.5), and the
+ * manifests admit hosts from 1.4. So: check the method actually exists on the
+ * proxy, and treat any host that lacks it as a fallback case rather than an
+ * error.
+ */
+export function canInsertSlidesFromBase64(): boolean {
+  return isPowerPointHost() && (supports("1.5") || supports("1.2"));
+}
+
+/**
+ * How long one deck insert may take before the host counts as stalled. Scales
+ * with the deck, because unlike a shape batch this call's size is not capped —
+ * handing over 40 slides is legitimately more work than handing over one.
+ */
+const DECK_INSERT_TIMEOUT_MS = (slides: number): number => Math.max(BATCH_TIMEOUT_MS, slides * 5_000);
+
+/**
+ * Insert a whole .pptx and return how many slides the deck actually gained.
+ *
+ * The count is measured, not assumed: a settled `getCount()` before and after,
+ * in their own contexts, for the same reason `addSlides` does it — a host that
+ * silently drops the call reports no error, and the delta is the only evidence
+ * either way. `expectedSlides` only sizes the timeout.
+ *
+ * `formatting` defaults to keeping the source's own formatting: PowerChart
+ * writes explicit colours and fonts on every shape, so adopting the
+ * destination theme would override deliberate choices rather than harmonise
+ * them.
+ */
+export async function insertSlidesFromPptx(
+  base64: string,
+  expectedSlides: number,
+  formatting: "KeepSourceFormatting" | "UseDestinationTheme" = "KeepSourceFormatting",
+): Promise<number> {
+  const before = await slideCount();
+  await withTimeout(
+    PowerPoint.run(async (context) => {
+      const presentation = context.presentation as unknown as {
+        insertSlidesFromBase64(b64: string, opts?: { formatting?: string }): void;
+      };
+      if (typeof presentation.insertSlidesFromBase64 !== "function") {
+        throw new Error("this host has no insertSlidesFromBase64");
+      }
+      presentation.insertSlidesFromBase64(base64, { formatting });
+      await context.sync();
+    }),
+    DECK_INSERT_TIMEOUT_MS(expectedSlides),
+    `inserting ${expectedSlides} slide(s) from a generated deck`,
+  );
+  const after = await slideCount();
+  return after - before;
+}
+
 /** True when the host advertises the given PowerPointApi requirement set. */
 function supports(version: string): boolean {
   try {
