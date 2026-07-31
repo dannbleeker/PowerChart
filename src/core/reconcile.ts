@@ -94,6 +94,18 @@ export interface SlideSnapshot {
   stamped: boolean;
   /** A `POWERCHART_CONFIG` tag is present, i.e. the chart is re-editable. */
   tagged: boolean;
+  /**
+   * `tagged` was actually established. False means the readback could not see
+   * this slide's shapes and so learned nothing about its tags — which is NOT
+   * the same as learning it has none.
+   *
+   * The distinction is load-bearing. A real 38-slide run had a readback page
+   * report 3 shapes where the previous pass had counted 19; read as "no tags",
+   * that made the repair rewrite 14 charts whose config was already correct.
+   * Absent (undefined) means determined, so an older snapshot or a caller that
+   * does not measure this behaves exactly as before.
+   */
+  tagRead?: boolean;
 }
 
 /** What the run set out to draw, one entry per demo item. */
@@ -186,6 +198,12 @@ export interface ReconcilePlan {
     untagged: number;
     /** Slides in range claimed by no item. */
     orphans: number;
+    /**
+     * Charts the readback could not measure, so their re-editability is
+     * unknown and no repair was attempted. Reported rather than guessed at —
+     * guessing rewrote fourteen correct charts on a real run.
+     */
+    undetermined: number;
   };
 }
 
@@ -277,6 +295,8 @@ export function planReconcile(
   const actions: ReconcileAction[] = [];
   const verdicts: SlotVerdict[] = [];
   const orphans: OrphanSlide[] = [];
+  /** Charts whose tag state the readback could not establish either way. */
+  let undetermined = 0;
 
   const bySlot = new Map<number, SlideSnapshot[]>();
   const unclaimed: SlideSnapshot[] = [];
@@ -383,7 +403,12 @@ export function planReconcile(
     //
     // So split the repair. Loose shapes need grouping AND tagging; something
     // already whole needs only the tag.
-    if (item.chart && worthGrouping && !keeper.tagged) {
+    // Never repair on evidence we do not have. `tagRead === false` means the
+    // readback could not see this slide's shapes and so learned nothing about
+    // its tags — acting on that rewrites charts that were already correct. A
+    // real run did exactly that to fourteen of them.
+    const tagKnown = keeper.tagRead !== false;
+    if (item.chart && worthGrouping && !keeper.tagged && tagKnown) {
       actions.push(
         keeper.grouped
           ? {
@@ -402,6 +427,7 @@ export function planReconcile(
       tagged = true;
     }
 
+    if (item.chart && !keeper.tagged && !tagKnown) undetermined++;
     const status: SlotVerdict["status"] =
       kept === 0 ? "empty" : complete ? "rendered" : worthGrouping ? "partial" : "wreckage";
     verdicts.push({
@@ -462,6 +488,7 @@ export function planReconcile(
       falseStamps: actions.filter((a) => a.kind === "unstamp").length,
       untagged: actions.filter((a) => a.kind === "regroup" || a.kind === "retag").length,
       orphans: orphans.length,
+      undetermined,
     },
   };
 }
@@ -483,5 +510,7 @@ export function describeReconcile(plan: ReconcilePlan): string {
   if (s.falseStamps) bits.push(`${s.falseStamps} false NOT COMPLETE banner${s.falseStamps === 1 ? "" : "s"} cleared`);
   if (s.untagged) bits.push(`${s.untagged} chart${s.untagged === 1 ? "" : "s"} made re-editable again`);
   if (s.orphans) bits.push(`${s.orphans} orphan slide${s.orphans === 1 ? "" : "s"}`);
+  if (s.undetermined)
+    bits.push(`${s.undetermined} chart${s.undetermined === 1 ? "" : "s"} the host would not let us check`);
   return bits.join(" · ");
 }

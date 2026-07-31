@@ -5,6 +5,7 @@ import {
   _setBlankReReadDelayForTest,
   CHART_PARTS_TAG,
   CHART_TAG,
+  CHART_ORIGIN_TAG,
   getSelectionBounds,
   insertAgendaSlides,
   insertDemoDeck,
@@ -215,9 +216,24 @@ function makeSlide(id: string) {
       get items() {
         const live = created.filter((s) => !s.deleted);
         for (const s of live) s.syncCreated = trips.syncs;
+        // The web host has been observed answering a shape-collection read
+        // with FAR fewer shapes than it holds: one readback page asked about
+        // 19 slides carrying 19 shapes and got 3 back. `hollowReads` models
+        // that — the collection is short, nothing throws, and the caller has
+        // no way to know unless it compares against a count it took earlier.
+        if (hollowReads > 0 && lastShapeLoad === "items/id") {
+          hollowReads--;
+          return [];
+        }
         return live;
       },
-      load() {},
+      // The tag pass is the only reader that asks for `items/id`; pass A and
+      // the group-child count both ask for `items/name`. Recording which lets
+      // a test make the TAG read hollow without also blinding the count it is
+      // supposed to be checked against.
+      load(p?: string) {
+        if (p) lastShapeLoad = p;
+      },
       addGeometricShape(geo: string, box: FakeShape["box"]) {
         const s = makeShape("geometric", geo, box);
         created.push(s);
@@ -402,6 +418,10 @@ let strictGroup = false;
  * rendered-but-ungrouped and still lets the fresh-context rescue group it. */
 let refuseGroups = 0;
 
+/** Shape-collection reads that come back EMPTY without throwing — see `items`. */
+let hollowReads = 0;
+let lastShapeLoad = "";
+
 /** When true, `fill.setImage` throws on access — a pre-1.8 host, where the
  * method does not exist at all. Drives the picture-insert fall-through. */
 let refusePictureFill = false;
@@ -546,6 +566,8 @@ function installHost(
   stallSyncOn.clear();
   strictGroup = false;
   refuseGroups = 0;
+  hollowReads = 0;
+  lastShapeLoad = "";
   refusePictureFill = false;
   blankReadbackAt.clear();
   faultShapeGetCount = false;
@@ -2782,6 +2804,32 @@ describe("reading a demo deck back and repairing it", () => {
     expect(group?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
   });
 
+  it("does not call a slide untagged when the host answered with no shapes", async () => {
+    // The confirmed mechanism. A real 38-slide run had a readback page ask
+    // about 19 slides carrying 19 shapes and see 3 — nothing threw, the
+    // collection was simply short. Read naively that is "no shapes, so no
+    // tags, so not re-editable", and the repair then rewrote 14 charts whose
+    // config was already correct.
+    const deck = [demoSlide("a", { slot: { i: 0, title: "A" }, shapes: 3, tagged: true })];
+    installHost(deck);
+    // Both the first pass and its re-read come back hollow.
+    hollowReads = 2;
+    const { snapshots } = await readAddedSlides(0, 1);
+    expect(snapshots[0].tagged).toBe(false); // could not see it…
+    expect(snapshots[0].tagRead).toBe(false); // …and says so, which is the point
+    hollowReads = 0;
+  });
+
+  it("gets the right answer on the re-read when only the first look was hollow", async () => {
+    const deck = [demoSlide("a", { slot: { i: 0, title: "A" }, shapes: 3, tagged: true })];
+    installHost(deck);
+    hollowReads = 1; // first pass short, second fine
+    const { snapshots } = await readAddedSlides(0, 1);
+    expect(snapshots[0].tagged).toBe(true);
+    expect(snapshots[0].tagRead).not.toBe(false);
+    hollowReads = 0;
+  });
+
   it("traces what the tag pass asked for against what it got back", async () => {
     // The open question this exists to answer: a 39-slide run reported 20
     // tagged charts where the file provably carried 31, every miss in the
@@ -2845,6 +2893,23 @@ describe("reading a demo deck back and repairing it", () => {
     expect(chart?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
     // And nothing was grouped, because there was nothing to group.
     expect(deck[0].created.filter((s) => !s.deleted && s.type === "group")).toHaveLength(0);
+  });
+
+  it("never writes an origin tag when retagging — it cannot know where the chart was drawn", async () => {
+    // The repair used to write `[caller.left, caller.top, shape.left,
+    // shape.top]` from its DEFAULT origin of (60, 90). A generated deck
+    // centres its charts, so on a real 38-slide run it rewrote 14 correct
+    // origins of `[239.988, 120, 239.988, 120]` to `[60, 90, 239.988, 120]`.
+    // Since an update renders at `origin + (live - anchor)`, every one of
+    // those charts would have jumped ~180pt left on its first edit.
+    const deck = [demoSlide("pic", { slot: { i: 0, title: "Line" }, picture: true })];
+    installHost(deck);
+    const chart = deck[0].created.find((s) => s.name === "PowerChart")!;
+    chart.tagStore.set(CHART_ORIGIN_TAG, "[239.988,120,239.988,120]");
+    const outcome = await reconcileDeck([expect3(0, "Line")], { before: 0, after: 1 }, () => `{"kind":"line"}`, {});
+    expect(outcome.applied.regrouped).toBe(1);
+    expect(chart.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`); // the tag IS written
+    expect(chart.tagStore.get(CHART_ORIGIN_TAG)).toBe("[239.988,120,239.988,120]"); // the origin is NOT
   });
 
   it("refuses the retag when there is no PowerChart object to put it on", async () => {
