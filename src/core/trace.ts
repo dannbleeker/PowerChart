@@ -65,7 +65,12 @@ export function tracing(): boolean {
  */
 export function trace(scope: string, message: string, data?: Record<string, unknown>): void {
   if (!enabled) return;
-  entries.push({ ms: Date.now() - startedAt, scope, message, ...(data ? { data } : {}) });
+  // Copy the payload rather than holding the caller's object. A log is a
+  // record of what was true AT THE MOMENT it was written; keeping the live
+  // reference meant a caller who reused or mutated its object afterwards
+  // rewrote history — silently, and in a file someone may already have
+  // downloaded and be reading as fact.
+  entries.push({ ms: Date.now() - startedAt, scope, message, ...(data ? { data: { ...data } } : {}) });
   if (entries.length > MAX_ENTRIES) {
     entries.shift();
     dropped++;
@@ -74,5 +79,7 @@ export function trace(scope: string, message: string, data?: Record<string, unkn
 
 /** The log so far, oldest first, plus how many entries fell off the front. */
 export function traceLog(): { entries: TraceEntry[]; dropped: number } {
-  return { entries: entries.slice(), dropped };
+  // Entries copied too, for the same reason in the other direction: a reader
+  // that mutated what it was handed corrupted the next reader's copy.
+  return { entries: entries.map((e) => ({ ...e, ...(e.data ? { data: { ...e.data } } : {}) })), dropped };
 }

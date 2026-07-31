@@ -361,7 +361,9 @@ export function planReconcile(
         kind: "unstamp",
         index: keeper.index,
         slot: item.slot,
-        reason: `${kept} of ${item.shapes} shapes present — the banner is stale`,
+        // `shown`, not `kept`: an unmeasured slide's `kept` is the -1 "cannot
+        // tell" sentinel, and this reason is read by a human.
+        reason: `${shown} of ${item.shapes} shapes present — the banner is stale`,
       });
     }
 

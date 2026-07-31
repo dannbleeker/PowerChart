@@ -413,7 +413,7 @@ with a title slide stamping the build and host, and closes with a results slide
 summarising what rendered, what the host skipped or failed, and how long the run
 took — so an exported PDF is a self-contained regression record. Tick **Smoke
 test (10 slides)** first for a fast pass over one representative chart per family
-instead of the full deck. A slide that stalls is retried once automatically.
+instead of the full deck.
 
 **Fast path (one file insert)**, on by default, builds the whole deck as a
 .pptx in the pane and hands it to PowerPoint in a single call, instead of
@@ -426,14 +426,19 @@ that would insert the deck twice.
 
 Every run ends by reading the deck back and repairing it. This matters on
 PowerPoint for the web, where a `context.sync()` can commit minutes after the
-add-in has given up waiting for it: the retry that was issued in the meantime
-lands a second copy of the same chart, and the "NOT COMPLETE" banner stamped on
-the first one turns out to be false. The closing pass compares each slide
-against the item it was drawn for, deletes duplicate slides, clears banners
-that contradict the shapes underneath them, and re-groups charts that landed
-loose so they are editable again. The run's summary is written from what the
-deck actually holds, not from what the add-in believed while the host was still
-catching up.
+add-in has given up waiting for it — so the chart is on the slide, but the
+"NOT COMPLETE" banner stamped while it still looked empty says otherwise. The
+closing pass compares each slide against the item it was drawn for, deletes
+duplicate slides, clears banners that contradict the shapes underneath them,
+and re-groups charts that landed loose so they are editable again. The run's
+summary is written from what the deck actually holds, not from what the add-in
+believed while the host was still catching up.
+
+It only ever touches slides from the run that just finished. Every slide a run
+adds carries a token identifying that run, so inserting the demo deck a second
+time cannot make the second run's slides look like duplicates of the first's —
+and a slide you added yourself, or copied from a demo slide with PowerPoint's
+Duplicate Slide, is reported and left alone.
 
 **Verbose trace** records every step the add-in takes — each drawing batch, each
 slide the host loses, each call it stops waiting for, each repair action, and

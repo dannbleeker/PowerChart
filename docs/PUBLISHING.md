@@ -130,12 +130,14 @@ rendered":
 - **`addsLostAtCommit=N`** — `addSlides` confirmed N `slides.add()` calls
   never landed even after its own retry. Correlates with the office-js
   bug documented in `OFFICE_JS_LOST_ADDS.md`. `addsIssued − slidesAdded`
-  is the wider gap, including item-level retries.
+  is the wider gap.
 
 A clean run reports every chart rendered + grouped, no ungrouped/blank/
 `addsLostAtCommit`. The full console.table dump under **F12** carries
-`retried`, `lateSettled`, `partialLanded`, `grouped`, `lateOutcome`, and
-`ms` per item — useful for filing a Phase-2 regression.
+`shapes`, `status`, `grouped`, `lateOutcome` and `ms` per item. Better
+still, **Download run log** writes the whole run to JSON — both insert
+paths, the settled repair verdicts, and the activity trace when Verbose
+trace was on. That file is the right attachment for a Phase-2 regression.
 
 ## Phase 3 — Activate the Claude skill ([owner])
 

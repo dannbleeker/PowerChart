@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import {
   canonicalSlideSize,
+  injectGroupsAndTags,
   groupSlideShapes,
   tagFirstShape,
   tagPart,
@@ -139,6 +140,22 @@ describe("ooxml: a slide with nothing to group", () => {
   it("leaves a slide it cannot read alone", () => {
     expect(tagFirstShape("<p:sld/>", "rId1")).toBe("<p:sld/>");
   });
+});
+
+describe("ooxml: dressing and slides must stay in step", () => {
+  it("refuses a deck with more slides than dressing entries", async () => {
+    // `dressing[i]` IS `slide{i+1}.xml` — the pairing is strictly positional.
+    // A caller whose two counts drift apart puts every later chart's config on
+    // the wrong slide, and the file still opens cleanly, so nothing surfaces
+    // it until someone edits a chart and overwrites a different one. Too MANY
+    // dressing entries already failed loudly on the missing slide part; too
+    // few used to leave the trailing slides silently ungrouped and untagged.
+    const built = await buildDeckBase64([
+      { scene: buildChart(sampleConfig("line")), title: "A" },
+      { scene: buildChart(sampleConfig("line")), title: "B" },
+    ]);
+    await expect(injectGroupsAndTags(built.base64, [{ title: "A" }])).rejects.toThrow(/2 slide\(s\) but 1 dressing/);
+  }, 30_000);
 });
 
 describe("building a deck in-process", () => {

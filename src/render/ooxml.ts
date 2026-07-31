@@ -274,6 +274,19 @@ export async function injectGroupsAndTags(
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(base64, { base64: true });
 
+  // One dressing entry per slide, or nothing below can be trusted: the two are
+  // paired strictly by position, so a caller whose slide count and dressing
+  // length drift apart gets every later chart's config on the wrong slide.
+  // A dressing LONGER than the deck already failed loudly, on the missing
+  // slide part. A shorter one silently left the trailing slides ungrouped and
+  // untagged — a pile of loose shapes with no identity, which is the exact
+  // outcome this whole module exists to prevent. Fail the same way in both
+  // directions.
+  const slideCount = Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length;
+  if (slideCount !== dressing.length) {
+    throw new Error(`ooxml: generated deck has ${slideCount} slide(s) but ${dressing.length} dressing entr(ies)`);
+  }
+
   let types = await readPart(zip, "[Content_Types].xml");
   let tagPartNo = 0;
   // What each slide ACTUALLY holds. The caller cannot infer it: this renderer

@@ -15,12 +15,16 @@ plus a table of only the skipped/failed items. So an exported PDF is a complete,
 comparable record of one run without opening the console: which build, which host,
 what failed, how long it took.
 
-Two conveniences: tick **Smoke test (10 slides)** in the pane for a fast pass over
-one representative chart per family (`demoItems({ smoke: true })`) instead of the
-full deck; and a slide that stalls is **retried once** automatically in a fresh
-context (the recovered item is marked `retried`, and — because a mis-identified
-last-slide delete is not worth the risk — attempt 1's stray slide is left in place;
-`addsIssued`, below, accounts for it).
+Tick **Smoke test (10 slides)** in the pane for a fast pass over one
+representative chart per family (`demoItems({ smoke: true })`) instead of the
+full deck.
+
+A stalled slide is NOT retried. It was, once, and that retry is where every
+duplicate slide in this project came from: the readback that judged the first
+attempt "short" ran while the host was still committing, so it was routinely
+wrong, and the retry drew the same chart again on a new slide. Both then
+landed. The settled repair pass at the end does the same job with evidence
+instead of a guess — see section 3.
 
 ## 1. The cheap pass — self-check (every run)
 
@@ -28,24 +32,23 @@ Insert the deck. When it finishes, the pane reports and the **console** (F12)
 prints a per-chart table plus the run's integrity numbers:
 
 ```
-chart        shapes  status      retried   ms
-Bubble         44    rendered      false   180
-Combo          22    failed        false 45012   ← host stalled mid-draw (near the 45s timeout)
-Doughnut       15    rendered      false   240
-Area            0    skipped       false     2   ← too dense, stamped
+chart        shapes  status    grouped   ms
+Bubble         44    rendered     true   180
+Combo          22    failed      false 45012   ← host stalled mid-draw (near the 45s timeout)
+Doughnut       15    rendered     true   240
+Area            0    skipped     false     2   ← too dense, stamped
 deck grew by 33, issued 35 adds — 2 LOST; blank slots 24, 34 · total 78.4s
 ```
 
 Read `insertDemoDeck`'s `DemoReport` (`src/render/powerpoint.ts`): `results[i]` is
-`{created, status, ms, retried}`; `slidesAdded` is the deck's ACTUAL growth (settled
+`{created, status, ms, grouped}`; `slidesAdded` is the deck's ACTUAL growth (settled
 `getCount`, after − before); `totalMs` is the whole run's wall-clock.
 
-**Lost slides — measure against `addsIssued`, not `items.length`.** The retry and a
-double-failed item each leave a **stray** slide, so `slidesAdded` can equal
-`items.length` even when the host lost a real slide — the stray cancels it. So loss
-is `addsIssued − slidesAdded`, where `addsIssued` = one add per item plus one more
-for each retried/failed item (both make a second attempt). A stray that LANDED
-cancels; a swallowed/lost add does not — so this reads through the coincidence.
+**Lost slides — measure against `addsIssued`, not `items.length`.** A failed item
+can leave a **stray** slide, so `slidesAdded` can equal `items.length` even when
+the host lost a real slide — the stray cancels it. So loss is
+`addsIssued − slidesAdded`. A stray that LANDED cancels; a swallowed/lost add
+does not — so this reads through the coincidence.
 (A real run once lost 2 slides and reported 0 under the old `items.length` formula.)
 
 **`blankSlides`** is the list of **1-based deck positions** of added slides that read

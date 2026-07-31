@@ -1366,15 +1366,25 @@ async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: str
       alreadyPicture: cfg.render === "image",
     })
   ) {
-    try {
+    // Bounded, like every other rasterize on a rescue path. A canvas that
+    // never fires `onload` does not throw and does not resolve — it simply
+    // stops, and an unbounded await here hung Insert, Same Scale and the JSON
+    // batch insert forever: buttons disabled, no error, no way out but
+    // reloading the pane. Same Scale awaits one of these per chart, so a
+    // single wedged decode froze the whole deck's operation.
+    const png = await boundedRaster(scene);
+    if (png)
       return {
-        png: await rasterizeScene(scene),
+        png,
         warn: `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw. Inserted as a picture; "Explode to native shapes" turns it back.`,
       };
-    } catch {
-      // Could not rasterize — fall through and draw the shapes. Slow and
-      // risky beats refusing to insert the user's chart.
-    }
+    // The rescue itself failed. Drawing the shapes anyway is still better than
+    // refusing the user's chart, but this is precisely the case the budget
+    // exists to intercept — so say so instead of silently doing the dangerous
+    // thing. It used to fall through with no message at all.
+    return {
+      warn: `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw, and it could not be turned into a picture either. Drawing it as shapes; if PowerPoint stops responding, that is why.`,
+    };
   }
   if (cfg.render !== "image") return {};
   if (!canInsertPicture()) {
@@ -1382,12 +1392,10 @@ async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: str
       warn: "This PowerPoint can't insert pictures (needs PowerPointApi 1.8) — inserted native shapes instead.",
     };
   }
-  try {
-    return { png: await rasterizeScene(scene) };
-  } catch (err) {
-    console.warn(`PC-IMG-RASTER could not rasterize the chart in the browser. ${errorText(err)}`);
-    return { warn: "Couldn't rasterize the chart — inserted native shapes instead." };
-  }
+  const png = await boundedRaster(scene);
+  if (png) return { png };
+  console.warn("PC-IMG-RASTER could not rasterize the chart in the browser.");
+  return { warn: "Couldn't rasterize the chart — inserted native shapes instead." };
 }
 
 /**
@@ -1889,6 +1897,14 @@ interface RunLog {
   };
   /** The settled truth: what the deck held once the host stopped moving. */
   reconcile?: ReconcileOutcome;
+  /** Why there is no settled verdict, when there is none. */
+  unverified?: string;
+  /**
+   * Which route the run took: one generated file, or shape by shape. They fail
+   * in completely different ways, and a log that does not say which is being
+   * read is a log that gets diagnosed as the wrong one.
+   */
+  path: "file" | "shapes";
   /** Step-by-step record, when Verbose trace was on for the run. */
   trace?: {
     entries: { ms: number; scope: string; message: string; data?: Record<string, unknown> }[];
@@ -2051,7 +2067,7 @@ async function updateChartResilient(
 async function insertDemoDeckAsFile(
   items: { scene: Scene; title: string; configJson?: string }[],
   smoke: boolean,
-): Promise<{ text: string; status: "ok" | "err" } | null> {
+): Promise<{ text: string; status: "ok" | "err"; added: number; totalMs: number; verified: VerifyResult } | null> {
   const t0 = Date.now();
   const before = await slideCount();
   // Identity for this insert, carried on every slide's slot tag. Without it the
@@ -2107,7 +2123,7 @@ async function insertDemoDeckAsFile(
   if (verified.kind !== "ok") text += ` (Not verified: ${verified.why}.)`;
   if (added < items.length) text += ` ⚠ the host took ${added} of ${items.length} slides.`;
   const clean = added >= items.length && !!outcome && outcome.plan.summary.lost === 0;
-  return { text, status: clean ? "ok" : "err" };
+  return { text, status: clean ? "ok" : "err", added, totalMs: Date.now() - t0, verified };
 }
 
 /**
@@ -2353,6 +2369,12 @@ function wireInsert() {
         const host = describeHost();
         const smoke = ($("demo-smoke") as HTMLInputElement | null)?.checked ?? false;
         const items = demoItems({ buildStamp, host, smoke });
+        // Drop the previous run's log before this one starts. It used to
+        // survive, so a run that produced no log of its own left "Download run
+        // log" enabled and handing out an OLDER run's file, with nothing on
+        // screen to say the two were unrelated.
+        lastRunLog = undefined;
+        ($("demo-log") as HTMLButtonElement).disabled = true;
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
         // Fast path first: one generated .pptx, one host call. Falls through
@@ -2363,6 +2385,45 @@ function wireInsert() {
         if (useFile && canInsertSlidesFromBase64()) {
           const outcome = await insertDemoDeckAsFile(items, smoke);
           if (outcome) {
+            // A log for THIS path too. The fast path is the default — the
+            // checkbox ships checked and every current host advertises
+            // insertSlidesFromBase64 — so it is what a real run takes, and it
+            // was the one path that produced no downloadable record at all.
+            // Success or failure: the failing run is the one worth having.
+            const settled = outcome.verified.kind === "ok" ? outcome.verified.outcome : undefined;
+            const verdicts = settled?.plan.verdicts ?? [];
+            lastRunLog = {
+              build: buildStamp,
+              host,
+              smoke,
+              totalMs: outcome.totalMs,
+              items: items.map((it, i) => {
+                const v = verdicts.find((x) => x.slot === i);
+                return {
+                  title: it.title,
+                  // The settled verdict, which is the honest answer here —
+                  // there is no per-item render to report on a file insert.
+                  status: v ? v.status : "unverified",
+                  shapes: v?.shapes ?? 0,
+                  ms: 0,
+                  grouped: v?.tagged ?? false,
+                  lateOutcome: "",
+                };
+              }),
+              deck: {
+                slidesAdded: outcome.added,
+                addsIssued: items.length,
+                lost: Math.max(0, items.length - outcome.added),
+                blank: [],
+              },
+              reconcile: settled,
+              // Why there is no settled verdict, when there is none — the same
+              // sentence the user sees, kept with the data it explains.
+              unverified: outcome.verified.kind === "ok" ? undefined : outcome.verified.why,
+              path: "file",
+              trace: tracing() ? traceLog() : undefined,
+            };
+            ($("demo-log") as HTMLButtonElement).disabled = false;
             note(outcome.text, outcome.status);
             return;
           }
@@ -2506,6 +2567,7 @@ function wireInsert() {
           })),
           deck: { slidesAdded, addsIssued, lost, blank: blankItems },
           reconcile,
+          path: "shapes",
           trace: tracing() ? traceLog() : undefined,
         };
         ($("demo-log") as HTMLButtonElement).disabled = false;

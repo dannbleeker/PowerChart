@@ -154,9 +154,19 @@ function sceneFor(cfg) {
   return buildChart({ ...DEFAULT_SIZE, ...cfg });
 }
 
-/** A visible error slide so a bad config in a batch surfaces instead of vanishing. */
-function errorSlide(i, err) {
-  const slide = pres.addSlide();
+/**
+ * A visible error slide so a bad config in a batch surfaces instead of vanishing.
+ *
+ * Takes the slide rather than adding one. The failing config may have already
+ * had a slide added for it before it threw — see the catch below — and adding
+ * a second here put the deck one slide ahead of `dressing`, which is indexed
+ * strictly by position. From that point on every chart's POWERCHART_CONFIG
+ * landed on the NEXT chart's slide: the error slide carried the following
+ * chart's config, and the last chart in the deck carried none at all. The file
+ * opens cleanly and looks right, so nothing surfaces it until someone edits a
+ * chart and overwrites it with a different one's data.
+ */
+function errorSlide(slide, i, err) {
   slide.background = { color: "FFFFFF" };
   slide.addText(`Chart ${i + 1} failed: ${err?.message ?? err}`, {
     x: 0.4,
@@ -182,9 +192,13 @@ for (let i = 0; i < configs.length; i++) {
   // Isolate each config: one bad chart in a 50-slide batch must not throw away
   // the other 49 (the Office.js path isolates per item too). Stamp an error
   // slide and carry on, so partial output always survives.
+  // Held outside the try so the catch can tell "threw before a slide existed"
+  // from "threw with a slide already added", and reuse it rather than add a
+  // second one.
+  let slide = null;
   try {
     const scene = sceneFor(cfg);
-    const slide = pres.addSlide();
+    slide = pres.addSlide();
     // The chart's own canvas colour, not a fixed white: a dark-styled config
     // paints its ink for `style.background`, so a white slide under it put white
     // labels on white. Default (no style.background) stays FFFFFF.
@@ -210,7 +224,8 @@ for (let i = 0; i < configs.length; i++) {
     dressing.push({ configJson: JSON.stringify(cfg), title: cfg?.title ?? `Chart ${i + 1}` });
   } catch (err) {
     failed++;
-    errorSlide(i, err);
+    // Exactly one slide per config, whichever half of the try failed.
+    errorSlide(slide ?? pres.addSlide(), i, err);
     console.error(`chart ${i + 1}: ${err?.message ?? err}`);
     // An error slide is not a chart: no group, nothing to re-edit.
     dressing.push({ group: false });
