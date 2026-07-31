@@ -2782,6 +2782,32 @@ describe("reading a demo deck back and repairing it", () => {
     expect(group?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
   });
 
+  it("traces what the tag pass asked for against what it got back", async () => {
+    // The open question this exists to answer: a 39-slide run reported 20
+    // tagged charts where the file provably carried 31, every miss in the
+    // second page. Two candidates — collections coming back short, or
+    // collections full but tag lookups resolving null — need different fixes
+    // and are indistinguishable from the log as it stood. These numbers
+    // separate them.
+    setTracing(true);
+    try {
+      const deck = [
+        demoSlide("a", { slot: { i: 0, title: "A" }, shapes: 3, tagged: true }),
+        demoSlide("b", { slot: { i: 1, title: "B" }, shapes: 3 }),
+      ];
+      installHost(deck);
+      await readAddedSlides(0, 2);
+      const page = traceLog().entries.find((e) => e.message === "tag pass over a page");
+      expect(page).toBeDefined();
+      // Asked about both slides, saw every shape pass A counted, found the one
+      // tag that is really there. A hollow read would show shapesSeen short of
+      // shapesExpected — which is the signal the next real run has to produce.
+      expect(page!.data).toMatchObject({ slides: 2, shapesExpected: 6, shapesSeen: 6, tagsFound: 1 });
+    } finally {
+      setTracing(false);
+    }
+  });
+
   it("counts the slides it could not read, instead of calling them lost", async () => {
     // A page whose read throws is skipped — safe, since an unseen slide is
     // never deleted. But its items then came back "lost", indistinguishable in
@@ -2987,6 +3013,44 @@ describe("reading a demo deck back and repairing it", () => {
     // And the picture carries the config tag, so the chart is still editable.
     const last = deck[deck.length - 1].created.filter((s) => !s.deleted);
     expect(last.some((s) => s.imageBase64 === "iVBORw0KGgo=")).toBe(true);
+  }, 20_000);
+
+  it("reports per item whether the config tag actually committed", async () => {
+    // Intent, recorded next to the settled readback's answer to the same
+    // question. A real 38-slide run reported 20 tagged charts where the file
+    // provably carried 31, and establishing that took unzipping the .pptx.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const report = await insertDemoDeck([
+      { scene: buildChart(tinyChart()), title: "Tagged", tagData: `{"i":0}` },
+      // No tagData: nothing to write, so `tagged` must be false — and that is
+      // correct, not a fault. A reader has to be able to tell the two apart.
+      { scene: buildChart(tinyChart()), title: "Untagged" },
+    ]);
+    expect(report.results.map((r) => !!r.tagged)).toEqual([true, false]);
+  }, 20_000);
+
+  it("reports tagged false when the host cannot write tags at all", async () => {
+    // The case that produced 19 silently-untagged charts. `created` still
+    // counts the shapes — they are on the slide — so only this field
+    // distinguishes "drawn and editable" from "drawn and lost".
+    const scene = buildChart(tinyChart());
+    const item = { scene, title: "One", tagData: `{"i":0}` };
+
+    // Control: a host that can tag reports true.
+    installHost([makeSlide("ok")]);
+    expect((await insertDemoDeck([item])).results[0].tagged).toBe(true);
+
+    // A host below PowerPointApi 1.3 has no shape tags at all, so the chart is
+    // drawn and is NOT re-editable. `created` still counts the shapes — they
+    // are on the slide — so this field is the only thing that tells the two
+    // states apart, which is exactly what a run of 19 silently-untagged charts
+    // had no way to say.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck, [], undefined, (v) => v !== "1.3");
+    const report = await insertDemoDeck([item]);
+    expect(report.results[0].created).toBeGreaterThan(1);
+    expect(report.results[0].tagged).toBe(false);
   }, 20_000);
 
   it("does not degrade a healthy run because somebody ELSE's stalled call answered", async () => {
