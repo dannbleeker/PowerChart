@@ -10,5 +10,13 @@ export default defineConfig({
       formats: ["es"],
       fileName: "powerchart",
     },
+    rollupOptions: {
+      // jszip stays a peer, not a passenger. Bundling it put a 133 KB copy
+      // inside the library — and, because the import is dynamic, split the
+      // build into chunks. The skill ships exactly one engine file and would
+      // have loaded a chunk that was never packaged with it.
+      external: ["jszip"],
+      output: { inlineDynamicImports: true },
+    },
   },
 });

@@ -435,15 +435,27 @@ loose so they are editable again. The run's summary is written from what the
 deck actually holds, not from what the add-in believed while the host was still
 catching up.
 
-**Repair deck** runs that same pass on demand, for a deck a previous session
-left damaged — nothing is re-inserted, and slides outside the demo range are
-never touched. It only ever deletes a slide that is provably redundant (an
-identical twin of a complete chart) or empty; two half-finished copies of the
-same chart are reported and left for you to judge.
+**Verbose trace** records every step the add-in takes — each drawing batch, each
+slide the host loses, each call it stops waiting for, each repair action, and
+every pane action including ordinary inserts and updates. It is on by default
+while the add-in is being validated against real hosts, and it rides along
+inside the run log rather than in a separate file. Nothing is written while it
+is off.
 
 **Download run log** saves the last run as JSON: per-item timings, statuses,
-what the host did to each slide, and the repair pass's verdicts. Attach it to a
-bug report instead of retyping the summary line.
+what the host did to each slide, and the repair pass's verdicts, plus the trace. Attach
+it to a bug report instead of retyping the summary line.
+
+### Very dense charts on the web
+
+A violin is 253 native shapes; an area chart 176, a tile map 122, a waffle 103.
+PowerPoint on the web will not draw those reliably — it is the one host with no
+resource limits of its own, so an add-in that asks too much takes the whole tab
+down rather than being throttled. On the web only, and only past ~90 shapes,
+PowerChart inserts such a chart as a picture and says so. It still carries its
+configuration, so **Edit selected chart** works as usual and **Explode to native
+shapes** turns it back into shapes on a host that can take them. Ticking
+**Insert as picture** yourself always wins; this never overrides your choice.
 
 ### When PowerPoint won't redraw a chart
 

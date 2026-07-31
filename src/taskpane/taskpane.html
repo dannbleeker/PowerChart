@@ -259,15 +259,16 @@
               title="Build the whole deck as a .pptx and hand it to PowerPoint in one call, instead of drawing it shape by shape. Falls back automatically if the host can't take it."
               ><input type="checkbox" id="demo-file" checked /> Fast path (one file insert)</label
             >
-            <button id="demo-repair" disabled title="Re-read the demo slides and fix what the host got wrong">
-              Repair deck
-            </button>
             <button id="demo-log" disabled title="Save the last run's report as JSON">Download run log</button>
+            <label
+              title="Record every step of a run for a bug report. On while the add-in is being validated against real hosts; the run log carries it."
+              ><input type="checkbox" id="demo-trace" checked /> Verbose trace</label
+            >
           </div>
           <p class="hint">
-            Repair re-reads the demo slides after the host has settled: it deletes duplicate slides a stalled retry left
-            behind, clears NOT COMPLETE banners from charts that are in fact complete, and re-groups charts that landed
-            loose so they are editable again.
+            Every run ends by re-reading its slides once the host has settled: duplicate slides a stalled retry left
+            behind are deleted, NOT COMPLETE banners are cleared from charts that are in fact complete, and charts that
+            landed loose are re-grouped so they stay editable.
           </p>
         </section>
       </div>

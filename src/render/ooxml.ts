@@ -182,6 +182,40 @@ export function groupSlideShapes(slideXml: string, groupTagRid?: string): string
 }
 
 /**
+ * Put a tag reference on the slide's first shape.
+ *
+ * The fallback for a slide `groupSlideShapes` declined to group — an
+ * image-mode chart is one picture, and one shape is not a group. Without this
+ * such a chart carries no `POWERCHART_CONFIG` at all and the pane cannot
+ * re-open it, which is the difference between a picture of a chart and a
+ * chart. `<p:nvPr>` is where `custDataLst` belongs on both `<p:sp>` and
+ * `<p:pic>`, so the same insertion works for either.
+ */
+export function tagFirstShape(slideXml: string, rid: string): string {
+  const at = slideXml.indexOf("</p:grpSpPr>");
+  if (at < 0) return slideXml;
+  const empty = slideXml.indexOf("<p:nvPr/>", at);
+  if (empty >= 0) {
+    return (
+      slideXml.slice(0, empty) +
+      `<p:nvPr><p:custDataLst><p:tags r:id="${rid}"/></p:custDataLst></p:nvPr>` +
+      slideXml.slice(empty + "<p:nvPr/>".length)
+    );
+  }
+  const open = slideXml.indexOf("<p:nvPr>", at);
+  if (open < 0) return slideXml;
+  const close = slideXml.indexOf("</p:nvPr>", open);
+  if (close < 0) return slideXml;
+  // `CT_ApplicationNonVisualDrawingProps` orders its children `ph?, media?,
+  // custDataLst?, extLst?`, so on a placeholder shape the tag has to go AFTER
+  // the `<p:ph>`. Prepending it produces a part PowerPoint will not open.
+  const inner = slideXml.slice(open + "<p:nvPr>".length, close);
+  const ph = /<p:ph\b[^>]*(?:\/>|>[\s\S]*?<\/p:ph>)/.exec(inner);
+  const at2 = open + "<p:nvPr>".length + (ph ? ph.index + ph[0].length : 0);
+  return slideXml.slice(0, at2) + `<p:custDataLst><p:tags r:id="${rid}"/></p:custDataLst>` + slideXml.slice(at2);
+}
+
+/**
  * Attach a slide-level `<p:custDataLst>`, which is where a slide's own tags
  * live: a direct child of `<p:cSld>`, after `</p:spTree>` and before
  * `<p:extLst>` — the order `CT_CommonSlideData` requires.
@@ -263,7 +297,13 @@ export async function injectGroupsAndTags(
     }
 
     shapesPerSlide.push(countSlideShapes(slide));
-    if (item.group !== false) slide = groupSlideShapes(slide, groupRid);
+    if (item.group !== false) {
+      const grouped = groupSlideShapes(slide, groupRid);
+      // A one-shape slide has nothing to group — an image-mode chart is a
+      // single picture — but it still needs its config tag, or it is not
+      // re-editable. Hang it on the shape itself.
+      slide = grouped === slide && groupRid ? tagFirstShape(slide, groupRid) : grouped;
+    }
 
     if (item.slot !== undefined) {
       const n = ++tagPartNo;

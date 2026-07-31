@@ -19,6 +19,8 @@ import {
   withSlideDeselected,
   slideCount,
   snapshotAddedSlides,
+  traceEnvironment,
+  wantsAutoPicture,
   listChartsInDeck,
   listChartsInSelection,
   loadChartFromSelection,
@@ -36,6 +38,7 @@ import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } fr
 import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
+import { setTracing, trace, traceLog, tracing } from "../core/trace";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -1348,6 +1351,30 @@ function rasterizeScene(scene: Scene): Promise<string> {
  * busy text, and any phase note has already changed it.
  */
 async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: string; warn?: string }> {
+  // A chart nobody asked to rasterize, on the one host that cannot survive
+  // drawing it. The densest kinds are far past what PowerPoint on the web will
+  // take as shapes — violin 253, area 176, tile map 122, waffle 103 — and the
+  // budget below is the same number the demo deck has always used to decide a
+  // chart "too dense for this host". It used to skip those and stamp a
+  // placeholder; drawing a picture is strictly better than not drawing.
+  const shapes = estimateOfficeShapes(scene);
+  if (
+    wantsAutoPicture(shapes, {
+      web: isWebHost(),
+      canPicture: canInsertPicture(),
+      alreadyPicture: cfg.render === "image",
+    })
+  ) {
+    try {
+      return {
+        png: await rasterizeScene(scene),
+        warn: `That chart is ${shapes} shapes — too many for PowerPoint on the web to draw. Inserted as a picture; "Explode to native shapes" turns it back.`,
+      };
+    } catch {
+      // Could not rasterize — fall through and draw the shapes. Slow and
+      // risky beats refusing to insert the user's chart.
+    }
+  }
   if (cfg.render !== "image") return {};
   if (!canInsertPicture()) {
     return {
@@ -1823,9 +1850,6 @@ interface RunLog {
     shapes: number;
     ms: number;
     grouped: boolean;
-    retried: boolean;
-    lateSettled: boolean;
-    partial: boolean;
     lateOutcome: string;
   }[];
   deck: {
@@ -1836,53 +1860,13 @@ interface RunLog {
   };
   /** The settled truth: what the deck held once the host stopped moving. */
   reconcile?: ReconcileOutcome;
-}
-
-/**
- * Which demo deck a set of slot tags came from, and what each item should
- * hold. Repair runs against a deck inserted by an EARLIER session, so the
- * expected shape counts have to be reconstructed rather than remembered: both
- * candidate decks are generated and scored against the titles on the tags.
- * The smoke subset and the full deck share slot 0-1 and diverge after, so a
- * couple of matching titles is enough to tell them apart.
- */
-function demoExpectation(snapshots: SlideSnapshot[]): {
-  expected: ExpectedItem[];
-  tagFor: (slot: number) => string | undefined;
-} {
-  const seen = new Map<number, string | null>();
-  for (const s of snapshots) if (s.slot !== null && !seen.has(s.slot)) seen.set(s.slot, s.title);
-  const candidates = [demoItems({ smoke: true }), demoItems({ smoke: false })];
-  let best = candidates[0];
-  let bestScore = -1;
-  for (const deck of candidates) {
-    let score = 0;
-    for (const [slot, title] of seen) if (title && deck[slot]?.title === title) score++;
-    if (score > bestScore) {
-      bestScore = score;
-      best = deck;
-    }
-  }
-  return {
-    expected: best.map((it, i) => ({
-      slot: i,
-      title: it.title,
-      shapes: estimateOfficeShapes(it.scene),
-      chart: !!it.configJson,
-    })),
-    tagFor: (slot) => best[slot]?.configJson,
+  /** Step-by-step record, when Verbose trace was on for the run. */
+  trace?: {
+    entries: { ms: number; scope: string; message: string; data?: Record<string, unknown> }[];
+    dropped: number;
   };
 }
 
-/**
- * Repair a demo deck in place — the standalone version of the pass that now
- * closes every run, for decks damaged by a run that predates it (or by a
- * session that has since been closed).
- *
- * Scoped to the span between the first and last slot-tagged slide: everything
- * in there was put there by a demo run, so an empty slide inside it is that
- * run's litter. Slides outside the span are never read and never touched.
- */
 /**
  * Verify and repair the demo slides wherever they are in the deck.
  *
@@ -1944,34 +1928,6 @@ async function repairDeckSpan(
  */
 type VerifyResult =
   { kind: "ok"; outcome: ReconcileOutcome } | { kind: "unidentified"; why: string } | { kind: "error"; why: string };
-
-async function doRepairDeck() {
-  const count = await slideCount();
-  const snapshots = await snapshotAddedSlides(0, count);
-  const tagged = snapshots.filter((s) => s.slot !== null);
-  if (!tagged.length) {
-    note("No demo slides found — Repair works on slides the demo deck inserted.", "err");
-    return;
-  }
-  const first = Math.min(...tagged.map((s) => s.index));
-  const last = Math.max(...tagged.map((s) => s.index));
-  const inSpan = snapshots.filter((s) => s.index >= first && s.index <= last);
-  const { expected, tagFor } = demoExpectation(inSpan);
-  const plan = planReconcile(inSpan, expected, { dropOrphanBlanks: true });
-  if (!plan.actions.length) {
-    note("Nothing to repair — {summary}", "ok", { summary: describeReconcile(plan) });
-    return;
-  }
-  const outcome = await applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, inSpan);
-  const { unstamped, regrouped, deleted } = outcome.applied;
-  note(
-    outcome.refused
-      ? "Repaired: {deleted} duplicate slide(s) deleted, {unstamped} banner(s) cleared, {regrouped} chart(s) re-grouped — {refused} step(s) the host refused."
-      : "Repaired: {deleted} duplicate slide(s) deleted, {unstamped} banner(s) cleared, {regrouped} chart(s) re-grouped.",
-    outcome.refused ? "err" : "ok",
-    { deleted, unstamped, regrouped, refused: outcome.refused },
-  );
-}
 
 /**
  * Update a chart in place without asking the live canvas to do the impossible.
@@ -2105,6 +2061,40 @@ async function insertDemoDeckAsFile(
   return { text, status: clean ? "ok" : "err" };
 }
 
+/**
+ * Shapes a web host may be asked to draw in one run before the add-in stops
+ * asking. Every 12-item run in this project's history (~400 shapes) survived;
+ * every 37-item one (~1850) took the whole client down. 600 sits between them,
+ * nearer the side that lived.
+ *
+ * Only the web needs a number at all. Microsoft's documented runtime limits —
+ * CPU, memory, four-crashes-per-session, five-seconds-unresponsive — are
+ * scoped to Windows and Mac and explicitly NOT to a browser, so on the web
+ * nothing throttles a runaway add-in: the tab dies and takes the session with
+ * it. Desktop has that safety net and does not need this one.
+ */
+const WEB_SHAPE_BUDGET = 600;
+
+/**
+ * Rasterize, or give up. A canvas that never fires `onload` would otherwise
+ * hang a run at the exact moment it is trying to rescue one.
+ */
+function boundedRaster(scene: Scene): Promise<string | undefined> {
+  return Promise.race([
+    rasterizeScene(scene),
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 8_000)),
+  ]).catch(() => undefined);
+}
+
+/** True when the add-in is running inside PowerPoint on the web. */
+function isWebHost(): boolean {
+  try {
+    return Office.context?.diagnostics?.platform === Office.PlatformType.OfficeOnline;
+  } catch {
+    return false;
+  }
+}
+
 /** Save an object as a JSON file, via the same Blob dance as Download SVG. */
 function downloadJson(name: string, payload: unknown) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -2141,6 +2131,12 @@ function wireInsert() {
     const guard = (fn: () => Promise<void>) =>
       async function (this: unknown, ev?: Event) {
         const clicked = ev?.currentTarget as HTMLButtonElement | undefined;
+        // Every host action in the pane comes through here, so this is the one
+        // place that can log them all — inserts, updates, agenda, elements,
+        // same-scale, explode, the demo deck. Normal use, not just the harness.
+        const action = clicked?.id ?? "action";
+        const startedAt = Date.now();
+        trace("pane", "action started", { action });
         const lock = [insertBtn, clicked].filter((b): b is HTMLButtonElement => !!b && !b.disabled);
         for (const b of lock) b.disabled = true;
         note("Working…", "busy");
@@ -2152,10 +2148,12 @@ function wireInsert() {
         startElapsed();
         try {
           await fn();
+          trace("pane", "action finished", { action, ms: Date.now() - startedAt });
           if (hostNote.textContent === busyText) {
             note("Done.", "ok");
           }
         } catch (err) {
+          trace("pane", "action failed", { action, ms: Date.now() - startedAt, error: errorText(err) });
           // errorText, not err.message: a RichApi.Error's message is generic
           // ("An internal error has occurred") and the useful part is in code
           // and debugInfo, which String(err) throws away.
@@ -2262,25 +2260,33 @@ function wireInsert() {
     const fileToggle = $("demo-file") as HTMLInputElement | null;
     fileToggle?.addEventListener("change", () => {
       if (fileToggle.checked || !canInsertSlidesFromBase64()) return;
-      const web = (() => {
-        try {
-          return Office.context?.diagnostics?.platform === Office.PlatformType.OfficeOnline;
-        } catch {
-          return false;
-        }
-      })();
-      if (web) {
+      if (isWebHost()) {
         note(
           "Heads up: the full deck drawn shape by shape has crashed PowerPoint on the web. The smoke subset survives it; the fast path handles both.",
           "err",
         );
       }
     });
-    const repairBtn = $("demo-repair") as HTMLButtonElement;
-    repairBtn.disabled = false;
-    repairBtn.addEventListener("click", guard(doRepairDeck));
     // Enabled by a run, not by the host: with nothing to save it would only
     // ever produce an empty file.
+    // ON by default for now. Nothing in this project has been diagnosed from
+    // anything but an after-the-fact artifact, and the runs that matter happen
+    // on a host nobody can attach a debugger to. When the add-in stops being
+    // validated against real hosts, uncheck it in taskpane.html and drop the
+    // `checked` — the module, its call sites and this toggle all keep working,
+    // so a future investigation is one click away rather than a re-implementation.
+    const traceToggle = $("demo-trace") as HTMLInputElement | null;
+    if (traceToggle?.checked) {
+      setTracing(true);
+      traceEnvironment(typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev");
+    }
+    traceToggle?.addEventListener("change", () => {
+      setTracing(traceToggle.checked);
+      if (traceToggle.checked) {
+        traceEnvironment(typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev");
+        note("Verbose trace on — it rides along in the run log.", "ok");
+      } else note("Verbose trace off.", "ok");
+    });
     $("demo-log").addEventListener("click", () => {
       if (!lastRunLog) {
         note("No run to save yet — insert the demo deck first.", "err");
@@ -2321,23 +2327,45 @@ function wireInsert() {
         // their pages and split them instead, so there is nothing left to
         // exempt: a harness page that somehow still runs over is a page worth
         // skipping, exactly like any other.
-        const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, reconcile, totalMs } =
-          await insertDemoDeck(
-            items.map((i) => ({
-              scene: i.scene,
-              tagData: i.configJson,
-              title: i.title,
-            })),
-            (done, total) => {
-              note("Inserting demo slides… {done} of {total}", "busy", { done, total });
-              setProgress(done / total); // one slide per context, so a real bar
-            },
+        const {
+          results,
+          slidesAdded,
+          addsIssued,
+          blankSlides,
+          blankItems,
+          blanksRead,
+          reconcile,
+          degradedAt,
+          degradeReason,
+          totalMs,
+        } = await insertDemoDeck(
+          items.map((i) => ({
+            scene: i.scene,
+            tagData: i.configJson,
+            title: i.title,
+          })),
+          (done, total) => {
+            note("Inserting demo slides… {done} of {total}", "busy", { done, total });
+            setProgress(done / total); // one slide per context, so a real bar
+          },
+          {
             // Close the run by reading the deck back and repairing it — the
             // per-item bookkeeping below is written while the host is still
             // committing, and has been observed calling a chart failed that
             // in fact landed twice.
-            { reconcile: true },
-          );
+            reconcile: true,
+            // And give it somewhere to go when the host starts failing.
+            // Rasterizing needs the pane's canvas, so the renderer asks and
+            // this supplies; it decides when.
+            // Web only. Degrading exists because a browser has no safety
+            // net — Office's CPU/memory/crash-tolerance limits are scoped to
+            // Windows and Mac — so on desktop, where the host throttles the
+            // add-in rather than dying, drawing shapes remains the right
+            // answer however long it takes.
+            pictureFor: isWebHost() ? (i) => boundedRaster(items[i].scene) : undefined,
+            shapeBudget: isWebHost() ? WEB_SHAPE_BUDGET : undefined,
+          },
+        );
         // Self-check: the deck is a regression harness, so report what the HOST
         // actually did, not what we asked for. The full table goes to the console.
         const named = (s: "skipped" | "failed") =>
@@ -2345,7 +2373,6 @@ function wireInsert() {
         const skipped = named("skipped");
         const failedNames = named("failed");
         const rendered = results.filter((r) => r.status === "rendered").length;
-        const recovered = results.filter((r) => r.retried).length;
         // Loss vs adds ISSUED, not vs items.length: a retry/fail stray inflates
         // slidesAdded, so measuring against items.length reads 0 during real
         // corruption when a stray cancels a lost slide. addsIssued − slidesAdded
@@ -2358,10 +2385,7 @@ function wireInsert() {
             chart: items[i].title,
             shapes: r.created,
             status: r.status,
-            retried: !!r.retried,
             grouped: !!r.grouped,
-            lateSettled: !!r.lateSettled,
-            partial: !!r.partialLanded,
             ms: r.ms,
             lateOutcome: r.lateOutcome ?? "",
           })),
@@ -2396,7 +2420,8 @@ function wireInsert() {
               `, cleared ${unstamped} false banner(s), re-grouped ${regrouped} chart(s).`;
           if (reconcile.refused) msg += ` ⚠ ${reconcile.refused} repair step(s) the host refused.`;
         } else if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
-        if (recovered) msg += ` ${recovered} recovered on retry.`;
+        if (degradedAt !== undefined)
+          msg += ` Drew the last ${items.length - degradedAt} slide(s) as pictures — ${degradeReason}. Use "Explode to native shapes" on any of them to get real shapes back.`;
         // A rendered but ungrouped chart is not re-editable — flag them so
         // Phase 2 doesn't quietly count them as full successes.
         const ungrouped = reconcile
@@ -2405,10 +2430,6 @@ function wireInsert() {
             ).length
           : results.filter((r, i) => r.status === "rendered" && !r.grouped && items[i].scene.nodes.length > 1).length;
         if (ungrouped) msg += ` ⚠ ${ungrouped} chart${ungrouped === 1 ? "" : "s"} landed ungrouped (not re-editable).`;
-        const lateN = results.filter((r) => r.lateSettled).length;
-        if (lateN) msg += ` ${lateN} late-settled (sync timed out but shapes landed).`;
-        const partialN = results.filter((r) => r.partialLanded).length;
-        if (partialN) msg += ` ${partialN} rendered-partial (sync threw with most shapes on the slide — no retry).`;
         if (lost > 0)
           msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
         // Blank slides carry the slot tag (item title) where the host has 1.3
@@ -2432,13 +2453,11 @@ function wireInsert() {
             shapes: r.created,
             ms: r.ms,
             grouped: !!r.grouped,
-            retried: !!r.retried,
-            lateSettled: !!r.lateSettled,
-            partial: !!r.partialLanded,
             lateOutcome: r.lateOutcome ?? "",
           })),
           deck: { slidesAdded, addsIssued, lost, blank: blankItems },
           reconcile,
+          trace: tracing() ? traceLog() : undefined,
         };
         ($("demo-log") as HTMLButtonElement).disabled = false;
         // Close the deck with a self-contained results slide so the exported PDF is
@@ -2458,7 +2477,6 @@ function wireInsert() {
           skipped: skipped.length,
           failed: failedNames.length,
           lost,
-          retried: recovered,
           totalMs,
         };
         // Each results page inserts in its OWN insertDemoDeck call. A single

@@ -469,6 +469,14 @@ adjustable pie geometry. The slide takes the chart's own `style.background`
 `"agenda"` config and isolate a failing one, so a single bad entry cannot throw
 away the rest of the batch.
 
+Each chart lands as **one grouped object carrying its own config**, so a deck
+rendered here opens in the PowerChart task pane exactly like one the pane drew:
+select a chart, click *Edit selected chart*, change the data, update it in
+place. The grouping and the `POWERCHART_CONFIG` tag are injected into the OOXML
+after pptxgenjs is done — it can express neither — by the same code the add-in
+runs, so the two outputs cannot drift apart. Image-mode charts get the tag on
+the picture, so they are re-editable too.
+
 Two known limits of the headless pptx: the chart's text alternative
 (`<title>`/`<desc>` in the SVG, alt text in the live add-in) is not carried —
 pptxgenjs exposes alt text on pictures and native charts only, not on the

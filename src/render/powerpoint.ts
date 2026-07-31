@@ -15,6 +15,7 @@ import { estimateOfficeShapes } from "../core/scene";
 import { toHex6, alphaOf } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
+import { trace } from "../core/trace";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
 
 /* global PowerPoint, Office */
@@ -229,6 +230,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   const started = Date.now();
   const describe = (outcome: string): void => {
     lastLateSync = `${what}: ${outcome} after ${Math.round((Date.now() - started) / 1000)}s`;
+    trace("host", "a call we gave up on finally answered", { what, outcome, afterMs: Date.now() - started });
     lastLateSyncSeq += 1;
     lateSubscriber?.(lastLateSync);
   };
@@ -263,6 +265,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         () => undefined,
         () => undefined,
       );
+      trace("host", "gave up waiting", { what, afterMs: ms });
       reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
     }, ms);
   });
@@ -821,6 +824,7 @@ async function addSlides(
   }
   if (deficit > 0) {
     lastAddsLost += deficit;
+    trace("host", "slide add(s) never landed", { requested: count, lost: deficit });
     console.warn(
       `PowerChart: addSlides lost ${deficit} of ${count} requested slide${count === 1 ? "" : "s"} — ` +
         `the host dropped the add() and the retry did not recover it. Returning ${have} thunk${have === 1 ? "" : "s"}.`,
@@ -865,7 +869,32 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
  * rest are well under. Tunable — the point is to skip the few that can't land,
  * not to trim the deck.
  */
-const DEMO_SHAPE_BUDGET = 90;
+export const DEMO_SHAPE_BUDGET = 90;
+
+/**
+ * Should this chart go on as a picture even though nobody asked?
+ *
+ * Yes on exactly one host, for exactly one reason. PowerPoint on the web has
+ * no resource limits — Microsoft's CPU/memory/crash-tolerance ceilings are
+ * scoped to Windows and Mac and explicitly not to a browser — so nothing
+ * throttles an add-in that asks too much: the tab dies. The densest chart
+ * kinds are far past what it will take as shapes (violin 253, area 176, tile
+ * map 122, waffle 103), and `DEMO_SHAPE_BUDGET` is the number this renderer
+ * has always used to call a chart too dense for this host. It used to skip
+ * those and stamp a placeholder. A picture is strictly better than nothing —
+ * it carries the config tag, so the chart stays re-editable, and Explode
+ * turns it back on a host that can take it.
+ *
+ * Pure and exported so the rule can be tested without a DOM, a canvas or a
+ * host — the three things that make the pane's own paths awkward to pin down.
+ */
+export function wantsAutoPicture(
+  shapes: number,
+  opts: { web: boolean; canPicture: boolean; alreadyPicture: boolean; budget?: number },
+): boolean {
+  if (opts.alreadyPicture || !opts.web || !opts.canPicture) return false;
+  return shapes > (opts.budget ?? DEMO_SHAPE_BUDGET);
+}
 
 /**
  * Draw a bold red banner ACROSS THE TOP of a slide so an incomplete one is
@@ -945,20 +974,6 @@ export interface DemoResult {
   /** Wall-clock time for this slide, ms. A value nearing BATCH_TIMEOUT_MS (45s) is
    *  a near-miss stall — the host was one hair from losing it. */
   ms: number;
-  /** The item stalled on its first attempt but a single retry recovered it. The
-   *  first attempt may have left a stray partial slide (see slidesAdded). */
-  retried?: boolean;
-  /** The item's sync timed out but a slide readback showed every shape had
-   *  landed — the host settled after we gave up, so the chart is real. Counted
-   *  as "rendered", NOT "failed": stamping a complete chart NOT COMPLETE is
-   *  the false-negative this exists to prevent. */
-  lateSettled?: boolean;
-  /** The item's sync threw but a readback showed most (≥ PARTIAL_RENDER_THRESHOLD)
-   *  of the expected shapes on the slide. A retry would only add a duplicate
-   *  slide, so the item is counted as "rendered" and a rescue attempts to
-   *  group whatever landed. `created` carries the actual on-slide count so a
-   *  console.table row shows "created 31 of 36". */
-  partialLanded?: boolean;
   /** The `lastLateSync` value observed during this item, if any — an abandoned
    *  sync that later reported success or a real RichApi error. Read the run's
    *  console.table to see which item stalled and how it eventually resolved. */
@@ -1039,6 +1054,13 @@ export interface DemoReport {
    * fact landed twice.
    */
   reconcile?: ReconcileOutcome;
+  /**
+   * Item index at which the run stopped drawing shapes and started inserting
+   * pictures, with the observation that triggered it. Undefined when the host
+   * kept up all the way — which is the normal case everywhere but the web.
+   */
+  degradedAt?: number;
+  degradeReason?: string;
   /** Wall-clock time for the whole run, ms — the headline regression metric. */
   totalMs: number;
 }
@@ -1047,20 +1069,6 @@ export interface DemoReport {
 export async function slideCount(): Promise<number> {
   return PowerPoint.run(async (context) => {
     const c = context.presentation.slides.getCount();
-    await context.sync();
-    return c.value;
-  });
-}
-
-/**
- * Top-level shape count of a slide, in a fresh settled sync. Used after an
- * addAndRenderItem throw to see what actually landed — a sync that timed out
- * (see `withTimeout`) may leave every shape on the slide anyway, and treating
- * that as a failure both wastes a retry and stamps a real chart NOT COMPLETE.
- */
-async function slideShapeCount(index: number): Promise<number> {
-  return PowerPoint.run(async (context) => {
-    const c = context.presentation.slides.getItemAt(index).shapes.getCount();
     await context.sync();
     return c.value;
   });
@@ -1104,6 +1112,7 @@ async function rescueGroupAndTag(
       try {
         group = shapes.addGroup(items);
       } catch {
+        trace("group", "the host refused addGroup", { slideIndex, shapes: items.length });
         return false;
       }
       group.name = "PowerChart";
@@ -1136,53 +1145,6 @@ async function rescueGroupAndTag(
   }
 }
 
-/**
- * Fresh-context unstamp-and-rescue for a slide whose item ended up "failed" —
- * both the render and its retry stalled, but the LAST attempt's readback
- * showed real chart shapes on the slide, just under `PARTIAL_RENDER_THRESHOLD`.
- * The slide already carries the NOT-COMPLETE banner `stampLastSlide` left on
- * it; this deletes that banner and hands the slide to `rescueGroupAndTag` to
- * group + tag whatever chart shapes remain, so a genuinely-partial chart is
- * re-editable instead of permanently hidden under a red stripe.
- *
- * Two fresh contexts, not one: the banner has to be gone (and that deletion
- * committed) before `rescueGroupAndTag` re-loads the shape collection, or its
- * addGroup would sweep the banner into the chart's own group.
- *
- * Returns true only when BOTH steps land: the stamp shape is found and its
- * deletion sync succeeds, AND `rescueGroupAndTag` itself returns true. Any
- * other outcome (no stamp shape found, the delete sync rejects, grouping
- * unsupported/refused) leaves the slide exactly as "failed" left it — still
- * stamped, still ungrouped — so the caller's status/grouped fields stay
- * untouched.
- */
-async function unstampAndRescue(
-  slideIndex: number,
-  tagData: string | undefined,
-  origin: { left: number; top: number },
-): Promise<boolean> {
-  let unstamped: boolean;
-  try {
-    unstamped = await PowerPoint.run(async (context) => {
-      const slide = context.presentation.slides.getItemAt(slideIndex);
-      const shapes = slide.shapes as unknown as PowerPoint.ShapeCollection & {
-        items: (PowerPoint.Shape & { name: string; delete(): void })[];
-      };
-      shapes.load("items/name");
-      await context.sync();
-      const stamp = shapes.items.find((s) => s.name === NOT_COMPLETE_NAME);
-      if (!stamp) return false;
-      stamp.delete();
-      await context.sync();
-      return true;
-    });
-  } catch {
-    unstamped = false;
-  }
-  if (!unstamped) return false;
-  return rescueGroupAndTag(slideIndex, tagData, origin);
-}
-
 /** The blank-layout id, resolved lazily on the first slide's context and reused. */
 interface LayoutRef {
   id?: string;
@@ -1209,7 +1171,7 @@ interface AddAndRenderOutcome {
 }
 
 async function addAndRenderItem(
-  item: { scene: Scene; tagData?: string; slotTag?: string },
+  item: { scene: Scene; tagData?: string; slotTag?: string; pictureBase64?: string },
   tooDense: boolean,
   shapeCount: number,
   layout: LayoutRef,
@@ -1249,6 +1211,9 @@ async function addAndRenderItem(
       tagData: item.tagData,
       altText: item.scene.desc,
       altTitle: item.scene.title,
+      // Set once the run has decided to stop drawing shapes — one picture per
+      // slide instead of forty shapes. See `pictureFor` on insertDemoDeck.
+      pictureBase64: item.pictureBase64,
       // Off-screen — the host tolerates far larger batches than the live canvas.
       shapesPerSync: SHAPES_PER_SYNC_OFFSCREEN,
     };
@@ -1296,6 +1261,29 @@ export async function insertDemoDeck(
      * each trigger a deck-wide sweep.
      */
     reconcile?: boolean;
+    /**
+     * A picture of item `i`, for when the run gives up on drawing shapes.
+     *
+     * Rasterizing needs a canvas, which lives in the pane, not here — so the
+     * caller supplies it and this module decides WHEN to ask. Omit it and the
+     * run never degrades; it just draws shapes until it cannot.
+     */
+    pictureFor?: (index: number) => Promise<string | undefined>;
+    /**
+     * Shapes this run may draw before it stops drawing them.
+     *
+     * The number exists because PowerPoint on the web has no resource limits
+     * at all: Microsoft's documented ceilings (CPU, memory, four-crashes,
+     * five-seconds-unresponsive) are scoped to Windows and Mac and explicitly
+     * NOT to a browser, so nothing throttles a runaway add-in there — the tab
+     * simply dies, taking the user's session with it. Twice now.
+     *
+     * Every 12-item run in this project's history (~400 shapes) survived;
+     * every 37-item one (~1850) crashed the client. There is no published
+     * number to look up, so this is our own, measured with margin — the same
+     * basis as SHAPES_PER_SYNC.
+     */
+    shapeBudget?: number;
   } = {},
 ): Promise<DemoReport> {
   // Reset the module-scope lost-adds counter at the start of every run, so
@@ -1309,216 +1297,94 @@ export async function insertDemoDeck(
   // deck grew by exactly one slide per item — the lost-slide check.
   const before = await slideCount();
   const runStart = Date.now();
-  // Running slide count, refreshed with a settled getCount only on the failure
-  // path. On the happy path (addAndRenderItem returns) we know exactly one slide
-  // landed — no extra round-trip per item.
-  let runningCount = before;
-  // False once a failure-path getCount rejected: `runningCount` is then a guess,
-  // and the rescues below index slides BY it. Grouping the wrong slide writes
-  // this item's config tag onto a neighbour's chart — silent cross-chart
-  // corruption — so an untrusted count disables the rescues for the rest of the
-  // run instead of aiming them at a number we know is stale.
-  let countTrusted = true;
+  // Index of the first item drawn as a picture instead of shapes, and why.
+  // Undefined while the run is still healthy.
+  let degradedAt: number | undefined;
+  let degradeReason: string | undefined;
+  let shapesDrawn = 0;
+  let lostAdsSeen = 0;
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = !items[i].bypassBudget && shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
     let grouped = false;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
-    let retried = false;
-    // Slide-adds issued for this item. Attempt 1 always runs, even when its very
-    // first sync is refused — matching what `addsIssued` has always meant.
-    let attempts = 1;
-    let lateSettled = false;
-    let partialLanded = false;
-    // Shape count read back off the LAST failed attempt's slide (attempt 1, or
-    // the retry if it also failed). Declared here, not inside the catch, so a
-    // "failed" outcome below still knows whether the stamped slide has real
-    // chart shapes worth rescuing — see the unstamp-and-rescue block after the
-    // retried/grouped rescue.
-    let readback = 0;
+    // One add per item. There used to be a second — a retry, issued when the
+    // first attempt's readback came back short — and it is where every
+    // duplicate slide in this project came from: the readback ran while the
+    // host was still committing, so "short" was routinely wrong and the retry
+    // drew the same chart again on a new slide. The settled reconcile pass at
+    // the end sees what actually landed and repairs it, which is the same job
+    // done with evidence instead of a guess.
+    const attempts = 1;
     const lateSeqBefore = lastLateSyncSeq;
     const t0 = Date.now();
-    // Slot tag: JSON envelope with the deck-position index and the item title.
-    // Written on both attempts (a retry lands on a NEW slide, so its tag has to
-    // land too or the retry's slide reads as "unknown item" in a blank check).
+    // Slot tag: JSON envelope with the deck-position index and the item title,
+    // written at creation so the reconcile pass can pair a slide back to the
+    // item it was drawn for however the deck ends up ordered.
     const slotTag = JSON.stringify({ i, title: items[i].title ?? null });
-    const itemWithTag = { ...items[i], slotTag };
+    // Once the run has degraded, every remaining item goes on as a picture:
+    // one shape per slide instead of forty. The chart stays re-editable — the
+    // config tag rides on the picture exactly as it does on a group — and
+    // "Explode to native shapes" turns it back when the host is willing.
+    const degradedPicture = degradedAt !== undefined ? await runOpts.pictureFor?.(i).catch(() => undefined) : undefined;
+    const itemWithTag = { ...items[i], slotTag, pictureBase64: degradedPicture };
     try {
       ({ created, grouped } = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout));
-      runningCount++;
     } catch (err) {
-      // A throw is not always proof the chart is missing. When `withTimeout`
-      // races a slow sync and abandons it, the queued shapes STILL commit —
-      // the sync just resolves late. Real host: sync at 60s, shapes on the
-      // slide, no error to blame. Readback in a fresh context proves it.
-      //
-      // Gate on lastLateSync changing: a plain RichApi rejection means the
-      // queued commands did NOT commit, and skipping the readback keeps sync
-      // counts stable for the existing failure-path tests (no extra syncs on
-      // the retry's chosen index). Too-dense items never rendered — skip too.
-      // Wait for the abandoned sync (if any) to report its outcome so
-      // lastLateSync reflects reality — a timeout that resolves late means
-      // the host settled; a plain rejection means nothing to wait for.
-      if (!tooDense) await waitForLateSync();
-      const lateFired = lastLateSyncSeq !== lateSeqBefore;
-      // Re-read the settled slide count on EVERY failure, not only when the
-      // shape readback below is worth opening. `runningCount` is what both
-      // rescues index slides by, and a throw whose slide DID land (a too-dense
-      // item whose stamp sync rejected, a zero-shape scene) otherwise leaves the
-      // count one behind for the WHOLE REST of the run: the next ungrouped
-      // chart's rescue then reaches the previous item's slide and stamps this
-      // chart's config tag onto that one's shapes.
-      const afterFail = await slideCount().then(
-        (n) => n,
-        () => {
-          // Nothing settled to trust — freeze the rescues rather than aim them.
-          countTrusted = false;
-          return runningCount;
-        },
+      // Do NOT infer from here what landed. A throw means the sync we were
+      // waiting on gave up, not that the host discarded the work: the commits
+      // observed on PowerPoint web arrive minutes after the timeout that
+      // abandoned them. Record the failure, leave the slide alone, and let the
+      // settled pass decide — it is the only reader that sees the end state.
+      lastError = err;
+      status = "failed";
+      // `before` is the deck size when the run started: any slide past it was
+      // added by THIS run, so stamping one cannot deface a slide the user
+      // already had. An item whose add was swallowed stamps nothing.
+      await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart", before).catch(
+        () => {},
       );
-      // Read back the failed slide's shape count in a fresh context: the same
-      // number decides BOTH "late-settled" (100% + lateFired) and
-      // "partial-landed" (>= threshold, < 100%, no lateFired needed). Only
-      // opens the shape-count sync when a NEW slide actually appeared, so a
-      // catch that fired before addSlides (its getCount rejected) still pays
-      // only one round-trip.
-      if (!tooDense && shapeCount > 0) {
-        const failedSlideIndex = afterFail > runningCount ? afterFail - 1 : -1;
-        readback = failedSlideIndex >= 0 ? await slideShapeCount(failedSlideIndex).catch(() => 0) : 0;
-      }
-      runningCount = afterFail;
-      if (readback >= shapeCount && shapeCount > 0 && lateFired) {
-        // The host settled after the timeout — every shape is on the slide.
-        // Don't retry, don't stamp. The grouping/tagging did not run (the
-        // failed context is dead), so this chart is real but ungrouped —
-        // the fresh-context rescue below promotes it to re-editable.
-        created = readback;
-        lateSettled = true;
-      } else if (
-        !lateSettled &&
-        readback > 0 &&
-        readback < shapeCount &&
-        readback >= Math.ceil(shapeCount * PARTIAL_RENDER_THRESHOLD)
-      ) {
-        // Most of the chart is on the slide. A retry lands a duplicate slide
-        // and rarely helps — the host dropped the LAST batch's sync, not the
-        // whole render. Presentation_3.pptx: Line 31/36 shapes (86%), Gantt
-        // 23/24 (96%); today's strict `>= shapeCount` gate turned both into
-        // dup-slide pairs stamped NOT COMPLETE. Now: rendered-partial, no
-        // retry, rescue below groups whatever landed. lateFired NOT required
-        // — a plain RichApi rejection can still leave most shapes committed
-        // because the batches before it already synced.
-        created = readback;
-        partialLanded = true;
-      }
-      if (!lateSettled && !partialLanded) {
-        // A host stall is often transient, so retry the RENDER once — a fresh run
-        // and a NEW slide, because we must NOT delete the first failed slide: a
-        // mis-identified last-slide delete could destroy a good one. A recovered
-        // item may thus leave a stray partial slide from attempt 1; slidesAdded
-        // surfaces that. Too-dense items only stamp a placeholder — nothing to
-        // re-render — so they fail straight through.
-        let recovered = false;
-        if (!tooDense) {
-          attempts++;
-          try {
-            ({ created, grouped } = await addAndRenderItem(itemWithTag, false, shapeCount, layout));
-            recovered = true;
-            runningCount++;
-          } catch (err2) {
-            // Second attempt may also be a late-success or a partial-landing —
-            // recheck before giving up. Same threshold gate as attempt 1.
-            await waitForLateSync();
-            const lateFired2 = lastLateSyncSeq !== lateSeqBefore;
-            const afterFail2 = await slideCount().then(
-              (n) => n,
-              () => {
-                countTrusted = false;
-                return runningCount;
-              },
-            );
-            if (shapeCount > 0) {
-              const failedSlideIndex2 = afterFail2 > runningCount ? afterFail2 - 1 : -1;
-              readback = failedSlideIndex2 >= 0 ? await slideShapeCount(failedSlideIndex2).catch(() => 0) : 0;
-            }
-            runningCount = afterFail2;
-            if (readback >= shapeCount && shapeCount > 0 && lateFired2) {
-              created = readback;
-              recovered = true;
-              lateSettled = true;
-            } else if (
-              readback > 0 &&
-              readback < shapeCount &&
-              readback >= Math.ceil(shapeCount * PARTIAL_RENDER_THRESHOLD)
-            ) {
-              created = readback;
-              recovered = true;
-              partialLanded = true;
-            }
-            /* stalled again — fall through to the failed stamp */
-            if (!recovered) lastError = err2;
-          }
-        }
-        if (recovered) {
-          retried = true; // status stays "rendered"
-        } else {
-          // One chart the host would not draw does not sink the rest of the deck.
-          // Mark the half-rendered slide so a partial chart is not mistaken for a
-          // real one. A fresh context, because the failed render poisoned its own.
-          if (lastError === undefined) lastError = err;
-          status = "failed";
-          // `before` is the deck size when the run started: any slide past it
-          // was added by THIS run, so stamping one cannot deface a slide the
-          // user already had. An item whose add was swallowed stamps nothing.
-          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart", before).catch(
-            () => {},
-          );
-        }
-      }
-    }
-    // Rescue: a "rendered" item that landed ungrouped — its addAndRenderItem
-    // context died (lateSettled path) or the group sync was swallowed by the
-    // host — gets one more attempt in a fresh context to group + tag its
-    // shapes. Turns a loose chart into a re-editable one. Skip for "failed"
-    // (its slide has a stamp banner we don't want to group in) and "skipped".
-    if (status === "rendered" && !grouped && created > 1 && runningCount > before && countTrusted) {
-      const rescued = await rescueGroupAndTag(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
-        () => false,
-      );
-      if (rescued) grouped = true;
-    }
-    // Unstamp-and-rescue: a "failed" item whose last attempt still left real
-    // chart shapes on the slide (readback > 0) — just under
-    // PARTIAL_RENDER_THRESHOLD, so it didn't qualify as rendered-partial above.
-    // The slide is currently a stamp banner sitting over a genuine, if
-    // incomplete, chart. Delete the banner and group whatever landed, in a
-    // fresh context per `unstampAndRescue`. Only promotes a "failed" item —
-    // never touches "skipped" (nothing rendered) or an already-"rendered" one
-    // (handled by the rescue above).
-    if (status === "failed" && readback > 0 && runningCount > before && countTrusted) {
-      const rescued = await unstampAndRescue(runningCount - 1, items[i].tagData, { left: 60, top: 90 }).catch(
-        () => false,
-      );
-      if (rescued) {
-        status = "rendered";
-        partialLanded = true;
-        grouped = true;
-        created = readback;
-      }
     }
     const lateOutcome = lastLateSync && lastLateSyncSeq !== lateSeqBefore ? lastLateSync : undefined;
-    results.push({
-      created,
+    // Is the host still keeping up? We cannot catch the crash itself — the tab
+    // dies, there is no rejected promise to handle — so watch what precedes
+    // it. In this project's runs the precursors are loud: healthy items land
+    // in 2-9 seconds, sick ones take 65-125, and the run that killed the
+    // client managed two slides in 458. Any one of these means stop drawing
+    // shapes; a finished deck of pictures beats a dead session.
+    const ms = Date.now() - t0;
+    shapesDrawn += created;
+    if (degradedAt === undefined && runOpts.pictureFor) {
+      const why =
+        ms > SICK_ITEM_MS
+          ? `an item took ${Math.round(ms / 1000)}s`
+          : lastAddsLost > lostAdsSeen
+            ? "the host lost a slide"
+            : lastLateSyncSeq !== lateSeqBefore
+              ? "the host answered after we gave up waiting"
+              : shapesDrawn > (runOpts.shapeBudget ?? Infinity)
+                ? `${shapesDrawn} shapes drawn`
+                : undefined;
+      if (why) {
+        degradedAt = i + 1;
+        degradeReason = why;
+        console.warn(`PowerChart: drawing the rest as pictures — ${why}`);
+        trace("demo", "stopped drawing shapes", { fromItem: i + 1, why, shapesDrawn });
+      }
+    }
+    trace("demo", "item finished", {
+      i,
+      title: items[i].title,
       status,
-      ms: Date.now() - t0,
-      retried,
-      lateSettled,
-      partialLanded,
-      lateOutcome,
+      created,
+      expected: shapeCount,
       grouped,
       attempts,
+      ms,
     });
+    lostAdsSeen = lastAddsLost;
+    results.push({ created, status, ms: Date.now() - t0, lateOutcome, grouped, attempts });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
@@ -1581,6 +1447,8 @@ export async function insertDemoDeck(
     blankItems: blanks.items,
     blanksRead: blanks.complete,
     reconcile,
+    degradedAt,
+    degradeReason,
     totalMs,
   };
 }
@@ -1792,6 +1660,11 @@ export async function snapshotAddedSlides(before: number, after: number): Promis
   }
   await markTaggedSlides(snapshots);
   await countGroupChildren(snapshots);
+  trace("repair", "read the deck back", {
+    range: [before, after],
+    read: snapshots.length,
+    tagged: snapshots.filter((s) => s.slot !== null).length,
+  });
   return snapshots;
 }
 
@@ -1955,6 +1828,7 @@ export async function applyReconcilePlan(
   const applied = { unstamped: 0, regrouped: 0, deleted: 0 };
   let refused = 0;
   for (const action of plan.actions) {
+    trace("repair", `applying ${action.kind}`, { index: action.index, slot: action.slot, reason: action.reason });
     if (action.kind === "unstamp") {
       if (await deleteStamp(action.index)) applied.unstamped++;
       else refused++;
@@ -2152,6 +2026,12 @@ export async function insertSlidesFromPptx(
     `inserting ${expectedSlides} slide(s) from a generated deck`,
   );
   const after = await slideCount();
+  trace("insert", "handed the host a generated deck", {
+    expectedSlides,
+    landed: after - before,
+    base64Bytes: base64.length,
+    formatting,
+  });
   return after - before;
 }
 
@@ -2216,6 +2096,15 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
     }
   }
 }
+
+/**
+ * How long one demo item may take before the run stops trusting the host.
+ *
+ * Healthy items in this project's real runs land in 2-9 seconds. Sick ones
+ * take 65-125. Thirty sits well clear of both, so this fires on a host that
+ * is genuinely struggling rather than on one that is merely busy.
+ */
+const SICK_ITEM_MS = 30_000;
 
 /** Batch size to use once the target slide is off-screen — see
  *  `SHAPES_PER_SYNC_OFFSCREEN`, which this deliberately mirrors. */
@@ -2294,6 +2183,34 @@ export async function replaceSlideWithDeck(slideId: string, base64: string): Pro
   return (await slideCount()) === before;
 }
 
+/**
+ * Write the host's identity and capabilities into the trace.
+ *
+ * Called once when tracing starts. Every investigation in this project has
+ * begun by guessing at these — which requirement sets the host admits to,
+ * whether the one-call insert was even available — and guessing wrong at
+ * least once. They cost one line each and answer the first three questions
+ * anyone asks of a log.
+ */
+export function traceEnvironment(build: string): void {
+  const d = (() => {
+    try {
+      return Office.context?.diagnostics;
+    } catch {
+      return undefined;
+    }
+  })();
+  trace("host", "environment", {
+    build,
+    host: d?.host,
+    platform: d?.platform,
+    version: d?.version,
+    requirementSets: ["1.2", "1.3", "1.4", "1.5", "1.8", "1.10"].filter((v) => supports(v)),
+    canInsertSlidesFromBase64: canInsertSlidesFromBase64(),
+    canInsertPicture: canInsertPicture(),
+  });
+}
+
 /** True when the host advertises the given PowerPointApi requirement set. */
 function supports(version: string): boolean {
   try {
@@ -2327,15 +2244,6 @@ const SHAPES_PER_SYNC = 10;
  * the observed ceiling.
  */
 const SHAPES_PER_SYNC_OFFSCREEN = 40;
-
-/**
- * Minimum readback-vs-expected ratio for a caught insert to count as
- * "rendered-partial" instead of retried+stamped. Set at 85% so a single
- * dropped batch (SHAPES_PER_SYNC_OFFSCREEN = 40 / typical ~40-shape chart) is
- * still a visible chart, not a NOT COMPLETE banner. Presentation_3.pptx:
- * Line at 31/36 = 86% and Gantt at 23/24 = 96% both qualify.
- */
-const PARTIAL_RENDER_THRESHOLD = 0.85;
 
 /**
  * Draw the whole scene as ONE picture: a rectangle the size of the chart frame,
@@ -2474,6 +2382,7 @@ async function renderShapesChunked(
     // wait. Reporting after would leave the pane naming the previous phase and
     // blaming the wrong one for the stall.
     onBatch?.(upTo, total);
+    trace("draw", "batch committed", { upTo, total });
     // Budget per BATCH, not per chart: a stalled host must still be caught, but
     // the limit now measures a batch we know the host can swallow.
     await withTimeout(
