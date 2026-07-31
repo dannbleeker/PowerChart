@@ -42,16 +42,49 @@ variance tier, polynomial scatter trendlines, PNG export, copy-config-as-URL) �
 see the README feature table and git for what landed. Whatever else surfaces
 starts from a fresh research pass.
 
-**No open defects.** Four adversarial bug hunts have run (PRs #186–#197,
-#202–#210); every confirmed finding is fixed with a regression guard proven
-non-vacuous against the pre-fix file. Ten additional harness-reliability PRs
+**No open defects.** Five adversarial bug hunts have run (PRs #186–#197,
+#202–#210, and #229–#231); every confirmed finding is fixed with a regression
+guard proven non-vacuous against the pre-fix file. Ten additional harness-reliability PRs
 (#212–#216) closed the Phase-2 sideload observations from Presentation_2.pptx
 and Presentation_3.pptx — trust-the-readback, slot-tag naming, fresh-context
 group+tag rescue, results/contents pagination, larger off-screen batch size,
 unstamp+rescue for failed items, and `addSlides` self-heal for the silent
 `slides.add()` drop pattern (bug prep in `docs/OFFICE_JS_LOST_ADDS.md` for
-office-js submission). What shipped is recorded in the CHANGELOG and in git,
-not here.
+office-js submission). What shipped is recorded in the README feature table and
+in git, not here.
+
+The fifth hunt (five parallel hunters over the work merged in #224–#228) is
+worth summarising, because what it found says where the risk in this codebase
+actually lives. Fourteen confirmed bugs, none of them in chart geometry or the
+engine: every one was in the **recovery machinery** — the code that runs when
+PowerPoint misbehaves, which by construction is the code that never runs in a
+healthy test. Two were destructive on ordinary input. Inserting the demo deck a
+second time deleted one of the two runs, because slot+title names an *item* and
+not an occurrence of one; PowerPoint's own Duplicate Slide triggered the same
+delete. And Same Scale deleted every chart's old shapes in one committed sync
+before redrawing them one at a time, so a single stalled redraw left every
+chart after it blank — on the deck-wide operation that necessarily includes the
+chart on the visible slide, the one condition documented here as reliably
+stalling a redraw.
+
+The rest divide into three shapes worth watching for in new code:
+
+- **Signals with no owner.** A global late-sync counter meant any stalled call
+  anywhere degraded whichever run happened to be in flight. Ownership has to be
+  captured when a call is *issued*, not when it answers.
+- **Two failures conflated into one answer.** "Nothing landed" and "the new
+  slide landed but the old one would not go" both returned `false`; "measured
+  zero" and "could not measure" both returned zero; "the host dropped this
+  slide" and "we could not read that page" both reported `lost`. Each collapse
+  sent a caller confidently down the wrong branch, and each was one extra
+  return value away from being right.
+- **Diagnostics that were never exercised.** The run log was not written on the
+  path a real run takes, so the feature added specifically to diagnose host
+  failures produced nothing on the failing runs. A diagnostic needs a test on
+  its *default* path, not only where it was easiest to add one.
+
+Fixed with 24 new guards, each stashed against its pre-fix source and confirmed
+to fail without it.
 
 **Considered and dropped in that sweep** (so they aren't re-proposed): a
 screen-reader data-table alternative to `describeChart` — real WCAG best practice
