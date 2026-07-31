@@ -1921,6 +1921,15 @@ interface RunLog {
     shapes: number;
     ms: number;
     grouped: boolean;
+    /**
+     * What the run believes it wrote — NOT what the settled readback saw.
+     * The two disagreeing is the whole point: a run reported 20 tagged charts
+     * where the produced file carried 31, and establishing that took unzipping
+     * the .pptx. Compare against `reconcile.snapshots[].tagged` for the same
+     * slot: true here and false there is a readback fault; false here and true
+     * there is impossible; false in both is a genuinely lost write.
+     */
+    tagged: boolean;
     lateOutcome: string;
   }[];
   deck: {
@@ -2471,6 +2480,12 @@ function wireInsert() {
                   shapes: v?.shapes ?? 0,
                   ms: 0,
                   grouped: v?.tagged ?? false,
+                  // On this path the deck was BUILT with the tag, so intent is
+                  // simply whether the item had a config at all. The generator
+                  // writes it into the .pptx directly — there is no sync to
+                  // drop — so `tagged` true here against a false snapshot is
+                  // a readback fault and nothing else.
+                  tagged: !!it.configJson,
                   lateOutcome: "",
                 };
               }),
@@ -2560,6 +2575,7 @@ function wireInsert() {
             shapes: r.created,
             status: r.status,
             grouped: !!r.grouped,
+            tagged: !!r.tagged,
             ms: r.ms,
             lateOutcome: r.lateOutcome ?? "",
           })),
@@ -2700,6 +2716,7 @@ function wireInsert() {
             shapes: r.created,
             ms: r.ms,
             grouped: !!r.grouped,
+            tagged: !!r.tagged,
             lateOutcome: r.lateOutcome ?? "",
           })),
           deck: { slidesAdded, addsIssued, lost, blank: blankItems },

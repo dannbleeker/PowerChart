@@ -1061,6 +1061,18 @@ export interface DemoResult {
    */
   grouped?: boolean;
   /**
+   * The `POWERCHART_CONFIG` tag was written AND its sync committed — i.e. what
+   * this run believes it left on the slide.
+   *
+   * Recorded because the settled readback's answer to the same question has
+   * been observed to be WRONG. A real 38-slide run reported 20 tagged charts
+   * where the produced .pptx provably carried 31, and establishing that took
+   * unzipping the file. Intent and observation in the same log make that a
+   * diff instead of an investigation: `tagged` true here with `tagged` false
+   * in the snapshot is a readback fault, the other way round is a lost write.
+   */
+  tagged?: boolean;
+  /**
    * Slide-adds this item actually issued: 1 normally, 2 when it made a second
    * attempt. Recorded rather than inferred from `retried`/`status`, because the
    * two do not imply each other: a too-dense item whose stamp sync is refused
@@ -1291,6 +1303,8 @@ interface LayoutRef {
 interface AddAndRenderOutcome {
   created: number;
   grouped: boolean;
+  /** The config tag was written and its sync committed — see DemoResult.tagged. */
+  tagged: boolean;
 }
 
 async function addAndRenderItem(
@@ -1301,6 +1315,7 @@ async function addAndRenderItem(
 ): Promise<AddAndRenderOutcome> {
   let created = 0;
   let grouped = false;
+  let tagged = false;
   await PowerPoint.run(async (context) => {
     if (!layout.resolved) {
       layout.id = await blankLayoutId(context);
@@ -1355,8 +1370,9 @@ async function addAndRenderItem(
     const needsRefresh = drawn.length > SHAPES_PER_SYNC;
     const [result] = await groupAndTagAll(context, [{ getSlide, created: drawn, opts, refreshShapes: needsRefresh }]);
     grouped = !!result?.grouped;
+    tagged = !!result?.tagged;
   });
-  return { created, grouped };
+  return { created, grouped, tagged };
 }
 
 /** One slide a demo run should produce. */
@@ -1480,6 +1496,7 @@ async function runDemoDeck(
     const tooDense = !items[i].bypassBudget && !degradedPicture && shapeCount > DEMO_SHAPE_BUDGET;
     let created = 0;
     let grouped = false;
+    let tagged = false;
     let status: DemoResult["status"] = tooDense ? "skipped" : "rendered";
     // One add per item. There used to be a second — a retry, issued when the
     // first attempt's readback came back short — and it is where every
@@ -1500,7 +1517,7 @@ async function runDemoDeck(
     // back when the host is willing.
     const itemWithTag = { ...items[i], slotTag, pictureBase64: degradedPicture };
     try {
-      ({ created, grouped } = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout));
+      ({ created, grouped, tagged } = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout));
     } catch (err) {
       // Do NOT infer from here what landed. A throw means the sync we were
       // waiting on gave up, not that the host discarded the work: the commits
@@ -1551,16 +1568,31 @@ async function runDemoDeck(
       created,
       expected: shapeCount,
       grouped,
+      // What this run believes it left on the slide, to compare against what
+      // the settled readback reports for the same item — see DemoResult.tagged.
+      tagged,
+      picture: !!degradedPicture,
       attempts,
       ms,
     });
     lostAdsSeen = lastAddsLost;
-    results.push({ created, status, ms: Date.now() - t0, lateOutcome, grouped, attempts });
+    results.push({ created, status, ms: Date.now() - t0, lateOutcome, grouped, tagged, attempts });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
   const after = await slideCount();
   const slidesAdded = after - before;
+  // The deck's size at each boundary. A run once ended with a stamped stray
+  // slide PAST this range that nothing owned or cleaned, and finding it took
+  // unzipping the .pptx — a count here would have shown it.
+  trace("demo", "run finished drawing", {
+    before,
+    after,
+    slidesAdded,
+    items: items.length,
+    degradedAt,
+    totalMs,
+  });
   // The adds we actually ISSUED, summed per item rather than inferred from
   // retried/failed — a too-dense item whose stamp sync is refused ends "failed"
   // on ONE add, and inferring a second reported a phantom lost slide. Loss is
@@ -1922,9 +1954,28 @@ async function markTaggedSlides(snapshots: SlideSnapshot[]): Promise<void> {
           if (l.tags.some((t) => !t.isNullObject && !!t.value)) hit.add(l.index);
           for (const t of l.tags) untrack(t);
         }
-        return hit;
+        // Shapes this pass SAW, against what pass A counted on the same
+        // slides moments earlier. The two disagreeing means this read came
+        // back hollow — which is the open question this instrumentation
+        // exists to answer, so it is measured rather than assumed.
+        return { hit, shapesSeen: perSlide.reduce((n, p) => n + p.shapes.items.length, 0) };
       });
-      for (const s of page) if (tagged.has(s.index)) s.tagged = true;
+      for (const s of page) if (tagged.hit.has(s.index)) s.tagged = true;
+      // A real 39-slide run reported 20 tagged charts where the file provably
+      // carried 31 — every miss in the SECOND page, from its fifth slide on.
+      // No mechanism has been confirmed: the payload was tiny (~7.4 KB of
+      // config across the whole page) and pass A read the same slides without
+      // trouble. These three numbers separate the two candidates — collections
+      // coming back short, versus collections full but tag lookups resolving
+      // null — which need different fixes.
+      trace("repair", "tag pass over a page", {
+        from: page[0]?.index,
+        to: page[page.length - 1]?.index,
+        slides: page.length,
+        shapesExpected: page.reduce((n, s) => n + s.shapes, 0),
+        shapesSeen: tagged.shapesSeen,
+        tagsFound: tagged.hit.size,
+      });
     } catch {
       /* unread tags stay false — the pass may re-tag a chart that already had
        * one, which `rescueGroupAndTag` handles idempotently (it declines a
@@ -2736,7 +2787,7 @@ interface Grouping {
 async function groupAndTagAll(
   context: PowerPoint.RequestContext,
   items: Grouping[],
-): Promise<{ target?: PowerPoint.Shape; partIds?: string[]; grouped?: boolean }[]> {
+): Promise<{ target?: PowerPoint.Shape; partIds?: string[]; grouped?: boolean; tagged?: boolean }[]> {
   const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
   // Which charts actually ended up as one shape. The rest hang everything the
   // group would have carried off their first shape instead — see below.
@@ -2796,6 +2847,9 @@ async function groupAndTagAll(
   const taggable = items
     .map((it, i) => ({ it, i, target: tagTargets[i] }))
     .filter((t) => t.it.opts.tagData && t.target);
+  // Which items' config tag COMMITTED. Not "was queued": the queue is where
+  // this silently failed before, and the caller reports this number.
+  const taggedOk = new Set<number>();
   if (taggable.length && supports("1.3")) {
     try {
       for (const { it, i, target } of taggable) {
@@ -2810,6 +2864,10 @@ async function groupAndTagAll(
         target!.load("id,left,top");
       }
       await context.sync();
+      // The config tag is on the slide from here. The origin tag below is a
+      // separate sync and a separate risk — losing it costs drag tracking,
+      // not re-editability — so `tagged` is decided at THIS line, not after.
+      for (const { i } of taggable) taggedOk.add(i);
 
       // The frame origin the chart was drawn at, AND the position its tagged
       // shape ended up at ("anchor"). Both are needed, and the anchor is only
@@ -2848,6 +2906,7 @@ async function groupAndTagAll(
     target: tagTargets[i],
     partIds: partsJson[i] ? (JSON.parse(partsJson[i]!) as string[]) : undefined,
     grouped: grouped.has(i),
+    tagged: taggedOk.has(i),
   }));
 }
 
