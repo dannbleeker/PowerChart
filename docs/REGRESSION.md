@@ -26,6 +26,33 @@ wrong, and the retry drew the same chart again on a new slide. Both then
 landed. The settled repair pass at the end does the same job with evidence
 instead of a guess — see section 3.
 
+## 0. The independent check — audit the deck itself
+
+```bash
+npm run verify-deck -- path/to/Presentation.pptx      # or --json
+```
+
+Reads the saved `.pptx` and reports, per slide: slot, run token, whether the
+chart is a group or a degraded picture, whether it carries a
+`POWERCHART_CONFIG`, and whether it wears a `NOT COMPLETE` banner. Exit 0 when
+the file is structurally sound, 1 on a fault, 2 when it cannot be read.
+
+**Run this before believing the run report.** Every hard diagnosis in this
+project was settled by the bytes rather than by the add-in's own summary —
+including one where the summary was the thing that was wrong: a 39-slide web
+run reported 20 tagged charts where the file provably carried 31. The log
+agreed with itself and was false. Nothing in the add-in can catch that, because
+the add-in is the thing under test.
+
+What counts as a **fault** is deliberately narrow: an unreferenced tag part, a
+tag part missing its `[Content_Types]` override, a config that is not valid
+JSON, a config with no `PowerChart` object to load it from, or two slides
+claiming the same run *and* slot. Those are things this repo wrote wrong. A
+deck missing eight charts because the host dropped them is a bad RUN and a
+perfectly well-formed FILE, and is reported without being called a fault — as
+are two different runs' slides in one deck, which is the case the run token
+exists to survive.
+
 ## 1. The cheap pass — self-check (every run)
 
 Insert the deck. When it finishes, the pane reports and the **console** (F12)
