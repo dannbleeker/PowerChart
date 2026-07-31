@@ -77,9 +77,31 @@ export function trace(scope: string, message: string, data?: Record<string, unkn
   }
 }
 
-/** The log so far, oldest first, plus how many entries fell off the front. */
-export function traceLog(): { entries: TraceEntry[]; dropped: number } {
-  // Entries copied too, for the same reason in the other direction: a reader
-  // that mutated what it was handed corrupted the next reader's copy.
-  return { entries: entries.map((e) => ({ ...e, ...(e.data ? { data: { ...e.data } } : {}) })), dropped };
+/**
+ * A marker for "everything from here on", so a caller can later ask for only
+ * the entries its own operation produced.
+ *
+ * The buffer spans every operation since tracing was switched on, separated by
+ * nothing but a `pane: action started` line. A run log that carried the whole
+ * buffer therefore carried other runs too — and pairing the wrong run's trace
+ * with a report's per-item numbers is exactly the wrong turn that costs an
+ * hour. It cost one.
+ */
+export function traceMark(): number {
+  return entries.length + dropped;
+}
+
+/**
+ * The log, oldest first, plus how many entries fell off the front.
+ *
+ * Pass a mark from `traceMark()` to get only what happened after it.
+ */
+export function traceLog(since = 0): { entries: TraceEntry[]; dropped: number } {
+  // `dropped` shifts the buffer's start, so a mark taken before entries fell
+  // off has to be measured against the same absolute scale.
+  const from = Math.max(0, since - dropped);
+  return {
+    entries: entries.slice(from).map((e) => ({ ...e, ...(e.data ? { data: { ...e.data } } : {}) })),
+    dropped,
+  };
 }

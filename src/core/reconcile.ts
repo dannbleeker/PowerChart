@@ -119,6 +119,23 @@ export interface ExpectedItem {
   chart: boolean;
   /** Deliberately not rendered (over the shape budget) — its banner is honest. */
   skipped?: boolean;
+  /**
+   * What the RUN believes it left on the slide: `false` means the config tag's
+   * write was attempted and did not commit.
+   *
+   * This outranks the readback, because it is knowledge rather than
+   * observation. Two real runs make the case:
+   *
+   * - The file path wrote 31 tags; the readback could not see 6 of them. Those
+   *   6 were fine, and repairing them rewrote correct data.
+   * - The shape path wrote 3 of 38; the readback could not see 24. Those 24
+   *   were all genuinely untagged, and suppressing the repair left 20 charts
+   *   un-editable that a retag would have fixed.
+   *
+   * Identical evidence from the readback, opposite right answers. What tells
+   * them apart is whether the run knows its own write failed.
+   */
+  wroteTag?: boolean;
 }
 
 /**
@@ -407,7 +424,10 @@ export function planReconcile(
     // readback could not see this slide's shapes and so learned nothing about
     // its tags — acting on that rewrites charts that were already correct. A
     // real run did exactly that to fourteen of them.
-    const tagKnown = keeper.tagRead !== false;
+    // The run's own knowledge first: a write it watched fail needs no second
+    // opinion. Only where the run believes it succeeded does an unreadable
+    // slide mean "do not touch" — see `ExpectedItem.wroteTag`.
+    const tagKnown = keeper.tagRead !== false || item.wroteTag === false;
     if (item.chart && worthGrouping && !keeper.tagged && tagKnown) {
       actions.push(
         keeper.grouped
