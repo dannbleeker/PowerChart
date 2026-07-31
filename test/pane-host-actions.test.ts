@@ -51,6 +51,7 @@ const host = vi.hoisted(() => ({
   canInsertFile: false,
   slideHoldsOnlyChart: false,
   updateChartThrows: false,
+  demoReconcile: undefined as unknown,
   slideSwapWorks: false,
   /** How many slides the one-shot insert reports landing; null = all of them. */
   insertFileLands: null as null | number,
@@ -114,6 +115,7 @@ vi.mock("../src/render/powerpoint", () => ({
       blankSlides: [],
       blankItems: [],
       blanksRead: true,
+      reconcile: host.demoReconcile,
       totalMs: items.length * 100,
     };
   }),
@@ -181,6 +183,7 @@ async function bootHostPane() {
   host.canInsertFile = false;
   host.slideHoldsOnlyChart = false;
   host.updateChartThrows = false;
+  host.demoReconcile = undefined;
   host.slideSwapWorks = false;
   host.insertFileLands = null;
   host.insertFileError = null;
@@ -701,6 +704,49 @@ describe("demo-insert results pages", () => {
     expect(noteText).not.toMatch(/results slide not added/i);
     // At least the main deck + at least one results page.
     expect(host.demoRuns).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("reporting what a repair actually removed", () => {
+  beforeEach(bootHostPane);
+
+  it("counts duplicates and empty strays apart", async () => {
+    // A real run said "1 duplicate slide removed · 8 orphan slides" and then,
+    // one sentence later, "Repaired 9 duplicate slide(s)". Both numbers came
+    // from the same pass; only the second was wrong.
+    host.demoDeckStatusOverride = "rendered";
+    host.demoReconcile = {
+      snapshots: [],
+      plan: {
+        actions: [
+          { kind: "delete", index: 5, slot: 3, reason: "dup" },
+          { kind: "delete", index: 4, slot: null, reason: "empty" },
+          { kind: "delete", index: 2, slot: null, reason: "empty" },
+        ],
+        verdicts: [],
+        orphans: [],
+        summary: {
+          items: 1,
+          rendered: 1,
+          partial: 0,
+          lost: 0,
+          skipped: 0,
+          wreckage: 0,
+          empty: 0,
+          duplicates: 1,
+          falseStamps: 0,
+          untagged: 0,
+          orphans: 2,
+        },
+      },
+      applied: { unstamped: 0, regrouped: 0, deleted: 3 },
+      refused: 0,
+    };
+    $("demo-insert").click();
+    await settle();
+    const text = $("host-note").textContent ?? "";
+    expect(text).toMatch(/removed 3 slide\(s\) \(1 duplicate, 2 empty\)/);
+    expect(text).not.toMatch(/3 duplicate slide/);
   });
 });
 

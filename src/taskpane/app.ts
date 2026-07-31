@@ -2382,8 +2382,17 @@ function wireInsert() {
         if (reconcile) {
           if (missing.length) msg += ` Never landed: ${missing.join(", ")}.`;
           const { deleted, unstamped, regrouped } = reconcile.applied;
+          // Deletions are NOT all duplicates — most are usually empty slides a
+          // lost add left behind. Calling nine removals "9 duplicate slide(s)"
+          // in the same breath as the plan's own "1 duplicate slide removed ·
+          // 8 orphan slides" made the run contradict itself in one sentence.
+          const dupPlanned = reconcile.plan.actions.filter((a) => a.kind === "delete" && a.slot !== null).length;
+          const emptyPlanned = reconcile.plan.actions.filter((a) => a.kind === "delete" && a.slot === null).length;
           if (deleted || unstamped || regrouped)
-            msg += ` Repaired ${deleted} duplicate slide(s), ${unstamped} false banner(s), ${regrouped} loose chart(s).`;
+            msg +=
+              ` Repaired: removed ${deleted} slide(s)` +
+              (deleted ? ` (${dupPlanned} duplicate, ${emptyPlanned} empty)` : "") +
+              `, cleared ${unstamped} false banner(s), re-grouped ${regrouped} chart(s).`;
           if (reconcile.refused) msg += ` ⚠ ${reconcile.refused} repair step(s) the host refused.`;
         } else if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (recovered) msg += ` ${recovered} recovered on retry.`;
