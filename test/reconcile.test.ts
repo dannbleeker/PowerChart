@@ -157,10 +157,25 @@ describe("reconcile: a group we cannot measure", () => {
     expect(kinds(plan.actions, "unstamp")).toEqual([1]);
   });
 
-  it("does not try to re-group an already grouped chart that lost its tag", () => {
+  it("tags — rather than re-groups — a chart that is whole but lost its tag", () => {
+    // This used to plan NOTHING, because the rule asked `!keeper.grouped` and
+    // a whole chart is grouped. Grouped and tagged are two different facts,
+    // and conflating them made a chart that is visibly a chart, and provably
+    // not re-editable, unreachable by every repair.
+    //
+    // Not hypothetical: a 38-item web run degraded to pictures and ended with
+    // 19 charts in exactly this state — one shape named PowerChart, no config
+    // tag. The run reported all 19 and could repair none of them.
     const plan = planReconcile([grouped(1, { tagged: false })], [item(0, "Line", 36)]);
-    expect(kinds(plan.actions, "regroup")).toEqual([]);
-    expect(plan.verdicts[0].tagged).toBe(false);
+    expect(kinds(plan.actions, "regroup")).toEqual([]); // nothing to group
+    expect(kinds(plan.actions, "retag")).toEqual([1]); // just the tag
+    // And the verdict says re-editable, because the repair will make it so.
+    expect(plan.verdicts[0].tagged).toBe(true);
+  });
+
+  it("leaves a whole, already-tagged chart completely alone", () => {
+    const plan = planReconcile([grouped(1)], [item(0, "Line", 36)]);
+    expect(plan.actions).toEqual([]);
   });
 });
 
@@ -319,7 +334,7 @@ describe("reconcile: Presentation_4.pptx, the 2026-07-30 web run", () => {
       orphans: 2,
     });
     expect(describeReconcile(plan)).toBe(
-      "6 of 12 complete · 6 lost · 2 duplicate slides removed · 2 false NOT COMPLETE banners cleared · 2 charts re-grouped · 2 orphan slides",
+      "6 of 12 complete · 6 lost · 2 duplicate slides removed · 2 false NOT COMPLETE banners cleared · 2 charts made re-editable again · 2 orphan slides",
     );
   });
 
@@ -340,6 +355,43 @@ describe("reconcile: Presentation_4.pptx, the 2026-07-30 web run", () => {
     const second = planReconcile(repaired, expected, { dropOrphanBlanks: true });
     expect(second.actions).toEqual([]);
     expect(second.summary.rendered).toBe(6);
+  });
+});
+
+describe("reconcile: a chart that is whole but carries no tag", () => {
+  // The state a degraded run leaves behind: ONE shape named PowerChart, no
+  // POWERCHART_CONFIG. Visibly a chart, provably not re-editable.
+  const picture = (index: number, slot: number, title: string) =>
+    slide(index, { slot, title, shapes: 1, grouped: true, tagged: false });
+
+  it("plans a retag for every one of them, and no regroup", () => {
+    // Reproduces the shape of a real 38-item web run: the host degraded at
+    // item 2, every later chart went on as a picture, and 19 of them lost the
+    // tag write. The pass reported all 19 and repaired none.
+    const snaps = [picture(1, 0, "Line"), picture(2, 1, "Scatter"), picture(3, 2, "Bubble")];
+    const items = [item(0, "Line", 36), item(1, "Scatter", 42), item(2, "Bubble", 46)];
+    const plan = planReconcile(snaps, items);
+    expect(kinds(plan.actions, "retag")).toEqual([1, 2, 3]);
+    expect(kinds(plan.actions, "regroup")).toEqual([]);
+    expect(plan.summary.untagged).toBe(3);
+    expect(plan.verdicts.every((v) => v.tagged)).toBe(true);
+  });
+
+  it("does not retag something that was never a chart", () => {
+    // Contents, Agenda, KPI tile: no config exists for them, so an untagged
+    // one is correct, not broken.
+    const plan = planReconcile([picture(1, 0, "Contents")], [item(0, "Contents", 27, { chart: false })]);
+    expect(plan.actions).toEqual([]);
+  });
+
+  it("does not retag a chart the run deliberately skipped", () => {
+    // A skipped item has no chart on its slide at all — only the banner. A tag
+    // there would claim an empty slide is an editable chart.
+    const plan = planReconcile(
+      [slide(1, { slot: 0, title: "Violin", shapes: 1, stamped: true })],
+      [item(0, "Violin", 253, { skipped: true })],
+    );
+    expect(plan.actions).toEqual([]);
   });
 });
 

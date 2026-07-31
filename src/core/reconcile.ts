@@ -119,6 +119,12 @@ export type ReconcileAction =
   | { kind: "unstamp"; index: number; slot: number | null; reason: string }
   /** Group + tag a chart the run left loose, making it re-editable again. */
   | { kind: "regroup"; index: number; slot: number; reason: string }
+  /**
+   * Write the config tag onto a chart that is already ONE object but carries
+   * no tag — a degraded picture, or a group whose tagging sync was dropped.
+   * There is nothing to group; only the tag is missing.
+   */
+  | { kind: "retag"; index: number; slot: number; reason: string }
   /** Delete a slide — only ever a provably redundant twin or an empty stray. */
   | { kind: "delete"; index: number; slot: number | null; reason: string };
 
@@ -368,13 +374,31 @@ export function planReconcile(
     }
 
     const worthGrouping = unmeasured || (item.shapes > 0 && kept >= Math.ceil(item.shapes * PARTIAL_CONTENT_THRESHOLD));
-    if (item.chart && worthGrouping && !keeper.tagged && !keeper.grouped) {
-      actions.push({
-        kind: "regroup",
-        index: keeper.index,
-        slot: item.slot,
-        reason: `chart is loose and untagged (${kept} shapes)`,
-      });
+    // Grouped and tagged are two different facts, and conflating them left a
+    // whole class of chart permanently un-re-editable. A degraded picture is
+    // ONE shape named `PowerChart`, so `grouped` is true and this rule used to
+    // skip it — even though the same pass had just recorded `tagged: false`.
+    // A real 38-item run ended with 19 charts in exactly that state: the run
+    // reported them, and the repair could not touch a single one.
+    //
+    // So split the repair. Loose shapes need grouping AND tagging; something
+    // already whole needs only the tag.
+    if (item.chart && worthGrouping && !keeper.tagged) {
+      actions.push(
+        keeper.grouped
+          ? {
+              kind: "retag",
+              index: keeper.index,
+              slot: item.slot,
+              reason: "chart is one object but carries no config tag",
+            }
+          : {
+              kind: "regroup",
+              index: keeper.index,
+              slot: item.slot,
+              reason: `chart is loose and untagged (${kept} shapes)`,
+            },
+      );
       tagged = true;
     }
 
@@ -436,7 +460,7 @@ export function planReconcile(
       empty: count("empty"),
       duplicates: actions.filter((a) => a.kind === "delete" && a.slot !== null).length,
       falseStamps: actions.filter((a) => a.kind === "unstamp").length,
-      untagged: actions.filter((a) => a.kind === "regroup").length,
+      untagged: actions.filter((a) => a.kind === "regroup" || a.kind === "retag").length,
       orphans: orphans.length,
     },
   };
@@ -457,7 +481,7 @@ export function describeReconcile(plan: ReconcilePlan): string {
   if (s.skipped) bits.push(`${s.skipped} skipped`);
   if (s.duplicates) bits.push(`${s.duplicates} duplicate slide${s.duplicates === 1 ? "" : "s"} removed`);
   if (s.falseStamps) bits.push(`${s.falseStamps} false NOT COMPLETE banner${s.falseStamps === 1 ? "" : "s"} cleared`);
-  if (s.untagged) bits.push(`${s.untagged} chart${s.untagged === 1 ? "" : "s"} re-grouped`);
+  if (s.untagged) bits.push(`${s.untagged} chart${s.untagged === 1 ? "" : "s"} made re-editable again`);
   if (s.orphans) bits.push(`${s.orphans} orphan slide${s.orphans === 1 ? "" : "s"}`);
   return bits.join(" · ");
 }
