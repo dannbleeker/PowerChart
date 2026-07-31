@@ -255,7 +255,16 @@
           <div class="actions">
             <button id="demo-insert" disabled>Insert demo deck</button>
             <label><input type="checkbox" id="demo-smoke" /> Smoke test (10 slides)</label>
+            <button id="demo-repair" disabled title="Re-read the demo slides and fix what the host got wrong">
+              Repair deck
+            </button>
+            <button id="demo-log" disabled title="Save the last run's report as JSON">Download run log</button>
           </div>
+          <p class="hint">
+            Repair re-reads the demo slides after the host has settled: it deletes duplicate slides a stalled retry left
+            behind, clears NOT COMPLETE banners from charts that are in fact complete, and re-groups charts that landed
+            loose so they are editable again.
+          </p>
         </section>
       </div>
     </div>

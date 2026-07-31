@@ -415,6 +415,27 @@ took — so an exported PDF is a self-contained regression record. Tick **Smoke
 test (10 slides)** first for a fast pass over one representative chart per family
 instead of the full deck. A slide that stalls is retried once automatically.
 
+Every run now ends by reading the deck back and repairing it. This matters on
+PowerPoint for the web, where a `context.sync()` can commit minutes after the
+add-in has given up waiting for it: the retry that was issued in the meantime
+lands a second copy of the same chart, and the "NOT COMPLETE" banner stamped on
+the first one turns out to be false. The closing pass compares each slide
+against the item it was drawn for, deletes duplicate slides, clears banners
+that contradict the shapes underneath them, and re-groups charts that landed
+loose so they are editable again. The run's summary is written from what the
+deck actually holds, not from what the add-in believed while the host was still
+catching up.
+
+**Repair deck** runs that same pass on demand, for a deck a previous session
+left damaged — nothing is re-inserted, and slides outside the demo range are
+never touched. It only ever deletes a slide that is provably redundant (an
+identical twin of a complete chart) or empty; two half-finished copies of the
+same chart are reported and left for you to judge.
+
+**Download run log** saves the last run as JSON: per-item timings, statuses,
+what the host did to each slide, and the repair pass's verdicts. Attach it to a
+bug report instead of retyping the summary line.
+
 ## Excel companion
 
 Sideload `manifest-excel.xml` in Excel, select a range, and **Generate**

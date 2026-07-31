@@ -176,6 +176,8 @@ conventions, and every option.
 | Download the preview as SVG or PNG (for email / chat)                     | ✅ (overflow menu; PNG rasterized at 2×)                                                                                                 |
 | Copy a shareable chart link (config in the URL hash)                      | ✅ (reopens the exact chart on the hosted gallery)                                                                                       |
 | Datasheet undo/redo (Ctrl+Z / Ctrl+Y)                                     | ✅                                                                                                                                       |
+| Demo deck self-repair (duplicate slides, false banners, loose charts)     | ✅ (automatic after every run; **Repair deck** re-runs it on demand)                                                                     |
+| Run log export (per-item timings + what the host did, as JSON)            | ✅ (**Download run log**)                                                                                                                |
 | Agenda / chapter slides (one per chapter, current highlighted)            | ✅ (appended to the deck)                                                                                                                |
 | Harvey balls, checkboxes, process flow, table element                     | ✅ (Elements section)                                                                                                                    |
 | Gantt: responsible column, dependency arrows, today line, quarter scale   | ✅ (`Activity \| Owner`, `After`/`Today` rows)                                                                                           |

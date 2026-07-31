@@ -14,6 +14,8 @@ import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET, dashK
 import { estimateOfficeShapes } from "../core/scene";
 import { toHex6, alphaOf } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
+import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
+import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
 
 /* global PowerPoint, Office */
 
@@ -886,7 +888,7 @@ async function stampSlide(
       addTextBox(text: string, box: { left: number; top: number; width: number; height: number }): PowerPoint.Shape;
     }
   ).addTextBox(`${title} — ${detail}`, { left: 24, top: 12, width: 912, height: 46 });
-  box.name = "PowerChart:not-complete";
+  box.name = NOT_COMPLETE_NAME;
   try {
     box.fill.setSolidColor("#c0392b");
     const font = (box.textFrame.textRange as unknown as { font: Record<string, unknown> }).font;
@@ -1023,12 +1025,21 @@ export interface DemoReport {
   /** False if the blank readback faulted mid-pass — so an empty `blankSlides` is
    *  not mistaken for "no blanks" when it really means "not fully measured". */
   blanksRead: boolean;
+  /**
+   * The end-of-run repair: what the deck actually held once the host settled,
+   * and what was fixed. Present only when the caller asked for it
+   * (`runOpts.reconcile`). Its verdicts, not `results`, are the honest answer
+   * to "what did this run produce" — `results` is written while the host is
+   * still catching up and has been observed calling a chart failed that in
+   * fact landed twice.
+   */
+  reconcile?: ReconcileOutcome;
   /** Wall-clock time for the whole run, ms — the headline regression metric. */
   totalMs: number;
 }
 
 /** The current slide count, read in its own settled sync (reliable on web). */
-async function slideCount(): Promise<number> {
+export async function slideCount(): Promise<number> {
   return PowerPoint.run(async (context) => {
     const c = context.presentation.slides.getCount();
     await context.sync();
@@ -1150,7 +1161,7 @@ async function unstampAndRescue(
       };
       shapes.load("items/name");
       await context.sync();
-      const stamp = shapes.items.find((s) => s.name === "PowerChart:not-complete");
+      const stamp = shapes.items.find((s) => s.name === NOT_COMPLETE_NAME);
       if (!stamp) return false;
       stamp.delete();
       await context.sync();
@@ -1268,6 +1279,15 @@ export async function insertDemoDeck(
     bypassBudget?: boolean;
   }[],
   onProgress?: (done: number, total: number) => void,
+  runOpts: {
+    /**
+     * Read the deck back when the run finishes and repair what the host got
+     * wrong — see `reconcileDeck`. Opt-in, because the results-slide inserts
+     * at the end of a run are themselves `insertDemoDeck` calls and must not
+     * each trigger a deck-wide sweep.
+     */
+    reconcile?: boolean;
+  } = {},
 ): Promise<DemoReport> {
   // Reset the module-scope lost-adds counter at the start of every run, so
   // `addsLostAtCommit` below reports only THIS run's confirmed losses, not a
@@ -1505,21 +1525,72 @@ export async function insertDemoDeck(
   if (items.length && results.every((r) => r.status !== "rendered") && lastError !== undefined) {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
+  // Repair pass. Runs only now, because only now has the host stopped moving:
+  // every inline check above races a commit that can land minutes after the
+  // timeout that gave up on it, which is how one run shipped two Line charts,
+  // two Gantt charts, four false NOT COMPLETE banners and a "BLANK" Agenda
+  // slide holding all 13 of its shapes. See `src/core/reconcile.ts`.
+  let reconcile: ReconcileOutcome | undefined;
+  if (runOpts.reconcile) {
+    const expected: ExpectedItem[] = items.map((it, i) => ({
+      slot: i,
+      title: it.title ?? `Item ${i + 1}`,
+      shapes: estimateOfficeShapes(it.scene),
+      chart: !!it.tagData,
+      skipped: results[i]?.status === "skipped",
+    }));
+    reconcile = await reconcileDeck(
+      expected,
+      { before, after },
+      (slot) => items[slot]?.tagData,
+      // Every slide in [before, after) was added by THIS run, so an empty one
+      // with no slot tag is our own litter and safe to sweep.
+      { dropOrphanBlanks: true },
+    ).catch(() => undefined);
+  }
   // Blank readback: find added slides the host kept but left EMPTY. Counted by
   // position, not mapped to items — a scrambled deck (lost/merged/reordered
   // slides, plus retry strays) breaks any positional item mapping, and a blank
   // slide has no tag to identify it anyway. Best-effort: a fault leaves
   // blanksRead false so an empty list is not read as "no blanks".
-  const { positions: blankSlides, items: blankItems, complete: blanksRead } = await findBlankAddedSlides(before, after);
+  //
+  // Skipped when the repair pass ran: its snapshot answers the same question
+  // from the same settled read, and answers it better — it knows which ITEM a
+  // blank slide belonged to, and it has already deleted the empty strays this
+  // check would report. Re-running it here would name slides that no longer
+  // exist.
+  const blanks = reconcile ? blanksFromSnapshots(reconcile) : await findBlankAddedSlides(before, after);
   return {
     results,
     slidesAdded,
     addsIssued,
     addsLostAtCommit: lastAddsLost,
-    blankSlides,
-    blankItems,
-    blanksRead,
+    blankSlides: blanks.positions,
+    blankItems: blanks.items,
+    blanksRead: blanks.complete,
+    reconcile,
     totalMs,
+  };
+}
+
+/**
+ * The blank-slide report, taken from the repair pass's own snapshot instead of
+ * a second readback: a slide with no content shapes, named by the item its
+ * slot tag claims. `complete` is true because the snapshot either read a page
+ * or skipped it entirely — a page it could not read contributes no slides, and
+ * therefore no false "clean" claim about them.
+ */
+function blanksFromSnapshots(outcome: ReconcileOutcome): {
+  positions: number[];
+  items: { position: number; title: string | null }[];
+  complete: boolean;
+} {
+  const deleted = new Set(outcome.plan.actions.filter((a) => a.kind === "delete").map((a) => a.index));
+  const blank = outcome.snapshots.filter((s) => !deleted.has(s.index) && s.shapes === 0);
+  return {
+    positions: blank.map((s) => s.index + 1),
+    items: blank.map((s) => ({ position: s.index + 1, title: s.title })),
+    complete: true,
   };
 }
 
@@ -1636,6 +1707,258 @@ async function findBlankAddedSlides(
     items.push({ position: pos, title });
   }
   return { positions, items, complete };
+}
+
+/** Name `groupAndTagAll` and `rescueGroupAndTag` give the chart's group shape. */
+const GROUP_NAME = "PowerChart";
+
+/**
+ * Read the added range back as `SlideSnapshot`s — the settled truth a repair
+ * pass reasons over.
+ *
+ * Three passes, each independently fault-tolerant, because a single sync that
+ * touches every shape's tags AND every group's children on a struggling host
+ * is exactly the kind of call this whole module exists to survive:
+ *
+ *  A. names + slot tag per slide — gives the shape count, the banner, whether
+ *     a group is present, and which item the slide belongs to.
+ *  B. the config tag, queued for every shape on slides that have any. Same
+ *     shape of sweep `listChartsInDeck` already does deck-wide.
+ *  C. the group's child count, one context per grouped slide, since reaching
+ *     `Shape.group` on a host below PowerPointApi 1.8 poisons its whole sync.
+ *
+ * A pass that faults leaves its field unset rather than guessing: an unread
+ * group reports `grouped` with no `groupChildren`, which `planReconcile` reads
+ * as "do not touch this slide".
+ */
+export async function snapshotAddedSlides(before: number, after: number): Promise<SlideSnapshot[]> {
+  const snapshots: SlideSnapshot[] = [];
+  for (let start = before; start < after; start += READBACK_PAGE) {
+    const end = Math.min(start + READBACK_PAGE, after);
+    let page: SlideSnapshot[];
+    try {
+      page = await PowerPoint.run(async (context) => {
+        const reads = [];
+        for (let i = start; i < end; i++) {
+          const slide = context.presentation.slides.getItemAt(i);
+          slide.shapes.load("items/name");
+          const tags = (
+            slide as unknown as {
+              tags: { getItemOrNullObject(k: string): { isNullObject: boolean; value: string; load(): void } };
+            }
+          ).tags;
+          let tag: { isNullObject: boolean; value: string; load(): void } | null = null;
+          try {
+            tag = tags.getItemOrNullObject(DEMO_SLOT_TAG);
+            tag.load();
+          } catch {
+            /* no slide tags on this host — the slide stays unclaimed */
+          }
+          reads.push({ index: i, shapes: slide.shapes, tag });
+        }
+        await context.sync();
+        return reads.map((r) => {
+          const names = r.shapes.items.map((s) => (s as unknown as { name: string }).name);
+          const slot = r.tag && !r.tag.isNullObject ? parseSlotTag(r.tag.value) : null;
+          return {
+            index: r.index,
+            slot: slot?.i ?? null,
+            title: slot?.title ?? null,
+            shapes: names.length,
+            stamped: names.includes(NOT_COMPLETE_NAME),
+            grouped: names.includes(GROUP_NAME) || undefined,
+            tagged: false,
+          } satisfies SlideSnapshot;
+        });
+      });
+    } catch {
+      // A page we cannot read is a page we cannot repair. Skipping it is the
+      // safe outcome: an unseen slide is never deleted and never "lost".
+      continue;
+    }
+    snapshots.push(...page);
+  }
+  await markTaggedSlides(snapshots);
+  await countGroupChildren(snapshots);
+  return snapshots;
+}
+
+/** The `{ i, title }` envelope `insertDemoDeck` writes, parsed defensively. */
+function parseSlotTag(raw: string): { i: number; title: string | null } | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const { i, title } = parsed as { i?: unknown; title?: unknown };
+    if (typeof i !== "number" || !Number.isInteger(i) || i < 0) return null;
+    return { i, title: typeof title === "string" ? title : null };
+  } catch {
+    return null;
+  }
+}
+
+/** Pass B: does any shape on the slide carry a config tag (i.e. re-editable). */
+async function markTaggedSlides(snapshots: SlideSnapshot[]): Promise<void> {
+  if (!supports("1.3")) return;
+  for (let start = 0; start < snapshots.length; start += READBACK_PAGE) {
+    const page = snapshots.slice(start, start + READBACK_PAGE).filter((s) => s.shapes > 0);
+    if (!page.length) continue;
+    try {
+      const tagged = await PowerPoint.run(async (context) => {
+        const perSlide = page.map((s) => {
+          const shapes = context.presentation.slides.getItemAt(s.index).shapes;
+          shapes.load("items/id");
+          return { index: s.index, shapes };
+        });
+        await context.sync();
+        const lookups = perSlide.map((p) => ({
+          index: p.index,
+          tags: p.shapes.items.map((shape) => {
+            const t = shape.tags.getItemOrNullObject(CHART_TAG);
+            t.load("value");
+            return t;
+          }),
+        }));
+        await context.sync();
+        const hit = new Set<number>();
+        for (const l of lookups) {
+          if (l.tags.some((t) => !t.isNullObject && !!t.value)) hit.add(l.index);
+          for (const t of l.tags) untrack(t);
+        }
+        return hit;
+      });
+      for (const s of page) if (tagged.has(s.index)) s.tagged = true;
+    } catch {
+      /* unread tags stay false — the pass may re-tag a chart that already had
+       * one, which `rescueGroupAndTag` handles idempotently (it declines a
+       * slide that is already a single group). */
+    }
+  }
+}
+
+/**
+ * Pass C: how many shapes are inside each slide's PowerChart group. One
+ * context per grouped slide, and every failure is swallowed — `Shape.group`
+ * needs PowerPointApi 1.8, and reaching for it on an older host rejects the
+ * sync it was queued in, which would take the whole page's readback with it.
+ */
+async function countGroupChildren(snapshots: SlideSnapshot[]): Promise<void> {
+  if (!supports("1.8")) return;
+  for (const s of snapshots) {
+    if (!s.grouped) continue;
+    try {
+      s.groupChildren = await PowerPoint.run(async (context) => {
+        const shapes = context.presentation.slides.getItemAt(s.index).shapes;
+        shapes.load("items/name");
+        await context.sync();
+        const group = shapes.items.find((sh) => (sh as unknown as { name: string }).name === GROUP_NAME);
+        if (!group) throw new Error("group vanished between passes");
+        const count = (
+          group as unknown as { group: { shapes: { getCount(): { value: number } } } }
+        ).group.shapes.getCount();
+        await context.sync();
+        return count.value;
+      });
+    } catch {
+      /* leave groupChildren unset — see `planReconcile`'s unmeasured rule */
+    }
+  }
+}
+
+/** Delete the NOT COMPLETE banner from a slide. False when there is none. */
+async function deleteStamp(slideIndex: number): Promise<boolean> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const shapes = context.presentation.slides.getItemAt(slideIndex).shapes as unknown as {
+        items: { name: string; delete(): void }[];
+        load(p: string): void;
+      };
+      shapes.load("items/name");
+      await context.sync();
+      const stamp = shapes.items.find((s) => s.name === NOT_COMPLETE_NAME);
+      if (!stamp) return false;
+      stamp.delete();
+      await context.sync();
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Delete one slide by index, in its own settled context. */
+async function deleteSlide(index: number): Promise<boolean> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      (context.presentation.slides.getItemAt(index) as unknown as { delete(): void }).delete();
+      await context.sync();
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** What a repair actually managed to do. */
+export interface ReconcileOutcome {
+  /** The deck as it was READ, before any repair — the run's raw evidence. */
+  snapshots: SlideSnapshot[];
+  plan: ReconcilePlan;
+  /** Banners removed, charts re-grouped, slides deleted — all confirmed. */
+  applied: { unstamped: number; regrouped: number; deleted: number };
+  /** Actions the host refused. The plan is re-runnable; nothing is corrupted. */
+  refused: number;
+}
+
+/**
+ * Apply a plan. Deletes run last and in descending index order — a plan is
+ * written against the deck as it was READ, and removing slide 5 renumbers
+ * every slide after it. `planReconcile` guarantees that ordering; this relies
+ * on it and would otherwise delete the wrong slides.
+ *
+ * Every step is best-effort and independent: a refused delete does not stop
+ * the next unstamp. Re-running the pass is always safe, which is what makes it
+ * usable as a button.
+ */
+export async function applyReconcilePlan(
+  plan: ReconcilePlan,
+  tagFor: (slot: number) => string | undefined,
+  origin: { left: number; top: number } = { left: 60, top: 90 },
+  snapshots: SlideSnapshot[] = [],
+): Promise<ReconcileOutcome> {
+  const applied = { unstamped: 0, regrouped: 0, deleted: 0 };
+  let refused = 0;
+  for (const action of plan.actions) {
+    if (action.kind === "unstamp") {
+      if (await deleteStamp(action.index)) applied.unstamped++;
+      else refused++;
+    } else if (action.kind === "regroup") {
+      if (await rescueGroupAndTag(action.index, tagFor(action.slot), origin)) applied.regrouped++;
+      else refused++;
+    } else {
+      if (await deleteSlide(action.index)) applied.deleted++;
+      else refused++;
+    }
+  }
+  return { snapshots, plan, applied, refused };
+}
+
+/**
+ * The whole repair: read the deck back, decide, act.
+ *
+ * Called at the end of a demo run — when the host has finally stopped moving,
+ * which is the only moment any of this can be measured — and again, on demand,
+ * by the pane's repair action, which is how a deck damaged by an EARLIER run
+ * gets fixed without re-inserting anything.
+ */
+export async function reconcileDeck(
+  expected: ExpectedItem[],
+  range: { before: number; after: number },
+  tagFor: (slot: number) => string | undefined,
+  opts: ReconcileOptions = {},
+): Promise<ReconcileOutcome> {
+  const snapshots = await snapshotAddedSlides(range.before, range.after);
+  const plan = planReconcile(snapshots, expected, opts);
+  return applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, snapshots);
 }
 
 /**

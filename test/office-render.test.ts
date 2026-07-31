@@ -15,6 +15,9 @@ import {
   loadChartFromSelection,
   onLateSync,
   READBACK_PAGE,
+  DEMO_SLOT_TAG,
+  reconcileDeck,
+  snapshotAddedSlides,
   updateChartInSlide,
   updateChartsInSlides,
 } from "../src/render/powerpoint";
@@ -106,6 +109,17 @@ function makeShape(
       textRange: { font: Record<string, unknown>; paragraphFormat: Record<string, unknown> };
     },
     grouped: undefined as unknown[] | undefined,
+    // PowerPointApi 1.8's `Shape.group` — present only on an actual group, and
+    // a throw otherwise, because that is what a repair pass has to survive: on
+    // a host without 1.8 the property access poisons the sync it was queued in.
+    get group() {
+      if (!shape.grouped) throw new Error("shape is not a group");
+      return {
+        shapes: {
+          getCount: () => ({ value: (shape.grouped as { deleted: boolean }[]).filter((c) => !c.deleted).length }),
+        },
+      };
+    },
     delete() {
       shape.deleted = true;
       // Deleting a group deletes what it contains — otherwise an in-place update
@@ -141,6 +155,9 @@ let pendingHostError: Error | null = null;
  */
 let contextBaseCount = 0;
 
+/** Set by installHost so a slide can splice itself out of the live deck. */
+let deckRemove: ((s: { id: string }) => void) | null = null;
+
 function makeSlide(id: string) {
   const created: FakeShape[] = [];
   // Shapes queued since the last successful sync. On success the pending list
@@ -157,6 +174,12 @@ function makeSlide(id: string) {
     pending,
     isNullObject: false,
     load() {},
+    // Slide.delete() — the repair pass removes duplicate slides, and a fake
+    // that kept them would make every deletion assertion vacuous. installHost
+    // owns the deck array, so removal goes through the hook it registers.
+    delete() {
+      deckRemove?.(slide);
+    },
     tags: {
       add: (k: string, v: string) => void slideTagStore.set(k, v),
       getItemOrNullObject: (k: string) => ({
@@ -380,6 +403,10 @@ function installHost(
   // getCount() in the SAME batch, exactly as PowerPoint web behaves. A getCount
   // result resolves at the next sync to the count from before that sync's adds.
   let committedCount = slides.length;
+  deckRemove = (s) => {
+    const i = slides.findIndex((x) => x.id === s.id);
+    if (i >= 0) slides.splice(i, 1);
+  };
   const pendingCounts: { value: number }[] = [];
   const context = {
     presentation: {
@@ -2820,5 +2847,153 @@ describe("a target whose slide is gone is nothing to do, not a crash", () => {
       ]),
     ).resolves.toEqual([]);
     expect(slide.created.length).toBe(before);
+  });
+});
+
+/**
+ * The repair pass, against the host fake — `src/core/reconcile.ts` decides
+ * what to do, this is the half that talks to PowerPoint and has to survive it.
+ */
+describe("reading a demo deck back and repairing it", () => {
+  /** A slide as a damaged run leaves it: some shapes, maybe a banner, maybe a group. */
+  function demoSlide(
+    id: string,
+    opts: {
+      slot?: { i: number; title: string };
+      shapes?: number;
+      stamped?: boolean;
+      tagged?: boolean;
+      grouped?: boolean;
+    },
+  ): FakeSlide {
+    const slide = makeSlide(id);
+    if (opts.slot) slide.tags.add(DEMO_SLOT_TAG, JSON.stringify(opts.slot));
+    const parts: FakeShape[] = [];
+    for (let i = 0; i < (opts.shapes ?? 0); i++) {
+      const shape = slide.shapes.addTextBox(`n${i}`, { left: 0, top: 0, width: 10, height: 10 });
+      shape.name = `part-${i}`;
+      parts.push(shape);
+    }
+    if (opts.grouped && parts.length) {
+      const group = slide.shapes.addGroup(parts);
+      group.name = "PowerChart";
+      if (opts.tagged) group.tags.add(CHART_TAG, `{"kind":"line"}`);
+    } else if (opts.tagged && parts.length) {
+      parts[parts.length - 1].tags.add(CHART_TAG, `{"kind":"line"}`);
+    }
+    if (opts.stamped) {
+      const banner = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 100, height: 20 });
+      banner.name = "PowerChart:not-complete";
+    }
+    return slide;
+  }
+
+  const expect3 = (slot: number, title: string, chart = true) => ({ slot, title, shapes: 3, chart });
+
+  /** A two-point line chart — small enough that one batch draws the whole thing. */
+  const tinyChart = (): ChartConfig => ({
+    ...sampleConfig("line"),
+    title: "Line",
+    data: { categories: ["A", "B"], series: [{ name: "S1", values: [1, 2] }] },
+  });
+
+  it("reads shape counts, banners, slot tags and group children off the deck", async () => {
+    const deck = [
+      demoSlide("s0", { shapes: 1 }),
+      demoSlide("s1", { slot: { i: 0, title: "Line" }, shapes: 3, tagged: true }),
+      demoSlide("s2", { slot: { i: 1, title: "Gantt" }, shapes: 3, stamped: true }),
+      demoSlide("s3", { slot: { i: 2, title: "Pie" }, shapes: 3, grouped: true, tagged: true }),
+    ];
+    installHost(deck);
+    const snaps = await snapshotAddedSlides(0, 4);
+    expect(snaps.map((s) => s.slot)).toEqual([null, 0, 1, 2]);
+    expect(snaps.map((s) => s.title)).toEqual([null, "Line", "Gantt", "Pie"]);
+    expect(snaps[1]).toMatchObject({ shapes: 3, stamped: false, tagged: true });
+    expect(snaps[2]).toMatchObject({ shapes: 4, stamped: true, tagged: false });
+    // The group is one top-level shape; without its child count a complete
+    // chart would read as 1 of 3 and be condemned as wreckage.
+    expect(snaps[3]).toMatchObject({ grouped: true, groupChildren: 3, tagged: true });
+  });
+
+  it("deletes a duplicate slide, clears a stale banner, and re-groups a loose chart", async () => {
+    // The shape of Presentation_4.pptx: a clean chart, the same chart again
+    // under a NOT COMPLETE banner, and an empty slide the host left behind.
+    const deck = [
+      demoSlide("title", { slot: { i: 0, title: "Title" }, shapes: 3, grouped: true }),
+      demoSlide("line", { slot: { i: 1, title: "Line" }, shapes: 3 }),
+      demoSlide("line-dup", { slot: { i: 1, title: "Line" }, shapes: 3, stamped: true }),
+      demoSlide("stray", {}),
+    ];
+    installHost(deck);
+    const outcome = await reconcileDeck(
+      [expect3(0, "Title", false), expect3(1, "Line")],
+      { before: 0, after: 4 },
+      () => `{"kind":"line"}`,
+      { dropOrphanBlanks: true },
+    );
+    expect(outcome.applied).toEqual({ unstamped: 0, regrouped: 1, deleted: 2 });
+    expect(outcome.refused).toBe(0);
+    expect(deck.map((s) => s.id)).toEqual(["title", "line"]);
+    // The surviving chart is now a group carrying the config — re-editable.
+    const group = deck[1].created.filter((s) => !s.deleted).find((s) => s.name === "PowerChart");
+    expect(group?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
+  });
+
+  it("pulls the banner off a chart that is in fact complete", async () => {
+    const deck = [demoSlide("agenda", { slot: { i: 0, title: "Agenda" }, shapes: 3, stamped: true })];
+    installHost(deck);
+    const outcome = await reconcileDeck([expect3(0, "Agenda", false)], { before: 0, after: 1 }, () => undefined, {});
+    expect(outcome.applied.unstamped).toBe(1);
+    expect(deck[0].created.filter((s) => !s.deleted).some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+  });
+
+  it("deletes from the end, so an earlier delete cannot renumber a later one", async () => {
+    // Ascending deletes would remove index 1, shifting B's duplicate into the
+    // slot the plan meant for something else — and take a good slide with it.
+    const deck = [
+      demoSlide("a", { slot: { i: 0, title: "A" }, shapes: 3 }),
+      demoSlide("a-dup", { slot: { i: 0, title: "A" }, shapes: 3, stamped: true }),
+      demoSlide("b", { slot: { i: 1, title: "B" }, shapes: 3 }),
+      demoSlide("b-dup", { slot: { i: 1, title: "B" }, shapes: 3, stamped: true }),
+    ];
+    installHost(deck);
+    const outcome = await reconcileDeck(
+      [expect3(0, "A"), expect3(1, "B")],
+      { before: 0, after: 4 },
+      () => undefined,
+      {},
+    );
+    expect(outcome.applied.deleted).toBe(2);
+    expect(deck.map((s) => s.id)).toEqual(["a", "b"]);
+  });
+
+  it("leaves a slide from an unrelated deck untouched", async () => {
+    const deck = [demoSlide("theirs", { shapes: 2 }), demoSlide("ours", { slot: { i: 0, title: "Line" }, shapes: 3 })];
+    installHost(deck);
+    const outcome = await reconcileDeck([expect3(0, "Line")], { before: 0, after: 2 }, () => undefined, {});
+    expect(outcome.plan.orphans.map((o) => o.index)).toEqual([0]);
+    expect(deck.map((s) => s.id)).toEqual(["theirs", "ours"]);
+  });
+
+  it("closes a demo run with the settled truth when asked for it", async () => {
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const report = await insertDemoDeck(
+      [{ scene: buildChart(tinyChart()), title: "Line", tagData: `{"i":0}` }],
+      undefined,
+      { reconcile: true },
+    );
+    expect(report.reconcile).toBeDefined();
+    expect(report.reconcile?.plan.verdicts[0]).toMatchObject({ title: "Line", status: "rendered" });
+    // A clean run needs no repair, and says so instead of inventing work.
+    expect(report.reconcile?.plan.actions).toEqual([]);
+    expect(report.blankSlides).toEqual([]);
+  });
+
+  it("does not reconcile unless the caller opts in", async () => {
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const report = await insertDemoDeck([{ scene: buildChart(tinyChart()), title: "Line" }]);
+    expect(report.reconcile).toBeUndefined();
   });
 });
