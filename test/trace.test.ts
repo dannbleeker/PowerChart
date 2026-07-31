@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { setTracing, trace, traceLog, tracing } from "../src/core/trace";
+import { setTracing, trace, traceLog, traceMark, tracing } from "../src/core/trace";
 
 afterEach(() => setTracing(false));
 
@@ -77,5 +77,41 @@ describe("the trace is a record, not a live view", () => {
     const first = traceLog().entries[0].data!;
     first.shapes = 999;
     expect(traceLog().entries[0].data).toEqual({ shapes: 10 });
+  });
+});
+
+describe("reading back one operation's slice of the log", () => {
+  it("returns only what happened after the mark", () => {
+    // The buffer spans every operation since tracing was switched on, with
+    // nothing but a "pane: action started" line between them. A run log that
+    // carried the whole buffer carried other runs too — and reading one run's
+    // per-item numbers against another run's trace is an expensive mistake.
+    setTracing(true);
+    trace("demo", "an earlier run");
+    const mark = traceMark();
+    trace("demo", "this run");
+    trace("demo", "still this run");
+    expect(traceLog(mark).entries.map((e) => e.message)).toEqual(["this run", "still this run"]);
+    // …and the whole buffer is still available to anyone who wants it.
+    expect(traceLog().entries).toHaveLength(3);
+  });
+
+  it("stays correct after entries have fallen off the front", () => {
+    // A mark is an absolute position, so it has to survive the ring buffer
+    // dropping older entries out from under it — otherwise a long run's slice
+    // silently starts in the wrong place.
+    setTracing(true);
+    const mark = traceMark();
+    for (let i = 0; i < 2100; i++) trace("draw", `step ${i}`);
+    const { entries, dropped } = traceLog(mark);
+    expect(dropped).toBe(100);
+    expect(entries).toHaveLength(2000); // everything still held, none skipped twice
+    expect(entries[0].message).toBe("step 100");
+  });
+
+  it("hands back everything when the mark predates the buffer entirely", () => {
+    setTracing(true);
+    trace("demo", "one");
+    expect(traceLog(0).entries).toHaveLength(1);
   });
 });

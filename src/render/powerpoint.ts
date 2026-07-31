@@ -1371,7 +1371,13 @@ async function addAndRenderItem(
     // reload sync adds no safety and just costs a round-trip. Multi-batch
     // charts (>SHAPES_PER_SYNC) are the ones the web host tripped on — every
     // ungrouped chart in the real run has more than 10 native shapes.
-    const needsRefresh = drawn.length > SHAPES_PER_SYNC;
+    // …or when the item is a single degraded picture. Its one proxy is created
+    // in one sync and tagged in another, and the web host rejected exactly that
+    // — `InvalidParam passed to GetItem(id)`, code 5010, 28 times in one run,
+    // which is where that run's missing config tags went. The original
+    // condition only considered multi-batch charts because grouping was the
+    // only consumer at the time; tagging crosses the same boundary.
+    const needsRefresh = drawn.length > SHAPES_PER_SYNC || !!item.pictureBase64;
     const [result] = await groupAndTagAll(context, [{ getSlide, created: drawn, opts, refreshShapes: needsRefresh }]);
     grouped = !!result?.grouped;
     tagged = !!result?.tagged;
@@ -1623,6 +1629,8 @@ async function runDemoDeck(
       shapes: estimateOfficeShapes(it.scene),
       chart: !!it.tagData,
       skipped: results[i]?.status === "skipped",
+      // What this run watched happen — see ExpectedItem.wroteTag.
+      wroteTag: results[i]?.tagged,
     }));
     reconcile = await reconcileDeck(
       expected,
@@ -2841,7 +2849,24 @@ async function groupAndTagAll(
   // Re-load shape collections for items that asked to refresh — one sync for
   // all of them, then take the last N shapes as the group's members. See
   // Grouping.refreshShapes: bypasses the stale-proxy trap the web host trips on.
-  const refresher = groupable.filter(({ it }) => it.refreshShapes);
+  //
+  // NOT just the groupable ones. A degraded picture is a single shape, so it is
+  // not groupable, and it went to the tag step holding the proxy it was created
+  // with. The web host then rejected that proxy outright:
+  //
+  //   InvalidParam passed to GetItem(id) | code=5010
+  //   errorLocation: ShapeCollection.getItem
+  //   statement: var shape = shapes.getItem(...); var tags = shape.tags;
+  //
+  // Twenty-eight times in one 38-item run, which is where that run's missing
+  // tags went. The stale-proxy trap is not a property of GROUPING; it is a
+  // property of using a proxy across a sync boundary, and tagging does that
+  // too.
+  // Every item that ASKED to refresh, not just the groupable ones — but only
+  // those that asked, because "the last N shapes on the slide" is only true of
+  // a slide this run added blank. `insertSceneIntoSlide` draws onto whatever
+  // the user is looking at, and there the heuristic would tag the wrong shape.
+  const refresher = items.map((it, i) => ({ it, i })).filter(({ it }) => it.refreshShapes);
   const freshMembers = new Map<number, PowerPoint.Shape[]>();
   if (refresher.length) {
     const collections = refresher.map(({ it }) => it.getSlide().shapes);
@@ -2861,6 +2886,9 @@ async function groupAndTagAll(
       /* re-load faulted — fall through to the stale proxies */
     }
   }
+  // A refreshed single shape is the tag target from here — the whole point of
+  // refreshing it. Grouped items get their target replaced by the group below.
+  for (const [i, fresh] of freshMembers) if (fresh.length === 1) tagTargets[i] = fresh[0];
   if (groupable.length && supports("1.8")) {
     try {
       for (const { it, i } of groupable) {

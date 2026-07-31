@@ -82,7 +82,17 @@ function makeShape(
     height: box.height,
     tagStore,
     tags: {
-      add: (k: string, v: string) => void tagStore.set(k, v),
+      add: (k: string, v: string) => {
+        // The web host rewrites a proxy as `shapes.getItem(id)` and rejects it
+        // once stale — the SAME trap addGroup falls into, seen in the wild as
+        // `InvalidParam passed to GetItem(id)`, code 5010, at
+        // `ShapeCollection.getItem`, 28 times in one 38-item run. Tagging
+        // crosses a sync boundary just like grouping does.
+        if (strictTags && trips.syncs > shape.syncCreated + 1) {
+          throw new Error("InvalidParam passed to GetItem(id) | code=5010");
+        }
+        tagStore.set(k, v);
+      },
       getItemOrNullObject: (k: string) => ({
         isNullObject: !tagStore.has(k),
         value: tagStore.get(k) ?? "",
@@ -413,6 +423,9 @@ const stallSyncDelayMs = 40;
  * charts land ungrouped. See PR 3's re-fetch fix.  */
 let strictGroup = false;
 
+/** When true, `tags.add` rejects a proxy more than one sync old — see makeShape. */
+let strictTags = false;
+
 /** Make the next N addGroup calls THROW — a host that declines to group even
  * though the API is there. Decremented per call, so refusing 1 leaves a chart
  * rendered-but-ungrouped and still lets the fresh-context rescue group it. */
@@ -565,6 +578,7 @@ function installHost(
   failSyncsOn.clear();
   stallSyncOn.clear();
   strictGroup = false;
+  strictTags = false;
   refuseGroups = 0;
   hollowReads = 0;
   lastShapeLoad = "";
@@ -3186,6 +3200,42 @@ describe("reading a demo deck back and repairing it", () => {
     } finally {
       _setBatchTimeoutForTest(45_000);
       stallSyncOn.clear();
+    }
+  }, 20_000);
+
+  it("keeps a degraded picture re-editable on a host that rejects stale proxies", async () => {
+    // The root cause of the shape path's lost tags, from a real 38-item run:
+    //
+    //   InvalidParam passed to GetItem(id) | code=5010
+    //   errorLocation: ShapeCollection.getItem
+    //   statement: var shape = shapes.getItem(...); var tags = shape.tags;
+    //
+    // 28 times. A degraded picture is ONE shape, so it was not "groupable",
+    // so the refresh that exists for exactly this trap never ran on it — and
+    // its proxy was created in one sync and tagged in another. The trap was
+    // never about grouping; it is about using a proxy across a sync boundary,
+    // and tagging does that too.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    strictTags = true;
+    try {
+      const report = await insertDemoDeck(
+        [
+          { scene: buildChart(tinyChart()), title: "One", tagData: `{"i":0}` },
+          { scene: buildChart(tinyChart()), title: "Two", tagData: `{"i":1}` },
+        ],
+        undefined,
+        // Budget 0 degrades after the first item, so item 2 arrives as a picture.
+        { pictureFor: async () => "iVBORw0KGgo=", shapeBudget: 0 },
+      );
+      expect(report.degradedAt).toBe(1);
+      expect(report.results[1].created).toBe(1); // it IS the picture
+      // …and it is re-editable, which is the whole claim the degrade makes.
+      expect(report.results[1].tagged).toBe(true);
+      const last = deck[deck.length - 1].created.filter((sh) => !sh.deleted);
+      expect(last.some((sh) => sh.tagStore.get(CHART_TAG) === `{"i":1}`)).toBe(true);
+    } finally {
+      strictTags = false;
     }
   }, 20_000);
 

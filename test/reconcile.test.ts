@@ -394,6 +394,32 @@ describe("reconcile: a chart that is whole but carries no tag", () => {
     expect(describeReconcile(plan)).toMatch(/would not let us check/);
   });
 
+  it("repairs an unreadable slide anyway when the run KNOWS its tag write failed", () => {
+    // Two real runs gave the readback identical evidence — "could not see this
+    // slide" — with opposite right answers. The file path had written 31 tags
+    // and 6 were unreadable; those were fine. The shape path had written 3 of
+    // 38 and 24 were unreadable; those were ALL genuinely untagged, and
+    // suppressing left 20 charts un-editable that a retag would have fixed.
+    //
+    // What separates them is not the readback. It is whether the run watched
+    // its own write fail.
+    const plan = planReconcile(
+      [slide(1, { slot: 0, title: "Line", shapes: 1, grouped: true, tagged: false, tagRead: false })],
+      [item(0, "Line", 36, { wroteTag: false })],
+    );
+    expect(kinds(plan.actions, "retag")).toEqual([1]);
+    expect(plan.summary.undetermined).toBe(0);
+  });
+
+  it("leaves an unreadable slide alone when the run believes the tag landed", () => {
+    const plan = planReconcile(
+      [slide(1, { slot: 0, title: "Line", shapes: 1, grouped: true, tagged: false, tagRead: false })],
+      [item(0, "Line", 36, { wroteTag: true })],
+    );
+    expect(plan.actions).toEqual([]);
+    expect(plan.summary.undetermined).toBe(1);
+  });
+
   it("still repairs when the readback DID see the slide and found no tag", () => {
     // The other half: suppressing on uncertainty must not suppress on evidence.
     const plan = planReconcile(

@@ -39,7 +39,7 @@ import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } fr
 import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
-import { setTracing, trace, traceLog, tracing } from "../core/trace";
+import { setTracing, trace, traceLog, traceMark, tracing } from "../core/trace";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -2175,6 +2175,11 @@ async function insertDemoDeckAsFile(
     // perfect charts as wreckage on the first real run.
     shapes: built.shapesPerSlide[i] ?? estimateOfficeShapes(it.scene),
     chart: !!it.configJson,
+    // The generator writes the tag straight into the .pptx — there is no sync
+    // to drop — so on this path the run always knows the tag is there. That is
+    // what makes an unreadable slide safe to leave alone here, and unsafe to
+    // leave alone on the shape path. See ExpectedItem.wroteTag.
+    wroteTag: !!it.configJson,
   }));
   // Verify against the deck rather than trusting the count: the file carried
   // its own grouping and tags, so anything missing here is the host's doing.
@@ -2445,6 +2450,11 @@ function wireInsert() {
         // screen to say the two were unrelated.
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
+        // Where THIS run's trace starts. The buffer keeps every operation since
+        // tracing was switched on, so a log that carried all of it carried other
+        // runs' entries too — and reading one run's numbers against another's
+        // trace is a genuinely expensive mistake.
+        const traceFrom = traceMark();
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
         // Fast path first: one generated .pptx, one host call. Falls through
@@ -2496,7 +2506,7 @@ function wireInsert() {
               // sentence the user sees, kept with the data it explains.
               unverified: outcome.verified.kind === "ok" ? undefined : outcome.verified.why,
               path: "file",
-              trace: tracing() ? traceLog() : undefined,
+              trace: tracing() ? traceLog(traceFrom) : undefined,
             };
             ($("demo-log") as HTMLButtonElement).disabled = false;
             note(outcome.text, outcome.status);
@@ -2717,7 +2727,7 @@ function wireInsert() {
           deck: { slidesAdded, addsIssued, lost, blank: blankItems },
           reconcile,
           path: "shapes",
-          trace: tracing() ? traceLog() : undefined,
+          trace: tracing() ? traceLog(traceFrom) : undefined,
         };
         ($("demo-log") as HTMLButtonElement).disabled = false;
         note(msg, lost > 0 || failedNames.length || blankSlides.length ? "err" : "ok");
