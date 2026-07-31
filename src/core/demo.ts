@@ -287,27 +287,7 @@ export interface DemoOptions {
   buildStamp?: string;
   /** Host descriptor (from `Office.context.diagnostics`) stamped under the build. */
   host?: string;
-  /** Render only the ~10-item smoke subset (one per family) for a fast pass. */
-  smoke?: boolean;
 }
-
-/**
- * The smoke subset: one representative per chart family plus two elements — a fast
- * regression pass. Deliberately excludes the dense wedge/polygon charts (Pie is the
- * one wedge kept) so the whole run stays comfortably under the web shape budget.
- */
-const SMOKE_TITLES = new Set([
-  "Stacked",
-  "Line",
-  "Pie",
-  "Scatter",
-  "Bubble",
-  "Gantt",
-  "Heatmap",
-  "Combo",
-  "KPI tile",
-  "Agenda",
-]);
 
 /**
  * The full demo deck: a title slide, a contents/manifest table, then one editable
@@ -315,7 +295,7 @@ const SMOKE_TITLES = new Set([
  * all of this onto fresh slides for live testing in PowerPoint.
  */
 export function demoItems(opts: DemoOptions = {}): DemoItem[] {
-  const { buildStamp = "local build", host = "unknown host", smoke = false } = opts;
+  const { buildStamp = "local build", host = "unknown host" } = opts;
   const charts: DemoItem[] = [];
   for (const { kind, label } of CHART_KINDS) {
     const config: ChartConfig = { ...sampleConfig(kind), title: label };
@@ -327,15 +307,14 @@ export function demoItems(opts: DemoOptions = {}): DemoItem[] {
   for (const { title, scene } of elementScenes()) {
     charts.push({ title, scene });
   }
-  const selected = smoke ? charts.filter((c) => SMOKE_TITLES.has(c.title)) : charts;
-  const indexPages = buildIndexScenes(selected);
+  const indexPages = buildIndexScenes(charts);
   return [
     { title: "Title", scene: buildTitleScene(buildStamp, host) },
     ...indexPages.map((scene, i) => ({
       title: indexPages.length === 1 ? "Contents" : `Contents (page ${i + 1} of ${indexPages.length})`,
       scene,
     })),
-    ...selected,
+    ...charts,
   ];
 }
 
