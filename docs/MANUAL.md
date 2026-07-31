@@ -449,9 +449,13 @@ while the add-in is being validated against real hosts, and it rides along
 inside the run log rather than in a separate file. Nothing is written while it
 is off.
 
-**Download run log** saves the last run as JSON: per-item timings, statuses,
-what the host did to each slide, and the repair pass's verdicts, plus the trace. Attach
-it to a bug report instead of retyping the summary line.
+**Download run log** saves the last run as JSON: the run's identity token,
+per-item timings, statuses, what the host did to each slide, and the repair
+pass's verdicts, plus the trace — which opens with a tally of every step and
+every failure reason, so a long run can be read without reading all of it.
+Attach it to a bug report instead of retyping the summary line, and attach the
+deck with it: the token joins the two, and `npm run triage` reads them together
+to say where the run's account and the file disagree.
 
 ### Very dense charts on the web
 
