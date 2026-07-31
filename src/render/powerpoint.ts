@@ -904,11 +904,16 @@ async function stampSlide(
 }
 
 /** Stamp the LAST slide from a FRESH context — used after a render poisoned its own. */
-async function stampLastSlide(title: string, detail: string): Promise<void> {
+async function stampLastSlide(title: string, detail: string, ownedFrom = 0): Promise<void> {
   await PowerPoint.run(async (context) => {
     const count = context.presentation.slides.getCount();
     await context.sync();
-    if (count.value < 1) return;
+    // "The last slide" is only OUR slide when this item's add actually landed.
+    // When the host swallowed it, the last slide belongs to whoever went
+    // before — and branding it NOT COMPLETE defaces a chart that is fine. A
+    // real run did exactly that: a results page whose add vanished stamped the
+    // KPI tile slide, which had rendered perfectly.
+    if (count.value < 1 || count.value <= ownedFrom) return;
     await stampSlide(context, () => context.presentation.slides.getItemAt(count.value - 1), title, detail);
   });
 }
@@ -1087,9 +1092,13 @@ async function rescueGroupAndTag(
         items: PowerPoint.Shape[];
         addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape;
       };
-      shapes.load("items");
+      shapes.load("items/name");
       await context.sync();
-      const items = shapes.items;
+      // Never group the banner in with the chart. Once inside, it is invisible
+      // to every later repair (a snapshot reads top-level names) and it rides
+      // along with the chart forever. A real run shipped a Line chart whose
+      // group held 37 shapes — 36 of them the chart, one a NOT COMPLETE stripe.
+      const items = shapes.items.filter((s) => (s as unknown as { name?: string }).name !== NOT_COMPLETE_NAME);
       if (items.length < 2) return false;
       let group: PowerPoint.Shape;
       try {
@@ -1459,7 +1468,10 @@ export async function insertDemoDeck(
           // real one. A fresh context, because the failed render poisoned its own.
           if (lastError === undefined) lastError = err;
           status = "failed";
-          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(
+          // `before` is the deck size when the run started: any slide past it
+          // was added by THIS run, so stamping one cannot deface a slide the
+          // user already had. An item whose add was swallowed stamps nothing.
+          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart", before).catch(
             () => {},
           );
         }
@@ -1868,15 +1880,30 @@ async function countGroupChildren(snapshots: SlideSnapshot[]): Promise<void> {
 async function deleteStamp(slideIndex: number): Promise<boolean> {
   try {
     return await PowerPoint.run(async (context) => {
+      type Named = { name: string; delete(): void };
       const shapes = context.presentation.slides.getItemAt(slideIndex).shapes as unknown as {
-        items: { name: string; delete(): void }[];
+        items: (Named & { group?: { shapes: { items: Named[]; load(p: string): void } } })[];
         load(p: string): void;
       };
       shapes.load("items/name");
       await context.sync();
       const stamp = shapes.items.find((s) => s.name === NOT_COMPLETE_NAME);
-      if (!stamp) return false;
-      stamp.delete();
+      if (stamp) {
+        stamp.delete();
+        await context.sync();
+        return true;
+      }
+      // Not on the slide — look inside the chart's group, where an older
+      // rescue may have swept it before that code learned to leave the stamp
+      // out. Deleting one member leaves the group itself intact.
+      const group = shapes.items.find((s) => s.name === GROUP_NAME);
+      const inner = group?.group?.shapes;
+      if (!inner) return false;
+      inner.load("items/name");
+      await context.sync();
+      const buried = inner.items.find((s) => s.name === NOT_COMPLETE_NAME);
+      if (!buried) return false;
+      buried.delete();
       await context.sync();
       return true;
     });

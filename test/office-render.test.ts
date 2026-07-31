@@ -114,9 +114,15 @@ function makeShape(
     // a host without 1.8 the property access poisons the sync it was queued in.
     get group() {
       if (!shape.grouped) throw new Error("shape is not a group");
+      const live = (): { name?: string; deleted: boolean }[] =>
+        (shape.grouped as { name?: string; deleted: boolean }[]).filter((c) => !c.deleted);
       return {
         shapes: {
-          getCount: () => ({ value: (shape.grouped as { deleted: boolean }[]).filter((c) => !c.deleted).length }),
+          getCount: () => ({ value: live().length }),
+          get items() {
+            return live();
+          },
+          load() {},
         },
       };
     },
@@ -2974,6 +2980,73 @@ describe("reading a demo deck back and repairing it", () => {
     expect(outcome.plan.orphans.map((o) => o.index)).toEqual([0]);
     expect(deck.map((s) => s.id)).toEqual(["theirs", "ours"]);
   });
+
+  it("never groups the NOT COMPLETE banner in with the chart", async () => {
+    // A real run shipped a Line chart whose group held 37 shapes: 36 of them
+    // the chart, one a red NOT COMPLETE stripe. Once inside, the banner is
+    // invisible to every later repair — a snapshot reads top-level names — so
+    // it rides along with the chart forever.
+    // 18 of 20 shapes: enough to re-group, not enough to count as complete,
+    // so the plan asks for a regroup with the banner still on the slide.
+    const deck = [demoSlide("partial", { slot: { i: 0, title: "Line" }, shapes: 18, stamped: true })];
+    installHost(deck);
+    await reconcileDeck(
+      [{ slot: 0, title: "Line", shapes: 20, chart: true }],
+      { before: 0, after: 1 },
+      () => undefined,
+      {},
+    );
+    const live = deck[0].created.filter((s) => !s.deleted);
+    const group = live.find((s) => s.name === "PowerChart")!;
+    expect(group.grouped).toHaveLength(18);
+    expect((group.grouped as { name?: string }[]).some((c) => c.name === "PowerChart:not-complete")).toBe(false);
+  });
+
+  it("clears the banner on a slide whose chart is already grouped", async () => {
+    // NOTE ON WHAT THIS DOES AND DOES NOT PROVE: in this fake a grouped shape
+    // stays visible at the top level, so the repair finds the banner there.
+    // On a real host a group hides its children, and the deck from the
+    // 2026-07-31 run has a banner buried INSIDE a chart's group — `deleteStamp`
+    // reaches into the group for exactly that case, and that reach is NOT
+    // exercised here. `test/reconcile.test.ts` covers the planning half
+    // (a grouped, stamped slide still gets an unstamp action).
+    const deck = [demoSlide("buried", { slot: { i: 0, title: "Line" }, shapes: 3, stamped: true })];
+    const shapes = deck[0].created;
+    const group = deck[0].shapes.addGroup(shapes.slice());
+    group.name = "PowerChart";
+    installHost(deck);
+    const outcome = await reconcileDeck(
+      [{ slot: 0, title: "Line", shapes: 3, chart: true }],
+      { before: 0, after: 1 },
+      () => undefined,
+      {},
+    );
+    expect(outcome.applied.unstamped).toBe(1);
+    expect(deck[0].created.filter((s) => !s.deleted).some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+  });
+
+  it("stamps nothing when the item's own slide never landed", async () => {
+    // `stampLastSlide` used to brand whatever was last in the deck. When the
+    // host swallowed the add, that was the PREVIOUS item's slide — a real run
+    // defaced a KPI tile that had rendered perfectly, because a results page
+    // that never landed stamped it.
+    const existing = makeSlide("theirs");
+    existing.shapes.addTextBox("someone else's work", { left: 0, top: 0, width: 10, height: 10 });
+    const deck: FakeSlide[] = [existing];
+    installHost(deck);
+    swallowAdds = 4; // both the add and its retry vanish
+    _setBatchTimeoutForTest(5); // no slide to draw on — do not wait 45s for it
+    try {
+      // Nothing rendered, so insertDemoDeck rethrows the host's own error —
+      // the point here is what it did NOT do on the way out.
+      await expect(insertDemoDeck([{ scene: buildChart(tinyChart()), title: "Line" }])).rejects.toThrow();
+      expect(existing.created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+    }
+    // Generous: an earlier test in this file can leave an abandoned sync
+    // outstanding, and the failure path waits up to 5s for it to report.
+  }, 20_000);
 
   it("closes a demo run with the settled truth when asked for it", async () => {
     const deck: FakeSlide[] = [makeSlide("s1")];
