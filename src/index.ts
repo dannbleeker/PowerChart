@@ -19,5 +19,11 @@ export {
   SYMBOL_PRESET,
   dashKind,
 } from "./core/geometry";
+// The OOXML post-processor. pptxgenjs can write neither a real shape group nor
+// a tag part, so the headless renderer (skill/scripts/render-pptx.mjs) runs its
+// output through the same injector the add-in uses — one implementation, so a
+// chart Claude generates opens in the pane exactly like one the pane drew.
+export { injectGroupsAndTags } from "./render/ooxml";
+export type { SlideDressing } from "./render/ooxml";
 export type { ChartConfig, ChartData, ChartKind, Decorations, Series } from "./core/types";
 export type { Scene, SceneNode } from "./core/scene";

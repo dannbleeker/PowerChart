@@ -28,11 +28,13 @@ collision-avoiding labels.
 }
 ```
 
-2. **Render.** One-time setup: `npm install pptxgenjs` (in this skill's folder).
+2. **Render.** One-time setup: `npm install pptxgenjs jszip` (in this skill's folder).
    For `render: "image"` charts also `npm install @resvg/resvg-js`.
 
 ```bash
 node scripts/render-pptx.mjs charts.json out.pptx   # native shapes, 1 chart/slide
+                                                   # each chart is one group carrying its
+                                                   # config — re-editable in the add-in
 node scripts/render-svg.mjs charts.json out/        # quick SVG previews
 ```
 

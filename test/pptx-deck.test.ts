@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
-import { canonicalSlideSize, groupSlideShapes, tagPart, topLevelElements, xmlAttr } from "../src/render/ooxml";
+import {
+  canonicalSlideSize,
+  groupSlideShapes,
+  tagFirstShape,
+  tagPart,
+  topLevelElements,
+  xmlAttr,
+} from "../src/render/ooxml";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import type { ChartConfig } from "../src/core/types";
@@ -104,6 +111,33 @@ describe("ooxml: tags and deck size", () => {
     // insert, and a rescale moves every chart.
     const out = canonicalSlideSize(`<p:presentation><p:sldSz cx="12191695" cy="6858000"/></p:presentation>`);
     expect(out).toContain(`<p:sldSz cx="12192000" cy="6858000"/>`);
+  });
+});
+
+describe("ooxml: a slide with nothing to group", () => {
+  it("tags the shape itself, so a one-picture chart is still re-editable", () => {
+    // Image mode is one picture. There is no group to hang the config on, and
+    // without this such a chart carries no POWERCHART_CONFIG at all — the
+    // difference between a picture of a chart and a chart.
+    const one = slideXml(`<p:pic><p:nvPicPr><p:cNvPr id="2" name="img"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr></p:pic>`);
+    expect(groupSlideShapes(one)).toBe(one); // nothing to group
+    expect(tagFirstShape(one, "rId7")).toContain(
+      `<p:nvPr><p:custDataLst><p:tags r:id="rId7"/></p:custDataLst></p:nvPr>`,
+    );
+  });
+
+  it("extends an nvPr that already has content rather than replacing it", () => {
+    const withPh = slideXml(
+      `<p:sp><p:nvSpPr><p:cNvPr id="2" name="s"/><p:cNvSpPr/><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr></p:sp>`,
+    );
+    const out = tagFirstShape(withPh, "rId3");
+    // The placeholder survives, and CT_ApplicationNonVisualDrawingProps wants
+    // ph before custDataLst — which is the order this produces.
+    expect(out).toContain(`<p:nvPr><p:ph type="body"/><p:custDataLst><p:tags r:id="rId3"/></p:custDataLst></p:nvPr>`);
+  });
+
+  it("leaves a slide it cannot read alone", () => {
+    expect(tagFirstShape("<p:sld/>", "rId1")).toBe("<p:sld/>");
   });
 });
 

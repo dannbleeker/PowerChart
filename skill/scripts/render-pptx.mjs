@@ -6,9 +6,9 @@
  *   node scripts/render-pptx.mjs charts.json out.pptx
  *
  * charts.json holds one ChartConfig or an array (one chart per slide).
- * Requires: npm install pptxgenjs
+ * Requires: npm install pptxgenjs jszip
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import pptxgen from "pptxgenjs";
 // Pure paint + node mapping (split out so it is unit-testable and measurable —
@@ -53,6 +53,7 @@ const {
   SYMBOL_PRESET,
   dashKind,
   sceneToSvg,
+  injectGroupsAndTags,
 } = engine;
 
 // A stale packaged lib (the skill ships no build step) can be missing an export,
@@ -65,6 +66,7 @@ for (const [name, fn] of Object.entries({
   annularSectorPoints,
   dashKind,
   sceneToSvg,
+  injectGroupsAndTags,
 })) {
   if (typeof fn !== "function") {
     console.error(`powerchart engine is missing export "${name}" — rebuild the lib (npm run build:lib)`);
@@ -172,6 +174,9 @@ function errorSlide(i, err) {
 
 let failed = 0;
 let imageSlides = 0;
+// What to hang on each slide after pptxgenjs is done with it — see the
+// injectGroupsAndTags call below. One entry per slide, in slide order.
+const dressing = [];
 for (let i = 0; i < configs.length; i++) {
   const cfg = configs[i];
   // Isolate each config: one bad chart in a 50-slide batch must not throw away
@@ -201,14 +206,28 @@ for (let i = 0; i < configs.length; i++) {
       const dy = (SLIDE.h - scene.height * IN) / 2;
       for (const node of scene.nodes) addNode(slide, node, dx, dy);
     }
+    // The chart's own config, so the add-in can re-open what this produced.
+    dressing.push({ configJson: JSON.stringify(cfg), title: cfg?.title ?? `Chart ${i + 1}` });
   } catch (err) {
     failed++;
     errorSlide(i, err);
     console.error(`chart ${i + 1}: ${err?.message ?? err}`);
+    // An error slide is not a chart: no group, nothing to re-edit.
+    dressing.push({ group: false });
   }
 }
 
-await pres.writeFile({ fileName: output });
+// Group each chart and give it its POWERCHART_CONFIG tag.
+//
+// Without this the file is a pile of loose shapes with no identity: it looks
+// right and the add-in cannot do a thing with it — no "Edit selected chart",
+// no dragging a chart as one object. pptxgenjs can express neither (its only
+// `grpSp` output is the mandatory empty boilerplate, and it has no concept of
+// a tag part), so the bytes are post-processed by the SAME injector the add-in
+// runs on its own generated decks. One implementation, so a chart Claude
+// generates and a chart the pane drew are the same kind of object.
+const { base64 } = await injectGroupsAndTags(await pres.write({ outputType: "base64" }), dressing);
+writeFileSync(output, Buffer.from(base64, "base64"));
 const modeSummary = imageSlides
   ? `${configs.length - imageSlides} native shapes + ${imageSlides} image`
   : "native shapes";

@@ -8,6 +8,11 @@ import { join } from "node:path";
  * End-to-end check of the Agent Skill's pptx renderer: build the lib, render
  * a config, and assert the OOXML contains the expected native shapes.
  */
+/** Read one part out of a .pptx — it is a zip; python3 has zipfile. */
+function readPart(pptx: string, part: string): string {
+  return execSync(`python3 -c "import zipfile;print(zipfile.ZipFile('${pptx}').read('${part}').decode())"`).toString();
+}
+
 describe("skill pptx renderer", () => {
   const dir = mkdtempSync(join(tmpdir(), "pc-skill-"));
   const out = join(dir, "out.pptx");
@@ -25,6 +30,32 @@ describe("skill pptx renderer", () => {
     writeFileSync(input, JSON.stringify(cfg));
     execSync(`node skill/scripts/render-pptx.mjs ${input} ${out}`, { stdio: "pipe" });
   }, 120000);
+
+  it("wraps each chart in one group carrying its config, so the pane can re-open it", () => {
+    // Before this, a deck Claude generated was a pile of loose shapes with no
+    // identity: it looked right, and the add-in could do nothing with it —
+    // no "Edit selected chart", no dragging a chart as one object.
+    const slide = readPart(out, "ppt/slides/slide1.xml");
+    expect(slide.match(/<p:grpSp>/g)).toHaveLength(1);
+    expect(slide).toContain(`name="PowerChart"`);
+    expect(slide).toContain("<p:custDataLst><p:tags r:id=");
+
+    // The config round-trips, which is what makes the chart editable rather
+    // than merely grouped.
+    const tag = readPart(out, "ppt/tags/tag1.xml");
+    const raw = /name="POWERCHART_CONFIG" val="([^"]*)"/.exec(tag)![1];
+    const cfg = JSON.parse(
+      raw
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&"),
+    ) as { kind: string; title: string };
+    expect(cfg).toMatchObject({ kind: "pie", title: "Split" });
+
+    // …and the tag part is declared, or PowerPoint refuses the file outright.
+    expect(readPart(out, "[Content_Types].xml")).toContain(`PartName="/ppt/tags/tag1.xml"`);
+  });
 
   it("produces a non-trivial pptx", () => {
     expect(statSync(out).size).toBeGreaterThan(10000);
