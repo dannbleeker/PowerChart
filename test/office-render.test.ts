@@ -18,6 +18,7 @@ import {
   wantsAutoPicture,
   DEMO_SLOT_TAG,
   applyReconcilePlan,
+  readAddedSlides,
   lastLateSyncOwner,
   lastLateSyncSeq,
   waitForLateSync,
@@ -25,6 +26,7 @@ import {
   snapshotAddedSlides,
   updateChartInSlide,
   updateChartsInSlides,
+  withSlideDeselected,
 } from "../src/render/powerpoint";
 import { setTracing, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
@@ -1078,6 +1080,45 @@ describe("scene node mapping", () => {
       {},
     );
     expect(slide.created).toHaveLength(1);
+  });
+});
+
+describe("looking away while a chart redraws", () => {
+  /** Wire a controllable selection onto the fake host. */
+  function withSelection(ctx: ReturnType<typeof installHost>, initial: string[]) {
+    const state = { selected: [...initial], sets: [] as string[][] };
+    const p = ctx.presentation as unknown as Record<string, unknown>;
+    p.getSelectedSlides = () => ({ items: state.selected.map((id) => ({ id })), load() {} });
+    p.setSelectedSlides = (ids: string[]) => {
+      state.sets.push([...ids]);
+      state.selected = [...ids];
+    };
+    return state;
+  }
+
+  it("puts the user back where they were", async () => {
+    const ctx = installHost([makeSlide("s1"), makeSlide("s2")]);
+    const sel = withSelection(ctx, ["s1"]);
+    const saw = await withSlideDeselected(["s1"], async (deselected) => deselected);
+    expect(saw).toBe(true);
+    // Parked elsewhere for the redraw, then restored.
+    expect(sel.sets).toEqual([["s2"], ["s1"]]);
+    expect(sel.selected).toEqual(["s1"]);
+  });
+
+  it("leaves the selection alone when the user moved during the redraw", async () => {
+    // An off-screen redraw runs for tens of seconds and the user is free to
+    // click through the deck while it does. Restoring unconditionally snapped
+    // them back to wherever they happened to be standing when it started,
+    // throwing away their navigation with no notice.
+    const ctx = installHost([makeSlide("s1"), makeSlide("s2"), makeSlide("s3")]);
+    const sel = withSelection(ctx, ["s1"]);
+    await withSlideDeselected(["s1"], async () => {
+      sel.selected = ["s3"]; // the user clicks slide 3 mid-redraw
+    });
+    expect(sel.selected).toEqual(["s3"]);
+    // Only the park was written; nothing restored over the user's own move.
+    expect(sel.sets).toEqual([["s2"]]);
   });
 });
 
@@ -2724,6 +2765,28 @@ describe("reading a demo deck back and repairing it", () => {
     // The surviving chart is now a group carrying the config — re-editable.
     const group = deck[1].created.filter((s) => !s.deleted).find((s) => s.name === "PowerChart");
     expect(group?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
+  });
+
+  it("counts the slides it could not read, instead of calling them lost", async () => {
+    // A page whose read throws is skipped — safe, since an unseen slide is
+    // never deleted. But its items then came back "lost", indistinguishable in
+    // the run summary from slides the host really dropped. "Gantt: lost" when
+    // Gantt rendered perfectly is exactly the report that makes someone insert
+    // the deck a second time.
+    // Two pages' worth, so one can be read and the other refused — a partial
+    // read is the case that misreports; a total one is obvious.
+    const deck = Array.from({ length: READBACK_PAGE + 5 }, (_, i) =>
+      demoSlide(`s${i}`, { slot: { i, title: `T${i}` }, shapes: 3 }),
+    );
+    installHost(deck);
+    failSyncsOn.add(trips.syncs + 2); // the SECOND page's read
+    try {
+      const { snapshots, unread } = await readAddedSlides(0, deck.length);
+      expect(snapshots).toHaveLength(READBACK_PAGE);
+      expect(unread).toBe(5);
+    } finally {
+      failSyncsOn.clear();
+    }
   });
 
   it("refuses to delete a slide that is no longer the one it profiled", async () => {

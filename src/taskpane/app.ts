@@ -19,7 +19,7 @@ import {
   slideHoldsOnlyChart,
   withSlideDeselected,
   slideCount,
-  snapshotAddedSlides,
+  readAddedSlides,
   traceEnvironment,
   wantsAutoPicture,
   listChartsInDeck,
@@ -347,6 +347,14 @@ let sheetApi: { setSheet(next: SheetModel): void };
  * timer before its guard — a `let` further down would be in its dead zone.
  */
 let autoUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * An insert or update is talking to PowerPoint right now.
+ *
+ * `guard()` disables the buttons a CLICK comes from, but the auto-update timer
+ * calls `doInsert` directly and never sees that. See `maybeAutoUpdate`.
+ */
+let insertInFlight = false;
 
 /**
  * Write the host note together with its status colour. The colour is a
@@ -1490,6 +1498,15 @@ function phaseNote(phase: InsertPhase, detail?: string) {
 }
 
 async function doInsert(asNew: boolean) {
+  insertInFlight = true;
+  try {
+    return await runInsert(asNew);
+  } finally {
+    insertInFlight = false;
+  }
+}
+
+async function runInsert(asNew: boolean) {
   let cfg = currentConfig();
   if (!asNew && state.editTarget) {
     const scene = buildChart(cfg);
@@ -1818,7 +1835,24 @@ function maybeAutoUpdate() {
   clearTimeout(autoUpdateTimer);
   const on = ($("auto-update") as HTMLInputElement | null)?.checked;
   if (!on || !state.editTarget || !isPowerPointHost()) return;
-  autoUpdateTimer = setTimeout(() => void doInsert(false).catch(() => {}), 900);
+  autoUpdateTimer = setTimeout(() => {
+    // Never two writes to the same chart at once. This timer bypasses
+    // `guard()`, so it does not see the disabled buttons a click would — and
+    // one resilient update can now legitimately take tens of seconds (a 45s
+    // stall, then a slide swap, then a bounded raster). A user who keeps
+    // editing through that could start a second update against the SAME stale
+    // edit target; whichever finished last won, and if that was the one
+    // started from the already-superseded target it reported "that chart is
+    // no longer on the slide" about a chart that had just been written fine.
+    //
+    // Re-arm rather than drop: the edit still needs to reach the slide, it
+    // just has to wait its turn.
+    if (insertInFlight) {
+      maybeAutoUpdate();
+      return;
+    }
+    void doInsert(false).catch(() => {});
+  }, 900);
 }
 // Unticking has to cancel a push that is already in flight; ticking on its own
 // shouldn't push anything until the next edit.
@@ -1936,9 +1970,13 @@ async function repairDeckSpan(
   run: string,
 ): Promise<VerifyResult> {
   let snapshots: SlideSnapshot[];
+  // Slides the readback could not see. Anything on one of them comes back
+  // `lost`, so this is what stops the run reporting a chart the host kept as a
+  // chart the host dropped.
+  let unread: number;
   try {
     const count = await slideCount();
-    snapshots = await snapshotAddedSlides(0, count);
+    ({ snapshots, unread } = await readAddedSlides(0, count));
   } catch (err) {
     return { kind: "error", why: errorText(err) };
   }
@@ -1963,9 +2001,12 @@ async function repairDeckSpan(
     if (!plan.actions.length)
       return {
         kind: "ok",
-        outcome: { snapshots: inSpan, plan, applied: { unstamped: 0, regrouped: 0, deleted: 0 }, refused: 0 },
+        outcome: { snapshots: inSpan, plan, applied: { unstamped: 0, regrouped: 0, deleted: 0 }, refused: 0, unread },
       };
-    return { kind: "ok", outcome: await applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, inSpan) };
+    return {
+      kind: "ok",
+      outcome: { ...(await applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, inSpan)), unread },
+    };
   } catch (err) {
     return { kind: "error", why: errorText(err) };
   }
@@ -2093,7 +2134,25 @@ async function insertDemoDeckAsFile(
     // A throw is not proof that nothing landed — the same lesson the
     // shape path learned the hard way. Measure before deciding.
     console.warn("PowerChart: one-shot deck insert failed", err);
-    const after = await slideCount().catch(() => before);
+    // …and a failed MEASUREMENT is not proof either. This runs on a host that
+    // has just failed once, milliseconds ago; the re-read can fail with it.
+    // Treating that as "nothing landed" returns null, and the caller then
+    // draws the entire deck a second time on top of however many slides did
+    // arrive — the exact double-insert every other guard on this path exists
+    // to prevent. When we cannot tell, we do not guess: say so and stop.
+    let after: number | undefined;
+    try {
+      after = await slideCount();
+    } catch (readErr) {
+      console.warn("PowerChart: could not measure the deck after the failed insert", readErr);
+      return {
+        text: "PowerPoint would not take the deck, and would not say how much of it landed. Check the deck before inserting again — running it now could add the slides twice.",
+        status: "err",
+        added: 0,
+        totalMs: Date.now() - t0,
+        verified: { kind: "error", why: errorText(readErr) },
+      };
+    }
     added = after - before;
     if (added <= 0) return null;
   }
@@ -2121,6 +2180,11 @@ async function insertDemoDeckAsFile(
     ? `Inserted as one file in ${secs}s${smoke ? " (smoke subset)" : ""} — ${describeReconcile(outcome.plan)}.`
     : `Inserted ${added} of ${items.length} slides as one file in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
   if (verified.kind !== "ok") text += ` (Not verified: ${verified.why}.)`;
+  // A slide the readback could not see puts its item in the `lost` column for
+  // want of evidence. Saying so is the difference between "the host dropped
+  // your chart" and "we could not look" — and the first reading is what makes
+  // someone insert the deck again.
+  if (outcome?.unread) text += ` (Could not read ${outcome.unread} slide(s) — anything on them counts as lost here.)`;
   if (added < items.length) text += ` ⚠ the host took ${added} of ${items.length} slides.`;
   const clean = added >= items.length && !!outcome && outcome.plan.summary.lost === 0;
   return { text, status: clean ? "ok" : "err", added, totalMs: Date.now() - t0, verified };
@@ -2516,6 +2580,8 @@ function wireInsert() {
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
         if (reconcile) {
           if (missing.length) msg += ` Never landed: ${missing.join(", ")}.`;
+          if (reconcile.unread)
+            msg += ` (Could not read ${reconcile.unread} slide(s) — anything on them counts as lost here.)`;
           const { deleted, unstamped, regrouped } = reconcile.applied;
           // Deletions are NOT all duplicates — most are usually empty slides a
           // lost add left behind. Calling nine removals "9 duplicate slide(s)"

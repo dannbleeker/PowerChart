@@ -98,7 +98,16 @@ export function topLevelElements(xml: string): string[] {
   const out: string[] = [];
   let depth = 0;
   let start = -1;
-  const tag = /<(\/?)([A-Za-z0-9:_-]+)([^>]*?)(\/?)>/g;
+  // The attribute part is matched as "quoted strings or non-'>' characters",
+  // not simply "anything up to the first >". A raw `>` inside an attribute
+  // VALUE is not the end of the tag, and reading it as one ends the element
+  // early and desyncs `depth` for the entire rest of the slide — after which
+  // this returns nothing at all and the chart is never grouped. Well-formed
+  // XML never contains one, but this parses bytes some other library wrote:
+  // pptxgenjs emits `typeface="…"` without escaping it (see `xmlFontName` in
+  // pptx-paint.mjs), and being one unescaped attribute away from silently
+  // losing every shape on a slide is not a place to stand.
+  const tag = /<(\/?)([A-Za-z0-9:_-]+)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
   let m: RegExpExecArray | null;
   while ((m = tag.exec(xml))) {
     const closing = m[1] === "/";
@@ -288,7 +297,17 @@ export async function injectGroupsAndTags(
   }
 
   let types = await readPart(zip, "[Content_Types].xml");
-  let tagPartNo = 0;
+  // Number new tag parts ABOVE whatever the deck already carries. Starting at
+  // 1 unconditionally was safe only because pptxgenjs emits no `ppt/tags/*` of
+  // its own — `zip.file()` is a plain overwrite, so the first tag written
+  // would silently destroy an existing `tag1.xml` and every slide pointing at
+  // it. This function is exported as library API with no promise about what it
+  // is handed, and "silently destroys the caller's data" is not a contract
+  // worth keeping by luck.
+  let tagPartNo = Object.keys(zip.files).reduce((max, f) => {
+    const m = /^ppt\/tags\/tag(\d+)\.xml$/.exec(f);
+    return m ? Math.max(max, Number(m[1])) : max;
+  }, 0);
   // What each slide ACTUALLY holds. The caller cannot infer it: this renderer
   // draws a pie as one custGeom wedge where the Office.js one draws a
   // sixteen-triangle fan, so `estimateOfficeShapes` is the wrong yardstick

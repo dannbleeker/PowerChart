@@ -153,6 +153,26 @@ const XML_ILLEGAL =
 /** Text safe to place in an OOXML slide. */
 export const xmlText = (s) => String(s ?? "").replace(XML_ILLEGAL, "");
 
+/**
+ * A font name safe to place in an OOXML ATTRIBUTE.
+ *
+ * pptxgenjs escapes every text run it writes, but not `fontFace`: it emits
+ * `<a:latin typeface="${opts.fontFace}"/>` raw, the one unescaped attribute in
+ * the library. A `>` in a font name therefore closes the tag early, and the
+ * depth counter in `topLevelElements` — which is how a slide's shapes are
+ * found at all — desyncs for the rest of the slide and returns nothing, so the
+ * chart is never grouped.
+ *
+ * `ChartStyle.fontFamily` is a free-form string that round-trips through a
+ * style file in localStorage, and scene nodes carry a `fontFamily` of their
+ * own. Nothing currently copies one to the other, so there is no live path
+ * today — but they are named the same on both ends and connecting them is
+ * obviously intended, and the day someone does, every text node becomes an
+ * XML-injection point. Strip the characters that cannot survive an attribute
+ * rather than rely on that wiring staying unfinished.
+ */
+export const xmlFontName = (s) => xmlText(s).replace(/[<>&"']/g, "");
+
 /** A paint that would actually draw: present, and not fully transparent. */
 export const visible = (paint) => !!paint && alphaOf(paint) > 0;
 
@@ -209,7 +229,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, SYMBOL_PRESET, arro
           bold: !!n.bold,
           align: n.align,
           valign: n.valign,
-          fontFace: n.fontFamily ?? "Segoe UI",
+          fontFace: xmlFontName(n.fontFamily) || "Segoe UI",
           margin: 0,
           wrap: false,
         });

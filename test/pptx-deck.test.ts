@@ -158,6 +158,37 @@ describe("ooxml: dressing and slides must stay in step", () => {
   }, 30_000);
 });
 
+describe("ooxml: parsing bytes another library wrote", () => {
+  it("does not end a tag at a raw > inside an attribute value", () => {
+    // pptxgenjs writes `typeface="…"` WITHOUT escaping it — the one unescaped
+    // attribute in the library — and font names are free-form user strings.
+    // Read naively, the `>` ends the tag early and the depth counter desyncs
+    // for the rest of the slide: this returns nothing, `groupSlideShapes` sees
+    // fewer than two children, and the chart is never grouped at all.
+    const nasty = `<p:sp><p:nvSpPr><p:cNvPr id="2" name="a"/></p:nvSpPr><a:latin typeface="Ba>d"/></p:sp>`;
+    const parts = topLevelElements(`${nasty}${sp(3, 0, 0, 10, 10)}`);
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toBe(nasty);
+  });
+
+  it("numbers new tag parts above the ones already in the deck", async () => {
+    // `zip.file()` overwrites. Starting at tag1 unconditionally destroyed any
+    // pre-existing tag part and every slide pointing at it — safe today only
+    // because pptxgenjs happens to emit none.
+    const built = await buildDeckBase64([
+      { scene: buildChart(sampleConfig("line")), title: "A", configJson: `{"kind":"line"}` },
+    ]);
+    const zip = await JSZip.loadAsync(built.base64, { base64: true });
+    zip.file("ppt/tags/tag1.xml", "<keep-me/>");
+    const out = await injectGroupsAndTags(await zip.generateAsync({ type: "base64" }), [
+      { configJson: `{"kind":"line"}`, slot: 0, title: "A" },
+    ]);
+    const after = await JSZip.loadAsync(out.base64, { base64: true });
+    expect(await after.file("ppt/tags/tag1.xml")!.async("string")).toBe("<keep-me/>");
+    expect(Object.keys(after.files).filter((f) => /^ppt\/tags\/tag\d+\.xml$/.test(f)).length).toBeGreaterThan(1);
+  }, 30_000);
+});
+
 describe("building a deck in-process", () => {
   const cfg = (title: string): ChartConfig => ({ ...sampleConfig("line"), title });
 
