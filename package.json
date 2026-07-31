@@ -12,6 +12,7 @@
     "build:pages": "npm run build:manifest && tsc --noEmit && vite build && node scripts/pages-postbuild.mjs",
     "render": "node scripts/render-batch.mjs",
     "verify-deck": "node scripts/verify-deck.mjs",
+    "triage": "node scripts/triage.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",

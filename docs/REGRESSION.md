@@ -49,6 +49,67 @@ perfectly well-formed FILE, and is reported without being called a fault — as
 are two different runs' slides in one deck, which is the case the run token
 exists to survive.
 
+## 0b. The join — deck against run log
+
+```bash
+npm run triage -- Presentation.pptx powerchart-run-log.json   # --all, --json
+```
+
+The two files may be given in either order — the extension says which is which.
+Piping `--json` anywhere needs `npm run --silent` (or `node scripts/triage.mjs`
+directly), because npm prints its own banner to stdout ahead of the script.
+
+The two files a real run produces are the entire evidence base, and reading
+them *together* is where the findings are: slot by slot, what the run believed
+it did against what the file actually holds.
+
+```
+  run ms9fcxg6-k93mmn · build ba3365b · PowerPoint · OfficeOnline
+  path shapes · 85.2s
+
+  DECK 32 slide(s): 30 from this run, 1 from other run(s), 1 carrying no slot tag
+  SLOTS 38 expected · 30 present · 24 not-editable · 8 lost · 3 repaired · 3 ok
+
+  #    title           log        tag?  deck                     verdict
+  3    Stacked         rendered   no    picture 2sh config       repaired
+  4    Clustered       rendered   no    —                        lost
+  7    Mekko           rendered   no    picture 1sh no-config    not-editable
+
+  TRACE 276 entries
+     117  demo   item finished
+      79  group  tagging failed — charts are not re-editable until repaired
+  problems:
+      79  InvalidParam passed to GetItem(id) | code=5010
+```
+
+The verdicts, and what each means:
+
+| verdict         | the run said              | the file holds          |
+| --------------- | ------------------------- | ----------------------- |
+| `ok`            | drew it, tagged it        | it is there, tagged     |
+| `lost`          | drew it                   | no slide for that slot  |
+| `duplicated`    | drew it once              | two slides claim it     |
+| `tag-lost`      | wrote the config tag      | no config tag           |
+| `not-editable`  | never got the tag written | a chart with no config  |
+| `repaired`      | gave up on the tag        | tagged — the repair won |
+| `blank`         | drew it                   | a slide with no shapes  |
+| `orphan`        | never issued that slot    | a slide carrying it     |
+| `skipped`       | skipped it                | nothing — as expected   |
+
+`repaired` and another run's slides are **not** disagreements; they are the
+repair pass and the run token doing their jobs. Exit 0 when the two accounts
+agree, 1 when they do not, 2 when a file cannot be read.
+
+Both this and `verify-deck` are deliberately `.mjs` tools outside `src/`, so
+they cannot inherit a bug from the code they audit.
+
+**Why it exists.** This join used to be done by hand — unzip the deck,
+pretty-print 160 KB of log, line the slots up, squint — and twice it was done
+wrong: once from a truncated read of the log, once from a trace buffer that
+spanned three runs and showed a contradiction that was not there. Each wrong
+turn cost a full round trip: a deploy, a run in a real PowerPoint, an upload
+and a re-read. The join is mechanical, so it belongs in a script.
+
 ## 1. The cheap pass — self-check (every run)
 
 Insert the deck. When it finishes, the pane reports and the **console** (F12)

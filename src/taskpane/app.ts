@@ -39,7 +39,7 @@ import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } fr
 import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
-import { setTracing, trace, traceLog, traceMark, tracing } from "../core/trace";
+import { setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -1912,6 +1912,18 @@ let lastRunLog: RunLog | undefined;
 
 interface RunLog {
   build: string;
+  /**
+   * This run's identity, the same token carried on every slide's slot tag.
+   *
+   * The join key between this file and the .pptx it produced. Every diagnosis
+   * in this project's history has come from reading the two together, and
+   * until now that read started by guessing which slides belonged to the run —
+   * a deck holds whatever earlier runs left in it, and one recent file carried
+   * 30 slides from the run under investigation plus a lone slide from another.
+   * With the token the join is a lookup and the stray is labelled, not
+   * mistaken for a loss. `npm run triage` does exactly that join.
+   */
+  run: string;
   host: string;
   totalMs: number;
   items: {
@@ -1929,6 +1941,18 @@ interface RunLog {
      * there is impossible; false in both is a genuinely lost write.
      */
     tagged: boolean;
+    /**
+     * Whether this item was MEANT to carry a config — not whether it got one.
+     *
+     * Not every demo item is a chart: the title page, the contents pages and
+     * several elements are drawn as `PowerChart` objects with no config by
+     * design. Nothing in the produced file distinguishes those from a chart
+     * whose tag write was lost, and on the shape path `tagged` cannot either
+     * (false there means both "never had one" and "the write did not land").
+     * Without this field a triage of a clean run called seven healthy slides
+     * broken.
+     */
+    chart: boolean;
     lateOutcome: string;
   }[];
   deck: {
@@ -1947,8 +1971,12 @@ interface RunLog {
    * read is a log that gets diagnosed as the wrong one.
    */
   path: "file" | "shapes";
-  /** Step-by-step record, when Verbose trace was on for the run. */
+  /**
+   * Step-by-step record, when Verbose trace was on for the run — tallies
+   * first, then the entries they were counted from.
+   */
   trace?: {
+    summary: TraceSummary;
     entries: { ms: number; scope: string; message: string; data?: Record<string, unknown> }[];
     dropped: number;
   };
@@ -2113,9 +2141,14 @@ async function updateChartResilient(
  * message — never null — once any slide has landed, because falling back after
  * a partial insert would draw the whole deck a second time on top of it.
  */
-async function insertDemoDeckAsFile(
-  items: { scene: Scene; title: string; configJson?: string }[],
-): Promise<{ text: string; status: "ok" | "err"; added: number; totalMs: number; verified: VerifyResult } | null> {
+async function insertDemoDeckAsFile(items: { scene: Scene; title: string; configJson?: string }[]): Promise<{
+  text: string;
+  status: "ok" | "err";
+  added: number;
+  totalMs: number;
+  verified: VerifyResult;
+  run: string;
+} | null> {
   const t0 = Date.now();
   const before = await slideCount();
   // Identity for this insert, carried on every slide's slot tag. Without it the
@@ -2158,6 +2191,7 @@ async function insertDemoDeckAsFile(
         added: 0,
         totalMs: Date.now() - t0,
         verified: { kind: "error", why: errorText(readErr) },
+        run,
       };
     }
     added = after - before;
@@ -2199,7 +2233,7 @@ async function insertDemoDeckAsFile(
   if (outcome?.unread) text += ` (Could not read ${outcome.unread} slide(s) — anything on them counts as lost here.)`;
   if (added < items.length) text += ` ⚠ the host took ${added} of ${items.length} slides.`;
   const clean = added >= items.length && !!outcome && outcome.plan.summary.lost === 0;
-  return { text, status: clean ? "ok" : "err", added, totalMs: Date.now() - t0, verified };
+  return { text, status: clean ? "ok" : "err", added, totalMs: Date.now() - t0, verified, run };
 }
 
 /**
@@ -2474,6 +2508,7 @@ function wireInsert() {
             const verdicts = settled?.plan.verdicts ?? [];
             lastRunLog = {
               build: buildStamp,
+              run: outcome.run,
               host,
               totalMs: outcome.totalMs,
               items: items.map((it, i) => {
@@ -2492,6 +2527,7 @@ function wireInsert() {
                   // drop — so `tagged` true here against a false snapshot is
                   // a readback fault and nothing else.
                   tagged: !!it.configJson,
+                  chart: !!it.configJson,
                   lateOutcome: "",
                 };
               }),
@@ -2523,6 +2559,7 @@ function wireInsert() {
         // exempt: a harness page that somehow still runs over is a page worth
         // skipping, exactly like any other.
         const {
+          run,
           results,
           slidesAdded,
           addsIssued,
@@ -2713,6 +2750,7 @@ function wireInsert() {
         // "(results slide not added)" with nothing in it about why.
         lastRunLog = {
           build: buildStamp,
+          run,
           host,
           totalMs,
           items: results.map((r, i) => ({
@@ -2722,6 +2760,7 @@ function wireInsert() {
             ms: r.ms,
             grouped: !!r.grouped,
             tagged: !!r.tagged,
+            chart: !!items[i].configJson,
             lateOutcome: r.lateOutcome ?? "",
           })),
           deck: { slidesAdded, addsIssued, lost, blank: blankItems },

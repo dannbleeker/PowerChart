@@ -115,3 +115,72 @@ describe("reading back one operation's slice of the log", () => {
     expect(traceLog(0).entries).toHaveLength(1);
   });
 });
+
+describe("the summary that makes a long trace readable", () => {
+  it("tallies each distinct scope+message, commonest first", () => {
+    // A real run's log is 160 KB of pretty-printed JSON holding a few hundred
+    // entries — more than fits in one read, let alone on a screen. The two
+    // questions ever asked of it are "what did this run do" and "what went
+    // wrong", and both are answered by a tally rather than by the entries.
+    setTracing(true);
+    trace("demo", "item finished");
+    trace("group", "tagging failed");
+    trace("demo", "item finished");
+    trace("demo", "item finished");
+    expect(traceLog().summary.steps).toEqual([
+      { scope: "demo", message: "item finished", n: 3 },
+      { scope: "group", message: "tagging failed", n: 1 },
+    ]);
+  });
+
+  it("keeps the same message under different scopes apart", () => {
+    setTracing(true);
+    trace("demo", "read the deck back");
+    trace("repair", "read the deck back");
+    expect(traceLog().summary.steps).toHaveLength(2);
+  });
+
+  it("tallies failure reasons whichever word the call site used for them", () => {
+    // `error`, `why` and `reason` are all in live use. A histogram that knew
+    // only `error` missed two thirds of one real run's problems.
+    setTracing(true);
+    trace("group", "tagging failed", { error: "InvalidParam passed to GetItem(id)" });
+    trace("group", "tagging failed", { error: "InvalidParam passed to GetItem(id)" });
+    trace("repair", "left alone", { reason: "chart is one object but carries no config tag" });
+    trace("demo", "degraded", { why: "an item took 53s" });
+    expect(traceLog().summary.problems).toEqual([
+      { text: "InvalidParam passed to GetItem(id)", n: 2 },
+      { text: "chart is one object but carries no config tag", n: 1 },
+      { text: "an item took 53s", n: 1 },
+    ]);
+  });
+
+  it("truncates a problem string so one error's debugInfo blob cannot swamp the tally", () => {
+    setTracing(true);
+    const long = `InvalidParam passed to GetItem(id) | code=5010 | debugInfo=${"x".repeat(400)}`;
+    trace("group", "tagging failed", { error: long });
+    const [only] = traceLog().summary.problems;
+    expect(only.text).toHaveLength(120);
+    expect(only.text.startsWith("InvalidParam passed to GetItem(id)")).toBe(true);
+  });
+
+  it("ignores non-string and empty reasons rather than tallying [object Object]", () => {
+    setTracing(true);
+    trace("repair", "applying delete", { reason: "" });
+    trace("repair", "applying delete", { reason: { code: 5010 } as unknown as string });
+    expect(traceLog().summary.problems).toEqual([]);
+  });
+
+  it("summarises only the slice asked for, never the whole buffer", () => {
+    // The mark exists because a log that carried the whole buffer carried
+    // other runs; a summary computed over the whole buffer would put those
+    // runs' failures back into this one's headline count.
+    setTracing(true);
+    trace("group", "tagging failed", { error: "an earlier run's problem" });
+    const mark = traceMark();
+    trace("demo", "item finished");
+    const { summary } = traceLog(mark);
+    expect(summary.steps).toEqual([{ scope: "demo", message: "item finished", n: 1 }]);
+    expect(summary.problems).toEqual([]);
+  });
+});

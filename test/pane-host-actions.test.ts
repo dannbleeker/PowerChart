@@ -134,6 +134,10 @@ vi.mock("../src/render/powerpoint", () => ({
       const status = host.demoDeckStatusOverride ?? "failed";
       const results = items.map(() => ({ created: 5, status, ms: 100 }));
       return {
+        // The run's identity, as the real renderer reports it — the join key
+        // between the downloaded log and the .pptx it produced. Fabricated
+        // per call so a test can tell two runs apart.
+        run: `fake-run-${call}`,
         results,
         slidesAdded: items.length,
         addsIssued: items.length,
@@ -1021,6 +1025,65 @@ describe("demo-insert one-shot deck insert", () => {
     expect(host.calls.insertFile).toHaveLength(1);
     expect(host.demoRuns).toBe(0);
     expect($("host-note").textContent).toMatch(/host took 3 of/i);
+  });
+
+  /** Capture whatever `downloadJson` hands to the browser. */
+  function captureDownloads() {
+    const blobs: Blob[] = [];
+    const c = vi.spyOn(URL, "createObjectURL").mockImplementation((b: Blob | MediaSource) => {
+      if (b instanceof Blob) blobs.push(b);
+      return "blob:x";
+    });
+    const r = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    return {
+      lastJson: async () => JSON.parse(await blobs[blobs.length - 1].text()),
+      restore: () => {
+        c.mockRestore();
+        r.mockRestore();
+      },
+    };
+  }
+
+  /**
+   * The run token has to reach the FILE, not just the run.
+   *
+   * It is the join key between the downloaded log and the .pptx the run
+   * produced, and every diagnosis in this project's history is that join. Done
+   * by hand it started with a guess at which slides were the run's, because a
+   * deck holds whatever earlier runs left in it — one real file carried 30
+   * slides from the run under investigation and one from another. A log
+   * missing the token sends `npm run triage` straight back to guessing.
+   */
+  it("puts the run's identity in the log the fast path writes", async () => {
+    const dl = captureDownloads();
+    host.canInsertFile = true;
+    $("demo-insert").click();
+    await settle();
+    $("demo-log").click();
+    const log = await dl.lastJson();
+    expect(log.run).toBe("run-under-test");
+    // …and which items were ever meant to carry a config. Without this the
+    // title and contents pages — `PowerChart` objects with no config by
+    // design — read as charts that lost their tag, and a clean run triages as
+    // a broken one. Seven false alarms on the first real deck this was run on.
+    const chartFlags: boolean[] = log.items.map((i: { chart: boolean }) => i.chart);
+    expect(chartFlags).toContain(true);
+    expect(chartFlags).toContain(false);
+    expect(log.items.find((i: { title: string }) => i.title === "Title").chart).toBe(false);
+    dl.restore();
+  });
+
+  it("puts the run's identity in the log the shape path writes", async () => {
+    // A different token from the fast path's, and taken from the renderer's
+    // own report rather than minted again by the pane — the pane minting its
+    // own would produce a log that joins to nothing in the deck.
+    const dl = captureDownloads();
+    host.canInsertFile = false;
+    $("demo-insert").click();
+    await settle();
+    $("demo-log").click();
+    expect((await dl.lastJson()).run).toBe("fake-run-1");
+    dl.restore();
   });
 
   it("leaves a downloadable run log behind — including when the run went badly", async () => {

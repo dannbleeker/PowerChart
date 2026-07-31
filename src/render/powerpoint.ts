@@ -1085,6 +1085,16 @@ export interface DemoResult {
 
 /** A demo-deck insert's self-verification report. */
 export interface DemoReport {
+  /**
+   * This run's identity — the same token written into every slot tag.
+   *
+   * Without it a run's report and the .pptx it produced can only be joined by
+   * guessing, and a deck routinely holds slides from more than one run: the
+   * file that settled the last diagnosis carried 30 slides from the run being
+   * read and one from a different one. The token turns that join into a
+   * lookup, and the stray into a labelled stray.
+   */
+  run: string;
   results: DemoResult[];
   /** How much the deck ACTUALLY grew (settled getCount, after − before). */
   slidesAdded: number;
@@ -1656,6 +1666,7 @@ async function runDemoDeck(
   // exist.
   const blanks = reconcile ? blanksFromSnapshots(reconcile) : await findBlankAddedSlides(before, after);
   return {
+    run: runId,
     results,
     slidesAdded,
     addsIssued,
