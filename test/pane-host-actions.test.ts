@@ -125,6 +125,7 @@ vi.mock("../src/render/powerpoint", () => ({
   // The one-shot deck path. Off by default so the existing cases keep
   // exercising the shape-by-shape renderer they were written for.
   canInsertSlidesFromBase64: vi.fn(() => host.canInsertFile),
+  traceEnvironment: vi.fn(),
   // Selection juggling around an in-place redraw. The fake host has no view,
   // so it just runs the body — with `deselected` false, which is the honest
   // answer for a host that cannot move the selection.

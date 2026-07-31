@@ -435,15 +435,16 @@ loose so they are editable again. The run's summary is written from what the
 deck actually holds, not from what the add-in believed while the host was still
 catching up.
 
-**Repair deck** runs that same pass on demand, for a deck a previous session
-left damaged — nothing is re-inserted, and slides outside the demo range are
-never touched. It only ever deletes a slide that is provably redundant (an
-identical twin of a complete chart) or empty; two half-finished copies of the
-same chart are reported and left for you to judge.
+**Verbose trace** records every step the add-in takes — each drawing batch, each
+slide the host loses, each call it stops waiting for, each repair action, and
+every pane action including ordinary inserts and updates. It is on by default
+while the add-in is being validated against real hosts, and it rides along
+inside the run log rather than in a separate file. Nothing is written while it
+is off.
 
 **Download run log** saves the last run as JSON: per-item timings, statuses,
-what the host did to each slide, and the repair pass's verdicts. Attach it to a
-bug report instead of retyping the summary line.
+what the host did to each slide, and the repair pass's verdicts, plus the trace. Attach
+it to a bug report instead of retyping the summary line.
 
 ### When PowerPoint won't redraw a chart
 

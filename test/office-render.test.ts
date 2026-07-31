@@ -21,6 +21,7 @@ import {
   updateChartInSlide,
   updateChartsInSlides,
 } from "../src/render/powerpoint";
+import { setTracing, traceLog } from "../src/core/trace";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import { buildAgendaScene } from "../src/core/agenda";
@@ -3046,6 +3047,90 @@ describe("reading a demo deck back and repairing it", () => {
     }
     // Generous: an earlier test in this file can leave an abandoned sync
     // outstanding, and the failure path waits up to 5s for it to report.
+  }, 20_000);
+
+  it("stops drawing shapes and inserts pictures once the host falls behind", async () => {
+    // We cannot catch the crash — the tab dies, there is no rejected promise —
+    // so the run watches what comes BEFORE it. A budget of zero shapes stands
+    // in for a host that has already spent its allowance.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const scene = buildChart(tinyChart());
+    const report = await insertDemoDeck(
+      [
+        { scene, title: "One", tagData: `{"i":0}` },
+        { scene, title: "Two", tagData: `{"i":1}` },
+        { scene, title: "Three", tagData: `{"i":2}` },
+      ],
+      undefined,
+      { pictureFor: async () => "iVBORw0KGgo=", shapeBudget: 0 },
+    );
+    expect(report.degradedAt).toBe(1);
+    expect(report.degradeReason).toMatch(/shapes drawn/);
+    // Item 1 drew its shapes; items 2 and 3 are one picture each.
+    expect(report.results[0].created).toBeGreaterThan(1);
+    expect(report.results[1].created).toBe(1);
+    expect(report.results[2].created).toBe(1);
+    // And the picture carries the config tag, so the chart is still editable.
+    const last = deck[deck.length - 1].created.filter((s) => !s.deleted);
+    expect(last.some((s) => s.imageBase64 === "iVBORw0KGgo=")).toBe(true);
+  }, 20_000);
+
+  it("keeps drawing shapes when the host is keeping up", async () => {
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const report = await insertDemoDeck(
+      [{ scene: buildChart(tinyChart()), title: "One", tagData: `{"i":0}` }],
+      undefined,
+      { pictureFor: async () => "iVBORw0KGgo=", shapeBudget: 10_000 },
+    );
+    expect(report.degradedAt).toBeUndefined();
+    expect(report.results[0].created).toBeGreaterThan(1);
+  }, 20_000);
+
+  it("never degrades when the caller offers no picture to fall back to", async () => {
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const report = await insertDemoDeck([{ scene: buildChart(tinyChart()), title: "One" }], undefined, {
+      shapeBudget: 0,
+    });
+    expect(report.degradedAt).toBeUndefined();
+  }, 20_000);
+
+  it("traces the run in enough detail to diagnose it afterwards", async () => {
+    // Every hard thing in this project was diagnosed after the fact, from a
+    // deck and a one-line summary. This is the record that was missing: which
+    // item, what landed, what the host refused, and when it was given up on.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    setTracing(true);
+    try {
+      await insertDemoDeck([{ scene: buildChart(tinyChart()), title: "Line", tagData: `{"i":0}` }]);
+      const { entries } = traceLog();
+      const byScope = (scope: string) => entries.filter((e) => e.scope === scope);
+      // The per-item verdict, with the numbers a reader needs to judge it.
+      const item = byScope("demo").find((e) => e.message === "item finished");
+      expect(item?.data).toMatchObject({ i: 0, title: "Line", status: "rendered" });
+      expect(item?.data?.created).toBeGreaterThan(1);
+      // And the drawing itself, batch by batch — "died at batch 1 of 4" was
+      // the entire diagnosis of the update stall.
+      expect(byScope("draw").length).toBeGreaterThan(0);
+      expect(byScope("draw")[0].data).toHaveProperty("total");
+    } finally {
+      setTracing(false);
+    }
+  }, 20_000);
+
+  it("costs a run nothing while it is off", async () => {
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    setTracing(false);
+    // Switching off deliberately KEEPS the log readable, so measure growth
+    // rather than emptiness — the claim is that a disabled trace records
+    // nothing new, not that it forgets what it already had.
+    const before = traceLog().entries.length;
+    await insertDemoDeck([{ scene: buildChart(tinyChart()), title: "Line" }]);
+    expect(traceLog().entries).toHaveLength(before);
   }, 20_000);
 
   it("closes a demo run with the settled truth when asked for it", async () => {

@@ -15,6 +15,7 @@ import { estimateOfficeShapes } from "../core/scene";
 import { toHex6, alphaOf } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
+import { trace } from "../core/trace";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
 
 /* global PowerPoint, Office */
@@ -229,6 +230,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   const started = Date.now();
   const describe = (outcome: string): void => {
     lastLateSync = `${what}: ${outcome} after ${Math.round((Date.now() - started) / 1000)}s`;
+    trace("host", "a call we gave up on finally answered", { what, outcome, afterMs: Date.now() - started });
     lastLateSyncSeq += 1;
     lateSubscriber?.(lastLateSync);
   };
@@ -263,6 +265,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         () => undefined,
         () => undefined,
       );
+      trace("host", "gave up waiting", { what, afterMs: ms });
       reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
     }, ms);
   });
@@ -821,6 +824,7 @@ async function addSlides(
   }
   if (deficit > 0) {
     lastAddsLost += deficit;
+    trace("host", "slide add(s) never landed", { requested: count, lost: deficit });
     console.warn(
       `PowerChart: addSlides lost ${deficit} of ${count} requested slide${count === 1 ? "" : "s"} — ` +
         `the host dropped the add() and the retry did not recover it. Returning ${have} thunk${have === 1 ? "" : "s"}.`,
@@ -1039,6 +1043,13 @@ export interface DemoReport {
    * fact landed twice.
    */
   reconcile?: ReconcileOutcome;
+  /**
+   * Item index at which the run stopped drawing shapes and started inserting
+   * pictures, with the observation that triggered it. Undefined when the host
+   * kept up all the way — which is the normal case everywhere but the web.
+   */
+  degradedAt?: number;
+  degradeReason?: string;
   /** Wall-clock time for the whole run, ms — the headline regression metric. */
   totalMs: number;
 }
@@ -1104,6 +1115,7 @@ async function rescueGroupAndTag(
       try {
         group = shapes.addGroup(items);
       } catch {
+        trace("group", "the host refused addGroup", { slideIndex, shapes: items.length });
         return false;
       }
       group.name = "PowerChart";
@@ -1209,7 +1221,7 @@ interface AddAndRenderOutcome {
 }
 
 async function addAndRenderItem(
-  item: { scene: Scene; tagData?: string; slotTag?: string },
+  item: { scene: Scene; tagData?: string; slotTag?: string; pictureBase64?: string },
   tooDense: boolean,
   shapeCount: number,
   layout: LayoutRef,
@@ -1249,6 +1261,9 @@ async function addAndRenderItem(
       tagData: item.tagData,
       altText: item.scene.desc,
       altTitle: item.scene.title,
+      // Set once the run has decided to stop drawing shapes — one picture per
+      // slide instead of forty shapes. See `pictureFor` on insertDemoDeck.
+      pictureBase64: item.pictureBase64,
       // Off-screen — the host tolerates far larger batches than the live canvas.
       shapesPerSync: SHAPES_PER_SYNC_OFFSCREEN,
     };
@@ -1296,6 +1311,29 @@ export async function insertDemoDeck(
      * each trigger a deck-wide sweep.
      */
     reconcile?: boolean;
+    /**
+     * A picture of item `i`, for when the run gives up on drawing shapes.
+     *
+     * Rasterizing needs a canvas, which lives in the pane, not here — so the
+     * caller supplies it and this module decides WHEN to ask. Omit it and the
+     * run never degrades; it just draws shapes until it cannot.
+     */
+    pictureFor?: (index: number) => Promise<string | undefined>;
+    /**
+     * Shapes this run may draw before it stops drawing them.
+     *
+     * The number exists because PowerPoint on the web has no resource limits
+     * at all: Microsoft's documented ceilings (CPU, memory, four-crashes,
+     * five-seconds-unresponsive) are scoped to Windows and Mac and explicitly
+     * NOT to a browser, so nothing throttles a runaway add-in there — the tab
+     * simply dies, taking the user's session with it. Twice now.
+     *
+     * Every 12-item run in this project's history (~400 shapes) survived;
+     * every 37-item one (~1850) crashed the client. There is no published
+     * number to look up, so this is our own, measured with margin — the same
+     * basis as SHAPES_PER_SYNC.
+     */
+    shapeBudget?: number;
   } = {},
 ): Promise<DemoReport> {
   // Reset the module-scope lost-adds counter at the start of every run, so
@@ -1319,6 +1357,12 @@ export async function insertDemoDeck(
   // corruption — so an untrusted count disables the rescues for the rest of the
   // run instead of aiming them at a number we know is stale.
   let countTrusted = true;
+  // Index of the first item drawn as a picture instead of shapes, and why.
+  // Undefined while the run is still healthy.
+  let degradedAt: number | undefined;
+  let degradeReason: string | undefined;
+  let shapesDrawn = 0;
+  let lostAdsSeen = 0;
   for (let i = 0; i < items.length; i++) {
     const shapeCount = estimateOfficeShapes(items[i].scene);
     const tooDense = !items[i].bypassBudget && shapeCount > DEMO_SHAPE_BUDGET;
@@ -1343,7 +1387,12 @@ export async function insertDemoDeck(
     // Written on both attempts (a retry lands on a NEW slide, so its tag has to
     // land too or the retry's slide reads as "unknown item" in a blank check).
     const slotTag = JSON.stringify({ i, title: items[i].title ?? null });
-    const itemWithTag = { ...items[i], slotTag };
+    // Once the run has degraded, every remaining item goes on as a picture:
+    // one shape per slide instead of forty. The chart stays re-editable — the
+    // config tag rides on the picture exactly as it does on a group — and
+    // "Explode to native shapes" turns it back when the host is willing.
+    const degradedPicture = degradedAt !== undefined ? await runOpts.pictureFor?.(i).catch(() => undefined) : undefined;
+    const itemWithTag = { ...items[i], slotTag, pictureBase64: degradedPicture };
     try {
       ({ created, grouped } = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout));
       runningCount++;
@@ -1508,6 +1557,43 @@ export async function insertDemoDeck(
       }
     }
     const lateOutcome = lastLateSync && lastLateSyncSeq !== lateSeqBefore ? lastLateSync : undefined;
+    // Is the host still keeping up? We cannot catch the crash itself — the tab
+    // dies, there is no rejected promise to handle — so watch what precedes
+    // it. In this project's runs the precursors are loud: healthy items land
+    // in 2-9 seconds, sick ones take 65-125, and the run that killed the
+    // client managed two slides in 458. Any one of these means stop drawing
+    // shapes; a finished deck of pictures beats a dead session.
+    const ms = Date.now() - t0;
+    shapesDrawn += created;
+    if (degradedAt === undefined && runOpts.pictureFor) {
+      const why =
+        ms > SICK_ITEM_MS
+          ? `an item took ${Math.round(ms / 1000)}s`
+          : lastAddsLost > lostAdsSeen
+            ? "the host lost a slide"
+            : lastLateSyncSeq !== lateSeqBefore
+              ? "the host answered after we gave up waiting"
+              : shapesDrawn > (runOpts.shapeBudget ?? Infinity)
+                ? `${shapesDrawn} shapes drawn`
+                : undefined;
+      if (why) {
+        degradedAt = i + 1;
+        degradeReason = why;
+        console.warn(`PowerChart: drawing the rest as pictures — ${why}`);
+        trace("demo", "stopped drawing shapes", { fromItem: i + 1, why, shapesDrawn });
+      }
+    }
+    trace("demo", "item finished", {
+      i,
+      title: items[i].title,
+      status,
+      created,
+      expected: shapeCount,
+      grouped,
+      attempts,
+      ms,
+    });
+    lostAdsSeen = lastAddsLost;
     results.push({
       created,
       status,
@@ -1581,6 +1667,8 @@ export async function insertDemoDeck(
     blankItems: blanks.items,
     blanksRead: blanks.complete,
     reconcile,
+    degradedAt,
+    degradeReason,
     totalMs,
   };
 }
@@ -1792,6 +1880,11 @@ export async function snapshotAddedSlides(before: number, after: number): Promis
   }
   await markTaggedSlides(snapshots);
   await countGroupChildren(snapshots);
+  trace("repair", "read the deck back", {
+    range: [before, after],
+    read: snapshots.length,
+    tagged: snapshots.filter((s) => s.slot !== null).length,
+  });
   return snapshots;
 }
 
@@ -1955,6 +2048,7 @@ export async function applyReconcilePlan(
   const applied = { unstamped: 0, regrouped: 0, deleted: 0 };
   let refused = 0;
   for (const action of plan.actions) {
+    trace("repair", `applying ${action.kind}`, { index: action.index, slot: action.slot, reason: action.reason });
     if (action.kind === "unstamp") {
       if (await deleteStamp(action.index)) applied.unstamped++;
       else refused++;
@@ -2152,6 +2246,12 @@ export async function insertSlidesFromPptx(
     `inserting ${expectedSlides} slide(s) from a generated deck`,
   );
   const after = await slideCount();
+  trace("insert", "handed the host a generated deck", {
+    expectedSlides,
+    landed: after - before,
+    base64Bytes: base64.length,
+    formatting,
+  });
   return after - before;
 }
 
@@ -2216,6 +2316,15 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
     }
   }
 }
+
+/**
+ * How long one demo item may take before the run stops trusting the host.
+ *
+ * Healthy items in this project's real runs land in 2-9 seconds. Sick ones
+ * take 65-125. Thirty sits well clear of both, so this fires on a host that
+ * is genuinely struggling rather than on one that is merely busy.
+ */
+const SICK_ITEM_MS = 30_000;
 
 /** Batch size to use once the target slide is off-screen — see
  *  `SHAPES_PER_SYNC_OFFSCREEN`, which this deliberately mirrors. */
@@ -2292,6 +2401,34 @@ export async function replaceSlideWithDeck(slideId: string, base64: string): Pro
     return false;
   }
   return (await slideCount()) === before;
+}
+
+/**
+ * Write the host's identity and capabilities into the trace.
+ *
+ * Called once when tracing starts. Every investigation in this project has
+ * begun by guessing at these — which requirement sets the host admits to,
+ * whether the one-call insert was even available — and guessing wrong at
+ * least once. They cost one line each and answer the first three questions
+ * anyone asks of a log.
+ */
+export function traceEnvironment(build: string): void {
+  const d = (() => {
+    try {
+      return Office.context?.diagnostics;
+    } catch {
+      return undefined;
+    }
+  })();
+  trace("host", "environment", {
+    build,
+    host: d?.host,
+    platform: d?.platform,
+    version: d?.version,
+    requirementSets: ["1.2", "1.3", "1.4", "1.5", "1.8", "1.10"].filter((v) => supports(v)),
+    canInsertSlidesFromBase64: canInsertSlidesFromBase64(),
+    canInsertPicture: canInsertPicture(),
+  });
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */
@@ -2474,6 +2611,7 @@ async function renderShapesChunked(
     // wait. Reporting after would leave the pane naming the previous phase and
     // blaming the wrong one for the stall.
     onBatch?.(upTo, total);
+    trace("draw", "batch committed", { upTo, total });
     // Budget per BATCH, not per chart: a stalled host must still be caught, but
     // the limit now measures a batch we know the host can swallow.
     await withTimeout(
