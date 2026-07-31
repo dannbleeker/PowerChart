@@ -37,11 +37,23 @@ decorationNodes()                              src/core/decor.ts
         │
         ▼
 Scene { nodes: SceneNode[] }                   src/core/scene.ts
-        │                          │
-        ▼                          ▼
-sceneToSvg()               insertSceneIntoSlide()
-src/render/svg.ts          src/render/powerpoint.ts
+        │                  │                       │
+        ▼                  ▼                       ▼
+sceneToSvg()       insertSceneIntoSlide()   buildDeckBase64()
+src/render/svg.ts  src/render/powerpoint.ts src/render/pptx-deck.ts
+                   (shape by shape,         (a whole .pptx, handed
+                    live add-in)             over in one host call)
 ```
+
+The third path exists because the second cannot be made reliable on
+PowerPoint for the web: drawing a deck shape by shape means hundreds of
+queued commands, and the host may drop an add, stall a sync past any
+timeout, or refuse a group at any of them (`docs/OFFICE_JS_LOST_ADDS.md`).
+A generated file has one call to lose, and carries its own grouping and
+tags — `src/render/ooxml.ts` injects those, since pptxgenjs can write
+neither. It reuses `skill/scripts/pptx-paint.mjs`, the same painter the
+headless skill renderer uses, so the add-in's file output and the skill's
+cannot drift apart.
 
 ## think-cell behaviors replicated
 

@@ -47,10 +47,19 @@ const host = vi.hoisted(() => ({
    * a live EditTarget, which is what a real successful update hands back.
    */
   updateResult: undefined as undefined | { slideId: string; shapeId: string; left: number; top: number },
+  /** Whether the host advertises insertSlidesFromBase64 — off by default. */
+  canInsertFile: false,
+  /** How many slides the one-shot insert reports landing; null = all of them. */
+  insertFileLands: null as null | number,
+  insertFileError: null as null | Error,
+  buildFileError: null as null | Error,
+  slideCount: 1,
+  reconcileOutcome: undefined as unknown,
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number }[],
     updateChart: [] as { target: unknown; opts: { tagData?: string } }[],
     updateCharts: [] as { scene: unknown; target: unknown; opts?: { tagData?: string } }[][],
+    insertFile: [] as { b64: string; expected: number }[],
   },
 }));
 
@@ -102,6 +111,27 @@ vi.mock("../src/render/powerpoint", () => ({
   loadThemePalette: vi.fn(async () => null),
   onLateSync: vi.fn(),
   errorText: (e: unknown) => String(e),
+  // The one-shot deck path. Off by default so the existing cases keep
+  // exercising the shape-by-shape renderer they were written for.
+  canInsertSlidesFromBase64: vi.fn(() => host.canInsertFile),
+  insertSlidesFromPptx: vi.fn(async (b64: string, expected: number) => {
+    host.calls.insertFile.push({ b64, expected });
+    if (host.insertFileError) throw host.insertFileError;
+    return host.insertFileLands ?? expected;
+  }),
+  reconcileDeck: vi.fn(async () => host.reconcileOutcome),
+  applyReconcilePlan: vi.fn(async () => host.reconcileOutcome),
+  snapshotAddedSlides: vi.fn(async () => []),
+  slideCount: vi.fn(async () => host.slideCount),
+}));
+
+// The deck builder is a real pptxgenjs run; the pane's own tests care about
+// which path was taken, not about the bytes (test/pptx-deck.test.ts covers those).
+vi.mock("../src/render/pptx-deck", () => ({
+  buildDeckBase64: vi.fn(async () => {
+    if (host.buildFileError) throw host.buildFileError;
+    return "UEsDBBQA-fake-base64";
+  }),
 }));
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -127,6 +157,13 @@ async function bootHostPane() {
   host.demoDeckCalls = [];
   host.demoDeckPageFailures = new Set();
   host.demoDeckStatusOverride = null;
+  host.canInsertFile = false;
+  host.insertFileLands = null;
+  host.insertFileError = null;
+  host.buildFileError = null;
+  host.slideCount = 1;
+  host.reconcileOutcome = undefined;
+  host.calls.insertFile.length = 0;
   host.canPicture = true;
   host.updateResult = undefined;
   host.calls.insertScene = [];
@@ -639,6 +676,70 @@ describe("demo-insert results pages", () => {
     expect(noteText).not.toMatch(/results slide not added/i);
     // At least the main deck + at least one results page.
     expect(host.demoRuns).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("demo-insert one-shot deck insert", () => {
+  beforeEach(bootHostPane);
+
+  it("hands the host a generated file and never draws the deck shape by shape", async () => {
+    host.canInsertFile = true;
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.calls.insertFile[0].b64).toMatch(/^UEsDBBQA/);
+    // The whole point: not one slide is drawn through the shape renderer.
+    expect(host.demoRuns).toBe(0);
+    expect($("host-note").textContent).toMatch(/one file/i);
+  });
+
+  it("falls back to shapes when the host has no insertSlidesFromBase64", async () => {
+    host.canInsertFile = false;
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(0);
+    expect(host.demoRuns).toBeGreaterThanOrEqual(1);
+  });
+
+  it("falls back when the file could not be built at all", async () => {
+    host.canInsertFile = true;
+    host.buildFileError = new Error("pptxgenjs blew up");
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(0);
+    expect(host.demoRuns).toBeGreaterThanOrEqual(1);
+  });
+
+  it("falls back when the insert threw and nothing landed", async () => {
+    host.canInsertFile = true;
+    host.insertFileError = new Error("host refused the deck");
+    host.slideCount = 1; // unchanged before and after — nothing landed
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.demoRuns).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT fall back after a partial insert — that would draw the deck twice", async () => {
+    // The failure this exists to prevent: some slides landed, the pane decides
+    // the fast path "failed", and the shape renderer then appends the whole
+    // deck a second time on top of them.
+    host.canInsertFile = true;
+    host.insertFileLands = 3;
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.demoRuns).toBe(0);
+    expect($("host-note").textContent).toMatch(/host took 3 of/i);
+  });
+
+  it("respects the fast-path opt-out", async () => {
+    host.canInsertFile = true;
+    ($("demo-file") as HTMLInputElement).checked = false;
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(0);
+    expect(host.demoRuns).toBeGreaterThanOrEqual(1);
   });
 });
 

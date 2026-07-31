@@ -904,11 +904,16 @@ async function stampSlide(
 }
 
 /** Stamp the LAST slide from a FRESH context — used after a render poisoned its own. */
-async function stampLastSlide(title: string, detail: string): Promise<void> {
+async function stampLastSlide(title: string, detail: string, ownedFrom = 0): Promise<void> {
   await PowerPoint.run(async (context) => {
     const count = context.presentation.slides.getCount();
     await context.sync();
-    if (count.value < 1) return;
+    // "The last slide" is only OUR slide when this item's add actually landed.
+    // When the host swallowed it, the last slide belongs to whoever went
+    // before — and branding it NOT COMPLETE defaces a chart that is fine. A
+    // real run did exactly that: a results page whose add vanished stamped the
+    // KPI tile slide, which had rendered perfectly.
+    if (count.value < 1 || count.value <= ownedFrom) return;
     await stampSlide(context, () => context.presentation.slides.getItemAt(count.value - 1), title, detail);
   });
 }
@@ -1087,9 +1092,13 @@ async function rescueGroupAndTag(
         items: PowerPoint.Shape[];
         addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape;
       };
-      shapes.load("items");
+      shapes.load("items/name");
       await context.sync();
-      const items = shapes.items;
+      // Never group the banner in with the chart. Once inside, it is invisible
+      // to every later repair (a snapshot reads top-level names) and it rides
+      // along with the chart forever. A real run shipped a Line chart whose
+      // group held 37 shapes — 36 of them the chart, one a NOT COMPLETE stripe.
+      const items = shapes.items.filter((s) => (s as unknown as { name?: string }).name !== NOT_COMPLETE_NAME);
       if (items.length < 2) return false;
       let group: PowerPoint.Shape;
       try {
@@ -1459,7 +1468,10 @@ export async function insertDemoDeck(
           // real one. A fresh context, because the failed render poisoned its own.
           if (lastError === undefined) lastError = err;
           status = "failed";
-          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart").catch(
+          // `before` is the deck size when the run started: any slide past it
+          // was added by THIS run, so stamping one cannot deface a slide the
+          // user already had. An item whose add was swallowed stamps nothing.
+          await stampLastSlide("NOT COMPLETE", "PowerPoint stopped responding while drawing this chart", before).catch(
             () => {},
           );
         }
@@ -1868,15 +1880,30 @@ async function countGroupChildren(snapshots: SlideSnapshot[]): Promise<void> {
 async function deleteStamp(slideIndex: number): Promise<boolean> {
   try {
     return await PowerPoint.run(async (context) => {
+      type Named = { name: string; delete(): void };
       const shapes = context.presentation.slides.getItemAt(slideIndex).shapes as unknown as {
-        items: { name: string; delete(): void }[];
+        items: (Named & { group?: { shapes: { items: Named[]; load(p: string): void } } })[];
         load(p: string): void;
       };
       shapes.load("items/name");
       await context.sync();
       const stamp = shapes.items.find((s) => s.name === NOT_COMPLETE_NAME);
-      if (!stamp) return false;
-      stamp.delete();
+      if (stamp) {
+        stamp.delete();
+        await context.sync();
+        return true;
+      }
+      // Not on the slide — look inside the chart's group, where an older
+      // rescue may have swept it before that code learned to leave the stamp
+      // out. Deleting one member leaves the group itself intact.
+      const group = shapes.items.find((s) => s.name === GROUP_NAME);
+      const inner = group?.group?.shapes;
+      if (!inner) return false;
+      inner.load("items/name");
+      await context.sync();
+      const buried = inner.items.find((s) => s.name === NOT_COMPLETE_NAME);
+      if (!buried) return false;
+      buried.delete();
       await context.sync();
       return true;
     });
@@ -2044,6 +2071,75 @@ function wantsPicture(opts: InsertOptions, scene: Scene): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Whole-deck insert in ONE host call: `Presentation.insertSlidesFromBase64`.
+ *
+ * Everything else in this file draws a chart the only way Office.js allows —
+ * shape by shape, batch by batch, sync by sync — and that is precisely what
+ * PowerPoint on the web cannot be trusted with. A 12-item run issues 19 slide
+ * adds and hundreds of queued commands, and every one of them is a chance for
+ * the host to drop an add, stall a sync past its timeout, or refuse a group.
+ * The 2026-07-30 run took 680 seconds and shipped duplicate slides.
+ *
+ * A .pptx handed over as base64 has none of those failure surfaces. The
+ * grouping is in the file. The tags are in the file. There is one call to
+ * lose, and a slide-count delta proves whether it landed.
+ *
+ * The requirement set is deliberately probed rather than asserted: Microsoft's
+ * own docs disagree about which set carries this method (the 1.2 "what's new"
+ * page announces slide insertion; the API reference cites 1.5), and the
+ * manifests admit hosts from 1.4. So: check the method actually exists on the
+ * proxy, and treat any host that lacks it as a fallback case rather than an
+ * error.
+ */
+export function canInsertSlidesFromBase64(): boolean {
+  return isPowerPointHost() && (supports("1.5") || supports("1.2"));
+}
+
+/**
+ * How long one deck insert may take before the host counts as stalled. Scales
+ * with the deck, because unlike a shape batch this call's size is not capped —
+ * handing over 40 slides is legitimately more work than handing over one.
+ */
+const DECK_INSERT_TIMEOUT_MS = (slides: number): number => Math.max(BATCH_TIMEOUT_MS, slides * 5_000);
+
+/**
+ * Insert a whole .pptx and return how many slides the deck actually gained.
+ *
+ * The count is measured, not assumed: a settled `getCount()` before and after,
+ * in their own contexts, for the same reason `addSlides` does it — a host that
+ * silently drops the call reports no error, and the delta is the only evidence
+ * either way. `expectedSlides` only sizes the timeout.
+ *
+ * `formatting` defaults to keeping the source's own formatting: PowerChart
+ * writes explicit colours and fonts on every shape, so adopting the
+ * destination theme would override deliberate choices rather than harmonise
+ * them.
+ */
+export async function insertSlidesFromPptx(
+  base64: string,
+  expectedSlides: number,
+  formatting: "KeepSourceFormatting" | "UseDestinationTheme" = "KeepSourceFormatting",
+): Promise<number> {
+  const before = await slideCount();
+  await withTimeout(
+    PowerPoint.run(async (context) => {
+      const presentation = context.presentation as unknown as {
+        insertSlidesFromBase64(b64: string, opts?: { formatting?: string }): void;
+      };
+      if (typeof presentation.insertSlidesFromBase64 !== "function") {
+        throw new Error("this host has no insertSlidesFromBase64");
+      }
+      presentation.insertSlidesFromBase64(base64, { formatting });
+      await context.sync();
+    }),
+    DECK_INSERT_TIMEOUT_MS(expectedSlides),
+    `inserting ${expectedSlides} slide(s) from a generated deck`,
+  );
+  const after = await slideCount();
+  return after - before;
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */

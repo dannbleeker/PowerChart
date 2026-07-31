@@ -11,6 +11,9 @@ import {
   insertSceneIntoSlide,
   isPowerPointHost,
   applyReconcilePlan,
+  canInsertSlidesFromBase64,
+  insertSlidesFromPptx,
+  reconcileDeck,
   slideCount,
   snapshotAddedSlides,
   listChartsInDeck,
@@ -30,6 +33,7 @@ import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } fr
 import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
+import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
@@ -1888,6 +1892,68 @@ async function doRepairDeck() {
   );
 }
 
+/**
+ * Insert the demo deck as ONE generated .pptx instead of drawing it shape by
+ * shape — see `src/render/pptx-deck.ts` for why that is worth doing.
+ *
+ * Returns null when the fast path did not run and it is SAFE to fall back to
+ * the shape-by-shape path: the host has no `insertSlidesFromBase64`, the file
+ * could not be built, or the call failed with nothing landed. It returns a
+ * message — never null — once any slide has landed, because falling back after
+ * a partial insert would draw the whole deck a second time on top of it.
+ */
+async function insertDemoDeckAsFile(
+  items: { scene: Scene; title: string; configJson?: string }[],
+  smoke: boolean,
+): Promise<{ text: string; status: "ok" | "err" } | null> {
+  const t0 = Date.now();
+  const before = await slideCount();
+  let base64: string;
+  try {
+    note("Building the deck…", "busy");
+    base64 = await buildDeckBase64(
+      items.map((it, i) => ({ scene: it.scene, title: it.title, configJson: it.configJson, slot: i })),
+    );
+  } catch (err) {
+    console.warn("PowerChart: could not build the deck file — falling back to shapes", err);
+    return null;
+  }
+  let added: number;
+  try {
+    note("Handing the deck to PowerPoint…", "busy");
+    setProgress("busy");
+    added = await insertSlidesFromPptx(base64, items.length);
+  } catch (err) {
+    // A throw is not proof that nothing landed — the same lesson the
+    // shape path learned the hard way. Measure before deciding.
+    console.warn("PowerChart: one-shot deck insert failed", err);
+    const after = await slideCount().catch(() => before);
+    added = after - before;
+    if (added <= 0) return null;
+  }
+  if (added <= 0) return null;
+
+  const secs = ((Date.now() - t0) / 1000).toFixed(1);
+  const expected: ExpectedItem[] = items.map((it, i) => ({
+    slot: i,
+    title: it.title,
+    shapes: estimateOfficeShapes(it.scene),
+    chart: !!it.configJson,
+  }));
+  // Verify against the deck rather than trusting the count: the file carried
+  // its own grouping and tags, so anything missing here is the host's doing.
+  const outcome = await reconcileDeck(expected, { before, after: before + added }, (slot) => items[slot]?.configJson, {
+    dropOrphanBlanks: true,
+  }).catch(() => undefined);
+
+  let text = outcome
+    ? `Inserted as one file in ${secs}s${smoke ? " (smoke subset)" : ""} — ${describeReconcile(outcome.plan)}.`
+    : `Inserted ${added} of ${items.length} slides as one file in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
+  if (added < items.length) text += ` ⚠ the host took ${added} of ${items.length} slides.`;
+  const clean = added >= items.length && (!outcome || outcome.plan.summary.lost === 0);
+  return { text, status: clean ? "ok" : "err" };
+}
+
 /** Save an object as a JSON file, via the same Blob dance as Download SVG. */
 function downloadJson(name: string, payload: unknown) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -2065,6 +2131,19 @@ function wireInsert() {
         // cheap on the host, but a large deck's contents pushes them past the
         // ~90 budget. Bypass the too-dense check for these; the render's
         // batching still keeps each sync inside the host's swallow limit.
+        // Fast path first: one generated .pptx, one host call. Falls through
+        // to the shape-by-shape renderer when the host cannot take it, or when
+        // the attempt landed nothing — never after a partial insert, which
+        // would draw the whole deck again on top of what is already there.
+        const useFile = ($("demo-file") as HTMLInputElement | null)?.checked ?? true;
+        if (useFile && canInsertSlidesFromBase64()) {
+          const outcome = await insertDemoDeckAsFile(items, smoke);
+          if (outcome) {
+            note(outcome.text, outcome.status);
+            return;
+          }
+          note("The host would not take a generated deck — drawing it shape by shape instead.", "busy");
+        }
         const isHarnessSlot = (t: string): boolean =>
           t === "Title" || t.startsWith("Contents") || t.startsWith("Results");
         const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, reconcile, totalMs } =
