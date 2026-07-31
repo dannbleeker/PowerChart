@@ -59,6 +59,13 @@ export interface SlideDressing {
   slot?: number;
   /** Item title, carried alongside the slot index. */
   title?: string;
+  /**
+   * Token identifying the run that produced this deck, carried in the slot tag
+   * so a repair pass can tell these slides from an earlier run's. Omitted
+   * unless the caller supplies one — the skill's own output must stay
+   * byte-deterministic, and a per-build token would not be.
+   */
+  run?: string;
   /** Group the slide's shapes. Default true; false leaves them loose. */
   group?: boolean;
 }
@@ -310,7 +317,18 @@ export async function injectGroupsAndTags(
       const slotRid = `rId${nextRelId(rels)}`;
       zip.file(
         `ppt/tags/tag${n}.xml`,
-        tagPart([["POWERCHART_DEMO_SLOT", JSON.stringify({ i: item.slot, title: item.title ?? null })]]),
+        tagPart([
+          [
+            "POWERCHART_DEMO_SLOT",
+            JSON.stringify({
+              i: item.slot,
+              title: item.title ?? null,
+              // Only when given — see `SlideDressing.run`. An always-present
+              // token would change the showcase deck's bytes on every build.
+              ...(item.run === undefined ? {} : { run: item.run }),
+            }),
+          ],
+        ]),
       );
       rels = addRelationship(rels, slotRid, TAGS_REL_TYPE, `../tags/tag${n}.xml`);
       types = addContentTypeOverride(types, `/ppt/tags/tag${n}.xml`, TAGS_CONTENT_TYPE);

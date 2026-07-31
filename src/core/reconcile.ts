@@ -57,6 +57,20 @@ export interface SlideSnapshot {
   slot: number | null;
   /** Item title from the slot tag, for reporting. Null when untagged. */
   title: string | null;
+  /**
+   * Which RUN wrote this slide — the token from the slot tag. Null when the
+   * tag predates run ids or carries none.
+   *
+   * Slot indices restart at 0 for every run, and the demo deck's titles are
+   * fixed, so slot+title identifies an item but NOT an occurrence of it. Insert
+   * the demo deck twice into one presentation and every slide of run 2 has a
+   * perfect twin in run 1 — which a repair pass reads as "this item landed
+   * twice" and fixes by deleting one of them. A whole healthy run, deleted for
+   * being a duplicate of another healthy run. PowerPoint's own Duplicate Slide
+   * copies the tag too, so the same thing happens to a demo slide a user
+   * duplicated to reuse.
+   */
+  run?: string | null;
   /** Top-level shapes on the slide, INCLUDING any banner. */
   shapes: number;
   /**
@@ -178,6 +192,16 @@ export interface ReconcileOptions {
    * slide is known to be ours.
    */
   dropOrphanBlanks?: boolean;
+  /**
+   * This run's token. When set, a slide is paired to an item only if its slot
+   * tag carries the SAME token — see `SlideSnapshot.run`. Slides from an
+   * earlier run, or from a slide the user duplicated, then fall through to
+   * `orphans`: reported, never claimed, never deleted as somebody's twin.
+   *
+   * Unset means "match on slot and title alone", which is only safe when the
+   * caller has already bounded the snapshots to one run's own added range.
+   */
+  run?: string;
 }
 
 /**
@@ -262,7 +286,12 @@ export function planReconcile(
     // pair a Results slide with the Title item and, since Results holds more
     // shapes, delete the title slide as its "duplicate". The title on the tag
     // is what disambiguates them.
-    if (!claim || (s.title !== null && s.title !== claim.title)) {
+    // And the run token, when the caller supplied one: slot+title names an
+    // ITEM, not an occurrence of it, so across two runs of the same deck every
+    // slide has a perfect twin. Without this check the pass deletes one of
+    // them. A slide whose token we cannot match is not ours to touch.
+    const sameRun = opts.run === undefined || (s.run ?? null) === opts.run;
+    if (!claim || !sameRun || (s.title !== null && s.title !== claim.title)) {
       unclaimed.push(s);
       continue;
     }
@@ -364,8 +393,14 @@ export function planReconcile(
   for (const s of unclaimed) {
     const content = contentShapes(s);
     const blank = content === 0;
-    orphans.push({ index: s.index, shapes: content, stamped: s.stamped, blank });
-    if (blank && opts.dropOrphanBlanks) {
+    // Never report the "could not measure" sentinel as a shape count.
+    orphans.push({ index: s.index, shapes: Math.max(0, content), stamped: s.stamped, blank });
+    // A blank slide that carries somebody else's slot tag is an earlier run's,
+    // or a copy the user made. It is identified, and identified as NOT ours —
+    // the one thing that must never be swept as our own litter. Only a slide
+    // with no identity at all can be, and only inside our own span.
+    const somebodyElses = s.slot !== null;
+    if (blank && !somebodyElses && opts.dropOrphanBlanks) {
       actions.push({
         kind: "delete",
         index: s.index,
