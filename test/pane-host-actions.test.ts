@@ -52,7 +52,8 @@ const host = vi.hoisted(() => ({
   slideHoldsOnlyChart: false,
   updateChartThrows: false,
   demoReconcile: undefined as unknown,
-  slideSwapWorks: false,
+  /** What `replaceSlideWithDeck` answers: "failed" | "swapped" | "duplicated". */
+  swapOutcome: "failed" as "failed" | "swapped" | "duplicated",
   /** How many slides the one-shot insert reports landing; null = all of them. */
   insertFileLands: null as null | number,
   insertFileError: null as null | Error,
@@ -135,7 +136,10 @@ vi.mock("../src/render/powerpoint", () => ({
     return fn(false);
   }),
   slideHoldsOnlyChart: vi.fn(async () => host.slideHoldsOnlyChart),
-  replaceSlideWithDeck: vi.fn(async () => host.slideSwapWorks),
+  // Three outcomes, not two: "duplicated" is the swap that inserted the new
+  // slide but could not remove the old one.
+  replaceSlideWithDeck: vi.fn(async () => host.swapOutcome),
+  newRunId: vi.fn(() => "run-under-test"),
   OFFSCREEN_BATCH: 40,
   insertSlidesFromPptx: vi.fn(async (b64: string, expected: number) => {
     host.calls.insertFile.push({ b64, expected });
@@ -186,7 +190,7 @@ async function bootHostPane() {
   host.slideHoldsOnlyChart = false;
   host.updateChartThrows = false;
   host.demoReconcile = undefined;
-  host.slideSwapWorks = false;
+  host.swapOutcome = "failed";
   host.insertFileLands = null;
   host.insertFileError = null;
   host.buildFileError = null;
@@ -778,10 +782,26 @@ describe("updating a chart the live canvas will not redraw", () => {
     host.updateChartThrows = true;
     host.canInsertFile = true;
     host.slideHoldsOnlyChart = true;
-    host.slideSwapWorks = true;
+    host.swapOutcome = "swapped";
     await loadThenUpdate();
     expect(host.calls.insertFile).toHaveLength(0); // a slide swap, not a deck insert
     expect($("host-note").textContent).toMatch(/rebuilt that slide/i);
+  });
+
+  it("stops, and says so, when the swap left the original slide behind", async () => {
+    // The swap inserts the new slide and THEN deletes the old one. When only
+    // the delete fails, the chart is on two slides — and answering the caller
+    // the same "false" as a swap that did nothing sent it on to the picture
+    // layer, which rasterized the chart onto the surviving original. One
+    // stall, the chart three times over, and a message saying it went fine.
+    host.updateChartThrows = true;
+    host.canInsertFile = true;
+    host.slideHoldsOnlyChart = true;
+    host.swapOutcome = "duplicated";
+    await loadThenUpdate();
+    // No picture update was attempted on the original.
+    expect(host.calls.updateChart.filter((c) => c.opts.pictureBase64)).toHaveLength(0);
+    expect($("host-note").textContent).toMatch(/two slides/i);
   });
 
   it("will not swap a slide that holds anything besides the chart", async () => {
@@ -790,7 +810,7 @@ describe("updating a chart the live canvas will not redraw", () => {
     // there is demonstrably nothing else to lose.
     host.updateChartThrows = true;
     host.canInsertFile = true;
-    host.slideSwapWorks = true; // the swap WOULD work — the guard is the only thing stopping it
+    host.swapOutcome = "swapped"; // the swap WOULD work — the guard is the only thing stopping it
     host.slideHoldsOnlyChart = false;
     await loadThenUpdate();
     expect($("host-note").textContent).not.toMatch(/rebuilt that slide/i);

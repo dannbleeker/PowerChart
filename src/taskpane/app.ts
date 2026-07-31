@@ -10,6 +10,7 @@ import {
   insertDemoDeck,
   insertSceneIntoSlide,
   isPowerPointHost,
+  newRunId,
   applyReconcilePlan,
   canInsertSlidesFromBase64,
   insertSlidesFromPptx,
@@ -1490,10 +1491,22 @@ async function doInsert(asNew: boolean) {
     // shape id that no longer existed, get filtered out as "the user deleted
     // this chart", and do nothing — silently. With auto-update on, that meant
     // only the first debounced push ever landed.
-    const { next, swapped, picture } = await updateChartResilient(scene, state.editTarget, {
+    const { next, swapped, duplicated, picture } = await updateChartResilient(scene, state.editTarget, {
       tagData: JSON.stringify(cfg),
       pictureBase64: png,
     });
+    if (duplicated) {
+      // Both slides hold the chart: the rebuilt one and the original PowerPoint
+      // would not remove. Nothing here can safely pick one — deleting the wrong
+      // slide loses the user's notes or transitions — so name it and let them.
+      state.editTarget = null;
+      renderActionState();
+      note(
+        "Rebuilt that slide, but PowerPoint would not remove the original — the chart is now on two slides. Delete whichever you don't want.",
+        "err",
+      );
+      return;
+    }
     if (swapped) {
       // The chart is on a NEW slide, so the old target is dead. Say so rather
       // than leaving a stale target that makes every later push no-op.
@@ -1587,13 +1600,29 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
   // context for the whole deck is the property doSameScale exists to protect,
   // and awaiting a canvas inside it would be both slower and unsafe.
   const pictures = await Promise.all(rescaled.map((c) => chartPicture(c.cfg, c.scene)));
+  // A chart whose redraw stalls has already had its old shapes deleted, so it
+  // is left blank and the user has to be told which. Silence here meant a
+  // deck-wide operation could quietly empty charts the user never looked at.
+  const stalled: string[] = [];
   await updateChartsInSlides(
     rescaled.map((c, i) => ({
       scene: c.scene,
       target: c.target,
       opts: { tagData: JSON.stringify(c.cfg), pictureBase64: pictures[i].png },
     })),
+    (item) => stalled.push(item.scene.title || "an untitled chart"),
   );
+  if (stalled.length) {
+    note(
+      "Same scale: PowerPoint would not redraw {n} chart(s) — {which}. They are now empty; undo (Ctrl+Z) restores them.",
+      "err",
+      {
+        n: stalled.length,
+        which: stalled.join(", "),
+      },
+    );
+    return;
+  }
   note("Same scale applied to {n} charts (max {max}).", "ok", { n: parsed.length, max });
   const degraded = pictures.filter((p) => p.warn).length;
   if (degraded) {
@@ -1876,10 +1905,19 @@ interface RunLog {
  * read one slide short at the front and swept in the user's own title slide at
  * the back. The span between the first and last tagged slide is ours; nothing
  * outside it is read, let alone touched.
+ *
+ * "Tagged" means tagged BY THIS RUN. The span used to be drawn around every
+ * PowerChart slot tag in the presentation, which is only the same thing the
+ * first time the deck is inserted. Insert it twice — or duplicate one demo
+ * slide, which copies its tag — and the span covered both copies, every item
+ * matched two slides, and the pass deleted one whole healthy run as the other
+ * one's duplicate. Anything inside the span that is not this run's is reported
+ * and left alone.
  */
 async function repairDeckSpan(
   expected: ExpectedItem[],
   tagFor: (slot: number) => string | undefined,
+  run: string,
 ): Promise<VerifyResult> {
   let snapshots: SlideSnapshot[];
   try {
@@ -1888,7 +1926,7 @@ async function repairDeckSpan(
   } catch (err) {
     return { kind: "error", why: errorText(err) };
   }
-  const tagged = snapshots.filter((s) => s.slot !== null);
+  const tagged = snapshots.filter((s) => s.run === run);
   // No slot tag anywhere means the read found slides but could not identify
   // one of them. Saying "verified" would be a lie and saying nothing is how a
   // whole verification pass went missing from a run report without anyone
@@ -1897,14 +1935,14 @@ async function repairDeckSpan(
     return {
       kind: "unidentified",
       why: snapshots.length
-        ? `read ${snapshots.length} slide(s), none carrying a PowerChart slot tag`
+        ? `read ${snapshots.length} slide(s), none carrying this run's slot tag`
         : "read no slides at all",
     };
   }
   const first = Math.min(...tagged.map((s) => s.index));
   const last = Math.max(...tagged.map((s) => s.index));
   const inSpan = snapshots.filter((s) => s.index >= first && s.index <= last);
-  const plan = planReconcile(inSpan, expected, { dropOrphanBlanks: true });
+  const plan = planReconcile(inSpan, expected, { dropOrphanBlanks: true, run });
   try {
     if (!plan.actions.length)
       return {
@@ -1953,7 +1991,7 @@ async function updateChartResilient(
   scene: Scene,
   target: EditTarget,
   opts: { tagData?: string; pictureBase64?: string },
-): Promise<{ next: EditTarget | null; swapped?: boolean; picture?: boolean }> {
+): Promise<{ next: EditTarget | null; swapped?: boolean; duplicated?: boolean; picture?: boolean }> {
   let stall: unknown;
   try {
     const next = await withSlideDeselected([target.slideId], (deselected) =>
@@ -1969,7 +2007,14 @@ async function updateChartResilient(
     try {
       note("Rebuilding that slide…", "busy");
       const built = await buildDeckBase64([{ scene, title: "Chart", configJson: opts.tagData }]);
-      if (await replaceSlideWithDeck(target.slideId, built.base64)) return { next: null, swapped: true };
+      const swap = await replaceSlideWithDeck(target.slideId, built.base64);
+      if (swap === "swapped") return { next: null, swapped: true };
+      // The new slide landed; only the old one's removal failed. Falling
+      // through to the picture layer here would rasterize the chart onto that
+      // surviving original — leaving the user with the chart twice, once as
+      // shapes and once as a picture, and a message saying it went fine. Stop
+      // and say what happened instead.
+      if (swap === "duplicated") return { next: null, duplicated: true };
     } catch (err) {
       console.warn("PowerChart: slide swap failed — falling back to a picture", err);
     }
@@ -2009,11 +2054,15 @@ async function insertDemoDeckAsFile(
 ): Promise<{ text: string; status: "ok" | "err" } | null> {
   const t0 = Date.now();
   const before = await slideCount();
+  // Identity for this insert, carried on every slide's slot tag. Without it the
+  // repair pass below cannot tell these slides from the ones an earlier insert
+  // left in the same deck, and "cannot tell" ends in a delete.
+  const run = newRunId();
   let built: { base64: string; shapesPerSlide: number[] };
   try {
     note("Building the deck…", "busy");
     built = await buildDeckBase64(
-      items.map((it, i) => ({ scene: it.scene, title: it.title, configJson: it.configJson, slot: i })),
+      items.map((it, i) => ({ scene: it.scene, title: it.title, configJson: it.configJson, slot: i, run })),
     );
   } catch (err) {
     console.warn("PowerChart: could not build the deck file — falling back to shapes", err);
@@ -2049,7 +2098,7 @@ async function insertDemoDeckAsFile(
   // its own grouping and tags, so anything missing here is the host's doing.
   // Located by slot tag, not by position — where the host puts the slides is
   // its business, and on the first real run it put them at the FRONT.
-  const verified = await repairDeckSpan(expected, (slot) => items[slot]?.configJson);
+  const verified = await repairDeckSpan(expected, (slot) => items[slot]?.configJson, run);
   const outcome = verified.kind === "ok" ? verified.outcome : undefined;
 
   let text = outcome

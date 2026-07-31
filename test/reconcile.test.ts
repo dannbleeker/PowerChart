@@ -342,3 +342,79 @@ describe("reconcile: Presentation_4.pptx, the 2026-07-30 web run", () => {
     expect(second.summary.rendered).toBe(6);
   });
 });
+
+describe("reconcile: telling one run's slides from another's", () => {
+  // Slot indices restart at 0 every run and the demo titles are fixed, so
+  // slot+title names an ITEM, not an occurrence of one. Insert the demo deck
+  // twice into one presentation and every slide of run 2 has a perfect twin in
+  // run 1 — which the pass read as "this item landed twice" and repaired by
+  // deleting one of them. A whole healthy run, deleted for duplicating another
+  // healthy run.
+  const twoRuns = (): SlideSnapshot[] => [
+    slide(0, { slot: 0, title: "Title", shapes: 4, run: "run-a", tagged: true }),
+    slide(1, { slot: 1, title: "Line", shapes: 36, run: "run-a", tagged: true }),
+    slide(2, { slot: 0, title: "Title", shapes: 4, run: "run-b", tagged: true }),
+    slide(3, { slot: 1, title: "Line", shapes: 36, run: "run-b", tagged: true }),
+  ];
+  const expected = [item(0, "Title", 4, { chart: false }), item(1, "Line", 36)];
+
+  it("deletes nothing when an earlier run's slides sit in the same span", () => {
+    const plan = planReconcile(twoRuns(), expected, { run: "run-b", dropOrphanBlanks: true });
+    expect(kinds(plan.actions, "delete")).toEqual([]);
+    // Run B's own slides are the ones reconciled…
+    expect(plan.verdicts.map((v) => v.index)).toEqual([2, 3]);
+    expect(plan.verdicts.every((v) => v.status === "rendered")).toBe(true);
+    // …and run A's are reported, untouched, as somebody else's.
+    expect(plan.orphans.map((o) => o.index)).toEqual([0, 1]);
+  });
+
+  it("still pairs slides when no run token is supplied — an old deck stays repairable", () => {
+    // The token is a new field. A slide tagged by a build that predates it
+    // carries none, and a caller that has already bounded the snapshots to one
+    // run's own added range does not need it.
+    // 31 shapes: 30 of chart plus the banner itself.
+    const plan = planReconcile(
+      [slide(0, { slot: 0, title: "Line", shapes: 31, stamped: true })],
+      [item(0, "Line", 30)],
+    );
+    expect(kinds(plan.actions, "unstamp")).toEqual([0]);
+  });
+
+  it("refuses to claim a slide whose tag carries no run token, once one is expected", () => {
+    // PowerPoint's own Duplicate Slide copies the tag part. A slide the user
+    // duplicated, then emptied and reused, must never be deleted as the twin
+    // of the chart it was copied from.
+    const plan = planReconcile(
+      [
+        slide(0, { slot: 0, title: "Line", shapes: 36, run: "run-b", tagged: true }),
+        slide(1, { slot: 0, title: "Line", shapes: 2 }),
+      ],
+      [item(0, "Line", 36)],
+      { run: "run-b", dropOrphanBlanks: true },
+    );
+    expect(kinds(plan.actions, "delete")).toEqual([]);
+    expect(plan.orphans.map((o) => o.index)).toEqual([1]);
+  });
+
+  it("never sweeps a blank slide that belongs to another run", () => {
+    // dropOrphanBlanks exists for OUR litter: a slide the host created and
+    // never filled. A blank slide carrying somebody else's slot tag is
+    // identified, and identified as not ours.
+    const plan = planReconcile(
+      [
+        slide(0, { slot: 0, title: "Line", shapes: 36, run: "run-b", tagged: true }),
+        slide(1, { slot: 3, title: "Gantt", run: "run-a" }),
+        slide(2), // no tag at all — our own litter, inside our own span
+      ],
+      [item(0, "Line", 36)],
+      { run: "run-b", dropOrphanBlanks: true },
+    );
+    expect(kinds(plan.actions, "delete")).toEqual([2]);
+  });
+
+  it("reports an unmeasurable orphan as 0 shapes, not as the -1 sentinel", () => {
+    const plan = planReconcile([slide(9, { grouped: true })], [], { run: "run-b" });
+    expect(plan.orphans[0].shapes).toBe(0);
+    expect(plan.orphans[0].blank).toBe(false);
+  });
+});

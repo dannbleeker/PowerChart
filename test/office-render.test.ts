@@ -1578,9 +1578,11 @@ describe("Office round-trips do not scale with the chart count", () => {
     // first, so its index depends on the chart's size. Find it rather than
     // hardcode it — a wrong number here silently tests nothing.
     const batches = Math.ceil(buildChart(cfgFor(0)).nodes.length / 10);
-    // 1 resolve slides, 1 resolve old shapes, 1 delete, then each chart's
-    // batches, then GROUP.
-    failSyncOn = 3 + batches * 3 /* 3 charts */ + 1;
+    // 1 resolve slides, 1 resolve old shapes, then PER CHART one delete sync
+    // plus its render batches, then GROUP. The delete is per chart because a
+    // shared one commits every chart's removal before any redraw runs — see
+    // updateChartsInSlides.
+    failSyncOn = 2 + 3 /* charts */ * (1 + batches) + 1;
     try {
       const items = targetsOn(slide, 3);
       // One refreshed target per chart — the caller needs them to stay live.
@@ -1589,6 +1591,54 @@ describe("Office round-trips do not scale with the chart count", () => {
       const tagged = slide.created.filter((s) => s.tagStore.has(CHART_TAG));
       expect(tagged.map((s) => s.tagStore.get(CHART_TAG))).toEqual(['{"i":0}', '{"i":1}', '{"i":2}']);
       expect(tagged.every((s) => s.type !== "group")).toBe(true);
+    } finally {
+      failSyncOn = 0;
+    }
+  });
+
+  it("does not blank the rest of the deck when one chart's redraw stalls", async () => {
+    // The defect: every chart's old shapes were deleted in ONE shared sync,
+    // and only then were the charts redrawn one at a time. Those deletes are
+    // committed, so a single stalled redraw rejected the whole PowerPoint.run
+    // and left every chart AFTER it blank — old shapes gone, new ones never
+    // queued. Same Scale runs across the whole deck and necessarily includes
+    // the chart on the visible slide, which is the one condition documented
+    // here as reliably stalling a redraw. So one slow chart emptied the deck.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const batches = Math.ceil(buildChart(cfgFor(0)).nodes.length / 10);
+    // 2 resolve syncs, then per chart 1 delete + `batches` renders. Fail the
+    // FIRST render batch of chart 2 (0-based index 1).
+    failSyncOn = 2 + (1 + batches) + 1 + 1;
+    const failed: string[] = [];
+    try {
+      const items = targetsOn(slide, 3);
+      const next = await updateChartsInSlides(items, (it) => failed.push(it.opts!.tagData!));
+      // Chart 2 is reported, once, by name.
+      expect(failed).toEqual(['{"i":1}']);
+      // Charts 1 and 3 are re-editable — they redrew and carry their OWN tags.
+      const tagged = slide.created.filter((s) => s.tagStore.has(CHART_TAG));
+      expect(tagged.map((s) => s.tagStore.get(CHART_TAG))).toEqual(['{"i":0}', '{"i":2}']);
+      // And the caller's targets are not shifted onto each other: chart 3 must
+      // NOT be handed chart 1's new shape id. Indexing `tagged` by position
+      // would do exactly that once a chart drops out of the batch.
+      expect(next).toHaveLength(3);
+      expect(new Set(next.map((t) => t.shapeId)).size).toBe(3);
+      expect(next[1].shapeId).toBe(items[1].target.shapeId); // unchanged: it failed
+    } finally {
+      failSyncOn = 0;
+    }
+  });
+
+  it("still throws when the ONE chart it was given fails", async () => {
+    // updateChartResilient catches this throw to reach its slide-swap and
+    // picture fallbacks. Swallowing a total failure would strand it on layer 1
+    // with a chart whose old shapes are already deleted.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    failSyncOn = 4; // 2 resolves, 1 delete, then the first render batch
+    try {
+      await expect(updateChartsInSlides(targetsOn(slide, 1))).rejects.toThrow();
     } finally {
       failSyncOn = 0;
     }

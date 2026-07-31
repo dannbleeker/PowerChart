@@ -392,13 +392,23 @@ export async function updateChartInSlide(
  * context EACH: Same Scale across a 20-chart deck was 80 round-trips. This is
  * four, whatever N is.
  *
- * The four phases are ordered, and that order is load-bearing: every old shape
+ * The phases are ordered, and that order is load-bearing: every old shape
  * resolves before any is deleted, and every new shape COMMITS before anything is
  * grouped — so a host without grouping cannot roll back the charts themselves.
  * Batching happens across charts WITHIN a phase, never across phases.
+ *
+ * The one thing NOT batched across charts is the delete, and that is deliberate
+ * — see the loop below.
+ *
+ * `onFailed` is called for each chart whose redraw did not finish. Charts are
+ * independent here: one that stalls no longer takes the rest of the batch with
+ * it. The call throws only when EVERY chart failed, which is what keeps the
+ * single-chart wrapper's contract — `updateChartResilient` needs that throw to
+ * reach its slide-swap and picture fallbacks.
  */
 export async function updateChartsInSlides(
   items: { scene: Scene; target: EditTarget; opts?: InsertOptions }[],
+  onFailed?: (item: { scene: Scene; target: EditTarget; opts?: InsertOptions }, err: unknown) => void,
 ): Promise<EditTarget[]> {
   if (!items.length) return [];
   return PowerPoint.run(async (context) => {
@@ -449,22 +459,36 @@ export async function updateChartsInSlides(
       .map((e) => ({ ...e, at: { left: e.old.left, top: e.old.top } }));
     if (!alive.length) return [];
 
-    // 2. Drop the old shapes — one sync for all of them, siblings included:
-    //    deleting only the tagged shape of an ungrouped chart leaves the rest
-    //    of it on the slide, under the redraw.
-    for (const { old, parts } of alive) {
-      old.delete();
-      for (const p of parts) if (!p.isNullObject) p.delete();
-    }
-    await context.sync();
-
-    // 3. Redraw each chart in batches. One of these charts is on the slide the
+    // 2-3. Per chart: drop its old shapes, then redraw it. Both, before moving
+    //    to the next chart.
+    //
+    //    Deleting every chart's old shapes up front was one sync cheaper and a
+    //    great deal worse. Those deletes COMMIT; the redraws then run one at a
+    //    time, and a single stalled redraw rejected the whole PowerPoint.run —
+    //    leaving every chart after it in the batch blank, its old shapes gone
+    //    and its new ones never queued. Same Scale runs across the whole deck
+    //    and necessarily includes the chart on the visible slide, which is the
+    //    one documented condition that reliably stalls a redraw. So the cheap
+    //    ordering turned one slow chart into a deck-wide wipe.
+    //
+    //    Deleting per chart costs one extra sync each (against the many
+    //    `renderShapesChunked` already spends) and bounds the damage to the
+    //    chart that actually failed: the ones after it are still untouched.
+    //
+    //    Siblings go with it: deleting only the tagged shape of an ungrouped
+    //    chart leaves the rest of it on the slide, under the redraw.
+    //
+    //    The redraw itself is batched. One of these charts is on the slide the
     //    user is looking at, and a live canvas will not take a whole chart in
     //    one sync — so the batching is not an optimisation here, it is the only
     //    way the shapes arrive at all. Per chart, because a chart's shapes must
     //    all reach the same slide.
     const rendered: Grouping[] = [];
-    for (const { it, slide, at } of alive) {
+    /** Index in `alive` → index in `rendered`. Absent means that chart failed. */
+    const placed = new Map<number, number>();
+    let firstFailure: unknown;
+    for (const [i, entry] of alive.entries()) {
+      const { it, slide, old, parts, at } = entry;
       const opts: InsertOptions = {
         ...it.opts,
         // The recorded frame origin, shifted by however far the user has dragged
@@ -483,8 +507,28 @@ export async function updateChartsInSlides(
       // An existing slide's proxy is stable across syncs — hold it. Only a
       // freshly-added slide needs a per-batch fresh proxy; see SlideThunk.
       const getSlide: SlideThunk = () => slide;
-      rendered.push({ getSlide, created: await renderShapesChunked(context, getSlide, it.scene, opts), opts });
+      try {
+        old.delete();
+        for (const p of parts) if (!p.isNullObject) p.delete();
+        await context.sync();
+        const created = await renderShapesChunked(context, getSlide, it.scene, opts);
+        // Only once it landed, or `placed` would point at a chart that isn't
+        // in `rendered` and every target after it would come back mismatched.
+        placed.set(i, rendered.length);
+        rendered.push({ getSlide, created, opts });
+      } catch (err) {
+        // This chart's old shapes are committed gone and its redraw did not
+        // finish, so it is blank and nothing here can undo that. The charts
+        // after it can still be saved, which is the whole point of the loop.
+        if (firstFailure === undefined) firstFailure = err;
+        trace("draw", "chart update failed mid-batch", { index: i, error: errorText(err) });
+        onFailed?.(it, err);
+      }
     }
+    // Nothing landed at all: that is the single-chart case, and its caller
+    // recovers by catching. Swallowing it would strand `updateChartResilient`
+    // on layer 1 with a chart it just deleted.
+    if (!rendered.length && firstFailure !== undefined) throw firstFailure;
 
     // 4-5. Group, then tag — one sync each, however many charts.
     const tagged = await groupAndTagAll(context, rendered);
@@ -496,7 +540,13 @@ export async function updateChartsInSlides(
     //    nothing at all — silently. Auto-update died the same way after its
     //    first push. Returning the new target is what lets a caller stay live.
     return alive.map(({ it, at }, i) => {
-      const t = tagged[i]?.target;
+      // Through `placed`, never by position: a chart that failed above is
+      // absent from `rendered`, so `tagged` is shorter than `alive` and
+      // indexing it directly would hand every chart after the failure the
+      // NEXT chart's shape id — an edit target pointing at somebody else's
+      // chart, which the next update would then overwrite.
+      const ri = placed.get(i);
+      const t = ri === undefined ? undefined : tagged[ri]?.target;
       if (!t) return it.target;
       // The origin this pass actually rendered at, paired with where the tagged
       // shape landed — the same (origin, anchor) contract groupAndTagAll wrote to
@@ -507,7 +557,7 @@ export async function updateChartsInSlides(
         shapeId: t.id,
         left: t.left,
         top: t.top,
-        partIds: tagged[i]?.partIds,
+        partIds: ri === undefined ? undefined : tagged[ri]?.partIds,
         origin: {
           left: o ? o.left + (at.left - o.anchorLeft) : at.left,
           top: o ? o.top + (at.top - o.anchorTop) : at.top,
@@ -1284,12 +1334,21 @@ export async function insertDemoDeck(
      * basis as SHAPES_PER_SYNC.
      */
     shapeBudget?: number;
+    /**
+     * This run's identity, written into every slot tag. Defaults to a fresh
+     * one; supplied only by tests that need a predictable tag.
+     */
+    runId?: string;
   } = {},
 ): Promise<DemoReport> {
   // Reset the module-scope lost-adds counter at the start of every run, so
   // `addsLostAtCommit` below reports only THIS run's confirmed losses, not a
   // stale accumulation from an earlier insertDemoDeck call.
   lastAddsLost = 0;
+  // Stamped into every slot tag this run writes, so the settled repair pass at
+  // the end can tell this run's slides from an earlier run's sitting in the
+  // same deck — see `SlideSnapshot.run`.
+  const runId = runOpts.runId ?? newRunId();
   const results: DemoResult[] = [];
   let lastError: unknown;
   const layout: LayoutRef = { resolved: false };
@@ -1322,7 +1381,7 @@ export async function insertDemoDeck(
     // Slot tag: JSON envelope with the deck-position index and the item title,
     // written at creation so the reconcile pass can pair a slide back to the
     // item it was drawn for however the deck ends up ordered.
-    const slotTag = JSON.stringify({ i, title: items[i].title ?? null });
+    const slotTag = JSON.stringify({ i, title: items[i].title ?? null, run: runId });
     // Once the run has degraded, every remaining item goes on as a picture:
     // one shape per slide instead of forty. The chart stays re-editable — the
     // config tag rides on the picture exactly as it does on a group — and
@@ -1422,8 +1481,10 @@ export async function insertDemoDeck(
       { before, after },
       (slot) => items[slot]?.tagData,
       // Every slide in [before, after) was added by THIS run, so an empty one
-      // with no slot tag is our own litter and safe to sweep.
-      { dropOrphanBlanks: true },
+      // with no slot tag is our own litter and safe to sweep. The run token
+      // rides along regardless: the range is trustworthy here, but a slide the
+      // host filed outside it is not, and `runId` is what says so.
+      { dropOrphanBlanks: true, run: runId },
     ).catch(() => undefined);
   }
   // Blank readback: find added slides the host kept but left EMPTY. Counted by
@@ -1644,6 +1705,7 @@ export async function snapshotAddedSlides(before: number, after: number): Promis
             index: r.index,
             slot: slot?.i ?? null,
             title: slot?.title ?? null,
+            run: slot?.run ?? null,
             shapes: names.length,
             stamped: names.includes(NOT_COMPLETE_NAME),
             grouped: names.includes(GROUP_NAME) || undefined,
@@ -1669,16 +1731,32 @@ export async function snapshotAddedSlides(before: number, after: number): Promis
 }
 
 /** The `{ i, title }` envelope `insertDemoDeck` writes, parsed defensively. */
-function parseSlotTag(raw: string): { i: number; title: string | null } | null {
+function parseSlotTag(raw: string): { i: number; title: string | null; run: string | null } | null {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
-    const { i, title } = parsed as { i?: unknown; title?: unknown };
+    const { i, title, run } = parsed as { i?: unknown; title?: unknown; run?: unknown };
     if (typeof i !== "number" || !Number.isInteger(i) || i < 0) return null;
-    return { i, title: typeof title === "string" ? title : null };
+    return {
+      i,
+      title: typeof title === "string" ? title : null,
+      run: typeof run === "string" ? run : null,
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * A token identifying ONE run, written into every slide that run adds.
+ *
+ * Slot indices restart at 0 each run and the demo titles are fixed, so nothing
+ * else in a slot tag distinguishes this run's Title slide from the one a run an
+ * hour ago left in the same deck. See `SlideSnapshot.run` for what a repair
+ * pass does when it cannot tell them apart.
+ */
+export function newRunId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /** Pass B: does any shape on the slide carry a config tag (i.e. re-editable). */
@@ -2144,8 +2222,18 @@ export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
  * deleting first would leave nothing to insert after and drop the new slide at
  * the front of the deck. Verified by slide count: the deck must end the same
  * size it started, or the swap half-happened and the caller is told so.
+ *
+ * Three outcomes, not two. "Nothing landed" and "the new slide landed but the
+ * old one would not go" both used to answer `false`, and the caller treated
+ * them identically — falling through to its picture fallback, which drew a
+ * picture over the ORIGINAL chart while the new slide sat there holding the
+ * same chart in native shapes. One stall, two charts, and a success message.
+ * `duplicated` is that case named, so a caller can stop instead of making it
+ * worse.
  */
-export async function replaceSlideWithDeck(slideId: string, base64: string): Promise<boolean> {
+export type SwapOutcome = "swapped" | "failed" | "duplicated";
+
+export async function replaceSlideWithDeck(slideId: string, base64: string): Promise<SwapOutcome> {
   const before = await slideCount();
   try {
     await withTimeout(
@@ -2163,24 +2251,34 @@ export async function replaceSlideWithDeck(slideId: string, base64: string): Pro
       "replacing a slide from a generated deck",
     );
   } catch {
-    return false;
+    return "failed";
   }
-  if ((await slideCount()) !== before + 1) return false;
+  if ((await slideCount()) !== before + 1) return "failed";
   try {
-    await PowerPoint.run(async (context) => {
-      const old = context.presentation.slides.getItemOrNullObject(slideId);
-      old.load("id");
-      await context.sync();
-      if ((old as unknown as { isNullObject: boolean }).isNullObject) throw new Error("original slide is gone");
-      (old as unknown as { delete(): void }).delete();
-      await context.sync();
-    });
+    await withTimeout(
+      PowerPoint.run(async (context) => {
+        const old = context.presentation.slides.getItemOrNullObject(slideId);
+        old.load("id");
+        await context.sync();
+        if ((old as unknown as { isNullObject: boolean }).isNullObject) throw new Error("original slide is gone");
+        (old as unknown as { delete(): void }).delete();
+        await context.sync();
+      }),
+      // Bounded like the insert above it. This runs on a host that has ALREADY
+      // stalled once — that is why the swap was reached at all — so the one
+      // call left unguarded is the one most likely to hang.
+      DECK_INSERT_TIMEOUT_MS(1),
+      "removing the slide a generated deck replaced",
+    );
   } catch {
     // The new slide landed but the old one would not go. Two charts now, which
-    // is visible and fixable; silently claiming success is neither.
-    return false;
+    // is visible and fixable; silently claiming success is neither — and
+    // neither is answering "failed", which sends the caller off to draw a
+    // third copy as a picture.
+    trace("insert", "slide swap left the original behind", { slideId });
+    return "duplicated";
   }
-  return (await slideCount()) === before;
+  return (await slideCount()) === before ? "swapped" : "duplicated";
 }
 
 /**

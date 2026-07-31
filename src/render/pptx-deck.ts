@@ -42,6 +42,8 @@ export interface DeckItem {
   configJson?: string;
   /** Item index, written as the slide's `POWERCHART_DEMO_SLOT` tag. */
   slot?: number;
+  /** Run token, written alongside the slot — see `SlideDressing.run`. */
+  run?: string;
   /** Slide background; defaults to white, matching the skill renderer. */
   background?: string;
 }
@@ -73,6 +75,7 @@ export async function buildDeckBase64(items: DeckItem[]): Promise<{ base64: stri
       configJson: item.configJson,
       slot: item.slot,
       title: item.title,
+      run: item.run,
       // Where the live renderer would have put the chart's frame, so an edit
       // of a generated chart anchors the same way one drawn shape-by-shape
       // does. Points, matching CHART_ORIGIN_TAG's units.
