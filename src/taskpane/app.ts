@@ -13,6 +13,10 @@ import {
   applyReconcilePlan,
   canInsertSlidesFromBase64,
   insertSlidesFromPptx,
+  OFFSCREEN_BATCH,
+  replaceSlideWithDeck,
+  slideHoldsOnlyChart,
+  withSlideDeselected,
   slideCount,
   snapshotAddedSlides,
   listChartsInDeck,
@@ -1459,13 +1463,22 @@ async function doInsert(asNew: boolean) {
     // shape id that no longer existed, get filtered out as "the user deleted
     // this chart", and do nothing — silently. With auto-update on, that meant
     // only the first debounced push ever landed.
-    const next = await updateChartInSlide(scene, state.editTarget, {
+    const { next, swapped, picture } = await updateChartResilient(scene, state.editTarget, {
       tagData: JSON.stringify(cfg),
       pictureBase64: png,
     });
+    if (swapped) {
+      // The chart is on a NEW slide, so the old target is dead. Say so rather
+      // than leaving a stale target that makes every later push no-op.
+      state.editTarget = null;
+      renderActionState();
+      note("Rebuilt that slide — PowerPoint would not redraw it in place. Select the chart to keep editing.", "ok");
+      return;
+    }
     if (next) {
       state.editTarget = next;
-      if (warn) note(warn, "err");
+      if (picture && !png) note("Drawn as a picture — PowerPoint would not redraw the shapes.", "err");
+      else if (warn) note(warn, "err");
       return;
     }
     // null means the target slide or shape is gone — nothing was written. The
@@ -1595,7 +1608,14 @@ async function doExplode() {
     return;
   }
   const cfg = { ...(JSON.parse(found.configJson) as ChartConfig), render: "shapes" as const };
-  const next = await updateChartInSlide(buildChart(cfg), found.target, { tagData: JSON.stringify(cfg) });
+  // Same live-canvas wall as an ordinary update: exploding a picture draws
+  // every shape onto the slide in view. Look away while it happens.
+  const next = await withSlideDeselected([found.target.slideId], (deselected) =>
+    updateChartInSlide(buildChart(cfg), found.target, {
+      tagData: JSON.stringify(cfg),
+      ...(deselected ? { shapesPerSync: OFFSCREEN_BATCH } : {}),
+    }),
+  );
   if (!next) {
     // The picture is gone from the slide. Only clear the pane's edit target if
     // it was pointing at this same shape — Explode works on the selection.
@@ -1916,6 +1936,70 @@ async function doRepairDeck() {
     outcome.refused ? "err" : "ok",
     { deleted, unstamped, regrouped, refused: outcome.refused },
   );
+}
+
+/**
+ * Update a chart in place without asking the live canvas to do the impossible.
+ *
+ * Redrawing a chart is the add-in's worst case on PowerPoint web: every shape
+ * replaced, onto the one slide guaranteed to be on screen. A real run died on
+ * the FIRST batch — "did not respond while drawing shapes 1-10 of 39". Three
+ * attempts, least destructive first:
+ *
+ *  1. Look away and redraw. Selecting another slide puts the target
+ *     off-screen, where the host swallows 40 shapes a sync instead of choking
+ *     at 10, and the selection is restored afterwards. Nothing is lost.
+ *  2. Swap the slide. Generate a one-slide .pptx and replace the slide with
+ *     it — one host call, no drawing at all. Only offered when the slide holds
+ *     NOTHING but the chart, because the replacement is a new slide and does
+ *     not carry the old one's notes or transitions. The user is told when this
+ *     happens, since their edit target moves with it.
+ *  3. Draw it as a picture. Never stalls, keeps the config tag so the chart is
+ *     still re-editable and can be exploded back to shapes — but it is a
+ *     raster, and that is a real cost, so it is the floor and not the default.
+ */
+async function updateChartResilient(
+  scene: Scene,
+  target: EditTarget,
+  opts: { tagData?: string; pictureBase64?: string },
+): Promise<{ next: EditTarget | null; swapped?: boolean; picture?: boolean }> {
+  let stall: unknown;
+  try {
+    const next = await withSlideDeselected([target.slideId], (deselected) =>
+      updateChartInSlide(scene, target, deselected ? { ...opts, shapesPerSync: OFFSCREEN_BATCH } : opts),
+    );
+    return { next };
+  } catch (err) {
+    console.warn("PowerChart: in-place redraw stalled — trying the slide swap", err);
+    stall = err;
+  }
+
+  if (canInsertSlidesFromBase64() && opts.tagData && (await slideHoldsOnlyChart(target.slideId))) {
+    try {
+      note("Rebuilding that slide…", "busy");
+      const built = await buildDeckBase64([{ scene, title: "Chart", configJson: opts.tagData }]);
+      if (await replaceSlideWithDeck(target.slideId, built.base64)) return { next: null, swapped: true };
+    } catch (err) {
+      console.warn("PowerChart: slide swap failed — falling back to a picture", err);
+    }
+  }
+
+  try {
+    // Bounded: a canvas that never fires `onload` would otherwise hang the
+    // update forever, which is a worse outcome than the stall we are already
+    // recovering from.
+    const png = await Promise.race([
+      rasterizeScene(scene),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("rasterizing timed out")), 10_000)),
+    ]);
+    const next = await updateChartInSlide(scene, target, { ...opts, pictureBase64: png });
+    return { next, picture: true };
+  } catch (err) {
+    // Nothing left to try. Surface the host's own words rather than a
+    // rasterizer error the user can do nothing about.
+    console.warn("PowerChart: picture fallback failed too", err);
+    throw stall;
+  }
 }
 
 /**

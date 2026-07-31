@@ -2155,6 +2155,145 @@ export async function insertSlidesFromPptx(
   return after - before;
 }
 
+/**
+ * Run `fn` with the given slides NOT selected, then put the selection back.
+ *
+ * The live canvas is the bottleneck, not PowerPoint. This renderer already
+ * knows it: `SHAPES_PER_SYNC` is 10 for the slide the user is looking at and
+ * 40 for one they are not, because the web client repaints as shapes arrive
+ * and stops answering somewhere past twenty. Updating a chart in place is
+ * therefore the worst case in the whole add-in — a redraw of every shape,
+ * onto the one slide guaranteed to be on screen. A real run died on the FIRST
+ * batch: "did not respond while drawing shapes 1-10 of 39".
+ *
+ * Looking away is free. Select any other slide, redraw off-screen at the
+ * bigger batch size, select back.
+ *
+ * Entirely best-effort: `setSelectedSlides` needs PowerPointApi 1.5, and a
+ * one-slide deck has nowhere to look. Both cases run `fn` unchanged.
+ * `deselected` tells the caller which happened, so it knows whether the wait
+ * budget it just used was the off-screen one.
+ */
+export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected: boolean) => Promise<T>): Promise<T> {
+  if (!supports("1.5")) return fn(false);
+  let restore: string[] | null = null;
+  try {
+    const moved = await PowerPoint.run(async (context) => {
+      const presentation = context.presentation as unknown as {
+        getSelectedSlides(): { items: { id: string }[]; load(p: string): void };
+        setSelectedSlides(ids: string[]): void;
+        slides: PowerPoint.SlideCollection;
+      };
+      const selected = presentation.getSelectedSlides();
+      selected.load("items/id");
+      const all = context.presentation.slides;
+      all.load("items/id");
+      await context.sync();
+      const elsewhere = all.items.map((s) => s.id).find((id) => !slideIds.includes(id));
+      if (!elsewhere) return null;
+      const previous = selected.items.map((s) => s.id);
+      presentation.setSelectedSlides([elsewhere]);
+      await context.sync();
+      return previous;
+    });
+    if (moved === null) return await fn(false);
+    restore = moved;
+  } catch {
+    // A host that will not tell us what is selected, or will not change it —
+    // draw on the live canvas as before rather than refusing to draw at all.
+    return fn(false);
+  }
+  try {
+    return await fn(true);
+  } finally {
+    // Put the user back where they were, whatever happened to the redraw.
+    // Failing to restore is not worth surfacing: they are one click from it.
+    if (restore?.length) {
+      await PowerPoint.run(async (context) => {
+        (context.presentation as unknown as { setSelectedSlides(ids: string[]): void }).setSelectedSlides(restore);
+        await context.sync();
+      }).catch(() => {});
+    }
+  }
+}
+
+/** Batch size to use once the target slide is off-screen — see
+ *  `SHAPES_PER_SYNC_OFFSCREEN`, which this deliberately mirrors. */
+export const OFFSCREEN_BATCH = 40;
+
+/**
+ * True when the slide holds ONE shape and that shape is a PowerChart group —
+ * i.e. replacing the whole slide loses nothing but the chart itself.
+ *
+ * The gate on `replaceSlideWithDeck`. A slide swap is the fastest possible
+ * update (one host call instead of a redraw), but the new slide is a NEW
+ * slide: speaker notes, transitions and anything else the old one carried do
+ * not come with it. So it is only ever offered where there is demonstrably
+ * nothing else to lose.
+ */
+export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      slide.load("id");
+      await context.sync();
+      if ((slide as unknown as { isNullObject: boolean }).isNullObject) return false;
+      slide.shapes.load("items/name");
+      await context.sync();
+      const names = slide.shapes.items.map((s) => (s as unknown as { name: string }).name);
+      return names.length === 1 && names[0] === GROUP_NAME;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Replace one slide with the single slide of a generated deck.
+ *
+ * Insert after the target, then delete the target — the order matters, since
+ * deleting first would leave nothing to insert after and drop the new slide at
+ * the front of the deck. Verified by slide count: the deck must end the same
+ * size it started, or the swap half-happened and the caller is told so.
+ */
+export async function replaceSlideWithDeck(slideId: string, base64: string): Promise<boolean> {
+  const before = await slideCount();
+  try {
+    await withTimeout(
+      PowerPoint.run(async (context) => {
+        const presentation = context.presentation as unknown as {
+          insertSlidesFromBase64(b64: string, opts?: { formatting?: string; targetSlideId?: string }): void;
+        };
+        presentation.insertSlidesFromBase64(base64, {
+          formatting: "KeepSourceFormatting",
+          targetSlideId: slideId,
+        });
+        await context.sync();
+      }),
+      DECK_INSERT_TIMEOUT_MS(1),
+      "replacing a slide from a generated deck",
+    );
+  } catch {
+    return false;
+  }
+  if ((await slideCount()) !== before + 1) return false;
+  try {
+    await PowerPoint.run(async (context) => {
+      const old = context.presentation.slides.getItemOrNullObject(slideId);
+      old.load("id");
+      await context.sync();
+      if ((old as unknown as { isNullObject: boolean }).isNullObject) throw new Error("original slide is gone");
+      (old as unknown as { delete(): void }).delete();
+      await context.sync();
+    });
+  } catch {
+    // The new slide landed but the old one would not go. Two charts now, which
+    // is visible and fixable; silently claiming success is neither.
+    return false;
+  }
+  return (await slideCount()) === before;
+}
+
 /** True when the host advertises the given PowerPointApi requirement set. */
 function supports(version: string): boolean {
   try {
