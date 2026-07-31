@@ -46,9 +46,42 @@ real PowerPoint-web deck both show slides going missing after
   empty.
 - **5 of 63** slides were misplaced this way.
 
-Taken together, the two runs suggest at least two related failure modes
-under the same root cause (adds not landing where/when the caller expects
-them to): outright silent loss (Run 1) and off-by-one placement (Run 2).
+### Run 3 — `Presentation_4.pptx` (smoke subset, 2026-07-30)
+
+The first run whose output deck was read back at the XML level rather than
+trusted to the harness's own report. The two disagree, and the disagreement
+is the most useful evidence in this document.
+
+- Smoke subset: 12 items. The harness issued **19** adds; the deck grew by
+  **10**. Wall clock **680.2s** (~113s per item).
+- The harness reported: `Inserted 6 of 12 … Host failed on: Stacked,
+  Scatter, Bubble, Gantt, Combo, Heatmap … 4 charts landed ungrouped …
+  3 slides came back BLANK: slide 9, slide 10, Agenda (slide 11)`.
+- The deck says otherwise:
+  - **Gantt did not fail — it landed twice.** Slides 6 and 7 both hold the
+    same 31-shape Gantt chart; slide 7 additionally wears the harness's
+    `NOT COMPLETE` banner. The same is true of Line on slides 4 and 5
+    (36 shapes each).
+  - **The "BLANK" Agenda slide holds all 13 of its shapes.** Its content is
+    in `slide11.xml`; the web client simply never painted it — which is the
+    behaviour of office-js#2699, below.
+  - **Four `NOT COMPLETE` banners sit on top of complete content** (the
+    contents slide, both duplicate charts, and the agenda).
+  - Only **one** of five charts kept its `POWERCHART_CONFIG` tag.
+
+The mechanism is visible in the timing: the harness's timeout fires at 45s,
+it stamps the slide and issues a retry, and the abandoned `sync()` then
+commits anyway — so both the original and the retry end up on the deck, one
+of them wearing a banner that its own content contradicts. `waitForLateSync`
+gives the abandoned call 5 seconds to report back; the observed commits
+arrive far later than that, so every readback taken during the run is a
+snapshot of a host still mid-flight.
+
+Taken together, the three runs show at least three related failure modes
+under the same root cause (adds and commits not landing where/when the
+caller expects them to): outright silent loss (Run 1), off-by-one placement
+(Run 2), and commit-after-abandonment producing duplicate slides plus false
+failure reports (Run 3).
 
 ## Expected behavior
 
@@ -101,6 +134,19 @@ is missing:
    verifies slide *content* (not just count) matches the expected item at
    each index before moving on, since a count-only check would not catch
    content landing one slide off from where it belongs.
+
+Run 3 showed the limit of doing this inline: every check above races a
+commit whose deadline the host does not publish, and losing that race
+writes fiction into the deck (a duplicate slide, a banner contradicting its
+own content, a chart reported failed that landed twice). PowerChart
+therefore now also runs a **settled reconciliation pass after the run
+finishes** — `src/core/reconcile.ts` plus `reconcileDeck` in
+`src/render/powerpoint.ts`. It re-reads the added range once the host has
+stopped moving, pairs each slide with the item its `POWERCHART_DEMO_SLOT`
+tag names, and repairs the difference: delete provably redundant twins,
+clear stale banners, re-group charts left loose. The same pass is exposed
+as a **Repair deck** button so a deck damaged by an earlier session can be
+fixed without re-inserting anything.
 
 This is a workaround, not a fix — retries still cost the ~65s/item wall
 clock seen in Run 1, and a false-negative verify could in principle mask a

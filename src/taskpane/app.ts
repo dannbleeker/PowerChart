@@ -10,6 +10,9 @@ import {
   insertDemoDeck,
   insertSceneIntoSlide,
   isPowerPointHost,
+  applyReconcilePlan,
+  slideCount,
+  snapshotAddedSlides,
   listChartsInDeck,
   listChartsInSelection,
   loadChartFromSelection,
@@ -20,10 +23,14 @@ import {
   errorText,
   type EditTarget,
   type InsertPhase,
+  type ReconcileOutcome,
 } from "../render/powerpoint";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } from "../core/demo";
 import type { Scene } from "../core/scene";
+import { estimateOfficeShapes } from "../core/scene";
+import { describeReconcile, planReconcile } from "../core/reconcile";
+import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
 import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
@@ -1772,6 +1779,125 @@ function describeHost(): string {
   return "unknown host";
 }
 
+/**
+ * The last demo run, kept at module scope so it can be saved AFTER the fact.
+ *
+ * A run's own record used to live and die inside the click handler's closure:
+ * when a run ended badly the summary slide was the first casualty, and the
+ * only surviving evidence was whatever the user thought to copy out of a
+ * one-line note. A run that reveals a host bug is worth more than that.
+ */
+let lastRunLog: RunLog | undefined;
+
+interface RunLog {
+  build: string;
+  host: string;
+  smoke: boolean;
+  totalMs: number;
+  items: {
+    title: string;
+    status: string;
+    shapes: number;
+    ms: number;
+    grouped: boolean;
+    retried: boolean;
+    lateSettled: boolean;
+    partial: boolean;
+    lateOutcome: string;
+  }[];
+  deck: {
+    slidesAdded: number;
+    addsIssued: number;
+    lost: number;
+    blank: { position: number; title: string | null }[];
+  };
+  /** The settled truth: what the deck held once the host stopped moving. */
+  reconcile?: ReconcileOutcome;
+}
+
+/**
+ * Which demo deck a set of slot tags came from, and what each item should
+ * hold. Repair runs against a deck inserted by an EARLIER session, so the
+ * expected shape counts have to be reconstructed rather than remembered: both
+ * candidate decks are generated and scored against the titles on the tags.
+ * The smoke subset and the full deck share slot 0-1 and diverge after, so a
+ * couple of matching titles is enough to tell them apart.
+ */
+function demoExpectation(snapshots: SlideSnapshot[]): {
+  expected: ExpectedItem[];
+  tagFor: (slot: number) => string | undefined;
+} {
+  const seen = new Map<number, string | null>();
+  for (const s of snapshots) if (s.slot !== null && !seen.has(s.slot)) seen.set(s.slot, s.title);
+  const candidates = [demoItems({ smoke: true }), demoItems({ smoke: false })];
+  let best = candidates[0];
+  let bestScore = -1;
+  for (const deck of candidates) {
+    let score = 0;
+    for (const [slot, title] of seen) if (title && deck[slot]?.title === title) score++;
+    if (score > bestScore) {
+      bestScore = score;
+      best = deck;
+    }
+  }
+  return {
+    expected: best.map((it, i) => ({
+      slot: i,
+      title: it.title,
+      shapes: estimateOfficeShapes(it.scene),
+      chart: !!it.configJson,
+    })),
+    tagFor: (slot) => best[slot]?.configJson,
+  };
+}
+
+/**
+ * Repair a demo deck in place — the standalone version of the pass that now
+ * closes every run, for decks damaged by a run that predates it (or by a
+ * session that has since been closed).
+ *
+ * Scoped to the span between the first and last slot-tagged slide: everything
+ * in there was put there by a demo run, so an empty slide inside it is that
+ * run's litter. Slides outside the span are never read and never touched.
+ */
+async function doRepairDeck() {
+  const count = await slideCount();
+  const snapshots = await snapshotAddedSlides(0, count);
+  const tagged = snapshots.filter((s) => s.slot !== null);
+  if (!tagged.length) {
+    note("No demo slides found — Repair works on slides the demo deck inserted.", "err");
+    return;
+  }
+  const first = Math.min(...tagged.map((s) => s.index));
+  const last = Math.max(...tagged.map((s) => s.index));
+  const inSpan = snapshots.filter((s) => s.index >= first && s.index <= last);
+  const { expected, tagFor } = demoExpectation(inSpan);
+  const plan = planReconcile(inSpan, expected, { dropOrphanBlanks: true });
+  if (!plan.actions.length) {
+    note("Nothing to repair — {summary}", "ok", { summary: describeReconcile(plan) });
+    return;
+  }
+  const outcome = await applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, inSpan);
+  const { unstamped, regrouped, deleted } = outcome.applied;
+  note(
+    outcome.refused
+      ? "Repaired: {deleted} duplicate slide(s) deleted, {unstamped} banner(s) cleared, {regrouped} chart(s) re-grouped — {refused} step(s) the host refused."
+      : "Repaired: {deleted} duplicate slide(s) deleted, {unstamped} banner(s) cleared, {regrouped} chart(s) re-grouped.",
+    outcome.refused ? "err" : "ok",
+    { deleted, unstamped, regrouped, refused: outcome.refused },
+  );
+}
+
+/** Save an object as a JSON file, via the same Blob dance as Download SVG. */
+function downloadJson(name: string, payload: unknown) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function wireInsert() {
   const insertBtn = $("insert") as HTMLButtonElement;
   const insertNewBtn = $("insert-new") as HTMLButtonElement;
@@ -1911,6 +2037,19 @@ function wireInsert() {
     // the action has already failed — the note is stale by then, but the
     // information is what a bug report needs.
     onLateSync((msg) => note("Host answered late — {message}", "err", { message: msg }));
+    const repairBtn = $("demo-repair") as HTMLButtonElement;
+    repairBtn.disabled = false;
+    repairBtn.addEventListener("click", guard(doRepairDeck));
+    // Enabled by a run, not by the host: with nothing to save it would only
+    // ever produce an empty file.
+    $("demo-log").addEventListener("click", () => {
+      if (!lastRunLog) {
+        note("No run to save yet — insert the demo deck first.", "err");
+        return;
+      }
+      downloadJson("powerchart-run-log.json", lastRunLog);
+      note("Run log saved.", "ok");
+    });
     const demoBtn = $("demo-insert") as HTMLButtonElement;
     demoBtn.disabled = false;
     demoBtn.addEventListener(
@@ -1928,18 +2067,24 @@ function wireInsert() {
         // batching still keeps each sync inside the host's swallow limit.
         const isHarnessSlot = (t: string): boolean =>
           t === "Title" || t.startsWith("Contents") || t.startsWith("Results");
-        const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, totalMs } = await insertDemoDeck(
-          items.map((i) => ({
-            scene: i.scene,
-            tagData: i.configJson,
-            title: i.title,
-            bypassBudget: isHarnessSlot(i.title),
-          })),
-          (done, total) => {
-            note("Inserting demo slides… {done} of {total}", "busy", { done, total });
-            setProgress(done / total); // one slide per context, so a real bar
-          },
-        );
+        const { results, slidesAdded, addsIssued, blankSlides, blankItems, blanksRead, reconcile, totalMs } =
+          await insertDemoDeck(
+            items.map((i) => ({
+              scene: i.scene,
+              tagData: i.configJson,
+              title: i.title,
+              bypassBudget: isHarnessSlot(i.title),
+            })),
+            (done, total) => {
+              note("Inserting demo slides… {done} of {total}", "busy", { done, total });
+              setProgress(done / total); // one slide per context, so a real bar
+            },
+            // Close the run by reading the deck back and repairing it — the
+            // per-item bookkeeping below is written while the host is still
+            // committing, and has been observed calling a chart failed that
+            // in fact landed twice.
+            { reconcile: true },
+          );
         // Self-check: the deck is a regression harness, so report what the HOST
         // actually did, not what we asked for. The full table goes to the console.
         const named = (s: "skipped" | "failed") =>
@@ -1971,15 +2116,32 @@ function wireInsert() {
         console.log(
           `deck grew by ${slidesAdded}, issued ${addsIssued} adds${lost > 0 ? ` — ${lost} LOST` : ""}; blank slots ${blankSlides.length ? blankSlides.join(", ") : "none"}${blanksRead ? "" : " (blank check incomplete)"} · total ${secs}s`,
         );
-        let msg = `Inserted ${rendered} of ${items.length} in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
+        // The headline comes from the settled read when there is one. Every
+        // number above was computed while the host was still committing, and
+        // the run that produced Presentation_4.pptx got three of them wrong:
+        // it blamed Gantt for failing (it landed twice), called a full Agenda
+        // slide blank, and counted duplicate slides as successes.
+        const verdicts = reconcile?.plan.verdicts ?? [];
+        const missing = verdicts.filter((v) => v.status === "lost" || v.status === "empty").map((v) => v.title);
+        let msg = reconcile
+          ? `Deck settled: ${describeReconcile(reconcile.plan)} — in ${secs}s${smoke ? " (smoke subset)" : ""}.`
+          : `Inserted ${rendered} of ${items.length} in ${secs}s${smoke ? " (smoke subset)" : ""}.`;
         if (skipped.length) msg += ` Skipped as too dense (stamped): ${skipped.join(", ")}.`;
-        if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
+        if (reconcile) {
+          if (missing.length) msg += ` Never landed: ${missing.join(", ")}.`;
+          const { deleted, unstamped, regrouped } = reconcile.applied;
+          if (deleted || unstamped || regrouped)
+            msg += ` Repaired ${deleted} duplicate slide(s), ${unstamped} false banner(s), ${regrouped} loose chart(s).`;
+          if (reconcile.refused) msg += ` ⚠ ${reconcile.refused} repair step(s) the host refused.`;
+        } else if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (recovered) msg += ` ${recovered} recovered on retry.`;
         // A rendered but ungrouped chart is not re-editable — flag them so
         // Phase 2 doesn't quietly count them as full successes.
-        const ungrouped = results.filter(
-          (r, i) => r.status === "rendered" && !r.grouped && items[i].scene.nodes.length > 1,
-        ).length;
+        const ungrouped = reconcile
+          ? verdicts.filter(
+              (v) => !v.tagged && v.status !== "lost" && v.status !== "skipped" && items[v.slot]?.configJson,
+            ).length
+          : results.filter((r, i) => r.status === "rendered" && !r.grouped && items[i].scene.nodes.length > 1).length;
         if (ungrouped) msg += ` ⚠ ${ungrouped} chart${ungrouped === 1 ? "" : "s"} landed ungrouped (not re-editable).`;
         const lateN = results.filter((r) => r.lateSettled).length;
         if (lateN) msg += ` ${lateN} late-settled (sync timed out but shapes landed).`;
@@ -1994,6 +2156,29 @@ function wireInsert() {
           const named = blankItems.map((b) => (b.title ? `${b.title} (slide ${b.position})` : `slide ${b.position}`));
           msg += ` ⚠ ${blankSlides.length} slide${blankSlides.length === 1 ? "" : "s"} came back BLANK: ${named.join(", ")}.`;
         } else if (!blanksRead) msg += ` (Blank check did not finish.)`;
+        // Keep the whole run, not just the sentence. A run that ends badly is
+        // the one worth reporting, and it is also the one whose results slide
+        // is most likely to be the thing the host drops.
+        lastRunLog = {
+          build: buildStamp,
+          host,
+          smoke,
+          totalMs,
+          items: results.map((r, i) => ({
+            title: items[i].title,
+            status: r.status,
+            shapes: r.created,
+            ms: r.ms,
+            grouped: !!r.grouped,
+            retried: !!r.retried,
+            lateSettled: !!r.lateSettled,
+            partial: !!r.partialLanded,
+            lateOutcome: r.lateOutcome ?? "",
+          })),
+          deck: { slidesAdded, addsIssued, lost, blank: blankItems },
+          reconcile,
+        };
+        ($("demo-log") as HTMLButtonElement).disabled = false;
         // Close the deck with a self-contained results slide so the exported PDF is
         // a complete run record. A second insertDemoDeck reuses the same add/render/
         // self-check machinery; wrap it so a host stall here can't swallow the run's
