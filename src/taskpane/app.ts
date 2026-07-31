@@ -1850,9 +1850,6 @@ interface RunLog {
     shapes: number;
     ms: number;
     grouped: boolean;
-    retried: boolean;
-    lateSettled: boolean;
-    partial: boolean;
     lateOutcome: string;
   }[];
   deck: {
@@ -2376,7 +2373,6 @@ function wireInsert() {
         const skipped = named("skipped");
         const failedNames = named("failed");
         const rendered = results.filter((r) => r.status === "rendered").length;
-        const recovered = results.filter((r) => r.retried).length;
         // Loss vs adds ISSUED, not vs items.length: a retry/fail stray inflates
         // slidesAdded, so measuring against items.length reads 0 during real
         // corruption when a stray cancels a lost slide. addsIssued − slidesAdded
@@ -2389,10 +2385,7 @@ function wireInsert() {
             chart: items[i].title,
             shapes: r.created,
             status: r.status,
-            retried: !!r.retried,
             grouped: !!r.grouped,
-            lateSettled: !!r.lateSettled,
-            partial: !!r.partialLanded,
             ms: r.ms,
             lateOutcome: r.lateOutcome ?? "",
           })),
@@ -2429,7 +2422,6 @@ function wireInsert() {
         } else if (failedNames.length) msg += ` Host failed on: ${failedNames.join(", ")}.`;
         if (degradedAt !== undefined)
           msg += ` Drew the last ${items.length - degradedAt} slide(s) as pictures — ${degradeReason}. Use "Explode to native shapes" on any of them to get real shapes back.`;
-        if (recovered) msg += ` ${recovered} recovered on retry.`;
         // A rendered but ungrouped chart is not re-editable — flag them so
         // Phase 2 doesn't quietly count them as full successes.
         const ungrouped = reconcile
@@ -2438,10 +2430,6 @@ function wireInsert() {
             ).length
           : results.filter((r, i) => r.status === "rendered" && !r.grouped && items[i].scene.nodes.length > 1).length;
         if (ungrouped) msg += ` ⚠ ${ungrouped} chart${ungrouped === 1 ? "" : "s"} landed ungrouped (not re-editable).`;
-        const lateN = results.filter((r) => r.lateSettled).length;
-        if (lateN) msg += ` ${lateN} late-settled (sync timed out but shapes landed).`;
-        const partialN = results.filter((r) => r.partialLanded).length;
-        if (partialN) msg += ` ${partialN} rendered-partial (sync threw with most shapes on the slide — no retry).`;
         if (lost > 0)
           msg += ` ⚠ ${lost} add${lost === 1 ? "" : "s"} did not land — the host lost slides (issued ${addsIssued}, deck grew by ${slidesAdded}).`;
         // Blank slides carry the slot tag (item title) where the host has 1.3
@@ -2465,9 +2453,6 @@ function wireInsert() {
             shapes: r.created,
             ms: r.ms,
             grouped: !!r.grouped,
-            retried: !!r.retried,
-            lateSettled: !!r.lateSettled,
-            partial: !!r.partialLanded,
             lateOutcome: r.lateOutcome ?? "",
           })),
           deck: { slidesAdded, addsIssued, lost, blank: blankItems },
@@ -2492,7 +2477,6 @@ function wireInsert() {
           skipped: skipped.length,
           failed: failedNames.length,
           lost,
-          retried: recovered,
           totalMs,
         };
         // Each results page inserts in its OWN insertDemoDeck call. A single
