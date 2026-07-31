@@ -1724,7 +1724,26 @@ const GROUP_NAME = "PowerChart";
  * as "do not touch this slide".
  */
 export async function snapshotAddedSlides(before: number, after: number): Promise<SlideSnapshot[]> {
+  return (await readAddedSlides(before, after)).snapshots;
+}
+
+/**
+ * The same read, plus how many slides it could NOT see.
+ *
+ * A page whose read throws is skipped, which is the safe thing to do — an
+ * unseen slide is never deleted. But its slides then simply are not in the
+ * result, and an item that lives on one comes back `lost`: indistinguishable,
+ * in the run summary, from a slide the host really did drop. "Gantt: lost"
+ * when Gantt rendered perfectly is exactly the report that makes someone run
+ * the insert again. `DemoReport.blanksRead` already draws this distinction for
+ * the blank check; this is the same honesty for the repair pass.
+ */
+export async function readAddedSlides(
+  before: number,
+  after: number,
+): Promise<{ snapshots: SlideSnapshot[]; unread: number }> {
   const snapshots: SlideSnapshot[] = [];
+  let unread = 0;
   for (let start = before; start < after; start += READBACK_PAGE) {
     const end = Math.min(start + READBACK_PAGE, after);
     let page: SlideSnapshot[];
@@ -1766,7 +1785,10 @@ export async function snapshotAddedSlides(before: number, after: number): Promis
       });
     } catch {
       // A page we cannot read is a page we cannot repair. Skipping it is the
-      // safe outcome: an unseen slide is never deleted and never "lost".
+      // safe outcome: an unseen slide is never deleted. It IS counted, so the
+      // caller can say "could not read N slides" instead of reporting whatever
+      // was on them as lost.
+      unread += end - start;
       continue;
     }
     snapshots.push(...page);
@@ -1776,9 +1798,10 @@ export async function snapshotAddedSlides(before: number, after: number): Promis
   trace("repair", "read the deck back", {
     range: [before, after],
     read: snapshots.length,
+    unread,
     tagged: snapshots.filter((s) => s.slot !== null).length,
   });
-  return snapshots;
+  return { snapshots, unread };
 }
 
 /** The `{ i, title }` envelope `insertDemoDeck` writes, parsed defensively. */
@@ -1967,6 +1990,12 @@ export interface ReconcileOutcome {
   applied: { unstamped: number; regrouped: number; deleted: number };
   /** Actions the host refused. The plan is re-runnable; nothing is corrupted. */
   refused: number;
+  /**
+   * Slides in range the readback could not see at all. Anything on them is
+   * reported `lost` for want of evidence, so a non-zero count here is the
+   * difference between "the host dropped it" and "we could not look".
+   */
+  unread?: number;
 }
 
 /**
@@ -2027,9 +2056,9 @@ export async function reconcileDeck(
   tagFor: (slot: number) => string | undefined,
   opts: ReconcileOptions = {},
 ): Promise<ReconcileOutcome> {
-  const snapshots = await snapshotAddedSlides(range.before, range.after);
+  const { snapshots, unread } = await readAddedSlides(range.before, range.after);
   const plan = planReconcile(snapshots, expected, opts);
-  return applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, snapshots);
+  return { ...(await applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, snapshots)), unread };
 }
 
 /**
@@ -2227,6 +2256,9 @@ export async function insertSlidesFromPptx(
 export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected: boolean) => Promise<T>): Promise<T> {
   if (!supports("1.5")) return fn(false);
   let restore: string[] | null = null;
+  /** The slide this function parked the view on, so it can tell later whether
+   *  the user has since moved away from it. */
+  let parkedOn: string | null = null;
   try {
     const moved = await PowerPoint.run(async (context) => {
       const presentation = context.presentation as unknown as {
@@ -2244,10 +2276,11 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
       const previous = selected.items.map((s) => s.id);
       presentation.setSelectedSlides([elsewhere]);
       await context.sync();
-      return previous;
+      return { previous, parkedOn: elsewhere };
     });
     if (moved === null) return await fn(false);
-    restore = moved;
+    restore = moved.previous;
+    parkedOn = moved.parkedOn;
   } catch {
     // A host that will not tell us what is selected, or will not change it —
     // draw on the live canvas as before rather than refusing to draw at all.
@@ -2256,11 +2289,29 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
   try {
     return await fn(true);
   } finally {
-    // Put the user back where they were, whatever happened to the redraw.
+    // Put the user back where they were — unless they have moved themselves.
+    //
+    // An off-screen redraw can run for tens of seconds, and the user is free
+    // to click through the deck while it does. Restoring unconditionally then
+    // snapped them back to wherever they happened to be standing when the
+    // redraw started, discarding their navigation with no notice. So restore
+    // only from the slide this function parked them on: if the view is still
+    // there, nobody has touched it and putting them back is right; if it has
+    // moved, the move was theirs and it wins.
+    //
     // Failing to restore is not worth surfacing: they are one click from it.
     if (restore?.length) {
       await PowerPoint.run(async (context) => {
-        (context.presentation as unknown as { setSelectedSlides(ids: string[]): void }).setSelectedSlides(restore);
+        const presentation = context.presentation as unknown as {
+          getSelectedSlides(): { items: { id: string }[]; load(p: string): void };
+          setSelectedSlides(ids: string[]): void;
+        };
+        const now = presentation.getSelectedSlides();
+        now.load("items/id");
+        await context.sync();
+        const ids = now.items.map((s) => s.id);
+        if (ids.length !== 1 || ids[0] !== parkedOn) return;
+        presentation.setSelectedSlides(restore);
         await context.sync();
       }).catch(() => {});
     }

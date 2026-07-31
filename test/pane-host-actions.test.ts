@@ -31,6 +31,9 @@ const host = vi.hoisted(() => ({
   gate: null as null | Promise<void>,
   // insertSceneIntoSlide throws this once, if set — drives the guard's catch path.
   failInsertOnce: false,
+  // When set, updateChartInSlide awaits this — holds an in-place update open
+  // so a test can act while it is still running.
+  updateGate: null as null | Promise<void>,
   // The selection-change listener app.ts registers via addHandlerAsync, captured
   // so a test can fire it the way PowerPoint would.
   selectionListener: null as null | (() => unknown),
@@ -61,6 +64,12 @@ const host = vi.hoisted(() => ({
   insertFileError: null as null | Error,
   buildFileError: null as null | Error,
   slideCount: 1,
+  /**
+   * Number of slide-count reads that succeed before the rest throw — a host
+   * that answers, then wedges. `null` means it always answers.
+   */
+  slideCountThrowsAfter: null as null | number,
+  slideCountCalls: 0,
   reconcileOutcome: undefined as unknown,
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number }[],
@@ -86,6 +95,7 @@ vi.mock("../src/render/powerpoint", () => ({
   updateChartInSlide: vi.fn(
     async (_scene: unknown, target: unknown, opts: { tagData?: string; pictureBase64?: string }) => {
       host.calls.updateChart.push({ target, opts });
+      if (host.updateGate) await host.updateGate;
       // Models the live-canvas stall: the in-place redraw refuses, a picture
       // update (which draws one shape) does not.
       if (host.updateChartThrows && !opts.pictureBase64) throw new Error("did not respond while drawing shapes 1-10");
@@ -151,7 +161,14 @@ vi.mock("../src/render/powerpoint", () => ({
   reconcileDeck: vi.fn(async () => host.reconcileOutcome),
   applyReconcilePlan: vi.fn(async () => host.reconcileOutcome),
   snapshotAddedSlides: vi.fn(async () => []),
-  slideCount: vi.fn(async () => host.slideCount),
+  readAddedSlides: vi.fn(async () => ({ snapshots: [], unread: 0 })),
+  slideCount: vi.fn(async () => {
+    host.slideCountCalls++;
+    if (host.slideCountThrowsAfter !== null && host.slideCountCalls > host.slideCountThrowsAfter) {
+      throw new Error("host would not report the slide count");
+    }
+    return host.slideCount;
+  }),
 }));
 
 // The deck builder is a real pptxgenjs run; the pane's own tests care about
@@ -194,6 +211,9 @@ async function bootHostPane() {
   host.demoReconcile = undefined;
   host.swapOutcome = "failed";
   host.autoPicture = false;
+  host.updateGate = null;
+  host.slideCountThrowsAfter = null;
+  host.slideCountCalls = 0;
   host.insertFileLands = null;
   host.insertFileError = null;
   host.buildFileError = null;
@@ -774,6 +794,48 @@ describe("updating a chart the live canvas will not redraw", () => {
     await settle();
   }
 
+  it("does not start a second write to the same chart while one is in flight", async () => {
+    // The auto-update timer calls doInsert DIRECTLY, so it never sees the
+    // disabled buttons a click would. One resilient update can legitimately
+    // take tens of seconds — a 45s stall, then a slide swap, then a bounded
+    // raster — and a user editing through that could start a second update
+    // against the SAME stale target. Whichever finished last won; if that was
+    // the one started from the already-superseded target, the pane reported
+    // "that chart is no longer on the slide" about a chart just written fine.
+    vi.useFakeTimers();
+    try {
+      host.loadSelectionResult = {
+        configJson: chartJson([1, 2, 3]),
+        target: { slideId: "s1", shapeId: "shape-9", left: 10, top: 20 },
+      };
+      host.updateResult = { slideId: "s1", shapeId: "shape-10", left: 10, top: 20 };
+      $("load-selection").click();
+      await vi.advanceTimersByTimeAsync(10);
+      ($("auto-update") as HTMLInputElement).checked = true;
+
+      // Hold the first update open, then let the debounce fire underneath it.
+      let release!: () => void;
+      host.updateGate = new Promise<void>((r) => (release = r));
+      $("insert").click();
+      await vi.advanceTimersByTimeAsync(10);
+      const duringFirst = host.calls.updateChart.length;
+      // Two edits land while the first write is still open.
+      ($("chart-title") as HTMLInputElement).value = "edited";
+      $("chart-title").dispatchEvent(new Event("input", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(3000);
+      // Nothing new was issued — the timer re-armed instead of racing.
+      expect(host.calls.updateChart).toHaveLength(duringFirst);
+      release();
+      host.updateGate = null;
+      await vi.advanceTimersByTimeAsync(3000);
+      // …and once the first finished, the queued edit did go out.
+      expect(host.calls.updateChart.length).toBeGreaterThan(duringFirst);
+    } finally {
+      host.updateGate = null;
+      vi.useRealTimers();
+    }
+  });
+
   it("redraws with the slide deselected, at the off-screen batch size", async () => {
     // The whole point: a redraw is the add-in's worst case on the web, and it
     // is only bad because the slide is on screen. Looking away is free.
@@ -945,6 +1007,21 @@ describe("demo-insert one-shot deck insert", () => {
     $("demo-insert").click();
     await settle();
     expect(($("demo-log") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not redraw the whole deck when it could not measure what landed", async () => {
+    // The insert throws, and the rescue count read fails WITH it — the same
+    // wedged host, milliseconds apart. Treating that as "nothing landed" sent
+    // the shape renderer off to draw all 38 slides a second time, on top of
+    // however many did arrive. When it cannot tell, it must not guess.
+    host.canInsertFile = true;
+    host.insertFileError = new Error("host refused the deck");
+    host.slideCountThrowsAfter = 1; // the opening read answers; the rescue does not
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.demoRuns).toBe(0); // the deck was NOT drawn again
+    expect($("host-note").textContent).toMatch(/twice/i);
   });
 
   it("appends the generated deck instead of letting the host front it", async () => {
