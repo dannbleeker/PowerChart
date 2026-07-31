@@ -50,6 +50,8 @@ const host = vi.hoisted(() => ({
   /** Whether the host advertises insertSlidesFromBase64 — off by default. */
   canInsertFile: false,
   slideHoldsOnlyChart: false,
+  /** Whether the renderer says this chart is too dense to draw as shapes. */
+  autoPicture: false,
   updateChartThrows: false,
   demoReconcile: undefined as unknown,
   /** What `replaceSlideWithDeck` answers: "failed" | "swapped" | "duplicated". */
@@ -127,7 +129,7 @@ vi.mock("../src/render/powerpoint", () => ({
   // exercising the shape-by-shape renderer they were written for.
   canInsertSlidesFromBase64: vi.fn(() => host.canInsertFile),
   traceEnvironment: vi.fn(),
-  wantsAutoPicture: vi.fn(() => false),
+  wantsAutoPicture: vi.fn(() => host.autoPicture),
   // Selection juggling around an in-place redraw. The fake host has no view,
   // so it just runs the body — with `deselected` false, which is the honest
   // answer for a host that cannot move the selection.
@@ -191,6 +193,7 @@ async function bootHostPane() {
   host.updateChartThrows = false;
   host.demoReconcile = undefined;
   host.swapOutcome = "failed";
+  host.autoPicture = false;
   host.insertFileLands = null;
   host.insertFileError = null;
   host.buildFileError = null;
@@ -804,6 +807,26 @@ describe("updating a chart the live canvas will not redraw", () => {
     expect($("host-note").textContent).toMatch(/two slides/i);
   });
 
+  it("gives up on a canvas that never answers instead of hanging the pane", async () => {
+    // jsdom never fires `img.onload`, which is exactly the failure being
+    // guarded: a wedged image decode. Unbounded, the await never settles —
+    // the button stays disabled, no error, no timeout, nothing to do but
+    // reload the pane. Same Scale awaits one of these PER CHART, so one
+    // wedged decode froze the whole deck-wide operation.
+    vi.useFakeTimers();
+    try {
+      host.autoPicture = true; // the too-dense branch, which rasterizes
+      $("insert").click();
+      await vi.advanceTimersByTimeAsync(30_000);
+      // The action finished: the chart went in as shapes, and the pane says why.
+      expect(($("insert") as HTMLButtonElement).disabled).toBe(false);
+      expect(host.calls.insertScene).toHaveLength(1);
+      expect($("host-note").textContent).toMatch(/could not be turned into a picture/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("will not swap a slide that holds anything besides the chart", async () => {
     // The replacement is a NEW slide: notes, transitions and any other shape
     // on the old one do not come with it. So it is only ever offered where
@@ -889,6 +912,39 @@ describe("demo-insert one-shot deck insert", () => {
     expect(host.calls.insertFile).toHaveLength(1);
     expect(host.demoRuns).toBe(0);
     expect($("host-note").textContent).toMatch(/host took 3 of/i);
+  });
+
+  it("leaves a downloadable run log behind — including when the run went badly", async () => {
+    // The whole point of the log is diagnosing real host failures after the
+    // fact, and the fast path is what a real run TAKES: the checkbox ships
+    // checked and every current host advertises insertSlidesFromBase64. Yet
+    // this path returned before `lastRunLog` was ever set, so the button that
+    // downloads it stayed disabled — success or failure. The failing run is
+    // exactly the one worth having a file for.
+    host.canInsertFile = true;
+    host.insertFileLands = 3; // a partial insert: the case most worth logging
+    $("demo-insert").click();
+    await settle();
+    expect($("host-note").textContent).toMatch(/host took 3 of/i);
+    expect(($("demo-log") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("does not offer an older run's log after a run that produced none", async () => {
+    // The button used to stay enabled from a previous run, handing out a file
+    // about a completely different insert with nothing on screen to say so.
+    host.canInsertFile = false;
+    $("demo-insert").click();
+    await settle();
+    expect(($("demo-log") as HTMLButtonElement).disabled).toBe(false); // shape path logs
+    // Now a run that produces no log of its own: the deck build fails, and the
+    // shape path it falls back to throws on its very first call.
+    host.canInsertFile = true;
+    host.buildFileError = new Error("pptxgenjs blew up");
+    host.demoRuns = 0; // the failure indices below count from this run
+    host.demoDeckPageFailures = new Set([1]);
+    $("demo-insert").click();
+    await settle();
+    expect(($("demo-log") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("appends the generated deck instead of letting the host front it", async () => {

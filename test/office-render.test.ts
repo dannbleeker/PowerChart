@@ -17,12 +17,17 @@ import {
   READBACK_PAGE,
   wantsAutoPicture,
   DEMO_SLOT_TAG,
+  applyReconcilePlan,
+  lastLateSyncOwner,
+  lastLateSyncSeq,
+  waitForLateSync,
   reconcileDeck,
   snapshotAddedSlides,
   updateChartInSlide,
   updateChartsInSlides,
 } from "../src/render/powerpoint";
 import { setTracing, traceLog } from "../src/core/trace";
+import { planReconcile } from "../src/core/reconcile";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import { buildAgendaScene } from "../src/core/agenda";
@@ -2721,6 +2726,31 @@ describe("reading a demo deck back and repairing it", () => {
     expect(group?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
   });
 
+  it("refuses to delete a slide that is no longer the one it profiled", async () => {
+    // A plan is a list of POSITIONS, decided from a readback taken several
+    // round-trips ago. Nothing locks the deck in between: the pane leaves most
+    // of its buttons live during a run, and PowerPoint's own UI is always
+    // there. Deleting position 1 because position 1 used to be a duplicate is
+    // how a repair pass destroys whatever occupies it now.
+    const deck = [
+      demoSlide("keep", { slot: { i: 0, title: "Line" }, shapes: 3 }),
+      demoSlide("theirs", { shapes: 9 }), // NOT what the snapshot describes
+    ];
+    installHost(deck);
+    // What the pass believed the deck held when it decided to delete index 1.
+    const snapshots = [
+      { index: 0, slot: 0, title: "Line", run: null, shapes: 3, stamped: false, tagged: false },
+      { index: 1, slot: 0, title: "Line", run: null, shapes: 3, stamped: false, tagged: false },
+    ];
+    const plan = planReconcile(snapshots, [expect3(0, "Line", false)]);
+    expect(plan.actions.filter((a) => a.kind === "delete").map((a) => a.index)).toEqual([1]);
+    const outcome = await applyReconcilePlan(plan, () => undefined, { left: 0, top: 0 }, snapshots);
+    expect(outcome.applied.deleted).toBe(0);
+    expect(outcome.refused).toBe(1);
+    // Both slides still there — the stranger above all.
+    expect(deck.map((s) => s.id)).toEqual(["keep", "theirs"]);
+  });
+
   it("pulls the banner off a chart that is in fact complete", async () => {
     const deck = [demoSlide("agenda", { slot: { i: 0, title: "Agenda" }, shapes: 3, stamped: true })];
     installHost(deck);
@@ -2849,6 +2879,77 @@ describe("reading a demo deck back and repairing it", () => {
     // And the picture carries the config tag, so the chart is still editable.
     const last = deck[deck.length - 1].created.filter((s) => !s.deleted);
     expect(last.some((s) => s.imageBase64 === "iVBORw0KGgo=")).toBe(true);
+  }, 20_000);
+
+  it("does not degrade a healthy run because somebody ELSE's stalled call answered", async () => {
+    // The degrade signal was a global counter with no owner, so ANY abandoned
+    // promise settling during a run bumped it. A chart the user edited before
+    // the run started, whose stalled sync happened to answer during item 0,
+    // degraded a perfectly healthy deck to rasters from item 1 — and reported
+    // "the host answered after we gave up waiting" about an operation the run
+    // never made. Ownership is captured when a call is ISSUED, which is the
+    // only moment that distinguishes the two.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const realPowerPoint = (globalThis as unknown as { PowerPoint: Record<string, unknown> }).PowerPoint;
+    _setBatchTimeoutForTest(5);
+    let finishForeign!: () => void;
+    // A call issued OUTSIDE any run, on a host that never answers it.
+    vi.stubGlobal("PowerPoint", {
+      ...realPowerPoint,
+      run: async (cb: (ctx: unknown) => Promise<unknown>) =>
+        cb({
+          presentation: { slides: { getItemAt: () => slide }, getSelectedSlides: () => ({ getItemAt: () => slide }) },
+          sync: () => new Promise<void>((res) => (finishForeign = res)),
+        }),
+    });
+    await expect(insertSceneIntoSlide(buildChart(tinyChart()), {})).rejects.toThrow(/did not respond/);
+    const seqBefore = lastLateSyncSeq;
+    // Back to a healthy host for the run itself.
+    installHost([makeSlide("s2")]);
+    _setBatchTimeoutForTest(45_000);
+    let released = false;
+    const report = await insertDemoDeck(
+      Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(tinyChart()), title: `C${i}`, tagData: `{"i":${i}}` })),
+      () => {
+        // Mid-run, exactly as it happened: the foreign call finally answers.
+        if (!released) {
+          released = true;
+          finishForeign();
+        }
+      },
+      { pictureFor: async () => "iVBORw0KGgo=", shapeBudget: 10_000, runId: "the-run" },
+    );
+    // Non-vacuity: the foreign call really did answer late, during the run.
+    expect(lastLateSyncSeq).toBeGreaterThan(seqBefore);
+    expect(lastLateSyncOwner).toBeNull();
+    // And the run, which never stalled, drew shapes throughout.
+    expect(report.degradeReason).toBeUndefined();
+    expect(report.degradedAt).toBeUndefined();
+  }, 20_000);
+
+  it("attributes a stall to the run that issued it", async () => {
+    // The other half: ownership must not cost the signal it exists to sharpen.
+    // A call THIS run made, answering after it gave up, is exactly the
+    // host-drowning evidence the degrade path was built for — and it must
+    // still be recognised as the run's own.
+    installHost([makeSlide("s1")]);
+    _setBatchTimeoutForTest(5);
+    try {
+      // Stall whatever sync the run reaches next — which one is wrapped in
+      // withTimeout is an implementation detail, and pinning an index here
+      // would silently stop testing anything the day it moves.
+      for (let k = 1; k <= 40; k++) stallSyncOn.add(trips.syncs + k);
+      await insertDemoDeck([{ scene: buildChart(tinyChart()), title: "One", tagData: `{"i":0}` }], undefined, {
+        runId: "the-run",
+      }).catch(() => {});
+      stallSyncOn.clear();
+      await waitForLateSync(500);
+      expect(lastLateSyncOwner).toBe("the-run");
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncOn.clear();
+    }
   }, 20_000);
 
   it("keeps drawing shapes when the host is keeping up", async () => {

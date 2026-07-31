@@ -176,6 +176,25 @@ export let lastLateSync: string | null = null;
  */
 export let lastLateSyncSeq = 0;
 
+/**
+ * Which run ISSUED the call that reported the most recent late sync.
+ *
+ * A demo run degrades to pictures when a call it gave up on answers late — a
+ * good signal that the host is drowning. But the counter above is global and
+ * carries no owner, so ANY abandoned promise settling during a run bumped it:
+ * a chart the user edited before the run started, whose stalled sync happened
+ * to answer during item 0, degraded a perfectly healthy 37-item deck to
+ * rasters from item 1 and reported "the host answered after we gave up
+ * waiting" about an operation the run never made.
+ *
+ * Captured at ISSUE time, not at settle time — that is what distinguishes a
+ * call this run made from one that merely finished during it.
+ */
+export let lastLateSyncOwner: string | null = null;
+
+/** The run currently issuing host calls, or null outside a demo run. */
+let activeRun: string | null = null;
+
 let lateSubscriber: ((msg: string) => void) | null = null;
 
 /** Be told when a call we already gave up on finally settles. */
@@ -228,9 +247,14 @@ export async function waitForLateSync(maxMs = 5_000): Promise<boolean> {
  */
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   const started = Date.now();
+  // Whose call this is — read now, while it is being issued. Reading it in
+  // `describe` instead would credit the run that happened to be running when
+  // the answer arrived, which is exactly the misattribution to avoid.
+  const owner = activeRun;
   const describe = (outcome: string): void => {
     lastLateSync = `${what}: ${outcome} after ${Math.round((Date.now() - started) / 1000)}s`;
     trace("host", "a call we gave up on finally answered", { what, outcome, afterMs: Date.now() - started });
+    lastLateSyncOwner = owner;
     lastLateSyncSeq += 1;
     lateSubscriber?.(lastLateSync);
   };
@@ -1286,60 +1310,66 @@ async function addAndRenderItem(
   return { created, grouped };
 }
 
+/** One slide a demo run should produce. */
+export interface DemoItem {
+  scene: Scene;
+  tagData?: string;
+  title?: string;
+  /**
+   * Skip the DEMO_SHAPE_BUDGET too-dense check for this item. The budget
+   * exists to bail on charts whose wedge/polygon flood times out the web
+   * host; text-only scenes (title, contents, results) are much cheaper per
+   * shape and should always be attempted, even when the row count pushes
+   * them past 90. Without this, the run's own results slide is the first
+   * casualty of a failure-heavy run — it's over budget precisely BECAUSE
+   * there were failures to record.
+   */
+  bypassBudget?: boolean;
+}
+
+/** How a demo run should behave when the host starts struggling. */
+export interface DemoRunOptions {
+  /**
+   * Read the deck back when the run finishes and repair what the host got
+   * wrong — see `reconcileDeck`. Opt-in, because the results-slide inserts
+   * at the end of a run are themselves `insertDemoDeck` calls and must not
+   * each trigger a deck-wide sweep.
+   */
+  reconcile?: boolean;
+  /**
+   * A picture of item `i`, for when the run gives up on drawing shapes.
+   *
+   * Rasterizing needs a canvas, which lives in the pane, not here — so the
+   * caller supplies it and this module decides WHEN to ask. Omit it and the
+   * run never degrades; it just draws shapes until it cannot.
+   */
+  pictureFor?: (index: number) => Promise<string | undefined>;
+  /**
+   * Shapes this run may draw before it stops drawing them.
+   *
+   * The number exists because PowerPoint on the web has no resource limits
+   * at all: Microsoft's documented ceilings (CPU, memory, four-crashes,
+   * five-seconds-unresponsive) are scoped to Windows and Mac and explicitly
+   * NOT to a browser, so nothing throttles a runaway add-in there — the tab
+   * simply dies, taking the user's session with it. Twice now.
+   *
+   * Every 12-item run in this project's history (~400 shapes) survived;
+   * every 37-item one (~1850) crashed the client. There is no published
+   * number to look up, so this is our own, measured with margin — the same
+   * basis as SHAPES_PER_SYNC.
+   */
+  shapeBudget?: number;
+  /**
+   * This run's identity, written into every slot tag. Defaults to a fresh
+   * one; supplied only by tests that need a predictable tag.
+   */
+  runId?: string;
+}
+
 export async function insertDemoDeck(
-  items: {
-    scene: Scene;
-    tagData?: string;
-    title?: string;
-    /**
-     * Skip the DEMO_SHAPE_BUDGET too-dense check for this item. The budget
-     * exists to bail on charts whose wedge/polygon flood times out the web
-     * host; text-only scenes (title, contents, results) are much cheaper per
-     * shape and should always be attempted, even when the row count pushes
-     * them past 90. Without this, the run's own results slide is the first
-     * casualty of a failure-heavy run — it's over budget precisely BECAUSE
-     * there were failures to record.
-     */
-    bypassBudget?: boolean;
-  }[],
+  items: DemoItem[],
   onProgress?: (done: number, total: number) => void,
-  runOpts: {
-    /**
-     * Read the deck back when the run finishes and repair what the host got
-     * wrong — see `reconcileDeck`. Opt-in, because the results-slide inserts
-     * at the end of a run are themselves `insertDemoDeck` calls and must not
-     * each trigger a deck-wide sweep.
-     */
-    reconcile?: boolean;
-    /**
-     * A picture of item `i`, for when the run gives up on drawing shapes.
-     *
-     * Rasterizing needs a canvas, which lives in the pane, not here — so the
-     * caller supplies it and this module decides WHEN to ask. Omit it and the
-     * run never degrades; it just draws shapes until it cannot.
-     */
-    pictureFor?: (index: number) => Promise<string | undefined>;
-    /**
-     * Shapes this run may draw before it stops drawing them.
-     *
-     * The number exists because PowerPoint on the web has no resource limits
-     * at all: Microsoft's documented ceilings (CPU, memory, four-crashes,
-     * five-seconds-unresponsive) are scoped to Windows and Mac and explicitly
-     * NOT to a browser, so nothing throttles a runaway add-in there — the tab
-     * simply dies, taking the user's session with it. Twice now.
-     *
-     * Every 12-item run in this project's history (~400 shapes) survived;
-     * every 37-item one (~1850) crashed the client. There is no published
-     * number to look up, so this is our own, measured with margin — the same
-     * basis as SHAPES_PER_SYNC.
-     */
-    shapeBudget?: number;
-    /**
-     * This run's identity, written into every slot tag. Defaults to a fresh
-     * one; supplied only by tests that need a predictable tag.
-     */
-    runId?: string;
-  } = {},
+  runOpts: DemoRunOptions = {},
 ): Promise<DemoReport> {
   // Reset the module-scope lost-adds counter at the start of every run, so
   // `addsLostAtCommit` below reports only THIS run's confirmed losses, not a
@@ -1349,6 +1379,26 @@ export async function insertDemoDeck(
   // the end can tell this run's slides from an earlier run's sitting in the
   // same deck — see `SlideSnapshot.run`.
   const runId = runOpts.runId ?? newRunId();
+  // Own the host calls this run makes, so a late answer from somebody else's
+  // stalled call cannot be read as this host drowning — see lastLateSyncOwner.
+  // Restored rather than nulled: nothing else sets it today, but a run that
+  // stomped an outer owner would recreate the very bug this fixes.
+  const outerRun = activeRun;
+  activeRun = runId;
+  try {
+    return await runDemoDeck(items, onProgress, runOpts, runId);
+  } finally {
+    activeRun = outerRun;
+  }
+}
+
+/** The run itself. Split out only so `activeRun` has a scope to be restored in. */
+async function runDemoDeck(
+  items: DemoItem[],
+  onProgress: ((done: number, total: number) => void) | undefined,
+  runOpts: DemoRunOptions,
+  runId: string,
+): Promise<DemoReport> {
   const results: DemoResult[] = [];
   let lastError: unknown;
   const layout: LayoutRef = { resolved: false };
@@ -1420,7 +1470,8 @@ export async function insertDemoDeck(
           ? `an item took ${Math.round(ms / 1000)}s`
           : lastAddsLost > lostAdsSeen
             ? "the host lost a slide"
-            : lastLateSyncSeq !== lateSeqBefore
+            : // …and only for a call THIS run issued. See lastLateSyncOwner.
+              lastLateSyncSeq !== lateSeqBefore && lastLateSyncOwner === runId
               ? "the host answered after we gave up waiting"
               : shapesDrawn > (runOpts.shapeBudget ?? Infinity)
                 ? `${shapesDrawn} shapes drawn`
@@ -1863,11 +1914,42 @@ async function deleteStamp(slideIndex: number): Promise<boolean> {
   }
 }
 
-/** Delete one slide by index, in its own settled context. */
-async function deleteSlide(index: number): Promise<boolean> {
+/**
+ * Delete one slide by index, in its own settled context — after checking it is
+ * still the slide the plan profiled.
+ *
+ * A plan is a list of positions, decided from a readback taken some round-trips
+ * ago. Positions are not identities: the pane does not lock the deck while a
+ * repair runs, and nothing stops the user reordering or deleting slides in
+ * PowerPoint's own UI between two of the pass's awaited calls. Every other
+ * repair re-checks before it acts (`deleteStamp` matches the shape's name);
+ * this one, the only irreversible one, took the index on faith.
+ *
+ * So re-read the slot tag and the shape count and compare them with what was
+ * profiled. A mismatch refuses the delete — reported as a step the host would
+ * not do, which is exactly what it is from the user's side.
+ */
+async function deleteSlide(index: number, expect?: SlideSnapshot): Promise<boolean> {
   try {
     return await PowerPoint.run(async (context) => {
-      (context.presentation.slides.getItemAt(index) as unknown as { delete(): void }).delete();
+      const slide = context.presentation.slides.getItemAt(index);
+      if (expect) {
+        const shapes = slide.shapes;
+        shapes.load("items/name");
+        const tag = supports("1.3")
+          ? ((
+              slide as unknown as { tags: { getItemOrNullObject(k: string): { isNullObject: boolean; value: string } } }
+            ).tags.getItemOrNullObject(DEMO_SLOT_TAG) ?? null)
+          : null;
+        await context.sync();
+        const slot = tag && !tag.isNullObject ? parseSlotTag(tag.value) : null;
+        // The identity that made this slide deletable in the first place.
+        if ((slot?.i ?? null) !== expect.slot || (slot?.run ?? null) !== (expect.run ?? null)) return false;
+        // …and that it still holds what it held. A slide that gained shapes
+        // since the readback is one somebody has been working on.
+        if (shapes.items.length !== expect.shapes) return false;
+      }
+      (slide as unknown as { delete(): void }).delete();
       await context.sync();
       return true;
     });
@@ -1914,7 +1996,17 @@ export async function applyReconcilePlan(
       if (await rescueGroupAndTag(action.index, tagFor(action.slot), origin)) applied.regrouped++;
       else refused++;
     } else {
-      if (await deleteSlide(action.index)) applied.deleted++;
+      // Deletes are checked against the snapshot that authorised them. The
+      // snapshots are optional, so a caller that passes none still gets the
+      // old unchecked behaviour rather than a repair that silently does
+      // nothing.
+      if (
+        await deleteSlide(
+          action.index,
+          snapshots.find((s) => s.index === action.index),
+        )
+      )
+        applied.deleted++;
       else refused++;
     }
   }
