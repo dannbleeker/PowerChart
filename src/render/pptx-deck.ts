@@ -53,7 +53,7 @@ export interface DeckItem {
  * first-load bundle — it is ~1 MB of library that only a deck insert needs,
  * and the pane is fetched over the network every time PowerPoint opens it.
  */
-export async function buildDeckBase64(items: DeckItem[]): Promise<string> {
+export async function buildDeckBase64(items: DeckItem[]): Promise<{ base64: string; shapesPerSlide: number[] }> {
   const { default: PptxGen } = await import("pptxgenjs");
   const pres = new PptxGen();
   pres.defineLayout({ name: "WIDE", width: DECK_SIZE.w, height: DECK_SIZE.h });

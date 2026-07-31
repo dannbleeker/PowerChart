@@ -13,7 +13,6 @@ import {
   applyReconcilePlan,
   canInsertSlidesFromBase64,
   insertSlidesFromPptx,
-  reconcileDeck,
   slideCount,
   snapshotAddedSlides,
   listChartsInDeck,
@@ -1864,6 +1863,33 @@ function demoExpectation(snapshots: SlideSnapshot[]): {
  * in there was put there by a demo run, so an empty slide inside it is that
  * run's litter. Slides outside the span are never read and never touched.
  */
+/**
+ * Verify and repair the demo slides wherever they are in the deck.
+ *
+ * By slot tag, never by position. The deck's own layout is the host's
+ * business: `insertSlidesFromBase64` puts slides at the FRONT unless told
+ * otherwise, and a run that assumed "the slides we just added are at the end"
+ * read one slide short at the front and swept in the user's own title slide at
+ * the back. The span between the first and last tagged slide is ours; nothing
+ * outside it is read, let alone touched.
+ */
+async function repairDeckSpan(
+  expected: ExpectedItem[],
+  tagFor: (slot: number) => string | undefined,
+): Promise<ReconcileOutcome | null> {
+  const count = await slideCount();
+  const snapshots = await snapshotAddedSlides(0, count);
+  const tagged = snapshots.filter((s) => s.slot !== null);
+  if (!tagged.length) return null;
+  const first = Math.min(...tagged.map((s) => s.index));
+  const last = Math.max(...tagged.map((s) => s.index));
+  const inSpan = snapshots.filter((s) => s.index >= first && s.index <= last);
+  const plan = planReconcile(inSpan, expected, { dropOrphanBlanks: true });
+  if (!plan.actions.length)
+    return { snapshots: inSpan, plan, applied: { unstamped: 0, regrouped: 0, deleted: 0 }, refused: 0 };
+  return applyReconcilePlan(plan, tagFor, { left: 60, top: 90 }, inSpan);
+}
+
 async function doRepairDeck() {
   const count = await slideCount();
   const snapshots = await snapshotAddedSlides(0, count);
@@ -1908,10 +1934,10 @@ async function insertDemoDeckAsFile(
 ): Promise<{ text: string; status: "ok" | "err" } | null> {
   const t0 = Date.now();
   const before = await slideCount();
-  let base64: string;
+  let built: { base64: string; shapesPerSlide: number[] };
   try {
     note("Building the deck…", "busy");
-    base64 = await buildDeckBase64(
+    built = await buildDeckBase64(
       items.map((it, i) => ({ scene: it.scene, title: it.title, configJson: it.configJson, slot: i })),
     );
   } catch (err) {
@@ -1922,7 +1948,7 @@ async function insertDemoDeckAsFile(
   try {
     note("Handing the deck to PowerPoint…", "busy");
     setProgress("busy");
-    added = await insertSlidesFromPptx(base64, items.length);
+    added = await insertSlidesFromPptx(built.base64, items.length);
   } catch (err) {
     // A throw is not proof that nothing landed — the same lesson the
     // shape path learned the hard way. Measure before deciding.
@@ -1937,14 +1963,18 @@ async function insertDemoDeckAsFile(
   const expected: ExpectedItem[] = items.map((it, i) => ({
     slot: i,
     title: it.title,
-    shapes: estimateOfficeShapes(it.scene),
+    // What the FILE renderer drew, not what the Office.js one would have.
+    // They disagree by design: a pie is one custGeom wedge here and a
+    // sixteen-triangle fan there, so `estimateOfficeShapes` measured five
+    // perfect charts as wreckage on the first real run.
+    shapes: built.shapesPerSlide[i] ?? estimateOfficeShapes(it.scene),
     chart: !!it.configJson,
   }));
   // Verify against the deck rather than trusting the count: the file carried
   // its own grouping and tags, so anything missing here is the host's doing.
-  const outcome = await reconcileDeck(expected, { before, after: before + added }, (slot) => items[slot]?.configJson, {
-    dropOrphanBlanks: true,
-  }).catch(() => undefined);
+  // Located by slot tag, not by position — where the host puts the slides is
+  // its business, and on the first real run it put them at the FRONT.
+  const outcome = await repairDeckSpan(expected, (slot) => items[slot]?.configJson).catch(() => undefined);
 
   let text = outcome
     ? `Inserted as one file in ${secs}s${smoke ? " (smoke subset)" : ""} — ${describeReconcile(outcome.plan)}.`

@@ -112,11 +112,15 @@ describe("building a deck in-process", () => {
 
   it("produces a .pptx whose charts are grouped, tagged and slot-stamped", async () => {
     const configJson = JSON.stringify(cfg("Line"));
-    const base64 = await buildDeckBase64([
+    const built = await buildDeckBase64([
       { scene: buildChart(cfg("Line")), title: "Line", configJson, slot: 3 },
       { scene: buildChart(cfg("Second")), title: "Second", slot: 4 },
     ]);
-    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const zip = await JSZip.loadAsync(built.base64, { base64: true });
+    // The count the caller verifies against has to be what THIS renderer drew,
+    // not what the Office.js one would have.
+    expect(built.shapesPerSlide).toHaveLength(2);
+    expect(built.shapesPerSlide[0]).toBeGreaterThan(1);
 
     const slides = Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));
     expect(slides).toHaveLength(2);
@@ -157,8 +161,8 @@ describe("building a deck in-process", () => {
   }, 30_000);
 
   it("leaves a chart without config ungrouped-but-slotted rather than inventing a tag", async () => {
-    const base64 = await buildDeckBase64([{ scene: buildChart(cfg("Plain")), title: "Plain", slot: 0 }]);
-    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const built = await buildDeckBase64([{ scene: buildChart(cfg("Plain")), title: "Plain", slot: 0 }]);
+    const zip = await JSZip.loadAsync(built.base64, { base64: true });
     const slide = await zip.file("ppt/slides/slide1.xml")!.async("string");
     expect(slide).toContain("<p:grpSp>");
     // The group carries no tag reference — there was no config to write.

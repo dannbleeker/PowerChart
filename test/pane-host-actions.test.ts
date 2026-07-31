@@ -128,9 +128,11 @@ vi.mock("../src/render/powerpoint", () => ({
 // The deck builder is a real pptxgenjs run; the pane's own tests care about
 // which path was taken, not about the bytes (test/pptx-deck.test.ts covers those).
 vi.mock("../src/render/pptx-deck", () => ({
-  buildDeckBase64: vi.fn(async () => {
+  buildDeckBase64: vi.fn(async (items: unknown[]) => {
     if (host.buildFileError) throw host.buildFileError;
-    return "UEsDBBQA-fake-base64";
+    // The real builder reports what it actually drew per slide — the pane
+    // verifies against THAT, not against the Office.js shape estimate.
+    return { base64: "UEsDBBQA-fake-base64", shapesPerSlide: items.map(() => 7) };
   }),
 }));
 
@@ -731,6 +733,17 @@ describe("demo-insert one-shot deck insert", () => {
     expect(host.calls.insertFile).toHaveLength(1);
     expect(host.demoRuns).toBe(0);
     expect($("host-note").textContent).toMatch(/host took 3 of/i);
+  });
+
+  it("appends the generated deck instead of letting the host front it", async () => {
+    // The first real run put 37 generated slides AHEAD of the user's own title
+    // slide, because insertSlidesFromBase64 inserts at the front unless it is
+    // given a target. The pane must ask for the tail.
+    host.canInsertFile = true;
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.calls.insertFile[0].expected).toBeGreaterThan(0);
   });
 
   it("respects the fast-path opt-out", async () => {

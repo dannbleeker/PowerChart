@@ -2127,12 +2127,25 @@ export async function insertSlidesFromPptx(
   await withTimeout(
     PowerPoint.run(async (context) => {
       const presentation = context.presentation as unknown as {
-        insertSlidesFromBase64(b64: string, opts?: { formatting?: string }): void;
+        insertSlidesFromBase64(b64: string, opts?: { formatting?: string; targetSlideId?: string }): void;
       };
       if (typeof presentation.insertSlidesFromBase64 !== "function") {
         throw new Error("this host has no insertSlidesFromBase64");
       }
-      presentation.insertSlidesFromBase64(base64, { formatting });
+      // APPEND. Without a target the host inserts at the FRONT of the deck,
+      // which is not where a demo deck belongs and quietly breaks anything
+      // that reasons about "the slides this run added" by position — the first
+      // real run put 37 generated slides ahead of the user's own title slide.
+      let targetSlideId: string | undefined;
+      try {
+        const last = context.presentation.slides.getItemAt(before - 1);
+        last.load("id");
+        await context.sync();
+        targetSlideId = last.id;
+      } catch {
+        /* empty deck, or a host that will not name the slide — front it is */
+      }
+      presentation.insertSlidesFromBase64(base64, targetSlideId ? { formatting, targetSlideId } : { formatting });
       await context.sync();
     }),
     DECK_INSERT_TIMEOUT_MS(expectedSlides),
