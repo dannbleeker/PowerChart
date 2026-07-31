@@ -770,6 +770,19 @@ describe("demo-insert one-shot deck insert", () => {
     expect($("host-note").textContent).toMatch(/one file/i);
   });
 
+  it("says WHY when it could not verify, instead of quietly reporting a raw count", async () => {
+    // The smoke run reported "Inserted 12 of 12 slides as one file" — the
+    // fallback wording — because the verification pass returned null and the
+    // pane shrugged. Three different failures produced that same null and the
+    // message named none of them.
+    host.canInsertFile = true;
+    $("demo-insert").click();
+    await settle();
+    // The fake reads no slot tags, so the pass cannot identify a single slide.
+    expect($("host-note").textContent).toMatch(/not verified:/i);
+    expect($("host-note").textContent).toMatch(/slot tag|no slides/i);
+  });
+
   it("falls back to shapes when the host has no insertSlidesFromBase64", async () => {
     host.canInsertFile = false;
     $("demo-insert").click();
