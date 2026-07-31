@@ -445,6 +445,27 @@ same chart are reported and left for you to judge.
 what the host did to each slide, and the repair pass's verdicts. Attach it to a
 bug report instead of retyping the summary line.
 
+### When PowerPoint won't redraw a chart
+
+Updating a chart in place is the heaviest thing the add-in does on the web: every
+shape is replaced, on the one slide guaranteed to be on screen — and the live
+canvas is where PowerPoint gives up first. If it stalls, the pane works down
+three fallbacks on its own, least disruptive first:
+
+1. **It looks away.** Another slide is selected so yours is off-screen, where the
+   host accepts four times as many shapes per round trip, and your selection is
+   put back afterwards. Nothing is lost.
+2. **It rebuilds the slide.** The chart is generated as a one-slide file and
+   swapped in — no drawing at all. Only when the slide holds *nothing but the
+   chart*, because the replacement is a new slide and does not carry the old
+   one's speaker notes or transitions. The pane tells you when this happens;
+   select the chart again to keep editing.
+3. **It draws a picture.** Never stalls, and the chart stays re-editable from the
+   pane (**Explode to native shapes** turns it back), but what is on the slide is
+   a raster.
+
+If all three fail you get PowerPoint's own message, not a substitute for it.
+
 ## Excel companion
 
 Sideload `manifest-excel.xml` in Excel, select a range, and **Generate**

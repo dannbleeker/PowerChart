@@ -49,6 +49,9 @@ const host = vi.hoisted(() => ({
   updateResult: undefined as undefined | { slideId: string; shapeId: string; left: number; top: number },
   /** Whether the host advertises insertSlidesFromBase64 — off by default. */
   canInsertFile: false,
+  slideHoldsOnlyChart: false,
+  updateChartThrows: false,
+  slideSwapWorks: false,
   /** How many slides the one-shot insert reports landing; null = all of them. */
   insertFileLands: null as null | number,
   insertFileError: null as null | Error,
@@ -57,9 +60,10 @@ const host = vi.hoisted(() => ({
   reconcileOutcome: undefined as unknown,
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number }[],
-    updateChart: [] as { target: unknown; opts: { tagData?: string } }[],
+    updateChart: [] as { target: unknown; opts: { tagData?: string; pictureBase64?: string } }[],
     updateCharts: [] as { scene: unknown; target: unknown; opts?: { tagData?: string } }[][],
     insertFile: [] as { b64: string; expected: number }[],
+    deselected: [] as string[][],
   },
 }));
 
@@ -75,10 +79,15 @@ vi.mock("../src/render/powerpoint", () => ({
     }
     host.calls.insertScene.push(opts);
   }),
-  updateChartInSlide: vi.fn(async (_scene: unknown, target: unknown, opts: { tagData?: string }) => {
-    host.calls.updateChart.push({ target, opts });
-    return host.updateResult;
-  }),
+  updateChartInSlide: vi.fn(
+    async (_scene: unknown, target: unknown, opts: { tagData?: string; pictureBase64?: string }) => {
+      host.calls.updateChart.push({ target, opts });
+      // Models the live-canvas stall: the in-place redraw refuses, a picture
+      // update (which draws one shape) does not.
+      if (host.updateChartThrows && !opts.pictureBase64) throw new Error("did not respond while drawing shapes 1-10");
+      return host.updateResult;
+    },
+  ),
   updateChartsInSlides: vi.fn(async (items: { scene: unknown; target: unknown; opts?: { tagData?: string } }[]) => {
     host.calls.updateCharts.push(items);
   }),
@@ -114,6 +123,16 @@ vi.mock("../src/render/powerpoint", () => ({
   // The one-shot deck path. Off by default so the existing cases keep
   // exercising the shape-by-shape renderer they were written for.
   canInsertSlidesFromBase64: vi.fn(() => host.canInsertFile),
+  // Selection juggling around an in-place redraw. The fake host has no view,
+  // so it just runs the body — with `deselected` false, which is the honest
+  // answer for a host that cannot move the selection.
+  withSlideDeselected: vi.fn(async (ids: string[], fn: (d: boolean) => Promise<unknown>) => {
+    host.calls.deselected.push(ids);
+    return fn(false);
+  }),
+  slideHoldsOnlyChart: vi.fn(async () => host.slideHoldsOnlyChart),
+  replaceSlideWithDeck: vi.fn(async () => host.slideSwapWorks),
+  OFFSCREEN_BATCH: 40,
   insertSlidesFromPptx: vi.fn(async (b64: string, expected: number) => {
     host.calls.insertFile.push({ b64, expected });
     if (host.insertFileError) throw host.insertFileError;
@@ -128,9 +147,11 @@ vi.mock("../src/render/powerpoint", () => ({
 // The deck builder is a real pptxgenjs run; the pane's own tests care about
 // which path was taken, not about the bytes (test/pptx-deck.test.ts covers those).
 vi.mock("../src/render/pptx-deck", () => ({
-  buildDeckBase64: vi.fn(async () => {
+  buildDeckBase64: vi.fn(async (items: unknown[]) => {
     if (host.buildFileError) throw host.buildFileError;
-    return "UEsDBBQA-fake-base64";
+    // The real builder reports what it actually drew per slide — the pane
+    // verifies against THAT, not against the Office.js shape estimate.
+    return { base64: "UEsDBBQA-fake-base64", shapesPerSlide: items.map(() => 7) };
   }),
 }));
 
@@ -158,12 +179,16 @@ async function bootHostPane() {
   host.demoDeckPageFailures = new Set();
   host.demoDeckStatusOverride = null;
   host.canInsertFile = false;
+  host.slideHoldsOnlyChart = false;
+  host.updateChartThrows = false;
+  host.slideSwapWorks = false;
   host.insertFileLands = null;
   host.insertFileError = null;
   host.buildFileError = null;
   host.slideCount = 1;
   host.reconcileOutcome = undefined;
   host.calls.insertFile.length = 0;
+  host.calls.deselected.length = 0;
   host.canPicture = true;
   host.updateResult = undefined;
   host.calls.insertScene = [];
@@ -679,6 +704,58 @@ describe("demo-insert results pages", () => {
   });
 });
 
+describe("updating a chart the live canvas will not redraw", () => {
+  beforeEach(bootHostPane);
+
+  /** Load a chart so Insert becomes Update, then push an edit. */
+  async function loadThenUpdate() {
+    host.loadSelectionResult = {
+      configJson: chartJson([1, 2, 3]),
+      target: { slideId: "s1", shapeId: "shape-9", left: 10, top: 20 },
+    };
+    $("load-selection").click();
+    await settle();
+    $("insert").click();
+    await settle();
+  }
+
+  it("redraws with the slide deselected, at the off-screen batch size", async () => {
+    // The whole point: a redraw is the add-in's worst case on the web, and it
+    // is only bad because the slide is on screen. Looking away is free.
+    await loadThenUpdate();
+    expect(host.calls.deselected).toEqual([["s1"]]);
+  });
+
+  it("swaps the slide when the redraw stalls and the slide holds only the chart", async () => {
+    host.updateChartThrows = true;
+    host.canInsertFile = true;
+    host.slideHoldsOnlyChart = true;
+    host.slideSwapWorks = true;
+    await loadThenUpdate();
+    expect(host.calls.insertFile).toHaveLength(0); // a slide swap, not a deck insert
+    expect($("host-note").textContent).toMatch(/rebuilt that slide/i);
+  });
+
+  it("will not swap a slide that holds anything besides the chart", async () => {
+    // The replacement is a NEW slide: notes, transitions and any other shape
+    // on the old one do not come with it. So it is only ever offered where
+    // there is demonstrably nothing else to lose.
+    host.updateChartThrows = true;
+    host.canInsertFile = true;
+    host.slideSwapWorks = true; // the swap WOULD work — the guard is the only thing stopping it
+    host.slideHoldsOnlyChart = false;
+    await loadThenUpdate();
+    expect($("host-note").textContent).not.toMatch(/rebuilt that slide/i);
+  });
+
+  // NOT COVERED HERE: the picture floor, and the "everything failed, rethrow
+  // the host's own words" path behind it. jsdom has no canvas, so
+  // `rasterizeScene` neither succeeds nor fails — it simply never settles,
+  // which is also why that call is bounded by a timeout in the pane. Faking
+  // timers to drive it broke ten unrelated tests in this file; a test that
+  // waits out a real 10s timeout is not worth 10s on every run.
+});
+
 describe("demo-insert one-shot deck insert", () => {
   beforeEach(bootHostPane);
 
@@ -731,6 +808,17 @@ describe("demo-insert one-shot deck insert", () => {
     expect(host.calls.insertFile).toHaveLength(1);
     expect(host.demoRuns).toBe(0);
     expect($("host-note").textContent).toMatch(/host took 3 of/i);
+  });
+
+  it("appends the generated deck instead of letting the host front it", async () => {
+    // The first real run put 37 generated slides AHEAD of the user's own title
+    // slide, because insertSlidesFromBase64 inserts at the front unless it is
+    // given a target. The pane must ask for the tail.
+    host.canInsertFile = true;
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.calls.insertFile[0].expected).toBeGreaterThan(0);
   });
 
   it("respects the fast-path opt-out", async () => {

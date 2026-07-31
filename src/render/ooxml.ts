@@ -226,12 +226,20 @@ export function canonicalSlideSize(presentationXml: string): string {
  * slides in the order they were added, which is the order the caller built
  * them in.
  */
-export async function injectGroupsAndTags(base64: string, dressing: SlideDressing[]): Promise<string> {
+export async function injectGroupsAndTags(
+  base64: string,
+  dressing: SlideDressing[],
+): Promise<{ base64: string; shapesPerSlide: number[] }> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(base64, { base64: true });
 
   let types = await readPart(zip, "[Content_Types].xml");
   let tagPartNo = 0;
+  // What each slide ACTUALLY holds. The caller cannot infer it: this renderer
+  // draws a pie as one custGeom wedge where the Office.js one draws a
+  // sixteen-triangle fan, so `estimateOfficeShapes` is the wrong yardstick
+  // here — measuring a perfect pie at 10 of 50 shapes and calling it wreckage.
+  const shapesPerSlide: number[] = [];
 
   for (let i = 0; i < dressing.length; i++) {
     const item = dressing[i];
@@ -254,6 +262,7 @@ export async function injectGroupsAndTags(base64: string, dressing: SlideDressin
       types = addContentTypeOverride(types, `/ppt/tags/tag${n}.xml`, TAGS_CONTENT_TYPE);
     }
 
+    shapesPerSlide.push(countSlideShapes(slide));
     if (item.group !== false) slide = groupSlideShapes(slide, groupRid);
 
     if (item.slot !== undefined) {
@@ -274,7 +283,15 @@ export async function injectGroupsAndTags(base64: string, dressing: SlideDressin
 
   zip.file("[Content_Types].xml", types);
   zip.file("ppt/presentation.xml", canonicalSlideSize(await readPart(zip, "ppt/presentation.xml")));
-  return zip.generateAsync({ type: "base64" });
+  return { base64: await zip.generateAsync({ type: "base64" }), shapesPerSlide };
+}
+
+/** Top-level shapes on a slide, before it is grouped. */
+export function countSlideShapes(slideXml: string): number {
+  const treeClose = slideXml.indexOf("</p:spTree>");
+  const headerEnd = slideXml.indexOf("</p:grpSpPr>");
+  if (treeClose < 0 || headerEnd < 0 || headerEnd > treeClose) return 0;
+  return topLevelElements(slideXml.slice(headerEnd + "</p:grpSpPr>".length, treeClose)).length;
 }
 
 /** Read a part, failing loudly when the generator's layout has moved. */
