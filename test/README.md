@@ -27,6 +27,10 @@ belongs with the thing it tests, not with the reason it was written.)
   `decoration-layout` (decoration clipping & anchoring), `value-extent`
   (cross-kind extent/auto-scale invariants), `geometry`, `color` (paint parsing
   & contrast ink), `collide` (label collision resolution), `good-chart*`.
+- **Repair planner** — `reconcile` (the rules), `reconcile-fuzz` (four thousand
+  generated decks against the invariants that cost a user their work: never
+  delete another run's slide, never delete every copy of an item, never act on
+  a slide that is not there).
 - **Renderers & app** — `office-render` (Office.js against the fake host),
   `web-host` (the same renderer against that host at its WORST — every
   misbehaviour a real PowerPoint on the web has shown us, on at once), `pptx-paint`

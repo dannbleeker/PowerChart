@@ -467,11 +467,19 @@ export function planReconcile(
     const blank = content === 0;
     // Never report the "could not measure" sentinel as a shape count.
     orphans.push({ index: s.index, shapes: Math.max(0, content), stamped: s.stamped, blank });
-    // A blank slide that carries somebody else's slot tag is an earlier run's,
+    // A blank slide that carries somebody else's identity is an earlier run's,
     // or a copy the user made. It is identified, and identified as NOT ours —
     // the one thing that must never be swept as our own litter. Only a slide
     // with no identity at all can be, and only inside our own span.
-    const somebodyElses = s.slot !== null;
+    //
+    // Identity is the slot tag OR the run token, not the slot alone. The two
+    // travel together in a well-formed tag, so this only parts company when
+    // one of them did not survive — a half-written tag, or one whose slot is
+    // not a number. That is exactly when the surviving half is the only thing
+    // saying whose slide this is, and reading only the slot threw it away and
+    // deleted the slide as our own litter.
+    const foreignRun = opts.run !== undefined && s.run != null && s.run !== opts.run;
+    const somebodyElses = s.slot !== null || foreignRun;
     if (blank && !somebodyElses && opts.dropOrphanBlanks) {
       actions.push({
         kind: "delete",
