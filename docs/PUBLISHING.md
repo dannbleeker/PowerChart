@@ -98,9 +98,41 @@ expect the first real-host run to surface issues the mocked tests can't):
 7. Excel: select a range → Generate → paste JSON into PowerPoint pane →
    Import → chart matches.
 
+8. **Run host self-test** (Testing section) — one click, five scenarios the
+   demo deck does not cover. Then **Download run log** and save the deck.
+
 Record anything broken as issues; fix per the lockstep rules. Real-host
 degradation paths that are *expected* (not bugs): radar fills are
 outline-only, pattern fills render solid.
+
+### The host self-test
+
+Five paths existed only as items on this list for a human to remember to try,
+which in practice meant five separate sessions. They are now one button:
+
+| scenario | what it proves |
+| --- | --- |
+| insert on top of an earlier run | the run token keeps two runs' slides apart, instead of one being deleted as the other's duplicate |
+| two slides claiming one slot | the repair pass drops one copy and keeps a working one — not both, not the wrong one |
+| edit a chart on the visible slide | the live-canvas redraw survives with the slide genuinely on screen |
+| same scale across the deck | a deck-wide rescale empties nothing |
+| explode a degraded picture | a picture keeps its config and can become native shapes again |
+
+Each verdict says what was observed, not just pass/fail, and a scenario that
+throws is recorded and the rest still run — a battery that stopped at the first
+error would spend a whole session to learn one thing. A scenario the host
+cannot run is reported as **skipped**, kept apart from a failure: "we did not
+check" and "we checked and it is broken" send a diagnosis in different
+directions.
+
+It leaves its slides in the deck on purpose — save the file and hand it to
+`npm run triage` with the log.
+
+**What it cannot cover.** Office.js has no way to select a *shape*, so the
+selection-driven entry points ("Edit selected chart", "Explode" as a user
+reaches them) cannot be scripted. The battery drives the machinery underneath
+them via `listChartsInDeck`. A scenario passing here can still be broken at the
+selection layer; a scenario failing here is broken for everyone.
 
 ### Reading the demo-deck self-check (post-#212–#216)
 

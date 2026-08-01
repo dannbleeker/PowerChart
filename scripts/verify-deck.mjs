@@ -99,6 +99,7 @@ export async function readDeckBytes(bytes) {
 
     let slot = null;
     let config = null;
+    let configRaw = null;
     let origin = false;
     const missingParts = [];
     for (const t of tagRefs) {
@@ -119,8 +120,9 @@ export async function readDeckBytes(bytes) {
       }
       const c = new RegExp(`name="${CONFIG_TAG}" val="([^"]*)"`).exec(tx);
       if (c) {
+        configRaw = unescapeAttr(c[1]);
         try {
-          config = JSON.parse(unescapeAttr(c[1]));
+          config = JSON.parse(configRaw);
         } catch {
           config = { malformed: true };
         }
@@ -133,16 +135,33 @@ export async function readDeckBytes(bytes) {
     // The chart object: a real group, or the single named shape a degraded
     // picture leaves behind. Both are "one object named PowerChart".
     const named = shapes.filter((e) => new RegExp(`name="${GROUP_NAME}"`).test(e));
+    // How many shapes are INSIDE the chart object. `shapes` above counts the
+    // slide's top-level children, where a 40-shape chart and a 1-shape
+    // degraded picture both read as 1 — which is the number a reader most
+    // often wants and the one this could not previously give.
+    const chartShapes = named.reduce((n, e) => {
+      const all = (e.match(/<p:(sp|pic|cxnSp|grpSp)[\s>]/g) ?? []).length;
+      // A group's own opening tag matches too; a degraded picture IS the one
+      // shape and has no container to discount.
+      return n + (e.startsWith("<p:grpSp") ? all - 1 : all);
+    }, 0);
     rows.push({
       index: i,
       slot: slot?.i ?? null,
       title: slot?.title ?? null,
       run: slot?.run ?? null,
       shapes: shapes.length,
+      chartShapes,
       groups: groups.length,
       chartObject: named.length > 0,
       picture: named.length > 0 && groups.length === 0,
       config: !!config,
+      // The tag's actual payload, for callers that need to reproduce the deck
+      // rather than audit it — the fake host in the test suite builds its
+      // slides from this, so it cannot decode a generated deck differently
+      // from the tool that checks one. Stripped from `--json`, which is a
+      // report and would otherwise carry a full ChartConfig per slide.
+      configJson: configRaw,
       configMalformed: config?.malformed === true,
       origin,
       stamped: xml.includes(NOT_COMPLETE),
@@ -235,7 +254,10 @@ if (!invokedDirectly) {
   }
   const faults = faultsIn(deck);
   if (flags.includes("--json")) {
-    console.log(JSON.stringify({ slides: deck.rows, faults }, null, 2));
+    // `configJson` is for programmatic callers, not for a report — a full
+    // ChartConfig per slide would bury everything else in the output.
+    const slides = deck.rows.map(({ configJson: _payload, ...row }) => row);
+    console.log(JSON.stringify({ slides, faults }, null, 2));
   } else {
     report(deck, faults);
   }

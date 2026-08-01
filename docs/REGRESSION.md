@@ -29,8 +29,10 @@ npm run verify-deck -- path/to/Presentation.pptx      # or --json
 ```
 
 Reads the saved `.pptx` and reports, per slide: slot, run token, whether the
-chart is a group or a degraded picture, whether it carries a
-`POWERCHART_CONFIG`, and whether it wears a `NOT COMPLETE` banner. Exit 0 when
+chart is a group or a degraded picture, how many shapes are INSIDE that chart
+object (a 40-shape chart and a 1-shape degraded picture both have one shape at
+the slide's top level, so the inner count is usually the one wanted), whether
+it carries a `POWERCHART_CONFIG`, and whether it wears a `NOT COMPLETE` banner. Exit 0 when
 the file is structurally sound, 1 on a fault, 2 when it cannot be read.
 
 **Run this before believing the run report.** Every hard diagnosis in this
@@ -74,12 +76,12 @@ it did against what the file actually holds.
   path shapes · 85.2s
 
   DECK 32 slide(s): 30 from this run, 1 from other run(s), 1 carrying no slot tag
-  SLOTS 38 expected · 30 present · 24 not-editable · 8 lost · 3 repaired · 3 ok
+  SLOTS 38 expected · 30 present · 24 no-config · 8 lost · 3 repaired · 3 ok
 
   #    title           log        tag?  deck                     verdict
   3    Stacked         rendered   no    picture 2sh config       repaired
   4    Clustered       rendered   no    —                        lost
-  7    Mekko           rendered   no    picture 1sh no-config    not-editable
+  7    Mekko           rendered   no    picture 1sh no-config    no-config
 
   TRACE 276 entries
      117  demo   item finished
@@ -97,6 +99,7 @@ The verdicts, and what each means:
 | `duplicated`    | drew it once              | two slides claim it     |
 | `tag-lost`      | wrote the config tag      | no config tag           |
 | `not-editable`  | never got the tag written | a chart with no config  |
+| `no-config`     | (log too old to say)      | a chart with no config  |
 | `repaired`      | gave up on the tag        | tagged — the repair won |
 | `blank`         | drew it                   | a slide with no shapes  |
 | `orphan`        | never issued that slot    | a slide carrying it     |

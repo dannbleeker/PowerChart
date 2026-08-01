@@ -48,6 +48,14 @@ shows at once; call it AFTER `installHost`, which resets every fault. It is not
 the default, because applied everywhere it would fail hundreds of tests for
 reasons that have nothing to do with what they assert.
 
+**It can take a generated `.pptx`.** `insertSlidesFromBase64` really decodes the
+bytes — through `scripts/verify-deck.mjs`, the same decoder the audit tool uses,
+so the fake cannot read a generated deck differently from the tool that checks
+one — and materialises each slide with its slot tag and a `PowerChart` group
+holding as many children as the file holds. The child count matters: a readback
+measures a chart by what is inside its group, and a fake that put one shape
+there made every generated chart read back as wreckage.
+
 **`shapes.items` hands back fresh handles and leaves earlier ones stale**, the
 way real Office.js does. The fake used to refresh the shape objects themselves,
 so a re-fetch anywhere healed a stale proxy held anywhere — and that one

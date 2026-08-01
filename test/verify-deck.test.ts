@@ -158,3 +158,26 @@ describe("verify-deck: the faults it must catch", () => {
     expect(faultsIn(audit).every((f: string) => /not referenced/.test(f))).toBe(true);
   }, 30_000);
 });
+
+describe("counting what is inside the chart object", () => {
+  it("reports the group's children, not just the slide's top-level shapes", async () => {
+    // `shapes` counts a slide's direct children, where a 40-shape chart and a
+    // 1-shape degraded picture both read as 1 — which is the number a reader
+    // most often wants and the one this could not previously give. The fake
+    // host builds its slides from it, so a wrong count there makes every
+    // generated chart read back as wreckage.
+    const audited = await readDeckBytes(await deck());
+    const chart = audited.rows.find((r: { slot: number | null }) => r.slot === 0)!;
+    expect(chart.shapes).toBe(1); // one group at the top level…
+    expect(chart.chartShapes).toBeGreaterThan(1); // …holding the whole chart
+  });
+
+  it("counts a degraded picture as the one shape it is", async () => {
+    // No container to discount: the picture IS the chart object.
+    const built = await buildDeckBase64([
+      { scene: { width: 100, height: 100, nodes: [] }, title: "flat", slot: 0, run: "run-x" },
+    ]);
+    const audited = await readDeckBytes(Uint8Array.from(atob(built.base64), (c) => c.charCodeAt(0)));
+    expect(audited.rows[0].chartShapes).toBeLessThanOrEqual(1);
+  });
+});
