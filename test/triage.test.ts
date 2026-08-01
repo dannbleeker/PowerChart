@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // independent of src/ so they cannot inherit a bug from the code they audit.
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
-import { triage, runsIn, selfTestIn } from "../scripts/triage.mjs";
+import { triage, runsIn, selfTestIn, knownBug } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -287,5 +287,25 @@ describe("triage — logs that are not inserts", () => {
     const t = triage(deck, logOf(["A"]));
     expect(t.orphans).toEqual([{ slot: -3, verdict: "orphan", indexes: [2] }]);
     expect(t.disagreements).toBe(1);
+  });
+});
+
+describe("triage — naming the host bug behind a failure", () => {
+  it("recognises the signatures that belong to PowerPoint, not to PowerChart", () => {
+    // The first hour of the last diagnosis went into establishing that
+    // `InvalidParam passed to GetItem(id)` was a host bug rather than ours. A
+    // reader who sees an issue number stops looking for the mistake in this
+    // repo — which is the whole saving.
+    expect(knownBug("InvalidParam passed to GetItem(id) | code=5010")).toMatch(/office-js#2903/);
+    expect(knownBug("The property 'items' is not available.")).toMatch(/office-js#6363/);
+    expect(knownBug("did not respond while drawing shapes 1-10 of 39")).toMatch(/office-js#5022/);
+  });
+
+  it("says nothing about a failure that is ours", () => {
+    // The mapping must not turn every problem into somebody else's. A reason
+    // with no known host bug behind it gets no note, and stays ours to fix.
+    expect(knownBug("chart is one object but carries no config tag")).toBeNull();
+    expect(knownBug("empty slide left behind by a lost add")).toBeNull();
+    expect(knownBug("")).toBeNull();
   });
 });

@@ -179,6 +179,31 @@ retry-and-verify logic should be linked here once opened
 
 ## Related
 
+The web client losing track of committed state is a **pattern**, not an
+isolated report. Four other issues describe the same class of failure on the
+same host, three of them still open (checked 2026-08-01):
+
+- [OfficeDev/office-js#6363](https://github.com/OfficeDev/office-js/issues/6363) —
+  properties that were loaded and synced come back "not available" on
+  PowerPoint web. Labelled a **regression and a product bug**; the reporter
+  tried ten loading strategies, none worked. This is the read-side twin of the
+  write-side loss reported here: the same deck, read twice, answers differently.
+- [OfficeDev/office-js#5022](https://github.com/OfficeDev/office-js/issues/5022) —
+  `context.sync()` hangs indefinitely after shapes are added, deleted and
+  re-read. Under investigation; the only known workaround is a 1–2 second sleep.
+- [OfficeDev/office-js#4272](https://github.com/OfficeDev/office-js/issues/4272) —
+  `context.sync()` hangs once more than ~51 items are queued in one `load()`.
+  Directly shapes how much a caller can safely read back at once.
+- [OfficeDev/office-js#2903](https://github.com/OfficeDev/office-js/issues/2903) —
+  content added to a newly created slide lands on the wrong slide on PowerPoint
+  web, with `InvalidParam passed to GetItem(id)`. **Closed as "not planned"**
+  after inactivity, which is a decision about the report rather than a fix for
+  the behaviour.
+
+Taken together with this report, the common thread is that the web client
+acknowledges a mutation, then fails to reflect it in the model a subsequent
+call reads — silently, and without an error the caller can branch on.
+
 - [OfficeDev/office-js#2699](https://github.com/OfficeDev/office-js/issues/2699) —
   shapes created successfully but not painted on PowerPoint web until a
   zoom/repaint (see `docs/repro/ellipse-web-repro.yaml` in this repo for a
