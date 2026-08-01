@@ -10,7 +10,7 @@
  * addTextBox) — marker symbols are preset geometry, so they need only 1.4 too.
  * Grouping (1.8+) and shape rotation (1.10+) degrade gracefully on older hosts.
  */
-import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, SYMBOL_PRESET, dashKind } from "../core/geometry";
+import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, symbolPreset, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
 import { toHex6, alphaOf } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
@@ -3377,9 +3377,9 @@ function addNode(
     case "symbol": {
       // Native preset geometry, so the marker stays FILLED here — the reason a
       // symbol is its own kind rather than a polygon, which PowerPoint can only
-      // outline. SYMBOL_PRESET names are GeometricShapeType keys.
+      // outline. symbolPreset names are GeometricShapeType keys.
       const geo = (PowerPoint.GeometricShapeType as unknown as Record<string, PowerPoint.GeometricShapeType>)[
-        SYMBOL_PRESET[n.shape]
+        symbolPreset(n.shape)
       ];
       const shape = shapes.addGeometricShape(geo, {
         left: dx + n.cx - n.size,

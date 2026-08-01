@@ -31,7 +31,7 @@ const engine = {
     { x: cx + innerR, y: cy },
     { x: cx, y: cy + innerR },
   ],
-  SYMBOL_PRESET: { circle: "ellipse", square: "rect" } as Record<string, string>,
+  symbolPreset: (shape: string) => ({ circle: "ellipse", square: "rect" })[shape as "circle" | "square"] ?? "ellipse",
   arrowheadBox: (x: number, y: number, size: number, angle: number) => ({
     left: x - size / 2,
     top: y - size / 2,

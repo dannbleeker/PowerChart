@@ -200,6 +200,25 @@ export function markerScale(shape: MarkerSymbol): number {
  * — the same bucket a point with no marker already falls into — and the
  * own-property check keeps `"constructor"`/`"__proto__"` out of the table.
  */
+/**
+ * A symbol's OOXML preset name, or the circle every renderer can draw.
+ *
+ * Same reasoning as `markerSymbolOf`: a bare `SYMBOL_PRESET[name]` reaches
+ * Object.prototype, and both PowerPoint renderers hand the result straight to
+ * the host as a geometry name. `"constructor"` there is a function, which
+ * Office.js resolves to `undefined` and draws as a shape with no geometry at
+ * all — invisible, and impossible to explain from the file.
+ */
+export function symbolPreset(shape: string): string {
+  return Object.prototype.hasOwnProperty.call(SYMBOL_PRESET, shape)
+    ? SYMBOL_PRESET[shape as SymbolShape]
+    : FALLBACK_PRESET;
+}
+
+/** What an unrecognised symbol draws as — an ellipse is the one preset every
+ *  host has, and a dot reads as "a marker" wherever it lands. */
+const FALLBACK_PRESET = "ellipse";
+
 export function markerSymbolOf(v: unknown): MarkerSymbol {
   return typeof v === "string" && Object.prototype.hasOwnProperty.call(MARKER_AREA, v) ? (v as MarkerSymbol) : "circle";
 }

@@ -41,7 +41,7 @@ export interface PptxEngine {
     startAngle: number,
     endAngle: number,
   ): { x: number; y: number }[];
-  SYMBOL_PRESET: Record<string, string>;
+  symbolPreset(shape: string): string;
   arrowheadBox(
     x: number,
     y: number,

@@ -25,7 +25,7 @@
  * pptxgenjs has no API for either — it can only write flat shapes onto a
  * slide.
  */
-import { arrowheadBox, annularSectorPoints, dashKind, SYMBOL_PRESET } from "../core/geometry";
+import { arrowheadBox, annularSectorPoints, dashKind, symbolPreset } from "../core/geometry";
 import type { Scene } from "../core/scene";
 import { IN, hex, makeAddNode } from "../../skill/scripts/pptx-paint.mjs";
 import { injectGroupsAndTags, type SlideDressing } from "./ooxml";
@@ -60,7 +60,7 @@ export async function buildDeckBase64(items: DeckItem[]): Promise<{ base64: stri
   const pres = new PptxGen();
   pres.defineLayout({ name: "WIDE", width: DECK_SIZE.w, height: DECK_SIZE.h });
   pres.layout = "WIDE";
-  const addNode = makeAddNode({ dashKind, annularSectorPoints, SYMBOL_PRESET, arrowheadBox });
+  const addNode = makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrowheadBox });
 
   const dressing: SlideDressing[] = [];
   for (const item of items) {

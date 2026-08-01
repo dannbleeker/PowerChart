@@ -178,12 +178,12 @@ export const visible = (paint) => !!paint && alphaOf(paint) > 0;
 
 /**
  * Bind the four engine helpers a node mapping needs (dashKind, annularSectorPoints,
- * SYMBOL_PRESET, arrowheadBox) and return `addNode(slide, n, dx, dy)` — a pure
+ * symbolPreset, arrowheadBox) and return `addNode(slide, n, dx, dy)` — a pure
  * function that maps one scene node to PptxgenJS calls at a slide offset (inches).
  * Taking the engine as a parameter keeps this module free of the top-level await
  * engine load, so it stays importable and measurable.
  */
-export function makeAddNode({ dashKind, annularSectorPoints, SYMBOL_PRESET, arrowheadBox }) {
+export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrowheadBox }) {
   return function addNode(slide, n, dx, dy) {
     switch (n.kind) {
       case "rect": {
@@ -318,7 +318,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, SYMBOL_PRESET, arro
         // Native preset geometry, so the marker stays FILLED — a custGeom polygon
         // would render here but not in the live add-in. SYMBOL_PRESET names are
         // OOXML preset names, which is exactly what addShape takes.
-        slide.addShape(SYMBOL_PRESET[n.shape], {
+        slide.addShape(symbolPreset(n.shape), {
           x: dx + (n.cx - n.size) * IN,
           y: dy + (n.cy - n.size) * IN,
           w: n.size * 2 * IN,
