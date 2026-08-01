@@ -113,14 +113,24 @@ export function evaluateFormula(
   // A blank cell in a range is `null`, not 0: Excel's MIN/MAX/AVG ignore empty
   // cells (only SUM treats them as 0, which it still does below). Distinguish a
   // blank from a real 0 by looking at the raw cell before cellNumeric coerces it.
+  // Rows and columns the SHEET actually has. A reference past the end reads as
+  // blank whatever we do, so clamping to the grid changes no answer — it only
+  // stops the walk being as large as the reference someone typed. `=SUM(A1:ZZ999)`
+  // is 702 x 999 cells, and it did not merely take a while: it threw
+  // "Maximum call stack size exceeded" out of `sheetToData`, through
+  // `currentConfig`, and into the pane's live preview. One typed cell.
+  const lastRow = () => cells.length - 1;
+  const lastCol = () => cells.reduce((n, row) => Math.max(n, row.length - 1), -1);
   const rangeValues = (m: RegExpExecArray): (number | null)[] => {
     const c1 = colIndex(m[1]);
     const r1 = Number(m[2]) - 1;
     const c2 = colIndex(m[3]);
     const r2 = Number(m[4]) - 1;
     const out: (number | null)[] = [];
-    for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
-      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
+    const rEnd = Math.min(Math.max(r1, r2), lastRow());
+    const cEnd = Math.min(Math.max(c1, c2), lastCol());
+    for (let r = Math.max(0, Math.min(r1, r2)); r <= rEnd; r++)
+      for (let c = Math.max(0, Math.min(c1, c2)); c <= cEnd; c++)
         out.push((cells[r]?.[c] ?? "").trim() === "" ? null : cellNumeric(cells, r, c, ctx));
     return out;
   };
@@ -162,7 +172,10 @@ export function evaluateFormula(
         const range = /^([A-Za-z]{1,2})([0-9]{1,3}):([A-Za-z]{1,2})([0-9]{1,3})/.exec(s.slice(i));
         if (range) {
           i += range[0].length;
-          args.push(...rangeValues(range));
+          // Appended, never spread. `push(...values)` passes one argument per
+          // value, so a range wider than the engine's argument limit overflows
+          // the stack — the crash above arrived here, not in the walk.
+          for (const v of rangeValues(range)) args.push(v);
         } else {
           // A BARE cell reference must contribute the cell's EMPTINESS, not
           // expr0()'s 0 — otherwise MIN/MAX/AVG over comma-separated args counted a
@@ -189,8 +202,10 @@ export function evaluateFormula(
       const nums = args.filter((v): v is number => v != null);
       if (!nums.length) return NaN;
       if (name === "AVG") return nums.reduce((a, b) => a + b, 0) / nums.length;
-      if (name === "MIN") return Math.min(...nums);
-      return Math.max(...nums);
+      // Reduced, not spread, for the same reason as the append above: a big
+      // enough range makes `Math.min(...nums)` an argument list.
+      if (name === "MIN") return nums.reduce((a, b) => (b < a ? b : a), nums[0]);
+      return nums.reduce((a, b) => (b > a ? b : a), nums[0]);
     }
     const num = /^[0-9]*\.?[0-9]+/.exec(s.slice(i));
     if (num) {
