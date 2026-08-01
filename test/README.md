@@ -27,11 +27,32 @@ belongs with the thing it tests, not with the reason it was written.)
   `decoration-layout` (decoration clipping & anchoring), `value-extent`
   (cross-kind extent/auto-scale invariants), `geometry`, `color` (paint parsing
   & contrast ink), `collide` (label collision resolution), `good-chart*`.
-- **Renderers & app** — `office-render` (Office.js fake host), `pptx-paint`
+- **Renderers & app** — `office-render` (Office.js against the fake host),
+  `web-host` (the same renderer against that host at its WORST — every
+  misbehaviour a real PowerPoint on the web has shown us, on at once), `pptx-paint`
   (headless pptx node mapping), `svg-render` (SVG node emission — paths,
   polygons, options), `pane-state` / `pane-host-actions` / `pane-widgets` /
   `dom-pane` (task pane), `skill*`, `parity`, `snapshots`, `a11y-svg`,
   `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
+
+## The fake PowerPoint host
+
+`helpers/office-host.ts` is the Office.js double: recording proxies for shapes,
+slides, tags and groups, plus a `faults` object of misbehaviours. Every fault in
+it was added AFTER a real host taught us the behaviour — a stale shape proxy
+refused by `getItem(id)`, a shape collection reading back shorter than it is
+without throwing, a refused `addGroup`, a sync that answers minutes late.
+
+Faults are opt-in per test. `applyWebProfile()` turns on the set a real web host
+shows at once; call it AFTER `installHost`, which resets every fault. It is not
+the default, because applied everywhere it would fail hundreds of tests for
+reasons that have nothing to do with what they assert.
+
+**`shapes.items` hands back fresh handles and leaves earlier ones stale**, the
+way real Office.js does. The fake used to refresh the shape objects themselves,
+so a re-fetch anywhere healed a stale proxy held anywhere — and that one
+kindness is why a whole class of stale-proxy bug could only be found by a human
+running the add-in in a real PowerPoint. Do not "simplify" it back.
 
 ## Lockstep-gated files — do not rename
 

@@ -43,596 +43,20 @@ import type { DemoReport } from "../src/render/powerpoint";
 const failedIndices = (r: DemoReport) =>
   r.results.map((x, i) => (x.status !== "rendered" ? i : -1)).filter((i) => i >= 0);
 
-/**
- * Recording doubles for the PowerPoint JS proxy-object API: every shape the
- * renderer creates is captured with the geometry/format calls made on it, so
- * the whole scene→native-shapes mapping is testable without an Office host.
- */
-
-let idSeq = 0;
-
-function makeShape(
-  type: string,
-  geo: string | undefined,
-  box: { left: number; top: number; width: number; height: number },
-) {
-  const tagStore = new Map<string, string>();
-  const shape = {
-    type,
-    geo,
-    box,
-    fillColor: null as string | null,
-    fillCleared: false,
-    text: undefined as string | undefined,
-    name: undefined as string | undefined,
-    rotation: undefined as number | undefined,
-    deleted: false,
-    // The sync count at proxy creation — used to model the web host's
-    // getItem(id) rewrite: a shape proxy is valid within the sync that queued
-    // it plus the immediately following commit sync, and stale beyond that.
-    // A hardened addGroup checks each member's age.
-    syncCreated: trips.syncs,
-    // A created shape's id exists only on the host: the renderer must load()
-    // it back before it can write one down (see the parts tag).
-    load() {},
-    id: `shape-${++idSeq}`,
-    left: box.left,
-    top: box.top,
-    width: box.width,
-    height: box.height,
-    tagStore,
-    tags: {
-      add: (k: string, v: string) => {
-        // The web host rewrites a proxy as `shapes.getItem(id)` and rejects it
-        // once stale — the SAME trap addGroup falls into, seen in the wild as
-        // `InvalidParam passed to GetItem(id)`, code 5010, at
-        // `ShapeCollection.getItem`, 28 times in one 38-item run. Tagging
-        // crosses a sync boundary just like grouping does.
-        if (strictTags && trips.syncs > shape.syncCreated + 1) {
-          throw new Error("InvalidParam passed to GetItem(id) | code=5010");
-        }
-        tagStore.set(k, v);
-      },
-      getItemOrNullObject: (k: string) => ({
-        isNullObject: !tagStore.has(k),
-        value: tagStore.get(k) ?? "",
-        load() {},
-        untrack() {
-          untracked.tags++;
-        },
-      }),
-    },
-    // Set by fill.setImage — the bare base64 the host received. Records what the
-    // renderer actually handed over, so a test can prove the data:/image-prefix
-    // stripping happened rather than just that setImage was reached.
-    imageBase64: undefined as string | undefined,
-    fill: {
-      setSolidColor(c: string) {
-        shape.fillColor = c;
-      },
-      setImage(b64: string) {
-        // Model the real API's one visible side effect: "This changes the fill
-        // type to PictureAndTexture" (@types/office-js). `refusePictureFill`
-        // makes the property access itself throw, which is what a pre-1.8 host
-        // does — the method simply is not there.
-        if (refusePictureFill) throw new Error("setImage is not available on this host");
-        shape.imageBase64 = b64;
-        shape.fillType = "PictureAndTexture";
-      },
-      clear() {
-        shape.fillCleared = true;
-      },
-    },
-    fillType: undefined as string | undefined,
-    lineFormat: {} as Record<string, unknown>,
-    textFrame: {
-      textRange: { font: {} as Record<string, unknown>, paragraphFormat: {} as Record<string, unknown> },
-    } as Record<string, unknown> & {
-      textRange: { font: Record<string, unknown>; paragraphFormat: Record<string, unknown> };
-    },
-    grouped: undefined as unknown[] | undefined,
-    // PowerPointApi 1.8's `Shape.group` — present only on an actual group, and
-    // a throw otherwise, because that is what a repair pass has to survive: on
-    // a host without 1.8 the property access poisons the sync it was queued in.
-    get group() {
-      if (!shape.grouped) throw new Error("shape is not a group");
-      const live = (): { name?: string; deleted: boolean }[] =>
-        (shape.grouped as { name?: string; deleted: boolean }[]).filter((c) => !c.deleted);
-      return {
-        shapes: {
-          getCount: () => ({ value: live().length }),
-          get items() {
-            return live();
-          },
-          load() {},
-        },
-      };
-    },
-    delete() {
-      shape.deleted = true;
-      // Deleting a group deletes what it contains — otherwise an in-place update
-      // leaves every child on the slide and the fake shows orphans the host
-      // would never have.
-      for (const child of (shape.grouped ?? []) as { deleted: boolean }[]) child.deleted = true;
-    },
-    untrack() {
-      untracked.shapes++;
-    },
-  };
-  return shape;
-}
-
-type FakeShape = ReturnType<typeof makeShape>;
-
-/** Layout ids passed to slides.add() since the last installHost(). */
-const addedWithLayout: (string | undefined)[] = [];
-
-/**
- * The queued-command failure a stalled getItemAt handle produces, surfaced at
- * the NEXT sync — because Office.js reports queued-command errors only at sync,
- * never at the call that queued them. `installHost`'s sync() throws it. See
- * `freshWindowedHandle` below for why a reused fresh-slide handle poisons.
- */
-let pendingHostError: Error | null = null;
-
-/**
- * The slide count at the start of the current `PowerPoint.run` — every slide at
- * an index >= this was `add()`ed during this context and so is "fresh". A fresh
- * slide's getItemAt handle is only good within the sync it was acquired in (see
- * `freshWindowedHandle`); a pre-existing slide's handle is durable.
- */
-let contextBaseCount = 0;
-
-/** Set by installHost so a slide can splice itself out of the live deck. */
-let deckRemove: ((s: { id: string }) => void) | null = null;
-
-function makeSlide(id: string) {
-  const created: FakeShape[] = [];
-  // Shapes queued since the last successful sync. On success the pending list
-  // is cleared (they're committed). On a failed sync the fake removes them
-  // from `created` — the real host discards queued commands whose sync
-  // rejected, and modeling that faithfully is what lets a mid-render
-  // failure-mode test distinguish "40 batches committed, 41st batch dropped"
-  // from "all 47 shapes on the slide" (the PR-8 partial-landed threshold).
-  const pending: FakeShape[] = [];
-  const slideTagStore = new Map<string, string>();
-  const slide = {
-    id,
-    created,
-    pending,
-    isNullObject: false,
-    load() {},
-    // Slide.delete() — the repair pass removes duplicate slides, and a fake
-    // that kept them would make every deletion assertion vacuous. installHost
-    // owns the deck array, so removal goes through the hook it registers.
-    delete() {
-      deckRemove?.(slide);
-    },
-    tags: {
-      add: (k: string, v: string) => void slideTagStore.set(k, v),
-      getItemOrNullObject: (k: string) => ({
-        isNullObject: !slideTagStore.has(k),
-        value: slideTagStore.get(k) ?? "",
-        load() {},
-      }),
-    },
-    tagStore: slideTagStore,
-    shapes: {
-      // A deleted shape is gone from the host's collection; keeping it in `items`
-      // let readbacks (listChartsInDeck) count a chart that no longer exists.
-      // Accessing .items refreshes each shape's syncCreated: real Office.js
-      // returns fresh proxies from shapes.items after a load+sync, valid in
-      // the current sync — that's exactly what the PR 3 re-fetch relies on.
-      get items() {
-        const live = created.filter((s) => !s.deleted);
-        for (const s of live) s.syncCreated = trips.syncs;
-        // The web host has been observed answering a shape-collection read
-        // with FAR fewer shapes than it holds: one readback page asked about
-        // 19 slides carrying 19 shapes and got 3 back. `hollowReads` models
-        // that — the collection is short, nothing throws, and the caller has
-        // no way to know unless it compares against a count it took earlier.
-        if (hollowReads > 0 && lastShapeLoad === "items/id") {
-          hollowReads--;
-          return [];
-        }
-        return live;
-      },
-      // The tag pass is the only reader that asks for `items/id`; pass A and
-      // the group-child count both ask for `items/name`. Recording which lets
-      // a test make the TAG read hollow without also blinding the count it is
-      // supposed to be checked against.
-      load(p?: string) {
-        if (p) lastShapeLoad = p;
-      },
-      addGeometricShape(geo: string, box: FakeShape["box"]) {
-        const s = makeShape("geometric", geo, box);
-        created.push(s);
-        pending.push(s);
-        return s;
-      },
-      addLine(_kind: string, box: FakeShape["box"]) {
-        const s = makeShape("line", undefined, box);
-        created.push(s);
-        pending.push(s);
-        return s;
-      },
-      addTextBox(text: string, box: FakeShape["box"]) {
-        const s = makeShape("text", undefined, box);
-        s.text = text;
-        created.push(s);
-        pending.push(s);
-        return s;
-      },
-      addGroup(items: FakeShape[]) {
-        // A host that refuses to group at all — the call throws where the API
-        // exists but the host declines. Consumed per call, so a test can refuse
-        // the render's own grouping and still let the fresh-context rescue's
-        // addGroup work, which is the whole point of the rescue.
-        if (refuseGroups > 0) {
-          refuseGroups--;
-          throw new Error("host refused addGroup");
-        }
-        // Model the web-host stale-proxy trap: a Shape proxy is valid within
-        // the sync that queued it plus its immediately following commit sync,
-        // and stale (getItem(id) rewrite, non-round-trippable id) beyond that.
-        // addGroup(theseStaleProxies) silently loses grouping on real Office —
-        // no group appears on the slide. Enable via strictGroup.
-        if (strictGroup && items.some((s) => trips.syncs > s.syncCreated + 1)) {
-          const g = makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 });
-          // Not pushed to `created` — no group lands on the slide, exactly
-          // what the web host does for a stale-proxy addGroup call.
-          return g;
-        }
-        // A real group's frame is the BOUNDING BOX of its children, not the
-        // origin the caller drew at. Returning {0,0,0,0} made a group's position
-        // meaningless and hid the update-drift bug entirely: the renderer reads
-        // this back as an EditTarget and (before CHART_ORIGIN_TAG) fed it in as
-        // the next render's frame origin, walking the chart down the slide.
-        const box = items.length
-          ? {
-              left: Math.min(...items.map((s) => s.left)),
-              top: Math.min(...items.map((s) => s.top)),
-              width: Math.max(...items.map((s) => s.left + s.width)) - Math.min(...items.map((s) => s.left)),
-              height: Math.max(...items.map((s) => s.top + s.height)) - Math.min(...items.map((s) => s.top)),
-            }
-          : { left: 0, top: 0, width: 0, height: 0 };
-        const g = makeShape("group", undefined, box);
-        g.grouped = items;
-        created.push(g);
-        pending.push(g);
-        return g;
-      },
-      getItemOrNullObject(id: string) {
-        // A null-object proxy still accepts load() in real Office.js — queuing a
-        // load on it is the normal pattern, and only isNullObject tells you it
-        // resolved to nothing. Without load() here the fake threw where the host
-        // would not.
-        return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, load() {}, delete() {} };
-      },
-      // Top-level shape count the host reports on readback — non-deleted shapes.
-      getCount: () => {
-        if (faultShapeGetCount) throw new Error("readback getCount faulted");
-        return { value: created.filter((s) => !s.deleted).length };
-      },
-    },
-  };
-  return slide;
-}
-
-type FakeSlide = ReturnType<typeof makeSlide>;
-
-/**
- * The reference `slides.getItemAt(i)` hands back for a FRESHLY-ADDED slide.
- *
- * It draws fine within the sync it was acquired in, but reusing it to draw AFTER
- * a later sync is the object-path rewrite trap: Office.js has by then rewritten
- * its path to `getItem(<web-non-round-trippable id>)`, so the next shape throws
- * "InvalidParam passed to GetItem(id)" (code 5010) at the following sync. That is
- * exactly why the fix re-acquires a brand-new getItemAt proxy every batch — a
- * fresh handle is always inside its own window — and why HOLDING one across
- * batches fails. When poisoned, nothing lands: the queued shapes are detached,
- * not pushed to the real slide's `created`.
- *
- * The old fake could not express this at all: it returned the live slide from
- * getItemAt, so a held handle was as good as a fresh one.
- */
-function freshWindowedHandle(real: FakeSlide) {
-  const acquiredSync = trips.syncs;
-  // Valid only until the next sync moves past the window it was acquired in.
-  const ok = () => {
-    if (trips.syncs <= acquiredSync) return true;
-    pendingHostError = new Error(
-      'InvalidParam passed to GetItem(id) | code=5010 | debugInfo={"errorLocation":"SlideCollection.getItem"}',
-    );
-    return false;
-  };
-  return {
-    id: real.id,
-    isNullObject: false,
-    load() {},
-    tags: real.tags,
-    shapes: {
-      // Lazy — evaluating this at handle-creation would fire the .items
-      // getter's syncCreated refresh, keeping every shape perpetually fresh
-      // and hiding the stale-proxy trap the fake exists to model.
-      get items() {
-        return real.shapes.items;
-      },
-      load() {},
-      addGeometricShape: (geo: string, box: FakeShape["box"]) =>
-        ok() ? real.shapes.addGeometricShape(geo, box) : makeShape("geometric", geo, box),
-      addLine: (kind: string, box: FakeShape["box"]) =>
-        ok() ? real.shapes.addLine(kind, box) : makeShape("line", undefined, box),
-      addTextBox: (text: string, box: FakeShape["box"]) => {
-        if (ok()) return real.shapes.addTextBox(text, box);
-        const s = makeShape("text", undefined, box);
-        s.text = text;
-        return s;
-      },
-      addGroup: (items: FakeShape[]) =>
-        ok() ? real.shapes.addGroup(items) : makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 }),
-      getItemOrNullObject: (id: string) => real.shapes.getItemOrNullObject(id),
-    },
-  };
-}
-
-/**
- * Office round-trips since the last installHost(). Every context.sync() is a
- * trip to PowerPoint and dominates insert latency, so the count is a behaviour
- * worth asserting — see "round-trips do not scale with the chart count".
- */
-const trips = { syncs: 0, contexts: 0 };
-
-/** Proxy objects the renderer released via untrack(), by kind. */
-const untracked = { shapes: 0, tags: 0 };
-
-/**
- * Make the Nth context.sync() of the next run throw. Office.js queues commands
- * and only reports their errors at sync — so this, not a throwing addGroup, is
- * how a host actually refuses something. 0 = never.
- */
-let failSyncOn = 0;
-
-/** Like failSyncOn but a SET of sync indices — models a stall that persists across
- * the retry (fail both attempts' syncs), so a slide is truly lost, not recovered. */
-const failSyncsOn = new Set<number>();
-
-/** Make the next N slides.add() calls no-ops — models PowerPoint web silently
- * dropping a slide-add under load, the corruption the self-check must catch. */
-let swallowAdds = 0;
-
-/** Deck indices whose shapes.getCount() reports 0 on readback — models a slide
- * that committed but came back BLANK (its shapes detached), the silent partial
- * the on-slide readback must catch. */
-const blankReadbackAt = new Set<number>();
-
-/** When true, shapes.getCount() throws — models the blank readback faulting, so
- * the report must come back blanksRead:false rather than an empty "no blanks". */
-let faultShapeGetCount = false;
-
-/** Sync indices that STALL — the promise resolves after `stallSyncDelayMs`, but
- * withTimeout (shortened via _setBatchTimeoutForTest) fires first and abandons
- * it. Models the real-host bug: sync at 60s, shapes on the slide, no error to
- * blame. When the abandoned promise later settles, withTimeout records
- * `lastLateSync = "…SUCCEEDED after Ns"` — the signal PR 1 gates on. */
-const stallSyncOn = new Set<number>();
-const stallSyncDelayMs = 40;
-
-/** When true, addGroup silently drops the group if any member proxy is more
- * than one sync stale — the exact web-host behavior that made multi-batch
- * charts land ungrouped. See PR 3's re-fetch fix.  */
-let strictGroup = false;
-
-/** When true, `tags.add` rejects a proxy more than one sync old — see makeShape. */
-let strictTags = false;
-
-/** Make the next N addGroup calls THROW — a host that declines to group even
- * though the API is there. Decremented per call, so refusing 1 leaves a chart
- * rendered-but-ungrouped and still lets the fresh-context rescue group it. */
-let refuseGroups = 0;
-
-/** Shape-collection reads that come back EMPTY without throwing — see `items`. */
-let hollowReads = 0;
-let lastShapeLoad = "";
-
-/** When true, `fill.setImage` throws on access — a pre-1.8 host, where the
- * method does not exist at all. Drives the picture-insert fall-through. */
-let refusePictureFill = false;
-
-/** Install a fake PowerPoint global whose run() drives the mocked context.
- * `supported(version)` models the host's requirement-set support (default: all)
- * — pass a predicate to simulate e.g. PowerPoint on the web lacking grouping. */
-function installHost(
-  slides: FakeSlide[],
-  selectedShapes: FakeShape[] = [],
-  selectedSlide = slides[0],
-  supported: (version: string) => boolean = () => true,
-) {
-  // The slide count as of the last COMMITTED sync. getCount() reports THIS, not
-  // the live array — so an add() queued in the current batch is invisible to a
-  // getCount() in the SAME batch, exactly as PowerPoint web behaves. A getCount
-  // result resolves at the next sync to the count from before that sync's adds.
-  let committedCount = slides.length;
-  deckRemove = (s) => {
-    const i = slides.findIndex((x) => x.id === s.id);
-    if (i >= 0) slides.splice(i, 1);
-  };
-  const pendingCounts: { value: number }[] = [];
-  const context = {
-    presentation: {
-      slides: {
-        items: slides,
-        load() {},
-        getItem: (id: string) => slides.find((s) => s.id === id)!,
-        // Real Office.js hands back a null OBJECT for an unknown id — it does
-        // not throw and does not return undefined. A fake that returns
-        // undefined would make `slide.isNullObject` a TypeError instead of the
-        // false it should be, and hide the very case this models. By id, the
-        // reference is always durable.
-        getItemOrNullObject: (id: string) => slides.find((s) => s.id === id) ?? { isNullObject: true, load() {} },
-        // A pre-existing slide's handle is durable; a freshly-added one's is only
-        // good within the sync it was acquired in (see freshWindowedHandle), so
-        // HOLDING one across the render's batches is the bug the fix avoids by
-        // re-acquiring fresh each batch.
-        getItemAt: (i: number) => {
-          const s = slides[i];
-          if (!s) return s;
-          if (i >= contextBaseCount) return freshWindowedHandle(s);
-          // A durable slide the host reports empty on readback (see blankReadbackAt).
-          if (blankReadbackAt.has(i)) return { ...s, shapes: { ...s.shapes, getCount: () => ({ value: 0 }) } };
-          return s;
-        },
-        // Resolves at the NEXT sync to the committed count (from before that
-        // sync's adds), never to slides.length now — see committedCount.
-        getCount: () => {
-          const result = { value: committedCount };
-          pendingCounts.push(result);
-          return result;
-        },
-        add: (options?: { layoutId?: string }) => {
-          addedWithLayout.push(options?.layoutId);
-          if (swallowAdds > 0) {
-            swallowAdds--; // the host dropped this add — no slide appears
-            return;
-          }
-          slides.push(makeSlide(`slide-${slides.length + 1}`));
-        },
-      },
-      // A real deck's master carries several layouts; only one is blank, and
-      // its NAME is localised — which is why the renderer matches on type.
-      slideMasters: {
-        items: [
-          {
-            id: "master-1",
-            layouts: {
-              items: [
-                { id: "layout-title", name: "Titeldias", type: "titleSlide" },
-                { id: "layout-blank", name: "Tom", type: "blank" },
-                { id: "layout-content", name: "Titel og indhold", type: "object" },
-              ],
-            },
-          },
-        ],
-        load() {},
-      },
-      getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
-      getSelectedShapes: () => ({ items: selectedShapes, load() {} }),
-    },
-    sync: async () => {
-      trips.syncs++;
-      // Commit or discard the shapes each slide has queued since the last
-      // sync. On success, mark them "committed" (leave in `created`, drop
-      // from `pending`). On failure, remove them from `created` — the real
-      // host discards a batch of queued commands whose sync rejects, and the
-      // PR-8 partial-landed gate reads back only the committed count.
-      const commit = () => {
-        for (const s of slides) s.pending.length = 0;
-      };
-      const discard = () => {
-        for (const s of slides) {
-          for (const p of s.pending) {
-            const i = s.created.indexOf(p);
-            if (i >= 0) s.created.splice(i, 1);
-          }
-          s.pending.length = 0;
-        }
-      };
-      if (trips.syncs === failSyncOn || failSyncsOn.has(trips.syncs)) {
-        discard();
-        throw new Error("host refused a queued command");
-      }
-      if (stallSyncOn.has(trips.syncs)) {
-        // Sleep past withTimeout's deadline, then settle successfully. The
-        // queued shapes commit at settle time — same as real Office.js where
-        // a slow sync eventually reports success and the shapes are on the
-        // slide by then.
-        await new Promise((r) => setTimeout(r, stallSyncDelayMs));
-        for (const r of pendingCounts) r.value = committedCount;
-        pendingCounts.length = 0;
-        committedCount = slides.length;
-        commit();
-        return;
-      }
-      // A queued-command failure (e.g. drawing on a poisoned getItemAt handle)
-      // surfaces here, at the sync, exactly as Office.js reports it.
-      if (pendingHostError) {
-        const err = pendingHostError;
-        pendingHostError = null;
-        discard();
-        throw err;
-      }
-      // Each getCount from this batch resolves to the PRE-batch committed count,
-      // then this batch's adds become visible to the NEXT sync's getCount.
-      for (const r of pendingCounts) r.value = committedCount;
-      pendingCounts.length = 0;
-      committedCount = slides.length;
-      commit();
-    },
-  };
-  trips.syncs = 0;
-  trips.contexts = 0;
-  untracked.shapes = 0;
-  untracked.tags = 0;
-  pendingHostError = null;
-  swallowAdds = 0;
-  failSyncsOn.clear();
-  stallSyncOn.clear();
-  strictGroup = false;
-  strictTags = false;
-  refuseGroups = 0;
-  hollowReads = 0;
-  lastShapeLoad = "";
-  refusePictureFill = false;
-  blankReadbackAt.clear();
-  faultShapeGetCount = false;
-  addedWithLayout.length = 0;
-  vi.stubGlobal("PowerPoint", {
-    run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {
-      trips.contexts++;
-      // Slides present at the start of this context are "existing"; anything
-      // add()ed past here is fresh, and its getItemAt handle is window-limited.
-      contextBaseCount = slides.length;
-      return cb(context);
-    },
-    // Real Office.js exposes all 177 presets. A plain object listing only the
-    // ones in use today hands back `undefined` for any other name, and the
-    // renderer then records a shape with no geometry while this suite still
-    // passes green — a test that asserts nothing about the shape it drew.
-    // The Proxy makes that impossible: reaching for a preset this stub has not
-    // been told about throws instead of returning undefined.
-    GeometricShapeType: new Proxy(
-      {
-        rectangle: "rectangle",
-        ellipse: "ellipse",
-        triangle: "triangle",
-        chevron: "chevron",
-        homePlate: "homePlate",
-        lineInverse: "lineInverse",
-        diamond: "diamond",
-        plus: "plus",
-      } as Record<string, string>,
-      {
-        get(target, prop: string) {
-          if (!(prop in target)) throw new Error(`office stub: unknown GeometricShapeType "${String(prop)}"`);
-          return target[prop];
-        },
-      },
-    ),
-    SlideLayoutType: { blank: "blank", titleSlide: "titleSlide", object: "object" },
-    ConnectorType: { straight: "straight" },
-    ShapeLineDashStyle: { dash: "dash", roundDot: "roundDot" },
-    ShapeAutoSize: { autoSizeNone: "none" },
-    TextVerticalAlignment: { top: "top", middle: "middle", bottom: "bottom" },
-    ParagraphHorizontalAlignment: { left: "left", center: "center", right: "right" },
-  });
-  vi.stubGlobal("Office", {
-    context: {
-      host: "PowerPoint",
-      requirements: { isSetSupported: (_set: string, version: string) => supported(version) },
-    },
-  });
-  return context;
-}
+import {
+  addedWithLayout,
+  blankReadbackAt,
+  failSyncsOn,
+  faults,
+  installHost,
+  makeShape,
+  makeSlide,
+  stallSyncOn,
+  trips,
+  untracked,
+  type FakeShape,
+  type FakeSlide,
+} from "./helpers/office-host";
 
 const config: ChartConfig = {
   kind: "stacked",
@@ -1666,7 +1090,7 @@ describe("Office round-trips do not scale with the chart count", () => {
     // plus its render batches, then GROUP. The delete is per chart because a
     // shared one commits every chart's removal before any redraw runs — see
     // updateChartsInSlides.
-    failSyncOn = 2 + 3 /* charts */ * (1 + batches) + 1;
+    faults.failSyncOn = 2 + 3 /* charts */ * (1 + batches) + 1;
     try {
       const items = targetsOn(slide, 3);
       // One refreshed target per chart — the caller needs them to stay live.
@@ -1676,7 +1100,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(tagged.map((s) => s.tagStore.get(CHART_TAG))).toEqual(['{"i":0}', '{"i":1}', '{"i":2}']);
       expect(tagged.every((s) => s.type !== "group")).toBe(true);
     } finally {
-      failSyncOn = 0;
+      faults.failSyncOn = 0;
     }
   });
 
@@ -1693,7 +1117,7 @@ describe("Office round-trips do not scale with the chart count", () => {
     const batches = Math.ceil(buildChart(cfgFor(0)).nodes.length / 10);
     // 2 resolve syncs, then per chart 1 delete + `batches` renders. Fail the
     // FIRST render batch of chart 2 (0-based index 1).
-    failSyncOn = 2 + (1 + batches) + 1 + 1;
+    faults.failSyncOn = 2 + (1 + batches) + 1 + 1;
     const failed: string[] = [];
     try {
       const items = targetsOn(slide, 3);
@@ -1710,7 +1134,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(new Set(next.map((t) => t.shapeId)).size).toBe(3);
       expect(next[1].shapeId).toBe(items[1].target.shapeId); // unchanged: it failed
     } finally {
-      failSyncOn = 0;
+      faults.failSyncOn = 0;
     }
   });
 
@@ -1720,11 +1144,11 @@ describe("Office round-trips do not scale with the chart count", () => {
     // with a chart whose old shapes are already deleted.
     const slide = makeSlide("s1");
     installHost([slide]);
-    failSyncOn = 4; // 2 resolves, 1 delete, then the first render batch
+    faults.failSyncOn = 4; // 2 resolves, 1 delete, then the first render batch
     try {
       await expect(updateChartsInSlides(targetsOn(slide, 1))).rejects.toThrow();
     } finally {
-      failSyncOn = 0;
+      faults.failSyncOn = 0;
     }
   });
 
@@ -1830,7 +1254,7 @@ describe("Office round-trips do not scale with the chart count", () => {
 
   it("marks the blank readback incomplete when it faults, not falsely clean", async () => {
     installHost([makeSlide("s1")]);
-    faultShapeGetCount = true; // every readback getCount throws
+    faults.faultShapeGetCount = true; // every readback getCount throws
     const report = await insertDemoDeck(Array.from({ length: 3 }, (_, i) => ({ scene: buildChart(cfgFor(i)) })));
     // An empty list must NOT read as "no blanks" when we could not measure.
     expect(report.blanksRead).toBe(false);
@@ -1961,7 +1385,7 @@ describe("Office round-trips do not scale with the chart count", () => {
     // pass reports what landed with better evidence than a mid-flight guess.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    swallowAdds = 2; // the add and its in-addSlides retry → gone for good
+    faults.swallowAdds = 2; // the add and its in-addSlides retry → gone for good
     try {
       const report = await insertDemoDeck(
         Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
@@ -1971,7 +1395,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(report.results).toHaveLength(4); // every item is still accounted for
       expect(failedIndices(report).length).toBeGreaterThanOrEqual(1); // the dropped one is flagged
     } finally {
-      swallowAdds = 0;
+      faults.swallowAdds = 0;
     }
   });
 
@@ -1984,7 +1408,7 @@ describe("Office round-trips do not scale with the chart count", () => {
     // retry: it should be invisible, recovered inside addSlides itself.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    swallowAdds = 1; // the FIRST add() call anywhere is dropped, none after
+    faults.swallowAdds = 1; // the FIRST add() call anywhere is dropped, none after
     try {
       const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: '{"i":0}' }]);
       // The retry landed: the deck grew by exactly the one slide asked for.
@@ -1993,7 +1417,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       // Nothing was lost AT COMMIT: the one drop was fully recovered.
       expect(report.addsLostAtCommit).toBe(0);
     } finally {
-      swallowAdds = 0;
+      faults.swallowAdds = 0;
     }
 
     // Second sub-case: the drop persists through addSlides' one retry round
@@ -2001,17 +1425,17 @@ describe("Office round-trips do not scale with the chart count", () => {
     // original and the in-addSlides retry — so defeating item 0 entirely takes
     // exactly 2 dropped adds. A second item follows so the run is not a TOTAL
     // loss (which insertDemoDeck itself would throw on, per "A whole deck lost
-    // to HOST errors" below) — item 1 renders once swallowAdds is exhausted.
+    // to HOST errors" below) — item 1 renders once faults.swallowAdds is exhausted.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const deck2: FakeSlide[] = [makeSlide("s1")];
     installHost(deck2);
-    swallowAdds = 2;
+    faults.swallowAdds = 2;
     try {
       const report = await insertDemoDeck([
         { scene: buildChart(cfgFor(0)), tagData: '{"i":0}' },
         { scene: buildChart(cfgFor(1)), tagData: '{"i":1}' },
       ]);
-      // Item 0 is a genuine total loss; item 1 landed once swallowAdds ran out.
+      // Item 0 is a genuine total loss; item 1 landed once faults.swallowAdds ran out.
       expect(report.slidesAdded).toBe(1);
       expect(report.results[0].status).toBe("failed");
       expect(report.results[1].status).toBe("rendered");
@@ -2019,7 +1443,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(report.addsLostAtCommit).toBeGreaterThanOrEqual(1);
       expect(warnSpy).toHaveBeenCalled();
     } finally {
-      swallowAdds = 0;
+      faults.swallowAdds = 0;
       warnSpy.mockRestore();
     }
   });
@@ -2125,7 +1549,7 @@ describe("Office round-trips do not scale with the chart count", () => {
     };
     const slide = makeSlide("s1");
     installHost([slide]);
-    refusePictureFill = true;
+    faults.refusePictureFill = true;
     try {
       await insertSceneIntoSlide(scene, { tagData: "{}", pictureBase64: "AAAA" });
       const live = slide.created.filter((s) => !s.deleted);
@@ -2134,7 +1558,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(live.filter((s) => s.geo === "rectangle").length).toBeGreaterThanOrEqual(NODES);
       expect(live.some((s) => s.tagStore.get(CHART_TAG) === "{}")).toBe(true);
     } finally {
-      refusePictureFill = false;
+      faults.refusePictureFill = false;
     }
   });
 
@@ -2225,7 +1649,7 @@ describe("Office round-trips do not scale with the chart count", () => {
     };
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    strictGroup = true; // web-host stale-proxy semantics — without the re-fetch, no group appears
+    faults.strictGroup = true; // web-host stale-proxy semantics — without the re-fetch, no group appears
     try {
       const report = await insertDemoDeck([{ scene: bigScene, tagData: '{"i":0}', title: "multi-batch" }]);
       expect(report.results[0].status).toBe("rendered");
@@ -2237,7 +1661,7 @@ describe("Office round-trips do not scale with the chart count", () => {
       expect(groups).toHaveLength(1);
       expect(groups[0].tagStore.get(CHART_TAG)).toBe('{"i":0}');
     } finally {
-      strictGroup = false;
+      faults.strictGroup = false;
     }
   });
 
@@ -2827,21 +2251,21 @@ describe("reading a demo deck back and repairing it", () => {
     const deck = [demoSlide("a", { slot: { i: 0, title: "A" }, shapes: 3, tagged: true })];
     installHost(deck);
     // Both the first pass and its re-read come back hollow.
-    hollowReads = 2;
+    faults.hollowReads = 2;
     const { snapshots } = await readAddedSlides(0, 1);
     expect(snapshots[0].tagged).toBe(false); // could not see it…
     expect(snapshots[0].tagRead).toBe(false); // …and says so, which is the point
-    hollowReads = 0;
+    faults.hollowReads = 0;
   });
 
   it("gets the right answer on the re-read when only the first look was hollow", async () => {
     const deck = [demoSlide("a", { slot: { i: 0, title: "A" }, shapes: 3, tagged: true })];
     installHost(deck);
-    hollowReads = 1; // first pass short, second fine
+    faults.hollowReads = 1; // first pass short, second fine
     const { snapshots } = await readAddedSlides(0, 1);
     expect(snapshots[0].tagged).toBe(true);
     expect(snapshots[0].tagRead).not.toBe(false);
-    hollowReads = 0;
+    faults.hollowReads = 0;
   });
 
   it("traces what the tag pass asked for against what it got back", async () => {
@@ -3053,7 +2477,7 @@ describe("reading a demo deck back and repairing it", () => {
     existing.shapes.addTextBox("someone else's work", { left: 0, top: 0, width: 10, height: 10 });
     const deck: FakeSlide[] = [existing];
     installHost(deck);
-    swallowAdds = 4; // both the add and its retry vanish
+    faults.swallowAdds = 4; // both the add and its retry vanish
     _setBatchTimeoutForTest(5); // no slide to draw on — do not wait 45s for it
     try {
       // Nothing rendered, so insertDemoDeck rethrows the host's own error —
@@ -3217,7 +2641,7 @@ describe("reading a demo deck back and repairing it", () => {
     // and tagging does that too.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    strictTags = true;
+    faults.strictTags = true;
     try {
       const report = await insertDemoDeck(
         [
@@ -3235,7 +2659,7 @@ describe("reading a demo deck back and repairing it", () => {
       const last = deck[deck.length - 1].created.filter((sh) => !sh.deleted);
       expect(last.some((sh) => sh.tagStore.get(CHART_TAG) === `{"i":1}`)).toBe(true);
     } finally {
-      strictTags = false;
+      faults.strictTags = false;
     }
   }, 20_000);
 
