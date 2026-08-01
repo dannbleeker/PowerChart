@@ -59,6 +59,12 @@ The two files may be given in either order — the extension says which is which
 Piping `--json` anywhere needs `npm run --silent` (or `node scripts/triage.mjs`
 directly), because npm prints its own banner to stdout ahead of the script.
 
+A log holds a **list** of runs, because one click can take both insert paths.
+Each is reported separately against the same deck — merging them would produce
+a report true of neither, since the file run's slides are present while the
+shape run's are still missing, in the same file, at the same moment. Logs from
+before the list existed are read as a list of one.
+
 The two files a real run produces are the entire evidence base, and reading
 them *together* is where the findings are: slot by slot, what the run believed
 it did against what the file actually holds.

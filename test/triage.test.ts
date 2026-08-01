@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // independent of src/ so they cannot inherit a bug from the code they audit.
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
-import { triage } from "../scripts/triage.mjs";
+import { triage, runsIn } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -220,5 +220,34 @@ describe("triage — joining a run log to the deck it produced", () => {
     expect(t.run).toBe("run-mine");
     expect(verdicts(t)).toEqual({ A: "ok" });
     expect(t.foreign).toHaveLength(2);
+  });
+});
+
+describe("triage — a log holding more than one run", () => {
+  it("reads each run in a both-paths log separately", async () => {
+    // One click can take both insert paths, and they fail in completely
+    // different ways. Merging them would produce a report that is true of
+    // neither: the file run's slides are present while the shape run's are
+    // still missing, in the same deck, at the same moment.
+    const deck = await deckOf([
+      { title: "A", slot: 0, run: "run-file" },
+      { title: "B", slot: 1, run: "run-file" },
+      { title: "A", slot: 0, run: "run-shapes" },
+    ]);
+    const file = { ...logOf(["A", "B"], { run: "run-file", path: "file" }) };
+    const shapes = { ...logOf(["A", "B"], { run: "run-shapes", path: "shapes" }) };
+    const runs = runsIn({ build: "b", host: "h", runs: [file, shapes] });
+    expect(runs).toHaveLength(2);
+    expect(verdicts(triage(deck, runs[0]))).toEqual({ A: "ok", B: "ok" });
+    // The shape run only landed its first slide, and says so — while the file
+    // run beside it in the same deck is clean.
+    expect(verdicts(triage(deck, runs[1]))).toEqual({ A: "ok", B: "lost" });
+  });
+
+  it("reads a single-run log as a list of one", async () => {
+    // Every artifact captured so far is shaped this way. Refusing them would
+    // make the tool useless on exactly the runs it was written to explain.
+    const flat = logOf(["A"]);
+    expect(runsIn(flat)).toEqual([flat]);
   });
 });

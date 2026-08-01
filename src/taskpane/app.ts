@@ -1908,10 +1908,24 @@ function describeHost(): string {
  * only surviving evidence was whatever the user thought to copy out of a
  * one-line note. A run that reveals a host bug is worth more than that.
  */
-let lastRunLog: RunLog | undefined;
+let lastRunLog: RunLogFile | undefined;
+
+/**
+ * What "Download run log" writes: one file, one or more runs inside it.
+ *
+ * A single click can now take both insert paths one after the other, and they
+ * fail in completely different ways — so they are separate runs with separate
+ * identities, sharing only the build and host that produced them. A
+ * single-path click writes the same shape with one entry, so nothing reading
+ * this file needs to care which it was.
+ */
+interface RunLogFile {
+  build: string;
+  host: string;
+  runs: RunLog[];
+}
 
 interface RunLog {
-  build: string;
   /**
    * This run's identity, the same token carried on every slide's slot tag.
    *
@@ -1924,7 +1938,6 @@ interface RunLog {
    * mistaken for a loss. `npm run triage` does exactly that join.
    */
   run: string;
-  host: string;
   totalMs: number;
   items: {
     title: string;
@@ -2432,9 +2445,9 @@ function wireInsert() {
     // 37-item deck took the whole web client down five seconds in on
     // 2026-07-31 — "Sorry, we ran into a problem. Please try again." The
     // twelve-item subset survived, so this is a warning and not a block.
-    const fileToggle = $("demo-file") as HTMLInputElement | null;
-    fileToggle?.addEventListener("change", () => {
-      if (fileToggle.checked || !canInsertSlidesFromBase64()) return;
+    const pathSelect = $("demo-path") as HTMLSelectElement | null;
+    pathSelect?.addEventListener("change", () => {
+      if (pathSelect.value !== "shapes" || !canInsertSlidesFromBase64()) return;
       if (isWebHost()) {
         note(
           "Heads up: the full deck drawn shape by shape has crashed PowerPoint on the web. The fast path handles it in seconds.",
@@ -2484,19 +2497,49 @@ function wireInsert() {
         // screen to say the two were unrelated.
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
+        /**
+         * Runs this click produced, in the order they were taken.
+         *
+         * "Both" mode takes each path in turn, so one click can end with two.
+         * They are kept apart rather than merged: the paths fail in completely
+         * different ways, and a report that did not say which was being read
+         * would be diagnosed as the wrong one.
+         */
+        const runs: RunLog[] = [];
+        /**
+         * Bank a run the moment it ends, rather than when the click does.
+         *
+         * In "both" mode the shape path runs second and can throw — the whole
+         * deck lost to host errors is a real outcome and it is raised as one.
+         * Banking at the end of the click would then discard the file run's
+         * log along with it, and the failing run is precisely the one worth
+         * having a file for. `runs` is the same array the log holds, so later
+         * entries land in it without re-assigning anything.
+         */
+        const record = (r: RunLog) => {
+          runs.push(r);
+          lastRunLog = { build: buildStamp, host, runs };
+          ($("demo-log") as HTMLButtonElement).disabled = false;
+        };
+        // Which path(s) to take. Both, one after the other, is what a change
+        // touching the renderer wants: same session, same host, one deck, and
+        // the two accounts directly comparable — instead of two separate runs
+        // an hour apart with a deploy in between.
+        const mode = (($("demo-path") as HTMLSelectElement | null)?.value ?? "file") as "file" | "shapes" | "both";
         // Where THIS run's trace starts. The buffer keeps every operation since
         // tracing was switched on, so a log that carried all of it carried other
         // runs' entries too — and reading one run's numbers against another's
         // trace is a genuinely expensive mistake.
-        const traceFrom = traceMark();
+        let traceFrom = traceMark();
         // The slowest thing the pane can do — say where it has got to, or a
         // multi-minute run is indistinguishable from a hang.
         // Fast path first: one generated .pptx, one host call. Falls through
         // to the shape-by-shape renderer when the host cannot take it, or when
         // the attempt landed nothing — never after a partial insert, which
         // would draw the whole deck again on top of what is already there.
-        const useFile = ($("demo-file") as HTMLInputElement | null)?.checked ?? true;
-        if (useFile && canInsertSlidesFromBase64()) {
+        // "Both" is the one case where drawing it again IS the intent: the two
+        // runs carry different tokens, so nothing confuses one for the other.
+        if (mode !== "shapes" && canInsertSlidesFromBase64()) {
           const outcome = await insertDemoDeckAsFile(items);
           if (outcome) {
             // A log for THIS path too. The fast path is the default — the
@@ -2506,10 +2549,8 @@ function wireInsert() {
             // Success or failure: the failing run is the one worth having.
             const settled = outcome.verified.kind === "ok" ? outcome.verified.outcome : undefined;
             const verdicts = settled?.plan.verdicts ?? [];
-            lastRunLog = {
-              build: buildStamp,
+            record({
               run: outcome.run,
-              host,
               totalMs: outcome.totalMs,
               items: items.map((it, i) => {
                 const v = verdicts.find((x) => x.slot === i);
@@ -2543,12 +2584,21 @@ function wireInsert() {
               unverified: outcome.verified.kind === "ok" ? undefined : outcome.verified.why,
               path: "file",
               trace: tracing() ? traceLog(traceFrom) : undefined,
-            };
-            ($("demo-log") as HTMLButtonElement).disabled = false;
-            note(outcome.text, outcome.status);
-            return;
+            });
+            if (mode === "file") {
+              note(outcome.text, outcome.status);
+              return;
+            }
+            // Both: the shape path runs next, on top of what just landed, and
+            // gets its own slice of the trace. Without a fresh mark the second
+            // run's log would open with the first run's entries.
+            note(`${outcome.text} Now drawing the same deck shape by shape…`, "busy");
+            traceFrom = traceMark();
+          } else if (mode === "both") {
+            note("The host would not take a generated deck — running the shape path only.", "busy");
+          } else {
+            note("The host would not take a generated deck — drawing it shape by shape instead.", "busy");
           }
-          note("The host would not take a generated deck — drawing it shape by shape instead.", "busy");
         }
         // NO budget exemption for the harness's own slides any more. It existed
         // because a large deck's contents page ran past the limit, and it is
@@ -2748,10 +2798,8 @@ function wireInsert() {
         // the results pages. Taken before them, the log ended at the repair
         // read — and when a results page then failed, the file said
         // "(results slide not added)" with nothing in it about why.
-        lastRunLog = {
-          build: buildStamp,
+        record({
           run,
-          host,
           totalMs,
           items: results.map((r, i) => ({
             title: items[i].title,
@@ -2767,9 +2815,11 @@ function wireInsert() {
           reconcile,
           path: "shapes",
           trace: tracing() ? traceLog(traceFrom) : undefined,
-        };
-        ($("demo-log") as HTMLButtonElement).disabled = false;
-        note(msg, lost > 0 || failedNames.length || blankSlides.length ? "err" : "ok");
+        });
+        note(
+          runs.length > 1 ? `Both paths run. File: ${runs[0].deck.slidesAdded} slides. Shapes: ${msg}` : msg,
+          lost > 0 || failedNames.length || blankSlides.length ? "err" : "ok",
+        );
       }),
     );
   } else {
