@@ -1,16 +1,23 @@
 /**
- * Five things that have never once run against a real PowerPoint.
+ * Six things that have never once run against a real PowerPoint.
  *
- * The demo deck covers inserting; nothing covers what happens AFTERWARDS —
- * inserting on top of an earlier run, a slide duplicated so two claim one slot,
- * redrawing a chart the user is looking at, a deck-wide rescale, turning a
- * degraded picture back into shapes. Every one of those paths is guarded, and
- * every guard has only ever been checked against a fake host. The list has sat
- * in `docs/PUBLISHING.md` as five separate things for a human to remember to
- * try, which in practice means five separate sessions: deploy, click through
- * it, save the deck, upload, read.
+ * The demo deck covers inserting onto slides it added BLANK. Nothing covers
+ * what happens elsewhere — inserting on top of an earlier run, a slide
+ * duplicated so two claim one slot, redrawing a chart the user is looking at,
+ * drawing onto a slide that already has content, a deck-wide rescale, turning
+ * a degraded picture back into shapes. Every one of those paths is guarded,
+ * and every guard has only ever been checked against a fake host. The list has
+ * sat in `docs/PUBLISHING.md` as separate things for a human to remember to
+ * try, which in practice means a session each: deploy, click through it, save
+ * the deck, upload, read.
  *
- * So: one click, five scenarios, each recorded with what it actually observed.
+ * The blank-slide bias is not incidental. `insertSceneIntoSlide` — the
+ * everyday "put a chart on the slide I am looking at" — draws onto whatever
+ * the user already has there, and no test anywhere touched that until
+ * `insertOntoUsedSlide` below. That is exactly where the worst bug of the
+ * session lived, and why a demo run could not have found it.
+ *
+ * So: one click, six scenarios, each recorded with what it actually observed.
  * They run in order and they leave their slides in the deck, because the point
  * is a file someone can open, look at, and hand to `npm run triage`.
  *

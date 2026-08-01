@@ -4,13 +4,13 @@ import { installHost, makeSlide, applyWebProfile, faults } from "./helpers/offic
 import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "../src/taskpane/selftest";
 
 /**
- * The host self-test — five paths the demo deck never touches.
+ * The host self-test — six paths the demo deck never touches.
  *
  * The battery's own value is that it runs against a REAL PowerPoint, which
  * nothing here can do. What these cases pin is the property that makes it
  * worth clicking: that it comes back with a verdict for every scenario, that
  * the verdicts say what was observed, and above all that a scenario which
- * blows up does not take the other four with it. A battery that stops at the
+ * blows up does not take the other five with it. A battery that stops at the
  * first error spends a whole real-host session to learn one thing — and the
  * scenarios after the failure are precisely the ones nobody has data for.
  */
