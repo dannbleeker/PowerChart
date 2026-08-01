@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sheetToData, dataToSheet } from "../src/taskpane/datasheet";
+import { sheetToData, dataToSheet, evaluateFormula } from "../src/taskpane/datasheet";
 import { parseDateToken } from "../src/core/format";
 
 /**
@@ -313,5 +313,40 @@ describe("sheetToData parsing fallbacks", () => {
         ],
       }).series[0].values,
     ).toEqual([null]);
+  });
+});
+
+describe("a range far larger than the sheet", () => {
+  /** A tiny sheet. Every reference below reaches far past its edges. */
+  const sheet = () => [
+    ["", "2", "3"],
+    ["4", "5", "6"],
+  ];
+
+  it("does not blow the stack on a range wider than the argument limit", () => {
+    // `=SUM(A1:ZZ999)` is 702 x 999 cells, and `args.push(...values)` passes
+    // one argument per value — so it threw "Maximum call stack size exceeded"
+    // out of sheetToData, through currentConfig, and into the pane's live
+    // preview. One typed cell took the preview down.
+    //
+    // Two things fix it and either one alone is enough, so neither shows up as
+    // load-bearing on its own: the range is clamped to the sheet's real bounds,
+    // AND the values are appended rather than spread. Both are kept because
+    // they answer different questions — how much work, and how it is passed —
+    // and a later change to one should not silently re-arm the other.
+    expect(() => evaluateFormula(sheet(), "SUM(A1:ZZ999)")).not.toThrow();
+    expect(() => evaluateFormula(sheet(), "MAX(A1:ZZ999)")).not.toThrow();
+    expect(() => evaluateFormula(sheet(), "MIN(A1:ZZ999)")).not.toThrow();
+    expect(() => evaluateFormula(sheet(), "AVG(A1:ZZ999)")).not.toThrow();
+  });
+
+  it("answers from the cells the sheet actually has", () => {
+    // Clamping to the grid changes no answer — a reference past the end reads
+    // as blank either way — so the result must still be the real one.
+    expect(evaluateFormula(sheet(), "SUM(A1:ZZ999)")).toBe(2 + 3 + 4 + 5 + 6);
+    expect(evaluateFormula(sheet(), "MAX(A1:ZZ999)")).toBe(6);
+    expect(evaluateFormula(sheet(), "MIN(A1:ZZ999)")).toBe(2);
+    // …and the blank at A1 is ignored by MIN/AVG, exactly as for a small range.
+    expect(evaluateFormula(sheet(), "AVG(A1:ZZ999)")).toBe(20 / 5);
   });
 });
