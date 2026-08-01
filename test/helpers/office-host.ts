@@ -723,6 +723,11 @@ export function installHost(
   untracked.shapes = 0;
   untracked.tags = 0;
   pendingHostError = null;
+  // failSyncOn was the one fault installHost did not reset, so a test that set
+  // it leaked into every later test in the file and every test in every file
+  // that ran after. It only ever looked safe because each user reset it by
+  // hand — a convention, one `return` away from being forgotten.
+  faults.failSyncOn = 0;
   faults.swallowAdds = 0;
   failSyncsOn.clear();
   stallSyncOn.clear();

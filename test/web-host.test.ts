@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installHost, makeSlide, applyWebProfile, faults, stallSyncOn } from "./helpers/office-host";
-import { insertDemoDeck, DEMO_SLOT_TAG, CHART_TAG, _setBatchTimeoutForTest } from "../src/render/powerpoint";
+import { installHost, makeSlide, makeShape, applyWebProfile, faults, stallSyncOn } from "./helpers/office-host";
+import {
+  insertDemoDeck,
+  insertSceneIntoSlide,
+  updateChartInSlide,
+  DEMO_SLOT_TAG,
+  CHART_TAG,
+  _setBatchTimeoutForTest,
+} from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import type { ChartConfig, ChartKind } from "../src/core/types";
@@ -203,5 +210,126 @@ describe("the web profile itself", () => {
     expect(faults.strictGroup).toBe(false);
     expect(faults.strictTags).toBe(false);
     expect(faults.hollowReads).toBe(0);
+  });
+});
+
+describe("the everyday paths on a host that refuses stale proxies", () => {
+  /** A chart big enough to need more than one batch — where the trap lives. */
+  const bigChart = () => buildChart({ ...sampleConfig("clustered"), ...DEFAULT_SIZE });
+
+  it("keeps an ordinary insert grouped and re-editable", async () => {
+    // The demo path learned this lesson in #238 and the everyday path did not.
+    // `insertSceneIntoSlide` never asked for a proxy refresh — the re-fetch
+    // matched shapes by "the last N on the slide", which is true of a blank
+    // slide a run just added and false of the slide the user is looking at, so
+    // the ordinary path could not opt in. A 24-shape chart takes three batches
+    // at ten a sync; by grouping time the first batch's proxies are three syncs
+    // old, the host refuses them, and the chart lands as a heap of shapes with
+    // no config tag on it — not re-editable at all, on the single most-used
+    // action in the add-in.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.strictGroup = true;
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    await insertSceneIntoSlide(bigChart(), { tagData: JSON.stringify(cfg) });
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live.length, "the chart took more than one batch").toBeGreaterThan(10);
+    expect(live.filter((s) => s.grouped).length, "chart did not survive as one group").toBe(1);
+    expect(live.filter((s) => s.tagStore.has(CHART_TAG)).length, "chart is not re-editable").toBe(1);
+  });
+
+  it("keeps a chart re-editable even when grouping itself is refused", async () => {
+    // Grouping and tagging fail for the SAME reason and are recovered
+    // separately: losing the group costs a tidy object on the slide, losing
+    // the tag costs the chart. On a host that simply will not group, the tag
+    // must still land — and it used to be aimed at `created[0]`, the oldest
+    // proxy the run holds and the one guaranteed to be refused when staleness
+    // was what broke grouping in the first place.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    applyWebProfile();
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    await insertSceneIntoSlide(bigChart(), { tagData: JSON.stringify(cfg) });
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live.filter((s) => s.tagStore.has(CHART_TAG)).length, "chart is not re-editable").toBe(1);
+  });
+
+  it("tags its own shape, not a bystander, when the slide already had shapes on it", async () => {
+    // What made the re-fetch safe to turn on here. It used to identify a
+    // chart's shapes as "the last N on the slide", which holds only for a
+    // slide the run added blank. `insertSceneIntoSlide` draws onto whatever
+    // the user is looking at — a slide that can already hold anything — and
+    // there the rule picks up the user's own shapes and tags one of them.
+    // Matching by id is exact and does not care what else is on the slide.
+    const slide = makeSlide("s1");
+    const theirs = Array.from({ length: 5 }, (_, k) => {
+      const sh = makeShape("geometric", "rectangle", { left: k, top: 0, width: 5, height: 5 });
+      sh.name = `user shape ${k}`;
+      slide.created.push(sh);
+      return sh;
+    });
+    installHost([slide]);
+    faults.strictGroup = true;
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    await insertSceneIntoSlide(bigChart(), { tagData: JSON.stringify(cfg) });
+    for (const sh of theirs) {
+      expect(sh.tagStore.has(CHART_TAG), `${sh.name} was tagged as if it were the chart`).toBe(false);
+      expect(sh.grouped, `${sh.name} was swept into the chart's group`).toBeUndefined();
+    }
+    const group = slide.created.filter((s) => !s.deleted && s.grouped);
+    expect(group).toHaveLength(1);
+    expect(group[0].grouped, "the group swallowed the user's shapes").toHaveLength(
+      slide.created.filter((s) => !s.deleted).length - theirs.length - 1,
+    );
+  });
+
+  it("does not sweep the user's own shapes into a chart that lost a batch", async () => {
+    // The destructive version of the bystander case, and the reason a partial
+    // id match beats a positional guess. When a batch's sync fails the host
+    // discards it, so the slide holds FEWER shapes than the run drew — and
+    // "the chart is the last N shapes" then reaches back past the chart into
+    // whatever was already on the slide. Those shapes get grouped into the
+    // chart and carried in its parts list, so the next edit deletes them.
+    const slide = makeSlide("s1");
+    const theirs = Array.from({ length: 6 }, (_, k) => {
+      const sh = makeShape("geometric", "rectangle", { left: k, top: 0, width: 5, height: 5 });
+      sh.name = `user shape ${k}`;
+      slide.created.push(sh);
+      return sh;
+    });
+    installHost([slide]);
+    faults.strictGroup = true;
+    faults.failSyncOn = 2; // the chart's second batch is discarded by the host
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    await insertSceneIntoSlide(bigChart(), { tagData: JSON.stringify(cfg) }).catch(() => {});
+    for (const sh of theirs) {
+      expect(sh.tagStore.has(CHART_TAG), `${sh.name} was tagged as the chart`).toBe(false);
+      const inSomeGroup = slide.created.some((g) => (g.grouped as unknown[] | undefined)?.includes(sh));
+      expect(inSomeGroup, `${sh.name} was grouped into the chart and will be deleted with it`).toBe(false);
+    }
+  });
+
+  it("keeps an edit in place re-editable", async () => {
+    // An update redraws every shape, so it spans the same batches and hits the
+    // same trap. A chart that stops being re-editable when you edit it is
+    // worse than one that never was: the pane hands back a target it cannot
+    // use again, and the next edit silently does nothing.
+    const slide = makeSlide("s1");
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const chart = makeShape("geometric", "rectangle", { left: 10, top: 10, width: 100, height: 100 });
+    chart.name = "PowerChart";
+    chart.tagStore.set(CHART_TAG, JSON.stringify(cfg));
+    slide.created.push(chart);
+    installHost([slide], [chart], slide);
+    faults.strictGroup = true;
+    const next = { ...cfg, title: "edited" };
+    const target = await updateChartInSlide(
+      buildChart(next),
+      { slideId: "s1", shapeId: chart.id, left: 10, top: 10 },
+      { tagData: JSON.stringify(next) },
+    );
+    expect(target, "the update lost its target").toBeTruthy();
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live.filter((s) => s.tagStore.has(CHART_TAG)).length, "chart is not re-editable").toBe(1);
   });
 });
