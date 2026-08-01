@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installHost, makeSlide, applyWebProfile, faults } from "./helpers/office-host";
-import { runSelfTest, describeSelfTest, type ScenarioResult } from "../src/taskpane/selftest";
+import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "../src/taskpane/selftest";
 
 /**
  * The host self-test — five paths the demo deck never touches.
@@ -138,5 +138,55 @@ describe("the self-test against a host that can take a generated deck", () => {
     const after = byName(await runSelfTest("probe"))["insert on top of an earlier run"];
     expect(after.ok).toBe(false);
     expect(after.detail).toContain("deck grew by 2");
+  });
+});
+
+describe("scenarios that must not be able to pass without proving anything", () => {
+  const named = (rs: ScenarioResult[]) => Object.fromEntries(rs.map((r) => [r.name, r]));
+
+  it("skips the picture scenario rather than faking one when there is no rasteriser", async () => {
+    // `render: "image"` on a config does NOT make a picture — the renderer
+    // takes the picture path only when handed `pictureBase64`. An earlier
+    // version passed `undefined`, quietly performed two ordinary shape
+    // updates, and reported that the picture round-trip worked. A scenario
+    // that cannot fail is worse than one that is missing: it reads as
+    // evidence. With no rasteriser the honest answer is "did not check".
+    setSelfTestRasterizer(undefined as unknown as (s: unknown) => Promise<string | undefined>);
+    installHost([makeSlide("s1")]);
+    const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
+    expect(explode.skipped, explode.detail).toBe(true);
+    expect(explode.detail).toMatch(/rasteris/i);
+  });
+
+  it("hands the host a real picture when there is one", async () => {
+    // The deck, not one slide: the insert scenarios append their own slides,
+    // so the chart this one collapses is never on the slide we started with.
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    let asked = 0;
+    setSelfTestRasterizer(async () => {
+      asked++;
+      return "data:image/png;base64,UE5H";
+    });
+    const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
+    expect(asked, "the scenario never asked for a picture").toBeGreaterThan(0);
+    expect(explode.skipped, explode.detail).toBeFalsy();
+    // The picture really reached the host, rather than the renderer drawing
+    // shapes and the scenario calling that a picture.
+    const pictured = deck.flatMap((s) => s.created).filter((s) => s.imageBase64);
+    expect(pictured.length, "no picture fill ever reached the host").toBeGreaterThan(0);
+  });
+
+  it("skips the rescale rather than comparing against -Infinity", async () => {
+    // `Math.max()` of nothing is -Infinity, and JSON.stringify turns that into
+    // `null` — so an all-blank data set wrote {"scale":{"max":null}} and then
+    // compared it against -Infinity, which never matches. The scenario
+    // reported a failure that was its own arithmetic.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => undefined);
+    const scale = named(await runSelfTest("probe"))["same scale across the deck"];
+    expect(scale.detail).toBeTruthy();
+    expect(scale.detail).not.toContain("Infinity");
+    expect(scale.detail).not.toContain("null");
   });
 });

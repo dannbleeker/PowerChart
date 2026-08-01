@@ -120,8 +120,12 @@ export function triage(deck, log) {
   // A slide carrying a slot this run never issued. Only possible when a tag
   // survived from a longer run into a shorter one, or when a slot tag was
   // written wrong — either way nothing owns it and nothing will clean it.
+  // Outside the run's range in EITHER direction. Only `>= items.length` was
+  // checked, so a slide tagged with a negative slot — a tag written wrong, or
+  // carried over from something that was not this — matched no item, fell
+  // outside the orphan test, and was reported by nothing at all.
   const orphans = [...mine.keys()]
-    .filter((s) => s >= items.length)
+    .filter((s) => !Number.isInteger(s) || s < 0 || s >= items.length)
     .map((s) => ({ slot: s, verdict: "orphan", indexes: mine.get(s).map((r) => r.index + 1) }));
 
   const counts = {};
@@ -140,6 +144,18 @@ export function triage(deck, log) {
  */
 export function runsIn(log) {
   return Array.isArray(log?.runs) ? log.runs : [log];
+}
+
+/**
+ * The host self-test's verdicts, if this log is one.
+ *
+ * A self-test log carries no runs at all — the scenarios are not inserts and
+ * own no slots — so `runsIn` gives an empty list and the whole report used to
+ * come out blank, exit 0, and look like a clean deck. It is a file someone
+ * hands this tool expecting an answer.
+ */
+export function selfTestIn(log) {
+  return Array.isArray(log?.selftest) ? log.selftest : [];
 }
 
 function pad(s, n) {
@@ -220,9 +236,12 @@ if (invokedDirectly) {
   }
   const runs = runsIn(log);
   const results = runs.map((run) => ({ run, t: triage(deck, run) }));
+  const selftest = selfTestIn(log);
   const faults = faultsIn(deck);
   if (flags.includes("--json")) {
-    console.log(JSON.stringify({ faults, runs: results.map(({ run, t }) => ({ path: run.path, ...t })) }, null, 2));
+    console.log(
+      JSON.stringify({ faults, selftest, runs: results.map(({ run, t }) => ({ path: run.path, ...t })) }, null, 2),
+    );
   } else {
     // Faults belong to the FILE, not to a run, so they are reported once
     // above the runs rather than repeated under each of them.
@@ -231,7 +250,17 @@ if (invokedDirectly) {
       for (const f of faults) console.log(`    - ${f}`);
     }
     for (const { run, t } of results) report(deck, log, run, t, flags.includes("--all"));
+    if (selftest.length) {
+      console.log(`\n  SELF-TEST ${selftest.filter((s) => s.ok).length} of ${selftest.length} scenarios passed\n`);
+      for (const s of selftest) {
+        const mark = s.skipped ? "skip" : s.ok ? "ok" : "FAIL";
+        console.log(`  ${pad(mark, 6)}${pad(s.name, 36)}${s.detail}`);
+      }
+      console.log("");
+    }
+    if (!results.length && !selftest.length) console.log("\n  this log holds no runs and no self-test\n");
   }
-  const disagreements = results.reduce((n, { t }) => n + t.disagreements, 0);
+  const disagreements =
+    results.reduce((n, { t }) => n + t.disagreements, 0) + selftest.filter((s) => !s.ok && !s.skipped).length;
   process.exit(disagreements || faults.length ? 1 : 0);
 }

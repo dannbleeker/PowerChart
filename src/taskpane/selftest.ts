@@ -36,6 +36,7 @@ import {
   reconcileDeck,
   showSlide,
   slideCount,
+  slideHoldsOnlyChart,
   updateChartInSlide,
   errorText,
 } from "../render/powerpoint";
@@ -193,10 +194,18 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
   const charts = await probeCharts(prefix);
   if (charts.length < 2) return { ok: false, skipped: true, detail: "fewer than two probe charts to scale together" };
   await showSlide(charts[0].target.slideId);
-  const extents = charts.map((c) => c.cfg);
-  const max = Math.max(
-    ...extents.flatMap((c) => (c.data?.series ?? []).flatMap((s) => s.values.map((v) => Number(v) || 0))),
-  );
+  // Every finite value across every probe chart. `Math.max()` of nothing is
+  // -Infinity, and JSON.stringify turns that into `null` — so an empty or
+  // all-blank data set wrote `{"scale":{"max":null}}` into the tag and then
+  // compared it against -Infinity, which never matches. The scenario reported
+  // a failure that was its own arithmetic.
+  const values = charts
+    .flatMap((c) => c.cfg.data?.series ?? [])
+    .flatMap((s) => s.values)
+    .map(Number)
+    .filter((v) => Number.isFinite(v));
+  if (!values.length) return { ok: false, skipped: true, detail: "probe charts carry no numbers to scale" };
+  const max = Math.max(...values);
   for (const c of charts) {
     const next: ChartConfig = { ...c.cfg, scale: { max } };
     await updateChartInSlide(buildChart(next), c.target, { tagData: JSON.stringify(next) });
@@ -218,17 +227,31 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
  */
 const explodePicture: Scenario = async (prefix) => {
   if (!canInsertPicture()) return { ok: false, skipped: true, detail: "host has no picture fill (PowerPointApi 1.8)" };
+  if (!rasterizer) return { ok: false, skipped: true, detail: "no rasteriser — cannot make a picture to explode" };
   const [chart] = await probeCharts(prefix);
   if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to explode" };
   // Collapse it to a picture first, the way a struggling host would, then ask
   // for it back as shapes. Both halves matter: a config lost on the way IN is
   // indistinguishable from one lost on the way OUT if only one is exercised.
+  //
+  // The picture comes from a real rasterisation. `render: "image"` on the
+  // config does NOT make one — the renderer takes the picture path only when
+  // handed `pictureBase64` — so an earlier version of this passed `undefined`
+  // and quietly performed two ordinary shape updates while reporting that the
+  // picture round-trip worked. A scenario that cannot fail is worse than one
+  // that is missing: it reads as evidence.
   const asPicture: ChartConfig = { ...chart.cfg, render: "image" };
+  const png = await rasterizer(buildChart(asPicture));
+  if (!png) return { ok: false, skipped: true, detail: "the browser would not rasterise the chart" };
   const pictured = await updateChartInSlide(buildChart(asPicture), chart.target, {
     tagData: JSON.stringify(asPicture),
-    pictureBase64: undefined,
+    pictureBase64: png,
   });
   if (!pictured) return { ok: false, detail: "the chart vanished while being collapsed to a picture" };
+  // One shape is what a picture IS. More than one means the renderer drew
+  // shapes instead and the rest of this scenario would prove nothing.
+  const asOne = await slideHoldsOnlyChart(pictured.slideId);
+  if (!asOne) trace("selftest", "picture may not be a single shape", { slide: pictured.slideId });
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
   if (!exploded) return { ok: false, detail: "the picture vanished while being exploded back to shapes" };
@@ -258,6 +281,19 @@ const SCENARIOS: { name: string; run: Scenario }[] = [
  * traced as it lands, so a run that takes the tab down still leaves a record
  * of how far it got.
  */
+/**
+ * How the battery gets a picture, when it needs one.
+ *
+ * Rasterising needs a canvas, which lives in the pane — the same split
+ * `insertDemoDeck` already uses for its degrade-to-picture path. Absent, the
+ * picture scenario reports SKIPPED rather than pretending.
+ */
+let rasterizer: ((scene: Scene) => Promise<string | undefined>) | undefined;
+
+export function setSelfTestRasterizer(fn: (scene: Scene) => Promise<string | undefined>): void {
+  rasterizer = fn;
+}
+
 export async function runSelfTest(prefix = `selftest ${newRunId()}`): Promise<ScenarioResult[]> {
   const out: ScenarioResult[] = [];
   for (const { name, run } of SCENARIOS) {
