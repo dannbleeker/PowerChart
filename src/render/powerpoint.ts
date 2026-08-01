@@ -390,7 +390,14 @@ export async function insertSceneIntoSlide(
     // notably PowerPoint on the web, don't support) can't roll back the chart.
     onPhase?.("group");
     await groupAndTagAll(context, [
-      { getSlide, created, opts: { ...opts, altText: scene.desc, altTitle: scene.title } },
+      {
+        getSlide,
+        created,
+        opts: { ...opts, altText: scene.desc, altTitle: scene.title },
+        // A chart that took more than one batch holds proxies from before the
+        // last sync, and the web host refuses those — see `refreshShapes`.
+        refreshShapes: spansBatches(created, opts),
+      },
     ]);
     onPhase?.("done");
   });
@@ -555,7 +562,12 @@ export async function updateChartsInSlides(
     if (!rendered.length && firstFailure !== undefined) throw firstFailure;
 
     // 4-5. Group, then tag — one sync each, however many charts.
-    const tagged = await groupAndTagAll(context, rendered);
+    const tagged = await groupAndTagAll(
+      context,
+      // An update redraws every shape, so the same multi-batch staleness that
+      // costs a fresh insert its group costs an edit its group too.
+      rendered.map((r) => ({ ...r, refreshShapes: r.refreshShapes || spansBatches(r.created, r.opts) })),
+    );
 
     // 6. Hand back the NEW targets. An update replaces every shape, so the
     //    caller's target is dead as soon as this returns: the pane used to keep
@@ -2681,6 +2693,20 @@ function supports(version: string): boolean {
 const SHAPES_PER_SYNC = 10;
 
 /**
+ * Did this chart take more than one sync to draw?
+ *
+ * If it did, the proxies from every batch but the last are older than the
+ * sync that is about to group them, and PowerPoint on the web answers
+ * `InvalidParam passed to GetItem(id)` for exactly those. One re-read of the
+ * slide's shapes costs a round trip; not doing it costs the chart its group
+ * AND its config tag, which is the difference between a chart the pane can
+ * re-open and a pile of shapes.
+ */
+function spansBatches(created: PowerPoint.Shape[], opts: InsertOptions): boolean {
+  return created.length > (opts.shapesPerSync ?? SHAPES_PER_SYNC);
+}
+
+/**
  * Off-screen slides (appended by the demo deck or the agenda) don't repaint
  * mid-render, so the host swallows batches ~4-5x larger than the live canvas
  * tolerates. Measured against the real host: a stacked chart at 10 shapes
@@ -2820,6 +2846,12 @@ async function renderShapesChunked(
     do {
       created.push(...steps[s++](shapes));
     } while (s < steps.length && created.length - before < batchSize);
+    // Read each shape's id back on the batch's OWN sync — free, because the
+    // sync is happening anyway, and it is what lets a later re-fetch find these
+    // exact shapes again. Without ids the only way to identify a chart's shapes
+    // in a fresh read is "the last N on the slide", which is true of a blank
+    // slide this run added and false of the one the user is looking at.
+    for (let k = before; k < created.length; k++) created[k].load("id");
     sent += created.length - before;
     const upTo = Math.min(sent, total);
     // Reported BEFORE the sync, and deliberately: the sync is where a bad host
@@ -2914,10 +2946,31 @@ async function groupAndTagAll(
       await context.sync();
       refresher.forEach(({ it, i }, k) => {
         const items = collections[k].items;
-        // The chart's shapes are the LAST N on the slide (fresh demo slides
-        // start blank). If items are fewer than expected — e.g. a batch was
-        // lost — fall back to `it.created` and hope for the best.
-        if (items.length >= it.created.length) {
+        // By ID, which is exact and works on any slide. The old rule was "the
+        // chart's shapes are the LAST N on the slide" — true of a blank slide
+        // this run added, and false of the slide the user is looking at, which
+        // is why the ordinary insert path could not use this at all and lost
+        // its grouping and its config tag on every chart big enough to need
+        // more than one batch.
+        const byId = new Map<string, PowerPoint.Shape>();
+        for (const sh of items) if (sh.id) byId.set(sh.id, sh);
+        const matched = it.created.map((sh) => (sh.id ? byId.get(sh.id) : undefined)).filter(Boolean);
+        if (matched.length) {
+          // Same order as `created`, so index 0 stays the chart's anchor and
+          // `ungroupedFallback`'s "everything after it is a part" holds.
+          //
+          // A PARTIAL match is still worth having, and is used rather than
+          // falling back: every shape in it is provably ours, whereas the
+          // positional rule below is a guess that gets worse the more of the
+          // chart went missing. A run that lost a batch has fewer shapes on
+          // the slide than it drew, so "the last N" reaches back past the
+          // chart and into whatever the user already had there — and those
+          // shapes then get grouped into the chart and deleted with it.
+          freshMembers.set(i, matched as PowerPoint.Shape[]);
+        } else if (items.length >= it.created.length) {
+          // No ids to match on at all — a host that would not read them back.
+          // The positional rule is still right for a slide this run added
+          // blank, which is every slide the demo path draws on.
           freshMembers.set(i, items.slice(items.length - it.created.length));
         }
       });
@@ -2947,7 +3000,12 @@ async function groupAndTagAll(
       await context.sync();
     } catch {
       /* grouping failed — shapes stay ungrouped, charts are already on the slide */
-      for (const { i } of groupable) tagTargets[i] = items[i].created[0];
+      // The REFRESHED first shape where there is one. Falling back to
+      // `created[0]` means falling back to the oldest proxy this run holds,
+      // and when grouping failed BECAUSE the proxies were stale that is the
+      // one handle guaranteed to fail again — so the chart lost its config tag
+      // as well as its group, and stopped being re-editable at all.
+      for (const { i } of groupable) tagTargets[i] = freshMembers.get(i)?.[0] ?? items[i].created[0];
       grouped.clear();
     }
   }
