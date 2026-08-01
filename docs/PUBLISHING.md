@@ -84,26 +84,50 @@ Pick the platform(s); the manifest file is `manifest-prod.xml` from Phase 1
 - **Excel companion**: same procedure in Excel with
   `manifest-excel-prod.xml`.
 
-**Validation checklist** (owner drives PowerPoint, agent fixes fallout —
-expect the first real-host run to surface issues the mocked tests can't):
+### The standing test run
 
-1. Ribbon shows the PowerChart menu; pane opens; gallery renders.
-2. Insert a stacked chart → native grouped shapes appear; move/resize one
-   bar by hand (proof of editability).
-3. Select the chart → "Edit it" banner → change data → **Update chart**
-   replaces in place.
-4. Pie chart on a 1.10+ host (triangle-fan rotation), grouping on 1.8+.
-5. **Use deck theme** on a 1.10+ host pulls the template's accent colors.
-6. Elements (harvey ball, table with a total row) and Agenda insert.
-7. Excel: select a range → Generate → paste JSON into PowerPoint pane →
-   Import → chart matches.
+What to do on **every** build that lands a real-host fix. Ordered by risk, not
+by feature: tests 1–4 are manual and take about five minutes, tests 5–6 are one
+click each and run themselves. The owner drives PowerPoint, the agent fixes
+fallout — expect a real host to surface things the mocked tests can't, because
+every Office.js assertion in this repo is against a fake.
 
-8. **Run host self-test** (Testing section) — one click, six scenarios the
-   demo deck does not cover. Then **Download run log** and save the deck.
+**Before you start.** Wait ~2 minutes after the merge for the Pages deploy.
+Open the pane and check the **build stamp** under the title is the commit you
+mean to test — PowerPoint caches the pane aggressively, and a whole session can
+otherwise go into testing code the host never fetched. Hard-reload if it is
+older. Then tick **Verbose trace** in the Testing section and leave it on.
+
+| # | test | what it catches |
+| --- | --- | --- |
+| 1 | **The everyday insert.** Blank slide, insert a **Clustered** chart (24 shapes — multi-batch is the trigger; a 5-shape chart will not exercise it). Click it: the pane says "A PowerChart is selected." **Edit it** loads the data back. Drag one bar by hand. | Any chart over ~10 shapes on the web used to lose its group *and* its config tag — silently not re-editable, on the most-used action in the add-in. Fails if there is no selection banner, or **Edit it** does nothing. |
+| 2 | **A second chart on the same slide.** Insert another chart beside the first. Both stay independently selectable. Edit the *second* → **Update chart**; the first must still be there and still editable. | The sweep case: a run that pulls pre-existing shapes into its own group carries them in its parts tag and deletes them on the next edit. |
+| 3 | **Edit in place.** Select chart 1 → **Edit it** → change a number → **Update chart**. It redraws in place, does not jump, and is still editable afterwards. | An edit that leaves a chart un-editable is worse than one that never worked: the pane hands back a target it cannot use, and the *next* edit silently does nothing. |
+| 4 | **The formula crash** (30 seconds). Type `=SUM(A1:ZZ999)` into any datasheet cell. The preview keeps working — no freeze, no blank pane. | 702 × 999 cells used to throw `Maximum call stack size exceeded` straight through the live preview. |
+| 5 | **Demo deck — both paths.** Path → **Both, one after the other** → **Insert demo deck**. ~6 s for the file half, then 1–2 minutes for the shape half. | The file half must report **38 of 38 complete** — anything less is a regression. The shape half being slower with some items short is the *measurement* of what the everyday code path costs at 38× scale, not a defect. |
+| 6 | **Run host self-test.** One click, six scenarios (below). | The paths the demo deck never touches. A verdict of **skipped** is not a failure. |
+
+Then send back two files: **Download run log** (Testing section) and the deck
+itself (File → Download a copy). The log carries the run's identity token, so
+`npm run triage` joins it to the deck exactly rather than by guesswork.
+
+What to read in the result: the `tagging failed` count (was 28 on the last slow
+run; should be near zero), any line annotated `^ known host bug: office-js#…`
+(Microsoft's, not ours — annotated automatically, don't chase it), and the six
+self-test verdicts.
 
 Record anything broken as issues; fix per the lockstep rules. Real-host
 degradation paths that are *expected* (not bugs): radar fills are
 outline-only, pattern fills render solid.
+
+**Wider feature sweep** — once per release, rather than per build:
+
+1. Ribbon shows the PowerChart menu; pane opens; gallery renders.
+2. Pie chart on a 1.10+ host (triangle-fan rotation), grouping on 1.8+.
+3. **Use deck theme** on a 1.10+ host pulls the template's accent colors.
+4. Elements (harvey ball, table with a total row) and Agenda insert.
+5. Excel: select a range → Generate → paste JSON into PowerPoint pane →
+   Import → chart matches.
 
 ### The host self-test
 
@@ -133,7 +157,9 @@ It leaves its slides in the deck on purpose — save the file and hand it to
 selection-driven entry points ("Edit selected chart", "Explode" as a user
 reaches them) cannot be scripted. The battery drives the machinery underneath
 them via `listChartsInDeck`. A scenario passing here can still be broken at the
-selection layer; a scenario failing here is broken for everyone.
+selection layer; a scenario failing here is broken for everyone. Tests 1–3 of
+the standing run are the only coverage those entry points get — which is why
+they come first, and why they are manual.
 
 ### Reading the demo-deck self-check (post-#212–#216)
 
