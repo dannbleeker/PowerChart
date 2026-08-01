@@ -136,7 +136,10 @@ What is left needs the owner, not the agent:
   Expect the first real run to surface things the mocked tests cannot. The two
   areas with the least mock fidelity are chart **positioning** (the
   `POWERCHART_ORIGIN` drag-delta round trip) and **grouping** on hosts that
-  gate it behind `supports("1.8")`.
+  gate it behind `supports("1.8")`. What to actually ask the owner to click is
+  written down — "The standing test run" in `docs/PUBLISHING.md`, six tests
+  ordered by risk, about five minutes of manual work plus two one-click
+  batteries. Don't improvise a new one per session.
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 
 Follow it phase by phase; retire items from it and from this list as they
