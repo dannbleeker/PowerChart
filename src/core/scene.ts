@@ -192,6 +192,42 @@ import { wedgeFanSteps, type SymbolShape } from "./geometry";
 import { toRgb } from "./color";
 export type { SymbolShape };
 
+/**
+ * Drop any node whose geometry is not a finite number.
+ *
+ * The scene is the contract between the chart engine and three renderers, and
+ * "every coordinate is a real number" was a property it happened to have
+ * rather than one it promised. The SVG renderer defends itself — every numeric
+ * goes through `num()` — but the two PowerPoint renderers do not, and they are
+ * the ones that write a file. A `NaN` there lands in `addGeometricShape({left:
+ * NaN, …})` and in OOXML as an EMU value, so the produced .pptx is one
+ * PowerPoint may simply refuse to open. Nine chart kinds could do it, from
+ * values a datasheet cell can hold (`1e308`, `5e-324`).
+ *
+ * DROPPED rather than zeroed. A node whose position could not be computed has
+ * no right position to fall back to, and zeroing puts a stray bar in the
+ * corner of the chart — wrong in a way that looks deliberate. Leaving it out
+ * loses that one node and keeps the rest of the chart, which is what a reader
+ * can actually interpret.
+ *
+ * For a valid config this drops nothing, so it is a floor and not a filter.
+ */
+export function finiteNodes(nodes: SceneNode[]): SceneNode[] {
+  return nodes.filter((n) => allNumbersFinite(n));
+}
+
+/** Every number anywhere in the node — including a polygon's point list. */
+function allNumbersFinite(value: unknown, depth = 0): boolean {
+  // Scene nodes are shallow; the bound is a cycle guard, not a shape claim.
+  if (depth > 6) return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every((v) => allNumbersFinite(v, depth + 1));
+  if (value && typeof value === "object") {
+    for (const v of Object.values(value)) if (!allNumbersFinite(v, depth + 1)) return false;
+  }
+  return true;
+}
+
 export interface Scene {
   width: number;
   height: number;
