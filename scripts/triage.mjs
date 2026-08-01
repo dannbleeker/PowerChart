@@ -158,6 +158,31 @@ export function selfTestIn(log) {
   return Array.isArray(log?.selftest) ? log.selftest : [];
 }
 
+/**
+ * Failure signatures that belong to PowerPoint, not to PowerChart.
+ *
+ * The first hour of the last diagnosis went into establishing that
+ * `InvalidParam passed to GetItem(id)` was a host bug rather than ours. It is,
+ * it is reported, and three of these four are still open — so the trace can
+ * just say so. A reader who sees an issue number stops looking for the mistake
+ * in this repo.
+ *
+ * Matched on a substring of the reason string the trace recorded. Checked
+ * 2026-08-01; re-check before trusting the status (see RESEARCH.md 4b).
+ */
+const KNOWN_HOST_BUGS = [
+  ["InvalidParam passed to GetItem", "office-js#2903 (closed: not planned) — stale shape proxy on web"],
+  ["not available", "office-js#6363 (open: regression) — loaded property missing after sync"],
+  ["did not respond", "office-js#5022 (open) — sync hangs after add/delete/re-read"],
+  ["Timed out", "office-js#5022 (open) — sync hangs after add/delete/re-read"],
+];
+
+/** The known-bug note for a problem string, if there is one. */
+export function knownBug(text) {
+  const hit = KNOWN_HOST_BUGS.find(([sig]) => text.includes(sig));
+  return hit ? hit[1] : null;
+}
+
 function pad(s, n) {
   return String(s ?? "—")
     .padEnd(n)
@@ -202,7 +227,11 @@ function report(deck, log, run, t, showAll) {
     for (const s of trace.summary.steps.slice(0, 8)) console.log(`    ${pad(s.n, 6)}${s.scope}  ${s.message}`);
     if (trace.summary.problems.length) {
       console.log(`  problems:`);
-      for (const p of trace.summary.problems.slice(0, 8)) console.log(`    ${pad(p.n, 6)}${p.text}`);
+      for (const p of trace.summary.problems.slice(0, 8)) {
+        console.log(`    ${pad(p.n, 6)}${p.text}`);
+        const known = knownBug(p.text);
+        if (known) console.log(`    ${pad("", 6)}  ^ known host bug: ${known}`);
+      }
     }
   } else if (trace) {
     console.log(`\n  TRACE ${trace.entries?.length ?? 0} entries (written before summaries existed — no tallies)`);

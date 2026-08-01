@@ -105,6 +105,18 @@ The verdicts, and what each means:
 | `orphan`        | never issued that slot    | a slide carrying it     |
 | `skipped`       | skipped it                | nothing — as expected   |
 
+A failure whose reason matches a known PowerPoint bug is annotated with the
+issue number, so a reader stops looking for the mistake in this repo:
+
+```
+      79  InvalidParam passed to GetItem(id) | code=5010
+          ^ known host bug: office-js#2903 (closed: not planned) — stale shape proxy on web
+```
+
+The first hour of one diagnosis went into establishing exactly that. The list
+lives in `scripts/triage.mjs` and was checked 2026-08-01 — see `RESEARCH.md`
+§4b before trusting a status.
+
 `repaired` and another run's slides are **not** disagreements; they are the
 repair pass and the run token doing their jobs. Exit 0 when the two accounts
 agree, 1 when they do not, 2 when a file cannot be read.

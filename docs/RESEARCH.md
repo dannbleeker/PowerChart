@@ -93,6 +93,116 @@ flagged; caveats at the end.
   persist the data model in tags, recompute layout and re-emit shapes on every
   edit. This is exactly PowerChart's pipeline.
 
+## 4b. Re-check, 2026-08: is the Office.js approach still right?
+
+The original §4 was desk research before anything shipped. This is a re-check
+after nine real-host runs, ~20 host-behaviour bugs and a targeted search of
+Microsoft's own issue tracker. **Verdict: the architecture holds, and the
+evidence is stronger than the original guess.**
+
+### Every hard workaround maps to an open Microsoft bug
+
+None of the defensive machinery in `powerpoint.ts` is compensating for our own
+misuse. Each of these is a PowerPoint-on-the-web defect, reported by others,
+still open:
+
+| Behaviour we defend against | Issue | Status |
+|---|---|---|
+| `InvalidParam passed to GetItem(id)` — a shape proxy goes stale across a sync | [office-js#2903](https://github.com/OfficeDev/office-js/issues/2903) | closed **"not planned"** |
+| `context.sync()` hangs forever after add → delete → re-read shapes | [office-js#5022](https://github.com/OfficeDev/office-js/issues/5022) | under investigation; the only workaround anyone has is a 1–2 s sleep |
+| Loaded properties silently unavailable after `sync()` (our "hollow reads") | [office-js#6363](https://github.com/OfficeDev/office-js/issues/6363) | labelled **regression + product bug**; reporter tried ten approaches, none worked |
+| `sync()` hangs past ~51 items in one `load()` | [office-js#4272](https://github.com/OfficeDev/office-js/issues/4272) | open — this is why `READBACK_PAGE` is 20 |
+
+The `hollowReads` fault in `test/helpers/office-host.ts` is not a paranoid
+invention: it models a regression Microsoft has acknowledged and not yet fixed.
+
+**The resource-limit reading is confirmed.** Microsoft's current
+[resource limits doc](https://github.com/OfficeDev/office-js-docs-pr/blob/main/docs/concepts/resource-limits-and-performance-optimization.md)
+scopes the CPU / memory / four-crashes / five-second ceilings to *"Windows and
+Mac only… not included: mobile apps or browser versions."* Nothing throttles a
+runaway add-in on the web — the tab simply dies, which is what happened at
+~1850 shapes. `DEMO_SHAPE_BUDGET` exists because no platform limit does.
+
+### The file-first default is the decision that matters
+
+All four bugs above live on the **shape-by-shape** path.
+`insertSlidesFromBase64` is one call and touches none of them. The measured gap
+is 5.8–6.5 s with zero loss versus 85–118 s and 3–8 items short, on the same
+host in the same session — but the reliability gap matters more than the speed
+gap: it is the difference between using four broken APIs and using none.
+
+One caveat to carry: [office-js#2780](https://github.com/OfficeDev/office-js/issues/2780)
+and [#5896](https://github.com/OfficeDev/office-js/issues/5896) report
+`insertSlidesFromBase64` losing source formatting, both closed without
+resolution. Reading them, the complaints concern *theme-inherited* formatting
+when copying slides between decks. PowerChart emits explicit formatting on
+every shape, which is why its runs land clean — so **do not drift toward
+theme-inherited styling in the generated deck**; that is what would expose us
+to this.
+
+### Alternatives, assessed and rejected
+
+| Approach | Verdict |
+|---|---|
+| **OOXML injection** (`setSelectedDataAsync` + `CoercionType.Ooxml`) | **Does not exist for PowerPoint.** Word and Word Online only. The obvious escape hatch is not there |
+| **SVG coercion** (`CoercionType.XmlSvg`) | Rejected in `BACKLOG.md`, and the reasons check out: writes to the *selection* only, [#2881](https://github.com/OfficeDev/office-js/issues/2881) renders complex SVG wrong, [#3309](https://github.com/OfficeDev/office-js/issues/3309) cannot read it back |
+| **Freeform / custom geometry** | Still absent. The API offers exactly three creators — `addGeometricShape`, `addLine`, `addTextBox`. The triangle-fan pie is not a workaround chosen over something better; it is the only option |
+| **Copying a shape between slides** | **No API.** `Shape.Duplicate` / `ShapeRange.Copy` are VBA only; the Office.js `shapes` collection is read-only and there is no `copyTo`. Any "build it on a temp slide and paste it" plan is unbuildable — see below |
+| **Native PowerPoint chart objects** (`c:chart`) | Real, and pptxgenjs can emit them. Rejected on product grounds, not technical: a native chart cannot carry think-cell decorations, which is the entire point |
+| **`customXmlParts`** | Available for PowerPoint, and the right tool for *deck-level* data — but not for chart config. See below |
+
+Microsoft's own performance guidance — minimise `sync()`, batch loads,
+`untrack()` proxies — is what `SHAPES_PER_SYNC`, `READBACK_PAGE` and the
+untrack calls already implement. We are not fighting the platform's advice; we
+are following it and hitting its bugs anyway.
+
+### Putting a chart on the slide the user is already on
+
+There is no shape copy/paste in Office.js, so the tempting workaround — build
+the chart on a scratch slide via the reliable file path, copy it onto the
+current slide, delete the scratch slide — **cannot be built**. There is no
+paste step to write.
+
+What remains for an existing slide:
+
+1. **`insertSlidesFromBase64` with `targetSlideId`** places the generated slide
+   immediately after the current one. Not *on* the slide, but the reliable path
+   and the correct default for "add a chart here".
+2. **Insert as a picture** — one shape, one sync, so it avoids all four bugs
+   above by construction. "Explode to native shapes" is then the user's
+   informed opt-in to the risky path.
+3. **`insertSceneIntoSlide`** — drawing shape by shape onto the live slide. The
+   only way to get native shapes onto a slide we did not generate, and
+   consequently where the bugs concentrate.
+
+### Should `customXmlParts` get a spike?
+
+**Not for chart config.** A chart's config must travel *with the shape*, so it
+survives copy/paste into another deck and PowerPoint's own Duplicate Slide.
+Shape tags do that; a presentation-scoped XML part cannot.
+
+**Not as a repair-pass manifest** either, though it is tempting: one read
+instead of paging tags off every slide would dodge #4272 and #6363. But such a
+manifest is a *cache*, and it goes stale the moment the user deletes a slide,
+duplicates one, or edits the deck in another app. A stale cache driving a pass
+that **deletes slides** is precisely the failure this project has spent its
+time eliminating. It would still have to be verified against the slides — which
+is the expensive part it was meant to avoid.
+
+**Yes, for deck-level style.** This is a real gap with no alternative: the
+imported style file and saved templates live in `localStorage`
+(`powerchart-style`, `powerchart-templates`), so they follow the *browser*, not
+the deck. Send a branded deck to a colleague and their charts do not match
+yours. A presentation-scoped custom XML part is exactly the right home for
+"this deck's chart style".
+
+One trap if that spike happens: Office.js enumerates only custom XML parts
+related from `ppt/presentation.xml`. Parts written at the package root
+(`/customXml/itemN.xml`) are invisible to it — which is how a
+[reported "missing parts" bug](https://learn.microsoft.com/en-us/answers/questions/2149356/powerpoint-office-js-customxml-api-does-not-return)
+turned out to be a scoping rule rather than a defect. A part written into our
+generated deck must be related from the presentation, not dropped at the root.
+
 ## 5. How the findings map to PowerChart
 
 | Finding | Status in PowerChart |
@@ -129,6 +239,10 @@ slide-layout engine. The README feature table is the authoritative list.
   OLE vs custom XML parts) remains an open question; likewise the exact
   algorithms behind interactive-speed label placement, and how Excel data links
   could work from a sandboxed PowerPoint add-in.
+- §4b's issue links were read 2026-08-01. Three of the four were open then;
+  #2903 is closed "not planned", which is a decision rather than a fix. Re-check
+  before assuming any of them has been resolved — and if #6363 or #5022 ever
+  are, the shape path's cost/benefit changes and is worth re-opening.
 
 ## Primary sources
 

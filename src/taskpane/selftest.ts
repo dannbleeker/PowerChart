@@ -1,16 +1,23 @@
 /**
- * Five things that have never once run against a real PowerPoint.
+ * Six things that have never once run against a real PowerPoint.
  *
- * The demo deck covers inserting; nothing covers what happens AFTERWARDS —
- * inserting on top of an earlier run, a slide duplicated so two claim one slot,
- * redrawing a chart the user is looking at, a deck-wide rescale, turning a
- * degraded picture back into shapes. Every one of those paths is guarded, and
- * every guard has only ever been checked against a fake host. The list has sat
- * in `docs/PUBLISHING.md` as five separate things for a human to remember to
- * try, which in practice means five separate sessions: deploy, click through
- * it, save the deck, upload, read.
+ * The demo deck covers inserting onto slides it added BLANK. Nothing covers
+ * what happens elsewhere — inserting on top of an earlier run, a slide
+ * duplicated so two claim one slot, redrawing a chart the user is looking at,
+ * drawing onto a slide that already has content, a deck-wide rescale, turning
+ * a degraded picture back into shapes. Every one of those paths is guarded,
+ * and every guard has only ever been checked against a fake host. The list has
+ * sat in `docs/PUBLISHING.md` as separate things for a human to remember to
+ * try, which in practice means a session each: deploy, click through it, save
+ * the deck, upload, read.
  *
- * So: one click, five scenarios, each recorded with what it actually observed.
+ * The blank-slide bias is not incidental. `insertSceneIntoSlide` — the
+ * everyday "put a chart on the slide I am looking at" — draws onto whatever
+ * the user already has there, and no test anywhere touched that until
+ * `insertOntoUsedSlide` below. That is exactly where the worst bug of the
+ * session lived, and why a demo run could not have found it.
+ *
+ * So: one click, six scenarios, each recorded with what it actually observed.
  * They run in order and they leave their slides in the deck, because the point
  * is a file someone can open, look at, and hand to `npm run triage`.
  *
@@ -30,6 +37,7 @@ import { buildDeckBase64 } from "../render/pptx-deck";
 import {
   canInsertPicture,
   canInsertSlidesFromBase64,
+  insertSceneIntoSlide,
   insertSlidesFromPptx,
   listChartsInDeck,
   newRunId,
@@ -264,10 +272,66 @@ const explodePicture: Scenario = async (prefix) => {
   };
 };
 
+/**
+ * Drawing charts onto a slide that already has content on it.
+ *
+ * The everyday action — "insert a chart on the slide I am looking at" — and
+ * until now the only path with no real-host coverage at all. Every other
+ * scenario here, and the whole demo deck, works on slides the run added BLANK.
+ *
+ * That gap is not theoretical. The worst bug of the session lived in exactly
+ * it: `insertSceneIntoSlide` could not ask for a fresh proxy re-fetch, because
+ * the re-fetch identified a chart's shapes as "the last N on the slide" — true
+ * of a blank slide a run just added, false of the slide a user is working on.
+ * So a chart over ten shapes lost its group AND its config tag on the web,
+ * silently, on the single most-used action in the add-in. A demo run would not
+ * have caught it: the demo path opted into the re-fetch and the everyday path
+ * could not.
+ *
+ * Two charts, onto a slide that starts with one. The second lands on a slide
+ * holding two already, which is where a positional heuristic goes wrong.
+ */
+const insertOntoUsedSlide: Scenario = async (prefix) => {
+  const [host] = await probeCharts(prefix);
+  if (!host) return { ok: false, skipped: true, detail: "no probe chart to insert alongside" };
+  const shown = await showSlide(host.target.slideId);
+  const before = await slideCount();
+  const added = [`${prefix} onto A`, `${prefix} onto B`];
+  for (const [n, title] of added.entries()) {
+    const c = cfg(title);
+    // Cascaded, the way a repeated insert does, so the second does not land
+    // exactly on top of the first.
+    await insertSceneIntoSlide(buildChart(c), {
+      tagData: JSON.stringify(c),
+      left: 40 + n * 24,
+      top: 40 + n * 24,
+    });
+  }
+  const after = await slideCount();
+  const mine = await probeCharts(`${prefix} onto`);
+  // The chart that was already there must still be a chart. A run that swept
+  // the slide's existing shapes into its own group would take this with it —
+  // and delete it on the next edit, because the parts tag would claim it.
+  const survivor = (await probeCharts(prefix)).find((c) => c.cfg.title === host.cfg.title);
+  const problems = [
+    after !== before && `the deck grew by ${after - before} — the charts did not go ON the slide`,
+    mine.length !== added.length && `${mine.length} of ${added.length} new charts are re-editable`,
+    !survivor && "the chart already on the slide is no longer re-editable",
+  ].filter(Boolean);
+  return {
+    ok: problems.length === 0,
+    detail: problems.length
+      ? problems.join("; ")
+      : `${added.length} charts drawn ${shown ? "onto the visible slide" : "(host would not move the view)"}, ` +
+        `all re-editable, the one already there untouched`,
+  };
+};
+
 const SCENARIOS: { name: string; run: Scenario }[] = [
   { name: "insert on top of an earlier run", run: insertTwice },
   { name: "two slides claiming one slot", run: duplicateSlot },
   { name: "edit a chart on the visible slide", run: editOnVisibleSlide },
+  { name: "insert onto a slide that already has content", run: insertOntoUsedSlide },
   { name: "same scale across the deck", run: sameScaleAcrossDeck },
   { name: "explode a degraded picture", run: explodePicture },
 ];
