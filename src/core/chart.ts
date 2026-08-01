@@ -551,7 +551,12 @@ const KIND_LABEL: Record<ChartKind, string> = {
  * not a data table.
  */
 export function describeChart(cfg: ChartConfig): string {
-  const label = KIND_LABEL[cfg.kind] ?? "chart";
+  // hasOwnProperty, not a bare lookup: `kind: "constructor"` otherwise reaches
+  // Object.prototype and `??` does not catch it, because a function is not
+  // nullish. The chart's accessible description then opened with
+  // "function Object() { [native code] }" — which is what a screen reader
+  // announces, and what the .pptx carries as the shape's alt text.
+  const label = (Object.prototype.hasOwnProperty.call(KIND_LABEL, cfg.kind) && KIND_LABEL[cfg.kind]) || "chart";
   const cats = (cfg.data?.categories ?? []).filter(Boolean);
   const series = cfg.data?.series ?? [];
   const seriesNames = series.map((s) => s.name).filter(Boolean);

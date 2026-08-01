@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import { CHART_KINDS, sampleConfig } from "../src/core/samples";
 import { buildChart } from "../src/core/chart";
 import { sceneToSvg } from "../src/render/svg";
-import { arrowheadBox, dashKind, annularSectorPoints, SYMBOL_PRESET } from "../src/core/geometry";
+import { arrowheadBox, dashKind, annularSectorPoints, symbolPreset } from "../src/core/geometry";
 import { makeAddNode } from "../skill/scripts/pptx-paint.mjs";
 import type { ChartConfig } from "../src/core/types";
 import type { Scene } from "../src/core/scene";
@@ -53,7 +53,7 @@ function recorder() {
     },
   };
 }
-const addNode = makeAddNode({ dashKind, annularSectorPoints, SYMBOL_PRESET, arrowheadBox });
+const addNode = makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrowheadBox });
 
 /** Render one config through all three paths and assert the smoke invariants. */
 function smoke(cfg: ChartConfig, label: string) {

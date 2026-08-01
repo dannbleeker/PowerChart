@@ -50,7 +50,7 @@ const {
   DEFAULT_SIZE,
   arrowheadBox,
   annularSectorPoints,
-  SYMBOL_PRESET,
+  symbolPreset,
   dashKind,
   sceneToSvg,
   injectGroupsAndTags,
@@ -137,7 +137,7 @@ pres.defineLayout({ name: "WIDE", width: SLIDE.w, height: SLIDE.h });
 pres.layout = "WIDE";
 
 // The engine helpers the node mapping needs, bound once into a pure addNode.
-const addNode = makeAddNode({ dashKind, annularSectorPoints, SYMBOL_PRESET, arrowheadBox });
+const addNode = makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrowheadBox });
 
 /** Build the scene for one config: an agenda slide, or a chart. */
 function sceneFor(cfg) {

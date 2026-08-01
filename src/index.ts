@@ -17,6 +17,7 @@ export {
   annularSectorPoints,
   symbolPoints,
   SYMBOL_PRESET,
+  symbolPreset,
   dashKind,
 } from "./core/geometry";
 // The OOXML post-processor. pptxgenjs can write neither a real shape group nor

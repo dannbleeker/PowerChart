@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { sceneToSvg } from "../src/render/svg";
-import { buildChart } from "../src/core/chart";
+import { buildChart, describeChart } from "../src/core/chart";
 import type { Scene } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
+import { sampleConfig } from "../src/core/samples";
+import { symbolPreset, SYMBOL_PRESET } from "../src/core/geometry";
 
 /**
  * SVG paint values come verbatim from ChartConfig (series color, custom palette,
@@ -280,5 +282,36 @@ describe("prototype keys in paint and shape tables", () => {
     // Unknown shapes fall back to the circle, which is an <ellipse>.
     expect(svg).toContain("<ellipse");
     expect(svg).not.toContain('points=""');
+  });
+});
+
+describe("prototype keys in the tables a config can index", () => {
+  it("does not put Object.prototype into a chart's accessible description", () => {
+    // `KIND_LABEL[cfg.kind]` was a bare lookup with a `?? "chart"` fallback,
+    // and `??` does not fire for a function. `kind: "constructor"` therefore
+    // opened the description with "function Object() { [native code] }" —
+    // which is what a screen reader announces, and what the .pptx carries as
+    // the shape's alt text. A config reaches this from the JSON import, from a
+    // template, and from the skill.
+    for (const kind of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      const cfg = { ...sampleConfig("clustered"), kind } as unknown as ChartConfig;
+      const text = describeChart(cfg);
+      expect(text, `kind "${kind}" leaked a prototype member`).not.toMatch(/native code|\[object /);
+      expect(text.startsWith("chart"), `kind "${kind}" did not fall back to "chart"`).toBe(true);
+    }
+  });
+
+  it("draws a real preset for a symbol name off Object.prototype", () => {
+    // Both PowerPoint renderers hand this straight to the host as a geometry
+    // name. A function there resolves to undefined and draws a shape with no
+    // geometry at all — invisible in the deck, and impossible to explain from
+    // the file.
+    for (const shape of ["constructor", "toString", "__proto__", "nope"]) {
+      const preset = symbolPreset(shape);
+      expect(typeof preset, `symbol "${shape}" did not yield a name`).toBe("string");
+      expect(preset.length).toBeGreaterThan(0);
+    }
+    // …and a real one still resolves to itself.
+    expect(symbolPreset("diamond")).toBe(SYMBOL_PRESET.diamond);
   });
 });

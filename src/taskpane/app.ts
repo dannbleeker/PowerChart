@@ -230,8 +230,23 @@ function mergedStyle(): ChartConfig["style"] {
   // palette pick beats both.
   const style = { ...styleFile, ...state.style } as NonNullable<ChartConfig["style"]>;
   if (state.paletteName === "Theme" && themePalette) style.palette = themePalette;
-  else if (state.paletteName !== "Default") style.palette = PALETTES[state.paletteName];
+  else if (state.paletteName !== "Default") style.palette = namedPalette(state.paletteName);
   return Object.keys(style).length ? style : undefined;
+}
+
+/**
+ * A palette by name, or the default.
+ *
+ * `PALETTES[name]` alone reaches Object.prototype — and the name is not always
+ * one of the dropdown's options: a template or an imported style file supplies
+ * it, and both are user JSON. `PALETTES["constructor"]` is a function, so the
+ * `??` fallback does not fire, and every colour lookup then indexes a function
+ * by number and gets `undefined`.
+ */
+function namedPalette(name: string): string[] {
+  return Object.prototype.hasOwnProperty.call(PALETTES, name)
+    ? PALETTES[name as keyof typeof PALETTES]
+    : PALETTES.Default;
 }
 
 /**
@@ -1788,7 +1803,7 @@ renderTemplateList();
 $("style-export").addEventListener("click", () => {
   const current: StyleFile = { ...styleFile };
   if (state.paletteName === "Theme" && themePalette) current.palette = themePalette;
-  else if (state.paletteName !== "Default") current.palette = PALETTES[state.paletteName];
+  else if (state.paletteName !== "Default") current.palette = namedPalette(state.paletteName);
   ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(current, null, 2);
   note("Style exported — share the JSON as your corporate style file.", "ok");
 });
