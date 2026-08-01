@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // independent of src/ so they cannot inherit a bug from the code they audit.
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
-import { triage, runsIn } from "../scripts/triage.mjs";
+import { triage, runsIn, selfTestIn } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -249,5 +249,43 @@ describe("triage — a log holding more than one run", () => {
     // make the tool useless on exactly the runs it was written to explain.
     const flat = logOf(["A"]);
     expect(runsIn(flat)).toEqual([flat]);
+  });
+});
+
+describe("triage — logs that are not inserts", () => {
+  it("finds the host self-test's verdicts in a log that holds no runs", async () => {
+    // The self-test writes a log with an empty `runs` list: its scenarios are
+    // not inserts and own no slots. Reading only `runs` made the whole report
+    // come out blank and exit 0 — indistinguishable from a clean deck, on a
+    // file someone handed this tool expecting an answer.
+    const log = {
+      build: "b",
+      host: "h",
+      runs: [],
+      selftest: [
+        { name: "insert twice", ok: true, detail: "deck grew by 4", ms: 10 },
+        { name: "explode a picture", ok: false, detail: "config did not survive", ms: 20 },
+      ],
+    };
+    expect(runsIn(log)).toEqual([]);
+    expect(selfTestIn(log).map((s: { name: string }) => s.name)).toEqual(["insert twice", "explode a picture"]);
+  });
+
+  it("finds nothing to report in a log that is neither", async () => {
+    expect(selfTestIn({ build: "b", host: "h", runs: [] })).toEqual([]);
+    expect(selfTestIn(undefined)).toEqual([]);
+  });
+
+  it("calls a slide tagged with a slot before the run's range an orphan", async () => {
+    // Only slots PAST the end were checked, so a negative slot — a tag written
+    // wrong, or carried in from something that was not this run — matched no
+    // item, fell outside the orphan test, and was reported by nothing.
+    const deck = await deckOf([
+      { title: "A", slot: 0 },
+      { title: "stray", slot: -3 },
+    ]);
+    const t = triage(deck, logOf(["A"]));
+    expect(t.orphans).toEqual([{ slot: -3, verdict: "orphan", indexes: [2] }]);
+    expect(t.disagreements).toBe(1);
   });
 });

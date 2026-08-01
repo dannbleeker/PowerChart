@@ -40,7 +40,7 @@ import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
 import { setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
-import { runSelfTest, describeSelfTest, type ScenarioResult } from "./selftest";
+import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "./selftest";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -2510,6 +2510,9 @@ function wireInsert() {
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
         const traceFrom = traceMark();
+        // The same rasteriser the demo run degrades with — the picture
+        // scenario needs a real PNG, not a config that merely says "image".
+        setSelfTestRasterizer(boundedRaster);
         const results = await runSelfTest();
         // No runs, but a log all the same — the scenarios ARE the record, and
         // the trace beside them is what says how each verdict was reached.
