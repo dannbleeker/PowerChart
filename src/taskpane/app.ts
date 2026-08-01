@@ -40,6 +40,7 @@ import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
 import { setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
+import { runSelfTest, describeSelfTest, type ScenarioResult } from "./selftest";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -1923,6 +1924,20 @@ interface RunLogFile {
   build: string;
   host: string;
   runs: RunLog[];
+  /**
+   * The host self-test's verdicts, when that is what produced this log.
+   *
+   * Kept beside the runs rather than inside one: the scenarios are not an
+   * insert and have no slots, and folding them into a run's item list would
+   * make them look like charts that failed to draw.
+   */
+  selftest?: ScenarioResult[];
+  /**
+   * The self-test's trace. A run carries its own; the self-test is not a run,
+   * so its steps hang here. Declared rather than spread in untyped — an
+   * undeclared field is one nothing downstream can be expected to read.
+   */
+  trace?: RunLog["trace"];
 }
 
 interface RunLog {
@@ -2483,6 +2498,32 @@ function wireInsert() {
       downloadJson("powerchart-run-log.json", lastRunLog);
       note("Run log saved.", "ok");
     });
+    // The five paths the demo deck never touches. Its own button rather than a
+    // mode of the demo run: it edits and deletes as well as inserting, and a
+    // user reaching for "insert a demo deck" should not get that by accident.
+    const selfTestBtn = $("demo-selftest") as HTMLButtonElement;
+    selfTestBtn.disabled = false;
+    selfTestBtn.addEventListener(
+      "click",
+      guard(async () => {
+        const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
+        lastRunLog = undefined;
+        ($("demo-log") as HTMLButtonElement).disabled = true;
+        const traceFrom = traceMark();
+        const results = await runSelfTest();
+        // No runs, but a log all the same — the scenarios ARE the record, and
+        // the trace beside them is what says how each verdict was reached.
+        lastRunLog = {
+          build: buildStamp,
+          host: describeHost(),
+          runs: [],
+          selftest: results,
+          ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
+        };
+        ($("demo-log") as HTMLButtonElement).disabled = false;
+        note(describeSelfTest(results), results.some((r) => !r.ok && !r.skipped) ? "err" : "ok");
+      }),
+    );
     const demoBtn = $("demo-insert") as HTMLButtonElement;
     demoBtn.disabled = false;
     demoBtn.addEventListener(

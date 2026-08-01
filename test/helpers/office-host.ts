@@ -11,6 +11,21 @@
  * without leaving CI.
  */
 import { vi } from "vitest";
+// @ts-expect-error — the .mjs auditor has no types. Deliberately the SAME
+// decoder `npm run verify-deck` uses: a fake that parsed the generated deck
+// its own way could agree with the renderer while both disagreed with the file.
+import { readDeckBytes } from "../../scripts/verify-deck.mjs";
+
+interface DeckRow {
+  slot: number | null;
+  title: string | null;
+  run: string | null;
+  configJson: string | null;
+  chartShapes: number;
+}
+
+const DEMO_SLOT_TAG_KEY = "POWERCHART_DEMO_SLOT";
+const CHART_TAG_KEY = "POWERCHART_CONFIG";
 
 /**
  * The host's misbehaviours, in one mutable object.
@@ -34,6 +49,12 @@ export const faults = {
   hollowReads: 0,
   refusePictureFill: false,
   refuseGroups: 0,
+  /**
+   * Whole decks the host accepts and never lands — the file path's version of
+   * `swallowAdds`, and observed for real: a 12-item file insert came back
+   * "11 of 12 complete · 1 lost" with nothing thrown. Counted down per call.
+   */
+  swallowDecks: 0,
 };
 
 /**
@@ -517,14 +538,17 @@ let lastShapeLoad = "";
 export function installHost(
   slides: FakeSlide[],
   selectedShapes: FakeShape[] = [],
-  selectedSlide = slides[0],
+  selectedSlideArg = slides[0],
   supported: (version: string) => boolean = () => true,
 ) {
   // The slide count as of the last COMMITTED sync. getCount() reports THIS, not
   // the live array — so an add() queued in the current batch is invisible to a
   // getCount() in the SAME batch, exactly as PowerPoint web behaves. A getCount
   // result resolves at the next sync to the count from before that sync's adds.
+  let selectedSlide = selectedSlideArg;
   let committedCount = slides.length;
+  /** Decks handed to insertSlidesFromBase64 and not yet resolved by a sync. */
+  const pendingDecks: string[] = [];
   deckRemove = (s) => {
     const i = slides.findIndex((x) => x.id === s.id);
     if (i >= 0) slides.splice(i, 1);
@@ -589,9 +613,62 @@ export function installHost(
       },
       getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
       getSelectedShapes: () => ({ items: selectedShapes, load() {} }),
+      setSelectedSlides: (ids: string[]) => {
+        const found = slides.find((sl) => ids.includes(sl.id));
+        if (found) selectedSlide = found;
+      },
+      /**
+       * The whole-deck insert — and the path a real run actually takes.
+       *
+       * The fake could not model it at all, so every test of the default path
+       * either skipped or ran against the shape-by-shape one instead. Here the
+       * bytes are really decoded (by the same auditor `npm run verify-deck`
+       * uses, so the fake cannot disagree with the tool) and each slide in the
+       * file becomes a slide in the deck, carrying its slot tag and a single
+       * `PowerChart` shape holding the config — which is what the generator
+       * genuinely writes.
+       *
+       * Queued, not immediate: Office.js resolves this at the next sync, and a
+       * fake that appended straight away would hide every ordering bug the
+       * queue creates.
+       */
+      insertSlidesFromBase64: (b64: string) => {
+        if (faults.swallowDecks > 0) {
+          faults.swallowDecks--; // taken, acknowledged, and never landed
+          return;
+        }
+        pendingDecks.push(b64);
+      },
     },
     sync: async () => {
       trips.syncs++;
+      for (const b64 of pendingDecks.splice(0)) {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const { rows } = (await readDeckBytes(bytes)) as { rows: DeckRow[] };
+        for (const row of rows) {
+          const added = makeSlide(`slide-${slides.length + 1}`);
+          if (row.slot !== null) {
+            added.tagStore.set(DEMO_SLOT_TAG_KEY, JSON.stringify({ i: row.slot, title: row.title, run: row.run }));
+          }
+          // One group named PowerChart, tagged, holding as many children as
+          // the file really holds — what the generator writes.
+          //
+          // The child COUNT is the load-bearing part. A readback measures a
+          // chart by how many shapes are inside its group, and a fake that put
+          // one shape there made every generated chart read as wreckage: the
+          // repair pass then had no healthy copy to prefer and queued no
+          // duplicates, so the duplicate-slot scenario reported a failure that
+          // was the fake's, not the code's.
+          const shape = added.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 10, height: 10 });
+          shape.name = "PowerChart";
+          shape.grouped = Array.from({ length: Math.max(1, row.chartShapes) }, (_, k) =>
+            makeShape("geometric", "rectangle", { left: k, top: 0, width: 1, height: 1 }),
+          );
+          if (row.configJson) shape.tagStore.set(CHART_TAG_KEY, row.configJson);
+          added.pending.length = 0;
+          slides.push(added);
+        }
+      }
       // Commit or discard the shapes each slide has queued since the last
       // sync. On success, mark them "committed" (leave in `created`, drop
       // from `pending`). On failure, remove them from `created` — the real

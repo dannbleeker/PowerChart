@@ -459,6 +459,14 @@ while the add-in is being validated against real hosts, and it rides along
 inside the run log rather than in a separate file. Nothing is written while it
 is off.
 
+**Run host self-test** runs the five things the demo deck does not cover:
+inserting on top of an earlier run, two slides claiming one slot, editing a
+chart on the slide you are looking at, a deck-wide rescale, and turning a
+degraded picture back into native shapes. Each reports what was actually
+observed; one that your host cannot run is reported as skipped rather than
+failed. It leaves its slides in the deck so you can look at them — delete them
+when you are done, exactly like the demo deck.
+
 **Download run log** saves the last run as JSON: the run's identity token,
 per-item timings, statuses, what the host did to each slide, and the repair
 pass's verdicts, plus the trace — which opens with a tally of every step and

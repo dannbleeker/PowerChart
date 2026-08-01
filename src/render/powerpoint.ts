@@ -2411,6 +2411,34 @@ export async function insertSlidesFromPptx(
 }
 
 /**
+ * Put the view ON a slide, and say whether it worked.
+ *
+ * The exact inverse of `withSlideDeselected`, and it exists for the same
+ * reason: what the user is looking at changes how the host behaves. The
+ * live-canvas repaint is the add-in's worst case — a real run died on its
+ * first batch with "did not respond while drawing shapes 1-10 of 39" — and
+ * every guard written for it has only ever been exercised against a fake. The
+ * self-test uses this to put a chart genuinely on screen before redrawing it,
+ * because a test that quietly redraws off-screen is testing the easy case.
+ *
+ * Best-effort on the same terms: `setSelectedSlides` is PowerPointApi 1.5.
+ */
+export async function showSlide(slideId: string): Promise<boolean> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const presentation = context.presentation as unknown as {
+        setSelectedSlides(ids: string[]): void;
+      };
+      presentation.setSelectedSlides([slideId]);
+      await context.sync();
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run `fn` with the given slides NOT selected, then put the selection back.
  *
  * The live canvas is the bottleneck, not PowerPoint. This renderer already
