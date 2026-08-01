@@ -130,28 +130,36 @@ export function triage(deck, log) {
   return { run, inferredRun, slots, orphans, foreign, unowned, counts, disagreements };
 }
 
+/**
+ * The runs inside a log file, however that file is shaped.
+ *
+ * One click can now take both insert paths, so a log holds a list. Logs from
+ * before that — every artifact captured so far — are a single run at the top
+ * level, and are read as a list of one rather than being refused: the whole
+ * point of this tool is reading the runs that already exist.
+ */
+export function runsIn(log) {
+  return Array.isArray(log?.runs) ? log.runs : [log];
+}
+
 function pad(s, n) {
   return String(s ?? "—")
     .padEnd(n)
     .slice(0, n);
 }
 
-function report(deck, log, t, faults, showAll) {
-  const secs = ((log.totalMs ?? 0) / 1000).toFixed(1);
+function report(deck, log, run, t, showAll) {
+  const secs = ((run.totalMs ?? 0) / 1000).toFixed(1);
   console.log(
     `\n  run ${t.run ?? "unknown"}${t.inferredRun ? " (INFERRED from the deck — the log carries no run id)" : ""}` +
-      `\n  build ${log.build ?? "?"} · ${log.host ?? "?"}` +
-      `\n  path ${log.path ?? "?"} · ${secs}s\n`,
+      `\n  build ${log.build ?? run.build ?? "?"} · ${log.host ?? run.host ?? "?"}` +
+      `\n  path ${run.path ?? "?"} · ${secs}s\n`,
   );
 
   console.log(
     `  DECK ${deck.rows.length} slide(s): ${deck.rows.length - t.foreign.length - t.unowned.length} from this run, ` +
       `${t.foreign.length} from other run(s), ${t.unowned.length} carrying no slot tag`,
   );
-  if (faults.length) {
-    console.log(`  ${faults.length} STRUCTURAL FAULT(S) — this repo wrote the file wrong:`);
-    for (const f of faults) console.log(`    - ${f}`);
-  }
 
   const shown = showAll ? t.slots : t.slots.filter((s) => BAD.has(s.verdict) || s.verdict === "repaired");
   console.log(
@@ -172,7 +180,7 @@ function report(deck, log, t, faults, showAll) {
   }
   for (const o of t.orphans) console.log(`  orphan slot ${o.slot} on slide(s) ${o.indexes.join(", ")}`);
 
-  const trace = log.trace;
+  const trace = run.trace;
   if (trace?.summary) {
     console.log(`\n  TRACE ${trace.entries?.length ?? 0} entries${trace.dropped ? `, ${trace.dropped} dropped` : ""}`);
     for (const s of trace.summary.steps.slice(0, 8)) console.log(`    ${pad(s.n, 6)}${s.scope}  ${s.message}`);
@@ -210,9 +218,20 @@ if (invokedDirectly) {
     console.error(`could not read the run: ${err.message}`);
     process.exit(2);
   }
-  const t = triage(deck, log);
+  const runs = runsIn(log);
+  const results = runs.map((run) => ({ run, t: triage(deck, run) }));
   const faults = faultsIn(deck);
-  if (flags.includes("--json")) console.log(JSON.stringify({ ...t, faults }, null, 2));
-  else report(deck, log, t, faults, flags.includes("--all"));
-  process.exit(t.disagreements || faults.length ? 1 : 0);
+  if (flags.includes("--json")) {
+    console.log(JSON.stringify({ faults, runs: results.map(({ run, t }) => ({ path: run.path, ...t })) }, null, 2));
+  } else {
+    // Faults belong to the FILE, not to a run, so they are reported once
+    // above the runs rather than repeated under each of them.
+    if (faults.length) {
+      console.log(`\n  ${faults.length} STRUCTURAL FAULT(S) — this repo wrote the file wrong:`);
+      for (const f of faults) console.log(`    - ${f}`);
+    }
+    for (const { run, t } of results) report(deck, log, run, t, flags.includes("--all"));
+  }
+  const disagreements = results.reduce((n, { t }) => n + t.disagreements, 0);
+  process.exit(disagreements || faults.length ? 1 : 0);
 }

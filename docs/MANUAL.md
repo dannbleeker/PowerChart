@@ -413,14 +413,24 @@ with a title slide stamping the build and host, and closes with a results slide
 summarising what rendered, what the host skipped or failed, and how long the run
 took — so an exported PDF is a self-contained regression record.
 
-**Fast path (one file insert)**, on by default, builds the whole deck as a
-.pptx in the pane and hands it to PowerPoint in a single call, instead of
-drawing it shape by shape through hundreds of round trips. Charts arrive
-already grouped and already tagged, so they are editable exactly as before.
-Untick it to compare against the shape-by-shape path; the add-in also falls
-back to that path on its own if the host cannot take a generated deck, or if
-the attempt landed nothing. Once any slide has landed it will not fall back —
-that would insert the deck twice.
+**Path** chooses how the deck is drawn.
+
+- **One file insert** (the default) builds the whole deck as a .pptx in the
+  pane and hands it to PowerPoint in a single call, instead of drawing it shape
+  by shape through hundreds of round trips. Charts arrive already grouped and
+  already tagged, so they are editable exactly as before.
+- **Shape by shape** draws it through Office.js, one chart per slide.
+- **Both, one after the other** takes each path in turn into the same deck. The
+  two fail in completely different ways, and comparing them used to mean two
+  separate runs with a deploy in between; this is one session, one host, one
+  downloaded log holding both runs. Each carries its own identity token, so
+  nothing confuses one run's slides for the other's.
+
+Whichever you pick, the add-in falls back to the shape-by-shape path on its own
+if the host cannot take a generated deck, or if the attempt landed nothing.
+Once any slide has landed it will not fall back — that would insert the deck
+twice. ("Both" drawing the deck a second time is the one case where that is the
+intent.)
 
 Every run ends by reading the deck back and repairing it. This matters on
 PowerPoint for the web, where a `context.sync()` can commit minutes after the

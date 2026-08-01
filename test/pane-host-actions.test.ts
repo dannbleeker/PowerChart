@@ -332,6 +332,23 @@ const tickPicture = () => {
   box.dispatchEvent(new Event("change"));
 };
 
+/** Capture whatever `downloadJson` hands to the browser. */
+function captureDownloads() {
+  const blobs: Blob[] = [];
+  const c = vi.spyOn(URL, "createObjectURL").mockImplementation((b: Blob | MediaSource) => {
+    if (b instanceof Blob) blobs.push(b);
+    return "blob:x";
+  });
+  const r = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  return {
+    lastJson: async () => JSON.parse(await blobs[blobs.length - 1].text()),
+    restore: () => {
+      c.mockRestore();
+      r.mockRestore();
+    },
+  };
+}
+
 describe("image render mode", () => {
   beforeEach(bootHostPane);
 
@@ -1027,23 +1044,6 @@ describe("demo-insert one-shot deck insert", () => {
     expect($("host-note").textContent).toMatch(/host took 3 of/i);
   });
 
-  /** Capture whatever `downloadJson` hands to the browser. */
-  function captureDownloads() {
-    const blobs: Blob[] = [];
-    const c = vi.spyOn(URL, "createObjectURL").mockImplementation((b: Blob | MediaSource) => {
-      if (b instanceof Blob) blobs.push(b);
-      return "blob:x";
-    });
-    const r = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    return {
-      lastJson: async () => JSON.parse(await blobs[blobs.length - 1].text()),
-      restore: () => {
-        c.mockRestore();
-        r.mockRestore();
-      },
-    };
-  }
-
   /**
    * The run token has to reach the FILE, not just the run.
    *
@@ -1061,15 +1061,17 @@ describe("demo-insert one-shot deck insert", () => {
     await settle();
     $("demo-log").click();
     const log = await dl.lastJson();
-    expect(log.run).toBe("run-under-test");
+    expect(log.runs).toHaveLength(1);
+    expect(log.runs[0].run).toBe("run-under-test");
     // …and which items were ever meant to carry a config. Without this the
     // title and contents pages — `PowerChart` objects with no config by
     // design — read as charts that lost their tag, and a clean run triages as
     // a broken one. Seven false alarms on the first real deck this was run on.
-    const chartFlags: boolean[] = log.items.map((i: { chart: boolean }) => i.chart);
+    const items = log.runs[0].items;
+    const chartFlags: boolean[] = items.map((i: { chart: boolean }) => i.chart);
     expect(chartFlags).toContain(true);
     expect(chartFlags).toContain(false);
-    expect(log.items.find((i: { title: string }) => i.title === "Title").chart).toBe(false);
+    expect(items.find((i: { title: string }) => i.title === "Title").chart).toBe(false);
     dl.restore();
   });
 
@@ -1082,7 +1084,7 @@ describe("demo-insert one-shot deck insert", () => {
     $("demo-insert").click();
     await settle();
     $("demo-log").click();
-    expect((await dl.lastJson()).run).toBe("fake-run-1");
+    expect((await dl.lastJson()).runs[0].run).toBe("fake-run-1");
     dl.restore();
   });
 
@@ -1147,11 +1149,67 @@ describe("demo-insert one-shot deck insert", () => {
 
   it("respects the fast-path opt-out", async () => {
     host.canInsertFile = true;
-    ($("demo-file") as HTMLInputElement).checked = false;
+    ($("demo-path") as HTMLSelectElement).value = "shapes";
     $("demo-insert").click();
     await settle();
     expect(host.calls.insertFile).toHaveLength(0);
     expect(host.demoRuns).toBeGreaterThanOrEqual(1);
+  });
+
+  it("takes both paths on one click, and logs them as two runs", async () => {
+    // Every renderer change touches both paths, and they fail in completely
+    // different ways — so testing them meant two runs an hour apart with a
+    // deploy in between. One click, one deck, one log, same session.
+    const dl = captureDownloads();
+    host.canInsertFile = true;
+    ($("demo-path") as HTMLSelectElement).value = "both";
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.demoRuns).toBeGreaterThanOrEqual(1);
+    $("demo-log").click();
+    const log = await dl.lastJson();
+    expect(log.runs.map((r: { path: string }) => r.path)).toEqual(["file", "shapes"]);
+    // Separate identities, or the deck they share cannot be read apart.
+    expect(log.runs[0].run).not.toBe(log.runs[1].run);
+    dl.restore();
+  });
+
+  it("does not run the shape path twice when the fast path falls back", async () => {
+    // "Both" continues to the shape path after a SUCCESSFUL file insert, which
+    // is the one case where drawing the deck twice is the intent. A fast path
+    // that landed nothing already falls back to shapes on its own — running
+    // the fall-back and then the second leg would draw it three times.
+    const dl = captureDownloads();
+    host.canInsertFile = true;
+    host.buildFileError = new Error("pptxgenjs blew up");
+    ($("demo-path") as HTMLSelectElement).value = "both";
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(0);
+    // Counted by whole-deck calls, not by `demoRuns` — the shape path also
+    // calls insertDemoDeck once per results page at the end of a run.
+    expect(host.demoDeckCalls.filter((c) => c.length > 5)).toHaveLength(1);
+    $("demo-log").click();
+    expect((await dl.lastJson()).runs.map((r: { path: string }) => r.path)).toEqual(["shapes"]);
+    dl.restore();
+  });
+
+  it("keeps the fast path's log when the shape path then throws", async () => {
+    // The failing run is the one worth having a file for. Banking the log at
+    // the end of the click would discard the file run along with the throw.
+    const dl = captureDownloads();
+    host.canInsertFile = true;
+    ($("demo-path") as HTMLSelectElement).value = "both";
+    host.demoRuns = 0;
+    host.demoDeckPageFailures = new Set([1]);
+    $("demo-insert").click();
+    await settle();
+    expect(($("demo-log") as HTMLButtonElement).disabled).toBe(false);
+    $("demo-log").click();
+    const log = await dl.lastJson();
+    expect(log.runs.map((r: { path: string }) => r.path)).toEqual(["file"]);
+    dl.restore();
   });
 });
 
