@@ -23,11 +23,12 @@ describe("the host self-test battery", () => {
   it("returns a verdict for every scenario, in order", async () => {
     installHost([makeSlide("s1")]);
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(6);
     expect(results.map((r) => r.name)).toEqual([
       "insert on top of an earlier run",
       "two slides claiming one slot",
       "edit a chart on the visible slide",
+      "insert onto a slide that already has content",
       "same scale across the deck",
       "explode a degraded picture",
     ]);
@@ -51,7 +52,7 @@ describe("the host self-test battery", () => {
       SlideLayoutType: { blank: "blank" },
     });
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(6);
     // Every one of them ran and reported; none is missing.
     for (const r of results) {
       expect(r.name).toBeTruthy();
@@ -101,7 +102,7 @@ describe("the host self-test battery", () => {
     installHost([makeSlide("s1")]);
     applyWebProfile();
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(6);
     const named = byName(results);
     expect(named["insert on top of an earlier run"].detail).toBeTruthy();
   });
@@ -189,4 +190,43 @@ describe("scenarios that must not be able to pass without proving anything", () 
     expect(scale.detail).not.toContain("Infinity");
     expect(scale.detail).not.toContain("null");
   });
+});
+
+describe("the scenario for a slide that already has content", () => {
+  const onto = (rs: ScenarioResult[]) => rs.find((r) => r.name === "insert onto a slide that already has content")!;
+
+  it("passes on a host that behaves, and on one that does not", async () => {
+    // The everyday action — "insert a chart on the slide I am looking at" —
+    // and until this scenario existed, the only path with no real-host
+    // coverage at all. Every other scenario, and the whole demo deck, works on
+    // slides the run added BLANK.
+    for (const hostile of [false, true]) {
+      installHost([makeSlide("s1")]);
+      if (hostile) applyWebProfile();
+      setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+      const r = onto(await runSelfTest("probe"));
+      expect(r.skipped, r.detail).toBeFalsy();
+      expect(r.ok, `${hostile ? "hostile" : "clean"}: ${r.detail}`).toBe(true);
+      expect(r.detail).toContain("re-editable");
+    }
+  }, 60_000);
+
+  it("reports a failure when the charts land un-re-editable", async () => {
+    // The negative control, and the whole point of the scenario. A host with
+    // no tag support (below PowerPointApi 1.3) cannot make a chart
+    // re-editable, so the scenario must SAY so rather than count the shapes
+    // and call it a pass.
+    //
+    // Proven against the real defect too: reverting #243 — the fresh-proxy
+    // re-fetch on `insertSceneIntoSlide` — makes this scenario report
+    // "0 of 2 new charts are re-editable" under `strictGroup` and under the
+    // full web profile, while still passing on a clean host. That is exactly
+    // the shape of the bug: invisible except on a host that refuses stale
+    // proxies, which is the web.
+    installHost([makeSlide("s1")], [], undefined, (v) => v !== "1.3");
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    const r = onto(await runSelfTest("probe"));
+    expect(r.ok, r.detail).toBe(false);
+    expect(r.detail).toMatch(/re-editable/);
+  }, 60_000);
 });

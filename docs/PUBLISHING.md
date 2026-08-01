@@ -98,7 +98,7 @@ expect the first real-host run to surface issues the mocked tests can't):
 7. Excel: select a range → Generate → paste JSON into PowerPoint pane →
    Import → chart matches.
 
-8. **Run host self-test** (Testing section) — one click, five scenarios the
+8. **Run host self-test** (Testing section) — one click, six scenarios the
    demo deck does not cover. Then **Download run log** and save the deck.
 
 Record anything broken as issues; fix per the lockstep rules. Real-host
@@ -107,14 +107,15 @@ outline-only, pattern fills render solid.
 
 ### The host self-test
 
-Five paths existed only as items on this list for a human to remember to try,
-which in practice meant five separate sessions. They are now one button:
+Six paths existed only as items on this list for a human to remember to try,
+which in practice meant six separate sessions. They are now one button:
 
 | scenario | what it proves |
 | --- | --- |
 | insert on top of an earlier run | the run token keeps two runs' slides apart, instead of one being deleted as the other's duplicate |
 | two slides claiming one slot | the repair pass drops one copy and keeps a working one — not both, not the wrong one |
 | edit a chart on the visible slide | the live-canvas redraw survives with the slide genuinely on screen |
+| insert onto a slide that already has content | the everyday action — a chart drawn onto a slide that is not blank stays grouped and re-editable, and does not swallow what was already there |
 | same scale across the deck | a deck-wide rescale empties nothing |
 | explode a degraded picture | a picture keeps its config and can become native shapes again |
 
