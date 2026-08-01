@@ -27,6 +27,10 @@ belongs with the thing it tests, not with the reason it was written.)
   `decoration-layout` (decoration clipping & anchoring), `value-extent`
   (cross-kind extent/auto-scale invariants), `geometry`, `color` (paint parsing
   & contrast ink), `collide` (label collision resolution), `good-chart*`.
+- **Hostile input** — `chart-hostile-input` (every chart kind against every
+  value a cell can hold: huge, subnormal, NaN, infinite, empty, degenerate
+  sizes). Its bar is _termination_, not output — both bugs it found were loops
+  whose bound came from the data.
 - **Repair planner** — `reconcile` (the rules), `reconcile-fuzz` (four thousand
   generated decks against the invariants that cost a user their work: never
   delete another run's slide, never delete every copy of an item, never act on

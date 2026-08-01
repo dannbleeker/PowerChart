@@ -18,7 +18,36 @@ patterns.
 
 ## 1. Open
 
-Nothing open. Image mode shipped end to end — the engine key (`render`), the
+### Non-finite geometry can leave `buildChart` and reach the .pptx
+
+**Found:** 2026-08-01, by fuzzing every chart kind against hostile cell values.
+**Reproduction:** any of nine kinds with all values at `1e308`:
+
+| kind | node |
+| --- | --- |
+| stacked, waterfall, combo | `rect.y = -Infinity` |
+| stacked100 | `line.y1 = NaN` |
+| mekko | `rect.w = NaN` |
+| area | `rect.y = NaN` |
+| radar | `polygon.points[0].x = Infinity` |
+| sunburst | `wedge.endAngle = NaN` |
+| treemap (tiny values, `5e-324`) | `rect.w = Infinity` |
+
+**Why it matters:** the SVG renderer already neutralises this — every numeric
+goes through `num()` in `svg.ts` — but the two PowerPoint renderers do not. A
+`NaN` coordinate goes straight into `addGeometricShape({left: NaN, …})` and into
+OOXML as an EMU value, so the produced deck is one PowerPoint may refuse to
+open. Nobody has hit it because nobody types `1e308`; it is reachable, not
+likely.
+
+**Shape of the fix:** one sanitising pass at the scene boundary, at the end of
+`buildChart`, so all three renderers inherit the guarantee and no layout module
+has to remember it. Deliberately NOT rushed in alongside the two hang fixes: it
+touches the geometry of every chart, and this repo's convention is that visual
+QA is part of done — render the samples, look at them, then land it.
+
+**Already fixed, and not this:** the two *hangs* the same fuzz found are
+shipped, with the fuzz kept as `test/chart-hostile-input.test.ts`. Image mode shipped end to end — the engine key (`render`), the
 skill CLI rasteriser, the Office.js picture insert, the pane's **Insert as
 picture** control and the **Explode to native shapes** command that converts one
 back. Deliberately NOT built, so it is not re-proposed: native-vector SVG via

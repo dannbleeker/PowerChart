@@ -170,6 +170,9 @@ export function formatPercent(v: number, decimals = 0, forceSign = false, locale
  * "Nice" axis ticks covering [min, max] with roughly `count` steps.
  * Returns the tick values including the padded ends.
  */
+/** More gridlines than any axis can show. A ceiling, not a target. */
+const MAX_TICKS = 1000;
+
 export function niceTicks(min: number, max: number, count = 5): number[] {
   // A non-finite bound (from a NaN in the data extent) or an inverted range
   // (a reversed manual scale.min>max) makes `Math.log10(span)` NaN and turns
@@ -190,6 +193,17 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
   const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
   const lo = Math.floor(min / step) * step;
   const hi = Math.ceil(max / step) * step;
+  // Rounding OUTWARDS can overflow where the raw bound did not, and a span
+  // small enough to be subnormal collapses `step` to 0. Both end the same way:
+  // `(hi - lo) / step` is Infinity or NaN, and the loop below has no end while
+  // the array it fills has no limit. `niceTicks(0, 1.7e308)` never returned —
+  // it filled memory until the tab died, from a number someone can type.
+  //
+  // The entry guard checks the INPUTS are finite. These are outputs, and a
+  // finite input does not promise a finite bound: ceil(1.7e308 / 5e307) is 4,
+  // and 4 x 5e307 is Infinity.
+  const span_ = Math.round((hi - lo) / step);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || !Number.isFinite(span_) || span_ < 0) return [min, max];
   const ticks: number[] = [];
   // Clean the accumulated FP drift at the STEP's own precision, not at a fixed
   // 12 significant digits: a step of 1 around 1e13 needs 14 of them, and
@@ -197,8 +211,11 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
   // gridlines stacked on top of each other and a top tick below the data max.
   // (Steps are always 1/2/5 × 10ᵏ, so this rounds to the tick grid exactly.)
   const stepDecimals = Math.min(100, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
-  // Guard against FP drift producing an extra/short tick.
-  for (let i = 0; i <= Math.round((hi - lo) / step); i++) {
+  // Guard against FP drift producing an extra/short tick. Capped as well: a
+  // caller asking for a huge `count` is asking for a chart nobody can read,
+  // and an axis is not the place to find that out by running out of memory.
+  const last = Math.min(span_, MAX_TICKS);
+  for (let i = 0; i <= last; i++) {
     ticks.push(+(lo + i * step).toFixed(stepDecimals));
   }
   return ticks;
