@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+// @ts-expect-error — plain .mjs auditor, no types.
+import { readDeckBytes, faultsIn } from "../scripts/verify-deck.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import {
   canonicalSlideSize,
@@ -253,4 +256,85 @@ describe("building a deck in-process", () => {
     expect(tags).toHaveLength(1);
     expect(await zip.file(tags[0])!.async("string")).toContain("POWERCHART_DEMO_SLOT");
   }, 30_000);
+});
+
+/**
+ * The deck writer against strings a real title or config can carry.
+ *
+ * Everything here is assembled by string surgery into XML — the slot tag, the
+ * config tag, the rels — so an unescaped metacharacter does not produce a bad
+ * chart, it produces a file PowerPoint will not open. The bar is therefore not
+ * "looks right": every part must parse as XML, carry no character XML forbids,
+ * and audit clean under the same tool `npm run verify-deck` uses.
+ *
+ * This one found nothing, and is kept for that reason — it is a contract, and
+ * deleting one escape from `xmlAttr` turns it red thirty-two times over.
+ */
+/** Strings a title or a config payload can really carry. */
+const NASTY: [string, string][] = [
+  ["xml metachars", `A & B <tag> "q" 'a' >`],
+  ["cdata close", `]]> ends a CDATA`],
+  ["entity-ish", `&amp;lt; &#x41; &notanentity;`],
+  ["control chars", "bell \u0007 vtab \u000b formfeed \u000c"],
+  ["null char", "before \u0000 after"],
+  ["surrogate pair", `emoji 😀 and 🏳️‍🌈`],
+  ["lone surrogate", "lone \ud800 half"],
+  ["rtl override", "safe\u202egnip.exe"],
+  ["xml decl", `<?xml version="1.0"?><root/>`],
+  ["closing tag", `</a:t></a:r></a:p>`],
+  ["rels injection", `" Target="../slides/slide1.xml" X="`],
+  ["huge title", "x".repeat(50_000)],
+  ["newlines", "line1\nline2\r\nline3"],
+  ["tab", "a\tb"],
+  ["only whitespace", "   "],
+  ["empty", ""],
+];
+
+describe("ooxml: hostile strings in a title, a config or a run token", () => {
+  it("still produces a well-formed, fault-free deck", async () => {
+    const bad: string[] = [];
+    for (const [name, s] of NASTY) {
+      const cfg = { ...sampleConfig("clustered"), title: s };
+      let built;
+      try {
+        built = await buildDeckBase64([
+          { scene: buildChart(cfg), title: s, configJson: JSON.stringify(cfg), slot: 0, run: s },
+        ]);
+      } catch (e) {
+        bad.push(`${name}: BUILD THREW ${(e as Error).message.slice(0, 60)}`);
+        continue;
+      }
+      const bytes = Uint8Array.from(atob(built.base64), (c) => c.charCodeAt(0));
+      // 1. It must be a readable zip whose parts are well-formed XML.
+      let zip;
+      try {
+        zip = await JSZip.loadAsync(bytes);
+      } catch (e) {
+        bad.push(`${name}: NOT A ZIP ${(e as Error).message.slice(0, 40)}`);
+        continue;
+      }
+      for (const path of Object.keys(zip.files).filter((f) => f.endsWith(".xml") || f.endsWith(".rels"))) {
+        const xml = await zip.file(path)!.async("string");
+        const doc = new DOMParser().parseFromString(xml, "application/xml");
+        if (doc.getElementsByTagName("parsererror").length) {
+          bad.push(`${name}: ${path} is not well-formed XML`);
+          break;
+        }
+        // A character XML forbids outright, however it got in.
+        // eslint-disable-next-line no-control-regex -- the point is to catch these
+        const illegal = xml.match(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+        if (illegal) bad.push(`${name}: ${path} carries a raw control char U+${illegal[0].charCodeAt(0).toString(16)}`);
+      }
+      // 2. The auditor must find no structural fault.
+      try {
+        const deck = await readDeckBytes(bytes);
+        const faults = faultsIn(deck);
+        if (faults.length) bad.push(`${name}: ${faults[0]}`);
+      } catch (e) {
+        bad.push(`${name}: AUDIT THREW ${(e as Error).message.slice(0, 50)}`);
+      }
+    }
+    // Sliced so one broken escape prints a readable list, not 32 lines.
+    expect(bad.slice(0, 20)).toEqual([]);
+  }, 120_000);
 });

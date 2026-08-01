@@ -26,6 +26,7 @@ import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
 import { formatNumber, niceTicks, resolveFormat } from "./format";
 import type { SceneNode } from "./scene";
+import { finiteNodes } from "./scene";
 import type { LayoutResult } from "./layout/column";
 
 export const DEFAULT_SIZE = { width: 480, height: 300 };
@@ -96,11 +97,26 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
     scale = { ...(min != null ? { min } : {}), ...(max != null ? { max } : {}) };
   }
 
+  // `style.fontSize` is arithmetic, not decoration: every label box, every
+  // decoration lift and half the axis geometry is derived from it. A string
+  // there — and a config arrives from JSON import, from a template, from a
+  // POWERCHART_CONFIG tag authored in another deck — turns those into NaN and
+  // poisons the LAYOUT, not just the label. The renderers can each defend
+  // their own attributes (SVG does); none of them can put the chart back
+  // where it belonged. Repaired here, once, on the way in, exactly as the
+  // dimensions and the manual scale already are.
+  const style =
+    cfg.style &&
+    !(typeof cfg.style.fontSize === "number" && Number.isFinite(cfg.style.fontSize) && cfg.style.fontSize > 0)
+      ? { ...cfg.style, fontSize: DEFAULT_STYLE.fontSize }
+      : cfg.style;
+
   return {
     ...cfg,
     width,
     height,
     scale,
+    style,
     data: normalizeData(cfg.data),
     labelOffsets: cfg.labelOffsets ? cleanOffsets(cfg.labelOffsets) : cfg.labelOffsets,
   };
@@ -837,7 +853,10 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       }
     }
   }
-  return { width: cfg.width, height: cfg.height, nodes, ...a11y };
+  // Last gate before the scene leaves the engine — see `finiteNodes`. The
+  // PowerPoint renderers write a file, and a NaN coordinate makes it one
+  // PowerPoint may refuse to open.
+  return { width: cfg.width, height: cfg.height, nodes: finiteNodes(nodes), ...a11y };
 }
 
 /**

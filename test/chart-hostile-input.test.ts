@@ -85,3 +85,60 @@ describe("a hostile number in a cell cannot hang the chart engine", () => {
     expect(hash.some({ x: 0, y: 0, w: 4, h: 4 }, (v) => v === "far")).toBe(false);
   });
 });
+
+describe("no non-finite geometry leaves the chart engine", () => {
+  /** Every number anywhere in a node — including a polygon's point list. */
+  function badNumbers(v: unknown, path: string, out: string[], depth = 0): void {
+    if (depth > 6) return;
+    if (typeof v === "number") {
+      if (!Number.isFinite(v)) out.push(`${path} = ${v}`);
+      return;
+    }
+    if (Array.isArray(v)) return v.forEach((e, i) => badNumbers(e, `${path}[${i}]`, out, depth + 1));
+    if (v && typeof v === "object")
+      for (const [k, x] of Object.entries(v)) badNumbers(x, `${path}.${k}`, out, depth + 1);
+  }
+
+  it("holds for every kind against every hostile input", () => {
+    // Nine kinds could emit `rect.y = -Infinity`, `wedge.endAngle = NaN`,
+    // `polygon.points[0].x = Infinity` and so on. The SVG renderer defends
+    // itself — every numeric goes through `num()` — but the two PowerPoint
+    // renderers do not, and they are the ones that write a file. A NaN there
+    // lands in `addGeometricShape({left: NaN, …})` and in OOXML as an EMU
+    // value, so the produced .pptx is one PowerPoint may refuse to open.
+    const bad: string[] = [];
+    for (const { kind } of CHART_KINDS) {
+      for (const [name, mutate] of HOSTILE) {
+        const scene = buildChart(mutate(sampleConfig(kind)));
+        scene.nodes.forEach((n, i) => badNumbers(n, `${kind}/${name}#${i}(${n.kind})`, bad));
+      }
+    }
+    expect(bad.slice(0, 20)).toEqual([]);
+  }, 60_000);
+
+  it("drops nothing from a chart whose numbers are all real", () => {
+    // The floor is not a filter. If this ever shrinks a valid chart, the guard
+    // has started eating geometry rather than guarding it — and the snapshots
+    // would move, which is the louder half of the same alarm.
+    for (const { kind } of CHART_KINDS) {
+      const scene = buildChart(sampleConfig(kind));
+      expect(scene.nodes.length, `${kind} lost nodes`).toBeGreaterThan(0);
+      const bad: string[] = [];
+      scene.nodes.forEach((n, i) => badNumbers(n, `${kind}#${i}`, bad));
+      expect(bad).toEqual([]);
+    }
+  });
+
+  it("repairs a poisoned font size instead of laying out around it", () => {
+    // `style.fontSize` is arithmetic, not decoration: label boxes, decoration
+    // lifts and half the axis geometry derive from it. A string there — and a
+    // config arrives from JSON import, from a template, from a config tag
+    // authored in another deck — turned every one of those into NaN. Dropping
+    // the poisoned nodes would leave an empty chart; repairing the value on
+    // the way in leaves the chart someone asked for.
+    const hostile = { ...sampleConfig("clustered"), style: { fontSize: '10"><script>' } } as unknown as ChartConfig;
+    const poisoned = buildChart(hostile);
+    const clean = buildChart(sampleConfig("clustered"));
+    expect(poisoned.nodes.length).toBe(clean.nodes.length);
+  });
+});
