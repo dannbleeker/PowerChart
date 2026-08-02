@@ -522,16 +522,38 @@ const chartIsVisible: Scenario = async (prefix) => {
   };
 };
 
+/**
+ * Order: the scenarios with a track record first, the new ones last.
+ *
+ * A battery is only worth its whole run if it survives to the end, and this one
+ * has twice now failed to — a wedge at 1819s and a host killed outright at
+ * 108s. When that happens every scenario AFTER the failure reports nothing, so
+ * where an unproven scenario sits in this list decides how much of the run its
+ * failure costs.
+ *
+ * The three added most recently — selection, stop, visibility — therefore run
+ * at the end, and the heaviest and least proven of them (`chartIsVisible`,
+ * which asks the host to rasterise a slide twice) runs dead last. It was 6th,
+ * which meant a crash there cost the verdicts of three scenarios that had
+ * worked on a real host that morning. New code must not be able to take the
+ * evidence for old code with it.
+ *
+ * The first two remain first because everything else needs the probe charts
+ * they insert. Beyond that the constraint is `explodePicture`: it inserts a
+ * PICTURE, and on the web a picture cannot be inserted while a shape is
+ * selected (office-js#3698) — so every scenario that selects must clear up
+ * after itself, which `clearShapeSelection` does, wherever it runs.
+ */
 const SCENARIOS: { name: string; run: Scenario }[] = [
   { name: "insert on top of an earlier run", run: insertTwice },
   { name: "two slides claiming one slot", run: duplicateSlot },
   { name: "edit a chart on the visible slide", run: editOnVisibleSlide },
-  { name: "edit the chart the user selected", run: editViaSelection },
-  { name: "stop a run part-way", run: stopPartWay },
-  { name: "the chart is actually visible", run: chartIsVisible },
   { name: "insert onto a slide that already has content", run: insertOntoUsedSlide },
   { name: "same scale across the deck", run: sameScaleAcrossDeck },
   { name: "explode a degraded picture", run: explodePicture },
+  { name: "edit the chart the user selected", run: editViaSelection },
+  { name: "stop a run part-way", run: stopPartWay },
+  { name: "the chart is actually visible", run: chartIsVisible },
 ];
 
 /**

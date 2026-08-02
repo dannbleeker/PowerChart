@@ -479,10 +479,13 @@ is off.
 
 **Run host self-test** runs the nine things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
-chart on the slide you are looking at, editing the chart you have *selected*,
-stopping a run part-way, whether a chart is actually visible on the slide,
-adding charts to a slide that already has content, a deck-wide rescale, and
-turning a degraded picture back into native shapes. Each reports what was
+chart on the slide you are looking at, adding charts to a slide that already
+has content, a deck-wide rescale, turning a degraded picture back into native
+shapes, editing the chart you have *selected*, stopping a run part-way, and
+whether a chart is actually visible on the slide. They run in that order on
+purpose: the longest-standing checks first, the newest last, so that if a run
+does not survive to the end you still have the verdicts for everything with a
+track record. Each reports what was
 actually observed; one that your host cannot run is reported as skipped rather
 than failed. It leaves its slides in the deck so you can look at them — delete
 them when you are done, exactly like the demo deck.

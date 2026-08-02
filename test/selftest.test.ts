@@ -31,12 +31,15 @@ describe("the host self-test battery", () => {
       "insert on top of an earlier run",
       "two slides claiming one slot",
       "edit a chart on the visible slide",
-      "edit the chart the user selected",
-      "stop a run part-way",
-      "the chart is actually visible",
       "insert onto a slide that already has content",
       "same scale across the deck",
       "explode a degraded picture",
+      // The three newest last, heaviest dead last — a crash in unproven code
+      // must not cost the verdicts of scenarios that already work. Pinned,
+      // because the ordering is a diagnostic property, not a detail.
+      "edit the chart the user selected",
+      "stop a run part-way",
+      "the chart is actually visible",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
