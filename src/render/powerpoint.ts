@@ -3019,6 +3019,113 @@ export async function showSlide(slideId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Whether this host can be told which SHAPE is selected.
+ *
+ * `Slide.setSelectedShapes` is PowerPointApi **1.5** — the same set this add-in
+ * already needs for `getSelectedShapes` and `setSelectedSlides`, so in practice
+ * a host that can read the selection can also set it. It is gated anyway
+ * because "in practice" is how the last four host assumptions were written.
+ */
+export const canSelectShapes = (): boolean => supports("1.5");
+
+/**
+ * Select one shape, so the pane's selection-driven paths can be reached without
+ * a human clicking.
+ *
+ * The setter is on **Slide**, not `Presentation` — which is the whole reason
+ * the self-test believed for months that this could not be done at all (see the
+ * header of `selftest.ts`). `Presentation` has `getSelectedShapes` and
+ * `setSelectedSlides` but no `setSelectedShapes`; the shape half lives one class
+ * down.
+ *
+ * The slide is selected first. A shape on a slide nobody is looking at is not a
+ * selection the user could have made, and on some hosts the shape set is
+ * ignored unless its slide is current.
+ */
+export async function selectShape(slideId: string, shapeId: string): Promise<boolean> {
+  if (!canSelectShapes()) return false;
+  await showSlide(slideId);
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      queueNullCheck(slide);
+      await context.sync();
+      if (!isLive(slide)) return false;
+      (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([shapeId]);
+      await step("selecting a shape", () => context.sync());
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Drop the shape selection — by moving the SLIDE selection, not by clearing it.
+ *
+ * `setSelectedShapes([])` is documented to clear the selection and does so on
+ * desktop, but not on PowerPoint on the web (office-js#3083). That matters more
+ * than it sounds: on the web a picture cannot be inserted while another shape is
+ * selected (office-js#3698), so a scenario that leaves a chart selected breaks
+ * the NEXT one rather than itself — the worst kind of test failure to diagnose.
+ *
+ * So both are done: ask for the clear, and re-select the slide, which drops the
+ * shape selection on every host observed. Best-effort throughout; a host that
+ * refuses simply leaves the selection where it was.
+ */
+export async function clearShapeSelection(slideId: string): Promise<void> {
+  if (!canSelectShapes()) return;
+  try {
+    await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      queueNullCheck(slide);
+      await context.sync();
+      if (!isLive(slide)) return;
+      (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([]);
+      await context.sync();
+    });
+  } catch {
+    /* the host would not clear it — the slide re-select below is the fallback */
+  }
+  await showSlide(slideId);
+}
+
+/**
+ * A PNG of one slide, as the host itself draws it.
+ *
+ * `Slide.getImageAsBase64` is PowerPointApi **1.8**. This is the only way an
+ * add-in can see its own output: every other check in this file counts shapes
+ * and reads tags, which says a chart was CONSTRUCTED and says nothing about
+ * whether anything is visible. A chart drawn entirely in white, or off the
+ * slide, or with every shape at zero size, passes every structural assertion
+ * this project has.
+ *
+ * Undefined rather than throwing on any host that will not do it — the caller
+ * reports that as skipped, which is a different answer from a failure.
+ */
+export async function slideImageBase64(slideId: string, width?: number): Promise<string | undefined> {
+  if (!supports("1.8")) return undefined;
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      queueNullCheck(slide);
+      await context.sync();
+      if (!isLive(slide)) return undefined;
+      const img = (
+        slide as unknown as {
+          getImageAsBase64(options?: { width?: number }): { value: string };
+        }
+      ).getImageAsBase64(width ? { width } : undefined);
+      await step("rasterising a slide", () => context.sync());
+      const v = loadedValue(() => img.value);
+      return typeof v === "string" && v.length ? v : undefined;
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 /** Where a slide-size answer came from — recorded so a wrong placement can be
  *  traced to the rung that produced the number. */
 export type SlideSizeSource = "pageSetup" | "exportedSlide" | "documentFile" | "assumed";
@@ -3249,7 +3356,7 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
  * re-acquiring a proxy mid-context. A settled read from a later context is the
  * same read `listChartsInDeck` and the reconcile pass already rely on.
  */
-async function addScratchSlide(): Promise<string | null> {
+export async function addScratchSlide(): Promise<string | null> {
   try {
     const before = await slideCount();
     await PowerPoint.run(async (context) => {
@@ -3278,7 +3385,7 @@ async function addScratchSlide(): Promise<string | null> {
 }
 
 /** Delete one slide by id, best-effort. True when it is gone (or already was). */
-async function deleteSlideById(slideId: string): Promise<boolean> {
+export async function deleteSlideById(slideId: string): Promise<boolean> {
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);

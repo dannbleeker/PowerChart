@@ -1,15 +1,16 @@
 /**
- * Six things that have never once run against a real PowerPoint.
+ * Nine things that have never once run against a real PowerPoint, on one click.
  *
  * The demo deck covers inserting onto slides it added BLANK. Nothing covers
  * what happens elsewhere — inserting on top of an earlier run, a slide
  * duplicated so two claim one slot, redrawing a chart the user is looking at,
- * drawing onto a slide that already has content, a deck-wide rescale, turning
- * a degraded picture back into shapes. Every one of those paths is guarded,
- * and every guard has only ever been checked against a fake host. The list has
- * sat in `docs/PUBLISHING.md` as separate things for a human to remember to
- * try, which in practice means a session each: deploy, click through it, save
- * the deck, upload, read.
+ * editing the chart the user SELECTED, drawing onto a slide that already has
+ * content, a deck-wide rescale, stopping part-way, turning a degraded picture
+ * back into shapes, and whether any of it is visible. Every one of those paths
+ * is guarded, and every guard has only ever been checked against a fake host.
+ * The list sat in `docs/PUBLISHING.md` as separate things for a human to
+ * remember to try, which in practice meant a session each: deploy, click
+ * through it, save the deck, upload, read.
  *
  * The blank-slide bias is not incidental. `insertSceneIntoSlide` — the
  * everyday "put a chart on the slide I am looking at" — draws onto whatever
@@ -17,33 +18,28 @@
  * `insertOntoUsedSlide` below. That is exactly where the worst bug of the
  * session lived, and why a demo run could not have found it.
  *
- * So: one click, six scenarios, each recorded with what it actually observed.
- * They run in order and they leave their slides in the deck, because the point
- * is a file someone can open, look at, and hand to `npm run triage`.
+ * Scenarios run in order and leave their slides in the deck, because the point
+ * is a file someone can open, look at, and hand to `npm run triage`. The one
+ * exception is `chartIsVisible`, which takes its control slide away again.
  *
- * **What this does NOT test yet, and why that is now a gap rather than a
- * limit.** The pane's selection-driven entry points — "Edit selected chart",
- * "Explode" as the user reaches them — are not scripted here. What is
- * exercised is the machinery underneath them, reached by the same targets
- * `listChartsInDeck` hands the pane. A scenario that passes here can still be
- * broken at the selection layer; a scenario that fails here is broken for
- * everyone.
+ * **On selection.** This file used to say Office.js had no way to select a
+ * shape, and that the pane's selection-driven entry points therefore could not
+ * be scripted. It was wrong, in the most expensive way a comment can be: it
+ * justified a hole with a fact, so nobody re-checked it for months.
+ * `Slide.setSelectedShapes(shapeIds)` has been GA since **PowerPointApi 1.5** —
+ * the same set this add-in already requires for `getSelectedShapes` and
+ * `setSelectedSlides`. The mistaken belief was that it would live on
+ * `Presentation` beside `setSelectedSlides`; it is one class down, on `Slide`.
+ * `editViaSelection` is what that sentence had been preventing.
  *
- * This used to say Office.js had no way to select a shape. That was wrong, and
- * wrong in the most expensive way a comment can be: it justified a hole with a
- * fact, so nobody re-checked it. `Slide.setSelectedShapes(shapeIds)` has been
- * GA since **PowerPointApi 1.5** — the same set this add-in already requires
- * for `getSelectedShapes` and `setSelectedSlides`. The mistaken belief was that
- * it would live on `Presentation` beside `setSelectedSlides`; it does not, it
- * is one class down, on `Slide`. So the selection layer is scriptable today, at
- * no new requirement set and with no manifest change, and three of the manual
- * tests in `docs/PUBLISHING.md` exist only because this comment said otherwise.
- *
- * Two live web-host bugs to design around when that lands: on PowerPoint on the
- * web `setSelectedShapes([])` does not clear the selection (office-js#3083), and
- * a picture cannot be inserted while another shape is selected (office-js#3698)
- * — so a scenario must deselect by selecting something ELSE, or it poisons the
- * next one.
+ * **Order is load-bearing, because of two live web-host bugs.** On PowerPoint
+ * on the web `setSelectedShapes([])` does not clear the selection
+ * (office-js#3083), and a picture cannot be inserted while another shape is
+ * selected (office-js#3698). So a scenario that leaves a chart selected breaks
+ * the PICTURE scenario rather than its own — a failure that reads, in a run
+ * log, as a bug in code that is fine. Every selecting scenario clears up after
+ * itself through `clearShapeSelection`, which re-selects the slide rather than
+ * trusting the empty-array clear.
  */
 import type { ChartConfig, ChartKind } from "../core/types";
 import type { Scene } from "../core/scene";
@@ -51,7 +47,17 @@ import { buildChart } from "../core/chart";
 import { sampleConfig } from "../core/samples";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import {
+  addScratchSlide,
   canInsertPicture,
+  canSelectShapes,
+  clearShapeSelection,
+  deleteSlideById,
+  isStopped,
+  loadChartFromSelection,
+  requestStop,
+  resetStop,
+  selectShape,
+  slideImageBase64,
   canInsertSlidesFromBase64,
   insertSceneIntoSlide,
   insertSlidesFromPptx,
@@ -348,10 +354,150 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
   };
 };
 
+/**
+ * The pane's actual entry point: a chart the USER has selected.
+ *
+ * Everything above reaches the machinery through targets `listChartsInDeck`
+ * hands over. That is not how anyone uses the add-in. A user clicks a chart and
+ * presses "Edit it", and the pane answers from `loadChartFromSelection` — a
+ * different read, on a different collection (`getSelectedShapes`), which no
+ * scenario here has ever exercised because of a comment that said it could not
+ * be done. It can, at PowerPointApi 1.5, and this is the whole round trip:
+ * select the shape, read it back as the pane does, edit through THAT target,
+ * and confirm what comes back is the same chart.
+ *
+ * Deselects at the end by re-selecting the slide, never by
+ * `setSelectedShapes([])` — see `clearShapeSelection`. A chart left selected
+ * breaks the picture scenario below rather than this one.
+ */
+const editViaSelection: Scenario = async (prefix) => {
+  if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
+  const [chart] = await probeCharts(prefix);
+  if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
+  if (!(await selectShape(chart.target.slideId, chart.target.shapeId))) {
+    return { ok: false, skipped: true, detail: "the host would not select the chart" };
+  }
+  try {
+    // Exactly what the pane does when someone presses "Edit it".
+    const picked = await loadChartFromSelection();
+    if (!picked) return { ok: false, detail: "the selected chart did not read back as a PowerChart" };
+    const was = JSON.parse(picked.configJson) as ChartConfig;
+    if (was.title !== chart.cfg.title) {
+      return { ok: false, detail: `the selection read back a different chart: "${was.title}"` };
+    }
+    // And edit through the target the SELECTION produced, not the one the deck
+    // scan produced. The two are built by different code from different reads,
+    // and only one of them is what a user's edit actually travels on.
+    const next = { ...was, title: `${was.title} (via selection)` };
+    const target = await updateChartInSlide(buildChart(next), picked.target, { tagData: JSON.stringify(next) });
+    if (!target) return { ok: false, detail: "the chart was gone from the slide after editing the selection" };
+    const round = (await probeCharts(prefix)).find((c) => c.cfg.title === next.title);
+    return {
+      ok: !!round,
+      detail: round
+        ? "selected, read back, edited through the selection's own target, still re-editable"
+        : "edited through the selection, and the result is no longer re-editable",
+    };
+  } finally {
+    await clearShapeSelection(chart.target.slideId);
+  }
+};
+
+/**
+ * Stopping a run part-way, and what the deck looks like afterwards.
+ *
+ * Stop is cooperative — Office.js has no abort, so a sync already handed to
+ * PowerPoint runs to completion whatever anyone wants, and the only honest
+ * promise is "nothing further after this batch". That makes the interesting
+ * question not "did it stop" but "what did it leave": a stop is indistinguishable
+ * from a stall to every layer above it, and both leave a partial chart on the
+ * slide. This asserts the two things a user is owed — the call ends, and it
+ * ends by SAYING it stopped rather than reporting a chart it did not finish.
+ *
+ * The stop is requested before the render rather than mid-flight, which is the
+ * one part a script cannot time: the pane's Stop button is pressed by a human
+ * some seconds in. What is exercised is the same cooperative path, taken at its
+ * first batch boundary instead of its fifth.
+ */
+const stopPartWay: Scenario = async (prefix) => {
+  const before = await slideCount();
+  const c = cfg(`${prefix} stopped`);
+  requestStop();
+  let outcome: string;
+  try {
+    const target = await insertSceneIntoSlide(buildChart(c), { tagData: JSON.stringify(c) });
+    outcome = target ? "the insert ran to completion and reported a chart" : "the insert finished without a chart";
+  } catch (err) {
+    outcome = isStopped(err) ? "stopped" : `threw something other than a stop: ${errorText(err)}`;
+  } finally {
+    resetStop();
+  }
+  const after = await slideCount();
+  const problems = [
+    outcome !== "stopped" && outcome,
+    after !== before && `the deck grew by ${after - before} — a stopped insert added a slide`,
+    // A stop must not leave a chart the pane would offer to edit: half a chart
+    // that claims to be whole is worse than a visible mess.
+    (await probeCharts(`${prefix} stopped`)).length > 0 && "a stopped insert left a re-editable chart behind",
+  ].filter(Boolean);
+  return {
+    ok: problems.length === 0,
+    detail: problems.length
+      ? problems.join("; ")
+      : "stopped at a batch boundary, nothing added, nothing left claiming to be a chart",
+  };
+};
+
+/**
+ * Whether anything is actually VISIBLE.
+ *
+ * Every other assertion in this file counts shapes and reads tags. All of them
+ * pass for a chart drawn entirely in white, or at zero size, or off the edge of
+ * the slide — a chart that is structurally perfect and invisible. Nothing in
+ * this project has ever checked otherwise except a human looking at a deck.
+ *
+ * `Slide.getImageAsBase64` (PowerPointApi 1.8) is the host's own rasteriser, so
+ * this compares a slide holding a chart against the same slide before it had
+ * one. Deliberately not a pixel comparison against the SVG renderer: two
+ * different text shapers never agree, and a check that cries wolf gets ignored.
+ * The question here is the crude one nobody was asking — did drawing the chart
+ * change what the slide looks like at all.
+ */
+const chartIsVisible: Scenario = async (prefix) => {
+  // Its own slide, taken away afterwards. Before-and-after on ONE slide is the
+  // only comparison that isolates the chart: two different slides differ for a
+  // dozen reasons a rasteriser can see and this scenario should not care about.
+  const slideId = await addScratchSlide();
+  if (!slideId) return { ok: false, skipped: true, detail: "the host would not add a slide to draw on" };
+  try {
+    const blank = await slideImageBase64(slideId, 640);
+    if (!blank) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
+    const c = cfg(`${prefix} visible`);
+    const drawn = await insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c) });
+    if (!drawn) return { ok: false, detail: "nothing was drawn, so there is nothing to look at" };
+    const withChart = await slideImageBase64(slideId, 640);
+    if (!withChart) return { ok: false, detail: "the host rasterised the empty slide but not the one with a chart" };
+    return {
+      ok: withChart !== blank,
+      detail:
+        withChart !== blank
+          ? `drawing the chart changed what the slide looks like (${blank.length} → ${withChart.length} bytes)`
+          : "the slide renders identically with and without the chart — nothing is visible",
+    };
+  } finally {
+    // Unlike every other scenario, this one cleans up: its slide is a control
+    // surface, not a result anyone would want to open.
+    await deleteSlideById(slideId);
+  }
+};
+
 const SCENARIOS: { name: string; run: Scenario }[] = [
   { name: "insert on top of an earlier run", run: insertTwice },
   { name: "two slides claiming one slot", run: duplicateSlot },
   { name: "edit a chart on the visible slide", run: editOnVisibleSlide },
+  { name: "edit the chart the user selected", run: editViaSelection },
+  { name: "stop a run part-way", run: stopPartWay },
+  { name: "the chart is actually visible", run: chartIsVisible },
   { name: "insert onto a slide that already has content", run: insertOntoUsedSlide },
   { name: "same scale across the deck", run: sameScaleAcrossDeck },
   { name: "explode a degraded picture", run: explodePicture },

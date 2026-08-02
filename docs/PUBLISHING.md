@@ -86,9 +86,16 @@ Pick the platform(s); the manifest file is `manifest-prod.xml` from Phase 1
 
 ### The standing test run
 
-What to do on **every** build that lands a real-host fix. Ordered by risk, not
-by feature: tests 1–4 and 7 are manual and take about six minutes, tests 5–6
-are one click each and run themselves. The owner drives PowerPoint, the agent
+What to do on **every** build that lands a real-host fix. Four items, ordered
+by risk. Two are one click each and run themselves; the other two are a scroll
+and a single click-and-edit — about three minutes of attention in total.
+
+This used to be seven tests. Tests 1, 2, 3 and 7 were absorbed into the
+self-test battery once `Slide.setSelectedShapes` turned out to have been
+available since PowerPointApi 1.5, and the old test 4 (the `=SUM(A1:ZZ999)`
+formula crash) was deleted outright: it is pure browser JavaScript, it never
+needed PowerPoint, and it has been covered in CI all along by
+`test/formula-blanks.test.ts`. The owner drives PowerPoint, the agent
 fixes fallout — expect a real host to surface things the mocked tests can't,
 because every Office.js assertion in this repo is against a fake.
 
@@ -100,13 +107,15 @@ older. Then tick **Verbose trace** in the Testing section and leave it on.
 
 | # | test | what it catches |
 | --- | --- | --- |
-| 1 | **The everyday insert.** Blank slide, insert a **Clustered** chart (24 shapes — multi-batch is the trigger; a 5-shape chart will not exercise it). Click it: the pane says "A PowerChart is selected." **Edit it** loads the data back. Drag one bar by hand. | Any chart over ~10 shapes on the web used to lose its group *and* its config tag — silently not re-editable, on the most-used action in the add-in. Fails if there is no selection banner, or **Edit it** does nothing. |
-| 2 | **A second chart on the same slide.** Insert a second chart — do *not* place it yourself. It should land **beside** the first on a 16:9 deck (scaled to ~390×244) and **below** it on 4:3. The pane says which. Both stay independently selectable. Edit the *second* → **Update chart**; the first must still be there and still editable. | The sweep case: a run that pulls pre-existing shapes into its own group carries them in its parts tag and deletes them on the next edit. Also the placement rule itself — it reads the deck's real width, so a chart off the right edge means the read failed, not that the rule is wrong. |
-| 3 | **Edit in place.** Select chart 1 → **Edit it** → change a number → **Update chart**. It redraws in place, does not jump, and is still editable afterwards. | An edit that leaves a chart un-editable is worse than one that never worked: the pane hands back a target it cannot use, and the *next* edit silently does nothing. |
-| 4 | **The formula crash** (30 seconds). Type `=SUM(A1:ZZ999)` into any datasheet cell. The preview keeps working — no freeze, no blank pane. | 702 × 999 cells used to throw `Maximum call stack size exceeded` straight through the live preview. |
-| 5 | **Demo deck — both paths.** Path → **Both, one after the other** → **Insert demo deck**. ~6 s for the file half, then 1–2 minutes for the shape half. | The file half must report **38 of 38 complete** — anything less is a regression. The shape half being slower with some items short is the *measurement* of what the everyday code path costs at 38× scale, not a defect. |
-| 6 | **Run host self-test.** One click, six scenarios (below). | The paths the demo deck never touches. A verdict of **skipped** is not a failure. **The three to watch are "edit a chart on the visible slide", "insert onto a slide that already has content" and "same scale across the deck"**: all three failed on the real host with `PropertyNotLoaded`, reading a proxy Office.js had never populated — a slide resolved by asking for `isNullObject` by name, a shape collection the host did not answer, and a tagged shape whose position load went down with a refused sync. All three are now guarded in `web-host.test.ts`; them passing here is the cheapest confirmation the fix is real rather than plausible. |
-| 7 | **Stop a long run** (30 seconds). Start the demo deck, press **Stop** in the status strip a few slides in. It should read *Stopping…*, finish the slide in flight, then stop and say so — not "Failed". Slides already done stay. | Stop is cooperative: PowerPoint cannot abort a round trip already handed to it. A stop reported as a failure, or one that keeps drawing, is the regression. |
+| 1 | **Run host self-test.** One click, nine scenarios (below). Read the verdicts. | Nearly everything that used to be tests 1, 2, 3 and 7 of this table. The battery now selects shapes itself (`Slide.setSelectedShapes`, PowerPointApi 1.5), stops its own run, and asks the host to render a slide before and after drawing so it can tell a chart that is *there* from a chart that is *visible*. A verdict of **skipped** is not a failure. |
+| 2 | **Demo deck — both paths.** Path → **Both, one after the other** → **Insert demo deck**. ~6 s for the file half, then 1–2 minutes for the shape half. | The file half must report **38 of 38 complete** — anything less is a regression. The shape half being slower with some items short is the *measurement* of what the everyday path costs at 38× scale, not a defect. This is the one thing no battery can stand in for: it is the only test at real scale, and scale is what crashes the tab. |
+| 3 | **Look at the deck.** Scroll the 38 slides the demo run added. | The judgement a machine does not have. The battery's visibility check answers "did anything render"; it does not answer "is this the right chart, drawn well". Look for charts off the slide edge, overlapping labels, and anything that is visibly not what the gallery shows. |
+| 4 | **One selection round trip, by hand.** Click a chart. The pane says "A PowerChart is selected." Press **Edit it**, change a number, **Update chart**. Drag the chart, then edit it again. | The battery drives the same machinery through `setSelectedShapes`, which is Office.js selecting a shape — not a human clicking one. Those are the same call in theory. This is the check that they are the same in practice, plus the drag-delta round trip (`POWERCHART_ORIGIN`), which needs a real drag and so cannot be scripted at all. |
+
+**Run it on a 4:3 deck at least once**, and on desktop PowerPoint at least once
+per release — everything above is normally run on the web, which is where the
+bugs have been, but it is not the only host and the battery is not a substitute
+for a different one.
 
 Then send back two files: **Download run log** (Testing section) and the deck
 itself (File → Download a copy). The log carries the run's identity token, so
@@ -114,7 +123,7 @@ itself (File → Download a copy). The log carries the run's identity token, so
 
 What to read in the result: the `tagging failed` count (was 28 on the last slow
 run; should be near zero), any line annotated `^ known host bug: office-js#…`
-(Microsoft's, not ours — annotated automatically, don't chase it), the six
+(Microsoft's, not ours — annotated automatically, don't chase it), the nine
 self-test verdicts, and — new — the **`phases an error escaped`** block.
 
 That block is the half of a failure that used to be missing. Office.js reports
@@ -143,7 +152,7 @@ outline-only, pattern fills render solid.
   reason. Your own navigation wins: click away mid-redraw and you stay where
   you clicked.
 
-**Run it on a 4:3 deck at least once.** Slide size is read from the host now
+**More on slide size.** It is read from the host now
 (`PageSetup` at 1.10, an exported slide at 1.8, `getFileAsync` below that) and
 drives both chart placement and the generated deck's declared size. Every
 earlier session tested 16:9 only, where a wrong answer is invisible — on 4:3 it
