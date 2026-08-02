@@ -21,6 +21,7 @@ import {
   DEMO_SHAPE_BUDGET,
   applyReconcilePlan,
   readAddedSlides,
+  _setReadbackTimeoutForTest,
   lastLateSyncOwner,
   lastLateSyncSeq,
   waitForLateSync,
@@ -2415,6 +2416,54 @@ describe("reading a demo deck back and repairing it", () => {
     // The surviving chart is now a group carrying the config — re-editable.
     const group = deck[1].created.filter((s) => !s.deleted).find((s) => s.name === "PowerChart");
     expect(group?.tagStore.get(CHART_TAG)).toBe(`{"kind":"line"}`);
+  });
+
+  it("stops the readback when the user asks, and counts what it never looked at", async () => {
+    // Stop used to reach exactly three places: a drawing batch boundary,
+    // between demo items, and between charts in an update. The repair pass —
+    // readback, tag pass, group count, the deletes — checked nothing. So a run
+    // that got past drawing could not be cancelled at all: the pane switched
+    // its button to "Stopping…" and the counter kept climbing. Observed at
+    // 1819 seconds on a real host, and the run had to be abandoned by closing
+    // the tab, which is also how its log was lost.
+    //
+    // What the pages it never reached are called matters as much as that it
+    // stops. UNREAD, not clean: an unseen slide is never deleted by the pass
+    // that follows, and "we did not look" must not read as "nothing there".
+    const deck = Array.from({ length: 40 }, (_, i) =>
+      demoSlide(`s${i}`, { slot: { i, title: `S${i}` }, shapes: 3, tagged: true }),
+    );
+    installHost(deck);
+    requestStop();
+    try {
+      const { snapshots, unread } = await readAddedSlides(0, 40);
+      expect(snapshots, "kept reading after a stop").toHaveLength(0);
+      expect(unread, "a stopped readback reported slides as read").toBe(40);
+    } finally {
+      resetStop();
+    }
+  });
+
+  it("gives up on a repair-pass page the host never answers", async () => {
+    // 75 of this file's 79 syncs had no timeout. The four that did are all in
+    // the insert path, so the drawing phase was bounded and everything after it
+    // — group, tag, readback, repair — could wait forever on one unanswered
+    // sync. That is the other half of the 1819-second run: even without a stop,
+    // nothing would ever have broken the wait.
+    const deck = [demoSlide("a", { slot: { i: 0, title: "A" }, shapes: 3, tagged: true })];
+    installHost(deck);
+    _setReadbackTimeoutForTest(5);
+    stallSyncOn.add(1);
+    try {
+      const { snapshots, unread } = await readAddedSlides(0, 1);
+      // Abandoned, and reported as unread — the same honest answer a page that
+      // threw already gets. The call RETURNS, which is the whole point.
+      expect(snapshots).toHaveLength(0);
+      expect(unread).toBe(1);
+    } finally {
+      _setReadbackTimeoutForTest(90_000);
+      stallSyncOn.clear();
+    }
   });
 
   it("does not call a slide untagged when the host answered with no shapes", async () => {
