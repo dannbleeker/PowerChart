@@ -2268,9 +2268,45 @@ function blanksFromSnapshots(outcome: ReconcileOutcome): {
  *  >50-item load ceiling (office-js#4272), though getCount is a scalar, not a load. */
 export const READBACK_PAGE = 20;
 
+/**
+ * How long one repair-pass page may take before the run gives up on it.
+ *
+ * The drawing phase has had a per-batch bound since the first stalled host;
+ * everything AFTER it — grouping, tagging, the readback, the repair — had none
+ * at all. 75 of this file's 79 syncs were unbounded, and the four that were not
+ * are all in the insert path. A run that got past drawing could therefore sit
+ * forever on a single unanswered sync with nothing to break the wait: observed,
+ * at 1819 seconds and climbing, on a deck run that had to be abandoned by
+ * closing the tab.
+ *
+ * Generous, and deliberately larger than `BATCH_TIMEOUT_MS`: a page here reads
+ * twenty slides and their tags, where a draw batch is ten shapes. Its only job
+ * is to stop an infinite wait, not to police a slow host — and every caller
+ * already has an honest answer for a page it could not read ("unread",
+ * "undetermined", "unmeasured"), which is why abandoning one is safe.
+ */
+let READBACK_TIMEOUT_MS = 90_000;
+
+/** Test-only: shorten the repair-pass page budget so a stall is testable. */
+export function _setReadbackTimeoutForTest(ms: number): void {
+  READBACK_TIMEOUT_MS = ms;
+}
+
+/**
+ * `PowerPoint.run`, with a deadline and a name.
+ *
+ * Same shape as the call it replaces, so a site adopts it by changing the
+ * function name and nothing else. The label is what the run log will carry when
+ * the deadline fires, and what `lastLateSync` will credit if the host answers
+ * afterwards.
+ */
+function boundedRun<T>(what: string, fn: (context: PowerPoint.RequestContext) => Promise<T>): Promise<T> {
+  return withTimeout(PowerPoint.run(fn), READBACK_TIMEOUT_MS, what);
+}
+
 /** Top-level shape counts for slides [start, end), read in one settled sync. */
 async function shapeCounts(start: number, end: number): Promise<number[]> {
-  return PowerPoint.run(async (context) => {
+  return boundedRun(`counting shapes on slides ${start}-${end - 1}`, async (context) => {
     const counts: { value: number }[] = [];
     for (let i = start; i < end; i++) counts.push(context.presentation.slides.getItemAt(i).shapes.getCount());
     await context.sync();
@@ -2424,9 +2460,18 @@ export async function readAddedSlides(
   let unread = 0;
   for (let start = before; start < after; start += READBACK_PAGE) {
     const end = Math.min(start + READBACK_PAGE, after);
+    // A stop ends the readback here, and the pages not reached are counted as
+    // UNREAD rather than as clean. That distinction is the whole point: an
+    // unseen slide is never deleted by the pass that follows, so a stopped
+    // read degrades to "we did not look" instead of "there was nothing there".
+    if (isStopRequested()) {
+      unread += after - start;
+      trace("repair", "readback stopped by the user", { from: start, to: after });
+      break;
+    }
     let page: SlideSnapshot[];
     try {
-      page = await PowerPoint.run(async (context) => {
+      page = await boundedRun(`reading slides ${start}-${end - 1} back`, async (context) => {
         const reads = [];
         for (let i = start; i < end; i++) {
           const slide = context.presentation.slides.getItemAt(i);
@@ -2548,44 +2593,55 @@ async function tagPass(snapshots: SlideSnapshot[], attempt: number): Promise<Sli
   for (let start = 0; start < snapshots.length; start += READBACK_PAGE) {
     const page = snapshots.slice(start, start + READBACK_PAGE).filter((s) => s.shapes > 0);
     if (!page.length) continue;
+    // Stopped: every page not reached is undetermined, which is what a page
+    // that threw already reports. "We did not check" and "checked, no tag" are
+    // different answers and the repair plan acts on them differently.
+    if (isStopRequested()) {
+      undetermined.push(...snapshots.slice(start).filter((s) => s.shapes > 0));
+      trace("repair", "tag pass stopped by the user", { from: start });
+      break;
+    }
     try {
-      const result = await PowerPoint.run(async (context) => {
-        const perSlide = page.map((s) => {
-          const shapes = context.presentation.slides.getItemAt(s.index).shapes;
-          shapes.load("items/id");
-          return { want: s, shapes };
-        });
-        await context.sync();
-        const lookups = perSlide.map((p) => {
-          // Read the collection ONCE. Asking twice is a second round-trip's
-          // worth of answer from a host that has already been observed giving
-          // two different ones, and the count below has to describe the same
-          // shapes the tags were taken from.
-          const items = p.shapes.items;
-          return {
-            want: p.want,
-            seen: items.length,
-            tags: items.map((shape) => {
-              const t = shape.tags.getItemOrNullObject(CHART_TAG);
-              t.load("value");
-              return t;
-            }),
-          };
-        });
-        await context.sync();
-        const hit = new Set<number>();
-        const short: SlideSnapshot[] = [];
-        let shapesSeen = 0;
-        for (const l of lookups) {
-          shapesSeen += l.seen;
-          if (l.tags.some((t) => !t.isNullObject && !!t.value)) hit.add(l.want.index);
-          // Fewer shapes than pass A counted: this slide was not read, so it
-          // has told us nothing about its tags either way.
-          else if (l.seen < l.want.shapes) short.push(l.want);
-          for (const t of l.tags) untrack(t);
-        }
-        return { hit, short, shapesSeen };
-      });
+      const result = await boundedRun(
+        `reading chart tags on slides ${page[0]?.index}-${page[page.length - 1]?.index}`,
+        async (context) => {
+          const perSlide = page.map((s) => {
+            const shapes = context.presentation.slides.getItemAt(s.index).shapes;
+            shapes.load("items/id");
+            return { want: s, shapes };
+          });
+          await context.sync();
+          const lookups = perSlide.map((p) => {
+            // Read the collection ONCE. Asking twice is a second round-trip's
+            // worth of answer from a host that has already been observed giving
+            // two different ones, and the count below has to describe the same
+            // shapes the tags were taken from.
+            const items = p.shapes.items;
+            return {
+              want: p.want,
+              seen: items.length,
+              tags: items.map((shape) => {
+                const t = shape.tags.getItemOrNullObject(CHART_TAG);
+                t.load("value");
+                return t;
+              }),
+            };
+          });
+          await context.sync();
+          const hit = new Set<number>();
+          const short: SlideSnapshot[] = [];
+          let shapesSeen = 0;
+          for (const l of lookups) {
+            shapesSeen += l.seen;
+            if (l.tags.some((t) => !t.isNullObject && !!t.value)) hit.add(l.want.index);
+            // Fewer shapes than pass A counted: this slide was not read, so it
+            // has told us nothing about its tags either way.
+            else if (l.seen < l.want.shapes) short.push(l.want);
+            for (const t of l.tags) untrack(t);
+          }
+          return { hit, short, shapesSeen };
+        },
+      );
       for (const s of page) if (result.hit.has(s.index)) s.tagged = true;
       undetermined.push(...result.short);
       trace("repair", "tag pass over a page", {
@@ -2617,8 +2673,11 @@ async function countGroupChildren(snapshots: SlideSnapshot[]): Promise<void> {
   if (!supports("1.8")) return;
   for (const s of snapshots) {
     if (!s.grouped) continue;
+    // Leaves groupChildren unset for the rest, which planReconcile already
+    // treats as "unmeasured" — see its unmeasured rule. Never as "empty".
+    if (isStopRequested()) break;
     try {
-      s.groupChildren = await PowerPoint.run(async (context) => {
+      s.groupChildren = await boundedRun(`counting the chart group on slide ${s.index + 1}`, async (context) => {
         const shapes = context.presentation.slides.getItemAt(s.index).shapes;
         shapes.load("items/name");
         await context.sync();
@@ -2639,7 +2698,7 @@ async function countGroupChildren(snapshots: SlideSnapshot[]): Promise<void> {
 /** Delete the NOT COMPLETE banner from a slide. False when there is none. */
 async function deleteStamp(slideIndex: number): Promise<boolean> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await boundedRun(`removing the banner from slide ${slideIndex + 1}`, async (context) => {
       type Named = { name: string; delete(): void };
       const shapes = context.presentation.slides.getItemAt(slideIndex).shapes as unknown as {
         items: (Named & { group?: { shapes: { items: Named[]; load(p: string): void } } })[];
@@ -2689,7 +2748,7 @@ async function deleteStamp(slideIndex: number): Promise<boolean> {
  */
 async function deleteSlide(index: number, expect?: SlideSnapshot): Promise<boolean> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await boundedRun(`removing slide ${index + 1}`, async (context) => {
       const slide = context.presentation.slides.getItemAt(index);
       if (expect) {
         const shapes = slide.shapes;
@@ -2771,6 +2830,14 @@ export async function applyReconcilePlan(
   const applied = { unstamped: 0, regrouped: 0, deleted: 0 };
   let refused = 0;
   for (const action of plan.actions) {
+    // Between actions, never inside one. Every action so far has committed and
+    // the rest have not been touched — the same boundary the draw loop stops
+    // at, and the only one where a repair pass that DELETES slides can be
+    // interrupted without leaving the deck half-repaired.
+    if (isStopRequested()) {
+      trace("repair", "repair pass stopped by the user", { applied: { ...applied }, remaining: plan.actions.length });
+      break;
+    }
     trace("repair", `applying ${action.kind}`, { index: action.index, slot: action.slot, reason: action.reason });
     if (action.kind === "unstamp") {
       if (await deleteStamp(action.index)) applied.unstamped++;
