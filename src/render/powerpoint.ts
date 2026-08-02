@@ -3672,7 +3672,12 @@ export function traceEnvironment(build: string): void {
     host: d?.host,
     platform: d?.platform,
     version: d?.version,
-    requirementSets: ["1.2", "1.3", "1.4", "1.5", "1.8", "1.10"].filter((v) => supports(v)),
+    // Every published set, not only the ones this add-in gates on. A log that
+    // reports "1.5, 1.8" leaves a reader unable to tell a host that stops at
+    // 1.5 from one that has 1.9 and simply is not asked — and the gap between
+    // "what the host has" and "what we use" is where the next `setSelectedShapes`
+    // is hiding. It cost months to find that one, and the log could have said.
+    requirementSets: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"].filter((v) => supports(v)),
     canInsertSlidesFromBase64: canInsertSlidesFromBase64(),
     canInsertPicture: canInsertPicture(),
   });

@@ -42,6 +42,88 @@ it must be related from the presentation, not dropped at the root.
 a decision about precedence (deck style vs the user's own imported style) before
 any code.
 
+### Drive PowerPoint on the web from Playwright, so the manual run is a command
+
+**Researched:** 2026-08-02.
+
+The standing test run is down to four items because the in-host battery
+absorbed the rest. The remaining ones need a human because nothing can click
+the pane — but something can. Playwright reaches an add-in task pane, and there
+is a public working reference implementation to copy from
+(`kzarzycki/powerpoint-mcp`, its `e2e/` directory).
+
+**What makes it tractable here:** `manifest.xml` already points at
+`https://localhost:3000`, which is the constraint Microsoft's own (undocumented)
+sideload seam enforces — `office-addin-dev-settings` appends
+`wdaddindevserverport` / `wdaddinmanifestfile` / `wdaddintest` to an
+Office-on-the-web document URL, gated behind a `WEB_SIDELOAD_TEST` env var that
+exists for Microsoft's internal CI. `playwright-core` is already a
+devDependency.
+
+**Blockers, all defeated in that reference repo:** headless user agents are
+sniffed and sideloading silently skipped (spoof UA + `sec-ch-ua`); Chrome's
+Private Network Access blocks the WAC origin from reaching loopback (intercept
+with `context.route` and answer `Access-Control-Allow-Private-Network`); the
+`wdaddintest` flag does *not* in fact suppress the developer-mode dialogs, so
+they must be clicked. Reach the pane with `page.frames()` — it is a nested
+cross-origin iframe, so `frameLocator()` chaining cannot get there, and Selenium
+cannot reach it at all (office-js#5264).
+
+**The real wall is login**, not the add-in machinery. That reference repo primes
+a browser profile by hand in a headed window and runs headless afterwards; its
+own CI does not run the suite. Headless would need Entra certificate-based auth
+(Playwright `clientCertificates`, ≥1.46 — Microsoft's Power Platform samples do
+exactly this), which needs a test user with CBA that the owner probably cannot
+self-serve on a corporate tenant.
+
+**Priority:** medium — but only the local half. Run locally it turns the
+remaining manual items into `npm run test:e2e` and pays for itself without
+solving login. CI is a separate, owner-gated question and may never be worth it.
+Covers PowerPoint **on the web** only; desktop stays human either way.
+
+### File-level CI gates: schema validation and a golden-image diff
+
+**Researched:** 2026-08-02 (both measured against `examples/showcase.pptx`).
+
+Two cheap gates on the generated deck, neither needing a host.
+
+**Schema validation.** `@xarsh/ooxml-validator` (MIT, one devDependency,
+prebuilt binaries, no .NET runtime) validates a `.pptx` against
+`DocumentFormat.OpenXml`'s `OpenXmlValidator` in **3.2 s** across 122 slides. It
+catches a class `verify-deck.mjs` structurally cannot see — dangling
+relationship ids, malformed XML, negative extents, wrong child ordering — with
+almost no overlap between the two. Neither catches duplicate `cNvPr` ids within
+one `spTree`, which is the classic trigger for PowerPoint's repair dialog; that
+is a five-line addition to `faultsIn()` if it is wanted.
+
+**Baseline needed before it can gate:** the committed showcase deck already has
+exactly one finding, and it is deliberate upstream — pptxgenjs emits
+`notesMasterIdLst` after `sldIdLst` on purpose, with a source comment saying the
+schema-conformant order makes PowerPoint complain. Schema-valid and
+PowerPoint-valid are different sets, and here they conflict. Baseline it, do not
+fix it.
+
+**Golden images.** LibreOffice headless renders the deck to PDF in 7 s and to
+122 PNGs in 17.6 s, and — the part that makes a gate possible — the output is
+**byte-identical across fresh profiles**, so it can be compared by hash. Its
+usual PPTX weak spots (gradients, `normAutofit`, effects) do not apply here:
+this generator emits none of them. Pin the renderer *and the font set* in a
+container image; the deck asks for Segoe UI and Calibri, neither of which is
+present in CI, so every render is a substituted render — self-consistent, but
+different from a laptop that has the real fonts. Frame it as "did our output
+change", never as "does this match PowerPoint".
+
+**Do not** use a LibreOffice round-trip as a PowerPoint proxy: converting the
+showcase deck back to `.pptx` silently deleted all 122 `ppt/tags/*.xml` parts,
+leaving 121 charts non-re-editable. Worth knowing separately —
+`verify-deck.mjs` reported "no structural faults" on that deck, correctly per
+its contract, but it means the exit code is not a config-survival signal. Any
+CI job consuming it for a saved-from-PowerPoint deck must gate on the
+`chart objects: N (0 re-editable)` count instead.
+
+**Priority:** medium. The validator is near-free and additive today; the image
+gate needs a pinned container before it is worth turning on.
+
 ## 2. Rejected or already covered (do not re-propose)
 
 - **An image / icon node** — not reachable in the live add-in, so nothing can
