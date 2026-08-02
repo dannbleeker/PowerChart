@@ -21,13 +21,29 @@
  * They run in order and they leave their slides in the deck, because the point
  * is a file someone can open, look at, and hand to `npm run triage`.
  *
- * **What this deliberately does NOT test.** Office.js has no way to select a
- * SHAPE, so the pane's selection-driven entry points — "Edit selected chart",
- * "Explode" as the user reaches them — cannot be scripted. What is exercised
- * here is the machinery underneath them, reached by the same targets
+ * **What this does NOT test yet, and why that is now a gap rather than a
+ * limit.** The pane's selection-driven entry points — "Edit selected chart",
+ * "Explode" as the user reaches them — are not scripted here. What is
+ * exercised is the machinery underneath them, reached by the same targets
  * `listChartsInDeck` hands the pane. A scenario that passes here can still be
  * broken at the selection layer; a scenario that fails here is broken for
  * everyone.
+ *
+ * This used to say Office.js had no way to select a shape. That was wrong, and
+ * wrong in the most expensive way a comment can be: it justified a hole with a
+ * fact, so nobody re-checked it. `Slide.setSelectedShapes(shapeIds)` has been
+ * GA since **PowerPointApi 1.5** — the same set this add-in already requires
+ * for `getSelectedShapes` and `setSelectedSlides`. The mistaken belief was that
+ * it would live on `Presentation` beside `setSelectedSlides`; it does not, it
+ * is one class down, on `Slide`. So the selection layer is scriptable today, at
+ * no new requirement set and with no manifest change, and three of the manual
+ * tests in `docs/PUBLISHING.md` exist only because this comment said otherwise.
+ *
+ * Two live web-host bugs to design around when that lands: on PowerPoint on the
+ * web `setSelectedShapes([])` does not clear the selection (office-js#3083), and
+ * a picture cannot be inserted while another shape is selected (office-js#3698)
+ * — so a scenario must deselect by selecting something ELSE, or it poisons the
+ * next one.
  */
 import type { ChartConfig, ChartKind } from "../core/types";
 import type { Scene } from "../core/scene";
