@@ -55,7 +55,17 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   them; several real bugs were only caught this way.
 - **A regression test must be proven to fail without its fix.** Stash the
   source file, re-run, confirm the new test goes red, restore. A guard that
-  passes against the pre-fix file is not a guard — it is decoration.
+  passes against the pre-fix file is not a guard — it is decoration. Check
+  _which_ assertion went red, too: a guard can fail for the wrong reason and
+  still look proven (one here failed on a slide-swap rung that records nothing
+  either way; another compared a `min()` both sides answered 0 for).
+- **Stale documentation is a defect — fix it when you find it, in that turn.**
+  Don't file it, don't mention it and move on. This applies to comments that
+  justify a design with a claim that is no longer true, which is the expensive
+  kind: `placement.ts` asserted that no requirement set exposes slide
+  dimensions, and that single false sentence is why charts could only ever be
+  placed vertically. If the fix is genuinely out of scope, say so explicitly
+  rather than leaving the claim standing.
 - **Test files are named by topic, never by increment** (`test/README.md` has
   the map). No `batch-N` / `bug-hunt-N` / `coverage-*` grab-bags: a test
   belongs with the thing it tests, not with the reason it was written.
@@ -95,6 +105,12 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   ancestor of `main`, so `git branch --merged` reports nothing and
   `--contains` proves nothing. Confirm a branch is safe to delete from its
   PR's `merged_at`, not from git.
+- **Prune after a merge** (`git fetch --prune`, or set `fetch.prune=true`).
+  GitHub deletes the branch on merge, but the local `origin/claude/*` tracking
+  ref survives pointing at the pre-merge head. The stop hook picks that stale
+  ref as its baseline and reports the squash-merge commit as an unverified
+  commit "on your branch" — which it is not, and amending it as the hook
+  suggests would force-push a rewrite of `main`.
 - Object lookups keyed by a config string must use
   `Object.prototype.hasOwnProperty.call` — a pattern/colour/marker named
   `__proto__` or `constructor` otherwise reaches `Object.prototype` and either
@@ -117,10 +133,13 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 
 `docs/BACKLOG.md` is the single curated backlog (researched candidates with
 feasibility/priority, plus a rejected list — don't re-propose those). Items
-graduate from there into PRs and are removed when shipped. As of v0.2.0 it
-carries **one** open candidate (image-output render mode) and **no open
-defects**: four adversarial bug hunts have run and every confirmed finding is
-fixed with a non-vacuous guard.
+graduate from there into PRs and are removed when shipped.
+
+Do **not** restate the backlog's contents here — a count in this file and a
+list in that one drift the moment either changes, and this paragraph spent
+several releases claiming the open candidate was image-output render mode
+after that shipped. Read `docs/BACKLOG.md` for what is open; read the README
+feature table and git for what has shipped.
 
 ## Pending / user-gated
 

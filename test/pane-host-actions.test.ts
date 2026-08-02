@@ -181,7 +181,6 @@ vi.mock("../src/render/powerpoint", () => ({
   }),
   resetStop: vi.fn(() => {
     host.stopRequested = false;
-    host.slideSize = { width: 960, height: 540, source: "pageSetup" };
   }),
   isStopRequested: vi.fn(() => host.stopRequested),
   // The destination deck's slide size, which the deck builder needs so the
@@ -352,6 +351,7 @@ async function bootHostPane() {
   host.calls.updateCharts = [];
   host.updateChartsStalls.clear();
   host.stopRequested = false;
+  host.slideSize = { width: 960, height: 540, source: "pageSetup" };
 
   window.history.replaceState({}, "", "/taskpane.html");
   const parsed = new DOMParser().parseFromString(readFileSync("src/taskpane/taskpane.html", "utf8"), "text/html");
@@ -657,6 +657,41 @@ describe("Insert", () => {
       box.top < first.top + first.height &&
       first.top < box.top + box.height;
     expect(hits).toBe(false);
+  });
+
+  it("places the second chart BESIDE the first on a 16:9 deck", async () => {
+    // The slide WIDTH decides this, and it is the number the pane spent its
+    // life assuming. On 16:9 there is a 390pt band beside the first chart.
+    const first = { left: 60, top: 90, width: 480, height: 300 };
+    host.slideShapes = [first];
+    host.slideSize = { width: 960, height: 540, source: "pageSetup" };
+    $("insert").click();
+    await settle();
+    const at = host.calls.insertScene.at(-1)!;
+    expect(at.left, "did not sit beside the first chart").toBeGreaterThanOrEqual(first.left + first.width);
+    expect(at.top).toBe(first.top);
+    expect(at.left! + (JSON.parse(at.tagData!) as { width: number }).width).toBeLessThanOrEqual(960);
+    expect($("host-note").textContent?.toLowerCase()).toContain("beside");
+  });
+
+  it("drops the second chart BELOW instead on a 4:3 deck", async () => {
+    // Same two charts, 240pt less width. Beside leaves 150pt, which scales the
+    // chart under the readability floor — so down it goes. A pane that assumed
+    // 16:9 here would run a chart off the right edge of every 4:3 deck.
+    //
+    // A fresh pane, not a second insert into the previous test's: doInsert
+    // feeds the placed size back into the config it tags, so a follow-on insert
+    // starts from the SHRUNK size and would be measuring two variables at once.
+    const first = { left: 60, top: 90, width: 480, height: 300 };
+    host.slideShapes = [first];
+    host.slideSize = { width: 720, height: 540, source: "pageSetup" };
+    $("insert").click();
+    await settle();
+    const at = host.calls.insertScene.at(-1)!;
+    expect(at.left, "squeezed a chart beside on a 4:3 deck").toBe(first.left);
+    expect(at.top, "did not drop below the first chart").toBeGreaterThanOrEqual(first.top + first.height);
+    // And it stays on the slide, which is the risk horizontal placement adds.
+    expect(at.left! + (JSON.parse(at.tagData!) as { width: number }).width).toBeLessThanOrEqual(720);
   });
 
   it("fits the chart to a selected placeholder's bounds", async () => {

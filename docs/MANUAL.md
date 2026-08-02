@@ -39,10 +39,21 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
 3. Adjust options; the preview updates live.
 4. **Insert into slide.** If a placeholder or shape is selected, the chart
    fills its bounds. Otherwise it is placed clear of whatever is already on the
-   slide — below it, scaled down to fit the space left if it will not go at full
-   size (the pane says so when it does). A slide with no room left falls back to
-   a small cascading offset, so the chart lands somewhere you can see and drag
-   rather than off the edge.
+   slide — **beside** it or **below** it, whichever leaves the bigger chart,
+   scaled down to fit the space left if it will not go at full size. The pane
+   says which it did.
+
+   Beside usually wins on a 16:9 deck and usually loses on 4:3, and the
+   difference is bigger than it sounds: a second default 480×300 chart gets a
+   390×244 slot next to the first on 16:9, against 192×120 underneath it. On a
+   4:3 deck there is only 150pt of width spare, which would squeeze the chart
+   below the point of being readable, so it goes underneath instead. Your
+   deck's real slide size is read from PowerPoint, not assumed, so both cases
+   come out right.
+
+   A slide with room in neither direction falls back to a small cascading
+   offset, so the chart lands somewhere you can see and drag rather than off
+   the edge.
 5. **Re-edit later**: select the chart on the slide — the pane shows an
    "Edit it" banner. Or click **Edit selected chart** to load its data and
    options back into the pane, change anything, and **Update chart** to

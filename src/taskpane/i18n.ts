@@ -89,6 +89,10 @@ export const EN = {
   "Working…": "Working…",
   "Done.": "Done.",
   Stop: "Stop",
+  "Placed beside the last chart — drag or resize it as you like.":
+    "Placed beside the last chart — drag or resize it as you like.",
+  "Placed beside the last chart and scaled to fit — drag or resize it as you like.":
+    "Placed beside the last chart and scaled to fit — drag or resize it as you like.",
   "Stopping…": "Stopping…",
   "Stopped — anything already drawn was kept.": "Stopped — anything already drawn was kept.",
   "That chart is no longer on the slide — insert it again.": "That chart is no longer on the slide — insert it again.",
