@@ -2785,12 +2785,39 @@ function wireInsert() {
       // Labelled, because the order is the opposite of what a log usually is
       // and a reader who assumes otherwise reads the run backwards.
       const text = [`PowerChart steps — NEWEST FIRST (${lines.length} lines)`, ...lines].join("\n");
-      void navigator.clipboard
-        ?.writeText(text)
-        .then(() => note(`Copied ${lines.length} step(s).`, "ok"))
-        // Clipboard access can be refused, and the text is still on screen —
-        // say so rather than leaving the click looking like it did nothing.
-        .catch(() => note("The browser would not give us the clipboard — select the text instead.", "err"));
+      // Two ways, because the first one does not work where this runs.
+      //
+      // `navigator.clipboard` needs a secure context, a user gesture AND the
+      // `clipboard-write` permission — and an Office task pane is a nested
+      // cross-origin iframe that is routinely refused it. Observed, on the run
+      // this button exists for: "The browser would not give us the clipboard".
+      // Telling the user to select the text by hand is not a fallback, it is
+      // an apology, and it arrives at the moment they can least afford one.
+      //
+      // So: select the transcript and run the legacy copy command, which is
+      // permitted from a user gesture in an iframe. It is deprecated and it
+      // works. If even that is refused the text is at least now SELECTED, so
+      // Ctrl+C finishes the job.
+      const selectAndCopy = (): boolean => {
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(steps);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+          return document.execCommand("copy");
+        } catch {
+          return false;
+        }
+      };
+      const done = (n: number) => note(`Copied ${n} step(s).`, "ok");
+      void Promise.resolve()
+        .then(() => navigator.clipboard?.writeText(text))
+        .then(() => done(lines.length))
+        .catch(() => {
+          if (selectAndCopy()) done(lines.length);
+          else note("The browser refused the clipboard — the steps are selected, press Ctrl+C.", "err");
+        });
     });
     $("demo-steps-clear").addEventListener("click", () => {
       lines.length = 0;

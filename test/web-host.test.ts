@@ -581,6 +581,34 @@ describe("the everyday paths under a host that answers nothing it was not asked 
     expect(target, "one unreadable sibling failed the whole redraw").toBeTruthy();
   });
 
+  it("tags the charts it can when one target has no tags at all", async () => {
+    // A real host answered `shape.tags` as UNDEFINED — "Cannot read properties
+    // of undefined (reading 'add')", four times in one run, each on a chart
+    // whose grouping had just been refused with InvalidParam 5010. That throw
+    // is SYNCHRONOUS, so it escaped the tagging loop and took the whole
+    // batch's tagging with it: every chart after the bad one lost its config
+    // without ever being attempted.
+    const cfgJson = JSON.stringify(cfg());
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.tagsUndefinedOn = 1; // the FIRST shape to be tagged has no .tags
+    let thrown: unknown;
+    const targets = await Promise.all([
+      insertSceneIntoSlide(buildChart(cfg()), { tagData: cfgJson }).catch((e) => {
+        thrown = e;
+        return null;
+      }),
+      insertSceneIntoSlide(buildChart(cfg()), { tagData: cfgJson }).catch(() => null),
+    ]);
+    faults.tagsUndefinedOn = 0;
+    expect(thrown && errorText(thrown), "a missing .tags took the insert down").toBeFalsy();
+    // The second chart must still be re-editable: one unusable target is not a
+    // reason to abandon the charts either side of it.
+    const tagged = slide.created.filter((sh) => !sh.deleted && sh.tagStore.has(CHART_TAG));
+    expect(tagged.length, "a chart with a usable target went untagged").toBeGreaterThan(0);
+    expect(targets.filter(Boolean).length).toBeGreaterThan(0);
+  });
+
   it("says WHICH phase an error escaped, in the message and in the log", async () => {
     // The run log used to carry what the host refused and nothing about what
     // the add-in was doing when it refused. Placing three real-host failures
