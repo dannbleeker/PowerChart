@@ -43,7 +43,7 @@ import {
   type ReconcileOutcome,
   type UpdateWreckage,
 } from "../render/powerpoint";
-import { placeChart } from "../core/placement";
+import { placeChart, type Placement } from "../core/placement";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } from "../core/demo";
 import type { Scene } from "../core/scene";
@@ -1635,20 +1635,35 @@ async function runInsert(asNew: boolean) {
   // because both branches can change the size and the raster has to be of the
   // scene that sizes the picture's rect. A raster of a differently-sized scene
   // is a stretched chart.
-  let at: { left: number; top: number; width: number; height: number; shrunk?: boolean };
+  // `moved` is absent on the placeholder branch, and deliberately: the user
+  // picked that position themselves, so there is nothing to report about it.
+  let at: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    shrunk?: boolean;
+    moved?: Placement["moved"];
+  };
   if (intoPlaceholder) {
     at = { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height };
   } else {
-    // Nothing selected, so the chart has to be placed. Below whatever is
-    // already on the slide, shrunk into the space left if it will not fit at
-    // full size — a fixed 14pt cascade against a 480x300 chart overlapped the
-    // previous one by better than 90%, which is what "they are built on top of
-    // each other" looked like. The cascade survives as the last resort.
+    // Nothing selected, so the chart has to be placed — beside or below
+    // whatever is already on the slide, shrunk into the space left if it will
+    // not fit at full size. A fixed 14pt cascade against a 480x300 chart
+    // overlapped the previous one by better than 90%, which is what "they are
+    // built on top of each other" looked like. The cascade survives as the last
+    // resort, for a slide with room in neither direction.
+    //
+    // The slide's real size, not an assumed one: whether a second chart can sit
+    // beside the first is entirely a question about the width, and a 4:3 deck is
+    // 240pt narrower than the 16:9 this used to take for granted.
     at = placeChart(
       await getSlideShapeBounds(),
       { width: cfg.width ?? DEFAULT_SIZE.width, height: cfg.height ?? DEFAULT_SIZE.height },
       { left: 60, top: 90 },
       { left: 60 + insertOffset, top: 90 + insertOffset },
+      await slideSize(),
     );
     insertOffset = (insertOffset + 14) % 84;
   }
@@ -1664,6 +1679,17 @@ async function runInsert(asNew: boolean) {
   renderActionState();
   // After the insert, never before: phaseNote would have overwritten it.
   if (warn) note(warn, "err");
+  // Say where it went as well as whether it was scaled. A chart that appears
+  // BESIDE the last one rather than under it is the one placement outcome a
+  // user has no reason to expect, and silence about it reads as the add-in
+  // having put the chart somewhere at random.
+  else if (at.moved === "beside")
+    note(
+      at.shrunk
+        ? "Placed beside the last chart and scaled to fit — drag or resize it as you like."
+        : "Placed beside the last chart — drag or resize it as you like.",
+      "ok",
+    );
   else if (at.shrunk) note("Scaled to fit the space left on the slide — drag or resize it as you like.", "ok");
 }
 
