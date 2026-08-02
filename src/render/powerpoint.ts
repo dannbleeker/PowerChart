@@ -3387,14 +3387,41 @@ export async function addScratchSlide(): Promise<string | null> {
 /** Delete one slide by id, best-effort. True when it is gone (or already was). */
 export async function deleteSlideById(slideId: string): Promise<boolean> {
   try {
+    const already = await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      queueNullCheck(slide);
+      await context.sync();
+      if (!isLive(slide)) return true; // gone, or the host will not say — either way, nothing to do
+      slide.delete();
+      await step("deleting a slide", () => context.sync());
+      return false;
+    });
+    if (already) return true;
+  } catch {
+    return false;
+  }
+  // Verify from a FRESH context, and answer from the deck rather than from the
+  // fact that nothing threw.
+  //
+  // This used to `return true` straight after the delete's sync, which is not a
+  // report — it is an assumption wearing one. A queued `delete()` the host
+  // accepts and does not perform raises nothing, and this project has the
+  // receipts for exactly that shape of failure: `slides.add()` silently dropped
+  // under load, whole decks taken and never landed, tag writes acknowledged and
+  // absent. `addSlides` already answers its own version of this question by
+  // re-counting in a fresh context; a delete deserves the same, and without it
+  // every caller's cleanup is unfalsifiable. The self-test's visibility
+  // scenario is the one that made it visible: it borrows a slide and gives it
+  // back, and it could not tell a returned slide from a leaked one.
+  try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
-      if ((slide as unknown as { isNullObject: boolean }).isNullObject) return true;
-      slide.delete();
-      await context.sync();
-      return true;
+      // Gone is a confirmed delete. Still there is a refused one. A host that
+      // will not answer is NOT success — the caller is cleaning up, and a
+      // caller told "done" stops looking.
+      return loadedValue(() => slide.isNullObject) === true;
     });
   } catch {
     return false;

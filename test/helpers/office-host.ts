@@ -126,6 +126,16 @@ export const faults = {
    * meaningless, and it must report that rather than pass.
    */
   constantSlideImage: false,
+  /**
+   * `Slide.delete()` is taken and does nothing.
+   *
+   * The self-test's visibility scenario is the only one that borrows a slide
+   * and gives it back, so it is the only one that can leave litter. A host that
+   * refuses the delete without saying so leaves a tagged chart in the deck under
+   * a verdict that reads clean — reporting success while leaving a mess, which
+   * is the pattern this project keeps finding. The scenario has to notice.
+   */
+  refuseSlideDelete: false,
 };
 
 /**
@@ -573,6 +583,8 @@ export function makeSlide(id: string) {
     // that kept them would make every deletion assertion vacuous. installHost
     // owns the deck array, so removal goes through the hook it registers.
     delete() {
+      // Taken and not performed — see faults.refuseSlideDelete.
+      if (faults.refuseSlideDelete) return;
       deckRemove?.(slide);
     },
     /**
@@ -1208,6 +1220,7 @@ export function installHost(
   faults.webIgnoresDeselect = false;
   faults.selectionIgnoresIds = false;
   faults.constantSlideImage = false;
+  faults.refuseSlideDelete = false;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.
   selectionRef.length = 0;

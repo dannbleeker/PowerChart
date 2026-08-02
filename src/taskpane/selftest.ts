@@ -469,7 +469,8 @@ const chartIsVisible: Scenario = async (prefix) => {
   // dozen reasons a rasteriser can see and this scenario should not care about.
   const slideId = await addScratchSlide();
   if (!slideId) return { ok: false, skipped: true, detail: "the host would not add a slide to draw on" };
-  try {
+
+  const measure = async (): Promise<{ ok: boolean; detail: string; skipped?: boolean }> => {
     const blank = await slideImageBase64(slideId, 640);
     if (!blank) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
     const c = cfg(`${prefix} visible`);
@@ -484,11 +485,32 @@ const chartIsVisible: Scenario = async (prefix) => {
           ? `drawing the chart changed what the slide looks like (${blank.length} → ${withChart.length} bytes)`
           : "the slide renders identically with and without the chart — nothing is visible",
     };
+  };
+
+  // The verdict is computed first, then the slide is given back, and only then
+  // are the two combined. Not a `finally` that appends to the detail — a
+  // `return` inside `try` evaluates its expression BEFORE the `finally` runs,
+  // so the warning would be stitched onto a string that had already left. That
+  // is what the first version of this did, and the test written to prove the
+  // warning appears is the only reason it did not ship that way.
+  let verdict: { ok: boolean; detail: string; skipped?: boolean };
+  let removed: boolean;
+  try {
+    verdict = await measure();
   } finally {
     // Unlike every other scenario, this one cleans up: its slide is a control
-    // surface, not a result anyone would want to open.
-    await deleteSlideById(slideId);
+    // surface, not a result anyone would want to open. `deleteSlideById` now
+    // verifies from a fresh read rather than assuming, so false here means the
+    // slide is genuinely still in the deck — carrying a config tag, and so a
+    // chart the pane would offer to edit.
+    removed = await deleteSlideById(slideId);
+    if (!removed) trace("selftest", "could not remove the visibility scenario's scratch slide", { slideId });
   }
+  if (removed) return verdict;
+  return {
+    ...verdict,
+    detail: `${verdict.detail} — WARNING: the scratch slide it drew on could not be removed, and is still in the deck`,
+  };
 };
 
 const SCENARIOS: { name: string; run: Scenario }[] = [
