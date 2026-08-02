@@ -136,6 +136,16 @@ export const faults = {
    * is the pattern this project keeps finding. The scenario has to notice.
    */
   refuseSlideDelete: false,
+  /**
+   * The next N shapes to be tagged answer `.tags` as **undefined**.
+   *
+   * Observed on a real host, four times in one run, each on a chart whose
+   * grouping had just been refused with InvalidParam 5010. Reading `.add` off
+   * it throws SYNCHRONOUSLY, which is what made it so expensive: it escaped
+   * the tagging loop rather than failing one chart, so every chart after it in
+   * the batch lost its config without being attempted. Counted down per read.
+   */
+  tagsUndefinedOn: 0,
 };
 
 /**
@@ -357,7 +367,16 @@ export function makeShape(
     width: box.width,
     height: box.height,
     tagStore,
-    tags: {
+    get tags() {
+      // See faults.tagsUndefinedOn — a host that hands back a shape with no
+      // tags collection at all.
+      if (faults.tagsUndefinedOn > 0) {
+        faults.tagsUndefinedOn--;
+        return undefined as unknown as FakeShape["tagsImpl"];
+      }
+      return shape.tagsImpl;
+    },
+    tagsImpl: {
       add: (k: string, v: string) => {
         // The web host rewrites a proxy as `shapes.getItem(id)` and rejects it
         // once stale — the SAME trap addGroup falls into, seen in the wild as
@@ -1221,6 +1240,7 @@ export function installHost(
   faults.selectionIgnoresIds = false;
   faults.constantSlideImage = false;
   faults.refuseSlideDelete = false;
+  faults.tagsUndefinedOn = 0;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.
   selectionRef.length = 0;

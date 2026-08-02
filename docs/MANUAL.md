@@ -477,6 +477,12 @@ while the add-in is being validated against real hosts, and it rides along
 inside the run log rather than in a separate file. Nothing is written while it
 is off.
 
+**Scenario** picks what **Run host self-test** actually runs. Left on *All* it
+runs the whole battery; pick one and it runs that scenario plus the two inserts
+every scenario needs to have probe charts to work on. A full round takes several
+minutes and leaves slides in the deck, so when you are chasing one failure, pick
+it — seconds instead of minutes, and far less to clean up afterwards.
+
 **Run host self-test** runs the nine things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
 chart on the slide you are looking at, adding charts to a slide that already
@@ -500,21 +506,27 @@ a chart drawn in white, at zero size, or off the edge of the slide. It borrows
 a slide to do this and takes it away again. **Stopping part-way** confirms a
 stopped run adds nothing and leaves nothing behind claiming to be a chart.
 
-**Live steps** is the scrolling list under the buttons. Every step of a run
-appears there as it happens, newest last — which scenario started, which one
+**Live steps** is the list under the buttons. Every step of a run appears there
+as it happens, **newest at the top** — which scenario started, which one
 finished and how, which slides were read back, and the phase of anything that
 went wrong.
+
+Newest-first is deliberate, and it is the opposite of how a log usually reads.
+When PowerPoint dies you get whatever pixels were on screen: no scrolling, no
+clicking, often a dialog over half the pane. A list that grows downwards puts
+the last thing that happened at the bottom of a small scrolled box, which is
+exactly where it cannot be relied on to be visible. Growing upwards puts it in
+a fixed place, one line under the header. The list is also scrolled into view
+once when a run starts, so it cannot begin somewhere off-screen.
 
 It is not a prettier version of the run log; it is the record that survives
 things the log does not. The log can only be downloaded once a run **ends**, and
 the runs worth explaining are the ones that do not end: a host that stops
 answering, or a PowerPoint that puts up *"Sorry, we ran into a problem"* and
 takes the pane's memory with it. Both have happened. What is already on screen
-survives both. **Copy** puts the whole list on the clipboard; failing that,
-screenshot it before you reload. **Clear** empties it.
-
-It follows the newest line automatically, unless you have scrolled up to read
-something — then it leaves your place alone until you scroll back down.
+survives both. **Copy** puts the whole list on the clipboard, with a header line saying the
+order so nobody reads the run backwards; failing that, screenshot it before you
+reload. **Clear** empties it.
 
 **Download run log** saves the last run as JSON: the run's identity token,
 per-item timings, statuses, what the host did to each slide, and the repair

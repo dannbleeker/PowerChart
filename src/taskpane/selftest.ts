@@ -578,9 +578,33 @@ export function setSelfTestRasterizer(fn: (scene: Scene) => Promise<string | und
   rasterizer = fn;
 }
 
-export async function runSelfTest(prefix = `selftest ${newRunId()}`): Promise<ScenarioResult[]> {
+/**
+ * Every scenario's name, in run order — for a picker that cannot drift.
+ *
+ * Derived from `SCENARIOS` rather than repeated beside it, because a list of
+ * strings maintained by hand next to the list it describes is a rename away
+ * from offering a scenario that does not exist.
+ */
+export const SCENARIO_NAMES: readonly string[] = SCENARIOS.map((s) => s.name);
+
+/**
+ * Run the battery, or ONE scenario of it.
+ *
+ * `only` exists because of what a full round costs. The first run that produced
+ * a usable trace took 496 seconds to reach scenario seven and wedged there, and
+ * the scenario before it left four charts on the deck as loose piles of shapes.
+ * Iterating on the seventh scenario by running the six in front of it is eight
+ * minutes and real damage per attempt, which is not iteration.
+ *
+ * The first two are inserted anyway whatever is picked: every other scenario
+ * needs the probe charts they create, and one that finds none reports SKIPPED —
+ * an honest answer, and a useless round. So "only" means "only this, plus what
+ * it needs", and the report says which is which.
+ */
+export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: string): Promise<ScenarioResult[]> {
+  const wanted = only ? SCENARIOS.filter((s, i) => i < 2 || s.name === only) : SCENARIOS;
   const out: ScenarioResult[] = [];
-  for (const { name, run } of SCENARIOS) {
+  for (const { name, run } of wanted) {
     // The battery had no stop check of its own — none at all. So even where a
     // scenario ended promptly, Stop could not end the RUN: the pane switched
     // its button to "Stopping…" and the next scenario started anyway. A

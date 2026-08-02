@@ -267,6 +267,14 @@
                 <option value="both">Both, one after the other</option>
               </select></label
             >
+            <label
+              class="inline"
+              title="Run the whole battery, or one scenario plus the two inserts it needs. A full round takes minutes and leaves slides behind; one scenario is seconds."
+              >Scenario
+              <select id="demo-scenario">
+                <option value="">All</option>
+              </select></label
+            >
             <button
               id="demo-selftest"
               disabled
@@ -281,7 +289,7 @@
             >
           </div>
           <div class="steps-head">
-            <span id="demo-steps-label">Live steps</span>
+            <span id="demo-steps-label">Live steps — newest first</span>
             <button id="demo-steps-copy" class="linkish" title="Copy every line below to the clipboard">Copy</button>
             <button id="demo-steps-clear" class="linkish" title="Empty the list">Clear</button>
           </div>

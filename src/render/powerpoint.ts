@@ -1001,7 +1001,7 @@ export async function updateChartsInSlides(
  * Requires PowerPointApi 1.5 (getSelectedShapes).
  */
 export async function loadChartFromSelection(): Promise<{ configJson: string; target: EditTarget } | null> {
-  return PowerPoint.run(async (context) => {
+  return boundedRun("reading the selected chart", async (context) => {
     const slides = context.presentation.getSelectedSlides();
     const slide = slides.getItemAt(0);
     slide.load("id");
@@ -1138,7 +1138,7 @@ export async function getSelectionBounds(): Promise<{
 
 /** All PowerCharts in the current selection (for Same Scale on a subset). */
 export async function listChartsInSelection(): Promise<{ configJson: string; target: EditTarget }[]> {
-  return PowerPoint.run(async (context) => {
+  return boundedRun("reading the charts in the selection", async (context) => {
     const slide = context.presentation.getSelectedSlides().getItemAt(0);
     slide.load("id");
     const shapes = context.presentation.getSelectedShapes();
@@ -3077,7 +3077,7 @@ export async function insertSlidesFromPptx(
  */
 export async function showSlide(slideId: string): Promise<boolean> {
   try {
-    return await PowerPoint.run(async (context) => {
+    return await boundedRun("moving the view to a slide", async (context) => {
       const presentation = context.presentation as unknown as {
         setSelectedSlides(ids: string[]): void;
       };
@@ -3118,7 +3118,7 @@ export async function selectShape(slideId: string, shapeId: string): Promise<boo
   if (!canSelectShapes()) return false;
   await showSlide(slideId);
   try {
-    return await PowerPoint.run(async (context) => {
+    return await boundedRun("selecting a shape", async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
@@ -3148,7 +3148,7 @@ export async function selectShape(slideId: string, shapeId: string): Promise<boo
 export async function clearShapeSelection(slideId: string): Promise<void> {
   if (!canSelectShapes()) return;
   try {
-    await PowerPoint.run(async (context) => {
+    await boundedRun("clearing the shape selection", async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
@@ -4212,23 +4212,38 @@ async function groupAndTagAll(
   // this silently failed before, and the caller reports this number.
   const taggedOk = new Set<number>();
   if (taggable.length && supports("1.3")) {
+    /** Charts whose tag writes were successfully QUEUED — see the loop below. */
+    const queued: typeof taggable = [];
     try {
-      for (const { it, i, target } of taggable) {
-        target!.tags.add(CHART_TAG, it.opts.tagData!);
-        // The rest of an ungrouped chart travels with the tagged shape, so an
-        // in-place update can delete all of it — see CHART_PARTS_TAG.
-        if (partsJson[i]) target!.tags.add(CHART_PARTS_TAG, partsJson[i]!);
-        // Queued in the SAME sync as the tags, so handing the caller a usable
-        // new target costs no extra round-trip. An update replaces every shape,
-        // so the caller's old target is dead the moment this returns — see
-        // updateChartsInSlides.
-        target!.load("id,left,top");
+      for (const t of taggable) {
+        const { it, i, target } = t;
+        // Per chart, because one bad target used to cost every chart after it.
+        //
+        // A real host answered `target.tags` as UNDEFINED here — "Cannot read
+        // properties of undefined (reading 'add')", four times in one run,
+        // each time on a chart whose grouping had just been refused with
+        // InvalidParam 5010. That throw is SYNCHRONOUS, so it escaped the loop
+        // and took the whole batch's tagging with it: the charts after it lost
+        // their config without ever being attempted. `updateChartsInSlides`
+        // was made per-chart resilient for exactly this shape of failure; this
+        // loop never was.
+        try {
+          target!.tags.add(CHART_TAG, it.opts.tagData!);
+          // The rest of an ungrouped chart travels with the tagged shape, so an
+          // in-place update can delete all of it — see CHART_PARTS_TAG.
+          if (partsJson[i]) target!.tags.add(CHART_PARTS_TAG, partsJson[i]!);
+          target!.load("id,left,top");
+          queued.push(t);
+        } catch (err) {
+          trace("group", "a chart's tag could not even be queued", { index: i, error: errorText(err) });
+        }
       }
+      if (!queued.length) throw new Error("no chart's tag could be queued");
       await step("writing the chart's config tag", () => context.sync());
       // The config tag is on the slide from here. The origin tag below is a
       // separate sync and a separate risk — losing it costs drag tracking,
       // not re-editability — so `tagged` is decided at THIS line, not after.
-      for (const { i } of taggable) taggedOk.add(i);
+      for (const { i } of queued) taggedOk.add(i);
 
       // The frame origin the chart was drawn at, AND the position its tagged
       // shape ended up at ("anchor"). Both are needed, and the anchor is only
@@ -4242,7 +4257,7 @@ async function groupAndTagAll(
       // first inserted. Storing the anchor lets the update shift the origin by
       // exactly how far the shape has moved since — stable when untouched,
       // faithful when moved.
-      for (const { it, target } of taggable) {
+      for (const { it, target } of queued) {
         target!.tags.add(
           CHART_ORIGIN_TAG,
           JSON.stringify([it.opts.left ?? 60, it.opts.top ?? 90, target!.left, target!.top]),
@@ -4258,7 +4273,7 @@ async function groupAndTagAll(
       // settled repair pass re-reads the deck and plans a `retag`, which is
       // the same job done with evidence.
       trace("group", "tagging failed — charts are not re-editable until repaired", {
-        charts: taggable.length,
+        charts: queued.length || taggable.length,
         error: errorText(err),
       });
     }

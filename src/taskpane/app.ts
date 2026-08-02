@@ -50,7 +50,7 @@ import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
 import { onTrace, setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
-import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "./selftest";
+import { runSelfTest, describeSelfTest, setSelfTestRasterizer, SCENARIO_NAMES, type ScenarioResult } from "./selftest";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -2728,12 +2728,39 @@ function wireInsert() {
     /** Newest last, capped — a pane is not a heap, and the tail is what is read. */
     const STEP_LINES = 300;
     const lines: string[] = [];
+    // NEWEST FIRST, and that ordering is the whole point rather than a
+    // preference.
+    //
+    // The first version appended and auto-scrolled to the bottom, which reads
+    // better while a run is healthy and fails at the only moment this list
+    // exists for. When PowerPoint dies, what you have is whatever pixels were
+    // on screen — no scrolling, no clicking, often a modal dialog over half the
+    // pane. An append-and-follow list puts the last thing that happened at the
+    // bottom of a small scrolled box, which is exactly where it cannot be
+    // relied on to be visible. Prepending puts it at a FIXED position, one line
+    // below the header, and needs no scroll to have worked.
+    //
+    // It also removes the follow-the-tail logic entirely: there is no tail to
+    // follow, so there is no "unless the user scrolled" case to get wrong.
     const paintSteps = (): void => {
       steps.textContent = lines.join("\n");
-      // Follow the tail, unless the user has scrolled up to read something —
-      // yanking the view back is how a live log becomes unreadable.
-      const atBottom = steps.scrollHeight - steps.scrollTop - steps.clientHeight < 24;
-      if (atBottom) steps.scrollTop = steps.scrollHeight;
+    };
+    /**
+     * Put the step list where it can be seen, once, as a run starts.
+     *
+     * Newest-first fixes WHERE in the box the last line is; it does nothing
+     * about whether the box itself is on screen. The Testing section sits at
+     * the bottom of a long pane, so a run started from a scrolled-up view puts
+     * every step somewhere a screenshot will not reach. Once per run, on the
+     * click that starts it — never while the run is going, because a pane that
+     * moves under the cursor mid-run is its own problem.
+     */
+    const revealSteps = (): void => {
+      try {
+        steps.scrollIntoView({ block: "nearest" });
+      } catch {
+        /* an older host without scrollIntoView options — the list still fills */
+      }
     };
     onTrace((e) => {
       // The data payload matters as much as the message for the lines that
@@ -2743,24 +2770,54 @@ function wireInsert() {
         .filter(([, v]) => v !== undefined && v !== "" && typeof v !== "object")
         .map(([k, v]) => `${k}=${String(v)}`)
         .join(" ");
-      lines.push(
+      lines.unshift(
         `${String(Math.round(e.ms / 100) / 10).padStart(6)}s  ${e.scope}  ${e.message}${bits ? "  " + bits : ""}`,
       );
-      if (lines.length > STEP_LINES) lines.splice(0, lines.length - STEP_LINES);
+      // Drop the OLDEST, which is now the end of the array.
+      if (lines.length > STEP_LINES) lines.length = STEP_LINES;
       paintSteps();
     });
     $("demo-steps-copy").addEventListener("click", () => {
-      const text = lines.join("\n");
-      if (!text) {
+      if (!lines.length) {
         note("No steps to copy yet.", "err");
         return;
       }
-      void navigator.clipboard
-        ?.writeText(text)
-        .then(() => note(`Copied ${lines.length} step(s).`, "ok"))
-        // Clipboard access can be refused, and the text is still on screen —
-        // say so rather than leaving the click looking like it did nothing.
-        .catch(() => note("The browser would not give us the clipboard — select the text instead.", "err"));
+      // Labelled, because the order is the opposite of what a log usually is
+      // and a reader who assumes otherwise reads the run backwards.
+      const text = [`PowerChart steps — NEWEST FIRST (${lines.length} lines)`, ...lines].join("\n");
+      // Two ways, because the first one does not work where this runs.
+      //
+      // `navigator.clipboard` needs a secure context, a user gesture AND the
+      // `clipboard-write` permission — and an Office task pane is a nested
+      // cross-origin iframe that is routinely refused it. Observed, on the run
+      // this button exists for: "The browser would not give us the clipboard".
+      // Telling the user to select the text by hand is not a fallback, it is
+      // an apology, and it arrives at the moment they can least afford one.
+      //
+      // So: select the transcript and run the legacy copy command, which is
+      // permitted from a user gesture in an iframe. It is deprecated and it
+      // works. If even that is refused the text is at least now SELECTED, so
+      // Ctrl+C finishes the job.
+      const selectAndCopy = (): boolean => {
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(steps);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+          return document.execCommand("copy");
+        } catch {
+          return false;
+        }
+      };
+      const done = (n: number) => note(`Copied ${n} step(s).`, "ok");
+      void Promise.resolve()
+        .then(() => navigator.clipboard?.writeText(text))
+        .then(() => done(lines.length))
+        .catch(() => {
+          if (selectAndCopy()) done(lines.length);
+          else note("The browser refused the clipboard — the steps are selected, press Ctrl+C.", "err");
+        });
     });
     $("demo-steps-clear").addEventListener("click", () => {
       lines.length = 0;
@@ -2790,11 +2847,23 @@ function wireInsert() {
     // The five paths the demo deck never touches. Its own button rather than a
     // mode of the demo run: it edits and deletes as well as inserting, and a
     // user reaching for "insert a demo deck" should not get that by accident.
+    // Fill the picker from the battery's own list, so it cannot offer a
+    // scenario that no longer exists or miss one that was added.
+    const scenarioPick = $("demo-scenario") as HTMLSelectElement | null;
+    if (scenarioPick) {
+      for (const name of SCENARIO_NAMES) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        scenarioPick.append(opt);
+      }
+    }
     const selfTestBtn = $("demo-selftest") as HTMLButtonElement;
     selfTestBtn.disabled = false;
     selfTestBtn.addEventListener(
       "click",
       guard(async () => {
+        revealSteps();
         const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
@@ -2802,7 +2871,7 @@ function wireInsert() {
         // The same rasteriser the demo run degrades with — the picture
         // scenario needs a real PNG, not a config that merely says "image".
         setSelfTestRasterizer(boundedRaster);
-        const results = await runSelfTest();
+        const results = await runSelfTest(undefined, scenarioPick?.value || undefined);
         // No runs, but a log all the same — the scenarios ARE the record, and
         // the trace beside them is what says how each verdict was reached.
         lastRunLog = {
@@ -2821,6 +2890,7 @@ function wireInsert() {
     demoBtn.addEventListener(
       "click",
       guard(async () => {
+        revealSteps();
         const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
         const host = describeHost();
         const items = demoItems({ buildStamp, host });
