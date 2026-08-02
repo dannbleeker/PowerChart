@@ -28,7 +28,7 @@
 import { arrowheadBox, annularSectorPoints, dashKind, symbolPreset } from "../core/geometry";
 import type { Scene } from "../core/scene";
 import { IN, hex, makeAddNode } from "../../skill/scripts/pptx-paint.mjs";
-import { injectGroupsAndTags, type SlideDressing } from "./ooxml";
+import { injectGroupsAndTags, EMU_PER_POINT, type SlideDressing } from "./ooxml";
 
 /** 16:9 at PowerPoint's default size, in inches — the skill renderer's deck. */
 export const DECK_SIZE = { w: 13.333, h: 7.5 };
@@ -55,10 +55,25 @@ export interface DeckItem {
  * first-load bundle — it is ~1 MB of library that only a deck insert needs,
  * and the pane is fetched over the network every time PowerPoint opens it.
  */
-export async function buildDeckBase64(items: DeckItem[]): Promise<{ base64: string; shapesPerSlide: number[] }> {
+export async function buildDeckBase64(
+  items: DeckItem[],
+  /**
+   * The slide size of the deck this file is going INTO, in points.
+   *
+   * Omitted, the generated deck is 16:9 — which is what it always was, and
+   * which is wrong on a 4:3 presentation in two compounding ways: the file
+   * declares a size the destination does not share (so the host rescales every
+   * slide on insert, moving every chart), and the centring below divides by a
+   * width the destination does not have (so the chart is off-centre before the
+   * rescale even starts). Passing the real size makes both go away, because a
+   * generated deck that agrees with its destination is one nothing rescales.
+   */
+  slideSizePt?: { width: number; height: number },
+): Promise<{ base64: string; shapesPerSlide: number[] }> {
   const { default: PptxGen } = await import("pptxgenjs");
   const pres = new PptxGen();
-  pres.defineLayout({ name: "WIDE", width: DECK_SIZE.w, height: DECK_SIZE.h });
+  const size = slideSizePt ? { w: slideSizePt.width / 72, h: slideSizePt.height / 72 } : DECK_SIZE;
+  pres.defineLayout({ name: "WIDE", width: size.w, height: size.h });
   pres.layout = "WIDE";
   const addNode = makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrowheadBox });
 
@@ -68,8 +83,8 @@ export async function buildDeckBase64(items: DeckItem[]): Promise<{ base64: stri
     slide.background = { color: hex(item.background ?? "#ffffff") };
     // Centre the scene on the slide — the same arithmetic the skill renderer
     // uses, so a chart lands in the same place whichever path produced it.
-    const dx = (DECK_SIZE.w - item.scene.width * IN) / 2;
-    const dy = (DECK_SIZE.h - item.scene.height * IN) / 2;
+    const dx = (size.w - item.scene.width * IN) / 2;
+    const dy = (size.h - item.scene.height * IN) / 2;
     for (const node of item.scene.nodes) addNode(slide, node, dx, dy);
     dressing.push({
       configJson: item.configJson,
@@ -84,5 +99,15 @@ export async function buildDeckBase64(items: DeckItem[]): Promise<{ base64: stri
   }
 
   const base64 = (await pres.write({ outputType: "base64" })) as string;
-  return injectGroupsAndTags(base64, dressing);
+  // Declare the same size the layout above was built for. pptxgenjs writes its
+  // own rounded EMU (13.333in is 305 EMU short of the exact 13⅓), so the
+  // declaration is rewritten from the size we actually used rather than left to
+  // whatever the library rounded to.
+  return injectGroupsAndTags(
+    base64,
+    dressing,
+    slideSizePt
+      ? { cx: Math.round(slideSizePt.width * EMU_PER_POINT), cy: Math.round(slideSizePt.height * EMU_PER_POINT) }
+      : undefined,
+  );
 }

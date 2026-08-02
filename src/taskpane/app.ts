@@ -37,6 +37,7 @@ import {
   resetStop,
   isStopRequested,
   isStopped,
+  slideSize,
   type EditTarget,
   type InsertPhase,
   type ReconcileOutcome,
@@ -2279,7 +2280,7 @@ async function updateChartResilient(
   if (canInsertSlidesFromBase64() && opts.tagData && (await slideHoldsOnlyChart(target.slideId))) {
     try {
       note("Rebuilding that slide…", "busy");
-      const built = await buildDeckBase64([{ scene, title: "Chart", configJson: opts.tagData }]);
+      const built = await buildDeckBase64([{ scene, title: "Chart", configJson: opts.tagData }], await slideSize());
       const swap = await replaceSlideWithDeck(target.slideId, built.base64);
       if (swap === "swapped") return { next: null, swapped: true };
       // The new slide landed; only the old one's removal failed. Falling
@@ -2355,6 +2356,10 @@ async function insertDemoDeckAsFile(items: { scene: Scene; title: string; config
     note("Building the deck…", "busy");
     built = await buildDeckBase64(
       items.map((it, i) => ({ scene: it.scene, title: it.title, configJson: it.configJson, slot: i, run })),
+      // Build the file at the DESTINATION's slide size. A generated deck that
+      // declares a different size is one PowerPoint rescales on insert, which
+      // moves every chart on every slide — silently, and on every 4:3 deck.
+      await slideSize(),
     );
   } catch (err) {
     console.warn("PowerChart: could not build the deck file — falling back to shapes", err);

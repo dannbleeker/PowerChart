@@ -6,6 +6,7 @@ import { readDeckBytes, faultsIn } from "../scripts/verify-deck.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import {
   canonicalSlideSize,
+  parseSlideSizeEmu,
   injectGroupsAndTags,
   groupSlideShapes,
   tagFirstShape,
@@ -115,6 +116,83 @@ describe("ooxml: tags and deck size", () => {
     // insert, and a rescale moves every chart.
     const out = canonicalSlideSize(`<p:presentation><p:sldSz cx="12191695" cy="6858000"/></p:presentation>`);
     expect(out).toContain(`<p:sldSz cx="12192000" cy="6858000"/>`);
+  });
+
+  it("declares the DESTINATION's size when it is given one", () => {
+    // The 16:9 default was applied unconditionally, which is the very mismatch
+    // the test above says invites a rescale — just in the other direction. A
+    // generated deck inserted into a 4:3 presentation declared 16:9, so the
+    // host rescaled every slide and moved every chart, on every 4:3 deck.
+    const out = canonicalSlideSize(`<p:presentation><p:sldSz cx="12191695" cy="6858000"/></p:presentation>`, {
+      cx: 9144000,
+      cy: 6858000,
+    });
+    expect(out).toContain(`<p:sldSz cx="9144000" cy="6858000"/>`);
+  });
+});
+
+describe("a generated deck matches the deck it is going into", () => {
+  /** The <p:sldSz> a built deck declares. */
+  async function declaredSize(base64: string) {
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    return parseSlideSizeEmu(await zip.file("ppt/presentation.xml")!.async("string"));
+  }
+
+  it("declares 16:9 when nothing says otherwise", async () => {
+    const built = await buildDeckBase64([{ scene: buildChart(sampleConfig("line")), title: "A" }]);
+    expect(await declaredSize(built.base64)).toEqual({ cx: 12192000, cy: 6858000 });
+  }, 30_000);
+
+  it("declares 4:3 — and re-centres for it — when the destination is 4:3", async () => {
+    // Two bugs in one, and they compound. The file declared a size the
+    // destination did not share, so the host rescaled every slide on insert;
+    // and the centring divided by a 960pt width the destination did not have,
+    // so the chart was off-centre before the rescale even started.
+    const scene = buildChart(sampleConfig("line"));
+    const wide = await buildDeckBase64([{ scene, title: "A" }], { width: 960, height: 540 });
+    const narrow = await buildDeckBase64([{ scene, title: "A" }], { width: 720, height: 540 });
+    expect(await declaredSize(narrow.base64)).toEqual({ cx: 9144000, cy: 6858000 });
+    // Centred for 720pt, not 960: the chart sits further left than it would on
+    // a wide slide. Comparing the two decks proves the geometry actually moved
+    // rather than only the declaration changing.
+    //
+    // The RIGHTMOST offset, not the leftmost — both decks carry a background
+    // shape at x=0, so a min() is 0 either way and would pass against a build
+    // that never re-centred anything.
+    const { default: JSZip } = await import("jszip");
+    const rightmost = async (b64: string) => {
+      const zip = await JSZip.loadAsync(b64, { base64: true });
+      const xml = await zip.file("ppt/slides/slide1.xml")!.async("string");
+      return Math.max(...[...xml.matchAll(/<a:off x="(\d+)"/g)].map((m) => Number(m[1])));
+    };
+    const narrowX = await rightmost(narrow.base64);
+    const wideX = await rightmost(wide.base64);
+    expect(narrowX).toBeLessThan(wideX);
+    // And by the amount the centring arithmetic says: half the width difference.
+    expect(wideX - narrowX).toBeCloseTo(((960 - 720) / 2) * 12700, -3);
+  }, 30_000);
+});
+
+describe("ooxml: reading a deck's declared slide size", () => {
+  it("reads cx and cy whatever order they are written in", () => {
+    // This is how the add-in learns its own slide size on a host below
+    // PowerPointApi 1.10 — off a .pptx the host exported. Attribute order is
+    // not guaranteed by anything, so it is not assumed.
+    expect(parseSlideSizeEmu(`<p:sldSz cx="9144000" cy="6858000"/>`)).toEqual({ cx: 9144000, cy: 6858000 });
+    expect(parseSlideSizeEmu(`<p:sldSz cy="6858000" cx="12192000" type="screen16x9"/>`)).toEqual({
+      cx: 12192000,
+      cy: 6858000,
+    });
+  });
+
+  it("answers null rather than a nonsense slide", () => {
+    // A zero dimension would put a divide-by-zero into every aspect-ratio
+    // calculation downstream, and "no answer" is a case the caller already
+    // handles — it falls to the next rung.
+    expect(parseSlideSizeEmu(`<p:presentation/>`)).toBeNull();
+    expect(parseSlideSizeEmu(`<p:sldSz cx="0" cy="6858000"/>`)).toBeNull();
+    expect(parseSlideSizeEmu(`<p:sldSz cx="12192000"/>`)).toBeNull();
   });
 });
 

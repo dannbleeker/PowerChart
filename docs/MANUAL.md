@@ -422,7 +422,10 @@ took — so an exported PDF is a self-contained regression record.
 - **One file insert** (the default) builds the whole deck as a .pptx in the
   pane and hands it to PowerPoint in a single call, instead of drawing it shape
   by shape through hundreds of round trips. Charts arrive already grouped and
-  already tagged, so they are editable exactly as before.
+  already tagged, so they are editable exactly as before. The file is built at
+  *your* deck's slide size — a generated deck that declared a different size
+  was one PowerPoint rescaled on insert, which moved every chart on every
+  slide, and 4:3 decks got that every time.
 - **Shape by shape** draws it through Office.js, one chart per slide.
 - **Both, one after the other** takes each path in turn into the same deck. The
   two fail in completely different ways, and comparing them used to mean two

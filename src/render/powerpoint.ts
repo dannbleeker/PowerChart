@@ -18,6 +18,7 @@ import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
 import { trace } from "../core/trace";
 import type { Rect } from "../core/placement";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
+import { parseSlideSizeEmu, EMU_PER_POINT } from "./ooxml";
 
 /* global PowerPoint, Office */
 
@@ -2778,6 +2779,220 @@ export async function showSlide(slideId: string): Promise<boolean> {
   }
 }
 
+/** Where a slide-size answer came from — recorded so a wrong placement can be
+ *  traced to the rung that produced the number. */
+export type SlideSizeSource = "pageSetup" | "exportedSlide" | "documentFile" | "assumed";
+
+export interface SlideSize {
+  /** Points. */
+  width: number;
+  /** Points. */
+  height: number;
+  source: SlideSizeSource;
+}
+
+/**
+ * 16:9, the overwhelmingly common default, used when nothing can be read.
+ *
+ * Only ever the floor of the ladder below, and always labelled `assumed` so no
+ * caller mistakes it for a measurement.
+ */
+const ASSUMED_SLIDE_SIZE: SlideSize = { width: 960, height: 540, source: "assumed" };
+
+/**
+ * Cached because two of the three rungs below are expensive, and slide size is
+ * a property of the deck rather than of any one operation.
+ *
+ * Not permanent: a user can change slide size mid-session from PowerPoint's own
+ * Design tab, and a cached 16:9 would then place charts off the edge of a deck
+ * that is now 4:3. `slideSize({ refresh: true })` re-reads, and the cheap rung
+ * re-reads anyway (one property load costs a fraction of the sync it rides on).
+ */
+let cachedSlideSize: SlideSize | undefined;
+
+/** Drop the cached slide size — for tests, and for a deck whose setup changed. */
+export function _resetSlideSizeCache(): void {
+  cachedSlideSize = undefined;
+}
+
+/** Read `<p:sldSz>` out of a base64 .pptx, in points. */
+async function slideSizeFromPptxBase64(base64: string): Promise<SlideSize | null> {
+  try {
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const part = zip.file("ppt/presentation.xml");
+    if (!part) return null;
+    const emu = parseSlideSizeEmu(await part.async("string"));
+    if (!emu) return null;
+    return {
+      width: emu.cx / EMU_PER_POINT,
+      height: emu.cy / EMU_PER_POINT,
+      source: "exportedSlide",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The presentation's slide dimensions, in points.
+ *
+ * This add-in spent its life assuming them. `placeChart` still says why that
+ * was survivable — every standard slide is 540pt tall, 4:3 and 16:9 alike — but
+ * it was only ever true of the HEIGHT, and width is the dimension that decides
+ * whether a second chart can sit beside the first or has to go underneath it.
+ * The assumption is also what makes the generated-deck fast path rescale on a
+ * 4:3 deck, since the file it builds declares 16:9.
+ *
+ * Three rungs, cheapest and most exact first:
+ *
+ *  1. **`presentation.pageSetup`** (PowerPointApi 1.10) states both dimensions
+ *     in points. One property load on a sync we are opening anyway.
+ *  2. **`slide.exportAsBase64()`** (1.8) hands back the slide as its own .pptx,
+ *     and that file's `ppt/presentation.xml` carries the SOURCE deck's
+ *     `<p:sldSz>`. Exact, and jszip is already a dependency, but it is a whole
+ *     file round-trip for two numbers.
+ *  3. **`Office.context.document.getFileAsync`** (Common API, no PowerPointApi
+ *     gate at all) returns the entire deck in 4MB slices. Same parse, and the
+ *     only rung that works below 1.8 — but it copies the whole presentation,
+ *     which on a large deck is seconds and tens of MB, so it is genuinely last.
+ *
+ * Anything that fails falls through to the next rung, and a total failure
+ * answers 16:9 marked `assumed` rather than throwing: a wrong-but-labelled
+ * width degrades placement to what it did before, while a throw would take down
+ * an insert over a layout hint.
+ */
+export async function slideSize(opts: { refresh?: boolean } = {}): Promise<SlideSize> {
+  if (!opts.refresh && cachedSlideSize) return cachedSlideSize;
+
+  // Rung 1 — the direct read.
+  if (supports("1.10")) {
+    try {
+      const got = await PowerPoint.run(async (context) => {
+        const setup = (context.presentation as unknown as { pageSetup: { slideWidth: number; slideHeight: number } })
+          .pageSetup;
+        (setup as unknown as { load(p: string): void }).load("slideWidth,slideHeight");
+        await context.sync();
+        return { width: setup.slideWidth, height: setup.slideHeight };
+      });
+      if (Number.isFinite(got.width) && Number.isFinite(got.height) && got.width > 0 && got.height > 0) {
+        cachedSlideSize = { ...got, source: "pageSetup" };
+        trace("host", "slide size read", { ...cachedSlideSize });
+        return cachedSlideSize;
+      }
+    } catch {
+      /* 1.10 advertised but the property is not there — try the next rung */
+    }
+  }
+
+  // Rung 2 — export one slide and read what it declares.
+  if (supports("1.8")) {
+    try {
+      const base64 = await PowerPoint.run(async (context) => {
+        const slide = context.presentation.slides.getItemAt(0);
+        const out = (slide as unknown as { exportAsBase64(): { value: string } }).exportAsBase64();
+        await context.sync();
+        return out.value;
+      });
+      const got = base64 ? await slideSizeFromPptxBase64(base64) : null;
+      if (got) {
+        cachedSlideSize = got;
+        trace("host", "slide size read", { ...cachedSlideSize });
+        return cachedSlideSize;
+      }
+    } catch {
+      /* empty deck, or a host that will not export — try the next rung */
+    }
+  }
+
+  // Rung 3 — the whole document, through the Common API.
+  const fromFile = await slideSizeFromDocumentFile();
+  if (fromFile) {
+    cachedSlideSize = { ...fromFile, source: "documentFile" };
+    trace("host", "slide size read", { ...cachedSlideSize });
+    return cachedSlideSize;
+  }
+
+  trace("host", "slide size unavailable — assuming 16:9", { ...ASSUMED_SLIDE_SIZE });
+  cachedSlideSize = ASSUMED_SLIDE_SIZE;
+  return cachedSlideSize;
+}
+
+/**
+ * The deepest rung: pull the whole presentation through the Common API.
+ *
+ * `Office.context.document.getFileAsync` predates the PowerPointApi requirement
+ * sets entirely, so this is the only read available on a 1.4 host. It is also
+ * by far the most expensive — the entire deck, in 4MB slices, copied to reach
+ * two numbers in the first part — which is why nothing calls it until the two
+ * cheaper rungs have declined.
+ *
+ * The file handle MUST be closed. An add-in that leaves one open holds the
+ * host's copy of the document alive, and the docs are explicit that a leaked
+ * handle can block later `getFileAsync` calls outright.
+ */
+async function slideSizeFromDocumentFile(): Promise<{ width: number; height: number } | null> {
+  type Slice = { data: number[] | Uint8Array };
+  type OfficeFile = {
+    size: number;
+    sliceCount: number;
+    getSliceAsync(i: number, cb: (r: { status: string; value: Slice }) => void): void;
+    closeAsync(cb?: () => void): void;
+  };
+  let file: OfficeFile | undefined;
+  try {
+    const doc = (
+      Office as unknown as {
+        context?: {
+          document?: {
+            getFileAsync(t: unknown, o: unknown, cb: (r: { status: string; value: OfficeFile }) => void): void;
+          };
+        };
+      }
+    ).context?.document;
+    const fileType = (Office as unknown as { FileType?: { Compressed?: unknown } }).FileType?.Compressed;
+    if (!doc?.getFileAsync || fileType === undefined) return null;
+
+    file = await new Promise<OfficeFile>((resolve, reject) => {
+      doc.getFileAsync(fileType, { sliceSize: 4194304 }, (r) =>
+        r.status === "succeeded" ? resolve(r.value) : reject(new Error("getFileAsync failed")),
+      );
+    });
+
+    const parts: Uint8Array[] = [];
+    for (let i = 0; i < file.sliceCount; i++) {
+      const slice = await new Promise<Slice>((resolve, reject) => {
+        file!.getSliceAsync(i, (r) =>
+          r.status === "succeeded" ? resolve(r.value) : reject(new Error("slice failed")),
+        );
+      });
+      parts.push(slice.data instanceof Uint8Array ? slice.data : Uint8Array.from(slice.data));
+    }
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const bytes = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) {
+      bytes.set(p, at);
+      at += p.length;
+    }
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(bytes);
+    const part = zip.file("ppt/presentation.xml");
+    if (!part) return null;
+    const emu = parseSlideSizeEmu(await part.async("string"));
+    if (!emu) return null;
+    return { width: emu.cx / EMU_PER_POINT, height: emu.cy / EMU_PER_POINT };
+  } catch {
+    return null;
+  } finally {
+    try {
+      file?.closeAsync();
+    } catch {
+      /* nothing useful to do — the host will reclaim it */
+    }
+  }
+}
+
 /**
  * Append a blank slide and return its id, or null if it did not land.
  *
@@ -3114,6 +3329,14 @@ export function traceEnvironment(build: string): void {
     canInsertSlidesFromBase64: canInsertSlidesFromBase64(),
     canInsertPicture: canInsertPicture(),
   });
+  // Asynchronous, so it lands as its own trace line rather than holding up the
+  // one above — and the SOURCE goes in it, because "960x540" read off PageSetup
+  // and "960x540" assumed because nothing answered are the same two numbers
+  // with completely different weight behind them. A run log that cannot tell
+  // them apart cannot explain a mis-placed chart.
+  void slideSize()
+    .then((s) => trace("host", "slide size", { ...s }))
+    .catch(() => {});
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */

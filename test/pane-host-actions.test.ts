@@ -77,6 +77,8 @@ const host = vi.hoisted(() => ({
   updateChartsStalls: new Map<number, string[]>(),
   /** Whether the user has pressed Stop — the flag the render loops read. */
   stopRequested: false,
+  /** What slideSize() reports — 16:9 unless a test says otherwise. */
+  slideSize: { width: 960, height: 540, source: "pageSetup" as const },
   demoReconcile: undefined as unknown,
   /** What `replaceSlideWithDeck` answers: "failed" | "swapped" | "duplicated". */
   swapOutcome: "failed" as "failed" | "swapped" | "duplicated",
@@ -179,8 +181,12 @@ vi.mock("../src/render/powerpoint", () => ({
   }),
   resetStop: vi.fn(() => {
     host.stopRequested = false;
+    host.slideSize = { width: 960, height: 540, source: "pageSetup" };
   }),
   isStopRequested: vi.fn(() => host.stopRequested),
+  // The destination deck's slide size, which the deck builder needs so the
+  // generated file declares the size it is being inserted into.
+  slideSize: vi.fn(async () => host.slideSize),
   isStopped: (err: unknown) =>
     !!err && typeof err === "object" && Object.prototype.hasOwnProperty.call(err, "__powerchartStopped"),
   updateChartsInSlides: vi.fn(

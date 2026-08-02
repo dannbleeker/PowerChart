@@ -21,13 +21,18 @@ export interface Rect {
 }
 
 /**
- * Usable slide height in points.
+ * Default slide height in points, for callers that cannot supply the real one.
  *
- * PowerPointApi exposes no slide dimensions at any requirement set, so this is
- * assumed rather than measured — but only in ONE axis, and the assumption is
- * safe there: every standard PowerPoint slide is 7.5in tall, 4:3 (720x540) and
- * 16:9 (960x540) alike. Width is the one that actually differs between them,
- * which is exactly why nothing below places a chart horizontally.
+ * This used to say PowerPointApi exposes no slide dimensions at any requirement
+ * set. That was wrong: `PageSetup.slideWidth`/`slideHeight` land it directly in
+ * 1.10, an exported slide's `<p:sldSz>` carries it at 1.8, and the Common API's
+ * `getFileAsync` carries it on any host at all — see `slideSize` in
+ * `src/render/powerpoint.ts`, which works down exactly that ladder.
+ *
+ * The number survives as a DEFAULT because it is a good one: every standard
+ * PowerPoint slide is 7.5in tall, 4:3 (720x540) and 16:9 (960x540) alike, so a
+ * host that answers nothing still gets the height right. Width is the dimension
+ * that actually differs, and it is now passed in rather than assumed away.
  */
 export const SLIDE_HEIGHT_PT = 540;
 
@@ -63,9 +68,11 @@ const overlaps = (a: Rect, b: Rect): boolean =>
 /**
  * The top-left for a chart of `size`, given what is already on the slide.
  *
- * Downward only. Sliding right would need the slide's width, which the host
- * will not tell us, and guessing it puts charts off the edge of a 4:3 deck.
- * Down needs only the height, which is 540 on every standard slide.
+ * Downward only. Sliding right needs the slide's width, which — now that
+ * `slideSize` can actually read it — is knowable, but placing horizontally is a
+ * layout decision this function has never made and is deliberately not being
+ * given here along with the number. What changes first is the thing that was
+ * silently wrong: the generated-deck fast path declaring 16:9 on a 4:3 deck.
  *
  * Falls back to `fallback` — the caller's cascade — when the chart will not fit
  * below what is already there. That case genuinely has nowhere good to go, and

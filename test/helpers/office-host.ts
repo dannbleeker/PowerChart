@@ -108,6 +108,36 @@ export function applyWebProfile(): void {
 let idSeq = 0;
 
 /**
+ * The slide size this fake deck declares, in EMU. Defaults to PowerPoint's
+ * canonical 16:9; a test sets it to 9144000×6858000 for 4:3.
+ *
+ * Drives BOTH reads the renderer can make — `pageSetup` and the `<p:sldSz>` in
+ * an exported slide — so a test cannot accidentally assert against a size only
+ * one of the two rungs would report.
+ */
+export const hostSlideSize = { cx: 12192000, cy: 6858000 };
+
+/** Exports whose base64 is built during the sync that was asked for it. */
+const pendingExports: { result: { value: string }; build: () => Promise<string> }[] = [];
+
+/**
+ * A minimal .pptx carrying nothing but a `ppt/presentation.xml` with the
+ * deck's `<p:sldSz>` — which is the only part `slideSize` reads.
+ */
+async function exportedDeckBase64(): Promise<string> {
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  zip.file(
+    "ppt/presentation.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">` +
+      `<p:sldSz cx="${hostSlideSize.cx}" cy="${hostSlideSize.cy}"/>` +
+      `</p:presentation>`,
+  );
+  return zip.generateAsync({ type: "base64" });
+}
+
+/**
  * Tag proxies whose `load()` has been queued but whose sync has not yet run.
  *
  * Flushed by a successful sync, dropped by a failed one — a load whose sync
@@ -391,6 +421,18 @@ export function makeSlide(id: string) {
     // owns the deck array, so removal goes through the hook it registers.
     delete() {
       deckRemove?.(slide);
+    },
+    /**
+     * PowerPointApi 1.8's single-slide export.
+     *
+     * Returns a real .pptx (base64) carrying the deck's `<p:sldSz>` — the part
+     * `slideSize`'s middle rung parses. A ClientResult, so `.value` is empty
+     * until the sync it was queued in lands, exactly like the real one.
+     */
+    exportAsBase64() {
+      const result = { value: "" };
+      pendingExports.push({ result, build: exportedDeckBase64 });
+      return result;
     },
     tags: {
       add: (k: string, v: string) => void slideTagStore.set(k, v),
@@ -701,6 +743,35 @@ export function installHost(
           slides.push(makeSlide(`slide-${slides.length + 1}`));
         },
       },
+      /**
+       * PowerPointApi 1.10's direct slide-size read.
+       *
+       * Load-gated like everything else here: `slideWidth` off an unloaded
+       * PageSetup is PropertyNotLoaded on a real host, and a fake that answered
+       * anyway would accept a `slideSize()` that forgot to load it — which is
+       * the one mistake this whole class of proxy keeps producing.
+       */
+      pageSetup: (() => {
+        let readable = false;
+        const need = (prop: string) => {
+          if (!readable) throw new Error(`PropertyNotLoaded: The property '${prop}' is not available.`);
+        };
+        return {
+          load(_p?: string) {
+            pendingTagLoads.push(() => {
+              readable = true;
+            });
+          },
+          get slideWidth() {
+            need("slideWidth");
+            return hostSlideSize.cx / 12700;
+          },
+          get slideHeight() {
+            need("slideHeight");
+            return hostSlideSize.cy / 12700;
+          },
+        };
+      })(),
       // A real deck's master carries several layouts; only one is blank, and
       // its NAME is localised — which is why the renderer matches on type.
       slideMasters: {
@@ -788,6 +859,13 @@ export function installHost(
         for (const apply of pendingTagLoads) apply();
         pendingTagLoads.length = 0;
       };
+      // Exports resolve on the sync that asked for them, same as a real
+      // ClientResult. Awaited before `commit()` so the value is there the
+      // moment the caller's `await context.sync()` returns.
+      if (pendingExports.length) {
+        for (const e of pendingExports) e.result.value = await e.build();
+        pendingExports.length = 0;
+      }
       const discard = () => {
         for (const s of slides) {
           for (const p of s.pending) {
@@ -839,6 +917,11 @@ export function installHost(
   // Proxies from a previous test's host must not become readable inside this
   // one's first sync.
   pendingTagLoads.length = 0;
+  pendingExports.length = 0;
+  // Back to 16:9 unless a test says otherwise — a leaked 4:3 would silently
+  // change placement for every test after it.
+  hostSlideSize.cx = 12192000;
+  hostSlideSize.cy = 6858000;
   pendingHostError = null;
   // failSyncOn was the one fault installHost did not reset, so a test that set
   // it leaked into every later test in the file and every test in every file

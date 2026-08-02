@@ -178,6 +178,7 @@ conventions, and every option.
 | Datasheet undo/redo (Ctrl+Z / Ctrl+Y)                                      | ✅                                                                                                                                       |
 | Very dense charts auto-insert as a picture on the web (still editable)     | ✅ (past ~90 shapes; **Explode** turns them back)                                                                                        |
 | Whole deck inserted as one generated .pptx (grouped + tagged in the file)  | ✅ (**Fast path**, on by default; falls back to shape-by-shape when the host can't take it)                                              |
+| Generated decks match the destination's slide size (no rescale on insert)  | ✅ (read from `PageSetup` at 1.10, an exported slide at 1.8, or `getFileAsync` below that)                                               |
 | Update survives a host that won't redraw (off-screen, slide swap, picture) | ✅ (three fallbacks, least disruptive first; parks on a scratch slide when the deck has none to spare)                                   |
 | Stop a long insert, deck run or Same scale mid-flight                      | ✅ (**Stop**; halts at the next slide/chart/batch — the host cannot abort a round trip in flight)                                        |
 | Demo deck self-repair (duplicate slides, false banners, loose charts)      | ✅ (automatic at the end of every run)                                                                                                   |

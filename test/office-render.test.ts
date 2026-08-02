@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _setBatchTimeoutForTest,
   _setBlankReReadDelayForTest,
@@ -34,6 +34,8 @@ import {
   requestStop,
   resetStop,
   isStopped,
+  slideSize,
+  _resetSlideSizeCache,
 } from "../src/render/powerpoint";
 
 /**
@@ -64,6 +66,7 @@ import {
   blankReadbackAt,
   failSyncsOn,
   faults,
+  hostSlideSize,
   installHost,
   makeShape,
   makeSlide,
@@ -3044,5 +3047,100 @@ describe("stopping work in flight", () => {
     expect(report.results[0].status).toBe("rendered");
     // And the deck grew by exactly that one slide.
     expect(report.slidesAdded).toBe(1);
+  });
+});
+
+describe("reading the presentation's slide size", () => {
+  // Cached per deck, so a value from one test would answer for the next.
+  beforeEach(() => _resetSlideSizeCache());
+  afterEach(() => _resetSlideSizeCache());
+
+  it("reads pageSetup directly when the host has 1.10", async () => {
+    installHost([makeSlide("s1")]);
+    hostSlideSize.cx = 9144000; // 4:3 — 720pt
+    const size = await slideSize();
+    expect(size).toEqual({ width: 720, height: 540, source: "pageSetup" });
+  });
+
+  it("falls back to exporting a slide when the host is below 1.10", async () => {
+    // PageSetup arrived in 1.10. A 1.8 host still exports a slide as its own
+    // .pptx, and that file declares the SOURCE deck's <p:sldSz> — exact, no
+    // guessing, one rung down.
+    installHost([makeSlide("s1")], [], undefined, (v) => v !== "1.10");
+    hostSlideSize.cx = 9144000;
+    const size = await slideSize();
+    expect(size).toEqual({ width: 720, height: 540, source: "exportedSlide" });
+  });
+
+  it("assumes 16:9 — and says so — when no rung can answer", async () => {
+    // The floor. A wrong-but-LABELLED width degrades placement to what it did
+    // before; throwing here would take down an insert over a layout hint.
+    installHost([makeSlide("s1")], [], undefined, () => false);
+    const size = await slideSize();
+    expect(size).toEqual({ width: 960, height: 540, source: "assumed" });
+  });
+
+  it("caches the answer, and re-reads on request", async () => {
+    installHost([makeSlide("s1")]);
+    expect((await slideSize()).width).toBe(960);
+    // The user changes slide size from PowerPoint's own Design tab.
+    hostSlideSize.cx = 9144000;
+    expect((await slideSize()).width, "went back to the host for a cached value").toBe(960);
+    expect((await slideSize({ refresh: true })).width).toBe(720);
+  });
+
+  it("loads pageSetup before reading it", async () => {
+    // The bug class this repo keeps finding: a proxy resolved and never loaded
+    // answers on the fake and throws PropertyNotLoaded on the host. The fake is
+    // honest now, so forgetting the load falls through to the next rung — and
+    // the source is how the test can tell that happened.
+    installHost([makeSlide("s1")]);
+    expect((await slideSize()).source).toBe("pageSetup");
+  });
+
+  it("pulls the whole document through the Common API when PowerPointApi cannot answer", async () => {
+    // The only rung a 1.4-1.7 host has. `getFileAsync` predates the
+    // PowerPointApi requirement sets entirely, so it answers where nothing else
+    // does — at the cost of copying the entire deck in 4MB slices to reach two
+    // numbers in its first part. Hence last, and hence still worth having.
+    installHost([makeSlide("s1")], [], undefined, () => false);
+    const { default: JSZip } = await import("jszip");
+    const zip = new JSZip();
+    zip.file(
+      "ppt/presentation.xml",
+      `<p:presentation xmlns:p="x"><p:sldSz cx="9144000" cy="6858000"/></p:presentation>`,
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    // Two slices, so the reassembly is actually exercised rather than assumed.
+    const cut = Math.floor(bytes.length / 2);
+    const slices = [bytes.slice(0, cut), bytes.slice(cut)];
+    let closed = false;
+    vi.stubGlobal("Office", {
+      context: {
+        host: "PowerPoint",
+        requirements: { isSetSupported: () => false },
+        document: {
+          getFileAsync: (_t: unknown, _o: unknown, cb: (r: unknown) => void) =>
+            cb({
+              status: "succeeded",
+              value: {
+                size: bytes.length,
+                sliceCount: slices.length,
+                getSliceAsync: (i: number, scb: (r: unknown) => void) =>
+                  scb({ status: "succeeded", value: { data: slices[i] } }),
+                closeAsync: () => {
+                  closed = true;
+                },
+              },
+            }),
+        },
+      },
+      FileType: { Compressed: "compressed" },
+    });
+    const size = await slideSize();
+    expect(size).toEqual({ width: 720, height: 540, source: "documentFile" });
+    // The handle MUST be released: a leaked one holds the host's copy of the
+    // document alive and can block later getFileAsync calls outright.
+    expect(closed, "leaked the document file handle").toBe(true);
   });
 });
