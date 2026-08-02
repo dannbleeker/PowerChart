@@ -50,7 +50,7 @@ import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
 import { onTrace, setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
-import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "./selftest";
+import { runSelfTest, describeSelfTest, setSelfTestRasterizer, SCENARIO_NAMES, type ScenarioResult } from "./selftest";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -2847,6 +2847,17 @@ function wireInsert() {
     // The five paths the demo deck never touches. Its own button rather than a
     // mode of the demo run: it edits and deletes as well as inserting, and a
     // user reaching for "insert a demo deck" should not get that by accident.
+    // Fill the picker from the battery's own list, so it cannot offer a
+    // scenario that no longer exists or miss one that was added.
+    const scenarioPick = $("demo-scenario") as HTMLSelectElement | null;
+    if (scenarioPick) {
+      for (const name of SCENARIO_NAMES) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        scenarioPick.append(opt);
+      }
+    }
     const selfTestBtn = $("demo-selftest") as HTMLButtonElement;
     selfTestBtn.disabled = false;
     selfTestBtn.addEventListener(
@@ -2860,7 +2871,7 @@ function wireInsert() {
         // The same rasteriser the demo run degrades with — the picture
         // scenario needs a real PNG, not a config that merely says "image".
         setSelfTestRasterizer(boundedRaster);
-        const results = await runSelfTest();
+        const results = await runSelfTest(undefined, scenarioPick?.value || undefined);
         // No runs, but a log all the same — the scenarios ARE the record, and
         // the trace beside them is what says how each verdict was reached.
         lastRunLog = {

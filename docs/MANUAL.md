@@ -477,6 +477,12 @@ while the add-in is being validated against real hosts, and it rides along
 inside the run log rather than in a separate file. Nothing is written while it
 is off.
 
+**Scenario** picks what **Run host self-test** actually runs. Left on *All* it
+runs the whole battery; pick one and it runs that scenario plus the two inserts
+every scenario needs to have probe charts to work on. A full round takes several
+minutes and leaves slides in the deck, so when you are chasing one failure, pick
+it — seconds instead of minutes, and far less to clean up afterwards.
+
 **Run host self-test** runs the nine things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
 chart on the slide you are looking at, adding charts to a slide that already

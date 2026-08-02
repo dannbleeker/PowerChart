@@ -4,7 +4,13 @@ import { installHost, makeSlide, makeShape, applyWebProfile, faults } from "./he
 import { CHART_TAG, requestStop, resetStop, isStopRequested } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { setTracing, traceLog } from "../src/core/trace";
-import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "../src/taskpane/selftest";
+import {
+  runSelfTest,
+  describeSelfTest,
+  setSelfTestRasterizer,
+  SCENARIO_NAMES,
+  type ScenarioResult,
+} from "../src/taskpane/selftest";
 
 /**
  * The host self-test — nine paths the demo deck never touches.
@@ -206,6 +212,41 @@ describe("the scenarios the selection API unlocked", () => {
     const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
     faults.refuseSlideDelete = false;
     expect(r.detail, "left a slide behind and said nothing").toMatch(/could not be removed/i);
+  });
+
+  it("runs one scenario plus the two inserts it needs, when asked for one", async () => {
+    // A full round costs minutes and leaves slides behind: the first run that
+    // produced a usable trace took 496 seconds to reach scenario seven and
+    // wedged there, and the scenario before it left four charts on the deck as
+    // loose piles of shapes. Iterating on the seventh by running the six in
+    // front of it is not iteration.
+    //
+    // The first two run regardless, because every other scenario needs the
+    // probe charts they insert — a targeted run that found none would report
+    // SKIPPED, which is honest and useless.
+    installHost([makeSlide("s1")]);
+    const results = await runSelfTest("probe", "the chart is actually visible");
+    expect(results.map((r) => r.name)).toEqual([
+      "insert on top of an earlier run",
+      "two slides claiming one slot",
+      "the chart is actually visible",
+    ]);
+    const picked = results[2];
+    expect(picked.skipped, picked.detail).toBeFalsy();
+    expect(picked.ok, picked.detail).toBe(true);
+  });
+
+  it("offers exactly the scenarios it can run, in run order", async () => {
+    // The picker is filled from this list. A hand-kept copy beside it would be
+    // one rename away from offering a scenario that does not exist.
+    installHost([makeSlide("s1")]);
+    const results = await runSelfTest("probe");
+    expect([...SCENARIO_NAMES]).toEqual(results.map((r) => r.name));
+  });
+
+  it("runs everything when nothing is picked", async () => {
+    installHost([makeSlide("s1")]);
+    expect(await runSelfTest("probe", "")).toHaveLength(9);
   });
 
   it("announces a scenario BEFORE running it, so a crash names the right one", async () => {
