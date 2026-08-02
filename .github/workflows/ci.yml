@@ -52,6 +52,15 @@ jobs:
               sys.exit("examples/showcase.pptx is stale — run `npm run showcase` and commit the result")
           print("showcase deck is current")
           EOF
+      # Two file-level gates on the deck the step above just proved current.
+      # They ask different questions and catch nearly disjoint sets: the first
+      # is "did PowerChart write what it meant to" (slot tags, groups, config
+      # parts, duplicate shape ids); the second is "is this a legal .pptx at
+      # all", against the OOXML grammar. Neither needs a PowerPoint.
+      - name: The showcase deck is structurally sound
+        run: npm run verify-deck examples/showcase.pptx
+      - name: The showcase deck is schema-valid
+        run: npm run validate-ooxml examples/showcase.pptx
 
   # Every merge to main refreshes the rolling "skill-latest" release, giving
   # the newest skill zip a stable download URL.

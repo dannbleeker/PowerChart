@@ -81,48 +81,40 @@ remaining manual items into `npm run test:e2e` and pays for itself without
 solving login. CI is a separate, owner-gated question and may never be worth it.
 Covers PowerPoint **on the web** only; desktop stays human either way.
 
-### File-level CI gates: schema validation and a golden-image diff
+### A golden-image gate on the generated deck
 
-**Researched:** 2026-08-02 (both measured against `examples/showcase.pptx`).
+**Researched:** 2026-08-02 (measured against `examples/showcase.pptx`).
 
-Two cheap gates on the generated deck, neither needing a host.
+The schema half of this shipped — `scripts/validate-ooxml.mjs` gates CI, and
+`verify-deck.mjs` gained the duplicate-`cNvPr`-id check that neither tool had.
+What is left is the visual half.
 
-**Schema validation.** `@xarsh/ooxml-validator` (MIT, one devDependency,
-prebuilt binaries, no .NET runtime) validates a `.pptx` against
-`DocumentFormat.OpenXml`'s `OpenXmlValidator` in **3.2 s** across 122 slides. It
-catches a class `verify-deck.mjs` structurally cannot see — dangling
-relationship ids, malformed XML, negative extents, wrong child ordering — with
-almost no overlap between the two. Neither catches duplicate `cNvPr` ids within
-one `spTree`, which is the classic trigger for PowerPoint's repair dialog; that
-is a five-line addition to `faultsIn()` if it is wanted.
+LibreOffice headless renders the deck to PDF in 7 s and to 122 PNGs in 17.6 s,
+and — the part that makes a gate possible at all — the output is **byte-identical
+across fresh profiles**, so it can be compared by hash rather than by a fuzzy
+pixel diff. Its usual PPTX weak spots do not apply here: this generator emits no
+gradients, no pattern fills, no `normAutofit` and no effects, which is every
+category where LibreOffice is known to diverge.
 
-**Baseline needed before it can gate:** the committed showcase deck already has
-exactly one finding, and it is deliberate upstream — pptxgenjs emits
-`notesMasterIdLst` after `sldIdLst` on purpose, with a source comment saying the
-schema-conformant order makes PowerPoint complain. Schema-valid and
-PowerPoint-valid are different sets, and here they conflict. Baseline it, do not
-fix it.
+**What it needs first:** a pinned container. The deck asks for Segoe UI and
+Calibri, neither present in CI, so every render is a substituted render —
+self-consistent, but different from a laptop that has the real fonts, and
+different again after a LibreOffice minor bump. Without pinning, the baseline
+churns and the gate gets switched off. Consider asserting structure (page count,
+no all-white page) rather than hashes: version-tolerant, no committed baselines,
+and it still catches "the chart rendered to nothing".
 
-**Golden images.** LibreOffice headless renders the deck to PDF in 7 s and to
-122 PNGs in 17.6 s, and — the part that makes a gate possible — the output is
-**byte-identical across fresh profiles**, so it can be compared by hash. Its
-usual PPTX weak spots (gradients, `normAutofit`, effects) do not apply here:
-this generator emits none of them. Pin the renderer *and the font set* in a
-container image; the deck asks for Segoe UI and Calibri, neither of which is
-present in CI, so every render is a substituted render — self-consistent, but
-different from a laptop that has the real fonts. Frame it as "did our output
-change", never as "does this match PowerPoint".
+**Frame it as** "did our own output change", never as "does this match
+PowerPoint" — no FOSS renderer is close enough to PowerPoint for the second
+claim, and a gate that overclaims gets ignored.
 
 **Do not** use a LibreOffice round-trip as a PowerPoint proxy: converting the
 showcase deck back to `.pptx` silently deleted all 122 `ppt/tags/*.xml` parts,
-leaving 121 charts non-re-editable. Worth knowing separately —
-`verify-deck.mjs` reported "no structural faults" on that deck, correctly per
-its contract, but it means the exit code is not a config-survival signal. Any
-CI job consuming it for a saved-from-PowerPoint deck must gate on the
-`chart objects: N (0 re-editable)` count instead.
+leaving 121 charts non-re-editable. Anything learned that way is a fact about
+LibreOffice.
 
-**Priority:** medium. The validator is near-free and additive today; the image
-gate needs a pinned container before it is worth turning on.
+**Priority:** low. The cheap, deterministic half is already in CI; this one buys
+less and costs a container to maintain.
 
 ## 2. Rejected or already covered (do not re-propose)
 

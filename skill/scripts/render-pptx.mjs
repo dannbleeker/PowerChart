@@ -213,7 +213,22 @@ for (let i = 0; i < configs.length; i++) {
       // Match the shapes-path centering: same dx/dy as below, same width/height.
       const dx = (SLIDE.w - scene.width * IN) / 2;
       const dy = (SLIDE.h - scene.height * IN) / 2;
-      slide.addImage({ data: dataUri, x: dx, y: dy, w: scene.width * IN, h: scene.height * IN });
+      // Named like every other chart object, which is not cosmetic. The repair
+      // paths in `powerpoint.ts` find a chart by `name === "PowerChart"` —
+      // `retagSlideChart`, `rescueGroupAndTag`, `slideHoldsOnlyChart` — so a
+      // picture left with pptxgenjs's default `Image 0` carries its config tag
+      // and is still unreachable by every one of them. The Office.js picture
+      // path already names its shape this way and says why; the generated deck
+      // did not, so the two renderers disagreed on the one string all of that
+      // machinery keys on. Found by pointing `verify-deck` at the showcase.
+      slide.addImage({
+        data: dataUri,
+        x: dx,
+        y: dy,
+        w: scene.width * IN,
+        h: scene.height * IN,
+        objectName: "PowerChart",
+      });
       imageSlides++;
     } else {
       const dx = (SLIDE.w - scene.width * IN) / 2;

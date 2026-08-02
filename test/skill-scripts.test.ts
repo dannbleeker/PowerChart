@@ -197,6 +197,20 @@ describe('render-pptx.mjs — render:"image" mode', () => {
     expect(slide2).not.toContain("<p:sp>");
   });
 
+  it("names the picture PowerChart, like every other chart object", async () => {
+    // Not cosmetic. Every repair path in powerpoint.ts finds a chart by
+    // `name === "PowerChart"` — retagSlideChart, rescueGroupAndTag,
+    // slideHoldsOnlyChart — so a picture left with pptxgenjs's default
+    // "Image 0" carries its config tag and is invisible to all of them. The
+    // Office.js picture path has always named its shape this way; the
+    // generated deck did not, so the two renderers disagreed on the one string
+    // that machinery keys on, and the committed showcase deck shipped a chart
+    // that could never be repaired.
+    const slide2 = await zip.file("ppt/slides/slide2.xml")!.async("string");
+    const names = [...slide2.matchAll(/<p:cNvPr[^>]*name="([^"]*)"/g)].map((m) => m[1]);
+    expect(names, `picture is named ${JSON.stringify(names)}`).toContain("PowerChart");
+  });
+
   it("keeps shapes mode intact when another item in the same batch went image", async () => {
     // Cross-contamination check: the image-mode branch is opt-in per config;
     // a sibling shapes-mode chart must not accidentally get rasterised.
