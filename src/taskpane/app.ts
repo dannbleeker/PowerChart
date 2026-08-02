@@ -6,6 +6,7 @@ import { sceneToSvg } from "../render/svg";
 import {
   canInsertPicture,
   getSelectionBounds,
+  getSlideShapeBounds,
   insertAgendaSlides,
   insertDemoDeck,
   insertSceneIntoSlide,
@@ -30,10 +31,14 @@ import {
   updateChartsInSlides,
   onLateSync,
   errorText,
+  wreckageOf,
+  deleteShapesById,
   type EditTarget,
   type InsertPhase,
   type ReconcileOutcome,
+  type UpdateWreckage,
 } from "../render/powerpoint";
+import { placeChart } from "../core/placement";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } from "../core/demo";
 import type { Scene } from "../core/scene";
@@ -1552,7 +1557,7 @@ async function runInsert(asNew: boolean) {
     // shape id that no longer existed, get filtered out as "the user deleted
     // this chart", and do nothing — silently. With auto-update on, that meant
     // only the first debounced push ever landed.
-    const { next, swapped, duplicated, picture } = await updateChartResilient(scene, state.editTarget, {
+    const { next, swapped, duplicated, picture, recovered } = await updateChartResilient(scene, state.editTarget, {
       tagData: JSON.stringify(cfg),
       pictureBase64: png,
     });
@@ -1582,6 +1587,16 @@ async function runInsert(asNew: boolean) {
       else if (warn) note(warn, "err");
       return;
     }
+    if (recovered) {
+      // The chart IS on the slide — redrawn from scratch after the in-place
+      // update destroyed it — the host just would not tag it, so there is no
+      // target to keep editing from. Distinguishing this from "gone" is the
+      // whole point: telling the user to insert it again would give them two.
+      state.editTarget = null;
+      renderActionState();
+      note("Redrawn as a picture — PowerPoint would not redraw it in place. Select the chart to keep editing.", "err");
+      return;
+    }
     // null means the target slide or shape is gone — nothing was written. The
     // caller's guard saw an unchanged note and printed "Done." in green, and the
     // stale target kept the button reading "Update chart", so every later push
@@ -1594,36 +1609,41 @@ async function runInsert(asNew: boolean) {
   }
   // New chart: use the selected placeholder's bounds when one is selected.
   const bounds = await getSelectionBounds();
-  // Resize BEFORE building the scene, so the raster matches the frame that sizes
-  // the picture's rect — a raster of a differently-sized scene would be stretched.
-  if (bounds && bounds.width > 40 && bounds.height > 40) {
-    cfg = { ...cfg, width: bounds.width, height: bounds.height };
-  }
-  const scene = buildChart(cfg);
-  const { png, warn } = await chartPicture(cfg, scene);
-  if (bounds && bounds.width > 40 && bounds.height > 40) {
-    await insertSceneIntoSlide(
-      scene,
-      { tagData: JSON.stringify(cfg), left: bounds.left, top: bounds.top, pictureBase64: png },
-      phaseNote,
-    );
+  const intoPlaceholder = !!bounds && bounds.width > 40 && bounds.height > 40;
+  // Where the chart goes, and at what size — decided BEFORE the scene is built,
+  // because both branches can change the size and the raster has to be of the
+  // scene that sizes the picture's rect. A raster of a differently-sized scene
+  // is a stretched chart.
+  let at: { left: number; top: number; width: number; height: number; shrunk?: boolean };
+  if (intoPlaceholder) {
+    at = { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height };
   } else {
-    await insertSceneIntoSlide(
-      scene,
-      {
-        tagData: JSON.stringify(cfg),
-        left: 60 + insertOffset,
-        top: 90 + insertOffset,
-        pictureBase64: png,
-      },
-      phaseNote,
+    // Nothing selected, so the chart has to be placed. Below whatever is
+    // already on the slide, shrunk into the space left if it will not fit at
+    // full size — a fixed 14pt cascade against a 480x300 chart overlapped the
+    // previous one by better than 90%, which is what "they are built on top of
+    // each other" looked like. The cascade survives as the last resort.
+    at = placeChart(
+      await getSlideShapeBounds(),
+      { width: cfg.width ?? DEFAULT_SIZE.width, height: cfg.height ?? DEFAULT_SIZE.height },
+      { left: 60, top: 90 },
+      { left: 60 + insertOffset, top: 90 + insertOffset },
     );
     insertOffset = (insertOffset + 14) % 84;
   }
+  cfg = { ...cfg, width: at.width, height: at.height };
+  const scene = buildChart(cfg);
+  const { png, warn } = await chartPicture(cfg, scene);
+  await insertSceneIntoSlide(
+    scene,
+    { tagData: JSON.stringify(cfg), left: at.left, top: at.top, pictureBase64: png },
+    phaseNote,
+  );
   state.editTarget = null;
   renderActionState();
   // After the insert, never before: phaseNote would have overwritten it.
   if (warn) note(warn, "err");
+  else if (at.shrunk) note("Scaled to fit the space left on the slide — drag or resize it as you like.", "ok");
 }
 
 /**
@@ -2147,8 +2167,25 @@ async function updateChartResilient(
   scene: Scene,
   target: EditTarget,
   opts: { tagData?: string; pictureBase64?: string },
-): Promise<{ next: EditTarget | null; swapped?: boolean; duplicated?: boolean; picture?: boolean }> {
+): Promise<{
+  next: EditTarget | null;
+  swapped?: boolean;
+  duplicated?: boolean;
+  picture?: boolean;
+  /** The chart was re-drawn from scratch after a failed update destroyed it. */
+  recovered?: boolean;
+}> {
   let stall: unknown;
+  /**
+   * What layer 1 destroyed before it failed, when it destroyed anything.
+   *
+   * Everything below used to assume the chart was still on the slide, and layer
+   * 1's first act is to delete it — so once layer 1 had run at all, layer 2
+   * disqualified itself on the litter and layer 3 re-resolved a shape id that
+   * no longer existed and reported the chart "no longer on the slide". Three
+   * fallbacks, none of them reachable, in exactly the case they are for.
+   */
+  let wreckage: UpdateWreckage | undefined;
   try {
     const next = await withSlideDeselected([target.slideId], (deselected) =>
       updateChartInSlide(scene, target, deselected ? { ...opts, shapesPerSync: OFFSCREEN_BATCH } : opts),
@@ -2157,6 +2194,15 @@ async function updateChartResilient(
   } catch (err) {
     console.warn("PowerChart: in-place redraw stalled — trying the slide swap", err);
     stall = err;
+    wreckage = wreckageOf(err);
+  }
+
+  // Clear the half-drawn chart before anything else draws over it. Whatever
+  // comes next puts a whole chart back on this slide, and without the sweep the
+  // user keeps the wreckage underneath it — the failure made visible twice.
+  if (wreckage?.strayIds.length) {
+    const swept = await deleteShapesById(wreckage.slideId, wreckage.strayIds);
+    console.warn(`PowerChart: swept ${swept} of ${wreckage.strayIds.length} shapes left by the stalled redraw`);
   }
 
   if (canInsertSlidesFromBase64() && opts.tagData && (await slideHoldsOnlyChart(target.slideId))) {
@@ -2184,8 +2230,23 @@ async function updateChartResilient(
       rasterizeScene(scene),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("rasterizing timed out")), 10_000)),
     ]);
-    const next = await updateChartInSlide(scene, target, { ...opts, pictureBase64: png });
-    return { next, picture: true };
+    // UPDATE only while there is something left to update. Once layer 1 has
+    // deleted the chart, an update resolves a dead shape id, decides the user
+    // must have deleted the chart themselves, and does nothing — which is how
+    // the floor of this ladder came to report "that chart is no longer on the
+    // slide" about a chart it had just removed. With the slide and the position
+    // both known, drawing it back is an insert, and the picture makes it one
+    // shape that no live canvas can stall on.
+    const next = wreckage
+      ? await insertSceneIntoSlide(scene, {
+          ...opts,
+          pictureBase64: png,
+          slideId: wreckage.slideId,
+          left: wreckage.at.left,
+          top: wreckage.at.top,
+        })
+      : await updateChartInSlide(scene, target, { ...opts, pictureBase64: png });
+    return { next, picture: true, recovered: !!wreckage };
   } catch (err) {
     // Nothing left to try. Surface the host's own words rather than a
     // rasterizer error the user can do nothing about.
@@ -2473,7 +2534,9 @@ function wireInsert() {
       btn.disabled = false;
       btn.addEventListener(
         "click",
-        guard(() => insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote)),
+        guard(async () => {
+          await insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote);
+        }),
       );
     }
     agendaBtn.disabled = false;

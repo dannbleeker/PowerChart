@@ -55,6 +55,16 @@ export const faults = {
    * "11 of 12 complete · 1 lost" with nothing thrown. Counted down per call.
    */
   swallowDecks: 0,
+  /**
+   * `shapes.load(...)` throws a TypeError instead of queueing.
+   *
+   * Observed on the web as "e.load is not a function": the host handed back
+   * something without the method, and because the QUEUE step sat outside the
+   * try/catch that was written to cover it, an update whose shapes had already
+   * committed reported total failure. Charts on the slide, one TypeError, no
+   * result — which is what Same Scale across the deck did.
+   */
+  faultShapeCollectionLoad: false,
 };
 
 /**
@@ -276,6 +286,40 @@ function freshHandle(shape: FakeShape): FakeShape {
   });
 }
 
+/**
+ * Wrap a `getItemOrNullObject` result the way Office.js hands one over.
+ *
+ * `isNullObject` is not a property you can just read: it is populated on the
+ * sync the proxy participated in, and a proxy nobody called `load()` on never
+ * participates. Reading it then throws PropertyNotLoaded. The fake answered it
+ * unconditionally, so a whole class of bug — resolve a shape, never load it,
+ * read `isNullObject` — was invisible here and fatal on a real host.
+ *
+ * The load is not required to name the property: any `load()` puts the proxy in
+ * the sync, which is what makes `isNullObject` resolve.
+ */
+function nullObjectProxy<T extends object>(found: T | undefined) {
+  let loaded = false;
+  const base = found ?? ({ delete() {} } as unknown as T);
+  return new Proxy(base, {
+    get(target, prop, recv) {
+      if (prop === "load")
+        return () => {
+          loaded = true;
+        };
+      if (prop === "isNullObject") {
+        if (!loaded)
+          throw new Error(
+            "The property 'isNullObject' is not available. Before reading the property's value, call the load " +
+              'method on the containing object and call "context.sync()" on the associated request context.',
+          );
+        return !found;
+      }
+      return Reflect.get(target, prop, recv);
+    },
+  });
+}
+
 export function makeSlide(id: string) {
   const created: FakeShape[] = [];
   // Shapes queued since the last successful sync. On success the pending list
@@ -343,6 +387,7 @@ export function makeSlide(id: string) {
       // a test make the TAG read hollow without also blinding the count it is
       // supposed to be checked against.
       load(p?: string) {
+        if (faults.faultShapeCollectionLoad) throw new TypeError("e.load is not a function");
         if (p) lastShapeLoad = p;
       },
       addGeometricShape(geo: string, box: FakeShape["box"]) {
@@ -408,7 +453,16 @@ export function makeSlide(id: string) {
         // load on it is the normal pattern, and only isNullObject tells you it
         // resolved to nothing. Without load() here the fake threw where the host
         // would not.
-        return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, load() {}, delete() {} };
+        //
+        // And `isNullObject` is only READABLE once the proxy has been loaded.
+        // This fake used to hand it over unconditionally, which is a fiction:
+        // Office.js populates it on the sync the proxy took part in, and a
+        // proxy nobody loaded takes part in nothing. Reading it then throws
+        // PropertyNotLoaded — which is exactly what editing an ungrouped chart
+        // did on a real host while every test here passed, because the fake
+        // answered a question the host refuses. Model the refusal.
+        const found = created.find((s) => s.id === id && !s.deleted);
+        return nullObjectProxy(found);
       },
       // Top-level shape count the host reports on readback — non-deleted shapes.
       getCount: () => {
@@ -739,6 +793,8 @@ export function installHost(
   faults.refusePictureFill = false;
   blankReadbackAt.clear();
   faults.faultShapeGetCount = false;
+  faults.faultShapeCollectionLoad = false;
+  faults.swallowDecks = 0;
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {

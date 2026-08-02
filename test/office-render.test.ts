@@ -635,6 +635,37 @@ describe("updateChartInSlide", () => {
     await updateChartInSlide(buildChart(config), { slideId: "s1", shapeId: group.id, left: 10, top: 20 });
     expect(slide.created.filter((s) => !s.deleted)).toHaveLength(0);
   });
+
+  /**
+   * Grouping and tagging are best-effort by design — the shapes are on the
+   * slide before either runs, and the catches around them say exactly that. But
+   * the statements that QUEUE the work sat outside those catches, so a host
+   * that threw while being asked to re-read a shape collection ("e.load is not
+   * a function", seen on the web) rejected the whole request context and failed
+   * an update that had, on the slide, already succeeded. Same Scale across the
+   * deck reported one TypeError for four redrawn charts.
+   */
+  it("keeps a redraw that landed, when the host faults on the re-read after it", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const scene = buildChart(config);
+    await insertSceneIntoSlide(scene, { tagData: "cfg" });
+    const group = slide.created.find((s) => s.type === "group")!;
+    const before = slide.created.filter((s) => !s.deleted).length;
+
+    faults.faultShapeCollectionLoad = true;
+    // Small batches, so the redraw spans several and asks for the re-read that
+    // faults — the exact condition on a live canvas.
+    await expect(
+      updateChartInSlide(scene, { slideId: "s1", shapeId: group.id, left: 10, top: 20 }, { shapesPerSync: 2 }),
+    ).resolves.not.toThrow();
+    faults.faultShapeCollectionLoad = false;
+
+    // The chart is on the slide: the old one gone, a new one drawn. What the
+    // fault costs is the group and the tag, not the chart.
+    expect(group.deleted).toBe(true);
+    expect(slide.created.filter((s) => !s.deleted).length).toBeGreaterThanOrEqual(before - 1);
+  });
 });
 
 describe("selection readers", () => {

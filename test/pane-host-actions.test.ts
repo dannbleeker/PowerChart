@@ -23,6 +23,8 @@ import { sceneToSvg } from "../src/render/svg";
 /** Shared mailbox the mocked renderer writes to; reset before each boot. */
 const host = vi.hoisted(() => ({
   selectionBounds: null as null | { left: number; top: number; width: number; height: number },
+  /** What is already on the slide the next insert would draw onto. */
+  slideShapes: [] as { left: number; top: number; width: number; height: number }[],
   deckCharts: [] as { configJson: string; target: unknown }[],
   selectionCharts: [] as { configJson: string; target: unknown }[],
   loadSelectionResult: null as null | { configJson: string; target: unknown },
@@ -55,6 +57,8 @@ const host = vi.hoisted(() => ({
    * a live EditTarget, which is what a real successful update hands back.
    */
   updateResult: undefined as undefined | { slideId: string; shapeId: string; left: number; top: number },
+  /** What a fresh insert hands back — an EditTarget now, so a recovery stays editable. */
+  insertResult: null as null | { slideId: string; shapeId: string; left: number; top: number },
   /** Whether the host advertises insertSlidesFromBase64 — off by default. */
   canInsertFile: false,
   slideHoldsOnlyChart: false,
@@ -77,11 +81,13 @@ const host = vi.hoisted(() => ({
   slideCountCalls: 0,
   reconcileOutcome: undefined as unknown,
   calls: {
-    insertScene: [] as { tagData?: string; left?: number; top?: number }[],
+    insertScene: [] as { tagData?: string; left?: number; top?: number; slideId?: string; pictureBase64?: string }[],
     updateChart: [] as { target: unknown; opts: { tagData?: string; pictureBase64?: string } }[],
     updateCharts: [] as { scene: unknown; target: unknown; opts?: { tagData?: string } }[][],
     insertFile: [] as { b64: string; expected: number }[],
     deselected: [] as string[][],
+    /** Sweeps of the litter a stalled redraw left behind, per recovery. */
+    swept: [] as { slideId: string; ids: string[] }[],
   },
 }));
 
@@ -89,6 +95,7 @@ vi.mock("../src/render/powerpoint", () => ({
   isPowerPointHost: () => true,
   canInsertPicture: vi.fn(() => host.canPicture),
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
+  getSlideShapeBounds: vi.fn(async () => host.slideShapes),
   insertSceneIntoSlide: vi.fn(
     async (
       scene: { nodes: unknown[] },
@@ -112,6 +119,7 @@ vi.mock("../src/render/powerpoint", () => ({
       host.calls.insertScene.push(opts);
       // The last thing a successful insert ever says — and it is still "busy".
       onPhase?.("done");
+      return host.insertResult;
     },
   ),
   updateChartInSlide: vi.fn(
@@ -120,10 +128,27 @@ vi.mock("../src/render/powerpoint", () => ({
       if (host.updateGate) await host.updateGate;
       // Models the live-canvas stall: the in-place redraw refuses, a picture
       // update (which draws one shape) does not.
-      if (host.updateChartThrows && !opts.pictureBase64) throw new Error("did not respond while drawing shapes 1-10");
+      if (host.updateChartThrows && !opts.pictureBase64) {
+        // Carrying wreckage, because the real one always does: an update deletes
+        // the old chart and COMMITS that before it draws a single new shape, so
+        // a stall mid-redraw is never a no-op. A double that threw a bare error
+        // modelled a rollback the host does not have, and every fallback below
+        // was written against that fiction.
+        const err = new Error("did not respond while drawing shapes 1-10") as Error & Record<string, unknown>;
+        err.__powerchartWreckage = { slideId: "s1", at: { left: 40, top: 50 }, strayIds: ["stray-1", "stray-2"] };
+        throw err;
+      }
       return host.updateResult;
     },
   ),
+  wreckageOf: (err: unknown) =>
+    err && typeof err === "object" && Object.prototype.hasOwnProperty.call(err, "__powerchartWreckage")
+      ? (err as Record<string, unknown>).__powerchartWreckage
+      : undefined,
+  deleteShapesById: vi.fn(async (slideId: string, ids: string[]) => {
+    host.calls.swept.push({ slideId, ids });
+    return ids.length;
+  }),
   updateChartsInSlides: vi.fn(async (items: { scene: unknown; target: unknown; opts?: { tagData?: string } }[]) => {
     host.calls.updateCharts.push(items);
   }),
@@ -228,6 +253,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
  */
 async function bootHostPane() {
   host.selectionBounds = null;
+  host.slideShapes = [];
   host.deckCharts = [];
   host.selectionCharts = [];
   host.loadSelectionResult = null;
@@ -260,6 +286,8 @@ async function bootHostPane() {
   host.calls.deselected.length = 0;
   host.canPicture = true;
   host.updateResult = undefined;
+  host.insertResult = null;
+  host.calls.swept.length = 0;
   host.calls.insertScene = [];
   host.calls.updateChart = [];
   host.calls.updateCharts = [];
@@ -545,6 +573,29 @@ describe("Insert", () => {
     expect(opts.top).toBeGreaterThanOrEqual(90);
     expect(JSON.parse(opts.tagData!)).toMatchObject({ kind: expect.any(String) });
     expect(host.calls.updateChart).toHaveLength(0);
+  });
+
+  /**
+   * Two charts onto one slide. The insert path never looked at what was
+   * already there — its whole answer to "where does this go" was a 14pt
+   * cascade, and against a 480x300 chart that is a 90%-plus overlap. The
+   * second chart landed on the first, which is what a user sees as one chart
+   * drawn over another.
+   */
+  it("puts a second chart clear of the first instead of on top of it", async () => {
+    const first = { left: 60, top: 90, width: 480, height: 300 };
+    host.slideShapes = [first];
+    $("insert").click();
+    await settle();
+    const at = host.calls.insertScene.at(-1)!;
+    const cfg = JSON.parse(at.tagData!) as { width?: number; height?: number };
+    const box = { left: at.left!, top: at.top!, width: cfg.width ?? 480, height: cfg.height ?? 300 };
+    const hits =
+      box.left < first.left + first.width &&
+      first.left < box.left + box.width &&
+      box.top < first.top + first.height &&
+      first.top < box.top + box.height;
+    expect(hits).toBe(false);
   });
 
   it("fits the chart to a selected placeholder's bounds", async () => {
@@ -1035,12 +1086,75 @@ describe("updating a chart the live canvas will not redraw", () => {
     expect($("host-note").textContent).not.toMatch(/rebuilt that slide/i);
   });
 
-  // NOT COVERED HERE: the picture floor, and the "everything failed, rethrow
-  // the host's own words" path behind it. jsdom has no canvas, so
-  // `rasterizeScene` neither succeeds nor fails — it simply never settles,
-  // which is also why that call is bounded by a timeout in the pane. Faking
-  // timers to drive it broke ten unrelated tests in this file; a test that
-  // waits out a real 10s timeout is not worth 10s on every run.
+  /**
+   * The floor of the ladder, on the failure it exists for.
+   *
+   * Layer 1 deletes the old chart, COMMITS that, and only then draws — so a
+   * stall leaves half a chart on the slide and no shape at the target's id.
+   * Every layer below assumed the chart was still there: layer 2 checks the
+   * slide holds nothing but the chart and saw the litter, layer 3 re-resolved
+   * the id layer 1 had just destroyed, got nothing back, and the pane announced
+   * "that chart is no longer on the slide" over a half-drawn one. Three
+   * fallbacks, all disabled by the damage they were meant to repair.
+   */
+  it("sweeps the wreckage and draws the chart back, rather than calling it gone", async () => {
+    const raster = stubRaster();
+    try {
+      host.updateChartThrows = true; // layer 1 stalls — after the delete committed
+      host.slideHoldsOnlyChart = false; // layer 2 out of the picture, so this is the floor
+      host.insertResult = { slideId: "s1", shapeId: "grp-new", left: 40, top: 50 };
+      await loadThenUpdate();
+
+      // The half-drawn chart went first — otherwise the replacement lands on
+      // top of it and the user keeps both.
+      expect(host.calls.swept).toEqual([{ slideId: "s1", ids: ["stray-1", "stray-2"] }]);
+
+      // Then the chart was drawn back: onto the slide it came from, at the
+      // position it held, as one picture no live canvas can stall on.
+      const drawn = host.calls.insertScene.at(-1);
+      expect(drawn).toMatchObject({ slideId: "s1", left: 40, top: 50 });
+      expect(drawn?.pictureBase64).toBeTruthy();
+
+      // And NOT as a picture update against the shape layer 1 deleted — that
+      // call can only ever resolve nothing.
+      expect(host.calls.updateChart.filter((c) => c.opts.pictureBase64)).toHaveLength(0);
+      expect($("host-note").textContent).not.toMatch(/no longer on the slide/i);
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("keeps the chart editable after that recovery, so the next edit still lands", async () => {
+    const raster = stubRaster();
+    try {
+      host.updateChartThrows = true;
+      host.slideHoldsOnlyChart = false;
+      host.insertResult = { slideId: "s1", shapeId: "grp-new", left: 40, top: 50 };
+      await loadThenUpdate();
+      // The button still reads Update, against the shape the recovery created —
+      // not the dead one, and not "Insert into slide".
+      expect(($("insert") as HTMLButtonElement).textContent).toMatch(/update/i);
+      host.updateChartThrows = false;
+      host.updateResult = { slideId: "s1", shapeId: "grp-newer", left: 40, top: 50 };
+      $("insert").click();
+      await settle();
+      expect(host.calls.updateChart.at(-1)?.target).toMatchObject({ shapeId: "grp-new" });
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("still says 'gone' when the chart really is gone — nothing was destroyed to recover", async () => {
+    // The other side of the same coin: an update that found nothing to replace
+    // destroyed nothing, so there is no wreckage, no sweep, and no chart to
+    // draw back. Telling this user to insert again is right; doing it for the
+    // case above would have given them the chart twice.
+    host.updateResult = undefined; // resolved no shape — the user deleted it
+    await loadThenUpdate();
+    expect(host.calls.swept).toHaveLength(0);
+    expect(host.calls.insertScene).toHaveLength(0);
+    expect($("host-note").textContent).toMatch(/no longer on the slide/i);
+  });
 });
 
 describe("demo-insert one-shot deck insert", () => {

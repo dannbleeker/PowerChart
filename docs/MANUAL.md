@@ -38,7 +38,11 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
    column A is series names. Pasting a range from Excel (Ctrl+V) works.
 3. Adjust options; the preview updates live.
 4. **Insert into slide.** If a placeholder or shape is selected, the chart
-   fills its bounds; repeated inserts cascade.
+   fills its bounds. Otherwise it is placed clear of whatever is already on the
+   slide — below it, scaled down to fit the space left if it will not go at full
+   size (the pane says so when it does). A slide with no room left falls back to
+   a small cascading offset, so the chart lands somewhere you can see and drag
+   rather than off the edge.
 5. **Re-edit later**: select the chart on the slide — the pane shows an
    "Edit it" banner. Or click **Edit selected chart** to load its data and
    options back into the pane, change anything, and **Update chart** to
