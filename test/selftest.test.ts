@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { installHost, makeSlide, makeShape, applyWebProfile, faults } from "./helpers/office-host";
 import { CHART_TAG, requestStop, resetStop, isStopRequested } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
+import { setTracing, traceLog } from "../src/core/trace";
 import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "../src/taskpane/selftest";
 
 /**
@@ -30,12 +31,15 @@ describe("the host self-test battery", () => {
       "insert on top of an earlier run",
       "two slides claiming one slot",
       "edit a chart on the visible slide",
-      "edit the chart the user selected",
-      "stop a run part-way",
-      "the chart is actually visible",
       "insert onto a slide that already has content",
       "same scale across the deck",
       "explode a degraded picture",
+      // The three newest last, heaviest dead last — a crash in unproven code
+      // must not cost the verdicts of scenarios that already work. Pinned,
+      // because the ordering is a diagnostic property, not a detail.
+      "edit the chart the user selected",
+      "stop a run part-way",
+      "the chart is actually visible",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
@@ -202,6 +206,30 @@ describe("the scenarios the selection API unlocked", () => {
     const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
     faults.refuseSlideDelete = false;
     expect(r.detail, "left a slide behind and said nothing").toMatch(/could not be removed/i);
+  });
+
+  it("announces a scenario BEFORE running it, so a crash names the right one", async () => {
+    // Every verdict this battery emits is past tense. A run that dies mid
+    // scenario therefore leaves the PREVIOUS scenario's line as its last word
+    // — off by one, and pointing at the one thing that demonstrably worked.
+    // That is not hypothetical: two real-host rounds have been diagnosed from
+    // a screenshot of the pane rather than a log, because the log only exists
+    // once a run ends and neither run ended.
+    setTracing(true);
+    try {
+      installHost([makeSlide("s1")]);
+      await runSelfTest("probe");
+      const entries = traceLog().entries.filter((e) => e.scope === "selftest");
+      const first = entries[0];
+      expect(first?.message, "the first thing said about a scenario was its verdict").toBe("scenario starting");
+      expect(first?.data?.name).toBe("insert on top of an earlier run");
+      // And one announcement per scenario, each before its own verdict.
+      const starts = entries.filter((e) => e.message === "scenario starting");
+      expect(starts).toHaveLength(9);
+      for (const s of starts) expect(s.data?.name, "an announcement with no name").toBeTruthy();
+    } finally {
+      setTracing(false);
+    }
   });
 
   it("can be stopped, and says which scenarios were never reached", async () => {

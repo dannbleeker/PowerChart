@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { setTracing, trace, traceLog, traceMark, tracing } from "../src/core/trace";
+import { onTrace, setTracing, trace, traceLog, traceMark, tracing } from "../src/core/trace";
 
 afterEach(() => setTracing(false));
 
@@ -182,5 +182,45 @@ describe("the summary that makes a long trace readable", () => {
     const { summary } = traceLog(mark);
     expect(summary.steps).toEqual([{ scope: "demo", message: "item finished", n: 1 }]);
     expect(summary.problems).toEqual([]);
+  });
+});
+
+describe("watching the trace as it happens", () => {
+  afterEach(() => onTrace(undefined));
+
+  it("hands each entry to a watcher as it is recorded, not at the end", () => {
+    // The pane's live step list is fed from here. It exists because the run
+    // LOG does not survive the failures worth explaining: it becomes
+    // downloadable only when a run ends, and real-host rounds have been lost
+    // to a run that never ended and to a PowerPoint killed outright. Whatever
+    // is already on screen survives both — so a watcher must see each step at
+    // the moment it happens, not receive a batch afterwards.
+    setTracing(true);
+    const seen: string[] = [];
+    onTrace((e) => seen.push(`${e.scope}:${e.message}`));
+    trace("selftest", "scenario starting", { name: "alpha" });
+    expect(seen, "the watcher was not called during the run").toEqual(["selftest:scenario starting"]);
+    trace("selftest", "scenario passed", { name: "alpha" });
+    expect(seen).toHaveLength(2);
+  });
+
+  it("keeps the record when the watcher throws", () => {
+    // The window is a convenience; the log is the evidence. A broken renderer
+    // must never cost an entry — least of all during the crash it is there to
+    // photograph.
+    setTracing(true);
+    onTrace(() => {
+      throw new Error("the pane blew up");
+    });
+    expect(() => trace("host", "gave up waiting", { what: "rasterising a slide" })).not.toThrow();
+    expect(traceLog().entries).toHaveLength(1);
+  });
+
+  it("says nothing to a watcher while tracing is off", () => {
+    setTracing(false);
+    const seen: string[] = [];
+    onTrace((e) => seen.push(e.message));
+    trace("demo", "something happened");
+    expect(seen).toEqual([]);
   });
 });

@@ -280,6 +280,23 @@
               ><input type="checkbox" id="demo-trace" checked /> Verbose trace</label
             >
           </div>
+          <div class="steps-head">
+            <span id="demo-steps-label">Live steps</span>
+            <button id="demo-steps-copy" class="linkish" title="Copy every line below to the clipboard">Copy</button>
+            <button id="demo-steps-clear" class="linkish" title="Empty the list">Clear</button>
+          </div>
+          <pre
+            id="demo-steps"
+            class="steps"
+            tabindex="0"
+            aria-live="polite"
+            aria-label="Live steps of the run in progress"
+          ></pre>
+          <p class="hint">
+            Each step appears here as it happens, newest last. This is the only record that survives PowerPoint crashing
+            or the tab being closed — the run log can only be downloaded once a run ENDS, and the runs worth explaining
+            are the ones that do not. If something goes wrong, copy or screenshot this before reloading.
+          </p>
           <p class="hint">
             Every run ends by re-reading its slides once the host has settled: duplicate slides a stalled retry left
             behind are deleted, NOT COMPLETE banners are cleared from charts that are in fact complete, and charts that

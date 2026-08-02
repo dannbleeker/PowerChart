@@ -171,6 +171,56 @@ body {
   margin-bottom: 0;
 }
 
+.steps-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.steps-head span {
+  flex: 1;
+}
+/* A button that reads as a link — these sit inside a label row and must not
+   compete with the run controls above them. */
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent, #2563eb);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.linkish:disabled {
+  color: var(--muted);
+  cursor: default;
+  text-decoration: none;
+}
+/* The live transcript. Fixed height and scrolled, because it must not push the
+   rest of the pane around while a run is going: a control that moves under the
+   cursor mid-run is worse than no control. */
+.steps {
+  height: 132px;
+  overflow: auto;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  background: var(--line-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg);
+}
+.steps:empty::before {
+  content: "Steps appear here while a run is going.";
+  color: var(--muted);
+}
+
 .hint {
   color: var(--muted);
   font-size: 11px;

@@ -49,7 +49,7 @@ import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } fr
 import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
-import { setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
+import { onTrace, setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
 import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "./selftest";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
@@ -2714,6 +2714,59 @@ function wireInsert() {
     // validated against real hosts, uncheck it in taskpane.html and drop the
     // `checked` — the module, its call sites and this toggle all keep working,
     // so a future investigation is one click away rather than a re-implementation.
+    // The live transcript.
+    //
+    // Wired to the trace stream rather than to the run's own reporting, so it
+    // costs no new instrumentation and shows exactly what the log would have —
+    // including the `at=<phase>` on any error. It exists because the log does
+    // NOT survive the failures worth explaining: it becomes downloadable only
+    // when a run ends, and two real-host rounds have now been lost to a run
+    // that never ended (a wedge at 1819s) and one PowerPoint killed outright
+    // ("Sorry, we ran into a problem", at 108s). What is on screen survives
+    // both, and can be copied or photographed before the reload.
+    const steps = $("demo-steps");
+    /** Newest last, capped — a pane is not a heap, and the tail is what is read. */
+    const STEP_LINES = 300;
+    const lines: string[] = [];
+    const paintSteps = (): void => {
+      steps.textContent = lines.join("\n");
+      // Follow the tail, unless the user has scrolled up to read something —
+      // yanking the view back is how a live log becomes unreadable.
+      const atBottom = steps.scrollHeight - steps.scrollTop - steps.clientHeight < 24;
+      if (atBottom) steps.scrollTop = steps.scrollHeight;
+    };
+    onTrace((e) => {
+      // The data payload matters as much as the message for the lines that
+      // locate a failure — `error`, `name`, `detail` are where the phase and
+      // the verdict live. Kept short so one step is one readable line.
+      const bits = Object.entries(e.data ?? {})
+        .filter(([, v]) => v !== undefined && v !== "" && typeof v !== "object")
+        .map(([k, v]) => `${k}=${String(v)}`)
+        .join(" ");
+      lines.push(
+        `${String(Math.round(e.ms / 100) / 10).padStart(6)}s  ${e.scope}  ${e.message}${bits ? "  " + bits : ""}`,
+      );
+      if (lines.length > STEP_LINES) lines.splice(0, lines.length - STEP_LINES);
+      paintSteps();
+    });
+    $("demo-steps-copy").addEventListener("click", () => {
+      const text = lines.join("\n");
+      if (!text) {
+        note("No steps to copy yet.", "err");
+        return;
+      }
+      void navigator.clipboard
+        ?.writeText(text)
+        .then(() => note(`Copied ${lines.length} step(s).`, "ok"))
+        // Clipboard access can be refused, and the text is still on screen —
+        // say so rather than leaving the click looking like it did nothing.
+        .catch(() => note("The browser would not give us the clipboard — select the text instead.", "err"));
+    });
+    $("demo-steps-clear").addEventListener("click", () => {
+      lines.length = 0;
+      paintSteps();
+    });
+
     const traceToggle = $("demo-trace") as HTMLInputElement | null;
     if (traceToggle?.checked) {
       setTracing(true);
