@@ -190,6 +190,20 @@ describe("the scenarios the selection API unlocked", () => {
     expect(bad.detail).toContain("nothing is visible");
   });
 
+  it("says so when it cannot take its own scratch slide back", async () => {
+    // The visibility scenario is the only one that borrows a slide and returns
+    // it, so it is the only one that can leave litter. `deleteSlideById` is
+    // best-effort and answers false rather than throwing, and the first version
+    // of this scenario discarded that answer in a `finally` — so a host that
+    // refused the delete left a tagged chart in the deck under a verdict that
+    // read perfectly clean.
+    installHost([makeSlide("s1")]);
+    faults.refuseSlideDelete = true;
+    const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    faults.refuseSlideDelete = false;
+    expect(r.detail, "left a slide behind and said nothing").toMatch(/could not be removed/i);
+  });
+
   it("skips rather than fails on a host below PowerPointApi 1.5", async () => {
     // "We could not check" and "we checked and it is broken" are different
     // answers, and reporting the first as the second is how a requirement-set
