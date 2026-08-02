@@ -42,6 +42,12 @@ belongs with the thing it tests, not with the reason it was written.)
   polygons, options), `pane-state` / `pane-host-actions` / `pane-widgets` /
   `dom-pane` (task pane), `skill*`, `parity`, `snapshots`, `a11y-svg`,
   `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
+- **The deck a run produces, audited from its bytes** — `verify-deck` (did
+  PowerChart write what it meant to: slot tags, groups, config parts, shape ids
+  unique per slide), `ooxml-validate` (is it a legal `.pptx` at all, against the
+  OOXML grammar, plus the one baselined finding it is allowed to have),
+  `triage` (joining a saved deck to the run log that produced it). The first two
+  catch nearly disjoint sets and both gate CI on `examples/showcase.pptx`.
 
 ## The fake PowerPoint host
 

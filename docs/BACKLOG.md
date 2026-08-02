@@ -42,6 +42,80 @@ it must be related from the presentation, not dropped at the root.
 a decision about precedence (deck style vs the user's own imported style) before
 any code.
 
+### Drive PowerPoint on the web from Playwright, so the manual run is a command
+
+**Researched:** 2026-08-02.
+
+The standing test run is down to four items because the in-host battery
+absorbed the rest. The remaining ones need a human because nothing can click
+the pane — but something can. Playwright reaches an add-in task pane, and there
+is a public working reference implementation to copy from
+(`kzarzycki/powerpoint-mcp`, its `e2e/` directory).
+
+**What makes it tractable here:** `manifest.xml` already points at
+`https://localhost:3000`, which is the constraint Microsoft's own (undocumented)
+sideload seam enforces — `office-addin-dev-settings` appends
+`wdaddindevserverport` / `wdaddinmanifestfile` / `wdaddintest` to an
+Office-on-the-web document URL, gated behind a `WEB_SIDELOAD_TEST` env var that
+exists for Microsoft's internal CI. `playwright-core` is already a
+devDependency.
+
+**Blockers, all defeated in that reference repo:** headless user agents are
+sniffed and sideloading silently skipped (spoof UA + `sec-ch-ua`); Chrome's
+Private Network Access blocks the WAC origin from reaching loopback (intercept
+with `context.route` and answer `Access-Control-Allow-Private-Network`); the
+`wdaddintest` flag does *not* in fact suppress the developer-mode dialogs, so
+they must be clicked. Reach the pane with `page.frames()` — it is a nested
+cross-origin iframe, so `frameLocator()` chaining cannot get there, and Selenium
+cannot reach it at all (office-js#5264).
+
+**The real wall is login**, not the add-in machinery. That reference repo primes
+a browser profile by hand in a headed window and runs headless afterwards; its
+own CI does not run the suite. Headless would need Entra certificate-based auth
+(Playwright `clientCertificates`, ≥1.46 — Microsoft's Power Platform samples do
+exactly this), which needs a test user with CBA that the owner probably cannot
+self-serve on a corporate tenant.
+
+**Priority:** medium — but only the local half. Run locally it turns the
+remaining manual items into `npm run test:e2e` and pays for itself without
+solving login. CI is a separate, owner-gated question and may never be worth it.
+Covers PowerPoint **on the web** only; desktop stays human either way.
+
+### A golden-image gate on the generated deck
+
+**Researched:** 2026-08-02 (measured against `examples/showcase.pptx`).
+
+The schema half of this shipped — `scripts/validate-ooxml.mjs` gates CI, and
+`verify-deck.mjs` gained the duplicate-`cNvPr`-id check that neither tool had.
+What is left is the visual half.
+
+LibreOffice headless renders the deck to PDF in 7 s and to 122 PNGs in 17.6 s,
+and — the part that makes a gate possible at all — the output is **byte-identical
+across fresh profiles**, so it can be compared by hash rather than by a fuzzy
+pixel diff. Its usual PPTX weak spots do not apply here: this generator emits no
+gradients, no pattern fills, no `normAutofit` and no effects, which is every
+category where LibreOffice is known to diverge.
+
+**What it needs first:** a pinned container. The deck asks for Segoe UI and
+Calibri, neither present in CI, so every render is a substituted render —
+self-consistent, but different from a laptop that has the real fonts, and
+different again after a LibreOffice minor bump. Without pinning, the baseline
+churns and the gate gets switched off. Consider asserting structure (page count,
+no all-white page) rather than hashes: version-tolerant, no committed baselines,
+and it still catches "the chart rendered to nothing".
+
+**Frame it as** "did our own output change", never as "does this match
+PowerPoint" — no FOSS renderer is close enough to PowerPoint for the second
+claim, and a gate that overclaims gets ignored.
+
+**Do not** use a LibreOffice round-trip as a PowerPoint proxy: converting the
+showcase deck back to `.pptx` silently deleted all 122 `ppt/tags/*.xml` parts,
+leaving 121 charts non-re-editable. Anything learned that way is a fact about
+LibreOffice.
+
+**Priority:** low. The cheap, deterministic half is already in CI; this one buys
+less and costs a container to maintain.
+
 ## 2. Rejected or already covered (do not re-propose)
 
 - **An image / icon node** — not reachable in the live add-in, so nothing can

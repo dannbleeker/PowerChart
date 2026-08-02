@@ -477,14 +477,25 @@ while the add-in is being validated against real hosts, and it rides along
 inside the run log rather than in a separate file. Nothing is written while it
 is off.
 
-**Run host self-test** runs the six things the demo deck does not cover:
+**Run host self-test** runs the nine things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
-chart on the slide you are looking at, adding charts to a slide that already
-has content, a deck-wide rescale, and turning a degraded picture back into
-native shapes. Each reports what was actually
-observed; one that your host cannot run is reported as skipped rather than
-failed. It leaves its slides in the deck so you can look at them — delete them
-when you are done, exactly like the demo deck.
+chart on the slide you are looking at, editing the chart you have *selected*,
+stopping a run part-way, whether a chart is actually visible on the slide,
+adding charts to a slide that already has content, a deck-wide rescale, and
+turning a degraded picture back into native shapes. Each reports what was
+actually observed; one that your host cannot run is reported as skipped rather
+than failed. It leaves its slides in the deck so you can look at them — delete
+them when you are done, exactly like the demo deck.
+
+Three of those are new, and are the ones worth understanding. **Editing the
+chart you selected** goes through the same read the pane uses when you click a
+chart and press *Edit it* — a different code path from every other scenario,
+and the one an actual user travels on. **Whether a chart is visible** asks the
+host to render a slide before and after drawing, and compares: every other
+check in the add-in counts shapes and reads tags, all of which pass happily for
+a chart drawn in white, at zero size, or off the edge of the slide. It borrows
+a slide to do this and takes it away again. **Stopping part-way** confirms a
+stopped run adds nothing and leaves nothing behind claiming to be a chart.
 
 **Download run log** saves the last run as JSON: the run's identity token,
 per-item timings, statuses, what the host did to each slide, and the repair

@@ -166,11 +166,35 @@ export async function readDeckBytes(bytes) {
       origin,
       stamped: xml.includes(NOT_COMPLETE),
       missingTagParts: missingParts,
+      duplicateShapeIds: duplicateShapeIds(xml),
     });
   }
 
   const allTagParts = Object.keys(zip.files).filter((f) => /^ppt\/tags\/tag\d+\.xml$/.test(f));
   return { rows, allTagParts, referencedTagParts, types: types ?? "" };
+}
+
+/**
+ * Non-unique `<p:cNvPr id="…">` values on one slide.
+ *
+ * The classic trigger for PowerPoint's "repair" dialog, and invisible to
+ * everything else here: the schema does not express uniqueness, so the OOXML
+ * validator passes a slide with two shapes sharing an id (measured — injected
+ * `id="1"` twice and it reported nothing), and a shape-tree walk that only
+ * counts elements never compares them.
+ *
+ * Ids must be unique per slide, INCLUDING inside groups, so this reads every
+ * `cNvPr` in the part rather than only the top level. Non-numeric or absent
+ * ids are ignored — those are a different kind of wrong and not this check's.
+ */
+function duplicateShapeIds(xml) {
+  const seen = new Set();
+  const dupes = new Set();
+  for (const m of xml.matchAll(/<p:cNvPr\b[^>]*\bid="(\d+)"/g)) {
+    if (seen.has(m[1])) dupes.add(m[1]);
+    else seen.add(m[1]);
+  }
+  return [...dupes];
 }
 
 /** Faults are things THIS REPO wrote wrong — never things the host did badly. */
@@ -180,6 +204,10 @@ export function faultsIn({ rows, allTagParts, referencedTagParts, types }) {
     if (r.missingTagParts.length)
       faults.push(`slide ${r.index + 1}: references missing tag part(s) ${r.missingTagParts.join(", ")}`);
     if (r.configMalformed) faults.push(`slide ${r.index + 1}: ${CONFIG_TAG} is not valid JSON`);
+    if (r.duplicateShapeIds?.length)
+      faults.push(
+        `slide ${r.index + 1}: shape id(s) ${r.duplicateShapeIds.join(", ")} used more than once — PowerPoint will offer to repair the file`,
+      );
     if (r.slot !== null && typeof r.slot !== "number") faults.push(`slide ${r.index + 1}: slot tag is malformed`);
     // A config with nothing to hang it on would be unreachable from the pane.
     if (r.config && !r.chartObject)

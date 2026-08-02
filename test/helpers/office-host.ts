@@ -96,6 +96,36 @@ export const faults = {
    * rest of a scan carry on.
    */
   unansweredTagLoads: 0,
+  /**
+   * `setSelectedShapes([])` does not clear the selection — PowerPoint on the
+   * web, office-js#3083. Desktop clears it.
+   *
+   * Worth modelling because of what it costs downstream rather than what it
+   * costs at the call: on the web a picture cannot be inserted while a shape is
+   * selected (office-js#3698), so a battery whose scenario leaves a chart
+   * selected fails the NEXT scenario instead of its own. That is the hardest
+   * kind of failure to read in a run log, and it is only reachable here if the
+   * fake refuses the clear the way the web host does.
+   */
+  webIgnoresDeselect: false,
+  /**
+   * `setSelectedShapes(ids)` selects SOMETHING, but not what was asked for.
+   *
+   * A host that takes the call and gets the shape wrong is worse than one that
+   * refuses: the pane then edits a chart the user did not click. The scenario
+   * that covers the selection round trip has to be able to see that, and it
+   * can only see it if the fake is capable of doing it.
+   */
+  selectionIgnoresIds: false,
+  /**
+   * `Slide.getImageAsBase64` answers with the same bytes whatever is on the
+   * slide — a host that hands back a blank render, or a cached one.
+   *
+   * The visibility scenario exists to catch a chart that is structurally
+   * perfect and invisible. Against a host like this its comparison is
+   * meaningless, and it must report that rather than pass.
+   */
+  constantSlideImage: false,
 };
 
 /**
@@ -122,6 +152,8 @@ export function applyWebProfile(): void {
   faults.hollowReads = 3;
   // The first grouping attempt is refused outright.
   faults.refuseGroups = 1;
+  // setSelectedShapes([]) is ignored — office-js#3083.
+  faults.webIgnoresDeselect = true;
   // NOT refusePictureFill. The web host supports PowerPointApi 1.8 and takes
   // pictures — that support is the whole reason the degraded-picture path
   // exists there. Refusing it models a DIFFERENT host, and it silently
@@ -150,6 +182,16 @@ export const hostSlideSize = { cx: 12192000, cy: 6858000 };
 
 /** Exports whose base64 is built during the sync that was asked for it. */
 const pendingExports: { result: { value: string }; build: () => Promise<string> }[] = [];
+
+/**
+ * The host's current SHAPE selection, shared by everything that touches it.
+ *
+ * One array, mutated in place, because `Slide.setSelectedShapes` (the writer)
+ * and `Presentation.getSelectedShapes` (the reader) are on different classes
+ * and a test needs the round trip between them to be real. `installHost` seeds
+ * it; the slide method writes it; the presentation getter reads it.
+ */
+const selectionRef: FakeShape[] = [];
 
 /**
  * A minimal .pptx carrying nothing but a `ppt/presentation.xml` with the
@@ -543,6 +585,55 @@ export function makeSlide(id: string) {
     exportAsBase64() {
       const result = { value: "" };
       pendingExports.push({ result, build: exportedDeckBase64 });
+      return result;
+    },
+    /**
+     * PowerPointApi 1.5's shape selection — on **Slide**, which is the point.
+     *
+     * `Presentation` has `getSelectedShapes` and `setSelectedSlides` but no
+     * `setSelectedShapes`; the shape half is one class down. Believing
+     * otherwise is why the in-host battery went months without covering the
+     * pane's selection-driven paths at all.
+     *
+     * Writes through to the same array `getSelectedShapes()` reads, so a
+     * select-then-read round trip means something here.
+     */
+    setSelectedShapes(ids: string[]) {
+      if (!ids.length) {
+        // Cleared on desktop, IGNORED on PowerPoint on the web
+        // (office-js#3083). Modelled as the web does it when the fault is
+        // armed, because a scenario that relies on the clear working is one
+        // that will pass here and strand the next scenario in the field.
+        if (!faults.webIgnoresDeselect) selectionRef.length = 0;
+        return;
+      }
+      const found = faults.selectionIgnoresIds
+        ? created.filter((s) => !s.deleted).slice(0, 1)
+        : created.filter((s) => !s.deleted && ids.includes(s.id));
+      selectionRef.length = 0;
+      selectionRef.push(...found);
+    },
+    /**
+     * PowerPointApi 1.8's slide raster. A ClientResult like `exportAsBase64`.
+     *
+     * The fake cannot draw, so it answers with a PNG whose payload encodes what
+     * is ON the slide — live shape count and total ink area. That is enough for
+     * the only assertion worth making here: an EMPTY slide and a slide with a
+     * chart on it must not produce the same image. A fake that returned a fixed
+     * string would let a scenario claiming "the chart is visible" pass over a
+     * blank slide, which is precisely the failure the scenario exists to catch.
+     */
+    getImageAsBase64(_options?: { width?: number }) {
+      const result = { value: "" };
+      pendingExports.push({
+        result,
+        build: async () => {
+          if (faults.constantSlideImage) return btoa("PNG:blank");
+          const live = created.filter((s) => !s.deleted);
+          const ink = live.reduce((n, s) => n + Math.max(0, s.width) * Math.max(0, s.height), 0);
+          return btoa(`PNG:${slide.id}:shapes=${live.length}:ink=${ink}`);
+        },
+      });
       return result;
     },
     tags: {
@@ -948,11 +1039,15 @@ export function installHost(
       },
       getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
       getSelectedShapes: () => ({
-        items: selectedShapes,
+        // The LIVE selection, not the array installHost was handed — otherwise
+        // `setSelectedShapes` would write somewhere nothing reads.
+        get items() {
+          return selectionRef;
+        },
         // Same contract as a slide's own collection: an `items/…` selector
         // populates the shapes it names. See ShapeCollection.load.
         load(p?: string) {
-          if (p?.includes("items/")) for (const s of selectedShapes) s.load();
+          if (p?.includes("items/")) for (const s of selectionRef) s.load();
         },
       }),
       setSelectedSlides: (ids: string[]) => {
@@ -1110,6 +1205,13 @@ export function installHost(
   faults.faultShapeCollectionLoad = false;
   faults.strictShapeReads = false;
   faults.unansweredTagLoads = 0;
+  faults.webIgnoresDeselect = false;
+  faults.selectionIgnoresIds = false;
+  faults.constantSlideImage = false;
+  // The live shape selection starts as installHost was told, and is mutated
+  // from there by Slide.setSelectedShapes.
+  selectionRef.length = 0;
+  selectionRef.push(...selectedShapes);
   unansweredShapeReads.clear();
   unansweredNullChecks.clear();
   faults.swallowDecks = 0;

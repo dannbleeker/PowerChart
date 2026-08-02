@@ -99,6 +99,28 @@ describe("verify-deck: the faults it must catch", () => {
     expect(faults.join(" ")).toMatch(/missing tag part/i);
   }, 30_000);
 
+  it("catches two shapes on one slide sharing a cNvPr id", async () => {
+    // The classic trigger for PowerPoint's "repair" dialog, and the one defect
+    // nothing else here can see: the schema does not express uniqueness, so
+    // the OOXML validator passes a slide with a duplicated id (measured), and
+    // a shape-tree walk that counts elements never compares them.
+    //
+    // Ids must be unique per slide INCLUDING inside groups, so the check reads
+    // every cNvPr in the part rather than only the top level.
+    const bytes = await mutate(await deck(), "ppt/slides/slide1.xml", (s) =>
+      s.replace(/(<p:cNvPr[^>]*\bid=")(\d+)(")/g, (m, a, _id, c) => `${a}7${c}`),
+    );
+    const faults = faultsIn(await readDeckBytes(bytes));
+    expect(faults.join(" ")).toMatch(/used more than once/i);
+    expect(faults.join(" ")).toMatch(/repair/i);
+  }, 30_000);
+
+  it("does not cry duplicate over a healthy deck", async () => {
+    // The other half: a check that fires on everything is the same as no check.
+    const faults = faultsIn(await readDeckBytes(await deck()));
+    expect(faults.join(" ")).not.toMatch(/used more than once/i);
+  }, 30_000);
+
   it("catches a tag part no slide references", async () => {
     const zip = await JSZip.loadAsync(await deck());
     zip.file("ppt/tags/tag99.xml", "<p:tagLst/>");

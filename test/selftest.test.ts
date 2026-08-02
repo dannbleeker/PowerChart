@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installHost, makeSlide, applyWebProfile, faults } from "./helpers/office-host";
+import { installHost, makeSlide, makeShape, applyWebProfile, faults } from "./helpers/office-host";
+import { CHART_TAG } from "../src/render/powerpoint";
+import { sampleConfig } from "../src/core/samples";
 import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "../src/taskpane/selftest";
 
 /**
- * The host self-test — six paths the demo deck never touches.
+ * The host self-test — nine paths the demo deck never touches.
  *
  * The battery's own value is that it runs against a REAL PowerPoint, which
  * nothing here can do. What these cases pin is the property that makes it
  * worth clicking: that it comes back with a verdict for every scenario, that
  * the verdicts say what was observed, and above all that a scenario which
- * blows up does not take the other five with it. A battery that stops at the
+ * blows up does not take the other eight with it. A battery that stops at the
  * first error spends a whole real-host session to learn one thing — and the
  * scenarios after the failure are precisely the ones nobody has data for.
  */
@@ -23,11 +25,14 @@ describe("the host self-test battery", () => {
   it("returns a verdict for every scenario, in order", async () => {
     installHost([makeSlide("s1")]);
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(9);
     expect(results.map((r) => r.name)).toEqual([
       "insert on top of an earlier run",
       "two slides claiming one slot",
       "edit a chart on the visible slide",
+      "edit the chart the user selected",
+      "stop a run part-way",
+      "the chart is actually visible",
       "insert onto a slide that already has content",
       "same scale across the deck",
       "explode a degraded picture",
@@ -52,7 +57,7 @@ describe("the host self-test battery", () => {
       SlideLayoutType: { blank: "blank" },
     });
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(9);
     // Every one of them ran and reported; none is missing.
     for (const r of results) {
       expect(r.name).toBeTruthy();
@@ -102,9 +107,97 @@ describe("the host self-test battery", () => {
     installHost([makeSlide("s1")]);
     applyWebProfile();
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(9);
     const named = byName(results);
     expect(named["insert on top of an earlier run"].detail).toBeTruthy();
+  });
+});
+
+/**
+ * The three scenarios added when `setSelectedShapes` turned out to exist.
+ *
+ * Each is asserted twice: that it PASSES on a well-behaved host, and that it
+ * FAILS when the thing it exists to catch is actually broken. Only the second
+ * half makes it a test. A scenario that cannot fail is a line in a report that
+ * always says "ok", which is worse than no scenario at all — it is evidence,
+ * and it is false.
+ */
+describe("the scenarios the selection API unlocked", () => {
+  it("edits through the selection, and notices when the host selects the wrong shape", async () => {
+    installHost([makeSlide("s1")]);
+    const good = byName(await runSelfTest("probe"))["edit the chart the user selected"];
+    expect(good.skipped, good.detail).toBeFalsy();
+    expect(good.ok, good.detail).toBe(true);
+
+    // A host that takes the call and selects something else. The pane would
+    // then edit a chart the user did not click — the failure this scenario is
+    // for, and one no shape count or tag read can see.
+    //
+    // It lands on the "did not read back as a PowerChart" branch rather than
+    // the "read back a different chart" one, because the shape it wrongly
+    // selects is a chart PART and parts carry no config tag. Both branches are
+    // the same defect — the selection went to the wrong shape — and the message
+    // is pinned so a later change cannot quietly turn this into a pass for an
+    // unrelated reason.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    faults.selectionIgnoresIds = true;
+    const bad = byName(await runSelfTest("probe"))["edit the chart the user selected"];
+    faults.selectionIgnoresIds = false;
+    expect(bad.ok, `reported ok against a host that selects the wrong shape: ${bad.detail}`).toBe(false);
+    expect(bad.skipped, "reported as skipped rather than broken").toBeFalsy();
+    expect(bad.detail).toMatch(/did not read back as a PowerChart|read back a different chart/);
+  });
+
+  it("reports a stop honestly, and will not call a leftover chart a clean stop", async () => {
+    installHost([makeSlide("s1")]);
+    const good = byName(await runSelfTest("probe"))["stop a run part-way"];
+    expect(good.ok, good.detail).toBe(true);
+    expect(good.detail).toContain("stopped at a batch boundary");
+
+    // A chart already on the slide under the name a stopped insert would use.
+    // The scenario must read that as "the stop left something behind" — if it
+    // only checked that the throw was a stop, a host that stopped AND littered
+    // would report a clean pass.
+    vi.unstubAllGlobals();
+    const slide = makeSlide("s1");
+    const litter = makeShape("geometric", "rectangle", { left: 0, top: 0, width: 10, height: 10 });
+    litter.name = "PowerChart";
+    litter.tagStore.set(CHART_TAG, JSON.stringify({ ...sampleConfig("clustered"), title: "probe stopped" }));
+    slide.created.push(litter);
+    installHost([slide]);
+    const bad = byName(await runSelfTest("probe"))["stop a run part-way"];
+    expect(bad.ok, `called a stop clean with a chart left behind: ${bad.detail}`).toBe(false);
+    expect(bad.detail).toContain("left a re-editable chart");
+  });
+
+  it("sees the chart on the slide, and fails when the host renders the same bytes regardless", async () => {
+    installHost([makeSlide("s1")]);
+    const good = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    expect(good.skipped, good.detail).toBeFalsy();
+    expect(good.ok, good.detail).toBe(true);
+
+    // A host whose rasteriser answers the same thing for an empty slide and a
+    // slide with a chart on it. The comparison is then worthless, and saying so
+    // is the only honest verdict — this is the one scenario whose whole value
+    // is the difference between two images.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    faults.constantSlideImage = true;
+    const bad = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    faults.constantSlideImage = false;
+    expect(bad.ok, `passed while every render was identical: ${bad.detail}`).toBe(false);
+    expect(bad.detail).toContain("nothing is visible");
+  });
+
+  it("skips rather than fails on a host below PowerPointApi 1.5", async () => {
+    // "We could not check" and "we checked and it is broken" are different
+    // answers, and reporting the first as the second is how a requirement-set
+    // gap gets diagnosed as a bug.
+    installHost([makeSlide("s1")], [], undefined, (v) => v !== "1.5");
+    const r = byName(await runSelfTest("probe"))["edit the chart the user selected"];
+    expect(r.skipped, r.detail).toBe(true);
+    expect(r.detail).toContain("1.5");
   });
 });
 
