@@ -225,6 +225,21 @@ function report(deck, log, run, t, showAll) {
   if (trace?.summary) {
     console.log(`\n  TRACE ${trace.entries?.length ?? 0} entries${trace.dropped ? `, ${trace.dropped} dropped` : ""}`);
     for (const s of trace.summary.steps.slice(0, 8)) console.log(`    ${pad(s.n, 6)}${s.scope}  ${s.message}`);
+    // Every phase an error escaped, whether or not it made the top 8 above.
+    //
+    // These are the most locating lines in the whole log and the least likely
+    // to be common enough to rank: a run with one fatal read has one of them
+    // against hundreds of ordinary steps. The `problems` tally below carries
+    // what the HOST said, truncated to keep one debugInfo blob from swamping
+    // it; this carries what the add-in was DOING, which is the half that used
+    // to be missing entirely and took a session to reconstruct.
+    const phases = trace.summary.steps.filter(
+      (s) => s.scope === "error" && !trace.summary.steps.slice(0, 8).includes(s),
+    );
+    if (phases.length) {
+      console.log(`  phases an error escaped:`);
+      for (const s of phases) console.log(`    ${pad(s.n, 6)}${s.message}`);
+    }
     if (trace.summary.problems.length) {
       console.log(`  problems:`);
       for (const p of trace.summary.problems.slice(0, 8)) {
