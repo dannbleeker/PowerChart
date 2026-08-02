@@ -54,6 +54,8 @@ import {
   deleteSlideById,
   isStopped,
   isStopRequested,
+  isTimeout,
+  readbackTimeoutMs,
   loadChartFromSelection,
   requestStop,
   resetStop,
@@ -91,6 +93,19 @@ export interface ScenarioResult {
   detail: string;
   ms: number;
 }
+
+/**
+ * How long the selection scenario waits on a host that has stopped answering.
+ *
+ * Short on purpose. The default budget exists to break an infinite wait; this
+ * one exists because we already KNOW what the wait ends in on the web, and
+ * three minutes of a person's evening to re-learn it is not a test.
+ *
+ * Capped by the default rather than replacing it: ten seconds is shorter than
+ * the ninety this normally sits under, and far longer than the milliseconds a
+ * test shortens that to.
+ */
+const selectionBudgetMs = (): number => Math.min(10_000, readbackTimeoutMs());
 
 const cfg = (title: string, kind: ChartKind = "clustered"): ChartConfig => ({
   ...sampleConfig(kind),
@@ -375,12 +390,19 @@ const editViaSelection: Scenario = async (prefix) => {
   if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
   const [chart] = await probeCharts(prefix);
   if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
-  if (!(await selectShape(chart.target.slideId, chart.target.shapeId))) {
+  if (!(await selectShape(chart.target.slideId, chart.target.shapeId, selectionBudgetMs()))) {
     return { ok: false, skipped: true, detail: "the host would not select the chart" };
   }
   try {
     // Exactly what the pane does when someone presses "Edit it".
-    const picked = await loadChartFromSelection();
+    //
+    // On a short budget, because on PowerPoint on the WEB this call does not
+    // come back at all once a shape has been selected programmatically —
+    // measured, twice: 90 seconds to the bound, then the very next
+    // `setSelectedSlides` also silent. At the full budget this scenario costs
+    // three minutes to learn a thing we already know, so it is given ten
+    // seconds and a name for what it found.
+    const picked = await loadChartFromSelection(selectionBudgetMs());
     if (!picked) return { ok: false, detail: "the selected chart did not read back as a PowerChart" };
     const was = JSON.parse(picked.configJson) as ChartConfig;
     if (was.title !== chart.cfg.title) {
@@ -399,8 +421,34 @@ const editViaSelection: Scenario = async (prefix) => {
         ? "selected, read back, edited through the selection's own target, still re-editable"
         : "edited through the selection, and the result is no longer re-editable",
     };
+  } catch (err) {
+    // Silence is a fact about the HOST, not a defect of ours, and the two must
+    // not read alike in a report. `setSelectedShapes` is GA at PowerPointApi
+    // 1.5 and takes the call, but on the web it leaves the selection subsystem
+    // unable to answer anything afterwards — `getSelectedShapes` and
+    // `setSelectedSlides` both went silent for the full budget in the same
+    // run. Two selection bugs are already open against the web host
+    // (office-js#3083, #3698); this is the same family and worse.
+    //
+    // Reported SKIPPED rather than FAILED, with the reason: nothing in the
+    // add-in is broken by it, because nothing but this battery ever selects a
+    // shape programmatically. A red line here would send the next diagnosis
+    // after our own code.
+    if (isTimeout(err)) {
+      return {
+        ok: false,
+        skipped: true,
+        detail:
+          "the host stopped answering selection calls after a programmatic select — known web-host limitation, " +
+          "same family as office-js#3083 / #3698; the pane's own Edit-it path is unaffected",
+      };
+    }
+    throw err;
   } finally {
-    await clearShapeSelection(chart.target.slideId);
+    // Also on the short budget: once the subsystem is wedged this call is
+    // silent too, and waiting the full budget for a deselect we already know
+    // will not answer is ninety seconds spent on nothing.
+    await clearShapeSelection(chart.target.slideId, selectionBudgetMs());
   }
 };
 

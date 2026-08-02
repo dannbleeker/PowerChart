@@ -81,6 +81,14 @@ remaining manual items into `npm run test:e2e` and pays for itself without
 solving login. CI is a separate, owner-gated question and may never be worth it.
 Covers PowerPoint **on the web** only; desktop stays human either way.
 
+**One item it cannot absorb, and this is now measured rather than assumed:**
+the selection round trip. On the web a programmatic `setSelectedShapes` wedges
+the host's selection subsystem (`docs/RESEARCH.md` §4b), so a driver that
+selects a chart the way the battery does hits the same wall — the wedge is in
+PowerPoint, not in how it is called. Playwright clicking the *canvas* would be a
+real click and might dodge it entirely, which is the one thing worth trying
+first if this is ever built.
+
 ### A golden-image gate on the generated deck
 
 **Researched:** 2026-08-02 (measured against `examples/showcase.pptx`).

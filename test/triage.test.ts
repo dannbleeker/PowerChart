@@ -301,6 +301,33 @@ describe("triage — naming the host bug behind a failure", () => {
     expect(knownBug("did not respond while drawing shapes 1-10 of 39")).toMatch(/office-js#5022/);
   });
 
+  it("sends a wedged selection to the selection bugs, not to the generic sync hang", () => {
+    // A wedged selection subsystem does not throw, it goes quiet — so what the
+    // trace records is a TIMEOUT, and a timeout's text is "did not respond
+    // while <phase>". The generic sync-hang entry matches that too, and on a
+    // first-match-wins table it would claim every one of them and point the
+    // reader at #5022: a different bug, with a different cause and no fix that
+    // applies. The phase name is all that separates them, so the phases that
+    // belong to selection must be matched BEFORE the generic signature.
+    for (const raw of [
+      "PowerPoint did not respond while reading the selected chart (90.0s)",
+      "PowerPoint did not respond while selecting a shape (90.0s)",
+      "PowerPoint did not respond while clearing the shape selection (10.0s)",
+    ]) {
+      expect(knownBug(raw), raw).toMatch(/#3083/);
+      expect(knownBug(raw), raw).not.toMatch(/5022/);
+    }
+    // The scenario's own verdict line lands on the same note.
+    expect(
+      knownBug(
+        "the host stopped answering selection calls after a programmatic select — known web-host limitation, " +
+          "same family as office-js#3083 / #3698; the pane's own Edit-it path is unaffected",
+      ),
+    ).toMatch(/#3083/);
+    // And a hang somewhere else still goes where it always did.
+    expect(knownBug("PowerPoint did not respond while reading slides 20-38 for charts (90.0s)")).toMatch(/5022/);
+  });
+
   it("says nothing about a failure that is ours", () => {
     // The mapping must not turn every problem into somebody else's. A reason
     // with no known host bug behind it gets no note, and stays ours to fix.

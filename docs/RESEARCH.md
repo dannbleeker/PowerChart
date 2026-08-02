@@ -112,9 +112,26 @@ still open:
 | `context.sync()` hangs forever after add → delete → re-read shapes | [office-js#5022](https://github.com/OfficeDev/office-js/issues/5022) | under investigation; the only workaround anyone has is a 1–2 s sleep |
 | Loaded properties silently unavailable after `sync()` (our "hollow reads") | [office-js#6363](https://github.com/OfficeDev/office-js/issues/6363) | labelled **regression + product bug**; reporter tried ten approaches, none worked |
 | `sync()` hangs past ~51 items in one `load()` | [office-js#4272](https://github.com/OfficeDev/office-js/issues/4272) | open — this is why `READBACK_PAGE` is 20 |
+| `setSelectedShapes([])` does not clear the selection on the web | [office-js#3083](https://github.com/OfficeDev/office-js/issues/3083) | open — why `clearShapeSelection` re-selects the *slide* instead |
+| A picture cannot be inserted while a shape is selected | [office-js#3698](https://github.com/OfficeDev/office-js/issues/3698) | open — why every selecting scenario cleans up after itself |
 
 The `hollowReads` fault in `test/helpers/office-host.ts` is not a paranoid
 invention: it models a regression Microsoft has acknowledged and not yet fixed.
+
+**One more, measured here rather than found in the tracker.** On PowerPoint on
+the web, a *programmatic* `Slide.setSelectedShapes([id])` — GA since
+PowerPointApi 1.5 — is accepted without complaint and then leaves the selection
+subsystem unable to answer anything: `getSelectedShapes` ran out a full
+90-second budget, and the `setSelectedSlides` behind it did the same, in the
+same run, twice. Nothing throws; the host simply stops replying, which is a
+failure shape no amount of error handling catches and only a bounded wait
+survives. It reads as the same family as #3083 and #3698 — the web host's
+selection layer accepting writes it cannot then serve — and it is why the
+battery's selection scenario reports **skipped** on that host rather than red
+(`faults.selectionWedgesHost` models it; `docs/PUBLISHING.md` says what to
+expect on screen). It costs the add-in nothing, because the pane never selects
+a shape from code: it reads the selection the user made with a click, and that
+path answers normally.
 
 **The resource-limit reading is confirmed.** Microsoft's current
 [resource limits doc](https://github.com/OfficeDev/office-js-docs-pr/blob/main/docs/concepts/resource-limits-and-performance-optimization.md)
@@ -239,10 +256,14 @@ slide-layout engine. The README feature table is the authoritative list.
   OLE vs custom XML parts) remains an open question; likewise the exact
   algorithms behind interactive-speed label placement, and how Excel data links
   could work from a sandboxed PowerPoint add-in.
-- §4b's issue links were read 2026-08-01. Three of the four were open then;
-  #2903 is closed "not planned", which is a decision rather than a fix. Re-check
-  before assuming any of them has been resolved — and if #6363 or #5022 ever
-  are, the shape path's cost/benefit changes and is worth re-opening.
+- §4b's issue links were read 2026-08-01. All were open then except #2903,
+  which is closed "not planned" — a decision rather than a fix. Re-check before
+  assuming any of them has been resolved — and if #6363 or #5022 ever are, the
+  shape path's cost/benefit changes and is worth re-opening.
+- The selection wedge in §4b has **no issue of its own**. It was measured here,
+  on build `55011a3`, and filed against no tracker — so unlike everything else
+  in that table it rests on this project's own evidence. Worth reporting
+  upstream, and worth re-measuring before treating it as permanent.
 
 ## Primary sources
 

@@ -499,7 +499,12 @@ them when you are done, exactly like the demo deck.
 Three of those are new, and are the ones worth understanding. **Editing the
 chart you selected** goes through the same read the pane uses when you click a
 chart and press *Edit it* — a different code path from every other scenario,
-and the one an actual user travels on. **Whether a chart is visible** asks the
+and the one an actual user travels on. On PowerPoint **on the web** it reports
+*skipped*, and that is the correct answer rather than a gap: asking the host to
+select a shape from code makes it stop answering selection questions
+altogether, so the scenario waits ten seconds, names the limitation and moves
+on. It is a bug in the host and it does not touch you — the pane only ever
+reads the selection *you* made with a click, which works normally. **Whether a chart is visible** asks the
 host to render a slide before and after drawing, and compares: every other
 check in the add-in counts shapes and reads tags, all of which pass happily for
 a chart drawn in white, at zero size, or off the edge of the slide. It borrows

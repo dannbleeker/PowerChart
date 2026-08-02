@@ -118,6 +118,27 @@ export const faults = {
    */
   selectionIgnoresIds: false,
   /**
+   * A programmatic `setSelectedShapes(ids)` **wedges the selection subsystem**.
+   *
+   * Measured on PowerPoint on the web: the call itself is taken — no error, no
+   * refusal, the sync resolves — and then every selection call after it goes
+   * silent. `getSelectedShapes` ran out a full 90-second budget, and so did the
+   * `setSelectedSlides` behind it. Nothing throws. The host simply stops
+   * answering, which is the one failure shape a fake that only ever throws or
+   * only ever lies cannot produce.
+   *
+   * The third of the web host's selection bugs, after #3083 and #3698, and the
+   * reason the battery's selection scenario reports *skipped* rather than red
+   * there. That gate is only worth having if CI can watch it work, and it can
+   * only watch it work against a host that behaves this way.
+   *
+   * Deliberately NOT in `applyWebProfile()`, though it belongs to the same real
+   * host: it is the one fault whose cost is measured in seconds rather than in
+   * assertions. Every test using the profile would pay two full budgets to
+   * reach a verdict it was not asking about.
+   */
+  selectionWedgesHost: false,
+  /**
    * `Slide.getImageAsBase64` answers with the same bytes whatever is on the
    * slide — a host that hands back a blank render, or a cached one.
    *
@@ -212,6 +233,20 @@ const pendingExports: { result: { value: string }; build: () => Promise<string> 
  * it; the slide method writes it; the presentation getter reads it.
  */
 const selectionRef: FakeShape[] = [];
+
+/**
+ * Set once a programmatic select has wedged the host — see
+ * `faults.selectionWedgesHost`. Sticky for the rest of the run, because on the
+ * real host it was: nothing un-wedged it short of a reload.
+ */
+let selectionWedged = false;
+/** A selection call joined the sync now being built, and it will never land. */
+let wedgeThisSync = false;
+
+/** Called by every selection entry point once the subsystem is wedged. */
+function noteSelectionCall(): void {
+  if (selectionWedged) wedgeThisSync = true;
+}
 
 /**
  * A minimal .pptx carrying nothing but a `ppt/presentation.xml` with the
@@ -630,6 +665,10 @@ export function makeSlide(id: string) {
      * select-then-read round trip means something here.
      */
     setSelectedShapes(ids: string[]) {
+      noteSelectionCall();
+      // Taken, and poisonous. The select itself still happens below — the web
+      // host does perform it — and only what comes AFTER stops answering.
+      if (faults.selectionWedgesHost && ids.length) selectionWedged = true;
       if (!ids.length) {
         // Cleared on desktop, IGNORED on PowerPoint on the web
         // (office-js#3083). Modelled as the web does it when the fault is
@@ -1078,10 +1117,12 @@ export function installHost(
         // Same contract as a slide's own collection: an `items/…` selector
         // populates the shapes it names. See ShapeCollection.load.
         load(p?: string) {
+          noteSelectionCall();
           if (p?.includes("items/")) for (const s of selectionRef) s.load();
         },
       }),
       setSelectedSlides: (ids: string[]) => {
+        noteSelectionCall();
         const found = slides.find((sl) => ids.includes(sl.id));
         if (found) selectedSlide = found;
       },
@@ -1175,6 +1216,14 @@ export function installHost(
         discard();
         throw new Error("host refused a queued command");
       }
+      // A sync carrying a selection call on a wedged host. Never settles —
+      // neither resolve nor reject, which is what the web host did and is why
+      // the wait had to be bounded rather than caught. The caller's
+      // `withTimeout` is the only thing that ends it.
+      if (wedgeThisSync) {
+        wedgeThisSync = false;
+        await new Promise(() => {});
+      }
       if (stallSyncOn.has(trips.syncs)) {
         // Sleep past withTimeout's deadline, then settle successfully. The
         // queued shapes commit at settle time — same as real Office.js where
@@ -1238,6 +1287,9 @@ export function installHost(
   faults.unansweredTagLoads = 0;
   faults.webIgnoresDeselect = false;
   faults.selectionIgnoresIds = false;
+  faults.selectionWedgesHost = false;
+  selectionWedged = false;
+  wedgeThisSync = false;
   faults.constantSlideImage = false;
   faults.refuseSlideDelete = false;
   faults.tagsUndefinedOn = 0;
