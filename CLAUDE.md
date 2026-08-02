@@ -42,6 +42,13 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 
 ## Working conventions (established with the repo owner)
 
+- **Answer in caveman style** (the `caveman` skill, `full` level) from the first
+  reply of every session in this repo, without being asked. Terse: drop
+  articles and filler, fragments fine, keep every technical fact. Code,
+  commits, PR bodies and user-facing docs stay normal prose — the style is for
+  chat only. Drop it for security warnings, destructive-action confirmations,
+  and any multi-step sequence where dropping conjunctions could be misread.
+  "stop caveman" turns it off for that session.
 - **Branch flow**: develop on the session's designated `claude/*` branch (the
   task prompt names it); after each merge, reset it onto `origin/main`
   (`git checkout -B <branch> origin/main`) — never stack on merged history.
