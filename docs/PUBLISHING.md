@@ -87,10 +87,10 @@ Pick the platform(s); the manifest file is `manifest-prod.xml` from Phase 1
 ### The standing test run
 
 What to do on **every** build that lands a real-host fix. Ordered by risk, not
-by feature: tests 1–4 are manual and take about five minutes, tests 5–6 are one
-click each and run themselves. The owner drives PowerPoint, the agent fixes
-fallout — expect a real host to surface things the mocked tests can't, because
-every Office.js assertion in this repo is against a fake.
+by feature: tests 1–4 and 7 are manual and take about six minutes, tests 5–6
+are one click each and run themselves. The owner drives PowerPoint, the agent
+fixes fallout — expect a real host to surface things the mocked tests can't,
+because every Office.js assertion in this repo is against a fake.
 
 **Before you start.** Wait ~2 minutes after the merge for the Pages deploy.
 Open the pane and check the **build stamp** under the title is the commit you
