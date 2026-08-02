@@ -49,7 +49,9 @@ belongs with the thing it tests, not with the reason it was written.)
 slides, tags and groups, plus a `faults` object of misbehaviours. Every fault in
 it was added AFTER a real host taught us the behaviour — a stale shape proxy
 refused by `getItem(id)`, a shape collection reading back shorter than it is
-without throwing, a refused `addGroup`, a sync that answers minutes late.
+without throwing, a refused `addGroup`, a sync that answers minutes late, a
+collection read the host never answers at all, a shape whose position stays
+unreadable until the load that asked for it lands.
 
 Faults are opt-in per test. `applyWebProfile()` turns on the set a real web host
 shows at once; call it AFTER `installHost`, which resets every fault. It is not

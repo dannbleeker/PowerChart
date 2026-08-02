@@ -65,6 +65,24 @@ export const faults = {
    * result — which is what Same Scale across the deck did.
    */
   faultShapeCollectionLoad: false,
+  /**
+   * A shape's `id`/`left`/`top` are unreadable until a `load()` on it has been
+   * ANSWERED by a sync — which is simply how Office.js works, and how this fake
+   * has never worked.
+   *
+   * Off by default, and only because the fake's shape objects double as the
+   * surface tests assert geometry against: turning it on globally would fail
+   * hundreds of tests on their own reads rather than on the code under test.
+   * Where it IS on, it catches the class of bug that a lenient shape hides
+   * completely — reading a position off a proxy whose load went down with a
+   * failed sync, which is `PropertyNotLoaded` at `Shape.left` on a real host
+   * and a plain number here. That is how a deck-wide rescale came to report a
+   * crash for charts that were, on the slide, correctly redrawn.
+   *
+   * A test may switch it back off before inspecting the fake's own state: the
+   * gate models a HOST read, not the bookkeeping a test does afterwards.
+   */
+  strictShapeReads: false,
 };
 
 /**
@@ -146,6 +164,14 @@ async function exportedDeckBase64(): Promise<string> {
 const pendingTagLoads: (() => void)[] = [];
 
 /**
+ * Shape `load()`s awaiting their sync — the same contract as `pendingTagLoads`,
+ * for the properties a chart's tagged shape is identified by. Only read when
+ * `faults.strictShapeReads` is on; queued always, so arming the fault
+ * mid-render cannot grant a load that never landed.
+ */
+const pendingShapeLoads: (() => void)[] = [];
+
+/**
  * A tag proxy that answers like Office.js does: resolving one gives you an
  * object whose properties are NOT readable until `load()` AND a sync.
  *
@@ -197,6 +223,19 @@ export function makeShape(
   box: { left: number; top: number; width: number; height: number },
 ) {
   const tagStore = new Map<string, string>();
+  let ownId = `shape-${++idSeq}`;
+  let ownLeft = box.left;
+  let ownTop = box.top;
+  /** Whether an answered `load()` has made this shape's properties readable. */
+  let loadedProps = false;
+  const needLoaded = (prop: string) => {
+    if (!faults.strictShapeReads || loadedProps) return;
+    throw new Error(
+      `The property '${prop}' is not available. Before reading the property's value, call the load ` +
+        'method on the containing object and call "context.sync()" on the associated request context. ' +
+        `| code=PropertyNotLoaded | errorLocation=Shape.${prop}`,
+    );
+  };
   const shape = {
     type,
     geo,
@@ -214,10 +253,36 @@ export function makeShape(
     syncCreated: trips.syncs,
     // A created shape's id exists only on the host: the renderer must load()
     // it back before it can write one down (see the parts tag).
-    load() {},
-    id: `shape-${++idSeq}`,
-    left: box.left,
-    top: box.top,
+    load() {
+      // Queued, not granted. A load only takes effect on the sync that carries
+      // it, and a sync that rejects carries nothing — same contract as
+      // `pendingTagLoads`, and the reason `faults.strictShapeReads` can tell
+      // "loaded" from "asked for".
+      pendingShapeLoads.push(() => {
+        loadedProps = true;
+      });
+    },
+    get id() {
+      needLoaded("id");
+      return ownId;
+    },
+    set id(v: string) {
+      ownId = v;
+    },
+    get left() {
+      needLoaded("left");
+      return ownLeft;
+    },
+    set left(v: number) {
+      ownLeft = v;
+    },
+    get top() {
+      needLoaded("top");
+      return ownTop;
+    },
+    set top(v: number) {
+      ownTop = v;
+    },
     width: box.width,
     height: box.height,
     tagStore,
@@ -375,8 +440,18 @@ function freshHandle(shape: FakeShape): FakeShape {
  * unconditionally, so a whole class of bug — resolve a shape, never load it,
  * read `isNullObject` — was invisible here and fatal on a real host.
  *
- * The load is not required to name the property: any `load()` puts the proxy in
- * the sync, which is what makes `isNullObject` resolve.
+ * The load must name a REAL property. `load("isNullObject")` looks like the
+ * obvious way to ask and is not one: `isNullObject` is not a property the host
+ * holds, it is a flag Office.js sets from the response to a load of real
+ * properties. Selecting it alone asks the host for nothing, the proxy takes no
+ * part in the sync, and the flag stays unreadable — `PropertyNotLoaded`, with
+ * no `errorLocation`, because the getter is on Office.js's base class.
+ *
+ * The fake accepted it, so five resolves in `powerpoint.ts` were written that
+ * way and every test agreed with them. On PowerPoint on the web the one on the
+ * in-place update path meant editing a chart threw before it did anything —
+ * "edit a chart on the visible slide", the first self-test scenario to fail on
+ * a real host.
  */
 function nullObjectProxy<T extends object>(found: T | undefined) {
   let loaded = false;
@@ -384,7 +459,9 @@ function nullObjectProxy<T extends object>(found: T | undefined) {
   return new Proxy(base, {
     get(target, prop, recv) {
       if (prop === "load")
-        return () => {
+        return (p?: string | string[]) => {
+          const asked = (Array.isArray(p) ? p : (p ?? "").split(",")).map((s) => s.trim()).filter(Boolean);
+          if (asked.length && asked.every((a) => a === "isNullObject")) return;
           loaded = true;
         };
       if (prop === "isNullObject") {
@@ -458,6 +535,17 @@ export function makeSlide(id: string) {
       // through. Restoring the distinction is what makes `web-host.test.ts`
       // able to catch it.
       get items() {
+        // The host never answered the load queued for this collection — see
+        // `unansweredShapeReads`. Nothing to hand back, and nothing to say
+        // about what is on the slide.
+        if (unansweredShapeReads.has(id)) {
+          unansweredShapeReads.delete(id);
+          throw new Error(
+            "The property 'items' is not available. Before reading the property's value, call the load " +
+              'method on the containing object and call "context.sync()" on the associated request context. ' +
+              "| code=PropertyNotLoaded | errorLocation=ShapeCollection.items",
+          );
+        }
         const live = created.filter((s) => !s.deleted).map(freshHandle);
         // The web host has been observed answering a shape-collection read
         // with FAR fewer shapes than it holds: one readback page asked about
@@ -671,6 +759,21 @@ const stallSyncDelayMs = 40;
 /** Shape-collection reads that come back EMPTY without throwing — see `items`. */
 let lastShapeLoad = "";
 
+/**
+ * Slide ids whose next shape-collection read finds the load UNANSWERED.
+ *
+ * One step past `hollowReads`, and observed as its limit: the web host answers
+ * a collection read short, and sometimes not at all. Office.js then leaves the
+ * collection unpopulated, and `.items` throws `PropertyNotLoaded` at
+ * `ShapeCollection.items` rather than coming back empty — which is a very
+ * different thing for a caller to be told, and the reason a deck-wide chart
+ * scan used to die on one silent slide out of thirty-eight.
+ *
+ * Per slide id, and consumed on use, so a test can silence exactly one slide
+ * without touching the fake's own internal reads of the same collection.
+ */
+export const unansweredShapeReads = new Set<string>();
+
 /** When true, `fill.setImage` throws on access — a pre-1.8 host, where the
  * method does not exist at all. Drives the picture-insert fall-through. */
 
@@ -858,6 +961,8 @@ export function installHost(
         // makeTagProxy. A load only takes effect when its sync lands.
         for (const apply of pendingTagLoads) apply();
         pendingTagLoads.length = 0;
+        for (const apply of pendingShapeLoads) apply();
+        pendingShapeLoads.length = 0;
       };
       // Exports resolve on the sync that asked for them, same as a real
       // ClientResult. Awaited before `commit()` so the value is there the
@@ -877,6 +982,7 @@ export function installHost(
         // A sync that rejects populates nothing: the loads it carried are lost,
         // and reading those proxies still throws.
         pendingTagLoads.length = 0;
+        pendingShapeLoads.length = 0;
       };
       if (trips.syncs === faults.failSyncOn || failSyncsOn.has(trips.syncs)) {
         discard();
@@ -917,6 +1023,7 @@ export function installHost(
   // Proxies from a previous test's host must not become readable inside this
   // one's first sync.
   pendingTagLoads.length = 0;
+  pendingShapeLoads.length = 0;
   pendingExports.length = 0;
   // Back to 16:9 unless a test says otherwise — a leaked 4:3 would silently
   // change placement for every test after it.
@@ -940,6 +1047,8 @@ export function installHost(
   blankReadbackAt.clear();
   faults.faultShapeGetCount = false;
   faults.faultShapeCollectionLoad = false;
+  faults.strictShapeReads = false;
+  unansweredShapeReads.clear();
   faults.swallowDecks = 0;
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {

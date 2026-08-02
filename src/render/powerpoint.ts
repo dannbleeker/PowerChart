@@ -142,6 +142,75 @@ function untrack(obj: unknown): void {
   }
 }
 
+/**
+ * Put a `getItemOrNullObject` proxy into the next sync, so that `isNullObject`
+ * answers once that sync lands.
+ *
+ * `load("isNullObject")` does NOT do this, and that is the whole reason this
+ * function exists. It reads like it should — the property is right there on the
+ * proxy and `load` takes any name — but `isNullObject` is not a property the
+ * host holds. It is a flag Office.js sets from the RESPONSE to a load of real
+ * properties. Ask for it by name and the load selects nothing the host knows,
+ * the proxy takes no part in the sync, and reading the flag afterwards throws
+ * `PropertyNotLoaded` — with no `errorLocation`, because the getter lives on
+ * Office.js's base class and does not know which type it is standing on.
+ *
+ * That is what the self-test's "edit a chart on the visible slide" died on in
+ * PowerPoint on the web: an in-place update resolved the chart's slide, asked
+ * for `isNullObject`, and threw reading it back — before it had deleted
+ * anything, so the update simply refused. Every other resolve in this file
+ * happens to load a REAL property (`value` on a tag, `left,top` on a shape) and
+ * has always worked, which is why the failure was confined to the paths that
+ * had nothing else to ask for.
+ *
+ * `id` because every proxy resolved this way is a Slide or a Shape, and both
+ * carry one. The value is not used — being in the sync is the point.
+ */
+function queueNullCheck(proxy: { load(propertyNames: string): void }): void {
+  proxy.load("id");
+}
+
+/**
+ * A collection's `items`, or `undefined` when the host never answered the load
+ * that was queued for it.
+ *
+ * PowerPoint on the web answers a shape-collection read short (see the repair
+ * pass's `shapesSeen` counters, and `faults.hollowReads`) — and at the limit it
+ * answers with nothing at all. Office.js then leaves the collection unpopulated
+ * and the plain `.items` read throws `PropertyNotLoaded` at
+ * `ShapeCollection.items`, which took the whole deck-wide chart scan down with
+ * it: one silent slide, and Same Scale reported a thrown error instead of
+ * rescaling the charts it could see.
+ *
+ * A collection that did not answer is a collection we know nothing about, so
+ * every caller has to decide what to do with the gap rather than inherit a
+ * throw. None of them may report it as "no charts here" without saying so.
+ */
+function loadedItems<T>(collection: { items: T[] }): T[] | undefined {
+  try {
+    const items = collection.items;
+    return Array.isArray(items) ? items : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A loaded property, or `undefined` when the host did not answer for it.
+ *
+ * Same hazard as `loadedItems`, one level down: a proxy whose load was queued
+ * in a sync that failed — or that the host simply did not answer — throws on
+ * every property read. Reading through this turns that into a missing value,
+ * which callers can fall back from.
+ */
+function loadedValue<T>(read: () => T): T | undefined {
+  try {
+    return read();
+  } catch {
+    return undefined;
+  }
+}
+
 const DEFAULT_FONT = "Segoe UI";
 
 /** Where an existing PowerChart lives on the deck, for in-place update. */
@@ -607,11 +676,11 @@ export async function deleteShapesById(slideId: string, ids: string[]): Promise<
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
-      slide.load("isNullObject");
+      queueNullCheck(slide);
       await context.sync();
       if ((slide as unknown as { isNullObject: boolean }).isNullObject) return 0;
       const shapes = ids.map((id) => slide.shapes.getItemOrNullObject(id));
-      for (const s of shapes) s.load("isNullObject");
+      for (const s of shapes) queueNullCheck(s);
       await context.sync();
       let gone = 0;
       for (const s of shapes) {
@@ -642,7 +711,7 @@ export async function updateChartsInSlides(
     // is not an error, it is nothing to do.
     const found = items.map((it) => {
       const slide = context.presentation.slides.getItemOrNullObject(it.target.slideId);
-      slide.load("isNullObject");
+      queueNullCheck(slide);
       return { it, slide };
     });
     await context.sync();
@@ -667,10 +736,9 @@ export async function updateChartsInSlides(
       // populated and reading it throws PropertyNotLoaded — which is what
       // editing any UNGROUPED chart did, and PowerPoint on the web ungroups
       // every chart it cannot group. `old` above only escaped it by accident:
-      // its load("left,top") is what put it in the sync. The throw landed on
-      // the delete line below, so the failure a user saw was their chart
-      // refusing to update at all, on the one host that needs partIds most.
-      for (const p of parts) p.load("isNullObject");
+      // its load("left,top") is what put it in the sync — a REAL property,
+      // which is the only kind that counts. See `queueNullCheck`.
+      for (const p of parts) queueNullCheck(p);
       return { it, slide, old, parts };
     });
     await context.sync();
@@ -839,13 +907,17 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
     shapes.load("items/id,items/left,items/top");
     await context.sync();
 
-    const tags = shapes.items.map((s) => chartTagsOf(s));
+    // The host may answer a shape-collection read with nothing at all; then
+    // there is no selection to speak of, which is the same answer as "the
+    // selection is not a PowerChart". See `loadedItems`.
+    const selected = loadedItems(shapes) ?? [];
+    const tags = selected.map((s) => chartTagsOf(s));
     await context.sync();
 
-    for (let i = 0; i < shapes.items.length; i++) {
+    for (let i = 0; i < selected.length; i++) {
       const { config, parts, origin } = tags[i];
       if (!config.isNullObject && config.value) {
-        const s = shapes.items[i];
+        const s = selected[i];
         return {
           configJson: config.value,
           target: {
@@ -964,9 +1036,10 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
     const shapes = context.presentation.getSelectedShapes();
     shapes.load("items/id,items/left,items/top");
     await context.sync();
-    const tags = shapes.items.map((s) => chartTagsOf(s));
+    const selected = loadedItems(shapes) ?? [];
+    const tags = selected.map((s) => chartTagsOf(s));
     await context.sync();
-    const charts = shapes.items
+    const charts = selected
       .map((s, i) => ({ s, ...tags[i] }))
       .filter(({ config }) => !config.isNullObject && config.value)
       .map(({ s, config, parts, origin }) => ({
@@ -985,7 +1058,7 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
       untrack(t.parts);
       untrack(t.origin);
     }
-    for (const s of shapes.items) untrack(s);
+    for (const s of selected) untrack(s);
     return charts;
   });
 }
@@ -1014,52 +1087,104 @@ export async function getSlideShapeBounds(slideId?: string): Promise<Rect[]> {
   }
 }
 
-/**
- * Find every PowerChart in the deck (any shape carrying the config tag),
- * across all slides. Used by "Same scale" to re-render charts together.
- */
-export async function listChartsInDeck(): Promise<{ configJson: string; target: EditTarget }[]> {
+/** One page of a deck-wide chart scan. See `listChartsInDeck`. */
+async function readChartsPage(
+  from: number,
+  to: number,
+): Promise<{ charts: { configJson: string; target: EditTarget }[]; unread: number }> {
   return PowerPoint.run(async (context) => {
-    const slides = context.presentation.slides;
-    slides.load("items/id");
-    await context.sync();
-
-    const perSlide = slides.items.map((slide) => {
+    const perSlide = [];
+    for (let i = from; i < to; i++) {
+      const slide = context.presentation.slides.getItemAt(i);
+      slide.load("id");
       slide.shapes.load("items/id,items/left,items/top");
-      return slide;
-    });
+      perSlide.push(slide);
+    }
     await context.sync();
 
+    let unread = 0;
     const lookups: ({ slideId: string; shape: PowerPoint.Shape } & ChartTags)[] = [];
     for (const slide of perSlide) {
-      for (const shape of slide.shapes.items) {
-        lookups.push({ slideId: slide.id, shape, ...chartTagsOf(shape) });
+      // A slide whose shape collection the host did not answer tells us
+      // nothing, and must not be read as "no charts on this one": it is a
+      // slide whose charts a deck-wide rescale would silently skip.
+      const shapes = loadedItems(slide.shapes);
+      const slideId = loadedValue(() => slide.id);
+      if (!shapes || typeof slideId !== "string") {
+        unread++;
+        continue;
       }
+      for (const shape of shapes) lookups.push({ slideId, shape, ...chartTagsOf(shape) });
     }
     await context.sync();
 
     const charts = lookups
       .filter((l) => !l.config.isNullObject && l.config.value)
-      .map((l) => ({
-        configJson: l.config.value,
-        target: {
-          slideId: l.slideId,
-          shapeId: l.shape.id,
-          left: l.shape.left,
-          top: l.shape.top,
-          origin: originOf(l.origin),
-          partIds: partIdsOf(l.parts),
-        },
-      }));
+      .map((l): { configJson: string; target: EditTarget } | undefined => {
+        const shapeId = loadedValue(() => l.shape.id);
+        const left = loadedValue(() => l.shape.left);
+        const top = loadedValue(() => l.shape.top);
+        if (typeof shapeId !== "string" || !Number.isFinite(left) || !Number.isFinite(top)) return undefined;
+        return {
+          configJson: l.config.value,
+          target: {
+            slideId: l.slideId,
+            shapeId,
+            left: left as number,
+            top: top as number,
+            origin: originOf(l.origin),
+            partIds: partIdsOf(l.parts),
+          },
+        };
+      })
+      .filter((c) => c !== undefined);
     // Every value we need is now a plain string/number in `charts`; drop the
     // whole proxy sweep (one shape + its tags per shape, deck-wide) from memory.
     for (const l of lookups) {
       untrack(l.config);
       untrack(l.parts);
+      untrack(l.origin);
       untrack(l.shape);
     }
-    return charts;
+    return { charts, unread };
   });
+}
+
+/**
+ * Find every PowerChart in the deck (any shape carrying the config tag),
+ * across all slides. Used by "Same scale" to re-render charts together.
+ *
+ * Paged, and a page that will not read is skipped rather than fatal — the same
+ * rule the repair pass already lives by (`readAddedSlides`), for the same
+ * reason. This used to queue one shape-collection load per slide into a SINGLE
+ * sync and then read every `.items` straight: on a 38-slide deck in PowerPoint
+ * on the web that is exactly the request the host answers incompletely, and one
+ * unanswered collection threw `PropertyNotLoaded` at `ShapeCollection.items`
+ * out of the whole call. Same Scale then reported a crash rather than rescaling
+ * the 37 charts it could see, and so did every scenario in the self-test that
+ * starts by asking what is in the deck.
+ *
+ * What is skipped is traced, never swallowed: a rescale that silently missed a
+ * slide is a deck that no longer shares one scale, which is the one thing the
+ * feature promises.
+ */
+export async function listChartsInDeck(): Promise<{ configJson: string; target: EditTarget }[]> {
+  const total = await slideCount();
+  const charts: { configJson: string; target: EditTarget }[] = [];
+  let unread = 0;
+  for (let start = 0; start < total; start += READBACK_PAGE) {
+    const end = Math.min(start + READBACK_PAGE, total);
+    try {
+      const page = await readChartsPage(start, end);
+      charts.push(...page.charts);
+      unread += page.unread;
+    } catch {
+      // A page whose sync rejected told us nothing about any slide on it.
+      unread += end - start;
+    }
+  }
+  if (unread) trace("pane", "slides that would not answer a chart scan", { unread, slides: total });
+  return charts;
 }
 
 /**
@@ -3042,7 +3167,7 @@ async function deleteSlideById(slideId: string): Promise<boolean> {
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
-      slide.load("isNullObject");
+      queueNullCheck(slide);
       await context.sync();
       if ((slide as unknown as { isNullObject: boolean }).isNullObject) return true;
       slide.delete();
@@ -3600,10 +3725,45 @@ interface Grouping {
  * outcome the per-chart catch already produced, just wider — and in both cases
  * the charts are on the slide, because their shapes committed a phase earlier.
  */
+/**
+ * Where a chart's tagged shape ended up — PLAIN VALUES, read off the proxy
+ * while it was still readable.
+ *
+ * Never the proxy itself, and that distinction is the bug this type exists to
+ * make impossible. `groupAndTagAll` used to hand back `PowerPoint.Shape`, whose
+ * `id`/`left`/`top` are only populated by the `load` queued in the TAGGING
+ * sync. When that sync failed — `InvalidParam passed to GetItem(id)`, the web
+ * host refusing a stale proxy, which is a documented and CAUGHT outcome here —
+ * the catch logged it and the function returned the proxy anyway. Every caller
+ * then read `t.left` off a shape that had never loaded and threw
+ * `PropertyNotLoaded` at `Shape.left`, out of a call whose charts were on the
+ * slide and whose only real loss was re-editability.
+ *
+ * So a deck-wide rescale in PowerPoint on the web reported a crash for work
+ * that had, on the slide, succeeded — and the same read is on the everyday
+ * insert path, one sync away from the same fate.
+ */
+interface TargetRef {
+  id: string;
+  left: number;
+  top: number;
+}
+
+/** A tagged shape's position, or undefined when the host never answered for it. */
+function targetRef(shape: PowerPoint.Shape | undefined): TargetRef | undefined {
+  if (!shape) return undefined;
+  const id = loadedValue(() => shape.id);
+  const left = loadedValue(() => shape.left);
+  const top = loadedValue(() => shape.top);
+  if (typeof id !== "string" || !id) return undefined;
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return undefined;
+  return { id, left: left as number, top: top as number };
+}
+
 async function groupAndTagAll(
   context: PowerPoint.RequestContext,
   items: Grouping[],
-): Promise<{ target?: PowerPoint.Shape; partIds?: string[]; grouped?: boolean; tagged?: boolean }[]> {
+): Promise<{ target?: TargetRef; partIds?: string[]; grouped?: boolean; tagged?: boolean }[]> {
   const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
   // Which charts actually ended up as one shape. The rest hang everything the
   // group would have carried off their first shape instead — see below.
@@ -3773,8 +3933,28 @@ async function groupAndTagAll(
       });
     }
   }
+  // Whatever the tagging sync did not resolve, ask for once more, on its own.
+  //
+  // Only the taggable items got `load("id,left,top")` above, and only if that
+  // sync landed. Everything else — an untagged chart, a host below 1.3, and
+  // every chart in a run whose tagging threw — reaches here holding a proxy
+  // that has never been loaded. That is not a reason to lose the target: the
+  // shapes are on the slide and the caller wants to know where. One extra
+  // round-trip, paid only when something is actually missing, and best-effort
+  // like everything else after the shapes commit.
+  const unresolved = items.map((_, i) => i).filter((i) => tagTargets[i] && !targetRef(tagTargets[i]));
+  if (unresolved.length) {
+    try {
+      for (const i of unresolved) tagTargets[i]!.load("id,left,top");
+      await context.sync();
+    } catch {
+      /* the host would not say where they are — the caller keeps its old target */
+    }
+  }
   return items.map((_, i) => ({
-    target: tagTargets[i],
+    // Resolved to plain values HERE, inside the context that can still read
+    // them. A caller handed the proxy would read it after this run is gone.
+    target: targetRef(tagTargets[i]),
     partIds: partsJson[i] ? (JSON.parse(partsJson[i]!) as string[]) : undefined,
     grouped: grouped.has(i),
     tagged: taggedOk.has(i),

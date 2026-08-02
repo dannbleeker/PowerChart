@@ -1,9 +1,20 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installHost, makeSlide, makeShape, applyWebProfile, faults, stallSyncOn } from "./helpers/office-host";
+import {
+  installHost,
+  makeSlide,
+  makeShape,
+  applyWebProfile,
+  faults,
+  stallSyncOn,
+  failSyncsOn,
+  trips,
+  unansweredShapeReads,
+} from "./helpers/office-host";
 import {
   insertDemoDeck,
   insertSceneIntoSlide,
+  listChartsInDeck,
   updateChartInSlide,
   DEMO_SLOT_TAG,
   CHART_TAG,
@@ -335,6 +346,120 @@ describe("the everyday paths on a host that refuses stale proxies", () => {
 });
 
 /**
+ * Reading a proxy the host never answered for.
+ *
+ * Three shapes of one mistake, all three found by the self-test battery on a
+ * real PowerPoint and none of them reachable here before the fake learned to
+ * refuse an unloaded read. Office.js does not hand back `undefined` for a
+ * property it has no value for — it throws `PropertyNotLoaded`, from the
+ * getter, at whatever line happens to read it. So the failure never surfaces
+ * where the mistake is; it surfaces as a crash in code that looks correct.
+ *
+ * Together they cost three of six self-test scenarios in one run, and what
+ * they had in common is that the WORK had already succeeded: the slide was
+ * there, the deck was scannable, the charts were drawn. Only the reading of it
+ * fell over.
+ */
+describe("proxies the host would not answer for", () => {
+  it("edits a chart in place after resolving its slide", async () => {
+    // `updateChartsInSlides` resolved the target's slide with
+    // getItemOrNullObject and asked for `isNullObject` BY NAME, which selects
+    // nothing and leaves the flag unreadable. It then read the flag on the
+    // very next line — so an in-place edit threw before it deleted anything,
+    // and "edit a chart on the visible slide" failed on a host where the
+    // slide, the chart and the tag were all exactly where they should be.
+    const slide = makeSlide("s1");
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const chart = makeShape("geometric", "rectangle", { left: 10, top: 10, width: 100, height: 100 });
+    chart.name = "PowerChart";
+    chart.tagStore.set(CHART_TAG, JSON.stringify(cfg));
+    slide.created.push(chart);
+    installHost([slide], [chart], slide);
+    const next = { ...cfg, title: "edited" };
+    const target = await updateChartInSlide(
+      buildChart(next),
+      { slideId: "s1", shapeId: chart.id, left: 10, top: 10 },
+      { tagData: JSON.stringify(next) },
+    );
+    expect(target, "the edit resolved no target — its slide read as gone").toBeTruthy();
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live.filter((s) => s.tagStore.has(CHART_TAG)).length, "the edited chart is not re-editable").toBe(1);
+  });
+
+  it("scans the rest of the deck when one slide will not answer", async () => {
+    // The deck-wide scan queued one shape-collection load per slide into a
+    // SINGLE sync and read every `.items` straight afterwards. On a 38-slide
+    // deck the web host answers that request incompletely; one unanswered
+    // collection threw out of the whole call, so Same Scale reported a crash
+    // instead of rescaling the charts it could see — and so did every
+    // self-test scenario that begins by asking what is in the deck.
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const slides = ["s1", "s2"].map((id) => {
+      const s = makeSlide(id);
+      const chart = makeShape("geometric", "rectangle", { left: 10, top: 10, width: 100, height: 100 });
+      chart.name = "PowerChart";
+      chart.tagStore.set(CHART_TAG, JSON.stringify({ ...cfg, title: id }));
+      s.created.push(chart);
+      return s;
+    });
+    installHost(slides);
+    unansweredShapeReads.add("s1");
+    const found = await listChartsInDeck();
+    expect(
+      found.map((c) => JSON.parse(c.configJson).title),
+      "the silent slide took the whole scan with it",
+    ).toEqual(["s2"]);
+  });
+
+  it("never turns a refused sync into a property-read crash", async () => {
+    // The tagging sync is where the web host refuses a stale proxy
+    // ("InvalidParam passed to GetItem(id)", code 5010) — a caught, logged,
+    // survivable outcome: the shapes are on the slide and the only loss is
+    // re-editability. But that same sync carries the `load("id,left,top")`
+    // that tells the caller WHERE the chart landed, so when it went down the
+    // caller was handed a proxy holding nothing and threw `PropertyNotLoaded`
+    // at `Shape.left`. A deck-wide rescale then reported a crash for charts it
+    // had correctly redrawn.
+    //
+    // Every sync in the insert, not just the tagging one: which sync a host
+    // refuses is not ours to choose, and the rule is the same for all of them.
+    // A refusal may fail the insert. It may never fail it by reading.
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    installHost([makeSlide("s1")]);
+    await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg) });
+    const syncs = trips.syncs;
+    expect(syncs, "the insert made no syncs to refuse").toBeGreaterThan(1);
+
+    for (let n = 1; n <= syncs; n++) {
+      installHost([makeSlide("s1")]);
+      faults.strictShapeReads = true;
+      failSyncsOn.add(n);
+      let thrown: unknown;
+      await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg) }).catch((err) => (thrown = err));
+      faults.strictShapeReads = false;
+      expect(
+        String((thrown as Error)?.message ?? ""),
+        `sync ${n} of ${syncs} was refused and the insert read on`,
+      ).not.toMatch(/PropertyNotLoaded|is not available/i);
+    }
+  });
+
+  it("reports where a chart landed even when there was nothing to tag", async () => {
+    // No `tagData` means no tagging phase, and the load that resolves the
+    // target's position rode inside it — so the one path that never tags was
+    // also the one that always handed back an unreadable target. Same on any
+    // host below PowerPointApi 1.3, where the tagging phase is skipped outright.
+    installHost([makeSlide("s1")]);
+    faults.strictShapeReads = true;
+    const target = await insertSceneIntoSlide(buildChart({ ...sampleConfig("clustered"), ...DEFAULT_SIZE }), {});
+    faults.strictShapeReads = false;
+    expect(target, "an untagged insert lost track of its own chart").toBeTruthy();
+    expect(Number.isFinite(target!.left) && Number.isFinite(target!.top), "the target carries no position").toBe(true);
+  });
+});
+
+/**
  * The fake host's own strictness, asserted directly.
  *
  * Every other test here drives production code and trusts the double
@@ -385,9 +510,27 @@ describe("the fake host models Office.js strictness, not convenience", () => {
     await PowerPoint.run(async (context) => {
       const missing = context.presentation.slides.getItemOrNullObject("nope");
       expect(() => missing.isNullObject).toThrow(/not available|PropertyNotLoaded/i);
-      missing.load("isNullObject");
+      missing.load("id");
       await context.sync();
       expect(missing.isNullObject).toBe(true);
+    });
+  });
+
+  it('does not count load("isNullObject") as a load', async () => {
+    // The flag is not a property the host holds — it is set from the response
+    // to a load of REAL properties. Asking for it by name selects nothing, so
+    // the proxy never joins the sync and the flag stays unreadable. The fake
+    // used to accept it, and five resolves in powerpoint.ts were written that
+    // way; the one on the in-place update path is why editing a chart threw
+    // before it deleted anything on PowerPoint on the web.
+    installHost([makeSlide("s1")]);
+    await PowerPoint.run(async (context) => {
+      const missing = context.presentation.slides.getItemOrNullObject("nope");
+      missing.load("isNullObject");
+      await context.sync();
+      expect(() => missing.isNullObject, 'load("isNullObject") resolved the flag').toThrow(
+        /not available|PropertyNotLoaded/i,
+      );
     });
   });
 });
