@@ -44,6 +44,7 @@ import {
   reconcileDeck,
   showSlide,
   slideCount,
+  slideSize,
   slideHoldsOnlyChart,
   updateChartInSlide,
   errorText,
@@ -88,6 +89,10 @@ async function buildProbe(
       slot: i,
       run,
     })),
+    // At the destination's size, like every other deck build — the self-test
+    // exists to exercise the real path, and a 16:9 file inserted into a 4:3
+    // deck is exactly the mismatch it should be catching rather than creating.
+    await slideSize(),
   );
   return { base64: built.base64, scenes, shapesPerSlide: built.shapesPerSlide };
 }

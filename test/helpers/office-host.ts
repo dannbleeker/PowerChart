@@ -55,6 +55,16 @@ export const faults = {
    * "11 of 12 complete · 1 lost" with nothing thrown. Counted down per call.
    */
   swallowDecks: 0,
+  /**
+   * `shapes.load(...)` throws a TypeError instead of queueing.
+   *
+   * Observed on the web as "e.load is not a function": the host handed back
+   * something without the method, and because the QUEUE step sat outside the
+   * try/catch that was written to cover it, an update whose shapes had already
+   * committed reported total failure. Charts on the slide, one TypeError, no
+   * result — which is what Same Scale across the deck did.
+   */
+  faultShapeCollectionLoad: false,
 };
 
 /**
@@ -96,6 +106,90 @@ export function applyWebProfile(): void {
  */
 
 let idSeq = 0;
+
+/**
+ * The slide size this fake deck declares, in EMU. Defaults to PowerPoint's
+ * canonical 16:9; a test sets it to 9144000×6858000 for 4:3.
+ *
+ * Drives BOTH reads the renderer can make — `pageSetup` and the `<p:sldSz>` in
+ * an exported slide — so a test cannot accidentally assert against a size only
+ * one of the two rungs would report.
+ */
+export const hostSlideSize = { cx: 12192000, cy: 6858000 };
+
+/** Exports whose base64 is built during the sync that was asked for it. */
+const pendingExports: { result: { value: string }; build: () => Promise<string> }[] = [];
+
+/**
+ * A minimal .pptx carrying nothing but a `ppt/presentation.xml` with the
+ * deck's `<p:sldSz>` — which is the only part `slideSize` reads.
+ */
+async function exportedDeckBase64(): Promise<string> {
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  zip.file(
+    "ppt/presentation.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">` +
+      `<p:sldSz cx="${hostSlideSize.cx}" cy="${hostSlideSize.cy}"/>` +
+      `</p:presentation>`,
+  );
+  return zip.generateAsync({ type: "base64" });
+}
+
+/**
+ * Tag proxies whose `load()` has been queued but whose sync has not yet run.
+ *
+ * Flushed by a successful sync, dropped by a failed one — a load whose sync
+ * rejects never populates anything, same as the real host.
+ */
+const pendingTagLoads: (() => void)[] = [];
+
+/**
+ * A tag proxy that answers like Office.js does: resolving one gives you an
+ * object whose properties are NOT readable until `load()` AND a sync.
+ *
+ * This fake used to populate `isNullObject` and `value` the instant
+ * `getItemOrNullObject` was called, which made a whole class of bug invisible
+ * here. Reading an unloaded proxy is `PropertyNotLoaded` on a real host, and
+ * that is precisely how editing an ungrouped chart came to be impossible on
+ * PowerPoint web while every test in this repo stayed green: `partIds` proxies
+ * were resolved and never loaded, so the fake answered and the host threw.
+ *
+ * One honest proxy found the next one immediately (`deleteSlide`'s slot-tag
+ * read). Being kinder than the host you model is not a neutral simplification —
+ * it is a promise the tests cannot keep.
+ */
+function makeTagProxy(store: Map<string, string>, key: string, onUntrack?: () => void) {
+  let readable = false;
+  const need = (prop: string) => {
+    if (!readable) {
+      throw new Error(
+        `PropertyNotLoaded: The property '${prop}' is not available. ` +
+          "Before reading the property's value, call the load method on the containing object " +
+          "and call context.sync() on the associated request context.",
+      );
+    }
+  };
+  return {
+    load(_p?: string) {
+      pendingTagLoads.push(() => {
+        readable = true;
+      });
+    },
+    untrack() {
+      onUntrack?.();
+    },
+    get isNullObject() {
+      need("isNullObject");
+      return !store.has(key);
+    },
+    get value() {
+      need("value");
+      return store.get(key) ?? "";
+    },
+  };
+}
 
 export function makeShape(
   type: string,
@@ -139,14 +233,10 @@ export function makeShape(
         }
         tagStore.set(k, v);
       },
-      getItemOrNullObject: (k: string) => ({
-        isNullObject: !tagStore.has(k),
-        value: tagStore.get(k) ?? "",
-        load() {},
-        untrack() {
+      getItemOrNullObject: (k: string) =>
+        makeTagProxy(tagStore, k, () => {
           untracked.tags++;
-        },
-      }),
+        }),
     },
     // Set by fill.setImage — the bare base64 the host received. Records what the
     // renderer actually handed over, so a test can prove the data:/image-prefix
@@ -276,6 +366,40 @@ function freshHandle(shape: FakeShape): FakeShape {
   });
 }
 
+/**
+ * Wrap a `getItemOrNullObject` result the way Office.js hands one over.
+ *
+ * `isNullObject` is not a property you can just read: it is populated on the
+ * sync the proxy participated in, and a proxy nobody called `load()` on never
+ * participates. Reading it then throws PropertyNotLoaded. The fake answered it
+ * unconditionally, so a whole class of bug — resolve a shape, never load it,
+ * read `isNullObject` — was invisible here and fatal on a real host.
+ *
+ * The load is not required to name the property: any `load()` puts the proxy in
+ * the sync, which is what makes `isNullObject` resolve.
+ */
+function nullObjectProxy<T extends object>(found: T | undefined) {
+  let loaded = false;
+  const base = found ?? ({ delete() {} } as unknown as T);
+  return new Proxy(base, {
+    get(target, prop, recv) {
+      if (prop === "load")
+        return () => {
+          loaded = true;
+        };
+      if (prop === "isNullObject") {
+        if (!loaded)
+          throw new Error(
+            "The property 'isNullObject' is not available. Before reading the property's value, call the load " +
+              'method on the containing object and call "context.sync()" on the associated request context.',
+          );
+        return !found;
+      }
+      return Reflect.get(target, prop, recv);
+    },
+  });
+}
+
 export function makeSlide(id: string) {
   const created: FakeShape[] = [];
   // Shapes queued since the last successful sync. On success the pending list
@@ -298,13 +422,21 @@ export function makeSlide(id: string) {
     delete() {
       deckRemove?.(slide);
     },
+    /**
+     * PowerPointApi 1.8's single-slide export.
+     *
+     * Returns a real .pptx (base64) carrying the deck's `<p:sldSz>` — the part
+     * `slideSize`'s middle rung parses. A ClientResult, so `.value` is empty
+     * until the sync it was queued in lands, exactly like the real one.
+     */
+    exportAsBase64() {
+      const result = { value: "" };
+      pendingExports.push({ result, build: exportedDeckBase64 });
+      return result;
+    },
     tags: {
       add: (k: string, v: string) => void slideTagStore.set(k, v),
-      getItemOrNullObject: (k: string) => ({
-        isNullObject: !slideTagStore.has(k),
-        value: slideTagStore.get(k) ?? "",
-        load() {},
-      }),
+      getItemOrNullObject: (k: string) => makeTagProxy(slideTagStore, k),
     },
     tagStore: slideTagStore,
     shapes: {
@@ -343,6 +475,7 @@ export function makeSlide(id: string) {
       // a test make the TAG read hollow without also blinding the count it is
       // supposed to be checked against.
       load(p?: string) {
+        if (faults.faultShapeCollectionLoad) throw new TypeError("e.load is not a function");
         if (p) lastShapeLoad = p;
       },
       addGeometricShape(geo: string, box: FakeShape["box"]) {
@@ -408,7 +541,16 @@ export function makeSlide(id: string) {
         // load on it is the normal pattern, and only isNullObject tells you it
         // resolved to nothing. Without load() here the fake threw where the host
         // would not.
-        return created.find((s) => s.id === id && !s.deleted) ?? { isNullObject: true, load() {}, delete() {} };
+        //
+        // And `isNullObject` is only READABLE once the proxy has been loaded.
+        // This fake used to hand it over unconditionally, which is a fiction:
+        // Office.js populates it on the sync the proxy took part in, and a
+        // proxy nobody loaded takes part in nothing. Reading it then throws
+        // PropertyNotLoaded — which is exactly what editing an ungrouped chart
+        // did on a real host while every test here passed, because the fake
+        // answered a question the host refuses. Model the refusal.
+        const found = created.find((s) => s.id === id && !s.deleted);
+        return nullObjectProxy(found);
       },
       // Top-level shape count the host reports on readback — non-deleted shapes.
       getCount: () => {
@@ -565,7 +707,14 @@ export function installHost(
         // undefined would make `slide.isNullObject` a TypeError instead of the
         // false it should be, and hide the very case this models. By id, the
         // reference is always durable.
-        getItemOrNullObject: (id: string) => slides.find((s) => s.id === id) ?? { isNullObject: true, load() {} },
+        //
+        // Through `nullObjectProxy` for the same reason the shape collection
+        // goes through it: `isNullObject` is populated by the sync a `load()`
+        // enrolled the proxy in, so reading it off an unloaded proxy throws.
+        // Answering it unconditionally is what let the tag version of this
+        // mistake ship — every caller here happens to load first today, and
+        // this is what keeps that true.
+        getItemOrNullObject: (id: string) => nullObjectProxy(slides.find((s) => s.id === id)),
         // A pre-existing slide's handle is durable; a freshly-added one's is only
         // good within the sync it was acquired in (see freshWindowedHandle), so
         // HOLDING one across the render's batches is the bug the fix avoids by
@@ -594,6 +743,35 @@ export function installHost(
           slides.push(makeSlide(`slide-${slides.length + 1}`));
         },
       },
+      /**
+       * PowerPointApi 1.10's direct slide-size read.
+       *
+       * Load-gated like everything else here: `slideWidth` off an unloaded
+       * PageSetup is PropertyNotLoaded on a real host, and a fake that answered
+       * anyway would accept a `slideSize()` that forgot to load it — which is
+       * the one mistake this whole class of proxy keeps producing.
+       */
+      pageSetup: (() => {
+        let readable = false;
+        const need = (prop: string) => {
+          if (!readable) throw new Error(`PropertyNotLoaded: The property '${prop}' is not available.`);
+        };
+        return {
+          load(_p?: string) {
+            pendingTagLoads.push(() => {
+              readable = true;
+            });
+          },
+          get slideWidth() {
+            need("slideWidth");
+            return hostSlideSize.cx / 12700;
+          },
+          get slideHeight() {
+            need("slideHeight");
+            return hostSlideSize.cy / 12700;
+          },
+        };
+      })(),
       // A real deck's master carries several layouts; only one is blank, and
       // its NAME is localised — which is why the renderer matches on type.
       slideMasters: {
@@ -676,7 +854,18 @@ export function installHost(
       // PR-8 partial-landed gate reads back only the committed count.
       const commit = () => {
         for (const s of slides) s.pending.length = 0;
+        // Queued tag loads become readable here and nowhere else — see
+        // makeTagProxy. A load only takes effect when its sync lands.
+        for (const apply of pendingTagLoads) apply();
+        pendingTagLoads.length = 0;
       };
+      // Exports resolve on the sync that asked for them, same as a real
+      // ClientResult. Awaited before `commit()` so the value is there the
+      // moment the caller's `await context.sync()` returns.
+      if (pendingExports.length) {
+        for (const e of pendingExports) e.result.value = await e.build();
+        pendingExports.length = 0;
+      }
       const discard = () => {
         for (const s of slides) {
           for (const p of s.pending) {
@@ -685,6 +874,9 @@ export function installHost(
           }
           s.pending.length = 0;
         }
+        // A sync that rejects populates nothing: the loads it carried are lost,
+        // and reading those proxies still throws.
+        pendingTagLoads.length = 0;
       };
       if (trips.syncs === faults.failSyncOn || failSyncsOn.has(trips.syncs)) {
         discard();
@@ -722,6 +914,14 @@ export function installHost(
   trips.contexts = 0;
   untracked.shapes = 0;
   untracked.tags = 0;
+  // Proxies from a previous test's host must not become readable inside this
+  // one's first sync.
+  pendingTagLoads.length = 0;
+  pendingExports.length = 0;
+  // Back to 16:9 unless a test says otherwise — a leaked 4:3 would silently
+  // change placement for every test after it.
+  hostSlideSize.cx = 12192000;
+  hostSlideSize.cy = 6858000;
   pendingHostError = null;
   // failSyncOn was the one fault installHost did not reset, so a test that set
   // it leaked into every later test in the file and every test in every file
@@ -739,6 +939,8 @@ export function installHost(
   faults.refusePictureFill = false;
   blankReadbackAt.clear();
   faults.faultShapeGetCount = false;
+  faults.faultShapeCollectionLoad = false;
+  faults.swallowDecks = 0;
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {
     run: async <T>(cb: (ctx: typeof context) => Promise<T>) => {

@@ -16,7 +16,9 @@ import { toHex6, alphaOf } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
 import { trace } from "../core/trace";
+import type { Rect } from "../core/placement";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
+import { parseSlideSizeEmu, EMU_PER_POINT } from "./ooxml";
 
 /* global PowerPoint, Office */
 
@@ -24,6 +26,16 @@ export interface InsertOptions {
   /** Top-left of the chart frame on the slide, in points. */
   left?: number;
   top?: number;
+  /**
+   * Draw onto THIS slide instead of the one the user is looking at.
+   *
+   * The insert path targets the selection, which is right for a user pressing
+   * Insert and wrong for a recovery: when an in-place update has already
+   * deleted a chart and then failed to redraw it, the replacement has to go
+   * back to the slide the chart came from, whatever is on screen by then.
+   * Falls back to the selected slide when the id no longer resolves.
+   */
+  slideId?: string;
   /** Group the shapes after insertion (default true). */
   group?: boolean;
   fontFamily?: string;
@@ -370,14 +382,15 @@ export async function insertSceneIntoSlide(
   scene: Scene,
   opts: InsertOptions = {},
   onPhase?: (phase: InsertPhase, detail?: string) => void,
-): Promise<void> {
+): Promise<EditTarget | null> {
   onPhase?.("context");
-  await PowerPoint.run(async (context) => {
+  return PowerPoint.run(async (context) => {
     // The current slide already exists, so its proxy IS stable across syncs (its
     // id round-trips) — hold one and reuse it. Only a freshly-added slide needs a
     // per-batch fresh proxy; see SlideThunk. Resolving once also pins the target
     // to the slide selected at the start, immune to any selection drift mid-draw.
-    const slide = getTargetSlide(context);
+    const slide = getTargetSlide(context, opts.slideId);
+    slide.load("id");
     const getSlide: SlideThunk = () => slide;
     onPhase?.("queue", `${scene.nodes.length} nodes`);
     // Committed in batches: the whole scene in one sync is what a live canvas
@@ -389,7 +402,7 @@ export async function insertSceneIntoSlide(
     // Shapes are committed by now, so grouping/tagging (which some hosts,
     // notably PowerPoint on the web, don't support) can't roll back the chart.
     onPhase?.("group");
-    await groupAndTagAll(context, [
+    const [tagged] = await groupAndTagAll(context, [
       {
         getSlide,
         created,
@@ -400,6 +413,20 @@ export async function insertSceneIntoSlide(
       },
     ]);
     onPhase?.("done");
+    // Hand back an edit target, so a caller that inserted as a RECOVERY (see
+    // updateChartResilient) can keep the chart editable instead of telling the
+    // user to go and find it. Null whenever the host would not tag the chart —
+    // there is nothing to re-open then, and saying so beats inventing an id.
+    const t = tagged?.target;
+    if (!t) return null;
+    return {
+      slideId: slide.id,
+      shapeId: t.id,
+      left: t.left,
+      top: t.top,
+      partIds: tagged?.partIds,
+      origin: { left: opts.left ?? 60, top: opts.top ?? 90, anchorLeft: t.left, anchorTop: t.top },
+    };
   });
 }
 
@@ -437,6 +464,169 @@ export async function updateChartInSlide(
  * single-chart wrapper's contract — `updateChartResilient` needs that throw to
  * reach its slide-swap and picture fallbacks.
  */
+/**
+ * What a failed in-place update left on the slide.
+ *
+ * An update deletes before it draws, and the delete COMMITS. So a redraw that
+ * dies half way is not a no-op that can be retried — it is a hole in the deck
+ * with some of a chart in it. Every recovery above this layer needs to know
+ * that, and none of it could: the call reported the same empty result for "the
+ * user deleted this chart, nothing to do" as for "I deleted it and could not
+ * put it back", so the pane told the user their chart was gone while half of it
+ * sat on the slide, and the picture fallback re-resolved a shape id that this
+ * very call had destroyed.
+ */
+export interface UpdateWreckage {
+  /** The slide the chart was on — where a replacement has to go back. */
+  slideId: string;
+  /** Where it sat, so the replacement lands in the same place. */
+  at: { left: number; top: number };
+  /** The partial chart the failed redraw committed, by shape id. */
+  strayIds: string[];
+}
+
+const WRECKAGE_KEY = "__powerchartWreckage";
+
+const STOPPED_KEY = "__powerchartStopped";
+
+/**
+ * Whether the user has asked the work in flight to stop.
+ *
+ * Cooperative, and it has to be: Office.js has no abort. A `context.sync()`
+ * already handed to PowerPoint runs to completion (or to `BATCH_TIMEOUT_MS`)
+ * whatever we want, so the only honest place to stop is BETWEEN batches — and
+ * the only honest promise to make the user is "no more after this one".
+ *
+ * Module state rather than a token threaded through every signature, for the
+ * same reason `lastAddsLost` is: one pane, one host, one operation at a time.
+ * `guard()` clears it before every action, so a stop can never leak into the
+ * next one.
+ */
+let stopRequested = false;
+
+/** Ask the render in flight to stop at its next batch boundary. */
+export function requestStop(): void {
+  stopRequested = true;
+  trace("pane", "stop requested", {});
+}
+
+/** Clear any pending stop. Called at the start of every guarded pane action. */
+export function resetStop(): void {
+  stopRequested = false;
+}
+
+export function isStopRequested(): boolean {
+  return stopRequested;
+}
+
+/**
+ * The error a stopped render throws.
+ *
+ * Marked with an own property rather than an `instanceof` check: the same
+ * reason `wreckageOf` uses one. `wreck()` may re-carry a stall on a fresh Error
+ * of its own, and a marker survives that where a subclass would not.
+ */
+function stopped(): Error {
+  const e = new Error("Stopped.") as Error & Record<string, unknown>;
+  e[STOPPED_KEY] = true;
+  return e;
+}
+
+/** True when this error is the user's own stop, not a host failure. */
+export function isStopped(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  return Object.prototype.hasOwnProperty.call(err, STOPPED_KEY);
+}
+
+/** Throw if a stop is pending. Call at a point where stopping is SAFE. */
+function throwIfStopped(): void {
+  if (stopRequested) throw stopped();
+}
+
+/**
+ * Tag the host's own error with what the failure destroyed, rather than
+ * replacing it. The message, `code` and `debugInfo` of a RichApi.Error are the
+ * only evidence anyone gets about a host that stopped answering — wrapping it
+ * in an error of our own would throw exactly that away.
+ */
+function wreck(
+  err: unknown,
+  destroyed: boolean,
+  target: EditTarget,
+  at: { left: number; top: number },
+  drawn: PowerPoint.Shape[],
+): unknown {
+  if (!destroyed) return err;
+  const strayIds: string[] = [];
+  for (const s of drawn) {
+    // Only the batches that COMMITTED have ids: `load("id")` resolves on the
+    // batch's own sync, and the batch that stalled never got one. Those shapes
+    // are unaddressable, so they are not sweepable either — read past them
+    // rather than letting a PropertyNotLoaded lose the ids we do have.
+    try {
+      if (typeof s.id === "string" && s.id) strayIds.push(s.id);
+    } catch {
+      /* never came back from the host — nothing to sweep by */
+    }
+  }
+  const wreckage: UpdateWreckage = { slideId: target.slideId, at, strayIds };
+  if (err && typeof err === "object") {
+    try {
+      (err as Record<string, unknown>)[WRECKAGE_KEY] = wreckage;
+      return err;
+    } catch {
+      /* frozen error — fall through and carry the wreckage on a fresh one */
+    }
+  }
+  const carrier = new Error(errorText(err)) as Error & Record<string, unknown>;
+  carrier[WRECKAGE_KEY] = wreckage;
+  return carrier;
+}
+
+/** What an update destroyed before it failed, if it destroyed anything. */
+export function wreckageOf(err: unknown): UpdateWreckage | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  // hasOwnProperty, not `in` or a bare read: an error whose prototype chain
+  // happens to carry this name would otherwise hand back something that is not
+  // a wreckage at all, and the recovery path would act on it.
+  if (!Object.prototype.hasOwnProperty.call(err, WRECKAGE_KEY)) return undefined;
+  const w = (err as Record<string, unknown>)[WRECKAGE_KEY];
+  return w && typeof w === "object" ? (w as UpdateWreckage) : undefined;
+}
+
+/**
+ * Delete named shapes from one slide, in a context of its own.
+ *
+ * A fresh context on purpose: this runs after a redraw that stalled, and the
+ * context it stalled in is exactly the one that cannot be trusted to carry a
+ * repair. Best-effort — a stray that will not go is worth less than the
+ * recovery that follows it.
+ */
+export async function deleteShapesById(slideId: string, ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      slide.load("isNullObject");
+      await context.sync();
+      if ((slide as unknown as { isNullObject: boolean }).isNullObject) return 0;
+      const shapes = ids.map((id) => slide.shapes.getItemOrNullObject(id));
+      for (const s of shapes) s.load("isNullObject");
+      await context.sync();
+      let gone = 0;
+      for (const s of shapes) {
+        if (s.isNullObject) continue;
+        s.delete();
+        gone++;
+      }
+      await context.sync();
+      return gone;
+    });
+  } catch {
+    return 0;
+  }
+}
+
 export async function updateChartsInSlides(
   items: { scene: Scene; target: EditTarget; opts?: InsertOptions }[],
   onFailed?: (item: { scene: Scene; target: EditTarget; opts?: InsertOptions }, err: unknown) => void,
@@ -468,15 +658,20 @@ export async function updateChartsInSlides(
       // update puts it back where it was. Only the host knows where the shape is
       // now.
       old.load("left,top");
-      return {
-        it,
-        slide,
-        old,
-        // An ungrouped chart is more than its tagged shape (see CHART_PARTS_TAG).
-        // Resolved in this same sync, so the delete below already knows which of
-        // them the user has since removed by hand.
-        parts: (it.target.partIds ?? []).map((id) => slide.shapes.getItemOrNullObject(id)),
-      };
+      // An ungrouped chart is more than its tagged shape (see CHART_PARTS_TAG).
+      // Resolved in this same sync, so the delete below already knows which of
+      // them the user has since removed by hand.
+      const parts = (it.target.partIds ?? []).map((id) => slide.shapes.getItemOrNullObject(id));
+      // Each part has to be LOADED, not merely resolved. A getItemOrNullObject
+      // proxy nobody loads takes no part in the sync, so `isNullObject` is never
+      // populated and reading it throws PropertyNotLoaded — which is what
+      // editing any UNGROUPED chart did, and PowerPoint on the web ungroups
+      // every chart it cannot group. `old` above only escaped it by accident:
+      // its load("left,top") is what put it in the sync. The throw landed on
+      // the delete line below, so the failure a user saw was their chart
+      // refusing to update at all, on the one host that needs partIds most.
+      for (const p of parts) p.load("isNullObject");
+      return { it, slide, old, parts };
     });
     await context.sync();
 
@@ -519,6 +714,13 @@ export async function updateChartsInSlides(
     const placed = new Map<number, number>();
     let firstFailure: unknown;
     for (const [i, entry] of alive.entries()) {
+      // Stop BEFORE this chart's delete, and break rather than throw. Every
+      // chart past here is still whole — untouched old shapes, nothing queued —
+      // so the cheapest, safest stop in the whole add-in is the one taken at
+      // this line. The charts already redrawn keep their new targets; the rest
+      // keep their old ones, which is exactly what the return below does for a
+      // chart that was never reached.
+      if (isStopRequested()) break;
       const { it, slide, old, parts, at } = entry;
       const opts: InsertOptions = {
         ...it.opts,
@@ -538,11 +740,18 @@ export async function updateChartsInSlides(
       // An existing slide's proxy is stable across syncs — hold it. Only a
       // freshly-added slide needs a per-batch fresh proxy; see SlideThunk.
       const getSlide: SlideThunk = () => slide;
+      // Everything the redraw manages to commit, whether or not it finishes.
+      // On the failure path this is the litter to clear; see the catch.
+      const drawn: PowerPoint.Shape[] = [];
+      let deleted = false;
       try {
         old.delete();
         for (const p of parts) if (!p.isNullObject) p.delete();
         await context.sync();
-        const created = await renderShapesChunked(context, getSlide, it.scene, opts);
+        // From here the old chart is committed GONE. Anything that throws below
+        // leaves a hole, and the caller has to be told which chart it is.
+        deleted = true;
+        const created = await renderShapesChunked(context, getSlide, it.scene, opts, undefined, drawn);
         // Only once it landed, or `placed` would point at a chart that isn't
         // in `rendered` and every target after it would come back mismatched.
         placed.set(i, rendered.length);
@@ -551,9 +760,20 @@ export async function updateChartsInSlides(
         // This chart's old shapes are committed gone and its redraw did not
         // finish, so it is blank and nothing here can undo that. The charts
         // after it can still be saved, which is the whole point of the loop.
-        if (firstFailure === undefined) firstFailure = err;
+        //
+        // Wreck EVERY failure, and hand the wrecked error to `onFailed` — not
+        // the raw one. Both used to be true only of the first: `wreck` ran
+        // inside the `firstFailure === undefined` test, so failures 2..n were
+        // never annotated at all, and `onFailed` was passed `err` regardless.
+        // A caller doing a deck-wide update is exactly the caller that gets
+        // more than one failure, and `wreckageOf` on what it received returned
+        // undefined every time — so it could not sweep, and left a half-drawn
+        // chart on each stalled slide while reporting them empty. The
+        // single-chart path never noticed because it only ever has failure #1.
+        const wrecked = wreck(err, deleted, it.target, at, drawn);
+        if (firstFailure === undefined) firstFailure = wrecked;
         trace("draw", "chart update failed mid-batch", { index: i, error: errorText(err) });
-        onFailed?.(it, err);
+        onFailed?.(it, wrecked);
       }
     }
     // Nothing landed at all: that is the single-chart case, and its caller
@@ -771,6 +991,30 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
 }
 
 /**
+ * Every shape's rectangle on the slide the next insert would draw onto.
+ *
+ * What the placement rule needs, and nothing else: the insert path had no idea
+ * what was already on the slide, so its only answer to "where does this chart
+ * go" was a fixed 14pt cascade that stacked charts on top of each other. Empty
+ * on any host that will not answer — placement then falls back to the cascade,
+ * which is what it always did.
+ */
+export async function getSlideShapeBounds(slideId?: string): Promise<Rect[]> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = getTargetSlide(context, slideId);
+      slide.shapes.load("items/left,items/top,items/width,items/height");
+      await context.sync();
+      return slide.shapes.items
+        .map((s) => ({ left: s.left, top: s.top, width: s.width, height: s.height }))
+        .filter((r) => [r.left, r.top, r.width, r.height].every((n) => typeof n === "number" && Number.isFinite(n)));
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Find every PowerChart in the deck (any shape carrying the config tag),
  * across all slides. Used by "Same scale" to re-render charts together.
  */
@@ -838,7 +1082,7 @@ type SlideThunk = () => PowerPoint.Slide;
 
 /**
  * How many `slides.add()` calls issued by `addSlides` did NOT survive to a
- * settled, fresh-context readback — even after the one retry round. This is a
+ * settled, fresh-context readback — even after every retry round. This is a
  * DIFFERENT count from `DemoReport.addsIssued − slidesAdded`: that pair
  * measures overall deck-growth shortfall across a whole `insertDemoDeck` run
  * (a retry/fail elsewhere can cancel it out — see the comment on
@@ -850,8 +1094,25 @@ type SlideThunk = () => PowerPoint.Slide;
  */
 let lastAddsLost = 0;
 
-/** At most one retry round after the initial add — see `addSlides`. */
-const MAX_ADD_RETRY_ROUNDS = 1;
+/**
+ * How many retry rounds `addSlides` gets after the initial add.
+ *
+ * Was 1, which assumed a dropped `slides.add()` is a one-off. The host this
+ * project actually runs on does not behave that way: Presentation_3.pptx lost
+ * 10 of 20 adds in a single burst, and a drop rate that high is not something
+ * one retry reliably clears — the retry is issued under the same load that
+ * caused the drop, so it can be dropped too, and then the run gives up with
+ * slides missing and charts drawn onto the wrong ones.
+ *
+ * Three rounds is cheap in the only case that matters. A round costs one fresh
+ * context plus one `slideCount()`, and rounds 2 and 3 only ever run on a deck
+ * that is ALREADY short — a healthy insert exits the loop on the first
+ * verification and pays for none of them. The bound stays small because the
+ * failure it recovers from is transient by hypothesis: if three rounds under
+ * three separate contexts all get dropped, the host is not dropping adds under
+ * load, it is refusing them, and retrying harder will not change that.
+ */
+export const MAX_ADD_RETRY_ROUNDS = 3;
 
 /**
  * Append `count` blank slides and return a fresh-proxy thunk for each.
@@ -871,11 +1132,14 @@ const MAX_ADD_RETRY_ROUNDS = 1;
  * the deck grew by 10 slides for 20 issued adds — and a fresh context is the
  * only reliable way to see that it happened.
  *
- * A deficit gets ONE retry round: issue the missing adds in another fresh
- * context and re-verify from a third. If the deficit persists (the drop was
- * not transient, or the retry itself got dropped), give up — log via
- * `console.warn`, add whatever is still missing to `lastAddsLost`, and return
- * thunks for only the slides that actually landed (fewer than `count`).
+ * A deficit gets up to `MAX_ADD_RETRY_ROUNDS` retry rounds: issue the missing
+ * adds in another fresh context and re-verify from a third, repeating while the
+ * deck is still short. Each round re-reads the deficit, so a round that lands
+ * half the missing slides only re-issues the rest. If the deficit outlives
+ * every round (the drop was not transient, or the retries got dropped too),
+ * give up — log via `console.warn`, add whatever is still missing to
+ * `lastAddsLost`, and return thunks for only the slides that actually landed
+ * (fewer than `count`).
  *
  * Also NOT via `slides.items` (a snapshot, stale in the adds' sync — the bug that
  * returned zero new slides) and NOT by loading ids to re-acquire `getItem(id)`
@@ -916,7 +1180,26 @@ async function addSlides(
         `the host dropped the add() and the retry did not recover it. Returning ${have} thunk${have === 1 ? "" : "s"}.`,
     );
   }
-  const actual = Math.min(have, count);
+  // Confirm the deck really is that long FROM THIS CONTEXT before handing out
+  // indices into it. `landed` comes from slideCount(), which opens a context of
+  // its own, and the thunks below index the collection in THIS one — so a deck
+  // the two contexts disagree about produced `getItemAt(i)` for an `i` the host
+  // would not address, and answered with a bare GeneralException from inside the
+  // draw. Reading the count here costs one sync against the many the render is
+  // about to spend, and it is the only number the thunks are actually indexing.
+  const seen = context.presentation.slides.getCount();
+  await context.sync();
+  const addressable = Math.max(0, seen.value - start);
+  const actual = Math.min(have, count, addressable);
+  if (actual < Math.min(have, count)) {
+    trace("host", "slide count disagreed between contexts", {
+      start,
+      requested: count,
+      countedGlobally: landed,
+      countedHere: seen.value,
+      handingOut: actual,
+    });
+  }
   return Array.from({ length: actual }, (_, i) => () => context.presentation.slides.getItemAt(start + i));
 }
 
@@ -1348,6 +1631,23 @@ async function addAndRenderItem(
       layout.resolved = true;
     }
     const [getSlide] = await addSlides(context, 1, layout.id);
+    // No slide came back. `addSlides` is documented to hand out thunks only for
+    // the adds that actually LANDED, so this is its contract working: every
+    // add and every retry round was dropped by the host.
+    //
+    // Unchecked, the destructure above binds `undefined` and the next line to
+    // touch it dies with "getSlide is not a function" — a TypeError from
+    // renderer internals, thrown for a condition the run diagnoses precisely
+    // one frame earlier and already knows how to report. That message reached
+    // the user (and the run's own failure record) in place of the host's, on
+    // the one path where knowing the host lost a slide is the whole story.
+    //
+    // Fail with the real reason instead. Everything above this call is
+    // per-item recoverable: `runDemoDeck` records the item as failed and moves
+    // on, and a run that loses EVERY item still rethrows as before.
+    if (!getSlide) {
+      throw new Error("PowerPoint did not add a slide for this chart — the host dropped the add and every retry.");
+    }
     // Slot tag first, so identity survives even a render that later stalls —
     // the blank readback can then name the missing chart, not just its position.
     // Best-effort: a host without Slide.tags (pre-1.3) silently skips.
@@ -1510,6 +1810,16 @@ async function runDemoDeck(
   let shapesDrawn = 0;
   let lostAdsSeen = 0;
   for (let i = 0; i < items.length; i++) {
+    // Stop between items. A deck run is the longest thing this add-in does —
+    // the one that made a cancel worth having — and an item boundary is where
+    // stopping costs nothing: every slide so far is complete, grouped and
+    // tagged, and the next one has not been added. The run then reports what it
+    // landed, exactly as it does for any other early end, so the reconcile pass
+    // still sees a truthful deck.
+    if (isStopRequested()) {
+      trace("draw", "deck run stopped by the user", { done: i, of: items.length });
+      break;
+    }
     const shapeCount = estimateOfficeShapes(items[i].scene);
     // Once the run has degraded, every remaining item goes on as a picture:
     // ONE shape, whatever the chart's native count. Asked for first, because
@@ -2146,9 +2456,28 @@ async function deleteSlide(index: number, expect?: SlideSnapshot): Promise<boole
         shapes.load("items/name");
         const tag = supports("1.3")
           ? ((
-              slide as unknown as { tags: { getItemOrNullObject(k: string): { isNullObject: boolean; value: string } } }
+              slide as unknown as {
+                tags: {
+                  getItemOrNullObject(k: string): { isNullObject: boolean; value: string; load(p?: string): void };
+                };
+              }
             ).tags.getItemOrNullObject(DEMO_SLOT_TAG) ?? null)
           : null;
+        // LOAD it, do not merely resolve it. A getItemOrNullObject proxy nobody
+        // loads takes no part in the sync, so `isNullObject` is never populated
+        // and reading it throws PropertyNotLoaded — the same trap that made
+        // editing an ungrouped chart impossible (see CHART_PARTS_TAG).
+        //
+        // Here the throw lands inside this function's own catch, so the failure
+        // was silent and total: every guarded delete refused, every time, on any
+        // host that actually enforces the load. The repair pass could then never
+        // remove a duplicate slide it had correctly identified — it reported the
+        // step as one the host would not do, and the duplicates stayed.
+        //
+        // The cast is why this survived: the inline type it was given had no
+        // `load` on it, so calling it would not have compiled and its absence
+        // read as deliberate. The type now carries `load`.
+        tag?.load("value");
         await context.sync();
         const slot = tag && !tag.isNullObject ? parseSlotTag(tag.value) : null;
         // The identity that made this slide deletable in the first place.
@@ -2450,6 +2779,281 @@ export async function showSlide(slideId: string): Promise<boolean> {
   }
 }
 
+/** Where a slide-size answer came from — recorded so a wrong placement can be
+ *  traced to the rung that produced the number. */
+export type SlideSizeSource = "pageSetup" | "exportedSlide" | "documentFile" | "assumed";
+
+export interface SlideSize {
+  /** Points. */
+  width: number;
+  /** Points. */
+  height: number;
+  source: SlideSizeSource;
+}
+
+/**
+ * 16:9, the overwhelmingly common default, used when nothing can be read.
+ *
+ * Only ever the floor of the ladder below, and always labelled `assumed` so no
+ * caller mistakes it for a measurement.
+ */
+const ASSUMED_SLIDE_SIZE: SlideSize = { width: 960, height: 540, source: "assumed" };
+
+/**
+ * Cached because two of the three rungs below are expensive, and slide size is
+ * a property of the deck rather than of any one operation.
+ *
+ * Not permanent: a user can change slide size mid-session from PowerPoint's own
+ * Design tab, and a cached 16:9 would then place charts off the edge of a deck
+ * that is now 4:3. `slideSize({ refresh: true })` re-reads, and the cheap rung
+ * re-reads anyway (one property load costs a fraction of the sync it rides on).
+ */
+let cachedSlideSize: SlideSize | undefined;
+
+/** Drop the cached slide size — for tests, and for a deck whose setup changed. */
+export function _resetSlideSizeCache(): void {
+  cachedSlideSize = undefined;
+}
+
+/** Read `<p:sldSz>` out of a base64 .pptx, in points. */
+async function slideSizeFromPptxBase64(base64: string): Promise<SlideSize | null> {
+  try {
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const part = zip.file("ppt/presentation.xml");
+    if (!part) return null;
+    const emu = parseSlideSizeEmu(await part.async("string"));
+    if (!emu) return null;
+    return {
+      width: emu.cx / EMU_PER_POINT,
+      height: emu.cy / EMU_PER_POINT,
+      source: "exportedSlide",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The presentation's slide dimensions, in points.
+ *
+ * This add-in spent its life assuming them. `placeChart` still says why that
+ * was survivable — every standard slide is 540pt tall, 4:3 and 16:9 alike — but
+ * it was only ever true of the HEIGHT, and width is the dimension that decides
+ * whether a second chart can sit beside the first or has to go underneath it.
+ * The assumption is also what makes the generated-deck fast path rescale on a
+ * 4:3 deck, since the file it builds declares 16:9.
+ *
+ * Three rungs, cheapest and most exact first:
+ *
+ *  1. **`presentation.pageSetup`** (PowerPointApi 1.10) states both dimensions
+ *     in points. One property load on a sync we are opening anyway.
+ *  2. **`slide.exportAsBase64()`** (1.8) hands back the slide as its own .pptx,
+ *     and that file's `ppt/presentation.xml` carries the SOURCE deck's
+ *     `<p:sldSz>`. Exact, and jszip is already a dependency, but it is a whole
+ *     file round-trip for two numbers.
+ *  3. **`Office.context.document.getFileAsync`** (Common API, no PowerPointApi
+ *     gate at all) returns the entire deck in 4MB slices. Same parse, and the
+ *     only rung that works below 1.8 — but it copies the whole presentation,
+ *     which on a large deck is seconds and tens of MB, so it is genuinely last.
+ *
+ * Anything that fails falls through to the next rung, and a total failure
+ * answers 16:9 marked `assumed` rather than throwing: a wrong-but-labelled
+ * width degrades placement to what it did before, while a throw would take down
+ * an insert over a layout hint.
+ */
+export async function slideSize(opts: { refresh?: boolean } = {}): Promise<SlideSize> {
+  if (!opts.refresh && cachedSlideSize) return cachedSlideSize;
+
+  // Rung 1 — the direct read.
+  if (supports("1.10")) {
+    try {
+      const got = await PowerPoint.run(async (context) => {
+        const setup = (context.presentation as unknown as { pageSetup: { slideWidth: number; slideHeight: number } })
+          .pageSetup;
+        (setup as unknown as { load(p: string): void }).load("slideWidth,slideHeight");
+        await context.sync();
+        return { width: setup.slideWidth, height: setup.slideHeight };
+      });
+      if (Number.isFinite(got.width) && Number.isFinite(got.height) && got.width > 0 && got.height > 0) {
+        cachedSlideSize = { ...got, source: "pageSetup" };
+        trace("host", "slide size read", { ...cachedSlideSize });
+        return cachedSlideSize;
+      }
+    } catch {
+      /* 1.10 advertised but the property is not there — try the next rung */
+    }
+  }
+
+  // Rung 2 — export one slide and read what it declares.
+  if (supports("1.8")) {
+    try {
+      const base64 = await PowerPoint.run(async (context) => {
+        const slide = context.presentation.slides.getItemAt(0);
+        const out = (slide as unknown as { exportAsBase64(): { value: string } }).exportAsBase64();
+        await context.sync();
+        return out.value;
+      });
+      const got = base64 ? await slideSizeFromPptxBase64(base64) : null;
+      if (got) {
+        cachedSlideSize = got;
+        trace("host", "slide size read", { ...cachedSlideSize });
+        return cachedSlideSize;
+      }
+    } catch {
+      /* empty deck, or a host that will not export — try the next rung */
+    }
+  }
+
+  // Rung 3 — the whole document, through the Common API.
+  const fromFile = await slideSizeFromDocumentFile();
+  if (fromFile) {
+    cachedSlideSize = { ...fromFile, source: "documentFile" };
+    trace("host", "slide size read", { ...cachedSlideSize });
+    return cachedSlideSize;
+  }
+
+  trace("host", "slide size unavailable — assuming 16:9", { ...ASSUMED_SLIDE_SIZE });
+  cachedSlideSize = ASSUMED_SLIDE_SIZE;
+  return cachedSlideSize;
+}
+
+/**
+ * The deepest rung: pull the whole presentation through the Common API.
+ *
+ * `Office.context.document.getFileAsync` predates the PowerPointApi requirement
+ * sets entirely, so this is the only read available on a 1.4 host. It is also
+ * by far the most expensive — the entire deck, in 4MB slices, copied to reach
+ * two numbers in the first part — which is why nothing calls it until the two
+ * cheaper rungs have declined.
+ *
+ * The file handle MUST be closed. An add-in that leaves one open holds the
+ * host's copy of the document alive, and the docs are explicit that a leaked
+ * handle can block later `getFileAsync` calls outright.
+ */
+async function slideSizeFromDocumentFile(): Promise<{ width: number; height: number } | null> {
+  type Slice = { data: number[] | Uint8Array };
+  type OfficeFile = {
+    size: number;
+    sliceCount: number;
+    getSliceAsync(i: number, cb: (r: { status: string; value: Slice }) => void): void;
+    closeAsync(cb?: () => void): void;
+  };
+  let file: OfficeFile | undefined;
+  try {
+    const doc = (
+      Office as unknown as {
+        context?: {
+          document?: {
+            getFileAsync(t: unknown, o: unknown, cb: (r: { status: string; value: OfficeFile }) => void): void;
+          };
+        };
+      }
+    ).context?.document;
+    const fileType = (Office as unknown as { FileType?: { Compressed?: unknown } }).FileType?.Compressed;
+    if (!doc?.getFileAsync || fileType === undefined) return null;
+
+    file = await new Promise<OfficeFile>((resolve, reject) => {
+      doc.getFileAsync(fileType, { sliceSize: 4194304 }, (r) =>
+        r.status === "succeeded" ? resolve(r.value) : reject(new Error("getFileAsync failed")),
+      );
+    });
+
+    const parts: Uint8Array[] = [];
+    for (let i = 0; i < file.sliceCount; i++) {
+      const slice = await new Promise<Slice>((resolve, reject) => {
+        file!.getSliceAsync(i, (r) =>
+          r.status === "succeeded" ? resolve(r.value) : reject(new Error("slice failed")),
+        );
+      });
+      parts.push(slice.data instanceof Uint8Array ? slice.data : Uint8Array.from(slice.data));
+    }
+    const total = parts.reduce((n, p) => n + p.length, 0);
+    const bytes = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) {
+      bytes.set(p, at);
+      at += p.length;
+    }
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(bytes);
+    const part = zip.file("ppt/presentation.xml");
+    if (!part) return null;
+    const emu = parseSlideSizeEmu(await part.async("string"));
+    if (!emu) return null;
+    return { width: emu.cx / EMU_PER_POINT, height: emu.cy / EMU_PER_POINT };
+  } catch {
+    return null;
+  } finally {
+    try {
+      file?.closeAsync();
+    } catch {
+      /* nothing useful to do — the host will reclaim it */
+    }
+  }
+}
+
+/**
+ * Append a blank slide and return its id, or null if it did not land.
+ *
+ * Exists so `withSlideDeselected` has somewhere to look on a deck that offers
+ * nowhere. Verified the way `addSlides` verifies: a settled `slideCount()` in a
+ * fresh context, because a count queued in the add's own sync reports the
+ * PRE-add total on PowerPoint web, and because the web host drops `slides.add()`
+ * outright under load. A scratch slide that did not land must report null
+ * rather than hand back an id nobody can select or delete.
+ *
+ * The id is read positionally from a THIRD context, once the add has settled.
+ * `addSlides` avoids ids for its own thunks and says why — a fresh slide's id
+ * mis-round-trips inside the context that added it — but that hazard is about
+ * re-acquiring a proxy mid-context. A settled read from a later context is the
+ * same read `listChartsInDeck` and the reconcile pass already rely on.
+ */
+async function addScratchSlide(): Promise<string | null> {
+  try {
+    const before = await slideCount();
+    await PowerPoint.run(async (context) => {
+      const layoutId = await blankLayoutId(context);
+      context.presentation.slides.add(layoutId ? { layoutId } : undefined);
+      await context.sync();
+    });
+    const after = await slideCount();
+    // Exactly one more, or give up. Fewer means the host swallowed the add;
+    // more means something else is adding slides at the same time, and in
+    // neither case is "the last slide" reliably the one this function made —
+    // deleting it later would then delete the user's work.
+    if (after !== before + 1) {
+      trace("host", "scratch slide did not land", { before, after });
+      return null;
+    }
+    return await PowerPoint.run(async (context) => {
+      const last = context.presentation.slides.getItemAt(after - 1);
+      last.load("id");
+      await context.sync();
+      return last.id || null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Delete one slide by id, best-effort. True when it is gone (or already was). */
+async function deleteSlideById(slideId: string): Promise<boolean> {
+  try {
+    return await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      slide.load("isNullObject");
+      await context.sync();
+      if ((slide as unknown as { isNullObject: boolean }).isNullObject) return true;
+      slide.delete();
+      await context.sync();
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Run `fn` with the given slides NOT selected, then put the selection back.
  *
@@ -2464,10 +3068,22 @@ export async function showSlide(slideId: string): Promise<boolean> {
  * Looking away is free. Select any other slide, redraw off-screen at the
  * bigger batch size, select back.
  *
- * Entirely best-effort: `setSelectedSlides` needs PowerPointApi 1.5, and a
- * one-slide deck has nowhere to look. Both cases run `fn` unchanged.
- * `deselected` tells the caller which happened, so it knows whether the wait
- * budget it just used was the off-screen one.
+ * A one-slide deck has nowhere to look, so this MAKES somewhere: a blank slide
+ * appended for the duration and deleted in the `finally`. That case is not the
+ * rare one it sounds like — it is a user building their first chart, and it was
+ * the worst-served path in the add-in. Every edit ran on the live canvas at
+ * batch 10, which is the exact configuration a real run died in ("did not
+ * respond while drawing shapes 1-10 of 39"), and the deck with the fewest
+ * slides to look away to is the one most likely to have only the chart on it.
+ * Two extra undo entries is a real cost and the reason this is not done when a
+ * slide to park on already exists; a redraw that kills the tab is a worse one.
+ *
+ * Entirely best-effort throughout: `setSelectedSlides` needs PowerPointApi 1.5,
+ * the host can swallow the scratch add, and it can refuse the selection. Every
+ * one of those falls back to running `fn` on the live canvas exactly as before,
+ * having first put back anything it managed to add. `deselected` tells the
+ * caller which happened, so it knows whether the wait budget it just used was
+ * the off-screen one.
  */
 export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected: boolean) => Promise<T>): Promise<T> {
   if (!supports("1.5")) return fn(false);
@@ -2475,6 +3091,9 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
   /** The slide this function parked the view on, so it can tell later whether
    *  the user has since moved away from it. */
   let parkedOn: string | null = null;
+  /** A slide this function ADDED purely to have somewhere to look. Removed in
+   *  the `finally`; never shown to `fn`, and never the user's own. */
+  let scratchId: string | null = null;
   try {
     const moved = await PowerPoint.run(async (context) => {
       const presentation = context.presentation as unknown as {
@@ -2487,19 +3106,39 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
       const all = context.presentation.slides;
       all.load("items/id");
       await context.sync();
-      const elsewhere = all.items.map((s) => s.id).find((id) => !slideIds.includes(id));
-      if (!elsewhere) return null;
       const previous = selected.items.map((s) => s.id);
+      const elsewhere = all.items.map((s) => s.id).find((id) => !slideIds.includes(id));
+      // Nowhere to look YET. Report the selection anyway — the caller below
+      // makes a slide to look at, and it still has to know where to put the
+      // user back afterwards. Returning null here (as this did) threw that away.
+      if (!elsewhere) return { previous, parkedOn: null };
       presentation.setSelectedSlides([elsewhere]);
       await context.sync();
       return { previous, parkedOn: elsewhere };
     });
-    if (moved === null) return await fn(false);
+    if (moved.parkedOn === null) {
+      // Every slide in the deck is one we are about to draw on. Make a blank
+      // one at the end, look at that instead, and take it away again after.
+      scratchId = await addScratchSlide();
+      // The host swallowed the add: nothing landed, nothing to clean up, and
+      // the live canvas is still the only surface available.
+      if (!scratchId) return await fn(false);
+      if (!(await showSlide(scratchId))) {
+        // It landed but the host will not look at it — an unusable scratch
+        // slide is litter, so take it back out before falling through.
+        await deleteSlideById(scratchId);
+        scratchId = null;
+        return await fn(false);
+      }
+      trace("host", "parked on a scratch slide", { scratchId });
+    }
     restore = moved.previous;
-    parkedOn = moved.parkedOn;
+    parkedOn = moved.parkedOn ?? scratchId;
   } catch {
     // A host that will not tell us what is selected, or will not change it —
     // draw on the live canvas as before rather than refusing to draw at all.
+    // Anything already added has to come back out on the way past.
+    if (scratchId) await deleteSlideById(scratchId);
     return fn(false);
   }
   try {
@@ -2530,6 +3169,24 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
         presentation.setSelectedSlides(restore);
         await context.sync();
       }).catch(() => {});
+    }
+    // Take the scratch slide back out — AFTER the restore above, never before.
+    // Deleting the slide the view is currently on leaves the host to choose
+    // where the user lands, which is the one outcome this whole function exists
+    // to avoid. Restoring first means the delete happens off-view.
+    //
+    // Unconditional: it runs even when the restore was skipped because the user
+    // navigated away themselves. A blank slide the add-in left at the end of
+    // their deck is litter whether or not anyone is looking at it.
+    if (scratchId) {
+      const gone = await deleteSlideById(scratchId);
+      if (!gone) {
+        trace("host", "scratch slide could not be removed", { scratchId });
+        console.warn(
+          "PowerChart: could not remove the blank slide used to redraw off-screen — " +
+            "it is the last slide in the deck and safe to delete by hand.",
+        );
+      }
     }
   }
 }
@@ -2567,7 +3224,13 @@ export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
       slide.shapes.load("items/name");
       await context.sync();
       const names = slide.shapes.items.map((s) => (s as unknown as { name: string }).name);
-      return names.length === 1 && names[0] === GROUP_NAME;
+      // An EMPTY slide counts. This gate asks "would replacing this slide lose
+      // anything the user put here", and the answer for a bare slide is no —
+      // but it used to insist on seeing exactly one chart group, so the moment
+      // a failed redraw had deleted that group (and its litter had been swept)
+      // the swap disqualified itself on the evidence of its own damage. That
+      // left the one case this fallback exists for as the one case it refused.
+      return names.length === 0 || (names.length === 1 && names[0] === GROUP_NAME);
     });
   } catch {
     return false;
@@ -2666,6 +3329,14 @@ export function traceEnvironment(build: string): void {
     canInsertSlidesFromBase64: canInsertSlidesFromBase64(),
     canInsertPicture: canInsertPicture(),
   });
+  // Asynchronous, so it lands as its own trace line rather than holding up the
+  // one above — and the SOURCE goes in it, because "960x540" read off PageSetup
+  // and "960x540" assumed because nothing answered are the same two numbers
+  // with completely different weight behind them. A run log that cannot tell
+  // them apart cannot explain a mis-placed chart.
+  void slideSize()
+    .then((s) => trace("host", "slide size", { ...s }))
+    .catch(() => {});
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */
@@ -2801,19 +3472,35 @@ async function renderShapesChunked(
   scene: Scene,
   opts: InsertOptions,
   onBatch?: (sending: number, total: number) => void,
+  /**
+   * Filled with every shape this call creates, as it creates them.
+   *
+   * The return value only exists if the whole render succeeded, and a render
+   * that stalls half way has still COMMITTED every batch before the one that
+   * died — those shapes are on the slide and the caller has no other handle on
+   * them. An update that deleted the old chart first then left that partial
+   * chart behind as unreachable litter, under whatever it drew next. Passing a
+   * sink is how the caller gets to clean up what it started.
+   */
+  sink?: PowerPoint.Shape[],
 ): Promise<PowerPoint.Shape[]> {
   if (wantsPicture(opts, scene)) {
     // Report the picture as a single unit of work so a caller's progress bar
     // doesn't sit at zero and then jump — the picture IS the whole chart.
     onBatch?.(1, 1);
     const picture = await renderPictureShape(context, getSlide, scene, opts);
-    if (picture.length) return picture;
+    if (picture.length) {
+      sink?.push(...picture);
+      return picture;
+    }
     // Refused: fall through and draw the nodes instead, in this same context.
   }
   const left = opts.left ?? 60;
   const top = opts.top ?? 90;
   const batchSize = opts.shapesPerSync ?? SHAPES_PER_SYNC;
-  const created: PowerPoint.Shape[] = [];
+  // The sink IS the accumulator when one was passed, so a throw leaves the
+  // caller holding exactly what got drawn — no copying, nothing to keep in step.
+  const created: PowerPoint.Shape[] = sink ?? [];
   // SHAPES, not nodes. One node is not one shape: a wedge fans out into up to 62
   // triangles and a polygon becomes one line per edge, so slicing scene.nodes by
   // batchSize handed the host ~50 shapes for a pie and 253 for a violin —
@@ -2836,6 +3523,14 @@ async function renderShapesChunked(
   let sent = 0;
   let s = 0;
   while (s < steps.length) {
+    // The stop check, and the only place it can honestly go: batches already
+    // committed are on the slide and a sync in flight cannot be recalled, so
+    // "stop" means "queue nothing further". Throwing here rather than returning
+    // early is deliberate — every caller already has a path for a render that
+    // did not finish (it sweeps what landed), and a stop leaves exactly the
+    // same partial chart a stall does. Returning `created` would instead report
+    // a half-drawn chart as a successful render, group it, and tag it.
+    throwIfStopped();
     // Fresh slide proxy per batch: a proxy held across the previous sync may have
     // been rewritten to an unusable getItem(id) — see SlideThunk.
     const shapes = getSlide().shapes;
@@ -2940,9 +3635,18 @@ async function groupAndTagAll(
   const refresher = items.map((it, i) => ({ it, i })).filter(({ it }) => it.refreshShapes);
   const freshMembers = new Map<number, PowerPoint.Shape[]>();
   if (refresher.length) {
-    const collections = refresher.map(({ it }) => it.getSlide().shapes);
-    for (const c of collections) c.load("items");
     try {
+      // Inside the try, all of it. Resolving the collections and queueing their
+      // loads can throw SYNCHRONOUSLY — `getSlide()` reaches into the host, and
+      // a host that hands back something without a `.load` (seen on the web as
+      // "e.load is not a function") took down the whole PowerPoint.run from out
+      // here. That failed the entire update of a chart whose shapes had already
+      // committed: Same Scale across the deck reported one thrown TypeError for
+      // work that was, on the slide, done. Everything this block does is a
+      // best-effort refresh — the catch below already says so — so it all
+      // belongs where the catch can reach it.
+      const collections = refresher.map(({ it }) => it.getSlide().shapes);
+      for (const c of collections) c.load("items");
       await context.sync();
       refresher.forEach(({ it, i }, k) => {
         const items = collections[k].items;
@@ -3127,9 +3831,15 @@ async function ungroupedFallback(
   const siblings = items.map((it, i) => (hasTags && loose(i) && it.opts.tagData ? it.created.slice(1) : []));
   const alt = items.map((it, i) => ({ it, i })).filter(({ it, i }) => loose(i) && wantsAltText(it.opts));
   if (!alt.length && !siblings.some((s) => s.length)) return partsJson;
-  for (const s of siblings.flat()) s.load("id");
-  for (const { it, i } of alt) applyAltText(tagTargets[i]!, it.opts);
   try {
+    // Queueing counts as best-effort too. `s.load("id")` and `applyAltText` are
+    // ordinary property access on host proxies, and on the web those can throw
+    // synchronously — from out here that rejected the whole PowerPoint.run and
+    // failed an update whose shapes were already committed. The catch was
+    // always meant to cover this: the comment below is the contract, and it is
+    // just as true of a queue that faulted as of a sync that did.
+    for (const s of siblings.flat()) s.load("id");
+    for (const { it, i } of alt) applyAltText(tagTargets[i]!, it.opts);
     await context.sync();
   } catch {
     /* no alt text or id read-back here — the chart is on the slide regardless */
@@ -3142,7 +3852,17 @@ async function ungroupedFallback(
   return partsJson;
 }
 
-function getTargetSlide(context: PowerPoint.RequestContext): PowerPoint.Slide {
+function getTargetSlide(context: PowerPoint.RequestContext, slideId?: string): PowerPoint.Slide {
+  if (slideId) {
+    // getItem, not getItemOrNullObject: this returns synchronously, before any
+    // sync could tell us whether the id resolved, so there is no null to check
+    // — a dead id throws here and the selected slide is the honest fallback.
+    try {
+      return context.presentation.slides.getItem(slideId);
+    } catch {
+      /* the slide is gone — fall through to whatever the user is looking at */
+    }
+  }
   try {
     return context.presentation.getSelectedSlides().getItemAt(0);
   } catch {

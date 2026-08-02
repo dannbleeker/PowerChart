@@ -333,3 +333,61 @@ describe("the everyday paths on a host that refuses stale proxies", () => {
     expect(live.filter((s) => s.tagStore.has(CHART_TAG)).length, "chart is not re-editable").toBe(1);
   });
 });
+
+/**
+ * The fake host's own strictness, asserted directly.
+ *
+ * Every other test here drives production code and trusts the double
+ * underneath it. These drive the double, because a fake that is kinder than
+ * the host it models does not fail — it passes, wrongly, and takes a real
+ * defect with it. That is not hypothetical: resolving a tag proxy and reading
+ * it without `load()` is `PropertyNotLoaded` on PowerPoint web and was a plain
+ * property read here, which is how editing an ungrouped chart came to be
+ * impossible in the field with 1700 green tests, and how `deleteSlide` came to
+ * refuse every guarded delete it was ever asked for.
+ *
+ * Softening any of these makes the suite lie again. They are here so that
+ * doing so fails loudly rather than silently widening what the tests accept.
+ */
+describe("the fake host models Office.js strictness, not convenience", () => {
+  it("throws PropertyNotLoaded when a shape tag is read without load()", () => {
+    const shape = makeShape("geometric", "rectangle", { left: 0, top: 0, width: 10, height: 10 });
+    shape.tagStore.set(CHART_TAG, "{}");
+    installHost([makeSlide("s1")]);
+    const tag = shape.tags.getItemOrNullObject(CHART_TAG);
+    expect(() => tag.isNullObject).toThrow(/not available|PropertyNotLoaded/i);
+    expect(() => tag.value).toThrow(/not available|PropertyNotLoaded/i);
+  });
+
+  it("keeps a tag unreadable until the sync its load() was queued in lands", async () => {
+    // load() alone is not enough — the value arrives with the SYNC. A fake that
+    // resolved on load() would accept code that reads a tag it queued in the
+    // same breath, which the real host refuses.
+    const slide = makeSlide("s1");
+    slide.tagStore.set(DEMO_SLOT_TAG, JSON.stringify({ i: 0, title: "Line", run: "r" }));
+    installHost([slide]);
+    await PowerPoint.run(async (context) => {
+      const s = context.presentation.slides.getItemOrNullObject("s1");
+      s.load("id");
+      await context.sync();
+      const tag = (
+        s as unknown as { tags: { getItemOrNullObject(k: string): { value: string; load(p?: string): void } } }
+      ).tags.getItemOrNullObject(DEMO_SLOT_TAG);
+      tag.load("value");
+      expect(() => tag.value, "readable before its sync").toThrow(/not available|PropertyNotLoaded/i);
+      await context.sync();
+      expect(JSON.parse(tag.value).title).toBe("Line");
+    });
+  });
+
+  it("throws PropertyNotLoaded when a slide's isNullObject is read without load()", async () => {
+    installHost([makeSlide("s1")]);
+    await PowerPoint.run(async (context) => {
+      const missing = context.presentation.slides.getItemOrNullObject("nope");
+      expect(() => missing.isNullObject).toThrow(/not available|PropertyNotLoaded/i);
+      missing.load("isNullObject");
+      await context.sync();
+      expect(missing.isNullObject).toBe(true);
+    });
+  });
+});

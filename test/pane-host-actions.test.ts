@@ -23,6 +23,8 @@ import { sceneToSvg } from "../src/render/svg";
 /** Shared mailbox the mocked renderer writes to; reset before each boot. */
 const host = vi.hoisted(() => ({
   selectionBounds: null as null | { left: number; top: number; width: number; height: number },
+  /** What is already on the slide the next insert would draw onto. */
+  slideShapes: [] as { left: number; top: number; width: number; height: number }[],
   deckCharts: [] as { configJson: string; target: unknown }[],
   selectionCharts: [] as { configJson: string; target: unknown }[],
   loadSelectionResult: null as null | { configJson: string; target: unknown },
@@ -55,12 +57,28 @@ const host = vi.hoisted(() => ({
    * a live EditTarget, which is what a real successful update hands back.
    */
   updateResult: undefined as undefined | { slideId: string; shapeId: string; left: number; top: number },
+  /** What a fresh insert hands back — an EditTarget now, so a recovery stays editable. */
+  insertResult: null as null | { slideId: string; shapeId: string; left: number; top: number },
   /** Whether the host advertises insertSlidesFromBase64 — off by default. */
   canInsertFile: false,
   slideHoldsOnlyChart: false,
   /** Whether the renderer says this chart is too dense to draw as shapes. */
   autoPicture: false,
   updateChartThrows: false,
+  /**
+   * Which items of a multi-chart update stall, keyed by index, and the stray
+   * shape ids each one left on its slide.
+   *
+   * The real `updateChartsInSlides` deletes a chart's old shapes before it
+   * redraws them, so a stall leaves a partial chart behind and reports it via
+   * `onFailed` with the debris attached to the error. Modelling that is the
+   * only way a test can see whether the caller sweeps.
+   */
+  updateChartsStalls: new Map<number, string[]>(),
+  /** Whether the user has pressed Stop — the flag the render loops read. */
+  stopRequested: false,
+  /** What slideSize() reports — 16:9 unless a test says otherwise. */
+  slideSize: { width: 960, height: 540, source: "pageSetup" as const },
   demoReconcile: undefined as unknown,
   /** What `replaceSlideWithDeck` answers: "failed" | "swapped" | "duplicated". */
   swapOutcome: "failed" as "failed" | "swapped" | "duplicated",
@@ -77,11 +95,13 @@ const host = vi.hoisted(() => ({
   slideCountCalls: 0,
   reconcileOutcome: undefined as unknown,
   calls: {
-    insertScene: [] as { tagData?: string; left?: number; top?: number }[],
+    insertScene: [] as { tagData?: string; left?: number; top?: number; slideId?: string; pictureBase64?: string }[],
     updateChart: [] as { target: unknown; opts: { tagData?: string; pictureBase64?: string } }[],
     updateCharts: [] as { scene: unknown; target: unknown; opts?: { tagData?: string } }[][],
     insertFile: [] as { b64: string; expected: number }[],
     deselected: [] as string[][],
+    /** Sweeps of the litter a stalled redraw left behind, per recovery. */
+    swept: [] as { slideId: string; ids: string[] }[],
   },
 }));
 
@@ -89,27 +109,108 @@ vi.mock("../src/render/powerpoint", () => ({
   isPowerPointHost: () => true,
   canInsertPicture: vi.fn(() => host.canPicture),
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
-  insertSceneIntoSlide: vi.fn(async (_scene: unknown, opts: { tagData?: string; left?: number; top?: number }) => {
-    if (host.gate) await host.gate;
-    if (host.failInsertOnce) {
-      host.failInsertOnce = false;
-      throw new Error("host refused the insert");
-    }
-    host.calls.insertScene.push(opts);
-  }),
+  getSlideShapeBounds: vi.fn(async () => host.slideShapes),
+  insertSceneIntoSlide: vi.fn(
+    async (
+      scene: { nodes: unknown[] },
+      opts: { tagData?: string; left?: number; top?: number },
+      onPhase?: (phase: string, detail?: string) => void,
+    ) => {
+      // Report phases the way the real renderer does. The mock used to ignore
+      // `onPhase` entirely, and that silence is what hid a live bug for good:
+      // with no phase notes the pane's note stayed exactly "Working…", which is
+      // the one string the old `guard` recognised as "nothing was said", so
+      // every test saw the "Done." a real PowerPoint never printed.
+      onPhase?.("context");
+      onPhase?.("queue", `${scene.nodes.length} nodes`);
+      onPhase?.("commit", `${scene.nodes.length} of ${scene.nodes.length} shapes`);
+      onPhase?.("group");
+      if (host.gate) await host.gate;
+      if (host.failInsertOnce) {
+        host.failInsertOnce = false;
+        throw new Error("host refused the insert");
+      }
+      host.calls.insertScene.push(opts);
+      // The last thing a successful insert ever says — and it is still "busy".
+      onPhase?.("done");
+      return host.insertResult;
+    },
+  ),
   updateChartInSlide: vi.fn(
     async (_scene: unknown, target: unknown, opts: { tagData?: string; pictureBase64?: string }) => {
       host.calls.updateChart.push({ target, opts });
       if (host.updateGate) await host.updateGate;
+      // A stop taken while this was in flight surfaces the way the renderer
+      // surfaces it: a marked error carrying whatever the halted redraw had
+      // already committed. Stopping mid-batch leaves the same debris a stall
+      // does, so the wreckage is not optional.
+      if (host.stopRequested) {
+        const err = new Error("Stopped.") as Error & Record<string, unknown>;
+        err.__powerchartStopped = true;
+        err.__powerchartWreckage = { slideId: "s1", at: { left: 40, top: 50 }, strayIds: ["stray-1"] };
+        throw err;
+      }
       // Models the live-canvas stall: the in-place redraw refuses, a picture
       // update (which draws one shape) does not.
-      if (host.updateChartThrows && !opts.pictureBase64) throw new Error("did not respond while drawing shapes 1-10");
+      if (host.updateChartThrows && !opts.pictureBase64) {
+        // Carrying wreckage, because the real one always does: an update deletes
+        // the old chart and COMMITS that before it draws a single new shape, so
+        // a stall mid-redraw is never a no-op. A double that threw a bare error
+        // modelled a rollback the host does not have, and every fallback below
+        // was written against that fiction.
+        const err = new Error("did not respond while drawing shapes 1-10") as Error & Record<string, unknown>;
+        err.__powerchartWreckage = { slideId: "s1", at: { left: 40, top: 50 }, strayIds: ["stray-1", "stray-2"] };
+        throw err;
+      }
       return host.updateResult;
     },
   ),
-  updateChartsInSlides: vi.fn(async (items: { scene: unknown; target: unknown; opts?: { tagData?: string } }[]) => {
-    host.calls.updateCharts.push(items);
+  wreckageOf: (err: unknown) =>
+    err && typeof err === "object" && Object.prototype.hasOwnProperty.call(err, "__powerchartWreckage")
+      ? (err as Record<string, unknown>).__powerchartWreckage
+      : undefined,
+  deleteShapesById: vi.fn(async (slideId: string, ids: string[]) => {
+    host.calls.swept.push({ slideId, ids });
+    return ids.length;
   }),
+  // The cooperative stop. Modelled with the real semantics — a flag the render
+  // loops read — so a test can press Stop mid-action and see what the pane does
+  // with it, rather than only that the button exists.
+  requestStop: vi.fn(() => {
+    host.stopRequested = true;
+  }),
+  resetStop: vi.fn(() => {
+    host.stopRequested = false;
+    host.slideSize = { width: 960, height: 540, source: "pageSetup" };
+  }),
+  isStopRequested: vi.fn(() => host.stopRequested),
+  // The destination deck's slide size, which the deck builder needs so the
+  // generated file declares the size it is being inserted into.
+  slideSize: vi.fn(async () => host.slideSize),
+  isStopped: (err: unknown) =>
+    !!err && typeof err === "object" && Object.prototype.hasOwnProperty.call(err, "__powerchartStopped"),
+  updateChartsInSlides: vi.fn(
+    async (
+      items: { scene: unknown; target: { slideId?: string }; opts?: { tagData?: string } }[],
+      onFailed?: (item: unknown, err: unknown) => void,
+    ) => {
+      host.calls.updateCharts.push(items);
+      // Report the stalls the test asked for, exactly as the renderer does:
+      // the error carries the wreckage, because that is the only channel the
+      // caller has for finding out what was left on the slide.
+      for (const [i, strayIds] of host.updateChartsStalls) {
+        const item = items[i];
+        if (!item) continue;
+        const err = new Error("host stalled") as Error & Record<string, unknown>;
+        err.__powerchartWreckage = {
+          slideId: item.target?.slideId ?? `s${i}`,
+          at: { left: 0, top: 0 },
+          strayIds,
+        };
+        onFailed?.(item, err);
+      }
+    },
+  ),
   listChartsInDeck: vi.fn(async () => host.deckCharts),
   listChartsInSelection: vi.fn(async () => host.selectionCharts),
   loadChartFromSelection: vi.fn(async () => host.loadSelectionResult),
@@ -211,6 +312,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
  */
 async function bootHostPane() {
   host.selectionBounds = null;
+  host.slideShapes = [];
   host.deckCharts = [];
   host.selectionCharts = [];
   host.loadSelectionResult = null;
@@ -243,9 +345,13 @@ async function bootHostPane() {
   host.calls.deselected.length = 0;
   host.canPicture = true;
   host.updateResult = undefined;
+  host.insertResult = null;
+  host.calls.swept.length = 0;
   host.calls.insertScene = [];
   host.calls.updateChart = [];
   host.calls.updateCharts = [];
+  host.updateChartsStalls.clear();
+  host.stopRequested = false;
 
   window.history.replaceState({}, "", "/taskpane.html");
   const parsed = new DOMParser().parseFromString(readFileSync("src/taskpane/taskpane.html", "utf8"), "text/html");
@@ -530,6 +636,29 @@ describe("Insert", () => {
     expect(host.calls.updateChart).toHaveLength(0);
   });
 
+  /**
+   * Two charts onto one slide. The insert path never looked at what was
+   * already there — its whole answer to "where does this go" was a 14pt
+   * cascade, and against a 480x300 chart that is a 90%-plus overlap. The
+   * second chart landed on the first, which is what a user sees as one chart
+   * drawn over another.
+   */
+  it("puts a second chart clear of the first instead of on top of it", async () => {
+    const first = { left: 60, top: 90, width: 480, height: 300 };
+    host.slideShapes = [first];
+    $("insert").click();
+    await settle();
+    const at = host.calls.insertScene.at(-1)!;
+    const cfg = JSON.parse(at.tagData!) as { width?: number; height?: number };
+    const box = { left: at.left!, top: at.top!, width: cfg.width ?? 480, height: cfg.height ?? 300 };
+    const hits =
+      box.left < first.left + first.width &&
+      first.left < box.left + box.width &&
+      box.top < first.top + first.height &&
+      first.top < box.top + box.height;
+    expect(hits).toBe(false);
+  });
+
   it("fits the chart to a selected placeholder's bounds", async () => {
     host.selectionBounds = { left: 200, top: 150, width: 360, height: 240 };
     $("insert").click();
@@ -677,6 +806,48 @@ describe("Same scale", () => {
     // The selection-scoped guard names Ctrl-click, not the deck message.
     expect($("host-note").textContent?.toLowerCase()).toContain("ctrl-click");
   });
+
+  it("sweeps the debris every stalled redraw left behind, not just the first", async () => {
+    // Same Scale deletes each chart's old shapes and redraws them. A stall
+    // leaves whatever committed on the slide, and the single-chart path has
+    // swept that since updateChartResilient learned to — this path never did.
+    // It reported the charts "now empty" while half a chart sat on each one.
+    //
+    // TWO stalls on purpose. The renderer used to annotate only the FIRST
+    // failure with its wreckage and hand `onFailed` the raw error regardless,
+    // so a one-stall test would pass against a caller that swept nothing and a
+    // renderer that reported nothing. The second chart is what proves both
+    // halves are fixed.
+    host.deckCharts = [
+      { configJson: chartJson([10, 20, 30]), target: { slideId: "s1", shapeId: "a", left: 0, top: 0 } },
+      { configJson: chartJson([5, 90]), target: { slideId: "s2", shapeId: "b", left: 0, top: 0 } },
+      { configJson: chartJson([1, 40]), target: { slideId: "s3", shapeId: "c", left: 0, top: 0 } },
+    ];
+    host.updateChartsStalls.set(0, ["stray-a1", "stray-a2"]);
+    host.updateChartsStalls.set(2, ["stray-c1"]);
+    $("same-scale").click();
+    await settle();
+    // Both wrecks cleared, each against its OWN slide.
+    expect(host.calls.swept).toEqual([
+      { slideId: "s1", ids: ["stray-a1", "stray-a2"] },
+      { slideId: "s3", ids: ["stray-c1"] },
+    ]);
+    // And the user is still told which charts went blank.
+    expect($("host-note").textContent?.toLowerCase()).toContain("would not redraw");
+  });
+
+  it("sweeps nothing when every chart redraws", async () => {
+    // The other half of the contract: a clean run must not go poking at the
+    // slide. A sweep here would be deleting shapes that are the new chart.
+    host.deckCharts = [
+      { configJson: chartJson([10, 20, 30]), target: { slideId: "s1", shapeId: "a", left: 0, top: 0 } },
+      { configJson: chartJson([5, 90]), target: { slideId: "s2", shapeId: "b", left: 0, top: 0 } },
+    ];
+    $("same-scale").click();
+    await settle();
+    expect(host.calls.swept).toHaveLength(0);
+    expect($("host-note").textContent?.toLowerCase()).toContain("same scale applied");
+  });
 });
 
 describe("Elements and batch insert", () => {
@@ -731,6 +902,55 @@ describe("guard — busy lockout and error surfacing", () => {
     await settle();
     expect($("host-note").textContent?.toLowerCase()).toContain("failed");
     expect(host.calls.insertScene).toHaveLength(0);
+  });
+
+  /**
+   * The progress bar exists to say "the host is still working", so it has to
+   * stop when the host stops. An insert's last phase note is "Working… done" —
+   * still busy — and `guard` used to decide whether to print "Done." by asking
+   * whether the note text had changed since it posted "Working…". It had, so
+   * "Done." was skipped, nothing ever posted a settled note, and the bar kept
+   * its `indeterminate` class: a finished insert under an animation that slid
+   * forever. Asserting the bar, not just the words, is the point — the note
+   * could read "done" while the strip below it still claimed to be busy.
+   */
+  it("stops the progress bar when the insert finishes, not just the phase notes", async () => {
+    let release!: () => void;
+    host.gate = new Promise<void>((r) => (release = r));
+    $("insert").click();
+    await settle();
+    // Mid-flight the bar must actually be running, or the assertion after the
+    // release would pass against a bar that never showed at all.
+    expect($("status-bar").hasAttribute("hidden")).toBe(false);
+    expect($("status-bar").classList.contains("indeterminate")).toBe(true);
+
+    release();
+    await settle();
+    expect($("host-note").textContent).toBe("Done.");
+    expect($("host-note").className).toContain("status-ok");
+    expect($("status-bar").hasAttribute("hidden")).toBe(true);
+    expect($("status-bar").classList.contains("indeterminate")).toBe(false);
+  });
+
+  it("closes out an element insert too — every phase-reporting action settles", async () => {
+    $("harvey-insert").click();
+    await settle();
+    expect($("host-note").textContent).toBe("Done.");
+    expect($("status-bar").classList.contains("indeterminate")).toBe(false);
+  });
+
+  /**
+   * The flip side: an action that DID report an end state keeps it. "Done." is
+   * the fallback for silence, not an overwrite — a settlement counted per
+   * action is what keeps those two apart.
+   */
+  it("leaves an action's own closing note alone instead of overwriting it with Done.", async () => {
+    host.loadSelectionResult = null;
+    $("load-selection").click();
+    await settle();
+    expect($("host-note").textContent).not.toBe("Done.");
+    expect($("host-note").textContent?.toLowerCase()).toContain("not a powerchart");
+    expect($("status-bar").classList.contains("indeterminate")).toBe(false);
   });
 });
 
@@ -969,12 +1189,75 @@ describe("updating a chart the live canvas will not redraw", () => {
     expect($("host-note").textContent).not.toMatch(/rebuilt that slide/i);
   });
 
-  // NOT COVERED HERE: the picture floor, and the "everything failed, rethrow
-  // the host's own words" path behind it. jsdom has no canvas, so
-  // `rasterizeScene` neither succeeds nor fails — it simply never settles,
-  // which is also why that call is bounded by a timeout in the pane. Faking
-  // timers to drive it broke ten unrelated tests in this file; a test that
-  // waits out a real 10s timeout is not worth 10s on every run.
+  /**
+   * The floor of the ladder, on the failure it exists for.
+   *
+   * Layer 1 deletes the old chart, COMMITS that, and only then draws — so a
+   * stall leaves half a chart on the slide and no shape at the target's id.
+   * Every layer below assumed the chart was still there: layer 2 checks the
+   * slide holds nothing but the chart and saw the litter, layer 3 re-resolved
+   * the id layer 1 had just destroyed, got nothing back, and the pane announced
+   * "that chart is no longer on the slide" over a half-drawn one. Three
+   * fallbacks, all disabled by the damage they were meant to repair.
+   */
+  it("sweeps the wreckage and draws the chart back, rather than calling it gone", async () => {
+    const raster = stubRaster();
+    try {
+      host.updateChartThrows = true; // layer 1 stalls — after the delete committed
+      host.slideHoldsOnlyChart = false; // layer 2 out of the picture, so this is the floor
+      host.insertResult = { slideId: "s1", shapeId: "grp-new", left: 40, top: 50 };
+      await loadThenUpdate();
+
+      // The half-drawn chart went first — otherwise the replacement lands on
+      // top of it and the user keeps both.
+      expect(host.calls.swept).toEqual([{ slideId: "s1", ids: ["stray-1", "stray-2"] }]);
+
+      // Then the chart was drawn back: onto the slide it came from, at the
+      // position it held, as one picture no live canvas can stall on.
+      const drawn = host.calls.insertScene.at(-1);
+      expect(drawn).toMatchObject({ slideId: "s1", left: 40, top: 50 });
+      expect(drawn?.pictureBase64).toBeTruthy();
+
+      // And NOT as a picture update against the shape layer 1 deleted — that
+      // call can only ever resolve nothing.
+      expect(host.calls.updateChart.filter((c) => c.opts.pictureBase64)).toHaveLength(0);
+      expect($("host-note").textContent).not.toMatch(/no longer on the slide/i);
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("keeps the chart editable after that recovery, so the next edit still lands", async () => {
+    const raster = stubRaster();
+    try {
+      host.updateChartThrows = true;
+      host.slideHoldsOnlyChart = false;
+      host.insertResult = { slideId: "s1", shapeId: "grp-new", left: 40, top: 50 };
+      await loadThenUpdate();
+      // The button still reads Update, against the shape the recovery created —
+      // not the dead one, and not "Insert into slide".
+      expect(($("insert") as HTMLButtonElement).textContent).toMatch(/update/i);
+      host.updateChartThrows = false;
+      host.updateResult = { slideId: "s1", shapeId: "grp-newer", left: 40, top: 50 };
+      $("insert").click();
+      await settle();
+      expect(host.calls.updateChart.at(-1)?.target).toMatchObject({ shapeId: "grp-new" });
+    } finally {
+      raster.restore();
+    }
+  });
+
+  it("still says 'gone' when the chart really is gone — nothing was destroyed to recover", async () => {
+    // The other side of the same coin: an update that found nothing to replace
+    // destroyed nothing, so there is no wreckage, no sweep, and no chart to
+    // draw back. Telling this user to insert again is right; doing it for the
+    // case above would have given them the chart twice.
+    host.updateResult = undefined; // resolved no shape — the user deleted it
+    await loadThenUpdate();
+    expect(host.calls.swept).toHaveLength(0);
+    expect(host.calls.insertScene).toHaveLength(0);
+    expect($("host-note").textContent).toMatch(/no longer on the slide/i);
+  });
 });
 
 describe("demo-insert one-shot deck insert", () => {
@@ -1232,5 +1515,105 @@ describe("watchSelection", () => {
     await host.selectionListener!();
     await settle();
     expect($("selection-banner").style.display).toBe("none");
+  });
+});
+
+describe("Stop", () => {
+  beforeEach(bootHostPane);
+
+  /**
+   * Load a chart from the selection, then press Insert — which makes Insert an
+   * in-place UPDATE of that chart rather than a fresh insert. The update path
+   * is the one that is slow enough to need a stop, and the only one that goes
+   * through the gate these tests hold open.
+   */
+  async function startGatedUpdate(): Promise<() => void> {
+    host.loadSelectionResult = {
+      configJson: chartJson([1, 2, 3]),
+      target: { slideId: "s1", shapeId: "shape-9", left: 10, top: 20 },
+    };
+    $("load-selection").click();
+    await settle();
+    let release!: () => void;
+    host.updateGate = new Promise<void>((r) => (release = r));
+    $("insert").click();
+    await settle();
+    return () => {
+      release();
+      host.updateGate = null;
+    };
+  }
+
+  it("is offered only while an action is in flight", async () => {
+    // The button lives in the status strip and must be absent the rest of the
+    // time — a permanent Stop on an idle pane is a button that does nothing.
+    const stop = $("status-stop") as HTMLButtonElement;
+    expect(stop.hidden).toBe(true);
+    const release = await startGatedUpdate();
+    expect(stop.hidden, "no way out of a long action").toBe(false);
+    release();
+    await settle();
+    expect(stop.hidden, "left offering a stop after the action ended").toBe(true);
+  });
+
+  it("says it is stopping before the host has come back", async () => {
+    // The batch already handed to PowerPoint still has to return — up to
+    // BATCH_TIMEOUT_MS. Without immediate feedback the pane looks like it
+    // ignored the click for as long as that takes.
+    const stop = $("status-stop") as HTMLButtonElement;
+    const release = await startGatedUpdate();
+    stop.click();
+    await settle();
+    expect(stop.disabled).toBe(true);
+    expect(stop.textContent?.toLowerCase()).toContain("stopping");
+    release();
+    await settle();
+  });
+
+  it("reports a stop as a stop, not as a failure", async () => {
+    // "Failed: Stopped." reads like the add-in broke. The user pressed the
+    // button; the pane should say what happened, and say the work already
+    // drawn was kept.
+    const release = await startGatedUpdate();
+    ($("status-stop") as HTMLButtonElement).click();
+    release();
+    await settle();
+    const said = $("host-note").textContent?.toLowerCase() ?? "";
+    expect(said).toContain("stopped");
+    expect(said, "blamed the host for the user's own stop").not.toContain("failed");
+  });
+
+  it("still sweeps what the stopped redraw left on the slide", async () => {
+    // A stop mid-batch leaves a partial chart exactly as a stall does. Leaving
+    // it there would make Stop destructive — the one thing a cancel must not be.
+    const release = await startGatedUpdate();
+    ($("status-stop") as HTMLButtonElement).click();
+    release();
+    await settle();
+    expect(host.calls.swept).toEqual([{ slideId: "s1", ids: ["stray-1"] }]);
+  });
+
+  it("does not run the recovery ladder for a stop", async () => {
+    // Every rung below the in-place redraw exists to get the chart drawn some
+    // other way — rebuild the slide, rasterize it. That is precisely what a
+    // user who just pressed Stop has said they do not want, and the slowest
+    // rungs would run AFTER the cancel.
+    host.canInsertFile = true;
+    host.slideHoldsOnlyChart = true;
+    // The swap RUNG FAILS, deliberately: it is what makes the picture rung
+    // reachable, and the picture rung is the one that leaves a trace here (an
+    // update carrying pictureBase64). Asserting against a swap that succeeds
+    // proves nothing — a successful swap records nothing either way.
+    host.swapOutcome = "failed";
+    const release = await startGatedUpdate();
+    ($("status-stop") as HTMLButtonElement).click();
+    release();
+    await settle();
+    // No rasterized redraw was attempted after the cancel.
+    expect(host.calls.updateChart.filter((c) => c.opts.pictureBase64)).toHaveLength(0);
+    // And the pane did not claim to have rebuilt anything.
+    const said = $("host-note").textContent?.toLowerCase() ?? "";
+    expect(said).toContain("stopped");
+    expect(said).not.toMatch(/rebuil|picture/i);
   });
 });

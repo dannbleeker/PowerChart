@@ -45,6 +45,35 @@ const TAG_LST_NS =
  */
 const CANONICAL_SLIDE_EMU = { cx: 12192000, cy: 6858000 };
 
+/** EMU per point. 914400 EMU to the inch, 72 points to the inch. */
+export const EMU_PER_POINT = 12700;
+
+/**
+ * The slide size a .pptx declares, in EMU, or null if it does not say.
+ *
+ * `ppt/presentation.xml` carries exactly one `<p:sldSz cx=".." cy=".."/>`, and
+ * it is the authoritative statement of a deck's dimensions — the thing every
+ * "what size is this slide?" question actually wants. Reading it out of a deck
+ * the HOST exported is how this add-in learns the size of the presentation it
+ * is running in on hosts too old for `PageSetup`; see `slideSize`.
+ *
+ * Attribute order is not guaranteed, so both are matched independently rather
+ * than with one positional pattern.
+ */
+export function parseSlideSizeEmu(presentationXml: string): { cx: number; cy: number } | null {
+  const tag = /<p:sldSz\b[^>]*\/?>/.exec(presentationXml);
+  if (!tag) return null;
+  const cx = /\bcx="(\d+)"/.exec(tag[0]);
+  const cy = /\bcy="(\d+)"/.exec(tag[0]);
+  if (!cx || !cy) return null;
+  const w = Number(cx[1]);
+  const h = Number(cy[1]);
+  // A zero or non-finite dimension is not a slide. Returning it would put a
+  // divide-by-zero into every aspect-ratio calculation downstream.
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return { cx: w, cy: h };
+}
+
 /** The name the live renderer gives a chart's group — kept identical here so
  *  `snapshotAddedSlides` recognises a generated chart as a grouped one. */
 const GROUP_NAME = "PowerChart";
@@ -258,15 +287,25 @@ function addContentTypeOverride(typesXml: string, partName: string, contentType:
 }
 
 /**
- * Force the deck to PowerPoint's exact 16:9 size. See CANONICAL_SLIDE_EMU —
- * pptxgenjs is 305 EMU narrow, and a size mismatch invites the host to rescale
- * the slides it inserts.
+ * Pin the deck's declared slide size.
+ *
+ * Defaults to PowerPoint's exact 16:9 (see CANONICAL_SLIDE_EMU — pptxgenjs is
+ * 305 EMU narrow), because that is what this generator lays out for and what
+ * most decks are. But "most" is not "all", and the default was applied
+ * unconditionally: a generated deck inserted into a 4:3 presentation declared
+ * 16:9, which is precisely the size mismatch this function's own comment warns
+ * invites the host to rescale on insert. Every chart on the fast path then
+ * landed rescaled and off-centre, on a whole class of deck, silently.
+ *
+ * So the size is now an argument. `slideSize()` reads the destination's real
+ * dimensions; passing them makes the generated deck agree with the deck it is
+ * going into, which is the condition under which no rescaling happens at all.
  */
-export function canonicalSlideSize(presentationXml: string): string {
-  return presentationXml.replace(
-    /<p:sldSz[^>]*\/>/,
-    `<p:sldSz cx="${CANONICAL_SLIDE_EMU.cx}" cy="${CANONICAL_SLIDE_EMU.cy}"/>`,
-  );
+export function canonicalSlideSize(
+  presentationXml: string,
+  emu: { cx: number; cy: number } = CANONICAL_SLIDE_EMU,
+): string {
+  return presentationXml.replace(/<p:sldSz[^>]*\/>/, `<p:sldSz cx="${emu.cx}" cy="${emu.cy}"/>`);
 }
 
 /**
@@ -279,6 +318,8 @@ export function canonicalSlideSize(presentationXml: string): string {
 export async function injectGroupsAndTags(
   base64: string,
   dressing: SlideDressing[],
+  /** Destination slide size in EMU. Omitted, the deck declares 16:9. */
+  slideEmu?: { cx: number; cy: number },
 ): Promise<{ base64: string; shapesPerSlide: number[] }> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(base64, { base64: true });
@@ -372,7 +413,7 @@ export async function injectGroupsAndTags(
   }
 
   zip.file("[Content_Types].xml", types);
-  zip.file("ppt/presentation.xml", canonicalSlideSize(await readPart(zip, "ppt/presentation.xml")));
+  zip.file("ppt/presentation.xml", canonicalSlideSize(await readPart(zip, "ppt/presentation.xml"), slideEmu));
   return { base64: await zip.generateAsync({ type: "base64" }), shapesPerSlide };
 }
 

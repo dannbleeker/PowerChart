@@ -6,6 +6,7 @@ import { sceneToSvg } from "../render/svg";
 import {
   canInsertPicture,
   getSelectionBounds,
+  getSlideShapeBounds,
   insertAgendaSlides,
   insertDemoDeck,
   insertSceneIntoSlide,
@@ -30,10 +31,19 @@ import {
   updateChartsInSlides,
   onLateSync,
   errorText,
+  wreckageOf,
+  deleteShapesById,
+  requestStop,
+  resetStop,
+  isStopRequested,
+  isStopped,
+  slideSize,
   type EditTarget,
   type InsertPhase,
   type ReconcileOutcome,
+  type UpdateWreckage,
 } from "../render/powerpoint";
+import { placeChart } from "../core/placement";
 import { buildAgendaScene } from "../core/agenda";
 import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } from "../core/demo";
 import type { Scene } from "../core/scene";
@@ -381,6 +391,39 @@ let insertInFlight = false;
 const statusStrip = document.getElementById("status-strip");
 const statusBar = document.getElementById("status-bar");
 const statusElapsed = document.getElementById("status-elapsed");
+const statusStop = document.getElementById("status-stop") as HTMLButtonElement | null;
+
+/**
+ * Show or hide the Stop button for the action in flight.
+ *
+ * Reset on every show: the button is reused across actions, and one left
+ * disabled reading "Stopping…" would greet the next action as already stopping.
+ */
+function showStop(on: boolean) {
+  if (!statusStop) return;
+  if (on) {
+    statusStop.disabled = false;
+    statusStop.textContent = t("Stop");
+  }
+  statusStop.toggleAttribute("hidden", !on);
+}
+
+/**
+ * How many times the pane has SETTLED — posted a note that is not "busy".
+ *
+ * `guard()` prints "Done." only when the action it ran did not report an end
+ * state of its own, and it used to detect that by comparing the note text
+ * against the busy text it had posted. Any progress note broke the comparison,
+ * and an insert always ends on one: `phaseNote("done")` writes "Working… done",
+ * which is still busy. So the text no longer matched, "Done." was skipped, and
+ * the pane was left showing a blue busy note above a progress bar that slid on
+ * forever — the action had finished, and nothing said so.
+ *
+ * Counting settlements asks the question that actually matters — "did this
+ * action reach an end state?" — instead of inferring it from wording, which
+ * also makes it immune to the language the note is rendered in.
+ */
+let settledNotes = 0;
 
 function note(text: string, status: "ok" | "err" | "busy" | "none" = "none", params?: Record<string, string | number>) {
   // Route status text through the runtime translator so a localized pane
@@ -394,7 +437,10 @@ function note(text: string, status: "ok" | "err" | "busy" | "none" = "none", par
   // there is something to say, collapsed when there is not.
   statusStrip?.toggleAttribute("hidden", !text);
   statusBar?.toggleAttribute("hidden", status !== "busy");
-  if (status !== "busy") setProgress(null);
+  if (status !== "busy") {
+    setProgress(null);
+    settledNotes++;
+  }
 }
 
 /**
@@ -1372,8 +1418,8 @@ function rasterizeScene(scene: Scene): Promise<string> {
  * `warn` is returned rather than noted here on purpose: every insert path posts
  * `phaseNote` as its first act, which would immediately overwrite a note posted
  * before the insert. The caller notes it AFTER the insert resolves, where it
- * survives — `guard` only prints "Done." when the note is unchanged from the
- * busy text, and any phase note has already changed it.
+ * survives — and where it counts as this action's settlement, so `guard` leaves
+ * it standing instead of closing with "Done."
  */
 async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: string; warn?: string }> {
   // A chart nobody asked to rasterize, on the one host that cannot survive
@@ -1532,7 +1578,7 @@ async function runInsert(asNew: boolean) {
     // shape id that no longer existed, get filtered out as "the user deleted
     // this chart", and do nothing — silently. With auto-update on, that meant
     // only the first debounced push ever landed.
-    const { next, swapped, duplicated, picture } = await updateChartResilient(scene, state.editTarget, {
+    const { next, swapped, duplicated, picture, recovered } = await updateChartResilient(scene, state.editTarget, {
       tagData: JSON.stringify(cfg),
       pictureBase64: png,
     });
@@ -1562,6 +1608,16 @@ async function runInsert(asNew: boolean) {
       else if (warn) note(warn, "err");
       return;
     }
+    if (recovered) {
+      // The chart IS on the slide — redrawn from scratch after the in-place
+      // update destroyed it — the host just would not tag it, so there is no
+      // target to keep editing from. Distinguishing this from "gone" is the
+      // whole point: telling the user to insert it again would give them two.
+      state.editTarget = null;
+      renderActionState();
+      note("Redrawn as a picture — PowerPoint would not redraw it in place. Select the chart to keep editing.", "err");
+      return;
+    }
     // null means the target slide or shape is gone — nothing was written. The
     // caller's guard saw an unchanged note and printed "Done." in green, and the
     // stale target kept the button reading "Update chart", so every later push
@@ -1574,36 +1630,41 @@ async function runInsert(asNew: boolean) {
   }
   // New chart: use the selected placeholder's bounds when one is selected.
   const bounds = await getSelectionBounds();
-  // Resize BEFORE building the scene, so the raster matches the frame that sizes
-  // the picture's rect — a raster of a differently-sized scene would be stretched.
-  if (bounds && bounds.width > 40 && bounds.height > 40) {
-    cfg = { ...cfg, width: bounds.width, height: bounds.height };
-  }
-  const scene = buildChart(cfg);
-  const { png, warn } = await chartPicture(cfg, scene);
-  if (bounds && bounds.width > 40 && bounds.height > 40) {
-    await insertSceneIntoSlide(
-      scene,
-      { tagData: JSON.stringify(cfg), left: bounds.left, top: bounds.top, pictureBase64: png },
-      phaseNote,
-    );
+  const intoPlaceholder = !!bounds && bounds.width > 40 && bounds.height > 40;
+  // Where the chart goes, and at what size — decided BEFORE the scene is built,
+  // because both branches can change the size and the raster has to be of the
+  // scene that sizes the picture's rect. A raster of a differently-sized scene
+  // is a stretched chart.
+  let at: { left: number; top: number; width: number; height: number; shrunk?: boolean };
+  if (intoPlaceholder) {
+    at = { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height };
   } else {
-    await insertSceneIntoSlide(
-      scene,
-      {
-        tagData: JSON.stringify(cfg),
-        left: 60 + insertOffset,
-        top: 90 + insertOffset,
-        pictureBase64: png,
-      },
-      phaseNote,
+    // Nothing selected, so the chart has to be placed. Below whatever is
+    // already on the slide, shrunk into the space left if it will not fit at
+    // full size — a fixed 14pt cascade against a 480x300 chart overlapped the
+    // previous one by better than 90%, which is what "they are built on top of
+    // each other" looked like. The cascade survives as the last resort.
+    at = placeChart(
+      await getSlideShapeBounds(),
+      { width: cfg.width ?? DEFAULT_SIZE.width, height: cfg.height ?? DEFAULT_SIZE.height },
+      { left: 60, top: 90 },
+      { left: 60 + insertOffset, top: 90 + insertOffset },
     );
     insertOffset = (insertOffset + 14) % 84;
   }
+  cfg = { ...cfg, width: at.width, height: at.height };
+  const scene = buildChart(cfg);
+  const { png, warn } = await chartPicture(cfg, scene);
+  await insertSceneIntoSlide(
+    scene,
+    { tagData: JSON.stringify(cfg), left: at.left, top: at.top, pictureBase64: png },
+    phaseNote,
+  );
   state.editTarget = null;
   renderActionState();
   // After the insert, never before: phaseNote would have overwritten it.
   if (warn) note(warn, "err");
+  else if (at.shrunk) note("Scaled to fit the space left on the slide — drag or resize it as you like.", "ok");
 }
 
 /**
@@ -1645,14 +1706,50 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
   // is left blank and the user has to be told which. Silence here meant a
   // deck-wide operation could quietly empty charts the user never looked at.
   const stalled: string[] = [];
+  /**
+   * What each stalled redraw destroyed before it gave up.
+   *
+   * Same Scale deletes a chart's old shapes and redraws them, per chart. A
+   * redraw that stalls part-way leaves whatever it committed on the slide —
+   * a few axis lines, half a series — and the single-chart path has swept
+   * that since `updateChartResilient` learned to. This path never did: it
+   * told the user the charts were "now empty" and left the debris sitting on
+   * them, so the one operation that touches every chart in the deck was also
+   * the one that left the most behind.
+   */
+  const wreckage: UpdateWreckage[] = [];
   await updateChartsInSlides(
     rescaled.map((c, i) => ({
       scene: c.scene,
       target: c.target,
       opts: { tagData: JSON.stringify(c.cfg), pictureBase64: pictures[i].png },
     })),
-    (item) => stalled.push(item.scene.title || "an untitled chart"),
+    (item, err) => {
+      const w = wreckageOf(err);
+      if (w?.strayIds.length) wreckage.push(w);
+      // A chart the USER stopped is not a chart the host refused. Its debris is
+      // still swept below — stopping mid-batch leaves the same partial chart a
+      // stall does — but naming it in "PowerPoint would not redraw…" would
+      // blame the host for the user's own decision.
+      if (isStopped(err)) return;
+      stalled.push(item.scene.title || "an untitled chart");
+    },
   );
+  // Sweep AFTER the batch, never from inside the callback. `onFailed` fires
+  // within updateChartsInSlides' own request context, and `deleteShapesById`
+  // opens a fresh one on purpose — the context that just stalled is precisely
+  // the one that cannot be trusted to carry the repair.
+  if (wreckage.length) {
+    let swept = 0;
+    let strays = 0;
+    for (const w of wreckage) {
+      strays += w.strayIds.length;
+      swept += await deleteShapesById(w.slideId, w.strayIds);
+    }
+    console.warn(
+      `PowerChart: same scale swept ${swept} of ${strays} shapes left by ${wreckage.length} stalled redraw(s)`,
+    );
+  }
   if (stalled.length) {
     note(
       "Same scale: PowerPoint would not redraw {n} chart(s) — {which}. They are now empty; undo (Ctrl+Z) restores them.",
@@ -1664,6 +1761,11 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     );
     return;
   }
+  // Stopped part-way: the charts that were rescaled keep their new scale and the
+  // rest keep their old one, so claiming the deck is now on one scale would be
+  // false. `guard()` posts the "Stopped" note; this just declines to overwrite
+  // it with a success message first.
+  if (isStopRequested()) return;
   note("Same scale applied to {n} charts (max {max}).", "ok", { n: parsed.length, max });
   const degraded = pictures.filter((p) => p.warn).length;
   if (degraded) {
@@ -2127,8 +2229,25 @@ async function updateChartResilient(
   scene: Scene,
   target: EditTarget,
   opts: { tagData?: string; pictureBase64?: string },
-): Promise<{ next: EditTarget | null; swapped?: boolean; duplicated?: boolean; picture?: boolean }> {
+): Promise<{
+  next: EditTarget | null;
+  swapped?: boolean;
+  duplicated?: boolean;
+  picture?: boolean;
+  /** The chart was re-drawn from scratch after a failed update destroyed it. */
+  recovered?: boolean;
+}> {
   let stall: unknown;
+  /**
+   * What layer 1 destroyed before it failed, when it destroyed anything.
+   *
+   * Everything below used to assume the chart was still on the slide, and layer
+   * 1's first act is to delete it — so once layer 1 had run at all, layer 2
+   * disqualified itself on the litter and layer 3 re-resolved a shape id that
+   * no longer existed and reported the chart "no longer on the slide". Three
+   * fallbacks, none of them reachable, in exactly the case they are for.
+   */
+  let wreckage: UpdateWreckage | undefined;
   try {
     const next = await withSlideDeselected([target.slideId], (deselected) =>
       updateChartInSlide(scene, target, deselected ? { ...opts, shapesPerSync: OFFSCREEN_BATCH } : opts),
@@ -2137,12 +2256,31 @@ async function updateChartResilient(
   } catch (err) {
     console.warn("PowerChart: in-place redraw stalled — trying the slide swap", err);
     stall = err;
+    wreckage = wreckageOf(err);
   }
+
+  // Clear the half-drawn chart before anything else draws over it. Whatever
+  // comes next puts a whole chart back on this slide, and without the sweep the
+  // user keeps the wreckage underneath it — the failure made visible twice.
+  if (wreckage?.strayIds.length) {
+    const swept = await deleteShapesById(wreckage.slideId, wreckage.strayIds);
+    console.warn(`PowerChart: swept ${swept} of ${wreckage.strayIds.length} shapes left by the stalled redraw`);
+  }
+
+  // A stop is not a stall, and the ladder below is for stalls. Every rung of it
+  // exists to get the chart drawn by some other means — rebuild the slide,
+  // rasterize it — which is the one thing a user who just pressed Stop has said
+  // they do not want. Running it anyway would make Stop mean "draw this a
+  // different way", and the slowest rungs would then run AFTER the cancel.
+  //
+  // The sweep above still happens: stopping mid-batch leaves the same debris a
+  // stall does, and leaving it there would make Stop destructive.
+  if (isStopped(stall)) throw stall;
 
   if (canInsertSlidesFromBase64() && opts.tagData && (await slideHoldsOnlyChart(target.slideId))) {
     try {
       note("Rebuilding that slide…", "busy");
-      const built = await buildDeckBase64([{ scene, title: "Chart", configJson: opts.tagData }]);
+      const built = await buildDeckBase64([{ scene, title: "Chart", configJson: opts.tagData }], await slideSize());
       const swap = await replaceSlideWithDeck(target.slideId, built.base64);
       if (swap === "swapped") return { next: null, swapped: true };
       // The new slide landed; only the old one's removal failed. Falling
@@ -2164,8 +2302,23 @@ async function updateChartResilient(
       rasterizeScene(scene),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("rasterizing timed out")), 10_000)),
     ]);
-    const next = await updateChartInSlide(scene, target, { ...opts, pictureBase64: png });
-    return { next, picture: true };
+    // UPDATE only while there is something left to update. Once layer 1 has
+    // deleted the chart, an update resolves a dead shape id, decides the user
+    // must have deleted the chart themselves, and does nothing — which is how
+    // the floor of this ladder came to report "that chart is no longer on the
+    // slide" about a chart it had just removed. With the slide and the position
+    // both known, drawing it back is an insert, and the picture makes it one
+    // shape that no live canvas can stall on.
+    const next = wreckage
+      ? await insertSceneIntoSlide(scene, {
+          ...opts,
+          pictureBase64: png,
+          slideId: wreckage.slideId,
+          left: wreckage.at.left,
+          top: wreckage.at.top,
+        })
+      : await updateChartInSlide(scene, target, { ...opts, pictureBase64: png });
+    return { next, picture: true, recovered: !!wreckage };
   } catch (err) {
     // Nothing left to try. Surface the host's own words rather than a
     // rasterizer error the user can do nothing about.
@@ -2203,6 +2356,10 @@ async function insertDemoDeckAsFile(items: { scene: Scene; title: string; config
     note("Building the deck…", "busy");
     built = await buildDeckBase64(
       items.map((it, i) => ({ scene: it.scene, title: it.title, configJson: it.configJson, slot: i, run })),
+      // Build the file at the DESTINATION's slide size. A generated deck that
+      // declares a different size is one PowerPoint rescales on insert, which
+      // moves every chart on every slide — silently, and on every 4:3 deck.
+      await slideSize(),
     );
   } catch (err) {
     console.warn("PowerChart: could not build the deck file — falling back to shapes", err);
@@ -2358,31 +2515,67 @@ function wireInsert() {
         const lock = [insertBtn, clicked].filter((b): b is HTMLButtonElement => !!b && !b.disabled);
         for (const b of lock) b.disabled = true;
         note("Working…", "busy");
-        // Compare against the TRANSLATED busy text: note() routes through t(), so
-        // under a localized pane hostNote reads e.g. "Arbeite…" and a check against
-        // the English literal never matched — the success note was never shown.
-        const busyText = hostNote.textContent;
+        // Mark AFTER the busy note: "Working…" is not a settlement, and the mark
+        // has to sit at the boundary of this action so only what `fn()` itself
+        // posts counts. See `settledNotes` — a phase note is busy by definition,
+        // so an insert that ends on one still needs "Done." to close it out.
+        const settledAt = settledNotes;
         setProgress("busy");
         startElapsed();
+        // Clear any stop left by the PREVIOUS action before offering a new one.
+        // A stop that survived into the next action would cancel it at its first
+        // batch, and the user would never learn why.
+        resetStop();
+        showStop(true);
         try {
           await fn();
           trace("pane", "action finished", { action, ms: Date.now() - startedAt });
-          if (hostNote.textContent === busyText) {
+          // A stopped action that ended tidily still has to SAY it stopped —
+          // "Done." over work the user cancelled is the pane claiming credit
+          // for something it did not do. This covers the paths that stop by
+          // returning early (a deck run between items, Same Scale between
+          // charts) rather than by throwing.
+          if (isStopRequested()) {
+            note("Stopped — anything already drawn was kept.", "err");
+          } else if (settledNotes === settledAt) {
             note("Done.", "ok");
           }
         } catch (err) {
-          trace("pane", "action failed", { action, ms: Date.now() - startedAt, error: errorText(err) });
-          // errorText, not err.message: a RichApi.Error's message is generic
-          // ("An internal error has occurred") and the useful part is in code
-          // and debugInfo, which String(err) throws away.
-          note("Failed: {error}", "err", { error: errorText(err) });
+          // The user's own stop is not a failure, and reporting it as one
+          // ("Failed: Stopped.") reads like the add-in broke.
+          if (isStopped(err)) {
+            trace("pane", "action stopped", { action, ms: Date.now() - startedAt });
+            note("Stopped — anything already drawn was kept.", "err");
+          } else {
+            trace("pane", "action failed", { action, ms: Date.now() - startedAt, error: errorText(err) });
+            // errorText, not err.message: a RichApi.Error's message is generic
+            // ("An internal error has occurred") and the useful part is in code
+            // and debugInfo, which String(err) throws away.
+            note("Failed: {error}", "err", { error: errorText(err) });
+          }
         } finally {
           stopElapsed();
+          showStop(false);
+          resetStop();
           // Only re-enable what this call disabled — never resurrect a button
           // some other state (no host, no selection) means to keep dead.
           for (const b of lock) b.disabled = false;
         }
       };
+    // Not through `guard()`: this button must stay live precisely WHILE a
+    // guarded action is running, which is the one state guard() disables things
+    // in. It queues no host work of its own — it sets a flag the render loops
+    // read at their next batch boundary.
+    statusStop?.addEventListener("click", () => {
+      requestStop();
+      // Say so immediately. The batch already handed to PowerPoint still has to
+      // come back — up to BATCH_TIMEOUT_MS — and without this the pane looks
+      // like it ignored the click for as long as that takes.
+      if (statusStop) {
+        statusStop.disabled = true;
+        statusStop.textContent = t("Stopping…");
+      }
+    });
     insertBtn.addEventListener(
       "click",
       guard(() => doInsert(false)),
@@ -2452,7 +2645,9 @@ function wireInsert() {
       btn.disabled = false;
       btn.addEventListener(
         "click",
-        guard(() => insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote)),
+        guard(async () => {
+          await insertSceneIntoSlide(scene(), { left: 120, top: 160 }, phaseNote);
+        }),
       );
     }
     agendaBtn.disabled = false;

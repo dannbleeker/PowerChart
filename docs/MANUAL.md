@@ -38,7 +38,11 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
    column A is series names. Pasting a range from Excel (Ctrl+V) works.
 3. Adjust options; the preview updates live.
 4. **Insert into slide.** If a placeholder or shape is selected, the chart
-   fills its bounds; repeated inserts cascade.
+   fills its bounds. Otherwise it is placed clear of whatever is already on the
+   slide — below it, scaled down to fit the space left if it will not go at full
+   size (the pane says so when it does). A slide with no room left falls back to
+   a small cascading offset, so the chart lands somewhere you can see and drag
+   rather than off the edge.
 5. **Re-edit later**: select the chart on the slide — the pane shows an
    "Edit it" banner. Or click **Edit selected chart** to load its data and
    options back into the pane, change anything, and **Update chart** to
@@ -418,7 +422,10 @@ took — so an exported PDF is a self-contained regression record.
 - **One file insert** (the default) builds the whole deck as a .pptx in the
   pane and hands it to PowerPoint in a single call, instead of drawing it shape
   by shape through hundreds of round trips. Charts arrive already grouped and
-  already tagged, so they are editable exactly as before.
+  already tagged, so they are editable exactly as before. The file is built at
+  *your* deck's slide size — a generated deck that declared a different size
+  was one PowerPoint rescaled on insert, which moved every chart on every
+  slide, and 4:3 decks got that every time.
 - **Shape by shape** draws it through Office.js, one chart per slide.
 - **Both, one after the other** takes each path in turn into the same deck. The
   two fail in completely different ways, and comparing them used to mean two
@@ -496,7 +503,12 @@ three fallbacks on its own, least disruptive first:
 
 1. **It looks away.** Another slide is selected so yours is off-screen, where the
    host accepts four times as many shapes per round trip, and your selection is
-   put back afterwards. Nothing is lost.
+   put back afterwards. Nothing is lost. If the deck has no other slide to look
+   at — a one-slide deck, the commonest case when you are building your first
+   chart — a blank slide is added at the end for the duration and removed again
+   when the redraw finishes. You may see it appear briefly. On the rare host
+   that refuses to remove it, the pane says so; it is the last slide and safe to
+   delete.
 2. **It rebuilds the slide.** The chart is generated as a one-slide file and
    swapped in — no drawing at all. Only when the slide holds *nothing but the
    chart*, because the replacement is a new slide and does not carry the old
@@ -507,6 +519,31 @@ three fallbacks on its own, least disruptive first:
    a raster.
 
 If all three fail you get PowerPoint's own message, not a substitute for it.
+
+### Stopping a long operation
+
+While the pane is working, a **Stop** button appears next to the progress bar.
+Inserting a whole demo deck, or applying **Same scale** across many charts, can
+run for minutes on the web; Stop is the way out.
+
+It stops at the next safe point rather than instantly. PowerPoint cannot abort
+a round trip already in flight, so the batch being drawn finishes first — the
+button reads *Stopping…* until it does. What that safe point is depends on the
+operation:
+
+- **Inserting a deck** stops between slides. Every slide already finished is
+  complete, grouped and tagged, and is kept.
+- **Same scale** stops between charts. Charts already rescaled keep the new
+  scale; the rest are untouched, so the deck is left on two scales — re-run it
+  to finish the job.
+- **Redrawing one chart** stops between batches. Because an update replaces
+  every shape, a chart caught mid-redraw is left partly drawn — the pane clears
+  what it had drawn so you are not left with debris under a half-chart, and
+  **Ctrl+Z** restores the original.
+
+Stop never falls back to rebuilding the slide or drawing a picture. Those exist
+to get a stalled chart drawn some other way, which is the opposite of what you
+asked for.
 
 ## Excel companion
 
