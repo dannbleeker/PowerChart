@@ -30,6 +30,7 @@ import {
   updateChartInSlide,
   updateChartsInSlides,
   withSlideDeselected,
+  clearShapeSelection,
   MAX_ADD_RETRY_ROUNDS,
   wreckageOf,
   requestStop,
@@ -2463,6 +2464,37 @@ describe("reading a demo deck back and repairing it", () => {
     } finally {
       _setReadbackTimeoutForTest(90_000);
       stallSyncOn.clear();
+    }
+  });
+
+  it("does not ask a silent host a second question after the first one went unanswered", async () => {
+    // `clearShapeSelection` does two things — ask for the clear, then re-select
+    // the slide as a fallback, because `setSelectedShapes([])` is ignored on
+    // the web (office-js#3083). The fallback is right for a host that REFUSES
+    // and wrong for one that has gone silent: the web host's wedged selection
+    // subsystem answers neither, so the second call is a second full budget
+    // spent learning the same thing. Two 90-second waits, half a second apart,
+    // is exactly what a real run logged.
+    installHost([makeSlide("s1")]);
+    faults.selectionWedgesHost = true;
+    _setReadbackTimeoutForTest(30);
+    try {
+      // Arm the wedge the way the host does: a select that is taken, and
+      // poisons everything after it.
+      await PowerPoint.run(async (context) => {
+        const slide = context.presentation.slides.getItemAt(0) as unknown as {
+          setSelectedShapes(ids: string[]): void;
+        };
+        slide.setSelectedShapes(["shape-1"]);
+      });
+      const before = trips.syncs;
+      await clearShapeSelection("s1", 30);
+      // One sync to resolve the slide, one that goes silent — and then it
+      // stops. A third means the fallback ran into the same silence.
+      expect(trips.syncs - before, "asked the silent host again after a timeout").toBe(2);
+    } finally {
+      faults.selectionWedgesHost = false;
+      _setReadbackTimeoutForTest(90_000);
     }
   });
 

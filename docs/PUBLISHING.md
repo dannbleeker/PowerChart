@@ -147,6 +147,31 @@ Record anything broken as issues; fix per the lockstep rules. Real-host
 degradation paths that are *expected* (not bugs): radar fills are
 outline-only, pattern fills render solid.
 
+**A programmatic `setSelectedShapes` wedges the web host's selection
+subsystem.** Measured on PowerPoint on the web, twice, on build `55011a3`:
+
+- `Slide.setSelectedShapes([id])` is GA at PowerPointApi 1.5 and **takes the
+  call** — no error, no refusal, `context.sync()` resolves.
+- Every selection call after it goes silent. `getSelectedShapes` (the read
+  behind *Edit it*) ran out its full 90-second budget; so did the
+  `setSelectedSlides` that follows it. Nothing throws — the host simply never
+  answers, and a run that would otherwise take seconds took 159.
+
+Two selection bugs are already open against the web host — office-js#3083
+(`setSelectedShapes([])` does not clear on web) and #3698 (no picture insert
+while a shape is selected) — and this is the same family: the web host's
+selection layer accepts writes it cannot then serve. It is Microsoft's, not
+ours, and it is now **gated**: the *edit the chart the user selected* scenario
+waits ten seconds rather than ninety, and reports **skipped** with the reason
+rather than red. `npm run triage` annotates it as a known host bug
+automatically.
+
+**Nothing in the add-in is affected by it**, which is why it is a gate and not
+a fix: the pane never selects a shape programmatically. It reads the selection
+the *user* made, and a user's own click leaves the subsystem answering
+normally. That is exactly what test 4 of the standing run checks by hand, and
+on the web it is the only thing that can.
+
 **Two more things that are expected and look alarming.** Neither is a defect:
 
 - **A blank slide appears at the end of the deck and disappears again** while a
@@ -189,6 +214,9 @@ which in practice meant six separate sessions. They are now one button:
 | insert onto a slide that already has content | the everyday action — a chart drawn onto a slide that is not blank stays grouped and re-editable, and does not swallow what was already there |
 | same scale across the deck | a deck-wide rescale empties nothing |
 | explode a degraded picture | a picture keeps its config and can become native shapes again |
+| edit the chart the user selected | the read behind *Edit it* — the only entry point a real user travels on |
+| stop a run part-way | a stopped run adds nothing and leaves nothing behind claiming to be a chart |
+| the chart is actually visible | the host's own render changed where the chart was drawn — not just that shapes exist |
 
 Each verdict says what was observed, not just pass/fail, and a scenario that
 throws is recorded and the rest still run — a battery that stopped at the first
@@ -200,13 +228,16 @@ directions.
 It leaves its slides in the deck on purpose — save the file and hand it to
 `npm run triage` with the log.
 
-**What it cannot cover.** Office.js has no way to select a *shape*, so the
-selection-driven entry points ("Edit selected chart", "Explode" as a user
-reaches them) cannot be scripted. The battery drives the machinery underneath
-them via `listChartsInDeck`. A scenario passing here can still be broken at the
-selection layer; a scenario failing here is broken for everyone. Tests 1–3 of
-the standing run are the only coverage those entry points get — which is why
-they come first, and why they are manual.
+**What it cannot cover.** For a long time this paragraph said Office.js had no
+way to select a *shape*. That was wrong — `Slide.setSelectedShapes` has been GA
+since PowerPointApi **1.5** — and the belief cost this project four manual tests
+that could have been buttons. It is scripted now.
+
+What it still cannot cover is a **human** selecting: a real click, and the drag
+that precedes an edit (`POWERCHART_ORIGIN`). Test 4 of the standing run is the
+only coverage those get, which is why it is still manual. And on PowerPoint on
+the **web** the scripted version does not work at all — see below — so on that
+host the manual round trip is the *only* coverage the selection path has.
 
 ### Reading the demo-deck self-check (post-#212–#216)
 

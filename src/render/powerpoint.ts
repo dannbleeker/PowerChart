@@ -1000,45 +1000,51 @@ export async function updateChartsInSlides(
  * at insert time). Returns null when the selection is not a PowerChart.
  * Requires PowerPointApi 1.5 (getSelectedShapes).
  */
-export async function loadChartFromSelection(): Promise<{ configJson: string; target: EditTarget } | null> {
-  return boundedRun("reading the selected chart", async (context) => {
-    const slides = context.presentation.getSelectedSlides();
-    const slide = slides.getItemAt(0);
-    slide.load("id");
-    const shapes = context.presentation.getSelectedShapes();
-    shapes.load("items/id,items/left,items/top");
-    await context.sync();
+export async function loadChartFromSelection(
+  budgetMs?: number,
+): Promise<{ configJson: string; target: EditTarget } | null> {
+  return boundedRun(
+    "reading the selected chart",
+    async (context) => {
+      const slides = context.presentation.getSelectedSlides();
+      const slide = slides.getItemAt(0);
+      slide.load("id");
+      const shapes = context.presentation.getSelectedShapes();
+      shapes.load("items/id,items/left,items/top");
+      await context.sync();
 
-    // The host may answer a shape-collection read with nothing at all; then
-    // there is no selection to speak of, which is the same answer as "the
-    // selection is not a PowerChart". See `loadedItems`.
-    const selected = loadedItems(shapes) ?? [];
-    const tags = selected.map((s) => chartTagsOf(s));
-    await context.sync();
+      // The host may answer a shape-collection read with nothing at all; then
+      // there is no selection to speak of, which is the same answer as "the
+      // selection is not a PowerChart". See `loadedItems`.
+      const selected = loadedItems(shapes) ?? [];
+      const tags = selected.map((s) => chartTagsOf(s));
+      await context.sync();
 
-    // The selected slide's id, once. A host that will not name the slide leaves
-    // no target to hand back — the pane's "not a PowerChart" answer, which is
-    // survivable, rather than a throw out of the pane's most-used read.
-    const slideId = loadedValue(() => slide.id);
-    for (let i = 0; i < selected.length; i++) {
-      const { config, parts, origin } = tags[i];
-      const configJson = tagValue(config);
-      const at = targetRef(selected[i]);
-      if (!configJson || !at || typeof slideId !== "string") continue;
-      return {
-        configJson,
-        target: {
-          slideId,
-          shapeId: at.id,
-          left: at.left,
-          top: at.top,
-          partIds: partIdsOf(parts),
-          origin: originOf(origin),
-        },
-      };
-    }
-    return null;
-  });
+      // The selected slide's id, once. A host that will not name the slide leaves
+      // no target to hand back — the pane's "not a PowerChart" answer, which is
+      // survivable, rather than a throw out of the pane's most-used read.
+      const slideId = loadedValue(() => slide.id);
+      for (let i = 0; i < selected.length; i++) {
+        const { config, parts, origin } = tags[i];
+        const configJson = tagValue(config);
+        const at = targetRef(selected[i]);
+        if (!configJson || !at || typeof slideId !== "string") continue;
+        return {
+          configJson,
+          target: {
+            slideId,
+            shapeId: at.id,
+            left: at.left,
+            top: at.top,
+            partIds: partIdsOf(parts),
+            origin: originOf(origin),
+          },
+        };
+      }
+      return null;
+    },
+    budgetMs,
+  );
 }
 
 /** Both PowerChart tags of one shape, queued for the next sync. */
@@ -2297,6 +2303,16 @@ export function _setReadbackTimeoutForTest(ms: number): void {
 }
 
 /**
+ * The current default budget, for callers that want a SHORTER one.
+ *
+ * A caller with its own budget must not out-wait this one — a hard-coded ten
+ * seconds is shorter than ninety in production and much longer than the
+ * milliseconds a test shortens this to, which would make a bounded wait
+ * untestable at exactly the site that needed bounding.
+ */
+export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
+
+/**
  * `PowerPoint.run`, with a deadline and a name.
  *
  * Same shape as the call it replaces, so a site adopts it by changing the
@@ -2304,8 +2320,24 @@ export function _setReadbackTimeoutForTest(ms: number): void {
  * the deadline fires, and what `lastLateSync` will credit if the host answers
  * afterwards.
  */
-function boundedRun<T>(what: string, fn: (context: PowerPoint.RequestContext) => Promise<T>): Promise<T> {
-  return withTimeout(PowerPoint.run(fn), READBACK_TIMEOUT_MS, what);
+function boundedRun<T>(
+  what: string,
+  fn: (context: PowerPoint.RequestContext) => Promise<T>,
+  budgetMs = READBACK_TIMEOUT_MS,
+): Promise<T> {
+  return withTimeout(PowerPoint.run(fn), budgetMs, what);
+}
+
+/**
+ * The message `withTimeout` rejects with, recognised by callers that need to
+ * tell "the host refused" from "the host never answered".
+ *
+ * A refusal is a fact about the request; silence is a fact about the host, and
+ * only the second one is a reason to report a known platform limitation rather
+ * than a defect of ours.
+ */
+export function isTimeout(err: unknown): boolean {
+  return err instanceof Error && /did not respond while/.test(err.message);
 }
 
 /** Top-level shape counts for slides [start, end), read in one settled sync. */
@@ -3075,16 +3107,20 @@ export async function insertSlidesFromPptx(
  *
  * Best-effort on the same terms: `setSelectedSlides` is PowerPointApi 1.5.
  */
-export async function showSlide(slideId: string): Promise<boolean> {
+export async function showSlide(slideId: string, budgetMs?: number): Promise<boolean> {
   try {
-    return await boundedRun("moving the view to a slide", async (context) => {
-      const presentation = context.presentation as unknown as {
-        setSelectedSlides(ids: string[]): void;
-      };
-      presentation.setSelectedSlides([slideId]);
-      await context.sync();
-      return true;
-    });
+    return await boundedRun(
+      "moving the view to a slide",
+      async (context) => {
+        const presentation = context.presentation as unknown as {
+          setSelectedSlides(ids: string[]): void;
+        };
+        presentation.setSelectedSlides([slideId]);
+        await context.sync();
+        return true;
+      },
+      budgetMs,
+    );
   } catch {
     return false;
   }
@@ -3114,19 +3150,28 @@ export const canSelectShapes = (): boolean => supports("1.5");
  * selection the user could have made, and on some hosts the shape set is
  * ignored unless its slide is current.
  */
-export async function selectShape(slideId: string, shapeId: string): Promise<boolean> {
+export async function selectShape(slideId: string, shapeId: string, budgetMs?: number): Promise<boolean> {
   if (!canSelectShapes()) return false;
-  await showSlide(slideId);
+  await showSlide(slideId, budgetMs);
   try {
-    return await boundedRun("selecting a shape", async (context) => {
-      const slide = context.presentation.slides.getItemOrNullObject(slideId);
-      queueNullCheck(slide);
-      await context.sync();
-      if (!isLive(slide)) return false;
-      (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([shapeId]);
-      await step("selecting a shape", () => withTimeout(context.sync(), READBACK_TIMEOUT_MS, "selecting a shape"));
-      return true;
-    });
+    return await boundedRun(
+      "selecting a shape",
+      async (context) => {
+        const slide = context.presentation.slides.getItemOrNullObject(slideId);
+        queueNullCheck(slide);
+        await context.sync();
+        if (!isLive(slide)) return false;
+        (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([shapeId]);
+        // The inner bound has to honour the caller's budget too. It did not,
+        // and a caller asking for ten seconds still waited the full ninety
+        // here — the outer `boundedRun` cannot cut in while this one holds.
+        await step("selecting a shape", () =>
+          withTimeout(context.sync(), budgetMs ?? READBACK_TIMEOUT_MS, "selecting a shape"),
+        );
+        return true;
+      },
+      budgetMs,
+    );
   } catch {
     return false;
   }
@@ -3145,21 +3190,30 @@ export async function selectShape(slideId: string, shapeId: string): Promise<boo
  * shape selection on every host observed. Best-effort throughout; a host that
  * refuses simply leaves the selection where it was.
  */
-export async function clearShapeSelection(slideId: string): Promise<void> {
+export async function clearShapeSelection(slideId: string, budgetMs?: number): Promise<void> {
   if (!canSelectShapes()) return;
+  let silent = false;
   try {
-    await boundedRun("clearing the shape selection", async (context) => {
-      const slide = context.presentation.slides.getItemOrNullObject(slideId);
-      queueNullCheck(slide);
-      await context.sync();
-      if (!isLive(slide)) return;
-      (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([]);
-      await context.sync();
-    });
-  } catch {
-    /* the host would not clear it — the slide re-select below is the fallback */
+    await boundedRun(
+      "clearing the shape selection",
+      async (context) => {
+        const slide = context.presentation.slides.getItemOrNullObject(slideId);
+        queueNullCheck(slide);
+        await context.sync();
+        if (!isLive(slide)) return;
+        (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([]);
+        await context.sync();
+      },
+      budgetMs,
+    );
+  } catch (err) {
+    // A refusal is worth a fallback; silence is not. If the host would not
+    // answer the clear it will not answer the slide re-select either — that is
+    // the whole shape of the web host's wedged selection subsystem — and
+    // waiting a second full budget to be told so again costs the same again.
+    silent = isTimeout(err);
   }
-  await showSlide(slideId);
+  if (!silent) await showSlide(slideId, budgetMs);
 }
 
 /**

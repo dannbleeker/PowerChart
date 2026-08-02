@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installHost, makeSlide, makeShape, applyWebProfile, faults } from "./helpers/office-host";
-import { CHART_TAG, requestStop, resetStop, isStopRequested } from "../src/render/powerpoint";
+import {
+  CHART_TAG,
+  requestStop,
+  resetStop,
+  isStopRequested,
+  _setReadbackTimeoutForTest,
+} from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { setTracing, traceLog } from "../src/core/trace";
 import {
@@ -157,6 +163,47 @@ describe("the scenarios the selection API unlocked", () => {
     expect(bad.ok, `reported ok against a host that selects the wrong shape: ${bad.detail}`).toBe(false);
     expect(bad.skipped, "reported as skipped rather than broken").toBeFalsy();
     expect(bad.detail).toMatch(/did not read back as a PowerChart|read back a different chart/);
+  });
+
+  it("calls a host that stops answering after a select a known limitation, not a failure", async () => {
+    // The third of PowerPoint-on-the-web's selection bugs, and the one that
+    // cost a whole real-host round: `setSelectedShapes` is GA at PowerPointApi
+    // 1.5 and TAKES the call, then leaves the selection subsystem unable to
+    // answer anything. Measured on build 55011a3 — `getSelectedShapes` ran out
+    // a 90-second budget, and the `setSelectedSlides` behind it did too.
+    //
+    // Two properties are pinned here, and the second is the one that matters:
+    //
+    //   1. It reports SKIPPED, not FAILED. Nothing in the add-in is broken by
+    //      this — the pane never selects a shape from code, it reads the
+    //      selection the user made with a click — so a red line here sends the
+    //      next diagnosis after our own code, which is what happened.
+    //   2. It COMES BACK, in about a budget rather than in minutes. The
+    //      scenario asks for ten seconds instead of the ninety it would
+    //      otherwise inherit, which is the difference between a battery a
+    //      person will run again and one they will not.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    faults.selectionWedgesHost = true;
+    // The scenario's budget is capped by this one, so shortening it shortens
+    // both — that cap is why a bounded wait is testable at all here.
+    _setReadbackTimeoutForTest(200);
+    const started = Date.now();
+    let wedged: ScenarioResult;
+    try {
+      wedged = byName(await runSelfTest("probe", "edit the chart the user selected"))[
+        "edit the chart the user selected"
+      ];
+    } finally {
+      faults.selectionWedgesHost = false;
+      _setReadbackTimeoutForTest(90_000);
+    }
+    expect(wedged.skipped, `reported a host limitation as our failure: ${wedged.detail}`).toBe(true);
+    expect(wedged.detail).toContain("stopped answering selection calls");
+    expect(wedged.detail).toMatch(/office-js#3083/);
+    // Not the point of the test, but it is the reason the gate exists: at the
+    // inherited budget this is three minutes of a person's evening.
+    expect(Date.now() - started, "waited far past its own budget").toBeLessThan(5_000);
   });
 
   it("reports a stop honestly, and will not call a leftover chart a clean stop", async () => {

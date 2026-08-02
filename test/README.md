@@ -69,6 +69,13 @@ PowerPoint against a fully green suite. `strictShapeReads` is off by default
 only because the fake's shape objects double as the surface tests assert
 geometry against — the others are always in force once armed.
 
+`selectionWedgesHost` is the odd one out and the newest: it models a call that
+is taken and _poisons later ones_. A programmatic `setSelectedShapes` succeeds,
+and every selection sync after it then never settles at all — neither resolving
+nor rejecting, which is what PowerPoint on the web actually does and the one
+failure shape no `catch` can see. Only a bounded wait survives it, so it is the
+fault that proves the bounds work.
+
 Faults are opt-in per test. `applyWebProfile()` turns on the set a real web host
 shows at once; call it AFTER `installHost`, which resets every fault. It is not
 the default, because applied everywhere it would fail hundreds of tests for

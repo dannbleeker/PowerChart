@@ -163,14 +163,31 @@ export function selfTestIn(log) {
  *
  * The first hour of the last diagnosis went into establishing that
  * `InvalidParam passed to GetItem(id)` was a host bug rather than ours. It is,
- * it is reported, and three of these four are still open — so the trace can
- * just say so. A reader who sees an issue number stops looking for the mistake
- * in this repo.
+ * it is reported, and most of these are still open — so the trace can just say
+ * so. A reader who sees an issue number stops looking for the mistake in this
+ * repo.
  *
- * Matched on a substring of the reason string the trace recorded. Checked
- * 2026-08-01; re-check before trusting the status (see RESEARCH.md 4b).
+ * Matched on a substring of the reason string the trace recorded, FIRST MATCH
+ * WINS, so the order below is part of the mapping rather than decoration.
+ * Checked 2026-08-01; re-check before trusting the status (see RESEARCH.md 4b).
  */
+const SELECTION_WEDGE =
+  "office-js#3083 / #3698 family (open) — a programmatic setSelectedShapes wedges the web host's " +
+  "selection subsystem; every selection call after it goes silent";
+
 const KNOWN_HOST_BUGS = [
+  // MOST SPECIFIC FIRST, and this is load-bearing rather than tidy. A wedged
+  // selection subsystem does not throw — it goes quiet, so what the trace
+  // records is a timeout, whose text is "did not respond while <phase>". The
+  // generic sync-hang note below matches that too, and on a first-match-wins
+  // table it would claim every one of them and send the reader to #5022: a
+  // different bug, a different cause, and a fix that does not apply. The
+  // phase name is the only thing that separates them, which is one more
+  // reason every bounded wait carries one.
+  ["stopped answering selection calls", SELECTION_WEDGE],
+  ["did not respond while reading the selected chart", SELECTION_WEDGE],
+  ["did not respond while selecting a shape", SELECTION_WEDGE],
+  ["did not respond while clearing the shape selection", SELECTION_WEDGE],
   ["InvalidParam passed to GetItem", "office-js#2903 (closed: not planned) — stale shape proxy on web"],
   ["not available", "office-js#6363 (open: regression) — loaded property missing after sync"],
   ["did not respond", "office-js#5022 (open) — sync hangs after add/delete/re-read"],
@@ -299,6 +316,11 @@ if (invokedDirectly) {
       for (const s of selftest) {
         const mark = s.skipped ? "skip" : s.ok ? "ok" : "FAIL";
         console.log(`  ${pad(mark, 6)}${pad(s.name, 36)}${s.detail}`);
+        // A scenario's own words are a problem string like any other, and the
+        // one place a host bug is stated in plain language rather than in a
+        // host error code. Annotating only the `problems` tally missed it.
+        const known = knownBug(s.detail ?? "");
+        if (known) console.log(`  ${pad("", 6)}${pad("", 36)}  ^ known host bug: ${known}`);
       }
       console.log("");
     }
