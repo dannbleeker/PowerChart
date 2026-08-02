@@ -382,6 +382,23 @@ const statusStrip = document.getElementById("status-strip");
 const statusBar = document.getElementById("status-bar");
 const statusElapsed = document.getElementById("status-elapsed");
 
+/**
+ * How many times the pane has SETTLED — posted a note that is not "busy".
+ *
+ * `guard()` prints "Done." only when the action it ran did not report an end
+ * state of its own, and it used to detect that by comparing the note text
+ * against the busy text it had posted. Any progress note broke the comparison,
+ * and an insert always ends on one: `phaseNote("done")` writes "Working… done",
+ * which is still busy. So the text no longer matched, "Done." was skipped, and
+ * the pane was left showing a blue busy note above a progress bar that slid on
+ * forever — the action had finished, and nothing said so.
+ *
+ * Counting settlements asks the question that actually matters — "did this
+ * action reach an end state?" — instead of inferring it from wording, which
+ * also makes it immune to the language the note is rendered in.
+ */
+let settledNotes = 0;
+
 function note(text: string, status: "ok" | "err" | "busy" | "none" = "none", params?: Record<string, string | number>) {
   // Route status text through the runtime translator so a localized pane
   // announces it in the user's language. `text` is the English source string
@@ -394,7 +411,10 @@ function note(text: string, status: "ok" | "err" | "busy" | "none" = "none", par
   // there is something to say, collapsed when there is not.
   statusStrip?.toggleAttribute("hidden", !text);
   statusBar?.toggleAttribute("hidden", status !== "busy");
-  if (status !== "busy") setProgress(null);
+  if (status !== "busy") {
+    setProgress(null);
+    settledNotes++;
+  }
 }
 
 /**
@@ -1372,8 +1392,8 @@ function rasterizeScene(scene: Scene): Promise<string> {
  * `warn` is returned rather than noted here on purpose: every insert path posts
  * `phaseNote` as its first act, which would immediately overwrite a note posted
  * before the insert. The caller notes it AFTER the insert resolves, where it
- * survives — `guard` only prints "Done." when the note is unchanged from the
- * busy text, and any phase note has already changed it.
+ * survives — and where it counts as this action's settlement, so `guard` leaves
+ * it standing instead of closing with "Done."
  */
 async function chartPicture(cfg: ChartConfig, scene: Scene): Promise<{ png?: string; warn?: string }> {
   // A chart nobody asked to rasterize, on the one host that cannot survive
@@ -2358,16 +2378,17 @@ function wireInsert() {
         const lock = [insertBtn, clicked].filter((b): b is HTMLButtonElement => !!b && !b.disabled);
         for (const b of lock) b.disabled = true;
         note("Working…", "busy");
-        // Compare against the TRANSLATED busy text: note() routes through t(), so
-        // under a localized pane hostNote reads e.g. "Arbeite…" and a check against
-        // the English literal never matched — the success note was never shown.
-        const busyText = hostNote.textContent;
+        // Mark AFTER the busy note: "Working…" is not a settlement, and the mark
+        // has to sit at the boundary of this action so only what `fn()` itself
+        // posts counts. See `settledNotes` — a phase note is busy by definition,
+        // so an insert that ends on one still needs "Done." to close it out.
+        const settledAt = settledNotes;
         setProgress("busy");
         startElapsed();
         try {
           await fn();
           trace("pane", "action finished", { action, ms: Date.now() - startedAt });
-          if (hostNote.textContent === busyText) {
+          if (settledNotes === settledAt) {
             note("Done.", "ok");
           }
         } catch (err) {

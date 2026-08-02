@@ -89,14 +89,31 @@ vi.mock("../src/render/powerpoint", () => ({
   isPowerPointHost: () => true,
   canInsertPicture: vi.fn(() => host.canPicture),
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
-  insertSceneIntoSlide: vi.fn(async (_scene: unknown, opts: { tagData?: string; left?: number; top?: number }) => {
-    if (host.gate) await host.gate;
-    if (host.failInsertOnce) {
-      host.failInsertOnce = false;
-      throw new Error("host refused the insert");
-    }
-    host.calls.insertScene.push(opts);
-  }),
+  insertSceneIntoSlide: vi.fn(
+    async (
+      scene: { nodes: unknown[] },
+      opts: { tagData?: string; left?: number; top?: number },
+      onPhase?: (phase: string, detail?: string) => void,
+    ) => {
+      // Report phases the way the real renderer does. The mock used to ignore
+      // `onPhase` entirely, and that silence is what hid a live bug for good:
+      // with no phase notes the pane's note stayed exactly "Working…", which is
+      // the one string the old `guard` recognised as "nothing was said", so
+      // every test saw the "Done." a real PowerPoint never printed.
+      onPhase?.("context");
+      onPhase?.("queue", `${scene.nodes.length} nodes`);
+      onPhase?.("commit", `${scene.nodes.length} of ${scene.nodes.length} shapes`);
+      onPhase?.("group");
+      if (host.gate) await host.gate;
+      if (host.failInsertOnce) {
+        host.failInsertOnce = false;
+        throw new Error("host refused the insert");
+      }
+      host.calls.insertScene.push(opts);
+      // The last thing a successful insert ever says — and it is still "busy".
+      onPhase?.("done");
+    },
+  ),
   updateChartInSlide: vi.fn(
     async (_scene: unknown, target: unknown, opts: { tagData?: string; pictureBase64?: string }) => {
       host.calls.updateChart.push({ target, opts });
@@ -731,6 +748,55 @@ describe("guard — busy lockout and error surfacing", () => {
     await settle();
     expect($("host-note").textContent?.toLowerCase()).toContain("failed");
     expect(host.calls.insertScene).toHaveLength(0);
+  });
+
+  /**
+   * The progress bar exists to say "the host is still working", so it has to
+   * stop when the host stops. An insert's last phase note is "Working… done" —
+   * still busy — and `guard` used to decide whether to print "Done." by asking
+   * whether the note text had changed since it posted "Working…". It had, so
+   * "Done." was skipped, nothing ever posted a settled note, and the bar kept
+   * its `indeterminate` class: a finished insert under an animation that slid
+   * forever. Asserting the bar, not just the words, is the point — the note
+   * could read "done" while the strip below it still claimed to be busy.
+   */
+  it("stops the progress bar when the insert finishes, not just the phase notes", async () => {
+    let release!: () => void;
+    host.gate = new Promise<void>((r) => (release = r));
+    $("insert").click();
+    await settle();
+    // Mid-flight the bar must actually be running, or the assertion after the
+    // release would pass against a bar that never showed at all.
+    expect($("status-bar").hasAttribute("hidden")).toBe(false);
+    expect($("status-bar").classList.contains("indeterminate")).toBe(true);
+
+    release();
+    await settle();
+    expect($("host-note").textContent).toBe("Done.");
+    expect($("host-note").className).toContain("status-ok");
+    expect($("status-bar").hasAttribute("hidden")).toBe(true);
+    expect($("status-bar").classList.contains("indeterminate")).toBe(false);
+  });
+
+  it("closes out an element insert too — every phase-reporting action settles", async () => {
+    $("harvey-insert").click();
+    await settle();
+    expect($("host-note").textContent).toBe("Done.");
+    expect($("status-bar").classList.contains("indeterminate")).toBe(false);
+  });
+
+  /**
+   * The flip side: an action that DID report an end state keeps it. "Done." is
+   * the fallback for silence, not an overwrite — a settlement counted per
+   * action is what keeps those two apart.
+   */
+  it("leaves an action's own closing note alone instead of overwriting it with Done.", async () => {
+    host.loadSelectionResult = null;
+    $("load-selection").click();
+    await settle();
+    expect($("host-note").textContent).not.toBe("Done.");
+    expect($("host-note").textContent?.toLowerCase()).toContain("not a powerchart");
+    expect($("status-bar").classList.contains("indeterminate")).toBe(false);
   });
 });
 
