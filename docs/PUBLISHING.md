@@ -101,11 +101,12 @@ older. Then tick **Verbose trace** in the Testing section and leave it on.
 | # | test | what it catches |
 | --- | --- | --- |
 | 1 | **The everyday insert.** Blank slide, insert a **Clustered** chart (24 shapes — multi-batch is the trigger; a 5-shape chart will not exercise it). Click it: the pane says "A PowerChart is selected." **Edit it** loads the data back. Drag one bar by hand. | Any chart over ~10 shapes on the web used to lose its group *and* its config tag — silently not re-editable, on the most-used action in the add-in. Fails if there is no selection banner, or **Edit it** does nothing. |
-| 2 | **A second chart on the same slide.** Insert another chart beside the first. Both stay independently selectable. Edit the *second* → **Update chart**; the first must still be there and still editable. | The sweep case: a run that pulls pre-existing shapes into its own group carries them in its parts tag and deletes them on the next edit. |
+| 2 | **A second chart on the same slide.** Insert a second chart — do *not* place it yourself. It should land **beside** the first on a 16:9 deck (scaled to ~390×244) and **below** it on 4:3. The pane says which. Both stay independently selectable. Edit the *second* → **Update chart**; the first must still be there and still editable. | The sweep case: a run that pulls pre-existing shapes into its own group carries them in its parts tag and deletes them on the next edit. Also the placement rule itself — it reads the deck's real width, so a chart off the right edge means the read failed, not that the rule is wrong. |
 | 3 | **Edit in place.** Select chart 1 → **Edit it** → change a number → **Update chart**. It redraws in place, does not jump, and is still editable afterwards. | An edit that leaves a chart un-editable is worse than one that never worked: the pane hands back a target it cannot use, and the *next* edit silently does nothing. |
 | 4 | **The formula crash** (30 seconds). Type `=SUM(A1:ZZ999)` into any datasheet cell. The preview keeps working — no freeze, no blank pane. | 702 × 999 cells used to throw `Maximum call stack size exceeded` straight through the live preview. |
 | 5 | **Demo deck — both paths.** Path → **Both, one after the other** → **Insert demo deck**. ~6 s for the file half, then 1–2 minutes for the shape half. | The file half must report **38 of 38 complete** — anything less is a regression. The shape half being slower with some items short is the *measurement* of what the everyday code path costs at 38× scale, not a defect. |
-| 6 | **Run host self-test.** One click, six scenarios (below). | The paths the demo deck never touches. A verdict of **skipped** is not a failure. |
+| 6 | **Run host self-test.** One click, six scenarios (below). | The paths the demo deck never touches. A verdict of **skipped** is not a failure. **"Two slides claiming one slot" is the one to watch**: it failed on the real host until `deleteSlide` was found reading an unloaded slot tag, which made its own catch refuse every guarded delete. It should now pass, and that is the cheapest confirmation the fix is real rather than plausible. |
+| 7 | **Stop a long run** (30 seconds). Start the demo deck, press **Stop** in the status strip a few slides in. It should read *Stopping…*, finish the slide in flight, then stop and say so — not "Failed". Slides already done stay. | Stop is cooperative: PowerPoint cannot abort a round trip already handed to it. A stop reported as a failure, or one that keeps drawing, is the regression. |
 
 Then send back two files: **Download run log** (Testing section) and the deck
 itself (File → Download a copy). The log carries the run's identity token, so
@@ -119,6 +120,26 @@ self-test verdicts.
 Record anything broken as issues; fix per the lockstep rules. Real-host
 degradation paths that are *expected* (not bugs): radar fills are
 outline-only, pattern fills render solid.
+
+**Two more things that are expected and look alarming.** Neither is a defect:
+
+- **A blank slide appears at the end of the deck and disappears again** while a
+  chart redraws. That is deliberate. Updating a chart is the add-in's worst
+  case on the web, and it is only bad because the slide is on screen — so the
+  view is parked elsewhere for the redraw. A one-slide deck has nowhere to
+  park, so one is made and removed afterwards. If a blank slide is ever left
+  behind, *that* is the bug; the pane warns when it cannot remove it.
+- **The view jumps to another slide and back** during an edit, for the same
+  reason. Your own navigation wins: click away mid-redraw and you stay where
+  you clicked.
+
+**Run it on a 4:3 deck at least once.** Slide size is read from the host now
+(`PageSetup` at 1.10, an exported slide at 1.8, `getFileAsync` below that) and
+drives both chart placement and the generated deck's declared size. Every
+earlier session tested 16:9 only, where a wrong answer is invisible — on 4:3 it
+shows up as charts off the right edge or a demo deck rescaled on insert. The
+run log's `slide size` line records the value *and which rung produced it*;
+`assumed` there means nothing answered.
 
 **Wider feature sweep** — once per release, rather than per build:
 
