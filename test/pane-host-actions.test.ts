@@ -65,6 +65,18 @@ const host = vi.hoisted(() => ({
   /** Whether the renderer says this chart is too dense to draw as shapes. */
   autoPicture: false,
   updateChartThrows: false,
+  /**
+   * Which items of a multi-chart update stall, keyed by index, and the stray
+   * shape ids each one left on its slide.
+   *
+   * The real `updateChartsInSlides` deletes a chart's old shapes before it
+   * redraws them, so a stall leaves a partial chart behind and reports it via
+   * `onFailed` with the debris attached to the error. Modelling that is the
+   * only way a test can see whether the caller sweeps.
+   */
+  updateChartsStalls: new Map<number, string[]>(),
+  /** Whether the user has pressed Stop — the flag the render loops read. */
+  stopRequested: false,
   demoReconcile: undefined as unknown,
   /** What `replaceSlideWithDeck` answers: "failed" | "swapped" | "duplicated". */
   swapOutcome: "failed" as "failed" | "swapped" | "duplicated",
@@ -126,6 +138,16 @@ vi.mock("../src/render/powerpoint", () => ({
     async (_scene: unknown, target: unknown, opts: { tagData?: string; pictureBase64?: string }) => {
       host.calls.updateChart.push({ target, opts });
       if (host.updateGate) await host.updateGate;
+      // A stop taken while this was in flight surfaces the way the renderer
+      // surfaces it: a marked error carrying whatever the halted redraw had
+      // already committed. Stopping mid-batch leaves the same debris a stall
+      // does, so the wreckage is not optional.
+      if (host.stopRequested) {
+        const err = new Error("Stopped.") as Error & Record<string, unknown>;
+        err.__powerchartStopped = true;
+        err.__powerchartWreckage = { slideId: "s1", at: { left: 40, top: 50 }, strayIds: ["stray-1"] };
+        throw err;
+      }
       // Models the live-canvas stall: the in-place redraw refuses, a picture
       // update (which draws one shape) does not.
       if (host.updateChartThrows && !opts.pictureBase64) {
@@ -149,9 +171,40 @@ vi.mock("../src/render/powerpoint", () => ({
     host.calls.swept.push({ slideId, ids });
     return ids.length;
   }),
-  updateChartsInSlides: vi.fn(async (items: { scene: unknown; target: unknown; opts?: { tagData?: string } }[]) => {
-    host.calls.updateCharts.push(items);
+  // The cooperative stop. Modelled with the real semantics — a flag the render
+  // loops read — so a test can press Stop mid-action and see what the pane does
+  // with it, rather than only that the button exists.
+  requestStop: vi.fn(() => {
+    host.stopRequested = true;
   }),
+  resetStop: vi.fn(() => {
+    host.stopRequested = false;
+  }),
+  isStopRequested: vi.fn(() => host.stopRequested),
+  isStopped: (err: unknown) =>
+    !!err && typeof err === "object" && Object.prototype.hasOwnProperty.call(err, "__powerchartStopped"),
+  updateChartsInSlides: vi.fn(
+    async (
+      items: { scene: unknown; target: { slideId?: string }; opts?: { tagData?: string } }[],
+      onFailed?: (item: unknown, err: unknown) => void,
+    ) => {
+      host.calls.updateCharts.push(items);
+      // Report the stalls the test asked for, exactly as the renderer does:
+      // the error carries the wreckage, because that is the only channel the
+      // caller has for finding out what was left on the slide.
+      for (const [i, strayIds] of host.updateChartsStalls) {
+        const item = items[i];
+        if (!item) continue;
+        const err = new Error("host stalled") as Error & Record<string, unknown>;
+        err.__powerchartWreckage = {
+          slideId: item.target?.slideId ?? `s${i}`,
+          at: { left: 0, top: 0 },
+          strayIds,
+        };
+        onFailed?.(item, err);
+      }
+    },
+  ),
   listChartsInDeck: vi.fn(async () => host.deckCharts),
   listChartsInSelection: vi.fn(async () => host.selectionCharts),
   loadChartFromSelection: vi.fn(async () => host.loadSelectionResult),
@@ -291,6 +344,8 @@ async function bootHostPane() {
   host.calls.insertScene = [];
   host.calls.updateChart = [];
   host.calls.updateCharts = [];
+  host.updateChartsStalls.clear();
+  host.stopRequested = false;
 
   window.history.replaceState({}, "", "/taskpane.html");
   const parsed = new DOMParser().parseFromString(readFileSync("src/taskpane/taskpane.html", "utf8"), "text/html");
@@ -744,6 +799,48 @@ describe("Same scale", () => {
     expect(host.calls.updateCharts).toHaveLength(0);
     // The selection-scoped guard names Ctrl-click, not the deck message.
     expect($("host-note").textContent?.toLowerCase()).toContain("ctrl-click");
+  });
+
+  it("sweeps the debris every stalled redraw left behind, not just the first", async () => {
+    // Same Scale deletes each chart's old shapes and redraws them. A stall
+    // leaves whatever committed on the slide, and the single-chart path has
+    // swept that since updateChartResilient learned to — this path never did.
+    // It reported the charts "now empty" while half a chart sat on each one.
+    //
+    // TWO stalls on purpose. The renderer used to annotate only the FIRST
+    // failure with its wreckage and hand `onFailed` the raw error regardless,
+    // so a one-stall test would pass against a caller that swept nothing and a
+    // renderer that reported nothing. The second chart is what proves both
+    // halves are fixed.
+    host.deckCharts = [
+      { configJson: chartJson([10, 20, 30]), target: { slideId: "s1", shapeId: "a", left: 0, top: 0 } },
+      { configJson: chartJson([5, 90]), target: { slideId: "s2", shapeId: "b", left: 0, top: 0 } },
+      { configJson: chartJson([1, 40]), target: { slideId: "s3", shapeId: "c", left: 0, top: 0 } },
+    ];
+    host.updateChartsStalls.set(0, ["stray-a1", "stray-a2"]);
+    host.updateChartsStalls.set(2, ["stray-c1"]);
+    $("same-scale").click();
+    await settle();
+    // Both wrecks cleared, each against its OWN slide.
+    expect(host.calls.swept).toEqual([
+      { slideId: "s1", ids: ["stray-a1", "stray-a2"] },
+      { slideId: "s3", ids: ["stray-c1"] },
+    ]);
+    // And the user is still told which charts went blank.
+    expect($("host-note").textContent?.toLowerCase()).toContain("would not redraw");
+  });
+
+  it("sweeps nothing when every chart redraws", async () => {
+    // The other half of the contract: a clean run must not go poking at the
+    // slide. A sweep here would be deleting shapes that are the new chart.
+    host.deckCharts = [
+      { configJson: chartJson([10, 20, 30]), target: { slideId: "s1", shapeId: "a", left: 0, top: 0 } },
+      { configJson: chartJson([5, 90]), target: { slideId: "s2", shapeId: "b", left: 0, top: 0 } },
+    ];
+    $("same-scale").click();
+    await settle();
+    expect(host.calls.swept).toHaveLength(0);
+    expect($("host-note").textContent?.toLowerCase()).toContain("same scale applied");
   });
 });
 
@@ -1412,5 +1509,105 @@ describe("watchSelection", () => {
     await host.selectionListener!();
     await settle();
     expect($("selection-banner").style.display).toBe("none");
+  });
+});
+
+describe("Stop", () => {
+  beforeEach(bootHostPane);
+
+  /**
+   * Load a chart from the selection, then press Insert — which makes Insert an
+   * in-place UPDATE of that chart rather than a fresh insert. The update path
+   * is the one that is slow enough to need a stop, and the only one that goes
+   * through the gate these tests hold open.
+   */
+  async function startGatedUpdate(): Promise<() => void> {
+    host.loadSelectionResult = {
+      configJson: chartJson([1, 2, 3]),
+      target: { slideId: "s1", shapeId: "shape-9", left: 10, top: 20 },
+    };
+    $("load-selection").click();
+    await settle();
+    let release!: () => void;
+    host.updateGate = new Promise<void>((r) => (release = r));
+    $("insert").click();
+    await settle();
+    return () => {
+      release();
+      host.updateGate = null;
+    };
+  }
+
+  it("is offered only while an action is in flight", async () => {
+    // The button lives in the status strip and must be absent the rest of the
+    // time — a permanent Stop on an idle pane is a button that does nothing.
+    const stop = $("status-stop") as HTMLButtonElement;
+    expect(stop.hidden).toBe(true);
+    const release = await startGatedUpdate();
+    expect(stop.hidden, "no way out of a long action").toBe(false);
+    release();
+    await settle();
+    expect(stop.hidden, "left offering a stop after the action ended").toBe(true);
+  });
+
+  it("says it is stopping before the host has come back", async () => {
+    // The batch already handed to PowerPoint still has to return — up to
+    // BATCH_TIMEOUT_MS. Without immediate feedback the pane looks like it
+    // ignored the click for as long as that takes.
+    const stop = $("status-stop") as HTMLButtonElement;
+    const release = await startGatedUpdate();
+    stop.click();
+    await settle();
+    expect(stop.disabled).toBe(true);
+    expect(stop.textContent?.toLowerCase()).toContain("stopping");
+    release();
+    await settle();
+  });
+
+  it("reports a stop as a stop, not as a failure", async () => {
+    // "Failed: Stopped." reads like the add-in broke. The user pressed the
+    // button; the pane should say what happened, and say the work already
+    // drawn was kept.
+    const release = await startGatedUpdate();
+    ($("status-stop") as HTMLButtonElement).click();
+    release();
+    await settle();
+    const said = $("host-note").textContent?.toLowerCase() ?? "";
+    expect(said).toContain("stopped");
+    expect(said, "blamed the host for the user's own stop").not.toContain("failed");
+  });
+
+  it("still sweeps what the stopped redraw left on the slide", async () => {
+    // A stop mid-batch leaves a partial chart exactly as a stall does. Leaving
+    // it there would make Stop destructive — the one thing a cancel must not be.
+    const release = await startGatedUpdate();
+    ($("status-stop") as HTMLButtonElement).click();
+    release();
+    await settle();
+    expect(host.calls.swept).toEqual([{ slideId: "s1", ids: ["stray-1"] }]);
+  });
+
+  it("does not run the recovery ladder for a stop", async () => {
+    // Every rung below the in-place redraw exists to get the chart drawn some
+    // other way — rebuild the slide, rasterize it. That is precisely what a
+    // user who just pressed Stop has said they do not want, and the slowest
+    // rungs would run AFTER the cancel.
+    host.canInsertFile = true;
+    host.slideHoldsOnlyChart = true;
+    // The swap RUNG FAILS, deliberately: it is what makes the picture rung
+    // reachable, and the picture rung is the one that leaves a trace here (an
+    // update carrying pictureBase64). Asserting against a swap that succeeds
+    // proves nothing — a successful swap records nothing either way.
+    host.swapOutcome = "failed";
+    const release = await startGatedUpdate();
+    ($("status-stop") as HTMLButtonElement).click();
+    release();
+    await settle();
+    // No rasterized redraw was attempted after the cancel.
+    expect(host.calls.updateChart.filter((c) => c.opts.pictureBase64)).toHaveLength(0);
+    // And the pane did not claim to have rebuilt anything.
+    const said = $("host-note").textContent?.toLowerCase() ?? "";
+    expect(said).toContain("stopped");
+    expect(said).not.toMatch(/rebuil|picture/i);
   });
 });

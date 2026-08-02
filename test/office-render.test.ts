@@ -29,7 +29,23 @@ import {
   updateChartInSlide,
   updateChartsInSlides,
   withSlideDeselected,
+  MAX_ADD_RETRY_ROUNDS,
+  wreckageOf,
+  requestStop,
+  resetStop,
+  isStopped,
 } from "../src/render/powerpoint";
+
+/**
+ * Dropped `slides.add()` calls needed to defeat ONE `addSlides` call outright:
+ * the original plus every retry round it is allowed.
+ *
+ * Derived, never hardcoded. These tests used to spell it `2`, which silently
+ * stopped meaning "the add and all its retries" the moment the retry bound
+ * moved — the assertions still passed for the wrong reason, because a
+ * recovered add and a lost one differ only in numbers the test did not check.
+ */
+const ADDS_TO_DEFEAT_ONE_SLIDE = 1 + MAX_ADD_RETRY_ROUNDS;
 import { setTracing, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
@@ -581,6 +597,65 @@ describe("looking away while a chart redraws", () => {
     expect(sel.selected).toEqual(["s3"]);
     // Only the park was written; nothing restored over the user's own move.
     expect(sel.sets).toEqual([["s2"]]);
+  });
+
+  it("makes somewhere to look when every slide is one it is about to draw on", async () => {
+    // The one-slide deck. It used to run `fn(false)` — the live canvas, batch
+    // 10 — which is the exact configuration a real run died in, and it is the
+    // deck a user building their first chart actually has. So make a slide to
+    // look at, and take it away again.
+    const deck = [makeSlide("s1")];
+    const ctx = installHost(deck);
+    const sel = withSelection(ctx, ["s1"]);
+    const saw = await withSlideDeselected(["s1"], async (deselected) => {
+      // MID-redraw: the scratch slide exists and the view is on it, which is
+      // the whole point — asserting only the end state would pass against a
+      // function that added and removed a slide without ever looking at it.
+      expect(deck).toHaveLength(2);
+      expect(sel.selected).toEqual([deck[1].id]);
+      return deselected;
+    });
+    // True: the caller may legitimately spend the off-screen batch budget.
+    expect(saw).toBe(true);
+    // And the deck is exactly as the user left it.
+    expect(deck).toHaveLength(1);
+    expect(deck[0].id).toBe("s1");
+    expect(sel.selected).toEqual(["s1"]);
+  });
+
+  it("draws on the live canvas when the scratch slide will not land", async () => {
+    // The host swallows slides.add() under load — the behaviour addSlides
+    // exists to survive. A scratch slide that never landed must not be
+    // reported as parked: `fn` would then use the off-screen batch size on a
+    // slide the user is still looking at, which is worse than not trying.
+    const deck = [makeSlide("s1")];
+    const ctx = installHost(deck);
+    const sel = withSelection(ctx, ["s1"]);
+    faults.swallowAdds = 1;
+    try {
+      const saw = await withSlideDeselected(["s1"], async (deselected) => deselected);
+      expect(saw).toBe(false);
+      expect(deck).toHaveLength(1);
+      // Nothing was selected or restored — there was nowhere to go.
+      expect(sel.sets).toEqual([]);
+    } finally {
+      faults.swallowAdds = 0;
+    }
+  });
+
+  it("removes the scratch slide even when the user navigates away mid-redraw", async () => {
+    // The restore is deliberately skipped when the user has moved themselves.
+    // The CLEANUP is not conditional on it: a blank slide the add-in left at
+    // the end of someone's deck is litter whether or not they are looking at
+    // it, and tying the delete to the restore would leak one every time.
+    const deck = [makeSlide("s1")];
+    const ctx = installHost(deck);
+    const sel = withSelection(ctx, ["s1"]);
+    await withSlideDeselected(["s1"], async () => {
+      sel.selected = ["s1"]; // the user clicks back to their own slide mid-redraw
+    });
+    expect(deck).toHaveLength(1);
+    expect(sel.selected).toEqual(["s1"]);
   });
 });
 
@@ -1169,6 +1244,45 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
+  it("tells the caller what EVERY stalled chart destroyed, not just the first", async () => {
+    // `onFailed` is the only channel a deck-wide caller has for finding out
+    // that a chart went blank — and, through the wreckage on the error, what
+    // was left on its slide. Same Scale sweeps that debris; it cannot sweep
+    // what it is not told about.
+    //
+    // The bug was subtle because failure #1 looked fine: `wreck()` mutates the
+    // host's error object in place, so the raw `err` handed to `onFailed`
+    // happened to carry the wreckage anyway. But `wreck()` ran INSIDE the
+    // `firstFailure === undefined` test, so failures #2..n were never
+    // annotated at all — and a deck-wide update is exactly the caller that
+    // gets more than one. Hence two stalls here: one would pass either way.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const batches = Math.ceil(buildChart(cfgFor(0)).nodes.length / 10);
+    // Sync map: 2 resolves, then per chart 1 delete + up to `batches` renders.
+    // A chart that fails on its first render batch consumes exactly 2. So
+    // chart 1's first render is sync 5+batches, and — chart 1 having stopped
+    // there — chart 2's is 7+batches.
+    failSyncsOn.add(5 + batches);
+    failSyncsOn.add(7 + batches);
+    const seen: { tag: string; wreckage: ReturnType<typeof wreckageOf> }[] = [];
+    try {
+      const items = targetsOn(slide, 3);
+      await updateChartsInSlides(items, (it, err) => seen.push({ tag: it.opts!.tagData!, wreckage: wreckageOf(err) }));
+      // Charts 2 and 3 stalled; chart 1 is untouched and still redrew.
+      expect(seen.map((s) => s.tag)).toEqual(['{"i":1}', '{"i":2}']);
+      // BOTH carry their wreckage. Pre-fix the second was undefined, so Same
+      // Scale swept the first chart's debris and left the rest on the deck.
+      for (const s of seen) {
+        expect(s.wreckage, `wreckage for ${s.tag}`).toBeDefined();
+        expect(s.wreckage!.slideId).toBe("s1");
+        expect(Array.isArray(s.wreckage!.strayIds)).toBe(true);
+      }
+    } finally {
+      failSyncsOn.clear();
+    }
+  });
+
   it("still throws when the ONE chart it was given fails", async () => {
     // updateChartResilient catches this throw to reach its slide-swap and
     // picture fallbacks. Swallowing a total failure would strand it on layer 1
@@ -1409,14 +1523,14 @@ describe("Office round-trips do not scale with the chart count", () => {
     // user sees. The report's slidesAdded is read back from the host, so the
     // shortfall is caught — and the dropped item shows up as not rendered.
     //
-    // addSlides self-heals a SINGLE dropped add with its own fresh-context
-    // retry, so losing a slide for good takes two drops: the add and its
-    // retry. There is no longer an outer per-item retry on top of that — it
-    // was the source of every duplicate slide, and the end-of-run reconcile
-    // pass reports what landed with better evidence than a mid-flight guess.
+    // addSlides self-heals dropped adds with its own fresh-context retries, so
+    // losing a slide for good takes the add AND every retry round. There is no
+    // longer an outer per-item retry on top of that — it was the source of
+    // every duplicate slide, and the end-of-run reconcile pass reports what
+    // landed with better evidence than a mid-flight guess.
     const deck: FakeSlide[] = [makeSlide("s1")];
     installHost(deck);
-    faults.swallowAdds = 2; // the add and its in-addSlides retry → gone for good
+    faults.swallowAdds = ADDS_TO_DEFEAT_ONE_SLIDE; // the add and all its retries → gone for good
     try {
       const report = await insertDemoDeck(
         Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
@@ -1430,10 +1544,10 @@ describe("Office round-trips do not scale with the chart count", () => {
     }
   });
 
-  it("addSlides self-heals one dropped add via its own fresh-context retry, and surfaces it when the retry also fails", async () => {
+  it("addSlides self-heals one dropped add via its own fresh-context retry, and surfaces it when every retry also fails", async () => {
     // addSlides now verifies its own adds landed (a settled getCount() in a
-    // FRESH context, after the existing 2 syncs) and gets ONE retry round
-    // before giving up — the fix for the Presentation_3.pptx bug where
+    // FRESH context, after the existing 2 syncs) and gets MAX_ADD_RETRY_ROUNDS
+    // retry rounds before giving up — the fix for the Presentation_3.pptx bug where
     // PowerPoint web silently dropped ~half of 20 issued add()s. A single
     // dropped add should never even reach insertDemoDeck's own item-level
     // retry: it should be invisible, recovered inside addSlides itself.
@@ -1451,16 +1565,16 @@ describe("Office round-trips do not scale with the chart count", () => {
       faults.swallowAdds = 0;
     }
 
-    // Second sub-case: the drop persists through addSlides' one retry round
-    // too. One insertDemoDeck attempt issues 2 adds per addSlides call — the
-    // original and the in-addSlides retry — so defeating item 0 entirely takes
-    // exactly 2 dropped adds. A second item follows so the run is not a TOTAL
-    // loss (which insertDemoDeck itself would throw on, per "A whole deck lost
-    // to HOST errors" below) — item 1 renders once faults.swallowAdds is exhausted.
+    // Second sub-case: the drop persists through every retry round too. One
+    // addSlides call issues the original add plus one per retry round, so
+    // defeating item 0 entirely takes exactly that many dropped adds. A second
+    // item follows so the run is not a TOTAL loss (which insertDemoDeck itself
+    // would throw on, per "A whole deck lost to HOST errors" below) — item 1
+    // renders once faults.swallowAdds is exhausted.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const deck2: FakeSlide[] = [makeSlide("s1")];
     installHost(deck2);
-    faults.swallowAdds = 2;
+    faults.swallowAdds = ADDS_TO_DEFEAT_ONE_SLIDE;
     try {
       const report = await insertDemoDeck([
         { scene: buildChart(cfgFor(0)), tagData: '{"i":0}' },
@@ -1476,6 +1590,33 @@ describe("Office round-trips do not scale with the chart count", () => {
     } finally {
       faults.swallowAdds = 0;
       warnSpy.mockRestore();
+    }
+  });
+
+  it("recovers a run of consecutive dropped adds that a single retry round could not", async () => {
+    // The reason MAX_ADD_RETRY_ROUNDS is no longer 1. The host that motivates
+    // all of this dropped ~half of 20 adds in ONE burst — drops arrive in runs,
+    // not singly, and a retry issued under the same load is dropped by the same
+    // load. At one round, two consecutive drops cost a slide outright; the deck
+    // came back short, the item was reported failed, and the user lost a chart
+    // to a condition that was transient the whole time.
+    //
+    // Two drops is the smallest case that separates the bounds: recoverable
+    // now, a total loss before. Guarded against the constant rather than the
+    // literal 2 so the case stays "one more drop than a single round can take".
+    expect(MAX_ADD_RETRY_ROUNDS).toBeGreaterThan(1);
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    faults.swallowAdds = 2;
+    try {
+      const report = await insertDemoDeck([{ scene: buildChart(cfgFor(0)), tagData: '{"i":0}' }]);
+      // Fully recovered: the deck grew by the one slide asked for, the chart
+      // rendered, and nothing was written off at commit.
+      expect(report.slidesAdded).toBe(1);
+      expect(report.results[0].status).toBe("rendered");
+      expect(report.addsLostAtCommit).toBe(0);
+    } finally {
+      faults.swallowAdds = 0;
     }
   });
 
@@ -2508,12 +2649,19 @@ describe("reading a demo deck back and repairing it", () => {
     existing.shapes.addTextBox("someone else's work", { left: 0, top: 0, width: 10, height: 10 });
     const deck: FakeSlide[] = [existing];
     installHost(deck);
-    faults.swallowAdds = 4; // both the add and its retry vanish
+    faults.swallowAdds = ADDS_TO_DEFEAT_ONE_SLIDE; // the add and every retry vanish
     _setBatchTimeoutForTest(5); // no slide to draw on — do not wait 45s for it
     try {
-      // Nothing rendered, so insertDemoDeck rethrows the host's own error —
-      // the point here is what it did NOT do on the way out.
-      await expect(insertDemoDeck([{ scene: buildChart(tinyChart()), title: "Line" }])).rejects.toThrow();
+      // Nothing rendered, so insertDemoDeck rethrows — and it rethrows the
+      // REASON. With every add dropped, `addSlides` hands back no thunk at all;
+      // the destructured `getSlide` was then called unchecked and the run died
+      // with "getSlide is not a function", a TypeError from renderer internals
+      // standing in for a diagnosis the code had already made. Assert the
+      // message, not merely that something threw — a bare toThrow() passes just
+      // as happily on the TypeError.
+      await expect(insertDemoDeck([{ scene: buildChart(tinyChart()), title: "Line" }])).rejects.toThrow(
+        /did not add a slide/i,
+      );
       expect(existing.created.some((s) => s.name === "PowerChart:not-complete")).toBe(false);
     } finally {
       _setBatchTimeoutForTest(45_000);
@@ -2814,5 +2962,87 @@ describe("reading a demo deck back and repairing it", () => {
     installHost(deck);
     const report = await insertDemoDeck([{ scene: buildChart(tinyChart()), title: "Line" }]);
     expect(report.reconcile).toBeUndefined();
+  });
+});
+
+describe("stopping work in flight", () => {
+  // The stop flag is module state, so a test that set it and threw would arm
+  // every test after it. Cleared unconditionally.
+  afterEach(() => resetStop());
+
+  const cfgFor = (v: number): ChartConfig => ({
+    ...config,
+    data: { categories: ["A", "B"], series: [{ name: "S1", values: [v, v + 1] }] },
+  });
+  const targetsOn = (slide: FakeSlide, n: number) =>
+    Array.from({ length: n }, (_, i) => {
+      const s = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
+      return {
+        scene: buildChart(cfgFor(i)),
+        target: { slideId: slide.id, shapeId: s.id, left: 10, top: 20 },
+        opts: { tagData: `{"i":${i}}` },
+      };
+    });
+
+  it("stops at the next batch and keeps what already committed", async () => {
+    // Office.js has no abort: a sync already handed to PowerPoint runs to
+    // completion whatever we want. So "stop" means "queue nothing further",
+    // and the batches that already landed stay on the slide — which is why
+    // this throws rather than returning, so the caller cleans up rather than
+    // grouping and tagging a half-drawn chart as a finished one.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const scene = buildChart(cfgFor(0));
+    let commits = 0;
+    let thrown: unknown;
+    try {
+      await insertSceneIntoSlide(scene, { shapesPerSync: 5 }, (phase) => {
+        if (phase === "commit" && ++commits === 1) requestStop();
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(isStopped(thrown), "did not report a stop").toBe(true);
+    // The first batch is on the slide; the rest was never queued.
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live.length).toBeGreaterThan(0);
+    expect(live.length).toBeLessThan(estimateOfficeShapes(scene));
+    // And nothing half-finished was passed off as a chart.
+    expect(live.some((s) => s.tagStore.has(CHART_TAG))).toBe(false);
+  });
+
+  it("leaves every chart untouched when the stop lands before the first one", async () => {
+    // updateChartsInSlides checks BEFORE each chart's delete, so a stop taken
+    // there costs nothing: no shapes removed, nothing queued. The charts keep
+    // their existing targets, which is what the caller needs to stay editable.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const items = targetsOn(slide, 3);
+    const before = slide.created.filter((s) => !s.deleted).length;
+    requestStop();
+    const next = await updateChartsInSlides(items);
+    // Every target comes back as it went in — none of them redrawn.
+    expect(next).toEqual(items.map((it) => it.target));
+    expect(slide.created.filter((s) => !s.deleted).length).toBe(before);
+    expect(slide.created.some((s) => s.deleted)).toBe(false);
+  });
+
+  it("stops a deck run between items, keeping the slides already finished", async () => {
+    // The longest thing the add-in does, and the reason a stop is worth having.
+    // An item boundary costs nothing to stop at: every slide so far is complete,
+    // grouped and tagged, and the next one has not been added.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const report = await insertDemoDeck(
+      Array.from({ length: 4 }, (_, i) => ({ scene: buildChart(cfgFor(i)), tagData: `{"i":${i}}` })),
+      (done) => {
+        if (done === 1) requestStop();
+      },
+    );
+    // One item ran; the run then stopped instead of drawing the other three.
+    expect(report.results).toHaveLength(1);
+    expect(report.results[0].status).toBe("rendered");
+    // And the deck grew by exactly that one slide.
+    expect(report.slidesAdded).toBe(1);
   });
 });

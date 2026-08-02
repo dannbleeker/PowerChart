@@ -500,7 +500,12 @@ three fallbacks on its own, least disruptive first:
 
 1. **It looks away.** Another slide is selected so yours is off-screen, where the
    host accepts four times as many shapes per round trip, and your selection is
-   put back afterwards. Nothing is lost.
+   put back afterwards. Nothing is lost. If the deck has no other slide to look
+   at — a one-slide deck, the commonest case when you are building your first
+   chart — a blank slide is added at the end for the duration and removed again
+   when the redraw finishes. You may see it appear briefly. On the rare host
+   that refuses to remove it, the pane says so; it is the last slide and safe to
+   delete.
 2. **It rebuilds the slide.** The chart is generated as a one-slide file and
    swapped in — no drawing at all. Only when the slide holds *nothing but the
    chart*, because the replacement is a new slide and does not carry the old
@@ -511,6 +516,31 @@ three fallbacks on its own, least disruptive first:
    a raster.
 
 If all three fail you get PowerPoint's own message, not a substitute for it.
+
+### Stopping a long operation
+
+While the pane is working, a **Stop** button appears next to the progress bar.
+Inserting a whole demo deck, or applying **Same scale** across many charts, can
+run for minutes on the web; Stop is the way out.
+
+It stops at the next safe point rather than instantly. PowerPoint cannot abort
+a round trip already in flight, so the batch being drawn finishes first — the
+button reads *Stopping…* until it does. What that safe point is depends on the
+operation:
+
+- **Inserting a deck** stops between slides. Every slide already finished is
+  complete, grouped and tagged, and is kept.
+- **Same scale** stops between charts. Charts already rescaled keep the new
+  scale; the rest are untouched, so the deck is left on two scales — re-run it
+  to finish the job.
+- **Redrawing one chart** stops between batches. Because an update replaces
+  every shape, a chart caught mid-redraw is left partly drawn — the pane clears
+  what it had drawn so you are not left with debris under a half-chart, and
+  **Ctrl+Z** restores the original.
+
+Stop never falls back to rebuilding the slide or drawing a picture. Those exist
+to get a stalled chart drawn some other way, which is the opposite of what you
+asked for.
 
 ## Excel companion
 

@@ -107,6 +107,60 @@ export function applyWebProfile(): void {
 
 let idSeq = 0;
 
+/**
+ * Tag proxies whose `load()` has been queued but whose sync has not yet run.
+ *
+ * Flushed by a successful sync, dropped by a failed one — a load whose sync
+ * rejects never populates anything, same as the real host.
+ */
+const pendingTagLoads: (() => void)[] = [];
+
+/**
+ * A tag proxy that answers like Office.js does: resolving one gives you an
+ * object whose properties are NOT readable until `load()` AND a sync.
+ *
+ * This fake used to populate `isNullObject` and `value` the instant
+ * `getItemOrNullObject` was called, which made a whole class of bug invisible
+ * here. Reading an unloaded proxy is `PropertyNotLoaded` on a real host, and
+ * that is precisely how editing an ungrouped chart came to be impossible on
+ * PowerPoint web while every test in this repo stayed green: `partIds` proxies
+ * were resolved and never loaded, so the fake answered and the host threw.
+ *
+ * One honest proxy found the next one immediately (`deleteSlide`'s slot-tag
+ * read). Being kinder than the host you model is not a neutral simplification —
+ * it is a promise the tests cannot keep.
+ */
+function makeTagProxy(store: Map<string, string>, key: string, onUntrack?: () => void) {
+  let readable = false;
+  const need = (prop: string) => {
+    if (!readable) {
+      throw new Error(
+        `PropertyNotLoaded: The property '${prop}' is not available. ` +
+          "Before reading the property's value, call the load method on the containing object " +
+          "and call context.sync() on the associated request context.",
+      );
+    }
+  };
+  return {
+    load(_p?: string) {
+      pendingTagLoads.push(() => {
+        readable = true;
+      });
+    },
+    untrack() {
+      onUntrack?.();
+    },
+    get isNullObject() {
+      need("isNullObject");
+      return !store.has(key);
+    },
+    get value() {
+      need("value");
+      return store.get(key) ?? "";
+    },
+  };
+}
+
 export function makeShape(
   type: string,
   geo: string | undefined,
@@ -149,14 +203,10 @@ export function makeShape(
         }
         tagStore.set(k, v);
       },
-      getItemOrNullObject: (k: string) => ({
-        isNullObject: !tagStore.has(k),
-        value: tagStore.get(k) ?? "",
-        load() {},
-        untrack() {
+      getItemOrNullObject: (k: string) =>
+        makeTagProxy(tagStore, k, () => {
           untracked.tags++;
-        },
-      }),
+        }),
     },
     // Set by fill.setImage — the bare base64 the host received. Records what the
     // renderer actually handed over, so a test can prove the data:/image-prefix
@@ -344,11 +394,7 @@ export function makeSlide(id: string) {
     },
     tags: {
       add: (k: string, v: string) => void slideTagStore.set(k, v),
-      getItemOrNullObject: (k: string) => ({
-        isNullObject: !slideTagStore.has(k),
-        value: slideTagStore.get(k) ?? "",
-        load() {},
-      }),
+      getItemOrNullObject: (k: string) => makeTagProxy(slideTagStore, k),
     },
     tagStore: slideTagStore,
     shapes: {
@@ -619,7 +665,14 @@ export function installHost(
         // undefined would make `slide.isNullObject` a TypeError instead of the
         // false it should be, and hide the very case this models. By id, the
         // reference is always durable.
-        getItemOrNullObject: (id: string) => slides.find((s) => s.id === id) ?? { isNullObject: true, load() {} },
+        //
+        // Through `nullObjectProxy` for the same reason the shape collection
+        // goes through it: `isNullObject` is populated by the sync a `load()`
+        // enrolled the proxy in, so reading it off an unloaded proxy throws.
+        // Answering it unconditionally is what let the tag version of this
+        // mistake ship — every caller here happens to load first today, and
+        // this is what keeps that true.
+        getItemOrNullObject: (id: string) => nullObjectProxy(slides.find((s) => s.id === id)),
         // A pre-existing slide's handle is durable; a freshly-added one's is only
         // good within the sync it was acquired in (see freshWindowedHandle), so
         // HOLDING one across the render's batches is the bug the fix avoids by
@@ -730,6 +783,10 @@ export function installHost(
       // PR-8 partial-landed gate reads back only the committed count.
       const commit = () => {
         for (const s of slides) s.pending.length = 0;
+        // Queued tag loads become readable here and nowhere else — see
+        // makeTagProxy. A load only takes effect when its sync lands.
+        for (const apply of pendingTagLoads) apply();
+        pendingTagLoads.length = 0;
       };
       const discard = () => {
         for (const s of slides) {
@@ -739,6 +796,9 @@ export function installHost(
           }
           s.pending.length = 0;
         }
+        // A sync that rejects populates nothing: the loads it carried are lost,
+        // and reading those proxies still throws.
+        pendingTagLoads.length = 0;
       };
       if (trips.syncs === faults.failSyncOn || failSyncsOn.has(trips.syncs)) {
         discard();
@@ -776,6 +836,9 @@ export function installHost(
   trips.contexts = 0;
   untracked.shapes = 0;
   untracked.tags = 0;
+  // Proxies from a previous test's host must not become readable inside this
+  // one's first sync.
+  pendingTagLoads.length = 0;
   pendingHostError = null;
   // failSyncOn was the one fault installHost did not reset, so a test that set
   // it leaked into every later test in the file and every test in every file

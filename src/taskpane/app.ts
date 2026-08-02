@@ -33,6 +33,10 @@ import {
   errorText,
   wreckageOf,
   deleteShapesById,
+  requestStop,
+  resetStop,
+  isStopRequested,
+  isStopped,
   type EditTarget,
   type InsertPhase,
   type ReconcileOutcome,
@@ -386,6 +390,22 @@ let insertInFlight = false;
 const statusStrip = document.getElementById("status-strip");
 const statusBar = document.getElementById("status-bar");
 const statusElapsed = document.getElementById("status-elapsed");
+const statusStop = document.getElementById("status-stop") as HTMLButtonElement | null;
+
+/**
+ * Show or hide the Stop button for the action in flight.
+ *
+ * Reset on every show: the button is reused across actions, and one left
+ * disabled reading "Stopping…" would greet the next action as already stopping.
+ */
+function showStop(on: boolean) {
+  if (!statusStop) return;
+  if (on) {
+    statusStop.disabled = false;
+    statusStop.textContent = t("Stop");
+  }
+  statusStop.toggleAttribute("hidden", !on);
+}
 
 /**
  * How many times the pane has SETTLED — posted a note that is not "busy".
@@ -1685,14 +1705,50 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
   // is left blank and the user has to be told which. Silence here meant a
   // deck-wide operation could quietly empty charts the user never looked at.
   const stalled: string[] = [];
+  /**
+   * What each stalled redraw destroyed before it gave up.
+   *
+   * Same Scale deletes a chart's old shapes and redraws them, per chart. A
+   * redraw that stalls part-way leaves whatever it committed on the slide —
+   * a few axis lines, half a series — and the single-chart path has swept
+   * that since `updateChartResilient` learned to. This path never did: it
+   * told the user the charts were "now empty" and left the debris sitting on
+   * them, so the one operation that touches every chart in the deck was also
+   * the one that left the most behind.
+   */
+  const wreckage: UpdateWreckage[] = [];
   await updateChartsInSlides(
     rescaled.map((c, i) => ({
       scene: c.scene,
       target: c.target,
       opts: { tagData: JSON.stringify(c.cfg), pictureBase64: pictures[i].png },
     })),
-    (item) => stalled.push(item.scene.title || "an untitled chart"),
+    (item, err) => {
+      const w = wreckageOf(err);
+      if (w?.strayIds.length) wreckage.push(w);
+      // A chart the USER stopped is not a chart the host refused. Its debris is
+      // still swept below — stopping mid-batch leaves the same partial chart a
+      // stall does — but naming it in "PowerPoint would not redraw…" would
+      // blame the host for the user's own decision.
+      if (isStopped(err)) return;
+      stalled.push(item.scene.title || "an untitled chart");
+    },
   );
+  // Sweep AFTER the batch, never from inside the callback. `onFailed` fires
+  // within updateChartsInSlides' own request context, and `deleteShapesById`
+  // opens a fresh one on purpose — the context that just stalled is precisely
+  // the one that cannot be trusted to carry the repair.
+  if (wreckage.length) {
+    let swept = 0;
+    let strays = 0;
+    for (const w of wreckage) {
+      strays += w.strayIds.length;
+      swept += await deleteShapesById(w.slideId, w.strayIds);
+    }
+    console.warn(
+      `PowerChart: same scale swept ${swept} of ${strays} shapes left by ${wreckage.length} stalled redraw(s)`,
+    );
+  }
   if (stalled.length) {
     note(
       "Same scale: PowerPoint would not redraw {n} chart(s) — {which}. They are now empty; undo (Ctrl+Z) restores them.",
@@ -1704,6 +1760,11 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     );
     return;
   }
+  // Stopped part-way: the charts that were rescaled keep their new scale and the
+  // rest keep their old one, so claiming the deck is now on one scale would be
+  // false. `guard()` posts the "Stopped" note; this just declines to overwrite
+  // it with a success message first.
+  if (isStopRequested()) return;
   note("Same scale applied to {n} charts (max {max}).", "ok", { n: parsed.length, max });
   const degraded = pictures.filter((p) => p.warn).length;
   if (degraded) {
@@ -2205,6 +2266,16 @@ async function updateChartResilient(
     console.warn(`PowerChart: swept ${swept} of ${wreckage.strayIds.length} shapes left by the stalled redraw`);
   }
 
+  // A stop is not a stall, and the ladder below is for stalls. Every rung of it
+  // exists to get the chart drawn by some other means — rebuild the slide,
+  // rasterize it — which is the one thing a user who just pressed Stop has said
+  // they do not want. Running it anyway would make Stop mean "draw this a
+  // different way", and the slowest rungs would then run AFTER the cancel.
+  //
+  // The sweep above still happens: stopping mid-batch leaves the same debris a
+  // stall does, and leaving it there would make Stop destructive.
+  if (isStopped(stall)) throw stall;
+
   if (canInsertSlidesFromBase64() && opts.tagData && (await slideHoldsOnlyChart(target.slideId))) {
     try {
       note("Rebuilding that slide…", "busy");
@@ -2446,25 +2517,60 @@ function wireInsert() {
         const settledAt = settledNotes;
         setProgress("busy");
         startElapsed();
+        // Clear any stop left by the PREVIOUS action before offering a new one.
+        // A stop that survived into the next action would cancel it at its first
+        // batch, and the user would never learn why.
+        resetStop();
+        showStop(true);
         try {
           await fn();
           trace("pane", "action finished", { action, ms: Date.now() - startedAt });
-          if (settledNotes === settledAt) {
+          // A stopped action that ended tidily still has to SAY it stopped —
+          // "Done." over work the user cancelled is the pane claiming credit
+          // for something it did not do. This covers the paths that stop by
+          // returning early (a deck run between items, Same Scale between
+          // charts) rather than by throwing.
+          if (isStopRequested()) {
+            note("Stopped — anything already drawn was kept.", "err");
+          } else if (settledNotes === settledAt) {
             note("Done.", "ok");
           }
         } catch (err) {
-          trace("pane", "action failed", { action, ms: Date.now() - startedAt, error: errorText(err) });
-          // errorText, not err.message: a RichApi.Error's message is generic
-          // ("An internal error has occurred") and the useful part is in code
-          // and debugInfo, which String(err) throws away.
-          note("Failed: {error}", "err", { error: errorText(err) });
+          // The user's own stop is not a failure, and reporting it as one
+          // ("Failed: Stopped.") reads like the add-in broke.
+          if (isStopped(err)) {
+            trace("pane", "action stopped", { action, ms: Date.now() - startedAt });
+            note("Stopped — anything already drawn was kept.", "err");
+          } else {
+            trace("pane", "action failed", { action, ms: Date.now() - startedAt, error: errorText(err) });
+            // errorText, not err.message: a RichApi.Error's message is generic
+            // ("An internal error has occurred") and the useful part is in code
+            // and debugInfo, which String(err) throws away.
+            note("Failed: {error}", "err", { error: errorText(err) });
+          }
         } finally {
           stopElapsed();
+          showStop(false);
+          resetStop();
           // Only re-enable what this call disabled — never resurrect a button
           // some other state (no host, no selection) means to keep dead.
           for (const b of lock) b.disabled = false;
         }
       };
+    // Not through `guard()`: this button must stay live precisely WHILE a
+    // guarded action is running, which is the one state guard() disables things
+    // in. It queues no host work of its own — it sets a flag the render loops
+    // read at their next batch boundary.
+    statusStop?.addEventListener("click", () => {
+      requestStop();
+      // Say so immediately. The batch already handed to PowerPoint still has to
+      // come back — up to BATCH_TIMEOUT_MS — and without this the pane looks
+      // like it ignored the click for as long as that takes.
+      if (statusStop) {
+        statusStop.disabled = true;
+        statusStop.textContent = t("Stopping…");
+      }
+    });
     insertBtn.addEventListener(
       "click",
       guard(() => doInsert(false)),

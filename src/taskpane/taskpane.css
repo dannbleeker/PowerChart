@@ -1143,3 +1143,33 @@ input[type="checkbox"] {
   color: var(--muted, #6b6a67);
   font-variant-numeric: tabular-nums;
 }
+
+/* Stop: shown only while an action is in flight, pushed to the far end so it
+   never sits under the pointer on the way to anything else. Quiet by default —
+   it is a way out, not the thing to reach for — and it stays visible after
+   being pressed, disabled and reading "Stopping…", because the batch in flight
+   still has to finish and a button that vanished would read as "nothing
+   happened". */
+.status-stop {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted, #6b6a67);
+  cursor: pointer;
+}
+.status-stop:hover:not(:disabled) {
+  color: var(--fg, #1a1a18);
+  border-color: var(--muted, #6b6a67);
+}
+.status-stop:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.status-stop[hidden] {
+  display: none;
+}
