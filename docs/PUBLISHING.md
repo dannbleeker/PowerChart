@@ -105,6 +105,13 @@ mean to test — PowerPoint caches the pane aggressively, and a whole session ca
 otherwise go into testing code the host never fetched. Hard-reload if it is
 older. Then tick **Verbose trace** in the Testing section and leave it on.
 
+**Watch the Live steps list while a run goes, and copy it if anything goes
+wrong** — before reloading. The run log is downloadable only once a run ends,
+and two rounds have now been lost to runs that did not end: one wedged at 1819
+seconds, one killed by PowerPoint's own *"Sorry, we ran into a problem"* at 108
+seconds. Neither produced a log. The step list is on screen the whole time and
+survives both, so it is the evidence of first resort now, not a convenience.
+
 | # | test | what it catches |
 | --- | --- | --- |
 | 1 | **Run host self-test.** One click, nine scenarios (below). Read the verdicts. | Nearly everything that used to be tests 1, 2, 3 and 7 of this table. The battery now selects shapes itself (`Slide.setSelectedShapes`, PowerPointApi 1.5), stops its own run, and asks the host to render a slide before and after drawing so it can tell a chart that is *there* from a chart that is *visible*. A verdict of **skipped** is not a failure. |

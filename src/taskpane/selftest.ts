@@ -573,6 +573,15 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`): Promise<Sc
       out.push({ name, ok: false, skipped: true, detail: "not reached — the run was stopped", ms: 0 });
       continue;
     }
+    // Announced BEFORE it runs, not only after it finishes.
+    //
+    // Every verdict this battery emits is a past-tense record, so a run that
+    // dies mid-scenario leaves the PREVIOUS scenario's line as its last word —
+    // off by one, and pointing at the one thing that demonstrably worked. Twice
+    // now a real-host failure has been diagnosed from a screenshot rather than
+    // a log, because the log only exists once the run ends and these runs did
+    // not. This line is what makes such a screenshot name the right scenario.
+    trace("selftest", "scenario starting", { name });
     const t0 = Date.now();
     let result: ScenarioResult;
     try {

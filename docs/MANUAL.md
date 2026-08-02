@@ -497,6 +497,22 @@ a chart drawn in white, at zero size, or off the edge of the slide. It borrows
 a slide to do this and takes it away again. **Stopping part-way** confirms a
 stopped run adds nothing and leaves nothing behind claiming to be a chart.
 
+**Live steps** is the scrolling list under the buttons. Every step of a run
+appears there as it happens, newest last — which scenario started, which one
+finished and how, which slides were read back, and the phase of anything that
+went wrong.
+
+It is not a prettier version of the run log; it is the record that survives
+things the log does not. The log can only be downloaded once a run **ends**, and
+the runs worth explaining are the ones that do not end: a host that stops
+answering, or a PowerPoint that puts up *"Sorry, we ran into a problem"* and
+takes the pane's memory with it. Both have happened. What is already on screen
+survives both. **Copy** puts the whole list on the clipboard; failing that,
+screenshot it before you reload. **Clear** empties it.
+
+It follows the newest line automatically, unless you have scrolled up to read
+something — then it leaves your place alone until you scroll back down.
+
 **Download run log** saves the last run as JSON: the run's identity token,
 per-item timings, statuses, what the host did to each slide, and the repair
 pass's verdicts, plus the trace — which opens with a tally of every step and
