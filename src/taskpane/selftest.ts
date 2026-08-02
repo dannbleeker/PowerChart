@@ -53,6 +53,7 @@ import {
   clearShapeSelection,
   deleteSlideById,
   isStopped,
+  isStopRequested,
   loadChartFromSelection,
   requestStop,
   resetStop,
@@ -420,6 +421,14 @@ const editViaSelection: Scenario = async (prefix) => {
  * first batch boundary instead of its fifth.
  */
 const stopPartWay: Scenario = async (prefix) => {
+  // If the USER has already asked to stop, this scenario must not run at all —
+  // and above all must not clear their flag. It is the only code in the add-in
+  // that calls `resetStop()`, and doing that on the way out of a scenario the
+  // user had already cancelled would resume a battery they had stopped. The
+  // guard in `runSelfTest` means this branch should be unreachable; it is here
+  // because "should be unreachable" is how the flag got clobbered in the first
+  // place.
+  if (isStopRequested()) return { ok: false, skipped: true, detail: "not reached — the run was stopped" };
   const before = await slideCount();
   const c = cfg(`${prefix} stopped`);
   requestStop();
@@ -550,6 +559,20 @@ export function setSelfTestRasterizer(fn: (scene: Scene) => Promise<string | und
 export async function runSelfTest(prefix = `selftest ${newRunId()}`): Promise<ScenarioResult[]> {
   const out: ScenarioResult[] = [];
   for (const { name, run } of SCENARIOS) {
+    // The battery had no stop check of its own — none at all. So even where a
+    // scenario ended promptly, Stop could not end the RUN: the pane switched
+    // its button to "Stopping…" and the next scenario started anyway. A
+    // battery is the longest thing in the Testing panel and the likeliest to
+    // be abandoned half way, which makes this the one loop that most needed it.
+    //
+    // Scenarios not reached are reported as skipped, with the reason, rather
+    // than dropped: a report missing its last four lines looks like a battery
+    // that crashed, and that is a different diagnosis from one that was
+    // stopped.
+    if (isStopRequested()) {
+      out.push({ name, ok: false, skipped: true, detail: "not reached — the run was stopped", ms: 0 });
+      continue;
+    }
     const t0 = Date.now();
     let result: ScenarioResult;
     try {

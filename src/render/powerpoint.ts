@@ -1213,7 +1213,9 @@ async function readChartsPage(
       slide.shapes.load("items/id,items/left,items/top");
       perSlide.push(slide);
     }
-    await step(`reading slides ${from}-${to - 1} for charts`, () => context.sync());
+    await step(`reading slides ${from}-${to - 1} for charts`, () =>
+      withTimeout(context.sync(), READBACK_TIMEOUT_MS, `reading slides ${from}-${to - 1} for charts`),
+    );
 
     let unread = 0;
     const lookups: ({ slideId: string; shape: PowerPoint.Shape } & ChartTags)[] = [];
@@ -1229,7 +1231,9 @@ async function readChartsPage(
       }
       for (const shape of shapes) lookups.push({ slideId, shape, ...chartTagsOf(shape) });
     }
-    await step(`reading chart tags on slides ${from}-${to - 1}`, () => context.sync());
+    await step(`reading chart tags on slides ${from}-${to - 1}`, () =>
+      withTimeout(context.sync(), READBACK_TIMEOUT_MS, `reading chart tags on slides ${from}-${to - 1}`),
+    );
 
     const charts = lookups
       .map((l): { configJson: string; target: EditTarget } | undefined => {
@@ -3120,7 +3124,7 @@ export async function selectShape(slideId: string, shapeId: string): Promise<boo
       await context.sync();
       if (!isLive(slide)) return false;
       (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([shapeId]);
-      await step("selecting a shape", () => context.sync());
+      await step("selecting a shape", () => withTimeout(context.sync(), READBACK_TIMEOUT_MS, "selecting a shape"));
       return true;
     });
   } catch {
@@ -3184,7 +3188,12 @@ export async function slideImageBase64(slideId: string, width?: number): Promise
           getImageAsBase64(options?: { width?: number }): { value: string };
         }
       ).getImageAsBase64(width ? { width } : undefined);
-      await step("rasterising a slide", () => context.sync());
+      // Bounded, and this is the one that most needed it: rasterising a whole
+      // slide is the heaviest single call the add-in makes, it is brand new, and
+      // it had no deadline and no stop check. A self-test that wedges here
+      // cannot be cancelled and cannot be timed out — which is exactly what a
+      // real host did at 1819 seconds.
+      await step("rasterising a slide", () => withTimeout(context.sync(), READBACK_TIMEOUT_MS, "rasterising a slide"));
       const v = loadedValue(() => img.value);
       return typeof v === "string" && v.length ? v : undefined;
     });

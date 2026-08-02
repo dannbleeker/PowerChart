@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installHost, makeSlide, makeShape, applyWebProfile, faults } from "./helpers/office-host";
-import { CHART_TAG } from "../src/render/powerpoint";
+import { CHART_TAG, requestStop, resetStop, isStopRequested } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { runSelfTest, describeSelfTest, setSelfTestRasterizer, type ScenarioResult } from "../src/taskpane/selftest";
 
@@ -202,6 +202,48 @@ describe("the scenarios the selection API unlocked", () => {
     const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
     faults.refuseSlideDelete = false;
     expect(r.detail, "left a slide behind and said nothing").toMatch(/could not be removed/i);
+  });
+
+  it("can be stopped, and says which scenarios were never reached", async () => {
+    // The battery had no stop check of its own. A user who pressed Stop got a
+    // button that said "Stopping…" and a run that carried on to the next
+    // scenario regardless — observed on a real host at 1819 seconds, where the
+    // only way out was closing the tab, which is also how that run's log was
+    // lost.
+    //
+    // Not-reached is reported as SKIPPED with a reason, never dropped: a report
+    // missing its last four lines looks like a battery that crashed, and that
+    // is a different diagnosis from one that was stopped.
+    installHost([makeSlide("s1")]);
+    requestStop();
+    let results: ScenarioResult[];
+    try {
+      results = await runSelfTest("probe");
+    } finally {
+      resetStop();
+    }
+    expect(results, "a stopped battery dropped scenarios instead of reporting them").toHaveLength(9);
+    expect(
+      results.every((r) => r.skipped),
+      "a stopped battery ran a scenario anyway",
+    ).toBe(true);
+    expect(results[0].detail).toMatch(/stopped/i);
+  });
+
+  it("does not let the stop scenario clear a stop the USER asked for", async () => {
+    // `stopPartWay` is the only code in the add-in that calls resetStop(). If
+    // it runs while the user's own stop is pending, its finally clears the
+    // flag — and the battery resumes after the user cancelled it. The guard
+    // above makes this unreachable; this pins it anyway, because "unreachable"
+    // is how the flag came to be clobbered in the first place.
+    installHost([makeSlide("s1")]);
+    requestStop();
+    try {
+      await runSelfTest("probe");
+      expect(isStopRequested(), "the stop scenario cleared the user's stop").toBe(true);
+    } finally {
+      resetStop();
+    }
   });
 
   it("skips rather than fails on a host below PowerPointApi 1.5", async () => {
