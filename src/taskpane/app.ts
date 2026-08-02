@@ -2728,12 +2728,39 @@ function wireInsert() {
     /** Newest last, capped — a pane is not a heap, and the tail is what is read. */
     const STEP_LINES = 300;
     const lines: string[] = [];
+    // NEWEST FIRST, and that ordering is the whole point rather than a
+    // preference.
+    //
+    // The first version appended and auto-scrolled to the bottom, which reads
+    // better while a run is healthy and fails at the only moment this list
+    // exists for. When PowerPoint dies, what you have is whatever pixels were
+    // on screen — no scrolling, no clicking, often a modal dialog over half the
+    // pane. An append-and-follow list puts the last thing that happened at the
+    // bottom of a small scrolled box, which is exactly where it cannot be
+    // relied on to be visible. Prepending puts it at a FIXED position, one line
+    // below the header, and needs no scroll to have worked.
+    //
+    // It also removes the follow-the-tail logic entirely: there is no tail to
+    // follow, so there is no "unless the user scrolled" case to get wrong.
     const paintSteps = (): void => {
       steps.textContent = lines.join("\n");
-      // Follow the tail, unless the user has scrolled up to read something —
-      // yanking the view back is how a live log becomes unreadable.
-      const atBottom = steps.scrollHeight - steps.scrollTop - steps.clientHeight < 24;
-      if (atBottom) steps.scrollTop = steps.scrollHeight;
+    };
+    /**
+     * Put the step list where it can be seen, once, as a run starts.
+     *
+     * Newest-first fixes WHERE in the box the last line is; it does nothing
+     * about whether the box itself is on screen. The Testing section sits at
+     * the bottom of a long pane, so a run started from a scrolled-up view puts
+     * every step somewhere a screenshot will not reach. Once per run, on the
+     * click that starts it — never while the run is going, because a pane that
+     * moves under the cursor mid-run is its own problem.
+     */
+    const revealSteps = (): void => {
+      try {
+        steps.scrollIntoView({ block: "nearest" });
+      } catch {
+        /* an older host without scrollIntoView options — the list still fills */
+      }
     };
     onTrace((e) => {
       // The data payload matters as much as the message for the lines that
@@ -2743,18 +2770,21 @@ function wireInsert() {
         .filter(([, v]) => v !== undefined && v !== "" && typeof v !== "object")
         .map(([k, v]) => `${k}=${String(v)}`)
         .join(" ");
-      lines.push(
+      lines.unshift(
         `${String(Math.round(e.ms / 100) / 10).padStart(6)}s  ${e.scope}  ${e.message}${bits ? "  " + bits : ""}`,
       );
-      if (lines.length > STEP_LINES) lines.splice(0, lines.length - STEP_LINES);
+      // Drop the OLDEST, which is now the end of the array.
+      if (lines.length > STEP_LINES) lines.length = STEP_LINES;
       paintSteps();
     });
     $("demo-steps-copy").addEventListener("click", () => {
-      const text = lines.join("\n");
-      if (!text) {
+      if (!lines.length) {
         note("No steps to copy yet.", "err");
         return;
       }
+      // Labelled, because the order is the opposite of what a log usually is
+      // and a reader who assumes otherwise reads the run backwards.
+      const text = [`PowerChart steps — NEWEST FIRST (${lines.length} lines)`, ...lines].join("\n");
       void navigator.clipboard
         ?.writeText(text)
         .then(() => note(`Copied ${lines.length} step(s).`, "ok"))
@@ -2795,6 +2825,7 @@ function wireInsert() {
     selfTestBtn.addEventListener(
       "click",
       guard(async () => {
+        revealSteps();
         const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
@@ -2821,6 +2852,7 @@ function wireInsert() {
     demoBtn.addEventListener(
       "click",
       guard(async () => {
+        revealSteps();
         const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
         const host = describeHost();
         const items = demoItems({ buildStamp, host });

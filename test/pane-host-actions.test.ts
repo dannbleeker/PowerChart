@@ -1652,3 +1652,56 @@ describe("Stop", () => {
     expect(said).not.toMatch(/rebuil|picture/i);
   });
 });
+
+describe("the live step list", () => {
+  beforeEach(bootHostPane);
+
+  /**
+   * The trace module the PANE is using, not the one this file imported.
+   *
+   * `bootHostPane` calls `vi.resetModules()` before importing the app, so a
+   * static import at the top of this file is a different instance: writing to
+   * it would leave the pane's subscriber untouched and every assertion below
+   * would pass or fail on an empty box for the wrong reason.
+   */
+  const paneTrace = async () => {
+    const mod = await import("../src/core/trace");
+    mod.setTracing(true);
+    return mod.trace;
+  };
+
+  it("puts the newest step at the TOP, where a crash leaves it visible", async () => {
+    // Ordering is the whole feature, not a preference. When PowerPoint dies you
+    // get whatever pixels were on screen — no scrolling, no clicking, often a
+    // dialog over half the pane. A list that grows downwards puts the last
+    // thing that happened at the bottom of a small scrolled box, which is
+    // exactly where it cannot be relied on to be visible. Growing upwards puts
+    // it one line under the header, always.
+    const trace = await paneTrace();
+    const steps = document.getElementById("demo-steps")!;
+    trace("selftest", "scenario starting", { name: "first" });
+    trace("selftest", "scenario starting", { name: "second" });
+    const lines = steps.textContent!.trim().split("\n");
+    expect(lines[0], `newest was not first — got:\n${steps.textContent}`).toContain("name=second");
+    expect(lines[1]).toContain("name=first");
+  });
+
+  it("carries the data payload, which is where the phase and the verdict live", async () => {
+    const trace = await paneTrace();
+    const steps = document.getElementById("demo-steps")!;
+    trace("error", "drawing the chart's shapes", { error: "PowerPoint did not respond | at=drawing" });
+    expect(steps.textContent).toContain("error");
+    expect(steps.textContent).toContain("at=drawing");
+  });
+
+  it("keeps the newest when it reaches its cap, not the oldest", async () => {
+    // The tail is what is read. Truncating the wrong end would leave a list
+    // that is full of the start of a run and silent about how it ended.
+    const trace = await paneTrace();
+    const steps = document.getElementById("demo-steps")!;
+    for (let i = 0; i < 320; i++) trace("draw", "batch committed", { n: i });
+    const lines = steps.textContent!.trim().split("\n");
+    expect(lines.length).toBeLessThanOrEqual(300);
+    expect(lines[0], "the newest step fell off the cap").toContain("n=319");
+  });
+});
