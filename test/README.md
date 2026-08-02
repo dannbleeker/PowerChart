@@ -53,6 +53,16 @@ without throwing, a refused `addGroup`, a sync that answers minutes late, a
 collection read the host never answers at all, a shape whose position stays
 unreadable until the load that asked for it lands.
 
+One family of them models the same thing at four levels — the host taking a
+load and answering nothing: `unansweredShapeReads` (a whole shape collection),
+`unansweredNullChecks` (one `getItemOrNullObject` proxy), `unansweredTagLoads`
+(a tag), and `faults.strictShapeReads` (a shape's own `id`/`left`/`top`).
+Reading any unanswered proxy is `PropertyNotLoaded` on a real host and was a
+plain value here, which is how three self-test scenarios could fail in a real
+PowerPoint against a fully green suite. `strictShapeReads` is off by default
+only because the fake's shape objects double as the surface tests assert
+geometry against — the others are always in force once armed.
+
 Faults are opt-in per test. `applyWebProfile()` turns on the set a real web host
 shows at once; call it AFTER `installHost`, which resets every fault. It is not
 the default, because applied everywhere it would fail hundreds of tests for

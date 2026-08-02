@@ -10,18 +10,24 @@ import {
   failSyncsOn,
   trips,
   unansweredShapeReads,
+  unansweredNullChecks,
 } from "./helpers/office-host";
 import {
   insertDemoDeck,
   insertSceneIntoSlide,
   listChartsInDeck,
+  listChartsInSelection,
+  loadChartFromSelection,
   updateChartInSlide,
+  updateChartsInSlides,
+  errorText,
   DEMO_SLOT_TAG,
   CHART_TAG,
   _setBatchTimeoutForTest,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
+import { setTracing, traceLog } from "../src/core/trace";
 import type { ChartConfig, ChartKind } from "../src/core/types";
 
 /**
@@ -456,6 +462,175 @@ describe("proxies the host would not answer for", () => {
     faults.strictShapeReads = false;
     expect(target, "an untagged insert lost track of its own chart").toBeTruthy();
     expect(Number.isFinite(target!.left) && Number.isFinite(target!.top), "the target carries no position").toBe(true);
+  });
+});
+
+/**
+ * The everyday paths, run end to end with every proxy read held to the
+ * contract Office.js actually enforces.
+ *
+ * The three failures that started this were found one at a time, from a real
+ * host, by reading a log. Fixing them one at a time is how the next three get
+ * found the same expensive way — the bug is not any one line, it is that a
+ * property read looks identical whether or not the host answered for it. So
+ * these drive the whole insert / edit / scan / select surface with
+ * `strictShapeReads` on, and assert only one thing: the add-in never fails by
+ * READING. Failing because a host refused something is allowed. Failing on the
+ * line that reads the answer is not.
+ */
+describe("the everyday paths under a host that answers nothing it was not asked for", () => {
+  const cfg = () => ({ ...sampleConfig("clustered"), ...DEFAULT_SIZE });
+
+  /** A slide holding one re-editable chart, as every entry point expects. */
+  function deckWithChart(id = "s1") {
+    const slide = makeSlide(id);
+    const chart = makeShape("geometric", "rectangle", { left: 10, top: 10, width: 100, height: 100 });
+    chart.name = "PowerChart";
+    chart.tagStore.set(CHART_TAG, JSON.stringify({ ...cfg(), title: id }));
+    slide.created.push(chart);
+    return { slide, chart };
+  }
+
+  /** Every host entry point the pane reaches, run once. */
+  async function everydayPaths() {
+    await loadChartFromSelection();
+    await insertSceneIntoSlide(buildChart(cfg()), { tagData: JSON.stringify(cfg()) });
+    const deck = await listChartsInDeck();
+    if (deck.length) {
+      await updateChartInSlide(buildChart({ ...cfg(), title: "edited" }), deck[0].target, {
+        tagData: JSON.stringify({ ...cfg(), title: "edited" }),
+      });
+    }
+    await listChartsInSelection();
+    return deck;
+  }
+
+  it("runs the pane's whole surface against a host that answers only some of it", async () => {
+    // Not one quiet answer — a scattering of them, across every entry point,
+    // with the shape contract enforced throughout. Each individual gap is
+    // covered below; this is the one that asks whether they compose, because
+    // a real host does not hand out its silences one per call and stop.
+    const { slide, chart } = deckWithChart();
+    installHost([slide], [chart], slide);
+    // Read the id BEFORE arming the gate: the fault is addressed by id, and
+    // asking for it under the gate is the test tripping over its own fixture.
+    unansweredNullChecks.add(chart.id); // the update gets a quiet shape
+    faults.strictShapeReads = true;
+    faults.unansweredTagLoads = 1; // the selection read gets a quiet tag
+    let thrown: unknown;
+    try {
+      const deck = await everydayPaths();
+      expect(deck.length, "the deck scan found nothing").toBeGreaterThan(0);
+    } catch (err) {
+      thrown = err;
+    } finally {
+      faults.strictShapeReads = false;
+      faults.unansweredTagLoads = 0;
+    }
+    expect(thrown && errorText(thrown), "an everyday path threw").toBeFalsy();
+  });
+
+  it("treats a tag the host stayed quiet about as 'not a chart', not as a crash", async () => {
+    // `isNullObject` and `value` on a config tag are what every "is this shape
+    // a chart" question comes down to, and both were read raw. A host that
+    // takes the load and answers nothing then does not mean "no chart here" —
+    // it means the pane's most-used reads throw. One quiet tag per entry point
+    // is enough: what has to survive is the CALL, whatever it concludes.
+    const { slide, chart } = deckWithChart();
+    installHost([slide], [chart], slide);
+    faults.unansweredTagLoads = 3;
+    let thrown: unknown;
+    try {
+      await loadChartFromSelection();
+      faults.unansweredTagLoads = 3;
+      await listChartsInDeck();
+      faults.unansweredTagLoads = 3;
+      await listChartsInSelection();
+    } catch (err) {
+      thrown = err;
+    } finally {
+      faults.unansweredTagLoads = 0;
+    }
+    expect(thrown && errorText(thrown), "a quiet tag took a read down with it").toBeFalsy();
+  });
+
+  it("leaves a sibling it cannot see alone, and still finishes the redraw", async () => {
+    // An ungrouped chart's siblings travel in its parts tag, and the update
+    // deletes the set. A part the host will not confirm is a part we cannot
+    // prove is ours — and the shapes on that slide include whatever the user
+    // put there. Covering a stray with the redraw is visible and fixable;
+    // deleting somebody else's shape is neither.
+    //
+    // Both halves are asserted, and the second is what makes this a test. The
+    // raw read threw, which also left the shape undeleted — so "the sibling
+    // survived" alone is true of the bug as well as the fix. What separates
+    // them is that the bug took the whole update down with it.
+    const { slide, chart } = deckWithChart();
+    const theirs = makeShape("geometric", "rectangle", { left: 300, top: 10, width: 20, height: 20 });
+    theirs.name = "not ours";
+    slide.created.push(theirs);
+    installHost([slide], [chart], slide);
+    unansweredNullChecks.add(theirs.id); // it resolves, and the host says nothing back
+    const next = { ...cfg(), title: "edited" };
+    const target = await updateChartInSlide(
+      buildChart(next),
+      { slideId: "s1", shapeId: chart.id, left: 10, top: 10, partIds: [theirs.id] },
+      { tagData: JSON.stringify(next) },
+    ).catch(() => null);
+    expect(theirs.deleted, "a shape the host would not confirm was deleted anyway").toBe(false);
+    expect(target, "one unreadable sibling failed the whole redraw").toBeTruthy();
+  });
+
+  it("says WHICH phase an error escaped, in the message and in the log", async () => {
+    // The run log used to carry what the host refused and nothing about what
+    // the add-in was doing when it refused. Placing three real-host failures
+    // meant reasoning from timestamps and call order back to a line, for each
+    // one. `errorLocation` names the Office.js type; this names the phase.
+    setTracing(true);
+    try {
+      installHost([makeSlide("s1")]);
+      failSyncsOn.add(2); // mid-render, after the first batch has committed
+      let thrown: unknown;
+      const cfgJson = JSON.stringify(cfg());
+      await insertSceneIntoSlide(buildChart(cfg()), { tagData: cfgJson }).catch((err) => (thrown = err));
+      expect(thrown, "the refused sync did not surface").toBeTruthy();
+      expect(errorText(thrown), "the error does not say what was running").toMatch(/at=drawing the chart's shapes/);
+      // And in the log, at the moment it happened — so a phase is on record
+      // even when the error is swallowed by a best-effort catch further up.
+      const phases = traceLog()
+        .entries.filter((e) => e.scope === "error")
+        .map((e) => e.message);
+      expect(phases, "no phase was traced").toContain("drawing the chart's shapes");
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("skips a slide it cannot confirm instead of failing the update", async () => {
+    // The slide resolve is the FIRST thing an in-place update does, for every
+    // chart in the batch at once. A host that stays quiet about one of them
+    // used to throw out of the whole call — so Same Scale across a deck lost
+    // every chart to one unanswered slide, including the charts it had not
+    // reached yet.
+    const a = deckWithChart("s1");
+    const b = deckWithChart("s2");
+    installHost([a.slide, b.slide], [a.chart], a.slide);
+    unansweredNullChecks.add("s1");
+    const next = { ...cfg(), title: "edited" };
+    const out = await updateChartsInSlides([
+      {
+        scene: buildChart(next),
+        target: { slideId: "s1", shapeId: a.chart.id, left: 10, top: 10 },
+        opts: { tagData: JSON.stringify(next) },
+      },
+      {
+        scene: buildChart(next),
+        target: { slideId: "s2", shapeId: b.chart.id, left: 10, top: 10 },
+        opts: { tagData: JSON.stringify(next) },
+      },
+    ]).catch(() => []);
+    expect(out.length, "the quiet slide took the readable one down with it").toBe(1);
+    expect(a.chart.deleted, "a chart on a slide we could not confirm was deleted").toBe(false);
   });
 });
 

@@ -83,6 +83,19 @@ export const faults = {
    * gate models a HOST read, not the bookkeeping a test does afterwards.
    */
   strictShapeReads: false,
+  /**
+   * Tag loads the host takes and never answers — the next N `load()`s on a tag
+   * proxy leave it unreadable after their sync.
+   *
+   * The tag twin of `unansweredShapeReads`, and the one with the widest blast
+   * radius: `isNullObject`/`value` on a config tag is read on every path that
+   * asks "is this shape a chart" — the selection readers, the deck scan, the
+   * repair pass. Each of those used to read both properties raw, so a tag the
+   * host stayed quiet about did not mean "not a chart", it meant the call
+   * threw. Counted down per load, so a test can silence one read and watch the
+   * rest of a scan carry on.
+   */
+  unansweredTagLoads: 0,
 };
 
 /**
@@ -199,6 +212,12 @@ function makeTagProxy(store: Map<string, string>, key: string, onUntrack?: () =>
   };
   return {
     load(_p?: string) {
+      // Taken and never answered — see `faults.unansweredTagLoads`. The load
+      // is still queued, so the sync carries it; nothing comes back.
+      if (faults.unansweredTagLoads > 0) {
+        faults.unansweredTagLoads--;
+        return;
+      }
       pendingTagLoads.push(() => {
         readable = true;
       });
@@ -456,12 +475,27 @@ function freshHandle(shape: FakeShape): FakeShape {
 function nullObjectProxy<T extends object>(found: T | undefined) {
   let loaded = false;
   const base = found ?? ({ delete() {} } as unknown as T);
+  // Read once, off the raw object, before any strictness gate can refuse it —
+  // the fault is addressed by id and must not depend on the fault it models.
+  const ownId = (() => {
+    try {
+      return (found as { id?: string } | undefined)?.id;
+    } catch {
+      return undefined;
+    }
+  })();
   return new Proxy(base, {
     get(target, prop, recv) {
       if (prop === "load")
         return (p?: string | string[]) => {
           const asked = (Array.isArray(p) ? p : (p ?? "").split(",")).map((s) => s.trim()).filter(Boolean);
           if (asked.length && asked.every((a) => a === "isNullObject")) return;
+          // The host took the load and answered nothing — see
+          // `unansweredNullChecks`. One-shot, so a retry can find it.
+          if (ownId && unansweredNullChecks.has(ownId)) {
+            unansweredNullChecks.delete(ownId);
+            return;
+          }
           loaded = true;
         };
       if (prop === "isNullObject") {
@@ -565,6 +599,13 @@ export function makeSlide(id: string) {
       load(p?: string) {
         if (faults.faultShapeCollectionLoad) throw new TypeError("e.load is not a function");
         if (p) lastShapeLoad = p;
+        // `items/id,items/left,items/top` loads the SHAPES, not just the
+        // collection — that is what the selector means, and it is how the real
+        // host populates them. Without this the fake would be stricter than
+        // Office.js rather than equal to it, and `strictShapeReads` would fail
+        // correct code, which is the mirror image of the sin it exists to
+        // prevent.
+        if (p?.includes("items/")) for (const s of created) s.load();
       },
       addGeometricShape(geo: string, box: FakeShape["box"]) {
         const s = makeShape("geometric", geo, box);
@@ -774,6 +815,19 @@ let lastShapeLoad = "";
  */
 export const unansweredShapeReads = new Set<string>();
 
+/**
+ * Shape/slide ids whose `getItemOrNullObject` proxy is never populated, however
+ * it is loaded — so `isNullObject` stays unreadable.
+ *
+ * The single-object twin of `unansweredShapeReads`, and the state a caller has
+ * the hardest time reasoning about: the object was asked for, the sync landed,
+ * and the host said nothing either way. It is neither "there" nor "gone", and
+ * code that treats it as one of the two either deletes something it cannot see
+ * or refuses to touch something that is plainly there. Only the first of those
+ * is unrecoverable, which is why `isLive` answers false.
+ */
+export const unansweredNullChecks = new Set<string>();
+
 /** When true, `fill.setImage` throws on access — a pre-1.8 host, where the
  * method does not exist at all. Drives the picture-insert fall-through. */
 
@@ -893,7 +947,14 @@ export function installHost(
         load() {},
       },
       getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
-      getSelectedShapes: () => ({ items: selectedShapes, load() {} }),
+      getSelectedShapes: () => ({
+        items: selectedShapes,
+        // Same contract as a slide's own collection: an `items/…` selector
+        // populates the shapes it names. See ShapeCollection.load.
+        load(p?: string) {
+          if (p?.includes("items/")) for (const s of selectedShapes) s.load();
+        },
+      }),
       setSelectedSlides: (ids: string[]) => {
         const found = slides.find((sl) => ids.includes(sl.id));
         if (found) selectedSlide = found;
@@ -1048,7 +1109,9 @@ export function installHost(
   faults.faultShapeGetCount = false;
   faults.faultShapeCollectionLoad = false;
   faults.strictShapeReads = false;
+  faults.unansweredTagLoads = 0;
   unansweredShapeReads.clear();
+  unansweredNullChecks.clear();
   faults.swallowDecks = 0;
   addedWithLayout.length = 0;
   vi.stubGlobal("PowerPoint", {

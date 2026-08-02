@@ -211,6 +211,75 @@ function loadedValue<T>(read: () => T): T | undefined {
   }
 }
 
+/**
+ * Whether the host CONFIRMED this object exists.
+ *
+ * Three states collapse to two here, and the direction matters: "the host said
+ * it is there" is true, while both "the host said it is gone" and "the host
+ * never answered" are false. A caller that cannot tell must behave as if the
+ * object is absent — every use of this guards a delete or a redraw, and doing
+ * either to a shape we cannot see is how an edit destroys something.
+ */
+function isLive(proxy: { isNullObject: boolean }): boolean {
+  return loadedValue(() => proxy.isNullObject) === false;
+}
+
+/**
+ * A tag's value, or undefined for "absent, or the host did not say".
+ *
+ * The `!tag.isNullObject && tag.value` pair was written out at eight call
+ * sites, and every one of them read BOTH properties raw. Either read throws if
+ * the load did not land, which is a `PropertyNotLoaded` in the middle of a scan
+ * — the same shape of failure as the shape-collection one, one level down. A
+ * tag nobody can read is a chart that is not re-editable; that is a fact to
+ * degrade to, never to throw over.
+ */
+function tagValue(tag: { isNullObject: boolean; value: string }): string | undefined {
+  if (!isLive(tag)) return undefined;
+  const v = loadedValue(() => tag.value);
+  return typeof v === "string" && v ? v : undefined;
+}
+
+/**
+ * Where an error was when it escaped — attached to the error itself.
+ *
+ * Read off by `errorText`, so every place that reports an error says WHICH
+ * phase it came out of, not only what the host called it.
+ */
+const STEP_KEY = "__powerchartStep";
+
+/**
+ * Run a host operation under a label, so an error escaping it carries WHERE.
+ *
+ * The run log used to record what the host said and nothing about what the
+ * add-in was doing when it said it. Three self-test scenarios failed on a real
+ * host with `PropertyNotLoaded` on three different proxies, and placing each
+ * one took reasoning from timestamps and call order back to a line — the log
+ * could not say. `errorLocation` names the Office.js type; this names the
+ * phase, and between them a failure is located rather than reconstructed.
+ *
+ * The INNERMOST label wins: an error is annotated once, by the first `step`
+ * it unwinds through, so nesting narrows the answer instead of widening it.
+ * The same moment is traced, so the log carries the phase in timeline order
+ * even when the error is later swallowed by a best-effort catch — which is
+ * exactly the case that used to leave nothing behind at all.
+ */
+async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err && typeof err === "object" && !(STEP_KEY in err)) {
+      try {
+        Object.defineProperty(err, STEP_KEY, { value: label, enumerable: false, configurable: true });
+      } catch {
+        /* a frozen error still carries its own message */
+      }
+      trace("error", label, { error: errorText(err) });
+    }
+    throw err;
+  }
+}
+
 const DEFAULT_FONT = "Segoe UI";
 
 /** Where an existing PowerChart lives on the deck, for in-place update. */
@@ -386,6 +455,11 @@ export function errorText(err: unknown): string {
   if (!err || typeof err !== "object") return String(err);
   const e = err as { message?: string; code?: string; debugInfo?: unknown };
   const bits = [e.message ?? String(err)];
+  // The phase the add-in was in, when a `step` recorded one. Office.js says
+  // what it refused; this says what we were doing — and a report with only the
+  // first half is what made three real-host failures take a session to place.
+  const at = (err as Record<string, unknown>)[STEP_KEY];
+  if (typeof at === "string") bits.push(`at=${at}`);
   if (e.code) bits.push(`code=${e.code}`);
   if (e.debugInfo) {
     try {
@@ -465,31 +539,39 @@ export async function insertSceneIntoSlide(
     // Committed in batches: the whole scene in one sync is what a live canvas
     // will not take. Each batch reports, so progress here is measured, not
     // guessed — see renderShapesChunked.
-    const created = await renderShapesChunked(context, getSlide, scene, opts, (done, total) =>
-      onPhase?.("commit", `${done} of ${total} shapes`),
+    const created = await step("drawing the chart's shapes", () =>
+      renderShapesChunked(context, getSlide, scene, opts, (done, total) =>
+        onPhase?.("commit", `${done} of ${total} shapes`),
+      ),
     );
     // Shapes are committed by now, so grouping/tagging (which some hosts,
     // notably PowerPoint on the web, don't support) can't roll back the chart.
     onPhase?.("group");
-    const [tagged] = await groupAndTagAll(context, [
-      {
-        getSlide,
-        created,
-        opts: { ...opts, altText: scene.desc, altTitle: scene.title },
-        // A chart that took more than one batch holds proxies from before the
-        // last sync, and the web host refuses those — see `refreshShapes`.
-        refreshShapes: spansBatches(created, opts),
-      },
-    ]);
+    const [tagged] = await step("grouping and tagging the new chart", () =>
+      groupAndTagAll(context, [
+        {
+          getSlide,
+          created,
+          opts: { ...opts, altText: scene.desc, altTitle: scene.title },
+          // A chart that took more than one batch holds proxies from before the
+          // last sync, and the web host refuses those — see `refreshShapes`.
+          refreshShapes: spansBatches(created, opts),
+        },
+      ]),
+    );
     onPhase?.("done");
     // Hand back an edit target, so a caller that inserted as a RECOVERY (see
     // updateChartResilient) can keep the chart editable instead of telling the
     // user to go and find it. Null whenever the host would not tag the chart —
     // there is nothing to re-open then, and saying so beats inventing an id.
     const t = tagged?.target;
-    if (!t) return null;
+    // The slide's own id, which the load at the top asked for. A host that did
+    // not answer leaves nothing to re-open — the same answer as an untagged
+    // chart, and better than an EditTarget naming a slide we cannot name.
+    const slideId = loadedValue(() => slide.id);
+    if (!t || typeof slideId !== "string") return null;
     return {
-      slideId: slide.id,
+      slideId,
       shapeId: t.id,
       left: t.left,
       top: t.top,
@@ -714,9 +796,11 @@ export async function updateChartsInSlides(
       queueNullCheck(slide);
       return { it, slide };
     });
-    await context.sync();
+    await step("resolving the charts' slides", () => context.sync());
 
-    const live = found.filter(({ slide }) => !slide.isNullObject);
+    // Confirmed present, never merely "not confirmed gone". A slide the host
+    // would not answer for is one we cannot safely delete a chart off.
+    const live = found.filter(({ slide }) => isLive(slide));
     if (!live.length) return [];
     const withOld = live.map(({ it, slide }) => {
       const old = slide.shapes.getItemOrNullObject(it.target.shapeId);
@@ -741,7 +825,7 @@ export async function updateChartsInSlides(
       for (const p of parts) queueNullCheck(p);
       return { it, slide, old, parts };
     });
-    await context.sync();
+    await step("resolving the charts' shapes", () => context.sync());
 
     // A target whose SHAPE is gone gets the same treatment as one whose slide
     // is gone: nothing to do. Re-rendering it would resurrect a chart the user
@@ -749,8 +833,18 @@ export async function updateChartsInSlides(
     // Read the live positions off the proxies BEFORE the delete below detaches
     // them; from here on `at` is where each chart actually sits on the slide.
     const alive = withOld
-      .filter(({ old }) => !old.isNullObject)
-      .map((e) => ({ ...e, at: { left: e.old.left, top: e.old.top } }));
+      .filter(({ old }) => isLive(old))
+      .map((e) => {
+        // The live position, falling back to the caller's snapshot when the
+        // host answered for the shape but not for where it is. The snapshot is
+        // stale for a chart the user has since dragged, which costs that chart
+        // its drag delta — a chart drawn back at its recorded origin, not a
+        // failed update. Losing the whole redraw over an unread number is the
+        // worse trade.
+        const left = loadedValue(() => e.old.left) ?? e.it.target.left;
+        const top = loadedValue(() => e.old.top) ?? e.it.target.top;
+        return { ...e, at: { left, top } };
+      });
     if (!alive.length) return [];
 
     // 2-3. Per chart: drop its old shapes, then redraw it. Both, before moving
@@ -814,12 +908,18 @@ export async function updateChartsInSlides(
       let deleted = false;
       try {
         old.delete();
-        for (const p of parts) if (!p.isNullObject) p.delete();
-        await context.sync();
+        // Only the siblings the host CONFIRMED are there. One it would not
+        // answer for is left alone: deleting a shape we cannot see risks
+        // taking something that is not ours, and the redraw covering a stray
+        // is a visible, fixable outcome where a wrong delete is neither.
+        for (const p of parts) if (isLive(p)) p.delete();
+        await step("deleting the chart being replaced", () => context.sync());
         // From here the old chart is committed GONE. Anything that throws below
         // leaves a hole, and the caller has to be told which chart it is.
         deleted = true;
-        const created = await renderShapesChunked(context, getSlide, it.scene, opts, undefined, drawn);
+        const created = await step("redrawing the chart's shapes", () =>
+          renderShapesChunked(context, getSlide, it.scene, opts, undefined, drawn),
+        );
         // Only once it landed, or `placed` would point at a chart that isn't
         // in `rendered` and every target after it would come back mismatched.
         placed.set(i, rendered.length);
@@ -850,11 +950,13 @@ export async function updateChartsInSlides(
     if (!rendered.length && firstFailure !== undefined) throw firstFailure;
 
     // 4-5. Group, then tag — one sync each, however many charts.
-    const tagged = await groupAndTagAll(
-      context,
-      // An update redraws every shape, so the same multi-batch staleness that
-      // costs a fresh insert its group costs an edit its group too.
-      rendered.map((r) => ({ ...r, refreshShapes: r.refreshShapes || spansBatches(r.created, r.opts) })),
+    const tagged = await step("grouping and tagging the redrawn charts", () =>
+      groupAndTagAll(
+        context,
+        // An update redraws every shape, so the same multi-batch staleness that
+        // costs a fresh insert its group costs an edit its group too.
+        rendered.map((r) => ({ ...r, refreshShapes: r.refreshShapes || spansBatches(r.created, r.opts) })),
+      ),
     );
 
     // 6. Hand back the NEW targets. An update replaces every shape, so the
@@ -914,22 +1016,26 @@ export async function loadChartFromSelection(): Promise<{ configJson: string; ta
     const tags = selected.map((s) => chartTagsOf(s));
     await context.sync();
 
+    // The selected slide's id, once. A host that will not name the slide leaves
+    // no target to hand back — the pane's "not a PowerChart" answer, which is
+    // survivable, rather than a throw out of the pane's most-used read.
+    const slideId = loadedValue(() => slide.id);
     for (let i = 0; i < selected.length; i++) {
       const { config, parts, origin } = tags[i];
-      if (!config.isNullObject && config.value) {
-        const s = selected[i];
-        return {
-          configJson: config.value,
-          target: {
-            slideId: slide.id,
-            shapeId: s.id,
-            left: s.left,
-            top: s.top,
-            partIds: partIdsOf(parts),
-            origin: originOf(origin),
-          },
-        };
-      }
+      const configJson = tagValue(config);
+      const at = targetRef(selected[i]);
+      if (!configJson || !at || typeof slideId !== "string") continue;
+      return {
+        configJson,
+        target: {
+          slideId,
+          shapeId: at.id,
+          left: at.left,
+          top: at.top,
+          partIds: partIdsOf(parts),
+          origin: originOf(origin),
+        },
+      };
     }
     return null;
   });
@@ -967,9 +1073,10 @@ function chartTagsOf(shape: PowerPoint.Shape): ChartTags {
  * inside the update's first sync.
  */
 function partIdsOf(parts: PowerPoint.Tag): string[] | undefined {
-  if (parts.isNullObject || !parts.value) return undefined;
+  const raw = tagValue(parts);
+  if (!raw) return undefined;
   try {
-    const ids: unknown = JSON.parse(parts.value);
+    const ids: unknown = JSON.parse(raw);
     if (!Array.isArray(ids)) return undefined;
     const ok = ids.filter((id): id is string => typeof id === "string" && id.length > 0);
     return ok.length ? ok : undefined;
@@ -985,9 +1092,10 @@ function partIdsOf(parts: PowerPoint.Tag): string[] | undefined {
  * origin" (falling back to the shape position), never throw inside a sync.
  */
 function originOf(origin: PowerPoint.Tag): EditTarget["origin"] {
-  if (origin.isNullObject || !origin.value) return undefined;
+  const raw = tagValue(origin);
+  if (!raw) return undefined;
   try {
-    const v: unknown = JSON.parse(origin.value);
+    const v: unknown = JSON.parse(raw);
     // [originLeft, originTop, anchorLeft, anchorTop]. All four or nothing: without
     // the anchor an update cannot tell "untouched" from "the user dragged it",
     // so a partial tag falls back to the shape's own position.
@@ -1020,7 +1128,7 @@ export async function getSelectionBounds(): Promise<{
       const tag = s.tags.getItemOrNullObject(CHART_TAG);
       tag.load("value");
       await context.sync();
-      if (!tag.isNullObject && tag.value) return null; // it's a chart — edit, don't cover
+      if (tagValue(tag)) return null; // it's a chart — edit, don't cover
       return { left: s.left, top: s.top, width: s.width, height: s.height };
     });
   } catch {
@@ -1039,18 +1147,23 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
     const selected = loadedItems(shapes) ?? [];
     const tags = selected.map((s) => chartTagsOf(s));
     await context.sync();
+    const slideId = loadedValue(() => slide.id);
     const charts = selected
-      .map((s, i) => ({ s, ...tags[i] }))
-      .filter(({ config }) => !config.isNullObject && config.value)
-      .map(({ s, config, parts, origin }) => ({
-        configJson: config.value,
+      .map((s, i) => ({ at: targetRef(s), configJson: tagValue(tags[i].config), ...tags[i] }))
+      // A shape whose position the host would not answer for cannot become an
+      // edit target: every later update resolves it by id and re-renders at
+      // that corner. Dropping it reports one chart fewer; keeping it would
+      // report a chart that cannot be edited.
+      .filter((c) => !!c.configJson && !!c.at && typeof slideId === "string")
+      .map((c) => ({
+        configJson: c.configJson!,
         target: {
-          slideId: slide.id,
-          shapeId: s.id,
-          left: s.left,
-          top: s.top,
-          partIds: partIdsOf(parts),
-          origin: originOf(origin),
+          slideId: slideId as string,
+          shapeId: c.at!.id,
+          left: c.at!.left,
+          top: c.at!.top,
+          partIds: partIdsOf(c.parts),
+          origin: originOf(c.origin),
         },
       }));
     for (const t of tags) {
@@ -1100,7 +1213,7 @@ async function readChartsPage(
       slide.shapes.load("items/id,items/left,items/top");
       perSlide.push(slide);
     }
-    await context.sync();
+    await step(`reading slides ${from}-${to - 1} for charts`, () => context.sync());
 
     let unread = 0;
     const lookups: ({ slideId: string; shape: PowerPoint.Shape } & ChartTags)[] = [];
@@ -1116,22 +1229,20 @@ async function readChartsPage(
       }
       for (const shape of shapes) lookups.push({ slideId, shape, ...chartTagsOf(shape) });
     }
-    await context.sync();
+    await step(`reading chart tags on slides ${from}-${to - 1}`, () => context.sync());
 
     const charts = lookups
-      .filter((l) => !l.config.isNullObject && l.config.value)
       .map((l): { configJson: string; target: EditTarget } | undefined => {
-        const shapeId = loadedValue(() => l.shape.id);
-        const left = loadedValue(() => l.shape.left);
-        const top = loadedValue(() => l.shape.top);
-        if (typeof shapeId !== "string" || !Number.isFinite(left) || !Number.isFinite(top)) return undefined;
+        const configJson = tagValue(l.config);
+        const at = targetRef(l.shape);
+        if (!configJson || !at) return undefined;
         return {
-          configJson: l.config.value,
+          configJson,
           target: {
             slideId: l.slideId,
-            shapeId,
-            left: left as number,
-            top: top as number,
+            shapeId: at.id,
+            left: at.left,
+            top: at.top,
             origin: originOf(l.origin),
             partIds: partIdsOf(l.parts),
           },
@@ -1585,7 +1696,11 @@ export interface DemoReport {
 export async function slideCount(): Promise<number> {
   return PowerPoint.run(async (context) => {
     const c = context.presentation.slides.getCount();
-    await context.sync();
+    await step("counting the deck's slides", () => context.sync());
+    // No safe default here, deliberately. Every caller uses this to measure a
+    // delta — slides added, slides lost, pages to scan — and a fabricated 0
+    // would read as "the deck is empty", which is an answer that gets acted on.
+    // Not knowing has to stay distinguishable from knowing.
     return c.value;
   });
 }
@@ -3807,7 +3922,7 @@ async function groupAndTagAll(
       // belongs where the catch can reach it.
       const collections = refresher.map(({ it }) => it.getSlide().shapes);
       for (const c of collections) c.load("items");
-      await context.sync();
+      await step("re-reading the slide's shapes before grouping", () => context.sync());
       refresher.forEach(({ it, i }, k) => {
         const items = collections[k].items;
         // By ID, which is exact and works on any slide. The old rule was "the
@@ -3861,7 +3976,7 @@ async function groupAndTagAll(
         tagTargets[i] = group;
         grouped.add(i);
       }
-      await context.sync();
+      await step("grouping the chart's shapes", () => context.sync());
     } catch {
       /* grouping failed — shapes stay ungrouped, charts are already on the slide */
       // The REFRESHED first shape where there is one. Falling back to
@@ -3894,7 +4009,7 @@ async function groupAndTagAll(
         // updateChartsInSlides.
         target!.load("id,left,top");
       }
-      await context.sync();
+      await step("writing the chart's config tag", () => context.sync());
       // The config tag is on the slide from here. The origin tag below is a
       // separate sync and a separate risk — losing it costs drag tracking,
       // not re-editability — so `tagged` is decided at THIS line, not after.
@@ -3918,7 +4033,7 @@ async function groupAndTagAll(
           JSON.stringify([it.opts.left ?? 60, it.opts.top ?? 90, target!.left, target!.top]),
         );
       }
-      await context.sync();
+      await step("writing the chart's origin tag", () => context.sync());
     } catch (err) {
       // The charts are on the slide but carry no config, so they are not
       // re-editable — and this used to be entirely silent, which is why a real
@@ -3946,7 +4061,7 @@ async function groupAndTagAll(
   if (unresolved.length) {
     try {
       for (const i of unresolved) tagTargets[i]!.load("id,left,top");
-      await context.sync();
+      await step("reading back where the charts landed", () => context.sync());
     } catch {
       /* the host would not say where they are — the caller keeps its old target */
     }
@@ -4026,7 +4141,14 @@ async function ungroupedFallback(
     return partsJson;
   }
   siblings.forEach((shapes, i) => {
-    const ids = shapes.map((s) => s.id).filter((id) => typeof id === "string" && id.length > 0);
+    // Read past a sibling the host did not answer for, rather than out of the
+    // whole insert. This runs AFTER the sync above and outside its catch, so a
+    // raw read here threw straight through `groupAndTagAll` into a caller whose
+    // chart was already drawn — and the parts list it was building is the one
+    // thing that makes an ungrouped chart deletable as a unit.
+    const ids = shapes
+      .map((s) => loadedValue(() => s.id))
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
     if (ids.length) partsJson[i] = JSON.stringify(ids);
   });
   return partsJson;

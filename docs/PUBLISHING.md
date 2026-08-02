@@ -114,8 +114,18 @@ itself (File → Download a copy). The log carries the run's identity token, so
 
 What to read in the result: the `tagging failed` count (was 28 on the last slow
 run; should be near zero), any line annotated `^ known host bug: office-js#…`
-(Microsoft's, not ours — annotated automatically, don't chase it), and the six
-self-test verdicts.
+(Microsoft's, not ours — annotated automatically, don't chase it), the six
+self-test verdicts, and — new — the **`phases an error escaped`** block.
+
+That block is the half of a failure that used to be missing. Office.js reports
+what it refused (`errorLocation`, `code`); it cannot report what the add-in was
+doing at the time, and reconstructing that from timestamps and call order is
+what made the last three real-host failures cost a session each. Every error
+now carries the phase it came out of — `at=drawing the chart's shapes`,
+`at=writing the chart's config tag`, `at=reading slides 20-38 for charts` — in
+its own message, in the trace as it happens, and tallied by `npm run triage`.
+An error with no `at=` came from somewhere with no `step` around it, which is
+itself worth reporting.
 
 Record anything broken as issues; fix per the lockstep rules. Real-host
 degradation paths that are *expected* (not bugs): radar fills are
