@@ -14,6 +14,20 @@ import type { ChartConfig } from "../src/core/types";
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 async function bootPane(search = "") {
+  // A CLEAN browser, not just a clean DOM.
+  //
+  // The pane reads `localStorage` on boot to find a run that never reported
+  // finishing, and says so. Earlier tests in this file click "Insert demo
+  // deck", which starts recording one — so without this, whether a later test
+  // sees an empty status strip depends on how far the previous test's stubbed
+  // host got before the next boot. It passed locally and failed in CI, which is
+  // exactly what an ordering dependency looks like. A test that asserts the
+  // pane has "nothing to say" has to own everything that could speak.
+  try {
+    window.localStorage.clear();
+  } catch {
+    /* a jsdom without storage — nothing to carry over either */
+  }
   // app.ts reads ?lang= at import time, so the URL has to be set up front.
   window.history.replaceState({}, "", `/taskpane.html${search}`);
   // Parse rather than regex out the <script> tags: the office.js tag has no
