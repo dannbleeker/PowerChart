@@ -50,6 +50,7 @@ import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
 import { onTrace, setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
+import { beginCrashLog, clearCrashLog, endCrashLog, flushCrashLog, recordCrashStep, recoverCrashLog } from "./crashlog";
 import { runSelfTest, describeSelfTest, setSelfTestRasterizer, SCENARIO_NAMES, type ScenarioResult } from "./selftest";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
@@ -2770,13 +2771,21 @@ function wireInsert() {
         .filter(([, v]) => v !== undefined && v !== "" && typeof v !== "object")
         .map(([k, v]) => `${k}=${String(v)}`)
         .join(" ");
-      lines.unshift(
-        `${String(Math.round(e.ms / 100) / 10).padStart(6)}s  ${e.scope}  ${e.message}${bits ? "  " + bits : ""}`,
-      );
+      const line = `${String(Math.round(e.ms / 100) / 10).padStart(6)}s  ${e.scope}  ${e.message}${bits ? "  " + bits : ""}`;
+      lines.unshift(line);
       // Drop the OLDEST, which is now the end of the array.
       if (lines.length > STEP_LINES) lines.length = STEP_LINES;
       paintSteps();
+      // The same line, to storage, where it outlives this JavaScript context.
+      // One formatter for both, so the file and the screen can never describe
+      // the same run differently — and oldest-first there, because a file is
+      // read from the top while a crashed screen is read from where it froze.
+      recordCrashStep(line);
     });
+    // The last synchronous moment the pane gets. `pagehide` fires on the tab
+    // close that ended the 1819-second run, so it buys back the final debounce
+    // window — the part of a dying run that nothing else can reach.
+    window.addEventListener("pagehide", flushCrashLog);
     $("demo-steps-copy").addEventListener("click", () => {
       if (!lines.length) {
         note("No steps to copy yet.", "err");
@@ -2844,6 +2853,30 @@ function wireInsert() {
       downloadJson("powerchart-run-log.json", lastRunLog);
       note("Run log saved.", "ok");
     });
+    /**
+     * Offer the last run that never reported finishing.
+     *
+     * Checked once, on the open that follows the crash — which is the only
+     * moment anyone is looking for it, and the moment before the natural next
+     * action (run it again) would otherwise bury it. Hidden entirely when
+     * there is nothing to recover, so a healthy pane carries no wreckage.
+     */
+    const crashBtn = $("demo-crashlog") as HTMLButtonElement;
+    const crashed = recoverCrashLog();
+    if (crashed) {
+      crashBtn.hidden = false;
+      note(
+        `A previous run ("${crashed.label}", build ${crashed.build}) never reported finishing — ` +
+          `${crashed.steps.length} step(s) were saved. Download the crashed run to keep them.`,
+        "err",
+      );
+      crashBtn.addEventListener("click", () => {
+        downloadJson("powerchart-crashed-run.json", crashed);
+        clearCrashLog();
+        crashBtn.hidden = true;
+        note("Crashed run saved.", "ok");
+      });
+    }
     // The five paths the demo deck never touches. Its own button rather than a
     // mode of the demo run: it edits and deletes as well as inserting, and a
     // user reaching for "insert a demo deck" should not get that by accident.
@@ -2867,6 +2900,7 @@ function wireInsert() {
         const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
+        beginCrashLog({ build: buildStamp, host: describeHost(), label: "host self-test" });
         const traceFrom = traceMark();
         // The same rasteriser the demo run degrades with — the picture
         // scenario needs a real PNG, not a config that merely says "image".
@@ -2882,6 +2916,10 @@ function wireInsert() {
           ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
         };
         ($("demo-log") as HTMLButtonElement).disabled = false;
+        // Only on the way out, and only here. A run that throws past this line
+        // stays marked unfinished on purpose: it produced no downloadable run
+        // log either, so the storage copy is the only record it has.
+        endCrashLog();
         note(describeSelfTest(results), results.some((r) => !r.ok && !r.skipped) ? "err" : "ok");
       }),
     );
@@ -2900,6 +2938,7 @@ function wireInsert() {
         // screen to say the two were unrelated.
         lastRunLog = undefined;
         ($("demo-log") as HTMLButtonElement).disabled = true;
+        beginCrashLog({ build: buildStamp, host, label: "demo deck" });
         /**
          * Runs this click produced, in the order they were taken.
          *
@@ -2989,6 +3028,7 @@ function wireInsert() {
               trace: tracing() ? traceLog(traceFrom) : undefined,
             });
             if (mode === "file") {
+              endCrashLog();
               note(outcome.text, outcome.status);
               return;
             }
@@ -3219,6 +3259,9 @@ function wireInsert() {
           path: "shapes",
           trace: tracing() ? traceLog(traceFrom) : undefined,
         });
+        // Reached only by a run that got all the way here. One that did not
+        // stays marked unfinished, which is what offers it back on reopen.
+        endCrashLog();
         note(
           runs.length > 1 ? `Both paths run. File: ${runs[0].deck.slidesAdded} slides. Shapes: ${msg}` : msg,
           lost > 0 || failedNames.length || blankSlides.length ? "err" : "ok",
