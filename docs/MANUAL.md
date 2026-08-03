@@ -483,6 +483,14 @@ every scenario needs to have probe charts to work on. A full round takes several
 minutes and leaves slides in the deck, so when you are chasing one failure, pick
 it — seconds instead of minutes, and far less to clean up afterwards.
 
+One entry in that menu is **only** reachable that way: *which selection call
+wedges the host*. It asks the host, one call at a time, which selection call it
+stops answering, and it can only get a true answer on a host nothing else has
+touched yet — so a full run leaves it out rather than running it and reporting
+something false. Pick it, read the one sentence it comes back with, and send
+that along. It reports *ok* whatever it finds, because it is a measurement
+rather than a check.
+
 **Run host self-test** runs the nine things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
 chart on the slide you are looking at, adding charts to a slide that already

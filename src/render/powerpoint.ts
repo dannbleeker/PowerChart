@@ -3136,6 +3136,122 @@ export async function showSlide(slideId: string, budgetMs?: number): Promise<boo
  */
 export const canSelectShapes = (): boolean => supports("1.5");
 
+/** One rung of `selectionLadder` — a single call, and what the host did with it. */
+export interface LadderRung {
+  /** The call, in the words a report should use. */
+  step: string;
+  /** `ok` answered, `refused` threw, `silent` never came back at all. */
+  outcome: "ok" | "refused" | "silent";
+  ms: number;
+  /** What was read, or what the refusal said. */
+  detail?: string;
+}
+
+/** A bare `getSelectedShapes` read — no tags, no targets, just "did it answer". */
+async function readSelectionCount(budgetMs: number): Promise<number> {
+  return boundedRun(
+    "reading the selection",
+    async (context) => {
+      const shapes = context.presentation.getSelectedShapes();
+      shapes.load("items/id");
+      await context.sync();
+      // -1 is not "none". It is "the host answered the sync and then would not
+      // say what is selected", which is a third outcome and must not be
+      // reported as an empty selection.
+      return loadedItems(shapes)?.length ?? -1;
+    },
+    budgetMs,
+  );
+}
+
+/** One raw `setSelectedShapes`, with nothing swallowed — the point is what it does. */
+async function setShapeSelection(slideId: string, ids: string[], budgetMs: number): Promise<void> {
+  return boundedRun(
+    ids.length ? "selecting a shape" : "clearing the shape selection",
+    async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(slideId);
+      queueNullCheck(slide);
+      await context.sync();
+      if (!isLive(slide)) throw new Error("the host would not resolve the slide");
+      (slide as unknown as { setSelectedShapes(x: string[]): void }).setSelectedShapes(ids);
+      await context.sync();
+    },
+    budgetMs,
+  );
+}
+
+/**
+ * Which selection call, exactly, stops PowerPoint on the web from answering.
+ *
+ * We have two accounts and they name different culprits. This project measured
+ * a run where `setSelectedShapes([id])` — the NON-empty select — was taken
+ * happily and every selection call after it went silent for a full 90-second
+ * budget. office-js#3698 reports that `setSelectedShapes([])` — the EMPTY
+ * clear — "causes the `PowerPoint.run` promise to never resolve". Both can be
+ * true, but the add-in cannot be built on "probably both", and another blind
+ * round would produce the same ambiguity at the same cost.
+ *
+ * So: a ladder, run in one context after another, from the least invasive call
+ * to the most. **It stops at the first rung that goes silent**, and that is the
+ * whole design. Once the subsystem is wedged every later call is silent too, so
+ * running the rest would produce four timeouts and name nothing — which is
+ * precisely the ambiguity being resolved. One silence, with the call that
+ * preceded it, is an answer.
+ *
+ * The rungs interleave writes with reads deliberately: a write that is *taken*
+ * and a subsystem that still *answers* are different facts, and the observed
+ * failure has the first without the second.
+ */
+export async function selectionLadder(slideId: string, shapeId: string, budgetMs: number): Promise<LadderRung[]> {
+  const rungs: LadderRung[] = [];
+  const run = async (step: string, fn: () => Promise<string>): Promise<boolean> => {
+    const at = Date.now();
+    try {
+      const detail = await fn();
+      rungs.push({ step, outcome: "ok", ms: Date.now() - at, detail });
+      return true;
+    } catch (err) {
+      const silent = isTimeout(err);
+      rungs.push({
+        step,
+        outcome: silent ? "silent" : "refused",
+        ms: Date.now() - at,
+        detail: errorText(err),
+      });
+      // A refusal is informative and survivable — the host said no and is still
+      // talking, so the ladder carries on. Silence is terminal: nothing after
+      // it can be attributed to anything.
+      return !silent;
+    }
+  };
+  const read = (when: string) =>
+    run(`read the selection ${when}`, async () => `${await readSelectionCount(budgetMs)} shape(s)`);
+
+  // Rung 0 is the control, and skipping it would invalidate everything: if the
+  // host will not answer a selection read BEFORE anything has touched it, the
+  // wedge is not ours to have caused and no later rung means a thing.
+  if (!(await read("before anything touches it"))) return rungs;
+  // The pane does this on its normal path already, so a silence here would be a
+  // far bigger finding than the one being chased.
+  if (!(await run("setSelectedSlides (the pane's own call)", async () => `${await showSlide(slideId, budgetMs)}`)))
+    return rungs;
+  if (!(await read("after selecting the slide"))) return rungs;
+  // The call this project measured wedging.
+  if (
+    !(await run(
+      "setSelectedShapes([id])",
+      async () => (await setShapeSelection(slideId, [shapeId], budgetMs), "taken"),
+    ))
+  )
+    return rungs;
+  if (!(await read("after selecting a shape"))) return rungs;
+  // The call office-js#3698 says never resolves.
+  if (!(await run("setSelectedShapes([])", async () => (await setShapeSelection(slideId, [], budgetMs), "taken"))))
+    return rungs;
+  await read("after clearing the selection");
+  return rungs;
+}
+
 /**
  * Select one shape, so the pane's selection-driven paths can be reached without
  * a human clicking.

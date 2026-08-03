@@ -15,11 +15,13 @@ import {
   describeSelfTest,
   setSelfTestRasterizer,
   SCENARIO_NAMES,
+  ROUTINE_SCENARIO_NAMES,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
 /**
- * The host self-test — nine paths the demo deck never touches.
+ * The host self-test — nine paths the demo deck never touches, plus one
+ * experiment that a full run deliberately leaves out.
  *
  * The battery's own value is that it runs against a REAL PowerPoint, which
  * nothing here can do. What these cases pin is the property that makes it
@@ -38,7 +40,7 @@ describe("the host self-test battery", () => {
   it("returns a verdict for every scenario, in order", async () => {
     installHost([makeSlide("s1")]);
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(9);
+    expect(results).toHaveLength(ROUTINE_SCENARIO_NAMES.length);
     expect(results.map((r) => r.name)).toEqual([
       "insert on top of an earlier run",
       "two slides claiming one slot",
@@ -73,7 +75,7 @@ describe("the host self-test battery", () => {
       SlideLayoutType: { blank: "blank" },
     });
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(9);
+    expect(results).toHaveLength(ROUTINE_SCENARIO_NAMES.length);
     // Every one of them ran and reported; none is missing.
     for (const r of results) {
       expect(r.name).toBeTruthy();
@@ -123,7 +125,7 @@ describe("the host self-test battery", () => {
     installHost([makeSlide("s1")]);
     applyWebProfile();
     const results = await runSelfTest("probe");
-    expect(results).toHaveLength(9);
+    expect(results).toHaveLength(ROUTINE_SCENARIO_NAMES.length);
     const named = byName(results);
     expect(named["insert on top of an earlier run"].detail).toBeTruthy();
   });
@@ -204,6 +206,73 @@ describe("the scenarios the selection API unlocked", () => {
     // Not the point of the test, but it is the reason the gate exists: at the
     // inherited budget this is three minutes of a person's evening.
     expect(Date.now() - started, "waited far past its own budget").toBeLessThan(5_000);
+  });
+
+  it("names the exact selection call the host stopped answering", async () => {
+    // Two accounts, different culprits. This project measured
+    // `setSelectedShapes([id])` being taken and everything after it going
+    // silent; office-js#3698 says it is `setSelectedShapes([])` whose promise
+    // never resolves. Another blind round would produce the same ambiguity at
+    // the same cost, so the ladder climbs from the least invasive call to the
+    // most and STOPS at the first silence — because after a wedge every call is
+    // silent, and four timeouts name nothing.
+    //
+    // The fake wedges on the non-empty select, so that is the answer the report
+    // must reach. Against a fake that wedged on the empty one it would have to
+    // reach the other, which is the whole point of asking rather than assuming.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    faults.selectionWedgesHost = true;
+    _setReadbackTimeoutForTest(200);
+    let r: ScenarioResult;
+    try {
+      r = byName(await runSelfTest("probe", "which selection call wedges the host"))[
+        "which selection call wedges the host"
+      ];
+    } finally {
+      faults.selectionWedgesHost = false;
+      _setReadbackTimeoutForTest(90_000);
+    }
+    // An experiment, not an assertion: it ran, so it reports ok whatever it found.
+    expect(r.ok, r.detail).toBe(true);
+    expect(r.detail, "the ladder did not name the call that went silent").toContain("SILENT at");
+    // The rung AFTER the wedging call is where silence shows up — the write
+    // itself is taken. Naming the read alone would be the old, useless answer;
+    // naming the rung before it is what makes this an attribution.
+    expect(r.detail).toContain("after selecting a shape");
+    expect(r.detail, "did not say what the host last answered").toContain("the rung before it");
+
+    // And it STOPPED there — asserted against the rungs the ladder actually
+    // traced, not against the sentence it wrote. The first version of this
+    // check looked for the absence of a later rung's NAME in the summary, and
+    // that summary only ever mentions two rungs, so it passed just as happily
+    // against a ladder that climbed all the way to the top. It was decoration.
+    const rungs = traceLog()
+      .entries.filter((e) => e.message === "ladder rung")
+      .map((e) => e.data as { step: string; outcome: string });
+    setTracing(false);
+    expect(rungs.length, "the ladder recorded nothing").toBeGreaterThan(0);
+    expect(
+      rungs.filter((x) => x.outcome === "silent"),
+      "climbed past the first silence",
+    ).toHaveLength(1);
+    expect(rungs.at(-1)?.outcome, "kept going after the host went quiet").toBe("silent");
+  });
+
+  it("says so plainly when nothing wedges at all", async () => {
+    // The other half. A host that answers every rung is a real result — the
+    // wedge is gone, or is not on this host — and a report that could only ever
+    // say "SILENT at …" would be evidence that cannot be contradicted, which is
+    // not evidence.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    const r = byName(await runSelfTest("probe", "which selection call wedges the host"))[
+      "which selection call wedges the host"
+    ];
+    expect(r.ok, r.detail).toBe(true);
+    expect(r.detail).toContain("nothing wedged");
+    expect(r.detail).not.toContain("SILENT");
   });
 
   it("reports a stop honestly, and will not call a leftover chart a clean stop", async () => {
@@ -288,12 +357,18 @@ describe("the scenarios the selection API unlocked", () => {
     // one rename away from offering a scenario that does not exist.
     installHost([makeSlide("s1")]);
     const results = await runSelfTest("probe");
-    expect([...SCENARIO_NAMES]).toEqual(results.map((r) => r.name));
+    // A full run is the routine list exactly, in order.
+    expect(results.map((r) => r.name)).toEqual([...ROUTINE_SCENARIO_NAMES]);
+    // The picker offers those PLUS the ones a full run deliberately leaves out,
+    // because being pickable is the only way such a scenario can ever run.
+    expect(SCENARIO_NAMES.slice(0, ROUTINE_SCENARIO_NAMES.length)).toEqual([...ROUTINE_SCENARIO_NAMES]);
+    for (const name of ROUTINE_SCENARIO_NAMES) expect(SCENARIO_NAMES).toContain(name);
+    expect(SCENARIO_NAMES.length).toBeGreaterThan(ROUTINE_SCENARIO_NAMES.length);
   });
 
   it("runs everything when nothing is picked", async () => {
     installHost([makeSlide("s1")]);
-    expect(await runSelfTest("probe", "")).toHaveLength(9);
+    expect(await runSelfTest("probe", "")).toHaveLength(ROUTINE_SCENARIO_NAMES.length);
   });
 
   it("announces a scenario BEFORE running it, so a crash names the right one", async () => {
@@ -313,7 +388,7 @@ describe("the scenarios the selection API unlocked", () => {
       expect(first?.data?.name).toBe("insert on top of an earlier run");
       // And one announcement per scenario, each before its own verdict.
       const starts = entries.filter((e) => e.message === "scenario starting");
-      expect(starts).toHaveLength(9);
+      expect(starts).toHaveLength(ROUTINE_SCENARIO_NAMES.length);
       for (const s of starts) expect(s.data?.name, "an announcement with no name").toBeTruthy();
     } finally {
       setTracing(false);
@@ -338,7 +413,9 @@ describe("the scenarios the selection API unlocked", () => {
     } finally {
       resetStop();
     }
-    expect(results, "a stopped battery dropped scenarios instead of reporting them").toHaveLength(9);
+    expect(results, "a stopped battery dropped scenarios instead of reporting them").toHaveLength(
+      ROUTINE_SCENARIO_NAMES.length,
+    );
     expect(
       results.every((r) => r.skipped),
       "a stopped battery ran a scenario anyway",
