@@ -184,6 +184,7 @@ conventions, and every option.
 | Stop a long insert, deck run or Same scale mid-flight                      | ✅ (**Stop**; halts at the next slide/chart/batch — the host cannot abort a round trip in flight)                                        |
 | Demo deck self-repair (duplicate slides, false banners, loose charts)      | ✅ (automatic at the end of every run)                                                                                                   |
 | Run log export (per-item timings, host verdicts, verbose trace, as JSON)   | ✅ (**Download run log**)                                                                                                                |
+| A run that crashes still leaves a log                                      | ✅ (steps written to browser storage as they happen; **Download the crashed run** on the next open, readable by `npm run triage` alone)  |
 | Agenda / chapter slides (one per chapter, current highlighted)             | ✅ (appended to the deck)                                                                                                                |
 | Harvey balls, checkboxes, process flow, table element                      | ✅ (Elements section)                                                                                                                    |
 | Gantt: responsible column, dependency arrows, today line, quarter scale    | ✅ (`Activity \| Owner`, `After`/`Today` rows)                                                                                           |

@@ -40,7 +40,8 @@ belongs with the thing it tests, not with the reason it was written.)
   misbehaviour a real PowerPoint on the web has shown us, on at once), `pptx-paint`
   (headless pptx node mapping), `svg-render` (SVG node emission — paths,
   polygons, options), `pane-state` / `pane-host-actions` / `pane-widgets` /
-  `dom-pane` (task pane), `skill*`, `parity`, `snapshots`, `a11y-svg`,
+  `dom-pane` (task pane), `crashlog` (the record that outlives a run that
+  never ends), `skill*`, `parity`, `snapshots`, `a11y-svg`,
   `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
 - **The deck a run produces, audited from its bytes** — `verify-deck` (did
   PowerChart write what it meant to: slot tags, groups, config parts, shape ids

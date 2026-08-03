@@ -105,12 +105,21 @@ mean to test — PowerPoint caches the pane aggressively, and a whole session ca
 otherwise go into testing code the host never fetched. Hard-reload if it is
 older. Then tick **Verbose trace** in the Testing section and leave it on.
 
-**Watch the Live steps list while a run goes, and copy it if anything goes
-wrong** — before reloading. The run log is downloadable only once a run ends,
-and two rounds have now been lost to runs that did not end: one wedged at 1819
-seconds, one killed by PowerPoint's own *"Sorry, we ran into a problem"* at 108
-seconds. Neither produced a log. The step list is on screen the whole time and
-survives both, so it is the evidence of first resort now, not a convenience.
+**If a run dies, the evidence is no longer lost.** The run log is downloadable
+only once a run ends, and two rounds were lost to runs that did not end: one
+wedged at 1819 seconds, one killed by PowerPoint's own *"Sorry, we ran into a
+problem"* at 108 seconds. Neither produced a log. Two things cover that now:
+
+- **Live steps** is on screen the whole time. Copy or screenshot it before
+  reloading — it is the only thing that catches the very last moments.
+- Every step is also written to **browser storage** as it happens. Reopen the
+  pane after a crash and a red note offers **Download the crashed run**. Send
+  that file; `npm run triage` reads it on its own, with no deck
+  (`node scripts/triage.mjs powerchart-crashed-run.json`).
+
+The storage copy survives a closed tab and a reloaded pane. It does not survive
+clearing site data, and it keeps the last ~2000 steps — a longer run loses its
+beginning, never its end.
 
 | # | test | what it catches |
 | --- | --- | --- |

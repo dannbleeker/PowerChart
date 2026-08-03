@@ -283,6 +283,13 @@
               Run host self-test
             </button>
             <button id="demo-log" disabled title="Save the last run's report as JSON">Download run log</button>
+            <button
+              id="demo-crashlog"
+              hidden
+              title="A run recorded here never reported finishing — save the steps it managed to write"
+            >
+              Download the crashed run
+            </button>
             <label
               title="Record every step of a run for a bug report. On while the add-in is being validated against real hosts; the run log carries it."
               ><input type="checkbox" id="demo-trace" checked /> Verbose trace</label
@@ -301,9 +308,11 @@
             aria-label="Live steps of the run in progress"
           ></pre>
           <p class="hint">
-            Each step appears here as it happens, newest last. This is the only record that survives PowerPoint crashing
-            or the tab being closed — the run log can only be downloaded once a run ENDS, and the runs worth explaining
-            are the ones that do not. If something goes wrong, copy or screenshot this before reloading.
+            Each step appears here as it happens, newest first, because a crash leaves you whatever was on screen and
+            the newest line has to be somewhere fixed. The same steps are also written to browser storage as they
+            happen, so a run that never ENDS — and so never produces a downloadable run log — can still be saved
+            afterwards: reopen the pane and press <em>Download the crashed run</em>. Copying or screenshotting this list
+            before reloading is still the fastest route, and it is the only one that catches the very last moments.
           </p>
           <p class="hint">
             Every run ends by re-reading its slides once the host has settled: duplicate slides a stalled retry left

@@ -159,6 +159,20 @@ export function selfTestIn(log) {
 }
 
 /**
+ * A crash log — the steps a run wrote before it stopped existing.
+ *
+ * Not a run log and not a self-test log: it holds no slots, no verdicts and no
+ * structured trace, because it is written a line at a time to browser storage
+ * by a run that may be about to die. It carries the one thing the other two
+ * cannot: what a run that never ENDED was doing. Both files this tool was
+ * built for are produced at the end of a run, and the runs worth reading are
+ * the ones that do not get there.
+ */
+export function crashLogIn(log) {
+  return log?.kind === "powerchart-crash-log" && Array.isArray(log.steps) ? log : null;
+}
+
+/**
  * Failure signatures that belong to PowerPoint, not to PowerChart.
  *
  * The first hour of the last diagnosis went into establishing that
@@ -283,14 +297,44 @@ if (invokedDirectly) {
   const paths = args.filter((a) => !a.startsWith("--"));
   const deckPath = paths.find((p) => p.endsWith(".pptx"));
   const logPath = paths.find((p) => p.endsWith(".json"));
-  if (!deckPath || !logPath) {
+  if (!logPath) {
+    console.error("usage: node scripts/triage.mjs <deck.pptx> <run-log.json> [--all] [--json]");
+    console.error("       node scripts/triage.mjs <crashed-run.json>            (no deck needed)");
+    process.exit(2);
+  }
+  let log;
+  try {
+    log = JSON.parse(readFileSync(logPath, "utf8"));
+  } catch (err) {
+    console.error(`could not read the run: ${err.message}`);
+    process.exit(2);
+  }
+  // A crashed run answers on its own. There is no deck to join it to — the run
+  // never reached the point of producing one, which is the whole reason this
+  // file exists — so requiring a .pptx would refuse the one artifact a crash
+  // leaves behind.
+  const crash = crashLogIn(log);
+  if (crash && !deckPath) {
+    const ran = crash.finishedAt ? "finished" : "NEVER REPORTED FINISHING";
+    console.log(
+      `\n  CRASHED RUN "${crash.label}" — ${ran}` +
+        `\n  build ${crash.build} · ${crash.host}` +
+        `\n  started ${crash.startedAt}${crash.dropped ? ` · ${crash.dropped} earlier step(s) dropped` : ""}` +
+        `\n  ${crash.steps.length} step(s), OLDEST FIRST — the last line is where it stopped\n`,
+    );
+    for (const line of crash.steps) console.log(`    ${line}`);
+    const known = crash.steps.map((l) => knownBug(l)).filter(Boolean);
+    if (known.length) console.log(`\n  known host bug: ${[...new Set(known)].join("\n  known host bug: ")}`);
+    console.log("");
+    process.exit(crash.finishedAt ? 0 : 1);
+  }
+  if (!deckPath) {
     console.error("usage: node scripts/triage.mjs <deck.pptx> <run-log.json> [--all] [--json]");
     process.exit(2);
   }
-  let deck, log;
+  let deck;
   try {
     deck = await readDeck(deckPath);
-    log = JSON.parse(readFileSync(logPath, "utf8"));
   } catch (err) {
     console.error(`could not read the run: ${err.message}`);
     process.exit(2);

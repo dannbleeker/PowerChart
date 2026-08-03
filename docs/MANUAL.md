@@ -533,6 +533,18 @@ survives both. **Copy** puts the whole list on the clipboard, with a header line
 order so nobody reads the run backwards; failing that, screenshot it before you
 reload. **Clear** empties it.
 
+**Download the crashed run** appears only when there is one to download. Every
+step is written to your browser's storage as it happens, and a run marks itself
+finished on the way out — so a run that never got there leaves a record that
+did not get marked, and the pane offers it back the next time you open it. That
+covers the case a screenshot cannot: the pane is gone, you already reloaded, and
+you want the whole run rather than the twenty lines that happened to be visible.
+The file is what to send; `npm run triage` reads it without needing the deck.
+
+It keeps the last 2000 steps, so a very long run loses its beginning and never
+its end, and it lives in browser storage — clearing site data clears it too.
+Saving it dismisses the offer.
+
 **Download run log** saves the last run as JSON: the run's identity token,
 per-item timings, statuses, what the host did to each slide, and the repair
 pass's verdicts, plus the trace — which opens with a tally of every step and
