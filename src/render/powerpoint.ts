@@ -2340,6 +2340,37 @@ export function isTimeout(err: unknown): boolean {
   return err instanceof Error && /did not respond while/.test(err.message);
 }
 
+/**
+ * A bounded MUTATION whose result is decided by re-reading the document, not by
+ * the promise.
+ *
+ * On this platform a `context.sync()` that never resolves does not mean the
+ * work did not happen. office-js#1650 is exactly that, on exactly the call this
+ * add-in leans on hardest: *"the first time `context.sync()` is called the
+ * promise resolves, but in subsequent calls the promise doesn't resolve,
+ * although **the slide still gets added successfully**."* The same shape is
+ * reported for shape work after an image insert (office-js#5022).
+ *
+ * Every timeout this file had treated silence as failure and threw. For a read
+ * that is right — an unread page is unread. For a WRITE it is wrong twice over:
+ * it discards work that landed, and it sends the caller off to do the work
+ * again, which is how one stalled insert becomes two copies of a chart.
+ *
+ * So a bounded mutation swallows its own silence and lets the caller's
+ * verification decide. Every site that uses this already measures what actually
+ * happened — `slideCount()` before and after, a fresh-context re-read — it just
+ * never used to reach the measurement. A refusal still throws: the host said no
+ * and is still talking, and that is a different fact.
+ */
+async function withTimeoutOrVerify<T>(p: Promise<T>, ms: number, what: string): Promise<void> {
+  try {
+    await withTimeout(p, ms, what);
+  } catch (err) {
+    if (!isTimeout(err)) throw err;
+    trace("host", "no answer — asking the document what actually happened", { what, waitedMs: ms });
+  }
+}
+
 /** Top-level shape counts for slides [start, end), read in one settled sync. */
 async function shapeCounts(start: number, end: number): Promise<number[]> {
   return boundedRun(`counting shapes on slides ${start}-${end - 1}`, async (context) => {
@@ -2361,6 +2392,31 @@ let BLANK_REREAD_DELAY_MS = 200;
 /** Test-only: change the backoff between the blank readback and its re-read. */
 export function _setBlankReReadDelayForTest(ms: number): void {
   BLANK_REREAD_DELAY_MS = ms;
+}
+
+/**
+ * How long to leave the host alone after a structural change to the deck.
+ *
+ * The only workaround anyone has for office-js#5022 — `context.sync()` running
+ * forever after add → delete → re-read — is a pause. The reporter's own words:
+ * *"I had better result by adding a timer of 1-2 seconds between the
+ * `shape.delete()` and the next `await context.sync()`."* Microsoft has it under
+ * investigation and has offered nothing else.
+ *
+ * A second is a real cost and it is not a guess dressed as one: it is the
+ * cheapest known answer to a failure that costs a whole operation, and it is
+ * spent only where two structural changes meet back to back.
+ */
+let SETTLE_MS = 1_000;
+
+/** Test-only: a suite cannot spend a real second per structural change. */
+export function _setSettleDelayForTest(ms: number): void {
+  SETTLE_MS = ms;
+}
+
+/** Leave the host alone for a moment. See `SETTLE_MS`. */
+function settle(): Promise<void> {
+  return SETTLE_MS > 0 ? new Promise((r) => setTimeout(r, SETTLE_MS)) : Promise.resolve();
 }
 
 /**
@@ -3036,7 +3092,16 @@ export function canInsertSlidesFromBase64(): boolean {
  * with the deck, because unlike a shape batch this call's size is not capped —
  * handing over 40 slides is legitimately more work than handing over one.
  */
-const DECK_INSERT_TIMEOUT_MS = (slides: number): number => Math.max(BATCH_TIMEOUT_MS, slides * 5_000);
+/** Allowance per slide in a one-call deck insert. See `DECK_INSERT_TIMEOUT_MS`. */
+let DECK_INSERT_PER_SLIDE_MS = 5_000;
+
+/** Test-only: a suite cannot spend five seconds per slide finding out. */
+export function _setDeckInsertPerSlideForTest(ms: number): void {
+  DECK_INSERT_PER_SLIDE_MS = ms;
+}
+
+const DECK_INSERT_TIMEOUT_MS = (slides: number): number =>
+  Math.max(BATCH_TIMEOUT_MS, slides * DECK_INSERT_PER_SLIDE_MS);
 
 /**
  * Insert a whole .pptx and return how many slides the deck actually gained.
@@ -3057,7 +3122,7 @@ export async function insertSlidesFromPptx(
   formatting: "KeepSourceFormatting" | "UseDestinationTheme" = "KeepSourceFormatting",
 ): Promise<number> {
   const before = await slideCount();
-  await withTimeout(
+  await withTimeoutOrVerify(
     PowerPoint.run(async (context) => {
       const presentation = context.presentation as unknown as {
         insertSlidesFromBase64(b64: string, opts?: { formatting?: string; targetSlideId?: string }): void;
@@ -3294,42 +3359,32 @@ export async function selectShape(slideId: string, shapeId: string, budgetMs?: n
 }
 
 /**
- * Drop the shape selection — by moving the SLIDE selection, not by clearing it.
+ * Drop the shape selection — by moving the SLIDE selection, and ONLY that.
  *
- * `setSelectedShapes([])` is documented to clear the selection and does so on
- * desktop, but not on PowerPoint on the web (office-js#3083). That matters more
- * than it sounds: on the web a picture cannot be inserted while another shape is
- * selected (office-js#3698), so a scenario that leaves a chart selected breaks
- * the NEXT one rather than itself — the worst kind of test failure to diagnose.
+ * This used to ask for the clear first and re-select the slide as a fallback.
+ * The empty-array call is now gone entirely, because reading the tracker
+ * properly turned up something the earlier comment here did not know:
+ * office-js#3698 reports that `slide.setSelectedShapes([])` on the web "does
+ * not clear the selection, causes the `PowerPoint.run` promise to never
+ * resolve, and produces no error messages."
  *
- * So both are done: ask for the clear, and re-select the slide, which drops the
- * shape selection on every host observed. Best-effort throughout; a host that
- * refuses simply leaves the selection where it was.
+ * So the call was doing nothing useful and possibly doing the damage. It cannot
+ * clear the selection on the web (office-js#3083, the reason the slide
+ * re-select existed as a fallback in the first place), and it is a documented
+ * candidate for the silence measured here. Keeping it meant paying a full
+ * budget to be told nothing, on the exact host it does not work on.
+ *
+ * Re-selecting the slide drops the shape selection on every host observed, and
+ * is what the fallback already did. What is left is the half that works.
+ *
+ * The reason any of this matters is downstream: on the web a picture cannot be
+ * inserted while another shape is selected (office-js#3698 again), so code that
+ * leaves a chart selected breaks the NEXT operation rather than its own — the
+ * worst kind of failure to diagnose.
  */
 export async function clearShapeSelection(slideId: string, budgetMs?: number): Promise<void> {
   if (!canSelectShapes()) return;
-  let silent = false;
-  try {
-    await boundedRun(
-      "clearing the shape selection",
-      async (context) => {
-        const slide = context.presentation.slides.getItemOrNullObject(slideId);
-        queueNullCheck(slide);
-        await context.sync();
-        if (!isLive(slide)) return;
-        (slide as unknown as { setSelectedShapes(ids: string[]): void }).setSelectedShapes([]);
-        await context.sync();
-      },
-      budgetMs,
-    );
-  } catch (err) {
-    // A refusal is worth a fallback; silence is not. If the host would not
-    // answer the clear it will not answer the slide re-select either — that is
-    // the whole shape of the web host's wedged selection subsystem — and
-    // waiting a second full budget to be told so again costs the same again.
-    silent = isTimeout(err);
-  }
-  if (!silent) await showSlide(slideId, budgetMs);
+  await showSlide(slideId, budgetMs);
 }
 
 /**
@@ -3878,7 +3933,10 @@ export type SwapOutcome = "swapped" | "failed" | "duplicated";
 export async function replaceSlideWithDeck(slideId: string, base64: string): Promise<SwapOutcome> {
   const before = await slideCount();
   try {
-    await withTimeout(
+    // Silence is not failure here — office-js#1650 is this exact call not
+    // answering while the slide lands anyway. The count check below is what
+    // decides, and it used to be unreachable on the runs that needed it most.
+    await withTimeoutOrVerify(
       PowerPoint.run(async (context) => {
         const presentation = context.presentation as unknown as {
           insertSlidesFromBase64(b64: string, opts?: { formatting?: string; targetSlideId?: string }): void;
@@ -3896,8 +3954,15 @@ export async function replaceSlideWithDeck(slideId: string, base64: string): Pro
     return "failed";
   }
   if ((await slideCount()) !== before + 1) return "failed";
+  // Let the host settle before deleting. office-js#5022's only known workaround
+  // is "a timer of 1-2 seconds between the shape.delete() and the next
+  // context.sync()", and this is the same shape of thing one step up: a
+  // structural change to the deck immediately after another one. A second is
+  // cheap against a swap that already costs several, and against the failure it
+  // avoids — a sync that never comes back and a duplicate slide left on screen.
+  await settle();
   try {
-    await withTimeout(
+    await withTimeoutOrVerify(
       PowerPoint.run(async (context) => {
         const old = context.presentation.slides.getItemOrNullObject(slideId);
         old.load("id");
@@ -3920,6 +3985,9 @@ export async function replaceSlideWithDeck(slideId: string, base64: string): Pro
     trace("insert", "slide swap left the original behind", { slideId });
     return "duplicated";
   }
+  // The deck's own answer, and now the only one. A delete whose sync went
+  // unanswered still lands often enough that reading the count is strictly
+  // better information than reading the promise.
   return (await slideCount()) === before ? "swapped" : "duplicated";
 }
 

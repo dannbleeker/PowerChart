@@ -185,6 +185,7 @@ conventions, and every option.
 | Demo deck self-repair (duplicate slides, false banners, loose charts)      | ✅ (automatic at the end of every run)                                                                                                   |
 | Run log export (per-item timings, host verdicts, verbose trace, as JSON)   | ✅ (**Download run log**)                                                                                                                |
 | A run that crashes still leaves a log                                      | ✅ (steps written to browser storage as they happen; **Download the crashed run** on the next open, readable by `npm run triage` alone)  |
+| A host that stops answering mid-write does not lose the work               | ✅ (a bounded write re-reads the document instead of trusting the promise — office-js#1650: the sync hangs, the slide lands)             |
 | Agenda / chapter slides (one per chapter, current highlighted)             | ✅ (appended to the deck)                                                                                                                |
 | Harvey balls, checkboxes, process flow, table element                      | ✅ (Elements section)                                                                                                                    |
 | Gantt: responsible column, dependency arrows, today line, quarter scale    | ✅ (`Activity \| Owner`, `After`/`Today` rows)                                                                                           |
