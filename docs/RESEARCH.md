@@ -147,6 +147,33 @@ different fact and a different diagnosis.
 the fix does not make silence mean failure, and #5022 is open with the same
 shape.
 
+### Why the file path cannot become the DEFAULT for editing a chart
+
+It is tempting, and it was proposed. The shape path carries all four bugs
+above; the file path carries none of them. `updateChartInSlide` redraws a chart
+shape by shape, which is the add-in's worst case on the web, while
+`replaceSlideWithDeck` is two host calls. On a slide holding nothing but our
+chart, rebuilding the slide from a generated `.pptx` looks strictly better.
+
+**It is not, and the reason is a platform gap rather than a preference.** A swap
+*replaces the slide*. The chart comes back; everything the slide carried that is
+not a shape does not — speaker notes, the transition, animations, slide-level
+formatting. `slideHoldsOnlyChart` checks that no other **shapes** are present,
+and that is the most it can ever check: **Office.js exposes no way to read
+speaker notes at all** ([office-js#3269](https://github.com/OfficeDev/office-js/issues/3269),
+in backlog; the feature has been asked for repeatedly). The add-in cannot see
+what the swap would destroy, so it cannot warn first and cannot decline.
+
+That is survivable where the swap lives today — a fallback reached only after
+the in-place redraw has already stalled, where the alternative is rasterising
+the chart to a picture, which is lossy too and worse. It would not be
+survivable on the happy path: every ordinary chart edit would silently discard
+the user's notes.
+
+So the swap stays a fallback, and it now *says* what it cost. Revisit if
+#3269 ever ships — reading notes is the only thing standing between this and a
+much faster, much less bug-prone edit path.
+
 **One more, measured here rather than found in the tracker.** On PowerPoint on
 the web, a *programmatic* `Slide.setSelectedShapes([id])` — GA since
 PowerPointApi 1.5 — is accepted without complaint and then leaves the selection

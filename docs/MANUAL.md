@@ -483,13 +483,23 @@ every scenario needs to have probe charts to work on. A full round takes several
 minutes and leaves slides in the deck, so when you are chasing one failure, pick
 it — seconds instead of minutes, and far less to clean up afterwards.
 
-One entry in that menu is **only** reachable that way: *which selection call
-wedges the host*. It asks the host, one call at a time, which selection call it
-stops answering, and it can only get a true answer on a host nothing else has
-touched yet — so a full run leaves it out rather than running it and reporting
-something false. Pick it, read the one sentence it comes back with, and send
-that along. It reports *ok* whatever it finds, because it is a measurement
-rather than a check.
+Two entries in that menu are **only** reachable that way.
+
+*Which selection call wedges the host* asks the host, one call at a time, which
+selection call it stops answering. It can only get a true answer on a host
+nothing else has touched yet — so a full run leaves it out rather than running
+it and reporting something false. Pick it, read the one sentence it comes back
+with, and send that along. It reports *ok* whatever it finds, because it is a
+measurement rather than a check.
+
+*Edit the chart YOU click* waits for you. Pick it and the pane asks you to click
+a PowerChart, counting down for 30 seconds; click one and it does exactly what
+pressing *Edit it* does — reads the chart back from your selection, edits it,
+and checks the result is still editable — then reports what happened. It is left
+out of a full run because it blocks on a person, and if nobody clicks it reports
+*skipped* rather than failing. It exists because asking Office.js to select a
+chart and clicking one yourself are not the same thing on PowerPoint on the web,
+and only the second one is what you actually do.
 
 **Run host self-test** runs the nine things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a

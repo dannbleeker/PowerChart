@@ -81,13 +81,16 @@ remaining manual items into `npm run test:e2e` and pays for itself without
 solving login. CI is a separate, owner-gated question and may never be worth it.
 Covers PowerPoint **on the web** only; desktop stays human either way.
 
-**One item it cannot absorb, and this is now measured rather than assumed:**
-the selection round trip. On the web a programmatic `setSelectedShapes` wedges
-the host's selection subsystem (`docs/RESEARCH.md` §4b), so a driver that
-selects a chart the way the battery does hits the same wall — the wedge is in
-PowerPoint, not in how it is called. Playwright clicking the *canvas* would be a
-real click and might dodge it entirely, which is the one thing worth trying
-first if this is ever built.
+**What is left for it to absorb, now that the battery has taken the rest.** The
+selection round trip is a scenario again (*edit the chart YOU click*), but it
+waits for a **human** click and records the verdict — so what still needs a
+person is the click and the drag, not the checking.
+
+Do not have such a driver call `setSelectedShapes` to supply that click. On the
+web it wedges the host's selection subsystem (`docs/RESEARCH.md` §4b), and the
+wedge is in PowerPoint rather than in how it is called. A Playwright click on
+the **canvas** is a real click and might dodge it entirely — the one thing worth
+trying first if this is ever built.
 
 ### A golden-image gate on the generated deck
 
