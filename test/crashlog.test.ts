@@ -31,11 +31,16 @@ import { crashLogIn } from "../scripts/triage.mjs";
 
 const meta = { build: "abc1234", host: "PowerPoint · web · 16.0" };
 
+/** Put a deliberately broken `window.localStorage` back, if a test swapped one in. */
+let restoreStorage: (() => void) | undefined;
+
 beforeEach(() => {
   window.localStorage.clear();
   _resetCrashLogForTest();
 });
 afterEach(() => {
+  restoreStorage?.();
+  restoreStorage = undefined;
   window.localStorage.clear();
   _resetCrashLogForTest();
   vi.useRealTimers();
@@ -144,8 +149,17 @@ describe("the crash-surviving run log", () => {
       key: () => null,
       length: 0,
     } as unknown as Storage;
+    // Both, because the module reaches through `window` and the rest of the
+    // suite reaches through the global. The original descriptor is put back by
+    // hand: `vi.unstubAllGlobals` restores what IT stubbed, and an own property
+    // defined here is not that — leaving it in place would hand every later
+    // test in this worker a storage that throws.
+    const original = Object.getOwnPropertyDescriptor(window, "localStorage");
     vi.stubGlobal("localStorage", angry);
     Object.defineProperty(window, "localStorage", { value: angry, configurable: true });
+    restoreStorage = () => {
+      if (original) Object.defineProperty(window, "localStorage", original);
+    };
 
     expect(() => {
       beginCrashLog({ ...meta, label: "no storage here" });

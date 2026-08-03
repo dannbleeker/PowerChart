@@ -227,6 +227,30 @@ which in practice meant six separate sessions. They are now one button:
 | stop a run part-way | a stopped run adds nothing and leaves nothing behind claiming to be a chart |
 | the chart is actually visible | the host's own render changed where the chart was drawn — not just that shapes exist |
 
+**One more, and a full run deliberately leaves it out.** Pick **which selection
+call wedges the host** from the Scenario menu to run it:
+
+| scenario | what it proves |
+| --- | --- |
+| which selection call wedges the host | *which* call stops the web host answering — the one measurement that settles it |
+
+It climbs a ladder from the least invasive selection call to the most — read the
+selection, `setSelectedSlides`, read, `setSelectedShapes([id])`, read,
+`setSelectedShapes([])`, read — and **stops at the first one that goes silent**,
+reporting that call and the last one the host answered.
+
+Two things about it are deliberate. It **stops** because after a wedge every
+later call is silent too, so climbing on would report four timeouts and name
+nothing — which is the ambiguity it exists to remove. And it is **picked only**
+because its answer is meaningful solely on a host nothing else has touched:
+`edit the chart the user selected` provokes the same wedge six scenarios
+earlier, so inside a full run this would have reported silence on its own first
+rung. (That was the first draft. A test caught it; a real host would have cost a
+round.)
+
+It reports **ok** whatever it finds. It is an experiment, not an assertion — a
+host that answers every rung is a real result, and one worth knowing.
+
 Each verdict says what was observed, not just pass/fail, and a scenario that
 throws is recorded and the rest still run — a battery that stopped at the first
 error would spend a whole session to learn one thing. A scenario the host

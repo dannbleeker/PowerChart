@@ -1,5 +1,6 @@
 /**
- * Nine things that have never once run against a real PowerPoint, on one click.
+ * Nine things that have never once run against a real PowerPoint, on one click —
+ * plus one experiment that only makes sense on its own.
  *
  * The demo deck covers inserting onto slides it added BLANK. Nothing covers
  * what happens elsewhere — inserting on top of an earlier run, a slide
@@ -60,6 +61,7 @@ import {
   requestStop,
   resetStop,
   selectShape,
+  selectionLadder,
   slideImageBase64,
   canInsertSlidesFromBase64,
   insertSceneIntoSlide,
@@ -592,7 +594,67 @@ const chartIsVisible: Scenario = async (prefix) => {
  * selected (office-js#3698) — so every scenario that selects must clear up
  * after itself, which `clearShapeSelection` does, wherever it runs.
  */
-const SCENARIOS: { name: string; run: Scenario }[] = [
+/**
+ * Which selection call wedges the host — asked once, properly.
+ *
+ * Two accounts, different culprits. This project measured
+ * `setSelectedShapes([id])` being taken and every selection call after it going
+ * silent; office-js#3698 says it is `setSelectedShapes([])` whose promise never
+ * resolves. Both are plausible, neither is verified, and the gate above was
+ * written against my reading of one 159-second run.
+ *
+ * `selectionLadder` climbs from the least invasive call to the most and stops
+ * at the first silence, because after a wedge every call is silent and a report
+ * of four timeouts names nothing. What comes back is one sentence: the last
+ * call the host answered, and the first one it did not.
+ *
+ * Reported `ok` whenever the ladder RAN, whatever it found. It is an
+ * experiment, not an assertion — a host that answers every rung is a genuine
+ * result (the wedge is gone, or is not on this host), and marking that as a
+ * failure would be the same mistake as marking the wedge itself as one.
+ */
+const whichSelectionCallWedges: Scenario = async (prefix) => {
+  if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
+  const [chart] = await probeCharts(prefix);
+  if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
+  const rungs = await selectionLadder(chart.target.slideId, chart.target.shapeId, selectionBudgetMs());
+  for (const r of rungs) trace("selftest", "ladder rung", { step: r.step, outcome: r.outcome, ms: r.ms });
+  const stopped = rungs.find((r) => r.outcome === "silent");
+  const answered = rungs.filter((r) => r.outcome === "ok").length;
+  if (!stopped) {
+    const refused = rungs.filter((r) => r.outcome === "refused").map((r) => r.step);
+    return {
+      ok: true,
+      detail:
+        `the host answered all ${rungs.length} rung(s) — nothing wedged` +
+        (refused.length ? `; refused (but kept talking): ${refused.join(", ")}` : ""),
+    };
+  }
+  // The rung before the silence is the last thing the host was willing to do,
+  // and naming both is the whole point: "silent at X, after Y" is an answer,
+  // "something in the selection API hangs" is what we already had.
+  const before = rungs[rungs.indexOf(stopped) - 1];
+  return {
+    ok: true,
+    detail:
+      `SILENT at "${stopped.step}" after ${stopped.ms}ms` +
+      (before ? `, the rung before it ("${before.step}") answered in ${before.ms}ms` : ", the very first rung") +
+      ` — ${answered} rung(s) answered before it`,
+  };
+};
+
+const SCENARIOS: {
+  name: string;
+  run: Scenario;
+  /**
+   * Left out of a full run, offered by the picker.
+   *
+   * For a scenario whose result is only meaningful on a host nothing else has
+   * touched yet. Running it alongside the rest does not merely cost time — it
+   * produces a WRONG answer, which is worse than no answer.
+   */
+  pickedOnly?: boolean;
+}[] = [
   { name: "insert on top of an earlier run", run: insertTwice },
   { name: "two slides claiming one slot", run: duplicateSlot },
   { name: "edit a chart on the visible slide", run: editOnVisibleSlide },
@@ -602,6 +664,22 @@ const SCENARIOS: { name: string; run: Scenario }[] = [
   { name: "edit the chart the user selected", run: editViaSelection },
   { name: "stop a run part-way", run: stopPartWay },
   { name: "the chart is actually visible", run: chartIsVisible },
+  // PICKED ONLY, and the reason is the experiment's own subject matter.
+  //
+  // The first draft put this last, reasoning that a scenario which provokes a
+  // wedge should not damage the ones after it. That was backwards, and a test
+  // caught it before a real host did: `editViaSelection` provokes the SAME
+  // wedge six scenarios earlier, so by the time the ladder ran the host was
+  // already wedged and it reported silence on its own first rung — an answer
+  // about nothing.
+  //
+  // Both orderings are wrong, because the constraint is not "last" or "first":
+  // it is that the ladder has to be the ONLY thing that has touched the
+  // selection subsystem. That is not a position in a list, it is a run of its
+  // own. Picked from the Scenario menu it gets exactly that — the two probe
+  // inserts, then a clean host — and the routine battery neither slows down nor
+  // gets its results contaminated.
+  { name: "which selection call wedges the host", run: whichSelectionCallWedges, pickedOnly: true },
 ];
 
 /**
@@ -633,7 +711,17 @@ export function setSelfTestRasterizer(fn: (scene: Scene) => Promise<string | und
  * strings maintained by hand next to the list it describes is a rename away
  * from offering a scenario that does not exist.
  */
+/**
+ * Everything the Scenario picker offers — including what a full run leaves out.
+ *
+ * The picker's whole purpose is reaching one scenario without the ones in front
+ * of it, so a `pickedOnly` scenario has to be here. It is the ONLY way to reach
+ * one.
+ */
 export const SCENARIO_NAMES: readonly string[] = SCENARIOS.map((s) => s.name);
+
+/** What a full run actually runs. A strict subset — see `pickedOnly`. */
+export const ROUTINE_SCENARIO_NAMES: readonly string[] = SCENARIOS.filter((s) => !s.pickedOnly).map((s) => s.name);
 
 /**
  * Run the battery, or ONE scenario of it.
@@ -650,7 +738,7 @@ export const SCENARIO_NAMES: readonly string[] = SCENARIOS.map((s) => s.name);
  * it needs", and the report says which is which.
  */
 export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: string): Promise<ScenarioResult[]> {
-  const wanted = only ? SCENARIOS.filter((s, i) => i < 2 || s.name === only) : SCENARIOS;
+  const wanted = only ? SCENARIOS.filter((s, i) => i < 2 || s.name === only) : SCENARIOS.filter((s) => !s.pickedOnly);
   const out: ScenarioResult[] = [];
   for (const { name, run } of wanted) {
     // The battery had no stop check of its own — none at all. So even where a
