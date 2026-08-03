@@ -51,7 +51,14 @@ import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
 import { onTrace, setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
 import { beginCrashLog, clearCrashLog, endCrashLog, flushCrashLog, recordCrashStep, recoverCrashLog } from "./crashlog";
-import { runSelfTest, describeSelfTest, setSelfTestRasterizer, SCENARIO_NAMES, type ScenarioResult } from "./selftest";
+import {
+  runSelfTest,
+  describeSelfTest,
+  setSelfTestRasterizer,
+  setSelfTestPrompt,
+  SCENARIO_NAMES,
+  type ScenarioResult,
+} from "./selftest";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
@@ -1600,7 +1607,25 @@ async function runInsert(asNew: boolean) {
       // than leaving a stale target that makes every later push no-op.
       state.editTarget = null;
       renderActionState();
-      note("Rebuilt that slide — PowerPoint would not redraw it in place. Select the chart to keep editing.", "ok");
+      // Say what was LOST, not just what was done.
+      //
+      // A swap replaces the slide: the chart comes back, and anything the
+      // slide carried that is not a shape does not. Speaker notes, the
+      // transition, animations, slide-level formatting. The guard in front of
+      // this checks the slide holds no other SHAPES, and that is all it can
+      // check — Office.js offers no way to read notes at all (office-js#3269,
+      // in backlog), so the add-in cannot see what it is about to discard and
+      // cannot ask first.
+      //
+      // Which leaves telling the user afterwards. Losing a slide's notes is
+      // survivable if you know it happened and silent data loss if you do not,
+      // and this is the whole difference between the two.
+      note(
+        "Rebuilt that slide — PowerPoint would not redraw it in place. The chart is back, but the slide was " +
+          "REPLACED, so any speaker notes, transition or animation on it are gone (undo restores them). " +
+          "Select the chart to keep editing.",
+        "err",
+      );
       return;
     }
     if (next) {
@@ -2905,6 +2930,10 @@ function wireInsert() {
         // The same rasteriser the demo run degrades with — the picture
         // scenario needs a real PNG, not a config that merely says "image".
         setSelfTestRasterizer(boundedRaster);
+        // A scenario that blocks on a person has to be able to ask. Routed to
+        // the same note the rest of the pane speaks through, so the request is
+        // where the user is already looking rather than buried in a step list.
+        setSelfTestPrompt((message) => note(message, "busy"));
         const results = await runSelfTest(undefined, scenarioPick?.value || undefined);
         // No runs, but a log all the same — the scenarios ARE the record, and
         // the trace beside them is what says how each verdict was reached.

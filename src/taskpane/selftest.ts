@@ -62,6 +62,8 @@ import {
   resetStop,
   selectShape,
   selectionLadder,
+  awaitSelectedChart,
+  canWatchSelection,
   slideImageBase64,
   canInsertSlidesFromBase64,
   insertSceneIntoSlide,
@@ -594,6 +596,79 @@ const chartIsVisible: Scenario = async (prefix) => {
  * selected (office-js#3698) — so every scenario that selects must clear up
  * after itself, which `clearShapeSelection` does, wherever it runs.
  */
+/** How long the battery waits for a person to click a chart. */
+let CLICK_WAIT_MS = 30_000;
+
+/** Test-only: a suite cannot spend thirty seconds waiting for nobody. */
+export function _setClickWaitForTest(ms: number): void {
+  CLICK_WAIT_MS = ms;
+}
+
+/**
+ * The one path a real user travels that nothing can script.
+ *
+ * `setSelectedShapes` is Office.js selecting a shape. A human clicking one is
+ * the same call in theory, and on PowerPoint on the web demonstrably not the
+ * same in practice — the programmatic version is taken and then the selection
+ * subsystem stops answering, which is why `editViaSelection` reports *skipped*
+ * there. That leaves the pane's most-used read — the one behind "Edit it" —
+ * with no coverage at all on the host where all the bugs are.
+ *
+ * So ask a person. One click, and then the whole chain runs and is measured:
+ * read the selection back, confirm it is the chart that was clicked, edit
+ * through the target THAT read produced, and confirm the result is still
+ * re-editable.
+ *
+ * That is not a workaround for being unable to script it. It is the more
+ * faithful test, and this project has the measurement to say so: the scripted
+ * version does not behave like the real one on the host that matters.
+ *
+ * Listens via `DocumentSelectionChanged` — a Common API event that does not go
+ * through the wedging subsystem, and the same one the pane's own selection
+ * banner has always used. Nothing here calls `setSelectedShapes`.
+ *
+ * Picked only, for the obvious reason: it blocks on a human.
+ */
+const editViaRealClick: Scenario = async () => {
+  if (!canWatchSelection()) {
+    return { ok: false, skipped: true, detail: "host does not raise DocumentSelectionChanged" };
+  }
+  prompt?.("Click a PowerChart on a slide now — the self-test is waiting for it.");
+  trace("selftest", "WAITING FOR YOU: click a chart on the slide", { seconds: CLICK_WAIT_MS / 1000 });
+  const picked = await awaitSelectedChart(CLICK_WAIT_MS, (left) => {
+    prompt?.(`Click a PowerChart on a slide — ${left}s left.`);
+    trace("selftest", "still waiting for a click", { secondsLeft: left });
+  });
+  if (!picked) {
+    return {
+      ok: false,
+      skipped: true,
+      detail: `nobody clicked a PowerChart within ${CLICK_WAIT_MS / 1000}s — nothing was checked`,
+    };
+  }
+  prompt?.("Got it — editing the chart you clicked.");
+  const was = JSON.parse(picked.configJson) as ChartConfig;
+  const title = typeof was.title === "string" ? was.title : "(untitled)";
+  // The read is the half this scenario exists for, and it has just succeeded —
+  // so it is stated first and unconditionally. Everything after it is the
+  // ordinary edit path, which other scenarios already cover; what none of them
+  // can cover is that the config came back from a HUMAN's click.
+  const read = `read "${title}" back from a real click`;
+  // Edit through the target the SELECTION produced. That target is built by
+  // different code, from a different read, than the one the deck scan makes —
+  // and only this one is what a user's edit actually travels on.
+  const next = { ...was, title: `${title} (via a real click)` };
+  const target = await updateChartInSlide(buildChart(next), picked.target, { tagData: JSON.stringify(next) });
+  if (!target) return { ok: false, detail: `${read} — and the host would not edit through that target` };
+  const round = await loadChartFromSelection(selectionBudgetMs()).catch(() => null);
+  return {
+    ok: true,
+    detail:
+      `${read}, edited through the selection's own target, and it is ` +
+      (round?.configJson ? "still re-editable" : "no longer readable from the selection (the view may have moved)"),
+  };
+};
+
 /**
  * Which selection call wedges the host — asked once, properly.
  *
@@ -680,6 +755,8 @@ const SCENARIOS: {
   // inserts, then a clean host — and the routine battery neither slows down nor
   // gets its results contaminated.
   { name: "which selection call wedges the host", run: whichSelectionCallWedges, pickedOnly: true },
+  // Picked only for the plainest reason there is: it blocks on a human.
+  { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
 ];
 
 /**
@@ -699,6 +776,22 @@ const SCENARIOS: {
  * picture scenario reports SKIPPED rather than pretending.
  */
 let rasterizer: ((scene: Scene) => Promise<string | undefined>) | undefined;
+
+/**
+ * How a scenario speaks to the person running it.
+ *
+ * Only one scenario needs it, and it needs it badly: a battery that blocks
+ * waiting for a click, without saying so, is indistinguishable from one that
+ * has hung — and this project has spent two rounds failing to tell those
+ * apart. The trace carries the same words to the Live steps list, so a pane
+ * that never wires this up is quieter but not silent.
+ */
+let prompt: ((message: string) => void) | undefined;
+
+/** Let the pane put a scenario's request in front of the user. */
+export function setSelfTestPrompt(fn: (message: string) => void): void {
+  prompt = fn;
+}
 
 export function setSelfTestRasterizer(fn: (scene: Scene) => Promise<string | undefined>): void {
   rasterizer = fn;

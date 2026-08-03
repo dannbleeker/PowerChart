@@ -1174,6 +1174,16 @@ describe("updating a chart the live canvas will not redraw", () => {
     await loadThenUpdate();
     expect(host.calls.insertFile).toHaveLength(0); // a slide swap, not a deck insert
     expect($("host-note").textContent).toMatch(/rebuilt that slide/i);
+    // And it says what the rebuild COST. A swap replaces the slide, so the
+    // chart comes back and anything on it that is not a shape does not:
+    // speaker notes, transition, animations. The guard in front of the swap
+    // can only see shapes — Office.js exposes no way to read notes at all
+    // (office-js#3269) — so the add-in cannot ask first and cannot avoid it.
+    // Telling the user afterwards is the difference between a loss they can
+    // undo and one they discover in front of an audience.
+    expect($("host-note").textContent, "a swap discarded the slide's notes without saying so").toMatch(
+      /speaker notes|replaced/i,
+    );
   });
 
   it("stops, and says so, when the swap left the original slide behind", async () => {

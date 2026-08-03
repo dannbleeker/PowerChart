@@ -527,6 +527,14 @@ let contextBaseCount = 0;
 let deckRemove: ((s: { id: string }) => void) | null = null;
 
 /**
+ * Every live shape in the deck, by id — set by `installHost`.
+ *
+ * Only `userClicksShape` needs it: a click names a shape, and the deck lives
+ * in `installHost`'s closure where no helper can reach it.
+ */
+let findShape: ((id: string) => FakeShape | undefined) | null = null;
+
+/**
  * A fresh proxy onto a shape, as `shapes.items` hands back after a load+sync.
  *
  * Everything reads and writes through to the one real shape — a tag added via
@@ -1036,6 +1044,13 @@ export function installHost(
   let committedCount = slides.length;
   /** Decks handed to insertSlidesFromBase64 and not yet resolved by a sync. */
   const pendingDecks: string[] = [];
+  findShape = (id) => {
+    for (const sl of slides) {
+      const hit = sl.created.find((sh: FakeShape) => !sh.deleted && sh.id === id);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
   deckRemove = (s) => {
     const i = slides.findIndex((x) => x.id === s.id);
     if (i >= 0) slides.splice(i, 1);
@@ -1386,11 +1401,57 @@ export function installHost(
     TextVerticalAlignment: { top: "top", middle: "middle", bottom: "bottom" },
     ParagraphHorizontalAlignment: { left: "left", center: "center", right: "right" },
   });
+  selectionHandlers.length = 0;
   vi.stubGlobal("Office", {
+    EventType: { DocumentSelectionChanged: "documentSelectionChanged" },
     context: {
       host: "PowerPoint",
       requirements: { isSetSupported: (_set: string, version: string) => supported(version) },
+      /**
+       * The Common API selection event — the one the pane's own banner uses,
+       * and the only route to the selection that does NOT go through the
+       * subsystem a programmatic `setSelectedShapes` wedges.
+       *
+       * Modelled because there is now a scenario that waits for a real click.
+       * Without a way to raise the event from a test, that scenario could only
+       * ever be observed timing out, which proves nothing about the half that
+       * matters.
+       */
+      document: {
+        addHandlerAsync: (type: string, handler: () => void) => {
+          if (type === "documentSelectionChanged") selectionHandlers.push(handler);
+        },
+        removeHandlerAsync: (type: string, opts?: { handler?: () => void }) => {
+          if (type !== "documentSelectionChanged") return;
+          if (!opts?.handler) selectionHandlers.length = 0;
+          else {
+            const i = selectionHandlers.indexOf(opts.handler);
+            if (i >= 0) selectionHandlers.splice(i, 1);
+          }
+        },
+      },
     },
   });
   return context;
 }
+
+/** Handlers registered for the Common API selection event. */
+const selectionHandlers: (() => void)[] = [];
+
+/**
+ * A user clicking `shape` on the slide — the event, not a programmatic select.
+ *
+ * Writes the selection the way the host would and raises the event, so code
+ * that LISTENS sees exactly what a real click produces. Deliberately does not
+ * go near `setSelectedShapes`: that is the call under suspicion, and a helper
+ * that used it would make every listener test depend on it.
+ */
+export function userClicksShape(shapeId: string | null): void {
+  selectionRef.length = 0;
+  const shape = shapeId ? findShape?.(shapeId) : undefined;
+  if (shape) selectionRef.push(shape);
+  for (const h of [...selectionHandlers]) h();
+}
+
+/** How many selection handlers are currently registered — leak check. */
+export const selectionHandlerCount = (): number => selectionHandlers.length;

@@ -233,6 +233,7 @@ call wedges the host** from the Scenario menu to run it:
 | scenario | what it proves |
 | --- | --- |
 | which selection call wedges the host | *which* call stops the web host answering — the one measurement that settles it |
+| edit the chart YOU click | the pane's most-used read, driven by a real human click instead of a call that behaves differently |
 
 It climbs a ladder from the least invasive selection call to the most — read the
 selection, `setSelectedSlides`, read, `setSelectedShapes([id])`, read,
@@ -250,6 +251,25 @@ round.)
 
 It reports **ok** whatever it finds. It is an experiment, not an assertion — a
 host that answers every rung is a real result, and one worth knowing.
+
+**Edit the chart YOU click** is the other picked-only one, and it is the answer
+to a thing this project got wrong for months. `setSelectedShapes` is Office.js
+selecting a shape; a human clicking one is the same call in theory and
+demonstrably not the same in practice on the web. So the battery stops
+pretending and asks: pick the scenario, and it waits 30 seconds for you to click
+a PowerChart, counting down in the pane. Click one, and it runs the whole chain
+the pane's *Edit it* button runs — read the selection back, edit through the
+target that read produced, confirm the result is still re-editable — and reports
+what happened.
+
+It listens on `DocumentSelectionChanged`, a **Common API** event that does not
+go through the subsystem the programmatic select wedges. Nothing in it calls
+`setSelectedShapes`. If nobody clicks it reports **skipped**, never failed.
+
+This is what old test 4 of the standing run was, with the guesswork removed: the
+same click, and now a recorded verdict instead of "looked fine". Test 4 still
+earns its place for the **drag**, which needs a real mouse and cannot be
+observed any other way.
 
 Each verdict says what was observed, not just pass/fail, and a scenario that
 throws is recorded and the rest still run — a battery that stopped at the first

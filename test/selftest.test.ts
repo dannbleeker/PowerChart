@@ -1,12 +1,21 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installHost, makeSlide, makeShape, applyWebProfile, faults } from "./helpers/office-host";
+import {
+  installHost,
+  makeSlide,
+  makeShape,
+  applyWebProfile,
+  faults,
+  userClicksShape,
+  selectionHandlerCount,
+} from "./helpers/office-host";
 import {
   CHART_TAG,
   requestStop,
   resetStop,
   isStopRequested,
   _setReadbackTimeoutForTest,
+  listChartsInDeck,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { setTracing, traceLog } from "../src/core/trace";
@@ -16,6 +25,7 @@ import {
   setSelfTestRasterizer,
   SCENARIO_NAMES,
   ROUTINE_SCENARIO_NAMES,
+  _setClickWaitForTest,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -273,6 +283,55 @@ describe("the scenarios the selection API unlocked", () => {
     expect(r.ok, r.detail).toBe(true);
     expect(r.detail).toContain("nothing wedged");
     expect(r.detail).not.toContain("SILENT");
+  });
+
+  it("reads the chart back from a REAL click, and takes its listener away after", async () => {
+    // The one path a user travels that nothing can script. `setSelectedShapes`
+    // is Office.js selecting a shape; a human clicking one is the same call in
+    // theory and demonstrably not in practice on the web. So the battery asks
+    // for a click and listens on `DocumentSelectionChanged` — a Common API
+    // event that does not go through the wedging subsystem.
+    //
+    // What is asserted here is the half CI can honestly speak to: the
+    // listen → click → read chain, and that the listener is taken back off.
+    // Whether the EDIT that follows succeeds is `editViaSelection`'s ground,
+    // covered twice over there; duplicating it here would only assert that the
+    // fake host edits, which is not what this scenario is for.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    const run = runSelfTest("probe", "edit the chart YOU click");
+    // Click only once the scenario is actually listening — the ordering that
+    // exercises the handler rather than a lucky first read.
+    await vi.waitFor(() => expect(selectionHandlerCount()).toBeGreaterThan(0));
+    const chart = (await listChartsInDeck())[0];
+    expect(chart, "no probe chart for the click to land on").toBeTruthy();
+    userClicksShape(chart.target.shapeId);
+    const r = byName(await run)["edit the chart YOU click"];
+
+    expect(r.skipped, `a click arrived and it still reported skipped: ${r.detail}`).toBeFalsy();
+    expect(r.detail, "did not read the clicked chart back").toMatch(/read ".*" back from a real click/);
+    // And it took its listener back off. A battery that leaked one handler per
+    // run would leave dead runs answering the user's clicks.
+    expect(selectionHandlerCount(), "left a selection handler behind").toBe(0);
+  });
+
+  it("skips rather than fails when nobody clicks", async () => {
+    // Nobody clicked is "we did not check", never "it is broken". Reporting a
+    // person's absence as a red line is how a battery teaches its reader to
+    // ignore red lines.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    _setClickWaitForTest(60);
+    let r: ScenarioResult;
+    try {
+      r = byName(await runSelfTest("probe", "edit the chart YOU click"))["edit the chart YOU click"];
+    } finally {
+      _setClickWaitForTest(30_000);
+    }
+    expect(r.ok, r.detail).toBe(false);
+    expect(r.skipped, "a missing human was reported as a failure").toBe(true);
+    expect(r.detail).toContain("nobody clicked");
+    expect(selectionHandlerCount(), "left a selection handler behind after timing out").toBe(0);
   });
 
   it("reports a stop honestly, and will not call a leftover chart a clean stop", async () => {

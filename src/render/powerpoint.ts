@@ -3201,6 +3201,86 @@ export async function showSlide(slideId: string, budgetMs?: number): Promise<boo
  */
 export const canSelectShapes = (): boolean => supports("1.5");
 
+/**
+ * Whether the host will tell us when the user changes the selection.
+ *
+ * `DocumentSelectionChanged` is a **Common API** event, not a PowerPointApi
+ * one — so it is available on hosts far below 1.5, and, more to the point, it
+ * does not go through the selection subsystem that a programmatic
+ * `setSelectedShapes` wedges. The pane has used it for the "A PowerChart is
+ * selected" banner all along.
+ */
+export function canWatchSelection(): boolean {
+  try {
+    return typeof Office?.context?.document?.addHandlerAsync === "function";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wait for the user to click a PowerChart, and hand back what they clicked.
+ *
+ * The one path a real user travels that nothing can script. `setSelectedShapes`
+ * is Office.js selecting a shape — the same call in theory as a human clicking
+ * one, and on PowerPoint on the web demonstrably not the same in practice: it
+ * is taken, and the selection subsystem then stops answering. So the battery
+ * cannot reach the pane's most-used read by driving it, and reaching it by
+ * asking a person to click is not a workaround, it is the only honest version
+ * of the test.
+ *
+ * Nothing here touches `setSelectedShapes`. It listens, which is what the pane
+ * itself does, and reads the selection the host volunteers.
+ *
+ * Resolves null on timeout — nobody clicked, or the host never raised the
+ * event. Both are "we did not check", never "it is broken".
+ */
+export async function awaitSelectedChart(
+  budgetMs: number,
+  onWaiting?: (secondsLeft: number) => void,
+): Promise<{ configJson: string; target: EditTarget } | null> {
+  if (!canWatchSelection()) return null;
+  return new Promise((resolve) => {
+    let done = false;
+    const handler = async () => {
+      if (done) return;
+      try {
+        const found = await loadChartFromSelection(budgetMs);
+        if (!found || done) return;
+        finish(found);
+      } catch {
+        /* the selection could not be read this time — wait for the next click */
+      }
+    };
+    const finish = (value: { configJson: string; target: EditTarget } | null) => {
+      if (done) return;
+      done = true;
+      clearInterval(tick);
+      clearTimeout(deadline);
+      try {
+        Office.context.document.removeHandlerAsync(Office.EventType.DocumentSelectionChanged, { handler });
+      } catch {
+        /* nothing to remove, or a host that will not — the flag stops it anyway */
+      }
+      resolve(value);
+    };
+    const startedAt = Date.now();
+    // A countdown, because a battery that silently waits is indistinguishable
+    // from one that has hung — and this one is waiting for a PERSON, who needs
+    // to know they are the thing being waited for.
+    const tick = setInterval(() => {
+      const left = Math.ceil((budgetMs - (Date.now() - startedAt)) / 1000);
+      if (left > 0) onWaiting?.(left);
+    }, 1_000);
+    const deadline = setTimeout(() => finish(null), budgetMs);
+    try {
+      Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, handler);
+    } catch {
+      finish(null);
+    }
+  });
+}
+
 /** One rung of `selectionLadder` — a single call, and what the host did with it. */
 export interface LadderRung {
   /** The call, in the words a report should use. */
