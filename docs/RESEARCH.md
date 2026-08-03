@@ -115,8 +115,37 @@ still open:
 | `setSelectedShapes([])` does not clear the selection on the web | [office-js#3083](https://github.com/OfficeDev/office-js/issues/3083) | open — why `clearShapeSelection` re-selects the *slide* instead |
 | A picture cannot be inserted while a shape is selected | [office-js#3698](https://github.com/OfficeDev/office-js/issues/3698) | open — why every selecting scenario cleans up after itself |
 
+| A deck insert's `sync()` never resolves — **and the slide lands anyway** | [office-js#1650](https://github.com/OfficeDev/office-js/issues/1650) | marked fixed, but see below — the *shape* of it drives the design |
+
 The `hollowReads` fault in `test/helpers/office-host.ts` is not a paranoid
 invention: it models a regression Microsoft has acknowledged and not yet fixed.
+
+### A hung sync says nothing about whether the work happened
+
+This is the most useful thing the tracker taught this project, and it changed
+how every bounded write is written. office-js#1650, verbatim: *"the first time
+`context.sync()` is called the promise resolves, but in subsequent calls the
+promise doesn't resolve, although **the slide still gets added successfully**."*
+office-js#5022 reports the same shape for shape work after an image insert, and
+its only known workaround is a pause: *"I had better result by adding a timer of
+1-2 seconds between the `shape.delete()` and the next `await context.sync()`."*
+
+Every timeout in `powerpoint.ts` used to throw. For a **read** that is correct —
+an unread page is unread, and each caller already has an honest word for it
+(`unread`, `undetermined`, `unmeasured`). For a **write** it is wrong twice: it
+discards work that landed, and it sends the caller off to do the work again,
+which is how one stalled insert becomes two copies of a chart on one slide.
+
+So a bounded mutation now swallows its own silence and lets a fresh-context
+re-read decide (`withTimeoutOrVerify`). Every site that uses it already measured
+what actually happened — `slideCount()` before and after, a re-read of the
+slide — and simply never reached the measurement on the runs that needed it.
+A **refusal** still throws: the host said no and is still talking, which is a
+different fact and a different diagnosis.
+
+`#1650` is marked fixed upstream. It is kept here because the pattern is not:
+the fix does not make silence mean failure, and #5022 is open with the same
+shape.
 
 **One more, measured here rather than found in the tracker.** On PowerPoint on
 the web, a *programmatic* `Slide.setSelectedShapes([id])` — GA since

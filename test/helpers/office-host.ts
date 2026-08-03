@@ -158,6 +158,20 @@ export const faults = {
    */
   refuseSlideDelete: false,
   /**
+   * The next deck insert LANDS, and its `context.sync()` never answers.
+   *
+   * office-js#1650, verbatim: "the first time `context.sync()` is called the
+   * promise resolves, but in subsequent calls the promise doesn't resolve,
+   * although **the slide still gets added successfully**." Marked fixed
+   * upstream; the SHAPE of it is the point, because it is the proof that on
+   * this platform silence says nothing about whether work happened.
+   *
+   * A fake that could only ever throw or lie cannot produce it, and without it
+   * "verify from the document instead of the promise" is a claim no test can
+   * check. One-shot, so a retry can still be observed succeeding.
+   */
+  deckInsertNeverAnswers: false,
+  /**
    * The next N shapes to be tagged answer `.tags` as **undefined**.
    *
    * Observed on a real host, four times in one run, each on a chart whose
@@ -666,6 +680,7 @@ export function makeSlide(id: string) {
      */
     setSelectedShapes(ids: string[]) {
       noteSelectionCall();
+      if (!ids.length) trips.emptyDeselects++;
       // Taken, and poisonous. The select itself still happens below — the web
       // host does perform it — and only what comes AFTER stops answering.
       if (faults.selectionWedgesHost && ids.length) selectionWedged = true;
@@ -914,7 +929,19 @@ function freshWindowedHandle(real: FakeSlide) {
  * trip to PowerPoint and dominates insert latency, so the count is a behaviour
  * worth asserting — see "round-trips do not scale with the chart count".
  */
-export const trips = { syncs: 0, contexts: 0 };
+export const trips = {
+  syncs: 0,
+  contexts: 0,
+  /**
+   * Calls to `setSelectedShapes([])` — the empty-array deselect.
+   *
+   * Counted because the invariant is now that it is NEVER made:
+   * office-js#3698 reports it does not clear the selection on the web AND
+   * leaves the `PowerPoint.run` promise unresolved. A test can only hold that
+   * line by seeing the call, not by inspecting what the call would have done.
+   */
+  emptyDeselects: 0,
+};
 
 /** Proxy objects the renderer released via untrack(), by kind. */
 export const untracked = { shapes: 0, tags: 0 };
@@ -1151,7 +1178,8 @@ export function installHost(
     },
     sync: async () => {
       trips.syncs++;
-      for (const b64 of pendingDecks.splice(0)) {
+      const decks = pendingDecks.splice(0);
+      for (const b64 of decks) {
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         const { rows } = (await readDeckBytes(bytes)) as { rows: DeckRow[] };
         for (const row of rows) {
@@ -1177,6 +1205,22 @@ export function installHost(
           added.pending.length = 0;
           slides.push(added);
         }
+      }
+      // The slides are on the deck by now and the caller will never be told.
+      // See `faults.deckInsertNeverAnswers`.
+      //
+      // `committedCount` is advanced FIRST, and that is the whole fidelity of
+      // this fault. It normally moves at the end of a successful sync, which
+      // models shapes landing when their batch commits — but a deck insert is
+      // not a batch of shapes, and office-js#1650 is explicit that "the slide
+      // still gets added successfully" while the promise hangs. A fake that
+      // left the count behind would report the slides as absent to the very
+      // re-read that exists to find them, and the test would be measuring the
+      // fake's bookkeeping rather than the host behaviour it stands for.
+      if (decks.length && faults.deckInsertNeverAnswers) {
+        faults.deckInsertNeverAnswers = false;
+        committedCount = slides.length;
+        await new Promise(() => {});
       }
       // Commit or discard the shapes each slide has queued since the last
       // sync. On success, mark them "committed" (leave in `created`, drop
@@ -1253,6 +1297,7 @@ export function installHost(
     },
   };
   trips.syncs = 0;
+  trips.emptyDeselects = 0;
   trips.contexts = 0;
   untracked.shapes = 0;
   untracked.tags = 0;
@@ -1292,6 +1337,7 @@ export function installHost(
   wedgeThisSync = false;
   faults.constantSlideImage = false;
   faults.refuseSlideDelete = false;
+  faults.deckInsertNeverAnswers = false;
   faults.tagsUndefinedOn = 0;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.

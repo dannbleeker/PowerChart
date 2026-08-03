@@ -22,6 +22,8 @@ import {
   applyReconcilePlan,
   readAddedSlides,
   _setReadbackTimeoutForTest,
+  _setDeckInsertPerSlideForTest,
+  insertSlidesFromPptx,
   lastLateSyncOwner,
   lastLateSyncSeq,
   waitForLateSync,
@@ -55,6 +57,7 @@ import { planReconcile } from "../src/core/reconcile";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { estimateOfficeShapes } from "../src/core/scene";
 import { sampleConfig } from "../src/core/samples";
+import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildAgendaScene } from "../src/core/agenda";
 import type { ChartConfig, MarkerSymbol } from "../src/core/types";
 import type { DemoReport } from "../src/render/powerpoint";
@@ -2467,35 +2470,52 @@ describe("reading a demo deck back and repairing it", () => {
     }
   });
 
-  it("does not ask a silent host a second question after the first one went unanswered", async () => {
-    // `clearShapeSelection` does two things — ask for the clear, then re-select
-    // the slide as a fallback, because `setSelectedShapes([])` is ignored on
-    // the web (office-js#3083). The fallback is right for a host that REFUSES
-    // and wrong for one that has gone silent: the web host's wedged selection
-    // subsystem answers neither, so the second call is a second full budget
-    // spent learning the same thing. Two 90-second waits, half a second apart,
-    // is exactly what a real run logged.
+  it("counts the slides a silent deck insert landed, instead of calling it a failure", async () => {
+    // office-js#1650, verbatim: "the first time `context.sync()` is called the
+    // promise resolves, but in subsequent calls the promise doesn't resolve,
+    // although **the slide still gets added successfully**."
+    //
+    // Every timeout in this file used to throw. For a READ that is right — an
+    // unread page is unread. For a WRITE it is wrong twice: it discards work
+    // that landed, and it sends the caller off to do the work again, which is
+    // how one stalled insert becomes two copies of a chart. This function
+    // already measured the deck before and after; it simply never reached the
+    // measurement on the runs that needed it.
+    const built = await buildDeckBase64(
+      [{ scene: buildChart(sampleConfig("clustered")), title: "A", configJson: "{}", slot: 0, run: "r1" }],
+      { width: 720, height: 405 },
+    );
     installHost([makeSlide("s1")]);
-    faults.selectionWedgesHost = true;
-    _setReadbackTimeoutForTest(30);
+    faults.deckInsertNeverAnswers = true;
+    _setBatchTimeoutForTest(40);
+    _setDeckInsertPerSlideForTest(40);
     try {
-      // Arm the wedge the way the host does: a select that is taken, and
-      // poisons everything after it.
-      await PowerPoint.run(async (context) => {
-        const slide = context.presentation.slides.getItemAt(0) as unknown as {
-          setSelectedShapes(ids: string[]): void;
-        };
-        slide.setSelectedShapes(["shape-1"]);
-      });
-      const before = trips.syncs;
-      await clearShapeSelection("s1", 30);
-      // One sync to resolve the slide, one that goes silent — and then it
-      // stops. A third means the fallback ran into the same silence.
-      expect(trips.syncs - before, "asked the silent host again after a timeout").toBe(2);
+      const landed = await insertSlidesFromPptx(built.base64, 1);
+      expect(landed, "threw away a slide the host had already added").toBe(1);
     } finally {
-      faults.selectionWedgesHost = false;
-      _setReadbackTimeoutForTest(90_000);
+      faults.deckInsertNeverAnswers = false;
+      _setBatchTimeoutForTest(30_000);
+      _setDeckInsertPerSlideForTest(5_000);
     }
+  });
+
+  it("never asks the host to clear the selection with an empty array", async () => {
+    // office-js#3698, verbatim: `slide.setSelectedShapes([])` on the web "does
+    // not clear the selection, causes the `PowerPoint.run` promise to never
+    // resolve, and produces no error messages."
+    //
+    // So the call cannot succeed on the host it was written for, and is a
+    // documented candidate for the silence this project measured. It is gone.
+    // Re-selecting the SLIDE drops the shape selection on every host observed,
+    // and was already there as the fallback — what is left is the half that
+    // works.
+    //
+    // Asserted by counting the call rather than by inspecting its effect: the
+    // effect of a call that never resolves is precisely what nobody can observe.
+    installHost([makeSlide("s1")]);
+    const before = trips.emptyDeselects;
+    await clearShapeSelection("s1");
+    expect(trips.emptyDeselects - before, "made the call office-js#3698 says never returns").toBe(0);
   });
 
   it("does not call a slide untagged when the host answered with no shapes", async () => {
