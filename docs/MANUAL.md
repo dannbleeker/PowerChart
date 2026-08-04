@@ -551,6 +551,24 @@ survives both. **Copy** puts the whole list on the clipboard, with a header line
 order so nobody reads the run backwards; failing that, screenshot it before you
 reload. **Clear** empties it.
 
+**Run host probe** asks this PowerPoint a fixed list of questions — does a
+proxy survive a sync, does writing the same tag twice overwrite it, does a
+deleted shape report itself gone — and saves what it answered. It changes
+nothing: it works on a scratch slide and takes the slide back.
+
+It exists because of something worth being blunt about. Every automated test in
+this project runs against a *fake* PowerPoint, and nobody has ever checked
+whether that fake tells the truth. The faults it models are things a real host
+taught us the hard way; everything else about it is an assumption. Where an
+assumption is wrong, the tests resting on it are confidently wrong too, and a
+green suite says nothing about that.
+
+So: run it once on each host you care about, send the file, and
+`npm run host-diff` lines it up against what the fake claims. Every
+disagreement is either a fake that lies — in which case some tests are worth
+less than they look — or something PowerPoint does that we did not know. Both
+are worth the click.
+
 **Download the crashed run** appears only when there is one to download. Every
 step is written to your browser's storage as it happens, and a run marks itself
 finished on the way out — so a run that never got there leaves a record that

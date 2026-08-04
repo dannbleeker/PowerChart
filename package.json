@@ -23,7 +23,8 @@
     "icons": "node scripts/make-icons.mjs",
     "gallery": "node scripts/render-gallery.mjs",
     "skill": "npm run build:lib && node scripts/build-skill.mjs",
-    "showcase": "npm run build:lib && node scripts/build-showcase.mjs"
+    "showcase": "npm run build:lib && node scripts/build-showcase.mjs",
+    "host-diff": "node scripts/host-diff.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1",

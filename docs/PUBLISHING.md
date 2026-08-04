@@ -123,6 +123,7 @@ beginning, never its end.
 
 | # | test | what it catches |
 | --- | --- | --- |
+| 0 | **Run host probe.** One click, no deck changes — it works on a scratch slide and gives it back. Send the saved JSON. | Whether the FAKE POWERPOINT every test in this repo runs against is telling the truth. Its faults are things a real host taught us; its happy path is assumptions. `npm run host-diff` lines the two up, and each disagreement is either a fake that lies (so some tests are worth less than they look) or something the host does that we did not know. Do this **once per host** — it does not change between builds, so it is not part of the per-build round. |
 | 1 | **Run host self-test.** One click, nine scenarios (below), and the Live steps list names each one as it starts. Chasing one failure? Set **Scenario** to it first — it runs that plus the two inserts it needs, in seconds rather than minutes. Read the verdicts, and if the run does not finish, read the last line. | Nearly everything that used to be tests 1, 2, 3 and 7 of this table. The battery now selects shapes itself (`Slide.setSelectedShapes`, PowerPointApi 1.5), stops its own run, and asks the host to render a slide before and after drawing so it can tell a chart that is *there* from a chart that is *visible*. A verdict of **skipped** is not a failure. |
 | 2 | **Demo deck — both paths.** Path → **Both, one after the other** → **Insert demo deck**. ~6 s for the file half, then 1–2 minutes for the shape half. | The file half must report **38 of 38 complete** — anything less is a regression. The shape half being slower with some items short is the *measurement* of what the everyday path costs at 38× scale, not a defect. This is the one thing no battery can stand in for: it is the only test at real scale, and scale is what crashes the tab. |
 | 3 | **Look at the deck.** Scroll the 38 slides the demo run added. | The judgement a machine does not have. The battery's visibility check answers "did anything render"; it does not answer "is this the right chart, drawn well". Look for charts off the slide edge, overlapping labels, and anything that is visibly not what the gallery shows. |
@@ -136,6 +137,21 @@ for a different one.
 Then send back two files: **Download run log** (Testing section) and the deck
 itself (File → Download a copy). The log carries the run's identity token, so
 `npm run triage` joins it to the deck exactly rather than by guesswork.
+
+**On the host probe (test 0).** It answers a fixed list of questions —
+does a shape proxy survive a sync, does writing the same tag key twice
+overwrite it, does a deleted shape report itself gone, does
+`load('isNullObject')` populate the flag. Each one is a behaviour
+`powerpoint.ts` depends on, so a divergence is never academic: the notes in
+`scripts/host-diff.mjs` say, per question, what would be wrong if the real host
+disagreed.
+
+One divergence is already known without running it: the fake does not implement
+`untrack`, and Office.js does. So every `untrack()` call in this repo is a no-op
+under test, and the claim that PowerChart releases proxies to avoid Office.js's
+"too many proxy objects" warning is entirely unverified. That is the kind of
+thing this probe exists to surface, and it surfaced one before ever reaching a
+real host.
 
 What to read in the result: the `tagging failed` count (was 28 on the last slow
 run; should be near zero), any line annotated `^ known host bug: office-js#…`
