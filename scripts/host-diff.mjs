@@ -34,6 +34,8 @@ export const FAKE_BASELINE = {
   "tags-on-fresh-shape": "yes",
   "delete-then-lookup": "reports-gone",
   "addgroup-returns-usable": "yes",
+  "group-reports-its-children": "two",
+  "tag-on-group-survives": "yes",
   "getitemat-past-end": "threw",
   "untrack-available": "no",
 };
@@ -60,6 +62,10 @@ const WHAT_IT_MEANS = {
     "`faults.tagsUndefinedOn` models `.tags` coming back undefined, where reading `.add` throws SYNCHRONOUSLY and escapes the tagging loop — losing the config for every chart after it in the batch, not just the one.",
   "delete-then-lookup":
     "`deleteSlideById` re-checks from a FRESH context because the same-context answer was not trusted. If a host answers honestly here, that second round trip is removable.",
+  "group-reports-its-children":
+    "The single most load-bearing answer here. A chart IS a group, and the readback measures whether a chart survived by counting what is inside it — so a host that groups successfully and then reports no children makes every chart read back as wreckage, and the repair pass 'fixes' charts that were never broken.",
+  "tag-on-group-survives":
+    "Where a chart's config actually lives. Tags on a plain shape are a separate question; if a GROUP behaves differently, every chart in every deck is un-re-editable and nothing else here would say so.",
   "getitemat-past-end":
     "Nothing in this repo currently depends on the answer — it is here to find out before something does.",
   "untrack-available":

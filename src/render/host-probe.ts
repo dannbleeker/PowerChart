@@ -317,6 +317,81 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "group-reports-its-children",
+    question: "After grouping two shapes, does the group report two children?",
+    // The single most load-bearing answer here. A chart IS a group, and the
+    // readback measures whether a chart survived by counting what is inside
+    // it — so a host that groups successfully and then reports no children
+    // makes every chart read back as wreckage, and the repair pass then
+    // "fixes" charts that were never broken. The fake's own notes say a
+    // version of it that put one shape there did exactly that.
+    ask: async (ctx) => {
+      const made = [0, 1].map((i) =>
+        ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 200 + i * 25,
+          top: 60,
+          width: 20,
+          height: 20,
+        }),
+      );
+      await ctx.sync();
+      try {
+        const group = (
+          ctx.scratch.shapes as unknown as {
+            addGroup(shapes: unknown[]): { load(p: string): void; group: { shapes: { items: unknown[] } } };
+          }
+        ).addGroup(made);
+        await ctx.sync();
+        group.load("group/shapes/items/id");
+        await ctx.sync();
+        const n = group.group?.shapes?.items?.length;
+        return { answer: n === 2 ? "two" : typeof n === "number" ? `reports-${n}` : "unreadable", detail: `n=${n}` };
+      } catch (err) {
+        return { answer: "threw", detail: short(err) };
+      }
+    },
+  },
+  {
+    id: "tag-on-group-survives",
+    question: "Does a tag written on a GROUP read back?",
+    // Where a chart's config actually lives. Tags on a plain shape are covered
+    // above; if a group behaves differently, every chart in every deck is
+    // un-re-editable and nothing else in the probe would say so.
+    ask: async (ctx) => {
+      const made = [0, 1].map((i) =>
+        ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 260 + i * 25,
+          top: 60,
+          width: 20,
+          height: 20,
+        }),
+      );
+      await ctx.sync();
+      try {
+        const group = (
+          ctx.scratch.shapes as unknown as {
+            addGroup(shapes: unknown[]): {
+              tags: {
+                add(k: string, v: string): void;
+                getItemOrNullObject(k: string): { load(p: string): void; value: string };
+              };
+            };
+          }
+        ).addGroup(made);
+        await ctx.sync();
+        group.tags.add("POWERCHART_PROBE_GROUP", "kept");
+        await ctx.sync();
+        const tag = group.tags.getItemOrNullObject("POWERCHART_PROBE_GROUP");
+        tag.load("value");
+        await ctx.sync();
+        const v = tag.value;
+        return { answer: v === "kept" ? "yes" : "no", detail: `value=${String(v)}` };
+      } catch (err) {
+        return { answer: "threw", detail: short(err) };
+      }
+    },
+  },
+  {
     id: "getitemat-past-end",
     question: "What does slides.getItemAt() past the end of the deck do?",
     ask: async (ctx) => {
