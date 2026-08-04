@@ -676,7 +676,10 @@ describe("looking away while a chart redraws", () => {
     faults.newSlideResolvesTimes = 0;
     try {
       expect(await deleteSlideById(id!), "reported a clean-up it had not done").toBe(true);
-      expect(deck.map((s) => s.id), "the slide is still in the deck").toEqual(["s1"]);
+      expect(
+        deck.map((s) => s.id),
+        "the slide is still in the deck",
+      ).toEqual(["s1"]);
     } finally {
       faults.newSlideResolvesTimes = null;
     }
@@ -703,7 +706,10 @@ describe("looking away while a chart redraws", () => {
     unansweredNullChecks.add("slide-2");
     try {
       expect(await addScratchSlide(), "handed out an id it could not resolve").toBeNull();
-      expect(deck.map((s) => s.id), "left the unusable scratch slide behind").toEqual(["s1"]);
+      expect(
+        deck.map((s) => s.id),
+        "left the unusable scratch slide behind",
+      ).toEqual(["s1"]);
     } finally {
       unansweredNullChecks.clear();
     }

@@ -432,7 +432,9 @@ describe("the scenarios the selection API unlocked", () => {
       faults.slideImageGate = new Promise<void>((r) => (release = r));
       const run = runSelfTest("probe", "the chart is actually visible");
       await vi.waitFor(() => {
-        const last = traceLog().entries.filter((e) => e.scope === "selftest").at(-1);
+        const last = traceLog()
+          .entries.filter((e) => e.scope === "selftest")
+          .at(-1);
         expect(last?.message).toBe("visibility step");
         expect(last?.data?.what).toBe("rasterising the empty slide");
       });
