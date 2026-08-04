@@ -47,6 +47,17 @@ export const faults = {
   strictGroup: false,
   strictTags: false,
   hollowReads: 0,
+  /**
+   * The same short answer, on an `items/name` load.
+   *
+   * A real host does not care which properties were asked for — a collection
+   * that answers short answers short. The split exists only because this fake
+   * needs to blind ONE reader without blinding the count it is checked against:
+   * the tag pass asks for `items/id`, while the slide-swap gate and the
+   * group-child count both ask for `items/name`. Arming the wrong one is how a
+   * test comes to exercise nothing.
+   */
+  hollowNameReads: 0,
   refusePictureFill: false,
   refuseGroups: 0,
   /**
@@ -816,8 +827,18 @@ export function makeSlide(id: string) {
         // 19 slides carrying 19 shapes and got 3 back. `faults.hollowReads` models
         // that — the collection is short, nothing throws, and the caller has
         // no way to know unless it compares against a count it took earlier.
-        if (faults.hollowReads > 0 && lastShapeLoad === "items/id") {
+        // `startsWith`, not equality: the deck scan asks for
+        // `items/id,items/left,items/top`, which is the same collection read
+        // under a wider projection and which a real host has no reason to treat
+        // differently. Matching only the exact string meant `hollowReads` could
+        // not blind `listChartsInDeck` at all — so the tests that thought they
+        // were exercising a short deck scan were exercising a healthy one.
+        if (faults.hollowReads > 0 && lastShapeLoad.startsWith("items/id")) {
           faults.hollowReads--;
+          return [];
+        }
+        if (faults.hollowNameReads > 0 && lastShapeLoad === "items/name") {
+          faults.hollowNameReads--;
           return [];
         }
         return live;
@@ -1409,6 +1430,7 @@ export function installHost(
   faults.strictTags = false;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;
+  faults.hollowNameReads = 0;
   lastShapeLoad = "";
   faults.refusePictureFill = false;
   blankReadbackAt.clear();

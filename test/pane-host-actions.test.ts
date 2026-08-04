@@ -24,8 +24,14 @@ import { sceneToSvg } from "../src/render/svg";
 const host = vi.hoisted(() => ({
   selectionBounds: null as null | { left: number; top: number; width: number; height: number },
   /** What is already on the slide the next insert would draw onto. */
-  slideShapes: [] as { left: number; top: number; width: number; height: number }[],
+  /**
+   * What `getSlideShapeBounds` answers — `null` for a host that would not read
+   * the slide at all, which is a different fact from an empty slide.
+   */
+  slideShapes: [] as { left: number; top: number; width: number; height: number }[] | null,
   deckCharts: [] as { configJson: string; target: unknown }[],
+  /** Slides the deck scan could not read — the signal Same Scale now gates on. */
+  deckScanUnread: 0,
   selectionCharts: [] as { configJson: string; target: unknown }[],
   loadSelectionResult: null as null | { configJson: string; target: unknown },
   // When set, insertSceneIntoSlide awaits this before resolving — lets a test
@@ -79,6 +85,16 @@ const host = vi.hoisted(() => ({
    * only way a test can see whether the caller sweeps.
    */
   updateChartsStalls: new Map<number, string[]>(),
+  /**
+   * How many charts `updateChartsInSlides` drops WITHOUT reporting them.
+   *
+   * The failure the renderer's early filters produce and no callback carries:
+   * a chart whose slide or shape the host would not resolve never reaches
+   * `onFailed`, so the only way a caller can notice is by counting what came
+   * back. A real host dropped five of six this way and the pane said
+   * "Same scale applied to 6 charts".
+   */
+  updateChartsDrops: 0,
   /** Whether the user has pressed Stop — the flag the render loops read. */
   stopRequested: false,
   /** What slideSize() reports — 16:9 unless a test says otherwise. */
@@ -212,9 +228,28 @@ vi.mock("../src/render/powerpoint", () => ({
         };
         onFailed?.(item, err);
       }
+      // One target per chart the host RESOLVED — the real contract, and the
+      // only channel a caller has for "this chart was dropped without a word".
+      // The renderer's `live`/`alive` filters drop a chart whose slide or shape
+      // the host declines to answer for, and they are early returns rather than
+      // throws, so `onFailed` never fires for them. A stalled chart is still in
+      // this array (it comes back carrying its OLD target), which is why the two
+      // signals do not double-count. `updateChartsDrops` is how a test arms the
+      // silent case.
+      return items.slice(host.updateChartsDrops).map((it) => it.target);
     },
   ),
-  listChartsInDeck: vi.fn(async () => host.deckCharts),
+  listChartsInDeck: vi.fn(async () => ({
+    charts: host.deckCharts,
+    unread: host.deckScanUnread,
+    short: 0,
+    tagsUnread: 0,
+    slides: host.slideCount,
+  })),
+  scanIsComplete: (s: { unread: number; short: number; tagsUnread: number }) =>
+    s.unread === 0 && s.short === 0 && s.tagsUnread === 0,
+  scanGap: (s: { unread: number; slides: number }) =>
+    s.unread ? `${s.unread} of ${s.slides} slide(s) would not answer` : "",
   listChartsInSelection: vi.fn(async () => host.selectionCharts),
   loadChartFromSelection: vi.fn(async (budgetMs?: number) => {
     host.selectionBudgets.push(budgetMs);
@@ -321,6 +356,7 @@ async function bootHostPane() {
   host.selectionBounds = null;
   host.slideShapes = [];
   host.deckCharts = [];
+  host.deckScanUnread = 0;
   host.selectionCharts = [];
   host.loadSelectionResult = null;
   host.gate = null;
@@ -360,6 +396,7 @@ async function bootHostPane() {
   host.calls.updateChart = [];
   host.calls.updateCharts = [];
   host.updateChartsStalls.clear();
+  host.updateChartsDrops = 0;
   host.stopRequested = false;
   host.slideSize = { width: 960, height: 540, source: "pageSetup" };
 
@@ -704,6 +741,35 @@ describe("Insert", () => {
     expect(at.left! + (JSON.parse(at.tagData!) as { width: number }).width).toBeLessThanOrEqual(720);
   });
 
+  /**
+   * A host that will not describe the slide must get the CASCADE, and the
+   * cascade has to actually move.
+   *
+   * `getSlideShapeBounds` used to swallow a refusal into `[]`, with a comment
+   * claiming placement then "falls back to the cascade, which is what it always
+   * did". It does not: `placeChart` reads an empty `occupied` as "there is room
+   * everywhere", so `placeBeside` succeeds on its first pass and returns the
+   * origin UNMOVED — its `fallback` argument is unreachable. Two inserts onto a
+   * slide the host would not read therefore landed on exactly the same point,
+   * which is the pile the placement rule exists to prevent and worse than the
+   * fixed cascade it replaced. A real host refused every shape read on a whole
+   * deck (`unread=8 slides=8`), so this is its ordinary behaviour.
+   */
+  it("cascades instead of stacking when the host will not say what is on the slide", async () => {
+    host.slideShapes = null;
+    $("insert").click();
+    await settle();
+    const first = host.calls.insertScene.at(-1)!;
+    $("insert").click();
+    await settle();
+    const second = host.calls.insertScene.at(-1)!;
+    expect(host.calls.insertScene).toHaveLength(2);
+    expect({ left: second.left, top: second.top }, "two charts landed on exactly the same point").not.toEqual({
+      left: first.left,
+      top: first.top,
+    });
+  });
+
   it("fits the chart to a selected placeholder's bounds", async () => {
     host.selectionBounds = { left: 200, top: 150, width: 360, height: 240 };
     $("insert").click();
@@ -839,6 +905,57 @@ describe("Same scale", () => {
     await settle();
     expect(host.calls.updateCharts).toHaveLength(0);
     expect($("host-note").textContent?.toLowerCase()).toContain("two");
+  });
+
+  /**
+   * "The deck now shares one scale" is the whole feature, and it was being
+   * printed in green over a scan the code already knew was short.
+   *
+   * `listChartsInDeck` computes `unread` carefully — it has a comment saying so
+   * — and then sent it to a trace and handed back a bare array. Tracing is off
+   * by default, so in ordinary use that distinction reached nobody, and the max
+   * was taken over whatever slides happened to answer. A real host produced
+   * `unread=8 slides=8` and, in the same run, `unread=7 slides=8`.
+   */
+  it("will not rescale a deck it could not fully read", async () => {
+    host.deckCharts = [
+      { configJson: chartJson([10, 20, 30]), target: { slideId: "s1", shapeId: "a", left: 0, top: 0 } },
+      { configJson: chartJson([5, 90]), target: { slideId: "s2", shapeId: "b", left: 0, top: 0 } },
+    ];
+    host.slideCount = 8;
+    host.deckScanUnread = 6;
+    $("same-scale").click();
+    await settle();
+    expect(host.calls.updateCharts, "rescaled a deck it could not see").toHaveLength(0);
+    const said = $("host-note").textContent?.toLowerCase() ?? "";
+    expect(said, "did not say the scan was short").toContain("whole deck");
+    expect($("host-note").className).toContain("status-err");
+  });
+
+  /**
+   * The count in the success note has to be what the host TOOK.
+   *
+   * `updateChartsInSlides` drops a chart whose slide or shape the host declines
+   * to resolve, and it drops it silently — those are early filters, not throws,
+   * so `onFailed` never fires and the pane's `stalled` list stays empty. The
+   * note said `parsed.length`, the charts requested. A real host applied the
+   * shared scale to one chart in six and the self-test caught it only by
+   * re-reading the deck afterwards (`1 of 6 charts carry the shared scale`);
+   * this path does no such re-read and would have reported six of six.
+   */
+  it("reports the charts the host took, not the charts it was asked for", async () => {
+    host.deckCharts = [
+      { configJson: chartJson([10, 20, 30]), target: { slideId: "s1", shapeId: "a", left: 0, top: 0 } },
+      { configJson: chartJson([5, 90]), target: { slideId: "s2", shapeId: "b", left: 0, top: 0 } },
+      { configJson: chartJson([1, 40]), target: { slideId: "s3", shapeId: "c", left: 0, top: 0 } },
+    ];
+    host.updateChartsDrops = 2; // two charts the host would not resolve, silently
+    $("same-scale").click();
+    await settle();
+    const said = $("host-note").textContent ?? "";
+    expect(said, "claimed the whole deck").not.toContain("applied to 3");
+    expect(said).toContain("1 of 3");
+    expect($("host-note").className, "reported a partial rescale in green").toContain("status-err");
   });
 
   it("scopes to the selection and guides the user when too few are selected", async () => {

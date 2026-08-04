@@ -769,17 +769,37 @@ export async function deleteShapesById(slideId: string, ids: string[]): Promise<
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
-      if ((slide as unknown as { isNullObject: boolean }).isNullObject) return 0;
+      if (!isLive(slide)) {
+        trace("insert", "wreckage sweep could not resolve the slide", { slideId, strays: ids.length });
+        return 0;
+      }
       const shapes = ids.map((id) => slide.shapes.getItemOrNullObject(id));
       for (const s of shapes) queueNullCheck(s);
       await context.sync();
       let gone = 0;
+      let unresolved = 0;
       for (const s of shapes) {
-        if (s.isNullObject) continue;
+        // Through `isLive`, not a raw `s.isNullObject`. Every id here names a
+        // shape that COMMITTED, so it is on the slide by construction — a host
+        // that will not resolve it has not told us the stray is gone. The raw
+        // read was worse than wrong: on an unanswered proxy it throws
+        // `PropertyNotLoaded`, which took the whole sweep down and left the
+        // catch below reporting 0 for the addressable strays too.
+        if (!isLive(s)) {
+          unresolved++;
+          continue;
+        }
         s.delete();
         gone++;
       }
       await context.sync();
+      // Say what was left. Both callers use this sweep as the precondition for
+      // what they do next — the picture fallback draws over whatever is still
+      // there, `slideHoldsOnlyChart` gates the slide swap on the slide being
+      // clean, and Stop's promise that nothing is left behind rests on it —
+      // and all three used to be handed a bare number that could not say
+      // whether it meant "nothing to do" or "could not touch any of it".
+      if (unresolved) trace("insert", "wreckage the host would not resolve", { slideId, unresolved, swept: gone });
       return gone;
     });
   } catch {
@@ -1196,45 +1216,142 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
  *
  * What the placement rule needs, and nothing else: the insert path had no idea
  * what was already on the slide, so its only answer to "where does this chart
- * go" was a fixed 14pt cascade that stacked charts on top of each other. Empty
- * on any host that will not answer — placement then falls back to the cascade,
- * which is what it always did.
+ * go" was a fixed 14pt cascade that stacked charts on top of each other.
+ *
+ * **`null` when the host would not answer, and never `[]`.** This used to
+ * return an empty array on any refusal, with a comment claiming placement then
+ * "falls back to the cascade, which is what it always did". That sentence was
+ * false, and the failure it hid is the exact pile the placement rule exists to
+ * prevent: with nothing occupied, `placeBeside` succeeds on its first pass and
+ * hands back the origin UNMOVED, so the caller's cascade is unreachable. Two
+ * inserts onto a slide the host will not describe therefore land on precisely
+ * the same point, one on top of the other — worse than the fixed cascade it
+ * replaced. A real host refused every shape read on a whole deck
+ * (`unread=8 slides=8`), so this is its ordinary behaviour, not a corner.
+ *
+ * "No shapes here" and "I could not look" have to reach the caller as different
+ * answers, because only the second one means "do not trust the geometry".
  */
-export async function getSlideShapeBounds(slideId?: string): Promise<Rect[]> {
+export async function getSlideShapeBounds(slideId?: string): Promise<Rect[] | null> {
   try {
     return await PowerPoint.run(async (context) => {
       const slide = getTargetSlide(context, slideId);
       slide.shapes.load("items/left,items/top,items/width,items/height");
       await context.sync();
-      return slide.shapes.items
+      const items = loadedItems(slide.shapes);
+      if (!items) return null;
+      return items
         .map((s) => ({ left: s.left, top: s.top, width: s.width, height: s.height }))
         .filter((r) => [r.left, r.top, r.width, r.height].every((n) => typeof n === "number" && Number.isFinite(n)));
     });
   } catch {
-    return [];
+    return null;
   }
+}
+
+/**
+ * What a deck-wide chart scan found, AND what it could not see.
+ *
+ * The second half is the point. `readChartsPage` has always been careful to
+ * separate "no charts on this slide" from "this slide told us nothing" — and
+ * then the count went to a trace and the function handed back a bare array. The
+ * trace is off by default, so in ordinary use that distinction reached nobody:
+ * Same Scale took its min and max from whatever answered and reported success
+ * over a deck that provably did not share one scale, and the self-test's
+ * "nothing was left behind" assertion could not fail once the scan went blind.
+ * A real host produced both — `unread=8 slides=8`, then `unread=7 slides=8`.
+ *
+ * Three ways a scan can be short, kept apart because they are found by
+ * different reads and a caller may care about only one:
+ *
+ * - `unread`  — the slide would not describe itself at all.
+ * - `short`   — the slide's shape collection came back with fewer shapes than
+ *               the slide's own count. Observed: `shapesExpected=19 shapesSeen=15`.
+ * - `tagsUnread` — a shape's config tag would not answer either way, so
+ *               "not a chart" and "could not tell" were the same answer.
+ */
+export interface DeckScan {
+  charts: { configJson: string; target: EditTarget }[];
+  /** Slides the host would not describe at all. */
+  unread: number;
+  /** Slides whose shape collection answered SHORT of the slide's own count. */
+  short: number;
+  /** Shapes whose config tag the host would not answer either way. */
+  tagsUnread: number;
+  /** Slides in the deck, so a caller can say "7 of 8" rather than "7". */
+  slides: number;
+}
+
+/**
+ * Whether a scan saw the whole deck.
+ *
+ * Every caller that draws a conclusion from what a scan did NOT contain has to
+ * ask this first. "No charts here" and "I could not look" are the same array.
+ */
+export function scanIsComplete(scan: DeckScan): boolean {
+  return scan.unread === 0 && scan.short === 0 && scan.tagsUnread === 0;
+}
+
+/** What a scan missed, in words, or "" when it missed nothing. */
+export function scanGap(scan: DeckScan): string {
+  const parts: string[] = [];
+  if (scan.unread) parts.push(`${scan.unread} of ${scan.slides} slide(s) would not answer`);
+  if (scan.short) parts.push(`${scan.short} slide(s) answered with fewer shapes than they hold`);
+  if (scan.tagsUnread) parts.push(`${scan.tagsUnread} shape(s) would not say whether they are charts`);
+  return parts.join("; ");
+}
+
+/**
+ * Which of the three answers a tag read actually gave.
+ *
+ * `tagValue` collapses "the host says there is no such tag" and "the host would
+ * not say" into `undefined`, which is right for its callers — either way there
+ * is no config to read. It is wrong for COUNTING: a shape that is genuinely not
+ * a chart and a shape nobody could ask about are the same answer there, and a
+ * scan that cannot tell them apart cannot report its own completeness.
+ */
+function tagAnswered(tag: { isNullObject: boolean; value: string }): boolean {
+  return loadedValue(() => tag.isNullObject) !== undefined;
 }
 
 /** One page of a deck-wide chart scan. See `listChartsInDeck`. */
 async function readChartsPage(
   from: number,
   to: number,
-): Promise<{ charts: { configJson: string; target: EditTarget }[]; unread: number }> {
+): Promise<{
+  charts: { configJson: string; target: EditTarget }[];
+  unread: number;
+  short: number;
+  tagsUnread: number;
+}> {
   return PowerPoint.run(async (context) => {
     const perSlide = [];
     for (let i = from; i < to; i++) {
       const slide = context.presentation.slides.getItemAt(i);
       slide.load("id");
       slide.shapes.load("items/id,items/left,items/top");
-      perSlide.push(slide);
+      // The slide's own count, queued in the same sync, purely to catch a
+      // collection that answers SHORT without throwing. A scalar rather than a
+      // load, so it does not count against the >50-item load ceiling
+      // (office-js#4272) that `READBACK_PAGE` exists for. `getCount` can throw
+      // on the spot on a host that does not offer it, which costs the
+      // corroboration and nothing else.
+      let count: { value: number } | undefined;
+      try {
+        count = slide.shapes.getCount();
+      } catch {
+        count = undefined;
+      }
+      perSlide.push({ slide, count });
     }
     await step(`reading slides ${from}-${to - 1} for charts`, () =>
       withTimeout(context.sync(), READBACK_TIMEOUT_MS, `reading slides ${from}-${to - 1} for charts`),
     );
 
     let unread = 0;
+    let short = 0;
     const lookups: ({ slideId: string; shape: PowerPoint.Shape } & ChartTags)[] = [];
-    for (const slide of perSlide) {
+    for (const { slide, count } of perSlide) {
       // A slide whose shape collection the host did not answer tells us
       // nothing, and must not be read as "no charts on this one": it is a
       // slide whose charts a deck-wide rescale would silently skip.
@@ -1244,14 +1361,24 @@ async function readChartsPage(
         unread++;
         continue;
       }
+      // Corroborate only when there is something to corroborate with. A count
+      // the host would not give leaves the read exactly as trusted as it was —
+      // never LESS, or every slide would look short on a host without getCount.
+      const n = count ? loadedValue(() => count.value) : undefined;
+      if (typeof n === "number" && shapes.length < n) short++;
       for (const shape of shapes) lookups.push({ slideId, shape, ...chartTagsOf(shape) });
     }
     await step(`reading chart tags on slides ${from}-${to - 1}`, () =>
       withTimeout(context.sync(), READBACK_TIMEOUT_MS, `reading chart tags on slides ${from}-${to - 1}`),
     );
 
+    let tagsUnread = 0;
     const charts = lookups
       .map((l): { configJson: string; target: EditTarget } | undefined => {
+        // Counted before the value is read, and for every shape rather than
+        // only the ones that turned out to be charts — the question is how much
+        // of the slide this scan could see, not how much of it was a chart.
+        if (!tagAnswered(l.config)) tagsUnread++;
         const configJson = tagValue(l.config);
         const at = targetRef(l.shape);
         if (!configJson || !at) return undefined;
@@ -1276,7 +1403,7 @@ async function readChartsPage(
       untrack(l.origin);
       untrack(l.shape);
     }
-    return { charts, unread };
+    return { charts, unread, short, tagsUnread };
   });
 }
 
@@ -1294,27 +1421,35 @@ async function readChartsPage(
  * the 37 charts it could see, and so did every scenario in the self-test that
  * starts by asking what is in the deck.
  *
- * What is skipped is traced, never swallowed: a rescale that silently missed a
- * slide is a deck that no longer shares one scale, which is the one thing the
- * feature promises.
+ * What is skipped is RETURNED, not merely traced. It used to be traced only,
+ * and tracing is off by default — so the one fact that makes this scan safe to
+ * act on reached nobody in ordinary use, and every caller drew conclusions from
+ * an array that could not tell "no charts here" from "I could not look". See
+ * `DeckScan`, and `scanIsComplete` for the question every such caller owes.
  */
-export async function listChartsInDeck(): Promise<{ configJson: string; target: EditTarget }[]> {
+export async function listChartsInDeck(): Promise<DeckScan> {
   const total = await slideCount();
   const charts: { configJson: string; target: EditTarget }[] = [];
   let unread = 0;
+  let short = 0;
+  let tagsUnread = 0;
   for (let start = 0; start < total; start += READBACK_PAGE) {
     const end = Math.min(start + READBACK_PAGE, total);
     try {
       const page = await readChartsPage(start, end);
       charts.push(...page.charts);
       unread += page.unread;
+      short += page.short;
+      tagsUnread += page.tagsUnread;
     } catch {
       // A page whose sync rejected told us nothing about any slide on it.
       unread += end - start;
     }
   }
-  if (unread) trace("pane", "slides that would not answer a chart scan", { unread, slides: total });
-  return charts;
+  const scan = { charts, unread, short, tagsUnread, slides: total };
+  if (!scanIsComplete(scan))
+    trace("pane", "slides that would not answer a chart scan", { unread, short, tagsUnread, slides: total });
+  return scan;
 }
 
 /**
@@ -4217,10 +4352,42 @@ export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       slide.load("id");
       await context.sync();
-      if ((slide as unknown as { isNullObject: boolean }).isNullObject) return false;
+      if (!isLive(slide)) return false;
       slide.shapes.load("items/name");
+      // The slide's own count, for the one question the names cannot answer:
+      // did this collection tell us about EVERY shape? See below.
+      let count: { value: number } | undefined;
+      try {
+        count = slide.shapes.getCount();
+      } catch {
+        count = undefined;
+      }
       await context.sync();
-      const names = slide.shapes.items.map((s) => (s as unknown as { name: string }).name);
+      const items = loadedItems(slide.shapes);
+      if (!items) return false;
+      const names = items.map((s) => loadedValue(() => (s as unknown as { name: string }).name));
+      // Corroborate the list against the slide's own count before answering
+      // yes. This gate authorises DELETING the user's slide — their logo, their
+      // title, their footnote, replaced by a generated one that carries none of
+      // it and no speaker notes either — and it is consulted only AFTER the host
+      // has already stalled, which is precisely the state in which this host
+      // answers shape collections short (`shapesExpected=19 shapesSeen=15`).
+      //
+      // A short read is indistinguishable from a bare slide by name alone: both
+      // arrive as a list this function is happy with. So the count has to
+      // disagree before "empty" or "one chart group" is believed. A count the
+      // host will not give is not a licence either — this is the one gate in
+      // the file where being wrong cannot be undone by anything but Ctrl-Z, so
+      // "I could not check" answers no.
+      const n = count ? loadedValue(() => count.value) : undefined;
+      if (typeof n !== "number" || n !== names.length) {
+        trace("insert", "slide-swap gate could not corroborate the slide's shapes", {
+          slideId,
+          seen: names.length,
+          count: n,
+        });
+        return false;
+      }
       // An EMPTY slide counts. This gate asks "would replacing this slide lose
       // anything the user put here", and the answer for a bare slide is no —
       // but it used to insist on seeing exactly one chart group, so the moment
@@ -4283,34 +4450,32 @@ export async function replaceSlideWithDeck(slideId: string, base64: string): Pro
   // cheap against a swap that already costs several, and against the failure it
   // avoids — a sync that never comes back and a duplicate slide left on screen.
   await settle();
-  try {
-    await withTimeoutOrVerify(
-      PowerPoint.run(async (context) => {
-        const old = context.presentation.slides.getItemOrNullObject(slideId);
-        old.load("id");
-        await context.sync();
-        if ((old as unknown as { isNullObject: boolean }).isNullObject) throw new Error("original slide is gone");
-        (old as unknown as { delete(): void }).delete();
-        await context.sync();
-      }),
-      // Bounded like the insert above it. This runs on a host that has ALREADY
-      // stalled once — that is why the swap was reached at all — so the one
-      // call left unguarded is the one most likely to hang.
-      DECK_INSERT_TIMEOUT_MS(1),
-      "removing the slide a generated deck replaced",
-    );
-  } catch {
-    // The new slide landed but the old one would not go. Two charts now, which
-    // is visible and fixable; silently claiming success is neither — and
-    // neither is answering "failed", which sends the caller off to draw a
-    // third copy as a picture.
-    trace("insert", "slide swap left the original behind", { slideId });
-    return "duplicated";
-  }
-  // The deck's own answer, and now the only one. A delete whose sync went
-  // unanswered still lands often enough that reading the count is strictly
-  // better information than reading the promise.
-  return (await slideCount()) === before ? "swapped" : "duplicated";
+  // Through `deleteSlideById`, which knows that a refused lookup is not a
+  // verdict.
+  //
+  // This used to open its own context, call `getItemOrNullObject(slideId)`, and
+  // throw "original slide is gone" the moment the flag was not `false` — on the
+  // very id `insertSlidesFromBase64` had just accepted as `targetSlideId`, with
+  // the count check above already proving the deck had grown by one. So the
+  // original was demonstrably still there, and the user was told to sort out two
+  // identical slides by hand. This host does exactly that: it resolved a slide's
+  // id once and refused it ever after, while still listing it among the deck's
+  // slides. `deleteSlideById` answers from that list and falls back to deleting
+  // by position, which is the whole reason it was written.
+  await withTimeoutOrVerify(
+    deleteSlideById(slideId),
+    DECK_INSERT_TIMEOUT_MS(1),
+    "removing the slide a generated deck replaced",
+  ).catch(() => {});
+  // The deck's own answer, and now the only one — for the refusal case as much
+  // as for the success case. A delete whose sync went unanswered still lands
+  // often enough that reading the count is strictly better information than
+  // reading the promise, and the old code returned "duplicated" out of its catch
+  // WITHOUT re-counting, so a delete that did land was still reported as a
+  // duplicate.
+  if ((await slideCount()) === before) return "swapped";
+  trace("insert", "slide swap left the original behind", { slideId });
+  return "duplicated";
 }
 
 /**

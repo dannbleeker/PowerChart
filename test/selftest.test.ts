@@ -22,6 +22,7 @@ import { setTracing, traceLog } from "../src/core/trace";
 import {
   runSelfTest,
   describeSelfTest,
+  selfTestNeedsAttention,
   setSelfTestRasterizer,
   SCENARIO_NAMES,
   ROUTINE_SCENARIO_NAMES,
@@ -111,6 +112,51 @@ describe("the host self-test battery", () => {
     expect(skipped.some((s) => /host/i.test(s.detail))).toBe(true);
     // A skip is never counted as a pass in the headline either.
     expect(describeSelfTest(results)).toContain("skipped");
+  });
+
+  /**
+   * "Found nothing, therefore nothing was left behind" is an assertion a blind
+   * scan satisfies for free.
+   *
+   * On a real host this scenario reported PASS off a scan that had just read
+   * 1 of 8 slides — `unread=7 slides=8` is the line immediately before its own
+   * verdict — while two other scenarios reported SKIPPED under exactly the same
+   * blindness. An assertion that cannot fail is not a guard, and this one is
+   * guarding the promise that Stop is non-destructive, which nothing else
+   * checks.
+   */
+  it("does not pass 'nothing was left behind' on a scan that read nothing", async () => {
+    installHost([makeSlide("s1")]);
+    // Every deck scan comes back empty and SAYS so. `hollowReads` is per-read
+    // and this scenario's scan is the last of many, so a large count is the
+    // honest way to hold the whole run blind.
+    faults.hollowReads = 500;
+    try {
+      const r = byName(await runSelfTest("probe"))["stop a run part-way"];
+      expect(r.ok, "passed on a scan that read nothing").toBe(false);
+      expect(r.skipped, "reported a blind scan as a real verdict").toBe(true);
+      expect(r.blind, "attributed the blind scan to something else").toBe(true);
+      expect(r.detail).toMatch(/could not see the whole deck/i);
+    } finally {
+      faults.hollowReads = 0;
+    }
+  });
+
+  it("counts a blind scan apart from a host that lacks the API", async () => {
+    // Both are skips and they are not the same finding. The summary called
+    // every skip "host cannot run them", so a run in which the host refused
+    // every deck read reported, in green, a list of capability gaps.
+    const results: ScenarioResult[] = [
+      { name: "alpha", ok: true, detail: "fine", ms: 1 },
+      { name: "beta", ok: false, skipped: true, detail: "host has no picture fill", ms: 1 },
+      { name: "gamma", ok: false, skipped: true, blind: true, detail: "the deck scan could not see", ms: 1 },
+    ];
+    const text = describeSelfTest(results);
+    expect(text).toContain("1 skipped (host cannot run them)");
+    expect(text).toMatch(/1 could not run — the deck scan went blind/);
+    // And the run is not green: a deck nobody could read is something to look at.
+    expect(selfTestNeedsAttention(results)).toBe(true);
+    expect(selfTestNeedsAttention(results.slice(0, 2)), "a plain capability skip is not a problem").toBe(false);
   });
 
   it("says which scenarios failed, not just how many", async () => {
@@ -303,7 +349,7 @@ describe("the scenarios the selection API unlocked", () => {
     // Click only once the scenario is actually listening — the ordering that
     // exercises the handler rather than a lucky first read.
     await vi.waitFor(() => expect(selectionHandlerCount()).toBeGreaterThan(0));
-    const chart = (await listChartsInDeck())[0];
+    const chart = (await listChartsInDeck()).charts[0];
     expect(chart, "no probe chart for the click to land on").toBeTruthy();
     userClicksShape(chart.target.shapeId);
     const r = byName(await run)["edit the chart YOU click"];
@@ -335,7 +381,7 @@ describe("the scenarios the selection API unlocked", () => {
       // fault has to be armed AFTER reading them or it breaks the deck scan
       // rather than the selection read this test is about.
       await vi.waitFor(() => expect(selectionHandlerCount()).toBeGreaterThan(0));
-      const chart = (await listChartsInDeck())[0];
+      const chart = (await listChartsInDeck()).charts[0];
       // A click, on a host that then refuses the shape-collection read. This
       // is the "e.load is not a function" shape a real web host produced.
       faults.selectionReadThrows = true;

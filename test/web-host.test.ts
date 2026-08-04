@@ -412,9 +412,12 @@ describe("proxies the host would not answer for", () => {
     unansweredShapeReads.add("s1");
     const found = await listChartsInDeck();
     expect(
-      found.map((c) => JSON.parse(c.configJson).title),
+      found.charts.map((c) => JSON.parse(c.configJson).title),
       "the silent slide took the whole scan with it",
     ).toEqual(["s2"]);
+    // And the scan SAYS it missed one, rather than handing back a short list
+    // that reads exactly like a deck with one chart in it.
+    expect(found.unread, "the silent slide was not reported").toBe(1);
   });
 
   it("never turns a refused sync into a property-read crash", async () => {
@@ -496,13 +499,13 @@ describe("the everyday paths under a host that answers nothing it was not asked 
     await loadChartFromSelection();
     await insertSceneIntoSlide(buildChart(cfg()), { tagData: JSON.stringify(cfg()) });
     const deck = await listChartsInDeck();
-    if (deck.length) {
-      await updateChartInSlide(buildChart({ ...cfg(), title: "edited" }), deck[0].target, {
+    if (deck.charts.length) {
+      await updateChartInSlide(buildChart({ ...cfg(), title: "edited" }), deck.charts[0].target, {
         tagData: JSON.stringify({ ...cfg(), title: "edited" }),
       });
     }
     await listChartsInSelection();
-    return deck;
+    return deck.charts;
   }
 
   it("runs the pane's whole surface against a host that answers only some of it", async () => {

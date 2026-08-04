@@ -25,6 +25,8 @@ import {
   wantsAutoPicture,
   listChartsInDeck,
   listChartsInSelection,
+  scanIsComplete,
+  scanGap,
   loadChartFromSelection,
   loadThemePalette,
   updateChartInSlide,
@@ -54,6 +56,7 @@ import { beginCrashLog, clearCrashLog, endCrashLog, flushCrashLog, recordCrashSt
 import {
   runSelfTest,
   describeSelfTest,
+  selfTestNeedsAttention,
   setSelfTestRasterizer,
   setSelfTestPrompt,
   SCENARIO_NAMES,
@@ -1723,13 +1726,26 @@ async function runInsert(asNew: boolean) {
     // The slide's real size, not an assumed one: whether a second chart can sit
     // beside the first is entirely a question about the width, and a 4:3 deck is
     // 240pt narrower than the 16:9 this used to take for granted.
-    at = placeChart(
-      await getSlideShapeBounds(),
-      { width: cfg.width ?? DEFAULT_SIZE.width, height: cfg.height ?? DEFAULT_SIZE.height },
-      { left: 60, top: 90 },
-      { left: 60 + insertOffset, top: 90 + insertOffset },
-      await slideSize(),
-    );
+    //
+    // A host that will not describe the slide gets the cascade, and gets it
+    // HERE rather than inside `placeChart`. `placeChart` cannot tell the
+    // difference: an empty `occupied` means "there is room everywhere", so
+    // `placeBeside` succeeds on its first pass and returns the origin unmoved,
+    // and its `fallback` argument is never reached. Two inserts onto a slide the
+    // host would not read therefore landed on exactly the same point — the pile
+    // this whole rule exists to prevent, and worse than the fixed cascade it
+    // replaced. A real host refused every shape read on a whole deck.
+    const size = { width: cfg.width ?? DEFAULT_SIZE.width, height: cfg.height ?? DEFAULT_SIZE.height };
+    const occupied = await getSlideShapeBounds();
+    at = occupied
+      ? placeChart(
+          occupied,
+          size,
+          { left: 60, top: 90 },
+          { left: 60 + insertOffset, top: 90 + insertOffset },
+          await slideSize(),
+        )
+      : { left: 60 + insertOffset, top: 90 + insertOffset, ...size, shrunk: false, moved: "cascade" };
     insertOffset = (insertOffset + 14) % 84;
   }
   cfg = { ...cfg, width: at.width, height: at.height };
@@ -1763,7 +1779,21 @@ async function runInsert(asNew: boolean) {
  * just the selected ones) to the union of their extents and re-render them.
  */
 async function doSameScale(scope: "deck" | "selection" = "deck") {
-  const charts = scope === "deck" ? await listChartsInDeck() : await listChartsInSelection();
+  // A deck-wide scan that could not see the whole deck cannot be the basis for
+  // "the deck now shares one scale" — that sentence is the entire feature, and
+  // it was being printed in green over a scan the code already knew was short.
+  // A real host produced `unread=8 slides=8` and, later in the same run,
+  // `unread=7 slides=8`; the self-test caught the consequence by re-reading the
+  // deck afterwards (`1 of 6 charts carry the shared scale`) and this path,
+  // which does not re-read, would have said 6 of 6.
+  const scan = scope === "deck" ? await listChartsInDeck() : null;
+  const charts = scan ? scan.charts : await listChartsInSelection();
+  if (scan && !scanIsComplete(scan)) {
+    note("Same scale needs to see the whole deck first — {gap}. Try again; nothing was changed.", "err", {
+      gap: scanGap(scan),
+    });
+    return;
+  }
   const parsed = charts
     .map((c) => ({ target: c.target, cfg: JSON.parse(c.configJson) as ChartConfig }))
     .map((c) => ({ ...c, extent: valueExtent(c.cfg) }))
@@ -1809,7 +1839,7 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
    * the one that left the most behind.
    */
   const wreckage: UpdateWreckage[] = [];
-  await updateChartsInSlides(
+  const applied = await updateChartsInSlides(
     rescaled.map((c, i) => ({
       scene: c.scene,
       target: c.target,
@@ -1841,13 +1871,24 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
       `PowerChart: same scale swept ${swept} of ${strays} shapes left by ${wreckage.length} stalled redraw(s)`,
     );
   }
+  // Charts the host silently declined to resolve at all.
+  //
+  // `updateChartsInSlides` drops those — its `live`/`alive` filters are early
+  // returns rather than throws, so `onFailed` never fires and `stalled` stays
+  // empty. A stalled chart IS in the returned array (it comes back with its old
+  // target), so these two counts never double-report the same chart. The
+  // success note used to say `parsed.length`, the charts REQUESTED, which is
+  // how a run that rescaled one of six reported six with nothing else said.
+  const missed = rescaled.length - applied.length;
   if (stalled.length) {
     note(
-      "Same scale: PowerPoint would not redraw {n} chart(s) — {which}. They are now empty; undo (Ctrl+Z) restores them.",
+      "Same scale: PowerPoint would not redraw {n} chart(s) — {which}. They are now empty; undo (Ctrl+Z) restores them." +
+        (missed > 0 ? " {missed} more were never reached — the deck is not on one scale." : ""),
       "err",
       {
         n: stalled.length,
         which: stalled.join(", "),
+        missed,
       },
     );
     return;
@@ -1857,7 +1898,16 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
   // false. `guard()` posts the "Stopped" note; this just declines to overwrite
   // it with a success message first.
   if (isStopRequested()) return;
-  note("Same scale applied to {n} charts (max {max}).", "ok", { n: parsed.length, max });
+  if (missed > 0) {
+    note(
+      "Same scale reached {n} of {total} charts — PowerPoint would not answer for the other {missed}. " +
+        "The deck is not on one scale; try again.",
+      "err",
+      { n: applied.length, total: rescaled.length, missed },
+    );
+    return;
+  }
+  note("Same scale applied to {n} charts (max {max}).", "ok", { n: applied.length, max });
   const degraded = pictures.filter((p) => p.warn).length;
   if (degraded) {
     note("Same scale applied, but {n} image chart(s) fell back to native shapes.", "err", { n: degraded });
@@ -3097,7 +3147,7 @@ function wireInsert() {
         // stays marked unfinished on purpose: it produced no downloadable run
         // log either, so the storage copy is the only record it has.
         endCrashLog();
-        note(describeSelfTest(results), results.some((r) => !r.ok && !r.skipped) ? "err" : "ok");
+        note(describeSelfTest(results), selfTestNeedsAttention(results) ? "err" : "ok");
       }),
     );
     const demoBtn = $("demo-insert") as HTMLButtonElement;

@@ -32,6 +32,9 @@ import {
   updateChartInSlide,
   updateChartsInSlides,
   withSlideDeselected,
+  slideHoldsOnlyChart,
+  replaceSlideWithDeck,
+  deleteShapesById,
   addScratchSlide,
   deleteSlideById,
   clearShapeSelection,
@@ -695,6 +698,100 @@ describe("looking away while a chart redraws", () => {
     expect(deck.map((s) => s.id)).toEqual(["s1", "s2"]);
   });
 
+  /**
+   * The slide-swap gate authorises DELETING the user's slide. It has to be sure.
+   *
+   * `slideHoldsOnlyChart` read `slide.shapes.items` and answered yes for an
+   * empty list — and it is consulted only AFTER the host has already stalled,
+   * which is exactly the state in which this host answers shape collections
+   * short (`shapesExpected=19 shapesSeen=15`). A hollow read therefore looked
+   * identical to a bare slide, and the swap replaced a slide holding the user's
+   * logo, title and footnote with a generated one carrying none of it and no
+   * speaker notes either. Recoverable only by Ctrl-Z, and the note the user
+   * gets does not mention shapes.
+   */
+  it("refuses the slide swap when it cannot corroborate what is on the slide", async () => {
+    const slide = makeSlide("s1");
+    // Two real shapes the user put there...
+    slide.created.push(makeShape("geometric", "rectangle", { left: 0, top: 0, width: 10, height: 10 }));
+    slide.created.push(makeShape("geometric", "rectangle", { left: 20, top: 0, width: 10, height: 10 }));
+    installHost([slide]);
+    // ...and a host that answers the collection empty while still counting two.
+    faults.hollowNameReads = 1;
+    try {
+      expect(await slideHoldsOnlyChart("s1"), "believed a hollow read and offered the swap").toBe(false);
+    } finally {
+      faults.hollowNameReads = 0;
+    }
+  });
+
+  it("still allows the swap on a slide it CAN corroborate as empty", async () => {
+    // The gate has to stay usable, or the fallback it guards is dead code. A
+    // bare slide, honestly read, is still a yes.
+    installHost([makeSlide("s1")]);
+    expect(await slideHoldsOnlyChart("s1")).toBe(true);
+  });
+
+  /**
+   * A refused lookup is not "the original slide is gone".
+   *
+   * The swap used to open its own context, ask for the target by id, and throw
+   * `original slide is gone` the moment the null flag was not `false` — on the
+   * very id `insertSlidesFromBase64` had just accepted as `targetSlideId`, with
+   * the count check already proving the deck had grown by one. So the original
+   * was demonstrably still there, and the user was told to sort out two
+   * identical slides by hand, permanently. This host does exactly that: it
+   * resolves a slide id once and refuses it after, while still listing it.
+   */
+  it("removes the slide it replaced even when the host will not resolve its id", async () => {
+    const built = await buildDeckBase64(
+      [{ scene: buildChart(sampleConfig("clustered")), title: "A", configJson: "{}", slot: 0, run: "r1" }],
+      { width: 720, height: 405 },
+    );
+    const deck = [makeSlide("s1"), makeSlide("s2")];
+    installHost(deck);
+    // The host takes the null check for s1 and answers nothing — neither "gone"
+    // nor "there", which is the state `isLive` is deliberately pessimistic about.
+    unansweredNullChecks.add("s1");
+    try {
+      expect(await replaceSlideWithDeck("s1", built.base64)).toBe("swapped");
+      expect(
+        deck.map((s) => s.id),
+        "left the replaced slide in the deck",
+      ).not.toContain("s1");
+    } finally {
+      unansweredNullChecks.clear();
+    }
+  });
+
+  /**
+   * A stray the host will not resolve has not been swept, and saying so matters
+   * to three separate callers.
+   *
+   * Every id handed to this sweep names a shape that COMMITTED, so it is on the
+   * slide by construction. The old code read `s.isNullObject` raw — which on an
+   * unanswered proxy throws `PropertyNotLoaded`, took the whole sweep down, and
+   * left the catch reporting 0 for the addressable strays as well. The picture
+   * fallback then drew over the debris, the slide-swap gate saw a slide that was
+   * not clean, and Stop's promise that nothing is left behind rested on a count
+   * that could not tell "nothing to do" from "could not touch any of it".
+   */
+  it("sweeps the strays it can reach even when one of them will not answer", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const a = slide.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 5, height: 5 });
+    const b = slide.shapes.addGeometricShape("rectangle", { left: 6, top: 0, width: 5, height: 5 });
+    unansweredNullChecks.add(a.id); // this one the host will not describe
+    try {
+      const swept = await deleteShapesById("s1", [a.id, b.id]);
+      expect(swept, "one quiet stray took the whole sweep down").toBe(1);
+      expect(b.deleted, "the reachable stray was left on the slide").toBe(true);
+      expect(a.deleted, "deleted a shape the host would not confirm").toBe(false);
+    } finally {
+      unansweredNullChecks.clear();
+    }
+  });
+
   it("takes back a scratch slide whose id it cannot verify", async () => {
     // `addScratchSlide` refuses to hand out an id it could not resolve — but
     // the slide landed, so refusing without also removing it would leave a
@@ -763,7 +860,7 @@ describe("updateChartInSlide", () => {
     const live = () => slide.created.filter((s) => !s.deleted);
     for (const edit of [1, 2]) {
       // Same Scale: read the deck back, re-render every chart it finds.
-      const found = (await listChartsInDeck()).filter((c) => live().some((s) => s.id === c.target.shapeId));
+      const found = (await listChartsInDeck()).charts.filter((c) => live().some((s) => s.id === c.target.shapeId));
       expect(found, `edit ${edit}`).toHaveLength(1);
       await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
       expect(live(), `edit ${edit}`).toHaveLength(drawn);
@@ -879,8 +976,8 @@ describe("listChartsInDeck", () => {
     s2.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
 
     const found = await listChartsInDeck();
-    expect(found).toHaveLength(2);
-    expect(found.map((f) => f.target.slideId).sort()).toEqual(["s1", "s2"]);
+    expect(found.charts).toHaveLength(2);
+    expect(found.charts.map((f) => f.target.slideId).sort()).toEqual(["s1", "s2"]);
     // The deck-wide sweep releases its proxy objects (one tag + one shape per
     // shape on every slide) once their values are read.
     expect(untracked.tags).toBeGreaterThan(0);
@@ -918,7 +1015,7 @@ describe("in-place update keeps the chart where it is", () => {
     await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
     const seen: string[] = [];
     for (let i = 0; i < 3; i++) {
-      const charts = await listChartsInDeck();
+      const charts = (await listChartsInDeck()).charts;
       expect(charts).toHaveLength(1);
       const t = charts[0].target;
       seen.push(`${Math.round(t.left)},${Math.round(t.top)}`);
@@ -947,18 +1044,18 @@ describe("in-place update keeps the chart where it is", () => {
     };
     await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
 
-    const before = (await listChartsInDeck())[0].target;
+    const before = (await listChartsInDeck()).charts[0].target;
     // The user drags the whole chart across the slide.
     const [dx, dy] = [240, 110];
     for (const sh of slide.created) {
       sh.left += dx;
       sh.top += dy;
     }
-    const moved = (await listChartsInDeck())[0].target;
+    const moved = (await listChartsInDeck()).charts[0].target;
     expect(moved.left).toBeCloseTo(before.left + dx, 5);
 
     await updateChartsInSlides([{ scene: buildChart(cfg), target: moved, opts: { tagData: JSON.stringify(cfg) } }]);
-    const after = (await listChartsInDeck())[0].target;
+    const after = (await listChartsInDeck()).charts[0].target;
     expect(after.left, "update dragged the chart back to its insert position").toBeCloseTo(moved.left, 5);
     expect(after.top, "update dragged the chart back to its insert position").toBeCloseTo(moved.top, 5);
   });
@@ -977,17 +1074,17 @@ describe("in-place update keeps the chart where it is", () => {
       data: { categories: ["A", "B"], series: [{ name: "S", values: [3, 4] }] },
     };
     await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg), left: 60, top: 90 });
-    const held = (await listChartsInDeck())[0].target; // captured once, then kept
+    const held = (await listChartsInDeck()).charts[0].target; // captured once, then kept
 
     for (const sh of slide.created.filter((s) => !s.deleted)) {
       sh.left += 200;
       sh.top += 60;
     }
-    const moved = (await listChartsInDeck())[0].target;
+    const moved = (await listChartsInDeck()).charts[0].target;
 
     // The pane updates with the STALE target it has been holding all along.
     await updateChartInSlide(buildChart(cfg), held, { tagData: JSON.stringify(cfg) });
-    const after = (await listChartsInDeck())[0].target;
+    const after = (await listChartsInDeck()).charts[0].target;
     expect(after.left, "update teleported the chart back").toBeCloseTo(moved.left, 5);
     expect(after.top, "update teleported the chart back").toBeCloseTo(moved.top, 5);
   });
@@ -1014,14 +1111,14 @@ describe("repeated in-place updates keep landing", () => {
       data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 2] }] },
     };
     await insertSceneIntoSlide(buildChart(cfg), { tagData: '{"v":0}' });
-    let target = (await listChartsInDeck())[0].target;
+    let target = (await listChartsInDeck()).charts[0].target;
 
     for (const v of [1, 2, 3]) {
       const next = await updateChartInSlide(buildChart(cfg), target, { tagData: `{"v":${v}}` });
       expect(next, `update ${v} returned no target`).toBeTruthy();
       target = next!;
       // The edit actually reached the slide, every time.
-      const live = await listChartsInDeck();
+      const live = (await listChartsInDeck()).charts;
       expect(live, `update ${v} lost the chart`).toHaveLength(1);
       expect(JSON.parse(live[0].configJson).v, `update ${v} silently did nothing`).toBe(v);
     }

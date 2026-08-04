@@ -69,6 +69,8 @@ import {
   insertSceneIntoSlide,
   insertSlidesFromPptx,
   listChartsInDeck,
+  scanIsComplete,
+  scanGap,
   newRunId,
   reconcileDeck,
   showSlide,
@@ -93,6 +95,17 @@ export interface ScenarioResult {
    * requirement-set gap gets diagnosed as a bug.
    */
   skipped?: boolean;
+  /**
+   * The skip was caused by the DECK SCAN going blind, not by a missing API.
+   *
+   * A third state, because the summary used to call every skip a host
+   * capability gap and five of the nine scenarios skip on an empty scan
+   * instead. A run in which the host refused every deck read therefore said, in
+   * green, "2 of 2 scenarios passed · 6 skipped (host cannot run them)" — a
+   * total loss of deck visibility reported as a feature gap, which is the sort
+   * of line someone files and moves on from.
+   */
+  blind?: boolean;
   /** What was actually observed — the sentence a diagnosis starts from. */
   detail: string;
   ms: number;
@@ -139,15 +152,47 @@ async function buildProbe(
   return { base64: built.base64, scenes, shapesPerSlide: built.shapesPerSlide };
 }
 
-/** Charts this self-test put in the deck, by the title it gave them. */
+/**
+ * Charts this self-test put in the deck, by the title it gave them — AND
+ * whether the scan that found them could see the whole deck.
+ *
+ * Five scenarios draw a conclusion from this coming back empty ("no probe chart
+ * to edit", "fewer than two to scale together", and so on) and one draws a
+ * conclusion from it coming back empty that it reports as a PASS. All six were
+ * reading a blind scan as a fact about the deck. A real host produced
+ * `unread=8 slides=8` between two scans that worked, so total blindness here is
+ * transient and lands on whichever scenario happens to ask during it.
+ */
 async function probeCharts(prefix: string) {
-  const all = await listChartsInDeck();
-  return all
-    .map((c) => ({ ...c, cfg: JSON.parse(c.configJson) as ChartConfig }))
-    .filter((c) => typeof c.cfg.title === "string" && c.cfg.title.startsWith(prefix));
+  const scan = await listChartsInDeck();
+  return {
+    found: scan.charts
+      .map((c) => ({ ...c, cfg: JSON.parse(c.configJson) as ChartConfig }))
+      .filter((c) => typeof c.cfg.title === "string" && c.cfg.title.startsWith(prefix)),
+    /** The scan could not see the whole deck — nothing it did NOT find is news. */
+    blind: !scanIsComplete(scan),
+    gap: scanGap(scan),
+  };
 }
 
-type Scenario = (prefix: string) => Promise<{ ok: boolean; detail: string; skipped?: boolean }>;
+/**
+ * A skip caused by the deck scan going blind, phrased so it cannot be read as a
+ * capability gap.
+ *
+ * `describeSelfTest` used to attribute every skip to "host cannot run them",
+ * and five of the nine skip on an empty scan rather than on a missing API. A
+ * run in which the host refused every deck read therefore reported, in green,
+ * "2 of 2 scenarios passed · 6 skipped (host cannot run them)" — a total loss of
+ * deck visibility filed as a feature gap.
+ */
+const blindSkip = (gap: string) => ({
+  ok: false,
+  skipped: true,
+  blind: true,
+  detail: `the deck scan could not see the whole deck (${gap}), so nothing it did not find means anything`,
+});
+
+type Scenario = (prefix: string) => Promise<{ ok: boolean; detail: string; skipped?: boolean; blind?: boolean }>;
 
 /**
  * Inserting a demo deck on top of an earlier one.
@@ -166,7 +211,7 @@ const insertTwice: Scenario = async (prefix) => {
     await insertSlidesFromPptx(base64, titles.length);
   }
   const after = await slideCount();
-  const found = await probeCharts(`${prefix} twice`);
+  const { found } = await probeCharts(`${prefix} twice`);
   const ok = after - before === 4 && found.length === 4;
   return {
     ok,
@@ -202,7 +247,7 @@ const duplicateSlot: Scenario = async (prefix) => {
     { run },
   );
   const settled = await slideCount();
-  const kept = await probeCharts(`${prefix} dup`);
+  const { found: kept } = await probeCharts(`${prefix} dup`);
   // Four slides in, two out, and both survivors still charts. A pass that
   // deleted both copies of one item would leave two slides and read as
   // success on the count alone — hence the second half of this.
@@ -222,13 +267,15 @@ const duplicateSlot: Scenario = async (prefix) => {
  * path, which is the one that already works.
  */
 const editOnVisibleSlide: Scenario = async (prefix) => {
-  const [chart] = await probeCharts(prefix);
-  if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to edit" };
+  const { found, blind, gap } = await probeCharts(prefix);
+  const [chart] = found;
+  if (!chart)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to edit" };
   const shown = await showSlide(chart.target.slideId);
   const next = { ...chart.cfg, title: `${chart.cfg.title} (edited)` };
   const target = await updateChartInSlide(buildChart(next), chart.target, { tagData: JSON.stringify(next) });
   if (!target) return { ok: false, detail: "the chart was gone from the slide after the update" };
-  const again = await probeCharts(prefix);
+  const { found: again } = await probeCharts(prefix);
   const round = again.find((c) => c.cfg.title === next.title);
   return {
     ok: !!round,
@@ -246,8 +293,11 @@ const editOnVisibleSlide: Scenario = async (prefix) => {
  * finishes but that nothing is emptied on the way.
  */
 const sameScaleAcrossDeck: Scenario = async (prefix) => {
-  const charts = await probeCharts(prefix);
-  if (charts.length < 2) return { ok: false, skipped: true, detail: "fewer than two probe charts to scale together" };
+  const { found: charts, blind, gap } = await probeCharts(prefix);
+  if (charts.length < 2)
+    return blind
+      ? blindSkip(gap)
+      : { ok: false, skipped: true, detail: "fewer than two probe charts to scale together" };
   await showSlide(charts[0].target.slideId);
   // Every finite value across every probe chart. `Math.max()` of nothing is
   // -Infinity, and JSON.stringify turns that into `null` — so an empty or
@@ -265,7 +315,7 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
     const next: ChartConfig = { ...c.cfg, scale: { max } };
     await updateChartInSlide(buildChart(next), c.target, { tagData: JSON.stringify(next) });
   }
-  const after = await probeCharts(prefix);
+  const { found: after } = await probeCharts(prefix);
   const scaled = after.filter((c) => c.cfg.scale?.max === max).length;
   return {
     ok: scaled === charts.length && after.length === charts.length,
@@ -283,8 +333,10 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
 const explodePicture: Scenario = async (prefix) => {
   if (!canInsertPicture()) return { ok: false, skipped: true, detail: "host has no picture fill (PowerPointApi 1.8)" };
   if (!rasterizer) return { ok: false, skipped: true, detail: "no rasteriser — cannot make a picture to explode" };
-  const [chart] = await probeCharts(prefix);
-  if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to explode" };
+  const { found, blind, gap } = await probeCharts(prefix);
+  const [chart] = found;
+  if (!chart)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to explode" };
   // Collapse it to a picture first, the way a struggling host would, then ask
   // for it back as shapes. Both halves matter: a config lost on the way IN is
   // indistinguishable from one lost on the way OUT if only one is exercised.
@@ -310,7 +362,7 @@ const explodePicture: Scenario = async (prefix) => {
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
   if (!exploded) return { ok: false, detail: "the picture vanished while being exploded back to shapes" };
-  const back = (await probeCharts(prefix)).find((c) => c.target.shapeId === exploded.shapeId);
+  const back = (await probeCharts(prefix)).found.find((c) => c.target.shapeId === exploded.shapeId);
   return {
     ok: !!back,
     detail: back
@@ -339,8 +391,9 @@ const explodePicture: Scenario = async (prefix) => {
  * holding two already, which is where a positional heuristic goes wrong.
  */
 const insertOntoUsedSlide: Scenario = async (prefix) => {
-  const [host] = await probeCharts(prefix);
-  if (!host) return { ok: false, skipped: true, detail: "no probe chart to insert alongside" };
+  const { found: hosts, blind, gap } = await probeCharts(prefix);
+  const [host] = hosts;
+  if (!host) return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to insert alongside" };
   const shown = await showSlide(host.target.slideId);
   const before = await slideCount();
   const added = [`${prefix} onto A`, `${prefix} onto B`];
@@ -355,11 +408,11 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
     });
   }
   const after = await slideCount();
-  const mine = await probeCharts(`${prefix} onto`);
+  const { found: mine } = await probeCharts(`${prefix} onto`);
   // The chart that was already there must still be a chart. A run that swept
   // the slide's existing shapes into its own group would take this with it —
   // and delete it on the next edit, because the parts tag would claim it.
-  const survivor = (await probeCharts(prefix)).find((c) => c.cfg.title === host.cfg.title);
+  const survivor = (await probeCharts(prefix)).found.find((c) => c.cfg.title === host.cfg.title);
   const problems = [
     after !== before && `the deck grew by ${after - before} — the charts did not go ON the slide`,
     mine.length !== added.length && `${mine.length} of ${added.length} new charts are re-editable`,
@@ -392,8 +445,10 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
  */
 const editViaSelection: Scenario = async (prefix) => {
   if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
-  const [chart] = await probeCharts(prefix);
-  if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
+  const { found, blind, gap } = await probeCharts(prefix);
+  const [chart] = found;
+  if (!chart)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
   if (!(await selectShape(chart.target.slideId, chart.target.shapeId, selectionBudgetMs()))) {
     return { ok: false, skipped: true, detail: "the host would not select the chart" };
   }
@@ -418,7 +473,7 @@ const editViaSelection: Scenario = async (prefix) => {
     const next = { ...was, title: `${was.title} (via selection)` };
     const target = await updateChartInSlide(buildChart(next), picked.target, { tagData: JSON.stringify(next) });
     if (!target) return { ok: false, detail: "the chart was gone from the slide after editing the selection" };
-    const round = (await probeCharts(prefix)).find((c) => c.cfg.title === next.title);
+    const round = (await probeCharts(prefix)).found.find((c) => c.cfg.title === next.title);
     return {
       ok: !!round,
       detail: round
@@ -494,12 +549,21 @@ const stopPartWay: Scenario = async (prefix) => {
     resetStop();
   }
   const after = await slideCount();
+  // The third assertion is "found nothing, therefore nothing was left behind" —
+  // which a blind scan satisfies for free. On a real host this scenario reported
+  // PASS off a scan that had just read 1 of 8 slides (`unread=7 slides=8`, the
+  // line immediately before its own verdict), while two other scenarios reported
+  // SKIPPED under exactly the same blindness. An assertion that cannot fail is
+  // not a guard, and this one is guarding a promise — that Stop is
+  // non-destructive — which nothing else checks.
+  const leftovers = await probeCharts(`${prefix} stopped`);
+  if (leftovers.blind && leftovers.found.length === 0) return blindSkip(leftovers.gap);
   const problems = [
     outcome !== "stopped" && outcome,
     after !== before && `the deck grew by ${after - before} — a stopped insert added a slide`,
     // A stop must not leave a chart the pane would offer to edit: half a chart
     // that claims to be whole is worse than a visible mess.
-    (await probeCharts(`${prefix} stopped`)).length > 0 && "a stopped insert left a re-editable chart behind",
+    leftovers.found.length > 0 && "a stopped insert left a re-editable chart behind",
   ].filter(Boolean);
   return {
     ok: problems.length === 0,
@@ -724,8 +788,10 @@ const editViaRealClick: Scenario = async () => {
  */
 const whichSelectionCallWedges: Scenario = async (prefix) => {
   if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
-  const [chart] = await probeCharts(prefix);
-  if (!chart) return { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
+  const { found, blind, gap } = await probeCharts(prefix);
+  const [chart] = found;
+  if (!chart)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
   const rungs = await selectionLadder(chart.target.slideId, chart.target.shapeId, selectionBudgetMs());
   for (const r of rungs) trace("selftest", "ladder rung", { step: r.step, outcome: r.outcome, ms: r.ms });
   const stopped = rungs.find((r) => r.outcome === "silent");
@@ -909,13 +975,23 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
   return out;
 }
 
+/** Whether anything in this run needs looking at — a failure, or a blind scan. */
+export function selfTestNeedsAttention(results: ScenarioResult[]): boolean {
+  return results.some((r) => (!r.ok && !r.skipped) || r.blind);
+}
+
 /** The one-line summary the pane shows. */
 export function describeSelfTest(results: ScenarioResult[]): string {
   const ran = results.filter((r) => !r.skipped);
   const failed = ran.filter((r) => !r.ok);
-  const skipped = results.length - ran.length;
+  const blind = results.filter((r) => r.skipped && r.blind).length;
+  const skipped = results.length - ran.length - blind;
   const parts = [`${ran.length - failed.length} of ${ran.length} scenarios passed`];
   if (failed.length) parts.push(`failed: ${failed.map((f) => f.name).join(", ")}`);
   if (skipped) parts.push(`${skipped} skipped (host cannot run them)`);
+  // Counted apart, and never folded into the line above. These are not a
+  // capability gap: the host would not let the add-in see the deck, which is a
+  // finding, and the one time it happened it was reported in green.
+  if (blind) parts.push(`${blind} could not run — the deck scan went blind`);
   return `Self-test — ${parts.join(" · ")}.`;
 }

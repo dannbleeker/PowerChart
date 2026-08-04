@@ -334,6 +334,10 @@ count of how many of its options are currently on.
   touch for a histogram look; overlap (−100…100) sets how much clustered bars
   within a category overlap or gap.
 - **Same scale** (deck-wide or selection) re-renders charts on a common axis.
+  It will refuse rather than half-do the job: if PowerPoint would not describe
+  every slide, or would not answer for some of the charts it was asked to
+  redraw, the pane says which and changes nothing rather than reporting a
+  shared scale the deck does not have.
 - **Download SVG / Download PNG** (overflow menu) save the preview as a vector
   or a 2× raster image — handy for email or chat, where the native-shape output
   can't go. The real deliverable is still **Insert into slide** (editable shapes).
