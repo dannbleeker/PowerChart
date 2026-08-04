@@ -50,7 +50,9 @@ belongs with the thing it tests, not with the reason it was written.)
   polygons, options), `pane-state` / `pane-host-actions` / `pane-widgets` /
   `dom-pane` (task pane), `crashlog` (the record that outlives a run that
   never ends), `templates` (saving and re-picking a chart setup — a whole
-  feature that had no tests until one of them turned up a bug), `skill*`,
+  feature that had no tests until one of them turned up a bug),
+  `host-probe` (the fake's own frozen answer sheet — what it CLAIMS about the
+  host it stands for, so a real PowerPoint can be diffed against it), `skill*`,
   `parity`, `snapshots`, `a11y-svg`,
   `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
 - **The deck a run produces, audited from its bytes** — `verify-deck` (did

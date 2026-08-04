@@ -67,6 +67,7 @@ import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./dat
 import { BUILTIN_TEMPLATES } from "./templates";
 import { harveyScene, checkScene, flowScene, kpiScene, wireElementPreviews } from "./elements-ui";
 import { agendaChapters, wireAgendaPreview } from "./agenda-ui";
+import { runHostProbes, type HostAnswer } from "../render/host-probe";
 
 interface AppState {
   kind: ChartKind;
@@ -2911,6 +2912,33 @@ function wireInsert() {
      * action (run it again) would otherwise bury it. Hidden entirely when
      * there is nothing to recover, so a healthy pane carries no wreckage.
      */
+    /**
+     * Ask this host the fixed question list and save what it says.
+     *
+     * The one diagnostic here that is not about a run at all. Everything else
+     * in this panel reports what the ADD-IN did; this reports what the HOST is,
+     * so the fake that every test in the repo stands on can finally be checked
+     * against the thing it stands for. One click, no deck changes — it works on
+     * a scratch slide and takes it back.
+     */
+    $("demo-probe").addEventListener(
+      "click",
+      guard(async () => {
+        revealSteps();
+        note("Asking this PowerPoint what it actually does…", "busy");
+        const sheet = await runHostProbes(
+          describeHost(),
+          typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev",
+        );
+        downloadJson("powerchart-host-answers.json", sheet);
+        const odd = sheet.answers.filter((a: HostAnswer) => a.answer === "silent" || a.answer === "threw").length;
+        note(
+          `Asked ${sheet.answers.length} questions${odd ? `, ${odd} of them the host would not answer` : ""}. ` +
+            "Saved — send it over and `npm run host-diff` compares it with the fake.",
+          "ok",
+        );
+      }),
+    );
     const crashBtn = $("demo-crashlog") as HTMLButtonElement;
     const crashed = recoverCrashLog();
     if (crashed) {

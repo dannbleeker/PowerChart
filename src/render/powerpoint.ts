@@ -2313,6 +2313,59 @@ export function _setReadbackTimeoutForTest(ms: number): void {
 export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
 
 /**
+ * Every PowerPointApi set this host admits to.
+ *
+ * Half of what the add-in does is gated on these, so a run log or an answer
+ * sheet that does not carry them cannot be read: the same verdict means
+ * different things on 1.4 and on 1.10.
+ */
+export function requirementSets(): string[] {
+  return ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"].filter((v) => supports(v));
+}
+
+/** What a host probe is handed: a live context, and a slide it may wreck. */
+export interface ProbeContext {
+  /** The deck's slide collection, for questions about lookup and counting. */
+  slides: PowerPoint.SlideCollection;
+  /** The scratch slide — everything a probe creates belongs here. */
+  scratch: PowerPoint.Slide;
+  scratchId: string;
+  sync: () => Promise<void>;
+}
+
+/**
+ * Run one host probe against a scratch slide, bounded.
+ *
+ * Its own context per probe, deliberately: a question about proxy staleness or
+ * a wedged sync must not carry its damage into the next question, and the
+ * sheet's whole value is that it comes back complete from a host that is
+ * misbehaving. Bounded for the same reason — one silent question costs a
+ * budget, not the run.
+ */
+export async function withProbeContext<T>(
+  scratchId: string,
+  budgetMs: number,
+  fn: (ctx: ProbeContext) => Promise<T>,
+): Promise<T> {
+  return boundedRun(
+    "asking the host a probe question",
+    async (context) => {
+      const scratch = context.presentation.slides.getItemOrNullObject(scratchId);
+      queueNullCheck(scratch);
+      await context.sync();
+      if (!isLive(scratch)) throw new Error("the host would not resolve the scratch slide");
+      return fn({
+        slides: context.presentation.slides,
+        scratch,
+        scratchId,
+        sync: () => context.sync(),
+      });
+    },
+    budgetMs,
+  );
+}
+
+/**
  * `PowerPoint.run`, with a deadline and a name.
  *
  * Same shape as the call it replaces, so a site adopts it by changing the
@@ -4134,7 +4187,7 @@ export function traceEnvironment(build: string): void {
     // 1.5 from one that has 1.9 and simply is not asked — and the gap between
     // "what the host has" and "what we use" is where the next `setSelectedShapes`
     // is hiding. It cost months to find that one, and the log could have said.
-    requirementSets: ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"].filter((v) => supports(v)),
+    requirementSets: requirementSets(),
     canInsertSlidesFromBase64: canInsertSlidesFromBase64(),
     canInsertPicture: canInsertPicture(),
   });
