@@ -47,6 +47,17 @@ export const faults = {
   strictGroup: false,
   strictTags: false,
   hollowReads: 0,
+  /**
+   * The same short answer, on an `items/name` load.
+   *
+   * A real host does not care which properties were asked for — a collection
+   * that answers short answers short. The split exists only because this fake
+   * needs to blind ONE reader without blinding the count it is checked against:
+   * the tag pass asks for `items/id`, while the slide-swap gate and the
+   * group-child count both ask for `items/name`. Arming the wrong one is how a
+   * test comes to exercise nothing.
+   */
+  hollowNameReads: 0,
   refusePictureFill: false,
   refuseGroups: 0,
   /**
@@ -226,6 +237,21 @@ export const faults = {
    * both.
    */
   newSlideResolvesTimes: null as number | null,
+  /**
+   * After this many syncs, EVERY sync stops settling — neither resolving nor
+   * rejecting, forever.
+   *
+   * The one failure shape no `catch` can see, and the one this host actually
+   * produces: office-js#3698 and the wedge measured on this project's own build
+   * are both "the promise simply never comes back". A fault that throws models a
+   * host saying no; this models a host saying nothing, which is what a deadline
+   * exists for. `null` (the default) never wedges.
+   *
+   * Broader than `selectionWedgesHost`, which arms only after a programmatic
+   * `setSelectedShapes` — production never makes that call, so it could not be
+   * used to test the paths production actually takes.
+   */
+  wedgeAfterSyncs: null as number | null,
 };
 
 /**
@@ -816,8 +842,18 @@ export function makeSlide(id: string) {
         // 19 slides carrying 19 shapes and got 3 back. `faults.hollowReads` models
         // that — the collection is short, nothing throws, and the caller has
         // no way to know unless it compares against a count it took earlier.
-        if (faults.hollowReads > 0 && lastShapeLoad === "items/id") {
+        // `startsWith`, not equality: the deck scan asks for
+        // `items/id,items/left,items/top`, which is the same collection read
+        // under a wider projection and which a real host has no reason to treat
+        // differently. Matching only the exact string meant `hollowReads` could
+        // not blind `listChartsInDeck` at all — so the tests that thought they
+        // were exercising a short deck scan were exercising a healthy one.
+        if (faults.hollowReads > 0 && lastShapeLoad.startsWith("items/id")) {
           faults.hollowReads--;
+          return [];
+        }
+        if (faults.hollowNameReads > 0 && lastShapeLoad === "items/name") {
+          faults.hollowNameReads--;
           return [];
         }
         return live;
@@ -1354,6 +1390,7 @@ export function installHost(
         wedgeThisSync = false;
         await new Promise(() => {});
       }
+      if (faults.wedgeAfterSyncs !== null && trips.syncs > faults.wedgeAfterSyncs) await new Promise(() => {});
       if (stallSyncOn.has(trips.syncs)) {
         // Sleep past withTimeout's deadline, then settle successfully. The
         // queued shapes commit at settle time — same as real Office.js where
@@ -1409,6 +1446,7 @@ export function installHost(
   faults.strictTags = false;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;
+  faults.hollowNameReads = 0;
   lastShapeLoad = "";
   faults.refusePictureFill = false;
   blankReadbackAt.clear();
@@ -1428,6 +1466,7 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
+  faults.wedgeAfterSyncs = null;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.
   selectionRef.length = 0;

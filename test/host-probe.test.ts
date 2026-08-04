@@ -161,6 +161,35 @@ describe("the fake host's answer sheet", () => {
   });
 
   /**
+   * The sheet's whole promise is that it comes back from a misbehaving host.
+   *
+   * Every QUESTION was bounded for that reason — `PROBE_BUDGET_MS`, "so the
+   * sheet from a misbehaving host is the one worth having". The scratch-slide
+   * lifecycle around them was not: `addScratchSlide`, the mid-run replacement,
+   * and the cleanup all reached `slideIds`/`slideCount`/`deleteSlideById`,
+   * whose syncs carried a label and no deadline. One silent deck-listing read
+   * and `runHostProbes` never resolved — with `answers` already complete in
+   * memory and never returned.
+   */
+  it("comes back with its sheet even when the host goes silent at cleanup", async () => {
+    installHost([makeSlide("s1")]);
+    const { _setReadbackTimeoutForTest } = await import("../src/render/powerpoint");
+    _setReadbackTimeoutForTest(20);
+    faults.wedgeAfterSyncs = 0;
+    try {
+      const sheet = await Promise.race([
+        runHostProbes("fake-goes-silent", "test"),
+        new Promise<"never came back">((r) => setTimeout(() => r("never came back"), 800)),
+      ]);
+      expect(sheet, "the probe run never returned its answers").not.toBe("never came back");
+      expect(typeof sheet === "object" && sheet.answers).toHaveLength(PROBE_IDS.length);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setReadbackTimeoutForTest(90_000);
+    }
+  });
+
+  /**
    * When the host will not keep ANY slide, the sheet has to say that once per
    * question in a word no probe can produce — never `"threw"`, which is a real
    * answer to several of them and would read as a host divergence.
