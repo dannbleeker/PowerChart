@@ -165,6 +165,15 @@ function untrack(obj: unknown): void {
  *
  * `id` because every proxy resolved this way is a Slide or a Shape, and both
  * carry one. The value is not used — being in the sync is the point.
+ *
+ * One correction from a real host, since the paragraphs above are a claim about
+ * Office.js and it turns out not to hold everywhere. The host probe's first
+ * question asks exactly this, and PowerPoint on the web answered **yes**: a
+ * `load("isNullObject")` there populated the flag and read back `false`. So the
+ * negative is host-specific rather than universal, and on that host this
+ * function is a harmless no-op instead of a necessary workaround. Keep it: the
+ * host where it was necessary is also a real one, loading a real property is
+ * correct on both, and the cost is a property nobody reads.
  */
 function queueNullCheck(proxy: { load(propertyNames: string): void }): void {
   proxy.load("id");
@@ -2334,6 +2343,37 @@ export interface ProbeContext {
 }
 
 /**
+ * Thrown when a probe never got as far as its question, with WHICH of the two
+ * ways that happened.
+ *
+ * The distinction is the whole finding, and the first version threw it away. A
+ * real PowerPoint on the web answered thirteen of fourteen questions with the
+ * same sentence — "the host would not resolve the scratch slide" — which is two
+ * completely different diagnoses wearing one string:
+ *
+ * - `gone`: the host says the slide is not there. Something took it away, or it
+ *   never durably existed under that id.
+ * - `silent`: the host will not say either way. `isLive` reads `isNullObject`,
+ *   which `queueNullCheck` populates by loading a REAL property — so this is
+ *   also the symptom of that trick not working on this host, and if it does not
+ *   work, every `isLive` guard in this file is answering "not live" about live
+ *   objects and quietly refusing to act on them.
+ *
+ * One word separates "your diagnostic littered the deck" from "the add-in's
+ * central existence check is broken here". It is worth carrying.
+ */
+export class ScratchSlideUnavailable extends Error {
+  constructor(readonly why: "gone" | "silent") {
+    super(
+      why === "gone"
+        ? "the host says the scratch slide is gone"
+        : "the host would not say whether the scratch slide exists",
+    );
+    this.name = "ScratchSlideUnavailable";
+  }
+}
+
+/**
  * Run one host probe against a scratch slide, bounded.
  *
  * Its own context per probe, deliberately: a question about proxy staleness or
@@ -2353,7 +2393,8 @@ export async function withProbeContext<T>(
       const scratch = context.presentation.slides.getItemOrNullObject(scratchId);
       queueNullCheck(scratch);
       await context.sync();
-      if (!isLive(scratch)) throw new Error("the host would not resolve the scratch slide");
+      const flag = loadedValue(() => scratch.isNullObject);
+      if (flag !== false) throw new ScratchSlideUnavailable(flag === true ? "gone" : "silent");
       return fn({
         slides: context.presentation.slides,
         scratch,
@@ -3820,82 +3861,194 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
  * outright under load. A scratch slide that did not land must report null
  * rather than hand back an id nobody can select or delete.
  *
- * The id is read positionally from a THIRD context, once the add has settled.
- * `addSlides` avoids ids for its own thunks and says why — a fresh slide's id
- * mis-round-trips inside the context that added it — but that hazard is about
- * re-acquiring a proxy mid-context. A settled read from a later context is the
- * same read `listChartsInDeck` and the reconcile pass already rely on.
+ * The id is found by DIFFING the deck's ids before and after, from contexts
+ * either side of the add, and then proved by resolving it once more.
+ *
+ * Both of those replaced weaker steps, and a real host is why. The first
+ * version counted slides and read `getItemAt(count - 1).id` — "the last slide
+ * is the one I just made". That is an assumption about where `slides.add()`
+ * puts a slide, made by a function whose whole output is later passed to
+ * `deleteSlideById`; if the host ever appends anywhere but the end, this hands
+ * back one of the user's own slides to be deleted. A diff cannot make that
+ * mistake: it names a slide that was not in the deck a moment ago.
+ *
+ * The second version stopped at reading the id, and the id was the problem. A
+ * real PowerPoint on the web answered thirteen of fourteen host-probe questions
+ * with "the host would not resolve the scratch slide" — the same id, read this
+ * way, resolved once and then never again. Reading an id is not the same as
+ * having a usable handle on a slide, and the only way to tell the two apart is
+ * to go back and ask.
  */
 export async function addScratchSlide(): Promise<string | null> {
   try {
-    const before = await slideCount();
+    const before = await slideIds();
     await PowerPoint.run(async (context) => {
       const layoutId = await blankLayoutId(context);
       context.presentation.slides.add(layoutId ? { layoutId } : undefined);
       await context.sync();
     });
-    const after = await slideCount();
-    // Exactly one more, or give up. Fewer means the host swallowed the add;
-    // more means something else is adding slides at the same time, and in
-    // neither case is "the last slide" reliably the one this function made —
-    // deleting it later would then delete the user's work.
-    if (after !== before + 1) {
-      trace("host", "scratch slide did not land", { before, after });
+    const after = await slideIds();
+    // A host that will not list its slides cannot be diffed. Nothing was
+    // necessarily lost — the add may well have landed — but nothing here can
+    // name what landed, and a scratch slide nobody can name is litter.
+    if (!before || !after) {
+      trace("host", "scratch slide: the deck would not list its slides", { before: !!before, after: !!after });
       return null;
     }
-    return await PowerPoint.run(async (context) => {
-      const last = context.presentation.slides.getItemAt(after - 1);
-      last.load("id");
+    const known = new Set(before);
+    const fresh = after.filter((id) => !known.has(id));
+    // Exactly one new slide, or give up. None means the host swallowed the add;
+    // more than one means something else is adding slides at the same time, and
+    // neither case leaves a slide this function can claim to own — deleting one
+    // later would then delete the user's work.
+    if (fresh.length !== 1) {
+      trace("host", "scratch slide did not land", { before: before.length, after: after.length, fresh: fresh.length });
+      return null;
+    }
+    const id = fresh[0];
+    // Prove the id is worth handing out. Every caller's next move is to resolve
+    // it in a context of its own, so do that once here, where the answer is
+    // still cheap and a `null` is survivable.
+    const usable = await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemOrNullObject(id);
+      queueNullCheck(slide);
       await context.sync();
-      return last.id || null;
+      return isLive(slide);
     });
+    if (!usable) {
+      trace("host", "scratch slide landed but its id will not resolve", { id });
+      // Take it back out. It landed — the diff named it — so refusing to hand
+      // out the id without also removing the slide would leave a blank one in
+      // the deck on every attempt, which is the litter this whole function is
+      // careful about everywhere else. `deleteSlideById` has a path that does
+      // not need the id to resolve, which is exactly the case here.
+      if (!(await deleteSlideById(id))) trace("host", "could not remove the unusable scratch slide", { id });
+      return null;
+    }
+    return id;
   } catch {
     return null;
   }
 }
 
+/**
+ * Every slide id in the deck, or undefined when the host would not say.
+ *
+ * Undefined rather than an empty array: "the deck has no slides" and "the deck
+ * would not answer" are different facts, and `addScratchSlide` diffs two of
+ * these — an unanswered read silently read as "empty" would make every existing
+ * slide look brand new.
+ */
+async function slideIds(): Promise<string[] | undefined> {
+  return PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    slides.load("items/id");
+    await step("listing the deck's slides", () => context.sync());
+    const items = loadedItems(slides);
+    if (!items) return undefined;
+    const ids = items.map((s) => loadedValue(() => s.id));
+    return ids.every((id): id is string => typeof id === "string" && !!id) ? ids : undefined;
+  });
+}
+
 /** Delete one slide by id, best-effort. True when it is gone (or already was). */
 export async function deleteSlideById(slideId: string): Promise<boolean> {
   try {
-    const already = await PowerPoint.run(async (context) => {
+    const deleted = await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
-      if (!isLive(slide)) return true; // gone, or the host will not say — either way, nothing to do
+      // Not a verdict, only a failed handle: the host either says it is gone or
+      // will not say, and neither is a reason to stop trying to clean up. The
+      // deck's own slide list settles it below.
+      if (!isLive(slide)) return false;
       slide.delete();
       await step("deleting a slide", () => context.sync());
-      return false;
+      return true;
     });
-    if (already) return true;
+    // Verify from a FRESH read, and answer from the deck rather than from the
+    // fact that nothing threw.
+    //
+    // This used to `return true` straight after the delete's sync, which is not
+    // a report — it is an assumption wearing one. A queued `delete()` the host
+    // accepts and does not perform raises nothing, and this project has the
+    // receipts for exactly that shape of failure: `slides.add()` silently
+    // dropped under load, whole decks taken and never landed, tag writes
+    // acknowledged and absent. The self-test's visibility scenario is the one
+    // that made it visible: it borrows a slide and gives it back, and it could
+    // not tell a returned slide from a leaked one.
+    if (deleted && (await slideIsGone(slideId))) return true;
   } catch {
-    return false;
+    /* fall through — a context that failed has not proved the slide is still there */
   }
-  // Verify from a FRESH context, and answer from the deck rather than from the
-  // fact that nothing threw.
-  //
-  // This used to `return true` straight after the delete's sync, which is not a
-  // report — it is an assumption wearing one. A queued `delete()` the host
-  // accepts and does not perform raises nothing, and this project has the
-  // receipts for exactly that shape of failure: `slides.add()` silently dropped
-  // under load, whole decks taken and never landed, tag writes acknowledged and
-  // absent. `addSlides` already answers its own version of this question by
-  // re-counting in a fresh context; a delete deserves the same, and without it
-  // every caller's cleanup is unfalsifiable. The self-test's visibility
-  // scenario is the one that made it visible: it borrows a slide and gives it
-  // back, and it could not tell a returned slide from a leaked one.
+  return deleteSlideByPosition(slideId);
+}
+
+/**
+ * Whether the slide is confirmed absent — never "probably".
+ *
+ * The deck's own list is asked first because it is the stronger question: it is
+ * one read of one collection, and a real host went on listing an id it had
+ * stopped resolving individually. The single-object read is the fallback rather
+ * than the primary for exactly that reason, but it stays, because a host that
+ * will not describe its whole deck may still answer about one slide — and
+ * dropping it would trade one blind spot for another.
+ *
+ * Both roads end at false when nobody will answer. A caller told "done" stops
+ * looking, and every caller of this is cleaning something up.
+ */
+async function slideIsGone(slideId: string): Promise<boolean> {
+  const ids = await slideIds().catch(() => undefined);
+  if (ids) return !ids.includes(slideId);
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
-      // Gone is a confirmed delete. Still there is a refused one. A host that
-      // will not answer is NOT success — the caller is cleaning up, and a
-      // caller told "done" stops looking.
       return loadedValue(() => slide.isNullObject) === true;
     });
   } catch {
     return false;
   }
+}
+
+/**
+ * Take out a slide the host will not hand back by id, by finding it in the
+ * deck's own list and deleting it where it stands.
+ *
+ * Needed because `getItemOrNullObject` is not the last word on whether a slide
+ * exists. A real PowerPoint on the web resolved a freshly-added slide's id once
+ * and then refused it — while still listing that same id in
+ * `slides.load("items/id")`. The slide was plainly there; only the lookup was
+ * broken. `deleteSlideById` treated the refusal as "gone, nothing to do" and
+ * reported success, so a host-probe run left fourteen blank slides in the deck
+ * and said it had cleaned up after itself. `withSlideDeselected` has the same
+ * cleanup on the same call, on the user's own deck.
+ *
+ * Positional deletes are how an add-in destroys someone's work, so the index is
+ * re-read and matched against the id before anything is deleted. One extra
+ * round trip is the price of never deleting the wrong slide.
+ */
+async function deleteSlideByPosition(slideId: string): Promise<boolean> {
+  const ids = await slideIds().catch(() => undefined);
+  if (!ids) return false;
+  const index = ids.indexOf(slideId);
+  // Not in the deck at all. That is the one reading that means "already gone",
+  // and it comes from the deck rather than from a proxy that would not answer.
+  if (index < 0) return true;
+  try {
+    await PowerPoint.run(async (context) => {
+      const slide = context.presentation.slides.getItemAt(index);
+      slide.load("id");
+      await context.sync();
+      if (loadedValue(() => slide.id) !== slideId) return;
+      slide.delete();
+      await step("deleting a slide by position", () => context.sync());
+    });
+  } catch {
+    return false;
+  }
+  return slideIsGone(slideId);
 }
 
 /**

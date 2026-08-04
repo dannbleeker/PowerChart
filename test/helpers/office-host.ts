@@ -148,6 +148,16 @@ export const faults = {
    */
   constantSlideImage: false,
   /**
+   * `Slide.getImageAsBase64` does not answer until this promise settles.
+   *
+   * Rasterising a slide is the heaviest single call the add-in makes, and it is
+   * the one a real host wedged on — 1819 seconds, ended by closing the tab. A
+   * fake that can only make it lie or refuse cannot show what a log says while
+   * a call is still outstanding, and that is the only thing a run which never
+   * ends leaves behind.
+   */
+  slideImageGate: null as null | Promise<void>,
+  /**
    * `Slide.delete()` is taken and does nothing.
    *
    * The self-test's visibility scenario is the only one that borrows a slide
@@ -195,6 +205,27 @@ export const faults = {
    * the batch lost its config without being attempted. Counted down per read.
    */
   tagsUndefinedOn: 0,
+  /**
+   * A slide this deck ADDED resolves by id this many times, then reports gone.
+   * `null` (the default) is every host anyone has met: ids stay good.
+   *
+   * Straight from a real PowerPoint on the web. The host-probe run added one
+   * scratch slide, resolved its id for the first question, and refused it for
+   * the other thirteen — which arrived as thirteen identical "the host would
+   * not resolve the scratch slide" answers where thirteen host behaviours
+   * should have been. Counted per slide, because the interesting question is
+   * what the run does NEXT: a replacement slide has to get its own fresh
+   * lease, or "make another one" is not a recovery.
+   *
+   * `null` rather than `0` for "off" so that `0` can mean what it says — this
+   * slide never resolves, starting now. A test that arms the fault AFTER
+   * getting an id needs that, and needs it not to depend on how many lookups
+   * the code under test happened to spend on the way: a count-based version of
+   * that test passed against the very code it was written to falsify, because
+   * the fix spends one lookup more than the bug did and the lease outlasted
+   * both.
+   */
+  newSlideResolvesTimes: null as number | null,
 };
 
 /**
@@ -735,6 +766,7 @@ export function makeSlide(id: string) {
       pendingExports.push({
         result,
         build: async () => {
+          if (faults.slideImageGate) await faults.slideImageGate;
           if (faults.constantSlideImage) return btoa("PNG:blank");
           const live = created.filter((s) => !s.deleted);
           const ink = live.reduce((n, s) => n + Math.max(0, s.width) * Math.max(0, s.height), 0);
@@ -1056,6 +1088,24 @@ export function installHost(
   // result resolves at the next sync to the count from before that sync's adds.
   let selectedSlide = selectedSlideArg;
   let committedCount = slides.length;
+  /** Slides `slides.add()` created here — see `faults.newSlideResolvesTimes`. */
+  const addedSlideIds = new Set<string>();
+  /** How many times each of those has been asked for by id. */
+  const addedSlideLookups = new Map<string, number>();
+  /**
+   * Whether an added slide's lease on being resolvable has run out.
+   *
+   * Only added slides, and only while the fault is armed: a deck's original
+   * slides are durable on every host anyone has met, and it is the freshly
+   * made ones a real host lost.
+   */
+  const newSlideLeaseSpent = (id: string): boolean => {
+    const lease = faults.newSlideResolvesTimes;
+    if (lease === null || !addedSlideIds.has(id)) return false;
+    const used = (addedSlideLookups.get(id) ?? 0) + 1;
+    addedSlideLookups.set(id, used);
+    return used > lease;
+  };
   /** Decks handed to insertSlidesFromBase64 and not yet resolved by a sync. */
   const pendingDecks: string[] = [];
   findShape = (id) => {
@@ -1088,7 +1138,10 @@ export function installHost(
         // Answering it unconditionally is what let the tag version of this
         // mistake ship — every caller here happens to load first today, and
         // this is what keeps that true.
-        getItemOrNullObject: (id: string) => nullObjectProxy(slides.find((s) => s.id === id)),
+        getItemOrNullObject: (id: string) => {
+          const found = slides.find((s) => s.id === id);
+          return nullObjectProxy(found && !newSlideLeaseSpent(id) ? found : undefined);
+        },
         // A pre-existing slide's handle is durable; a freshly-added one's is only
         // good within the sync it was acquired in (see freshWindowedHandle), so
         // HOLDING one across the render's batches is the bug the fix avoids by
@@ -1114,7 +1167,9 @@ export function installHost(
             faults.swallowAdds--; // the host dropped this add — no slide appears
             return;
           }
-          slides.push(makeSlide(`slide-${slides.length + 1}`));
+          const made = makeSlide(`slide-${slides.length + 1}`);
+          addedSlideIds.add(made.id);
+          slides.push(made);
         },
       },
       /**
@@ -1367,10 +1422,12 @@ export function installHost(
   selectionWedged = false;
   wedgeThisSync = false;
   faults.constantSlideImage = false;
+  faults.slideImageGate = null;
   faults.refuseSlideDelete = false;
   faults.deckInsertNeverAnswers = false;
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
+  faults.newSlideResolvesTimes = null;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.
   selectionRef.length = 0;

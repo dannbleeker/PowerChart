@@ -411,6 +411,53 @@ describe("the scenarios the selection API unlocked", () => {
     expect(bad.detail).toContain("nothing is visible");
   });
 
+  /**
+   * A real host died inside this scenario and the log's last line was the
+   * scenario announcing itself — five host calls, and nothing to say which one
+   * was outstanding. The scenario-level announcement was itself added for
+   * exactly this reason one round earlier; it turned "somewhere in the battery"
+   * into "somewhere in this scenario", and stopped there.
+   *
+   * The rasteriser is held open rather than made to fail, because a call that
+   * throws leaves a verdict and a call that never returns leaves only the log.
+   * Only the second one is the case this line exists for.
+   */
+  it("names the host call it is on, so a scenario that never ends is not a mystery", async () => {
+    setTracing(true);
+    let release!: () => void;
+    try {
+      // After installHost — it resets every fault, so arming one before it is
+      // arming nothing.
+      installHost([makeSlide("s1")]);
+      faults.slideImageGate = new Promise<void>((r) => (release = r));
+      const run = runSelfTest("probe", "the chart is actually visible");
+      await vi.waitFor(() => {
+        const last = traceLog()
+          .entries.filter((e) => e.scope === "selftest")
+          .at(-1);
+        expect(last?.message).toBe("visibility step");
+        expect(last?.data?.what).toBe("rasterising the empty slide");
+      });
+      release();
+      await run;
+      // And every call is named, in the order the scenario makes them.
+      const steps = traceLog()
+        .entries.filter((e) => e.message === "visibility step")
+        .map((e) => e.data?.what);
+      expect(steps).toEqual([
+        "adding a scratch slide",
+        "rasterising the empty slide",
+        "drawing the chart",
+        "rasterising the slide with the chart",
+        "removing the scratch slide",
+      ]);
+    } finally {
+      release?.();
+      faults.slideImageGate = null;
+      setTracing(false);
+    }
+  });
+
   it("says so when it cannot take its own scratch slide back", async () => {
     // The visibility scenario is the only one that borrows a slide and returns
     // it, so it is the only one that can leave litter. `deleteSlideById` is
