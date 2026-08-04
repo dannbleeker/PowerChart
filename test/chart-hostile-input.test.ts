@@ -275,7 +275,10 @@ describe("a config key of the wrong type cannot take a renderer down", () => {
  *   name, and every consumer reaching for `s.name` died on it. JSON arrays
  *   hold nulls.
  * - **`data: null`.** Two of the four reads used `data?.`; the other two did
- *   not, so `data.hundredPercent` threw. Half a guard.
+ *   not, so `data.hundredPercent` threw — half a guard. That one is now refused
+ *   BY NAME rather than by accident (see below), because two tests depended on
+ *   a config with no data failing, and they were right to: the batch renderer
+ *   has to be able to tell its caller which chart was empty.
  *
  * Fixed in `normalizeData` rather than at each consumer, because that function
  * exists to make the layout's types honest and these were the cases it was
@@ -299,13 +302,28 @@ const HOSTILE_SHAPES: [string, (c: ChartConfig) => unknown][] = [
   ["series colors is a string", (c) => withSeries(c, (s) => ({ ...s, colors: "red" }))],
   ["series pattern is a number", (c) => withSeries(c, (s) => ({ ...s, pattern: 3 }))],
   ["series scenario is an object", (c) => withSeries(c, (s) => ({ ...s, scenario: {} }))],
-  ["data is null", (c) => ({ ...c, data: null })],
-  ["data is an array", (c) => ({ ...c, data: [] })],
 ];
 
 function withSeries(c: ChartConfig, f: (s: ChartConfig["data"]["series"][number]) => unknown) {
   return { ...c, data: { ...c.data, series: c.data.series.map(f) } };
 }
+
+describe("a config with no data at all is refused, in words", () => {
+  it("names the problem instead of throwing a TypeError from the layout", () => {
+    // The refusal is the point, and so is the message. `{kind: "pie"}` with no
+    // data used to die on `Cannot read properties of null (reading
+    // 'hundredPercent')` deep inside normalisation, which is the same outcome
+    // reached by accident — and an accident is one refactor away from becoming
+    // a silent empty chart, which is what briefly happened.
+    for (const data of [null, undefined, [], "x", 7]) {
+      const cfg = { ...sampleConfig("pie"), data } as unknown as ChartConfig;
+      expect(() => buildChart(cfg), `data=${JSON.stringify(data)}`).toThrow(/no .?data.? object/);
+    }
+    // An EMPTY data object is not the same thing and stays legal — "no series"
+    // and "no categories" are states with their own tests above.
+    expect(() => buildChart({ ...sampleConfig("pie"), data: {} } as unknown as ChartConfig)).not.toThrow();
+  });
+});
 
 describe("a hostile data SHAPE cannot take the renderer down", () => {
   for (const [name, mutate] of HOSTILE_SHAPES) {
@@ -316,6 +334,44 @@ describe("a hostile data SHAPE cannot take the renderer down", () => {
           sceneToSvg(buildChart(mutate(sampleConfig(kind)) as ChartConfig));
         } catch (e) {
           bad.push(`${kind}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      expect(bad.slice(0, 4)).toEqual([]);
+    });
+  }
+});
+
+/**
+ * Decoration keys, holding the wrong type.
+ *
+ * The top-level sweep replaced `decorations` wholesale, which never reached
+ * inside it. One key was unguarded: `labelContent` is a LIST, and a config
+ * writing a bare `"value"` instead of `["value"]` — an easy thing to hand-write
+ * or to generate — threw `parts.map is not a function`.
+ *
+ * It needed fixing twice. `segmentLabel` is the shared consumer, but scatter
+ * builds its own label from the same key and so had its own copy of the bug —
+ * which is exactly why this sweep runs every kind rather than a representative
+ * few.
+ */
+const DECOR_KEYS =
+  "segmentLabels seriesLabels totals grandTotal variance categoryAxis valueAxis tickMode gridShape fillOpacity gridlines labelContent cagr difference".split(
+    " ",
+  );
+
+describe("a decoration of the wrong type cannot take the renderer down", () => {
+  for (const key of DECOR_KEYS) {
+    it(key, () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS) {
+        for (const [label, value] of WRONG_TYPES) {
+          const base = sampleConfig(kind);
+          const cfg = { ...base, decorations: { ...base.decorations, [key]: value } } as unknown as ChartConfig;
+          try {
+            sceneToSvg(buildChart(cfg));
+          } catch (e) {
+            bad.push(`${kind}/${key}=${label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
         }
       }
       expect(bad.slice(0, 4)).toEqual([]);

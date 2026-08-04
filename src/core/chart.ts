@@ -60,10 +60,24 @@ const MAX_SERIES = 256;
 const labelText = (v: unknown): string => (v == null ? "" : typeof v === "string" ? v : String(v));
 
 function normalizeData(raw: ChartData): ChartData {
-  // `data` itself can be missing or null — a serialiser writes null for an
-  // absent object — and the `data.hundredPercent` read at the bottom threw on
-  // it. `data?.` on two of the four reads was half a guard.
-  const data = (raw && typeof raw === "object" ? raw : ({} as ChartData)) as ChartData;
+  // A config with no data at all is REFUSED, deliberately and by name.
+  //
+  // It used to be refused by accident: `data?.` on two of four reads meant the
+  // other two threw `Cannot read properties of null`, and two tests quietly
+  // relied on that TypeError to prove a batch isolates a bad chart. Removing
+  // the crash removed the refusal with it, and a chart with nothing in it began
+  // rendering as a silent empty frame — which for the batch renderer is worse
+  // than an error, because an agent gets back a blank chart instead of a
+  // sentence telling it what it got wrong.
+  //
+  // So: the same outcome, on purpose and with something readable in it. An
+  // EMPTY `{}` is still fine — "no series" and "no categories" are legitimate
+  // states with their own tests — this is only about there being no data object
+  // to speak of.
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("chart config has no `data` object (needs at least `{ categories: [], series: [] }`)");
+  }
+  const data = raw;
   const categories = (Array.isArray(data.categories) ? data.categories : []).slice(0, MAX_CATEGORIES).map(labelText);
   const n = categories.length;
   const cell = (v: number | null | undefined): number | null => (v == null ? null : Number.isFinite(v) ? v : null);

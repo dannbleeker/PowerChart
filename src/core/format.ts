@@ -240,7 +240,13 @@ export function segmentLabel(
   parts: ("value" | "percent" | "series" | "category")[],
   ctx: { value: number; fraction: number | null; series: string; category: string; fmt: Partial<NumberFormat> },
 ): string {
-  return parts
+  // `decorations.labelContent` is a LIST, and a config that wrote a bare
+  // `"value"` instead of `["value"]` — an easy thing to write by hand or to
+  // generate — threw `parts.map is not a function`. A single part is what was
+  // meant, so treat it as a list of one; anything else contributes nothing,
+  // which is what an empty list already does.
+  const list = Array.isArray(parts) ? parts : typeof parts === "string" ? [parts] : [];
+  return list
     .map((p) => {
       switch (p) {
         case "value":
