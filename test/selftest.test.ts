@@ -315,6 +315,42 @@ describe("the scenarios the selection API unlocked", () => {
     expect(selectionHandlerCount(), "left a selection handler behind").toBe(0);
   });
 
+  it("does not blame the user for a click the host would not describe", async () => {
+    // Two different findings that used to read identically. If the selection
+    // read goes silent after a click, the person did their part and the HOST
+    // did not — reporting "nobody clicked" tells them they failed at the one
+    // thing they can see they did, which is how a report stops being believed.
+    //
+    // It also used to be reachable by timing alone: the read inherited the
+    // 30-second CLICK budget, so a click at 29s started a read with 30s of rope
+    // and the deadline cut it off one second later. Two unrelated quantities
+    // sharing a name.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    _setClickWaitForTest(400);
+    let r: ScenarioResult;
+    try {
+      const run = runSelfTest("probe", "edit the chart YOU click");
+      // The probe charts only exist once the scenario is listening, and the
+      // fault has to be armed AFTER reading them or it breaks the deck scan
+      // rather than the selection read this test is about.
+      await vi.waitFor(() => expect(selectionHandlerCount()).toBeGreaterThan(0));
+      const chart = (await listChartsInDeck())[0];
+      // A click, on a host that then refuses the shape-collection read. This
+      // is the "e.load is not a function" shape a real web host produced.
+      faults.selectionReadThrows = true;
+      userClicksShape(chart.target.shapeId);
+      r = byName(await run)["edit the chart YOU click"];
+    } finally {
+      faults.selectionReadThrows = false;
+      _setClickWaitForTest(30_000);
+    }
+    expect(r.skipped, "a host that went silent was reported as a pass or a failure").toBe(true);
+    expect(r.detail, "blamed the user for the host's silence").not.toContain("nobody clicked");
+    expect(r.detail).toContain("would not say what was selected");
+    expect(selectionHandlerCount(), "left a selection handler behind").toBe(0);
+  });
+
   it("skips rather than fails when nobody clicks", async () => {
     // Nobody clicked is "we did not check", never "it is broken". Reporting a
     // person's absence as a red line is how a battery teaches its reader to

@@ -172,6 +172,20 @@ export const faults = {
    */
   deckInsertNeverAnswers: false,
   /**
+   * `getSelectedShapes().load(...)` throws instead of queueing.
+   *
+   * The fake could make a SLIDE's shape collection fail
+   * (`faultShapeCollectionLoad`) but never the SELECTION's — which is the
+   * pane's most-used read, the one behind "Edit it", and therefore the one
+   * whose failure a user actually meets. Observed on the web as "e.load is not
+   * a function": the host hands back something without the method.
+   *
+   * Modelled because a click the host will not describe and a click on
+   * something that is not a chart are different findings, and a fake that can
+   * only produce the second cannot show that they are told apart.
+   */
+  selectionReadThrows: false,
+  /**
    * The next N shapes to be tagged answer `.tags` as **undefined**.
    *
    * Observed on a real host, four times in one run, each on a chart whose
@@ -1160,6 +1174,7 @@ export function installHost(
         // populates the shapes it names. See ShapeCollection.load.
         load(p?: string) {
           noteSelectionCall();
+          if (faults.selectionReadThrows) throw new TypeError("e.load is not a function");
           if (p?.includes("items/")) for (const s of selectionRef) s.load();
         },
       }),
@@ -1234,6 +1249,7 @@ export function installHost(
       // fake's bookkeeping rather than the host behaviour it stands for.
       if (decks.length && faults.deckInsertNeverAnswers) {
         faults.deckInsertNeverAnswers = false;
+        faults.selectionReadThrows = false;
         committedCount = slides.length;
         await new Promise(() => {});
       }
@@ -1353,6 +1369,7 @@ export function installHost(
   faults.constantSlideImage = false;
   faults.refuseSlideDelete = false;
   faults.deckInsertNeverAnswers = false;
+  faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.

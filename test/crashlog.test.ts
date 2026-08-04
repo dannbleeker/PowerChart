@@ -101,6 +101,14 @@ describe("the crash-surviving run log", () => {
     // The reaction to a crash is to reload and try again. If starting a run
     // overwrote the only slot, that reaction would erase exactly what was
     // worth keeping — before anyone had a chance to look at it.
+    //
+    // Observed by running the second one to a clean FINISH. A finished run is
+    // not offered, so whatever comes back afterwards can only be the crashed
+    // one — which says it survived, without this test needing to know a storage
+    // key. The first version instead asserted the crashed run was the one
+    // OFFERED, which is a different property and, as it turned out, the wrong
+    // one: it passed happily while two consecutive crashes handed back the
+    // older of them.
     beginCrashLog({ ...meta, label: "the run that died" });
     recordCrashStep("   5.0s  selftest  wedged here");
     flushCrashLog();
@@ -108,11 +116,38 @@ describe("the crash-surviving run log", () => {
     _resetCrashLogForTest();
     beginCrashLog({ ...meta, label: "the run after it" });
     recordCrashStep("   0.1s  selftest  started again");
-    flushCrashLog();
+    endCrashLog();
 
     const found = recoverCrashLog();
     expect(found?.label, "the new run buried the crashed one").toBe("the run that died");
     expect(found?.steps.join("\n")).toContain("wedged here");
+  });
+
+  it("offers the MOST RECENT crash when two runs in a row died", () => {
+    // The sequence that actually happens. A run dies; you reopen, see the
+    // offer, and do the obvious thing — try again — rather than downloading
+    // first. The second run dies too. Now there are two unfinished records, and
+    // the one worth having is the SECOND: it is the one you were watching, on
+    // the build you were testing.
+    //
+    // The first version handed back the older one, because promoting the
+    // previous record to a safe slot and reading that slot first are both
+    // right on their own and wrong together.
+    beginCrashLog({ ...meta, label: "first crash" });
+    recordCrashStep("   1.0s  selftest  died the first time");
+    flushCrashLog();
+
+    _resetCrashLogForTest();
+    beginCrashLog({ ...meta, label: "second crash" });
+    recordCrashStep("   1.0s  selftest  died again");
+    flushCrashLog();
+
+    _resetCrashLogForTest();
+    const found = recoverCrashLog();
+    expect(found?.label, "handed back the older crash, not the one just watched").toBe("second crash");
+    // And the older one is still THERE — promoting it was not pointless, it
+    // just must not win the tie.
+    expect(recoverCrashLog()).not.toBeNull();
   });
 
   it("keeps the newest steps when the record outgrows its cap", () => {
@@ -168,6 +203,82 @@ describe("the crash-surviving run log", () => {
       endCrashLog();
     }).not.toThrow();
     expect(recoverCrashLog()).toBeNull();
+  });
+
+  it("can still read a crashed run back when the store has no room left", () => {
+    // Reading needs no quota. Writing does. Gating both behind a write probe
+    // meant a full store made a record that was RIGHT THERE unreadable — and
+    // the way a store gets full is our own 2000-step log, so this is the
+    // scenario a long crashed run creates for the next one.
+    beginCrashLog({ ...meta, label: "recorded while there was room" });
+    recordCrashStep("   1.0s  selftest  the last thing it did");
+    flushCrashLog();
+    _resetCrashLogForTest();
+
+    // Now the store is full: every write throws, reads are fine.
+    const real = window.localStorage;
+    const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+    const full = {
+      getItem: (k: string) => real.getItem(k),
+      setItem: () => {
+        throw new DOMException("QuotaExceededError", "QuotaExceededError");
+      },
+      removeItem: (k: string) => real.removeItem(k),
+      clear: () => real.clear(),
+      key: (i: number) => real.key(i),
+      get length() {
+        return real.length;
+      },
+    } as unknown as Storage;
+    Object.defineProperty(window, "localStorage", { value: full, configurable: true });
+    restoreStorage = () => {
+      if (original) Object.defineProperty(window, "localStorage", original);
+    };
+
+    const found = recoverCrashLog();
+    expect(found?.label, "a full store hid a record it could have read").toBe("recorded while there was room");
+    expect(found?.steps.join("\n")).toContain("the last thing it did");
+  });
+
+  it("keeps the newest half rather than nothing when a write is too big", () => {
+    // The recovery that could never run. `flush` halves the record and retries
+    // once on a rejected write — worth having, because the newest half of a
+    // long run beats none of it — but every path first went through a write
+    // probe, so a store that rejected writes bailed out before reaching it.
+    const real = window.localStorage;
+    const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+    let budget = 0;
+    const tight = {
+      getItem: (k: string) => real.getItem(k),
+      setItem: (k: string, v: string) => {
+        if (v.length > budget) throw new DOMException("QuotaExceededError", "QuotaExceededError");
+        real.setItem(k, v);
+      },
+      removeItem: (k: string) => real.removeItem(k),
+      clear: () => real.clear(),
+      key: (i: number) => real.key(i),
+      get length() {
+        return real.length;
+      },
+    } as unknown as Storage;
+    Object.defineProperty(window, "localStorage", { value: tight, configurable: true });
+    restoreStorage = () => {
+      if (original) Object.defineProperty(window, "localStorage", original);
+    };
+
+    budget = 1_000_000; // room while the run starts
+    beginCrashLog({ ...meta, label: "outgrew the store" });
+    for (let i = 0; i < 200; i++) recordCrashStep(`step ${i} ${"x".repeat(40)}`);
+    // Now only half of it fits.
+    budget = 6_000;
+    flushCrashLog();
+
+    _resetCrashLogForTest();
+    const found = recoverCrashLog();
+    expect(found, "gave up entirely instead of keeping the newest half").not.toBeNull();
+    expect(found!.steps.length, "kept everything, so the write cannot have been refused").toBeLessThan(200);
+    expect(found!.steps.at(-1), "kept the OLDEST half — the wrong half").toContain("step 199");
+    expect(found!.dropped, "did not count what halving threw away").toBeGreaterThan(0);
   });
 
   it("forgets the crashed run once it has been saved", () => {

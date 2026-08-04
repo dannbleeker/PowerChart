@@ -66,6 +66,16 @@ export interface CrashLog {
   host: string;
   /** What the run was: "self-test", "demo deck (file)", … */
   label: string;
+  /**
+   * Which run this is, counting up across pane reloads.
+   *
+   * Two unfinished records can exist at once, and the one worth offering is the
+   * later one — so they have to be orderable. A timestamp is the obvious key
+   * and the wrong one: two runs can start inside a millisecond, and a clock
+   * that a user or an NTP sync moves backwards would silently invert the
+   * answer. A counter carried in the record cannot do either.
+   */
+  seq: number;
   startedAt: string;
   /** Set only when the run ended normally. Its ABSENCE is the whole signal. */
   finishedAt?: string;
@@ -75,16 +85,28 @@ export interface CrashLog {
   steps: string[];
 }
 
-/** The store, or null where there is not one. Never throws. */
+/**
+ * The store, or null where there is not one. Never throws.
+ *
+ * Touched rather than merely looked up: a `localStorage` that exists and throws
+ * on access is a real configuration — third-party cookies blocked, and a task
+ * pane IS a third-party frame — and it throws at USE, not at lookup.
+ *
+ * Touched with a READ. The probe used to be a write, which conflated two
+ * different questions: "is there a store" and "is there room in it". A store
+ * with no room left answers no to the second and yes to the first, and gating
+ * everything on the write meant a crashed run's record — sitting right there,
+ * needing no quota to read — could not be handed back. The way such a store
+ * gets full, on this origin, is our own 2000-step log: so that is not a corner
+ * case, it is what a long crashed run does to the next one.
+ *
+ * Whether a write will fit is `flush`'s question, and it is the one place that
+ * can do anything useful about the answer.
+ */
 function store(): Storage | null {
   try {
-    // Touched, not just read: a `localStorage` that exists but throws on access
-    // is a real configuration (third-party cookies blocked, and a task pane IS
-    // a third-party frame), and it throws at USE rather than at lookup.
     const s = window.localStorage;
-    const probe = "powerchart.crashlog.probe";
-    s.setItem(probe, "1");
-    s.removeItem(probe);
+    s.getItem("powerchart.crashlog.probe");
     return s;
   } catch {
     return null;
@@ -186,6 +208,10 @@ export function beginCrashLog(meta: { build: string; host: string; label: string
     build: meta.build,
     host: meta.host,
     label: meta.label,
+    // One past the highest run this browser has recorded. Read from both slots
+    // because either can hold the most recent one, depending on whether the
+    // last run was promoted.
+    seq: Math.max(previous?.seq ?? 0, read(KEPT_KEY)?.seq ?? 0) + 1,
     startedAt: new Date().toISOString(),
     dropped: 0,
     steps: [],
@@ -223,19 +249,27 @@ export function endCrashLog(): void {
 }
 
 /**
- * A run that ended without finishing, if there is one — the crashed run.
+ * The most recent run that ended without finishing — the crashed run.
  *
- * Checks the kept slot first and the live slot second, because a pane that
- * reloads after a crash has the dead run still sitting in the live slot: it was
- * never promoted, since promotion happens when the NEXT run starts and no next
- * run has. Both are the same question asked at different moments.
+ * Both slots can hold one. A pane that reloads straight after a crash has the
+ * dead run still in the LIVE slot, never promoted, because promotion happens
+ * when the next run starts and no next run has. Start one anyway and it is
+ * promoted to KEPT — so after two crashes in a row, both slots are full.
+ *
+ * The later one wins, and that ordering is the whole point of this function
+ * rather than an incidental. The sequence that produces two is the one people
+ * actually perform: a run dies, you reopen, you do the obvious thing and try
+ * again rather than downloading first, and the second run dies too. The record
+ * worth having then is the SECOND — the run you were watching, on the build you
+ * were testing. Checking the kept slot first handed back the first.
  */
 export function recoverCrashLog(): CrashLog | null {
-  const kept = read(KEPT_KEY);
-  if (kept && !kept.finishedAt && kept.steps.length) return kept;
-  const stale = read(LIVE_KEY);
-  if (stale && !stale.finishedAt && stale.steps.length) return stale;
-  return null;
+  const crashed = [read(KEPT_KEY), read(LIVE_KEY)].filter(
+    (r): r is CrashLog => !!r && !r.finishedAt && r.steps.length > 0,
+  );
+  // `seq` counts up across reloads; a record written before it existed sorts
+  // as 0, which puts it behind any newer one — the right way round.
+  return crashed.sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0] ?? null;
 }
 
 /** Forget the recovered run, once it has been saved or dismissed. */

@@ -635,15 +635,33 @@ const editViaRealClick: Scenario = async () => {
   }
   prompt?.("Click a PowerChart on a slide now — the self-test is waiting for it.");
   trace("selftest", "WAITING FOR YOU: click a chart on the slide", { seconds: CLICK_WAIT_MS / 1000 });
-  const picked = await awaitSelectedChart(CLICK_WAIT_MS, (left) => {
+  const {
+    chart: picked,
+    sawClick,
+    readFailed,
+  } = await awaitSelectedChart(CLICK_WAIT_MS, selectionBudgetMs(), (left) => {
     prompt?.(`Click a PowerChart on a slide — ${left}s left.`);
     trace("selftest", "still waiting for a click", { secondsLeft: left });
   });
   if (!picked) {
+    // Two different findings, and only one of them is about the person. A
+    // click the host would not describe is a HOST result and belongs in the
+    // report as one; calling it "nobody clicked" blames the reader for a
+    // failure they can see they did not cause, which is how a report stops
+    // being trusted.
+    if (readFailed) {
+      return {
+        ok: false,
+        skipped: true,
+        detail: "you clicked, and the host would not say what was selected — the selection read never came back",
+      };
+    }
     return {
       ok: false,
       skipped: true,
-      detail: `nobody clicked a PowerChart within ${CLICK_WAIT_MS / 1000}s — nothing was checked`,
+      detail: sawClick
+        ? "you clicked, but what you clicked is not a PowerChart — nothing was checked"
+        : `nobody clicked a PowerChart within ${CLICK_WAIT_MS / 1000}s — nothing was checked`,
     };
   }
   prompt?.("Got it — editing the chart you clicked.");
