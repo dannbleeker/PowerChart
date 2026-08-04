@@ -3435,12 +3435,19 @@ describe("stopping work in flight", () => {
    * reopening the deck loses the config for good. A real host produced this
    * four times in one run: *"a chart's tag could not even be queued"* followed
    * by *"tagging failed — charts are not re-editable until repaired"*.
+   *
+   * Two undefined `.tags` now, not one. A failure inside the drawing context is
+   * no longer the end of the story — `settleAndTagChart` opens a fresh one and
+   * writes the tag there, which is what makes that same real-host failure
+   * survivable. So one is the case where the chart ends up re-editable after
+   * all, and this test is about the case where it does not: the host refuses
+   * the settled write too, and the caller has to be told the truth.
    */
   it("says so when the chart landed but its config did not", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
     faults.strictTags = true;
-    faults.tagsUndefinedOn = 1; // `.tags` comes back undefined — the observed failure
+    faults.tagsUndefinedOn = 2; // `.tags` undefined for the drawing context AND the settle
     try {
       const target = await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
       // The chart IS there — this is not a failed insert, and reporting it as

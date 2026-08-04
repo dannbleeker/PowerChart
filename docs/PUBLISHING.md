@@ -211,8 +211,30 @@ user's own path. Three new probe questions
 (`shape-add-fresh-slide-proxy`, `shape-add-held-slide-proxy`,
 `shape-add-positional-slide-proxy`) ask the three ways of naming that slide
 apart, so the next sheet says which of them this host will actually take.
-**Re-run test 0 once on the new build** — eight of its questions have never
-been answered by a real host.
+
+**The third run (build a609c9c) answered all seventeen**, and settled that
+fork: fresh by-id **yes**, by-index **yes**, held-across-a-sync **threw**. It
+is the *holding* that fails — not the id, not the slide's newness — so the fake
+now models a single-sync by-id slide handle unconditionally rather than behind
+a fault, and `shape-add-held-slide-proxy` is the one baseline answer that is
+expected to be a refusal.
+
+Four of the previously-unasked eight are now genuinely answered:
+`tags-on-fresh-shape` **yes** and `delete-then-lookup` **reports-gone** (both
+agreeing with the fake), `getcount-populates-same-sync` **yes**, and
+`shape-proxy-survives-one-sync` **unreadable** — office-js#2903, confirmed
+first-hand at last.
+
+The other four came back with answers that are almost certainly about the
+probe rather than the host: `tag-on-group-survives` **no**,
+`tags-add-same-key-twice` **other**, `shapes-items-count-honest`
+**unreadable**, `addgroup-returns-usable` **unreadable**. Each of those probes
+still writes or reads through a shape or group proxy from an earlier sync,
+which is the pattern the same sheet proves fails. Do not act on them: the
+notes in `scripts/host-diff.mjs` say so per question, and the fix is another
+round of asking, not a change of code. (A deck argues the same way — the same
+run's repair pass landed 23 retags on grouped charts, which a host that could
+not tag a group could not do.)
 
 What to read in the result: the `tagging failed` count (was 28 on the last slow
 run; should be near zero), any line annotated `^ known host bug: office-js#…`

@@ -29,7 +29,7 @@ export const FAKE_BASELINE = {
   "load-id-populates-isnullobject": "yes",
   "getitemornullobject-missing": "null-object",
   "shape-add-fresh-slide-proxy": "yes",
-  "shape-add-held-slide-proxy": "yes",
+  "shape-add-held-slide-proxy": "threw",
   "shape-add-positional-slide-proxy": "yes",
   "shape-proxy-survives-one-sync": "yes",
   "shapes-items-count-honest": "at-least-5",
@@ -57,17 +57,17 @@ const WHAT_IT_MEANS = {
   "load-id-populates-isnullobject":
     "If a real host does NOT populate the flag from a real property load, `queueNullCheck` does not work and every `isLive` check is answering 'not live' for live objects. `isLive` treats unreadable as NOT live, so the failure mode is refusing to act on slides that are fine.",
   "shape-add-fresh-slide-proxy":
-    "Whether this host will take a shape at all on a slide added moments ago, asked through a slide proxy resolved in the same sync as the add. A 'no' here is the end of the scratch-slide probe design, and would say something much larger about drawing onto new slides.",
+    "Whether this host will take a shape at all on a slide added moments ago, asked through a slide proxy resolved in the same sync as the add. ANSWERED: PowerPoint on the web (build a609c9c) said YES. A new slide takes shapes perfectly well — it is never the slide's newness that fails.",
   "shape-add-held-slide-proxy":
-    "The same add through a slide proxy resolved one sync earlier — what Office.js has by then rewritten to `slides.getItem(id)`, and what a freshly-added slide's id does not round-trip through on the web. Expected to be the one that fails. If it does, `getItemOrNullObject` handles on new slides are single-sync objects everywhere in this file, exactly as `SlideThunk` already says of `getItemAt`.",
+    "The same add through a slide proxy resolved one sync earlier — what Office.js has by then rewritten to `slides.getItem(id)`. ANSWERED: THREW, GeneralException, while the fresh and positional forms of the same add both worked. So it is the HOLDING that fails, not the id and not the slide. The fake models this unconditionally now (`expiringSlideHandle`), which is why the baseline beside it reads `threw` — the one question here whose expected answer is a refusal.",
   "shape-add-positional-slide-proxy":
-    "The third way to name the same slide. If by-index works where by-id fails, the ID is what this host will not take for a new slide, and a write path that holds one is fixed by counting rather than by re-resolving.",
+    "The third way to name the same slide. ANSWERED: YES — so by-index is not the fix for anything; by-id was never the problem. Kept as the control that makes the pair above readable.",
   "shape-proxy-survives-one-sync":
     "office-js#2903. The fake keeps proxies alive by default, which is the kindness that hid a whole class of stale-proxy bug until a human found it in a real host. If a real host refuses a one-sync-old proxy, `applyWebProfile` should be the default rather than a named profile. ANSWERED, sideways: the 2026-08-04 self-test run threw `InvalidParam passed to GetItem(id)` at `ShapeCollection.getItem` while grouping a chart's shapes, five charts in a row — so on that host the answer is no. The probe's own attempt never reached the question.",
   "shapes-items-count-honest":
-    "`faults.hollowReads` models a host answering SHORT without throwing — a readback asked about 19 shapes and was told 3. If a real host is honest, the readback paging and the re-read are more caution than the platform needs.",
+    "`faults.hollowReads` models a host answering SHORT without throwing — a readback asked about 19 shapes and was told 3. ANSWERED, and not with a count: `items` came back UNDEFINED ('Cannot read properties of undefined (reading length)'), i.e. the collection load was never answered at all. The probe reads that collection through a handle the same sync resolved, so this may yet be the held-handle rule again rather than a fact about collections — it needs a question of its own before anything is built on it.",
   "tags-add-same-key-twice":
-    "Re-editing a chart rewrites POWERCHART_CONFIG on the same shape every time. If a host appends rather than overwrites, a chart edited ten times carries ten configs and the reader picks one arbitrarily — silently editing the wrong data.",
+    "Re-editing a chart rewrites POWERCHART_CONFIG on the same shape every time. If a host appends rather than overwrites, a chart edited ten times carries ten configs and the reader picks one arbitrarily. ANSWERED 'other': the tag read back UNDEFINED, so this host said neither. The probe writes through a shape proxy from an earlier sync, which is the pattern the same sheet shows failing everywhere else — the question is still open, and the probe is what needs fixing, not the answer that needs believing.",
   "tags-on-fresh-shape":
     "`faults.tagsUndefinedOn` models `.tags` coming back undefined, where reading `.add` throws SYNCHRONOUSLY and escapes the tagging loop — losing the config for every chart after it in the batch, not just the one.",
   "delete-then-lookup":
@@ -75,7 +75,7 @@ const WHAT_IT_MEANS = {
   "group-reports-its-children":
     "The single most load-bearing answer here. A chart IS a group, and the readback measures whether a chart survived by counting what is inside it — so a host that groups successfully and then reports no children makes every chart read back as wreckage, and the repair pass 'fixes' charts that were never broken.",
   "tag-on-group-survives":
-    "Where a chart's config actually lives. Tags on a plain shape are a separate question; if a GROUP behaves differently, every chart in every deck is un-re-editable and nothing else here would say so.",
+    "Where a chart's config actually lives. ANSWERED: NO — the tag read back undefined. Alarming at face value, and probably not what it looks like: the group proxy is a sync old by the time the tag is written, which is the rule this sheet proved elsewhere. Real decks argue the same way — the repair pass landed 23 retags on grouped charts in the run that produced this sheet — so read it as the probe holding a proxy, and re-ask it with a group resolved in the writing batch.",
   "getitemat-past-end":
     "Nothing in this repo currently depends on the answer — it is here to find out before something does.",
   "untrack-available":

@@ -597,7 +597,12 @@ export async function insertSceneIntoSlide(
   onPhase?: (phase: InsertPhase, detail?: string) => void,
 ): Promise<EditTarget | null> {
   onPhase?.("context");
-  return PowerPoint.run(async (context) => {
+  // Filled inside the run, acted on after it — a chart whose config tag the
+  // drawing context could not write is settled and tagged from a fresh one.
+  // See `settleAndTagChart`: on PowerPoint web this is the difference between
+  // an inserted chart and a re-editable one.
+  const untagged: { slideId: string; tagData: string; shapeId?: string }[] = [];
+  const inserted = await PowerPoint.run(async (context) => {
     // The current slide already exists, so its proxy IS stable across syncs (its
     // id round-trips) — hold one and reuse it. Only a freshly-added slide needs a
     // per-batch fresh proxy; see SlideThunk. Resolving once also pins the target
@@ -647,6 +652,7 @@ export async function insertSceneIntoSlide(
     // chart, and better than an EditTarget naming a slide we cannot name.
     const slideId = loadedValue(() => slide.id);
     if (!t || typeof slideId !== "string") return null;
+    if (!tagged?.tagged && opts.tagData) untagged.push({ slideId, tagData: opts.tagData, shapeId: t.id });
     return {
       slideId,
       shapeId: t.id,
@@ -657,6 +663,19 @@ export async function insertSceneIntoSlide(
       ...(tagged?.tagged ? {} : { lost: "no-config" as const }),
     };
   });
+  // After the run, never inside it: the context that could not write the tag is
+  // the one thing that certainly cannot write it now.
+  const settled = (await settleUntaggedCharts(untagged)).size;
+  // A chart that is re-editable again must not still be reported as lost —
+  // `lost: "no-config"` is what makes the pane tell the user their chart cannot
+  // be re-opened. Decided from the settle's own committed sync, not from a
+  // second readback: `settleAndTagChart` returns true only after its write
+  // landed, which is the same bar `taggedOk` uses inside the drawing context.
+  if (inserted?.lost === "no-config" && settled > 0) {
+    const { lost: _lost, ...reEditable } = inserted;
+    return reEditable;
+  }
+  return inserted;
 }
 
 /** Replace an existing PowerChart group with a re-rendered scene, in place. */
@@ -881,7 +900,12 @@ export async function updateChartsInSlides(
   onFailed?: (item: { scene: Scene; target: EditTarget; opts?: InsertOptions }, err: unknown) => void,
 ): Promise<EditTarget[]> {
   if (!items.length) return [];
-  return PowerPoint.run(async (context) => {
+  // Same contract as the insert path: charts whose config tag the drawing
+  // context could not write, settled and tagged from a fresh one afterwards.
+  // This is the path `same scale across the deck` drives, and the one that
+  // reported "3 of 8 charts carry the shared scale" on a real host.
+  const untagged: { slideId: string; tagData: string; shapeId?: string }[] = [];
+  const updated = await PowerPoint.run(async (context) => {
     // 1. Resolve every old shape — one sync for all of them.
     //
     // getItemOrNullObject, never getItem: a target names a slide that the user
@@ -1120,6 +1144,19 @@ export async function updateChartsInSlides(
       };
     });
   });
+  // Outside the run, for the reason the insert path is: the context that could
+  // not write the tag cannot write it now either.
+  const wanted = updated
+    .map((t, i) => ({ t, tagData: items[i]?.opts?.tagData }))
+    .filter(({ t, tagData }) => t.lost === "no-config" && tagData);
+  for (const { t, tagData } of wanted) untagged.push({ slideId: t.slideId, tagData: tagData!, shapeId: t.shapeId });
+  if (!untagged.length) return updated;
+  const settledIds = await settleUntaggedCharts(untagged);
+  // Per chart, by shape id: a run where one settle landed and another did not
+  // must not report both as re-editable, and the pane reads `lost` per target.
+  return updated.map((t) =>
+    t.lost === "no-config" && settledIds.has(t.shapeId) ? (({ lost: _lost, ...ok }) => ok)(t) : t,
+  );
 }
 
 /**
@@ -2040,6 +2077,125 @@ async function retagSlideChart(slideIndex: number, tagData: string | undefined):
   } catch {
     return false;
   }
+}
+
+/**
+ * Settle, then tag — the ordinary path's version of the repair pass's `retag`.
+ *
+ * `groupAndTagAll` writes the config tag inside the context that drew the
+ * chart, through a shape proxy that is by then several syncs old. PowerPoint on
+ * the web refuses those: `InvalidParam passed to GetItem(id)`, code 5010, at
+ * `ShapeCollection.getItem` — 46 of them in one 38-item run, and the same
+ * failure is what the self-test's `same scale across the deck` scenario reports
+ * as "3 of 8 charts carry the shared scale; 3 still re-editable".
+ *
+ * The demo path already survives it, because `insertDemoDeck` re-reads the
+ * settled deck afterwards and plans a `retag`. The ordinary insert and update
+ * paths had no such pass, so on that host they simply shipped charts with no
+ * config — visibly charts, and not re-editable, with nothing to recover them.
+ * That is the whole of this function: give those two paths the recovery the
+ * demo path has had all along.
+ *
+ * Not a retry of the write that just failed. The context that failed is gone;
+ * this opens a new one and re-reads the slide, which is the same distinction
+ * `groupAndTagAll`'s "no retry here on purpose" comment draws — a retry against
+ * a host that just dropped a sync is what gave this project duplicate slides,
+ * and a settled re-read is not one.
+ *
+ * The read-then-write shape is copied from `retagSlideChart` deliberately: a
+ * shape handle from an `items` read, used in the batch after it, is the ONE
+ * proxy pattern this host has been observed to honour — the repair pass landed
+ * 23 retags that way in the same run that lost 46 tag writes.
+ *
+ * Best-effort, and silent about a chart it cannot identify: tagging the wrong
+ * shape would make some other chart answer to this one's config.
+ */
+async function settleAndTagChart(slideId: string, tagData: string, shapeId?: string): Promise<boolean> {
+  if (!supports("1.3") || !tagData) return false;
+  try {
+    return await PowerPoint.run(async (context) => {
+      // With an id, no collection read at all — one batch, resolve and write.
+      //
+      // Not merely fewer round trips. A shape-collection read is the one thing
+      // on this host that comes back SHORT without saying so (`hollowReads`
+      // models a readback that asked about 19 shapes and was told 3), and a
+      // chart missing from a short answer looks exactly like a chart that is
+      // gone. The first version of this searched the collection even when the
+      // caller had handed it an id, and a hollow read is precisely what made it
+      // give up on charts that were sitting right there.
+      //
+      // The whole chain is resolved inside the batch that uses it — slide, then
+      // shape, then the write — because a handle resolved by an earlier sync is
+      // what this host refuses (`shape-add-held-slide-proxy`: GeneralException).
+      if (shapeId) {
+        try {
+          context.presentation.slides
+            .getItemOrNullObject(slideId)
+            .shapes.getItemOrNullObject(shapeId)
+            .tags.add(CHART_TAG, tagData);
+          await boundedSync(context, "settling the chart's config tag");
+          return true;
+        } catch {
+          // The shape is gone, or the host refused the write. Either way there
+          // is nothing further to try: a collection search would only find a
+          // DIFFERENT shape to put this chart's config on.
+          return false;
+        }
+      }
+      const shapes = context.presentation.slides.getItemOrNullObject(slideId).shapes;
+      shapes.load("items/id,name");
+      await boundedSync(context, "re-reading a slide to tag the chart it would not tag");
+      let items: PowerPoint.Shape[];
+      try {
+        items = shapes.items;
+      } catch {
+        return false;
+      }
+      if (!items?.length) return false;
+      // No id: the slide must hold exactly ONE thing that calls itself a chart.
+      // With several, nothing here can say which of them lost its config, and a
+      // guess overwrites a bystander's. Note this only ever finds a GROUP or a
+      // degraded picture — an ungrouped chart's anchor is a plain shape with an
+      // ordinary name — which is the same reach the repair pass's `retag` has,
+      // and the reason the id path above is the one that matters.
+      const named = items.filter((sh) => loadedValue(() => (sh as unknown as { name?: string }).name) === GROUP_NAME);
+      const target = named.length === 1 ? named[0] : undefined;
+      if (!target) {
+        trace("group", "no single untagged chart to settle a tag onto", { slideId, named: named.length });
+        return false;
+      }
+      // Only the config tag. The origin pair is deliberately not rewritten
+      // here, for the reason `retagSlideChart` spells out: this context cannot
+      // know where the chart was originally drawn, and a wrong origin
+      // teleports the chart on its first edit.
+      target.tags.add(CHART_TAG, tagData);
+      await boundedSync(context, "settling the chart's config tag");
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tag every chart whose config did not land, once the drawing context is gone.
+ *
+ * Traced as a group rather than per chart: on a host that refuses the whole
+ * batch this runs once per chart in the run, and one line each would bury the
+ * run log it shares with the drawing.
+ */
+async function settleUntaggedCharts(
+  pending: { slideId: string; tagData: string; shapeId?: string }[],
+): Promise<Set<string>> {
+  const settled = new Set<string>();
+  if (!pending.length) return settled;
+  for (const p of pending) if (await settleAndTagChart(p.slideId, p.tagData, p.shapeId)) settled.add(p.shapeId ?? "");
+  trace("group", "settled the config tag the drawing context could not write", {
+    charts: pending.length,
+    settled: settled.size,
+    lost: pending.length - settled.size,
+  });
+  return settled;
 }
 
 async function rescueGroupAndTag(

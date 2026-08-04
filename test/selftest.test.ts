@@ -508,14 +508,9 @@ describe("the scenarios the selection API unlocked", () => {
    */
   it("rasterises a slide the host will only name once", async () => {
     installHost([makeSlide("s1")]);
-    faults.newSlideHandlesExpire = true;
-    try {
-      const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
-      expect(r.skipped, `gave up on a host that answers by-id handles once: ${r.detail}`).toBeFalsy();
-      expect(r.ok, r.detail).toBe(true);
-    } finally {
-      faults.newSlideHandlesExpire = false;
-    }
+    const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    expect(r.skipped, `gave up on a host that answers by-id handles once: ${r.detail}`).toBeFalsy();
+    expect(r.ok, r.detail).toBe(true);
   });
 
   /**
