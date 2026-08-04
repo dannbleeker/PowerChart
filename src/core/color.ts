@@ -5,6 +5,26 @@
  */
 
 /**
+ * A paint as text, for anything at all that arrives claiming to be one.
+ *
+ * `(color ?? "").trim()` guarded null and undefined and nothing else, so a
+ * palette of NUMBERS — `style.palette: [1, 2, 3]` — threw
+ * `TypeError: (color ?? "").trim is not a function` straight out of the
+ * renderer. Every route into this function is user JSON: the pane's style
+ * import stores whatever parses, a chart config can be pasted in whole, and the
+ * skill hands one over from an agent. The type says `string`; TypeScript checks
+ * the code, not the file someone pastes.
+ *
+ * Anything that is not a string reads as the empty string, which the callers
+ * already handle: mid grey from `toRgb`, opaque from `alphaOf`. That is the
+ * same answer they give for a named CSS colour, so a bad paint degrades exactly
+ * like an unrecognised one rather than taking the chart down.
+ */
+function paintText(color: unknown): string {
+  return typeof color === "string" ? color.trim() : "";
+}
+
+/**
  * Parse any paint the renderer's allow-list accepts into RGB.
  *
  * A hex-only `parseInt(h, 16)` yields NaN for `rgb()`/`hsl()`, and the bitwise
@@ -19,7 +39,7 @@
  * at least yields a sane ink instead of asserting black.
  */
 export function toRgb(color: string): [number, number, number] {
-  const c = (color ?? "").trim();
+  const c = paintText(color);
   if (c.startsWith("#")) {
     const h = c.slice(1);
     // 4/8-digit forms carry an alpha byte the colour math has no use for.
@@ -75,7 +95,7 @@ export function toHex6(color: string): string {
  * `transparency` so an alpha authored in the config isn't silently dropped.
  */
 export function alphaOf(color: string): number {
-  const c = (color ?? "").trim();
+  const c = paintText(color);
   const hex = /^#([0-9a-fA-F]{4}|[0-9a-fA-F]{8})$/.exec(c);
   if (hex) {
     const h = hex[1];

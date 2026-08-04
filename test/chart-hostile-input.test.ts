@@ -4,6 +4,8 @@ import { niceTicks } from "../src/core/format";
 import { BoxHash } from "../src/core/grid";
 import { sampleConfig, CHART_KINDS } from "../src/core/samples";
 import type { ChartConfig } from "../src/core/types";
+import { sceneToSvg } from "../src/render/svg";
+import { toRgb, alphaOf } from "../src/core/color";
 
 /**
  * Values a datasheet cell can hold, against every chart kind.
@@ -140,5 +142,57 @@ describe("no non-finite geometry leaves the chart engine", () => {
     const poisoned = buildChart(hostile);
     const clean = buildChart(sampleConfig("clustered"));
     expect(poisoned.nodes.length).toBe(clean.nodes.length);
+  });
+});
+
+/**
+ * The STYLE half of the same question.
+ *
+ * The suite above pins what a hostile *cell* does. Nothing pinned what a
+ * hostile *style* does, and the answer turned out to be "throws": a palette of
+ * numbers reached `toRgb`, whose `(color ?? "").trim()` guarded null and
+ * undefined and nothing else, and the renderer died with
+ * `TypeError: … .trim is not a function`.
+ *
+ * Every route into a style is user JSON, and none of them is exotic. The pane's
+ * style import stores whatever parses and applies it to every chart from then
+ * on; a whole config can be pasted into the JSON box; the skill takes one from
+ * an agent. The type says `string[]`, and TypeScript checks the code rather
+ * than the file someone pastes.
+ */
+const HOSTILE_STYLES: [string, unknown][] = [
+  ["palette of numbers", { palette: [1, 2, 3] }],
+  ["palette of nulls", { palette: [null, undefined] }],
+  ["palette of objects", { palette: [{}, []] }],
+  ["palette is a string", { palette: "red" }],
+  ["palette is an object", { palette: { 0: "#fff" } }],
+  ["palette is empty", { palette: [] }],
+  ["negative is a number", { negative: 1 }],
+  ["neutral is an array", { neutral: ["#fff"] }],
+  ["fontFamily is a number", { fontFamily: 12 }],
+  ["fontSize is Infinity", { fontSize: Infinity }],
+];
+
+describe("a hostile style cannot take the renderer down", () => {
+  it("builds and draws every kind against every hostile style", () => {
+    for (const { kind } of CHART_KINDS) {
+      for (const [name, style] of HOSTILE_STYLES) {
+        const cfg = { ...sampleConfig(kind), style } as unknown as ChartConfig;
+        expect(() => sceneToSvg(buildChart(cfg)), `${kind} / ${name}`).not.toThrow();
+      }
+    }
+  }, 60_000);
+
+  it("reads a non-string paint as an unrecognised one, not as a crash", () => {
+    // The specific fix, at the specific function, so a later refactor of the
+    // sweep above cannot quietly lose it. Mid grey is what an unrecognised
+    // paint already resolved to (named CSS colours do the same), so a bad one
+    // degrades exactly like an unknown one instead of taking the chart with it.
+    for (const junk of [1, null, undefined, {}, [], true, NaN]) {
+      expect(() => toRgb(junk as unknown as string), `toRgb(${String(junk)})`).not.toThrow();
+      expect(toRgb(junk as unknown as string)).toEqual([128, 128, 128]);
+      expect(() => alphaOf(junk as unknown as string), `alphaOf(${String(junk)})`).not.toThrow();
+      expect(alphaOf(junk as unknown as string)).toBe(1);
+    }
   });
 });
