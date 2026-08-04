@@ -4,6 +4,9 @@ import { niceTicks } from "../src/core/format";
 import { BoxHash } from "../src/core/grid";
 import { sampleConfig, CHART_KINDS } from "../src/core/samples";
 import type { ChartConfig } from "../src/core/types";
+import { sceneToSvg } from "../src/render/svg";
+import { buildDeckBase64 } from "../src/render/pptx-deck";
+import { toRgb, alphaOf } from "../src/core/color";
 
 /**
  * Values a datasheet cell can hold, against every chart kind.
@@ -141,4 +144,237 @@ describe("no non-finite geometry leaves the chart engine", () => {
     const clean = buildChart(sampleConfig("clustered"));
     expect(poisoned.nodes.length).toBe(clean.nodes.length);
   });
+});
+
+/**
+ * The STYLE half of the same question.
+ *
+ * The suite above pins what a hostile *cell* does. Nothing pinned what a
+ * hostile *style* does, and the answer turned out to be "throws": a palette of
+ * numbers reached `toRgb`, whose `(color ?? "").trim()` guarded null and
+ * undefined and nothing else, and the renderer died with
+ * `TypeError: … .trim is not a function`.
+ *
+ * Every route into a style is user JSON, and none of them is exotic. The pane's
+ * style import stores whatever parses and applies it to every chart from then
+ * on; a whole config can be pasted into the JSON box; the skill takes one from
+ * an agent. The type says `string[]`, and TypeScript checks the code rather
+ * than the file someone pastes.
+ */
+const HOSTILE_STYLES: [string, unknown][] = [
+  ["palette of numbers", { palette: [1, 2, 3] }],
+  ["palette of nulls", { palette: [null, undefined] }],
+  ["palette of objects", { palette: [{}, []] }],
+  ["palette is a string", { palette: "red" }],
+  ["palette is an object", { palette: { 0: "#fff" } }],
+  ["palette is empty", { palette: [] }],
+  ["negative is a number", { negative: 1 }],
+  ["neutral is an array", { neutral: ["#fff"] }],
+  ["fontFamily is a number", { fontFamily: 12 }],
+  ["fontSize is Infinity", { fontSize: Infinity }],
+];
+
+describe("a hostile style cannot take the renderer down", () => {
+  it("builds and draws every kind against every hostile style", () => {
+    for (const { kind } of CHART_KINDS) {
+      for (const [name, style] of HOSTILE_STYLES) {
+        const cfg = { ...sampleConfig(kind), style } as unknown as ChartConfig;
+        expect(() => sceneToSvg(buildChart(cfg)), `${kind} / ${name}`).not.toThrow();
+      }
+    }
+  }, 60_000);
+
+  it("reads a non-string paint as an unrecognised one, not as a crash", () => {
+    // The specific fix, at the specific function, so a later refactor of the
+    // sweep above cannot quietly lose it. Mid grey is what an unrecognised
+    // paint already resolved to (named CSS colours do the same), so a bad one
+    // degrades exactly like an unknown one instead of taking the chart with it.
+    for (const junk of [1, null, undefined, {}, [], true, NaN]) {
+      expect(() => toRgb(junk as unknown as string), `toRgb(${String(junk)})`).not.toThrow();
+      expect(toRgb(junk as unknown as string)).toEqual([128, 128, 128]);
+      expect(() => alphaOf(junk as unknown as string), `alphaOf(${String(junk)})`).not.toThrow();
+      expect(alphaOf(junk as unknown as string)).toBe(1);
+    }
+  });
+});
+
+/**
+ * Every top-level config key, holding the wrong type.
+ *
+ * The two suites above ask what a bad CELL and a bad STYLE do. This asks the
+ * broader question — what does a config with the wrong type ANYWHERE do — and
+ * it found three crashes the narrower ones could not:
+ *
+ * - `title: 2024` and `valueAxisTitle: [...]` threw `s.replace is not a
+ *   function` out of `xmlText`. A number for a title is what someone writes for
+ *   a year, not an exotic mistake.
+ * - `numberFormat: null` threw on `.decimals`. A default parameter only fires
+ *   for `undefined`, and `null` is what a serialiser writes for an absent
+ *   field.
+ *
+ * Both renderers, because they are separate code that has disagreed before: the
+ * SVG one the preview uses, and the pptx one the skill and the file path use.
+ * Ten kinds rather than all of them keeps this inside a few seconds while still
+ * covering every family — the failures found were never kind-specific.
+ */
+const TOP_LEVEL_KEYS =
+  "horizontal scale segmentOrder categorySort secondaryAxis axisBreak valueAxisTitle labelOffsets logScale gapWidth overlap footnote pie pareto multiples boxplot map heatmap otherBucket tilemap butterfly scatter gantt radar combo width height title decorations waterfall numberFormat labels render".split(
+    " ",
+  );
+
+const WRONG_TYPES: [string, unknown][] = [
+  ["string", "x"],
+  ["number", 7],
+  ["negative", -7],
+  ["NaN", NaN],
+  ["Infinity", Infinity],
+  ["true", true],
+  ["null", null],
+  ["array", [1, "a", null]],
+  ["object", { a: 1 }],
+  ["nested junk", { max: "x", min: [], value: {} }],
+];
+
+describe("a config key of the wrong type cannot take a renderer down", () => {
+  for (const key of TOP_LEVEL_KEYS) {
+    it(`${key}`, async () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS.slice(0, 10)) {
+        for (const [label, value] of WRONG_TYPES) {
+          const cfg = { ...sampleConfig(kind), [key]: value } as unknown as ChartConfig;
+          try {
+            const scene = buildChart(cfg);
+            sceneToSvg(scene);
+            await buildDeckBase64([{ scene, title: "t", configJson: "{}", slot: 0, run: "r" }], {
+              width: 720,
+              height: 405,
+            });
+          } catch (e) {
+            bad.push(`${kind}/${key}=${label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      }
+      // Sliced so a broad regression reports the first few rather than a wall.
+      expect(bad.slice(0, 6)).toEqual([]);
+    }, 30_000);
+  }
+});
+
+/**
+ * The DATA's shape, rather than the numbers inside it.
+ *
+ * `normalizeData` already coerced four things — categories not an array, series
+ * not an array, values not an array, non-finite cells. It stopped one level
+ * short of the ones that actually turn up:
+ *
+ * - **`categories: [2023, 2024]`.** Not a hostile input at all — years,
+ *   quarters, ids — and it threw `raw.trim is not a function` and
+ *   `c.split is not a function` out of the layout.
+ * - **`series[].name: 5`.** Same, from the same authors: `s.name.trim`.
+ * - **A null entry in `series`.** It survived as `{values: [...]}` with no
+ *   name, and every consumer reaching for `s.name` died on it. JSON arrays
+ *   hold nulls.
+ * - **`data: null`.** Two of the four reads used `data?.`; the other two did
+ *   not, so `data.hundredPercent` threw — half a guard. That one is now refused
+ *   BY NAME rather than by accident (see below), because two tests depended on
+ *   a config with no data failing, and they were right to: the batch renderer
+ *   has to be able to tell its caller which chart was empty.
+ *
+ * Fixed in `normalizeData` rather than at each consumer, because that function
+ * exists to make the layout's types honest and these were the cases it was
+ * missing — patching the consumers would have been the same fix written eleven
+ * times and forgotten on the twelfth.
+ */
+const HOSTILE_SHAPES: [string, (c: ChartConfig) => unknown][] = [
+  ["categories are numbers", (c) => ({ ...c, data: { ...c.data, categories: [1, 2, 3] } })],
+  ["categories are null", (c) => ({ ...c, data: { ...c.data, categories: [null, null] } })],
+  ["categories are objects", (c) => ({ ...c, data: { ...c.data, categories: [{}, []] } })],
+  ["categories is a string", (c) => ({ ...c, data: { ...c.data, categories: "abc" } })],
+  ["categories is null", (c) => ({ ...c, data: { ...c.data, categories: null } })],
+  ["series is null", (c) => ({ ...c, data: { ...c.data, series: null } })],
+  ["series is an object", (c) => ({ ...c, data: { ...c.data, series: { a: 1 } } })],
+  ["series entries are null", (c) => ({ ...c, data: { ...c.data, series: [null, null] } })],
+  ["series name is a number", (c) => withSeries(c, (s) => ({ ...s, name: 5 }))],
+  ["series values is a string", (c) => withSeries(c, (s) => ({ ...s, values: "abc" }))],
+  ["series values is null", (c) => withSeries(c, (s) => ({ ...s, values: null }))],
+  ["series values are strings", (c) => withSeries(c, (s) => ({ ...s, values: s.values.map(() => "x") }))],
+  ["series type is unknown", (c) => withSeries(c, (s) => ({ ...s, type: "zzz" }))],
+  ["series colors is a string", (c) => withSeries(c, (s) => ({ ...s, colors: "red" }))],
+  ["series pattern is a number", (c) => withSeries(c, (s) => ({ ...s, pattern: 3 }))],
+  ["series scenario is an object", (c) => withSeries(c, (s) => ({ ...s, scenario: {} }))],
+];
+
+function withSeries(c: ChartConfig, f: (s: ChartConfig["data"]["series"][number]) => unknown) {
+  return { ...c, data: { ...c.data, series: c.data.series.map(f) } };
+}
+
+describe("a config with no data at all is refused, in words", () => {
+  it("names the problem instead of throwing a TypeError from the layout", () => {
+    // The refusal is the point, and so is the message. `{kind: "pie"}` with no
+    // data used to die on `Cannot read properties of null (reading
+    // 'hundredPercent')` deep inside normalisation, which is the same outcome
+    // reached by accident — and an accident is one refactor away from becoming
+    // a silent empty chart, which is what briefly happened.
+    for (const data of [null, undefined, [], "x", 7]) {
+      const cfg = { ...sampleConfig("pie"), data } as unknown as ChartConfig;
+      expect(() => buildChart(cfg), `data=${JSON.stringify(data)}`).toThrow(/no .?data.? object/);
+    }
+    // An EMPTY data object is not the same thing and stays legal — "no series"
+    // and "no categories" are states with their own tests above.
+    expect(() => buildChart({ ...sampleConfig("pie"), data: {} } as unknown as ChartConfig)).not.toThrow();
+  });
+});
+
+describe("a hostile data SHAPE cannot take the renderer down", () => {
+  for (const [name, mutate] of HOSTILE_SHAPES) {
+    it(name, () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS) {
+        try {
+          sceneToSvg(buildChart(mutate(sampleConfig(kind)) as ChartConfig));
+        } catch (e) {
+          bad.push(`${kind}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      expect(bad.slice(0, 4)).toEqual([]);
+    });
+  }
+});
+
+/**
+ * Decoration keys, holding the wrong type.
+ *
+ * The top-level sweep replaced `decorations` wholesale, which never reached
+ * inside it. One key was unguarded: `labelContent` is a LIST, and a config
+ * writing a bare `"value"` instead of `["value"]` — an easy thing to hand-write
+ * or to generate — threw `parts.map is not a function`.
+ *
+ * It needed fixing twice. `segmentLabel` is the shared consumer, but scatter
+ * builds its own label from the same key and so had its own copy of the bug —
+ * which is exactly why this sweep runs every kind rather than a representative
+ * few.
+ */
+const DECOR_KEYS =
+  "segmentLabels seriesLabels totals grandTotal variance categoryAxis valueAxis tickMode gridShape fillOpacity gridlines labelContent cagr difference".split(
+    " ",
+  );
+
+describe("a decoration of the wrong type cannot take the renderer down", () => {
+  for (const key of DECOR_KEYS) {
+    it(key, () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS) {
+        for (const [label, value] of WRONG_TYPES) {
+          const base = sampleConfig(kind);
+          const cfg = { ...base, decorations: { ...base.decorations, [key]: value } } as unknown as ChartConfig;
+          try {
+            sceneToSvg(buildChart(cfg));
+          } catch (e) {
+            bad.push(`${kind}/${key}=${label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      }
+      expect(bad.slice(0, 4)).toEqual([]);
+    });
+  }
 });

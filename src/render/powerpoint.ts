@@ -3218,6 +3218,16 @@ export function canWatchSelection(): boolean {
   }
 }
 
+/** What a wait for a human click ended in. All three are different findings. */
+export interface SelectionWait {
+  /** The chart they clicked, when one came back. */
+  chart: { configJson: string; target: EditTarget } | null;
+  /** Whether the selection changed at all — i.e. whether anyone did anything. */
+  sawClick: boolean;
+  /** Whether a read was attempted and the host refused or never answered. */
+  readFailed: boolean;
+}
+
 /**
  * Wait for the user to click a PowerChart, and hand back what they clicked.
  *
@@ -3232,25 +3242,49 @@ export function canWatchSelection(): boolean {
  * Nothing here touches `setSelectedShapes`. It listens, which is what the pane
  * itself does, and reads the selection the host volunteers.
  *
- * Resolves null on timeout — nobody clicked, or the host never raised the
- * event. Both are "we did not check", never "it is broken".
+ * Reports whether anyone clicked AT ALL, separately from whether a chart came
+ * back. "Nobody clicked" and "you clicked and the host would not tell us what"
+ * are different findings, and only the first is the person's doing — blaming
+ * them for the second is how a report stops being read.
+ *
+ * The two budgets are also separate, and conflating them was a bug worth
+ * naming: `budgetMs` is how long to wait for a HUMAN, `readBudgetMs` is how
+ * long to let the host answer once one has acted. Using the first for both did
+ * not merely make a wedged host slow — a click at 29 seconds started a read
+ * with 30 seconds of rope, the deadline cut it off one second later, and the
+ * scenario reported "nobody clicked" about a person who had just clicked.
  */
 export async function awaitSelectedChart(
   budgetMs: number,
+  readBudgetMs: number,
   onWaiting?: (secondsLeft: number) => void,
-): Promise<{ configJson: string; target: EditTarget } | null> {
-  if (!canWatchSelection()) return null;
+): Promise<SelectionWait> {
+  if (!canWatchSelection()) return { chart: null, sawClick: false, readFailed: false };
   return new Promise((resolve) => {
     let done = false;
+    let sawClick = false;
+    let readFailed = false;
+    /** The read a click started, so the deadline can wait for it to land. */
+    let reading: Promise<unknown> | null = null;
     const handler = async () => {
       if (done) return;
-      try {
-        const found = await loadChartFromSelection(budgetMs);
-        if (!found || done) return;
-        finish(found);
-      } catch {
-        /* the selection could not be read this time — wait for the next click */
-      }
+      sawClick = true;
+      const read = (async () => {
+        try {
+          const found = await loadChartFromSelection(readBudgetMs);
+          if (!found || done) return;
+          finish(found);
+        } catch {
+          // The host was asked and did not answer. Recorded rather than
+          // swallowed: "you clicked something that is not a chart" and "the
+          // host would not tell us what you clicked" are different findings,
+          // and only the first is about what the user did.
+          readFailed = true;
+        }
+      })();
+      reading = read;
+      await read;
+      if (reading === read) reading = null;
     };
     const finish = (value: { configJson: string; target: EditTarget } | null) => {
       if (done) return;
@@ -3262,7 +3296,7 @@ export async function awaitSelectedChart(
       } catch {
         /* nothing to remove, or a host that will not — the flag stops it anyway */
       }
-      resolve(value);
+      resolve({ chart: value, sawClick, readFailed });
     };
     const startedAt = Date.now();
     // A countdown, because a battery that silently waits is indistinguishable
@@ -3272,7 +3306,9 @@ export async function awaitSelectedChart(
       const left = Math.ceil((budgetMs - (Date.now() - startedAt)) / 1000);
       if (left > 0) onWaiting?.(left);
     }, 1_000);
-    const deadline = setTimeout(() => finish(null), budgetMs);
+    // A click already being read is not a missed deadline. Let it land first —
+    // it is bounded by `readBudgetMs` and cannot extend this indefinitely.
+    const deadline = setTimeout(() => void (reading ?? Promise.resolve()).then(() => finish(null)), budgetMs);
     try {
       Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, handler);
     } catch {
@@ -4846,7 +4882,19 @@ function addSegment(
  * dropped. Named colours go through verbatim (Office.js knows them, and toHex6
  * would flatten them to grey); everything else normalises to `#RRGGBB`.
  */
-const officeHex = (color: string): string => (/^[a-zA-Z]+$/.test(color.trim()) ? color.trim() : toHex6(color));
+const officeHex = (color: string): string => {
+  // The THIRD colour sink, and the one that runs in a real PowerPoint. The
+  // other two — `src/core/color.ts` and the skill's `pptx-paint.mjs` — each had
+  // the same hole independently: a palette of NUMBERS threw
+  // `color.trim is not a function`. Here it would take down a live insert, on
+  // the path a user is actually standing on, for a config that came out of the
+  // JSON box or a shape tag written in another deck.
+  //
+  // `toHex6` handles anything unrecognised already, so a non-string just needs
+  // to reach it rather than die on the way.
+  const raw = typeof color === "string" ? color.trim() : "";
+  return /^[a-zA-Z]+$/.test(raw) ? raw : toHex6(raw);
+};
 
 /**
  * Set a solid fill, splitting any alpha (8-digit hex, rgba/hsla) off into

@@ -122,10 +122,31 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   `Object.prototype.hasOwnProperty.call` — a pattern/colour/marker named
   `__proto__` or `constructor` otherwise reaches `Object.prototype` and either
   crashes the renderer or gets CALLED. Guarded in `svg.ts`, `pptx-paint.mjs`,
-  `geometry.ts`, `i18n.ts`; apply it to any new table.
+  `geometry.ts`, `i18n.ts`; apply it to any new table. The saved-templates table
+  in `app.ts` was a fifth and was missed for months, so **check the write side
+  too**: `all[name] = value` where name is `__proto__` hits the inherited
+  setter and re-parents the object instead of storing, and the entry then
+  vanishes with nothing said. That one is guarded by a null prototype, which
+  fixes both directions at the root instead of at each call site.
 - `Date.parse` is far looser than a date cell: `parseDateToken` therefore
   gates on shape (date punctuation + month/weekday words only) before parsing.
   Don't route new cell input around it.
+- **`dist-lib/` is a build artifact, and `skill-scripts.test.ts` runs against
+  it.** A local full-suite run after a change to `src/core` tests the OLD core
+  through that path while CI builds fresh — so the suite goes green locally and
+  red in CI, for a real regression. Run `npm run build:lib` before trusting a
+  local run that touched core.
+- **There are THREE colour sinks, and they are separate code on purpose:**
+  `src/core/color.ts` (preview), `skill/scripts/pptx-paint.mjs` (headless
+  pptx), `officeHex` in `powerpoint.ts` (the live add-in). The same bug has now
+  been found in all three independently — each was fixed when a sweep aimed at
+  _that_ renderer found it. Change one, check the other two.
+- **A `string` in the types is not a string in the file someone pasted.** A
+  config arrives from the JSON box, a saved template, a shape tag written in
+  another deck, and the skill's caller. `categories: [2023, 2024]` and
+  `title: 2024` are ordinary things to write and both used to crash. Coerce at
+  the boundary (`normalizeConfig` / `normalizeData` for config,
+  `paintText` / `xmlText` for text) rather than at each consumer.
 
 ## Out of scope (decided, don't revisit without the owner)
 

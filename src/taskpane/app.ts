@@ -1893,11 +1893,36 @@ wireElementPreviews();
 const TEMPLATES_KEY = "powerchart-templates";
 const STYLE_KEY = "powerchart-style";
 
+/**
+ * The saved templates, on an object with NO prototype.
+ *
+ * This table is keyed by whatever the user typed into a name box, which makes
+ * it the third in this repo to need the same guard — the notes say to apply it
+ * to every one, and this one was missed. Both directions were wrong:
+ *
+ * - **Writing.** `all[name] = config` is a plain assignment for every name but
+ *   one. For `__proto__` it hits the setter inherited from `Object.prototype`
+ *   and re-parents the object instead of storing anything. `Object.keys` then
+ *   does not see it, `JSON.stringify` does not write it, and the template the
+ *   user just saved is gone — with a list that redraws as if nothing happened.
+ * - **Reading.** `all[name]` for a name nobody saved — `constructor`,
+ *   `toString`, `valueOf` — walks up to `Object.prototype` and hands back a
+ *   FUNCTION, which is truthy. Only the picker being built from `Object.keys`
+ *   stops that reaching `applyConfig` today, which is an accident rather than
+ *   a guard.
+ *
+ * A null prototype fixes both at the root instead of at each call site: there
+ * is no inherited setter to hit and nothing above to walk up to.
+ */
 function loadTemplates(): Record<string, ChartConfig> {
+  const empty = () => Object.create(null) as Record<string, ChartConfig>;
   try {
-    return JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? "{}");
+    // `JSON.parse` creates `__proto__` as an OWN property (it uses
+    // CreateDataProperty, not assignment), so a template stored under that name
+    // survives the round trip once the target cannot be re-parented.
+    return Object.assign(empty(), JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? "{}"));
   } catch {
-    return {};
+    return empty();
   }
 }
 

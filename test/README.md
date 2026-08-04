@@ -27,10 +27,18 @@ belongs with the thing it tests, not with the reason it was written.)
   `decoration-layout` (decoration clipping & anchoring), `value-extent`
   (cross-kind extent/auto-scale invariants), `geometry`, `color` (paint parsing
   & contrast ink), `collide` (label collision resolution), `good-chart*`.
-- **Hostile input** — `chart-hostile-input` (every chart kind against every
-  value a cell can hold: huge, subnormal, NaN, infinite, empty, degenerate
-  sizes). Its bar is _termination_, not output — both bugs it found were loops
-  whose bound came from the data.
+- **Hostile input** — `chart-hostile-input`, now four sweeps rather than one:
+  every value a **cell** can hold (huge, subnormal, NaN, infinite, empty,
+  degenerate sizes), every **style** field with the wrong type, every
+  **top-level key** with the wrong type through both offline renderers, every
+  **decoration** key, and eighteen malformed **data shapes**. The cell sweep's
+  bar is _termination_ — both bugs it found were loops whose bound came from the
+  data. The type sweeps' bar is simply _not throwing_: their bugs were all one
+  shape, a `string` API meeting a non-string out of user JSON, and they were
+  spread across every layer.
+  The live Office renderer gets the same treatment in `office-render`, which
+  matters because it is the one no earlier sweep had ever pushed a malformed
+  config through — and it held its own copy of the colour bug.
 - **Repair planner** — `reconcile` (the rules), `reconcile-fuzz` (four thousand
   generated decks against the invariants that cost a user their work: never
   delete another run's slide, never delete every copy of an item, never act on
@@ -41,7 +49,9 @@ belongs with the thing it tests, not with the reason it was written.)
   (headless pptx node mapping), `svg-render` (SVG node emission — paths,
   polygons, options), `pane-state` / `pane-host-actions` / `pane-widgets` /
   `dom-pane` (task pane), `crashlog` (the record that outlives a run that
-  never ends), `skill*`, `parity`, `snapshots`, `a11y-svg`,
+  never ends), `templates` (saving and re-picking a chart setup — a whole
+  feature that had no tests until one of them turned up a bug), `skill*`,
+  `parity`, `snapshots`, `a11y-svg`,
   `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
 - **The deck a run produces, audited from its bytes** — `verify-deck` (did
   PowerChart write what it meant to: slot tags, groups, config parts, shape ids

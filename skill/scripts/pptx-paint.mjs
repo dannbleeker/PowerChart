@@ -66,6 +66,21 @@ export const CSS_NAMES = Object.fromEntries(
     .map((pair) => pair.trim().split(" ")),
 );
 
+// A paint as text, whatever actually turned up.
+//
+// `(c ?? "").trim()` guarded null and undefined and nothing else, so a palette
+// of NUMBERS threw `TypeError: (c ?? "").trim is not a function` — out of
+// `hex`, which the comment below correctly says must never fail to return six
+// hex digits. A config reaches this renderer straight from an agent, where a
+// numeric colour is a plausible mistake rather than an exotic one, and the
+// throw lands outside every per-chart guard: one bad colour, no deck.
+//
+// Anything that is not a string reads as empty, which both callers already
+// handle — black from `hex`, opaque from `alphaOf` — so a bad paint degrades
+// like an unrecognised one. Same fix as `src/core/color.ts`; the two sinks are
+// deliberately separate code and both had it.
+const paintText = (c) => (typeof c === "string" ? c.trim() : "");
+
 // Normalise ANY paint the SVG allow-list accepts to a validated 6-digit hex, so
 // the headless pptx matches the preview instead of falling back to black for
 // rgb()/hsl()/named colours. SECURITY: the colour is interpolated into OOXML
@@ -73,7 +88,7 @@ export const CSS_NAMES = Object.fromEntries(
 // `000"/><a:x` could otherwise inject markup. rgb()/hsl() are parsed, named
 // colours resolve through CSS_NAMES; anything unrecognised is black.
 export const hex = (c) => {
-  const raw = (c ?? "").trim();
+  const raw = paintText(c);
   const h = raw.replace("#", "");
   if (/^[0-9a-fA-F]{3,4}$/.test(h))
     return h
@@ -109,7 +124,7 @@ export const hex = (c) => {
 // `transparent` keyword); 1 when opaque. The SVG renderer honours the alpha
 // natively; here it becomes OOXML transparency — or no paint at all.
 export const alphaOf = (c) => {
-  const raw = (c ?? "").trim();
+  const raw = paintText(c);
   if (/^transparent$/i.test(raw)) return 0;
   const h = raw.replace("#", "");
   if (/^[0-9a-fA-F]{8}$/.test(h)) return parseInt(h.slice(6), 16) / 255;

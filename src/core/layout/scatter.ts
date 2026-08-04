@@ -844,7 +844,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const order = pts.map((_, i) => i).sort((a, b) => radius(pts[b]) - radius(pts[a]));
     // Point label content: category (default), optionally with "(x, y)".
     const pointLabel = (p: (typeof pts)[number]) => {
-      const parts = decor.labelContent ?? ["category"];
+      // A LIST, and a config that wrote a bare `"value"` instead of `["value"]`
+      // threw `parts.map is not a function`. Same coercion as `segmentLabel`,
+      // which is the other consumer of this key — scatter builds its own label
+      // rather than going through it, so it needs its own guard.
+      const raw = decor.labelContent ?? ["category"];
+      const parts = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
       const fmt = resolveFormat([p.x, p.y], cfg.numberFormat);
       return parts
         .map((part) =>

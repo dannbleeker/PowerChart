@@ -305,6 +305,21 @@ describe("hostile input never breaks the OOXML contract (regression)", () => {
     }
   });
 
+  it("hex() stays six hex digits for a colour that is not a string at all", () => {
+    // The same contract, one type further out. A prototype-named colour was
+    // caught before; a NUMERIC one — `style.palette: [1, 2, 3]` — was not, and
+    // `(c ?? "").trim()` threw rather than returning anything. A config reaches
+    // this renderer straight from an agent, so a numeric colour is a plausible
+    // mistake, and the throw lands outside every per-chart guard: one bad
+    // colour, no deck at all.
+    for (const c of [1, 0, null, undefined, {}, [], true, NaN, Symbol.iterator]) {
+      const out = hex(c as unknown as string);
+      expect(typeof out, `hex(${String(c)}) type`).toBe("string");
+      expect(out, `hex(${String(c)})`).toMatch(/^[0-9a-f]{6}$/i);
+      expect(alphaOf(c as unknown as string), `alphaOf(${String(c)})`).toBe(1);
+    }
+  });
+
   it("xmlText drops what XML forbids and keeps what it allows", () => {
     expect(xmlText(`a${String.fromCharCode(11)}b`)).toBe("ab");
     expect(xmlText("tab\tnewline\n")).toBe("tab\tnewline\n"); // legal whitespace survives
