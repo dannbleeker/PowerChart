@@ -132,8 +132,17 @@ describe("the fake host's answer sheet", () => {
    */
   it("asks every question even when the host keeps losing the scratch slide", async () => {
     installHost([makeSlide("s1")]);
-    // Each new slide answers to its id twice and then denies existing.
-    faults.newSlideResolvesTimes = 2;
+    // Each new slide answers to its id four times and then denies existing.
+    //
+    // Was two, when every probe shared the one slide handle `withProbeContext`
+    // resolved. Probes now take a handle per sync-batch — a real host refuses
+    // one held longer — so a probe's own lookups are what this lease has to
+    // leave room for: the verify inside `addScratchSlide`, the liveness check,
+    // and up to two batches that touch the slide. Four is the smallest lease a
+    // REPLACEMENT slide can carry a whole question on, which is the thing being
+    // tested; a tighter one would make the sheet incomplete for a reason that
+    // has nothing to do with recovery, and would pass while proving nothing.
+    faults.newSlideResolvesTimes = 4;
     try {
       const sheet = await runHostProbes("fake-loses-slides", "test");
       const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
@@ -194,6 +203,76 @@ describe("the fake host's answer sheet", () => {
    * question in a word no probe can produce — never `"threw"`, which is a real
    * answer to several of them and would read as a host divergence.
    */
+  /**
+   * The second half of the same lesson, and it cost a second real sheet.
+   *
+   * `no-scratch-slide` covers a slide the host will not resolve. It says
+   * nothing about a slide that resolves perfectly and then refuses to take a
+   * shape — which is what PowerPoint on the web did on 2026-08-04, because
+   * `withProbeContext` handed every probe the slide proxy IT had resolved, and
+   * a freshly-added slide's by-id handle is good for exactly one sync there.
+   * The six questions that resolved a handle of their own were answered; all
+   * eight that wrote through the held one failed, and every one of those was
+   * recorded as `"threw"` or `"silent"` — both real answers to those questions.
+   * `npm run host-diff` duly reported eight host divergences from a sheet that
+   * had asked six questions.
+   */
+  it("keeps asking when a held slide handle is what the host refuses", async () => {
+    installHost([makeSlide("s1")]);
+    faults.newSlideHandlesExpire = true;
+    try {
+      const sheet = await runHostProbes("fake-expires-slide-handles", "test");
+      const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+      // Every question still answered, and answered the same as a healthy host
+      // — because no probe holds the handle any more. The one exception is the
+      // question that is ABOUT holding one, which is now asked on purpose.
+      expect(answers).toEqual({ ...FAKE_BASELINE, "shape-add-held-slide-proxy": "threw" });
+    } finally {
+      faults.newSlideHandlesExpire = false;
+    }
+  });
+
+  it("never reports a setup the host refused as an answer to the question", async () => {
+    // A probe that could not get its shapes must say so in a word no probe can
+    // produce. `"threw"` and `"silent"` are real answers here, and a diff
+    // compares them against the fake's — which is how eight questions nobody
+    // asked came back looking like eight host divergences.
+    installHost([makeSlide("s1")]);
+    faults.refuseShapeAdds = true;
+    try {
+      const sheet = await runHostProbes("fake-refuses-shapes", "test");
+      const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+      const needShapes = [
+        "shape-proxy-survives-one-sync",
+        "shapes-items-count-honest",
+        "tags-add-same-key-twice",
+        "tags-on-fresh-shape",
+        "delete-then-lookup",
+        "addgroup-returns-usable",
+        "group-reports-its-children",
+        "tag-on-group-survives",
+      ];
+      for (const id of needShapes) expect(answers[id], `${id} claimed a host answer`).toBe("no-scratch-shape");
+      // And the questions that need no shape are still answered — one refusal
+      // must not cost the sheet.
+      expect(answers["getcount-populates-same-sync"]).toBe("yes");
+      expect(answers["untrack-available"]).toBe("no");
+      // A never-asked question is not a divergence, and this is the tool that
+      // used to call it one. The three shape-add questions ARE divergences —
+      // asking whether this host takes a shape is their whole job, and "no" is
+      // an answer.
+      const d = diffAnswers(answers, FAKE_BASELINE);
+      expect(d.differ.map((x: { id: string }) => x.id).sort()).toEqual([
+        "shape-add-fresh-slide-proxy",
+        "shape-add-held-slide-proxy",
+        "shape-add-positional-slide-proxy",
+      ]);
+      expect(d.notAsked.map((n: { id: string }) => n.id).sort()).toEqual([...needShapes].sort());
+    } finally {
+      faults.refuseShapeAdds = false;
+    }
+  });
+
   it("says a question was never put, rather than inventing a host answer", async () => {
     installHost([makeSlide("s1")]);
     faults.newSlideResolvesTimes = 1; // one lookup each: addScratchSlide verifies, the probe context fails

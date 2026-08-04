@@ -494,6 +494,31 @@ describe("the scenarios the selection API unlocked", () => {
   });
 
   /**
+   * The failure this scenario actually hit in a real PowerPoint, on 2026-08-04.
+   *
+   * It got as far as "rasterising the empty slide" and the host answered
+   * `GeneralException`, `errorLocation: SlideCollection.getItem`, `statement:
+   * var slide = slides.getItem(...); slide.getImageAsBase64(...)`. The slide
+   * was one `addScratchSlide` had just made and whose liveness check had just
+   * passed — through the very same proxy, one sync earlier. Resolving a proxy
+   * is what makes Office.js rewrite its object path to `getItem(id)`, and a new
+   * slide's id does not round-trip through `getItem` on the web: the rule
+   * `SlideThunk` is built on, in a function that held one handle across two
+   * syncs.
+   */
+  it("rasterises a slide the host will only name once", async () => {
+    installHost([makeSlide("s1")]);
+    faults.newSlideHandlesExpire = true;
+    try {
+      const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
+      expect(r.skipped, `gave up on a host that answers by-id handles once: ${r.detail}`).toBeFalsy();
+      expect(r.ok, r.detail).toBe(true);
+    } finally {
+      faults.newSlideHandlesExpire = false;
+    }
+  });
+
+  /**
    * A real host died inside this scenario and the log's last line was the
    * scenario announcing itself — five host calls, and nothing to say which one
    * was outstanding. The scenario-level announcement was itself added for

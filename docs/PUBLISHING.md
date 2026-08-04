@@ -186,6 +186,34 @@ contradicts the negative claim `queueNullCheck` was written on. The workaround
 stays — the host it was written for is real too — but it is harmless there
 rather than necessary, and the comment now says so.
 
+**What the second real run said (2026-08-04), and what it cost.** The same
+lesson, one layer down. Fourteen questions came back; six were answered and
+eight were not, and the eight all failed the same way — `GeneralException` on
+the shape add, or a sync that never returned. The split is the finding: every
+question that resolved a slide handle of its own was answered, and every
+question that wrote through the handle `withProbeContext` had resolved for it
+failed. A freshly-added slide's by-id handle is good for exactly one sync on
+PowerPoint web, because resolving it is what makes Office.js rewrite its object
+path to `getItem(id)` — which is the rule `SlideThunk` was already built on for
+`getItemAt`, a thousand lines away in the same file.
+
+`npm run host-diff` reported eight host divergences from a run that had asked
+six questions, because `"threw"` and `"silent"` are real answers to those
+questions. That is now impossible: a probe that cannot get its shapes answers
+`no-scratch-shape`, which no probe can produce, and the diff reports never-put
+questions in their own block instead of counting them as findings.
+
+The same run's self-test failed its last scenario for the same reason —
+`GeneralException`, `errorLocation: SlideCollection.getItem`, on
+`slide.getImageAsBase64(...)` — so this one was never only about the
+diagnostic: `slideImageBase64` held a slide handle across two syncs on the
+user's own path. Three new probe questions
+(`shape-add-fresh-slide-proxy`, `shape-add-held-slide-proxy`,
+`shape-add-positional-slide-proxy`) ask the three ways of naming that slide
+apart, so the next sheet says which of them this host will actually take.
+**Re-run test 0 once on the new build** — eight of its questions have never
+been answered by a real host.
+
 What to read in the result: the `tagging failed` count (was 28 on the last slow
 run; should be near zero), any line annotated `^ known host bug: office-js#…`
 (Microsoft's, not ours — annotated automatically, don't chase it), the nine

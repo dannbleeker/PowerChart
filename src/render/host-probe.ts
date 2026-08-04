@@ -87,6 +87,81 @@ type Probe = {
 };
 
 /**
+ * Answers that mean "this question was never put", not "the host said so".
+ *
+ * None of them is in any probe's own vocabulary, which is the point: a diff
+ * that mistook one for an answer would report a host divergence that nobody
+ * ever asked about. Both were earned the same way, a round apart — see
+ * `ProbeSetupFailed`.
+ */
+const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape"]);
+
+/**
+ * Thrown when a probe could not get the shapes its question is about.
+ *
+ * The same lesson as `ScratchSlideUnavailable`, one layer down, and it cost a
+ * second real answer sheet to learn. That guard covers a scratch slide the host
+ * will not resolve; it says nothing about a slide that resolves perfectly and
+ * then refuses to take a shape. PowerPoint on the web did exactly that on
+ * 2026-08-04: six questions that only read were answered, and all eight that
+ * needed a shape failed in setup — `GeneralException` at the add, or a sync
+ * that never came back. Every one of the eight was recorded as `"threw"` or
+ * `"silent"`, both legitimate answers to those questions, so `host-diff`
+ * reported eight host divergences from a sheet that had asked six questions.
+ *
+ * A probe that never reached its question must not answer it.
+ */
+class ProbeSetupFailed extends Error {
+  constructor(readonly why: string) {
+    super(`the host would not put a shape on the scratch slide: ${why}`);
+    this.name = "ProbeSetupFailed";
+  }
+}
+
+/**
+ * Whether the sync that was to deliver a probe's setup shapes is still out.
+ *
+ * A setup failure that THROWS is caught where it happens; a setup failure that
+ * WEDGES is caught by the probe budget, which fires in `ask` — outside any
+ * knowledge of what the probe was in the middle of. Three of that real sheet's
+ * eight failures were the wedging kind, and `"silent"` is a comparable answer,
+ * so they read as host divergences too.
+ *
+ * Module-level because probes run strictly one at a time; `ask` clears it
+ * before every question.
+ */
+let awaitingSetupShapes = false;
+
+/** A shape's box, in points on the scratch slide. */
+type ProbeBox = { left: number; top: number; width: number; height: number };
+
+/**
+ * Put shapes on the scratch slide, or admit that this host would not.
+ *
+ * Through a slide proxy resolved in THIS sync and used before the next one —
+ * `ProbeContext.scratch` is a thunk for that reason, and holding what it
+ * returns re-opens the trap it exists to close.
+ *
+ * `load` names a real property to queue on each shape in the same sync as the
+ * add, for the probes that need an id back without spending a second round trip
+ * (which would also age the proxies, changing what those probes measure).
+ */
+async function scratchShapes(ctx: ProbeContext, boxes: ProbeBox[], load?: string): Promise<PowerPoint.Shape[]> {
+  try {
+    const shapes = ctx.scratch().shapes;
+    const made = boxes.map((box) => shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box));
+    if (load) for (const s of made) s.load(load);
+    awaitingSetupShapes = true;
+    await ctx.sync();
+    awaitingSetupShapes = false;
+    return made;
+  } catch (err) {
+    awaitingSetupShapes = false;
+    throw new ProbeSetupFailed(short(err));
+  }
+}
+
+/**
  * The questions.
  *
  * Each one corresponds to something `powerpoint.ts` relies on. That is the bar
@@ -146,18 +221,93 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "shape-add-fresh-slide-proxy",
+    question: "Can a shape be added through a slide proxy resolved in THIS sync?",
+    // The three questions below exist because a real host refused eight others
+    // and the sheet could not say which of two things it meant: that this host
+    // will not take a shape on a freshly-added slide at all, or that it will
+    // not take one through a slide proxy it resolved a sync earlier. Both
+    // explain every failure in that sheet; they call for different code. So ask
+    // the three ways apart, and let the next sheet say which.
+    ask: async (ctx) => {
+      try {
+        ctx.scratch().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 10,
+          top: 100,
+          width: 20,
+          height: 20,
+        });
+        await ctx.sync();
+        return { answer: "yes" };
+      } catch (err) {
+        return { answer: "threw", detail: short(err) };
+      }
+    },
+  },
+  {
+    id: "shape-add-held-slide-proxy",
+    question: "Can a shape be added through a slide proxy resolved a sync ago?",
+    // What `withProbeContext` used to hand every probe, and what the whole
+    // add-in avoids on freshly-added slides through `SlideThunk`: Office.js
+    // rewrites a resolved proxy's object path to `getItem(id)`, and a new
+    // slide's id does not round-trip through `getItem` on the web.
+    ask: async (ctx) => {
+      const held = ctx.scratch();
+      held.load("id"); // a REAL property: this is the sync that resolves it
+      await ctx.sync();
+      try {
+        held.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 40,
+          top: 100,
+          width: 20,
+          height: 20,
+        });
+        await ctx.sync();
+        return { answer: "yes" };
+      } catch (err) {
+        return { answer: "threw", detail: short(err) };
+      }
+    },
+  },
+  {
+    id: "shape-add-positional-slide-proxy",
+    question: "Can a shape be added through slides.getItemAt(index) rather than by id?",
+    // The other half of the same fork. If by-index works where by-id does not,
+    // the id is what this host will not take, and every write path that names a
+    // freshly-added slide by id needs an index instead.
+    ask: async (ctx) => {
+      ctx.slides.load("items/id");
+      await ctx.sync();
+      let index: number;
+      try {
+        index = ctx.slides.items.findIndex((s) => s.id === ctx.scratchId);
+      } catch (err) {
+        return { answer: "unreadable", detail: short(err) };
+      }
+      // A real fact about this host, not a failure to ask: it listed its slides
+      // and the scratch slide was not among them.
+      if (index < 0) return { answer: "not-listed" };
+      try {
+        ctx.slides.getItemAt(index).shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 70,
+          top: 100,
+          width: 20,
+          height: 20,
+        });
+        await ctx.sync();
+        return { answer: "yes" };
+      } catch (err) {
+        return { answer: "threw", detail: short(err) };
+      }
+    },
+  },
+  {
     id: "shape-proxy-survives-one-sync",
     question: "Is a shape proxy still usable one sync after it was created?",
     // office-js#2903 — the stale-proxy bug the whole `targetRef` design exists
     // for. If a host keeps proxies alive, a lot of re-fetching here is waste.
     ask: async (ctx) => {
-      const shape = ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-        left: 10,
-        top: 10,
-        width: 20,
-        height: 20,
-      });
-      await ctx.sync();
+      const [shape] = await scratchShapes(ctx, [{ left: 10, top: 10, width: 20, height: 20 }]);
       await ctx.sync(); // a second round trip: this is what ages the proxy
       try {
         shape.load("id");
@@ -176,19 +326,15 @@ const PROBES: Probe[] = [
     // observed asking about 19 shapes and being told 3. If a host is honest
     // here, the readback paging is cheaper than it needs to be.
     ask: async (ctx) => {
-      for (let i = 0; i < 5; i++) {
-        ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-          left: i * 5,
-          top: 40,
-          width: 4,
-          height: 4,
-        });
-      }
-      await ctx.sync();
-      ctx.scratch.shapes.load("items/id");
+      await scratchShapes(
+        ctx,
+        Array.from({ length: 5 }, (_, i) => ({ left: i * 5, top: 40, width: 4, height: 4 })),
+      );
+      const shapes = ctx.scratch().shapes;
+      shapes.load("items/id");
       await ctx.sync();
       try {
-        const n = ctx.scratch.shapes.items.length;
+        const n = shapes.items.length;
         // Reported as "at least 5" rather than an exact count: the slide
         // carries whatever earlier probes left on it, and the question is
         // whether the host UNDER-reports, not what the total happens to be.
@@ -219,13 +365,7 @@ const PROBES: Probe[] = [
     // time. If a host appended instead of overwriting, a chart edited ten times
     // would carry ten configs and the reader would pick one arbitrarily.
     ask: async (ctx) => {
-      const shape = ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-        left: 60,
-        top: 10,
-        width: 20,
-        height: 20,
-      });
-      await ctx.sync();
+      const [shape] = await scratchShapes(ctx, [{ left: 60, top: 10, width: 20, height: 20 }]);
       shape.tags.add("POWERCHART_PROBE", "first");
       await ctx.sync();
       shape.tags.add("POWERCHART_PROBE", "second");
@@ -252,13 +392,7 @@ const PROBES: Probe[] = [
     // made it so expensive: it escaped the tagging loop rather than failing one
     // chart.
     ask: async (ctx) => {
-      const shape = ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-        left: 90,
-        top: 10,
-        width: 20,
-        height: 20,
-      });
-      await ctx.sync();
+      const [shape] = await scratchShapes(ctx, [{ left: 90, top: 10, width: 20, height: 20 }]);
       const tags = (shape as unknown as { tags?: unknown }).tags;
       return { answer: tags ? "yes" : "undefined" };
     },
@@ -269,18 +403,13 @@ const PROBES: Probe[] = [
     // `deleteSlideById` verifies from a FRESH context because of this. If a
     // host answers honestly in the same context, that re-check is unnecessary.
     ask: async (ctx) => {
-      const shape = ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-        left: 120,
-        top: 10,
-        width: 20,
-        height: 20,
-      });
-      shape.load("id");
-      await ctx.sync();
+      // The id is loaded in the SAME sync as the add — a second round trip for
+      // it would age the proxy, and this question is not about proxy age.
+      const [shape] = await scratchShapes(ctx, [{ left: 120, top: 10, width: 20, height: 20 }], "id");
       const id = (shape as unknown as { id: string }).id;
       (shape as unknown as { delete(): void }).delete();
       await ctx.sync();
-      const gone = ctx.scratch.shapes.getItemOrNullObject(id);
+      const gone = ctx.scratch().shapes.getItemOrNullObject(id);
       gone.load("id");
       await ctx.sync();
       try {
@@ -295,18 +424,13 @@ const PROBES: Probe[] = [
     id: "addgroup-returns-usable",
     question: "Is a group proxy usable in the same context that created it?",
     ask: async (ctx) => {
-      const made = [0, 1].map((i) =>
-        ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-          left: 150 + i * 25,
-          top: 10,
-          width: 20,
-          height: 20,
-        }),
+      const made = await scratchShapes(
+        ctx,
+        [0, 1].map((i) => ({ left: 150 + i * 25, top: 10, width: 20, height: 20 })),
       );
-      await ctx.sync();
       try {
         const group = (
-          ctx.scratch.shapes as unknown as { addGroup(shapes: unknown[]): { load(p: string): void; id: string } }
+          ctx.scratch().shapes as unknown as { addGroup(shapes: unknown[]): { load(p: string): void; id: string } }
         ).addGroup(made);
         await ctx.sync();
         group.load("id");
@@ -327,18 +451,13 @@ const PROBES: Probe[] = [
     // "fixes" charts that were never broken. The fake's own notes say a
     // version of it that put one shape there did exactly that.
     ask: async (ctx) => {
-      const made = [0, 1].map((i) =>
-        ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-          left: 200 + i * 25,
-          top: 60,
-          width: 20,
-          height: 20,
-        }),
+      const made = await scratchShapes(
+        ctx,
+        [0, 1].map((i) => ({ left: 200 + i * 25, top: 60, width: 20, height: 20 })),
       );
-      await ctx.sync();
       try {
         const group = (
-          ctx.scratch.shapes as unknown as {
+          ctx.scratch().shapes as unknown as {
             addGroup(shapes: unknown[]): { load(p: string): void; group: { shapes: { items: unknown[] } } };
           }
         ).addGroup(made);
@@ -359,18 +478,13 @@ const PROBES: Probe[] = [
     // above; if a group behaves differently, every chart in every deck is
     // un-re-editable and nothing else in the probe would say so.
     ask: async (ctx) => {
-      const made = [0, 1].map((i) =>
-        ctx.scratch.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-          left: 260 + i * 25,
-          top: 60,
-          width: 20,
-          height: 20,
-        }),
+      const made = await scratchShapes(
+        ctx,
+        [0, 1].map((i) => ({ left: 260 + i * 25, top: 60, width: 20, height: 20 })),
       );
-      await ctx.sync();
       try {
         const group = (
-          ctx.scratch.shapes as unknown as {
+          ctx.scratch().shapes as unknown as {
             addGroup(shapes: unknown[]): {
               tags: {
                 add(k: string, v: string): void;
@@ -464,19 +578,34 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // divergences, one cause, and none of the questions actually asked.
         // Replacing the slide is the difference between a sheet that reports a
         // finding and a sheet that IS the finding.
-        if (result.answer === "no-scratch-slide") {
+        //
+        // Either kind of never-asked gets the replacement: a slide the host
+        // will not resolve, and a slide that resolves and will not take a
+        // shape. The second is a weaker reason to suspect the slide, but the
+        // cost is one add and one question, and the alternative is a sheet
+        // that gives up on eight questions because one slide went bad.
+        if (NOT_ASKED.has(result.answer)) {
           const replacement = await addScratchSlide();
           if (replacement) {
             scratchIds.push(replacement);
             scratchId = replacement;
-            trace("probe", "replaced the scratch slide", { id: probe.id, scratchId: replacement });
+            trace("probe", "replaced the scratch slide", {
+              id: probe.id,
+              scratchId: replacement,
+              after: result.answer,
+            });
             const retry = await ask(probe, replacement);
             // Only adopt a retry that actually got somewhere. A second failure
             // on a brand-new slide is a stronger statement than the first, and
-            // overwriting it with "no-scratch-slide" would hide that.
-            if (retry.answer !== "no-scratch-slide") result = retry;
-            else scratchId = null;
-          } else {
+            // overwriting it with a never-asked would hide that.
+            if (!NOT_ASKED.has(retry.answer)) result = retry;
+            // Give up on the SLIDE only when the slide is what failed. A host
+            // that resolves slides and refuses shapes has nothing wrong with
+            // its slides, and writing off the scratch slide there would turn
+            // one refusal into "no-scratch-slide" for every question after it —
+            // the very noise this whole rung exists to prevent.
+            else if (retry.answer === "no-scratch-slide") scratchId = null;
+          } else if (result.answer === "no-scratch-slide") {
             scratchId = null;
           }
         }
@@ -505,11 +634,22 @@ export async function runHostProbes(source: string, build: string): Promise<Host
  * can never be mistaken for one.
  */
 async function ask(probe: Probe, scratchId: string): Promise<{ answer: string; detail?: string }> {
+  awaitingSetupShapes = false;
   try {
     return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask);
   } catch (err) {
     if (err instanceof ScratchSlideUnavailable) return { answer: "no-scratch-slide", detail: short(err) };
+    if (err instanceof ProbeSetupFailed) return { answer: "no-scratch-shape", detail: short(err) };
+    // A budget that fired while the setup shapes were still out is a setup
+    // failure too, and `"silent"` is a comparable answer that would read as a
+    // host divergence. Which sync the deadline caught is the whole difference
+    // between "this host says nothing about tag overwrites" and "this host
+    // never gave the probe a shape to write a tag on".
+    if (isTimeout(err) && awaitingSetupShapes)
+      return { answer: "no-scratch-shape", detail: `the sync that was to add them never came back: ${short(err)}` };
     return { answer: isTimeout(err) ? "silent" : "threw", detail: short(err) };
+  } finally {
+    awaitingSetupShapes = false;
   }
 }
 

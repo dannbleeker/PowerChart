@@ -106,6 +106,18 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   blank slides in the deck. The deck's own id list is the stronger question —
   use it to identify a slide (`addScratchSlide` diffs it) and to confirm a
   delete. Any new code that acts on a slide id needs the same doubt.
+- **A slide handle is good for ONE sync when the slide was just added.**
+  Resolving a `getItemOrNullObject(id)` proxy is what makes Office.js rewrite
+  its object path to `getItem(id)`, and a freshly-added slide's id does not
+  round-trip through `getItem` on the web — so the handle that just passed its
+  liveness check answers `GeneralException`
+  (`errorLocation: SlideCollection.getItem`) the next time it is used. The
+  `SlideThunk` comment says this for `getItemAt` and it is just as true by id:
+  re-acquire per sync-batch, never hold one across a `context.sync()`. It cost
+  the host probe eight of its fourteen questions (each one recorded as a host
+  divergence that had never been asked) and `slideImageBase64` the self-test's
+  whole visibility scenario. Pre-existing slides are unaffected — their ids
+  round-trip — which is why editing a chart in place has always worked.
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys

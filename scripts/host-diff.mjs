@@ -17,8 +17,9 @@
  * Only the `answer` field is compared. Timings and error text differ between
  * any two runs of the same host and would bury the signal.
  *
- * Exit 0 when the two agree, 1 when they do not, 2 when a file cannot be read —
- * so it can gate as well as inform.
+ * Exit 0 when the two agree, 1 when they do not — or when the real host never
+ * got as far as answering — and 2 when a file cannot be read, so it can gate as
+ * well as inform.
  */
 import { readFileSync } from "fs";
 
@@ -27,6 +28,9 @@ export const FAKE_BASELINE = {
   "load-isnullobject-populates": "unreadable",
   "load-id-populates-isnullobject": "yes",
   "getitemornullobject-missing": "null-object",
+  "shape-add-fresh-slide-proxy": "yes",
+  "shape-add-held-slide-proxy": "yes",
+  "shape-add-positional-slide-proxy": "yes",
   "shape-proxy-survives-one-sync": "yes",
   "shapes-items-count-honest": "at-least-5",
   "getcount-populates-same-sync": "yes",
@@ -52,8 +56,14 @@ const WHAT_IT_MEANS = {
     "`queueNullCheck` loads 'id' instead of 'isNullObject' precisely because the flag cannot be loaded by name. If a real host populates it, that whole comment is wrong for this host — and the workaround is merely harmless rather than necessary. ANSWERED: PowerPoint on the web (2026-08-04) said yes, and read the flag back as false. The negative is host-specific; the workaround stays because the host it was written for is real too.",
   "load-id-populates-isnullobject":
     "If a real host does NOT populate the flag from a real property load, `queueNullCheck` does not work and every `isLive` check is answering 'not live' for live objects. `isLive` treats unreadable as NOT live, so the failure mode is refusing to act on slides that are fine.",
+  "shape-add-fresh-slide-proxy":
+    "Whether this host will take a shape at all on a slide added moments ago, asked through a slide proxy resolved in the same sync as the add. A 'no' here is the end of the scratch-slide probe design, and would say something much larger about drawing onto new slides.",
+  "shape-add-held-slide-proxy":
+    "The same add through a slide proxy resolved one sync earlier — what Office.js has by then rewritten to `slides.getItem(id)`, and what a freshly-added slide's id does not round-trip through on the web. Expected to be the one that fails. If it does, `getItemOrNullObject` handles on new slides are single-sync objects everywhere in this file, exactly as `SlideThunk` already says of `getItemAt`.",
+  "shape-add-positional-slide-proxy":
+    "The third way to name the same slide. If by-index works where by-id fails, the ID is what this host will not take for a new slide, and a write path that holds one is fixed by counting rather than by re-resolving.",
   "shape-proxy-survives-one-sync":
-    "office-js#2903. The fake keeps proxies alive by default, which is the kindness that hid a whole class of stale-proxy bug until a human found it in a real host. If a real host refuses a one-sync-old proxy, `applyWebProfile` should be the default rather than a named profile.",
+    "office-js#2903. The fake keeps proxies alive by default, which is the kindness that hid a whole class of stale-proxy bug until a human found it in a real host. If a real host refuses a one-sync-old proxy, `applyWebProfile` should be the default rather than a named profile. ANSWERED, sideways: the 2026-08-04 self-test run threw `InvalidParam passed to GetItem(id)` at `ShapeCollection.getItem` while grouping a chart's shapes, five charts in a row — so on that host the answer is no. The probe's own attempt never reached the question.",
   "shapes-items-count-honest":
     "`faults.hollowReads` models a host answering SHORT without throwing — a readback asked about 19 shapes and was told 3. If a real host is honest, the readback paging and the re-read are more caution than the platform needs.",
   "tags-add-same-key-twice":
@@ -83,16 +93,32 @@ export function answersOf(sheet) {
 }
 
 /**
+ * Answers that mean the question was never put, so they are never divergences.
+ *
+ * The probe's own vocabulary, kept in step with `NOT_ASKED` in
+ * `src/render/host-probe.ts`. No probe can produce either word as an answer,
+ * which is what makes them safe to read this way.
+ */
+const NEVER_ASKED = new Set(["no-scratch-slide", "no-scratch-shape"]);
+
+/**
  * Compare two answer sheets.
  *
- * `onlyReal` and `onlyFake` matter as much as the disagreements: a question one
- * side has never been asked is a gap in the comparison, not a match, and
- * silently treating it as agreement is how a diff comes to mean nothing.
+ * Three ways a question can fail to be a match, and all three used to be one:
+ *
+ * - `onlyReal` / `onlyFake` — one side was never asked. A gap, not agreement.
+ * - `notAsked` — the real host never got far enough to answer. The probe run
+ *   says so in a word no probe can produce, because it learned the hard way
+ *   what happens otherwise: PowerPoint on the web refused eight setups on
+ *   2026-08-04 and this tool reported eight host divergences from questions
+ *   nobody had asked.
+ * - `differ` — the only one that is actually a finding.
  */
 export function diffAnswers(real, fake) {
   const ids = [...new Set([...Object.keys(real), ...Object.keys(fake)])].sort();
   const agree = [];
   const differ = [];
+  const notAsked = [];
   const onlyReal = [];
   const onlyFake = [];
   for (const id of ids) {
@@ -100,10 +126,11 @@ export function diffAnswers(real, fake) {
     const f = fake[id];
     if (r === undefined) onlyFake.push(id);
     else if (f === undefined) onlyReal.push(id);
+    else if (NEVER_ASKED.has(r)) notAsked.push({ id, why: r });
     else if (r === f) agree.push(id);
     else differ.push({ id, real: r, fake: f, means: WHAT_IT_MEANS[id] });
   }
-  return { agree, differ, onlyReal, onlyFake };
+  return { agree, differ, notAsked, onlyReal, onlyFake };
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith("host-diff.mjs");
@@ -128,7 +155,7 @@ if (invokedDirectly) {
     process.exit(2);
   }
 
-  const { agree, differ, onlyReal, onlyFake } = diffAnswers(real, fake);
+  const { agree, differ, notAsked, onlyReal, onlyFake } = diffAnswers(real, fake);
   const sets = Array.isArray(realSheet.requirementSets) ? realSheet.requirementSets.join(", ") : "unknown";
   console.log(
     `\n  REAL HOST ${realSheet.source ?? "?"} · build ${realSheet.build ?? "?"}` +
@@ -148,14 +175,23 @@ if (invokedDirectly) {
     console.log("  Each of these is one of two things: the fake lies and the tests built on it");
     console.log("  are worth less than they look, or the host does something we did not know.\n");
   }
+  if (notAsked.length) {
+    console.log(`  ${notAsked.length} QUESTION(S) NEVER PUT — the host would not set the probe up:\n`);
+    for (const n of notAsked) console.log(`    ${n.id}  (${n.why})`);
+    console.log("\n  Not divergences. Nothing is known about what this host does here —");
+    console.log("  the run could not get as far as asking. Fix the setup, run it again.\n");
+  }
   // A question one side was never asked is a hole in the comparison, and
   // reporting it as agreement is how a diff stops meaning anything.
   if (onlyReal.length)
     console.log(`  ${onlyReal.length} question(s) the fake has no answer for: ${onlyReal.join(", ")}`);
   if (onlyFake.length)
     console.log(`  ${onlyFake.length} question(s) the real sheet is missing (older build?): ${onlyFake.join(", ")}`);
-  if (!differ.length && !onlyReal.length && !onlyFake.length) {
+  if (!differ.length && !notAsked.length && !onlyReal.length && !onlyFake.length) {
     console.log("  The fake agrees with this host on every question it was asked.\n");
   }
-  process.exit(differ.length ? 1 : 0);
+  // A question that was never put is not agreement, so it fails the gate too —
+  // an incomplete sheet exiting 0 is exactly the false all-clear this tool
+  // spent a round learning not to give.
+  process.exit(differ.length || notAsked.length ? 1 : 0);
 }
