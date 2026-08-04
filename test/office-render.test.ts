@@ -56,7 +56,7 @@ import { setTracing, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { estimateOfficeShapes } from "../src/core/scene";
-import { sampleConfig } from "../src/core/samples";
+import { sampleConfig, CHART_KINDS } from "../src/core/samples";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildAgendaScene } from "../src/core/agenda";
 import type { ChartConfig, MarkerSymbol } from "../src/core/types";
@@ -3244,4 +3244,53 @@ describe("reading the presentation's slide size", () => {
     // document alive and can block later getFileAsync calls outright.
     expect(closed, "leaked the document file handle").toBe(true);
   });
+});
+
+/**
+ * The LIVE renderer against a config nobody validated.
+ *
+ * Every hostile-input sweep this project has ran against the SVG renderer and
+ * the pptx one. Neither is the one that runs in a real PowerPoint, and the
+ * Office renderer turned out to hold the third independent copy of the same
+ * hole: `officeHex` did `color.trim()`, so `style.palette: [1, 2, 3]` threw
+ * `color.trim is not a function` and took down a live insert — on the path a
+ * user is actually standing on, for a config that came out of the JSON box or
+ * a `POWERCHART_CONFIG` tag written in another deck.
+ *
+ * Three sinks, three separate holes, found one at a time because each sweep
+ * only knew about the renderer it was written for.
+ */
+describe("a hostile config cannot take down a live insert", () => {
+  const HOSTILE_CONFIGS: [string, (c: ChartConfig) => unknown][] = [
+    ["numeric title", (c) => ({ ...c, title: 2024 })],
+    ["numeric categories", (c) => ({ ...c, data: { ...c.data, categories: [1, 2, 3] } })],
+    [
+      "numeric series name",
+      (c) => ({ ...c, data: { ...c.data, series: c.data.series.map((s) => ({ ...s, name: 7 })) } }),
+    ],
+    ["numeric palette", (c) => ({ ...c, style: { palette: [1, 2, 3] } })],
+    ["labelContent a bare string", (c) => ({ ...c, decorations: { ...c.decorations, labelContent: "value" } })],
+    ["numberFormat null", (c) => ({ ...c, numberFormat: null })],
+    ["numeric valueAxisTitle", (c) => ({ ...c, valueAxisTitle: 5 })],
+  ];
+
+  for (const [name, mutate] of HOSTILE_CONFIGS) {
+    it(
+      name,
+      async () => {
+        const bad: string[] = [];
+        for (const { kind } of CHART_KINDS.slice(0, 12)) {
+          installHost([makeSlide("s1")]);
+          try {
+            await insertSceneIntoSlide(buildChart(mutate(sampleConfig(kind)) as ChartConfig), { tagData: "{}" });
+          } catch (e) {
+            bad.push(`${kind}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          vi.unstubAllGlobals();
+        }
+        expect(bad.slice(0, 4)).toEqual([]);
+      },
+      30_000,
+    );
+  }
 });

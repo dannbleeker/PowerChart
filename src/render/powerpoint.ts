@@ -4882,7 +4882,19 @@ function addSegment(
  * dropped. Named colours go through verbatim (Office.js knows them, and toHex6
  * would flatten them to grey); everything else normalises to `#RRGGBB`.
  */
-const officeHex = (color: string): string => (/^[a-zA-Z]+$/.test(color.trim()) ? color.trim() : toHex6(color));
+const officeHex = (color: string): string => {
+  // The THIRD colour sink, and the one that runs in a real PowerPoint. The
+  // other two — `src/core/color.ts` and the skill's `pptx-paint.mjs` — each had
+  // the same hole independently: a palette of NUMBERS threw
+  // `color.trim is not a function`. Here it would take down a live insert, on
+  // the path a user is actually standing on, for a config that came out of the
+  // JSON box or a shape tag written in another deck.
+  //
+  // `toHex6` handles anything unrecognised already, so a non-string just needs
+  // to reach it rather than die on the way.
+  const raw = typeof color === "string" ? color.trim() : "";
+  return /^[a-zA-Z]+$/.test(raw) ? raw : toHex6(raw);
+};
 
 /**
  * Set a solid fill, splitting any alpha (8-digit hex, rgba/hsla) off into
