@@ -259,3 +259,66 @@ describe("a config key of the wrong type cannot take a renderer down", () => {
     }, 30_000);
   }
 });
+
+/**
+ * The DATA's shape, rather than the numbers inside it.
+ *
+ * `normalizeData` already coerced four things — categories not an array, series
+ * not an array, values not an array, non-finite cells. It stopped one level
+ * short of the ones that actually turn up:
+ *
+ * - **`categories: [2023, 2024]`.** Not a hostile input at all — years,
+ *   quarters, ids — and it threw `raw.trim is not a function` and
+ *   `c.split is not a function` out of the layout.
+ * - **`series[].name: 5`.** Same, from the same authors: `s.name.trim`.
+ * - **A null entry in `series`.** It survived as `{values: [...]}` with no
+ *   name, and every consumer reaching for `s.name` died on it. JSON arrays
+ *   hold nulls.
+ * - **`data: null`.** Two of the four reads used `data?.`; the other two did
+ *   not, so `data.hundredPercent` threw. Half a guard.
+ *
+ * Fixed in `normalizeData` rather than at each consumer, because that function
+ * exists to make the layout's types honest and these were the cases it was
+ * missing — patching the consumers would have been the same fix written eleven
+ * times and forgotten on the twelfth.
+ */
+const HOSTILE_SHAPES: [string, (c: ChartConfig) => unknown][] = [
+  ["categories are numbers", (c) => ({ ...c, data: { ...c.data, categories: [1, 2, 3] } })],
+  ["categories are null", (c) => ({ ...c, data: { ...c.data, categories: [null, null] } })],
+  ["categories are objects", (c) => ({ ...c, data: { ...c.data, categories: [{}, []] } })],
+  ["categories is a string", (c) => ({ ...c, data: { ...c.data, categories: "abc" } })],
+  ["categories is null", (c) => ({ ...c, data: { ...c.data, categories: null } })],
+  ["series is null", (c) => ({ ...c, data: { ...c.data, series: null } })],
+  ["series is an object", (c) => ({ ...c, data: { ...c.data, series: { a: 1 } } })],
+  ["series entries are null", (c) => ({ ...c, data: { ...c.data, series: [null, null] } })],
+  ["series name is a number", (c) => withSeries(c, (s) => ({ ...s, name: 5 }))],
+  ["series values is a string", (c) => withSeries(c, (s) => ({ ...s, values: "abc" }))],
+  ["series values is null", (c) => withSeries(c, (s) => ({ ...s, values: null }))],
+  ["series values are strings", (c) => withSeries(c, (s) => ({ ...s, values: s.values.map(() => "x") }))],
+  ["series type is unknown", (c) => withSeries(c, (s) => ({ ...s, type: "zzz" }))],
+  ["series colors is a string", (c) => withSeries(c, (s) => ({ ...s, colors: "red" }))],
+  ["series pattern is a number", (c) => withSeries(c, (s) => ({ ...s, pattern: 3 }))],
+  ["series scenario is an object", (c) => withSeries(c, (s) => ({ ...s, scenario: {} }))],
+  ["data is null", (c) => ({ ...c, data: null })],
+  ["data is an array", (c) => ({ ...c, data: [] })],
+];
+
+function withSeries(c: ChartConfig, f: (s: ChartConfig["data"]["series"][number]) => unknown) {
+  return { ...c, data: { ...c.data, series: c.data.series.map(f) } };
+}
+
+describe("a hostile data SHAPE cannot take the renderer down", () => {
+  for (const [name, mutate] of HOSTILE_SHAPES) {
+    it(name, () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS) {
+        try {
+          sceneToSvg(buildChart(mutate(sampleConfig(kind)) as ChartConfig));
+        } catch (e) {
+          bad.push(`${kind}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      expect(bad.slice(0, 4)).toEqual([]);
+    });
+  }
+});

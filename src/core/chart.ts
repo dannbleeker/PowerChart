@@ -48,18 +48,42 @@ function clampDim(v: number | undefined, fallback: number): number {
 const MAX_CATEGORIES = 4096;
 const MAX_SERIES = 256;
 
-function normalizeData(data: ChartData): ChartData {
-  const categories = (Array.isArray(data?.categories) ? data.categories : []).slice(0, MAX_CATEGORIES);
+/**
+ * A label as text, for whatever turned up where a label belongs.
+ *
+ * Numeric categories are not a hostile input, they are an ordinary one — years,
+ * quarters, ids — and `categories: [2023, 2024]` used to throw
+ * `raw.trim is not a function` and `c.split is not a function` out of the
+ * layout. `String()` gives back the label the author meant; null and undefined
+ * become blank, which is what a gap in a category strip should look like.
+ */
+const labelText = (v: unknown): string => (v == null ? "" : typeof v === "string" ? v : String(v));
+
+function normalizeData(raw: ChartData): ChartData {
+  // `data` itself can be missing or null — a serialiser writes null for an
+  // absent object — and the `data.hundredPercent` read at the bottom threw on
+  // it. `data?.` on two of the four reads was half a guard.
+  const data = (raw && typeof raw === "object" ? raw : ({} as ChartData)) as ChartData;
+  const categories = (Array.isArray(data.categories) ? data.categories : []).slice(0, MAX_CATEGORIES).map(labelText);
   const n = categories.length;
   const cell = (v: number | null | undefined): number | null => (v == null ? null : Number.isFinite(v) ? v : null);
-  const series = (Array.isArray(data?.series) ? data.series : []).slice(0, MAX_SERIES).map((s) => {
-    const raw = Array.isArray(s?.values) ? s.values : [];
-    const values = Array.from({ length: n }, (_, c) => cell(raw[c]));
-    if (s?.colors) {
-      return { ...s, values, colors: Array.from({ length: n }, (_, c) => s.colors![c] ?? null) };
-    }
-    return { ...s, values };
-  });
+  const series = (Array.isArray(data.series) ? data.series : [])
+    .slice(0, MAX_SERIES)
+    // A null entry survived as `{ values: [...] }` with no name, and every
+    // consumer that reached for `s.name.trim()` died on it. JSON arrays hold
+    // nulls; a series that is not an object is not a series.
+    .filter((s): s is NonNullable<typeof s> => !!s && typeof s === "object")
+    .map((s) => {
+      const rawValues = Array.isArray(s.values) ? s.values : [];
+      const values = Array.from({ length: n }, (_, c) => cell(rawValues[c]));
+      // Only when present: an unnamed series is legitimate, and coercing
+      // `undefined` to `""` would give it a name it never had.
+      const named = s.name == null ? s : { ...s, name: labelText(s.name) };
+      if (named.colors) {
+        return { ...named, values, colors: Array.from({ length: n }, (_, c) => named.colors![c] ?? null) };
+      }
+      return { ...named, values };
+    });
   const pad = <T>(arr: (T | null)[] | undefined): (T | null)[] | undefined =>
     arr ? Array.from({ length: n }, (_, c) => arr[c] ?? null) : arr;
   return { ...data, categories, series, hundredPercent: pad(data.hundredPercent), xExtent: pad(data.xExtent) };
