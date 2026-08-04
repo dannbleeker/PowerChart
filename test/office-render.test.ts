@@ -689,7 +689,7 @@ describe("looking away while a chart redraws", () => {
     faults.wedgeAfterSyncs = 0;
     try {
       const saw = await returnedWithin(
-        400,
+        200,
         withSlideDeselected(["s1"], async (deselected) => deselected),
       );
       expect(saw, "an in-place update never returned on a host that went quiet").not.toBe("never came back");
@@ -713,7 +713,7 @@ describe("looking away while a chart redraws", () => {
     _setSelectionTimeoutForTest(20);
     try {
       const saw = await returnedWithin(
-        400,
+        200,
         withSlideDeselected(["s1"], async (deselected) => {
           // The park has happened; go quiet from here, so only the restore hits it.
           faults.wedgeAfterSyncs = 0;
@@ -747,7 +747,7 @@ describe("looking away while a chart redraws", () => {
     // the host stops answering from here on.
     faults.wedgeAfterSyncs = 3;
     try {
-      const got = await returnedWithin(800, insertSceneIntoSlide(buildChart(config), { tagData: "{}" }));
+      const got = await returnedWithin(400, insertSceneIntoSlide(buildChart(config), { tagData: "{}" }));
       expect(got, "the insert never returned once the host went quiet after drawing").not.toBe("never came back");
     } finally {
       faults.wedgeAfterSyncs = null;
@@ -765,8 +765,8 @@ describe("looking away while a chart redraws", () => {
     _setSelectionTimeoutForTest(20);
     faults.wedgeAfterSyncs = 0;
     try {
-      expect(await returnedWithin(400, getSelectionBounds()), "getSelectionBounds never returned").toBe(null);
-      expect(await returnedWithin(400, getSlideShapeBounds()), "getSlideShapeBounds never returned").toBe(null);
+      expect(await returnedWithin(200, getSelectionBounds()), "getSelectionBounds never returned").toBe(null);
+      expect(await returnedWithin(200, getSlideShapeBounds()), "getSlideShapeBounds never returned").toBe(null);
     } finally {
       faults.wedgeAfterSyncs = null;
       _setSelectionTimeoutForTest(4_000);
@@ -2675,6 +2675,38 @@ describe("reading a demo deck back and repairing it", () => {
     expect(snaps[3]).toMatchObject({ grouped: true, groupChildren: 3, tagged: true });
   });
 
+  /**
+   * Pass C was the one pass that was not paged.
+   *
+   * It opened its own context with two syncs for EVERY grouped slide, which
+   * made `READBACK_TIMEOUT_MS` meaningless in aggregate — the budget is per
+   * slide, so sixty grouped slides is ninety minutes of rope with a full ninety
+   * seconds left at every step. On a real 38-slide run it accounted for a
+   * 49-second gap in the log, 43% of the post-insert wall clock, immediately
+   * before the tab died.
+   *
+   * Counted in CONTEXTS rather than timed: the cost is round trips, and a
+   * duration assertion on a fake host measures nothing.
+   */
+  it("counts group children a page at a time, not a context per slide", async () => {
+    const n = READBACK_PAGE + 5;
+    const deck = Array.from({ length: n }, (_, i) =>
+      demoSlide(`s${i}`, { slot: { i, title: "Line" }, shapes: 3, grouped: true, tagged: true }),
+    );
+    installHost(deck);
+    const before = trips.contexts;
+    const snaps = await snapshotAddedSlides(0, n);
+    // The measurement still happens — a pass that stopped answering would make
+    // the repair treat every chart as unmeasured, which is worse than slow.
+    expect(
+      snaps.every((s) => s.groupChildren === 3),
+      "lost the group-child counts",
+    ).toBe(true);
+    // Pass A + pass B + pass C, each paged. One context per grouped SLIDE would
+    // be n on its own.
+    expect(trips.contexts - before, "opened a context per grouped slide").toBeLessThan(n);
+  });
+
   it("deletes a duplicate slide, clears a stale banner, and re-groups a loose chart", async () => {
     // The shape of Presentation_4.pptx: a clean chart, the same chart again
     // under a NOT COMPLETE banner, and an empty slide the host left behind.
@@ -3390,6 +3422,43 @@ describe("stopping work in flight", () => {
     expect(live.length).toBeLessThan(estimateOfficeShapes(scene));
     // And nothing half-finished was passed off as a chart.
     expect(live.some((s) => s.tagStore.has(CHART_TAG))).toBe(false);
+  });
+
+  /**
+   * A chart with no config tag is on the slide and is not a PowerChart.
+   *
+   * `groupAndTagAll` has always answered this honestly — it returns `tagged` —
+   * and the answer had nowhere to go: `EditTarget` carried no such field, so
+   * the demo path (which has a repair pass) consumed it and the everyday insert
+   * and in-place update (which have none) did not. The user gets "Done." in
+   * green, clicking the chart says "the selection is not a PowerChart", and
+   * reopening the deck loses the config for good. A real host produced this
+   * four times in one run: *"a chart's tag could not even be queued"* followed
+   * by *"tagging failed — charts are not re-editable until repaired"*.
+   */
+  it("says so when the chart landed but its config did not", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.strictTags = true;
+    faults.tagsUndefinedOn = 1; // `.tags` comes back undefined — the observed failure
+    try {
+      const target = await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
+      // The chart IS there — this is not a failed insert, and reporting it as
+      // one would send the user to draw a second copy.
+      expect(slide.created.filter((s) => !s.deleted).length, "nothing was drawn").toBeGreaterThan(0);
+      expect(target, "lost the target for a chart that is on the slide").toBeTruthy();
+      expect(target!.lost, "reported a chart with no config as fully editable").toBe("no-config");
+    } finally {
+      faults.strictTags = false;
+      faults.tagsUndefinedOn = 0;
+    }
+  });
+
+  it("says nothing of the sort when the config DID land", async () => {
+    // The negative control: a flag that is always set is not a signal.
+    installHost([makeSlide("s1")]);
+    const target = await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
+    expect(target?.lost, "marked a perfectly good chart as lost").toBeUndefined();
   });
 
   it("leaves every chart untouched when the stop lands before the first one", async () => {

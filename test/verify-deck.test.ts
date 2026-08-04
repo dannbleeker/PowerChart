@@ -152,6 +152,50 @@ describe("verify-deck: the faults it must catch", () => {
     expect(faults.join(" ")).toMatch(/no "PowerChart" object/i);
   }, 30_000);
 
+  /**
+   * The check that could not see itself failing.
+   *
+   * `config` was read from the slide's relationship part, and shape-level and
+   * slide-level tags are declared in the same file — so "the tag is on the
+   * chart's `p:grpSp`" (re-editable) and "the tag part exists and nothing in the
+   * shape tree points at it" (dead) were the same measurement. The only guard,
+   * `config && !chartObject`, is satisfied by an element named PowerChart
+   * existing anywhere at top level, which it still does here.
+   *
+   * So a regression that put the `r:id` on the slide's own `custDataLst`
+   * instead of the group's would have reported "re-editable", exited 0, kept CI
+   * green, and left every generated chart dead to the pane. `ooxml.ts` has a
+   * branch that mints the rid, writes the part, adds the relationship and then
+   * consumes it only `if (item.group !== false)`, so the case is reachable.
+   *
+   * This matters beyond the tool: the last real-host deck was cleared on this
+   * tool's "31 re-editable" line.
+   */
+  it("catches a config tag the chart object does not point at", async () => {
+    // Move the tag reference off the group and onto the slide itself — the same
+    // rels entry, the same tag part, a different anchor.
+    const bytes = await mutate(await deck(), "ppt/slides/slide1.xml", (s) => {
+      const ref = /<p:custDataLst><p:tags r:id="([^"]+)"\/><\/p:custDataLst>/.exec(s);
+      expect(ref, "the deck under test carries no shape-level tag to move").toBeTruthy();
+      return s.replace(ref![0], "").replace("</p:spTree>", `</p:spTree>${ref![0]}`);
+    });
+    const audit = await readDeckBytes(bytes);
+    // The old reading still says yes, which is the point: nothing about the
+    // relationship part changed.
+    expect(audit.rows[0].config, "the fixture did not keep the tag part reachable").toBe(true);
+    expect(audit.rows[0].chartObject, "the fixture removed the chart object too").toBe(true);
+    expect(audit.rows[0].configOnChart, "counted an orphaned config as re-editable").toBe(false);
+    expect(faultsIn(audit).join(" ")).toMatch(/not referenced by the "PowerChart" object/i);
+  }, 30_000);
+
+  it("still calls a healthy deck's configs re-editable", async () => {
+    // The negative control. A check that answers "orphaned" for everything
+    // would pass the case above and be worthless.
+    const audit = await readDeckBytes(await deck());
+    expect(audit.rows.map((r: { configOnChart: boolean }) => r.configOnChart)).toEqual([true, true, false]);
+    expect(faultsIn(audit)).toEqual([]);
+  }, 30_000);
+
   it("catches two slides claiming the same run and slot", async () => {
     const bytes = await mutateWhere(await deck(), /&quot;i&quot;:1/, (s) =>
       s.replace(/&quot;i&quot;:1/, "&quot;i&quot;:0"),

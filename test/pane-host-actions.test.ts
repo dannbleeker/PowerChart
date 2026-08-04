@@ -66,9 +66,9 @@ const host = vi.hoisted(() => ({
    * existing "target is gone" test depends on that; the explode tests opt in to
    * a live EditTarget, which is what a real successful update hands back.
    */
-  updateResult: undefined as undefined | { slideId: string; shapeId: string; left: number; top: number },
+  updateResult: undefined as undefined | { slideId: string; shapeId: string; left: number; top: number; lost?: string },
   /** What a fresh insert hands back — an EditTarget now, so a recovery stays editable. */
-  insertResult: null as null | { slideId: string; shapeId: string; left: number; top: number },
+  insertResult: null as null | { slideId: string; shapeId: string; left: number; top: number; lost?: string },
   /** Whether the host advertises insertSlidesFromBase64 — off by default. */
   canInsertFile: false,
   slideHoldsOnlyChart: false,
@@ -1056,6 +1056,45 @@ describe("guard — busy lockout and error surfacing", () => {
     await settle();
     expect(insertBtn.disabled).toBe(false); // restored once the action settles
     expect(host.calls.insertScene).toHaveLength(1);
+  });
+
+  /**
+   * "Done." in green over a chart that is no longer a PowerChart.
+   *
+   * The renderer has always known — `groupAndTagAll` returns `tagged` — and the
+   * insert path discarded its whole return value, so nothing reached the user.
+   * The chart is on the slide, clicking it says "the selection is not a
+   * PowerChart", and reopening the deck loses the settings permanently. A real
+   * host produced it four times in one run.
+   */
+  it("says when an inserted chart carries no config, instead of Done.", async () => {
+    host.insertResult = { slideId: "s1", shapeId: "grp-1", left: 40, top: 50, lost: "no-config" };
+    $("insert").click();
+    await settle();
+    const said = $("host-note").textContent ?? "";
+    expect(said, "reported an unusable chart as Done.").not.toBe("Done.");
+    expect(said.toLowerCase()).toContain("settings");
+    expect($("host-note").className).toContain("status-err");
+  });
+
+  /**
+   * An update that redrew the chart and lost track of it must not keep the
+   * target — `shapeId` names the shape that same update deleted, so the next
+   * push resolves a dead id (or a group member, and draws a second chart).
+   */
+  it("drops the edit target when an update loses track of the chart", async () => {
+    host.loadSelectionResult = {
+      configJson: chartJson([1, 2, 3]),
+      target: { slideId: "s1", shapeId: "grp-1", left: 10, top: 20 },
+    };
+    $("load-selection").click();
+    await settle();
+    host.updateResult = { slideId: "s1", shapeId: "grp-1", left: 10, top: 20, lost: "unknown-shape" };
+    $("insert").click();
+    await settle();
+    expect($("host-note").textContent?.toLowerCase(), "kept quiet about losing the chart").toContain("lost track");
+    // The button is back to Insert, so the next press cannot push to a dead id.
+    expect($("insert").textContent?.toLowerCase()).not.toContain("update");
   });
 
   it("surfaces a host failure as a Failed note instead of throwing", async () => {

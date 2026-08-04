@@ -676,6 +676,16 @@ const chartIsVisible: Scenario = async (prefix) => {
  * selected (office-js#3698) — so every scenario that selects must clear up
  * after itself, which `clearShapeSelection` does, wherever it runs.
  */
+/**
+ * Consecutive host-trouble scenarios before the battery stops asking.
+ *
+ * Three, not one: a single failure is usually the finding this whole file
+ * exists to produce. Three in a row is not a finding about a scenario, it is a
+ * finding about the host — and every real-host run so far has continued for
+ * minutes past that point and then died, taking its own verdicts with it.
+ */
+const SICK_LIMIT = 3;
+
 /** How long the battery waits for a person to click a chart. */
 let CLICK_WAIT_MS = 30_000;
 
@@ -933,7 +943,34 @@ export const ROUTINE_SCENARIO_NAMES: readonly string[] = SCENARIOS.filter((s) =>
 export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: string): Promise<ScenarioResult[]> {
   const wanted = only ? SCENARIOS.filter((s, i) => i < 2 || s.name === only) : SCENARIOS.filter((s) => !s.pickedOnly);
   const out: ScenarioResult[] = [];
+  /** Consecutive scenarios that told us the host is in trouble. */
+  let sick = 0;
+  /** Set once the breaker has tripped, so the rest report why. */
+  let abandoned: string | null = null;
   for (const { name, run } of wanted) {
+    // Stop asking a host that has stopped answering.
+    //
+    // The battery had no rung for this, and every real-host artefact this
+    // project owns ends the same way. The last one: at 261.6s a scenario failed
+    // ("the chart was gone"), at 261.8s the deck scan read 0 of 8 slides — and
+    // the battery then ran Same Scale for 95 seconds (six charts × 24 shapes,
+    // six consecutive 5010 failures, two 90-second waits), then a picture
+    // round-trip, then two more scenarios, until PowerPoint killed the tab at
+    // ~396s. Roughly 130 seconds and 150 shapes were issued AFTER three
+    // distinct signals that the host was already gone, and the tab took the
+    // remaining verdicts with it.
+    //
+    // Three in a row rather than one, because a single failure is often the
+    // finding — the battery exists to produce those. Three consecutive is not a
+    // finding about a scenario, it is a finding about the host.
+    if (!abandoned && sick >= SICK_LIMIT) {
+      abandoned = `${sick} scenarios in a row could not get an answer out of the host`;
+      trace("selftest", "giving up on the host", { after: out.length, why: abandoned });
+    }
+    if (abandoned) {
+      out.push({ name, ok: false, skipped: true, blind: true, detail: `not reached — ${abandoned}`, ms: 0 });
+      continue;
+    }
     // The battery had no stop check of its own — none at all. So even where a
     // scenario ended promptly, Stop could not end the RUN: the pane switched
     // its button to "Stopping…" and the next scenario started anyway. A
@@ -970,6 +1007,13 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
       detail: result.detail,
       ms: result.ms,
     });
+    // What counts as the host being in trouble, as opposed to a scenario
+    // finding something: a throw, a blind deck scan, or a timeout. A plain
+    // FAILED verdict does not — that is the battery working. Nor does a
+    // capability skip, which says nothing about how the host is feeling.
+    const hostIsSick =
+      result.blind === true || result.detail.startsWith("threw:") || /did not respond|gave up/i.test(result.detail);
+    sick = hostIsSick ? sick + 1 : 0;
     out.push(result);
   }
   return out;

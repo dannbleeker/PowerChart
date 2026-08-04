@@ -21,6 +21,7 @@ import {
   withSlideDeselected,
   slideCount,
   readAddedSlides,
+  enrichSnapshots,
   traceEnvironment,
   wantsAutoPicture,
   listChartsInDeck,
@@ -1670,6 +1671,30 @@ async function runInsert(asNew: boolean) {
       );
       return;
     }
+    if (next?.lost) {
+      // Redrawn, and not something the pane can come back to. Two different
+      // reasons, and neither may be kept as the live edit target: an untagged
+      // chart cannot be re-opened at all, and a target whose shape id was never
+      // read back names the shape this very update deleted — pushing to it
+      // again would resolve a dead id, or a group member, and draw a second
+      // chart over the first.
+      //
+      // Both used to print "Done." in green over a chart that was quietly no
+      // longer editable, and the `no-config` half is the one a real host
+      // produced: four charts in one run lost their config tag and nothing
+      // said so.
+      state.editTarget = null;
+      renderActionState();
+      note(
+        next.lost === "no-config"
+          ? "Redrawn, but PowerPoint would not save the chart's settings back onto it — it is no longer editable " +
+              "from the pane. Undo (Ctrl+Z) restores the version that was."
+          : "Redrawn, but PowerPoint would not say where the new chart landed, so the pane has lost track of it. " +
+              "Click the chart and press Edit it to carry on.",
+        "err",
+      );
+      return;
+    }
     if (next) {
       state.editTarget = next;
       if (picture && !png) note("Drawn as a picture — PowerPoint would not redraw the shapes.", "err");
@@ -1751,7 +1776,7 @@ async function runInsert(asNew: boolean) {
   cfg = { ...cfg, width: at.width, height: at.height };
   const scene = buildChart(cfg);
   const { png, warn } = await chartPicture(cfg, scene);
-  await insertSceneIntoSlide(
+  const inserted = await insertSceneIntoSlide(
     scene,
     { tagData: JSON.stringify(cfg), left: at.left, top: at.top, pictureBase64: png },
     phaseNote,
@@ -1759,7 +1784,20 @@ async function runInsert(asNew: boolean) {
   state.editTarget = null;
   renderActionState();
   // After the insert, never before: phaseNote would have overwritten it.
-  if (warn) note(warn, "err");
+  //
+  // A chart with no config tag is on the slide and is not a PowerChart: click
+  // it and the pane says so, reopen the deck and the settings are gone for
+  // good. The renderer has always known — `groupAndTagAll` returns `tagged` —
+  // and this path threw the whole return away, so `guard()` printed "Done." in
+  // green over it. The demo path has a repair pass for exactly this; the
+  // everyday insert has none, which makes saying so the only thing left.
+  if (inserted?.lost === "no-config")
+    note(
+      "The chart is on the slide, but PowerPoint would not save its settings onto it — the pane cannot re-open " +
+        "this one. Insert it again if you need to keep editing it.",
+      "err",
+    );
+  else if (warn) note(warn, "err");
   // Say where it went as well as whether it was scaled. A chart that appears
   // BESIDE the last one rather than under it is the one placement outcome a
   // user has no reason to expect, and silence about it reads as the add-in
@@ -2374,7 +2412,14 @@ async function repairDeckSpan(
   let unread: number;
   try {
     const count = await slideCount();
-    ({ snapshots, unread } = await readAddedSlides(0, count));
+    // Pass A only, deck-wide. It has to be deck-wide — the span is discoverable
+    // only by reading slot tags, and this run's slides are not necessarily at
+    // the tail (`insertSlidesFromBase64` put them at the FRONT the first time
+    // anyone tried it on a real host). Passes B and C run below, over the span
+    // alone: their answers outside it are read, paid for, and then thrown away
+    // by the `inSpan` filter twenty lines down — a tag read and two group-count
+    // syncs per slide, spent on the user's own earlier work.
+    ({ snapshots, unread } = await readAddedSlides(0, count, false));
   } catch (err) {
     return { kind: "error", why: errorText(err) };
   }
@@ -2394,6 +2439,8 @@ async function repairDeckSpan(
   const first = Math.min(...tagged.map((s) => s.index));
   const last = Math.max(...tagged.map((s) => s.index));
   const inSpan = snapshots.filter((s) => s.index >= first && s.index <= last);
+  // Now that the span is known, enrich only it.
+  await enrichSnapshots(inSpan);
   const plan = planReconcile(inSpan, expected, { dropOrphanBlanks: true, run });
   try {
     if (!plan.actions.length)

@@ -95,14 +95,21 @@ export async function readDeckBytes(bytes) {
     const xml = await zip.file(part).async("string");
     const relsPath = part.replace("slides/", "slides/_rels/") + ".rels";
     const rels = (await zip.file(relsPath)?.async("string")) ?? "";
-    const tagRefs = [...rels.matchAll(/Id="([^"]+)"[^>]*Target="\.\.\/tags\/(tag\d+\.xml)"/g)].map((m) => m[2]);
+    // The relationship ID travels with the part name from here on. Which
+    // element points at a tag part is the whole question below, and the old
+    // code threw the rid away on this line.
+    const tagRefs = [...rels.matchAll(/Id="([^"]+)"[^>]*Target="\.\.\/tags\/(tag\d+\.xml)"/g)].map((m) => ({
+      rid: m[1],
+      part: m[2],
+    }));
 
     let slot = null;
     let config = null;
     let configRaw = null;
+    let configRid = null;
     let origin = false;
     const missingParts = [];
-    for (const t of tagRefs) {
+    for (const { rid, part: t } of tagRefs) {
       const file = zip.file(`ppt/tags/${t}`);
       if (!file) {
         missingParts.push(t);
@@ -120,6 +127,7 @@ export async function readDeckBytes(bytes) {
       }
       const c = new RegExp(`name="${CONFIG_TAG}" val="([^"]*)"`).exec(tx);
       if (c) {
+        configRid = rid;
         configRaw = unescapeAttr(c[1]);
         try {
           config = JSON.parse(configRaw);
@@ -132,9 +140,33 @@ export async function readDeckBytes(bytes) {
 
     const shapes = topLevel(xml);
     const groups = shapes.filter((e) => e.startsWith("<p:grpSp"));
+    // WHICH element the config tag hangs off, not merely that the slide's
+    // relationship part mentions it.
+    //
+    // Shape-level and slide-level tags are declared in the same `.rels` file,
+    // so a check that reads only that file cannot tell "the tag is on the
+    // chart's `p:grpSp`" (re-editable) from "the tag part exists and nothing in
+    // the shape tree points at it" (dead). Those are the same measurement and
+    // opposite outcomes, and this tool's "N re-editable" line is what a
+    // real-host deck was cleared on. `ooxml.ts` has a branch that mints the rid,
+    // writes the part, adds the relationship and then consumes it only
+    // `if (item.group !== false)` — so the invisible case is reachable today.
+    //
+
     // The chart object: a real group, or the single named shape a degraded
     // picture leaves behind. Both are "one object named PowerChart".
     const named = shapes.filter((e) => new RegExp(`name="${GROUP_NAME}"`).test(e));
+    // Where the config tag is actually anchored. `configOnChart` is the one
+    // that means re-editable; anything else is a tag the pane will never find.
+    //
+    // A substring test over the chart object's own markup, deliberately, rather
+    // than a full parse: the writer emits
+    // `<p:nvPr><p:custDataLst><p:tags r:id="…"/></p:custDataLst></p:nvPr>`
+    // inside that object, so "does this object's markup reference the rid" IS
+    // the question. Relationship ids are unique within a slide part, so a match
+    // cannot belong to anything else.
+    const configOnChart = !!configRid && named.some((e) => e.includes(`<p:tags r:id="${configRid}"/>`));
+    const configOnSlide = !!config && !configOnChart;
     // How many shapes are INSIDE the chart object. `shapes` above counts the
     // slide's top-level children, where a 40-shape chart and a 1-shape
     // degraded picture both read as 1 — which is the number a reader most
@@ -156,6 +188,17 @@ export async function readDeckBytes(bytes) {
       chartObject: named.length > 0,
       picture: named.length > 0 && groups.length === 0,
       config: !!config,
+      /**
+       * The config tag is anchored on the chart object, so the pane can find it.
+       *
+       * `config` above only says the tag part EXISTS and the slide's
+       * relationship part mentions it — which is equally true of a tag nothing
+       * in the shape tree points at. Every "re-editable" count this tool prints
+       * comes from here now.
+       */
+      configOnChart,
+      /** The tag exists and hangs off nothing the pane reads — a dead config. */
+      configOrphaned: configOnSlide,
       // The tag's actual payload, for callers that need to reproduce the deck
       // rather than audit it — the fake host in the test suite builds its
       // slides from this, so it cannot decode a generated deck differently
@@ -212,6 +255,17 @@ export function faultsIn({ rows, allTagParts, referencedTagParts, types }) {
     // A config with nothing to hang it on would be unreachable from the pane.
     if (r.config && !r.chartObject)
       faults.push(`slide ${r.index + 1}: carries a config tag but no "${GROUP_NAME}" object to load it from`);
+    // And a config the chart object does not point at is just as unreachable,
+    // while looking identical from the relationship part. This is the case the
+    // old check could not see at all: it was satisfied by the mere existence of
+    // an element named PowerChart anywhere at top level, so a regression that
+    // put the r:id on the slide's own `custDataLst` instead of the group's
+    // would have reported "re-editable", exited 0, kept CI green, and left
+    // every generated chart in the deck dead to the pane.
+    if (r.configOrphaned)
+      faults.push(
+        `slide ${r.index + 1}: ${CONFIG_TAG} is not referenced by the "${GROUP_NAME}" object — the pane cannot load it`,
+      );
   }
   for (const p of allTagParts) {
     if (!referencedTagParts.has(p)) faults.push(`${p}: tag part is not referenced by any slide`);
@@ -240,19 +294,25 @@ function report(deck, faults) {
   console.log(`${rows.length} slide(s)\n`);
   console.log(`  ${w("#", 4)}${w("title", 26)}${w("slot", 6)}${w("shapes", 7)}${w("object", 9)}${w("config", 7)}flags`);
   for (const r of rows) {
-    const flags = [r.stamped && "NOT-COMPLETE", r.config && !r.origin && "no-origin"].filter(Boolean).join(" ");
+    const flags = [
+      r.stamped && "NOT-COMPLETE",
+      r.config && !r.origin && "no-origin",
+      r.configOrphaned && "ORPHANED-CONFIG",
+    ]
+      .filter(Boolean)
+      .join(" ");
     console.log(
       `  ${w(r.index + 1, 4)}${w(r.title, 26)}${w(r.slot, 6)}${w(r.shapes, 7)}` +
         `${w(r.picture ? "picture" : r.groups ? "group" : r.chartObject ? "shape" : "loose", 9)}` +
-        `${w(r.config ? "yes" : "—", 7)}${flags}`,
+        `${w(r.configOnChart ? "yes" : r.config ? "orphan" : "—", 7)}${flags}`,
     );
   }
   const runs = [...new Set(rows.map((r) => r.run).filter(Boolean))];
   const charts = rows.filter((r) => r.chartObject);
   console.log(
     `\n  runs in deck: ${runs.length ? runs.join(", ") : "none"}` +
-      `\n  chart objects: ${charts.length} (${charts.filter((r) => r.config).length} re-editable, ` +
-      `${charts.filter((r) => !r.config).length} NOT re-editable)` +
+      `\n  chart objects: ${charts.length} (${charts.filter((r) => r.configOnChart).length} re-editable, ` +
+      `${charts.filter((r) => !r.configOnChart).length} NOT re-editable)` +
       `\n  pictures: ${rows.filter((r) => r.picture).length}` +
       `\n  stamped NOT COMPLETE: ${rows.filter((r) => r.stamped).length}`,
   );
