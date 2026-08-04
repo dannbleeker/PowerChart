@@ -33,6 +33,8 @@ import {
   updateChartsInSlides,
   withSlideDeselected,
   slideHoldsOnlyChart,
+  getSlideShapeBounds,
+  _setSelectionTimeoutForTest,
   replaceSlideWithDeck,
   deleteShapesById,
   addScratchSlide,
@@ -654,6 +656,120 @@ describe("looking away while a chart redraws", () => {
       expect(sel.sets).toEqual([]);
     } finally {
       faults.swallowAdds = 0;
+    }
+  });
+
+  /**
+   * The failure no `catch` can see: a sync that neither resolves nor rejects.
+   *
+   * `withSlideDeselected` was two raw `PowerPoint.run`s sandwiching draw work
+   * that IS bounded per batch — so the one part of an in-place update that could
+   * hang forever was the part before anything was drawn. And the second one sits
+   * in a `finally`, so a sync that never settles there stops the `finally` from
+   * completing, which means the CALLER's `finally` never runs either: the pane's
+   * busy counter stays up for the rest of the session, the selection banner goes
+   * dead, the status strip freezes, and the auto-update timer re-arms forever.
+   * Stop cannot break in — it is checked at batch boundaries this never reaches.
+   *
+   * Raced against a timer rather than simply awaited, so the guard fails on its
+   * own assertion instead of on a suite timeout.
+   */
+  const returnedWithin = async <T>(ms: number, work: Promise<T>): Promise<T | "never came back"> =>
+    Promise.race([work, new Promise<"never came back">((r) => setTimeout(() => r("never came back"), ms))]);
+
+  it("comes back from a redraw even when the host stops answering selection calls", async () => {
+    // The selection API has to be wired, or the park throws before it ever
+    // syncs and the wedge is never reached — a version of this that skipped
+    // `withSelection` passed against an unbounded park, which is the whole
+    // thing it was written to catch.
+    const ctx = installHost([makeSlide("s1"), makeSlide("s2")]);
+    withSelection(ctx, ["s1"]);
+    _setSelectionTimeoutForTest(20);
+    // From the first sync on, the host answers nothing at all — ever.
+    faults.wedgeAfterSyncs = 0;
+    try {
+      const saw = await returnedWithin(
+        400,
+        withSlideDeselected(["s1"], async (deselected) => deselected),
+      );
+      expect(saw, "an in-place update never returned on a host that went quiet").not.toBe("never came back");
+      // And it degraded honestly: nothing was parked, so the caller must NOT be
+      // told it may use the off-screen batch size on a live canvas.
+      expect(saw).toBe(false);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setSelectionTimeoutForTest(4_000);
+    }
+  });
+
+  it("comes back from the RESTORE too, which sits in a finally", async () => {
+    // The second round trip is the worse one. A sync that never settles inside
+    // a `finally` stops that `finally` from completing, so the caller's own
+    // `finally` never runs either — and the pane decrements its busy counter in
+    // one of those. The view not being restored is cheap; the update never
+    // returning is what kills the session.
+    const ctx = installHost([makeSlide("s1"), makeSlide("s2")]);
+    withSelection(ctx, ["s1"]);
+    _setSelectionTimeoutForTest(20);
+    try {
+      const saw = await returnedWithin(
+        400,
+        withSlideDeselected(["s1"], async (deselected) => {
+          // The park has happened; go quiet from here, so only the restore hits it.
+          faults.wedgeAfterSyncs = 0;
+          return deselected;
+        }),
+      );
+      expect(saw, "the redraw never returned because the restore hung").not.toBe("never came back");
+      expect(saw, "did not park at all").toBe(true);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setSelectionTimeoutForTest(4_000);
+    }
+  });
+
+  /**
+   * The draw was bounded per batch and everything AFTER the last batch was not.
+   *
+   * `groupAndTagAll`'s five syncs and `ungroupedFallback`'s bare one all went
+   * through `step()`, which labels and adds no deadline — so a host that went
+   * quiet once the shapes were on the slide left the insert with no timer, no
+   * `gave up waiting`, no phase note past "grouping…", and no way for Stop to
+   * break in (it is checked at batch boundaries this never reaches). That is the
+   * 1819-second wedge shape, one phase further along than the one that got
+   * bounded. `ungroupedFallback` matters most: grouping is refused on the web,
+   * so every web-host insert goes down it.
+   */
+  it("comes back from grouping and tagging when the host goes quiet after the draw", async () => {
+    installHost([makeSlide("s1")]);
+    _setBatchTimeoutForTest(20);
+    // Past the context and the first draw batches; the shapes are committed and
+    // the host stops answering from here on.
+    faults.wedgeAfterSyncs = 3;
+    try {
+      const got = await returnedWithin(800, insertSceneIntoSlide(buildChart(config), { tagData: "{}" }));
+      expect(got, "the insert never returned once the host went quiet after drawing").not.toBe("never came back");
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setBatchTimeoutForTest(45_000);
+    }
+  });
+
+  it("comes back from the Insert click's reads when the host stops answering", async () => {
+    // `getSelectionBounds` was the only selection read in the file not on
+    // `boundedRun`, and it is the FIRST host call the Insert button makes —
+    // so a quiet host took the whole insert with it: buttons disabled,
+    // "Working…" counting up, nothing drawn and nothing said. `guard()` has no
+    // deadline on the action either, so there was nothing else to stop it.
+    installHost([makeSlide("s1")]);
+    _setSelectionTimeoutForTest(20);
+    faults.wedgeAfterSyncs = 0;
+    try {
+      expect(await returnedWithin(400, getSelectionBounds()), "getSelectionBounds never returned").toBe(null);
+      expect(await returnedWithin(400, getSlideShapeBounds()), "getSlideShapeBounds never returned").toBe(null);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setSelectionTimeoutForTest(4_000);
     }
   });
 

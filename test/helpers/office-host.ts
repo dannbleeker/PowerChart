@@ -237,6 +237,21 @@ export const faults = {
    * both.
    */
   newSlideResolvesTimes: null as number | null,
+  /**
+   * After this many syncs, EVERY sync stops settling — neither resolving nor
+   * rejecting, forever.
+   *
+   * The one failure shape no `catch` can see, and the one this host actually
+   * produces: office-js#3698 and the wedge measured on this project's own build
+   * are both "the promise simply never comes back". A fault that throws models a
+   * host saying no; this models a host saying nothing, which is what a deadline
+   * exists for. `null` (the default) never wedges.
+   *
+   * Broader than `selectionWedgesHost`, which arms only after a programmatic
+   * `setSelectedShapes` — production never makes that call, so it could not be
+   * used to test the paths production actually takes.
+   */
+  wedgeAfterSyncs: null as number | null,
 };
 
 /**
@@ -1375,6 +1390,7 @@ export function installHost(
         wedgeThisSync = false;
         await new Promise(() => {});
       }
+      if (faults.wedgeAfterSyncs !== null && trips.syncs > faults.wedgeAfterSyncs) await new Promise(() => {});
       if (stallSyncOn.has(trips.syncs)) {
         // Sleep past withTimeout's deadline, then settle successfully. The
         // queued shapes commit at settle time — same as real Office.js where
@@ -1450,6 +1466,7 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
+  faults.wedgeAfterSyncs = null;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.
   selectionRef.length = 0;

@@ -505,6 +505,41 @@ export function _setBatchTimeoutForTest(ms: number): void {
 }
 
 /**
+ * How long a SELECTION round trip may take.
+ *
+ * Much shorter than everything else here, and deliberately so. These calls sit
+ * on a click path, they each have a cheap "I do not know" answer already
+ * (`null` bounds, the live canvas, a cascade), and a real host stopped
+ * answering them twice at ninety seconds and once at ten. Ninety is
+ * `READBACK_TIMEOUT_MS`, the budget for a twenty-slide repair page; a question
+ * about one shape borrowing it means a user watches "Working…" for a minute and
+ * a half over something the pane can shrug off in four seconds.
+ *
+ * The failure this bounds is not an error. On the web these syncs neither
+ * resolve nor reject — office-js#3698 and the wedge measured on this project's
+ * own build — so no `catch` can see them, `finally` never runs, and Stop cannot
+ * break in because it is checked at batch boundaries this never reaches.
+ */
+let SELECTION_TIMEOUT_MS = 4_000;
+
+/** Test-only: shorten the selection budget so a wedged host is testable. */
+export function _setSelectionTimeoutForTest(ms: number): void {
+  SELECTION_TIMEOUT_MS = ms;
+}
+
+/**
+ * A labelled sync WITH a deadline.
+ *
+ * `step` says where an error came from; this also says that an answer has to
+ * come at all. The two were separate for most of this file's life and the gap
+ * between them was the whole post-draw phase — grouping, tagging, the readback
+ * — which had a label on every sync and a deadline on none.
+ */
+function boundedSync(context: PowerPoint.RequestContext, what: string, budgetMs = BATCH_TIMEOUT_MS): Promise<void> {
+  return step(what, () => withTimeout(context.sync(), budgetMs, what));
+}
+
+/**
  * The blank layout of the presentation's first master, or undefined if the host
  * has no opinion.
  *
@@ -1154,18 +1189,30 @@ export async function getSelectionBounds(): Promise<{
   height: number;
 } | null> {
   try {
-    return await PowerPoint.run(async (context) => {
-      const shapes = context.presentation.getSelectedShapes();
-      shapes.load("items/left,items/top,items/width,items/height");
-      await context.sync();
-      if (shapes.items.length !== 1) return null;
-      const s = shapes.items[0];
-      const tag = s.tags.getItemOrNullObject(CHART_TAG);
-      tag.load("value");
-      await context.sync();
-      if (tagValue(tag)) return null; // it's a chart — edit, don't cover
-      return { left: s.left, top: s.top, width: s.width, height: s.height };
-    });
+    // Bounded, and on the short selection budget. This was the only selection
+    // read in the file not on `boundedRun`, and it is the FIRST host call the
+    // Insert button makes — so a host that went quiet on it took the whole
+    // insert with it: buttons disabled, "Working…" counting up forever, nothing
+    // drawn and nothing said, and `guard()` has no deadline on `fn()` either.
+    // Its answer is already optional (null means "no placeholder to fit"), so
+    // giving up costs nothing but the placeholder convenience.
+    return await boundedRun(
+      "reading the selection's bounds",
+      async (context) => {
+        const shapes = context.presentation.getSelectedShapes();
+        shapes.load("items/left,items/top,items/width,items/height");
+        await context.sync();
+        const items = loadedItems(shapes);
+        if (!items || items.length !== 1) return null;
+        const s = items[0];
+        const tag = s.tags.getItemOrNullObject(CHART_TAG);
+        tag.load("value");
+        await context.sync();
+        if (tagValue(tag)) return null; // it's a chart — edit, don't cover
+        return { left: s.left, top: s.top, width: s.width, height: s.height };
+      },
+      SELECTION_TIMEOUT_MS,
+    );
   } catch {
     return null;
   }
@@ -1234,16 +1281,23 @@ export async function listChartsInSelection(): Promise<{ configJson: string; tar
  */
 export async function getSlideShapeBounds(slideId?: string): Promise<Rect[] | null> {
   try {
-    return await PowerPoint.run(async (context) => {
-      const slide = getTargetSlide(context, slideId);
-      slide.shapes.load("items/left,items/top,items/width,items/height");
-      await context.sync();
-      const items = loadedItems(slide.shapes);
-      if (!items) return null;
-      return items
-        .map((s) => ({ left: s.left, top: s.top, width: s.width, height: s.height }))
-        .filter((r) => [r.left, r.top, r.width, r.height].every((n) => typeof n === "number" && Number.isFinite(n)));
-    });
+    // On the selection budget, not the readback one: this runs on the Insert
+    // click, its answer is optional, and a host that will not give it should
+    // cost four seconds and a cascade rather than ninety and a dead button.
+    return await boundedRun(
+      "reading what is already on the slide",
+      async (context) => {
+        const slide = getTargetSlide(context, slideId);
+        slide.shapes.load("items/left,items/top,items/width,items/height");
+        await context.sync();
+        const items = loadedItems(slide.shapes);
+        if (!items) return null;
+        return items
+          .map((s) => ({ left: s.left, top: s.top, width: s.width, height: s.height }))
+          .filter((r) => [r.left, r.top, r.width, r.height].every((n) => typeof n === "number" && Number.isFinite(n)));
+      },
+      SELECTION_TIMEOUT_MS,
+    );
   } catch {
     return null;
   }
@@ -1850,7 +1904,7 @@ export interface DemoReport {
 export async function slideCount(): Promise<number> {
   return PowerPoint.run(async (context) => {
     const c = context.presentation.slides.getCount();
-    await step("counting the deck's slides", () => context.sync());
+    await boundedSync(context, "counting the deck's slides", READBACK_TIMEOUT_MS);
     // No safe default here, deliberately. Every caller uses this to measure a
     // delta — slides added, slides lost, pages to scan — and a fabricated 0
     // would read as "the deck is empty", which is an answer that gets acted on.
@@ -3861,13 +3915,21 @@ export async function slideSize(opts: { refresh?: boolean } = {}): Promise<Slide
   // Rung 1 — the direct read.
   if (supports("1.10")) {
     try {
-      const got = await PowerPoint.run(async (context) => {
-        const setup = (context.presentation as unknown as { pageSetup: { slideWidth: number; slideHeight: number } })
-          .pageSetup;
-        (setup as unknown as { load(p: string): void }).load("slideWidth,slideHeight");
-        await context.sync();
-        return { width: setup.slideWidth, height: setup.slideHeight };
-      });
+      // Bounded: this is rung ONE of a ladder whose whole design is "fall
+      // through to the next rung", and it runs on the Insert click path. An
+      // unbounded first rung turns a graceful degradation into a hang — the
+      // ladder never reaches rungs 2, 3 or 4, and the pane never draws.
+      const got = await boundedRun(
+        "reading the slide size",
+        async (context) => {
+          const setup = (context.presentation as unknown as { pageSetup: { slideWidth: number; slideHeight: number } })
+            .pageSetup;
+          (setup as unknown as { load(p: string): void }).load("slideWidth,slideHeight");
+          await context.sync();
+          return { width: setup.slideWidth, height: setup.slideHeight };
+        },
+        SELECTION_TIMEOUT_MS,
+      );
       if (Number.isFinite(got.width) && Number.isFinite(got.height) && got.width > 0 && got.height > 0) {
         cachedSlideSize = { ...got, source: "pageSetup" };
         trace("host", "slide size read", { ...cachedSlideSize });
@@ -4078,7 +4140,7 @@ async function slideIds(): Promise<string[] | undefined> {
   return PowerPoint.run(async (context) => {
     const slides = context.presentation.slides;
     slides.load("items/id");
-    await step("listing the deck's slides", () => context.sync());
+    await boundedSync(context, "listing the deck's slides", READBACK_TIMEOUT_MS);
     const items = loadedItems(slides);
     if (!items) return undefined;
     const ids = items.map((s) => loadedValue(() => s.id));
@@ -4098,7 +4160,7 @@ export async function deleteSlideById(slideId: string): Promise<boolean> {
       // deck's own slide list settles it below.
       if (!isLive(slide)) return false;
       slide.delete();
-      await step("deleting a slide", () => context.sync());
+      await boundedSync(context, "deleting a slide", READBACK_TIMEOUT_MS);
       return true;
     });
     // Verify from a FRESH read, and answer from the deck rather than from the
@@ -4178,7 +4240,7 @@ async function deleteSlideByPosition(slideId: string): Promise<boolean> {
       await context.sync();
       if (loadedValue(() => slide.id) !== slideId) return;
       slide.delete();
-      await step("deleting a slide by position", () => context.sync());
+      await boundedSync(context, "deleting a slide by position", READBACK_TIMEOUT_MS);
     });
   } catch {
     return false;
@@ -4227,27 +4289,42 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
    *  the `finally`; never shown to `fn`, and never the user's own. */
   let scratchId: string | null = null;
   try {
-    const moved = await PowerPoint.run(async (context) => {
-      const presentation = context.presentation as unknown as {
-        getSelectedSlides(): { items: { id: string }[]; load(p: string): void };
-        setSelectedSlides(ids: string[]): void;
-        slides: PowerPoint.SlideCollection;
-      };
-      const selected = presentation.getSelectedSlides();
-      selected.load("items/id");
-      const all = context.presentation.slides;
-      all.load("items/id");
-      await context.sync();
-      const previous = selected.items.map((s) => s.id);
-      const elsewhere = all.items.map((s) => s.id).find((id) => !slideIds.includes(id));
-      // Nowhere to look YET. Report the selection anyway — the caller below
-      // makes a slide to look at, and it still has to know where to put the
-      // user back afterwards. Returning null here (as this did) threw that away.
-      if (!elsewhere) return { previous, parkedOn: null };
-      presentation.setSelectedSlides([elsewhere]);
-      await context.sync();
-      return { previous, parkedOn: elsewhere };
-    });
+    // Bounded, on the selection budget. This is the FIRST thing an in-place
+    // update does, and it was two raw `PowerPoint.run`s sandwiching draw work
+    // that is bounded per batch — so the one part of the update that could hang
+    // forever was the part before anything was drawn. `showSlide` bounds the
+    // identical `setSelectedSlides` call thirty lines away.
+    //
+    // A host that goes quiet here does not throw: the promise never settles,
+    // this function never returns, `doInsert`'s `finally` never runs, and the
+    // pane's busy counter stays up for the rest of the session — dead selection
+    // banner, frozen status strip, an auto-update timer re-arming forever. The
+    // failure is silence, so only a deadline can see it.
+    const moved = await boundedRun(
+      "looking away from the slide being redrawn",
+      async (context) => {
+        const presentation = context.presentation as unknown as {
+          getSelectedSlides(): { items: { id: string }[]; load(p: string): void };
+          setSelectedSlides(ids: string[]): void;
+          slides: PowerPoint.SlideCollection;
+        };
+        const selected = presentation.getSelectedSlides();
+        selected.load("items/id");
+        const all = context.presentation.slides;
+        all.load("items/id");
+        await context.sync();
+        const previous = selected.items.map((s) => s.id);
+        const elsewhere = all.items.map((s) => s.id).find((id) => !slideIds.includes(id));
+        // Nowhere to look YET. Report the selection anyway — the caller below
+        // makes a slide to look at, and it still has to know where to put the
+        // user back afterwards. Returning null here (as this did) threw that away.
+        if (!elsewhere) return { previous, parkedOn: null };
+        presentation.setSelectedSlides([elsewhere]);
+        await context.sync();
+        return { previous, parkedOn: elsewhere };
+      },
+      SELECTION_TIMEOUT_MS,
+    );
     if (moved.parkedOn === null) {
       // Every slide in the deck is one we are about to draw on. Make a blank
       // one at the end, look at that instead, and take it away again after.
@@ -4288,19 +4365,29 @@ export async function withSlideDeselected<T>(slideIds: string[], fn: (deselected
     //
     // Failing to restore is not worth surfacing: they are one click from it.
     if (restore?.length) {
-      await PowerPoint.run(async (context) => {
-        const presentation = context.presentation as unknown as {
-          getSelectedSlides(): { items: { id: string }[]; load(p: string): void };
-          setSelectedSlides(ids: string[]): void;
-        };
-        const now = presentation.getSelectedSlides();
-        now.load("items/id");
-        await context.sync();
-        const ids = now.items.map((s) => s.id);
-        if (ids.length !== 1 || ids[0] !== parkedOn) return;
-        presentation.setSelectedSlides(restore);
-        await context.sync();
-      }).catch(() => {});
+      // Bounded too, and it matters more here than the comment above suggests.
+      // This sits in a `finally`, so a sync that never settles does not merely
+      // skip the restore — it stops the `finally` from completing, which means
+      // the caller's own `finally` never runs either. The pane's busy counter
+      // is decremented in one of those. Failing to restore the view is cheap;
+      // never returning from the update that did it is not.
+      await boundedRun(
+        "putting the view back",
+        async (context) => {
+          const presentation = context.presentation as unknown as {
+            getSelectedSlides(): { items: { id: string }[]; load(p: string): void };
+            setSelectedSlides(ids: string[]): void;
+          };
+          const now = presentation.getSelectedSlides();
+          now.load("items/id");
+          await context.sync();
+          const ids = now.items.map((s) => s.id);
+          if (ids.length !== 1 || ids[0] !== parkedOn) return;
+          presentation.setSelectedSlides(restore);
+          await context.sync();
+        },
+        SELECTION_TIMEOUT_MS,
+      ).catch(() => {});
     }
     // Take the scratch slide back out — AFTER the restore above, never before.
     // Deleting the slide the view is currently on leaves the host to choose
@@ -4862,7 +4949,7 @@ async function groupAndTagAll(
       // belongs where the catch can reach it.
       const collections = refresher.map(({ it }) => it.getSlide().shapes);
       for (const c of collections) c.load("items");
-      await step("re-reading the slide's shapes before grouping", () => context.sync());
+      await boundedSync(context, "re-reading the slide's shapes before grouping");
       refresher.forEach(({ it, i }, k) => {
         const items = collections[k].items;
         // By ID, which is exact and works on any slide. The old rule was "the
@@ -4916,7 +5003,7 @@ async function groupAndTagAll(
         tagTargets[i] = group;
         grouped.add(i);
       }
-      await step("grouping the chart's shapes", () => context.sync());
+      await boundedSync(context, "grouping the chart's shapes");
     } catch {
       /* grouping failed — shapes stay ungrouped, charts are already on the slide */
       // The REFRESHED first shape where there is one. Falling back to
@@ -4964,7 +5051,7 @@ async function groupAndTagAll(
         }
       }
       if (!queued.length) throw new Error("no chart's tag could be queued");
-      await step("writing the chart's config tag", () => context.sync());
+      await boundedSync(context, "writing the chart's config tag");
       // The config tag is on the slide from here. The origin tag below is a
       // separate sync and a separate risk — losing it costs drag tracking,
       // not re-editability — so `tagged` is decided at THIS line, not after.
@@ -4988,7 +5075,7 @@ async function groupAndTagAll(
           JSON.stringify([it.opts.left ?? 60, it.opts.top ?? 90, target!.left, target!.top]),
         );
       }
-      await step("writing the chart's origin tag", () => context.sync());
+      await boundedSync(context, "writing the chart's origin tag");
     } catch (err) {
       // The charts are on the slide but carry no config, so they are not
       // re-editable — and this used to be entirely silent, which is why a real
@@ -5016,7 +5103,7 @@ async function groupAndTagAll(
   if (unresolved.length) {
     try {
       for (const i of unresolved) tagTargets[i]!.load("id,left,top");
-      await step("reading back where the charts landed", () => context.sync());
+      await boundedSync(context, "reading back where the charts landed");
     } catch {
       /* the host would not say where they are — the caller keeps its old target */
     }
@@ -5090,7 +5177,12 @@ async function ungroupedFallback(
     // just as true of a queue that faulted as of a sync that did.
     for (const s of siblings.flat()) s.load("id");
     for (const { it, i } of alt) applyAltText(tagTargets[i]!, it.opts);
-    await context.sync();
+    // Labelled and bounded, like every other sync in this phase. This one was
+    // neither — a bare `context.sync()` with no `step`, so an error escaping it
+    // carried no `at=`, and no deadline, so a host that went quiet here hung the
+    // whole insert with nothing on screen. It runs on EVERY web-host insert:
+    // grouping is refused there, which is what puts every chart down this path.
+    await boundedSync(context, "reading back an ungrouped chart's shape ids");
   } catch {
     /* no alt text or id read-back here — the chart is on the slide regardless */
     return partsJson;
