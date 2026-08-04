@@ -126,6 +126,22 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 - `Date.parse` is far looser than a date cell: `parseDateToken` therefore
   gates on shape (date punctuation + month/weekday words only) before parsing.
   Don't route new cell input around it.
+- **`dist-lib/` is a build artifact, and `skill-scripts.test.ts` runs against
+  it.** A local full-suite run after a change to `src/core` tests the OLD core
+  through that path while CI builds fresh — so the suite goes green locally and
+  red in CI, for a real regression. Run `npm run build:lib` before trusting a
+  local run that touched core.
+- **There are THREE colour sinks, and they are separate code on purpose:**
+  `src/core/color.ts` (preview), `skill/scripts/pptx-paint.mjs` (headless
+  pptx), `officeHex` in `powerpoint.ts` (the live add-in). The same bug has now
+  been found in all three independently — each was fixed when a sweep aimed at
+  _that_ renderer found it. Change one, check the other two.
+- **A `string` in the types is not a string in the file someone pasted.** A
+  config arrives from the JSON box, a saved template, a shape tag written in
+  another deck, and the skill's caller. `categories: [2023, 2024]` and
+  `title: 2024` are ordinary things to write and both used to crash. Coerce at
+  the boundary (`normalizeConfig` / `normalizeData` for config,
+  `paintText` / `xmlText` for text) rather than at each consumer.
 
 ## Out of scope (decided, don't revisit without the owner)
 
