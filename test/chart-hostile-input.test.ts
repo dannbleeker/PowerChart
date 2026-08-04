@@ -5,6 +5,7 @@ import { BoxHash } from "../src/core/grid";
 import { sampleConfig, CHART_KINDS } from "../src/core/samples";
 import type { ChartConfig } from "../src/core/types";
 import { sceneToSvg } from "../src/render/svg";
+import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { toRgb, alphaOf } from "../src/core/color";
 
 /**
@@ -195,4 +196,66 @@ describe("a hostile style cannot take the renderer down", () => {
       expect(alphaOf(junk as unknown as string)).toBe(1);
     }
   });
+});
+
+/**
+ * Every top-level config key, holding the wrong type.
+ *
+ * The two suites above ask what a bad CELL and a bad STYLE do. This asks the
+ * broader question — what does a config with the wrong type ANYWHERE do — and
+ * it found three crashes the narrower ones could not:
+ *
+ * - `title: 2024` and `valueAxisTitle: [...]` threw `s.replace is not a
+ *   function` out of `xmlText`. A number for a title is what someone writes for
+ *   a year, not an exotic mistake.
+ * - `numberFormat: null` threw on `.decimals`. A default parameter only fires
+ *   for `undefined`, and `null` is what a serialiser writes for an absent
+ *   field.
+ *
+ * Both renderers, because they are separate code that has disagreed before: the
+ * SVG one the preview uses, and the pptx one the skill and the file path use.
+ * Ten kinds rather than all of them keeps this inside a few seconds while still
+ * covering every family — the failures found were never kind-specific.
+ */
+const TOP_LEVEL_KEYS =
+  "horizontal scale segmentOrder categorySort secondaryAxis axisBreak valueAxisTitle labelOffsets logScale gapWidth overlap footnote pie pareto multiples boxplot map heatmap otherBucket tilemap butterfly scatter gantt radar combo width height title decorations waterfall numberFormat labels render".split(
+    " ",
+  );
+
+const WRONG_TYPES: [string, unknown][] = [
+  ["string", "x"],
+  ["number", 7],
+  ["negative", -7],
+  ["NaN", NaN],
+  ["Infinity", Infinity],
+  ["true", true],
+  ["null", null],
+  ["array", [1, "a", null]],
+  ["object", { a: 1 }],
+  ["nested junk", { max: "x", min: [], value: {} }],
+];
+
+describe("a config key of the wrong type cannot take a renderer down", () => {
+  for (const key of TOP_LEVEL_KEYS) {
+    it(`${key}`, async () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS.slice(0, 10)) {
+        for (const [label, value] of WRONG_TYPES) {
+          const cfg = { ...sampleConfig(kind), [key]: value } as unknown as ChartConfig;
+          try {
+            const scene = buildChart(cfg);
+            sceneToSvg(scene);
+            await buildDeckBase64([{ scene, title: "t", configJson: "{}", slot: 0, run: "r" }], {
+              width: 720,
+              height: 405,
+            });
+          } catch (e) {
+            bad.push(`${kind}/${key}=${label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      }
+      // Sliced so a broad regression reports the first few rather than a wall.
+      expect(bad.slice(0, 6)).toEqual([]);
+    }, 30_000);
+  }
 });

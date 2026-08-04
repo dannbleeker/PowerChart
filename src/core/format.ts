@@ -69,13 +69,23 @@ export function formatNumber(v: number, fmt: Partial<NumberFormat> = {}): string
  * Resolve "auto" decimals once per chart from the data's magnitude, so all
  * labels in one chart share the same precision (as think-cell does).
  */
-export function resolveFormat(values: number[], fmt: Partial<NumberFormat> = {}): NumberFormat {
+export function resolveFormat(values: number[], format?: Partial<NumberFormat> | null): NumberFormat {
+  // A default parameter only fires for `undefined`. `numberFormat: null` is
+  // ordinary JSON — it is what a serialiser writes for an absent field — and it
+  // sailed past the default and threw on `.decimals`. Coerced here rather than
+  // at each of the call sites, which is where it would be forgotten.
+  const fmt = asFormat(format);
   if (fmt.decimals != null && fmt.decimals !== "auto") {
     return { ...DEFAULT_FORMAT, ...fmt, decimals: fmt.decimals };
   }
   const maxAbs = maxOf(values.filter((v) => Number.isFinite(v)).map(Math.abs), 0);
   const decimals = maxAbs >= 10 ? 0 : maxAbs >= 1 ? 1 : 2;
   return { ...DEFAULT_FORMAT, ...fmt, decimals };
+}
+
+/** Whatever arrived where a number format belongs, as something spreadable. */
+function asFormat(fmt: Partial<NumberFormat> | null | undefined): Partial<NumberFormat> {
+  return fmt && typeof fmt === "object" ? fmt : {};
 }
 
 /**
@@ -89,7 +99,8 @@ export function resolveFormat(values: number[], fmt: Partial<NumberFormat> = {})
  * share a label and every label names its own tick. Data labels keep the plain
  * magnitude rule: they are read one at a time, not against each other.
  */
-export function resolveAxisFormat(ticks: number[], fmt: Partial<NumberFormat> = {}): NumberFormat {
+export function resolveAxisFormat(ticks: number[], format?: Partial<NumberFormat> | null): NumberFormat {
+  const fmt = asFormat(format);
   const resolved = resolveFormat(ticks, fmt);
   // An explicit `decimals` is the author's call — never widen it.
   if (fmt.decimals != null && fmt.decimals !== "auto") return resolved;

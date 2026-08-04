@@ -16,8 +16,22 @@ const XML_ILLEGAL =
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 /* eslint-enable no-control-regex */
 
-/** Drop what XML cannot represent, then escape what it can. */
-export const xmlText = (s: string) => s.replace(XML_ILLEGAL, "");
+/**
+ * Drop what XML cannot represent, then escape what it can.
+ *
+ * Coerces first, because the thing arriving is not reliably a string. A chart
+ * `title` of `2024` — a number in a JSON config, which is what someone writes
+ * for a year — reached here and threw `s.replace is not a function`, taking the
+ * whole render with it. Same for `valueAxisTitle`, and for any text a config
+ * supplies. The type says `string`; the config is a file someone pasted.
+ *
+ * `String()` rather than a rejection: a number, a boolean or a date is text the
+ * author plainly meant to show, and rendering `2024` is the right answer rather
+ * than a merciful one. An object comes out as `[object Object]`, which is
+ * visible nonsense on the slide — and visible nonsense beats a chart that did
+ * not draw, because the author can see it and fix it.
+ */
+export const xmlText = (s: string) => String(s ?? "").replace(XML_ILLEGAL, "");
 
 const esc = (s: string) =>
   xmlText(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
