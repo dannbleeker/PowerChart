@@ -309,6 +309,32 @@ export interface EditTarget {
    * so it lands where it already is instead of walking across the slide.
    */
   origin?: { left: number; top: number; anchorLeft: number; anchorTop: number };
+  /**
+   * Why this target cannot be used to edit the chart again — absent when it can.
+   *
+   * The chart is ON THE SLIDE in both cases. What is missing is the ability to
+   * come back to it, and it used to go missing silently, in green:
+   *
+   * - `"no-config"` — the shapes landed but `POWERCHART_CONFIG` did not.
+   *   `groupAndTagAll` has always answered this honestly (`tagged`), and the
+   *   answer had nowhere to go: `EditTarget` carried no such field, so the demo
+   *   path (which has a repair pass) consumed it and the everyday insert and
+   *   in-place update (which have none) did not. The user gets "Done." in
+   *   green, clicking the chart says "the selection is not a PowerChart", and
+   *   reopening the deck loses the config permanently. A real host produced
+   *   this four times in one run.
+   * - `"unknown-shape"` — the chart was redrawn and the host would not say
+   *   where. **`shapeId` names the shape this same call already deleted**, so
+   *   it must not be kept: the next update would resolve a dead id, or worse,
+   *   resolve a group member and draw a second chart over the rest. There is no
+   *   correct id to return here — the new one was never read back — so the
+   *   honest move is to say the target is spent.
+   *
+   * Kept as a reason rather than a boolean because the two need different
+   * sentences: one says "your chart is fine but not editable", the other says
+   * "the pane has lost track of it".
+   */
+  lost?: "no-config" | "unknown-shape";
 }
 
 /**
@@ -606,8 +632,15 @@ export async function insertSceneIntoSlide(
     onPhase?.("done");
     // Hand back an edit target, so a caller that inserted as a RECOVERY (see
     // updateChartResilient) can keep the chart editable instead of telling the
-    // user to go and find it. Null whenever the host would not tag the chart —
-    // there is nothing to re-open then, and saying so beats inventing an id.
+    // user to go and find it.
+    //
+    // Null only when there is no id at all. It used to be null whenever the
+    // host would not TAG the chart too — the comment here said so — and that
+    // stopped being true when the `unresolved` re-read was added to
+    // `groupAndTagAll`: an untagged chart now comes back with a perfectly good
+    // shape id. Which left the caller no way to tell a re-editable chart from
+    // one carrying no config, so it printed "Done." over both. `lost` is that
+    // difference, carried rather than discarded.
     const t = tagged?.target;
     // The slide's own id, which the load at the top asked for. A host that did
     // not answer leaves nothing to re-open — the same answer as an untagged
@@ -621,6 +654,7 @@ export async function insertSceneIntoSlide(
       top: t.top,
       partIds: tagged?.partIds,
       origin: { left: opts.left ?? 60, top: opts.top ?? 90, anchorLeft: t.left, anchorTop: t.top },
+      ...(tagged?.tagged ? {} : { lost: "no-config" as const }),
     };
   });
 }
@@ -938,6 +972,18 @@ export async function updateChartsInSlides(
     const rendered: Grouping[] = [];
     /** Index in `alive` → index in `rendered`. Absent means that chart failed. */
     const placed = new Map<number, number>();
+    /**
+     * Charts whose OLD shapes are committed gone.
+     *
+     * The difference between "this target is stale" and "this target is
+     * untouched", and the two are not interchangeable. A stop taken before a
+     * chart's delete costs it nothing — its shapes are still on the slide and
+     * its target still names them — while a chart whose delete committed and
+     * whose redraw then failed has a target pointing at nothing. Marking both
+     * as lost would tell the user their chart had gone when the stop had in
+     * fact protected it, which is the opposite of the truth.
+     */
+    const wrecked = new Set<number>();
     let firstFailure: unknown;
     for (const [i, entry] of alive.entries()) {
       // Stop BEFORE this chart's delete, and break rather than throw. Every
@@ -981,6 +1027,7 @@ export async function updateChartsInSlides(
         // From here the old chart is committed GONE. Anything that throws below
         // leaves a hole, and the caller has to be told which chart it is.
         deleted = true;
+        wrecked.add(i);
         const created = await step("redrawing the chart's shapes", () =>
           renderShapesChunked(context, getSlide, it.scene, opts, undefined, drawn),
         );
@@ -1037,7 +1084,19 @@ export async function updateChartsInSlides(
       // chart, which the next update would then overwrite.
       const ri = placed.get(i);
       const t = ri === undefined ? undefined : tagged[ri]?.target;
-      if (!t) return it.target;
+      // No id for the new shape. The caller's old target is the only thing left
+      // to hand back, and its `shapeId` names the shape THIS CALL DELETED — so
+      // it comes back marked spent. Returning it bare was a trap: the pane kept
+      // it as the live edit target and printed "Done." in green, and the next
+      // push resolved a dead id, was filtered out as "the user deleted this
+      // chart", and told them their chart was gone. There is no correct id here
+      // — the new one was never read back — so the signal is the fix, not the
+      // value.
+      //
+      // `wrecked` is what keeps this honest. A chart the stop broke out BEFORE
+      // still has its shapes and its target; only one whose delete committed has
+      // lost them. An existing test caught a version of this that marked both.
+      if (!t) return wrecked.has(i) && !placed.has(i) ? { ...it.target, lost: "unknown-shape" as const } : it.target;
       // The origin this pass actually rendered at, paired with where the tagged
       // shape landed — the same (origin, anchor) contract groupAndTagAll wrote to
       // the tag, so the caller's in-memory target and the on-slide tag agree.
@@ -1054,6 +1113,10 @@ export async function updateChartsInSlides(
           anchorLeft: t.left,
           anchorTop: t.top,
         },
+        // Redrawn and located, but the config tag did not land — so the chart is
+        // on the slide and cannot be re-opened. Same signal the insert path
+        // carries, for the same reason.
+        ...(ri !== undefined && tagged[ri]?.tagged ? {} : { lost: "no-config" as const }),
       };
     });
   });
@@ -2830,6 +2893,19 @@ export async function snapshotAddedSlides(before: number, after: number): Promis
 export async function readAddedSlides(
   before: number,
   after: number,
+  /**
+   * Run passes B and C here, over everything pass A read.
+   *
+   * False lets a caller locate the span FIRST and enrich only that. Pass A has
+   * to stay deck-wide — the span is discoverable only by reading slot tags, and
+   * assuming this run's slides sit at the tail is a bug this project has already
+   * shipped once (`insertSlidesFromBase64` put them at the FRONT on the first
+   * real run). Passes B and C are the expensive ones and none of their answers
+   * outside the span can ever be acted on: on a 39-slide deck holding earlier
+   * work, that is a tag read and two group-count syncs per slide, spent on
+   * charts the repair will never touch.
+   */
+  enrich = true,
 ): Promise<{ snapshots: SlideSnapshot[]; unread: number }> {
   const snapshots: SlideSnapshot[] = [];
   let unread = 0;
@@ -2891,8 +2967,7 @@ export async function readAddedSlides(
     }
     snapshots.push(...page);
   }
-  await markTaggedSlides(snapshots);
-  await countGroupChildren(snapshots);
+  if (enrich) await enrichSnapshots(snapshots);
   trace("repair", "read the deck back", {
     range: [before, after],
     read: snapshots.length,
@@ -2929,6 +3004,12 @@ function parseSlotTag(raw: string): { i: number; title: string | null; run: stri
  */
 export function newRunId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Passes B and C over a set of snapshots: are they tagged, and how big are their groups. */
+export async function enrichSnapshots(snapshots: SlideSnapshot[]): Promise<void> {
+  await markTaggedSlides(snapshots);
+  await countGroupChildren(snapshots);
 }
 
 /** Pass B: does any shape on the slide carry a config tag (i.e. re-editable). */
@@ -3039,35 +3120,72 @@ async function tagPass(snapshots: SlideSnapshot[], attempt: number): Promise<Sli
 }
 
 /**
- * Pass C: how many shapes are inside each slide's PowerChart group. One
- * context per grouped slide, and every failure is swallowed — `Shape.group`
- * needs PowerPointApi 1.8, and reaching for it on an older host rejects the
- * sync it was queued in, which would take the whole page's readback with it.
+ * Pass C: how many shapes are inside each slide's PowerChart group.
+ *
+ * PAGED, like passes A and B, and it was the one pass that was not. It opened
+ * its own context with two syncs for EVERY grouped slide, which made it the
+ * most expensive thing the repair does and made `READBACK_TIMEOUT_MS`
+ * meaningless in aggregate: the budget is per slide, so sixty grouped slides is
+ * ninety minutes of rope with a full ninety seconds left at every step. On a
+ * real 38-slide run this pass accounted for a 49-second gap in the log — 43% of
+ * the post-insert wall clock — immediately before the tab died.
+ *
+ * `getCount` is a scalar rather than a load, so the >50-item ceiling
+ * (office-js#4272) that sizes `READBACK_PAGE` does not apply to the counts
+ * themselves; the `items/name` loads are what the page size is for.
+ *
+ * A page whose sync faults falls back to one slide at a time, so a single bad
+ * slide costs its own measurement rather than the whole page's. Every failure
+ * is swallowed either way — `Shape.group` needs PowerPointApi 1.8, and reaching
+ * for it on an older host rejects the sync it was queued in.
  */
 async function countGroupChildren(snapshots: SlideSnapshot[]): Promise<void> {
   if (!supports("1.8")) return;
-  for (const s of snapshots) {
-    if (!s.grouped) continue;
-    // Leaves groupChildren unset for the rest, which planReconcile already
-    // treats as "unmeasured" — see its unmeasured rule. Never as "empty".
+  // Leaves groupChildren unset for anything not measured, which planReconcile
+  // already treats as "unmeasured" — see its unmeasured rule. Never as "empty".
+  const wanted = snapshots.filter((s) => s.grouped);
+  for (let from = 0; from < wanted.length; from += READBACK_PAGE) {
     if (isStopRequested()) break;
+    const page = wanted.slice(from, from + READBACK_PAGE);
     try {
-      s.groupChildren = await boundedRun(`counting the chart group on slide ${s.index + 1}`, async (context) => {
-        const shapes = context.presentation.slides.getItemAt(s.index).shapes;
-        shapes.load("items/name");
-        await context.sync();
-        const group = shapes.items.find((sh) => (sh as unknown as { name: string }).name === GROUP_NAME);
-        if (!group) throw new Error("group vanished between passes");
-        const count = (
-          group as unknown as { group: { shapes: { getCount(): { value: number } } } }
-        ).group.shapes.getCount();
-        await context.sync();
-        return count.value;
-      });
+      await countGroupChildrenPage(page);
     } catch {
-      /* leave groupChildren unset — see `planReconcile`'s unmeasured rule */
+      // The page's sync faulted, which says nothing about any individual slide
+      // on it. Retry one at a time so one unreadable group does not cost the
+      // other nineteen their measurement — and a measurement missing here is
+      // what makes the repair pass "fix" a chart that was never broken.
+      for (const s of page) {
+        if (isStopRequested()) break;
+        await countGroupChildrenPage([s]).catch(() => {});
+      }
     }
   }
+}
+
+/** One page of pass C: every group's child count in a single context. */
+async function countGroupChildrenPage(page: SlideSnapshot[]): Promise<void> {
+  const from = page[0]?.index ?? 0;
+  const to = page[page.length - 1]?.index ?? from;
+  const counts = await boundedRun(`counting chart groups on slides ${from + 1}-${to + 1}`, async (context) => {
+    const shapes = page.map((s) => context.presentation.slides.getItemAt(s.index).shapes);
+    for (const c of shapes) c.load("items/name");
+    await context.sync();
+    const queued = shapes.map((c) => {
+      const items = loadedItems(c);
+      const group = items?.find((sh) => loadedValue(() => (sh as unknown as { name: string }).name) === GROUP_NAME);
+      if (!group) return undefined;
+      try {
+        return (group as unknown as { group: { shapes: { getCount(): { value: number } } } }).group.shapes.getCount();
+      } catch {
+        return undefined;
+      }
+    });
+    await context.sync();
+    return queued.map((c) => (c ? loadedValue(() => c.value) : undefined));
+  });
+  counts.forEach((n, i) => {
+    if (typeof n === "number") page[i].groupChildren = n;
+  });
 }
 
 /** Delete the NOT COMPLETE banner from a slide. False when there is none. */

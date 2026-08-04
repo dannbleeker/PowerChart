@@ -58,6 +58,12 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
    "Edit it" banner. Or click **Edit selected chart** to load its data and
    options back into the pane, change anything, and **Update chart** to
    replace it in place. Charts remember their configuration in the file.
+
+   Very occasionally PowerPoint draws the chart and then refuses to save its
+   settings back onto it. The chart is on the slide and looks right; it just
+   cannot be re-opened from the pane. **The pane now says so** instead of
+   reporting Done — insert it again if you need to keep editing it, or undo
+   (Ctrl+Z) to get back the version that was editable.
 6. **Auto-update chart** pushes every pane edit to the slide live (debounced).
 7. Ctrl+Z / Ctrl+Y undo and redo pane edits.
 

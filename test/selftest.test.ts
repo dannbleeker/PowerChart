@@ -132,7 +132,10 @@ describe("the host self-test battery", () => {
     // honest way to hold the whole run blind.
     faults.hollowReads = 500;
     try {
-      const r = byName(await runSelfTest("probe"))["stop a run part-way"];
+      // Targeted, so the host-sickness breaker cannot trip first and report
+      // this scenario as "not reached" — which is also correct behaviour, and
+      // would test the breaker instead of the assertion this case is about.
+      const r = byName(await runSelfTest("probe", "stop a run part-way"))["stop a run part-way"];
       expect(r.ok, "passed on a scan that read nothing").toBe(false);
       expect(r.skipped, "reported a blind scan as a real verdict").toBe(true);
       expect(r.blind, "attributed the blind scan to something else").toBe(true);
@@ -140,6 +143,39 @@ describe("the host self-test battery", () => {
     } finally {
       faults.hollowReads = 0;
     }
+  });
+
+  /**
+   * Stop asking a host that has stopped answering.
+   *
+   * Every real-host artefact this project owns ends the same way. The last one:
+   * at 261.6s a scenario failed, at 261.8s the deck scan read 0 of 8 slides —
+   * and the battery then ran Same Scale for 95 seconds (six charts, six
+   * consecutive 5010 failures, two 90-second waits), a picture round-trip, and
+   * two more scenarios, until PowerPoint killed the tab at ~396s. Roughly 130
+   * seconds and 150 shapes were issued AFTER three distinct signals that the
+   * host was already gone, and the tab took the remaining verdicts with it.
+   */
+  it("stops the run once the host has failed three scenarios in a row", async () => {
+    installHost([makeSlide("s1")]);
+    vi.stubGlobal("PowerPoint", {
+      run: async () => {
+        throw new Error("the host wedged");
+      },
+      SlideLayoutType: { blank: "blank" },
+    });
+    const results = await runSelfTest("probe");
+    // Still a verdict for every scenario — abandoning the run must not lose the
+    // report, which is the only thing a run this bad produces.
+    expect(results).toHaveLength(ROUTINE_SCENARIO_NAMES.length);
+    const abandoned = results.filter((r) => r.detail.includes("in a row"));
+    expect(abandoned.length, "kept asking a host that had stopped answering").toBeGreaterThan(0);
+    // And it gave the host a fair number of tries first: three real attempts
+    // before it gives up, or a single flaky scenario would end every run.
+    const attempted = results.filter((r) => !r.detail.includes("in a row"));
+    expect(attempted.length, "gave up too early to have found anything").toBeGreaterThanOrEqual(3);
+    // Never green, and never filed as a capability gap.
+    expect(selfTestNeedsAttention(results)).toBe(true);
   });
 
   it("counts a blind scan apart from a host that lacks the API", async () => {
