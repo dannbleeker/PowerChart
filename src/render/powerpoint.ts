@@ -2588,8 +2588,23 @@ export function requirementSets(): string[] {
 export interface ProbeContext {
   /** The deck's slide collection, for questions about lookup and counting. */
   slides: PowerPoint.SlideCollection;
-  /** The scratch slide — everything a probe creates belongs here. */
-  scratch: PowerPoint.Slide;
+  /**
+   * The scratch slide, RE-ACQUIRED on every call — never a proxy to hold.
+   *
+   * A thunk for the same reason `SlideThunk` is one, and this file had already
+   * written down why a thousand lines above: the scratch slide was `add()`ed
+   * moments ago, and a handle on a freshly-added slide is only good inside the
+   * sync that acquired it. The first version of this handed out the proxy
+   * resolved by the liveness check below, which every probe then used AFTER
+   * that sync.
+   *
+   * PowerPoint on the web said what that costs. In the 2026-08-04 answer sheet
+   * all six questions that read through a proxy of their own were answered, and
+   * all eight that wrote through the held one failed — `GeneralException` on the
+   * shape add, or a sync that never came back. Eight questions the sheet then
+   * reported as host divergences, none of which had actually been asked.
+   */
+  scratch: () => PowerPoint.Slide;
   scratchId: string;
   sync: () => Promise<void>;
 }
@@ -2647,11 +2662,21 @@ export async function withProbeContext<T>(
       await context.sync();
       const flag = loadedValue(() => scratch.isNullObject);
       if (flag !== false) throw new ScratchSlideUnavailable(flag === true ? "gone" : "silent");
+      // One handle per sync-batch, never the `scratch` proxy the liveness check
+      // above already holds — that one is a sync old by the time a probe gets
+      // here, which is the whole trap. Per BATCH rather than per call because
+      // that is the actual rule: a handle is good inside the sync that acquired
+      // it, and several uses within one batch are what production does. Per
+      // call would also spend host lookups a real host has been seen to ration.
+      let handle: PowerPoint.Slide | null = null;
       return fn({
         slides: context.presentation.slides,
-        scratch,
+        scratch: () => (handle ??= context.presentation.slides.getItemOrNullObject(scratchId)),
         scratchId,
-        sync: () => context.sync(),
+        sync: async () => {
+          await context.sync();
+          handle = null;
+        },
       });
     },
     budgetMs,
@@ -3925,8 +3950,19 @@ export async function slideImageBase64(slideId: string, width?: number): Promise
       queueNullCheck(slide);
       await context.sync();
       if (!isLive(slide)) return undefined;
+      // Rasterise through a FRESH handle, never the one just resolved.
+      //
+      // Resolving a `getItemOrNullObject` proxy is what makes Office.js rewrite
+      // its object path to `getItem(id)`, and a freshly-added slide's id does
+      // not round-trip through `getItem` on the web — the same trap `SlideThunk`
+      // exists for. It cost the last scenario of a real self-test run: the
+      // visibility check adds a scratch slide, rasterises it, and PowerPoint on
+      // the web answered "GeneralException | errorLocation: SlideCollection.-
+      // getItem | statement: var slide = slides.getItem(...); slide.getImageAs-
+      // Base64(...)" — the liveness check above having passed a moment earlier
+      // on the very same id, through the very same proxy.
       const img = (
-        slide as unknown as {
+        context.presentation.slides.getItemOrNullObject(slideId) as unknown as {
           getImageAsBase64(options?: { width?: number }): { value: string };
         }
       ).getImageAsBase64(width ? { width } : undefined);

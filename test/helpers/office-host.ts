@@ -238,6 +238,36 @@ export const faults = {
    */
   newSlideResolvesTimes: null as number | null,
   /**
+   * A freshly-added slide's `getItemOrNullObject` handle is good for ONE sync.
+   *
+   * Resolve it, sync, and every later use through that same handle fails —
+   * `GeneralException` at `SlideCollection.getItem`, because resolving is what
+   * makes Office.js rewrite the handle's object path to `getItem(id)`, and a
+   * new slide's id does not round-trip through `getItem` on the web. See
+   * `expiringSlideHandle` for the two places a real host said so on the same
+   * day.
+   *
+   * A fault rather than the default, and NOT in `applyWebProfile`, for one
+   * reason: what a real host proved is that the pattern fails, not which of
+   * the three ways of naming a new slide it fails for. `shape-add-fresh-slide-
+   * proxy`, `shape-add-held-slide-proxy` and `shape-add-positional-slide-proxy`
+   * were added to the host probe to settle exactly that, and until a sheet
+   * comes back with their answers, making this unconditional would be the fake
+   * asserting something nobody has checked — which is the mistake this whole
+   * file exists to stop repeating.
+   */
+  newSlideHandlesExpire: false,
+  /**
+   * The host takes a shape add and fails the sync that would land it.
+   *
+   * The other branch of the fork `expiringSlideHandle` documents: a host that
+   * will not put a shape on a scratch slide AT ALL, however the slide is named.
+   * The probe cannot tell the two apart from a failure alone, so it must not
+   * try — a probe that cannot get its shapes answers `no-scratch-shape`, which
+   * no probe can produce as an answer to its own question.
+   */
+  refuseShapeAdds: false,
+  /**
    * After this many syncs, EVERY sync stops settling — neither resolving nor
    * rejecting, forever.
    *
@@ -875,6 +905,16 @@ export function makeSlide(id: string) {
       },
       addGeometricShape(geo: string, box: FakeShape["box"]) {
         const s = makeShape("geometric", geo, box);
+        // Taken and refused at the sync — see `faults.refuseShapeAdds`. The
+        // shape is still handed back, because a queued-command failure is what
+        // a real host answers with: the caller holds a proxy for something
+        // that never lands.
+        if (faults.refuseShapeAdds) {
+          pendingHostError = new Error(
+            'GeneralException | code=GeneralException | debugInfo={"code":"GeneralException","message":"GeneralException","errorLocation":"ShapeCollection.addGeometricShape"}',
+          );
+          return s;
+        }
         created.push(s);
         pending.push(s);
         return s;
@@ -975,20 +1015,60 @@ export type FakeSlide = ReturnType<typeof makeSlide>;
  * getItemAt, so a held handle was as good as a fresh one.
  */
 function freshWindowedHandle(real: FakeSlide) {
+  return windowedHandle(
+    real,
+    () =>
+      new Error(
+        'InvalidParam passed to GetItem(id) | code=5010 | debugInfo={"errorLocation":"SlideCollection.getItem"}',
+      ),
+  );
+}
+
+/**
+ * The same window, on a handle taken by ID — see `faults.newSlideHandlesExpire`.
+ *
+ * PowerPoint on the web on 2026-08-04, twice over. The host probe resolved the
+ * scratch slide by id, synced, and every one of the eight questions that then
+ * wrote through that handle failed; the six that resolved a handle of their own
+ * were all answered. The self-test's visibility check failed the same way, with
+ * the host naming the call: `GeneralException`, `errorLocation:
+ * SlideCollection.getItem`, `statement: var slide = slides.getItem(...);
+ * slide.getImageAsBase64(...)` — on a slide whose liveness check had passed
+ * through that very proxy one sync earlier.
+ *
+ * Which is `SlideThunk`'s rule exactly, and the fake could only express it for
+ * `getItemAt`: `getItemOrNullObject` handed back the live slide, durable, so
+ * holding one across a sync was free here and fatal there.
+ */
+function expiringSlideHandle(real: FakeSlide) {
+  return windowedHandle(
+    real,
+    () =>
+      new Error(
+        'GeneralException | code=GeneralException | debugInfo={"code":"GeneralException","message":"GeneralException","errorLocation":"SlideCollection.getItem"}',
+      ),
+  );
+}
+
+/** A slide handle that is only good inside the sync it was acquired in. */
+function windowedHandle(real: FakeSlide, makeError: () => Error) {
   const acquiredSync = trips.syncs;
   // Valid only until the next sync moves past the window it was acquired in.
   const ok = () => {
     if (trips.syncs <= acquiredSync) return true;
-    pendingHostError = new Error(
-      'InvalidParam passed to GetItem(id) | code=5010 | debugInfo={"errorLocation":"SlideCollection.getItem"}',
-    );
+    pendingHostError = makeError();
     return false;
   };
   return {
     id: real.id,
     isNullObject: false,
     load() {},
+    delete: () => real.delete(),
     tags: real.tags,
+    // The host's own rasteriser is reached through a slide handle like any
+    // other call, so a spent window refuses that too — which is exactly how a
+    // real host answered the self-test's visibility check.
+    getImageAsBase64: (options?: { width?: number }) => (ok() ? real.getImageAsBase64(options) : { value: "" }),
     shapes: {
       // Lazy — evaluating this at handle-creation would fire the .items
       // getter's syncCreated refresh, keeping every shape perpetually fresh
@@ -1176,7 +1256,16 @@ export function installHost(
         // this is what keeps that true.
         getItemOrNullObject: (id: string) => {
           const found = slides.find((s) => s.id === id);
-          return nullObjectProxy(found && !newSlideLeaseSpent(id) ? found : undefined);
+          const live = found && !newSlideLeaseSpent(id) ? found : undefined;
+          // A freshly-added slide's by-id handle is single-sync when the fault
+          // is armed — see `expiringSlideHandle`. Only added slides: a deck's
+          // original ids round-trip through `getItem` on every host anyone has
+          // met, which is why editing a chart in place always worked.
+          return nullObjectProxy(
+            live && faults.newSlideHandlesExpire && addedSlideIds.has(id)
+              ? (expiringSlideHandle(live) as unknown as FakeSlide)
+              : live,
+          );
         },
         // A pre-existing slide's handle is durable; a freshly-added one's is only
         // good within the sync it was acquired in (see freshWindowedHandle), so
@@ -1466,6 +1555,8 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
+  faults.newSlideHandlesExpire = false;
+  faults.refuseShapeAdds = false;
   faults.wedgeAfterSyncs = null;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.
