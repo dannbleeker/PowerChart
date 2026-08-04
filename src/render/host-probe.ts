@@ -35,6 +35,7 @@ import {
   deleteSlideById,
   isTimeout,
   requirementSets,
+  ScratchSlideUnavailable,
   withProbeContext,
   type ProbeContext,
 } from "./powerpoint";
@@ -435,7 +436,17 @@ function short(err: unknown): string {
  */
 export async function runHostProbes(source: string, build: string): Promise<HostAnswerSheet> {
   const answers: HostAnswer[] = [];
-  const scratchId = await addScratchSlide();
+  /**
+   * Every scratch slide this run has made, so all of them come back out.
+   *
+   * Plural because the run replaces one it has lost. A diagnostic that leaves
+   * blank slides in someone's deck is one they stop clicking, and the whole
+   * point of replacing a lost slide is to keep going — which means keeping a
+   * list rather than overwriting the id of the thing still to be cleaned up.
+   */
+  const scratchIds: string[] = [];
+  let scratchId = await addScratchSlide();
+  if (scratchId) scratchIds.push(scratchId);
   try {
     for (const probe of PROBES) {
       const started = Date.now();
@@ -444,10 +455,30 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       if (!scratchId) {
         result = { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
       } else {
-        try {
-          result = await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask);
-        } catch (err) {
-          result = { answer: isTimeout(err) ? "silent" : "threw", detail: short(err) };
+        result = await ask(probe, scratchId);
+        // A slide that stopped resolving costs one question, not the sheet.
+        //
+        // It cost thirteen once: a real host lost the scratch slide after the
+        // first probe and the remaining thirteen questions each reported the
+        // same failure as if it were their own answer. Thirteen apparent
+        // divergences, one cause, and none of the questions actually asked.
+        // Replacing the slide is the difference between a sheet that reports a
+        // finding and a sheet that IS the finding.
+        if (result.answer === "no-scratch-slide") {
+          const replacement = await addScratchSlide();
+          if (replacement) {
+            scratchIds.push(replacement);
+            scratchId = replacement;
+            trace("probe", "replaced the scratch slide", { id: probe.id, scratchId: replacement });
+            const retry = await ask(probe, replacement);
+            // Only adopt a retry that actually got somewhere. A second failure
+            // on a brand-new slide is a stronger statement than the first, and
+            // overwriting it with "no-scratch-slide" would hide that.
+            if (retry.answer !== "no-scratch-slide") result = retry;
+            else scratchId = null;
+          } else {
+            scratchId = null;
+          }
         }
       }
       const entry: HostAnswer = { id: probe.id, question: probe.question, ms: Date.now() - started, ...result };
@@ -455,11 +486,31 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       trace("probe", "answered", { id: probe.id, answer: entry.answer, ms: entry.ms });
     }
   } finally {
-    // The scratch slide goes back whatever happened. A diagnostic that litters
+    // The scratch slides go back whatever happened. A diagnostic that litters
     // the user's deck is one they will stop running.
-    if (scratchId) await deleteSlideById(scratchId).catch(() => false);
+    for (const id of scratchIds) await deleteSlideById(id).catch(() => false);
   }
   return { kind: "powerchart-host-answers", source, build, requirementSets: requirementSets(), answers };
+}
+
+/**
+ * One question, and whatever came back — including "I never got to ask".
+ *
+ * A probe that could not reach its question must not answer as though it had.
+ * `"threw"` is a legitimate answer to several of these questions and the diff
+ * compares it against the fake's; a scratch slide that vanished underneath a
+ * probe reported as `"threw"` therefore reads as a genuine host divergence, and
+ * that is precisely how thirteen of one real sheet's fourteen answers came to
+ * be noise. `"no-scratch-slide"` is not in any probe's own vocabulary, so it
+ * can never be mistaken for one.
+ */
+async function ask(probe: Probe, scratchId: string): Promise<{ answer: string; detail?: string }> {
+  try {
+    return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask);
+  } catch (err) {
+    if (err instanceof ScratchSlideUnavailable) return { answer: "no-scratch-slide", detail: short(err) };
+    return { answer: isTimeout(err) ? "silent" : "threw", detail: short(err) };
+  }
 }
 
 /** Every question this build knows how to ask — for the fake's baseline test. */

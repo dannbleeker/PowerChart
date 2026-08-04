@@ -82,6 +82,17 @@ PowerPoint against a fully green suite. `strictShapeReads` is off by default
 only because the fake's shape objects double as the surface tests assert
 geometry against — the others are always in force once armed.
 
+`newSlideResolvesTimes` is the one that came from an answer sheet rather than a
+crash. PowerPoint on the web resolved a freshly-added slide's id **once** and
+refused it ever after — while still listing that same id in
+`slides.load("items/id")`, so the slide was plainly there and only the lookup
+was broken. `null` means ids stay good (every other host); a number is how many
+`getItemOrNullObject` calls each added slide answers before it starts reporting
+gone, and `0` means never, starting now. That `0` matters: a count-based version
+of the delete test passed against the very code it was written to falsify,
+because the fix spends one lookup more than the bug did and the lease outlasted
+both.
+
 `selectionWedgesHost` is the odd one out and the newest: it models a call that
 is taken and _poisons later ones_. A programmatic `setSelectedShapes` succeeds,
 and every selection sync after it then never settles at all — neither resolving

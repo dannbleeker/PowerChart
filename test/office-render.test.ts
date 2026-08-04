@@ -32,6 +32,8 @@ import {
   updateChartInSlide,
   updateChartsInSlides,
   withSlideDeselected,
+  addScratchSlide,
+  deleteSlideById,
   clearShapeSelection,
   MAX_ADD_RETRY_ROUNDS,
   wreckageOf,
@@ -77,6 +79,7 @@ import {
   makeSlide,
   stallSyncOn,
   trips,
+  unansweredNullChecks,
   untracked,
   type FakeShape,
   type FakeSlide,
@@ -648,6 +651,61 @@ describe("looking away while a chart redraws", () => {
       expect(sel.sets).toEqual([]);
     } finally {
       faults.swallowAdds = 0;
+    }
+  });
+
+  /**
+   * A slide the host will not hand back by id is not necessarily gone, and
+   * treating it as gone is how an add-in litters someone's deck.
+   *
+   * PowerPoint on the web resolved a freshly-added slide's id once and then
+   * refused it — while still listing that same id in `slides.load("items/id")`.
+   * `deleteSlideById` read the refusal as "already gone, nothing to do" and
+   * reported success, so a host-probe run left fourteen blank slides behind and
+   * said it had cleaned up. The same call cleans up after every off-screen
+   * redraw, on the user's own deck.
+   */
+  it("takes out a slide the host will not resolve by id", async () => {
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const id = await addScratchSlide();
+    expect(id, "the scratch slide did not land").toBeTruthy();
+    expect(deck).toHaveLength(2);
+    // From here on the host denies that slide exists whenever it is asked for
+    // by id — while still listing it among the deck's slides.
+    faults.newSlideResolvesTimes = 0;
+    try {
+      expect(await deleteSlideById(id!), "reported a clean-up it had not done").toBe(true);
+      expect(deck.map((s) => s.id), "the slide is still in the deck").toEqual(["s1"]);
+    } finally {
+      faults.newSlideResolvesTimes = null;
+    }
+  });
+
+  it("deletes nothing when the id is not in the deck at all", async () => {
+    // The other half of the same question. A positional delete driven by an id
+    // nobody can find is how an add-in destroys work, so an id the deck does
+    // not list must end the search — already gone, and nothing to remove.
+    const deck = [makeSlide("s1"), makeSlide("s2")];
+    installHost(deck);
+    expect(await deleteSlideById("no-such-slide")).toBe(true);
+    expect(deck.map((s) => s.id)).toEqual(["s1", "s2"]);
+  });
+
+  it("takes back a scratch slide whose id it cannot verify", async () => {
+    // `addScratchSlide` refuses to hand out an id it could not resolve — but
+    // the slide landed, so refusing without also removing it would leave a
+    // blank slide in the deck on every attempt.
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    // The fake names an added slide after the deck's length; the null-check on
+    // it goes unanswered, which is the state a caller can least reason about.
+    unansweredNullChecks.add("slide-2");
+    try {
+      expect(await addScratchSlide(), "handed out an id it could not resolve").toBeNull();
+      expect(deck.map((s) => s.id), "left the unusable scratch slide behind").toEqual(["s1"]);
+    } finally {
+      unansweredNullChecks.clear();
     }
   });
 

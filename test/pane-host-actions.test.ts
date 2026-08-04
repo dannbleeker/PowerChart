@@ -39,6 +39,10 @@ const host = vi.hoisted(() => ({
   // The selection-change listener app.ts registers via addHandlerAsync, captured
   // so a test can fire it the way PowerPoint would.
   selectionListener: null as null | (() => unknown),
+  /** The budget each loadChartFromSelection call was given, in order. */
+  selectionBudgets: [] as (number | undefined)[],
+  /** When set, loadChartFromSelection awaits this — holds a selection read open. */
+  selectionGate: null as null | Promise<void>,
   agendaSlides: [] as unknown[][],
   demoRuns: 0,
   demoDeckCalls: [] as unknown[][],
@@ -212,7 +216,11 @@ vi.mock("../src/render/powerpoint", () => ({
   ),
   listChartsInDeck: vi.fn(async () => host.deckCharts),
   listChartsInSelection: vi.fn(async () => host.selectionCharts),
-  loadChartFromSelection: vi.fn(async () => host.loadSelectionResult),
+  loadChartFromSelection: vi.fn(async (budgetMs?: number) => {
+    host.selectionBudgets.push(budgetMs);
+    if (host.selectionGate) await host.selectionGate;
+    return host.loadSelectionResult;
+  }),
   insertAgendaSlides: vi.fn(async (scenes: unknown[][]) => {
     host.agendaSlides.push(scenes);
   }),
@@ -318,6 +326,8 @@ async function bootHostPane() {
   host.gate = null;
   host.failInsertOnce = false;
   host.selectionListener = null;
+  host.selectionBudgets = [];
+  host.selectionGate = null;
   host.agendaSlides = [];
   host.demoRuns = 0;
   host.demoDeckCalls = [];
@@ -1560,6 +1570,74 @@ describe("watchSelection", () => {
     await host.selectionListener!();
     await settle();
     expect($("selection-banner").style.display).toBe("none");
+  });
+
+  /**
+   * A real host answered two of these ninety seconds later — the run log reads
+   * `gave up waiting what=reading the selected chart afterMs=90000`, twice,
+   * during Same Scale. 90s is `READBACK_TIMEOUT_MS`, the budget sized for a
+   * twenty-slide repair page; a background listener that decides whether one
+   * banner is visible inherited it by passing no budget at all.
+   */
+  it("gives the host a deadline of its own rather than the readback budget", async () => {
+    await host.selectionListener!();
+    await settle();
+    expect(host.selectionBudgets).toHaveLength(1);
+    const budget = host.selectionBudgets[0];
+    expect(typeof budget).toBe("number");
+    expect(budget!).toBeLessThan(10_000);
+  });
+
+  /**
+   * The pane moves the selection itself — `showSlide` on every deck pass,
+   * `withSlideDeselected` before every off-screen redraw, a slide swap on every
+   * resilient update. Each of those fires this handler, so a long run used to
+   * queue a selection read per slide behind the work the user actually asked
+   * for. The banner is worth exactly one read, and only the last one is current.
+   */
+  it("asks nothing while an action is running, then catches up once", async () => {
+    let release!: () => void;
+    host.gate = new Promise<void>((r) => (release = r));
+    $("insert").click();
+    await settle();
+
+    // The pane's own navigation, three slides' worth.
+    await host.selectionListener!();
+    await host.selectionListener!();
+    await host.selectionListener!();
+    await settle();
+    expect(host.selectionBudgets, "queued host work while the pane was busy").toHaveLength(0);
+
+    release();
+    await settle();
+    expect(host.selectionBudgets, "did not catch up after the action ended").toHaveLength(1);
+  });
+
+  /** Nothing to catch up on means nothing to ask — an action that never moved
+   *  the selection must not provoke a read merely by finishing. */
+  it("does not read the selection after an action that never moved it", async () => {
+    $("insert").click();
+    await settle();
+    expect(host.selectionBudgets).toHaveLength(0);
+  });
+
+  /**
+   * Two clicks in the time one read takes are still one question.
+   *
+   * Fired without awaiting, which is what PowerPoint does: `addHandlerAsync`
+   * takes a callback and never looks at what it returns. Awaiting it here would
+   * serialise the two reads by hand and test the harness rather than the pane.
+   */
+  it("keeps only one selection read outstanding", async () => {
+    let release!: () => void;
+    host.selectionGate = new Promise<void>((r) => (release = r));
+    void host.selectionListener!();
+    await settle();
+    void host.selectionListener!();
+    await settle();
+    expect(host.selectionBudgets).toHaveLength(1);
+    release();
+    await settle();
   });
 });
 

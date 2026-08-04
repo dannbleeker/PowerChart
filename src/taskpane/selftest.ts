@@ -525,19 +525,35 @@ const stopPartWay: Scenario = async (prefix) => {
  * change what the slide looks like at all.
  */
 const chartIsVisible: Scenario = async (prefix) => {
+  // Say what is about to be tried, BEFORE trying it.
+  //
+  // `scenario starting` names the scenario and nothing finer, and this scenario
+  // makes five host calls — any of which could be the one that does not come
+  // back. A real host proved the difference matters: the run log's last line
+  // was this scenario announcing itself, and nothing after it was ever written,
+  // so the evidence narrowed the cause to "somewhere in here" and stopped. Five
+  // extra entries in a two-thousand-entry ring is a cheap price for a log that
+  // names the call instead of the scenario.
+  const attempt = async <T>(what: string, fn: () => Promise<T>): Promise<T> => {
+    trace("selftest", "visibility step", { what });
+    return fn();
+  };
+
   // Its own slide, taken away afterwards. Before-and-after on ONE slide is the
   // only comparison that isolates the chart: two different slides differ for a
   // dozen reasons a rasteriser can see and this scenario should not care about.
-  const slideId = await addScratchSlide();
+  const slideId = await attempt("adding a scratch slide", addScratchSlide);
   if (!slideId) return { ok: false, skipped: true, detail: "the host would not add a slide to draw on" };
 
   const measure = async (): Promise<{ ok: boolean; detail: string; skipped?: boolean }> => {
-    const blank = await slideImageBase64(slideId, 640);
+    const blank = await attempt("rasterising the empty slide", () => slideImageBase64(slideId, 640));
     if (!blank) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
     const c = cfg(`${prefix} visible`);
-    const drawn = await insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c) });
+    const drawn = await attempt("drawing the chart", () =>
+      insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c) }),
+    );
     if (!drawn) return { ok: false, detail: "nothing was drawn, so there is nothing to look at" };
-    const withChart = await slideImageBase64(slideId, 640);
+    const withChart = await attempt("rasterising the slide with the chart", () => slideImageBase64(slideId, 640));
     if (!withChart) return { ok: false, detail: "the host rasterised the empty slide but not the one with a chart" };
     return {
       ok: withChart !== blank,
@@ -564,7 +580,7 @@ const chartIsVisible: Scenario = async (prefix) => {
     // verifies from a fresh read rather than assuming, so false here means the
     // slide is genuinely still in the deck — carrying a config tag, and so a
     // chart the pane would offer to edit.
-    removed = await deleteSlideById(slideId);
+    removed = await attempt("removing the scratch slide", () => deleteSlideById(slideId));
     if (!removed) trace("selftest", "could not remove the visibility scenario's scratch slide", { slideId });
   }
   if (removed) return verdict;

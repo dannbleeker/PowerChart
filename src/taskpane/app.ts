@@ -392,6 +392,42 @@ let autoUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 let insertInFlight = false;
 
 /**
+ * How many pane actions are talking to PowerPoint right now.
+ *
+ * Broader than `insertInFlight`, which only covers writes and exists to stop
+ * two updates racing on the same chart. This one covers EVERY host action —
+ * every `guard()`ed click plus the auto-update timer — because one background
+ * listener needs to know not to add work of its own while the host is busy.
+ * See `onSelectionChanged`.
+ *
+ * A counter rather than a flag: an action can nest (the demo run drives the
+ * same helpers a click does), and a nested `finally` clearing a boolean would
+ * declare the host idle while the outer action is still mid-flight.
+ */
+let hostWork = 0;
+
+/** A selection change arrived while the host was busy and was not acted on. */
+let selectionMissed = false;
+
+const hostBusy = (): boolean => hostWork > 0 || insertInFlight;
+
+function hostWorkStarted(): void {
+  hostWork++;
+}
+
+function hostWorkFinished(): void {
+  hostWork = Math.max(0, hostWork - 1);
+  // Catch up on the selection changes that were dropped while this ran. The
+  // banner is the only thing the watcher touches, so dropping events costs
+  // nothing as long as the LAST one is honoured — and one read after the run
+  // is far cheaper than the dozens the run itself provoked.
+  if (!hostBusy() && selectionMissed) {
+    selectionMissed = false;
+    void refreshSelectionBanner();
+  }
+}
+
+/**
  * Write the host note together with its status colour. The colour is a
  * parameter rather than an afterthought because only guard() used to set it,
  * so every other message inherited whatever the previous action left behind —
@@ -1570,10 +1606,12 @@ function phaseNote(phase: InsertPhase, detail?: string) {
 
 async function doInsert(asNew: boolean) {
   insertInFlight = true;
+  hostWorkStarted();
   try {
     return await runInsert(asNew);
   } finally {
     insertInFlight = false;
+    hostWorkFinished();
   }
 }
 
@@ -2063,21 +2101,72 @@ $("render-image").addEventListener("change", () => {
   state.renderImage = ($("render-image") as HTMLInputElement).checked;
 });
 
+/**
+ * How long the selection watcher gives the host before it stops waiting.
+ *
+ * Short on purpose, and much shorter than `READBACK_TIMEOUT_MS`. Nothing
+ * depends on this read: it decides whether one banner is visible. The default
+ * budget is sized for work a user asked for and is waiting on; a background
+ * listener that inherits it holds a promise open for a minute and a half over
+ * a hint. A real host produced exactly that, twice in one run —
+ * `gave up waiting what=reading the selected chart afterMs=90000`, both of them
+ * during Same Scale, which is not a selection feature at all.
+ */
+const SELECTION_WATCH_BUDGET_MS = 4_000;
+
+/** A selection read is already outstanding. */
+let selectionReadInFlight = false;
+
 /** think-cell's "click the chart" feel: watch the slide selection. */
 function watchSelection() {
   try {
-    Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, async () => {
-      try {
-        const found = await loadChartFromSelection();
-        const banner = $("selection-banner");
-        banner.style.display = found && found.target.shapeId !== state.editTarget?.shapeId ? "" : "none";
-      } catch {
-        /* selection API hiccup — ignore */
-      }
+    Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, () => {
+      void onSelectionChanged();
     });
   } catch {
     /* event unavailable on this host */
   }
+}
+
+/**
+ * Decide whether to offer the selected chart — and, far more often, decide not
+ * to ask.
+ *
+ * The event this answers is not only the user clicking a shape. The pane moves
+ * the selection itself, constantly: `showSlide` on every deck-wide pass,
+ * `withSlideDeselected` before every off-screen redraw, `selectShape` in the
+ * self-test, and a slide swap on every resilient update. A deck run therefore
+ * fires this handler dozens of times, and the old version answered every one of
+ * them with an unbounded `PowerPoint.run` — queued behind work the user
+ * actually asked for, on a host that was already the bottleneck. Two of those
+ * reads were still outstanding ninety seconds later on a real host, on a run
+ * that then killed the tab.
+ *
+ * So: while the pane is working, record that the banner is stale and do
+ * nothing. `hostWorkFinished` runs exactly one read afterwards, which is the
+ * only one whose answer was ever going to be current anyway.
+ */
+async function refreshSelectionBanner(): Promise<void> {
+  if (selectionReadInFlight) return;
+  selectionReadInFlight = true;
+  try {
+    const found = await loadChartFromSelection(SELECTION_WATCH_BUDGET_MS);
+    const banner = $("selection-banner");
+    banner.style.display = found && found.target.shapeId !== state.editTarget?.shapeId ? "" : "none";
+  } catch {
+    // A hiccup or a deadline. Leave the banner as it is rather than guessing:
+    // hiding it loses a true offer, showing it makes a false one.
+  } finally {
+    selectionReadInFlight = false;
+  }
+}
+
+async function onSelectionChanged(): Promise<void> {
+  if (hostBusy()) {
+    selectionMissed = true;
+    return;
+  }
+  await refreshSelectionBanner();
 }
 
 /**
@@ -2592,6 +2681,9 @@ function wireInsert() {
         trace("pane", "action started", { action });
         const lock = [insertBtn, clicked].filter((b): b is HTMLButtonElement => !!b && !b.disabled);
         for (const b of lock) b.disabled = true;
+        // Before the first await: background listeners must see the host as
+        // busy from the instant the action begins, not from its first sync.
+        hostWorkStarted();
         note("Working…", "busy");
         // Mark AFTER the busy note: "Working…" is not a settlement, and the mark
         // has to sit at the boundary of this action so only what `fn()` itself
@@ -2638,6 +2730,9 @@ function wireInsert() {
           // Only re-enable what this call disabled — never resurrect a button
           // some other state (no host, no selection) means to keep dead.
           for (const b of lock) b.disabled = false;
+          // Last: this releases the selection watcher, and it must not be let
+          // loose while the lines above are still touching the pane.
+          hostWorkFinished();
         }
       };
     // Not through `guard()`: this button must stay live precisely WHILE a

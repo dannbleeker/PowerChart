@@ -125,9 +125,21 @@ beginning, never its end.
 | --- | --- | --- |
 | 0 | **Run host probe.** One click, no deck changes — it works on a scratch slide and gives it back. Send the saved JSON. | Whether the FAKE POWERPOINT every test in this repo runs against is telling the truth. Its faults are things a real host taught us; its happy path is assumptions. `npm run host-diff` lines the two up, and each disagreement is either a fake that lies (so some tests are worth less than they look) or something the host does that we did not know. Do this **once per host** — it does not change between builds, so it is not part of the per-build round. |
 | 1 | **Run host self-test.** One click, nine scenarios (below), and the Live steps list names each one as it starts. Chasing one failure? Set **Scenario** to it first — it runs that plus the two inserts it needs, in seconds rather than minutes. Read the verdicts, and if the run does not finish, read the last line. | Nearly everything that used to be tests 1, 2, 3 and 7 of this table. The battery now selects shapes itself (`Slide.setSelectedShapes`, PowerPointApi 1.5), stops its own run, and asks the host to render a slide before and after drawing so it can tell a chart that is *there* from a chart that is *visible*. A verdict of **skipped** is not a failure. |
-| 2 | **Demo deck — both paths.** Path → **Both, one after the other** → **Insert demo deck**. ~6 s for the file half, then 1–2 minutes for the shape half. | The file half must report **38 of 38 complete** — anything less is a regression. The shape half being slower with some items short is the *measurement* of what the everyday path costs at 38× scale, not a defect. This is the one thing no battery can stand in for: it is the only test at real scale, and scale is what crashes the tab. |
+| 2a | **Demo deck — file path.** Path → **File (fast)** → **Insert demo deck**. ~6 s. | The file half must report **38 of 38 complete** — anything less is a regression. |
+| 2b | **Demo deck — shape path, on a FRESH deck.** Close the deck from 2a without saving, open a new one, then Path → **Shapes (everyday)**. 1–2 minutes. | What the everyday path costs at 38× scale. Some items running short is the *measurement*, not a defect. This is the one thing no battery can stand in for: it is the only test at real scale, and scale is what crashes the tab. |
 | 3 | **Look at the deck.** Scroll the 38 slides the demo run added. | The judgement a machine does not have. The battery's visibility check answers "did anything render"; it does not answer "is this the right chart, drawn well". Look for charts off the slide edge, overlapping labels, and anything that is visibly not what the gallery shows. |
 | 4 | **One selection round trip, by hand.** Click a chart. The pane says "A PowerChart is selected." Press **Edit it**, change a number, **Update chart**. Drag the chart, then edit it again. | The battery drives the same machinery through `setSelectedShapes`, which is Office.js selecting a shape — not a human clicking one. Those are the same call in theory. This is the check that they are the same in practice, plus the drag-delta round trip (`POWERCHART_ORIGIN`), which needs a real drag and so cannot be scripted at all. |
+
+**Why 2a and 2b are now two tests on two decks.** They used to be one click —
+*Both, one after the other* — and that click has twice ended in PowerPoint's
+own *"Sorry, we ran into a problem"*. The most recent run says why plainly: the
+file half landed **38 of 38** and the downloaded deck was flawless (39 slides,
+38 chart objects, 31 re-editable, nothing malformed), and then the shape half
+started drawing onto that same 39-slide deck and got one batch of five shapes in
+before the tab died. Both of this round's crashes have that shape — heavy shape
+work on a deck that is already large — and running the two halves back to back
+guarantees it. Separate decks cost one extra minute and remove the only
+variable the two crashes shared.
 
 **Run it on a 4:3 deck at least once**, and on desktop PowerPoint at least once
 per release — everything above is normally run on the web, which is where the
@@ -152,6 +164,27 @@ under test, and the claim that PowerChart releases proxies to avoid Office.js's
 "too many proxy objects" warning is entirely unverified. That is the kind of
 thing this probe exists to surface, and it surfaced one before ever reaching a
 real host.
+
+**What the first real run said, and what it cost.** PowerPoint on the web
+answered question 1 and then reported *"the host would not resolve the scratch
+slide"* for the other thirteen — which was our bug, not the host's. The slide
+was in the deck the whole time; the host simply stopped answering
+`getItemOrNullObject` for a freshly-added slide's id after the first lookup,
+while still listing that same id in `slides.load("items/id")`. Three things
+changed because of it: `addScratchSlide` now names its slide by diffing the
+deck's id list rather than assuming the add went to the end, and proves the id
+resolves before handing it out; the probe run replaces a scratch slide it has
+lost so the remaining questions are actually asked; and `deleteSlideById` falls
+back to deleting by position, because the old code read "the host will not
+resolve this" as "already gone" and reported a clean-up it had not done. That
+last one is the one that mattered beyond the diagnostic — the same call cleans
+up after every off-screen redraw, on the user's own deck.
+
+The one genuine answer from that run is worth keeping: `load('isNullObject')`
+**does** populate the flag on PowerPoint web (it read back `false`), which
+contradicts the negative claim `queueNullCheck` was written on. The workaround
+stays — the host it was written for is real too — but it is harmless there
+rather than necessary, and the comment now says so.
 
 What to read in the result: the `tagging failed` count (was 28 on the last slow
 run; should be near zero), any line annotated `^ known host bug: office-js#…`

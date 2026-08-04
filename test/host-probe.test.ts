@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installHost, makeSlide, applyWebProfile } from "./helpers/office-host";
+import { installHost, makeSlide, applyWebProfile, faults } from "./helpers/office-host";
 import { runHostProbes, PROBE_IDS } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
@@ -117,5 +117,63 @@ describe("the fake host's answer sheet", () => {
     const before = await slideCount();
     await runHostProbes("fake", "test");
     expect(await slideCount(), "the probe run left a slide behind").toBe(before);
+  });
+
+  /**
+   * The failure a real host actually produced, and the reason this run now
+   * replaces a scratch slide it has lost.
+   *
+   * PowerPoint on the web resolved the scratch slide's id for the first
+   * question and refused it for the other thirteen. Every one of those thirteen
+   * was recorded as `"threw"` — a legitimate answer to several of these
+   * questions, and one the diff tool compares against the fake's — so a sheet
+   * that had asked ONE question came back looking like thirteen host
+   * divergences. The questions were never put.
+   */
+  it("asks every question even when the host keeps losing the scratch slide", async () => {
+    installHost([makeSlide("s1")]);
+    // Each new slide answers to its id twice and then denies existing.
+    faults.newSlideResolvesTimes = 2;
+    try {
+      const sheet = await runHostProbes("fake-loses-slides", "test");
+      const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+      // Not "nothing crashed" — the same answers a healthy host gives, because
+      // every question really was asked.
+      expect(answers).toEqual(FAKE_BASELINE);
+    } finally {
+      faults.newSlideResolvesTimes = null;
+    }
+  });
+
+  it("takes every replacement scratch slide back out again", async () => {
+    // A run that recovers by adding slides is a run that can litter several. It
+    // has to clean up all of them, not the last one it happened to be holding.
+    installHost([makeSlide("s1"), makeSlide("s2")]);
+    const { slideCount } = await import("../src/render/powerpoint");
+    const before = await slideCount();
+    faults.newSlideResolvesTimes = 2;
+    try {
+      await runHostProbes("fake-loses-slides", "test");
+      expect(await slideCount(), "left its replacement slides in the deck").toBe(before);
+    } finally {
+      faults.newSlideResolvesTimes = null;
+    }
+  });
+
+  /**
+   * When the host will not keep ANY slide, the sheet has to say that once per
+   * question in a word no probe can produce — never `"threw"`, which is a real
+   * answer to several of them and would read as a host divergence.
+   */
+  it("says a question was never put, rather than inventing a host answer", async () => {
+    installHost([makeSlide("s1")]);
+    faults.newSlideResolvesTimes = 1; // one lookup each: addScratchSlide verifies, the probe context fails
+    try {
+      const sheet = await runHostProbes("fake-loses-slides", "test");
+      expect(sheet.answers).toHaveLength(PROBE_IDS.length);
+      for (const a of sheet.answers) expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
+    } finally {
+      faults.newSlideResolvesTimes = null;
+    }
   });
 });

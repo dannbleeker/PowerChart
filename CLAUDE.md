@@ -98,6 +98,14 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 - Office.js has **no freeform paths**: pies are triangle fans, radar/polygon
   fills degrade to outlines in the live add-in (the skill's pptx output gets
   real filled `custGeom` polygons), pattern fills are SVG-only (solid in PPT).
+- **`getItemOrNullObject` is not the last word on whether a slide exists.**
+  PowerPoint on the web resolved a freshly-added slide's id once and refused it
+  ever after, while still listing that id in `slides.load("items/id")`. So
+  "the host will not resolve it" ≠ "it is gone": `deleteSlideById` read it that
+  way and reported clean-ups it had not done, and a probe run left fourteen
+  blank slides in the deck. The deck's own id list is the stronger question —
+  use it to identify a slide (`addScratchSlide` diffs it) and to confirm a
+  delete. Any new code that acts on a slide id needs the same doubt.
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys
