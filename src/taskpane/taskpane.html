@@ -235,22 +235,6 @@
       <!-- ── AUTOMATION ─────────────────────────────────────────── -->
       <div class="tab-panel" data-panel="automation">
         <section class="section">
-          <h2>Automation (JSON)</h2>
-          <p class="hint">
-            Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an
-            array of configs and insert them all. Same schema as <code>npm run render</code>.
-          </p>
-          <textarea id="json-io" rows="5" spellcheck="false"></textarea>
-          <div class="actions">
-            <button id="json-export">Export current</button>
-            <button id="json-import">Import</button>
-            <button id="json-insert-batch" disabled>Insert batch</button>
-            <button id="style-export">Export style</button>
-            <button id="style-import">Import style</button>
-          </div>
-        </section>
-
-        <section class="section">
           <h2>Testing</h2>
           <p class="hint">
             Drop a demo of every chart kind plus key features and elements onto fresh slides (appended at the end of the
@@ -332,6 +316,22 @@
             behind are deleted, NOT COMPLETE banners are cleared from charts that are in fact complete, and charts that
             landed loose are re-grouped so they stay editable.
           </p>
+        </section>
+
+        <section class="section">
+          <h2>Automation (JSON)</h2>
+          <p class="hint">
+            Export the current chart as JSON, edit or generate it programmatically, and import it back — or paste an
+            array of configs and insert them all. Same schema as <code>npm run render</code>.
+          </p>
+          <textarea id="json-io" rows="5" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="json-export">Export current</button>
+            <button id="json-import">Import</button>
+            <button id="json-insert-batch" disabled>Insert batch</button>
+            <button id="style-export">Export style</button>
+            <button id="style-import">Import style</button>
+          </div>
         </section>
       </div>
     </div>
