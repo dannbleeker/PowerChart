@@ -33,6 +33,7 @@ export const FAKE_BASELINE = {
   "shape-add-positional-slide-proxy": "yes",
   "shape-proxy-survives-one-sync": "yes",
   "shapes-items-count-honest": "at-least-5",
+  "shapes-items-via-positional-slide": "at-least-5",
   "getcount-populates-same-sync": "yes",
   "tags-add-same-key-twice": "overwrites",
   "tags-on-fresh-shape": "yes",
@@ -52,6 +53,10 @@ export const FAKE_BASELINE = {
  * it just cannot say what rests on it.
  */
 const WHAT_IT_MEANS = {
+  "addgroup-returns-usable":
+    "Whether a group can be used in the sync that made it. WITHDRAWN: the 2026-08-04 'unreadable' came from asking for the id one sync after the group was made, and from grouping members that were themselves a sync old — so it measured proxy age, which three other questions already establish. Members are resolved in the grouping batch now and the id is asked for in it.",
+  "shapes-items-via-positional-slide":
+    "The partner to the question above, and the only one of the four contaminated answers that could not be cleaned up by re-resolving: a collection load is queued in one batch and read in the next by definition. If this reads back and the by-id form does not, the collection was never the problem and the parent handle was — which decides how every readback in `powerpoint.ts` should name its slide.",
   "load-isnullobject-populates":
     "`queueNullCheck` loads 'id' instead of 'isNullObject' precisely because the flag cannot be loaded by name. If a real host populates it, that whole comment is wrong for this host — and the workaround is merely harmless rather than necessary. ANSWERED: PowerPoint on the web (2026-08-04) said yes, and read the flag back as false. The negative is host-specific; the workaround stays because the host it was written for is real too.",
   "load-id-populates-isnullobject":
@@ -65,17 +70,17 @@ const WHAT_IT_MEANS = {
   "shape-proxy-survives-one-sync":
     "office-js#2903. The fake keeps proxies alive by default, which is the kindness that hid a whole class of stale-proxy bug until a human found it in a real host. If a real host refuses a one-sync-old proxy, `applyWebProfile` should be the default rather than a named profile. ANSWERED, sideways: the 2026-08-04 self-test run threw `InvalidParam passed to GetItem(id)` at `ShapeCollection.getItem` while grouping a chart's shapes, five charts in a row — so on that host the answer is no. The probe's own attempt never reached the question.",
   "shapes-items-count-honest":
-    "`faults.hollowReads` models a host answering SHORT without throwing — a readback asked about 19 shapes and was told 3. ANSWERED, and not with a count: `items` came back UNDEFINED ('Cannot read properties of undefined (reading length)'), i.e. the collection load was never answered at all. The probe reads that collection through a handle the same sync resolved, so this may yet be the held-handle rule again rather than a fact about collections — it needs a question of its own before anything is built on it.",
+    "`faults.hollowReads` models a host answering SHORT without throwing — a readback asked about 19 shapes and was told 3. WITHDRAWN: the 2026-08-04 answer (`items` undefined) was about the handle the collection hangs off, not the collection. A collection read cannot avoid crossing a sync — the load is queued in one batch and read in the next — so this one could not be cleaned up by re-resolving, and got a partner instead: `shapes-items-via-positional-slide` asks the same thing through a positional parent. Read the two together or neither.",
   "tags-add-same-key-twice":
-    "Re-editing a chart rewrites POWERCHART_CONFIG on the same shape every time. If a host appends rather than overwrites, a chart edited ten times carries ten configs and the reader picks one arbitrarily. ANSWERED 'other': the tag read back UNDEFINED, so this host said neither. The probe writes through a shape proxy from an earlier sync, which is the pattern the same sheet shows failing everywhere else — the question is still open, and the probe is what needs fixing, not the answer that needs believing.",
+    "Re-editing a chart rewrites POWERCHART_CONFIG on the same shape every time. If a host appends rather than overwrites, a chart edited ten times carries ten configs and the reader picks one arbitrarily. WITHDRAWN: the 2026-08-04 'other — value=undefined' was the probe holding one shape proxy across four syncs, not an opinion about tag keys. Every write now goes through a shape resolved in its own batch, so the next sheet's answer is the first real one.",
   "tags-on-fresh-shape":
     "`faults.tagsUndefinedOn` models `.tags` coming back undefined, where reading `.add` throws SYNCHRONOUSLY and escapes the tagging loop — losing the config for every chart after it in the batch, not just the one.",
   "delete-then-lookup":
     "`deleteSlideById` re-checks from a FRESH context because the same-context answer was not trusted. If a host answers honestly here, that second round trip is removable.",
   "group-reports-its-children":
-    "The single most load-bearing answer here. A chart IS a group, and the readback measures whether a chart survived by counting what is inside it — so a host that groups successfully and then reports no children makes every chart read back as wreckage, and the repair pass 'fixes' charts that were never broken.",
+    "The single most load-bearing answer here. A chart IS a group, and the readback measures whether a chart survived by counting what is inside it — so a host that groups successfully and then reports no children makes every chart read back as wreckage, and the repair pass 'fixes' charts that were never broken. WITHDRAWN: the 2026-08-04 PropertyNotLoaded was a nested load queued a sync after the group was made. It is queued in the grouping batch now.",
   "tag-on-group-survives":
-    "Where a chart's config actually lives. ANSWERED: NO — the tag read back undefined. Alarming at face value, and probably not what it looks like: the group proxy is a sync old by the time the tag is written, which is the rule this sheet proved elsewhere. Real decks argue the same way — the repair pass landed 23 retags on grouped charts in the run that produced this sheet — so read it as the probe holding a proxy, and re-ask it with a group resolved in the writing batch.",
+    "Where a chart's config actually lives. WITHDRAWN: the 2026-08-04 NO was the probe writing through a group proxy a sync old. Taken at face value it says no chart in any deck is re-editable, which the same run disproves — its repair pass landed 23 retags on grouped charts. The group's id is what crosses the sync now, and every use resolves its own handle.",
   "getitemat-past-end":
     "Nothing in this repo currently depends on the answer — it is here to find out before something does.",
   "untrack-available":

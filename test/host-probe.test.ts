@@ -98,6 +98,46 @@ describe("the fake host's answer sheet", () => {
     }
   });
 
+  /**
+   * The property that makes these answers worth reading: no probe holds a
+   * proxy across a sync, so a host that refuses stale ones changes nothing.
+   *
+   * `strictTags` and `strictGroup` are the two faults that model exactly what
+   * PowerPoint on the web does to a proxy older than its sync — and four
+   * questions on the 2026-08-04 sheet were answering those faults rather than
+   * their own questions. `tag-on-group-survives` said NO, which read as "no
+   * chart in any deck is re-editable"; `group-reports-its-children` threw
+   * PropertyNotLoaded; `tags-add-same-key-twice` and `addgroup-returns-usable`
+   * came back undefined. Every one of them wrote or read through a handle it
+   * had been given a sync earlier.
+   *
+   * Deliberately NOT the whole web profile: `refuseGroups` and `hollowReads`
+   * change the answers legitimately, and a guard that tolerated those could not
+   * tell them from a probe that had gone stale again.
+   *
+   * What it does NOT prove, said plainly: the fake refuses a proxy older than
+   * TWO syncs, and three of those four probes were exactly one sync late, so
+   * only `tags-add-same-key-twice` goes red here without the rewrite. The
+   * others rest on the same rule and on the real host's own answer to
+   * `shape-add-held-slide-proxy` — one sync was enough there. Tightening the
+   * fake to one sync for SHAPES would make this guard catch all four, and
+   * nobody has asked a host whether that is true; `shape-proxy-survives-one-
+   * sync` only establishes it at two. That question is the next sheet's.
+   */
+  it("answers the same under a host that refuses every stale proxy", async () => {
+    installHost([makeSlide("s1")]);
+    faults.strictTags = true;
+    faults.strictGroup = true;
+    try {
+      const sheet = await runHostProbes("fake-strict-proxies", "test");
+      const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+      expect(answers).toEqual(FAKE_BASELINE);
+    } finally {
+      faults.strictTags = false;
+      faults.strictGroup = false;
+    }
+  });
+
   it("carries the requirement sets, without which no answer can be read", async () => {
     // The same verdict means different things on 1.4 and on 1.10. A sheet that
     // did not say which would be uninterpretable a week later.
@@ -132,17 +172,22 @@ describe("the fake host's answer sheet", () => {
    */
   it("asks every question even when the host keeps losing the scratch slide", async () => {
     installHost([makeSlide("s1")]);
-    // Each new slide answers to its id four times and then denies existing.
+    // Each new slide answers to its id six times and then denies existing.
     //
     // Was two, when every probe shared the one slide handle `withProbeContext`
-    // resolved. Probes now take a handle per sync-batch — a real host refuses
-    // one held longer — so a probe's own lookups are what this lease has to
-    // leave room for: the verify inside `addScratchSlide`, the liveness check,
-    // and up to two batches that touch the slide. Four is the smallest lease a
-    // REPLACEMENT slide can carry a whole question on, which is the thing being
-    // tested; a tighter one would make the sheet incomplete for a reason that
-    // has nothing to do with recovery, and would pass while proving nothing.
-    faults.newSlideResolvesTimes = 4;
+    // resolved; then four; now six. The number tracks one thing — the most
+    // slide lookups a single question can need — and it grows every time a
+    // probe stops holding a handle across a sync, because a handle per batch
+    // is a lookup per batch. The longest are `tags-add-same-key-twice` and
+    // `tag-on-group-survives` at four batches each, plus the liveness check,
+    // plus the verify inside `addScratchSlide` for a replacement: six.
+    //
+    // It has to be the SMALLEST lease that lets a replacement slide carry a
+    // whole question, and no larger. Too tight and the sheet comes back
+    // incomplete for a reason that has nothing to do with recovery; too loose
+    // and the fault never bites — which is how a count-based version of this
+    // once passed against the very code it was written to falsify.
+    faults.newSlideResolvesTimes = 6;
     try {
       const sheet = await runHostProbes("fake-loses-slides", "test");
       const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
@@ -242,6 +287,7 @@ describe("the fake host's answer sheet", () => {
       const needShapes = [
         "shape-proxy-survives-one-sync",
         "shapes-items-count-honest",
+        "shapes-items-via-positional-slide",
         "tags-add-same-key-twice",
         "tags-on-fresh-shape",
         "delete-then-lookup",
