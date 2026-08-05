@@ -47,6 +47,8 @@ export const faults = {
   strictGroup: false,
   strictTags: false,
   hollowReads: 0,
+  /** Answer HONESTLY for this many `items/id` reads, then short forever. */
+  hollowReadsAfter: null as number | null,
   /**
    * The same short answer, on an `items/name` load.
    *
@@ -864,6 +866,16 @@ export function makeSlide(id: string) {
         // differently. Matching only the exact string meant `hollowReads` could
         // not blind `listChartsInDeck` at all — so the tests that thought they
         // were exercising a short deck scan were exercising a healthy one.
+        // A host that answers honestly and then stops, rather than one that is
+        // short from the first read. `hollowReads` blinds the FIRST N reads,
+        // which is the opposite of how a real host fails: the 2026-08-05 run
+        // answered fine for two minutes and was reading short by the time it
+        // reached the fifth scenario. A scenario that checks its first scan for
+        // blindness and trusts the ones after it can only be caught this way.
+        if (faults.hollowReadsAfter !== null && lastShapeLoad.startsWith("items/id")) {
+          if (faults.hollowReadsAfter > 0) faults.hollowReadsAfter--;
+          else return [];
+        }
         if (faults.hollowReads > 0 && lastShapeLoad.startsWith("items/id")) {
           faults.hollowReads--;
           return [];
@@ -932,6 +944,18 @@ export function makeSlide(id: string) {
         // and stale (getItem(id) rewrite, non-round-trippable id) beyond that.
         // addGroup(theseStaleProxies) silently loses grouping on real Office —
         // no group appears on the slide. Enable via faults.strictGroup.
+        // A member whose PARENT handle has expired, however young the member
+        // itself is. Unconditional, like `expiringSlideHandle`: the host named
+        // this one in its own error, and the members' ages were not the reason.
+        const orphan = items.find((s) => {
+          const ok = (s as FakeShape & { parentWindowOk?: () => boolean }).parentWindowOk;
+          return typeof ok === "function" && !ok();
+        });
+        if (orphan) {
+          throw new Error(
+            'InvalidParam passed to GetItem(id) | code=5010 | debugInfo={"code":"5010","message":"InvalidParam passed to GetItem(id)","errorLocation":"ShapeCollection.getItem"}',
+          );
+        }
         if (faults.strictGroup && items.some((s) => trips.syncs > s.syncCreated + 1)) {
           const g = makeShape("group", undefined, { left: 0, top: 0, width: 0, height: 0 });
           // Not pushed to `created` — no group lands on the slide, exactly
@@ -1082,8 +1106,20 @@ function windowedHandle(real: FakeSlide, makeError: () => Error) {
       // Lazy — evaluating this at handle-creation would fire the .items
       // getter's syncCreated refresh, keeping every shape perpetually fresh
       // and hiding the stale-proxy trap the fake exists to model.
+      //
+      // Each item remembers WHICH HANDLE produced it. A shape proxy carries its
+      // parent's object path, so a member read off a handle whose window has
+      // since closed is refused for its parent's sake however young it is —
+      // which is what a real host spelled out, listing the statements it would
+      // not run: `var slide = slides.getItem(...); var shapes1 = slide.shapes;
+      // var shape = shapes1.getItem(...)` ← 5010, in the same batch as a
+      // perfectly good `getItemOrNullObject` handle. The members were never too
+      // old; their parent was.
       get items() {
-        return real.shapes.items;
+        return real.shapes.items.map((sh: FakeShape) => {
+          (sh as FakeShape & { parentWindowOk?: () => boolean }).parentWindowOk = ok;
+          return sh;
+        });
       },
       load() {},
       addGeometricShape: (geo: string, box: FakeShape["box"]) =>
@@ -1542,6 +1578,7 @@ export function installHost(
   faults.strictTags = false;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;
+  faults.hollowReadsAfter = null;
   faults.hollowNameReads = 0;
   lastShapeLoad = "";
   faults.refusePictureFill = false;

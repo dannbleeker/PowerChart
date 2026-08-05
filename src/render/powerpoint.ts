@@ -5371,9 +5371,38 @@ async function groupAndTagAll(
   if (groupable.length && supports("1.8")) {
     try {
       for (const { it, i } of groupable) {
-        // Fresh slide proxy: grouping runs a sync after the render, by which time
-        // a held proxy to a new slide could be stale — see SlideThunk.
-        const members = freshMembers.get(i) ?? it.created;
+        // Members RE-RESOLVED in this batch, off a slide handle taken in this
+        // batch — never the proxies the re-read handed back a sync ago.
+        //
+        // A shape proxy carries its parent's object path. `freshMembers` came
+        // out of `collections[k].items`, whose parent is the slide handle the
+        // re-read sync resolved — so by now Office.js has rewritten that path to
+        // `slides.getItem(id)`, and every member's path with it. A real host
+        // named this exactly, listing the statements it refused:
+        //
+        //   var itemOrNullObject = slides.getItemOrNullObject(...);   ← fresh
+        //   var slide = slides.getItem(...);                          ← the re-read's, rewritten
+        //   var shapes1 = slide.shapes;
+        //   var shape = shapes1.getItem(...);                         ← refused, 5010
+        //
+        // Both handles are in the same batch, and it is the rewritten one the
+        // members hang off that fails. The members were never too old; their
+        // PARENT was. Re-resolving by id costs nothing — the ids came from a
+        // re-read one sync ago, so the shapes are there — and it is the same
+        // access `settleAndTagChart` uses on the path that carries real charts.
+        const refreshed = freshMembers.get(i);
+        const members = refreshed
+          ? (() => {
+              const shapes = it.getSlide().shapes;
+              const byId = refreshed
+                .map((s) => loadedValue(() => s.id))
+                .filter((id): id is string => typeof id === "string" && !!id);
+              // Only when every member could be named. A partial list would
+              // group some of the chart and leave the rest loose beside it,
+              // which is worse than not grouping at all.
+              return byId.length === refreshed.length ? byId.map((id) => shapes.getItemOrNullObject(id)) : refreshed;
+            })()
+          : it.created;
         const group = (
           it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }
         ).addGroup(members);

@@ -599,6 +599,37 @@ describe("the scenarios the selection API unlocked", () => {
   });
 
   /**
+   * The healthy-host half of the blind-scan change, and ONLY that.
+   *
+   * A real host reported this scenario FAILED — *"the chart already on the
+   * slide is no longer re-editable"* — on a build whose insert path had not
+   * changed since the run where it passed. The scenario checked its first deck
+   * scan for blindness and then made its most alarming claim off a second one
+   * it never checked, so "your chart is gone" and "I could not look" came out
+   * as the same sentence. It now skips when either scan is blind.
+   *
+   * WHAT THIS TEST DOES NOT DO: fail against the pre-fix code. Reproducing the
+   * real sequence needs the first scan to answer and a later one to go short,
+   * and `hollowReads` blinds from the first read — so the scenario's own
+   * opening check catches it and the new rung is never reached. `hollowReadsAfter`
+   * was added to model a host that degrades mid-run, which is what the real one
+   * did, but landing it on exactly the right read means guessing a scan count
+   * three scenarios deep — the fragile magic number CLAUDE.md warns about, and
+   * a guard tuned until it goes red is not evidence.
+   *
+   * So this pins the half that IS checkable: the change must not cost the
+   * healthy-host case its pass. The blind case is argued from the host's own
+   * log, and is honestly unguarded until something can drive that window.
+   */
+  it("still passes on a host whose deck scans answer", async () => {
+    installHost([makeSlide("s1")]);
+    const r = byName(await runSelfTest("probe", "insert onto a slide that already has content"));
+    const verdict = r["insert onto a slide that already has content"];
+    expect(verdict.ok, `the healthy-host case stopped working: ${verdict.detail}`).toBe(true);
+    expect(verdict.skipped, "skipped a scenario whose scans were fine").toBeFalsy();
+  });
+
+  /**
    * A rasteriser that answers with nothing has to SAY so.
    *
    * `slideImageBase64` has four ways of returning undefined — no 1.8, the
