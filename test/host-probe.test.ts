@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installHost, makeSlide, applyWebProfile, faults } from "./helpers/office-host";
-import { runHostProbes, PROBE_IDS } from "../src/render/host-probe";
+import { runHostProbes, PROBE_IDS, describeHostSheet, sheetNeedsAttention } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
 // copies of the same table is how a claim quietly stops matching its check.
@@ -326,5 +326,57 @@ describe("the fake host's answer sheet", () => {
     } finally {
       faults.newSlideResolvesTimes = null;
     }
+  });
+});
+
+describe("what the pane says about a probe run", () => {
+  it("tells the owner not to bother sending a run that found nothing", async () => {
+    // The round trip this removes: download, send, wait for someone to run
+    // `host-diff`, hear that the answers are the same as last time. Most probe
+    // runs are that.
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    expect(sheetNeedsAttention(sheet), "asked for a file that says nothing new").toBe(false);
+    expect(describeHostSheet(sheet)).toContain("Nothing new");
+  });
+
+  it("names an answer nobody has declared, and asks for the file", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    // A host that answers one question differently from the fake, where the
+    // difference is not in KNOWN_DIVERGENCES: the only kind of run worth
+    // anyone's attention, and it should not have to be found by eye in a
+    // seventeen-row JSON file.
+    const changed = {
+      ...sheet,
+      answers: sheet.answers.map((a) => (a.id === "delete-then-lookup" ? { ...a, answer: "still-there" } : a)),
+    };
+    expect(sheetNeedsAttention(changed)).toBe(true);
+    expect(describeHostSheet(changed)).toContain("NEW: delete-then-lookup");
+    expect(describeHostSheet(changed)).toContain("worth sending");
+  });
+
+  it("counts a declared divergence as known, not as news", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    // `tag-on-group-survives` is declared: the real host's "no" is withdrawn
+    // pending a re-run. A sheet reproducing it is not a finding.
+    const known = {
+      ...sheet,
+      answers: sheet.answers.map((a) => (a.id === "tag-on-group-survives" ? { ...a, answer: "no" } : a)),
+    };
+    expect(sheetNeedsAttention(known), "treated a declared divergence as news").toBe(false);
+    expect(describeHostSheet(known)).toContain("1 known divergence");
+  });
+
+  it("asks for the file when a question was never put, however few diverge", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    const incomplete = {
+      ...sheet,
+      answers: sheet.answers.map((a) => (a.id === "tags-on-fresh-shape" ? { ...a, answer: "no-scratch-shape" } : a)),
+    };
+    expect(sheetNeedsAttention(incomplete), "an incomplete sheet looked fine").toBe(true);
+    expect(describeHostSheet(incomplete)).toContain("never put");
   });
 });
