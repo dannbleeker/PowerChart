@@ -411,11 +411,25 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
     });
   }
   const after = await slideCount();
-  const { found: mine } = await probeCharts(`${prefix} onto`);
+  const { found: mine, blind: mineBlind, gap: mineGap } = await probeCharts(`${prefix} onto`);
   // The chart that was already there must still be a chart. A run that swept
   // the slide's existing shapes into its own group would take this with it —
   // and delete it on the next edit, because the parts tag would claim it.
-  const survivor = (await probeCharts(prefix)).found.find((c) => c.cfg.title === host.cfg.title);
+  //
+  // Both readings take the scan's OWN account of whether it saw the deck.
+  // Without that, "I did not find your chart" and "I could not look" are the
+  // same sentence — and this scenario said the first while meaning the second
+  // on a real host, on a run where the previous scenario alone had taken 102
+  // seconds and the host was answering deck reads short. It is the trap
+  // `stop a run part-way` already has a rung for: "found nothing, therefore
+  // nothing was left behind" is an assertion a blind scan satisfies for free.
+  //
+  // A blind scan is reported as SKIPPED, not as a pass and not as a failure:
+  // nobody has evidence either way, and a verdict that cannot be attributed
+  // costs a whole real-host round to chase.
+  const rescan = await probeCharts(prefix);
+  if (mineBlind || rescan.blind) return blindSkip(rescan.blind ? rescan.gap : mineGap);
+  const survivor = rescan.found.find((c) => c.cfg.title === host.cfg.title);
   const problems = [
     after !== before && `the deck grew by ${after - before} — the charts did not go ON the slide`,
     mine.length !== added.length && `${mine.length} of ${added.length} new charts are re-editable`,
