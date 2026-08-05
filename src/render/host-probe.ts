@@ -40,6 +40,10 @@ import {
   type ProbeContext,
 } from "./powerpoint";
 import { trace } from "../core/trace";
+// @ts-expect-error — a plain .mjs table with no types, and deliberately the
+// SAME one the CLI and the CI gate read. Two copies of it is how a claim
+// quietly stops matching its check.
+import { FAKE_BASELINE, KNOWN_DIVERGENCES, diffAnswers } from "../../scripts/host-baseline.mjs";
 
 /** One question and what this host said. */
 export interface HostAnswer {
@@ -813,3 +817,48 @@ async function ask(probe: Probe, scratchId: string): Promise<{ answer: string; d
 
 /** Every question this build knows how to ask — for the fake's baseline test. */
 export const PROBE_IDS: readonly string[] = PROBES.map((p) => p.id);
+
+/**
+ * What a probe run FOUND, in one line, on screen.
+ *
+ * Every probe run so far has cost a round trip to establish nothing: download,
+ * send, wait for someone to run `host-diff`, hear that the answers are the same
+ * as last time. The comparison table is plain data, so the pane can do the diff
+ * itself and say whether this run is worth sending at all.
+ *
+ * Divergences that are already DECLARED are counted separately from new ones.
+ * A run that reproduces seven known disagreements is not news; a run with one
+ * undeclared answer is the only kind worth anyone's attention, and it should
+ * not have to be found by eye in a seventeen-row JSON file.
+ */
+export function summariseHostSheet(sheet: HostAnswerSheet): {
+  asked: number;
+  neverPut: string[];
+  known: string[];
+  fresh: string[];
+} {
+  const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+  const neverPut = sheet.answers.filter((a) => NOT_ASKED.has(a.answer)).map((a) => a.id);
+  const { differ } = diffAnswers(answers, FAKE_BASELINE) as { differ: { id: string }[] };
+  const known = differ.filter((d) => d.id in KNOWN_DIVERGENCES).map((d) => d.id);
+  const fresh = differ.filter((d) => !(d.id in KNOWN_DIVERGENCES)).map((d) => d.id);
+  return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh };
+}
+
+/** Whether a probe run is worth sending on — anything unexplained in it. */
+export function sheetNeedsAttention(sheet: HostAnswerSheet): boolean {
+  const s = summariseHostSheet(sheet);
+  return s.fresh.length > 0 || s.neverPut.length > 0;
+}
+
+/** The same summary, in the words the pane shows. */
+export function describeHostSheet(sheet: HostAnswerSheet): string {
+  const { asked, neverPut, known, fresh } = summariseHostSheet(sheet);
+  const parts = [`${asked} of ${sheet.answers.length} questions answered`];
+  if (neverPut.length) parts.push(`${neverPut.length} never put (${neverPut.join(", ")})`);
+  if (known.length) parts.push(`${known.length} known divergence${known.length === 1 ? "" : "s"}`);
+  if (fresh.length) parts.push(`NEW: ${fresh.join(", ")}`);
+  // The verdict the owner actually needs: send it, or don't.
+  parts.push(fresh.length || neverPut.length ? "Saved — worth sending." : "Saved. Nothing new — no need to send it.");
+  return parts.join(" · ");
+}

@@ -66,6 +66,20 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   _which_ assertion went red, too: a guard can fail for the wrong reason and
   still look proven (one here failed on a slide-swap rung that records nothing
   either way; another compared a `min()` both sides answered 0 for).
+- **When two explanations fit the evidence, ask — do not reason.** A probe
+  answer, a verdict, a log line can be about the host or about the thing that
+  asked. Reasoning about which cost this project two full sheets and a session;
+  adding the variant that separates them settled it in one run
+  (`shape-add-fresh-slide-proxy` / `-held-` / `-positional-`, and again with
+  `shapes-items-via-positional-slide`). Any answer that could be about the probe
+  gets a partner question, and `KNOWN_DIVERGENCES` is where one waits while its
+  re-run is pending.
+- **The fake is gated against a real host in CI** — `test/host-contract.test.ts`
+  diffs `FAKE_BASELINE` against the committed sheet in
+  `test/fixtures/host-answers-web.json`. A new divergence fails there unless it
+  is declared in `KNOWN_DIVERGENCES` with a reason. When a fresh sheet arrives:
+  replace the fixture, run the suite, deal with what goes red. Do not edit the
+  fixture by hand — it is a recording, not a preference.
 - **Stale documentation is a defect — fix it when you find it, in that turn.**
   Don't file it, don't mention it and move on. This applies to comments that
   justify a design with a claim that is no longer true, which is the expensive

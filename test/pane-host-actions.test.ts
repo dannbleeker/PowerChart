@@ -329,6 +329,21 @@ vi.mock("../src/render/powerpoint", () => ({
     }
     return host.slideCount;
   }),
+  // What the host probe needs, and only that. The probe's own answers are
+  // covered exhaustively in `host-probe.test.ts` against the real fake host;
+  // what this file cares about is that "Run the whole round" puts a COMPLETE
+  // sheet and the self-test's verdicts into ONE file. A host that will not give
+  // out a scratch slide produces a complete sheet of `no-scratch-slide`, which
+  // is exactly enough to test the bundling and nothing more.
+  addScratchSlide: vi.fn(async () => null),
+  deleteSlideById: vi.fn(async () => true),
+  isTimeout: vi.fn(() => false),
+  requirementSets: vi.fn(() => ["1.1", "1.5"]),
+  ScratchSlideUnavailable: class ScratchSlideUnavailable extends Error {},
+  withProbeContext: vi.fn(async () => {
+    throw new Error("no scratch slide in this harness");
+  }),
+  deadlinesFired: 0,
 }));
 
 // The deck builder is a real pptxgenjs run; the pane's own tests care about
@@ -495,6 +510,7 @@ function captureDownloads() {
   const r = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   return {
     lastJson: async () => JSON.parse(await blobs[blobs.length - 1].text()),
+    count: () => blobs.length,
     restore: () => {
       c.mockRestore();
       r.mockRestore();
@@ -1667,6 +1683,77 @@ describe("demo-insert one-shot deck insert", () => {
     // Separate identities, or the deck they share cannot be read apart.
     expect(log.runs[0].run).not.toBe(log.runs[1].run);
     dl.restore();
+  });
+
+  /**
+   * One click, one file.
+   *
+   * A round used to be three clicks producing three downloads, uploaded
+   * separately and joined at the other end — and most probe runs establish
+   * nothing, so a good share of that traffic existed to learn that the answers
+   * had not changed.
+   *
+   * The demo deck is deliberately NOT chained in: its two halves have to run on
+   * different decks, and a button cannot open a fresh one.
+   */
+  it("runs the probe and the self-test on one click, and saves them as one file", async () => {
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const bundle = await dl.lastJson();
+    expect(bundle.hostAnswers?.answers?.length, "the round's file carries no probe answers").toBeGreaterThan(0);
+    expect(bundle.selftest?.length, "the round's file carries no self-test verdicts").toBeGreaterThan(0);
+    // One file, not two. The whole point is that there is one thing to send.
+    expect(dl.count()).toBe(1);
+    dl.restore();
+  });
+
+  /**
+   * "Both, one after the other" has never survived a deck that was not empty.
+   *
+   * Four attempts, four crash dialogs, and every one has the same shape: the
+   * file half fills the deck, the shape half then draws onto that larger deck,
+   * and the host stops answering. The last one waited 45 seconds for a batch of
+   * FIVE shapes on 40 slides. `docs/PUBLISHING.md` splits the two into separate
+   * tests on separate decks for exactly this reason, and the dropdown quietly
+   * puts them back together.
+   *
+   * So the option degrades instead of obeying: run the half that works, and say
+   * what the other one needs.
+   */
+  it("refuses the shape half on a deck that is already full, and says why", async () => {
+    const dl = captureDownloads();
+    host.canInsertFile = true;
+    host.slideCount = 40;
+    ($("demo-path") as HTMLSelectElement).value = "both";
+    $("demo-insert").click();
+    await settle();
+    // The file half still runs — it is the half that works on a big deck, and
+    // refusing both would cost the measurement entirely.
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.demoRuns, "drew the deck shape by shape onto a 40-slide deck").toBe(0);
+    $("demo-log").click();
+    const log = await dl.lastJson();
+    expect(log.runs.map((r: { path: string }) => r.path)).toEqual(["file"]);
+    // And the LOG says the difference was deliberate. The on-screen note is
+    // overwritten by this run's own summary within seconds; a reader of the log
+    // would otherwise see a run asked for both halves that quietly did one, and
+    // read it as the shape half having crashed.
+    expect(log.refusedShapeHalf?.slides, "the log does not say the shape half was refused").toBe(40);
+    expect(log.refusedShapeHalf?.why).toMatch(/fresh deck/i);
+    dl.restore();
+  });
+
+  it("still takes both halves when the deck is empty enough to be worth it", async () => {
+    // The gate is a threshold, not a ban. A fresh deck is exactly where the
+    // measurement is wanted, and that case has never been the one that crashes.
+    host.canInsertFile = true;
+    host.slideCount = 1;
+    ($("demo-path") as HTMLSelectElement).value = "both";
+    $("demo-insert").click();
+    await settle();
+    expect(host.calls.insertFile).toHaveLength(1);
+    expect(host.demoRuns, "the shape half was refused on an empty deck").toBeGreaterThanOrEqual(1);
   });
 
   it("does not run the shape path twice when the fast path falls back", async () => {

@@ -1,0 +1,119 @@
+{
+  "kind": "powerchart-host-answers",
+  "source": "PowerPoint · OfficeOnline · 0.0.0.0",
+  "build": "a2191fe · 2026-08-05 04:20Z",
+  "requirementSets": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"],
+  "answers": [
+    {
+      "id": "load-isnullobject-populates",
+      "question": "Does load('isNullObject') make isNullObject readable after a sync?",
+      "ms": 26,
+      "answer": "yes",
+      "detail": "read false"
+    },
+    {
+      "id": "load-id-populates-isnullobject",
+      "question": "Does loading a REAL property make isNullObject readable?",
+      "ms": 29,
+      "answer": "yes",
+      "detail": "read false"
+    },
+    {
+      "id": "getitemornullobject-missing",
+      "question": "What does getItemOrNullObject give for an id that does not exist?",
+      "ms": 27,
+      "answer": "null-object"
+    },
+    {
+      "id": "shape-add-fresh-slide-proxy",
+      "question": "Can a shape be added through a slide proxy resolved in THIS sync?",
+      "ms": 310,
+      "answer": "yes"
+    },
+    {
+      "id": "shape-add-held-slide-proxy",
+      "question": "Can a shape be added through a slide proxy resolved a sync ago?",
+      "ms": 242,
+      "answer": "threw",
+      "detail": "GeneralException"
+    },
+    {
+      "id": "shape-add-positional-slide-proxy",
+      "question": "Can a shape be added through slides.getItemAt(index) rather than by id?",
+      "ms": 545,
+      "answer": "yes"
+    },
+    {
+      "id": "shape-proxy-survives-one-sync",
+      "question": "Is a shape proxy still usable one sync after it was created?",
+      "ms": 663,
+      "answer": "unreadable"
+    },
+    {
+      "id": "shapes-items-count-honest",
+      "question": "After adding 5 shapes, how many does the collection report?",
+      "ms": 820,
+      "answer": "unreadable",
+      "detail": "Cannot read properties of undefined (reading 'length')"
+    },
+    {
+      "id": "getcount-populates-same-sync",
+      "question": "Does getCount()'s value arrive on the sync that queued it?",
+      "ms": 536,
+      "answer": "yes",
+      "detail": "value=6"
+    },
+    {
+      "id": "tags-add-same-key-twice",
+      "question": "Does writing the same tag key twice overwrite, or duplicate?",
+      "ms": 330,
+      "answer": "other",
+      "detail": "value=undefined"
+    },
+    {
+      "id": "tags-on-fresh-shape",
+      "question": "Does a shape added THIS sync already have a .tags collection?",
+      "ms": 614,
+      "answer": "yes"
+    },
+    {
+      "id": "delete-then-lookup",
+      "question": "Right after delete()+sync, does getItemOrNullObject report it gone?",
+      "ms": 694,
+      "answer": "reports-gone"
+    },
+    {
+      "id": "addgroup-returns-usable",
+      "question": "Is a group proxy usable in the same context that created it?",
+      "ms": 813,
+      "answer": "unreadable"
+    },
+    {
+      "id": "group-reports-its-children",
+      "question": "After grouping two shapes, does the group report two children?",
+      "ms": 904,
+      "answer": "threw",
+      "detail": "The property 'items' is not available. Before reading the property's value, call the load method on the containing object and call \"context."
+    },
+    {
+      "id": "tag-on-group-survives",
+      "question": "Does a tag written on a GROUP read back?",
+      "ms": 897,
+      "answer": "no",
+      "detail": "value=undefined"
+    },
+    {
+      "id": "getitemat-past-end",
+      "question": "What does slides.getItemAt() past the end of the deck do?",
+      "ms": 490,
+      "answer": "threw",
+      "detail": "InvalidParam passed to GetItemAt(index)"
+    },
+    {
+      "id": "untrack-available",
+      "question": "Do proxies expose untrack()?",
+      "ms": 22,
+      "answer": "no"
+    }
+  ]
+}

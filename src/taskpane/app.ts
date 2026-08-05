@@ -71,7 +71,7 @@ import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./dat
 import { BUILTIN_TEMPLATES } from "./templates";
 import { harveyScene, checkScene, flowScene, kpiScene, wireElementPreviews } from "./elements-ui";
 import { agendaChapters, wireAgendaPreview } from "./agenda-ui";
-import { runHostProbes, type HostAnswer } from "../render/host-probe";
+import { runHostProbes, describeHostSheet, sheetNeedsAttention, type HostAnswerSheet } from "../render/host-probe";
 
 interface AppState {
   kind: ChartKind;
@@ -2292,6 +2292,17 @@ let lastRunLog: RunLogFile | undefined;
  * single-path click writes the same shape with one entry, so nothing reading
  * this file needs to care which it was.
  */
+/**
+ * How many slides make a deck too crowded to draw a whole demo onto shape by
+ * shape.
+ *
+ * Not a measurement of where the host gives up — nobody has one, because every
+ * attempt so far started on a deck the file half had already filled. It is a
+ * threshold below which the run is worth attempting: a demo adds 38 slides, so
+ * anything past a handful means the deck was not fresh.
+ */
+const CROWDED_DECK_SLIDES = 10;
+
 interface RunLogFile {
   build: string;
   host: string;
@@ -2310,6 +2321,26 @@ interface RunLogFile {
    * undeclared field is one nothing downstream can be expected to read.
    */
   trace?: RunLog["trace"];
+  /**
+   * The host probe's answer sheet, when the round produced one.
+   *
+   * Declared rather than spread in untyped, for the reason the field above
+   * gives: an undeclared field is one nothing downstream can be expected to
+   * read. `npm run host-diff` takes either shape — a bare sheet, or a round's
+   * file with this inside it — so one upload covers both halves.
+   */
+  hostAnswers?: HostAnswerSheet;
+  /**
+   * Set when the run did LESS than it was asked to, and why.
+   *
+   * "Both, one after the other" degrades to the file half on a deck that is
+   * already large — see `CROWDED_DECK_SLIDES`. Without this the log shows a run
+   * asked for two halves that produced one, with nothing to say the difference
+   * was deliberate, and the obvious reading is that the shape half crashed.
+   * Data rather than a trace line, because the trace is optional and this is
+   * not.
+   */
+  refusedShapeHalf?: { slides: number; why: string };
 }
 
 interface RunLog {
@@ -3123,11 +3154,79 @@ function wireInsert() {
           typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev",
         );
         downloadJson("powerchart-host-answers.json", sheet);
-        const odd = sheet.answers.filter((a: HostAnswer) => a.answer === "silent" || a.answer === "threw").length;
+        // The diff, here, now — rather than after a round trip.
+        //
+        // Every probe run so far has been "download it, send it, wait for
+        // someone to run `host-diff`, hear back". Most of those establish
+        // nothing new: the answers are the same as last time. The comparison
+        // table is a plain object, so the pane can do it and say whether this
+        // run is worth sending at all.
+        note(describeHostSheet(sheet), sheetNeedsAttention(sheet) ? "err" : "ok");
+      }),
+    );
+    /**
+     * One click, one file: the probe and the self-test, back to back.
+     *
+     * What it saves is round trips rather than seconds. A round used to be
+     * three clicks producing three downloads, uploaded separately and joined at
+     * the other end — and most probe runs establish nothing, so a good share of
+     * that traffic was to learn that the answers had not changed.
+     *
+     * The DEMO DECK is deliberately not in here, and not for want of effort.
+     * Its two halves have to run on different decks: the file half fills the
+     * deck, and the shape half then draws onto that same larger deck, which is
+     * the one configuration that has ended in PowerPoint's crash dialog every
+     * time it has been tried. A button cannot open a fresh deck, so chaining
+     * the demo in would bake in exactly the arrangement the runbook splits up.
+     *
+     * The probe goes FIRST because it is the cheap one. If the host is already
+     * unwell, seventeen short questions say so in seconds, and they are still
+     * in the bundle when the long half dies.
+     */
+    const roundBtn = $("demo-round") as HTMLButtonElement;
+    roundBtn.disabled = false;
+    roundBtn.addEventListener(
+      "click",
+      guard(async () => {
+        revealSteps();
+        const buildStamp = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
+        const host = describeHost();
+        lastRunLog = undefined;
+        ($("demo-log") as HTMLButtonElement).disabled = true;
+        beginCrashLog({ build: buildStamp, host, label: "the whole round" });
+        const traceFrom = traceMark();
+        note("Round 1 of 2 — asking this PowerPoint what it actually does…", "busy");
+        const sheet = await runHostProbes(host, buildStamp);
+        // Written into the bundle before the long half starts. A self-test that
+        // takes the tab down must not also lose the probe's answers, which are
+        // complete, cheap, and the half most likely to be worth reading.
+        lastRunLog = { build: buildStamp, host, runs: [], hostAnswers: sheet };
+        note(`Probe done — ${describeHostSheet(sheet)} Now the self-test…`, "busy");
+        if (isStopRequested()) {
+          downloadJson("powerchart-round.json", lastRunLog);
+          note("Stopped after the probe. Its answers are saved.", "ok");
+          endCrashLog();
+          return;
+        }
+        setSelfTestRasterizer(boundedRaster);
+        setSelfTestPrompt((message) => note(message, "busy"));
+        const results = await runSelfTest(undefined, scenarioPick?.value || undefined);
+        lastRunLog = {
+          build: buildStamp,
+          host,
+          runs: [],
+          hostAnswers: sheet,
+          selftest: results,
+          ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
+        };
+        ($("demo-log") as HTMLButtonElement).disabled = false;
+        endCrashLog();
+        downloadJson("powerchart-round.json", lastRunLog);
+        const needed = sheetNeedsAttention(sheet) || selfTestNeedsAttention(results);
         note(
-          `Asked ${sheet.answers.length} questions${odd ? `, ${odd} of them the host would not answer` : ""}. ` +
-            "Saved — send it over and `npm run host-diff` compares it with the fake.",
-          "ok",
+          `Round finished. ${describeSelfTest(results)} · Probe: ${describeHostSheet(sheet)} ` +
+            (needed ? "Saved as one file — send it over." : "Saved as one file; nothing in it is new."),
+          needed ? "err" : "ok",
         );
       }),
     );
@@ -3234,14 +3333,54 @@ function wireInsert() {
          */
         const record = (r: RunLog) => {
           runs.push(r);
-          lastRunLog = { build: buildStamp, host, runs };
+          lastRunLog = { build: buildStamp, host, runs, ...(refusedShapeHalf ? { refusedShapeHalf } : {}) };
           ($("demo-log") as HTMLButtonElement).disabled = false;
         };
         // Which path(s) to take. Both, one after the other, is what a change
         // touching the renderer wants: same session, same host, one deck, and
         // the two accounts directly comparable — instead of two separate runs
         // an hour apart with a deploy in between.
-        const mode = (($("demo-path") as HTMLSelectElement | null)?.value ?? "file") as "file" | "shapes" | "both";
+        let mode = (($("demo-path") as HTMLSelectElement | null)?.value ?? "file") as "file" | "shapes" | "both";
+        let refusedShapeHalf: RunLogFile["refusedShapeHalf"];
+        // …and it has never once survived on a deck that was not empty.
+        //
+        // Four attempts, four crash dialogs. The shape half always draws onto
+        // whatever the file half has just built, and the last one asked the
+        // host for a batch of FIVE shapes on a 40-slide deck and waited 45
+        // seconds for nothing. Every crash this project has recorded from the
+        // demo path has that same shape: heavy shape work on a deck that is
+        // already large. `docs/PUBLISHING.md` splits the two into separate
+        // tests on separate decks for exactly this reason, and the option here
+        // quietly puts them back together.
+        //
+        // So it degrades rather than obeys: run the file half, and say what
+        // the shape half needs. A twenty-minute run that ends in "Sorry, we ran
+        // into a problem" costs more than the measurement was worth, and it
+        // costs it after the tab has already eaten the log.
+        // Only asked where the answer changes anything. A deck read is a host
+        // round trip, and the other two modes would pay for it to learn
+        // nothing — which is also how this first landed: it broke a test that
+        // counts exactly how many reads an insert is allowed to spend.
+        if (mode === "both") {
+          const deckNow = await slideCount();
+          if ((deckNow ?? 0) > CROWDED_DECK_SLIDES) {
+            mode = "file";
+            note(
+              `This deck already holds ${deckNow} slides, so only the file half will run. ` +
+                "The shape half needs a fresh deck — every attempt at both on one deck has ended in PowerPoint's crash dialog.",
+              "err",
+            );
+            // In the LOG as well as on screen. The note is overwritten by this
+            // run's own summary within seconds, and a reader of the log
+            // otherwise sees a run that was asked for both halves and did one,
+            // with nothing to say the difference was deliberate.
+            trace("demo", "refused the shape half on a crowded deck", { slides: deckNow, needs: "a fresh deck" });
+            refusedShapeHalf = {
+              slides: deckNow ?? 0,
+              why: "the shape half needs a fresh deck — both halves on one deck has crashed the host every time",
+            };
+          }
+        }
         // Where THIS run's trace starts. The buffer keeps every operation since
         // tracing was switched on, so a log that carried all of it carried other
         // runs' entries too — and reading one run's numbers against another's

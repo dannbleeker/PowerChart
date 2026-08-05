@@ -123,6 +123,7 @@ beginning, never its end.
 
 | # | test | what it catches |
 | --- | --- | --- |
+| ⭐ | **Run the whole round.** One click: the probe, then the self-test, saved as **one file**. Send that. Replaces tests 0 and 1 below on any build where you do not need them separately. | Everything those two catch, in one click and one upload. The pane also diffs the probe's answers against the fake on screen, so a run that found nothing says so and needs no upload at all. |
 | 0 | **Run host probe.** One click, no deck changes — it works on a scratch slide and gives it back. Send the saved JSON. | Whether the FAKE POWERPOINT every test in this repo runs against is telling the truth. Its faults are things a real host taught us; its happy path is assumptions. `npm run host-diff` lines the two up, and each disagreement is either a fake that lies (so some tests are worth less than they look) or something the host does that we did not know. Do this **once per host** — it does not change between builds, so it is not part of the per-build round. |
 | 1 | **Run host self-test.** One click, nine scenarios (below), and the Live steps list names each one as it starts. Chasing one failure? Set **Scenario** to it first — it runs that plus the two inserts it needs, in seconds rather than minutes. Read the verdicts, and if the run does not finish, read the last line. | Nearly everything that used to be tests 1, 2, 3 and 7 of this table. The battery now selects shapes itself (`Slide.setSelectedShapes`, PowerPointApi 1.5), stops its own run, and asks the host to render a slide before and after drawing so it can tell a chart that is *there* from a chart that is *visible*. A verdict of **skipped** is not a failure. |
 | 2a | **Demo deck — file path.** Path → **File (fast)** → **Insert demo deck**. ~6 s. | The file half must report **38 of 38 complete** — anything less is a regression. |
@@ -140,6 +141,12 @@ before the tab died. Both of this round's crashes have that shape — heavy shap
 work on a deck that is already large — and running the two halves back to back
 guarantees it. Separate decks cost one extra minute and remove the only
 variable the two crashes shared.
+
+**The dropdown now refuses "Both" on a deck that is not fresh.** It runs the
+file half and says the shape half needs an empty deck, and the run log records
+that it did so (`refusedShapeHalf`). Four attempts at both halves on one deck
+have produced four crash dialogs; this stops the fifth from costing twenty
+minutes. On a fresh deck the option behaves exactly as before.
 
 **Run it on a 4:3 deck at least once**, and on desktop PowerPoint at least once
 per release — everything above is normally run on the web, which is where the
