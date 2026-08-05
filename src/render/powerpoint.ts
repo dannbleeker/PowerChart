@@ -630,13 +630,44 @@ export async function insertSceneIntoSlide(
   // an inserted chart and a re-editable one.
   const untagged: { slideId: string; tagData: string; shapeId?: string }[] = [];
   const inserted = await PowerPoint.run(async (context) => {
-    // The current slide already exists, so its proxy IS stable across syncs (its
-    // id round-trips) — hold one and reuse it. Only a freshly-added slide needs a
-    // per-batch fresh proxy; see SlideThunk. Resolving once also pins the target
-    // to the slide selected at the start, immune to any selection drift mid-draw.
+    // Resolved ONCE to pin which slide this draw belongs to, then re-acquired
+    // per batch by that id.
+    //
+    // The pinning is the half worth keeping: without it a draw that spans three
+    // batches follows the user if they click another slide half way through.
+    // The holding is the half that was wrong. The comment here used to say "the
+    // current slide already exists, so its proxy IS stable across syncs — hold
+    // one and reuse it", which is true of the slide the user is looking at and
+    // false whenever `opts.slideId` names one this session added: the demo
+    // deck's slides, the self-test's scratch slide. `getTargetSlide` reaches
+    // for `slides.getItem(id)`, which is the exact call PowerPoint web refuses
+    // for a new slide — `GeneralException`, `errorLocation:
+    // SlideCollection.getItem` — and it is the same mistake, in the same words,
+    // that #280 removed from the update path.
+    //
+    // Taking the id first and re-resolving from it keeps the pin and drops the
+    // hold: every batch names the same slide, and none of them holds a handle
+    // across a sync.
     const slide = getTargetSlide(context, opts.slideId);
     slide.load("id");
-    const getSlide: SlideThunk = () => slide;
+    // Re-acquired per batch ONLY when the caller named the slide, and held
+    // otherwise — because those are two different slides.
+    //
+    // `opts.slideId` is how the demo path and the self-test point at a slide
+    // they have just added, and it is already an id, so re-resolving costs
+    // nothing: no extra sync, no extra read. Without it the target is whatever
+    // the user is looking at, which by definition was in the deck before this
+    // run started — its id round-trips, holding is free, and reading the id to
+    // re-resolve would cost a round trip on the single most-used action in the
+    // add-in. An earlier draft did exactly that and paid for it in ten timing
+    // tests.
+    //
+    // `getItemOrNullObject`, not `getItem`: a thunk called per batch must not
+    // throw on a slide the user deleted mid-draw, and a null object is a
+    // condition the draw already survives.
+    const getSlide: SlideThunk = opts.slideId
+      ? () => context.presentation.slides.getItemOrNullObject(opts.slideId!)
+      : () => slide;
     onPhase?.("queue", `${scene.nodes.length} nodes`);
     // Committed in batches: the whole scene in one sync is what a live canvas
     // will not take. Each batch reports, so progress here is measured, not

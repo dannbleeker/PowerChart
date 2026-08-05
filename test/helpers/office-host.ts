@@ -1286,7 +1286,26 @@ export function installHost(
       slides: {
         items: slides,
         load() {},
-        getItem: (id: string) => slides.find((s) => s.id === id)!,
+        /**
+         * By id — and single-sync when the slide was added in this session.
+         *
+         * This handed back the live slide, durable, and the comment beside it
+         * said "by id, the reference is always durable". That is the kindest
+         * the fake was at the one call a real host is harshest about: every
+         * held-handle failure PowerPoint web has reported names
+         * `errorLocation: SlideCollection.getItem`, and the last one listed the
+         * statement it refused — `var slide = slides.getItem(...)` — in the same
+         * batch as a `getItemOrNullObject` handle it was perfectly happy with.
+         *
+         * `getItemOrNullObject` and `getItemAt` have both been windowed for
+         * added slides for a while. `getItem` being the exception is backwards,
+         * and it is why `insertSceneIntoSlide` could hold one proxy for a whole
+         * multi-batch draw with nothing here to notice.
+         */
+        getItem: (id: string) => {
+          const found = slides.find((s) => s.id === id)!;
+          return found && addedSlideIds.has(id) ? (expiringSlideHandle(found) as unknown as FakeSlide) : found;
+        },
         // Real Office.js hands back a null OBJECT for an unknown id — it does
         // not throw and does not return undefined. A fake that returns
         // undefined would make `slide.isNullObject` a TypeError instead of the
