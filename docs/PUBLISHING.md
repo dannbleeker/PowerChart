@@ -225,16 +225,35 @@ agreeing with the fake), `getcount-populates-same-sync` **yes**, and
 `shape-proxy-survives-one-sync` **unreadable** — office-js#2903, confirmed
 first-hand at last.
 
-The other four came back with answers that are almost certainly about the
-probe rather than the host: `tag-on-group-survives` **no**,
-`tags-add-same-key-twice` **other**, `shapes-items-count-honest`
-**unreadable**, `addgroup-returns-usable` **unreadable**. Each of those probes
-still writes or reads through a shape or group proxy from an earlier sync,
-which is the pattern the same sheet proves fails. Do not act on them: the
-notes in `scripts/host-diff.mjs` say so per question, and the fix is another
-round of asking, not a change of code. (A deck argues the same way — the same
-run's repair pass landed 23 retags on grouped charts, which a host that could
-not tag a group could not do.)
+The other four came back with answers that were about the probe rather than
+the host: `tag-on-group-survives` **no**, `tags-add-same-key-twice` **other**,
+`shapes-items-count-honest` **unreadable**, `addgroup-returns-usable`
+**unreadable**. Each of those probes wrote or read through a shape or group
+proxy from an earlier sync — the pattern the same sheet proves fails. A fourth
+run (build `a2191fe`) reproduced all seventeen answers exactly, so they are
+stable and reproducible, and still not about the host.
+
+Taken at face value the first of them says no chart in any deck is
+re-editable, which the same run disproves: its repair pass landed 23 retags on
+grouped charts. So all four were **withdrawn and re-asked** rather than acted
+on. The rule the rewrite follows is one line — *only an id crosses a sync,
+never a handle* — and it now holds for every probe:
+
+- group members are resolved in the batch that groups them, and the group's id
+  is loaded in that same batch;
+- tags are written and read through a shape resolved in each batch, exactly as
+  `settleAndTagChart` does on the path that carries real charts;
+- a probe that loses its scratch slide *part way through* a question says
+  `no-scratch-shape` and gets asked again, instead of reporting whatever the
+  next line did to an undefined collection.
+
+`shapes-items-count-honest` is the one that could not be cleaned up this way —
+a collection load is queued in one batch and read in the next by definition —
+so it got a partner instead. `shapes-items-via-positional-slide` asks the same
+question through `getItemAt(index)`. If that one reads back and the by-id form
+does not, the collection was never the problem and the parent handle was,
+which decides how every readback in `powerpoint.ts` should name its slide.
+Read the pair together or neither.
 
 What to read in the result: the `tagging failed` count (was 28 on the last slow
 run; should be near zero), any line annotated `^ known host bug: office-js#…`

@@ -113,7 +113,7 @@ const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape"]);
  */
 class ProbeSetupFailed extends Error {
   constructor(readonly why: string) {
-    super(`the host would not put a shape on the scratch slide: ${why}`);
+    super(`the probe never got as far as its question: ${why}`);
     this.name = "ProbeSetupFailed";
   }
 }
@@ -162,6 +162,95 @@ async function scratchShapes(ctx: ProbeContext, boxes: ProbeBox[], load?: string
 }
 
 /**
+ * A shape on the scratch slide, resolved in the batch that is about to use it.
+ *
+ * The rule that makes the answers below mean anything: **only an id crosses a
+ * sync, never a handle.** Four questions on the 2026-08-04 sheet came back with
+ * answers that were about the probe rather than the host — a tag written
+ * through a group proxy a sync old read back undefined, and a group whose
+ * children were counted a sync after it was made reported none. Taken at face
+ * value those say no chart in any deck is re-editable, which the same run
+ * disproves: its repair pass landed 23 retags on grouped charts.
+ *
+ * A question whose setup trips the one rule this host is strictest about
+ * measures the trip, not the question.
+ */
+/**
+ * The scratch slide's shape collection, resolved in the batch about to use it.
+ *
+ * Same guard as `probeShape`, for the probes that reach for the collection
+ * rather than one shape: a slide that has stopped answering hands back a null
+ * object, and `.shapes` off one of those fails in whatever way the host
+ * chooses. None of those ways is an answer to the question being asked.
+ */
+function probeShapes(ctx: ProbeContext): PowerPoint.ShapeCollection {
+  let shapes: PowerPoint.ShapeCollection | undefined;
+  try {
+    shapes = ctx.scratch().shapes;
+  } catch (err) {
+    throw new ProbeSetupFailed(`the scratch slide stopped answering: ${short(err)}`);
+  }
+  // Absent, not throwing — the shape of it on a slide the host has stopped
+  // resolving, and the more dangerous half: the failure then surfaces as
+  // whatever the NEXT line does to `undefined`, which every probe's catch
+  // faithfully records as the host having thrown.
+  if (!shapes) throw new ProbeSetupFailed("the scratch slide has no shape collection");
+  return shapes;
+}
+
+function probeShape(ctx: ProbeContext, id: string): PowerPoint.Shape {
+  try {
+    return ctx.scratch().shapes.getItemOrNullObject(id);
+  } catch (err) {
+    // The slide stopped answering PART WAY THROUGH a question. Not this
+    // probe's answer either — `ScratchSlideUnavailable` only guards the start
+    // of a probe's context, and a question that loses its slide at its third
+    // batch has asked no more than one that lost it at its first.
+    throw new ProbeSetupFailed(`the scratch slide stopped answering: ${short(err)}`);
+  }
+}
+
+/**
+ * A probe's own catch, for the answers that are real answers.
+ *
+ * Every probe below turns a throw into `"threw"` or `"unreadable"`, which are
+ * things this host genuinely says. A setup failure must not be dressed in
+ * either — it is the whole reason `no-scratch-shape` exists — so it goes back
+ * up to `ask`, where the run replaces the scratch slide and puts the question
+ * again.
+ */
+function threw(err: unknown): { answer: string; detail?: string } {
+  if (err instanceof ProbeSetupFailed) throw err;
+  return { answer: "threw", detail: short(err) };
+}
+
+/** The same, for probes whose failure vocabulary is `"unreadable"`. */
+function unreadable(err: unknown): { answer: string; detail?: string } {
+  if (err instanceof ProbeSetupFailed) throw err;
+  return { answer: "unreadable", detail: short(err) };
+}
+
+/**
+ * The ids of shapes just made — the only thing allowed to outlive their sync.
+ *
+ * A host that will not read an id back has not answered the question either,
+ * so this is a setup failure rather than a finding: `no-scratch-shape`, in the
+ * vocabulary no probe can produce as its own answer.
+ */
+function idsOf(made: PowerPoint.Shape[]): string[] {
+  const ids = made.map((s) => {
+    try {
+      const v = (s as unknown as { id?: string }).id;
+      return typeof v === "string" && v ? v : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  if (ids.some((id) => !id)) throw new ProbeSetupFailed("the host would not read back the shapes' ids");
+  return ids as string[];
+}
+
+/**
  * The questions.
  *
  * Each one corresponds to something `powerpoint.ts` relies on. That is the bar
@@ -185,7 +274,7 @@ const PROBES: Probe[] = [
         const v = (slide as unknown as { isNullObject: boolean }).isNullObject;
         return { answer: typeof v === "boolean" ? "yes" : "unreadable", detail: `read ${String(v)}` };
       } catch (err) {
-        return { answer: "unreadable", detail: short(err) };
+        return unreadable(err);
       }
     },
   },
@@ -201,7 +290,7 @@ const PROBES: Probe[] = [
         const v = (slide as unknown as { isNullObject: boolean }).isNullObject;
         return { answer: typeof v === "boolean" ? "yes" : "unreadable", detail: `read ${String(v)}` };
       } catch (err) {
-        return { answer: "unreadable", detail: short(err) };
+        return unreadable(err);
       }
     },
   },
@@ -216,7 +305,7 @@ const PROBES: Probe[] = [
         const nul = (slide as unknown as { isNullObject: boolean }).isNullObject;
         return { answer: nul === true ? "null-object" : nul === false ? "claims-live" : "unreadable" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -231,7 +320,7 @@ const PROBES: Probe[] = [
     // the three ways apart, and let the next sheet say which.
     ask: async (ctx) => {
       try {
-        ctx.scratch().shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+        probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
           left: 10,
           top: 100,
           width: 20,
@@ -240,7 +329,7 @@ const PROBES: Probe[] = [
         await ctx.sync();
         return { answer: "yes" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -265,7 +354,7 @@ const PROBES: Probe[] = [
         await ctx.sync();
         return { answer: "yes" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -282,7 +371,7 @@ const PROBES: Probe[] = [
       try {
         index = ctx.slides.items.findIndex((s) => s.id === ctx.scratchId);
       } catch (err) {
-        return { answer: "unreadable", detail: short(err) };
+        return unreadable(err);
       }
       // A real fact about this host, not a failure to ask: it listed its slides
       // and the scratch slide was not among them.
@@ -297,7 +386,7 @@ const PROBES: Probe[] = [
         await ctx.sync();
         return { answer: "yes" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -315,7 +404,7 @@ const PROBES: Probe[] = [
         const id = (shape as unknown as { id: string }).id;
         return { answer: typeof id === "string" && id ? "yes" : "unreadable" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -330,7 +419,7 @@ const PROBES: Probe[] = [
         ctx,
         Array.from({ length: 5 }, (_, i) => ({ left: i * 5, top: 40, width: 4, height: 4 })),
       );
-      const shapes = ctx.scratch().shapes;
+      const shapes = probeShapes(ctx);
       shapes.load("items/id");
       await ctx.sync();
       try {
@@ -340,7 +429,53 @@ const PROBES: Probe[] = [
         // whether the host UNDER-reports, not what the total happens to be.
         return { answer: n >= 5 ? "at-least-5" : `short-${n}`, detail: `items=${n}` };
       } catch (err) {
-        return { answer: "unreadable", detail: short(err) };
+        return unreadable(err);
+      }
+    },
+  },
+  {
+    id: "shapes-items-via-positional-slide",
+    question: "Same collection read, but through slides.getItemAt(index) — any different?",
+    // The one contaminated answer that could NOT be cleaned up by re-resolving,
+    // and the reason it needs a pair instead.
+    //
+    // A collection read cannot avoid crossing a sync: the load is queued in one
+    // batch and the answer read in the next, by definition. So when this host
+    // answered the question above with `items` UNDEFINED, there was no way to
+    // tell "this host under-reports collections" from "the by-id slide handle
+    // the collection hangs off was spent by the very sync that answered it".
+    //
+    // The three shape-add questions already proved a positional handle works
+    // where a held by-id one does not. If this reads back and the one above
+    // does not, the collection is fine and the parent handle was the whole
+    // story — which is a fact about every readback in `powerpoint.ts`, since
+    // the repair pass reads by index and the probe reads by id.
+    ask: async (ctx) => {
+      // Its own five, not the previous question's. Probes share a scratch
+      // slide, so leaning on what an earlier one left would make this answer
+      // depend on whether THAT one's setup worked — and the run replaces a
+      // scratch slide it loses, so it may not even be the same slide.
+      await scratchShapes(
+        ctx,
+        Array.from({ length: 5 }, (_, i) => ({ left: i * 5, top: 120, width: 4, height: 4 })),
+      );
+      ctx.slides.load("items/id");
+      await ctx.sync();
+      let index: number;
+      try {
+        index = ctx.slides.items.findIndex((s) => s.id === ctx.scratchId);
+      } catch (err) {
+        return unreadable(err);
+      }
+      if (index < 0) return { answer: "not-listed" };
+      const shapes = ctx.slides.getItemAt(index).shapes;
+      shapes.load("items/id");
+      await ctx.sync();
+      try {
+        const n = shapes.items.length;
+        return { answer: n >= 5 ? "at-least-5" : `short-${n}`, detail: `items=${n}` };
+      } catch (err) {
+        return unreadable(err);
       }
     },
   },
@@ -354,7 +489,7 @@ const PROBES: Probe[] = [
         const v = count.value;
         return { answer: typeof v === "number" ? "yes" : "unreadable", detail: `value=${String(v)}` };
       } catch (err) {
-        return { answer: "unreadable", detail: short(err) };
+        return unreadable(err);
       }
     },
   },
@@ -364,13 +499,17 @@ const PROBES: Probe[] = [
     // Re-editing a chart rewrites POWERCHART_CONFIG on the same shape every
     // time. If a host appended instead of overwriting, a chart edited ten times
     // would carry ten configs and the reader would pick one arbitrarily.
+    // Every write goes through a shape resolved in its own batch. The first
+    // version held one proxy across all four syncs, and this host answered
+    // "other — value=undefined": not an opinion about tag keys at all, just
+    // the stale handle refusing both writes.
     ask: async (ctx) => {
-      const [shape] = await scratchShapes(ctx, [{ left: 60, top: 10, width: 20, height: 20 }]);
-      shape.tags.add("POWERCHART_PROBE", "first");
+      const [id] = idsOf(await scratchShapes(ctx, [{ left: 60, top: 10, width: 20, height: 20 }], "id"));
+      probeShape(ctx, id).tags.add("POWERCHART_PROBE", "first");
       await ctx.sync();
-      shape.tags.add("POWERCHART_PROBE", "second");
+      probeShape(ctx, id).tags.add("POWERCHART_PROBE", "second");
       await ctx.sync();
-      const tag = shape.tags.getItemOrNullObject("POWERCHART_PROBE");
+      const tag = probeShape(ctx, id).tags.getItemOrNullObject("POWERCHART_PROBE");
       tag.load("value");
       await ctx.sync();
       try {
@@ -380,7 +519,7 @@ const PROBES: Probe[] = [
           detail: `value=${v}`,
         };
       } catch (err) {
-        return { answer: "unreadable", detail: short(err) };
+        return unreadable(err);
       }
     },
   },
@@ -409,35 +548,41 @@ const PROBES: Probe[] = [
       const id = (shape as unknown as { id: string }).id;
       (shape as unknown as { delete(): void }).delete();
       await ctx.sync();
-      const gone = ctx.scratch().shapes.getItemOrNullObject(id);
+      const gone = probeShapes(ctx).getItemOrNullObject(id);
       gone.load("id");
       await ctx.sync();
       try {
         const nul = (gone as unknown as { isNullObject: boolean }).isNullObject;
         return { answer: nul === true ? "reports-gone" : nul === false ? "still-there" : "unreadable" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
   {
     id: "addgroup-returns-usable",
-    question: "Is a group proxy usable in the same context that created it?",
+    question: "Is a group proxy usable in the same sync that created it?",
+    // Members resolved in the grouping batch, and the id asked for in that same
+    // batch. Both were a sync late before, and this host answered "unreadable"
+    // — which said only that a one-sync-old group proxy is refused, a fact
+    // three other questions already establish about proxies in general.
     ask: async (ctx) => {
-      const made = await scratchShapes(
-        ctx,
-        [0, 1].map((i) => ({ left: 150 + i * 25, top: 10, width: 20, height: 20 })),
+      const ids = idsOf(
+        await scratchShapes(
+          ctx,
+          [0, 1].map((i) => ({ left: 150 + i * 25, top: 10, width: 20, height: 20 })),
+          "id",
+        ),
       );
       try {
         const group = (
-          ctx.scratch().shapes as unknown as { addGroup(shapes: unknown[]): { load(p: string): void; id: string } }
-        ).addGroup(made);
-        await ctx.sync();
+          probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): { load(p: string): void; id: string } }
+        ).addGroup(ids.map((id) => probeShape(ctx, id)));
         group.load("id");
         await ctx.sync();
         return { answer: typeof group.id === "string" && group.id ? "yes" : "unreadable" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -451,23 +596,29 @@ const PROBES: Probe[] = [
     // "fixes" charts that were never broken. The fake's own notes say a
     // version of it that put one shape there did exactly that.
     ask: async (ctx) => {
-      const made = await scratchShapes(
-        ctx,
-        [0, 1].map((i) => ({ left: 200 + i * 25, top: 60, width: 20, height: 20 })),
+      const ids = idsOf(
+        await scratchShapes(
+          ctx,
+          [0, 1].map((i) => ({ left: 200 + i * 25, top: 60, width: 20, height: 20 })),
+          "id",
+        ),
       );
       try {
         const group = (
-          ctx.scratch().shapes as unknown as {
+          probeShapes(ctx) as unknown as {
             addGroup(shapes: unknown[]): { load(p: string): void; group: { shapes: { items: unknown[] } } };
           }
-        ).addGroup(made);
-        await ctx.sync();
+        ).addGroup(ids.map((id) => probeShape(ctx, id)));
+        // Queued in the batch that MAKES the group, so the answer arrives on
+        // the group's own sync. Asked one sync later — the first version — this
+        // host answered PropertyNotLoaded, which is a statement about proxy age
+        // and not about what the group contains.
         group.load("group/shapes/items/id");
         await ctx.sync();
         const n = group.group?.shapes?.items?.length;
         return { answer: n === 2 ? "two" : typeof n === "number" ? `reports-${n}` : "unreadable", detail: `n=${n}` };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -477,32 +628,39 @@ const PROBES: Probe[] = [
     // Where a chart's config actually lives. Tags on a plain shape are covered
     // above; if a group behaves differently, every chart in every deck is
     // un-re-editable and nothing else in the probe would say so.
+    // The one whose old answer was frightening and wrong. It read back
+    // `undefined` — "no chart in any deck is re-editable" — because the tag was
+    // written through a group proxy a sync old. The group's id is what crosses
+    // the sync now, and every use resolves its own handle, exactly as
+    // `settleAndTagChart` does on the path that carries real charts.
     ask: async (ctx) => {
-      const made = await scratchShapes(
-        ctx,
-        [0, 1].map((i) => ({ left: 260 + i * 25, top: 60, width: 20, height: 20 })),
+      const ids = idsOf(
+        await scratchShapes(
+          ctx,
+          [0, 1].map((i) => ({ left: 260 + i * 25, top: 60, width: 20, height: 20 })),
+          "id",
+        ),
       );
       try {
         const group = (
-          ctx.scratch().shapes as unknown as {
-            addGroup(shapes: unknown[]): {
-              tags: {
-                add(k: string, v: string): void;
-                getItemOrNullObject(k: string): { load(p: string): void; value: string };
-              };
-            };
+          probeShapes(ctx) as unknown as {
+            addGroup(shapes: unknown[]): { load(p: string): void; id: string };
           }
-        ).addGroup(made);
+        ).addGroup(ids.map((id) => probeShape(ctx, id)));
+        group.load("id");
         await ctx.sync();
-        group.tags.add("POWERCHART_PROBE_GROUP", "kept");
+        const groupId = group.id;
+        if (typeof groupId !== "string" || !groupId)
+          return { answer: "unreadable", detail: "the host would not name the group it had just made" };
+        probeShape(ctx, groupId).tags.add("POWERCHART_PROBE_GROUP", "kept");
         await ctx.sync();
-        const tag = group.tags.getItemOrNullObject("POWERCHART_PROBE_GROUP");
+        const tag = probeShape(ctx, groupId).tags.getItemOrNullObject("POWERCHART_PROBE_GROUP");
         tag.load("value");
         await ctx.sync();
-        const v = tag.value;
+        const v = (tag as unknown as { value: string }).value;
         return { answer: v === "kept" ? "yes" : "no", detail: `value=${String(v)}` };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
@@ -517,7 +675,7 @@ const PROBES: Probe[] = [
         const id = (slide as unknown as { id: string }).id;
         return { answer: typeof id === "string" && id ? "returns-something" : "unreadable" };
       } catch (err) {
-        return { answer: "threw", detail: short(err) };
+        return threw(err);
       }
     },
   },
