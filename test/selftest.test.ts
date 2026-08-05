@@ -26,6 +26,7 @@ import {
   setSelfTestRasterizer,
   SCENARIO_NAMES,
   ROUTINE_SCENARIO_NAMES,
+  hostSeemsSick,
   _setClickWaitForTest,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
@@ -176,6 +177,90 @@ describe("the host self-test battery", () => {
     expect(attempted.length, "gave up too early to have found anything").toBeGreaterThanOrEqual(3);
     // Never green, and never filed as a capability gap.
     expect(selfTestNeedsAttention(results)).toBe(true);
+  });
+
+  /**
+   * The three verdicts of a real run, in the order it produced them.
+   *
+   * PowerPoint on the web, 2026-08-05. Two scenarios hit the 45-second draw
+   * deadline and said "did not respond"; the third hit the SAME deadline after
+   * 49.8 seconds and reported "the host stopped answering selection calls after
+   * a programmatic select — known web-host limitation". The breaker matched
+   * prose, so the third reset the counter to zero one short of tripping. The
+   * battery then ran two more scenarios on a host that had been dead for three
+   * and the tab died, taking their verdicts with it.
+   *
+   * Every one of these is a verbatim `detail` from that run.
+   */
+  it("counts a scenario that waited out its deadline, however it words the verdict", () => {
+    const timedOutAndSaidSo: ScenarioResult = {
+      name: "same scale across the deck",
+      ok: false,
+      detail:
+        "threw: PowerPoint did not respond while drawing shapes 1-10 of 24 (45s) | at=redrawing the chart's shapes",
+      ms: 48954,
+    };
+    const timedOutAndSaidSomethingElse: ScenarioResult = {
+      name: "edit the chart the user selected",
+      ok: false,
+      skipped: true,
+      detail:
+        "the host stopped answering selection calls after a programmatic select — known web-host limitation, " +
+        "same family as office-js#3083 / #3698; the pane's own Edit-it path is unaffected",
+      ms: 49840,
+    };
+    // The rule this replaced, verbatim, so the guard proves the DIFFERENCE
+    // rather than merely agreeing with itself. Without this the test would pass
+    // against any rule that happens to return true, including the broken one.
+    const oldRule = (r: ScenarioResult) =>
+      r.blind === true || r.detail.startsWith("threw:") || /did not respond|gave up/i.test(r.detail);
+    expect(oldRule(timedOutAndSaidSo), "the old rule caught this one — that part was never wrong").toBe(true);
+    expect(
+      oldRule(timedOutAndSaidSomethingElse),
+      "the old rule already handled this verdict, so this guard proves nothing",
+    ).toBe(false);
+
+    // The one the old rule caught, and it still counts.
+    expect(hostSeemsSick(timedOutAndSaidSo, true)).toBe(true);
+    // The one it did not. A skip, no "threw:", and its wording matches neither
+    // phrase the pattern looked for — but a deadline fired inside it, which is
+    // the only thing being asked.
+    expect(
+      hostSeemsSick(timedOutAndSaidSomethingElse, true),
+      "reset the breaker on a scenario that had just waited out the full budget",
+    ).toBe(true);
+    // And the rule stays narrow: without a deadline that same verdict is an
+    // ordinary capability skip and says nothing about the host's health.
+    expect(hostSeemsSick(timedOutAndSaidSomethingElse, false)).toBe(false);
+    // A plain failure is the battery working, not a sick host.
+    expect(hostSeemsSick({ name: "x", ok: false, detail: "the chart was gone", ms: 1 }, false)).toBe(false);
+    // A blind deck scan still counts on its own.
+    expect(hostSeemsSick({ name: "x", ok: false, blind: true, detail: "could not see the deck", ms: 1 }, false)).toBe(
+      true,
+    );
+  });
+
+  it("counts a bounded wait that hit its deadline, as a fact rather than a phrase", async () => {
+    // The fact the rule above rests on. One deadline fired, one counted — if
+    // this stops being true the breaker goes quiet again and nothing else says
+    // so.
+    const { deadlinesFired, _resetDeadlinesFiredForTest, slideCount, _setReadbackTimeoutForTest } =
+      await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    _resetDeadlinesFiredForTest();
+    _setReadbackTimeoutForTest(20);
+    faults.wedgeAfterSyncs = 0;
+    try {
+      expect(deadlinesFired).toBe(0);
+      // The rejection is the point; what is being counted is that it happened.
+      await slideCount().catch(() => undefined);
+      const after = (await import("../src/render/powerpoint")).deadlinesFired;
+      expect(after, "a deadline fired and nothing counted it").toBeGreaterThan(0);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setReadbackTimeoutForTest(90_000);
+      _resetDeadlinesFiredForTest();
+    }
   });
 
   it("counts a blind scan apart from a host that lacks the API", async () => {
