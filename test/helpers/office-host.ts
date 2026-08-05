@@ -158,6 +158,8 @@ export const faults = {
    * meaningless, and it must report that rather than pass.
    */
   constantSlideImage: false,
+  /** The host takes the rasterise and hands back an empty image. */
+  emptySlideImage: false,
   /**
    * `Slide.getImageAsBase64` does not answer until this promise settles.
    *
@@ -804,6 +806,10 @@ export function makeSlide(id: string) {
         build: async () => {
           if (faults.slideImageGate) await faults.slideImageGate;
           if (faults.constantSlideImage) return btoa("PNG:blank");
+          // Taken, raised nothing, produced nothing — see
+          // `faults.emptySlideImage`. The quietest failure a rasteriser has,
+          // and the one a real host produced with no line in the log to say so.
+          if (faults.emptySlideImage) return "";
           const live = created.filter((s) => !s.deleted);
           const ink = live.reduce((n, s) => n + Math.max(0, s.width) * Math.max(0, s.height), 0);
           return btoa(`PNG:${slide.id}:shapes=${live.length}:ink=${ink}`);
@@ -1550,6 +1556,7 @@ export function installHost(
   selectionWedged = false;
   wedgeThisSync = false;
   faults.constantSlideImage = false;
+  faults.emptySlideImage = false;
   faults.slideImageGate = null;
   faults.refuseSlideDelete = false;
   faults.deckInsertNeverAnswers = false;

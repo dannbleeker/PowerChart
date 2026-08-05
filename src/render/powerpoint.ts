@@ -4099,13 +4099,19 @@ export async function clearShapeSelection(slideId: string, budgetMs?: number): P
  * reports that as skipped, which is a different answer from a failure.
  */
 export async function slideImageBase64(slideId: string, width?: number): Promise<string | undefined> {
-  if (!supports("1.8")) return undefined;
+  if (!supports("1.8")) {
+    trace("host", "no rasteriser on this host", { slideId, need: "PowerPointApi 1.8" });
+    return undefined;
+  }
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       queueNullCheck(slide);
       await context.sync();
-      if (!isLive(slide)) return undefined;
+      if (!isLive(slide)) {
+        trace("host", "cannot rasterise: the host would not resolve the slide", { slideId });
+        return undefined;
+      }
       // Rasterise through a FRESH handle, never the one just resolved.
       //
       // Resolving a `getItemOrNullObject` proxy is what makes Office.js rewrite
@@ -4129,9 +4135,26 @@ export async function slideImageBase64(slideId: string, width?: number): Promise
       // real host did at 1819 seconds.
       await step("rasterising a slide", () => withTimeout(context.sync(), READBACK_TIMEOUT_MS, "rasterising a slide"));
       const v = loadedValue(() => img.value);
-      return typeof v === "string" && v.length ? v : undefined;
+      if (typeof v === "string" && v.length) return v;
+      // Took the call, raised nothing, produced nothing.
+      //
+      // The quietest of the four ways this returns undefined, and the one that
+      // had no line at all. A real run's visibility scenario went straight from
+      // "rasterising the empty slide" to "removing the scratch slide" with
+      // nothing in between — a skipped verdict whose reason existed nowhere.
+      // The round before, the same call at least said `GeneralException`; the
+      // fresh handle stopped it throwing without making it work, and traded a
+      // loud wrong answer for a silent one. Both are failures; only one can be
+      // diagnosed.
+      trace("host", "the host took the rasterise and returned nothing", {
+        slideId,
+        width,
+        read: typeof v,
+      });
+      return undefined;
     });
-  } catch {
+  } catch (err) {
+    trace("host", "rasterising a slide threw", { slideId, error: errorText(err) });
     return undefined;
   }
 }
