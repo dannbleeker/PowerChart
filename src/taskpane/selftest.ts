@@ -79,6 +79,9 @@ import {
   slideHoldsOnlyChart,
   updateChartInSlide,
   errorText,
+  // A live binding, read fresh on every access — the whole point is to diff it
+  // around a scenario.
+  deadlinesFired,
 } from "../render/powerpoint";
 import { trace } from "../core/trace";
 
@@ -686,6 +689,37 @@ const chartIsVisible: Scenario = async (prefix) => {
  */
 const SICK_LIMIT = 3;
 
+/**
+ * Whether a finished scenario says the HOST is in trouble, as opposed to
+ * having found something.
+ *
+ * Three facts, and `timedOut` is the one that matters: a bounded wait that hit
+ * its deadline, a throw, or a deck scan that went blind. A plain FAILED verdict
+ * is none of them — that is the battery working. Nor is a capability skip,
+ * which says nothing about how the host is feeling.
+ *
+ * `timedOut` is passed IN, measured by diffing `deadlinesFired` around the
+ * scenario, because the previous version read it out of the verdict's prose:
+ * `/did not respond|gave up/` over `result.detail`. A real run walked straight
+ * through that. Two scenarios timed out and used those words; a third timed out
+ * after 49.8 seconds and reported *"the host stopped answering selection calls
+ * after a programmatic select"* — true, specific, and matching neither phrase.
+ * The counter reset one short of the limit, the battery spent two more
+ * scenarios on a host that had been dead for three, and the tab died with the
+ * remaining verdicts inside it.
+ *
+ * Adding that third phrase to the pattern would have been the same bug with a
+ * longer list. A scenario chooses its own words; it does not choose whether a
+ * deadline fired.
+ *
+ * A SKIP counts when a deadline fired inside it — that third scenario reported
+ * skipped, and it was the sickest of the three: it had waited out the whole
+ * budget to say so.
+ */
+export function hostSeemsSick(result: ScenarioResult, timedOut: boolean): boolean {
+  return timedOut || result.blind === true || result.detail.startsWith("threw:");
+}
+
 /** How long the battery waits for a person to click a chart. */
 let CLICK_WAIT_MS = 30_000;
 
@@ -995,6 +1029,11 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
     // not. This line is what makes such a screenshot name the right scenario.
     trace("selftest", "scenario starting", { name });
     const t0 = Date.now();
+    // Deadlines already fired before this scenario ran, so the diff below is
+    // this scenario's own. Read here rather than once per run: what matters is
+    // whether THIS one could not get an answer, not whether the run ever
+    // couldn't.
+    const deadlinesBefore = deadlinesFired;
     let result: ScenarioResult;
     try {
       const r = await run(prefix);
@@ -1007,13 +1046,9 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
       detail: result.detail,
       ms: result.ms,
     });
-    // What counts as the host being in trouble, as opposed to a scenario
-    // finding something: a throw, a blind deck scan, or a timeout. A plain
-    // FAILED verdict does not — that is the battery working. Nor does a
-    // capability skip, which says nothing about how the host is feeling.
-    const hostIsSick =
-      result.blind === true || result.detail.startsWith("threw:") || /did not respond|gave up/i.test(result.detail);
-    sick = hostIsSick ? sick + 1 : 0;
+    const timedOut = deadlinesFired > deadlinesBefore;
+    if (timedOut) trace("selftest", "the host missed a deadline in this scenario", { name, sick: sick + 1 });
+    sick = hostSeemsSick(result, timedOut) ? sick + 1 : 0;
     out.push(result);
   }
   return out;

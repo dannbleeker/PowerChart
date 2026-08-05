@@ -349,6 +349,32 @@ export type InsertPhase = "context" | "queue" | "commit" | "group" | "done";
  * Reported when a timed-out call finally settles — see `withTimeout`.
  * `null` while nothing has been abandoned.
  */
+/**
+ * How many bounded waits have hit their deadline since the pane loaded.
+ *
+ * A COUNT, deliberately, and read by diffing it around a piece of work: "did a
+ * deadline fire while that ran" is a fact, and every previous way of asking it
+ * was an inference from prose.
+ *
+ * The self-test's host-sickness breaker is why this exists. It decided whether
+ * the host was in trouble by matching the words a scenario happened to choose
+ * for its verdict — `/did not respond|gave up/` — and a real run walked
+ * straight through it: two scenarios timed out and said so, a third timed out
+ * after 49.8 seconds and reported *"the host stopped answering selection
+ * calls"*, which matches neither phrase. The counter reset one short of the
+ * limit, the battery ran two more scenarios on a host that had been dead for
+ * three, and PowerPoint killed the tab and took the remaining verdicts with it.
+ *
+ * Adding that third phrase to the pattern would have been the same bug with a
+ * longer list. There is exactly one place a deadline fires; count it there.
+ */
+export let deadlinesFired = 0;
+
+/** Test-only: forget the deadlines counted so far. */
+export function _resetDeadlinesFiredForTest(): void {
+  deadlinesFired = 0;
+}
+
 export let lastLateSync: string | null = null;
 
 /**
@@ -474,6 +500,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         () => undefined,
         () => undefined,
       );
+      deadlinesFired += 1;
       trace("host", "gave up waiting", { what, afterMs: ms });
       reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
     }, ms);
