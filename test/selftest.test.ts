@@ -514,6 +514,40 @@ describe("the scenarios the selection API unlocked", () => {
   });
 
   /**
+   * A rasteriser that answers with nothing has to SAY so.
+   *
+   * `slideImageBase64` has four ways of returning undefined — no 1.8, the
+   * slide would not resolve, the call threw, the call came back empty — and
+   * one `catch` covering all of them. A real run showed how little that is
+   * worth: the visibility scenario went from "rasterising the empty slide"
+   * straight to "removing the scratch slide", with no error line and no
+   * drawing step, and the reason existed nowhere. The round before, the same
+   * call at least reported `GeneralException`; a fresh slide handle stopped it
+   * throwing without making it work, and traded a loud wrong answer for a
+   * silent one. Both are failures. Only one can be diagnosed.
+   */
+  it("says why it could not rasterise, instead of quietly reporting nothing", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    // The host takes the call and hands back an empty image — the quiet case,
+    // which is the one that had no line at all.
+    faults.constantSlideImage = false;
+    faults.emptySlideImage = true;
+    try {
+      const r = byName(await runSelfTest("probe", "the chart is actually visible"))["the chart is actually visible"];
+      expect(r.ok, "passed with no image to compare").toBe(false);
+      const said = traceLog()
+        .entries.filter((e) => e.scope === "host")
+        .map((e) => e.message);
+      expect(said, `nothing in the log says why: ${said.join(" | ")}`).toContain(
+        "the host took the rasterise and returned nothing",
+      );
+    } finally {
+      faults.emptySlideImage = false;
+    }
+  });
+
+  /**
    * A real host died inside this scenario and the log's last line was the
    * scenario announcing itself — five host calls, and nothing to say which one
    * was outstanding. The scenario-level announcement was itself added for
