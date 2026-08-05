@@ -271,6 +271,63 @@ describe("the everyday paths on a host that refuses stale proxies", () => {
     expect(live.filter((s) => s.tagStore.has(CHART_TAG)).length, "chart is not re-editable").toBe(1);
   });
 
+  /**
+   * The cascade the self-test's `same scale across the deck` scenario reported
+   * as "3 of 8 charts carry the shared scale; 3 still re-editable".
+   *
+   * A real host refused the grouping with `InvalidParam passed to GetItem(id)`,
+   * and the tag target it fell back to then answered `.tags` as UNDEFINED:
+   * "Cannot read properties of undefined (reading 'add')", once per chart,
+   * five charts in a row. `groupAndTagAll` survives that per chart — it stopped
+   * costing the whole batch a round ago — but surviving it still meant shipping
+   * a chart with no config on it, and the ordinary paths had no recovery.
+   *
+   * The demo path always had one: `insertDemoDeck` re-reads the settled deck
+   * and plans a `retag`, which is why the same run's 23 lost tags came back and
+   * these did not. `settleAndTagChart` gives the insert and update paths the
+   * same second chance, from a context the failed one cannot poison.
+   */
+  it("settles the config tag from a fresh context when the drawing one could not write it", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    applyWebProfile();
+    // The drawing context's tag target hands back no `.tags` at all — the
+    // real host's answer, and a synchronous throw where the write is queued.
+    faults.tagsUndefinedOn = 1;
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const target = await insertSceneIntoSlide(bigChart(), { tagData: JSON.stringify(cfg) });
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(live.filter((s) => s.tagStore.has(CHART_TAG)).length, "chart is not re-editable").toBe(1);
+    // And the caller is told so. A chart that was settled but still reported
+    // `lost: "no-config"` makes the pane tell the user their chart cannot be
+    // re-opened, about a chart that can.
+    expect(target?.lost, "reported as lost after the tag had been settled").toBeUndefined();
+  });
+
+  it("settles an UPDATE's config tag too, which is the path same-scale drives", async () => {
+    // `same scale across the deck` edits every probe chart through
+    // `updateChartInSlide` and then counts how many still carry a config. On a
+    // real host it counted three of eight: an update redraws every shape, so it
+    // meets the same staleness a fresh insert does, and it had the same lack of
+    // recovery. The insert path is not a proxy for this one — they are separate
+    // functions with separate contexts, and only one of them was fixed first.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const first = await insertSceneIntoSlide(bigChart(), { tagData: JSON.stringify(cfg) });
+    expect(first, "the setup insert did not produce a target").toBeTruthy();
+    applyWebProfile();
+    faults.tagsUndefinedOn = 1;
+    const next = { ...cfg, scale: { max: 99 } };
+    const after = await updateChartInSlide(buildChart(next), first!, { tagData: JSON.stringify(next) });
+    expect(after?.lost, "an updated chart was left reported as un-re-editable").toBeUndefined();
+    const live = slide.created.filter((s) => !s.deleted);
+    expect(
+      live.filter((s) => s.tagStore.get(CHART_TAG) === JSON.stringify(next)).length,
+      "the updated chart does not carry the new config",
+    ).toBe(1);
+  });
+
   it("tags its own shape, not a bystander, when the slide already had shapes on it", async () => {
     // What made the re-fetch safe to turn on here. It used to identify a
     // chart's shapes as "the last N on the slide", which holds only for a

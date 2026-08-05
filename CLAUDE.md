@@ -118,6 +118,17 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   divergence that had never been asked) and `slideImageBase64` the self-test's
   whole visibility scenario. Pre-existing slides are unaffected — their ids
   round-trip — which is why editing a chart in place has always worked.
+- **A chart the drawing context could not tag is not finished.** On the web the
+  tag write goes through a shape proxy several syncs old and the host refuses it
+  (`InvalidParam passed to GetItem(id)`, 46 times in one 38-item run), leaving a
+  chart on the slide with no config — visibly a chart, and not re-editable. The
+  demo path always survived it because `insertDemoDeck` re-reads the settled
+  deck and plans a `retag`; the ordinary insert and update paths had no such
+  pass, which is what `same scale across the deck` was reporting as "3 of 8
+  charts carry the shared scale". `settleAndTagChart` gives them the same
+  second chance from a fresh context. A settled write is not the "retry against
+  a host that just dropped a sync" that gave this project duplicate slides —
+  the distinction is a re-read, and it is the one recovery this host honours.
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys

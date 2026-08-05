@@ -238,26 +238,6 @@ export const faults = {
    */
   newSlideResolvesTimes: null as number | null,
   /**
-   * A freshly-added slide's `getItemOrNullObject` handle is good for ONE sync.
-   *
-   * Resolve it, sync, and every later use through that same handle fails —
-   * `GeneralException` at `SlideCollection.getItem`, because resolving is what
-   * makes Office.js rewrite the handle's object path to `getItem(id)`, and a
-   * new slide's id does not round-trip through `getItem` on the web. See
-   * `expiringSlideHandle` for the two places a real host said so on the same
-   * day.
-   *
-   * A fault rather than the default, and NOT in `applyWebProfile`, for one
-   * reason: what a real host proved is that the pattern fails, not which of
-   * the three ways of naming a new slide it fails for. `shape-add-fresh-slide-
-   * proxy`, `shape-add-held-slide-proxy` and `shape-add-positional-slide-proxy`
-   * were added to the host probe to settle exactly that, and until a sheet
-   * comes back with their answers, making this unconditional would be the fake
-   * asserting something nobody has checked — which is the mistake this whole
-   * file exists to stop repeating.
-   */
-  newSlideHandlesExpire: false,
-  /**
    * The host takes a shape add and fails the sync that would land it.
    *
    * The other branch of the fork `expiringSlideHandle` documents: a host that
@@ -985,7 +965,21 @@ export function makeSlide(id: string) {
         // did on a real host while every test here passed, because the fake
         // answered a question the host refuses. Model the refusal.
         const found = created.find((s) => s.id === id && !s.deleted);
-        return nullObjectProxy(found);
+        // A FRESH handle, for the same reason `items` hands back fresh ones:
+        // resolving by id makes a new proxy object, and a new proxy has not
+        // been rewritten to anything. The staleness this file models is what
+        // happens to a proxy AFTER the sync that resolved it — hand back the
+        // original shape here and its creation-time age comes with it, so a
+        // handle resolved in the very batch that uses it is refused as though
+        // it were minutes old.
+        //
+        // That is not what the host does, and the repair pass is the proof: it
+        // resolves a chart and writes its tag in the next batch, and landed 23
+        // of them in the same real run that lost 46 tag writes through genuinely
+        // stale proxies. The fake refusing this pattern made the ordinary
+        // path's recovery untestable — it could only be written by making the
+        // fake lie in the other direction.
+        return nullObjectProxy(found ? freshHandle(found) : undefined);
       },
       // Top-level shape count the host reports on readback — non-deleted shapes.
       getCount: () => {
@@ -1025,7 +1019,16 @@ function freshWindowedHandle(real: FakeSlide) {
 }
 
 /**
- * The same window, on a handle taken by ID — see `faults.newSlideHandlesExpire`.
+ * The same window, on a handle taken by ID.
+ *
+ * Unconditional, like the `getItemAt` version, because the host was asked
+ * directly and answered. It began as a fault — the evidence then fitted two
+ * explanations, and the fake asserting one of them would have been the mistake
+ * this file exists to stop. So the probe asked all three ways of naming a new
+ * slide apart, and PowerPoint on the web (build a609c9c) said:
+ * `shape-add-fresh-slide-proxy` **yes**, `shape-add-positional-slide-proxy`
+ * **yes**, `shape-add-held-slide-proxy` **threw**. It is the holding that
+ * fails, not the id and not the slide's newness.
  *
  * PowerPoint on the web on 2026-08-04, twice over. The host probe resolved the
  * scratch slide by id, synced, and every one of the eight questions that then
@@ -1262,9 +1265,7 @@ export function installHost(
           // original ids round-trip through `getItem` on every host anyone has
           // met, which is why editing a chart in place always worked.
           return nullObjectProxy(
-            live && faults.newSlideHandlesExpire && addedSlideIds.has(id)
-              ? (expiringSlideHandle(live) as unknown as FakeSlide)
-              : live,
+            live && addedSlideIds.has(id) ? (expiringSlideHandle(live) as unknown as FakeSlide) : live,
           );
         },
         // A pre-existing slide's handle is durable; a freshly-added one's is only
@@ -1555,7 +1556,6 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
-  faults.newSlideHandlesExpire = false;
   faults.refuseShapeAdds = false;
   faults.wedgeAfterSyncs = null;
   // The live shape selection starts as installHost was told, and is mutated

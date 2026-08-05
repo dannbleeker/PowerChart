@@ -219,17 +219,14 @@ describe("the fake host's answer sheet", () => {
    */
   it("keeps asking when a held slide handle is what the host refuses", async () => {
     installHost([makeSlide("s1")]);
-    faults.newSlideHandlesExpire = true;
-    try {
-      const sheet = await runHostProbes("fake-expires-slide-handles", "test");
-      const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
-      // Every question still answered, and answered the same as a healthy host
-      // — because no probe holds the handle any more. The one exception is the
-      // question that is ABOUT holding one, which is now asked on purpose.
-      expect(answers).toEqual({ ...FAKE_BASELINE, "shape-add-held-slide-proxy": "threw" });
-    } finally {
-      faults.newSlideHandlesExpire = false;
-    }
+    const sheet = await runHostProbes("fake", "test");
+    const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+    // Every question answered, despite the fake now refusing a held by-id
+    // handle exactly as the host does — because no probe holds one any more.
+    // The single `threw` in the baseline is the question that is ABOUT holding
+    // one, which is asked on purpose.
+    expect(answers).toEqual(FAKE_BASELINE);
+    expect(answers["shape-add-held-slide-proxy"], "the question stopped being asked").toBe("threw");
   });
 
   it("never reports a setup the host refused as an answer to the question", async () => {
@@ -258,13 +255,13 @@ describe("the fake host's answer sheet", () => {
       expect(answers["getcount-populates-same-sync"]).toBe("yes");
       expect(answers["untrack-available"]).toBe("no");
       // A never-asked question is not a divergence, and this is the tool that
-      // used to call it one. The three shape-add questions ARE divergences —
-      // asking whether this host takes a shape is their whole job, and "no" is
-      // an answer.
+      // used to call it one. The shape-add questions ARE divergences — asking
+      // whether this host takes a shape is their whole job, and "no" is an
+      // answer. Two of the three: the held-handle question already expects a
+      // refusal, so a host that refuses every add agrees with the fake there.
       const d = diffAnswers(answers, FAKE_BASELINE);
       expect(d.differ.map((x: { id: string }) => x.id).sort()).toEqual([
         "shape-add-fresh-slide-proxy",
-        "shape-add-held-slide-proxy",
         "shape-add-positional-slide-proxy",
       ]);
       expect(d.notAsked.map((n: { id: string }) => n.id).sort()).toEqual([...needShapes].sort());
