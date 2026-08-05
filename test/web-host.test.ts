@@ -304,6 +304,36 @@ describe("the everyday paths on a host that refuses stale proxies", () => {
     expect(target?.lost, "reported as lost after the tag had been settled").toBeUndefined();
   });
 
+  /**
+   * Editing a chart on a slide this session added.
+   *
+   * The case every existing test missed, because they all edit a slide that was
+   * already in the deck — where a by-id handle round-trips and holding one
+   * across a sync is free. A demo deck's slides are minutes old when someone
+   * edits a chart on one, and `same scale across the deck` updates charts on
+   * slides the battery itself just inserted.
+   *
+   * `updateChartsInSlides` resolved the slide, synced, and then reached through
+   * that held proxy for its shapes and for every redraw batch — the pattern
+   * PowerPoint web answers with `GeneralException` at `SlideCollection.getItem`.
+   * Not a degraded result: it threw out of the whole update. The comment on the
+   * thunk said "an existing slide's proxy is stable across syncs — hold it",
+   * which is true, and load-bearing on an assumption that was never checked.
+   */
+  it("edits a chart on a slide added in this session, not just a pre-existing one", async () => {
+    installHost([makeSlide("s1")]);
+    const { addScratchSlide } = await import("../src/render/powerpoint");
+    const slideId = await addScratchSlide();
+    expect(slideId, "no freshly-added slide to edit on").toBeTruthy();
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const first = await insertSceneIntoSlide(buildChart(cfg), { slideId: slideId!, tagData: JSON.stringify(cfg) });
+    expect(first, "the setup insert produced no target").toBeTruthy();
+    const next = { ...cfg, scale: { max: 99 } };
+    const after = await updateChartInSlide(buildChart(next), first!, { tagData: JSON.stringify(next) });
+    expect(after, "the update produced no target at all").toBeTruthy();
+    expect(after?.lost, `the update reported the chart lost: ${after?.lost}`).toBeUndefined();
+  });
+
   it("settles an UPDATE's config tag too, which is the path same-scale drives", async () => {
     // `same scale across the deck` edits every probe chart through
     // `updateChartInSlide` and then counts how many still carry a config. On a

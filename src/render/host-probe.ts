@@ -363,6 +363,36 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "shape-resolve-held-slide-proxy",
+    question: "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
+    // The half of the held-handle rule nobody has asked about, and three
+    // production sites rest on it: `deleteShapesById`, `setShapeSelection` and
+    // the selection path all resolve a slide, sync, and then reach through that
+    // same handle for `shapes.getItemOrNullObject(...)`.
+    //
+    // `shape-add-held-slide-proxy` proves the host refuses a WRITE through such
+    // a handle, and the error it gave — `errorLocation: SlideCollection.getItem`
+    // — points at the slide lookup rather than at the add, which would mean
+    // reads fail too. That is a reading, not an answer: every read the last
+    // sheet got right used a handle of its own. So ask, because the answer
+    // decides whether those three sites are bugs or merely untidy.
+    ask: async (ctx) => {
+      const [id] = idsOf(await scratchShapes(ctx, [{ left: 10, top: 140, width: 20, height: 20 }], "id"));
+      const held = ctx.scratch();
+      held.load("id"); // a REAL property: this is the sync that resolves it
+      await ctx.sync();
+      try {
+        const shape = held.shapes.getItemOrNullObject(id);
+        shape.load("id");
+        await ctx.sync();
+        const back = (shape as unknown as { id: string }).id;
+        return { answer: back === id ? "yes" : "unreadable", detail: `read ${String(back)}` };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
     id: "shape-add-positional-slide-proxy",
     question: "Can a shape be added through slides.getItemAt(index) rather than by id?",
     // The other half of the same fork. If by-index works where by-id does not,

@@ -286,6 +286,7 @@ describe("the fake host's answer sheet", () => {
       const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
       const needShapes = [
         "shape-proxy-survives-one-sync",
+        "shape-resolve-held-slide-proxy",
         "shapes-items-count-honest",
         "shapes-items-via-positional-slide",
         "tags-add-same-key-twice",
