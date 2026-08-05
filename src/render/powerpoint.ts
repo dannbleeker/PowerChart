@@ -951,8 +951,14 @@ export async function updateChartsInSlides(
     // would not answer for is one we cannot safely delete a chart off.
     const live = found.filter(({ slide }) => isLive(slide));
     if (!live.length) return [];
-    const withOld = live.map(({ it, slide }) => {
-      const old = slide.shapes.getItemOrNullObject(it.target.shapeId);
+    const withOld = live.map(({ it }) => {
+      // A FRESH handle for the lookups, not the one the liveness check above
+      // just resolved — that one is a sync old by now, and a sync-old by-id
+      // handle on a slide added this session is what the web host refuses. The
+      // check keeps using its own proxy, because deciding whether the slide is
+      // there is exactly what it was resolved for.
+      const shapes = context.presentation.slides.getItemOrNullObject(it.target.slideId).shapes;
+      const old = shapes.getItemOrNullObject(it.target.shapeId);
       // The shape's LIVE position, queued in the sync this resolution already
       // costs. The caller's EditTarget is a snapshot — the task pane holds one
       // from whenever the chart was loaded — so measuring the user's drag against
@@ -963,7 +969,7 @@ export async function updateChartsInSlides(
       // An ungrouped chart is more than its tagged shape (see CHART_PARTS_TAG).
       // Resolved in this same sync, so the delete below already knows which of
       // them the user has since removed by hand.
-      const parts = (it.target.partIds ?? []).map((id) => slide.shapes.getItemOrNullObject(id));
+      const parts = (it.target.partIds ?? []).map((id) => shapes.getItemOrNullObject(id));
       // Each part has to be LOADED, not merely resolved. A getItemOrNullObject
       // proxy nobody loads takes no part in the sync, so `isNullObject` is never
       // populated and reading it throws PropertyNotLoaded — which is what
@@ -972,7 +978,7 @@ export async function updateChartsInSlides(
       // its load("left,top") is what put it in the sync — a REAL property,
       // which is the only kind that counts. See `queueNullCheck`.
       for (const p of parts) queueNullCheck(p);
-      return { it, slide, old, parts };
+      return { it, old, parts };
     });
     await step("resolving the charts' shapes", () => context.sync());
 
@@ -1044,7 +1050,7 @@ export async function updateChartsInSlides(
       // keep their old ones, which is exactly what the return below does for a
       // chart that was never reached.
       if (isStopRequested()) break;
-      const { it, slide, old, parts, at } = entry;
+      const { it, old, parts, at } = entry;
       const opts: InsertOptions = {
         ...it.opts,
         // The recorded frame origin, shifted by however far the user has dragged
@@ -1060,9 +1066,24 @@ export async function updateChartsInSlides(
         altText: it.scene.desc,
         altTitle: it.scene.title,
       };
-      // An existing slide's proxy is stable across syncs — hold it. Only a
-      // freshly-added slide needs a per-batch fresh proxy; see SlideThunk.
-      const getSlide: SlideThunk = () => slide;
+      // Re-acquired per batch, always. The comment here used to say "an
+      // existing slide's proxy is stable across syncs — hold it. Only a
+      // freshly-added slide needs a per-batch fresh proxy", and every word of
+      // that is true except the assumption underneath it: that this path only
+      // ever edits slides the user has had for a while.
+      //
+      // It does not. The demo deck's slides are added minutes before someone
+      // edits a chart on one, and the self-test's `same scale` scenario updates
+      // charts on slides the battery itself has just inserted. On PowerPoint
+      // web that is the one case a held by-id handle refuses — `GeneralException`
+      // at `SlideCollection.getItem`, thrown out of the whole update rather than
+      // degraded — and it is why editing a chart worked in every test and every
+      // hand-check: those all used a slide that was already in the deck.
+      //
+      // A fresh by-id resolve costs nothing and works on both kinds of slide;
+      // the host probe's `shape-add-fresh-slide-proxy` says yes and
+      // `shape-add-held-slide-proxy` threw.
+      const getSlide: SlideThunk = () => context.presentation.slides.getItemOrNullObject(it.target.slideId);
       // Everything the redraw manages to commit, whether or not it finishes.
       // On the failure path this is the litter to clear; see the catch.
       const drawn: PowerPoint.Shape[] = [];
