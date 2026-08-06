@@ -21,6 +21,8 @@ import {
   timeShapeRounds,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
+import { buildChart } from "../src/core/chart";
+import type { ChartConfig } from "../src/core/types";
 import { setTracing, traceLog } from "../src/core/trace";
 import {
   runSelfTest,
@@ -978,6 +980,61 @@ describe("scenarios that must not be able to pass without proving anything", () 
     expect(scale.detail).toBeTruthy();
     expect(scale.detail).not.toContain("Infinity");
     expect(scale.detail).not.toContain("null");
+  });
+
+  it("applies a ceiling the chart has to REDRAW for, not the one it already had", async () => {
+    // The scenario is named for a deck-wide rescale and spent its whole life
+    // measuring a deck-wide re-tag. `Math.max(...values)` is the ceiling the
+    // sample is already drawn at, so `scale: { max }` rendered to the
+    // byte-identical scene — a deck saved out of a real PowerPoint had the
+    // rescaled chart and an untouched copy agreeing on bar geometry to the EMU.
+    // A host that stored the config and redrew the old picture would have
+    // passed this scenario every time.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    const scale = named(await runSelfTest("probe"))["same scale across the deck"];
+    expect(scale.skipped, scale.detail).toBeFalsy();
+
+    const scan = await listChartsInDeck();
+    const scaled = scan.charts
+      .map((c) => JSON.parse(c.configJson) as ChartConfig)
+      .filter((c) => typeof c.scale?.max === "number");
+    expect(scaled.length, "the scenario wrote no shared scale at all").toBeGreaterThan(0);
+
+    const barInk = (cfg: ChartConfig) => {
+      let total = 0;
+      for (const n of buildChart(cfg).nodes) if (n.kind === "rect" && n.name?.startsWith("seg-")) total += n.h;
+      return total;
+    };
+    for (const cfg of scaled) {
+      const loose = barInk({ ...cfg, scale: undefined });
+      expect(
+        barInk(cfg),
+        `scale.max=${cfg.scale?.max} draws the same bars as no scale at all — the rescale proves nothing`,
+      ).toBeLessThan(loose);
+    }
+  });
+
+  it("says WHY the charts it could not scale failed, not just how many", async () => {
+    // The verdict from a real round was "4 of 8 charts carry the shared scale"
+    // and nothing else. Reading the cause out of the deck afterwards took a
+    // session; `updateChartInSlide` had it at the time and this scenario threw
+    // the return value away.
+    //
+    // The host here is the one that round found: a tag write refused from the
+    // drawing context AND from the settle pass that exists to repair it.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    faults.refuseTagWrites = 9999;
+    try {
+      const scale = named(await runSelfTest("probe"))["same scale across the deck"];
+      expect(scale.ok, "a deck where nothing could be tagged reported success").toBe(false);
+      expect(scale.detail, `the verdict counts but does not explain: ${scale.detail}`).toMatch(
+        /the update reported \d+×no-config/,
+      );
+    } finally {
+      faults.refuseTagWrites = 0;
+    }
   });
 });
 

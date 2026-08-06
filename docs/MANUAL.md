@@ -596,8 +596,17 @@ reload. **Clear** empties it.
 
 **Run host probe** asks this PowerPoint a fixed list of questions — does a
 proxy survive a sync, does writing the same tag twice overwrite it, does a
-deleted shape report itself gone — and saves what it answered. It changes
-nothing: it works on a scratch slide and takes the slide back.
+deleted shape report itself gone — and saves what it answered. It works on
+scratch slides it appends and deletes again, so it does not touch anything you
+made.
+
+It tries to leave the deck as it found it, and it now **says whether it
+managed**. On PowerPoint on the web it sometimes cannot: a run on 6 August 2026
+left 21 blank slides behind, an earlier one left 14, and neither answer sheet
+mentioned it — the deletes were attempted, the failures were discarded. The
+sheet carries a `scratch-slides-returned` row for exactly that, so a run that
+littered says so instead of leaving you to find out by scrolling. Blank
+leftovers are safe to delete by hand; nothing else in the deck depends on them.
 
 It exists because of something worth being blunt about. Every automated test in
 this project runs against a *fake* PowerPoint, and nobody has ever checked

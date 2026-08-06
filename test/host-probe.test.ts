@@ -5,6 +5,7 @@ import {
   runHostProbes,
   PROBE_IDS,
   ALWAYS_ASKED_IDS,
+  SCRATCH_CLEANUP_ID,
   describeHostSheet,
   sheetNeedsAttention,
 } from "../src/render/host-probe";
@@ -340,9 +341,40 @@ describe("the fake host's answer sheet", () => {
     try {
       const sheet = await runHostProbes("fake-loses-slides", "test");
       expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
-      for (const a of sheet.answers) expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
+      // Every QUESTION. The cleanup row is not one — it reports what became of
+      // the slides the run borrowed, which is a fact about the host whether or
+      // not a single question got put, and reading it as an answer would make
+      // this assertion demand that the cleanup fail too.
+      for (const a of sheet.answers.filter((x) => x.id !== SCRATCH_CLEANUP_ID))
+        expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
+      // And it has to be there. A run that could not ask anything is precisely
+      // the run that churns through scratch slides, so a sheet silent about
+      // them is silent about the only thing that run left behind.
+      const cleanup = sheet.answers.find((a) => a.id === SCRATCH_CLEANUP_ID);
+      expect(cleanup, "the sheet says nothing about the slides the run borrowed").toBeTruthy();
+      expect(cleanup!.detail).toMatch(/scratch slide/);
     } finally {
       faults.newSlideResolvesTimes = null;
+    }
+  });
+
+  it("reports the scratch slides it could NOT give back", async () => {
+    // The failure this row exists for, and it is not hypothetical: a real round
+    // on 2026-08-06 left 21 blank slides in the owner's deck, an earlier one
+    // left 14, and both sheets came back saying nothing about it. The cleanup
+    // loop already asked `deleteSlideById`, which re-reads the deck rather than
+    // trusting a queued delete — it simply threw the boolean away, so the only
+    // way to learn the probe litters was to open the deck afterwards.
+    installHost([makeSlide("s1")]);
+    faults.refuseSlideDelete = true;
+    try {
+      const sheet = await runHostProbes("fake-refuses-deletes", "test");
+      const cleanup = sheet.answers.find((a) => a.id === SCRATCH_CLEANUP_ID);
+      expect(cleanup, "the sheet says nothing about the slides the run borrowed").toBeTruthy();
+      expect(cleanup!.answer, `the host kept every slide and the sheet said "${cleanup!.answer}"`).toBe("none");
+      expect(cleanup!.detail).toMatch(/left in the deck/);
+    } finally {
+      faults.refuseSlideDelete = false;
     }
   });
 });
@@ -471,9 +503,16 @@ describe("a probe run that has lost its scratch slide", () => {
     try {
       const sheet = await runHostProbes("fake-loses-every-slide", "test");
       expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
-      for (const a of sheet.answers) {
+      // The cleanup row aside — see the sibling case above. It is not a
+      // question and cannot answer `no-scratch-slide`.
+      for (const a of sheet.answers.filter((x) => x.id !== SCRATCH_CLEANUP_ID)) {
         expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
       }
+      // This is the run that makes one scratch slide per question and throws
+      // each away. How many came back is the whole finding, and until this row
+      // existed the sheet did not carry it.
+      const cleanup = sheet.answers.find((a) => a.id === SCRATCH_CLEANUP_ID)!;
+      expect(cleanup.detail, "the sheet counted no scratch slides at all").toMatch(/\d+ of \d+ scratch slide/);
     } finally {
       faults.newSlideResolvesTimes = null;
     }

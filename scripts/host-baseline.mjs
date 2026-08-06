@@ -36,6 +36,7 @@ export const FAKE_BASELINE = {
   "slide-layout-readable": "yes",
   "layouts-readable": "yes",
   "untrack-available": "no",
+  "scratch-slides-returned": "all",
 };
 
 /**
@@ -103,6 +104,8 @@ export const PENDING_QUESTIONS = {
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
   "shapes-items-via-positional-slide":
     "Added with the probe rewrite, after the fixture's build. It is the partner that decides whether `shapes-items-count-honest` was ever about collections or only about the handle they hang off, so the pair is worth a run on its own.",
+  "scratch-slides-returned":
+    "Added after the fixture's build, and the only row in the sheet that is not a question — it is what happened to the slides the probe borrowed. Every earlier run threw the answer away, so the probe leaving slides behind was something the owner found by opening a deck: 21 of them in the 2026-08-06 round, 14 in an earlier one, and neither sheet said a word. The fake returns everything it is given, so a host that does not will diverge here and be reported without anyone remembering to look.",
 };
 
 /**

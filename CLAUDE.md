@@ -191,6 +191,15 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   second chance from a fresh context. A settled write is not the "retry against
   a host that just dropped a sync" that gave this project duplicate slides —
   the distinction is a re-read, and it is the one recovery this host honours.
+  **The second chance is not a guarantee**, and the deck from 2026-08-06 is the
+  counter-example: four charts redrawn to a new scale, ungrouped and carrying no
+  config at all, after the settle had had its turn. The fake had no host on
+  which the settle also fails — `faults.refuseTagWrites` is now that host, and
+  it had to be armed on BOTH tag writers, because the refreshed-proxy path is
+  the one the settle uses and a fault on the other only ever refuses the write
+  the settle repairs. Which of the two failed on the real host is not yet
+  known: `settleUntaggedCharts` traces `{charts, settled, lost}`, so the run log
+  says, and the deck alone does not.
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys
