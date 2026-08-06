@@ -32,6 +32,7 @@
  */
 import {
   addScratchSlide,
+  deckSlideIds,
   deleteSlideById,
   isTimeout,
   requirementSets,
@@ -88,6 +89,27 @@ type Probe = {
   question: string;
   /** Answers, or throws — a throw is recorded as an answer, not a failure. */
   ask: (ctx: ProbeContext) => Promise<{ answer: string; detail?: string }>;
+  /**
+   * A second question, asked in the same run, when this one's answer admits
+   * two readings.
+   *
+   * The repo's rule is "when two explanations fit the evidence, ask — do not
+   * reason". Following it has meant me writing the partner question, the owner
+   * running the probe again, and a session going by — twice, at a cost of two
+   * full sheets. The reasoning was never the expensive part; the ROUND TRIP
+   * was. A pair that can be decided in one run should be.
+   *
+   * `when` is what keeps this honest. An unconditional partner is just another
+   * probe and belongs in the list; a follow-up earns its place by being worth
+   * asking only in the light of a particular answer, and by SAYING which answer
+   * that was — `because` goes into the sheet, so a reader sees the pair rather
+   * than two unrelated rows.
+   */
+  follow?: {
+    when: (answer: string) => boolean;
+    because: string;
+    probe: Probe;
+  };
 };
 
 /**
@@ -246,6 +268,16 @@ function probeShape(ctx: ProbeContext, id: string): PowerPoint.Shape {
 function threw(err: unknown): { answer: string; detail?: string } {
   if (err instanceof ProbeSetupFailed) throw err;
   return { answer: "threw", detail: short(err) };
+}
+
+/** A slide's id, or undefined if the host did not answer the load. */
+function readId(slide: PowerPoint.Slide): string | undefined {
+  try {
+    const v = (slide as unknown as { id?: string }).id;
+    return typeof v === "string" && v ? v : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The same, for probes whose failure vocabulary is `"unreadable"`. */
@@ -442,6 +474,45 @@ const PROBES: Probe[] = [
       } catch (err) {
         return threw(err);
       }
+    },
+    // The partner, and the one pair this project has already paid for twice.
+    //
+    // A refusal above has two readings and they lead opposite ways: `getItem`
+    // cannot name a FRESH slide (so `insertSceneIntoSlide`'s held handle is
+    // fine on the slides users actually edit, and the risk is confined to the
+    // one caller that passes a new id), or `getItem` is broken on this host
+    // full stop (so the everyday insert path is broken for everyone). Nothing
+    // in a sheet can tell those apart, and reasoning about which cost two
+    // sessions.
+    //
+    // Read-only, and that is not a detail. The obvious control — repeat the
+    // shape ADD on a pre-existing slide — would draw on a slide in the owner's
+    // own presentation, and a diagnostic that litters someone's deck is one
+    // they stop clicking. Resolving the slide and reading its id back proves
+    // the same thing about `getItem` and changes nothing.
+    follow: {
+      when: (answer) => answer !== "yes",
+      because: "getItem refused a freshly-added slide, which could be about getItem or about the slide's newness",
+      probe: {
+        id: "getitem-durable-slide",
+        question: "Does slides.getItem(id) resolve a slide that was in the deck before this run?",
+        ask: async (ctx) => {
+          const durable = ctx.durableSlideId;
+          if (!durable) return { answer: "no-durable-slide", detail: "the deck has no slide this run did not add" };
+          const slides = ctx.slides as unknown as { getItem(id: string): PowerPoint.Slide };
+          try {
+            const slide = slides.getItem(durable);
+            slide.load("id");
+            await ctx.sync();
+            const v = readId(slide);
+            return v === durable
+              ? { answer: "yes" }
+              : { answer: "unreadable", detail: `read back ${String(v)} for ${durable}` };
+          } catch (err) {
+            return threw(err);
+          }
+        },
+      },
     },
   },
   {
@@ -803,6 +874,21 @@ export async function runHostProbes(source: string, build: string): Promise<Host
    * list rather than overwriting the id of the thing still to be cleaned up.
    */
   const scratchIds: string[] = [];
+  // Read BEFORE the first scratch slide is added, so it cannot pick one up.
+  // Follow-up questions use it as the control for "was that about the call, or
+  // about the slide being new" — the one distinction this project has paid for
+  // twice — and nothing may ever write to it.
+  //
+  // Wrapped, and the test that made me wrap it is the one this whole file is
+  // about: a host that goes silent made this throw before a single question had
+  // been asked, and the run produced NO SHEET. A control nobody can name costs
+  // the follow-up. It must never cost the sheet.
+  let durableSlideId: string | undefined;
+  try {
+    durableSlideId = (await deckSlideIds())?.[0];
+  } catch {
+    trace("probe", "no durable slide to use as a control — the deck would not list itself", {});
+  }
   let scratchId = await addScratchSlide();
   if (scratchId) scratchIds.push(scratchId);
   try {
@@ -833,7 +919,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       if (!scratchId) {
         result = { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
       } else {
-        result = await ask(probe, scratchId);
+        result = await ask(probe, scratchId, durableSlideId);
         // A slide that stopped resolving costs one question, not the sheet.
         //
         // It cost thirteen once: a real host lost the scratch slide after the
@@ -858,7 +944,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
               scratchId: replacement,
               after: result.answer,
             });
-            const retry = await ask(probe, replacement);
+            const retry = await ask(probe, replacement, durableSlideId);
             // Only adopt a retry that actually got somewhere. A second failure
             // on a brand-new slide is a stronger statement than the first, and
             // overwriting it with a never-asked would hide that.
@@ -877,6 +963,29 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       const entry: HostAnswer = { id: probe.id, question: probe.question, ms: Date.now() - started, ...result };
       answers.push(entry);
       trace("probe", "answered", { id: probe.id, answer: entry.answer, ms: entry.ms });
+      // The partner question, in the same run, when the answer admits two
+      // readings. Never asked when the question was never PUT: a follow-up to
+      // `no-scratch-shape` would be a second question about the probe's own
+      // setup, dressed as a fact about the host.
+      const follow = probe.follow;
+      if (follow && !NOT_ASKED.has(entry.answer) && follow.when(entry.answer)) {
+        const at = Date.now();
+        trace("probe", "asking the partner question", { after: probe.id, id: follow.probe.id, was: entry.answer });
+        const r = scratchId
+          ? await ask(follow.probe, scratchId, durableSlideId)
+          : { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
+        answers.push({
+          id: follow.probe.id,
+          question: follow.probe.question,
+          ms: Date.now() - at,
+          ...r,
+          // Which answer triggered it, in the sheet itself. Two rows that do
+          // not say they are a pair are two unrelated facts to whoever reads
+          // them a week later.
+          detail: `asked because ${probe.id} answered "${entry.answer}" — ${follow.because}${r.detail ? `; ${r.detail}` : ""}`,
+        });
+        trace("probe", "partner answered", { id: follow.probe.id, answer: r.answer });
+      }
     }
   } finally {
     // The scratch slides go back whatever happened. A diagnostic that litters
@@ -897,10 +1006,14 @@ export async function runHostProbes(source: string, build: string): Promise<Host
  * be noise. `"no-scratch-slide"` is not in any probe's own vocabulary, so it
  * can never be mistaken for one.
  */
-async function ask(probe: Probe, scratchId: string): Promise<{ answer: string; detail?: string }> {
+async function ask(
+  probe: Probe,
+  scratchId: string,
+  durableSlideId?: string,
+): Promise<{ answer: string; detail?: string }> {
   awaitingSetupShapes = false;
   try {
-    return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask);
+    return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask, durableSlideId);
   } catch (err) {
     if (err instanceof ScratchSlideUnavailable) return { answer: "no-scratch-slide", detail: short(err) };
     if (err instanceof ProbeSetupFailed) return { answer: "no-scratch-shape", detail: short(err) };
@@ -917,8 +1030,26 @@ async function ask(probe: Probe, scratchId: string): Promise<{ answer: string; d
   }
 }
 
-/** Every question this build knows how to ask — for the fake's baseline test. */
-export const PROBE_IDS: readonly string[] = PROBES.map((p) => p.id);
+/**
+ * Every question this build knows how to ask — for the fake's baseline test.
+ *
+ * Follow-ups included, and flattened rather than listed apart: a conditional
+ * question is still a question the sheet can carry, and a baseline that did not
+ * know about it would report its answer as an id nobody recognises.
+ */
+const withFollows = (p: Probe): string[] => [p.id, ...(p.follow ? withFollows(p.follow.probe) : [])];
+export const PROBE_IDS: readonly string[] = PROBES.flatMap(withFollows);
+
+/**
+ * The questions EVERY run puts, whatever the host says.
+ *
+ * A follow-up is conditional by definition, so "one answer per known id" stopped
+ * being the sheet's invariant the moment the first one existed. The invariant
+ * that replaced it is two-sided and both halves matter: every id in this list
+ * appears in every sheet, and no sheet ever carries an id outside `PROBE_IDS`.
+ * A single count could not express either.
+ */
+export const ALWAYS_ASKED_IDS: readonly string[] = PROBES.map((p) => p.id);
 
 /**
  * What a probe run FOUND, in one line, on screen.

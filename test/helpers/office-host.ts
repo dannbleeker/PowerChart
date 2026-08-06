@@ -294,6 +294,21 @@ export const faults = {
    */
   newSlideGetItemExpires: false,
   /**
+   * `slides.getItem(id)` REFUSES a slide this run added, on the spot.
+   *
+   * Distinct from `newSlideGetItemExpires`, which hands back a handle that dies
+   * at the next sync: this one never gives a usable handle at all. Every
+   * held-handle failure a real PowerPoint has reported names
+   * `errorLocation: SlideCollection.getItem`, which reads as though the call
+   * itself refuses new ids — but every one of those was a handle resolved a
+   * sync earlier, so the plain claim has never been tested either way.
+   *
+   * Off by default and armed only where a test needs a host that behaves this
+   * way, because nothing has established that any host does. That is the whole
+   * reason `shape-add-fresh-getitem-slide` and its follow-up exist.
+   */
+  refuseGetItemOnNewSlide: false,
+  /**
    * The host takes a shape add and fails the sync that would land it.
    *
    * The other branch of the fork `expiringSlideHandle` documents: a host that
@@ -1382,6 +1397,12 @@ export function installHost(
         getItem: (id: string) => {
           const found = slides.find((s) => s.id === id)!;
           // Windowed only when ARMED — see `faults.newSlideGetItemExpires`.
+          if (found && faults.refuseGetItemOnNewSlide && addedSlideIds.has(id)) {
+            throw new Error(
+              "GeneralException | errorLocation: SlideCollection.getItem | " +
+                "the host will not name a slide this run added",
+            );
+          }
           return found && faults.newSlideGetItemExpires && addedSlideIds.has(id)
             ? (expiringSlideHandle(found) as unknown as FakeSlide)
             : found;
@@ -1710,6 +1731,7 @@ export function installHost(
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
   faults.newSlideGetItemExpires = false;
+  faults.refuseGetItemOnNewSlide = false;
   faults.refuseShapeAdds = false;
   faults.wedgeAfterSyncs = null;
   faults.syncCostMs = null;

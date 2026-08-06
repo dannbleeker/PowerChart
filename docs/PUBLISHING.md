@@ -335,6 +335,20 @@ run log's `slide size` line records the value *and which rung produced it*;
 5. Excel: select a range → Generate → paste JSON into PowerPoint pane →
    Import → chart matches.
 
+Some questions now ask their **own follow-up**, in the same run. When an answer
+admits two readings that lead opposite ways, the probe puts the partner question
+immediately instead of waiting for someone to notice and ask for another round —
+which is what the last two ambiguities cost, a session each. The sheet says which
+answer triggered which follow-up, so the pair reads as a pair.
+
+The one wired today: if `slides.getItem(id)` refuses a **freshly added** slide,
+the probe immediately asks whether it resolves a slide that was already in the
+deck. Refused-because-new means the everyday insert path is fine and only one
+caller is at risk; refused-outright means it is broken for everyone. The
+follow-up only READS — repeating the shape add on a pre-existing slide would draw
+in the owner's own presentation, and a diagnostic that litters a deck is one
+nobody clicks twice.
+
 ### The host self-test
 
 Seven paths existed only as items on this list for a human to remember to try,

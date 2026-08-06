@@ -2887,6 +2887,17 @@ export interface ProbeContext {
    */
   scratch: () => PowerPoint.Slide;
   scratchId: string;
+  /**
+   * A slide that was in the deck BEFORE this run — the control for every
+   * question about freshness.
+   *
+   * Undefined on a deck the run has entirely built, which is a real state and
+   * not an error: a probe that needs it reports that it had none rather than
+   * silently answering about a slide it added. Nothing may WRITE to it. It is
+   * someone's own presentation, and a diagnostic that draws on it is one they
+   * stop clicking.
+   */
+  durableSlideId?: string;
   sync: () => Promise<void>;
 }
 
@@ -2934,6 +2945,7 @@ export async function withProbeContext<T>(
   scratchId: string,
   budgetMs: number,
   fn: (ctx: ProbeContext) => Promise<T>,
+  durableSlideId?: string,
 ): Promise<T> {
   return boundedRun(
     "asking the host a probe question",
@@ -2954,6 +2966,7 @@ export async function withProbeContext<T>(
         slides: context.presentation.slides,
         scratch: () => (handle ??= context.presentation.slides.getItemOrNullObject(scratchId)),
         scratchId,
+        durableSlideId,
         sync: async () => {
           await context.sync();
           handle = null;
