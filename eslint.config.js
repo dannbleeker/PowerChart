@@ -13,6 +13,12 @@ import globals from "globals";
 export default tseslint.config(
   {
     ignores: [
+      // Stryker copies the whole repo — sources, configs, eslint's own config —
+      // into a sandbox while it runs. Linting that copy reports parse errors
+      // against files nobody edited, and it happens whenever a mutation run is
+      // in flight or was interrupted.
+      ".stryker-tmp/**",
+      "reports/**",
       "dist/**",
       "dist-lib/**",
       "skill-dist/**",

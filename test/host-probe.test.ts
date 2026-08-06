@@ -640,3 +640,48 @@ describe("the questions added from the office-js tracker", () => {
     expect(rows.find((r) => r.id === "group-of-existing-shape-readable")?.answer).toBe("2");
   });
 });
+
+describe("a host that answers every call and reads back nothing", () => {
+  /**
+   * The third kind of bad host, and the one with no test until now.
+   *
+   * Two are covered already: a host that THROWS (`refuseShapeAdds`) and one that
+   * goes SILENT (`wedgeAfterSyncs`). This is the one in between — every call is
+   * taken, every sync resolves, and then the properties those syncs were
+   * supposed to populate are unreadable. It is the shape PowerPoint on the web
+   * shows most often, and the shape a probe is most likely to mis-report:
+   * "the value is not there" and "the value is false" are one line apart in
+   * every one of these questions.
+   *
+   * The property, not the sheet. What each question answers here is allowed to
+   * differ — an unreadable host is a legitimate finding — but a question that
+   * silently vanishes, or an answer that is not a word, is the probe failing
+   * rather than the host.
+   */
+  it("still puts every question, and answers each from its own vocabulary", async () => {
+    installHost([makeSlide("s1")]);
+    faults.strictShapeReads = true;
+    faults.unansweredTagLoads = 500;
+    faults.hollowNameReads = 500;
+    try {
+      const sheet = await runHostProbes("fake-unreadable", "test");
+      const ids = sheet.answers.map((a) => a.id);
+      for (const id of ALWAYS_ASKED_IDS) {
+        expect(ids, `${id} vanished from the sheet on an unreadable host`).toContain(id);
+      }
+      for (const a of sheet.answers) {
+        expect(typeof a.answer, `${a.id} answered with a ${typeof a.answer}`).toBe("string");
+        expect(a.answer.length, `${a.id} answered with an empty string`).toBeGreaterThan(0);
+        // A JS `undefined` reaching the sheet as a word is the specific bug this
+        // guards. Every one of these questions reads a property that may not be
+        // there, and `String(undefined)` is a perfectly good-looking answer that
+        // the diff would compare against a real host forever.
+        expect(a.answer, `${a.id} put a JS undefined in the sheet`).not.toMatch(/^undefined$/);
+      }
+    } finally {
+      faults.strictShapeReads = false;
+      faults.unansweredTagLoads = 0;
+      faults.hollowNameReads = 0;
+    }
+  });
+});

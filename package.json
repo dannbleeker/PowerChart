@@ -25,7 +25,9 @@
     "skill": "npm run build:lib && node scripts/build-skill.mjs",
     "showcase": "npm run build:lib && node scripts/build-showcase.mjs",
     "host-diff": "node scripts/host-diff.mjs",
-    "visible-charts": "npm run build:lib && node scripts/visible-charts.mjs"
+    "visible-charts": "npm run build:lib && node scripts/visible-charts.mjs",
+    "flaky": "node scripts/flaky.mjs",
+    "mutation": "stryker run"
   },
   "dependencies": {
     "jszip": "^3.10.1",
@@ -34,6 +36,8 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@resvg/resvg-js": "^2.6.2",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^22.20.1",
     "@types/office-js": "^1.0.377",
     "@vitest/coverage-v8": "^4.1.10",

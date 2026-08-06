@@ -8,3 +8,7 @@ coverage/
 
 # Written only when the visual gate finds a chart nobody could see.
 visible-charts/
+
+# Stryker copies the whole repo here while it runs.
+.stryker-tmp/
+reports/
