@@ -540,13 +540,13 @@ contexts would fix it; if both climb together, the host itself is slowing and
 they would not. It takes a minute or so and leaves two slides of small
 rectangles behind. It reports *ok* only when neither curve climbs.
 
-**Run host self-test** runs the ten things the demo deck does not cover:
+**Run host self-test** runs the eleven things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
 chart on the slide you are looking at, adding charts to a slide that already
 has content, a deck-wide rescale, turning a degraded picture back into native
-shapes, which selection call the host stops answering, editing the chart you
-have *selected*, stopping a run part-way, and whether a chart is actually
-visible on the slide. They run in that order on
+shapes, which selection call the host stops answering, whether a shape you had
+selected survives an insert, editing the chart you have *selected*, stopping a
+run part-way, and whether a chart is actually visible on the slide. They run in that order on
 purpose: the longest-standing checks first, the newest last, so that if a run
 does not survive to the end you still have the verdicts for everything with a
 track record. Each reports what was

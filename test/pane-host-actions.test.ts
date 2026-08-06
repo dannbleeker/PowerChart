@@ -135,6 +135,14 @@ const host = vi.hoisted(() => ({
   deckSlideIdCalls: 0,
   /** Slides the round is modelled as having added, seen by the second id read. */
   roundAddsSlides: ["probe-a", "probe-b"] as string[],
+  /**
+   * How many charts had been drawn each time the shape selection was dropped.
+   *
+   * The ORDER is the whole assertion — see office-js#2775. Dropping the
+   * selection after the draw would be no protection at all, and a mock that only
+   * recorded "it happened" could not tell the two apart.
+   */
+  selectionDropped: [] as number[],
   /** Slide ids `deleteSlideById` was asked about, in order. */
   deletedSlides: [] as string[],
   /** Slide ids the host will refuse to delete — a refusal is not the same as a delete. */
@@ -155,6 +163,10 @@ vi.mock("../src/render/powerpoint", () => ({
   isPowerPointHost: () => true,
   canInsertPicture: vi.fn(() => host.canPicture),
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
+  dropShapeSelection: vi.fn(async () => {
+    host.selectionDropped.push(host.calls.insertScene.length);
+    return true;
+  }),
   getSlideShapeBounds: vi.fn(async () => host.slideShapes),
   insertSceneIntoSlide: vi.fn(
     async (
@@ -423,6 +435,7 @@ async function bootHostPane() {
   host.canRaster = true;
   host.deckScanThrows = false;
   host.deletedSlides = [];
+  host.selectionDropped = [];
   host.deckSlideIdCalls = 0;
   host.roundAddsSlides = ["probe-a", "probe-b"];
   host.refuseSlideDelete = [];
@@ -852,6 +865,30 @@ describe("Insert", () => {
     const cfg = JSON.parse(opts.tagData!) as ChartConfig;
     expect(cfg.width).toBe(360);
     expect(cfg.height).toBe(240);
+  });
+
+  /**
+   * The user's own shape, not destroyed by inserting a chart beside it.
+   *
+   * office-js#2775: on PowerPoint on the web, adding a text box deletes the
+   * shape that was selected. Every chart drawn here contains text boxes, and
+   * this path deliberately leaves the selection alone because that is how it
+   * learns where to put the chart — so a picture selected to position a chart
+   * against would be silently destroyed by the insert. office-js#3698 is the
+   * same setup failing the other way: a picture cannot be inserted while a
+   * shape is selected, and this path inserts a picture for a dense chart.
+   */
+  it("lets go of the user's selected shape before it draws anything", async () => {
+    host.selectionBounds = { left: 200, top: 150, width: 360, height: 240 };
+    $("insert").click();
+    await settle();
+    // The bounds still decide the placement — reading the selection and holding
+    // onto it are different things, and only the second one is the hazard.
+    expect(host.calls.insertScene[0].left).toBe(200);
+    // BEFORE the draw, which is the entire protection. `[0]` is "no charts had
+    // been drawn yet when the selection was dropped"; a `[1]` here would be a
+    // pane that let go after the damage.
+    expect(host.selectionDropped, "drew with the user's shape still selected").toEqual([0]);
   });
 
   it("ignores a selection too small to be a real placeholder", async () => {

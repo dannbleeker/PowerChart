@@ -43,6 +43,7 @@ import {
   slideSize,
   deckSlideIds,
   deleteSlideById,
+  dropShapeSelection,
   slideShots,
   type EditTarget,
   type InsertPhase,
@@ -1729,6 +1730,15 @@ async function runInsert(asNew: boolean) {
   // New chart: use the selected placeholder's bounds when one is selected.
   const bounds = await getSelectionBounds();
   const intoPlaceholder = !!bounds && bounds.width > 40 && bounds.height > 40;
+  // Read the selection, then let go of it — see `dropShapeSelection`.
+  //
+  // Two published web bugs fire on exactly this flow, and both need a shape to
+  // still be selected while we draw: office-js#2775 deletes the selected shape
+  // when a text box is added (every chart here has text boxes), and
+  // office-js#3698 refuses a picture insert while one is selected (this same
+  // call inserts a picture for a chart too dense to draw). The bounds have
+  // already been read by this line, so nothing downstream wants the selection.
+  await dropShapeSelection();
   // Where the chart goes, and at what size — decided BEFORE the scene is built,
   // because both branches can change the size and the raster has to be of the
   // scene that sizes the picture's rect. A raster of a differently-sized scene

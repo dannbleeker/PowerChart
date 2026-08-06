@@ -351,8 +351,8 @@ nobody clicks twice.
 
 ### The host self-test
 
-Seven paths existed only as items on this list for a human to remember to try,
-which in practice meant seven separate sessions. They are now one button:
+Eight paths existed only as items on this list for a human to remember to try,
+which in practice meant eight separate sessions. They are now one button:
 
 | scenario | what it proves |
 | --- | --- |
@@ -363,17 +363,20 @@ which in practice meant seven separate sessions. They are now one button:
 | same scale across the deck | a deck-wide rescale empties nothing |
 | explode a degraded picture | a picture keeps its config and can become native shapes again |
 | which selection call wedges the host | *which* call stops the web host answering — the one measurement that settles it |
+| a selected shape survives an insert | whether office-js#2775 is live here — on the web, adding a text box deletes the shape that was selected, and every chart drawn here has text boxes |
 | edit the chart the user selected | the read behind *Edit it* — the only entry point a real user travels on |
 | stop a run part-way | a stopped run adds nothing and leaves nothing behind claiming to be a chart |
+| a selected shape survives an insert | whether office-js#2775 is live here — on the web, adding a text box deletes the shape that was selected, and every chart drawn here has text boxes |
 | the chart is actually visible | the host's own render changed where the chart was drawn — not just that shapes exist |
 
 The ladder — **which selection call wedges the host** — is in that list now, and
-used to be a separate run. It sits immediately before *edit the chart the user
-selected*, which is the only other scenario that calls `setSelectedShapes`. Being
-the FIRST such call is the property it needs; being alone in a run was a stronger
-condition than the question requires, and it cost a five-minute round every time.
-When the ladder does find a wedge, the scenario after it reports *skipped* with
-the ladder's own words instead of spending another budget to learn less.
+used to be a separate run. It runs ahead of every scenario that selects a shape —
+*a selected shape survives an insert* and *edit the chart the user selected*.
+Being the FIRST such call is the property it needs; being alone in a run was a
+stronger condition than the question requires, and it cost a five-minute round
+every time. When the ladder does find a wedge, both scenarios after it report
+*skipped* with the ladder's own words instead of spending a budget each to learn
+less.
 
 It climbs from the least invasive selection call to the most — read the
 selection, `setSelectedSlides`, read, `setSelectedShapes([id])`, read,
@@ -387,9 +390,10 @@ ladder LAST in the battery let `edit the chart the user selected` wedge the host
 six scenarios earlier, so the ladder reported silence on its own first rung — an
 answer about nothing. Putting it THIRD, right after the two inserts, is worse
 still: the ladder can wedge the host itself, so six scenarios would then run
-against a wedged one instead of two. Immediately before the only other
-`setSelectedShapes` caller is the position that gives the property without the
-cost.
+against a wedged one instead of two. Ahead of every other `setSelectedShapes` caller is the
+position that gives the property without the cost — stated as that property in
+the tests, because adjacency was only ever a proxy for it and the proxy broke
+the moment a second such scenario arrived.
 
 **Two more, and a full run deliberately leaves them out.** Pick them by name
 from the Scenario menu:

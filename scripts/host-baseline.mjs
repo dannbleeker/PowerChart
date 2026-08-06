@@ -31,6 +31,7 @@ export const FAKE_BASELINE = {
   "group-reports-its-children": "two",
   "tag-on-group-survives": "yes",
   "getitemat-past-end": "threw",
+  "layouts-readable": "yes",
   "untrack-available": "no",
 };
 
@@ -85,6 +86,8 @@ export const KNOWN_DIVERGENCES = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "layouts-readable":
+    "Added after the fixture's build. office-js#4906 reports SlideLayout/SlideMaster shape loads throwing GeneralException in PowerPoint Online, at `errorLocation: SlideMasterCollection.getItem`, and ONLY on presentations built from a custom template — which is exactly what the owner's decks are. `blankLayoutId` reads this and is try/caught, so a refusal degrades silently to the inherited layout and every slide the add-in creates lands on top of the previous slide's placeholders. Visible defect, no error, and no way to tell which of the two happened without asking.",
   "shape-add-fresh-getitem-slide":
     "Added after the fixture's build, and the only question about `slides.getItem(id)` — the call `getTargetSlide` makes and `insertSceneIntoSlide` then holds for a whole multi-batch draw. Every held-handle failure this host has reported names `errorLocation: SlideCollection.getItem`, which reads as though a fresh `getItem` must fail too; but those were all handles resolved a sync earlier, and the fresh `getItemOrNullObject` form works. The two are different claims and this asks the one nobody has.",
   "shape-resolve-held-slide-proxy":
