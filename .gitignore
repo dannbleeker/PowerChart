@@ -5,3 +5,6 @@ dist-lib/
 skill-dist/
 coverage/
 .claude/
+
+# Written only when the visual gate finds a chart nobody could see.
+visible-charts/

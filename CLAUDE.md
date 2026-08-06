@@ -57,7 +57,12 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   (verify `head_sha` matches local HEAD), merge the PR to main without asking.
 - **Snapshots** (`test/snapshots.test.ts`) freeze every sample chart's SVG.
   Only update (`vitest -u`) after reviewing renders visually — screenshot via
-  Playwright (`/opt/pw-browsers/chromium`) and inspect before accepting.
+  Playwright (`/opt/pw-browsers/chromium`) and inspect before accepting. CI now
+  does the part a machine can: `npm run visible-charts` rasterises every sample
+  in a real browser and fails on a chart that is drawn but not visible
+  (white-on-white, collapsed to zero, off-canvas, one flat block, or missing over
+  half its usual ink). Not a pixel diff — those numbers are measurements, and
+  `--update` re-records `test/fixtures/chart-ink.json` after a deliberate change.
 - **Visual QA is part of done**: render new features to SVG → PNG and look at
   them; several real bugs were only caught this way.
 - **A regression test must be proven to fail without its fix.** Stash the
@@ -201,6 +206,12 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 - True geographic maps and 3D surface charts (no freeform paths; the deck this
   project follows argues against 3D anyway). Built instead: tile-grid
   cartograms (`tilemap`) and heatmaps.
+
+- **The office-js tracker is swept weekly** by `.github/workflows/office-js-watch.yml`,
+  which reports only issues touching APIs this repo calls that are not yet in
+  `KNOWN_ISSUES` (`scripts/office-js-watch.mjs`). When one is triaged, add it to
+  that table **with what was done about it** — including "no exposure", which
+  records that somebody checked. Anything left out comes back next Monday.
 
 ## Backlog
 

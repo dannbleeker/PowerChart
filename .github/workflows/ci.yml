@@ -61,6 +61,22 @@ jobs:
         run: npm run verify-deck examples/showcase.pptx
       - name: The showcase deck is schema-valid
         run: npm run validate-ooxml examples/showcase.pptx
+      # Every sample chart, rasterised in a real browser, asked the one question
+      # a text snapshot cannot answer: is anything VISIBLE. White-on-white, a
+      # scale collapse to zero size, a translate off the canvas — each of those
+      # produces a stable, diffable, entirely wrong SVG that the snapshot suite
+      # passes. `CLAUDE.md` requires a human to look at renders before accepting
+      # a snapshot update; this is the part of that a machine can do every time.
+      - name: Install a browser for the visual gate
+        run: npx playwright-core install --no-shell chromium
+      - name: Every sample chart is visibly drawn
+        run: node scripts/visible-charts.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: charts-that-are-not-visible
+          path: visible-charts/
+          if-no-files-found: ignore
 
   # Microsoft's own manifest validator, on the four manifests this repo ships.
   #

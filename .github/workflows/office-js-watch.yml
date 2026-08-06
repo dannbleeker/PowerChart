@@ -1,0 +1,66 @@
+name: office-js watch
+
+# Every defect this repo guards against on PowerPoint web was found by reading
+# the office-js tracker by hand — five of them in one afternoon, after months of
+# not looking, every one open upstream for a year or more under code that ships.
+# This is that sweep, on a timer, reporting only what nobody here has answered.
+#
+# Weekly rather than daily: the tracker does not move fast enough to justify
+# more, and a report that arrives more often than it says anything is a report
+# that gets filtered.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # No `npm ci` — the sweep imports nothing. That is deliberate: a weekly job
+      # that installs the whole dependency tree fails for reasons that have
+      # nothing to do with the tracker, and a job that fails for unrelated
+      # reasons is one nobody reads.
+      - name: Sweep the tracker
+        id: sweep
+        env:
+          # The default token, purely for the API rate limit. It grants nothing
+          # against OfficeDev/office-js beyond what any anonymous reader has.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          node scripts/office-js-watch.mjs > /tmp/report.md
+          code=$?
+          set -e
+          # 3 means "there is something new"; 0 means a clean sweep; anything
+          # else is a broken run and must not be reported as a quiet week.
+          if [ "$code" != "0" ] && [ "$code" != "3" ]; then
+            echo "the sweep itself failed (exit $code)" >&2
+            cat /tmp/report.md >&2 || true
+            exit "$code"
+          fi
+          echo "found=$([ "$code" = "3" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          cat /tmp/report.md
+      # One issue, reopened and updated — never one per sweep. A weekly job that
+      # files a new issue every Monday is a spam bot with a cron entry.
+      - name: File or update the report
+        if: steps.sweep.outputs.found == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="office-js watch: issues touching APIs PowerChart calls"
+          existing=$(gh issue list --state all --search "$title in:title" --json number,state --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file /tmp/report.md
+            gh issue reopen "$existing" || true
+          else
+            gh issue create --title "$title" --body-file /tmp/report.md
+          fi
