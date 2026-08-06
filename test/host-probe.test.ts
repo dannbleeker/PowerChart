@@ -308,6 +308,7 @@ describe("the fake host's answer sheet", () => {
       // refusal, so a host that refuses every add agrees with the fake there.
       const d = diffAnswers(answers, FAKE_BASELINE);
       expect(d.differ.map((x: { id: string }) => x.id).sort()).toEqual([
+        "shape-add-fresh-getitem-slide",
         "shape-add-fresh-slide-proxy",
         "shape-add-positional-slide-proxy",
       ]);

@@ -242,6 +242,24 @@ export const faults = {
    */
   newSlideResolvesTimes: null as number | null,
   /**
+   * A freshly-added slide's `slides.getItem(id)` handle is single-sync too.
+   *
+   * A FAULT, not the default, and the distinction is the point. Every
+   * held-handle failure PowerPoint web has reported names `errorLocation:
+   * SlideCollection.getItem`, so making this unconditional is tempting — and it
+   * would be the fake asserting something nobody has asked. All seventeen probe
+   * questions resolve slides through `getItemOrNullObject`; not one asks what
+   * `getItem` does to a new slide, in either direction. Turning it on
+   * unconditionally asserts TWO unasked things at once: harsher on holding, and
+   * kinder on a fresh use, because a spent handle's `load()` is a no-op here and
+   * its `.id` is a plain value, so a fresh `getItem` read is never refused.
+   *
+   * `shape-add-fresh-getitem-slide` asks the first half. Until a sheet answers
+   * it, this stays a knob a test can turn to demonstrate the hypothesis, and
+   * nothing in the tree depends on it being true.
+   */
+  newSlideGetItemExpires: false,
+  /**
    * The host takes a shape add and fails the sync that would land it.
    *
    * The other branch of the fork `expiringSlideHandle` documents: a host that
@@ -1304,7 +1322,10 @@ export function installHost(
          */
         getItem: (id: string) => {
           const found = slides.find((s) => s.id === id)!;
-          return found && addedSlideIds.has(id) ? (expiringSlideHandle(found) as unknown as FakeSlide) : found;
+          // Windowed only when ARMED — see `faults.newSlideGetItemExpires`.
+          return found && faults.newSlideGetItemExpires && addedSlideIds.has(id)
+            ? (expiringSlideHandle(found) as unknown as FakeSlide)
+            : found;
         },
         // Real Office.js hands back a null OBJECT for an unknown id — it does
         // not throw and does not return undefined. A fake that returns
@@ -1619,6 +1640,7 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
+  faults.newSlideGetItemExpires = false;
   faults.refuseShapeAdds = false;
   faults.wedgeAfterSyncs = null;
   // The live shape selection starts as installHost was told, and is mutated

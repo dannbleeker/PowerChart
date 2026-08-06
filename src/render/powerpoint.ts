@@ -630,44 +630,39 @@ export async function insertSceneIntoSlide(
   // an inserted chart and a re-editable one.
   const untagged: { slideId: string; tagData: string; shapeId?: string }[] = [];
   const inserted = await PowerPoint.run(async (context) => {
-    // Resolved ONCE to pin which slide this draw belongs to, then re-acquired
-    // per batch by that id.
+    // Held for the whole draw, and that is a KNOWN, UNFIXED risk when the
+    // caller names a freshly-added slide.
     //
-    // The pinning is the half worth keeping: without it a draw that spans three
-    // batches follows the user if they click another slide half way through.
-    // The holding is the half that was wrong. The comment here used to say "the
-    // current slide already exists, so its proxy IS stable across syncs — hold
-    // one and reuse it", which is true of the slide the user is looking at and
-    // false whenever `opts.slideId` names one this session added: the demo
-    // deck's slides, the self-test's scratch slide. `getTargetSlide` reaches
-    // for `slides.getItem(id)`, which is the exact call PowerPoint web refuses
-    // for a new slide — `GeneralException`, `errorLocation:
-    // SlideCollection.getItem` — and it is the same mistake, in the same words,
-    // that #280 removed from the update path.
+    // A per-batch thunk was tried here and reverted, because on this path it is
+    // worse than what it fixes. `groupAndTagAll` re-reads the slide's shape
+    // collection through this same thunk one sync before it groups, and a shape
+    // proxy carries its parent's object path — so handing out a fresh handle
+    // per batch makes every re-read member an orphan by grouping time. Measured
+    // on a 40-shape chart inserted onto a freshly-added slide: the chart landed
+    // ungrouped with no CHART_PARTS_TAG, and the next edit left the old chart's
+    // 39 shapes orphaned under the new one — 41 shapes became 79. Nothing in
+    // the suite asserts grouping or parts on this path, which is how 2016 tests
+    // passed over it.
     //
-    // Taking the id first and re-resolving from it keeps the pin and drops the
-    // hold: every batch names the same slide, and none of them holds a handle
-    // across a sync.
+    // What is actually true today, narrowly:
+    //
+    // - Only ONE caller passes a freshly-added slide's id: `chartIsVisible` in
+    //   the self-test. The demo path does not come through here at all — it
+    //   draws via `drawDemoItem` with its own positional thunk — and the other
+    //   six callers either pass no id or pass a slide the user was already
+    //   editing. An earlier comment here claimed the demo deck was a caller;
+    //   it never was.
+    // - `getTargetSlide` resolves by `slides.getItem(id)`. Whether THAT call
+    //   works on a freshly-added slide has never been asked of a host: all
+    //   seventeen probe questions resolve slides through `getItemOrNullObject`.
+    //   `shape-add-fresh-getitem-slide` asks it, and until a sheet answers,
+    //   both the risk here and the shape of any fix are unsettled.
+    //
+    // So: leave the hold, name the risk, and ask the question. Replacing a
+    // known-shaped risk with a measured regression is not a trade worth making.
     const slide = getTargetSlide(context, opts.slideId);
     slide.load("id");
-    // Re-acquired per batch ONLY when the caller named the slide, and held
-    // otherwise — because those are two different slides.
-    //
-    // `opts.slideId` is how the demo path and the self-test point at a slide
-    // they have just added, and it is already an id, so re-resolving costs
-    // nothing: no extra sync, no extra read. Without it the target is whatever
-    // the user is looking at, which by definition was in the deck before this
-    // run started — its id round-trips, holding is free, and reading the id to
-    // re-resolve would cost a round trip on the single most-used action in the
-    // add-in. An earlier draft did exactly that and paid for it in ten timing
-    // tests.
-    //
-    // `getItemOrNullObject`, not `getItem`: a thunk called per batch must not
-    // throw on a slide the user deleted mid-draw, and a null object is a
-    // condition the draw already survives.
-    const getSlide: SlideThunk = opts.slideId
-      ? () => context.presentation.slides.getItemOrNullObject(opts.slideId!)
-      : () => slide;
+    const getSlide: SlideThunk = () => slide;
     onPhase?.("queue", `${scene.nodes.length} nodes`);
     // Committed in batches: the whole scene in one sync is what a live canvas
     // will not take. Each batch reports, so progress here is measured, not

@@ -393,6 +393,38 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "shape-add-fresh-getitem-slide",
+    question: "Can a shape be added through slides.getItem(id) on a freshly-added slide?",
+    // The fourth way of naming the same slide, and the one every other question
+    // here quietly avoids: all seventeen resolve through `getItemOrNullObject`,
+    // so `getItem` has never been asked about in either direction.
+    //
+    // It is not academic. `getTargetSlide` — the only `slides.getItem(id)` in
+    // `powerpoint.ts` — is how `insertSceneIntoSlide` finds the slide it draws
+    // on, and it holds that handle for the whole draw. Every held-handle
+    // failure this host has reported names `errorLocation:
+    // SlideCollection.getItem`, which reads as though this must fail; but the
+    // failures were all through handles resolved a sync earlier, and a fresh
+    // `getItemOrNullObject` on the same slide works. Those are different
+    // claims, and the difference decides whether that insert path is broken.
+    ask: async (ctx) => {
+      const slides = ctx.slides as unknown as { getItem(id: string): PowerPoint.Slide };
+      try {
+        const byGetItem = slides.getItem(ctx.scratchId);
+        byGetItem.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 100,
+          top: 100,
+          width: 20,
+          height: 20,
+        });
+        await ctx.sync();
+        return { answer: "yes" };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
     id: "shape-add-positional-slide-proxy",
     question: "Can a shape be added through slides.getItemAt(index) rather than by id?",
     // The other half of the same fork. If by-index works where by-id does not,

@@ -18,6 +18,7 @@ export const FAKE_BASELINE = {
   "shape-add-fresh-slide-proxy": "yes",
   "shape-add-held-slide-proxy": "threw",
   "shape-resolve-held-slide-proxy": "yes",
+  "shape-add-fresh-getitem-slide": "yes",
   "shape-add-positional-slide-proxy": "yes",
   "shape-proxy-survives-one-sync": "yes",
   "shapes-items-count-honest": "at-least-5",
@@ -84,6 +85,8 @@ export const KNOWN_DIVERGENCES = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "shape-add-fresh-getitem-slide":
+    "Added after the fixture's build, and the only question about `slides.getItem(id)` — the call `getTargetSlide` makes and `insertSceneIntoSlide` then holds for a whole multi-batch draw. Every held-handle failure this host has reported names `errorLocation: SlideCollection.getItem`, which reads as though a fresh `getItem` must fail too; but those were all handles resolved a sync earlier, and the fresh `getItemOrNullObject` form works. The two are different claims and this asks the one nobody has.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
   "shapes-items-via-positional-slide":

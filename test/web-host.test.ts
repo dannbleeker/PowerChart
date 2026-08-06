@@ -23,6 +23,7 @@ import {
   errorText,
   DEMO_SLOT_TAG,
   CHART_TAG,
+  CHART_PARTS_TAG,
   _setBatchTimeoutForTest,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
@@ -332,6 +333,49 @@ describe("the everyday paths on a host that refuses stale proxies", () => {
     const after = await updateChartInSlide(buildChart(next), first!, { tagData: JSON.stringify(next) });
     expect(after, "the update produced no target at all").toBeTruthy();
     expect(after?.lost, `the update reported the chart lost: ${after?.lost}`).toBeUndefined();
+  });
+
+  /**
+   * A chart inserted onto a freshly-added slide must land as ONE object.
+   *
+   * Nothing asserted this, and the cost of that gap was measured rather than
+   * imagined: a change that made `insertSceneIntoSlide` re-acquire its slide
+   * handle per batch turned a 40-shape chart into an UNGROUPED heap with no
+   * `CHART_PARTS_TAG`, and the next edit — unable to find the other 39 shapes —
+   * drew a second chart on top of the first. Forty-one shapes became
+   * seventy-nine. The whole suite stayed green: 2016 tests, and not one of them
+   * looked at grouping or parts on this path.
+   *
+   * The parts tag is the half that bites later. Its own docstring says it: an
+   * in-place update without it "deletes 1 of the chart's 13 shapes and redraws
+   * all 13", so the chart grows by a whole chart on every edit.
+   */
+  it("lands a multi-batch chart on a freshly-added slide as one grouped, re-editable object", async () => {
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const { addScratchSlide } = await import("../src/render/powerpoint");
+    const slideId = await addScratchSlide();
+    expect(slideId, "no freshly-added slide to draw on").toBeTruthy();
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    // More than one batch, which is the case the stale-handle traps live in.
+    expect(scene.nodes.length, "this chart is too small to span batches").toBeGreaterThan(10);
+    await insertSceneIntoSlide(scene, { slideId: slideId!, tagData: JSON.stringify(cfg) });
+
+    const fresh = deck.find((s) => s.id === slideId);
+    const live = fresh?.created.filter((sh) => !sh.deleted) ?? [];
+    const groups = live.filter((sh) => sh.grouped);
+    const tagged = live.filter((sh) => sh.tagStore.has(CHART_TAG));
+    expect(tagged, "the chart carries no config — it is not re-editable").toHaveLength(1);
+    // One object, or — if this host would not group — an anchor that knows the
+    // rest of its shapes. Either is survivable; neither-nor is what orphans a
+    // chart on the next edit.
+    const anchor = tagged[0];
+    const knowsItsParts = anchor.tagStore.has(CHART_PARTS_TAG);
+    expect(
+      groups.length === 1 || knowsItsParts,
+      `chart landed as ${live.length} loose shapes with no group and no parts tag — the next edit will orphan them`,
+    ).toBe(true);
   });
 
   it("settles an UPDATE's config tag too, which is the path same-scale drives", async () => {
