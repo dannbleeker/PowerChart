@@ -6,8 +6,10 @@ import {
   makeShape,
   applyWebProfile,
   faults,
+  trips,
   userClicksShape,
   selectionHandlerCount,
+  type FakeSlide,
 } from "./helpers/office-host";
 import {
   CHART_TAG,
@@ -16,6 +18,7 @@ import {
   isStopRequested,
   _setReadbackTimeoutForTest,
   listChartsInDeck,
+  timeShapeRounds,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { setTracing, traceLog } from "../src/core/trace";
@@ -27,7 +30,9 @@ import {
   SCENARIO_NAMES,
   ROUTINE_SCENARIO_NAMES,
   hostSeemsSick,
+  readDegradation,
   _setClickWaitForTest,
+  _setDegradeSizeForTest,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -964,5 +969,162 @@ describe("the scenario for a slide that already has content", () => {
     const r = onto(await runSelfTest("probe"));
     expect(r.ok, r.detail).toBe(false);
     expect(r.detail).toMatch(/re-editable/);
+  }, 60_000);
+});
+
+describe("the experiment that asks what makes a long run slow down", () => {
+  /**
+   * Every real-host artefact this project owns degrades, and not one of them
+   * can say WHY: a run that gets slower grows its deck, ages its tab and holds
+   * a request context open all at the same time. The repo's own rule for that
+   * situation is to ask a question that separates the answers rather than to
+   * reason about which is likelier — this is the question, and these are the
+   * cases that check it actually separates them.
+   *
+   * `faults.syncCostMs` is what makes that checkable at all. Given a cost that
+   * follows the syncs within a context it stands for proxy accumulation; given
+   * one that follows the syncs since the tab opened it stands for a host
+   * slowing down. The verdict has to name a different suspect for each, and a
+   * verdict that cannot is worse than none: it would send a session's work at
+   * the wrong thing.
+   */
+  const series = async (id: string, oneContext: boolean, rounds = 9) =>
+    (await timeShapeRounds(id, { rounds, perRound: 2, oneContext, label: "t", budgetMs: 30_000 })).rounds.map(
+      (r) => r.ms,
+    );
+
+  it("uses one context for the long arm and one per round for the other", async () => {
+    // The structural half, and deterministic: no clock, no threshold. If the
+    // two arms were ever wired the same way — both long, both fresh, or
+    // swapped — every timing case below would still pass, comparing a series
+    // against itself and reporting whatever the noise said.
+    installHost([makeSlide("s1")]);
+    const before = trips.contexts;
+    await series("s1", true);
+    const long = trips.contexts - before;
+    const mid = trips.contexts;
+    await series("s1", false);
+    expect(long).toBe(1);
+    expect(trips.contexts - mid).toBe(9);
+  });
+
+  it("blames the context when only a held context gets slower", async () => {
+    installHost([makeSlide("s1")]);
+    // Flat 10ms plus 8ms per sync already spent IN THIS CONTEXT. The fresh arm
+    // never sees the second term, so its cost is constant by construction.
+    faults.syncCostMs = ({ syncsInContext }) => 10 + syncsInContext * 8;
+    const one = await series("s1", true);
+    const fresh = await series("s1", false);
+    const v = readDegradation(one, fresh);
+    expect(v.freshContext, `fresh: ${fresh.join(",")}`).toBeLessThan(0.5);
+    expect(v.oneContext, `one: ${one.join(",")}`).toBeGreaterThan(0.5);
+    expect(v.suspect).toBe("context");
+    expect(v.headline).toContain("THE CONTEXT");
+  });
+
+  it("blames the host when both arms get slower together", async () => {
+    installHost([makeSlide("s1")]);
+    // The same shape of cost, hung on the counter that does NOT reset at a
+    // context boundary. A context boundary buys nothing here, which is exactly
+    // what a growing deck or an ageing tab would look like.
+    //
+    // Rebased on the syncs already spent, so the case does not depend on where
+    // in the file it runs — `trips.syncs` is a whole-suite counter and an
+    // absolute cost read off it would make this test's answer depend on the
+    // tests before it.
+    const base = trips.syncs;
+    faults.syncCostMs = ({ syncsTotal }) => 10 + (syncsTotal - base) * 6;
+    const one = await series("s1", true);
+    const fresh = await series("s1", false);
+    const v = readDegradation(one, fresh);
+    // The load-bearing assertion: the FRESH arm grew. That is the one thing a
+    // context-accumulation story cannot produce, and the one thing that tells
+    // a reader shortening contexts will not help.
+    expect(v.freshContext, `fresh: ${fresh.join(",")}`).toBeGreaterThan(0.5);
+    expect(["host", "both"]).toContain(v.suspect);
+    expect(v.headline).toContain("THE HOST");
+  });
+
+  it("does not read a host that slows LINEARLY as a context problem", async () => {
+    // The case the first version of this got wrong, kept as its own test
+    // because it is the commonest shape a real slowdown takes and the mistake
+    // was invisible without it. Comparing each arm's tail to its OWN head, the
+    // long arm read ×2.64 and the fresh arm ×1.47 for a slowdown neither arm
+    // caused — the fresh arm only looks flatter because it starts from a higher
+    // baseline. A confident "the context did it", about a host.
+    //
+    // Same fault as the case above; what this one pins is the NUMBER, not just
+    // the label. Both arms are hit equally hard in milliseconds, so the two
+    // growth figures must come out within a hair of each other.
+    installHost([makeSlide("s1")]);
+    const base = trips.syncs;
+    faults.syncCostMs = ({ syncsTotal }) => 10 + (syncsTotal - base) * 6;
+    const one = await series("s1", true);
+    const fresh = await series("s1", false);
+    const v = readDegradation(one, fresh);
+    expect(v.suspect, `one: ${one.join(",")} | fresh: ${fresh.join(",")}`).toBe("host");
+    expect(Math.abs(v.oneContext - v.freshContext), "the arms were hit equally and must read equally").toBeLessThan(
+      0.35,
+    );
+  });
+
+  it("blames nothing when the host is steady", async () => {
+    installHost([makeSlide("s1")]);
+    faults.syncCostMs = () => 6;
+    const v = readDegradation(await series("s1", true), await series("s1", false));
+    expect(v.suspect, "a steady host must read as steady").toBe("none");
+  });
+
+  it("says so rather than guessing when there are too few rounds to read", async () => {
+    // Three rounds is not a curve. Reporting "no degradation" from it would be
+    // the same mistake as reading a blind deck scan as an empty deck, which
+    // this file already has a whole third result state for.
+    installHost([makeSlide("s1")]);
+    const v = readDegradation(await series("s1", true, 3), await series("s1", false, 3));
+    expect(v.suspect).toBe("unknown");
+    expect(v.headline).toContain("not enough rounds");
+  });
+
+  it("keeps the rounds it managed when the host stops answering", async () => {
+    // A curve with four points is a finding; an exception is not. The long arm
+    // is the one at risk, because its whole series sits under one deadline.
+    installHost([makeSlide("s1")]);
+    faults.wedgeAfterSyncs = 4;
+    const got = await timeShapeRounds("s1", {
+      rounds: 9,
+      perRound: 2,
+      oneContext: true,
+      label: "t",
+      budgetMs: 150,
+    });
+    expect(got.rounds).toHaveLength(4);
+    expect(got.cutShort, "a series that lost five rounds must say so").toBeTruthy();
+  });
+
+  it("is offered by the picker, left out of a full run, and draws its arms on two slides", async () => {
+    // The fake pushes `slides.add()` onto the array it was handed, so the deck
+    // the experiment built its two scratch slides in is readable here — which
+    // is the only way to check the arms went to different ones.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const deckShapeNames = () => deck.map((s) => s.created.map((c) => c.name ?? ""));
+    _setDegradeSizeForTest(4, 2);
+    try {
+      expect(SCENARIO_NAMES).toContain("what makes a long run slow down");
+      expect(ROUTINE_SCENARIO_NAMES).not.toContain("what makes a long run slow down");
+      const r = (await runSelfTest("probe", "what makes a long run slow down")).find(
+        (x) => x.name === "what makes a long run slow down",
+      )!;
+      expect(r.detail).toContain("one context:");
+      expect(r.detail).toContain("fresh contexts:");
+      // Two arms, two slides. Sharing one would make the second arm draw onto a
+      // slide already holding the first arm's shapes, and a fat slide is a
+      // fourth variable in an experiment built to have exactly one.
+      const named = (frag: string) => deckShapeNames().filter((names) => names.some((n) => n.includes(frag))).length;
+      expect(named("one-context")).toBe(1);
+      expect(named("fresh-context")).toBe(1);
+    } finally {
+      _setDegradeSizeForTest(8, 12);
+    }
   }, 60_000);
 });

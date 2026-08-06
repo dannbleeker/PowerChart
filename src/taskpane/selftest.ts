@@ -1,6 +1,6 @@
 /**
  * Nine things that have never once run against a real PowerPoint, on one click —
- * plus one experiment that only makes sense on its own.
+ * plus two experiments that only make sense on their own.
  *
  * The demo deck covers inserting onto slides it added BLANK. Nothing covers
  * what happens elsewhere — inserting on top of an earlier run, a slide
@@ -77,6 +77,7 @@ import {
   slideCount,
   slideSize,
   slideHoldsOnlyChart,
+  timeShapeRounds,
   updateChartInSlide,
   errorText,
   // A live binding, read fresh on every access — the whole point is to diff it
@@ -876,6 +877,231 @@ const whichSelectionCallWedges: Scenario = async (prefix) => {
   };
 };
 
+/** Fewer rounds than this and the slope is noise, not a curve. */
+const MIN_ROUNDS_FOR_A_VERDICT = 4;
+
+/**
+ * How much a series' last third cost more than its first third, in ms.
+ *
+ * Thirds rather than last-minus-first, because one slow round is not a trend
+ * and a two-sample comparison cannot tell the two apart. `null` when there is
+ * not enough of a curve to say anything, which the caller reports rather than
+ * rounding to "no change" — an unmeasured slope and a flat one are different
+ * answers, and this file exists because they kept getting confused.
+ *
+ * **Median of each third, not the mean.** A third is three samples, and one
+ * garbage collection is enough to move a mean of three. Run against a fake host
+ * with no slowdown at all, the mean version read
+ * `[6, 6, 6, 6, 10, 7, 17, 6]ms` — one 17ms hiccup — as "THE CONTEXT degrades,
+ * +67%". A confident wrong answer from noise is the worst thing this experiment
+ * could produce, because the whole reason it exists is that the cheap answers
+ * were untrustworthy.
+ */
+function growth(ms: number[]): { head: number; delta: number } | null {
+  if (ms.length < MIN_ROUNDS_FOR_A_VERDICT) return null;
+  const k = Math.ceil(ms.length / 3);
+  const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  const head = median(ms.slice(0, k));
+  return { head, delta: median(ms.slice(-k)) - head };
+}
+
+/**
+ * How much growth counts as degradation, as a fraction of the reference round.
+ *
+ * Half again over the measured span, and chosen rather than derived — nothing
+ * here has the sample size to justify a real threshold, and pretending
+ * otherwise would be worse than saying so. It sits well above the round-to-round
+ * noise of a healthy host and far below the tenfold blowups the real artefacts
+ * show, which is all it has to separate.
+ */
+const GREW = 0.5;
+
+/**
+ * And how much growth counts in plain milliseconds, whatever the fraction says.
+ *
+ * The relative test alone is unsafe at the bottom of the scale: against a 6ms
+ * round, 3ms of scheduler noise is "+50%". Both bars have to clear, so the
+ * verdict needs a trend that is both proportionally large AND big enough to
+ * matter — and 25ms is far below the hundreds of milliseconds every real
+ * degraded run shows, while being comfortably above what a busy machine adds to
+ * a round on its own.
+ */
+const GREW_MS = 25;
+
+export interface DegradationVerdict {
+  /** Growth across the long-context arm, as a fraction of the reference round. */
+  oneContext: number;
+  /** The same, for the arm that took a fresh context per round. */
+  freshContext: number;
+  suspect: "context" | "host" | "both" | "none" | "unknown";
+  /** The sentence the report leads with. */
+  headline: string;
+}
+
+/**
+ * Read the two curves.
+ *
+ * Both arms grow the deck by the same amount in the same order, and both age
+ * the tab. The ONLY thing that differs is whether the context is re-created
+ * between rounds, so:
+ *
+ * - only the long-context arm grows → the request context is what degrades, and
+ *   the fix is a shape of code we already know how to write (shorter contexts).
+ * - the fresh-context arm grows too → the host itself is slowing as the deck
+ *   grows or the tab ages, and shortening contexts will not help.
+ * - both grow, the long one much harder → both, and the first is still worth
+ *   fixing.
+ * - neither grows → whatever kills a long run is not in this loop, which rules
+ *   out three suspects at once and is the most useful answer of the four.
+ *
+ * **Growth in milliseconds against one shared reference, never each arm's own
+ * ratio.** The first version of this compared tail/head within each arm, and it
+ * gets the commonest case exactly wrong: under a host that slows linearly the
+ * arms are equally affected in ms, but the second arm starts from a higher
+ * baseline, so its RATIO is smaller. Worked through with the real numbers the
+ * long arm read ×2.64 and the fresh arm ×1.47 for a slowdown neither arm caused
+ * — a confident "the context did it" about a host. Both deltas divided by one
+ * common reference are order-blind, and that case comes out equal.
+ *
+ * Residual limit, stated because the raw curves are in the report for exactly
+ * this: the arms run one after the other, so a host whose cost grows STRONGLY
+ * non-linearly is not fully cancelled — a logarithmic trend still hands the
+ * first arm the steeper stretch. A linear trend, which is what a deck growing
+ * by a fixed number of shapes per round should produce, cancels exactly.
+ */
+export function readDegradation(oneContextMs: number[], freshContextMs: number[]): DegradationVerdict {
+  const one = growth(oneContextMs);
+  const fresh = growth(freshContextMs);
+  if (!one || !fresh) {
+    return {
+      oneContext: NaN,
+      freshContext: NaN,
+      suspect: "unknown",
+      headline: `not enough rounds to read a slope (${oneContextMs.length} in one context, ${freshContextMs.length} in fresh ones)`,
+    };
+  }
+  // The earliest, cheapest measurement in the experiment, and the same divisor
+  // for both arms — that sameness is the whole point. Floored at a millisecond
+  // because a round the clock reads as free is below the instrument, not free:
+  // dividing by it would turn timer jitter into an infinite slowdown.
+  const ref = Math.max(one.head, 1);
+  const oneGrew = one.delta / ref;
+  const freshGrew = fresh.delta / ref;
+  const pct = (g: number) => `${g >= 0 ? "+" : ""}${Math.round(g * 100)}%`;
+  const both = `one context ${pct(oneGrew)}, fresh contexts ${pct(freshGrew)}, against a ${Math.round(one.head)}ms round`;
+  const verdict = (suspect: DegradationVerdict["suspect"], headline: string) => ({
+    oneContext: oneGrew,
+    freshContext: freshGrew,
+    suspect,
+    headline,
+  });
+  // Both bars, never either alone — see GREW_MS.
+  const rose = (g: number, deltaMs: number) => g >= GREW && deltaMs >= GREW_MS;
+  const oneRose = rose(oneGrew, one.delta);
+  const freshRose = rose(freshGrew, fresh.delta);
+  if (oneRose && !freshRose) return verdict("context", `THE CONTEXT degrades — ${both}`);
+  if (oneRose && freshRose) {
+    return oneGrew >= freshGrew * 1.5
+      ? verdict("both", `THE HOST is slowing and the context makes it worse — ${both}`)
+      : verdict("host", `THE HOST is slowing whatever the context does — ${both}`);
+  }
+  if (freshRose) {
+    return verdict("host", `THE HOST is slowing, and holding a context open did not add to it — ${both}`);
+  }
+  // Phrased as a statement about the THRESHOLD, not about reality. "Neither
+  // curve grew" is simply false in front of two curves that each climbed a
+  // tenth, which is a thing this has already printed — and a summary that
+  // contradicts the numbers under it is how a reader learns to stop reading
+  // either.
+  return verdict("none", `no degradation worth the name — ${both}`);
+}
+
+/** How big the degradation experiment is. Shrunk by tests, which need the shape and not the minutes. */
+let degradeRounds = 8;
+let degradePerRound = 12;
+
+/** Test-only: run the experiment at a size a suite can afford. */
+export function _setDegradeSizeForTest(rounds: number, perRound: number): void {
+  degradeRounds = rounds;
+  degradePerRound = perRound;
+}
+
+/**
+ * Does a long run get slower because of the CONTEXT, the DECK, or the TAB?
+ *
+ * Every real-host artefact this project owns degrades — 496s to reach scenario
+ * seven, a 38-item run whose later inserts cost multiples of its first, a tab
+ * PowerPoint eventually killed — and not one of them can say which of the three
+ * it was, because all three grow together in an ordinary run. Reasoning about it
+ * has already cost this project two sessions; the rule the repo adopted from
+ * that is to ask a question that separates the answers instead, which is what
+ * this is.
+ *
+ * Two arms, each drawing the same shapes onto a slide of its own, differing in
+ * one thing: whether the request context is re-created between rounds. Separate
+ * slides on purpose — sharing one would make the second arm draw onto a slide
+ * already holding the first arm's shapes, and a fat slide is a fourth variable.
+ *
+ * Picked only, and for both of the reasons that word exists here. It costs
+ * `2 × rounds` syncs and a few hundred shapes, which is not something to put in
+ * front of every routine run; and its subject is a host that has been fatigued,
+ * so running it after eight other scenarios would measure them instead of it.
+ */
+const degradesOverTime: Scenario = async (prefix) => {
+  const rounds = degradeRounds;
+  const perRound = degradePerRound;
+  const slideA = await addScratchSlide();
+  const slideB = slideA ? await addScratchSlide() : null;
+  if (!slideA || !slideB) {
+    return {
+      ok: false,
+      skipped: true,
+      detail: `the host would not give the experiment two slides to draw on (${slideA ? "one" : "none"} of two)`,
+    };
+  }
+  const deckBefore = await slideCount();
+  const one = await timeShapeRounds(slideA, {
+    rounds,
+    perRound,
+    oneContext: true,
+    label: `${prefix} one-context`,
+  });
+  const fresh = await timeShapeRounds(slideB, {
+    rounds,
+    perRound,
+    oneContext: false,
+    label: `${prefix} fresh-context`,
+  });
+  const oneMs = one.rounds.map((r) => r.ms);
+  const freshMs = fresh.rounds.map((r) => r.ms);
+  const verdict = readDegradation(oneMs, freshMs);
+  trace("selftest", "degradation curves", {
+    oneContext: oneMs,
+    freshContext: freshMs,
+    suspect: verdict.suspect,
+    deckBefore,
+  });
+  // The raw curves go in the detail, not just the verdict. A ratio is a
+  // conclusion and this file has been wrong about conclusions before; the
+  // numbers are what someone can re-read when the threshold above turns out to
+  // be the wrong one.
+  const curves =
+    `one context: [${oneMs.join(", ")}]ms` +
+    (one.cutShort ? ` (cut short — ${one.cutShort})` : "") +
+    `; fresh contexts: [${freshMs.join(", ")}]ms` +
+    (fresh.cutShort ? ` (cut short — ${fresh.cutShort})` : "");
+  return {
+    ok: verdict.suspect === "none",
+    // "unknown" means the host did not let the experiment run far enough, which
+    // is a skip — the same distinction every other scenario here draws between
+    // "we did not check" and "we checked and it is bad".
+    ...(verdict.suspect === "unknown" ? { skipped: true } : {}),
+    detail:
+      `${verdict.headline} — ${rounds}×${perRound} shapes per arm, ` +
+      `deck was ${deckBefore} slide(s) at the start. ${curves}`,
+  };
+};
+
 const SCENARIOS: {
   name: string;
   run: Scenario;
@@ -915,6 +1141,7 @@ const SCENARIOS: {
   { name: "which selection call wedges the host", run: whichSelectionCallWedges, pickedOnly: true },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
+  { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },
 ];
 
 /**

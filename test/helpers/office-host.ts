@@ -110,6 +110,27 @@ export const faults = {
    */
   noIdInCreatingSync: false,
   /**
+   * How long a sync takes, as a function of what has happened before it.
+   *
+   * A fake that is always instant cannot be used to check a measurement, and
+   * the degradation experiment is nothing but a measurement: its whole job is
+   * to tell "the context is what slows down" from "the host is what slows
+   * down", and a fake with no clock says neither. Both arguments are needed
+   * because they are exactly the two hypotheses —
+   *
+   * - `syncsInContext` grows within one `PowerPoint.run` and resets at the next.
+   *   A cost that follows it is proxy accumulation, and only the long-context
+   *   arm feels it.
+   * - `syncsTotal` never resets. A cost that follows it is the deck growing or
+   *   the tab ageing, and both arms feel it equally.
+   *
+   * Stands for a real observation without claiming to model its mechanism: a
+   * degrading host is the one thing every real-host artefact this project owns
+   * has in common, and none of them can say which of the two it was. Off by
+   * default — an ordinary test must not pay milliseconds for it.
+   */
+  syncCostMs: null as null | ((load: { syncsInContext: number; syncsTotal: number }) => number),
+  /**
    * Tag loads the host takes and never answers — the next N `load()`s on a tag
    * proxy leave it unreadable after their sync.
    *
@@ -642,6 +663,16 @@ let pendingHostError: Error | null = null;
  * `freshWindowedHandle`); a pre-existing slide's handle is durable.
  */
 let contextBaseCount = 0;
+
+/**
+ * Syncs issued inside the current `PowerPoint.run` — reset at every new context.
+ *
+ * The counterpart to `trips.syncs`, which never resets. Together they are the
+ * two hypotheses `faults.syncCostMs` lets a test choose between: a cost that
+ * follows this one is the context accumulating, a cost that follows the total
+ * is the host itself slowing down.
+ */
+let syncsInContext = 0;
 
 /** Set by installHost so a slide can splice itself out of the live deck. */
 let deckRemove: ((s: { id: string }) => void) | null = null;
@@ -1488,6 +1519,15 @@ export function installHost(
     },
     sync: async () => {
       trips.syncs++;
+      syncsInContext++;
+      // Charged BEFORE anything else this sync does, and unconditionally, so
+      // the cost lands on every sync including the ones that go on to fail.
+      // A host that only slows down when it succeeds is not a host anyone has
+      // seen.
+      if (faults.syncCostMs) {
+        const ms = faults.syncCostMs({ syncsInContext, syncsTotal: trips.syncs });
+        if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+      }
       const decks = pendingDecks.splice(0);
       for (const b64 of decks) {
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -1661,6 +1701,8 @@ export function installHost(
   faults.newSlideGetItemExpires = false;
   faults.refuseShapeAdds = false;
   faults.wedgeAfterSyncs = null;
+  faults.syncCostMs = null;
+  syncsInContext = 0;
   // The live shape selection starts as installHost was told, and is mutated
   // from there by Slide.setSelectedShapes.
   selectionRef.length = 0;
@@ -1675,6 +1717,7 @@ export function installHost(
       // Slides present at the start of this context are "existing"; anything
       // add()ed past here is fresh, and its getItemAt handle is window-limited.
       contextBaseCount = slides.length;
+      syncsInContext = 0;
       return cb(context);
     },
     // Real Office.js exposes all 177 presets. A plain object listing only the
