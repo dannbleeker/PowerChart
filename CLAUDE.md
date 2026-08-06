@@ -78,13 +78,23 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   (`shape-add-fresh-slide-proxy` / `-held-` / `-positional-`, and again with
   `shapes-items-via-positional-slide`). Any answer that could be about the probe
   gets a partner question, and `KNOWN_DIVERGENCES` is where one waits while its
-  re-run is pending.
+  re-run is pending. A probe can now carry its own partner: `Probe.follow` fires
+  a second question in the same run when the first answer admits two readings,
+  which is the rule automated — the reasoning was never the expensive part, the
+  round trip was.
 - **The fake is gated against a real host in CI** — `test/host-contract.test.ts`
   diffs `FAKE_BASELINE` against the committed sheet in
   `test/fixtures/host-answers-web.json`. A new divergence fails there unless it
   is declared in `KNOWN_DIVERGENCES` with a reason. When a fresh sheet arrives:
   replace the fixture, run the suite, deal with what goes red. Do not edit the
   fixture by hand — it is a recording, not a preference.
+- **The office-js tracker is swept weekly** by
+  `.github/workflows/office-js-watch.yml`, which reports only issues touching
+  APIs this repo calls that are not yet in `KNOWN_ISSUES`
+  (`scripts/office-js-watch.mjs`). When one is triaged, add it to that table
+  **with what was done about it** — including "no exposure", which records that
+  somebody checked. Anything left out comes back next Monday. Five of the guards
+  in this repo came from one manual sweep; this is so the next one is not luck.
 - **Stale documentation is a defect — fix it when you find it, in that turn.**
   Don't file it, don't mention it and move on. This applies to comments that
   justify a design with a claim that is no longer true, which is the expensive
@@ -111,12 +121,32 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   this — the `<Id>` GUID), the owner MUST re-sideload the updated manifest in
   PowerPoint for it to take effect. Always tell the owner explicitly in that
   PR/turn: "⚠️ this needs a manifest re-install in PowerPoint" and say why.
+  CI validates all four manifests with Microsoft's own tool (the `manifest` job,
+  kept out of `test` because it calls a Microsoft service and `test` is the only
+  required check). It found `<Version>0.1.0` on its first run — Office rejects
+  anything below 1.0 — so the version is `1.0.0.0` and independent of the npm
+  package version; `test/manifest.test.ts` pins that offline, along with the
+  `<Id>` GUIDs and "no localhost in a prod manifest".
 
 ## Gotchas
 
 - Office.js has **no freeform paths**: pies are triangle fans, radar/polygon
   fills degrade to outlines in the live add-in (the skill's pptx output gets
   real filled `custGeom` polygons), pattern fills are SVG-only (solid in PPT).
+- **A shape the user selected must be let go of before anything is drawn.** On
+  the web, `addTextBox` DELETES the selected shape (office-js#2775) and a picture
+  cannot be inserted while one is selected (#3698) — and the insert path reads
+  the selection's bounds precisely so it can place the chart there. Reading the
+  selection and holding it are different things; `dropShapeSelection` runs
+  between them. Ordering is the whole protection, and the guard asserts it.
+- **Anything that calls `setSelectedShapes` must run after the ladder.** That
+  call wedges the web host's whole selection subsystem, so the ladder
+  (`which selection call wedges the host`) has to be the FIRST such call in a
+  run — that, and not being alone in a run, is what lets it be routine. Two
+  orderings were tried and are wrong, both recorded in `docs/PUBLISHING.md`:
+  last (the wedge happens before the ladder asks) and third (the ladder wedges
+  six scenarios instead of two). The test states it as the property, because
+  adjacency to one named scenario was only ever a proxy for it.
 - **`getItemOrNullObject` is not the last word on whether a slide exists.**
   PowerPoint on the web resolved a freshly-added slide's id once and refused it
   ever after, while still listing that id in `slides.load("items/id")`. So
@@ -207,12 +237,6 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   project follows argues against 3D anyway). Built instead: tile-grid
   cartograms (`tilemap`) and heatmaps.
 
-- **The office-js tracker is swept weekly** by `.github/workflows/office-js-watch.yml`,
-  which reports only issues touching APIs this repo calls that are not yet in
-  `KNOWN_ISSUES` (`scripts/office-js-watch.mjs`). When one is triaged, add it to
-  that table **with what was done about it** — including "no exposure", which
-  records that somebody checked. Anything left out comes back next Monday.
-
 ## Backlog
 
 `docs/BACKLOG.md` is the single curated backlog (researched candidates with
@@ -234,15 +258,24 @@ prod manifests, the skill zip and the showcase deck.
 
 What is left needs the owner, not the agent:
 
-- **Phase 2 — sideload + validate in real PowerPoint.** Nothing has ever run
-  in a real host: every Office.js assertion in this repo is against a fake.
-  Expect the first real run to surface things the mocked tests cannot. The two
-  areas with the least mock fidelity are chart **positioning** (the
-  `POWERCHART_ORIGIN` drag-delta round trip) and **grouping** on hosts that
-  gate it behind `supports("1.8")`. What to actually ask the owner to click is
-  written down — "The standing test run" in `docs/PUBLISHING.md`, six tests
-  ordered by risk, about five minutes of manual work plus two one-click
-  batteries. Don't improvise a new one per session.
+- **Phase 2 — keep validating in real PowerPoint.** It HAS run now: three
+  answer sheets, several run logs and decks, and the fixes they produced are in
+  `git`. `test/fixtures/host-answers-web.json` is one of those recordings and is
+  what the CI contract gate diffs against. So the standing question is no longer
+  "does any of this work" but "what does the newest build answer".
+
+  What has still never run on a real host: the degradation experiment
+  (_what makes a long run slow down_), _edit the chart YOU click_, and every
+  probe question added since the fixture was recorded — `PENDING_QUESTIONS` in
+  `scripts/host-baseline.mjs` is the authoritative list of those, and it shrinks
+  by itself when a newer sheet lands.
+
+  **Owed to the owner right now: a manifest re-install** — `<Version>` changed,
+  so the sideloaded copy is stale. What to ask him to click is written down:
+  "The standing test run" in `docs/PUBLISHING.md`. Don't improvise a new one per
+  session, and don't ask for the deck or a screenshot — the round's own file has
+  carried both since the deck-evidence change.
+
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 
 Follow it phase by phase; retire items from it and from this list as they

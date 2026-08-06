@@ -52,9 +52,22 @@ belongs with the thing it tests, not with the reason it was written.)
   never ends), `templates` (saving and re-picking a chart setup — a whole
   feature that had no tests until one of them turned up a bug),
   `host-probe` (the fake's own frozen answer sheet — what it CLAIMS about the
-  host it stands for, so a real PowerPoint can be diffed against it), `skill*`,
-  `parity`, `snapshots`, `a11y-svg`,
-  `security-*`, `dark-theme`, `fuzz`, `hardening`, `degenerate-inputs`.
+  host it stands for, so a real PowerPoint can be diffed against it),
+  `host-contract` (the other half of that: `FAKE_BASELINE` diffed against a real
+  PowerPoint's committed sheet, so a new divergence fails in CI in seconds
+  instead of waiting for somebody with the app open), `selftest` (the in-host
+  battery's own logic — that every scenario reports, that a blind deck scan is
+  never read as an empty deck, and that a wedged host is attributed to the host),
+  `skill*`, `parity`, `snapshots`, `a11y-svg`, `security-*`, `dark-theme`,
+  `fuzz`, `hardening`, `degenerate-inputs`.
+- **Things CI can check that are not code** — `manifest` (the four add-in
+  manifests: Office's version floor, the `<Id>` GUIDs, no localhost surviving
+  into a production manifest — pinned offline because the real validator calls a
+  Microsoft service and cannot run everywhere), `office-js-watch` (the weekly
+  tracker sweep's matching half, including that its `KNOWN_ISSUES` table covers
+  every office-js issue the codebase cites and that every watched term is a call
+  this repo actually makes), `visible-charts` (the verdict half of the visual
+  gate — the rasterising half runs in a real browser and cannot run here).
 - **The deck a run produces, audited from its bytes** — `verify-deck` (did
   PowerChart write what it meant to: slot tags, groups, config parts, shape ids
   unique per slide), `ooxml-validate` (is it a legal `.pptx` at all, against the
@@ -99,6 +112,23 @@ and every selection sync after it then never settles at all — neither resolvin
 nor rejecting, which is what PowerPoint on the web actually does and the one
 failure shape no `catch` can see. Only a bounded wait survives it, so it is the
 fault that proves the bounds work.
+
+The newest family came from answer sheets rather than from crashes, and each
+models something a real PowerPoint on the web was measured doing: a freshly-added
+slide's handle dying at the next sync (`expiringSlideHandle`, unconditional
+because it is established); a shape that cannot be NAMED in the batch that
+created it (`noIdInCreatingSync` — implied by five questions being the only five
+never put); `getItem` refusing a slide this run added (`refuseGetItemOnNewSlide`);
+and `addTextBox` deleting the selected shape (`textBoxDeletesSelection`,
+office-js#2775). The last two are OFF by default and say so at their definitions:
+nothing has established that the build the owner runs still does either, and a
+fake that asserts unasked host behaviour turns every real answer into a
+divergence.
+
+`syncCostMs` is not a misbehaviour at all — it is a clock. It charges each sync
+by a function of `syncsInContext` or `syncsTotal`, which are exactly the two
+hypotheses the degradation experiment separates, and without it a measurement
+could only be tested against a fake that is always instant.
 
 Faults are opt-in per test. `applyWebProfile()` turns on the set a real web host
 shows at once; call it AFTER `installHost`, which resets every fault. It is not
