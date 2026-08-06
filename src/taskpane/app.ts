@@ -42,6 +42,7 @@ import {
   isStopped,
   slideSize,
   deckSlideIds,
+  deleteSlideById,
   slideShots,
   type EditTarget,
   type InsertPhase,
@@ -2288,6 +2289,15 @@ function describeHost(): string {
 let lastRunLog: RunLogFile | undefined;
 
 /**
+ * Slides the last round added, and the only thing Clean up will ever delete.
+ *
+ * A list of ids the round watched appear, not a rule for recognising a test
+ * slide. The difference matters in someone's own deck: a rule can match a slide
+ * they made, an id list cannot.
+ */
+let tidyable: string[] = [];
+
+/**
  * What "Download run log" writes: one file, one or more runs inside it.
  *
  * A single click can now take both insert paths one after the other, and they
@@ -3302,6 +3312,13 @@ function wireInsert() {
           ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
         };
         ($("demo-log") as HTMLButtonElement).disabled = false;
+        // Only what THIS round added, and only what it could name. The button
+        // stays disabled when the id diff came back empty, because a cleanup
+        // with nothing to work from is one that would have to guess which
+        // slides look like a test — and guessing about deletion in a user's own
+        // deck is not a trade this pane makes.
+        tidyable = deck?.newSlides ?? [];
+        ($("demo-tidy") as HTMLButtonElement).disabled = tidyable.length === 0;
         endCrashLog();
         downloadJson("powerchart-round.json", lastRunLog);
         const needed = sheetNeedsAttention(sheet) || selfTestNeedsAttention(results);
@@ -3309,6 +3326,39 @@ function wireInsert() {
           `Round finished. ${describeSelfTest(results)} · Probe: ${describeHostSheet(sheet)} ` +
             (needed ? "Saved as one file — send it over." : "Saved as one file; nothing in it is new."),
           needed ? "err" : "ok",
+        );
+      }),
+    );
+    /**
+     * Put the deck back.
+     *
+     * A round leaves slides behind on purpose — the point is a file someone can
+     * open and look at — and clearing them afterwards has been a manual chore
+     * once per round, in a deck that also grows and skews the next round's
+     * timings. This deletes exactly the ids the last round recorded adding, one
+     * at a time, and reports what the host refused rather than claiming a clean
+     * sweep it did not perform. `deleteSlideById` has a whole comment about why
+     * a host saying "gone" is not proof; the count here is what it actually
+     * confirmed.
+     */
+    $("demo-tidy").addEventListener(
+      "click",
+      guard(async () => {
+        revealSteps();
+        const ids = tidyable;
+        note(`Removing the ${ids.length} slide(s) the last round added…`, "busy");
+        let gone = 0;
+        for (const id of ids) if (await deleteSlideById(id)) gone++;
+        // Emptied whatever happened: a second press would re-ask about slides
+        // the host has already refused once, and the honest state after a
+        // partial sweep is "there is no longer a list I trust".
+        tidyable = [];
+        ($("demo-tidy") as HTMLButtonElement).disabled = true;
+        note(
+          gone === ids.length
+            ? `Cleaned up — ${gone} slide(s) removed.`
+            : `Removed ${gone} of ${ids.length}. The host would not take the rest; delete those by hand.`,
+          gone === ids.length ? "ok" : "err",
         );
       }),
     );

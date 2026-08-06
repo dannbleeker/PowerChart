@@ -337,8 +337,8 @@ run log's `slide size` line records the value *and which rung produced it*;
 
 ### The host self-test
 
-Six paths existed only as items on this list for a human to remember to try,
-which in practice meant six separate sessions. They are now one button:
+Seven paths existed only as items on this list for a human to remember to try,
+which in practice meant seven separate sessions. They are now one button:
 
 | scenario | what it proves |
 | --- | --- |
@@ -348,32 +348,42 @@ which in practice meant six separate sessions. They are now one button:
 | insert onto a slide that already has content | the everyday action — a chart drawn onto a slide that is not blank stays grouped and re-editable, and does not swallow what was already there |
 | same scale across the deck | a deck-wide rescale empties nothing |
 | explode a degraded picture | a picture keeps its config and can become native shapes again |
+| which selection call wedges the host | *which* call stops the web host answering — the one measurement that settles it |
 | edit the chart the user selected | the read behind *Edit it* — the only entry point a real user travels on |
 | stop a run part-way | a stopped run adds nothing and leaves nothing behind claiming to be a chart |
 | the chart is actually visible | the host's own render changed where the chart was drawn — not just that shapes exist |
 
-**Three more, and a full run deliberately leaves them out.** Pick them by name
+The ladder — **which selection call wedges the host** — is in that list now, and
+used to be a separate run. It sits immediately before *edit the chart the user
+selected*, which is the only other scenario that calls `setSelectedShapes`. Being
+the FIRST such call is the property it needs; being alone in a run was a stronger
+condition than the question requires, and it cost a five-minute round every time.
+When the ladder does find a wedge, the scenario after it reports *skipped* with
+the ladder's own words instead of spending another budget to learn less.
+
+It climbs from the least invasive selection call to the most — read the
+selection, `setSelectedSlides`, read, `setSelectedShapes([id])`, read,
+`setSelectedShapes([])`, read — and **stops at the first one that goes silent**,
+reporting that call and the last one the host answered. It stops because after a
+wedge every later call is silent too, so climbing on would report four timeouts
+and name nothing, which is the ambiguity it exists to remove.
+
+Position matters, and two earlier answers were wrong about it. Putting the
+ladder LAST in the battery let `edit the chart the user selected` wedge the host
+six scenarios earlier, so the ladder reported silence on its own first rung — an
+answer about nothing. Putting it THIRD, right after the two inserts, is worse
+still: the ladder can wedge the host itself, so six scenarios would then run
+against a wedged one instead of two. Immediately before the only other
+`setSelectedShapes` caller is the position that gives the property without the
+cost.
+
+**Two more, and a full run deliberately leaves them out.** Pick them by name
 from the Scenario menu:
 
 | scenario | what it proves |
 | --- | --- |
-| which selection call wedges the host | *which* call stops the web host answering — the one measurement that settles it |
 | edit the chart YOU click | the pane's most-used read, driven by a real human click instead of a call that behaves differently |
 | what makes a long run slow down | whether a long run degrades because of the request CONTEXT, the DECK, or the TAB — the three every artefact so far confounds |
-
-It climbs a ladder from the least invasive selection call to the most — read the
-selection, `setSelectedSlides`, read, `setSelectedShapes([id])`, read,
-`setSelectedShapes([])`, read — and **stops at the first one that goes silent**,
-reporting that call and the last one the host answered.
-
-Two things about it are deliberate. It **stops** because after a wedge every
-later call is silent too, so climbing on would report four timeouts and name
-nothing — which is the ambiguity it exists to remove. And it is **picked only**
-because its answer is meaningful solely on a host nothing else has touched:
-`edit the chart the user selected` provokes the same wedge six scenarios
-earlier, so inside a full run this would have reported silence on its own first
-rung. (That was the first draft. A test caught it; a real host would have cost a
-round.)
 
 **What makes a long run slow down** is the newest, and it is the only one here
 that is purely a measurement. Every real-host artefact this project owns

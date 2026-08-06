@@ -480,6 +480,21 @@ time cannot make the second run's slides look like duplicates of the first's —
 and a slide you added yourself, or copied from a demo slide with PowerPoint's
 Duplicate Slide, is reported and left alone.
 
+*Which selection call wedges the host* used to be one of them and is now part of
+an ordinary run. It asks the host, one call at a time, which selection call it
+stops answering, and it needs to be the first thing in the run that selects a
+*shape* — so it sits immediately before *edit the chart the user selected*, the
+only other place the add-in does that. If it finds a wedge, that scenario says
+so and skips rather than spending another wait to learn less. It reports *ok*
+whatever it finds, because it is a measurement rather than a check.
+
+**Clean up the last round** deletes the slides the last round added, and only
+those. It works from the list of slide ids the round watched appear, never from
+a rule about which slides look like a test — a rule could match a slide you made.
+It stays greyed out until a round has produced such a list, and if the host
+refuses a delete it says how many it actually removed rather than claiming a
+clean sweep.
+
 **Run the whole round** does all of it on one click — the host probe, then the
 self-test, then a look at what actually landed — and saves the lot as one JSON
 file. That file is the whole upload. It carries every shape on every slide (name,
@@ -502,14 +517,7 @@ every scenario needs to have probe charts to work on. A full round takes several
 minutes and leaves slides in the deck, so when you are chasing one failure, pick
 it — seconds instead of minutes, and far less to clean up afterwards.
 
-Three entries in that menu are **only** reachable that way.
-
-*Which selection call wedges the host* asks the host, one call at a time, which
-selection call it stops answering. It can only get a true answer on a host
-nothing else has touched yet — so a full run leaves it out rather than running
-it and reporting something false. Pick it, read the one sentence it comes back
-with, and send that along. It reports *ok* whatever it finds, because it is a
-measurement rather than a check.
+Two entries in that menu are **only** reachable that way.
 
 *Edit the chart YOU click* waits for you. Pick it and the pane asks you to click
 a PowerChart, counting down for 30 seconds; click one and it does exactly what
@@ -532,12 +540,13 @@ contexts would fix it; if both climb together, the host itself is slowing and
 they would not. It takes a minute or so and leaves two slides of small
 rectangles behind. It reports *ok* only when neither curve climbs.
 
-**Run host self-test** runs the nine things the demo deck does not cover:
+**Run host self-test** runs the ten things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
 chart on the slide you are looking at, adding charts to a slide that already
 has content, a deck-wide rescale, turning a degraded picture back into native
-shapes, editing the chart you have *selected*, stopping a run part-way, and
-whether a chart is actually visible on the slide. They run in that order on
+shapes, which selection call the host stops answering, editing the chart you
+have *selected*, stopping a run part-way, and whether a chart is actually
+visible on the slide. They run in that order on
 purpose: the longest-standing checks first, the newest last, so that if a run
 does not survive to the end you still have the verdicts for everything with a
 track record. Each reports what was

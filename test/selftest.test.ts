@@ -65,6 +65,11 @@ describe("the host self-test battery", () => {
       "insert onto a slide that already has content",
       "same scale across the deck",
       "explode a degraded picture",
+      // The ladder immediately before the only other `setSelectedShapes` caller
+      // in the run. That adjacency IS the reason it can be routine at all —
+      // being the first such call is the property, not being alone in a run —
+      // so it is pinned here rather than left to the order of a list.
+      "which selection call wedges the host",
       // The three newest last, heaviest dead last — a crash in unproven code
       // must not cost the verdicts of scenarios that already work. Pinned,
       // because the ordering is a diagnostic property, not a detail.
@@ -440,6 +445,45 @@ describe("the scenarios the selection API unlocked", () => {
       "climbed past the first silence",
     ).toHaveLength(1);
     expect(rungs.at(-1)?.outcome, "kept going after the host went quiet").toBe("silent");
+  });
+
+  it("runs the ladder in the routine battery, immediately before the only other shape-selecting scenario", async () => {
+    // The ladder used to cost a separate five-minute round because it had to be
+    // the ONLY thing that touched the selection subsystem. The property that
+    // actually matters is narrower — it has to be the first `setSelectedShapes`
+    // — and adjacency to the only other caller gives exactly that.
+    installHost([makeSlide("s1")]);
+    expect(ROUTINE_SCENARIO_NAMES, "the ladder is still a separate run").toContain(
+      "which selection call wedges the host",
+    );
+    const order = [...ROUTINE_SCENARIO_NAMES];
+    expect(order.indexOf("edit the chart the user selected")).toBe(
+      order.indexOf("which selection call wedges the host") + 1,
+    );
+  });
+
+  it("does not spend a second budget re-learning what the ladder just found", async () => {
+    // Adjacency buys this too: on a wedged host the ladder has already produced
+    // a better answer than `editViaSelection` can, one line earlier in the same
+    // report. Paying a second budget for a worse version of it is the cost the
+    // old ordering could not avoid, because the two never ran together.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    faults.selectionWedgesHost = true;
+    _setReadbackTimeoutForTest(200);
+    let all: ScenarioResult[];
+    try {
+      all = await runSelfTest("probe");
+    } finally {
+      faults.selectionWedgesHost = false;
+      _setReadbackTimeoutForTest(90_000);
+    }
+    const ladder = byName(all)["which selection call wedges the host"];
+    const edit = byName(all)["edit the chart the user selected"];
+    expect(ladder.detail, "the ladder did not find the wedge, so this proves nothing").toContain("SILENT at");
+    expect(edit.skipped, "attributed a wedged host to the pane's own read").toBe(true);
+    expect(edit.detail, "did not say the ladder had already answered it").toMatch(/ladder just found/);
+    expect(edit.ms, "spent a budget on a question already answered").toBeLessThan(50);
   });
 
   it("says so plainly when nothing wedges at all", async () => {
