@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A hand crank, because the automatic triggers are not guaranteed to fire.
+  #
+  # On 2026-08-06 the `pull_request` event produced no CI run at all for PR
+  # #300 — CodeQL ran on the same event, seconds later, and this workflow was
+  # `active` and unmodified. Closing and reopening the PR did not fire it
+  # either. `test` is the only required check, so a missed trigger is not a
+  # nuisance: it blocks the merge with no way to ask for the check again, and
+  # the only remaining lever is to push a commit nobody wanted in order to
+  # provoke a `synchronize`.
+  workflow_dispatch:
 
 # Read-only by default; release-skill re-grants itself the contents: write it
 # needs for the rolling release.

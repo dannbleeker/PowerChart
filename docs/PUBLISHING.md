@@ -120,6 +120,18 @@ mean to test — PowerPoint caches the pane aggressively, and a whole session ca
 otherwise go into testing code the host never fetched. Hard-reload if it is
 older. Then tick **Verbose trace** in the Testing section and leave it on.
 
+**"Merged to main" and "on the site" are different facts, and the stamp is the
+only one that counts.** On 2026-08-06 they diverged for eight hours: four pull
+requests merged green while every Pages deploy was cancelled by
+`actions/deploy-pages@v4`'s ten-minute default timeout — GitHub was still
+reporting `deployment_in_progress` when the action killed it, and re-running
+restarted the same ten-minute race. The site went on serving `5d2c18a` and the
+stamp said so; nothing else did. The timeout is now half an hour and
+`workflows.test.ts` holds it there, but the habit is the real protection:
+**read the stamp, don't trust the merge.** A stamp that will not change after a
+hard reload means the deploy did not land — check the `Deploy Pages` run before
+spending a session on it.
+
 **If a run dies, the evidence is no longer lost.** The run log is downloadable
 only once a run ends, and two rounds were lost to runs that did not end: one
 wedged at 1819 seconds, one killed by PowerPoint's own *"Sorry, we ran into a
