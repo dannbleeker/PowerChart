@@ -42,6 +42,66 @@ it must be related from the presentation, not dropped at the root.
 a decision about precedence (deck style vs the user's own imported style) before
 any code.
 
+### Report what this project has measured to the office-js tracker
+
+**Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the
+owner's word**, because it goes out under his GitHub identity.
+
+Reading the tracker turned up five open defects sitting under code this add-in
+ships, and the weekly sweep (`scripts/office-js-watch.mjs`) now keeps that
+current. The traffic has been one-way. This project holds measurements of
+PowerPoint on the web that are **not in the tracker at all**, and a fixed host
+retires a workaround permanently where a guard only routes around it.
+
+**The three worth filing, in order of how much the evidence adds.**
+
+1. **A freshly-added slide's handle is good for exactly one `context.sync()`.**
+   Not "GeneralException happens sometimes" — the probe asks three questions that
+   isolate the cause. `shape-add-fresh-slide-proxy` (resolve and use inside one
+   sync) → **yes**. `shape-add-held-slide-proxy` (same slide, same id, proxy one
+   sync older) → **threw**, `GeneralException`,
+   `errorLocation: SlideCollection.getItem`. `shape-add-positional-slide-proxy`
+   (by index instead of id) → **yes**. So it is the *holding* that fails, not the
+   id, not the slide, and not `getItem`. Most reports of this reach the exception
+   and stop; the trio is the contribution.
+
+2. **A non-empty `setSelectedShapes([id])` wedges the whole selection
+   subsystem.** The call itself is taken — no error, no refusal, the sync
+   resolves — and every selection call after it goes silent: neither resolving
+   nor rejecting. Measured, twice: `getSelectedShapes` ran out a 90-second
+   budget, and the `setSelectedSlides` behind it did too. This is a **third**
+   claim, distinct from the two already filed — #3083 is `setSelectedShapes([])`
+   failing to clear, #3698 is the empty call never resolving plus the picture
+   interaction. The self-test's ladder produces the exact rung and the last one
+   the host answered, which is the shape of evidence those two threads lack.
+
+3. **Tag writes through a shape proxy several syncs old.**
+   `InvalidParam passed to GetItem(id)`, code 5010, **46 times in one 38-item
+   run**, leaving charts on the slide carrying no config. Related to #2903, so
+   this is a corroborating comment with a volume and a reproduction rather than
+   a new issue.
+
+**What makes this a day of work rather than an afternoon.** Microsoft's issue
+template wants a Script Lab repro, and an issue without one is triaged slowly or
+not at all. Each finding has to be reduced to a minimal snippet a stranger can
+paste — the probe is the wrong artifact to hand over, being a whole add-in.
+That reduction is the work; the findings themselves are already written down.
+
+**Attach the answer sheet.** `test/fixtures/host-answers-web.json` is a
+reproducible record with the build stamp and requirement sets in it, which is
+more than most reports carry. Check it before sending: every chart in this repo
+is invented dummy data, but a sheet carries slide ids and raw host error text
+from a real deck, and the owner should read what goes out under his name.
+
+**Do not open duplicates.** Search the tracker first — the sweep's
+`KNOWN_ISSUES` table is the list of what has already been read, and #2903,
+#3083 and #3698 are corroboration targets, not new issues.
+
+**Priority:** medium. High leverage and very slow: the issues this project
+depends on have sat open for one to nine years, so nothing here should be
+planned around a fix arriving. File it because a fixed host helps everyone
+writing a PowerPoint add-in, not because it unblocks us.
+
 ### Drive PowerPoint on the web from Playwright, so the manual run is a command
 
 **Researched:** 2026-08-02.
@@ -75,6 +135,14 @@ own CI does not run the suite. Headless would need Entra certificate-based auth
 (Playwright `clientCertificates`, ≥1.46 — Microsoft's Power Platform samples do
 exactly this), which needs a test user with CBA that the owner probably cannot
 self-serve on a corporate tenant.
+
+**It cannot be developed from an agent container** (checked 2026-08-06, not
+assumed). The environment's network policy answers 403 to `CONNECT` for
+`www.office.com` and `powerpoint.officeapps.live.com`; only
+`login.microsoftonline.com` resolves, which is useless on its own. So the local
+half is *local* in a stronger sense than this entry first implied — it needs the
+owner's own machine and his own signed-in browser, and no session working on
+this repo can build or run it end to end.
 
 **Priority:** medium — but only the local half. Run locally it turns the
 remaining manual items into `npm run test:e2e` and pays for itself without
@@ -118,6 +186,15 @@ and it still catches "the chart rendered to nothing".
 **Frame it as** "did our own output change", never as "does this match
 PowerPoint" — no FOSS renderer is close enough to PowerPoint for the second
 claim, and a gate that overclaims gets ignored.
+
+**The structural approach this entry recommends now has a working precedent.**
+`scripts/visible-charts.mjs` does exactly that for the SVG renderer — rasterise
+in a real browser, assert properties that hold anywhere (ink present, more than
+one colour, inside the frame, and at least half the coverage that kind normally
+has) rather than committing images. It runs in CI on every commit and needed no
+pinned container. Anything built here should copy that shape, and can reuse
+`judge()` wholesale; what it still needs is LibreOffice, which is the part that
+wants pinning.
 
 **Do not** use a LibreOffice round-trip as a PowerPoint proxy: converting the
 showcase deck back to `.pptx` silently deleted all 122 `ppt/tags/*.xml` parts,
