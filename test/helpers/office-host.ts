@@ -242,6 +242,24 @@ export const faults = {
    */
   newSlideResolvesTimes: null as number | null,
   /**
+   * A freshly-added slide's `slides.getItem(id)` handle is single-sync too.
+   *
+   * A FAULT, not the default, and the distinction is the point. Every
+   * held-handle failure PowerPoint web has reported names `errorLocation:
+   * SlideCollection.getItem`, so making this unconditional is tempting — and it
+   * would be the fake asserting something nobody has asked. All seventeen probe
+   * questions resolve slides through `getItemOrNullObject`; not one asks what
+   * `getItem` does to a new slide, in either direction. Turning it on
+   * unconditionally asserts TWO unasked things at once: harsher on holding, and
+   * kinder on a fresh use, because a spent handle's `load()` is a no-op here and
+   * its `.id` is a plain value, so a fresh `getItem` read is never refused.
+   *
+   * `shape-add-fresh-getitem-slide` asks the first half. Until a sheet answers
+   * it, this stays a knob a test can turn to demonstrate the hypothesis, and
+   * nothing in the tree depends on it being true.
+   */
+  newSlideGetItemExpires: false,
+  /**
    * The host takes a shape add and fails the sync that would land it.
    *
    * The other branch of the fork `expiringSlideHandle` documents: a host that
@@ -1286,7 +1304,29 @@ export function installHost(
       slides: {
         items: slides,
         load() {},
-        getItem: (id: string) => slides.find((s) => s.id === id)!,
+        /**
+         * By id — and single-sync when the slide was added in this session.
+         *
+         * This handed back the live slide, durable, and the comment beside it
+         * said "by id, the reference is always durable". That is the kindest
+         * the fake was at the one call a real host is harshest about: every
+         * held-handle failure PowerPoint web has reported names
+         * `errorLocation: SlideCollection.getItem`, and the last one listed the
+         * statement it refused — `var slide = slides.getItem(...)` — in the same
+         * batch as a `getItemOrNullObject` handle it was perfectly happy with.
+         *
+         * `getItemOrNullObject` and `getItemAt` have both been windowed for
+         * added slides for a while. `getItem` being the exception is backwards,
+         * and it is why `insertSceneIntoSlide` could hold one proxy for a whole
+         * multi-batch draw with nothing here to notice.
+         */
+        getItem: (id: string) => {
+          const found = slides.find((s) => s.id === id)!;
+          // Windowed only when ARMED — see `faults.newSlideGetItemExpires`.
+          return found && faults.newSlideGetItemExpires && addedSlideIds.has(id)
+            ? (expiringSlideHandle(found) as unknown as FakeSlide)
+            : found;
+        },
         // Real Office.js hands back a null OBJECT for an unknown id — it does
         // not throw and does not return undefined. A fake that returns
         // undefined would make `slide.isNullObject` a TypeError instead of the
@@ -1600,6 +1640,7 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
+  faults.newSlideGetItemExpires = false;
   faults.refuseShapeAdds = false;
   faults.wedgeAfterSyncs = null;
   // The live shape selection starts as installHost was told, and is mutated

@@ -630,10 +630,36 @@ export async function insertSceneIntoSlide(
   // an inserted chart and a re-editable one.
   const untagged: { slideId: string; tagData: string; shapeId?: string }[] = [];
   const inserted = await PowerPoint.run(async (context) => {
-    // The current slide already exists, so its proxy IS stable across syncs (its
-    // id round-trips) — hold one and reuse it. Only a freshly-added slide needs a
-    // per-batch fresh proxy; see SlideThunk. Resolving once also pins the target
-    // to the slide selected at the start, immune to any selection drift mid-draw.
+    // Held for the whole draw, and that is a KNOWN, UNFIXED risk when the
+    // caller names a freshly-added slide.
+    //
+    // A per-batch thunk was tried here and reverted, because on this path it is
+    // worse than what it fixes. `groupAndTagAll` re-reads the slide's shape
+    // collection through this same thunk one sync before it groups, and a shape
+    // proxy carries its parent's object path — so handing out a fresh handle
+    // per batch makes every re-read member an orphan by grouping time. Measured
+    // on a 40-shape chart inserted onto a freshly-added slide: the chart landed
+    // ungrouped with no CHART_PARTS_TAG, and the next edit left the old chart's
+    // 39 shapes orphaned under the new one — 41 shapes became 79. Nothing in
+    // the suite asserts grouping or parts on this path, which is how 2016 tests
+    // passed over it.
+    //
+    // What is actually true today, narrowly:
+    //
+    // - Only ONE caller passes a freshly-added slide's id: `chartIsVisible` in
+    //   the self-test. The demo path does not come through here at all — it
+    //   draws via `drawDemoItem` with its own positional thunk — and the other
+    //   six callers either pass no id or pass a slide the user was already
+    //   editing. An earlier comment here claimed the demo deck was a caller;
+    //   it never was.
+    // - `getTargetSlide` resolves by `slides.getItem(id)`. Whether THAT call
+    //   works on a freshly-added slide has never been asked of a host: all
+    //   seventeen probe questions resolve slides through `getItemOrNullObject`.
+    //   `shape-add-fresh-getitem-slide` asks it, and until a sheet answers,
+    //   both the risk here and the shape of any fix are unsettled.
+    //
+    // So: leave the hold, name the risk, and ask the question. Replacing a
+    // known-shaped risk with a measured regression is not a trade worth making.
     const slide = getTargetSlide(context, opts.slideId);
     slide.load("id");
     const getSlide: SlideThunk = () => slide;
