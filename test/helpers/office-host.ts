@@ -62,6 +62,14 @@ export const faults = {
    * the settle's, and nothing after.
    */
   refuseTagWrites: 0,
+  /**
+   * Refuse this many `shape.load("id,left,top")` calls outright.
+   *
+   * The one load that asks WHERE a chart landed. See the shape's `load` for
+   * the host transcript this models and why nothing else in the fake could
+   * reach the state it produces.
+   */
+  refuseIdLeftTopLoads: 0,
   hollowReads: 0,
   /** Answer HONESTLY for this many `items/id` reads, then short forever. */
   hollowReadsAfter: null as number | null,
@@ -559,7 +567,27 @@ export function makeShape(
     syncCreated: trips.syncs,
     // A created shape's id exists only on the host: the renderer must load()
     // it back before it can write one down (see the parts tag).
-    load() {
+    load(props?: string) {
+      // The host refusing to say WHERE a chart landed — `groupAndTagAll`'s
+      // last-ditch "reading back where the charts landed", and only that,
+      // which is why the fault is keyed on the property set it asks for.
+      //
+      // Recorded on PowerPoint on the web, 2026-08-06, in the run that failed
+      // `same scale across the deck`:
+      //
+      //   error  reading back where the charts landed
+      //   InvalidParam passed to GetItem(id) | code=5010
+      //   errorLocation: ShapeCollection.getItem
+      //   statement: var shape = shapes.getItem(...); shape.load(["id","left","top"]);
+      //
+      // It matters because it is what leaves a chart DRAWN and nameless: no
+      // group, no tag, and no id to settle one onto later. Nothing in the fake
+      // could produce that state, so the hole it falls through in
+      // `updateChartsInSlides` was unreachable from CI.
+      if (faults.refuseIdLeftTopLoads > 0 && props === "id,left,top") {
+        faults.refuseIdLeftTopLoads--;
+        throw new Error("InvalidParam passed to GetItem(id) | code=5010");
+      }
       // Taken and never answered when the shape was created in THIS batch —
       // see `faults.noIdInCreatingSync`. The load is queued like any other;
       // nothing comes back, so the property stays unreadable.
@@ -1786,6 +1814,7 @@ export function installHost(
   faults.strictGroup = false;
   faults.strictTags = false;
   faults.refuseTagWrites = 0;
+  faults.refuseIdLeftTopLoads = 0;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;
   faults.hollowReadsAfter = null;

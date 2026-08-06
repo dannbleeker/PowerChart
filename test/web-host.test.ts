@@ -25,6 +25,7 @@ import {
   CHART_TAG,
   CHART_PARTS_TAG,
   _setBatchTimeoutForTest,
+  targetWithNoTagResult,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -869,5 +870,63 @@ describe("the fake host models Office.js strictness, not convenience", () => {
         /not available|PropertyNotLoaded/i,
       );
     });
+  });
+});
+
+describe("a chart the update could not name afterwards", () => {
+  /**
+   * The state a real PowerPoint produced on 2026-08-06, and the one the settle
+   * pass was silently never asked about.
+   *
+   * `same scale across the deck` reported "3 of 8 charts carry the shared
+   * scale" and the run log carried FIVE `tagging failed — charts are not
+   * re-editable until repaired` events and not a single `settled the config tag
+   * the drawing context could not write`. That trace is unconditional whenever
+   * `settleUntaggedCharts` is handed anything, so its absence is proof the
+   * settle was never invoked — not proof it failed. The two look identical from
+   * a deck and want completely different fixes.
+   *
+   * It reaches the update through a hole four host failures wide: grouping
+   * refused, tagging refused, the id read-back refused, and the shape
+   * unreadable without it. Driving all four end-to-end through the fake is
+   * possible but tells you less than asking the rule directly.
+   */
+  const old = {
+    slideId: "s1",
+    shapeId: "shape-25",
+    left: 60,
+    top: 90,
+    origin: { left: 60, top: 90, anchorLeft: 60, anchorTop: 90 },
+  };
+
+  it("marks a chart that DREW but could not be named as un-re-editable", () => {
+    // The whole fix. Bare, this returned `old` untouched, `lost` stayed
+    // undefined, and the `no-config` filter that feeds the settle matched
+    // nothing.
+    const back = targetWithNoTagResult(old, { drew: true, wrecked: false });
+    expect(back.lost, "a drawn, untagged, unnameable chart came back looking fine").toBe("no-config");
+  });
+
+  it("says no-config, not unknown-shape — the chart is on the slide", () => {
+    // `unknown-shape` is what the pane turns into "your chart is gone". This
+    // chart is emphatically not gone; it just cannot be re-opened, and telling
+    // the user otherwise sends them looking for something that is in front of
+    // them.
+    const back = targetWithNoTagResult(old, { drew: true, wrecked: true });
+    expect(back.lost).toBe("no-config");
+  });
+
+  it("still reports a chart wrecked BEFORE it drew as unknown-shape", () => {
+    // The pre-existing rule, kept: the delete committed and nothing replaced
+    // it, so the old shapeId names something deleted.
+    expect(targetWithNoTagResult(old, { drew: false, wrecked: true }).lost).toBe("unknown-shape");
+  });
+
+  it("leaves a chart the stop caught before the delete completely alone", () => {
+    // Its shapes are still there and its target is still true. Marking it would
+    // be a false alarm, and an existing test caught a version that marked both.
+    const back = targetWithNoTagResult(old, { drew: false, wrecked: false });
+    expect(back.lost).toBeUndefined();
+    expect(back).toEqual(old);
   });
 });

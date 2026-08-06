@@ -628,7 +628,7 @@ export async function insertSceneIntoSlide(
   // drawing context could not write is settled and tagged from a fresh one.
   // See `settleAndTagChart`: on PowerPoint web this is the difference between
   // an inserted chart and a re-editable one.
-  const untagged: { slideId: string; tagData: string; shapeId?: string }[] = [];
+  const untagged: { key: string; slideId: string; tagData: string; shapeId?: string }[] = [];
   const inserted = await PowerPoint.run(async (context) => {
     // Held for the whole draw, and that is a KNOWN, UNFIXED risk when the
     // caller names a freshly-added slide.
@@ -705,7 +705,7 @@ export async function insertSceneIntoSlide(
     // chart, and better than an EditTarget naming a slide we cannot name.
     const slideId = loadedValue(() => slide.id);
     if (!t || typeof slideId !== "string") return null;
-    if (!tagged?.tagged && opts.tagData) untagged.push({ slideId, tagData: opts.tagData, shapeId: t.id });
+    if (!tagged?.tagged && opts.tagData) untagged.push({ key: t.id, slideId, tagData: opts.tagData, shapeId: t.id });
     return {
       slideId,
       shapeId: t.id,
@@ -739,6 +739,40 @@ export async function updateChartInSlide(
 ): Promise<EditTarget | null> {
   const [next] = await updateChartsInSlides([{ scene, target, opts }]);
   return next ?? null;
+}
+
+/**
+ * What an update hands back for a chart whose group-and-tag step produced no
+ * target at all — three different situations that look identical from here.
+ *
+ * Extracted because getting one of the three wrong is invisible in a green
+ * suite and expensive on a real host, and because the state that produces it
+ * needs four simultaneous host failures to reproduce end-to-end. The rule is
+ * pure; it should be checkable without a PowerPoint.
+ *
+ * - **Drew, then lost its identity.** `groupAndTagAll` could not group it,
+ *   could not tag it, and could not even read an id back — a real PowerPoint
+ *   did all three in one scenario on 2026-08-06, ending `reading back where the
+ *   charts landed | InvalidParam passed to GetItem(id)`. The chart is on the
+ *   slide and carries no config, so it is `no-config`: THERE, but not
+ *   re-openable. This case used to return the target bare, and that hole is why
+ *   the settle pass never ran on that host — `lost` stayed undefined, the
+ *   `no-config` filter matched nothing, and `settleUntaggedCharts` returned
+ *   before it could even trace. Five "tagging failed" events in one run and not
+ *   one settle attempt, which from outside looked exactly like a settle that
+ *   had tried and failed. Two entirely different bugs; only one was real.
+ * - **Wrecked before it drew.** A stop broke in after the delete committed, so
+ *   the shapes are gone and the old `shapeId` names something deleted:
+ *   `unknown-shape`. Returning it bare was the original trap — the pane kept it
+ *   as the live edit target, printed "Done." in green, and the next push
+ *   resolved a dead id and told the user their chart was gone.
+ * - **Neither.** A stop broke in BEFORE the delete committed. The chart still
+ *   has its shapes and its old target is still true, so it comes back untouched.
+ */
+export function targetWithNoTagResult(old: EditTarget, o: { drew: boolean; wrecked: boolean }): EditTarget {
+  if (o.wrecked && !o.drew) return { ...old, lost: "unknown-shape" };
+  if (o.drew) return { ...old, lost: "no-config" };
+  return old;
 }
 
 /**
@@ -957,7 +991,17 @@ export async function updateChartsInSlides(
   // context could not write, settled and tagged from a fresh one afterwards.
   // This is the path `same scale across the deck` drives, and the one that
   // reported "3 of 8 charts carry the shared scale" on a real host.
-  const untagged: { slideId: string; tagData: string; shapeId?: string }[] = [];
+  const untagged: { key: string; slideId: string; tagData: string; shapeId?: string }[] = [];
+  /**
+   * Charts that reached the slide and came back with NO tagged target.
+   *
+   * Their `shapeId` is the caller's old one, naming a shape this call deleted,
+   * so the settle must not be handed it — `settleAndTagChart` would resolve a
+   * dead id and give up without ever trying the collection it could still have
+   * searched. Tracked by index because that is the only thing left that
+   * identifies them.
+   */
+  const untargeted = new Set<number>();
   const updated = await PowerPoint.run(async (context) => {
     // 1. Resolve every old shape — one sync for all of them.
     //
@@ -1194,7 +1238,11 @@ export async function updateChartsInSlides(
       // `wrecked` is what keeps this honest. A chart the stop broke out BEFORE
       // still has its shapes and its target; only one whose delete committed has
       // lost them. An existing test caught a version of this that marked both.
-      if (!t) return wrecked.has(i) && !placed.has(i) ? { ...it.target, lost: "unknown-shape" as const } : it.target;
+      if (!t) {
+        const back = targetWithNoTagResult(it.target, { drew: placed.has(i), wrecked: wrecked.has(i) });
+        if (back.lost === "no-config") untargeted.add(i);
+        return back;
+      }
       // The origin this pass actually rendered at, paired with where the tagged
       // shape landed — the same (origin, anchor) contract groupAndTagAll wrote to
       // the tag, so the caller's in-memory target and the on-slide tag agree.
@@ -1221,15 +1269,27 @@ export async function updateChartsInSlides(
   // Outside the run, for the reason the insert path is: the context that could
   // not write the tag cannot write it now either.
   const wanted = updated
-    .map((t, i) => ({ t, tagData: items[i]?.opts?.tagData }))
+    .map((t, i) => ({ t, i, tagData: items[i]?.opts?.tagData }))
     .filter(({ t, tagData }) => t.lost === "no-config" && tagData);
-  for (const { t, tagData } of wanted) untagged.push({ slideId: t.slideId, tagData: tagData!, shapeId: t.shapeId });
+  for (const { t, i, tagData } of wanted)
+    untagged.push({
+      key: String(i),
+      slideId: t.slideId,
+      tagData: tagData!,
+      // Omitted for a chart whose new shapes were never read back: its
+      // `shapeId` names the shape THIS call deleted. Handing that to the settle
+      // buys a guaranteed failure on a dead id in place of the collection
+      // search that is the only thing left with a chance.
+      shapeId: untargeted.has(i) ? undefined : t.shapeId,
+    });
   if (!untagged.length) return updated;
   const settledIds = await settleUntaggedCharts(untagged);
-  // Per chart, by shape id: a run where one settle landed and another did not
-  // must not report both as re-editable, and the pane reads `lost` per target.
-  return updated.map((t) =>
-    t.lost === "no-config" && settledIds.has(t.shapeId) ? (({ lost: _lost, ...ok }) => ok)(t) : t,
+  // Per chart, by INDEX: a run where one settle landed and another did not must
+  // not report both as re-editable, and the pane reads `lost` per target. Shape
+  // id cannot do this job — the charts that most need the settle are exactly
+  // the ones with no id to be keyed by.
+  return updated.map((t, i) =>
+    t.lost === "no-config" && settledIds.has(String(i)) ? (({ lost: _lost, ...ok }) => ok)(t) : t,
   );
 }
 
@@ -2310,11 +2370,16 @@ async function settleAndTagChart(slideId: string, tagData: string, shapeId?: str
  * run log it shares with the drawing.
  */
 async function settleUntaggedCharts(
-  pending: { slideId: string; tagData: string; shapeId?: string }[],
+  pending: { key: string; slideId: string; tagData: string; shapeId?: string }[],
 ): Promise<Set<string>> {
   const settled = new Set<string>();
   if (!pending.length) return settled;
-  for (const p of pending) if (await settleAndTagChart(p.slideId, p.tagData, p.shapeId)) settled.add(p.shapeId ?? "");
+  // Keyed by the CALLER's own key, not by `shapeId`. A chart whose new shapes
+  // could not be read back has no shape id to be keyed by — `shapeId` is
+  // legitimately undefined there — and keying on it collapsed every such chart
+  // into one bucket, so one settle landing would have cleared the `lost` marker
+  // off all of them.
+  for (const p of pending) if (await settleAndTagChart(p.slideId, p.tagData, p.shapeId)) settled.add(p.key);
   trace("group", "settled the config tag the drawing context could not write", {
     charts: pending.length,
     settled: settled.size,
