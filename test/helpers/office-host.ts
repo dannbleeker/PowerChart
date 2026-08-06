@@ -46,6 +46,22 @@ export const faults = {
   faultShapeGetCount: false,
   strictGroup: false,
   strictTags: false,
+  /**
+   * Refuse this many `tags.add` calls outright, however fresh the proxy.
+   *
+   * `strictTags` models the stale-proxy refusal, which `settleAndTagChart`
+   * exists to survive: it opens a fresh context, resolves the shape by id in
+   * the batch that writes, and the fake honours that. A real PowerPoint on the
+   * web did not. A round on 2026-08-06 came back with four charts redrawn to a
+   * new scale, ungrouped and carrying no config at all — after the settle pass
+   * had had its turn — and `same scale across the deck` reported "4 of 8" with
+   * no cause attached, because nothing modelled a host on which the second
+   * chance also fails.
+   *
+   * Counted down per call so a test can refuse the drawing context's write and
+   * the settle's, and nothing after.
+   */
+  refuseTagWrites: 0,
   hollowReads: 0,
   /** Answer HONESTLY for this many `items/id` reads, then short forever. */
   hollowReadsAfter: null as number | null,
@@ -599,6 +615,10 @@ export function makeShape(
         if (faults.strictTags && trips.syncs > shape.syncCreated + 1) {
           throw new Error("InvalidParam passed to GetItem(id) | code=5010");
         }
+        if (faults.refuseTagWrites > 0) {
+          faults.refuseTagWrites--;
+          throw new Error("InvalidParam passed to GetItem(id) | code=5010");
+        }
         tagStore.set(k, v);
       },
       getItemOrNullObject: (k: string) =>
@@ -733,6 +753,18 @@ function freshHandle(shape: FakeShape): FakeShape {
         return {
           add: (k: string, v: string) => {
             if (faults.strictTags && trips.syncs > own + 1) {
+              throw new Error("InvalidParam passed to GetItem(id) | code=5010");
+            }
+            // Here too, and the reason is the warning this file already gives
+            // about `hollowNameReads`: a fault armed on one of two identical
+            // writers is a fault that half-fires. This is the writer the
+            // SETTLE pass uses — it re-resolves the shape to get a fresh
+            // handle — so a fault that skipped it could only ever refuse the
+            // drawing context's write, which `settleAndTagChart` then repairs.
+            // A host on which the second chance also fails is the one the
+            // 2026-08-06 round found, and it was unreachable from here.
+            if (faults.refuseTagWrites > 0) {
+              faults.refuseTagWrites--;
               throw new Error("InvalidParam passed to GetItem(id) | code=5010");
             }
             target.tagStore.set(k, v);
@@ -1753,6 +1785,7 @@ export function installHost(
   stallSyncOn.clear();
   faults.strictGroup = false;
   faults.strictTags = false;
+  faults.refuseTagWrites = 0;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;
   faults.hollowReadsAfter = null;

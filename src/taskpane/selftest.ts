@@ -314,18 +314,77 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
     .map(Number)
     .filter((v) => Number.isFinite(v));
   if (!values.length) return { ok: false, skipped: true, detail: "probe charts carry no numbers to scale" };
-  const max = Math.max(...values);
+  // ABOVE the tallest bar in the deck, not level with it.
+  //
+  // `Math.max(...values)` is the ceiling these charts are ALREADY drawn at:
+  // every probe chart is the same `sampleConfig("clustered")`, whose axis tops
+  // out at its own largest value. Writing that back as `scale.max` therefore
+  // produced a config that rendered to the byte-identical scene, and a deck
+  // saved out of a real PowerPoint proved it — a rescaled chart and an
+  // untouched copy of it had the same bar geometry to the EMU. The scenario is
+  // named for a deck-wide rescale and was measuring a deck-wide RE-TAG: it
+  // could only ever catch a config that failed to round-trip, never a host
+  // that took the config and redrew the old picture.
+  //
+  // Headroom fixes that at the source. Every bar has to shrink to fit a
+  // ceiling nothing in the data reaches.
+  const HEADROOM = 1.5;
+  const max = Math.round(Math.max(...values) * HEADROOM);
+  // And prove the ceiling bites, rather than trusting the arithmetic above to
+  // stay true. The no-op survived for as long as it did because nothing ever
+  // checked that the new config DREW anything different; a future sample whose
+  // data reaches this ceiling would put the scenario straight back to
+  // measuring nothing, silently, and the next person would find out from a
+  // saved deck the way this one was found.
+  const wasInk = barInk(buildChart(charts[0].cfg));
+  const nowInk = barInk(buildChart({ ...charts[0].cfg, scale: { max } }));
+  if (wasInk > 0 && nowInk === wasInk)
+    return {
+      ok: false,
+      detail: `scale.max=${max} redraws the chart identically — the rescale would prove nothing about the host`,
+    };
+  // What the UPDATE said, kept rather than dropped on the floor.
+  //
+  // `updateChartInSlide` already reports a chart it redrew and could not tag
+  // (`lost: "no-config"`) and one whose new shape it never got an id for
+  // (`"unknown-shape"`). This scenario threw the return value away and then
+  // re-counted the deck, so its verdict — "4 of 8 charts carry the shared
+  // scale" — named a number and no cause, and the deck it produced took a
+  // session to read afterwards. The renderer knew which four and why while it
+  // was happening.
+  const lost: Record<string, number> = {};
   for (const c of charts) {
     const next: ChartConfig = { ...c.cfg, scale: { max } };
-    await updateChartInSlide(buildChart(next), c.target, { tagData: JSON.stringify(next) });
+    const back = await updateChartInSlide(buildChart(next), c.target, { tagData: JSON.stringify(next) });
+    const why = back === null ? "chart-gone" : back.lost;
+    if (why) lost[why] = (lost[why] ?? 0) + 1;
   }
   const { found: after } = await probeCharts(prefix);
   const scaled = after.filter((c) => c.cfg.scale?.max === max).length;
+  const shrunk = wasInk > 0 ? `, bars redraw at ${Math.round((nowInk / wasInk) * 100)}% of their height` : "";
+  const why = Object.entries(lost)
+    .map(([k, n]) => `${n}×${k}`)
+    .join(", ");
   return {
     ok: scaled === charts.length && after.length === charts.length,
-    detail: `${scaled} of ${charts.length} charts carry the shared scale; ${after.length} still re-editable`,
+    detail:
+      `${scaled} of ${charts.length} charts carry the shared scale (max=${max}${shrunk}); ` +
+      `${after.length} still re-editable${why ? `; the update reported ${why}` : ""}`,
   };
 };
+
+/**
+ * Total height of a scene's bars — the one number a rescale has to move.
+ *
+ * Summed rather than taken off the tallest bar, because a chart that honours a
+ * new ceiling for one series and ignores it for another is still drawn wrong,
+ * and a single-bar reading would call that fixed.
+ */
+function barInk(scene: Scene): number {
+  let total = 0;
+  for (const n of scene.nodes) if (n.kind === "rect" && n.name?.startsWith("seg-")) total += n.h;
+  return total;
+}
 
 /**
  * Turning a degraded picture back into native shapes.

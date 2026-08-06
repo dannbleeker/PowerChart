@@ -1177,7 +1177,31 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   } finally {
     // The scratch slides go back whatever happened. A diagnostic that litters
     // the user's deck is one they will stop running.
-    for (const id of scratchIds) await deleteSlideById(id).catch(() => false);
+    //
+    // And it SAYS how that went, because for as long as it did not, this
+    // failing was something the owner discovered by opening a deck. One run
+    // left 21 blank slides behind — a previous one, fourteen — and the sheet
+    // that run produced recorded neither. `deleteSlideById` already answers
+    // honestly (it re-reads the deck rather than trusting a queued delete);
+    // the boolean was simply thrown away here.
+    //
+    // Filed as an answer rather than a trace line so it travels the same road
+    // as every other fact about this host: into the sheet, through the diff,
+    // and against the fake — which returns every slide it is given, so a host
+    // that does not diverges and is reported without anyone remembering to
+    // look.
+    const cleanupStarted = Date.now();
+    let returned = 0;
+    for (const id of scratchIds) if (await deleteSlideById(id).catch(() => false)) returned++;
+    const left = scratchIds.length - returned;
+    answers.push({
+      id: SCRATCH_CLEANUP_ID,
+      question: "Does the host give back the scratch slides this probe added?",
+      answer: !scratchIds.length ? "none-added" : !left ? "all" : returned ? "some" : "none",
+      ms: Date.now() - cleanupStarted,
+      detail: `${returned} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}`,
+    });
+    trace("probe", "gave the scratch slides back", { returned, left });
   }
   return { kind: "powerchart-host-answers", source, build, requirementSets: requirementSets(), answers };
 }
@@ -1225,7 +1249,19 @@ async function ask(
  * know about it would report its answer as an id nobody recognises.
  */
 const withFollows = (p: Probe): string[] => [p.id, ...(p.follow ? withFollows(p.follow.probe) : [])];
-export const PROBE_IDS: readonly string[] = PROBES.flatMap(withFollows);
+
+/**
+ * The cleanup's own row in the sheet.
+ *
+ * Not a `Probe` — it has no question to put and no scratch slide to put it on,
+ * because it IS what happens to the scratch slides. It is still a fact about
+ * this host, it still has a fake answer to diverge from, and the sheet is the
+ * only place anyone will read it. So it is listed here by hand rather than
+ * derived, and the two lists below are where it joins the invariant.
+ */
+export const SCRATCH_CLEANUP_ID = "scratch-slides-returned";
+
+export const PROBE_IDS: readonly string[] = [...PROBES.flatMap(withFollows), SCRATCH_CLEANUP_ID];
 
 /**
  * The questions EVERY run puts, whatever the host says.
@@ -1236,7 +1272,7 @@ export const PROBE_IDS: readonly string[] = PROBES.flatMap(withFollows);
  * appears in every sheet, and no sheet ever carries an id outside `PROBE_IDS`.
  * A single count could not express either.
  */
-export const ALWAYS_ASKED_IDS: readonly string[] = PROBES.map((p) => p.id);
+export const ALWAYS_ASKED_IDS: readonly string[] = [...PROBES.map((p) => p.id), SCRATCH_CLEANUP_ID];
 
 /**
  * What a probe run FOUND, in one line, on screen.
