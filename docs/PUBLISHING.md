@@ -58,8 +58,14 @@ domain serves the project site from its **root**, the bundle base is `/`
    `manifest-prod.xml` / `manifest-excel-prod.xml` (committed; `--check` mode
    gates staleness in `ci.yml`; regenerated + attached to releases in
    `release.yml`). Both GUIDs (`b7f6d3a2…`, `c8a7e4b3…`) preserved; 0 localhost
-   URLs survive. (`office-addin-manifest validate` couldn't run in the sandbox
-   — no network for the install — so validate once locally when convenient.)
+   URLs survive. **Validated in CI** by the `manifest` job, which runs
+   Microsoft's own `office-addin-manifest validate` over all four manifests. Its
+   own job rather than part of `test`, because the validator calls a Microsoft
+   service: `test` is the only check the branch ruleset requires, so an outage
+   there must not be able to block every merge in the repo. The manifest is the
+   one artifact CI could otherwise not judge — a broken one passes every test
+   here and fails when you sideload it, which is the slowest feedback loop this
+   project has.
 5. **[agent/owner] Smoke-test the deployment**: after the first Pages run,
    `curl -sI https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html`
    → 200, and the icons under `/assets/icon-*.png`. Load the demo gallery URL
@@ -334,6 +340,16 @@ run log's `slide size` line records the value *and which rung produced it*;
 4. Elements (harvey ball, table with a total row) and Agenda insert.
 5. Excel: select a range → Generate → paste JSON into PowerPoint pane →
    Import → chart matches.
+
+Four questions come from the **office-js issue tracker** rather than from
+something this project measured: `picture-then-shape-read` (office-js#5022, a
+`context.sync()` that runs indefinitely after an image is inserted — the shape
+`drawDemoItem` takes for a degraded chart), `group-of-existing-shape-readable`
+(#5849, `Shape.group` throwing — how `countGroupChildrenPage` reads every chart
+it checks), `slide-layout-readable` (#3826) and `layouts-readable` (#4906,
+#2328, reported only on decks built from a **custom template**, which is what the
+owner's are). All four are open upstream, all four sit under code this add-in
+ships, and none of them can be pinned on this host without asking.
 
 Some questions now ask their **own follow-up**, in the same run. When an answer
 admits two readings that lead opposite ways, the probe puts the partner question
