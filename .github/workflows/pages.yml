@@ -44,3 +44,27 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # Half an hour, against the action's default of ten minutes.
+          #
+          # The default is what broke this site for a whole afternoon, and the
+          # logs say so plainly. On 2026-08-06 six consecutive deployments of a
+          # 250 KB artifact were accepted by GitHub, reported
+          # `deployment_in_progress` on every one of ~120 status polls, and were
+          # then KILLED by this action's own timeout:
+          #
+          #     Current status: deployment_in_progress   ×120, ten minutes
+          #     ##[error]Timeout reached, aborting!
+          #     Canceling Pages deployment...
+          #
+          # That last line is the part that matters. The action does not merely
+          # stop waiting — it CANCELS the deployment GitHub was still working
+          # on. So a Pages backend running slower than usual does not cost you a
+          # slow deploy, it costs you every deploy, and re-running restarts the
+          # same ten-minute race from zero. Five re-runs, five cancellations.
+          #
+          # Nothing here was at fault: `build` succeeded every time in about
+          # seven seconds, and the artifact is a quarter of a megabyte. The only
+          # dial this repo owns is how long it is willing to wait, and ten
+          # minutes was a bet that Pages is always fast.
+          timeout: 1800000

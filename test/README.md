@@ -149,6 +149,17 @@ so a re-fetch anywhere healed a stale proxy held anywhere — and that one
 kindness is why a whole class of stale-proxy bug could only be found by a human
 running the add-in in a real PowerPoint. Do not "simplify" it back.
 
+## The CI configuration is code too
+
+`workflows.test.ts` reads `.github/workflows/` and pins the few settings this
+repo has had to learn the hard way. It exists because nothing else in the suite
+looks at those files, so every default in them stays unexamined until it costs
+something — and on 2026-08-06 one did: `actions/deploy-pages@v4`'s ten-minute
+default timeout cancelled six consecutive Pages deployments while GitHub was
+still reporting `deployment_in_progress`, and the live site served an
+eight-hour-old build through four merged pull requests. Add a case here when a
+workflow default turns out to have been a bet.
+
 ## Lockstep-gated files — do not rename
 
 These enforce the feature-set lockstep (see `CONTRIBUTING.md`) and are referenced
