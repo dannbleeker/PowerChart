@@ -35,6 +35,20 @@ const BROWSER_CANDIDATES = [
   "/usr/bin/google-chrome",
 ].filter(Boolean);
 
+/**
+ * A browser path, or undefined to let playwright-core find its own.
+ *
+ * Undefined is the CI answer, not a fallback: `playwright-core install chromium`
+ * puts the binary under its own registry (`~/.cache/ms-playwright/...`), which
+ * no fixed path here would ever match, and passing a wrong `executablePath` is
+ * how this gate would have failed on its first run. The candidates exist for the
+ * environments that pre-install a browser somewhere known and set no env var.
+ *
+ * Never a skip either way. If neither a candidate nor the registry has one,
+ * `chromium.launch()` throws and says so — a visual gate that quietly does
+ * nothing when it cannot find a browser is worse than no gate, because CI stays
+ * green and nobody knows the check stopped running.
+ */
 function findBrowser() {
   for (const path of BROWSER_CANDIDATES) {
     try {
@@ -44,13 +58,7 @@ function findBrowser() {
       /* next */
     }
   }
-  // Loudly, never a skip. A visual gate that quietly does nothing when it cannot
-  // find a browser is worse than no gate: CI stays green and nobody knows the
-  // check stopped running.
-  throw new Error(
-    `no Chromium found. Tried:\n  ${BROWSER_CANDIDATES.join("\n  ")}\n` +
-      `Set PLAYWRIGHT_CHROMIUM to a Chromium/Chrome binary.`,
-  );
+  return undefined;
 }
 
 /** The floor below which nothing is drawn at all, whatever the chart. */
@@ -147,7 +155,8 @@ async function main() {
   const update = process.argv.includes("--update");
   const coverage = update ? {} : JSON.parse(readFileSync(COVERAGE_FILE, "utf8"));
   const size = { w: 720, h: 460 };
-  const browser = await chromium.launch({ executablePath: findBrowser() });
+  const found = findBrowser();
+  const browser = await chromium.launch(found ? { executablePath: found } : {});
   const page = await browser.newPage({ viewport: { width: size.w, height: size.h } });
   const results = [];
   const failing = [];
