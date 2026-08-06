@@ -2796,8 +2796,17 @@ describe("reading a demo deck back and repairing it", () => {
     );
     installHost([makeSlide("s1")]);
     faults.deckInsertNeverAnswers = true;
-    _setBatchTimeoutForTest(40);
-    _setDeckInsertPerSlideForTest(40);
+    // Generous on purpose, and this number is a FLOOR rather than a tuned
+    // value. The insert's deadline fires either way — `deckInsertNeverAnswers`
+    // hangs the sync forever — so nothing is weakened by giving it room. What a
+    // tight budget did instead was fire during the round trip BEFORE the
+    // insert, the one that reads the last slide's id to append rather than
+    // front the deck: then the insert never ran, nothing landed, and the test
+    // failed claiming work had been thrown away. At 40ms that lost a CI run and
+    // reproduced locally 2 times in 5 while the machine was busy, and not at
+    // all when it was idle — the signature of a race, not of a regression.
+    _setBatchTimeoutForTest(500);
+    _setDeckInsertPerSlideForTest(500);
     try {
       const landed = await insertSlidesFromPptx(built.base64, 1);
       expect(landed, "threw away a slide the host had already added").toBe(1);
