@@ -160,51 +160,48 @@ wedge is in PowerPoint rather than in how it is called. A Playwright click on
 the **canvas** is a real click and might dodge it entirely — the one thing worth
 trying first if this is ever built.
 
-### A golden-image gate on the generated deck
-
-**Researched:** 2026-08-02 (measured against `examples/showcase.pptx`).
-
-The schema half of this shipped — `scripts/validate-ooxml.mjs` gates CI, and
-`verify-deck.mjs` gained the duplicate-`cNvPr`-id check that neither tool had.
-What is left is the visual half.
-
-LibreOffice headless renders the deck to PDF in 7 s and to 122 PNGs in 17.6 s,
-and — the part that makes a gate possible at all — the output is **byte-identical
-across fresh profiles**, so it can be compared by hash rather than by a fuzzy
-pixel diff. Its usual PPTX weak spots do not apply here: this generator emits no
-gradients, no pattern fills, no `normAutofit` and no effects, which is every
-category where LibreOffice is known to diverge.
-
-**What it needs first:** a pinned container. The deck asks for Segoe UI and
-Calibri, neither present in CI, so every render is a substituted render —
-self-consistent, but different from a laptop that has the real fonts, and
-different again after a LibreOffice minor bump. Without pinning, the baseline
-churns and the gate gets switched off. Consider asserting structure (page count,
-no all-white page) rather than hashes: version-tolerant, no committed baselines,
-and it still catches "the chart rendered to nothing".
-
-**Frame it as** "did our own output change", never as "does this match
-PowerPoint" — no FOSS renderer is close enough to PowerPoint for the second
-claim, and a gate that overclaims gets ignored.
-
-**The structural approach this entry recommends now has a working precedent.**
-`scripts/visible-charts.mjs` does exactly that for the SVG renderer — rasterise
-in a real browser, assert properties that hold anywhere (ink present, more than
-one colour, inside the frame, and at least half the coverage that kind normally
-has) rather than committing images. It runs in CI on every commit and needed no
-pinned container. Anything built here should copy that shape, and can reuse
-`judge()` wholesale; what it still needs is LibreOffice, which is the part that
-wants pinning.
-
-**Do not** use a LibreOffice round-trip as a PowerPoint proxy: converting the
-showcase deck back to `.pptx` silently deleted all 122 `ppt/tags/*.xml` parts,
-leaving 121 charts non-re-editable. Anything learned that way is a fact about
-LibreOffice.
-
-**Priority:** low. The cheap, deterministic half is already in CI; this one buys
-less and costs a container to maintain.
-
 ## 2. Rejected or already covered (do not re-propose)
+
+- **A golden-image gate on the generated deck** — rejected as a hash comparison,
+  and largely covered as a structural one. The cheap half of this DID ship:
+  `validate-ooxml.mjs` checks the deck against the OOXML grammar and
+  `verify-deck.mjs` gained a duplicate-`cNvPr`-id check that neither tool had,
+  both gating CI on `examples/showcase.pptx`.
+
+  The measurements that made the visual half look feasible are real and still
+  true (2026-08-02): LibreOffice headless renders the deck to PDF in 7s and to
+  122 PNGs in 17.6s, byte-identically across fresh profiles, and its usual PPTX
+  weak spots do not apply — this generator emits no gradients, no pattern fills,
+  no `normAutofit`, no effects. What kills it is the **pinned container**. The
+  deck asks for Segoe UI and Calibri, neither present in CI, so every render is a
+  substituted render: self-consistent, different from a laptop with the real
+  fonts, and different again after any LibreOffice minor bump. The baseline
+  churns, and a visual gate that cries wolf is one that gets switched off — the
+  failure this entry predicted about itself.
+
+  **The structural half is thin rather than missing.** All three renderers
+  consume the SAME scene graph, and `scripts/visible-charts.mjs` already proves
+  that scene rasterises to something visible (ink present, more than one colour,
+  inside the frame, at least half its usual coverage). A pptx-only invisibility
+  bug would have to originate in `pptx-paint.mjs`'s own mapping, which is
+  asserted per node at 100% statements / 88% branches, on top of `verify-deck`
+  auditing the bytes and `validate-ooxml` checking the grammar.
+
+  **Do not read this as "the pptx output is pixel-checked" — it is not.** The
+  headless pptx renderer is the one of the three with no look at its pixels, and
+  the residual gap is a composition bug that survives every node-level assertion.
+  That is a narrow target, not an empty one. If it is ever revisited, copy the
+  shape of `visible-charts.mjs` (assert properties that hold on any renderer, no
+  committed images) and reuse its `judge()` wholesale; the part that wants
+  pinning is LibreOffice, not the method.
+
+  Two traps worth keeping whatever is built. Frame any such gate as "did our own
+  output change", never "does this match PowerPoint" — no FOSS renderer is close
+  enough for the second claim, and a gate that overclaims gets ignored. And
+  **never** use a LibreOffice round-trip as a PowerPoint proxy: converting the
+  showcase deck back to `.pptx` silently deleted all 122 `ppt/tags/*.xml` parts,
+  leaving 121 charts non-re-editable. Anything learned that way is a fact about
+  LibreOffice.
 
 - **An image / icon node** — not reachable in the live add-in, so nothing can
   be built on it. PowerPoint's `ShapeCollection` exposes exactly
