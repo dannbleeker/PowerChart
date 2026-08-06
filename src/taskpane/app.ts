@@ -41,9 +41,13 @@ import {
   isStopRequested,
   isStopped,
   slideSize,
+  deckSlideIds,
+  slideShots,
   type EditTarget,
   type InsertPhase,
   type ReconcileOutcome,
+  type SlideInventory,
+  type SlideShot,
   type UpdateWreckage,
 } from "../render/powerpoint";
 import { placeChart, type Placement } from "../core/placement";
@@ -2341,6 +2345,28 @@ interface RunLogFile {
    * not.
    */
   refusedShapeHalf?: { slides: number; why: string };
+  /**
+   * What the deck actually held when the round finished, and what it looked like.
+   *
+   * This is the upload that used to be a person's job. Every diagnosis in this
+   * project's history has needed three things — the run log, the deck, and a
+   * screenshot — and the owner has been saving and sending all three by hand,
+   * once per round, for as long as there have been rounds. Two of the three are
+   * things the add-in can read for itself: `SlideInventory` is every shape on
+   * every slide (names, ids, positions), and `SlideShot` is the host's own
+   * rendering of the slides the round touched.
+   *
+   * `newSlides` is the id diff across the round, which is what makes the
+   * pictures worth having: a picture of every slide in a 40-slide deck is
+   * megabytes of things nobody changed.
+   */
+  deck?: {
+    inventory: SlideInventory[];
+    /** What the scan could not see — the same honesty every other scan reader owes. */
+    gap?: string;
+    newSlides: string[];
+    shots: SlideShot[];
+  };
 }
 
 interface RunLog {
@@ -2754,6 +2780,49 @@ function boundedRaster(scene: Scene): Promise<string | undefined> {
     rasterizeScene(scene),
     new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 8_000)),
   ]).catch(() => undefined);
+}
+
+/**
+ * How many of a round's new slides get a picture.
+ *
+ * A cap rather than a guess about size: at 480px a slide PNG is on the order of
+ * tens of kilobytes, and a round that added forty slides would otherwise turn a
+ * readable JSON into something nobody opens. Twelve covers every round this
+ * project has produced, and `slideShots` reports the ones it skipped rather than
+ * dropping them, so a bigger round says so instead of looking smaller.
+ */
+const MAX_SHOTS = 12;
+
+/**
+ * What landed on the slides — the two uploads a person has been making by hand.
+ *
+ * Best-effort by construction, and that is deliberate: this runs at the END of a
+ * round, on a host that has just been through the self-test and may well be the
+ * reason the round is worth reading. A failure here must cost the pictures and
+ * nothing else — the verdicts are already in `lastRunLog`, and losing them to a
+ * diagnostic's own tail would be the worst trade in the file.
+ */
+async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<RunLogFile["deck"] | undefined> {
+  try {
+    const scan = await listChartsInDeck({ withInventory: true });
+    const idsAfter = await deckSlideIds();
+    // Only slides that were not there before. Without the diff a picture of a
+    // forty-slide deck is mostly slides nobody touched — and the id list is the
+    // stronger question about a deck than any handle, which is why the diff is
+    // taken from ids rather than from counts.
+    const known = new Set(idsBefore ?? []);
+    const newSlides = idsBefore && idsAfter ? idsAfter.filter((id) => !known.has(id)) : (idsAfter ?? []);
+    const shots = await slideShots(newSlides, { max: MAX_SHOTS });
+    return {
+      inventory: scan.inventory ?? [],
+      ...(scanIsComplete(scan) ? {} : { gap: scanGap(scan) }),
+      newSlides,
+      shots,
+    };
+  } catch (err) {
+    trace("pane", "could not collect deck evidence", { error: errorText(err) });
+    return undefined;
+  }
 }
 
 /** True when the add-in is running inside PowerPoint on the web. */
@@ -3195,6 +3264,12 @@ function wireInsert() {
         ($("demo-log") as HTMLButtonElement).disabled = true;
         beginCrashLog({ build: buildStamp, host, label: "the whole round" });
         const traceFrom = traceMark();
+        // Read BEFORE the probe, because the probe adds scratch slides too — and
+        // a slide the diagnostic created is exactly one worth a picture. An
+        // unreadable deck here is not a reason to stop: it costs the id diff and
+        // nothing else, and the round says so rather than reporting an empty
+        // diff as "the round added nothing".
+        const idsBefore = await deckSlideIds();
         note("Round 1 of 2 — asking this PowerPoint what it actually does…", "busy");
         const sheet = await runHostProbes(host, buildStamp);
         // Written into the bundle before the long half starts. A self-test that
@@ -3211,12 +3286,19 @@ function wireInsert() {
         setSelfTestRasterizer(boundedRaster);
         setSelfTestPrompt((message) => note(message, "busy"));
         const results = await runSelfTest(undefined, scenarioPick?.value || undefined);
+        // Gathered after the scenarios, before the file is written: this is the
+        // upload that used to be the owner's job — save the deck, screenshot the
+        // pane, attach both. It is a best-effort tail, so a host too far gone to
+        // describe its own deck still gets the verdicts out.
+        note("Collecting what landed on the slides…", "busy");
+        const deck = await collectDeckEvidence(idsBefore);
         lastRunLog = {
           build: buildStamp,
           host,
           runs: [],
           hostAnswers: sheet,
           selftest: results,
+          ...(deck ? { deck } : {}),
           ...(tracing() ? { trace: traceLog(traceFrom) } : {}),
         };
         ($("demo-log") as HTMLButtonElement).disabled = false;

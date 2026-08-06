@@ -480,6 +480,15 @@ time cannot make the second run's slides look like duplicates of the first's —
 and a slide you added yourself, or copied from a demo slide with PowerPoint's
 Duplicate Slide, is reported and left alone.
 
+**Run the whole round** does all of it on one click — the host probe, then the
+self-test, then a look at what actually landed — and saves the lot as one JSON
+file. That file is the whole upload. It carries every shape on every slide (name,
+id, position), which is what questions like *did the old chart's shapes get left
+behind* are really about, and it carries the host's own picture of each slide the
+round added, so there is nothing to screenshot. If the host will not describe its
+deck, the round still writes the file: you lose the pictures and keep the
+verdicts.
+
 **Verbose trace** records every step the add-in takes — each drawing batch, each
 slide the host loses, each call it stops waiting for, each repair action, and
 every pane action including ordinary inserts and updates. It is on by default

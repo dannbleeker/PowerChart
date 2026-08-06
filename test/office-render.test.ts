@@ -86,6 +86,7 @@ import {
   trips,
   unansweredNullChecks,
   untracked,
+  lastShapeLoadSpec,
   type FakeShape,
   type FakeSlide,
 } from "./helpers/office-host";
@@ -1082,6 +1083,47 @@ describe("selection readers", () => {
 });
 
 describe("listChartsInDeck", () => {
+  /**
+   * The shapes that are NOT charts.
+   *
+   * The scan has always held them and always dropped them, which is the right
+   * trade for rescaling and repair and the wrong one for a diagnostic: "41
+   * shapes became 79", "the chart landed ungrouped", "the slide still holds what
+   * was there before" are all questions about the shapes a chart scan discards,
+   * and answering them has meant asking the owner to save the deck and upload
+   * it.
+   */
+  it("hands back every shape on every slide, when asked", async () => {
+    const s1 = makeSlide("s1");
+    const s2 = makeSlide("s2");
+    installHost([s1, s2]);
+    const loose = s2.shapes.addGeometricShape("rectangle", { left: 3, top: 4, width: 1, height: 1 });
+    loose.name = "not a chart";
+
+    const scan = await listChartsInDeck({ withInventory: true });
+    const second = scan.inventory?.find((s) => s.slideId === "s2");
+    expect(second?.index, "the inventory has to say where in the deck a slide is").toBe(1);
+    expect(second?.shapes.map((s) => s.name)).toContain("not a chart");
+    expect(second?.shapes[0].left).toBe(3);
+    // Charts are unaffected — the inventory rides along, it does not replace.
+    expect(scan.charts).toHaveLength(0);
+  });
+
+  it("costs nothing on the paths that did not ask for it", async () => {
+    // `items/name` is a per-shape string deck-wide, and the callers that scan
+    // every slide on a live web host — Same Scale, the repair pass, five
+    // self-test scenarios — are exactly the ones that must not pay for a
+    // diagnostic. The default has to be the old request, unchanged.
+    const s1 = makeSlide("s1");
+    installHost([s1]);
+    s1.shapes.addGeometricShape("rectangle", { left: 0, top: 0, width: 1, height: 1 });
+    const scan = await listChartsInDeck();
+    expect(scan.inventory, "the inventory came back unasked").toBeUndefined();
+    expect(lastShapeLoadSpec(), "the default scan started asking for shape names").toBe(
+      "items/id,items/left,items/top",
+    );
+  });
+
   it("finds tagged charts across all slides", async () => {
     const s1 = makeSlide("s1");
     const s2 = makeSlide("s2");
