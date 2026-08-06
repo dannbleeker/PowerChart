@@ -23,7 +23,15 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
-      - run: npm run coverage
+      # One run, two jobs: the coverage gate and the test-count high-water mark.
+      # A second `vitest run` purely to count would double the slowest step in
+      # CI, and a gate that expensive is one somebody eventually deletes.
+      - run: npm run coverage -- --reporter=default --reporter=json --outputFile=/tmp/results.json
+      # `CLAUDE.md` records a reorg that deleted 43 tests while the suite stayed
+      # green, because nothing compared the count before against after. The rule
+      # written down in response is enforced by memory; this enforces it.
+      - name: The suite has not silently shrunk
+        run: node scripts/test-count.mjs /tmp/results.json
       - run: npx vite build
       # The committed production manifests must match a fresh generation from
       # the dev manifests (same lockstep idea as the showcase deck).

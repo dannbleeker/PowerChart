@@ -1,0 +1,111 @@
+name: quality sweep
+
+# Two checks that are too slow or too noisy to gate a PR, and too valuable to
+# never run. Same slot as the office-js sweep, same rule: report only what a
+# human would act on.
+#
+# Neither is a required check, deliberately. A mutation run takes minutes and a
+# flake hunt runs the suite several times — put either in front of every merge
+# and the first bad week gets it switched off.
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # Does the suite pass for the same reasons every time?
+  #
+  # A real one was found by hand this year: a 40ms budget racing a round trip,
+  # green on an idle machine and red under load, misdiagnosed first as a stale
+  # build artifact. Nothing in CI would ever have caught it — a flaky test that
+  # passes on the run you are looking at is indistinguishable from a good one.
+  flake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:lib
+      # Under load on purpose. An idle runner reproduces almost nothing: the
+      # bug this exists for only appears when a timer competes with real work,
+      # which is the condition a person's laptop is always in and a quiet CI box
+      # never is.
+      - name: Run the suite three times under load
+        run: |
+          for i in 1 2 3 4; do yes > /dev/null & done
+          fail=0
+          for run in 1 2 3; do
+            echo "::group::run $run"
+            if npx vitest run --reporter=json --outputFile="/tmp/run-$run.json"; then
+              echo "run $run: green"
+            else
+              echo "run $run: RED"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          kill %1 %2 %3 %4 2>/dev/null || true
+          node scripts/flaky.mjs /tmp/run-1.json /tmp/run-2.json /tmp/run-3.json > /tmp/flaky.md
+          code=$?
+          cat /tmp/flaky.md
+          # 3 means "a test disagreed with itself", which is the finding. A plain
+          # red suite across ALL runs is a broken build, not a flake, and must
+          # not be filed as one.
+          if [ "$code" = "3" ]; then echo "found=yes" >> "$GITHUB_OUTPUT"; fi
+          if [ "$code" != "0" ] && [ "$code" != "3" ]; then exit "$code"; fi
+          if [ "$fail" = "1" ] && [ "$code" = "0" ]; then
+            echo "every run was red in the same way — that is a broken build, not a flake" >&2
+            exit 1
+          fi
+        id: hunt
+      - name: File or update the flake report
+        if: steps.hunt.outputs.found == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="flake watch: tests that disagree with themselves"
+          existing=$(gh issue list --state all --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file /tmp/flaky.md
+            gh issue reopen "$existing" || true
+          else
+            gh issue create --title "$title" --body-file /tmp/flaky.md
+          fi
+
+  # Which assertions are decorative?
+  #
+  # "A regression test must be proven to fail without its fix" is this repo's
+  # flagship rule and is enforced entirely by whoever remembers to stash the
+  # source file. In one session alone, three guards turned out to pass against
+  # the code they were written to catch — each found only because somebody did
+  # the check by hand. Nobody has ever done it for the other two thousand.
+  #
+  # Scoped to `src/core`: the pure engine is the product, its tests are fast and
+  # deterministic, and a mutation run over the Office.js renderer would mostly
+  # measure the fake.
+  mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # A devDependency rather than `npx --package`: Stryker resolves
+      # `typescript` from the project it is mutating, and an npx-isolated copy
+      # cannot see it — the first attempt failed exactly there.
+      - run: npx stryker run
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          if-no-files-found: ignore

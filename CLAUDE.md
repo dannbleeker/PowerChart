@@ -105,10 +105,23 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 - **Test files are named by topic, never by increment** (`test/README.md` has
   the map). No `batch-N` / `bug-hunt-N` / `coverage-*` grab-bags: a test
   belongs with the thing it tests, not with the reason it was written.
+- **Three sweeps run on a schedule, none of them gating a PR** — the office-js
+  tracker (above), plus `.github/workflows/quality-sweep.yml`: a **flake hunt**
+  (the suite three times under CPU load, reporting any test that disagreed with
+  itself — `scripts/flaky.mjs` tells that apart from a suite that is red the
+  same way every time) and a **mutation run** over `src/core` (`npx stryker run`,
+  scoped by `vitest.mutation.config.ts`). Mutation is the rule below, automated:
+  it answers "which assertions are decorative" for the whole engine at once,
+  where the stash-and-re-run answers it for one. Not required checks on purpose —
+  minutes-long jobs in front of every merge get switched off after the first bad
+  week.
 - **When moving tests between files, pin the total first and check it after.**
   A reorg once silently deleted 43 tests — the suite still went green because
   the count was never compared. `npx vitest run | grep "Tests "` before and
-  after; if the number moved and you did not add or remove a case, stop.
+  after; if the number moved and you did not add or remove a case, stop. CI now
+  holds the floor: `scripts/test-count.mjs` fails when the total drops below the
+  recorded mark, which rises on its own. A deliberate drop is re-recorded with
+  `--update`, so it lands in the diff where a reviewer sees it.
 - **Releases**: merges to main refresh the rolling `skill-latest` prerelease.
   Versioned releases via the Release workflow's manual dispatch (the git proxy
   rejects tag pushes — dispatch creates the tag server-side).

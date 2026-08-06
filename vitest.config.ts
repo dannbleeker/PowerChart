@@ -4,7 +4,10 @@ export default defineConfig({
   test: {
     // Exclude in-repo agent worktrees (.claude/worktrees/**) so vitest doesn't
     // discover duplicate test files copied into each worktree.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**"],
+    // `.stryker-tmp` is a full copy of the repo, tests and all. A leftover
+    // sandbox would make `npm test` run every file twice — once real, once from
+    // a stale copy — and report failures against source nobody edited.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**", "**/.stryker-tmp/**"],
     coverage: {
       provider: "v8",
       // src plus the one skill script that is pure and importable: pptx-paint.mjs
@@ -31,6 +34,19 @@ export default defineConfig({
         branches: 75,
         // The pure engine is the product — hold it to a high bar.
         "src/core/**": { statements: 95, branches: 88 },
+        // 80 is currently 0.06 points under the measured 80.06, which is a
+        // trap rather than a guard: the next PR to add an uncovered branch
+        // fails here for a reason unrelated to its change, and the obvious fix
+        // under deadline is to lower the number.
+        //
+        // Do not lower it. The slack is all in ONE file — `host-probe.ts` sits
+        // at 65% branches while `powerpoint.ts` is at 80.16 — and it is there
+        // for a legible reason: every probe carries a defensive branch for a
+        // host that answers oddly, and reaching each one needs its own bespoke
+        // fault. Writing twenty tests to hit twenty catch blocks would be
+        // coverage-chasing, which `test/README.md` warns against by name. Buy
+        // headroom with a test worth having or leave it; do not buy it by
+        // moving the floor.
         "src/render/**": { statements: 85, branches: 80 },
         // The task pane is driven end-to-end (pane-state.test.ts + the host
         // command handlers in pane-host-actions.test.ts, which drive Insert /
