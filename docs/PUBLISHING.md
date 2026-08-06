@@ -66,6 +66,15 @@ domain serves the project site from its **root**, the bundle base is `/`
    one artifact CI could otherwise not judge — a broken one passes every test
    here and fails when you sideload it, which is the slowest feedback loop this
    project has.
+
+   > **It found something on its first run.** All four manifests declared
+   > `<Version>0.1.0</Version>`, and Microsoft's validator rejects that outright:
+   > *"Manifest Version Too Low: The manifest has unsupported version number
+   > less than 1.0."* An error, present since the day the files were written,
+   > passing every test in this repo because nothing had ever looked. Bumped to
+   > `1.0.0.0` — deliberately independent of the npm package version, which is
+   > free to stay below 1.0. `test/manifest.test.ts` pins the rule offline so it
+   > cannot come back when the validation service is unreachable.
 5. **[agent/owner] Smoke-test the deployment**: after the first Pages run,
    `curl -sI https://powerchart.struktureretsundfornuft.dk/src/taskpane/taskpane.html`
    → 200, and the icons under `/assets/icon-*.png`. Load the demo gallery URL
