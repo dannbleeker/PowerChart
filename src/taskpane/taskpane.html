@@ -236,6 +236,35 @@
       <div class="tab-panel" data-panel="automation">
         <section class="section">
           <h2>Testing</h2>
+          <!-- The live log comes FIRST, above the controls that start a run.
+               Ordering inside the box (newest at the top) fixes where the last
+               line is; this fixes whether the box is on screen at all. A crash
+               leaves you whatever pixels were showing — no scrolling, no
+               clicking, often a dialog over half the pane — and a log sitting
+               under nine buttons and a paragraph is a log you have to scroll to
+               before you can photograph it. The buttons are pressed once, at
+               the start; the log is read at the moment there is no second
+               chance. -->
+          <div class="steps-head">
+            <span id="demo-steps-label">Live steps — newest first</span>
+            <button id="demo-steps-copy" class="linkish" title="Copy every line below to the clipboard">Copy</button>
+            <button id="demo-steps-clear" class="linkish" title="Empty the list">Clear</button>
+          </div>
+          <pre
+            id="demo-steps"
+            class="steps"
+            tabindex="0"
+            aria-live="polite"
+            aria-label="Live steps of the run in progress"
+          ></pre>
+          <p class="hint">
+            Each step appears here as it happens, newest first, and the list sits above the buttons — a crash leaves you
+            whatever was on screen, so the newest line has to be somewhere fixed and somewhere visible. The same steps
+            are also written to browser storage as they happen, so a run that never ENDS — and so never produces a
+            downloadable run log — can still be saved afterwards: reopen the pane and press
+            <em>Download the crashed run</em>. Copying or screenshotting this list before reloading is still the fastest
+            route, and it is the only one that catches the very last moments.
+          </p>
           <p class="hint">
             Drop a demo of every chart kind plus key features and elements onto fresh slides (appended at the end of the
             deck) for quick visual testing. Each chart stays editable — delete the slides when you're done.
@@ -299,25 +328,6 @@
               ><input type="checkbox" id="demo-trace" checked /> Verbose trace</label
             >
           </div>
-          <div class="steps-head">
-            <span id="demo-steps-label">Live steps — newest first</span>
-            <button id="demo-steps-copy" class="linkish" title="Copy every line below to the clipboard">Copy</button>
-            <button id="demo-steps-clear" class="linkish" title="Empty the list">Clear</button>
-          </div>
-          <pre
-            id="demo-steps"
-            class="steps"
-            tabindex="0"
-            aria-live="polite"
-            aria-label="Live steps of the run in progress"
-          ></pre>
-          <p class="hint">
-            Each step appears here as it happens, newest first, because a crash leaves you whatever was on screen and
-            the newest line has to be somewhere fixed. The same steps are also written to browser storage as they
-            happen, so a run that never ENDS — and so never produces a downloadable run log — can still be saved
-            afterwards: reopen the pane and press <em>Download the crashed run</em>. Copying or screenshotting this list
-            before reloading is still the fastest route, and it is the only one that catches the very last moments.
-          </p>
           <p class="hint">
             Every run ends by re-reading its slides once the host has settled: duplicate slides a stalled retry left
             behind are deleted, NOT COMPLETE banners are cleared from charts that are in fact complete, and charts that

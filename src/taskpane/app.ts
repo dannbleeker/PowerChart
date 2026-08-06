@@ -3089,7 +3089,7 @@ function wireInsert() {
     // ("Sorry, we ran into a problem", at 108s). What is on screen survives
     // both, and can be copied or photographed before the reload.
     const steps = $("demo-steps");
-    /** Newest last, capped — a pane is not a heap, and the tail is what is read. */
+    /** Newest FIRST, capped — a pane is not a heap, and the head is what is read. */
     const STEP_LINES = 300;
     const lines: string[] = [];
     // NEWEST FIRST, and that ordering is the whole point rather than a
@@ -3113,11 +3113,16 @@ function wireInsert() {
      * Put the step list where it can be seen, once, as a run starts.
      *
      * Newest-first fixes WHERE in the box the last line is; it does nothing
-     * about whether the box itself is on screen. The Testing section sits at
-     * the bottom of a long pane, so a run started from a scrolled-up view puts
-     * every step somewhere a screenshot will not reach. Once per run, on the
-     * click that starts it — never while the run is going, because a pane that
-     * moves under the cursor mid-run is its own problem.
+     * about whether the box itself is on screen. Two things now answer that.
+     * The list is the FIRST thing in the Testing section, above the buttons
+     * that start a run — a real-host round crashed with the log still under
+     * nine controls and a paragraph, which is a log you must scroll to before
+     * you can photograph it. And this scrolls the panel to it anyway, because
+     * markup order is not position: the Automation tab scrolls, and a run
+     * started after reading the JSON section below would otherwise begin with
+     * the box off the top. Once per run, on the click that starts it — never
+     * while the run is going, because a pane that moves under the cursor
+     * mid-run is its own problem.
      */
     const revealSteps = (): void => {
       try {
