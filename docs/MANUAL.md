@@ -569,18 +569,21 @@ a chart drawn in white, at zero size, or off the edge of the slide. It borrows
 a slide to do this and takes it away again. **Stopping part-way** confirms a
 stopped run adds nothing and leaves nothing behind claiming to be a chart.
 
-**Live steps** is the list under the buttons. Every step of a run appears there
-as it happens, **newest at the top** — which scenario started, which one
-finished and how, which slides were read back, and the phase of anything that
-went wrong.
+**Live steps** is the list at the top of the Testing section, above the
+buttons. Every step of a run appears there as it happens, **newest at the top**
+— which scenario started, which one finished and how, which slides were read
+back, and the phase of anything that went wrong.
 
-Newest-first is deliberate, and it is the opposite of how a log usually reads.
-When PowerPoint dies you get whatever pixels were on screen: no scrolling, no
-clicking, often a dialog over half the pane. A list that grows downwards puts
-the last thing that happened at the bottom of a small scrolled box, which is
-exactly where it cannot be relied on to be visible. Growing upwards puts it in
-a fixed place, one line under the header. The list is also scrolled into view
-once when a run starts, so it cannot begin somewhere off-screen.
+Both of those orderings are deliberate, and both are the opposite of how a log
+usually reads. When PowerPoint dies you get whatever pixels were on screen: no
+scrolling, no clicking, often a dialog over half the pane. A list that grows
+downwards puts the last thing that happened at the bottom of a small scrolled
+box, which is exactly where it cannot be relied on to be visible; growing
+upwards puts it in a fixed place, one line under the header. And a box sitting
+below nine controls and a paragraph is a box you have to scroll to before you
+can photograph it — which is why it now comes first, and the buttons that start
+a run come after it. The list is also scrolled into view once when a run
+starts, so it cannot begin somewhere off-screen.
 
 It is not a prettier version of the run log; it is the record that survives
 things the log does not. The log can only be downloaded once a run **ends**, and
