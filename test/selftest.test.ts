@@ -1120,8 +1120,7 @@ describe("the experiment that asks what makes a long run slow down", () => {
       // Two arms, two slides. Sharing one would make the second arm draw onto a
       // slide already holding the first arm's shapes, and a fat slide is a
       // fourth variable in an experiment built to have exactly one.
-      const named = (frag: string) =>
-        deckShapeNames().filter((names) => names.some((n) => n.includes(frag))).length;
+      const named = (frag: string) => deckShapeNames().filter((names) => names.some((n) => n.includes(frag))).length;
       expect(named("one-context")).toBe(1);
       expect(named("fresh-context")).toBe(1);
     } finally {
