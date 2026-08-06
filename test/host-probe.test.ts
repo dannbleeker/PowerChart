@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installHost, makeSlide, applyWebProfile, faults } from "./helpers/office-host";
-import { runHostProbes, PROBE_IDS, describeHostSheet, sheetNeedsAttention } from "../src/render/host-probe";
+import {
+  runHostProbes,
+  PROBE_IDS,
+  ALWAYS_ASKED_IDS,
+  describeHostSheet,
+  sheetNeedsAttention,
+} from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
 // copies of the same table is how a claim quietly stops matching its check.
@@ -41,7 +47,12 @@ describe("the fake host's answer sheet", () => {
   it("answers every question, and says what it claims", async () => {
     installHost([makeSlide("s1")]);
     const sheet = await sheetOf();
-    expect(Object.keys(sheet).sort()).toEqual([...PROBE_IDS].sort());
+    // Two-sided, because a follow-up is conditional and a single list cannot
+    // say both things. Every question a run ALWAYS puts is here, and nothing
+    // here is a question this build does not know how to ask — an id outside
+    // `PROBE_IDS` would be an answer the baseline could never account for.
+    expect(Object.keys(sheet).sort()).toEqual([...ALWAYS_ASKED_IDS].sort());
+    for (const id of Object.keys(sheet)) expect(PROBE_IDS, `${id} is not a question this build asks`).toContain(id);
     // Compared against the table the DIFF tool carries, so the two cannot
     // disagree about what the fake claims. The commentary on each answer lives
     // beside it in `scripts/host-diff.mjs`, together with what would be wrong
@@ -56,7 +67,7 @@ describe("the fake host's answer sheet", () => {
     expect(d.differ).toEqual([]);
     expect(d.onlyReal).toEqual([]);
     expect(d.onlyFake).toEqual([]);
-    expect(d.agree.length).toBe(PROBE_IDS.length);
+    expect(d.agree.length).toBe(ALWAYS_ASKED_IDS.length);
   });
 
   it("reports a disagreement, and a question one side was never asked", () => {
@@ -93,7 +104,7 @@ describe("the fake host's answer sheet", () => {
     installHost([makeSlide("s1")]);
     applyWebProfile();
     const sheet = await runHostProbes("fake-web-profile", "test");
-    expect(sheet.answers).toHaveLength(PROBE_IDS.length);
+    expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
     for (const a of sheet.answers) {
       expect(a.answer, `${a.id} gave no answer`).toBeTruthy();
       expect(a.question, `${a.id} lost its question`).toBeTruthy();
@@ -239,7 +250,7 @@ describe("the fake host's answer sheet", () => {
         new Promise<"never came back">((r) => setTimeout(() => r("never came back"), 800)),
       ]);
       expect(sheet, "the probe run never returned its answers").not.toBe("never came back");
-      expect(typeof sheet === "object" && sheet.answers).toHaveLength(PROBE_IDS.length);
+      expect(typeof sheet === "object" && sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
     } finally {
       faults.wedgeAfterSyncs = null;
       _setReadbackTimeoutForTest(90_000);
@@ -326,7 +337,7 @@ describe("the fake host's answer sheet", () => {
     faults.newSlideResolvesTimes = 1; // one lookup each: addScratchSlide verifies, the probe context fails
     try {
       const sheet = await runHostProbes("fake-loses-slides", "test");
-      expect(sheet.answers).toHaveLength(PROBE_IDS.length);
+      expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
       for (const a of sheet.answers) expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
     } finally {
       faults.newSlideResolvesTimes = null;
@@ -457,7 +468,7 @@ describe("a probe run that has lost its scratch slide", () => {
     faults.newSlideResolvesTimes = 1;
     try {
       const sheet = await runHostProbes("fake-loses-every-slide", "test");
-      expect(sheet.answers).toHaveLength(PROBE_IDS.length);
+      expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
       for (const a of sheet.answers) {
         expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
       }
@@ -482,7 +493,113 @@ describe("a probe run that has lost its scratch slide", () => {
         new Promise<"never came back">((r) => setTimeout(() => r("never came back"), 2000)),
       ]);
       expect(sheet, "the run hung on the slide add and produced no sheet").not.toBe("never came back");
-      expect(typeof sheet === "object" && sheet.answers).toHaveLength(PROBE_IDS.length);
+      expect(typeof sheet === "object" && sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setReadbackTimeoutForTest(90_000);
+    }
+  });
+});
+
+/**
+ * The partner question, asked in the same run.
+ *
+ * The repo's rule is "when two explanations fit the evidence, ask — do not
+ * reason". Following it has meant writing the partner question, waiting for the
+ * owner to run the probe again, and losing a session — twice, at a cost of two
+ * full sheets. The reasoning was never the expensive part; the round trip was.
+ */
+describe("questions that ask their own follow-up", () => {
+  const sheetRows = async () => (await runHostProbes("fake", "test")).answers;
+
+  it("asks it when the answer admits two readings, and says which answer caused it", async () => {
+    // `getItem` refusing a freshly-added slide has two readings that lead
+    // opposite ways: getItem cannot name a NEW slide (so the everyday insert
+    // path is fine and only one caller is at risk), or getItem is broken here
+    // (so the insert path is broken for everyone). A sheet cannot tell them
+    // apart; the pre-existing slide can.
+    installHost([makeSlide("s1")]);
+    faults.refuseGetItemOnNewSlide = true;
+    try {
+      const rows = await sheetRows();
+      const asked = rows.find((r) => r.id === "shape-add-fresh-getitem-slide")!;
+      const partner = rows.find((r) => r.id === "getitem-durable-slide");
+      expect(asked.answer, "the fault did not provoke the answer this pair is about").not.toBe("yes");
+      expect(partner, "the follow-up was never asked").toBeTruthy();
+      // The discriminating result: getItem works perfectly on a slide that was
+      // already in the deck, so the refusal is about the slide's newness.
+      expect(partner!.answer).toBe("yes");
+      expect(partner!.detail, "the sheet does not say the two rows are a pair").toContain(
+        'asked because shape-add-fresh-getitem-slide answered "threw"',
+      );
+    } finally {
+      faults.refuseGetItemOnNewSlide = false;
+    }
+  });
+
+  it("does not ask it when there is nothing to disambiguate", async () => {
+    // An unconditional partner is just another probe and belongs in the list.
+    // A follow-up earns its place by being worth asking only in the light of a
+    // particular answer — so on a host that answers plainly it must cost
+    // nothing at all.
+    installHost([makeSlide("s1")]);
+    const rows = await sheetRows();
+    expect(rows.find((r) => r.id === "shape-add-fresh-getitem-slide")!.answer).toBe("yes");
+    expect(
+      rows.some((r) => r.id === "getitem-durable-slide"),
+      "asked a follow-up nobody needed",
+    ).toBe(false);
+  });
+
+  it("does not follow up a question that was never put", async () => {
+    // `no-scratch-slide` is the probe's own vocabulary for "this never reached
+    // its question". A partner to that would be a second question about the
+    // probe's own setup, dressed as a fact about the host — precisely the
+    // confusion `NOT_ASKED` exists to prevent, and worse here because the
+    // follow-up's answer looks like a real finding in its own right.
+    installHost([makeSlide("s1")]);
+    faults.swallowAdds = 500;
+    try {
+      const rows = await sheetRows();
+      expect(rows.find((r) => r.id === "shape-add-fresh-getitem-slide")!.answer).toBe("no-scratch-slide");
+      expect(
+        rows.some((r) => r.id === "getitem-durable-slide"),
+        "followed up a question the host was never asked",
+      ).toBe(false);
+    } finally {
+      faults.swallowAdds = 0;
+    }
+  });
+
+  it("says it had no control rather than measuring a slide this run added", async () => {
+    // On a deck the run has built entirely there is no pre-existing slide, and
+    // the honest answer is that the control was unavailable. Falling back to a
+    // scratch slide would be the control measuring the very thing it exists to
+    // be compared against — the exact confusion the pair removes.
+    installHost([]);
+    faults.refuseGetItemOnNewSlide = true;
+    try {
+      const rows = await sheetRows();
+      expect(rows.find((r) => r.id === "getitem-durable-slide")?.answer).toBe("no-durable-slide");
+    } finally {
+      faults.refuseGetItemOnNewSlide = false;
+    }
+  });
+
+  it("still produces a sheet when the deck will not list itself at all", async () => {
+    // The control read happens before the first question, so an unbounded one
+    // took the whole run down with it — no sheet at all, which is the single
+    // failure mode this file exists to prevent. A control nobody can name costs
+    // the follow-up and nothing else.
+    installHost([makeSlide("s1")]);
+    const { _setReadbackTimeoutForTest } = await import("../src/render/powerpoint");
+    faults.wedgeAfterSyncs = 0;
+    _setReadbackTimeoutForTest(20);
+    try {
+      const ids = new Set((await sheetRows()).map((r) => r.id));
+      for (const id of ALWAYS_ASKED_IDS) {
+        expect(ids, `lost ${id} because the deck would not list itself`).toContain(id);
+      }
     } finally {
       faults.wedgeAfterSyncs = null;
       _setReadbackTimeoutForTest(90_000);
