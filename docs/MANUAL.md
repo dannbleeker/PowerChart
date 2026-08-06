@@ -493,7 +493,7 @@ every scenario needs to have probe charts to work on. A full round takes several
 minutes and leaves slides in the deck, so when you are chasing one failure, pick
 it — seconds instead of minutes, and far less to clean up afterwards.
 
-Two entries in that menu are **only** reachable that way.
+Three entries in that menu are **only** reachable that way.
 
 *Which selection call wedges the host* asks the host, one call at a time, which
 selection call it stops answering. It can only get a true answer on a host
@@ -510,6 +510,18 @@ out of a full run because it blocks on a person, and if nobody clicks it reports
 *skipped* rather than failing. It exists because asking Office.js to select a
 chart and clicking one yourself are not the same thing on PowerPoint on the web,
 and only the second one is what you actually do.
+
+*What makes a long run slow down* is a measurement, not a check. Long runs on
+PowerPoint on the web get slower and eventually stop answering, and three things
+could be causing it: the request context accumulating, the deck growing, or the
+browser tab simply having been open a while. An ordinary run varies all three at
+once, so no amount of reading a run log can separate them. This draws the same
+shapes onto two slides — one slide inside a single long-lived request context,
+the other with a fresh context per batch — and reports both timing curves. If
+only the long-context curve climbs, the context is the culprit and shorter
+contexts would fix it; if both climb together, the host itself is slowing and
+they would not. It takes a minute or so and leaves two slides of small
+rectangles behind. It reports *ok* only when neither curve climbs.
 
 **Run host self-test** runs the nine things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a

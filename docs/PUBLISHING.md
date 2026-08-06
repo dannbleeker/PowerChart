@@ -352,13 +352,14 @@ which in practice meant six separate sessions. They are now one button:
 | stop a run part-way | a stopped run adds nothing and leaves nothing behind claiming to be a chart |
 | the chart is actually visible | the host's own render changed where the chart was drawn — not just that shapes exist |
 
-**One more, and a full run deliberately leaves it out.** Pick **which selection
-call wedges the host** from the Scenario menu to run it:
+**Three more, and a full run deliberately leaves them out.** Pick them by name
+from the Scenario menu:
 
 | scenario | what it proves |
 | --- | --- |
 | which selection call wedges the host | *which* call stops the web host answering — the one measurement that settles it |
 | edit the chart YOU click | the pane's most-used read, driven by a real human click instead of a call that behaves differently |
+| what makes a long run slow down | whether a long run degrades because of the request CONTEXT, the DECK, or the TAB — the three every artefact so far confounds |
 
 It climbs a ladder from the least invasive selection call to the most — read the
 selection, `setSelectedSlides`, read, `setSelectedShapes([id])`, read,
@@ -373,6 +374,31 @@ because its answer is meaningful solely on a host nothing else has touched:
 earlier, so inside a full run this would have reported silence on its own first
 rung. (That was the first draft. A test caught it; a real host would have cost a
 round.)
+
+**What makes a long run slow down** is the newest, and it is the only one here
+that is purely a measurement. Every real-host artefact this project owns
+degrades — 496 seconds to reach scenario seven, a 38-item run whose later
+inserts cost multiples of its first, a tab PowerPoint eventually killed — and
+not one of them can say which of three things did it, because an ordinary run
+grows its deck, ages its tab and holds a request context open all at once.
+
+It draws the same shapes twice, onto a slide each: once inside ONE request
+context held open across every batch, once with a fresh context per batch.
+Separate slides on purpose, so neither arm draws onto a slide the other has
+already filled. Then it reads the two curves:
+
+- only the long-context curve climbs → **the context** is what degrades, and
+  shortening contexts is a fix we know how to write.
+- both climb together → **the host** is slowing as the deck grows or the tab
+  ages, and shortening contexts would not help.
+- neither climbs → the thing that kills a long run is not in this loop, which
+  rules out three suspects in one click.
+
+The verdict is a sentence, but the raw millisecond curves are in the detail and
+in the run log too — the threshold that turns them into a sentence is a judgement
+call, and the numbers are what someone can re-read when it turns out to be the
+wrong one. It costs about a minute and leaves two slides of small rectangles
+behind.
 
 It reports **ok** whatever it finds. It is an experiment, not an assertion — a
 host that answers every rung is a real result, and one worth knowing.

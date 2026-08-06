@@ -2913,6 +2913,134 @@ export async function withProbeContext<T>(
   );
 }
 
+/** One round of shape adds, and what it cost. */
+export interface ShapeRound {
+  /** 1-based, in the order the rounds were issued. */
+  round: number;
+  /** Wall-clock for this round's adds plus the sync that committed them. */
+  ms: number;
+  /** How many shapes the round queued. Constant by construction — carried so a reader need not assume. */
+  shapes: number;
+}
+
+/** What a timed series came back with, and why it stopped if it stopped early. */
+export interface ShapeRoundSeries {
+  rounds: ShapeRound[];
+  /** Set when fewer rounds came back than were asked for. */
+  cutShort?: string;
+}
+
+/**
+ * Add shapes to one slide in N timed rounds — either all inside ONE request
+ * context, or one context per round.
+ *
+ * This exists to answer a question three sessions of real-host artefacts could
+ * not settle by reasoning: a long run gets slower and eventually wedges, and at
+ * least three things could be causing it — the request context accumulating
+ * proxies, the DECK growing, or the tab simply having been alive a while. Every
+ * artefact this project owns is consistent with all three, because every one of
+ * them varies all three at once.
+ *
+ * Two series taken the same way, differing in exactly one thing, separate them.
+ * The comparison that matters is each series' own SLOPE, not the two levels:
+ * whichever arm runs second faces a bigger deck and an older tab, so the levels
+ * are not comparable and were never meant to be. Within an arm both confounds
+ * grow the same way, so a slope difference between the arms is attributable to
+ * the one thing that differs — how long a context lives.
+ *
+ * Deliberately plain rectangles rather than charts. The measurement should be
+ * "queue k shapes, sync", the operation every degraded run was doing when it
+ * degraded, with no fills, no groups and no tags to make the two arms differ in
+ * anything but context lifetime. Each shape is named, in both arms equally, so
+ * the deck the experiment leaves behind can be read afterwards.
+ *
+ * Partial results are the point: a series that wedges at round five returns the
+ * four rounds it has and says so. A curve with four points is a finding; an
+ * exception is not.
+ */
+export async function timeShapeRounds(
+  slideId: string,
+  opts: { rounds: number; perRound: number; oneContext: boolean; label: string; budgetMs?: number },
+): Promise<ShapeRoundSeries> {
+  const { rounds, perRound, oneContext, label } = opts;
+  const budgetMs = opts.budgetMs ?? READBACK_TIMEOUT_MS;
+  const out: ShapeRound[] = [];
+  let cutShort: string | undefined;
+  /**
+   * Queue one round's shapes.
+   *
+   * The slide is re-resolved every round even inside the long-lived context,
+   * because that is what production does now and what the host demands: only an
+   * id crosses a sync, never a handle. So the long arm is not a strawman — it is
+   * today's code with its context left open, which is precisely the difference
+   * under test.
+   */
+  const queueRound = (context: PowerPoint.RequestContext, round: number) => {
+    const slide = context.presentation.slides.getItemOrNullObject(slideId);
+    for (let i = 0; i < perRound; i++) {
+      const n = (round - 1) * perRound + i;
+      const shape = slide.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+        left: 20 + (n % 12) * 24,
+        top: 20 + Math.floor(n / 12) * 24,
+        width: 20,
+        height: 20,
+      });
+      shape.name = `${label} r${round} #${i}`;
+    }
+  };
+  if (oneContext) {
+    try {
+      // One deadline for the whole series, because the series IS one context —
+      // splitting it would end the context, which is the variable. Rounds land
+      // in `out` as they complete, so a deadline that fires still leaves every
+      // round that finished before it.
+      await boundedRun(
+        `timing ${rounds} shape rounds in one context`,
+        async (context) => {
+          for (let round = 1; round <= rounds; round++) {
+            if (isStopRequested()) {
+              cutShort = "the run was stopped";
+              return;
+            }
+            const t0 = Date.now();
+            queueRound(context, round);
+            await context.sync();
+            out.push({ round, ms: Date.now() - t0, shapes: perRound });
+          }
+        },
+        budgetMs * rounds,
+      );
+    } catch (err) {
+      cutShort = errorText(err);
+    }
+  } else {
+    for (let round = 1; round <= rounds; round++) {
+      if (isStopRequested()) {
+        cutShort = "the run was stopped";
+        break;
+      }
+      const t0 = Date.now();
+      try {
+        await boundedRun(
+          "timing one shape round in its own context",
+          async (context) => {
+            queueRound(context, round);
+            await context.sync();
+          },
+          budgetMs,
+        );
+      } catch (err) {
+        cutShort = errorText(err);
+        break;
+      }
+      out.push({ round, ms: Date.now() - t0, shapes: perRound });
+    }
+  }
+  if (!cutShort && out.length < rounds) cutShort = `only ${out.length} of ${rounds} rounds came back`;
+  trace("host", "timed shape rounds", { label, oneContext, got: out.length, of: rounds, cutShort });
+  return cutShort ? { rounds: out, cutShort } : { rounds: out };
+}
+
 /**
  * `PowerPoint.run`, with a deadline and a name.
  *
