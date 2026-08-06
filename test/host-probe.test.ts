@@ -29,6 +29,9 @@ import { FAKE_BASELINE, diffAnswers, answersOf } from "../scripts/host-diff.mjs"
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** The probe's own "this was never put" vocabulary — never a host answer. */
+const NOT_ASKED_WORDS = ["no-scratch-slide", "no-scratch-shape"];
+
 const sheetOf = async () => {
   const answers = await runHostProbes("fake", "test");
   return Object.fromEntries(answers.answers.map((a) => [a.id, a.answer]));
@@ -380,5 +383,109 @@ describe("what the pane says about a probe run", () => {
     };
     expect(sheetNeedsAttention(incomplete), "an incomplete sheet looked fine").toBe(true);
     expect(describeHostSheet(incomplete)).toContain("never put");
+  });
+});
+
+describe("a host that will not name a shape in the batch that made it", () => {
+  /**
+   * The five questions the 2026-08-05 sheet never put, and why.
+   *
+   * They are exactly the five that read an id back — `shape-resolve-held-slide-
+   * proxy`, `tags-add-same-key-twice`, `addgroup-returns-usable`,
+   * `group-reports-its-children`, `tag-on-group-survives` — and no others.
+   * Perfect correlation with `idsOf`, and no competing property explains it:
+   * batch count does not, since `shapes-items-count-honest` and
+   * `delete-then-lookup` span two batches each and were answered while three of
+   * the five span two and failed.
+   *
+   * The id load used to ride in the same sync as the add, to save a round trip.
+   * It now costs its own sync, and that is what makes these five answerable on
+   * a host like this.
+   */
+  it("still asks every question, and answers them as a healthy host would", async () => {
+    installHost([makeSlide("s1")]);
+    faults.noIdInCreatingSync = true;
+    // Both, because they are two halves of one behaviour: the load is not
+    // answered, AND an unanswered property is unreadable rather than quietly
+    // available. Without `strictShapeReads` the fake hands the id over anyway
+    // and the first half is inert — which is exactly how a guard comes to pass
+    // against the code it was written to falsify.
+    faults.strictShapeReads = true;
+    try {
+      const sheet = await runHostProbes("fake-cannot-name-new-shapes", "test");
+      const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+      // The property, not the whole sheet: every question was PUT. Demanding
+      // the healthy sheet would be wrong here — `strictShapeReads` legitimately
+      // changes what some questions answer, and a guard that could not tell a
+      // legitimate change from an unasked question is the confusion this file
+      // exists to prevent.
+      const neverPut = sheet.answers.filter((a) => a.answer === "no-scratch-shape").map((a) => a.id);
+      expect(neverPut, "these questions were never put — the ids came back unreadable").toEqual([]);
+      // And the five that read an id back reached their own vocabulary.
+      for (const id of [
+        "shape-resolve-held-slide-proxy",
+        "tags-add-same-key-twice",
+        "addgroup-returns-usable",
+        "group-reports-its-children",
+        "tag-on-group-survives",
+      ]) {
+        expect(NOT_ASKED_WORDS, `${id} did not get asked`).not.toContain(answers[id]);
+      }
+    } finally {
+      faults.noIdInCreatingSync = false;
+      faults.strictShapeReads = false;
+    }
+  });
+});
+
+describe("a probe run that has lost its scratch slide", () => {
+  /**
+   * Losing a slide must cost the questions it happened during, not the sheet.
+   *
+   * `scratchId` went null when a replacement also failed to resolve, and nothing
+   * set it back — so one bad moment recorded `no-scratch-slide` for every
+   * question after it, as though the host had been asked each one. That is the
+   * same failure this file's whole design is against, one level up: an answer
+   * that describes the run's own state rather than the host's.
+   */
+  it("takes another slide rather than writing off the rest of the sheet", async () => {
+    installHost([makeSlide("s1")]);
+    // Every new slide answers to its id exactly once: `addScratchSlide`'s own
+    // verify spends it, so every probe context then fails its liveness check
+    // and every replacement is written off immediately. The run should keep
+    // trying, and keep saying honestly that it could not get a slide.
+    faults.newSlideResolvesTimes = 1;
+    try {
+      const sheet = await runHostProbes("fake-loses-every-slide", "test");
+      expect(sheet.answers).toHaveLength(PROBE_IDS.length);
+      for (const a of sheet.answers) {
+        expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
+      }
+    } finally {
+      faults.newSlideResolvesTimes = null;
+    }
+  });
+
+  it("comes back at all when the host never answers the slide add", async () => {
+    // `addScratchSlide` used to wrap `slides.add()` in a raw `await
+    // context.sync()` — the only slide-add in the file without a deadline.
+    // office-js#1650 is explicit that the promise can hang while the slide
+    // lands, and a probe run that hangs there produces no sheet at all, which
+    // is the one thing this diagnostic must never do.
+    installHost([makeSlide("s1")]);
+    const { _setReadbackTimeoutForTest } = await import("../src/render/powerpoint");
+    _setReadbackTimeoutForTest(20);
+    faults.wedgeAfterSyncs = 1;
+    try {
+      const sheet = await Promise.race([
+        runHostProbes("fake-hangs-on-add", "test"),
+        new Promise<"never came back">((r) => setTimeout(() => r("never came back"), 2000)),
+      ]);
+      expect(sheet, "the run hung on the slide add and produced no sheet").not.toBe("never came back");
+      expect(typeof sheet === "object" && sheet.answers).toHaveLength(PROBE_IDS.length);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setReadbackTimeoutForTest(90_000);
+    }
   });
 });

@@ -4486,11 +4486,24 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
 export async function addScratchSlide(): Promise<string | null> {
   try {
     const before = await slideIds();
-    await PowerPoint.run(async (context) => {
-      const layoutId = await blankLayoutId(context);
-      context.presentation.slides.add(layoutId ? { layoutId } : undefined);
-      await context.sync();
-    });
+    // Bounded, and then ASKED — the same treatment the other three slide-adds
+    // in this file get, and the only one that was missing it.
+    //
+    // office-js#1650 verbatim: "the promise doesn't resolve, although the slide
+    // still gets added successfully". A raw `await context.sync()` here hangs
+    // `runHostProbes` forever on a host that does that, and the whole promise
+    // of the answer sheet is that it comes back from a host that is
+    // misbehaving. Nothing is lost by not waiting: the before/after id diff
+    // below is what names the slide, and it never trusted the promise anyway.
+    await withTimeoutOrVerify(
+      PowerPoint.run(async (context) => {
+        const layoutId = await blankLayoutId(context);
+        context.presentation.slides.add(layoutId ? { layoutId } : undefined);
+        await context.sync();
+      }),
+      readbackTimeoutMs(),
+      "adding a scratch slide",
+    );
     const after = await slideIds();
     // A host that will not list its slides cannot be diffed. Nothing was
     // necessarily lost — the add may well have landed — but nothing here can
