@@ -132,6 +132,13 @@ const host = vi.hoisted(() => ({
    * with the protection removed.
    */
   deckScanThrows: false,
+  deckSlideIdCalls: 0,
+  /** Slides the round is modelled as having added, seen by the second id read. */
+  roundAddsSlides: ["probe-a", "probe-b"] as string[],
+  /** Slide ids `deleteSlideById` was asked about, in order. */
+  deletedSlides: [] as string[],
+  /** Slide ids the host will refuse to delete — a refusal is not the same as a delete. */
+  refuseSlideDelete: [] as string[],
   reconcileOutcome: undefined as unknown,
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number; slideId?: string; pictureBase64?: string }[],
@@ -271,7 +278,14 @@ vi.mock("../src/render/powerpoint", () => ({
       ...(opts.withInventory ? { inventory: host.deckInventory } : {}),
     };
   }),
-  deckSlideIds: vi.fn(async () => host.deckSlideIds),
+  // The deck GROWS across a round, because that is the only thing the id diff
+  // is measuring. A double that answered the same list twice would make the
+  // diff empty and every assertion about it vacuous.
+  deckSlideIds: vi.fn(async () => {
+    const first = host.deckSlideIdCalls++ === 0;
+    if (!host.deckSlideIds) return undefined;
+    return first ? host.deckSlideIds : [...host.deckSlideIds, ...host.roundAddsSlides];
+  }),
   slideShots: vi.fn(async (ids: string[], opts: { max?: number } = {}) =>
     ids.map((slideId, i) => (i < (opts.max ?? 12) && host.canRaster ? { slideId, png: "UE5H" } : { slideId })),
   ),
@@ -365,7 +379,10 @@ vi.mock("../src/render/powerpoint", () => ({
   // out a scratch slide produces a complete sheet of `no-scratch-slide`, which
   // is exactly enough to test the bundling and nothing more.
   addScratchSlide: vi.fn(async () => null),
-  deleteSlideById: vi.fn(async () => true),
+  deleteSlideById: vi.fn(async (id: string) => {
+    host.deletedSlides.push(id);
+    return !host.refuseSlideDelete.includes(id);
+  }),
   isTimeout: vi.fn(() => false),
   requirementSets: vi.fn(() => ["1.1", "1.5"]),
   ScratchSlideUnavailable: class ScratchSlideUnavailable extends Error {},
@@ -405,6 +422,10 @@ async function bootHostPane() {
   host.deckSlideIds = undefined;
   host.canRaster = true;
   host.deckScanThrows = false;
+  host.deletedSlides = [];
+  host.deckSlideIdCalls = 0;
+  host.roundAddsSlides = ["probe-a", "probe-b"];
+  host.refuseSlideDelete = [];
   host.selectionCharts = [];
   host.loadSelectionResult = null;
   host.gate = null;
@@ -1776,6 +1797,55 @@ describe("demo-insert one-shot deck insert", () => {
     const before = await dl.lastJson();
     expect(before.deck?.newSlides, "photographed a slide that was there before the round").not.toContain("s1");
     dl.restore();
+  });
+
+  /**
+   * Putting the deck back.
+   *
+   * A round leaves slides behind on purpose, and clearing them has been a manual
+   * chore once per round — in a deck that also grows and skews the next round's
+   * timings. What makes it safe to automate is that it deletes an ID LIST the
+   * round watched appear, never a rule for recognising a test slide: a rule can
+   * match a slide the owner made, an id list cannot.
+   */
+  it("cleans up exactly the slides the round added, and nothing that was there before", async () => {
+    host.deckSlideIds = ["s1"];
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const bundle = await dl.lastJson();
+    dl.restore();
+    const added = bundle.deck.newSlides as string[];
+    expect(added.length, "the round added no slides, so this proves nothing").toBeGreaterThan(0);
+    $("demo-tidy").click();
+    await settle();
+    expect(host.deletedSlides).toEqual(added);
+    expect(host.deletedSlides, "deleted a slide that was in the deck before the round").not.toContain("s1");
+  });
+
+  it("stays disabled until a round has named something to clean up", async () => {
+    // With no id list there is nothing to delete but a guess, and guessing about
+    // deletion in someone's own deck is not a trade this pane makes.
+    expect(($("demo-tidy") as HTMLButtonElement).disabled).toBe(true);
+    $("demo-tidy").click();
+    await settle();
+    expect(host.deletedSlides).toEqual([]);
+  });
+
+  it("says how many the host refused rather than reporting a clean sweep", async () => {
+    // `deleteSlideById` has a whole comment about why a host saying "gone" is
+    // not proof. A cleanup that reported success for slides still sitting in the
+    // deck would be the same class of claim.
+    host.deckSlideIds = ["s1"];
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const bundle = await dl.lastJson();
+    dl.restore();
+    host.refuseSlideDelete = [(bundle.deck.newSlides as string[])[0]];
+    $("demo-tidy").click();
+    await settle();
+    expect($("host-note").textContent ?? "").toMatch(/Removed \d+ of \d+/);
   });
 
   it("still writes the file when the host will not describe its own deck", async () => {

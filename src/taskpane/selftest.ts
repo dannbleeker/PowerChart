@@ -1,6 +1,6 @@
 /**
- * Nine things that have never once run against a real PowerPoint, on one click —
- * plus two experiments that only make sense on their own.
+ * Ten things that have never once run against a real PowerPoint, on one click —
+ * plus two that only make sense on their own.
  *
  * The demo deck covers inserting onto slides it added BLANK. Nothing covers
  * what happens elsewhere — inserting on top of an earlier run, a slide
@@ -463,6 +463,17 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
  */
 const editViaSelection: Scenario = async (prefix) => {
   if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
+  // The ladder runs immediately before this and has just asked, properly, which
+  // selection call this host stops answering. If it found one, spending a
+  // budget here to be told nothing is pure cost: the answer is already in the
+  // report, one line up, in more detail than this scenario could produce.
+  //
+  // Reported as SKIPPED rather than failed, because that is what it is. A
+  // wedged host is a fact about the host; calling it a failure of the pane's
+  // most-used read is the misattribution the ladder exists to prevent.
+  if (selectionWedged) {
+    return { ok: false, skipped: true, detail: `not attempted — the ladder just found this host ${selectionWedged}` };
+  }
   const { found, blind, gap } = await probeCharts(prefix);
   const [chart] = found;
   if (!chart)
@@ -845,6 +856,15 @@ const editViaRealClick: Scenario = async () => {
  * result (the wedge is gone, or is not on this host), and marking that as a
  * failure would be the same mistake as marking the wedge itself as one.
  */
+/**
+ * What the ladder found, in a form the scenario after it can act on.
+ *
+ * A sentence in a report is for a person. This is for `editViaSelection`, which
+ * runs next and would otherwise spend a budget re-discovering it. Reset per run,
+ * because a stale answer from the last round is worse than none.
+ */
+let selectionWedged: string | null = null;
+
 const whichSelectionCallWedges: Scenario = async (prefix) => {
   if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
   const { found, blind, gap } = await probeCharts(prefix);
@@ -868,6 +888,7 @@ const whichSelectionCallWedges: Scenario = async (prefix) => {
   // and naming both is the whole point: "silent at X, after Y" is an answer,
   // "something in the selection API hangs" is what we already had.
   const before = rungs[rungs.indexOf(stopped) - 1];
+  selectionWedged = `goes silent at "${stopped.step}"`;
   return {
     ok: true,
     detail:
@@ -1120,25 +1141,28 @@ const SCENARIOS: {
   { name: "insert onto a slide that already has content", run: insertOntoUsedSlide },
   { name: "same scale across the deck", run: sameScaleAcrossDeck },
   { name: "explode a degraded picture", run: explodePicture },
+  // The ladder, and the position is the whole argument.
+  //
+  // It used to be picked-only, on the grounds that it must be the ONLY thing
+  // that has touched the selection subsystem — a run of its own, not a position
+  // in a list. That was too strong, and it cost the owner a separate five-minute
+  // round every time.
+  //
+  // The property that actually matters is narrower: **the ladder has to be the
+  // first `setSelectedShapes` in the run.** That is the call this project
+  // measured wedging and the one office-js#3698 names; `setSelectedSlides`,
+  // which three earlier scenarios call through `showSlide`, has never wedged
+  // anything and the ladder's own second rung is there to notice if it starts.
+  // Sitting immediately before `editViaSelection` gives exactly that, because
+  // `editViaSelection` is the only other caller.
+  //
+  // Position 3 was considered and is worse than either. The ladder can wedge the
+  // host, so putting it early means six scenarios run against a wedged host
+  // instead of two — strictly less coverage than today, dressed up as a saving.
+  { name: "which selection call wedges the host", run: whichSelectionCallWedges },
   { name: "edit the chart the user selected", run: editViaSelection },
   { name: "stop a run part-way", run: stopPartWay },
   { name: "the chart is actually visible", run: chartIsVisible },
-  // PICKED ONLY, and the reason is the experiment's own subject matter.
-  //
-  // The first draft put this last, reasoning that a scenario which provokes a
-  // wedge should not damage the ones after it. That was backwards, and a test
-  // caught it before a real host did: `editViaSelection` provokes the SAME
-  // wedge six scenarios earlier, so by the time the ladder ran the host was
-  // already wedged and it reported silence on its own first rung — an answer
-  // about nothing.
-  //
-  // Both orderings are wrong, because the constraint is not "last" or "first":
-  // it is that the ladder has to be the ONLY thing that has touched the
-  // selection subsystem. That is not a position in a list, it is a run of its
-  // own. Picked from the Scenario menu it gets exactly that — the two probe
-  // inserts, then a clean host — and the routine battery neither slows down nor
-  // gets its results contaminated.
-  { name: "which selection call wedges the host", run: whichSelectionCallWedges, pickedOnly: true },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },
@@ -1217,6 +1241,11 @@ export const ROUTINE_SCENARIO_NAMES: readonly string[] = SCENARIOS.filter((s) =>
  */
 export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: string): Promise<ScenarioResult[]> {
   const wanted = only ? SCENARIOS.filter((s, i) => i < 2 || s.name === only) : SCENARIOS.filter((s) => !s.pickedOnly);
+  // Per run, never carried between them: a stale "this host wedges" from the
+  // last round would make the next one skip a scenario on evidence it no longer
+  // has — which is exactly the sort of quiet, sticky wrong answer this file is
+  // built to avoid.
+  selectionWedged = null;
   const out: ScenarioResult[] = [];
   /** Consecutive scenarios that told us the host is in trouble. */
   let sick = 0;
