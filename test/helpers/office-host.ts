@@ -97,6 +97,19 @@ export const faults = {
    */
   strictShapeReads: false,
   /**
+   * A shape cannot be NAMED in the batch that created it.
+   *
+   * `shape.load("id")` queued in the same sync as `addGeometricShape` is taken
+   * and never answered, so the id stays unreadable. Implied by the 2026-08-05
+   * answer sheet, where the five questions that read an id back that way were
+   * the only five never put — and no other property of those five explains it.
+   *
+   * Not proven directly: no question asks it yet. Armed by the tests that need
+   * a host which behaves this way, and off elsewhere, so nothing in the tree
+   * depends on it being true.
+   */
+  noIdInCreatingSync: false,
+  /**
    * Tag loads the host takes and never answers — the next N `load()`s on a tag
    * proxy leave it unreadable after their sync.
    *
@@ -487,6 +500,10 @@ export function makeShape(
     // A created shape's id exists only on the host: the renderer must load()
     // it back before it can write one down (see the parts tag).
     load() {
+      // Taken and never answered when the shape was created in THIS batch —
+      // see `faults.noIdInCreatingSync`. The load is queued like any other;
+      // nothing comes back, so the property stays unreadable.
+      if (faults.noIdInCreatingSync && shape.syncCreated === trips.syncs) return;
       // Queued, not granted. A load only takes effect on the sync that carries
       // it, and a sync that rejects carries nothing — same contract as
       // `pendingTagLoads`, and the reason `faults.strictShapeReads` can tell
@@ -1626,6 +1643,7 @@ export function installHost(
   faults.faultShapeGetCount = false;
   faults.faultShapeCollectionLoad = false;
   faults.strictShapeReads = false;
+  faults.noIdInCreatingSync = false;
   faults.unansweredTagLoads = 0;
   faults.webIgnoresDeselect = false;
   faults.selectionIgnoresIds = false;

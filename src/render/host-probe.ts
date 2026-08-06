@@ -146,18 +146,38 @@ type ProbeBox = { left: number; top: number; width: number; height: number };
  * `ProbeContext.scratch` is a thunk for that reason, and holding what it
  * returns re-opens the trap it exists to close.
  *
- * `load` names a real property to queue on each shape in the same sync as the
- * add, for the probes that need an id back without spending a second round trip
- * (which would also age the proxies, changing what those probes measure).
+ * `load` names a real property to read back off the shapes, and it costs a
+ * SECOND sync — add, commit, then ask.
+ *
+ * It used to be queued in the same batch as the add, to save a round trip. That
+ * saving is why five questions on the 2026-08-05 sheet were never put: the five
+ * that call `idsOf`, and no others. Perfect correlation, and no other property
+ * of those five explains it — batch count does not (`shapes-items-count-honest`
+ * and `delete-then-lookup` each span two batches and were answered, while three
+ * of the five span two and failed). The implied host fact is narrow and
+ * plausible: **this PowerPoint will not name a shape in the batch that created
+ * it.**
+ *
+ * Asking after the commit costs one round trip per id-needing question and
+ * makes them answerable at all. It ages the returned proxies by a sync, which
+ * is free here: every probe that asks for ids goes on to work through
+ * `probeShape(ctx, id)`, so the proxies are never used again — only the ids.
+ * The probes that do NOT ask for ids are untouched, and still measure exactly
+ * what they measured before.
  */
 async function scratchShapes(ctx: ProbeContext, boxes: ProbeBox[], load?: string): Promise<PowerPoint.Shape[]> {
   try {
     const shapes = ctx.scratch().shapes;
     const made = boxes.map((box) => shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box));
-    if (load) for (const s of made) s.load(load);
     awaitingSetupShapes = true;
     await ctx.sync();
     awaitingSetupShapes = false;
+    if (load) {
+      for (const s of made) s.load(load);
+      awaitingSetupShapes = true;
+      await ctx.sync();
+      awaitingSetupShapes = false;
+    }
     return made;
   } catch (err) {
     awaitingSetupShapes = false;
@@ -790,6 +810,26 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       const started = Date.now();
       trace("probe", "asking", { id: probe.id });
       let result: { answer: string; detail?: string };
+      // One more attempt at a slide, every question, rather than writing the
+      // rest of the sheet off.
+      //
+      // `scratchId` goes null when a replacement also failed to resolve, and
+      // nothing used to set it back — so a single bad moment cost every
+      // question after it, all of them recorded `no-scratch-slide` as though
+      // the host had been asked. That is the same shape as the failure this
+      // whole rung exists to prevent, one level up: an answer that describes
+      // the run's own state rather than the host's.
+      //
+      // A host that genuinely will not keep a slide pays one `addScratchSlide`
+      // per question for the honest answer, which is what the budget is for.
+      if (!scratchId) {
+        const recovered = await addScratchSlide();
+        if (recovered) {
+          scratchIds.push(recovered);
+          scratchId = recovered;
+          trace("probe", "took another scratch slide after giving up on the last", { id: probe.id });
+        }
+      }
       if (!scratchId) {
         result = { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
       } else {
