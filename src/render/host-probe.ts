@@ -837,6 +837,43 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "layouts-readable",
+    question: "Can the deck's slide masters and their layouts be read?",
+    // office-js#4906 and office-js#2328: loading shapes off `SlideLayout` or
+    // `SlideMaster` throws GeneralException in PowerPoint Online — and #4906
+    // reports it happening ONLY on presentations built from a custom template,
+    // with `errorLocation: SlideMasterCollection.getItem`. Both are open.
+    //
+    // `blankLayoutId` reads exactly this, to give every slide the add-in creates
+    // a BLANK layout. It is try/caught, so a host that refuses degrades quietly
+    // to the inherited layout — which means the demo deck and every scratch
+    // slide land on top of the previous slide's placeholders, "Click to add
+    // title" showing through the chart. That is a visible defect with no error
+    // anywhere, and nobody would know which of the two it was.
+    //
+    // The owner's decks come from a corporate template, which is precisely the
+    // case #4906 singles out. Read-only, and no slide is created or touched.
+    ask: async (ctx) => {
+      try {
+        const masters = ctx.presentation.slideMasters;
+        masters.load("items/id,items/layouts/items/id,items/layouts/items/type");
+        await ctx.sync();
+        const items = (masters as unknown as { items?: { layouts?: { items?: unknown[] } }[] }).items;
+        if (!items) return { answer: "unreadable", detail: "the host answered the sync but not the collection" };
+        const layouts = items.reduce((n, m) => n + (m.layouts?.items?.length ?? 0), 0);
+        // A master with no layouts is not the same as no masters, and neither is
+        // the same as a throw. `blankLayoutId` returns undefined for all three
+        // and the caller cannot tell them apart; the sheet can.
+        return {
+          answer: layouts > 0 ? "yes" : "no-layouts",
+          detail: `${items.length} master(s), ${layouts} layout(s)`,
+        };
+      } catch (err) {
+        return unreadable(err);
+      }
+    },
+  },
+  {
     id: "untrack-available",
     question: "Do proxies expose untrack()?",
     // `untrack` is best-effort here precisely because a null-object proxy may

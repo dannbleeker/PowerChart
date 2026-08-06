@@ -65,11 +65,12 @@ describe("the host self-test battery", () => {
       "insert onto a slide that already has content",
       "same scale across the deck",
       "explode a degraded picture",
-      // The ladder immediately before the only other `setSelectedShapes` caller
-      // in the run. That adjacency IS the reason it can be routine at all —
-      // being the first such call is the property, not being alone in a run —
-      // so it is pinned here rather than left to the order of a list.
+      // The ladder ahead of everything that selects a shape. Being the FIRST
+      // `setSelectedShapes` in the run is the property that lets it be routine
+      // at all — not being alone in a run, and not adjacency, which was only
+      // ever a proxy for it. Pinned here, and as a property just below.
       "which selection call wedges the host",
+      "a selected shape survives an insert",
       // The three newest last, heaviest dead last — a crash in unproven code
       // must not cost the verdicts of scenarios that already work. Pinned,
       // because the ordering is a diagnostic property, not a detail.
@@ -447,19 +448,22 @@ describe("the scenarios the selection API unlocked", () => {
     expect(rungs.at(-1)?.outcome, "kept going after the host went quiet").toBe("silent");
   });
 
-  it("runs the ladder in the routine battery, immediately before the only other shape-selecting scenario", async () => {
+  it("runs the ladder in the routine battery, ahead of everything that selects a shape", async () => {
     // The ladder used to cost a separate five-minute round because it had to be
     // the ONLY thing that touched the selection subsystem. The property that
-    // actually matters is narrower — it has to be the first `setSelectedShapes`
-    // — and adjacency to the only other caller gives exactly that.
+    // actually matters is narrower: it has to be the FIRST `setSelectedShapes`
+    // in the run.
+    //
+    // Stated as that property rather than as an adjacency, because adjacency
+    // was only ever a proxy for it — and the proxy broke the moment a second
+    // shape-selecting scenario arrived, while the property did not.
     installHost([makeSlide("s1")]);
-    expect(ROUTINE_SCENARIO_NAMES, "the ladder is still a separate run").toContain(
-      "which selection call wedges the host",
-    );
     const order = [...ROUTINE_SCENARIO_NAMES];
-    expect(order.indexOf("edit the chart the user selected")).toBe(
-      order.indexOf("which selection call wedges the host") + 1,
-    );
+    const ladder = order.indexOf("which selection call wedges the host");
+    expect(ladder, "the ladder is still a separate run").toBeGreaterThanOrEqual(0);
+    for (const name of ["a selected shape survives an insert", "edit the chart the user selected"]) {
+      expect(order.indexOf(name), `${name} selects a shape before the ladder does`).toBeGreaterThan(ladder);
+    }
   });
 
   it("does not spend a second budget re-learning what the ladder just found", async () => {
@@ -1171,4 +1175,59 @@ describe("the experiment that asks what makes a long run slow down", () => {
       _setDegradeSizeForTest(8, 12);
     }
   }, 60_000);
+});
+
+describe("the scenario for a shape the user had selected", () => {
+  /**
+   * office-js#2775, open and web-only: adding a text box deletes whatever shape
+   * was selected. Every chart drawn here contains text boxes, and the insert
+   * path deliberately leaves the user's selection alone because that is how it
+   * learns where to put the chart — so on a host where this is live, selecting
+   * a picture and inserting a chart against it destroys the picture.
+   */
+  const pick = (rs: ScenarioResult[]) => byName(rs)["a selected shape survives an insert"];
+
+  it("passes on a host that keeps the selected shape", async () => {
+    installHost([makeSlide("s1")]);
+    const r = pick(await runSelfTest("probe", "a selected shape survives an insert"));
+    expect(r.skipped, r.detail).toBeFalsy();
+    expect(r.ok, r.detail).toBe(true);
+    expect(r.detail).toMatch(/survived an insert/);
+  });
+
+  it("catches a host that deletes it, and names the issue", async () => {
+    // The negative control, and the whole reason the scenario exists. Without
+    // the fault armed the assertion above passes against a fake that could not
+    // lose a shape if it tried.
+    installHost([makeSlide("s1")]);
+    faults.textBoxDeletesSelection = true;
+    try {
+      const r = pick(await runSelfTest("probe", "a selected shape survives an insert"));
+      expect(r.skipped, r.detail).toBeFalsy();
+      expect(r.ok, "reported a host that destroyed the user's shape as a pass").toBe(false);
+      expect(r.detail).toMatch(/VANISHED/);
+      expect(r.detail, "did not name what a reader would search for").toContain("office-js#2775");
+    } finally {
+      faults.textBoxDeletesSelection = false;
+    }
+  });
+
+  it("does not run before the ladder has asked whether selection works at all", async () => {
+    // It calls `setSelectedShapes`, so on a wedged host it would spend a budget
+    // to report silence the ladder has already attributed properly, one line up.
+    vi.unstubAllGlobals();
+    installHost([makeSlide("s1")]);
+    faults.selectionWedgesHost = true;
+    _setReadbackTimeoutForTest(200);
+    let all: ScenarioResult[];
+    try {
+      all = await runSelfTest("probe");
+    } finally {
+      faults.selectionWedgesHost = false;
+      _setReadbackTimeoutForTest(90_000);
+    }
+    const r = pick(all);
+    expect(r.skipped, "attributed a wedged host to this scenario").toBe(true);
+    expect(r.detail).toMatch(/ladder found/);
+  });
 });

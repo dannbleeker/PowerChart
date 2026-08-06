@@ -1,6 +1,6 @@
 /**
- * Ten things that have never once run against a real PowerPoint, on one click —
- * plus two that only make sense on their own.
+ * Eleven things that have never once run against a real PowerPoint, on one
+ * click — plus two that only make sense on their own.
  *
  * The demo deck covers inserting onto slides it added BLANK. Nothing covers
  * what happens elsewhere — inserting on top of an earlier run, a slide
@@ -898,6 +898,79 @@ const whichSelectionCallWedges: Scenario = async (prefix) => {
   };
 };
 
+/**
+ * Does drawing a chart destroy a shape the user had selected?
+ *
+ * office-js#2775, reported against PowerPoint on the web and still open: adding
+ * a text box deletes whatever shape was selected, and the reporter notes it
+ * "works fine on desktop". Every chart this add-in draws contains text boxes,
+ * and the insert path deliberately leaves the user's selection alone because
+ * that is how it learns where to put the chart — so if the bug is live on the
+ * owner's build, selecting a picture and inserting a chart against it destroys
+ * the picture. Silently, on the everyday path.
+ *
+ * `dropShapeSelection` is the guard, and it went in without waiting for an
+ * answer because the cost is one selection call and the failure is a user
+ * losing their own content. This is the question that says whether that guard
+ * is load-bearing on THIS host or merely cheap insurance — and it is worth
+ * knowing, because a host that does this will do it on every other add-in the
+ * owner uses too.
+ *
+ * Asked on a scratch slide with a shape of our own, never on anything of the
+ * user's. Placed after the ladder for the reason the ladder's own comment
+ * gives: it calls `setSelectedShapes`, so it must not be the first thing in the
+ * run that does.
+ */
+const selectionSurvivesInsert: Scenario = async (prefix) => {
+  if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
+  if (selectionWedged) {
+    return { ok: false, skipped: true, detail: `not attempted — the ladder found this host ${selectionWedged}` };
+  }
+  // A probe chart on a settled slide, never a fresh scratch slide.
+  //
+  // The first draft added its own slide and selected a shape on it, and the
+  // fake refused: `selectShape` resolves the slide, syncs, then reaches through
+  // that same handle — and a freshly-added slide's handle is good for exactly
+  // one sync. That is this repo's oldest gotcha biting a new caller, and the
+  // scenario is better for the correction anyway: a shape on a slide the user
+  // has had for a while is the situation #2775 actually describes.
+  const { found, blind, gap } = await probeCharts(prefix);
+  const [victim] = found;
+  if (!victim) return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to select" };
+  const slideId = victim.target.slideId;
+  const inventory = async () =>
+    (await listChartsInDeck({ withInventory: true })).inventory?.find((s) => s.slideId === slideId);
+  const before = await inventory();
+  if (!before) return { ok: false, skipped: true, detail: "the host would not say what is on the slide" };
+  if (!(await selectShape(slideId, victim.target.shapeId, selectionBudgetMs()))) {
+    return { ok: false, skipped: true, detail: "the host would not select the chart" };
+  }
+  try {
+    // And now draw, with that shape still selected. Text boxes and all — which
+    // is exactly #2775's repro, and exactly what the pane did on every insert
+    // before `dropShapeSelection`.
+    const extra = cfg(`${prefix} drawn while selected`);
+    await insertSceneIntoSlide(buildChart(extra), { slideId, tagData: JSON.stringify(extra) });
+  } finally {
+    // Never leave a chart selected: on the web a picture cannot be inserted
+    // while one is (office-js#3698), so the scenario after this would fail
+    // instead of this one.
+    await clearShapeSelection(slideId, selectionBudgetMs());
+  }
+  const after = await inventory();
+  if (!after) return { ok: false, skipped: true, detail: "the host would not say what is on the slide afterwards" };
+  const kept = new Set(after.shapes.map((s) => s.id));
+  const lost = before.shapes.filter((s) => s.id && !kept.has(s.id));
+  return {
+    ok: lost.length === 0,
+    detail:
+      lost.length === 0
+        ? `all ${before.shapes.length} shape(s) already on the slide survived an insert made while one was selected`
+        : `${lost.length} of ${before.shapes.length} shape(s) VANISHED when a chart was drawn with one selected ` +
+          `— office-js#2775 is live on this host, and dropShapeSelection is what stands between it and the user`,
+  };
+};
+
 /** Fewer rounds than this and the slope is noise, not a curve. */
 const MIN_ROUNDS_FOR_A_VERDICT = 4;
 
@@ -1160,6 +1233,9 @@ const SCENARIOS: {
   // host, so putting it early means six scenarios run against a wedged host
   // instead of two — strictly less coverage than today, dressed up as a saving.
   { name: "which selection call wedges the host", run: whichSelectionCallWedges },
+  // Also after the ladder, and for the ladder's own reason: it calls
+  // `setSelectedShapes`, so it must not be the first thing in the run that does.
+  { name: "a selected shape survives an insert", run: selectionSurvivesInsert },
   { name: "edit the chart the user selected", run: editViaSelection },
   { name: "stop a run part-way", run: stopPartWay },
   { name: "the chart is actually visible", run: chartIsVisible },

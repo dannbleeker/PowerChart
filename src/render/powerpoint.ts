@@ -2870,6 +2870,16 @@ export interface ProbeContext {
   /** The deck's slide collection, for questions about lookup and counting. */
   slides: PowerPoint.SlideCollection;
   /**
+   * The presentation itself, for the few questions that are not about slides.
+   *
+   * Handed over explicitly rather than reached for through `slides.context`.
+   * That property is part of the real proxy contract and the fake does not
+   * model it, so a probe that used it answered `unreadable` in CI while
+   * claiming to be about slide masters — a fake divergence invented by the
+   * question's own plumbing, which is the one thing this file must never do.
+   */
+  presentation: PowerPoint.Presentation;
+  /**
    * The scratch slide, RE-ACQUIRED on every call — never a proxy to hold.
    *
    * A thunk for the same reason `SlideThunk` is one, and this file had already
@@ -2964,6 +2974,7 @@ export async function withProbeContext<T>(
       let handle: PowerPoint.Slide | null = null;
       return fn({
         slides: context.presentation.slides,
+        presentation: context.presentation,
         scratch: () => (handle ??= context.presentation.slides.getItemOrNullObject(scratchId)),
         scratchId,
         durableSlideId,
@@ -4349,6 +4360,55 @@ export async function selectShape(slideId: string, shapeId: string, budgetMs?: n
 export async function clearShapeSelection(slideId: string, budgetMs?: number): Promise<void> {
   if (!canSelectShapes()) return;
   await showSlide(slideId, budgetMs);
+}
+
+/**
+ * Drop the shape selection without being told which slide it is on.
+ *
+ * `clearShapeSelection` needs a slide id, and the everyday insert has none: the
+ * user selected a shape, the pane read its bounds, and nothing in that flow
+ * ever names the slide. So this asks the host which slide is showing and hands
+ * that to the same clear.
+ *
+ * It exists because of two published PowerPoint-on-the-web bugs that both fire
+ * on that flow, in opposite ways, from the same cause — a shape being selected
+ * while the add-in draws:
+ *
+ * - **office-js#2775**: adding a text box DELETES the shape that was selected.
+ *   Every chart this add-in draws contains text boxes, and the insert path
+ *   deliberately leaves the user's shape selected because that is how it learns
+ *   where to put the chart. Selecting a picture and inserting a chart beside it
+ *   would silently destroy the picture.
+ * - **office-js#3698**: a picture cannot be inserted while another shape is
+ *   selected — and the same insert path inserts a picture when a chart is too
+ *   dense to draw as shapes.
+ *
+ * Neither is confirmed on the host the owner actually uses; the self-test's
+ * "a selected shape survives an insert" is what would confirm the first. This
+ * runs anyway, because it costs one selection call the update path already
+ * makes twice, and the failure it prevents is the user losing their own
+ * content. Best-effort throughout — a host that will not say which slide is
+ * showing leaves the selection exactly as it was, which is today's behaviour.
+ */
+export async function dropShapeSelection(budgetMs?: number): Promise<boolean> {
+  if (!canSelectShapes()) return false;
+  try {
+    const slideId = await boundedRun(
+      "reading which slide is showing",
+      async (context) => {
+        const slide = context.presentation.getSelectedSlides().getItemAt(0);
+        slide.load("id");
+        await context.sync();
+        return loadedValue(() => slide.id);
+      },
+      budgetMs ?? SELECTION_TIMEOUT_MS,
+    );
+    if (typeof slideId !== "string" || !slideId) return false;
+    await clearShapeSelection(slideId, budgetMs);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

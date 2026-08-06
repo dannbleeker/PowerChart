@@ -309,6 +309,14 @@ export const faults = {
    */
   refuseGetItemOnNewSlide: false,
   /**
+   * Adding a text box deletes the selected shape — office-js#2775, web only.
+   *
+   * See the call site for why it is worth modelling and why it is off by
+   * default. `dropShapeSelection` is the guard; this is what proves the guard
+   * is load-bearing rather than decorative.
+   */
+  textBoxDeletesSelection: false,
+  /**
    * The host takes a shape add and fails the sync that would land it.
    *
    * The other branch of the fork `expiringSlideHandle` documents: a host that
@@ -1005,6 +1013,23 @@ export function makeSlide(id: string) {
         return s;
       },
       addTextBox(text: string, box: FakeShape["box"]) {
+        // office-js#2775: on PowerPoint on the web, adding a text box DELETES
+        // whatever shape was selected. Reported against ScriptLab's own image
+        // sample, open, and explicitly "works fine on desktop".
+        //
+        // Modelled because every chart this add-in draws contains text boxes,
+        // and the insert path deliberately leaves the user's shape selected —
+        // so a real host behaving this way destroys the user's own content on
+        // the everyday path. Off by default: nothing has established that the
+        // build the owner runs still does it, and a fake must not assert host
+        // behaviour nobody has asked about.
+        if (faults.textBoxDeletesSelection) {
+          for (const victim of selectionRef.splice(0)) {
+            victim.deleted = true;
+            const i = created.indexOf(victim);
+            if (i >= 0) created.splice(i, 1);
+          }
+        }
         const s = makeShape("text", undefined, box);
         s.text = text;
         created.push(s);
@@ -1732,6 +1757,7 @@ export function installHost(
   faults.newSlideResolvesTimes = null;
   faults.newSlideGetItemExpires = false;
   faults.refuseGetItemOnNewSlide = false;
+  faults.textBoxDeletesSelection = false;
   faults.refuseShapeAdds = false;
   faults.wedgeAfterSyncs = null;
   faults.syncCostMs = null;
