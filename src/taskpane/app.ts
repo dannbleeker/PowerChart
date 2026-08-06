@@ -59,7 +59,15 @@ import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
 import { onTrace, setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
-import { beginCrashLog, clearCrashLog, endCrashLog, flushCrashLog, recordCrashStep, recoverCrashLog } from "./crashlog";
+import {
+  beginCrashLog,
+  clearCrashLog,
+  endCrashLog,
+  flushCrashLog,
+  markCrashLogSaved,
+  recordCrashStep,
+  recoverCrashLog,
+} from "./crashlog";
 import {
   runSelfTest,
   describeSelfTest,
@@ -2855,13 +2863,52 @@ function isWebHost(): boolean {
 }
 
 /** Save an object as a JSON file, via the same Blob dance as Download SVG. */
-function downloadJson(name: string, payload: unknown) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+/**
+ * Hand a file to the browser, and say whether the attempt even got that far.
+ *
+ * Three things were wrong with the two-line version, and a real round on
+ * 2026-08-06 lost a whole evidence file to them.
+ *
+ * 1. **It revoked the object URL in the same tick as the click.** A download is
+ *    asynchronous; revoking its source synchronously can cancel it before it
+ *    starts. The revoke now waits, and the URL is released on a timer rather
+ *    than never — a leaked blob in a pane that stays open for a session is the
+ *    lesser of the two.
+ * 2. **The anchor was never in the document.** Chromium tolerates a detached
+ *    anchor and other engines do not, and a task pane is whatever the host
+ *    embeds.
+ * 3. **It reported nothing.** Callers said "Saved as one file" on the strength
+ *    of having called this. It returns false when the browser refused outright,
+ *    which is the case worth acting on: a blocked download that THROWS is now
+ *    distinguishable from one that worked.
+ *
+ * A `false` is proof of failure; a `true` is not proof of success — a frame can
+ * still swallow a download silently, and nothing in the DOM reports that. So no
+ * caller may treat `true` as "the user has the file"; that is what the explicit
+ * save button is for.
+ */
+function downloadJson(name: string, payload: unknown): boolean {
+  let url: string | undefined;
+  try {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.style.display = "none";
+    document.body.append(a);
+    a.click();
+    a.remove();
+    return true;
+  } catch (err) {
+    trace("error", "the browser would not save the file", { name, error: String(err) });
+    return false;
+  } finally {
+    // Long enough for the download to have been picked up, and not tied to the
+    // click that starts it.
+    const held = url;
+    if (held) setTimeout(() => URL.revokeObjectURL(held), 60_000);
+  }
 }
 
 function wireInsert() {
@@ -3218,7 +3265,15 @@ function wireInsert() {
         note("No run to save yet — insert the demo deck first.", "err");
         return;
       }
-      downloadJson("powerchart-run-log.json", lastRunLog);
+      if (!downloadJson("powerchart-run-log.json", lastRunLog)) {
+        note("The browser would not save the file. Copy the Live steps instead — they carry the same run.", "err");
+        return;
+      }
+      // A button the user pressed is the strongest evidence this pane can have
+      // that they now hold the run. It is also the recovery from an auto-save
+      // that was blocked, so it has to clear the stored record — otherwise the
+      // pane would keep offering back a run they have just saved.
+      markCrashLogSaved();
       note("Run log saved.", "ok");
     });
     /**
@@ -3247,7 +3302,7 @@ function wireInsert() {
           describeHost(),
           typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev",
         );
-        downloadJson("powerchart-host-answers.json", sheet);
+        const saved = downloadJson("powerchart-host-answers.json", sheet);
         // The diff, here, now — rather than after a round trip.
         //
         // Every probe run so far has been "download it, send it, wait for
@@ -3255,7 +3310,12 @@ function wireInsert() {
         // nothing new: the answers are the same as last time. The comparison
         // table is a plain object, so the pane can do it and say whether this
         // run is worth sending at all.
-        note(describeHostSheet(sheet), sheetNeedsAttention(sheet) ? "err" : "ok");
+        note(
+          saved
+            ? describeHostSheet(sheet)
+            : `The browser would not save the file. ${describeHostSheet(sheet)} Copy the Live steps — they carry the answers.`,
+          !saved || sheetNeedsAttention(sheet) ? "err" : "ok",
+        );
       }),
     );
     /**
@@ -3303,9 +3363,14 @@ function wireInsert() {
         lastRunLog = { build: buildStamp, host, runs: [], hostAnswers: sheet };
         note(`Probe done — ${describeHostSheet(sheet)} Now the self-test…`, "busy");
         if (isStopRequested()) {
-          downloadJson("powerchart-round.json", lastRunLog);
-          note("Stopped after the probe. Its answers are saved.", "ok");
-          endCrashLog();
+          const saved = downloadJson("powerchart-round.json", lastRunLog);
+          note(
+            saved
+              ? "Stopped after the probe. Its answers are saved."
+              : "Stopped after the probe, but the browser would not save the file — press Download run log.",
+            saved ? "ok" : "err",
+          );
+          endCrashLog(saved);
           return;
         }
         setSelfTestRasterizer(boundedRaster);
@@ -3334,13 +3399,22 @@ function wireInsert() {
         // deck is not a trade this pane makes.
         tidyable = deck?.newSlides ?? [];
         ($("demo-tidy") as HTMLButtonElement).disabled = tidyable.length === 0;
-        endCrashLog();
-        downloadJson("powerchart-round.json", lastRunLog);
+        // SAVE FIRST, then end the record — and end it with what the save
+        // actually did. The other order is what lost a real round: the run was
+        // marked finished, which made it unrecoverable, and the download was
+        // attempted afterwards. PowerPoint died, the pane reopened, and there
+        // was nothing to offer back.
+        const saved = downloadJson("powerchart-round.json", lastRunLog);
+        endCrashLog(saved);
         const needed = sheetNeedsAttention(sheet) || selfTestNeedsAttention(results);
         note(
           `Round finished. ${describeSelfTest(results)} · Probe: ${describeHostSheet(sheet)} ` +
-            (needed ? "Saved as one file — send it over." : "Saved as one file; nothing in it is new."),
-          needed ? "err" : "ok",
+            (!saved
+              ? "The browser would NOT save the file — press Download run log, or copy the Live steps."
+              : needed
+                ? "Saved as one file — send it over. If it is not in your downloads, press Download run log."
+                : "Saved as one file; nothing in it is new."),
+          needed || !saved ? "err" : "ok",
         );
       }),
     );
@@ -3381,13 +3455,21 @@ function wireInsert() {
     const crashed = recoverCrashLog();
     if (crashed) {
       crashBtn.hidden = false;
+      // Two different runs land here now, and telling the owner which one it is
+      // is the difference between "the host died" and "the host was fine and
+      // your file never arrived". Both are worth recovering; only one of them
+      // means anything went wrong with the run itself.
       note(
-        `A previous run ("${crashed.label}", build ${crashed.build}) never reported finishing — ` +
-          `${crashed.steps.length} step(s) were saved. Download the crashed run to keep them.`,
+        `A previous run ("${crashed.label}", build ${crashed.build}) ` +
+          (crashed.finishedAt ? `finished, but its file was never saved` : `never reported finishing`) +
+          ` — ${crashed.steps.length} step(s) were kept. Download the crashed run.`,
         "err",
       );
       crashBtn.addEventListener("click", () => {
-        downloadJson("powerchart-crashed-run.json", crashed);
+        if (!downloadJson("powerchart-crashed-run.json", crashed)) {
+          note("The browser would not save the file. Copy the Live steps instead.", "err");
+          return;
+        }
         clearCrashLog();
         crashBtn.hidden = true;
         note("Crashed run saved.", "ok");
@@ -3439,6 +3521,10 @@ function wireInsert() {
         // Only on the way out, and only here. A run that throws past this line
         // stays marked unfinished on purpose: it produced no downloadable run
         // log either, so the storage copy is the only record it has.
+        //
+        // Finished, NOT saved. This path writes no file — the user presses
+        // *Download run log* — so until they do, the storage copy is still the
+        // only copy, and `markCrashLogSaved` is what retires it.
         endCrashLog();
         note(describeSelfTest(results), selfTestNeedsAttention(results) ? "err" : "ok");
       }),
@@ -3820,7 +3906,9 @@ function wireInsert() {
           trace: tracing() ? traceLog(traceFrom) : undefined,
         });
         // Reached only by a run that got all the way here. One that did not
-        // stays marked unfinished, which is what offers it back on reopen.
+        // stays marked unfinished, which is what offers it back on reopen —
+        // and so does this one until *Download run log* is pressed, because
+        // finishing and being saved are different facts.
         endCrashLog();
         note(
           runs.length > 1 ? `Both paths run. File: ${runs[0].deck.slidesAdded} slides. Shapes: ${msg}` : msg,

@@ -622,16 +622,30 @@ less than they look — or something PowerPoint does that we did not know. Both
 are worth the click.
 
 **Download the crashed run** appears only when there is one to download. Every
-step is written to your browser's storage as it happens, and a run marks itself
-finished on the way out — so a run that never got there leaves a record that
-did not get marked, and the pane offers it back the next time you open it. That
-covers the case a screenshot cannot: the pane is gone, you already reloaded, and
-you want the whole run rather than the twenty lines that happened to be visible.
+step is written to your browser's storage as it happens, and the record stays on
+offer until its file has actually been saved. Two runs qualify, and the banner
+says which one you have:
+
+- **A run that never reported finishing** — it crashed, or you closed the tab on
+  it. This is the case a screenshot cannot cover: the pane is gone, you already
+  reloaded, and you want the whole run rather than the twenty lines that
+  happened to be visible.
+- **A run that finished, but whose file was never saved.** Completing and
+  handing you the file are different things, and the second one can fail on its
+  own: a task pane is a nested frame, and a browser can refuse a download from
+  one exactly as it already refuses the clipboard. A host that dies moments
+  after the round ends takes an in-flight download with it too. This used to
+  lose the run — the pane marked it finished, which retired the record, and then
+  attempted the save.
+
 The file is what to send; `npm run triage` reads it without needing the deck.
 
 It keeps the last 2000 steps, so a very long run loses its beginning and never
 its end, and it lives in browser storage — clearing site data clears it too.
-Saving it dismisses the offer.
+Saving it, or pressing **Download run log**, dismisses the offer. If a round
+says it saved a file and nothing appears in your downloads, press
+**Download run log** — the run is still in the pane until you reload, and still
+in storage after you do.
 
 **Download run log** saves the last run as JSON: the run's identity token,
 per-item timings, statuses, what the host did to each slide, and the repair

@@ -5,6 +5,7 @@ import {
   clearCrashLog,
   endCrashLog,
   flushCrashLog,
+  markCrashLogSaved,
   recordCrashStep,
   recoverCrashLog,
   _resetCrashLogForTest,
@@ -85,16 +86,53 @@ describe("the crash-surviving run log", () => {
     expect(found?.steps, "the debounced write never landed").toContain("   3.0s  selftest  the last thing it did");
   });
 
-  it("offers nothing back when the run ended normally", () => {
+  it("offers nothing back when the run ended normally AND its file was saved", () => {
     // The other half, and the half that makes it a test. A recovery banner
     // that appears after every healthy run is noise, and noise on this
     // particular banner is expensive: it is the one that means "something died".
+    //
+    // Both conditions, because finishing is not the same as the user having the
+    // file — see the case below, which is the one a real round lost.
     beginCrashLog({ ...meta, label: "demo deck" });
     recordCrashStep("   0.1s  demo  inserting 38 slides");
+    endCrashLog(true);
+
+    _resetCrashLogForTest();
+    expect(recoverCrashLog(), "a run that finished and saved was offered as a crash").toBeNull();
+  });
+
+  it("still offers a run that FINISHED but never saved its file", () => {
+    // The round that was lost. It completed, printed "Saved as one file", and
+    // marked itself finished BEFORE the download was attempted — so when
+    // PowerPoint died moments later and the pane reopened, the record was
+    // sitting in storage and the recovery would not look at it.
+    //
+    // A blocked download does the same thing without any crash: a task pane is
+    // a nested cross-origin frame, and the browser can refuse to save from one
+    // exactly as it already refuses the clipboard.
+    beginCrashLog({ ...meta, label: "the whole round" });
+    recordCrashStep("   9.9s  round  probe done, self-test done");
     endCrashLog();
 
     _resetCrashLogForTest();
-    expect(recoverCrashLog(), "a run that finished cleanly was offered as a crash").toBeNull();
+    const found = recoverCrashLog();
+    expect(found?.label, "a finished run whose file never landed was written off").toBe("the whole round");
+    // And the pane can tell the two apart, because they mean different things
+    // to whoever reads the banner: one says the host died, the other says the
+    // host was fine and the file never arrived.
+    expect(found?.finishedAt, "the record forgot that this run actually finished").toBeTruthy();
+  });
+
+  it("stops offering it once the user has actually pressed save", () => {
+    beginCrashLog({ ...meta, label: "the whole round" });
+    recordCrashStep("   9.9s  round  probe done, self-test done");
+    endCrashLog();
+    _resetCrashLogForTest();
+    expect(recoverCrashLog(), "the setup did not leave anything on offer").toBeTruthy();
+
+    markCrashLogSaved();
+    _resetCrashLogForTest();
+    expect(recoverCrashLog(), "the run was still offered after the user saved it").toBeNull();
   });
 
   it("does not let the next run destroy the crashed one's evidence", () => {
@@ -102,13 +140,13 @@ describe("the crash-surviving run log", () => {
     // overwrote the only slot, that reaction would erase exactly what was
     // worth keeping — before anyone had a chance to look at it.
     //
-    // Observed by running the second one to a clean FINISH. A finished run is
-    // not offered, so whatever comes back afterwards can only be the crashed
-    // one — which says it survived, without this test needing to know a storage
-    // key. The first version instead asserted the crashed run was the one
-    // OFFERED, which is a different property and, as it turned out, the wrong
-    // one: it passed happily while two consecutive crashes handed back the
-    // older of them.
+    // Observed by running the second one to a clean finish AND a saved file. A
+    // run in that state is not offered, so whatever comes back afterwards can
+    // only be the crashed one — which says it survived, without this test
+    // needing to know a storage key. The first version instead asserted the
+    // crashed run was the one OFFERED, which is a different property and, as it
+    // turned out, the wrong one: it passed happily while two consecutive
+    // crashes handed back the older of them.
     beginCrashLog({ ...meta, label: "the run that died" });
     recordCrashStep("   5.0s  selftest  wedged here");
     flushCrashLog();
@@ -116,7 +154,7 @@ describe("the crash-surviving run log", () => {
     _resetCrashLogForTest();
     beginCrashLog({ ...meta, label: "the run after it" });
     recordCrashStep("   0.1s  selftest  started again");
-    endCrashLog();
+    endCrashLog(true);
 
     const found = recoverCrashLog();
     expect(found?.label, "the new run buried the crashed one").toBe("the run that died");
