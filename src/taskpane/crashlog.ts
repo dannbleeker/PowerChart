@@ -77,8 +77,23 @@ export interface CrashLog {
    */
   seq: number;
   startedAt: string;
-  /** Set only when the run ended normally. Its ABSENCE is the whole signal. */
+  /** Set only when the run ended normally. */
   finishedAt?: string;
+  /**
+   * Set when this run's file was actually handed to the browser.
+   *
+   * Separate from `finishedAt`, because the two are different facts and using
+   * one for the other cost a real round. A round that completes prints "Saved
+   * as one file" and used to mark itself finished BEFORE the download was even
+   * attempted — so a finished run stopped being recoverable on the strength of
+   * a save nobody had tried yet, let alone watched. PowerPoint then died, the
+   * owner reopened the pane, and there was nothing to offer: the record was
+   * there and the recovery would not look at it, because it had finished.
+   *
+   * The absence of THIS is the signal now. `finishedAt` still says whether the
+   * run crashed, which is what the offer's wording needs.
+   */
+  savedAt?: string;
   /** How many steps were recorded before the cap dropped the oldest. */
   dropped: number;
   /** Formatted one-line steps, OLDEST FIRST — the reading order for a file. */
@@ -196,7 +211,11 @@ export function beginCrashLog(meta: { build: string; host: string; label: string
   const s = store();
   if (!s) return;
   const previous = read(LIVE_KEY);
-  if (previous && !previous.finishedAt && previous.steps.length) {
+  // Promoted on UNSAVED, not on unfinished — the same correction `savedAt`
+  // makes to `recoverCrashLog`. A finished run whose file never reached the
+  // disk is exactly as worth keeping as one that crashed, and starting the
+  // next run was the moment that record used to be overwritten.
+  if (previous && !previous.savedAt && previous.steps.length) {
     try {
       s.setItem(KEPT_KEY, JSON.stringify(previous));
     } catch {
@@ -236,10 +255,19 @@ export function recordCrashStep(line: string): void {
   schedule();
 }
 
-/** Mark the run finished. Its absence is what identifies a crash. */
-export function endCrashLog(): void {
+/**
+ * Mark the run finished, and say whether its file was actually handed over.
+ *
+ * `saved` defaults to false and callers must pass it deliberately, because the
+ * default that cost a round was the other one. Marking a run finished used to
+ * be enough to make it unrecoverable, and the round path called it BEFORE
+ * attempting the download — so the record was written off on the strength of a
+ * save that had not happened yet.
+ */
+export function endCrashLog(saved = false): void {
   if (!live) return;
   live.finishedAt = new Date().toISOString();
+  if (saved) live.savedAt = live.finishedAt;
   if (timer !== undefined) {
     clearTimeout(timer);
     timer = undefined;
@@ -249,7 +277,44 @@ export function endCrashLog(): void {
 }
 
 /**
- * The most recent run that ended without finishing — the crashed run.
+ * The run's file has now reached the user — stop offering it back.
+ *
+ * The explicit save, from a button the user pressed, which is the strongest
+ * evidence this pane can have that they have the thing. Reaches the LIVE slot
+ * as well as the KEPT one: an auto-download that was blocked leaves a finished
+ * run in LIVE, and pressing *Download run log* afterwards is precisely the
+ * recovery that must clear it.
+ */
+export function markCrashLogSaved(): void {
+  const s = store();
+  if (!s) return;
+  const stamp = new Date().toISOString();
+  if (live) {
+    live.savedAt = stamp;
+    flush();
+  }
+  for (const key of [LIVE_KEY, KEPT_KEY]) {
+    const rec = read(key);
+    if (!rec || rec.savedAt) continue;
+    rec.savedAt = stamp;
+    try {
+      s.setItem(key, JSON.stringify(rec));
+    } catch {
+      /* full store — the record simply stays on offer, which is the safe way round */
+    }
+  }
+}
+
+/**
+ * The most recent run whose file the user has not got — crashed, or finished
+ * and never saved.
+ *
+ * It used to be "ended without finishing", and that is the narrower fact. A
+ * round can complete, print "Saved as one file", and leave the user with
+ * nothing: the browser can refuse a download in a task pane (a nested
+ * cross-origin frame — the same refusal the Copy button already handles), and
+ * a host that dies moments later takes an in-flight one with it. Both happened
+ * on 2026-08-06, and the pane had already written the record off as finished.
  *
  * Both slots can hold one. A pane that reloads straight after a crash has the
  * dead run still in the LIVE slot, never promoted, because promotion happens
@@ -265,7 +330,7 @@ export function endCrashLog(): void {
  */
 export function recoverCrashLog(): CrashLog | null {
   const crashed = [read(KEPT_KEY), read(LIVE_KEY)].filter(
-    (r): r is CrashLog => !!r && !r.finishedAt && r.steps.length > 0,
+    (r): r is CrashLog => !!r && !r.savedAt && r.steps.length > 0,
   );
   // `seq` counts up across reloads; a record written before it existed sorts
   // as 0, which puts it behind any newer one — the right way round.

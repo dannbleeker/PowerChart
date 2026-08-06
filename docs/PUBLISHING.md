@@ -125,12 +125,23 @@ only once a run ends, and two rounds were lost to runs that did not end: one
 wedged at 1819 seconds, one killed by PowerPoint's own *"Sorry, we ran into a
 problem"* at 108 seconds. Neither produced a log. Two things cover that now:
 
-- **Live steps** is on screen the whole time. Copy or screenshot it before
-  reloading — it is the only thing that catches the very last moments.
+- **Live steps** is on screen the whole time, at the top of the Testing section.
+  Copy or screenshot it before reloading — it is the only thing that catches the
+  very last moments.
 - Every step is also written to **browser storage** as it happens. Reopen the
-  pane after a crash and a red note offers **Download the crashed run**. Send
-  that file; `npm run triage` reads it on its own, with no deck
+  pane and a red note offers **Download the crashed run**. Send that file;
+  `npm run triage` reads it on its own, with no deck
   (`node scripts/triage.mjs powerchart-crashed-run.json`).
+
+A third round was lost a different way, and it is worth knowing about because
+nothing above would have caught it. The round **completed**, said "Saved as one
+file", and the file never arrived — PowerPoint crashed seconds later. The pane
+had already marked the run finished, which retired the stored record, and only
+then attempted the download. Finishing and being saved are now separate facts:
+a record stays on offer until its file is actually saved, and the banner says
+whether the run crashed or merely never handed you its file. **If a round
+reports success and nothing lands in your downloads, press *Download run log*** —
+before reloading if you can, after reloading if you cannot.
 
 The storage copy survives a closed tab and a reloaded pane. It does not survive
 clearing site data, and it keeps the last ~2000 steps — a longer run loses its
