@@ -113,6 +113,25 @@ const host = vi.hoisted(() => ({
    */
   slideCountThrowsAfter: null as null | number,
   slideCountCalls: 0,
+  /** What a deck scan reports holding, when the caller asked for the inventory. */
+  deckInventory: [] as { slideId: string; index: number; shapes: { id: string; name?: string }[] }[],
+  /**
+   * The deck's slide ids. `undefined` models a host that will not list them —
+   * which is the case the round's id diff has to survive, not an edge case: it
+   * is what every blind deck scan in this project's history looked like.
+   */
+  deckSlideIds: undefined as undefined | string[],
+  /** Whether the host will draw a slide — PowerPointApi 1.8, absent on plenty of hosts. */
+  canRaster: true,
+  /**
+   * The deck scan throws rather than answering short.
+   *
+   * A host that will not answer and a host that raises are different things,
+   * and only the second one can take a round's verdicts down with it. The
+   * first version of the guard for that used the first condition and passed
+   * with the protection removed.
+   */
+  deckScanThrows: false,
   reconcileOutcome: undefined as unknown,
   calls: {
     insertScene: [] as { tagData?: string; left?: number; top?: number; slideId?: string; pictureBase64?: string }[],
@@ -239,13 +258,23 @@ vi.mock("../src/render/powerpoint", () => ({
       return items.slice(host.updateChartsDrops).map((it) => it.target);
     },
   ),
-  listChartsInDeck: vi.fn(async () => ({
-    charts: host.deckCharts,
-    unread: host.deckScanUnread,
-    short: 0,
-    tagsUnread: 0,
-    slides: host.slideCount,
-  })),
+  listChartsInDeck: vi.fn(async (opts: { withInventory?: boolean } = {}) => {
+    if (host.deckScanThrows) throw new Error("the host refused to describe the deck");
+    return {
+      charts: host.deckCharts,
+      unread: host.deckScanUnread,
+      short: 0,
+      tagsUnread: 0,
+      slides: host.slideCount,
+      // Only when asked, exactly like the real one — a mock that always returns
+      // the inventory would let a caller that forgot to ask still find it.
+      ...(opts.withInventory ? { inventory: host.deckInventory } : {}),
+    };
+  }),
+  deckSlideIds: vi.fn(async () => host.deckSlideIds),
+  slideShots: vi.fn(async (ids: string[], opts: { max?: number } = {}) =>
+    ids.map((slideId, i) => (i < (opts.max ?? 12) && host.canRaster ? { slideId, png: "UE5H" } : { slideId })),
+  ),
   scanIsComplete: (s: { unread: number; short: number; tagsUnread: number }) =>
     s.unread === 0 && s.short === 0 && s.tagsUnread === 0,
   scanGap: (s: { unread: number; slides: number }) =>
@@ -372,6 +401,10 @@ async function bootHostPane() {
   host.slideShapes = [];
   host.deckCharts = [];
   host.deckScanUnread = 0;
+  host.deckInventory = [];
+  host.deckSlideIds = undefined;
+  host.canRaster = true;
+  host.deckScanThrows = false;
   host.selectionCharts = [];
   host.loadSelectionResult = null;
   host.gate = null;
@@ -1705,6 +1738,59 @@ describe("demo-insert one-shot deck insert", () => {
     expect(bundle.selftest?.length, "the round's file carries no self-test verdicts").toBeGreaterThan(0);
     // One file, not two. The whole point is that there is one thing to send.
     expect(dl.count()).toBe(1);
+    dl.restore();
+  });
+
+  /**
+   * The two uploads that used to be a person's job.
+   *
+   * Every diagnosis in this project's history has taken three things — the run
+   * log, the deck, and a screenshot — and the owner has been producing all
+   * three by hand, once per round. Two of them the add-in can read for itself.
+   */
+  it("carries what landed on the slides, and pictures of the slides it added", async () => {
+    host.deckSlideIds = ["s1"];
+    host.deckInventory = [
+      { slideId: "s1", index: 0, shapes: [{ id: "sh1", name: "PowerChart" }] },
+      { slideId: "s2", index: 1, shapes: [{ id: "sh2", name: "bar 1" }] },
+    ];
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const bundle = await dl.lastJson();
+    // Shapes that are NOT charts are the point. The scan has always had them
+    // and always dropped them, and they are what "41 shapes became 79" and
+    // "the slide still holds what was there before" are questions about.
+    expect(bundle.deck?.inventory?.[1]?.shapes?.[0]?.name).toBe("bar 1");
+    dl.restore();
+  });
+
+  it("photographs only the slides the round added, never the whole deck", async () => {
+    // A picture of a forty-slide deck is mostly slides nobody touched. The id
+    // diff is what makes the pictures worth the bytes — and ids rather than
+    // counts, because a deck's own id list is the stronger question about it.
+    host.deckSlideIds = ["s1"];
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const before = await dl.lastJson();
+    expect(before.deck?.newSlides, "photographed a slide that was there before the round").not.toContain("s1");
+    dl.restore();
+  });
+
+  it("still writes the file when the host will not describe its own deck", async () => {
+    // The tail of a round runs on a host that has just been through the
+    // self-test, and may well be the reason the round is worth reading. Losing
+    // the verdicts to the diagnostic's own evidence-gathering would be the
+    // worst trade in the file.
+    host.deckScanThrows = true;
+    host.canRaster = false;
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const bundle = await dl.lastJson();
+    expect(bundle.selftest?.length, "lost the verdicts because the deck would not answer").toBeGreaterThan(0);
+    expect(bundle.hostAnswers?.answers?.length).toBeGreaterThan(0);
     dl.restore();
   });
 

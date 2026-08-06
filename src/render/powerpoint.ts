@@ -1508,6 +1508,32 @@ export interface DeckScan {
   tagsUnread: number;
   /** Slides in the deck, so a caller can say "7 of 8" rather than "7". */
   slides: number;
+  /**
+   * Every shape the scan saw, slide by slide — only when it was asked for.
+   *
+   * The scan already has this in its hands and used to throw it away, keeping
+   * the shapes that turned out to be charts and dropping the rest. That is the
+   * right trade for the callers that rescale or repair charts, and the wrong one
+   * for a diagnostic: "41 shapes became 79", "the chart landed ungrouped", "the
+   * slide still holds what was there before" are all questions about the shapes
+   * that are NOT charts, and answering them has meant asking the owner to save
+   * the deck and upload it.
+   *
+   * Off by default. `items/name` is a per-shape string deck-wide, and the paths
+   * that scan every slide on a live web host are exactly the ones that must not
+   * pay for a diagnostic.
+   */
+  inventory?: SlideInventory[];
+}
+
+/** What one slide holds, as the deck scan saw it. */
+export interface SlideInventory {
+  slideId: string;
+  /** Position in the deck at scan time — how a reader finds it by clicking. */
+  index: number;
+  shapes: { id: string; name?: string; left?: number; top?: number }[];
+  /** The slide's own count, when the host gave one — `shapes.length` short of it means a partial answer. */
+  count?: number;
 }
 
 /**
@@ -1546,18 +1572,20 @@ function tagAnswered(tag: { isNullObject: boolean; value: string }): boolean {
 async function readChartsPage(
   from: number,
   to: number,
+  withInventory: boolean,
 ): Promise<{
   charts: { configJson: string; target: EditTarget }[];
   unread: number;
   short: number;
   tagsUnread: number;
+  inventory: SlideInventory[];
 }> {
   return PowerPoint.run(async (context) => {
     const perSlide = [];
     for (let i = from; i < to; i++) {
       const slide = context.presentation.slides.getItemAt(i);
       slide.load("id");
-      slide.shapes.load("items/id,items/left,items/top");
+      slide.shapes.load(withInventory ? "items/id,items/left,items/top,items/name" : "items/id,items/left,items/top");
       // The slide's own count, queued in the same sync, purely to catch a
       // collection that answers SHORT without throwing. A scalar rather than a
       // load, so it does not count against the >50-item load ceiling
@@ -1570,7 +1598,7 @@ async function readChartsPage(
       } catch {
         count = undefined;
       }
-      perSlide.push({ slide, count });
+      perSlide.push({ slide, count, index: i });
     }
     await step(`reading slides ${from}-${to - 1} for charts`, () =>
       withTimeout(context.sync(), READBACK_TIMEOUT_MS, `reading slides ${from}-${to - 1} for charts`),
@@ -1579,7 +1607,8 @@ async function readChartsPage(
     let unread = 0;
     let short = 0;
     const lookups: ({ slideId: string; shape: PowerPoint.Shape } & ChartTags)[] = [];
-    for (const { slide, count } of perSlide) {
+    const inventory: SlideInventory[] = [];
+    for (const { slide, count, index } of perSlide) {
       // A slide whose shape collection the host did not answer tells us
       // nothing, and must not be read as "no charts on this one": it is a
       // slide whose charts a deck-wide rescale would silently skip.
@@ -1594,6 +1623,26 @@ async function readChartsPage(
       // never LESS, or every slide would look short on a host without getCount.
       const n = count ? loadedValue(() => count.value) : undefined;
       if (typeof n === "number" && shapes.length < n) short++;
+      if (withInventory) {
+        inventory.push({
+          slideId,
+          index,
+          // Every property read through `loadedValue`, because a host that
+          // answered the collection has not necessarily answered every property
+          // on it — and a diagnostic that throws while describing the deck is
+          // worse than one that reports a shape with no name.
+          shapes: shapes.map((shape) => {
+            const at = { id: loadedValue(() => shape.id) };
+            return {
+              id: typeof at.id === "string" ? at.id : "",
+              name: loadedValue(() => (shape as unknown as { name: string }).name),
+              left: loadedValue(() => shape.left),
+              top: loadedValue(() => shape.top),
+            };
+          }),
+          ...(typeof n === "number" ? { count: n } : {}),
+        });
+      }
       for (const shape of shapes) lookups.push({ slideId, shape, ...chartTagsOf(shape) });
     }
     await step(`reading chart tags on slides ${from}-${to - 1}`, () =>
@@ -1631,7 +1680,7 @@ async function readChartsPage(
       untrack(l.origin);
       untrack(l.shape);
     }
-    return { charts, unread, short, tagsUnread };
+    return { charts, unread, short, tagsUnread, inventory };
   });
 }
 
@@ -1655,17 +1704,19 @@ async function readChartsPage(
  * an array that could not tell "no charts here" from "I could not look". See
  * `DeckScan`, and `scanIsComplete` for the question every such caller owes.
  */
-export async function listChartsInDeck(): Promise<DeckScan> {
+export async function listChartsInDeck(opts: { withInventory?: boolean } = {}): Promise<DeckScan> {
   const total = await slideCount();
   const charts: { configJson: string; target: EditTarget }[] = [];
+  const inventory: SlideInventory[] = [];
   let unread = 0;
   let short = 0;
   let tagsUnread = 0;
   for (let start = 0; start < total; start += READBACK_PAGE) {
     const end = Math.min(start + READBACK_PAGE, total);
     try {
-      const page = await readChartsPage(start, end);
+      const page = await readChartsPage(start, end, !!opts.withInventory);
       charts.push(...page.charts);
+      inventory.push(...page.inventory);
       unread += page.unread;
       short += page.short;
       tagsUnread += page.tagsUnread;
@@ -1674,7 +1725,7 @@ export async function listChartsInDeck(): Promise<DeckScan> {
       unread += end - start;
     }
   }
-  const scan = { charts, unread, short, tagsUnread, slides: total };
+  const scan = { charts, unread, short, tagsUnread, slides: total, ...(opts.withInventory ? { inventory } : {}) };
   if (!scanIsComplete(scan))
     trace("pane", "slides that would not answer a chart scan", { unread, short, tagsUnread, slides: total });
   return scan;
@@ -4359,6 +4410,59 @@ export async function slideImageBase64(slideId: string, width?: number): Promise
     trace("host", "rasterising a slide threw", { slideId, error: errorText(err) });
     return undefined;
   }
+}
+
+/**
+ * One slide's picture, or the reason there isn't one — for every id asked about.
+ *
+ * Never a shorter array than it was given. A run that comes back with four
+ * pictures for six slides leaves the reader guessing which two are missing and
+ * why, and "the host has no rasteriser" and "that slide would not resolve" are
+ * different findings that a gap in an array cannot tell apart.
+ */
+export interface SlideShot {
+  slideId: string;
+  /** Base64 PNG, absent when the host would not produce one. */
+  png?: string;
+}
+
+/**
+ * Ask the host to draw the slides a diagnostic round touched.
+ *
+ * The point is to stop asking a person to take screenshots. Several real bugs
+ * this project has fixed were visible only in a picture — a chart drawn where
+ * nothing else could see it, a slide that ended up blank, 41 shapes that became
+ * 79 — and every one of them cost a round trip because the run log carried
+ * counts and the screenshot lived in a different message.
+ *
+ * Bounded three ways, because it is the heaviest call the add-in makes and this
+ * is a diagnostic, not a feature: a cap on how many slides, a width, and
+ * `slideImageBase64`'s own deadline per slide. Over the cap, the EXTRA IDS ARE
+ * STILL RETURNED, without pictures and marked — a capped run that silently
+ * showed the first twelve of twenty would read as a deck of twelve.
+ */
+export async function slideShots(
+  slideIds: string[],
+  opts: { max?: number; width?: number } = {},
+): Promise<SlideShot[]> {
+  const max = opts.max ?? 12;
+  const out: SlideShot[] = [];
+  for (const slideId of slideIds) {
+    if (out.length >= max || isStopRequested()) {
+      out.push({ slideId });
+      continue;
+    }
+    const png = await slideImageBase64(slideId, opts.width ?? 480);
+    out.push(png ? { slideId, png } : { slideId });
+  }
+  const drew = out.filter((s) => s.png).length;
+  if (drew < out.length) trace("host", "slides the host would not draw", { asked: out.length, drew, max });
+  return out;
+}
+
+/** Every slide id in the deck, in order — or undefined if the host would not list them. */
+export async function deckSlideIds(): Promise<string[] | undefined> {
+  return slideIds();
 }
 
 /** Where a slide-size answer came from — recorded so a wrong placement can be

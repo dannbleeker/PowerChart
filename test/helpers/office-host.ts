@@ -1270,6 +1270,17 @@ const stallSyncDelayMs = 40;
 let lastShapeLoad = "";
 
 /**
+ * The property list of the most recent `shapes.load(...)`.
+ *
+ * Exposed because a request's SHAPE is a fact about cost, and cost is the only
+ * reason the deck scan's shape inventory is opt-in: `items/name` is a per-shape
+ * string deck-wide, and the callers that sweep every slide on a live web host
+ * must keep paying for exactly what they paid for before. Nothing else can check
+ * that — a fake shape hands back its name whether or not anyone asked.
+ */
+export const lastShapeLoadSpec = (): string => lastShapeLoad;
+
+/**
  * Slide ids whose next shape-collection read finds the load UNANSWERED.
  *
  * One step past `hollowReads`, and observed as its limit: the web host answers
