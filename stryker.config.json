@@ -14,5 +14,7 @@
   },
   "vitest": {
     "configFile": "vitest.mutation.config.ts"
-  }
+  },
+  "ignoreStatic": true,
+  "_comment_ignoreStatic": "Mutants in module-load-time code are skipped. Stryker cannot use per-test coverage for them, so each one re-runs the ENTIRE suite \u2014 a first run on five small files was still going after ten minutes for exactly that reason, and a weekly job that never finishes reports nothing. What is given up is mutating constant tables and top-level derived values, where a mutant either breaks everything (killed for free) or nothing anyone asserts (survives meaninglessly). The signal is in the functions, and they are all still mutated."
 }
