@@ -7,7 +7,7 @@
   xsi:type="TaskPaneApp">
 
   <Id>b7f6d3a2-4c1e-4e8a-9f2b-7d5c0a1e6f43</Id>
-  <Version>0.1.0</Version>
+  <Version>1.0.0.0</Version>
   <ProviderName>PowerChart (open source)</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="PowerChart" />

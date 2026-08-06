@@ -62,6 +62,39 @@ jobs:
       - name: The showcase deck is schema-valid
         run: npm run validate-ooxml examples/showcase.pptx
 
+  # Microsoft's own manifest validator, on the four manifests this repo ships.
+  #
+  # A JOB OF ITS OWN, and deliberately not part of `test`. The validator is a
+  # call to a Microsoft SERVICE, not a local schema check, so its availability is
+  # not ours — and `test` is the only check the branch ruleset requires, so a
+  # service outage must not be able to block every merge in the repo. Here the
+  # signal is visible and a red run is a thing to look at, not a wall.
+  #
+  # It is worth having because the manifest is the one artifact CI could not
+  # otherwise judge: a broken one passes every test in this repo and fails when
+  # the owner sideloads it, which is the slowest feedback loop the project has.
+  # `CLAUDE.md` already flags manifest changes as the case that forces a
+  # re-install; this is what says whether the file is worth re-installing.
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Both dev manifests and both production ones. The prod pair is generated
+      # from the dev pair and committed, and `test` already gates them for
+      # staleness — but "current" and "valid" are different questions, and only
+      # the prod files are what anyone actually sideloads.
+      - name: Manifests are valid
+        run: |
+          for m in manifest.xml manifest-excel.xml manifest-prod.xml manifest-excel-prod.xml; do
+            echo "--- $m"
+            npx --yes office-addin-manifest validate "$m"
+          done
+
   # Every merge to main refreshes the rolling "skill-latest" release, giving
   # the newest skill zip a stable download URL.
   release-skill:

@@ -828,6 +828,22 @@ export function makeSlide(id: string) {
     created,
     pending,
     isNullObject: false,
+    /**
+     * The slide's layout, with a shape collection that answers empty.
+     *
+     * Modelled because office-js#3826 says a NEW slide's
+     * `load("layout/shapes/items")` fails the sync with GeneralException on the
+     * web, and `new-slide-layout-readable` asks it. Without a layout here the
+     * fake answered "unreadable" — which is not "we do not model this", it is a
+     * claim that the host refuses, and a real desktop PowerPoint does not. A
+     * fake that lies on the happy path turns every real answer into a
+     * divergence.
+     *
+     * Empty on purpose: this add-in creates slides on the BLANK layout, so zero
+     * layout shapes is the honest neutral answer, and nothing in the repo reads
+     * layout shapes for their content.
+     */
+    layout: { shapes: { items: [] as unknown[], load() {} }, load() {} },
     load() {},
     // Slide.delete() — the repair pass removes duplicate slides, and a fake
     // that kept them would make every deletion assertion vacuous. installHost
@@ -1204,6 +1220,13 @@ function windowedHandle(real: FakeSlide, makeError: () => Error) {
     load() {},
     delete: () => real.delete(),
     tags: real.tags,
+    // Forwarded, and gated like every other member: `new-slide-layout-readable`
+    // reads this through exactly such a handle, and a handle that simply did
+    // not have a layout would answer "unreadable" — a claim that the host
+    // refuses, which is a different thing from a fake that models nothing.
+    get layout() {
+      return ok() ? real.layout : undefined;
+    },
     // The host's own rasteriser is reached through a slide handle like any
     // other call, so a spent window refuses that too — which is exactly how a
     // real host answered the self-test's visibility check.

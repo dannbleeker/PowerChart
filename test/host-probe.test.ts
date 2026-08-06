@@ -308,6 +308,8 @@ describe("the fake host's answer sheet", () => {
         "delete-then-lookup",
         "addgroup-returns-usable",
         "group-reports-its-children",
+        "group-of-existing-shape-readable",
+        "picture-then-shape-read",
         "tag-on-group-survives",
       ];
       for (const id of needShapes) expect(answers[id], `${id} claimed a host answer`).toBe("no-scratch-shape");
@@ -604,5 +606,37 @@ describe("questions that ask their own follow-up", () => {
       faults.wedgeAfterSyncs = null;
       _setReadbackTimeoutForTest(90_000);
     }
+  });
+});
+
+describe("the questions added from the office-js tracker", () => {
+  const sheetOfRows = async () => (await runHostProbes("fake", "test")).answers;
+
+  it("asks about layouts on a slide the run did not add", async () => {
+    // A freshly-added slide's handle is good for exactly one sync on this host,
+    // so a load queued on the scratch slide and read after its own sync answers
+    // "unreadable" whatever the layout API does. That is an answer about the
+    // probe's plumbing wearing the clothes of a fact about layouts — the
+    // failure this whole file exists to prevent, and the first draft of this
+    // question had it.
+    installHost([]);
+    const rows = await sheetOfRows();
+    expect(rows.find((r) => r.id === "slide-layout-readable")?.answer).toBe("no-durable-slide");
+  });
+
+  it("still answers the layout question when the deck has a settled slide", async () => {
+    installHost([makeSlide("s1")]);
+    const rows = await sheetOfRows();
+    expect(rows.find((r) => r.id === "slide-layout-readable")?.answer).toBe("yes");
+  });
+
+  it("names a group's children through a handle resolved later, not the one that made it", async () => {
+    // office-js#5849 is about `Shape.group` on a group found afterwards, which
+    // is how `countGroupChildrenPage` finds one. `group-reports-its-children`
+    // already asks in the batch that MADE the group, and the two answers are
+    // different claims — one about the API, one about proxy age.
+    installHost([makeSlide("s1")]);
+    const rows = await sheetOfRows();
+    expect(rows.find((r) => r.id === "group-of-existing-shape-readable")?.answer).toBe("2");
   });
 });

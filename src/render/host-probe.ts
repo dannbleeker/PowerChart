@@ -158,6 +158,16 @@ class ProbeSetupFailed extends Error {
  */
 let awaitingSetupShapes = false;
 
+/**
+ * A 1x1 transparent PNG — the smallest thing that is genuinely a picture.
+ *
+ * The probe that asks about office-js#5022 needs a real image and cares nothing
+ * about what it looks like. Bare base64, no `data:` prefix, because that is what
+ * `fill.setImage` takes.
+ */
+const ONE_PIXEL_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
 /** A shape's box, in points on the scratch slide. */
 type ProbeBox = { left: number; top: number; width: number; height: number };
 
@@ -268,6 +278,26 @@ function probeShape(ctx: ProbeContext, id: string): PowerPoint.Shape {
 function threw(err: unknown): { answer: string; detail?: string } {
   if (err instanceof ProbeSetupFailed) throw err;
   return { answer: "threw", detail: short(err) };
+}
+
+/** A shape's id, or undefined if the host did not answer the load. */
+function readShapeId(shape: { id?: string }): string | undefined {
+  try {
+    const v = shape.id;
+    return typeof v === "string" && v ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A queued `getCount()` result, or undefined if the sync did not populate it. */
+function loadedCount(result: { value: number }): number | undefined {
+  try {
+    const v = result.value;
+    return typeof v === "number" ? v : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** A slide's id, or undefined if the host did not answer the load. */
@@ -831,6 +861,126 @@ const PROBES: Probe[] = [
         await ctx.sync();
         const id = (slide as unknown as { id: string }).id;
         return { answer: typeof id === "string" && id ? "returns-something" : "unreadable" };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "picture-then-shape-read",
+    question: "After a picture is added, does re-reading the slide's shapes still answer?",
+    // office-js#5022, open and assigned: get shapes, insert an image, delete the
+    // old shapes, sync — and `context.sync()` "can run indefinitely" when the
+    // shapes are read back to rename the new image. The reporter's only
+    // workaround is a 1-2 second pause, and it still recurs.
+    //
+    // `drawDemoItem` does exactly this shape. A chart too dense to draw becomes
+    // ONE picture, and `needsRefresh` is true whenever `pictureBase64` is set —
+    // so the picture is added and the shape collection is re-read a sync later,
+    // in the same context. Every unexplained hang this project has recorded is
+    // consistent with it, and none of them can be pinned on it without asking.
+    //
+    // A hang here answers `silent` on the probe budget rather than taking the
+    // sheet down, which is the whole reason each question gets its own bound.
+    ask: async (ctx) => {
+      // `requirementSets()` rather than a private `supports` — same source, and
+      // the sheet already carries the list, so a reader can check the gate.
+      if (!requirementSets().includes("1.8"))
+        return { answer: "no-api", detail: "picture fills need PowerPointApi 1.8" };
+      try {
+        const [shape] = await scratchShapes(ctx, [{ left: 260, top: 120, width: 40, height: 40 }]);
+        (shape.fill as unknown as { setImage(b64: string): void }).setImage(ONE_PIXEL_PNG);
+        await ctx.sync();
+        // The read that is said to hang — a fresh collection off a fresh slide
+        // handle, one sync after the picture landed.
+        const shapes = probeShapes(ctx);
+        shapes.load("items/id");
+        await ctx.sync();
+        const items = (shapes as unknown as { items?: unknown[] }).items;
+        return items ? { answer: "yes", detail: `${items.length} shape(s)` } : { answer: "unreadable" };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "group-of-existing-shape-readable",
+    question: "Can a group found in a later batch report its children?",
+    // office-js#5849: reading `shape.group` throws GeneralException. Distinct
+    // from `group-reports-its-children`, which asks in the batch that MADE the
+    // group — this asks the way `countGroupChildrenPage` asks, about a group
+    // resolved from the deck afterwards.
+    //
+    // That pass is what decides whether a chart read back is intact or
+    // wreckage, and every failure in it is swallowed per shape. So a host that
+    // refuses this produces no error and no measurement, and the repair pass
+    // then has nothing to go on for the charts it was meant to check.
+    ask: async (ctx) => {
+      const ids = idsOf(
+        await scratchShapes(
+          ctx,
+          [0, 1].map((i) => ({ left: 300 + i * 25, top: 160, width: 20, height: 20 })),
+          "id",
+        ),
+      );
+      try {
+        const made = (
+          probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): { load(p: string): void; id: string } }
+        ).addGroup(ids.map((id) => probeShape(ctx, id)));
+        // The id in its OWN sync, never in the one that made the group.
+        // That saving is what cost the 2026-08-05 sheet five of its questions:
+        // this host will not name a shape in the batch that created it, and
+        // `scratchShapes` was rewritten for exactly the same reason.
+        await ctx.sync();
+        made.load("id");
+        await ctx.sync();
+        const groupId = readShapeId(made);
+        if (!groupId) throw new ProbeSetupFailed("the host would not name the group it just made");
+        // A LATER batch, through a fresh handle — the thing that separates this
+        // question from the one above it.
+        const found = probeShape(ctx, groupId) as unknown as {
+          group: { shapes: { getCount(): { value: number } } };
+        };
+        const count = found.group.shapes.getCount();
+        await ctx.sync();
+        const n = loadedCount(count);
+        return typeof n === "number" ? { answer: String(n) } : { answer: "unreadable" };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "slide-layout-readable",
+    question: "Can a slide's layout shapes be read?",
+    // office-js#3826, open and marked a product bug: on Office on the web
+    // `slide.load("layout/shapes/items")` fails the sync with GeneralException.
+    // The per-slide companion to `layouts-readable`, which asks the same of the
+    // deck's masters — #4906 and #2328 report the master form, #3826 the slide
+    // form, and nothing says whether they are one defect or three.
+    //
+    // Asked of a slide that was in the deck BEFORE this run, not the scratch
+    // slide, and that is the whole care taken here. A freshly-added slide's
+    // handle is good for exactly one sync on this host — established, and
+    // unconditional in the fake — so a load queued on it and read after its own
+    // sync answers "unreadable" whatever the layout API does. That would be an
+    // answer about the probe's own plumbing dressed as a fact about layouts,
+    // which is the failure mode this file exists to prevent.
+    //
+    // Read-only. It resolves someone's own slide and asks what its layout
+    // holds; nothing is created, moved or drawn.
+    ask: async (ctx) => {
+      const durable = ctx.durableSlideId;
+      if (!durable) return { answer: "no-durable-slide", detail: "the deck has no slide this run did not add" };
+      try {
+        const slide = ctx.slides.getItemOrNullObject(durable) as unknown as {
+          load(p: string): void;
+          layout?: { shapes?: { items?: unknown[] } };
+        };
+        slide.load("layout/shapes/items/id");
+        await ctx.sync();
+        const items = slide.layout?.shapes?.items;
+        return items ? { answer: "yes", detail: `${items.length} layout shape(s)` } : { answer: "unreadable" };
       } catch (err) {
         return threw(err);
       }

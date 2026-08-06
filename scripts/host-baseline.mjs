@@ -31,6 +31,9 @@ export const FAKE_BASELINE = {
   "group-reports-its-children": "two",
   "tag-on-group-survives": "yes",
   "getitemat-past-end": "threw",
+  "picture-then-shape-read": "yes",
+  "group-of-existing-shape-readable": "2",
+  "slide-layout-readable": "yes",
   "layouts-readable": "yes",
   "untrack-available": "no",
 };
@@ -86,6 +89,12 @@ export const KNOWN_DIVERGENCES = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "picture-then-shape-read":
+    "Added after the fixture's build. office-js#5022 (open, Microsoft-assigned) reports `context.sync()` running indefinitely when shapes are re-read after an image is inserted; the reporter's only workaround is a 1-2 second pause, and it still recurs. `drawDemoItem` does exactly that shape — a chart too dense to draw becomes ONE picture, and `needsRefresh` is true whenever `pictureBase64` is set, so the collection is re-read a sync later in the same context. Every unexplained hang this project has recorded is consistent with it and none can be pinned on it without asking.",
+  "group-of-existing-shape-readable":
+    "Added after the fixture's build. office-js#5849 reports `Shape.group` throwing GeneralException. Distinct from `group-reports-its-children`, which asks in the batch that MADE the group; this asks the way `countGroupChildrenPage` asks, about a group resolved from the deck afterwards. That pass decides whether a chart reads back as intact or as wreckage, and it swallows failures per shape — so a host that refuses produces no error and no measurement, and the repair pass has nothing to go on.",
+  "slide-layout-readable":
+    "Added after the fixture's build. office-js#3826 (open, marked a product bug) reports `slide.load('layout/shapes/items')` failing the sync with GeneralException on the web. The per-slide companion to `layouts-readable`: #4906 and #2328 report the master form, #3826 the slide form, and nothing says whether they are one defect or three. Asked of a pre-existing slide on purpose — a freshly-added slide's handle is single-sync here, so the scratch slide would answer about the handle rather than about layouts.",
   "layouts-readable":
     "Added after the fixture's build. office-js#4906 reports SlideLayout/SlideMaster shape loads throwing GeneralException in PowerPoint Online, at `errorLocation: SlideMasterCollection.getItem`, and ONLY on presentations built from a custom template — which is exactly what the owner's decks are. `blankLayoutId` reads this and is try/caught, so a refusal degrades silently to the inherited layout and every slide the add-in creates lands on top of the previous slide's placeholders. Visible defect, no error, and no way to tell which of the two happened without asking.",
   "shape-add-fresh-getitem-slide":
