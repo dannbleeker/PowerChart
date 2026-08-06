@@ -32,6 +32,17 @@ describe("the Pages deploy workflow", () => {
     expect(ms, `timeout is ${ms}ms — the default that cancelled six deployments is 600000`).toBeGreaterThan(600_000);
   });
 
+  it("can be run by hand when the automatic trigger does not fire", () => {
+    // Not hypothetical. On 2026-08-06 the `pull_request` event produced no CI
+    // run at all for PR #300 — CodeQL ran on the same event seconds later, and
+    // this workflow was `active` and unmodified; closing and reopening the PR
+    // did not fire it either. `test` is the only required check, so a missed
+    // trigger blocks the merge outright, and without a dispatch the only lever
+    // left is pushing a commit nobody wanted.
+    const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+    expect(ci, "CI has no manual trigger — a missed event would be unrecoverable").toMatch(/workflow_dispatch:/);
+  });
+
   it("never cancels a Pages deploy that is already running", () => {
     // `cancel-in-progress: true` would mean a second merge kills the first
     // merge's deployment mid-flight, which is how a green pipeline ends up
