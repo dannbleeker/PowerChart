@@ -55,6 +55,46 @@ afterEach(() => vi.unstubAllGlobals());
 
 const byName = (rs: ScenarioResult[]) => Object.fromEntries(rs.map((r) => [r.name, r]));
 
+/**
+ * The visibility scenario is `pickedOnly`, so every case about it must ask for
+ * it by name. See its entry in `SCENARIOS` for what put it there.
+ */
+const VISIBLE = "the chart is actually visible";
+
+/**
+ * The visibility scenario is not in a routine round, and this is what that cost.
+ *
+ * Four real-host rounds, four different builds — a5b032d, 618b8d8, cedbc6c,
+ * cacf58a — and every one of them stops writing inside this scenario, at 602s,
+ * 631s, 603s and 645s, always within a step or two of `adding a scratch slide`.
+ * It has never once returned a verdict. Running it LAST already protects the
+ * other scenarios (that is why it was put there), but the battery's report is
+ * written when the battery returns, and it has not returned yet: every round so
+ * far has reached the owner as a crash file rather than a report.
+ *
+ * Pinned rather than left to the list, because "move it back, it belongs with
+ * the others" is a reasonable-sounding change and the price is a whole
+ * real-host round.
+ */
+describe("what a routine round leaves out", () => {
+  it("does not run the scenario that has killed the tab in four consecutive rounds", () => {
+    expect(SCENARIO_NAMES, "the scenario was deleted rather than parked").toContain(VISIBLE);
+    expect(
+      ROUTINE_SCENARIO_NAMES,
+      "put the visibility scenario back in a routine round — it is 0 for 4 and takes the report with it",
+    ).not.toContain(VISIBLE);
+  });
+
+  it("still offers it to the picker, because that is the experiment nobody has run", async () => {
+    // Alone, on a fresh host, thirty seconds in — which separates "this
+    // scenario kills the host" from "ten minutes of drawing kills the host, and
+    // this is merely what was running". Both fit every artefact so far.
+    installHost([makeSlide("s1")]);
+    const names = (await runSelfTest("probe", VISIBLE)).map((r) => r.name);
+    expect(names, "the picker cannot reach it").toContain(VISIBLE);
+  });
+});
+
 describe("the host self-test battery", () => {
   it("returns a verdict for every scenario, in order", async () => {
     installHost([makeSlide("s1")]);
@@ -73,12 +113,12 @@ describe("the host self-test battery", () => {
       // ever a proxy for it. Pinned here, and as a property just below.
       "which selection call wedges the host",
       "a selected shape survives an insert",
-      // The three newest last, heaviest dead last — a crash in unproven code
-      // must not cost the verdicts of scenarios that already work. Pinned,
-      // because the ordering is a diagnostic property, not a detail.
+      // The newest last — a crash in unproven code must not cost the verdicts
+      // of scenarios that already work. Pinned, because the ordering is a
+      // diagnostic property, not a detail.
       "edit the chart the user selected",
       "stop a run part-way",
-      "the chart is actually visible",
+      // and NOT "the chart is actually visible" — see the case below.
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
@@ -616,7 +656,7 @@ describe("the scenarios the selection API unlocked", () => {
 
   it("sees the chart on the slide, and fails when the host renders the same bytes regardless", async () => {
     installHost([makeSlide("s1")]);
-    const good = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    const good = byName(await runSelfTest("probe", VISIBLE))[VISIBLE];
     expect(good.skipped, good.detail).toBeFalsy();
     expect(good.ok, good.detail).toBe(true);
 
@@ -627,7 +667,7 @@ describe("the scenarios the selection API unlocked", () => {
     vi.unstubAllGlobals();
     installHost([makeSlide("s1")]);
     faults.constantSlideImage = true;
-    const bad = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    const bad = byName(await runSelfTest("probe", VISIBLE))[VISIBLE];
     faults.constantSlideImage = false;
     expect(bad.ok, `passed while every render was identical: ${bad.detail}`).toBe(false);
     expect(bad.detail).toContain("nothing is visible");
@@ -648,7 +688,7 @@ describe("the scenarios the selection API unlocked", () => {
    */
   it("rasterises a slide the host will only name once", async () => {
     installHost([makeSlide("s1")]);
-    const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    const r = byName(await runSelfTest("probe", VISIBLE))[VISIBLE];
     expect(r.skipped, `gave up on a host that answers by-id handles once: ${r.detail}`).toBeFalsy();
     expect(r.ok, r.detail).toBe(true);
   });
@@ -774,7 +814,7 @@ describe("the scenarios the selection API unlocked", () => {
     // read perfectly clean.
     installHost([makeSlide("s1")]);
     faults.refuseSlideDelete = true;
-    const r = byName(await runSelfTest("probe"))["the chart is actually visible"];
+    const r = byName(await runSelfTest("probe", VISIBLE))[VISIBLE];
     faults.refuseSlideDelete = false;
     expect(r.detail, "left a slide behind and said nothing").toMatch(/could not be removed/i);
   });

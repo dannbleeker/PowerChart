@@ -751,12 +751,15 @@ const chartIsVisible: Scenario = async (prefix) => {
  * where an unproven scenario sits in this list decides how much of the run its
  * failure costs.
  *
- * The three added most recently — selection, stop, visibility — therefore run
- * at the end, and the heaviest and least proven of them (`chartIsVisible`,
- * which asks the host to rasterise a slide twice) runs dead last. It was 6th,
- * which meant a crash there cost the verdicts of three scenarios that had
- * worked on a real host that morning. New code must not be able to take the
- * evidence for old code with it.
+ * The two added most recently — selection and stop — therefore run at the end.
+ * The heaviest and least proven, `chartIsVisible`, ran dead last for the same
+ * reason (it was 6th, and a crash there cost the verdicts of three scenarios
+ * that had worked on a real host that morning). Last was not far enough: it
+ * killed the tab in four consecutive rounds without ever returning a verdict,
+ * and a battery that never returns never writes its report. It is `pickedOnly`
+ * now — see its entry. New code must not be able to take the evidence for old
+ * code with it, and "last" only buys that up to the point where the crash costs
+ * the report itself.
  *
  * The first two remain first because everything else needs the probe charts
  * they insert. Beyond that the constraint is `explodePicture`: it inserts a
@@ -1297,7 +1300,35 @@ const SCENARIOS: {
   { name: "a selected shape survives an insert", run: selectionSurvivesInsert },
   { name: "edit the chart the user selected", run: editViaSelection },
   { name: "stop a run part-way", run: stopPartWay },
-  { name: "the chart is actually visible", run: chartIsVisible },
+  // Picked only because it is 0 for 4 and takes the tab with it every time.
+  //
+  // Four real-host rounds, four different builds (a5b032d, 618b8d8, cedbc6c,
+  // cacf58a), and every one of them ends inside this scenario: at 602s, 631s,
+  // 603s and 645s, always within a step or two of `adding a scratch slide`. It
+  // has never once returned a verdict. Run 7 got as far as a 90-second rasterise
+  // timeout; run 8 was handed a rasterise that "took the call and returned
+  // nothing"; runs 6 and 9 simply stopped writing.
+  //
+  // Running last already protects the other scenarios' verdicts — that is why it
+  // was put there — but it does not protect the ROUND. The battery's report is
+  // written when the battery returns, and it has not returned yet, so every
+  // round so far has reached the owner as a crash file and a screenshot rather
+  // than a report. A scenario with no verdicts and a perfect record of killing
+  // the tab is not providing coverage; the routine list is the wrong place for
+  // it.
+  //
+  // Picked, it also becomes the experiment nobody has run. Every crash so far
+  // happened around the ten-minute mark with nine scenarios' worth of load
+  // behind it, so "this scenario kills the host" and "ten minutes of drawing
+  // kills the host, and this is merely what was running" both fit — the same
+  // two-readings trap this project keeps paying for. Running it ALONE, on a
+  // fresh host, thirty seconds in, separates them in one short round.
+  //
+  // Note what does NOT depend on this: `npm run visible-charts` rasterises every
+  // sample in a real browser on every CI run and fails on a chart that is drawn
+  // but invisible. What is lost here is the check against PowerPoint's OWN
+  // rasteriser, and only from the routine round.
+  { name: "the chart is actually visible", run: chartIsVisible, pickedOnly: true },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },
