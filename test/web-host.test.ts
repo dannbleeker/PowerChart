@@ -191,12 +191,32 @@ describe("the demo run against a web host at its worst", () => {
     });
     expect(report.degradedAt, "the budget did not force any degradation").toBeGreaterThan(0);
     // Charts (not the untagged harness pages) drawn as pictures must still
-    // carry their config. Without the single-shape re-fetch they carry none.
+    // carry their config — RE-EDITABLE, by whichever writer got there.
+    //
+    // This asserted `report.results[i].tagged`, which is narrower: it is true
+    // only when the DRAWING CONTEXT's write landed. That stopped being the right
+    // question once the re-read above started asking for `items/id`, because the
+    // hollow-read model then reaches it and the single-shape re-fetch does not
+    // run — and on the real host it never runs anyway, since the re-read comes
+    // back empty there whatever projection is asked for (four confirmations in
+    // the 2026-08-07 round). The demo path repairs those charts and does it well:
+    // three `applying retag` lines, and every chart on the deck carrying its
+    // config afterwards.
+    //
+    // So the property is re-editability, not which writer achieved it. Keeping
+    // the narrow assertion would have pinned a code path this host does not have.
     const from = report.degradedAt!;
     const wanted = items.map((it, i) => ({ it, i })).filter(({ it, i }) => it.tagData && i >= from);
     expect(wanted.length).toBeGreaterThan(0);
-    for (const { i } of wanted) {
-      expect(report.results[i].tagged, `degraded chart ${i} never got its config tag`).toBe(true);
+    const tagged = new Set(
+      slides.flatMap((s) =>
+        s.created.filter((sh) => !sh.deleted && sh.tagStore.has(CHART_TAG)).map((sh) => sh.tagStore.get(CHART_TAG)),
+      ),
+    );
+    for (const { it, i } of wanted) {
+      expect(tagged.has(it.tagData!), `degraded chart ${i} is not re-editable — no shape carries its config`).toBe(
+        true,
+      );
     }
   });
 
@@ -1231,5 +1251,37 @@ describe("what the settle says when it comes up empty", () => {
       faults.refuseTagWrites = 0;
       faults.hollowReads = 0;
     }
+  });
+});
+
+/**
+ * Every collection load names the properties it will read.
+ *
+ * Microsoft's own guidance, not a house style: `load("items")` loads the
+ * COLLECTION and not the properties of the items in it — "you must explicitly
+ * specify each property you need from collection items, as they won't be loaded
+ * by default, including scalar properties". A property nobody asked for throws
+ * `PropertyNotLoaded` at the READ, which is usually several lines and one sync
+ * away from the load, and often inside a best-effort `try` that swallows it.
+ *
+ * The file had exactly one violation: the re-read before grouping, whose only
+ * job is to read `id` off the items it gets back. That is also the read a real
+ * host reported as `refreshed=0`.
+ *
+ * This guard was added, removed, and added again, which is worth recording. The
+ * first attempt shipped without the docs behind it and was reverted when the
+ * suite went red on `still gets its degraded pictures tagged` — trading a guess
+ * for a measured regression. The research settled the guess, and the red test
+ * turned out to be asserting the wrong property.
+ */
+describe("what a collection load asks the host for", () => {
+  it("never loads a bare items — the property it will read has to be named", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/render/powerpoint.ts", "utf8");
+    const bare = src.split("\n").flatMap((line, i) => (/\.load\(\s*["']items["']\s*\)/.test(line) ? [i + 1] : []));
+    expect(
+      bare,
+      `bare load("items") at line(s) ${bare.join(", ")} — name the properties, as every other collection load here does`,
+    ).toEqual([]);
   });
 });
