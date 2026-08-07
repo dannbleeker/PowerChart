@@ -71,6 +71,26 @@ export const faults = {
    */
   refuseIdLeftTopLoads: 0,
   /**
+   * `load("id")` is refused on a shape proxy older than one sync.
+   *
+   * The read-side twin of `strictTags`, and the same age rule, because it is the
+   * same host behaviour: Office.js rewrites a resolved proxy's object path to
+   * `shapes.getItem(id)`, and this host refuses that call whoever makes it. The
+   * tag writer had a fault for it; the id reader did not.
+   *
+   * What it reaches that nothing else could: `ungroupedFallback` reads ids off
+   * `it.created`, the proxies `addGeometricShape` handed back, which by then span
+   * several batches. `reading back an ungrouped chart's shape ids` failed three
+   * times that way in the 2026-08-07 run, and each failure cost a chart its
+   * CHART_PARTS_TAG — on a host that ungroups every chart, so on the web that is
+   * every chart, and a chart with no parts list grows by a whole chart per edit.
+   *
+   * Members of a collection read are exempt, and that is the point rather than a
+   * convenience: `freshHandle` re-stamps their age, which is exactly the
+   * distinction the host draws and the one the fix turns on.
+   */
+  strictIdLoads: false,
+  /**
    * Any sync that resolved a shape BY ID fails; a collection read still works.
    *
    * The divergence the 2026-08-07 round is made of. Sixty-six errors in one run
@@ -610,6 +630,16 @@ export function makeShape(
       if (faults.refuseIdLeftTopLoads > 0 && props === "id,left,top") {
         faults.refuseIdLeftTopLoads--;
         throw new Error("InvalidParam passed to GetItem(id) | code=5010");
+      }
+      // See faults.strictIdLoads. The age comes off `this` rather than the
+      // closure, and it has to: `freshHandle` re-stamps `syncCreated` on the
+      // proxy it hands back, so a closure over the original shape would report a
+      // re-read member as being as old as the batch that drew it — the handle
+      // would look fresh and behave stale, which is the exact trap the `tags`
+      // rebinding below already documents.
+      const age = (this as unknown as { syncCreated?: number } | undefined)?.syncCreated ?? shape.syncCreated;
+      if (faults.strictIdLoads && props === "id" && trips.syncs > age + 1) {
+        throw new Error("InvalidParam passed to GetItem(id) | code=5010 | errorLocation: ShapeCollection.getItem");
       }
       // Taken and never answered when the shape was created in THIS batch —
       // see `faults.noIdInCreatingSync`. The load is queued like any other;
@@ -1857,6 +1887,7 @@ export function installHost(
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;
   faults.refuseShapeById = false;
+  faults.strictIdLoads = false;
   refuseThisSync = false;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;

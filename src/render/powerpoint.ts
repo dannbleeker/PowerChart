@@ -5951,10 +5951,40 @@ async function groupAndTagAll(
       // best-effort refresh — the catch below already says so — so it all
       // belongs where the catch can reach it.
       const collections = refresher.map(({ it }) => it.getSlide().shapes);
+      // A bare `items`, and it is the only collection load in this file that does
+      // not name its properties. That was changed to `items/id` on 2026-08-07 on
+      // the reasoning that `id` is the only property this block reads and
+      // Office.js populates what was asked for — and it was changed BACK, because
+      // the reasoning rests on a fact nobody here has: whether `load("items")`
+      // populates the items' scalar properties or only the collection.
+      //
+      // The suite answered a narrower question and answered it clearly. Under
+      // `applyWebProfile` the switch broke `still gets its degraded pictures
+      // tagged`: `hollowReads` models a short collection read and keys on
+      // `items/id`, so widening this projection pulled the grouping re-read into
+      // a blindness the bare form had been escaping — the re-read came back
+      // empty, the single-shape re-fetch below never ran, and the degraded
+      // picture's tag went through the stale proxy the host refuses. That is not
+      // the fake being unfair: a real host that reads short does not care which
+      // projection was asked for.
+      //
+      // So the change trades a guess about `load("items")` for a measured
+      // regression, which is the wrong way round. Ask the host instead — the
+      // three traces below now separate "came back empty" from "threw" from
+      // "matched nothing", and a run log that says which will settle it.
       for (const c of collections) c.load("items");
       await boundedSync(context, "re-reading the slide's shapes before grouping");
       refresher.forEach(({ it, i }, k) => {
         const items = collections[k].items;
+        // A slide we JUST drew onto cannot be empty, so an empty answer is the
+        // host reading short — the `hollowReads` behaviour, seen for real when
+        // one readback asked about 19 shapes and was told 3. Worth its own line
+        // because the alternative readings of `refreshed=0` want different
+        // fixes, and from a run log they are indistinguishable.
+        if (!items?.length && it.created.length) {
+          trace("group", "the re-read before grouping came back empty", { index: i, drew: it.created.length });
+          return;
+        }
         // By ID, which is exact and works on any slide. The old rule was "the
         // chart's shapes are the LAST N on the slide" — true of a blank slide
         // this run added, and false of the slide the user is looking at, which
@@ -5983,8 +6013,18 @@ async function groupAndTagAll(
           freshMembers.set(i, items.slice(items.length - it.created.length));
         }
       });
-    } catch {
-      /* re-load faulted — fall through to the stale proxies */
+    } catch (err) {
+      // Say so. This catch was silent, and silence here is the mistake this
+      // project has now paid for twice: `refreshed=0` in a run log means
+      // "freshMembers was never set", and a refresh that THREW and a refresh
+      // that matched nothing produce exactly the same zero. They want different
+      // fixes — one is a host refusing a read, the other is a match rule that
+      // does not fit the slide — and no deck can tell them apart. Same lesson as
+      // the settle's "never asked" versus "asked and failed".
+      trace("group", "the re-read before grouping faulted", {
+        charts: refresher.length,
+        error: errorText(err),
+      });
     }
   }
   // A refreshed single shape is the tag target from here — the whole point of
@@ -6069,7 +6109,7 @@ async function groupAndTagAll(
       grouped.clear();
     }
   }
-  const partsJson = await ungroupedFallback(context, items, tagTargets, grouped);
+  const partsJson = await ungroupedFallback(context, items, tagTargets, grouped, freshMembers);
   // Tags are PowerPointApi 1.3+; keep the chart re-editable where supported.
   const taggable = items
     .map((it, i) => ({ it, i, target: tagTargets[i] }))
@@ -6213,13 +6253,38 @@ async function ungroupedFallback(
   items: Grouping[],
   tagTargets: (PowerPoint.Shape | undefined)[],
   grouped: Set<number>,
+  freshMembers?: Map<number, PowerPoint.Shape[]>,
 ): Promise<(string | undefined)[]> {
   const partsJson: (string | undefined)[] = items.map(() => undefined);
   const loose = (i: number) => !grouped.has(i) && tagTargets[i];
   // Only a re-editable chart (one that gets a config tag, so a host with tags)
   // needs its parts written down; the update path is what reads them.
   const hasTags = supports("1.3");
-  const siblings = items.map((it, i) => (hasTags && loose(i) && it.opts.tagData ? it.created.slice(1) : []));
+  /**
+   * The re-read's members where there are any, the drawing proxies otherwise.
+   *
+   * `it.created` are the proxies `addGeometricShape` handed back, and on the web
+   * Office.js has by now rewritten their object paths to `shapes.getItem(id)` —
+   * which is the call this host refuses. That is not a theory: `reading back an
+   * ungrouped chart's shape ids` failed three times in the 2026-08-07 run with
+   * `InvalidParam passed to GetItem(id)` at `errorLocation:
+   * ShapeCollection.getItem`, and each failure cost that chart its
+   * CHART_PARTS_TAG.
+   *
+   * Which matters more here than the name "fallback" suggests. PowerPoint on the
+   * web ungroups every chart it cannot group, so on that host this path carries
+   * EVERY chart — and a chart with no parts list is one whose in-place update
+   * deletes its anchor and redraws all 24 shapes, leaving the other 23 behind.
+   * The chart grows by a whole chart on every edit.
+   *
+   * `freshMembers` came out of a collection read, in `created` order by
+   * construction (see the match above), so index 0 is still the anchor and
+   * "everything after it is a part" still holds. A member of an `items` read is
+   * the proxy pattern this host does honour — the same one `settleByCollection-
+   * Read` relies on.
+   */
+  const parts = (it: Grouping, i: number): PowerPoint.Shape[] => (freshMembers?.get(i) ?? it.created).slice(1);
+  const siblings = items.map((it, i) => (hasTags && loose(i) && it.opts.tagData ? parts(it, i) : []));
   const alt = items.map((it, i) => ({ it, i })).filter(({ it, i }) => loose(i) && wantsAltText(it.opts));
   if (!alt.length && !siblings.some((s) => s.length)) return partsJson;
   try {
