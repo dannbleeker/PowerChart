@@ -99,7 +99,15 @@ export const KNOWN_ISSUES = {
   5264: "A part of the object model Office.js cannot reach. Recorded as a limitation.",
   5849: "Shape.group throws GeneralException. Asked by the `group-of-existing-shape-readable` probe; countGroupChildrenPage reads groups exactly that way.",
   5896: "Reported alongside another SVG defect; same handling.",
-  6363: "Carried in the docs as a known platform limitation.",
+  6363:
+    'PowerPoint.run\'s batching "fails to load properties reliably — properties not available after context.sync()", web only. ' +
+    'Re-read 2026-08-07 and it is the closest published match to this repo\'s central failure: the reporter loads `slides.load("items")`, ' +
+    'syncs, and reading `.items` throws "the property is not available", and the same happens for `shapes.items`, `shape.type` and ' +
+    "`textFrame.hasText`. Identical code typed into the browser console works; only the batched form fails. `Status: under investigation`, " +
+    "assigned, no root cause published, and the thread records TEN workarounds that all failed — including re-querying with `getItemAt()`, " +
+    "`items/type` path loading, per-load syncs, and `context.trackedObjects.add()`. " +
+    "Our shape of it is adjacent but not identical: `the re-read before grouping came back empty` is an EMPTY array, not a throw, and the " +
+    "empty/threw split is traced precisely so the next round says which. No fix available; the recovery paths are the exposure management.",
   2714: "setSelectedDataAsync converts points to pixels. NO EXPOSURE — this repo never calls it. Checked, not assumed.",
 };
 

@@ -6020,7 +6020,7 @@ async function groupAndTagAll(
       // regression, which is the wrong way round. Ask the host instead — the
       // three traces below now separate "came back empty" from "threw" from
       // "matched nothing", and a run log that says which will settle it.
-      for (const c of collections) c.load("items");
+      for (const c of collections) c.load("items/id");
       await boundedSync(context, "re-reading the slide's shapes before grouping");
       refresher.forEach(({ it, i }, k) => {
         const items = collections[k].items;

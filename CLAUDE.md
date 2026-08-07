@@ -271,6 +271,18 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   `surroundingStatements` centres its `>>>>>` marker on the failing statement
   and in that round the marker sat on the batch's FIRST line while the log said
   "… 37 earlier statement(s) dropped".
+- **`load("items")` does not load the items' properties — Microsoft says so.**
+  "You must explicitly specify each property you need from collection items, as
+  they won't be loaded by default, including scalar properties." Every
+  collection load in this file names its properties; the re-read before grouping
+  was the one that did not, and `id` is the only thing it reads. Changed to
+  `items/id` on 2026-08-07 — after being changed and REVERTED once the same day,
+  which is the part worth keeping: the first attempt had no source behind it and
+  the suite went red, so it was traded back rather than argued for. The red test
+  turned out to be asserting the wrong property (which writer landed the tag,
+  rather than whether the chart is re-editable), and it only surfaced because
+  the fake's `hollowReads` keys on the projection string. Guarded by a source
+  scan in `web-host.test.ts`.
 - **The web host does not LIST the shapes a run just added.** The finding the
   extended log produced, and the one everything else downstream hangs off:
   `the re-read before grouping came back empty index=0 drew=24`, four times in
