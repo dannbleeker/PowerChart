@@ -364,16 +364,37 @@ What is left needs the owner, not the agent:
   "does any of this work" but "what does the newest build answer".
 
   What has still never run on a real host: the degradation experiment
-  (_what makes a long run slow down_), _edit the chart YOU click_, and every
-  probe question added since the fixture was recorded — `PENDING_QUESTIONS` in
+  (_what makes a long run slow down_), _edit the chart YOU click_, _the chart is
+  actually visible_ — which is `pickedOnly` as of 2026-08-07 precisely because it
+  killed the tab four rounds running without ever returning a verdict — and every
+  probe question added since the fixture was recorded. `PENDING_QUESTIONS` in
   `scripts/host-baseline.mjs` is the authoritative list of those, and it shrinks
   by itself when a newer sheet lands.
 
-  **Owed to the owner right now: a manifest re-install** — `<Version>` changed,
-  so the sideloaded copy is stale. What to ask him to click is written down:
-  "The standing test run" in `docs/PUBLISHING.md`. Don't improvise a new one per
-  session, and don't ask for the deck or a screenshot — the round's own file has
-  carried both since the deck-evidence change.
+  **Nothing is owed to the owner right now.** The manifest re-install he was
+  asked for was done on 2026-08-06, and nothing since has touched a manifest —
+  do not ask again unless a PR actually changes one. What to ask him to click is
+  written down: "The standing test run" in `docs/PUBLISHING.md`. Don't improvise
+  a new one per session, and don't ask for the deck or a screenshot — the round's
+  own file has carried both since the deck-evidence change.
+
+  **A round is in flight.** `48e9a00` was merged and deployed 2026-08-07 17:49Z,
+  and the owner has been asked for two things: a normal full round, and — on a
+  fresh deck — a second short round with _the chart is actually visible_ picked
+  alone. That second one is an experiment, not a regression check: every crash so
+  far arrived ten minutes and nine scenarios into a run, so "the scenario kills
+  the host" and "ten minutes of drawing kills the host, and this is what happened
+  to be running" both fit, and running it alone is what separates them. Whatever
+  comes back — including another crash — is the answer.
+
+  Three things in `48e9a00` have never met a real host: the settle's fall-through
+  to a collection read, `enableExtendedErrorLogging`, and the routine round
+  finishing at all. **The extended statements are the one to read first** — every
+  log before this build says `"Please enable config.extendedErrorLogging"`, and
+  the question it was turned on to settle is whether a batch printing
+  `slides.getItem(...)` is a held handle or just how Office.js prints a fresh
+  `getItemOrNullObject`. Those two readings disagree about whether the settle is
+  repairable, and no amount of reasoning has separated them.
 
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 
