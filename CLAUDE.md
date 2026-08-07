@@ -199,7 +199,26 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   the one the settle uses and a fault on the other only ever refuses the write
   the settle repairs. Which of the two failed on the real host is not yet
   known: `settleUntaggedCharts` traces `{charts, settled, lost}`, so the run log
-  says, and the deck alone does not.
+  says, and the deck alone does not. **Answered on 2026-08-06: neither — the
+  settle was never invoked.** A run with FIVE `tagging failed` events carried no
+  `settled the config tag` trace at all, and that trace is unconditional, so its
+  absence proves the pass never ran. The hole was `updateChartsInSlides`
+  returning the caller's old target _bare_ when group-and-tag produced no target
+  at all: `lost` stayed undefined, the `no-config` filter matched nothing, and
+  the settle returned before it could trace. "Never asked" and "asked and
+  failed" look identical from a deck and want different fixes — the trace is
+  what separates them, so never reason from a deck about which one happened.
+  `targetWithNoTagResult` is that decision, extracted so it can be checked
+  without a PowerPoint.
+- **A rasterise answers fast or not at all — never wait a readback's budget for
+  one.** `getImageAsBase64` on a freshly-added slide has now failed on the web
+  three different ways in three rounds: `GeneralException` at
+  `SlideCollection.getItem`, then taking the call and silently producing
+  nothing, then never answering the sync. The third cost a whole round —
+  `the chart is actually visible` sat on the full ninety-second readback budget
+  and the tab died on the delete that followed, taking the run's report with it,
+  for a scenario whose honest verdict is `skipped`. `rasteriseTimeoutMs` is
+  twenty seconds, capped by the readback budget so a test can still shorten it.
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys

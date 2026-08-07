@@ -566,8 +566,14 @@ reads the selection *you* made with a click, which works normally. **Whether a c
 host to render a slide before and after drawing, and compares: every other
 check in the add-in counts shapes and reads tags, all of which pass happily for
 a chart drawn in white, at zero size, or off the edge of the slide. It borrows
-a slide to do this and takes it away again. **Stopping part-way** confirms a
-stopped run adds nothing and leaves nothing behind claiming to be a chart.
+a slide to do this and takes it away again. On PowerPoint **on the web** it
+often reports *skipped*: the host has refused to rasterise a freshly-added
+slide in three different ways across three rounds, most recently by never
+answering at all. It now gives up on that after twenty seconds rather than the
+ninety a deck read gets — a rasterise that is going to answer answers in about
+a second, and the long wait once cost a whole round when the tab died while it
+was still waiting. **Stopping part-way** confirms a stopped run adds nothing
+and leaves nothing behind claiming to be a chart.
 
 **Live steps** is the list at the top of the Testing section, above the
 buttons. Every step of a run appears there as it happens, **newest at the top**
