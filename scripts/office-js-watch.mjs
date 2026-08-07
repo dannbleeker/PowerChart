@@ -70,7 +70,17 @@ export const KNOWN_ISSUES = {
   2775: "Adding a text box deletes the SELECTED shape, web only. Guarded by `dropShapeSelection` on the insert path, and asked by the self-test's `a selected shape survives an insert`.",
   2780: "Carried as a caveat in the docs; no code depends on the behaviour.",
   2881: "Complex SVG renders wrong through the picture path. Why charts are native shapes rather than an image by default.",
-  2903: "A stale shape proxy answers InvalidParam passed to GetItem(id). The reason `refreshShapes` and `settleAndTagChart` exist.",
+  2903:
+    "A stale shape proxy answers InvalidParam passed to GetItem(id). The reason `refreshShapes` and `settleAndTagChart` exist. " +
+    "Re-read 2026-08-07 and it says more than we had taken from it: the report is about a freshly ADDED slide, not a stale shape — on Online " +
+    "a slide that has been added and synced is not usable yet (text does not render, images land on the first slide instead), and the " +
+    "reporter's only workaround is to wait a couple of seconds. Microsoft closed it `not planned`, so the wait is the fix that exists. " +
+    "`addScratchSlide` now settles for `SLIDE_SETTLE_MS` before handing the id out.",
+  3014:
+    "PowerPoint's API has no grouping story: creating and reading groups is a known parity gap, grouped shapes come back from getItem() " +
+    "as type `unknown`, and sub-shapes cannot be reached. Open since 2022, `Status: in backlog`. No exposure to fix, but it is why " +
+    "`ungroupedFallback` and CHART_PARTS_TAG exist at all — a chart that cannot be grouped has to carry its parts some other way — and " +
+    "why `chooseGroupMembers` prefers an ungrouped, tagged chart over a failed addGroup that takes the tagging down with it.",
   3083: "setSelectedShapes([]) does not clear the selection on the web. clearShapeSelection re-selects the slide instead.",
   3269: "Office.js cannot read speaker notes at all. Recorded as a limitation; nothing here reads them.",
   3309: "SVG cannot be read back out of a shape. Same reason as #2881.",

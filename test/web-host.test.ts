@@ -26,13 +26,16 @@ import {
   CHART_PARTS_TAG,
   _setBatchTimeoutForTest,
   _setReadbackTimeoutForTest,
+  _setSlideSettleForTest,
+  addScratchSlide,
+  chooseGroupMembers,
   targetWithNoTagResult,
   rasteriseTimeoutMs,
   readbackTimeoutMs,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
-import { setTracing, traceLog } from "../src/core/trace";
+import { setTracing, traceLog, traceMark } from "../src/core/trace";
 import type { ChartConfig, ChartKind } from "../src/core/types";
 
 /**
@@ -974,5 +977,96 @@ describe("how long to wait for the host to draw a slide", () => {
     } finally {
       _setReadbackTimeoutForTest(90_000);
     }
+  });
+});
+
+describe("a slide that was added a moment ago", () => {
+  /**
+   * office-js#2903, which is this project's own bug reported by somebody else
+   * two years earlier: on PowerPoint Online a slide that has been added and
+   * synced is not immediately usable. Text does not render on it, images land
+   * on the FIRST slide instead, and the console carries `RichApi.Error:
+   * InvalidParam passed to GetItem(id)` — the same 5010 this file works around
+   * from three other directions.
+   *
+   * Microsoft closed it `not planned`. The reporter's wait is therefore not a
+   * stopgap until a fix lands; it is the fix that exists.
+   */
+  afterEach(() => _setSlideSettleForTest(0));
+
+  it("is left alone for a moment before anyone touches it", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    _setSlideSettleForTest(5);
+    const mark = traceMark();
+    const id = await addScratchSlide();
+    expect(id, "the fake would not add a scratch slide").toBeTruthy();
+    const settled = traceLog(mark).entries.filter((e) => e.message.includes("settle"));
+    expect(settled.length, "a freshly added slide was used with no pause at all").toBeGreaterThan(0);
+  });
+
+  it("costs nothing when the wait is switched off", async () => {
+    // Every test in this suite runs with the settle at zero — `installHost`
+    // sets it — so the pause must be genuinely skippable rather than merely
+    // short, or the suite pays two seconds per slide it adds.
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    const mark = traceMark();
+    await addScratchSlide();
+    expect(traceLog(mark).entries.filter((e) => e.message.includes("settle"))).toHaveLength(0);
+  });
+});
+
+describe("grouping when the host will not name every member", () => {
+  /**
+   * The state five charts died in on 2026-08-07.
+   *
+   * `groupAndTagAll` re-reads the shape collection and re-resolves each member
+   * by id off a fresh slide handle — right, and documented. But both fallbacks
+   * reached for proxies whose PARENT Office.js had rewritten to
+   * `slides.getItem(id)`, which this host refuses for a slide the run added.
+   * The host listed the statements:
+   *
+   *   var itemOrNullObject = slides.getItemOrNullObject(...);   // fresh
+   *   var slide            = slides.getItem(...);               // rewritten
+   *   var shapes1          = slide.shapes;
+   *   var shape            = shapes1.getItem(...);              // refused, 5010
+   *
+   * Handing those to `addGroup` does not merely fail to group — it THROWS, and
+   * the throw takes the batch's tagging with it (`Cannot read properties of
+   * undefined (reading 'add')`). The chart loses its group AND its config.
+   *
+   * Asked as the rule rather than end-to-end: reaching it through the fake
+   * needs the re-read to answer short, and `groupAndTagAll` loads `"items"`,
+   * which neither `hollowReads` (`items/id`) nor `hollowNameReads`
+   * (`items/name`) shortens. Bending the fake to that shape would test the
+   * bend.
+   */
+  it("re-resolves by id when every member can be named", () => {
+    expect(chooseGroupMembers({ refreshedIds: ["a", "b"], askedForRefresh: true })).toEqual({
+      use: "ids",
+      ids: ["a", "b"],
+    });
+  });
+
+  it("groups NOTHING when even one member cannot be named", () => {
+    // Not a partial group: the loose remainder would be deleted by the next
+    // in-place update, which is worse than never grouping.
+    expect(chooseGroupMembers({ refreshedIds: ["a", undefined], askedForRefresh: true })).toEqual({ use: "none" });
+  });
+
+  it("groups nothing when the re-read produced no members at all", () => {
+    // The `short-0` host: twenty-four shapes drawn, none listed. `created` is
+    // NOT a safe fallback — its proxies carry the same rewritten parent, and a
+    // host that will not list the slide's shapes is exactly the host that
+    // refuses them.
+    expect(chooseGroupMembers({ refreshedIds: undefined, askedForRefresh: true })).toEqual({ use: "none" });
+  });
+
+  it("still uses the created handles for a chart that never asked for a refresh", () => {
+    // Nothing has been re-resolved behind it, so `created` is the only handle
+    // there has ever been. The small-chart path that has always worked, and
+    // must keep working.
+    expect(chooseGroupMembers({ refreshedIds: undefined, askedForRefresh: false })).toEqual({ use: "created" });
   });
 });

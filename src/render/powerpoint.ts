@@ -2944,6 +2944,43 @@ export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
 export const rasteriseTimeoutMs = (): number => Math.min(20_000, READBACK_TIMEOUT_MS);
 
 /**
+ * How long to leave a freshly-added slide alone before touching it.
+ *
+ * office-js#2903 is this project's own bug, reported by somebody else two years
+ * earlier: on PowerPoint Online a slide that has been added and synced is not
+ * immediately usable. Text does not render on it, images land on the FIRST
+ * slide instead, and the console carries `RichApi.Error: InvalidParam passed to
+ * GetItem(id)` — the same 5010 this file has been working around from three
+ * different directions.
+ *
+ * The reporter's workaround is the only one in the thread and it is a wait:
+ * "If we wait a couple seconds here we avoid an error in PowerPoint Online."
+ * Microsoft closed the issue as `not planned`, so waiting is not a stopgap
+ * until a fix arrives — it IS the fix that exists.
+ *
+ * Two seconds is what the issue says. It is paid once per slide added, never
+ * on a slide that was already in the deck, and never in the drawing loop.
+ */
+let SLIDE_SETTLE_MS = 2_000;
+
+/** Test-only: a settle nobody has to sit through. */
+export function _setSlideSettleForTest(ms: number): void {
+  SLIDE_SETTLE_MS = ms;
+}
+
+/**
+ * Wait out `SLIDE_SETTLE_MS`, and say so once.
+ *
+ * Traced because an unexplained two-second pause in a run log is exactly the
+ * kind of thing a future reader measures as "the host is slow".
+ */
+async function settleNewSlide(slideId: string): Promise<void> {
+  if (SLIDE_SETTLE_MS <= 0) return;
+  trace("host", "letting a new slide settle before using it", { slideId, ms: SLIDE_SETTLE_MS });
+  await new Promise((resolve) => setTimeout(resolve, SLIDE_SETTLE_MS));
+}
+
+/**
  * Every PowerPointApi set this host admits to.
  *
  * Half of what the add-in does is gated on these, so a run log or an answer
@@ -4917,6 +4954,13 @@ export async function addScratchSlide(): Promise<string | null> {
       return null;
     }
     const id = fresh[0];
+    // Leave it alone for a moment before anyone touches it — office-js#2903.
+    //
+    // Before the liveness check, not after: that check is itself the first
+    // thing to resolve the id, and on Online it is one of the calls the issue
+    // says is unreliable this soon. Waiting after it would settle the slide for
+    // the caller and still let this function mis-answer whether it landed.
+    await settleNewSlide(id);
     // Prove the id is worth handing out. Every caller's next move is to resolve
     // it in a context of its own, so do that once here, where the answer is
     // still cheap and a `null` is survivable.
@@ -5716,6 +5760,58 @@ function targetRef(shape: PowerPoint.Shape | undefined): TargetRef | undefined {
   return { id, left: left as number, top: top as number };
 }
 
+/**
+ * Which handles `addGroup` may be given — or none, meaning do not group.
+ *
+ * A shape proxy carries its PARENT's object path, and that is the whole
+ * problem. `freshMembers` comes out of `collections[k].items`, whose parent is
+ * the slide handle the re-read sync resolved — so Office.js has since rewritten
+ * that path to `slides.getItem(id)`, which PowerPoint on the web refuses for a
+ * slide this run added. `it.created` carries the same wound for the same
+ * reason: those proxies were made in the drawing batches, off a handle that has
+ * been resolved since.
+ *
+ * A real host listed the statements it refused, which is how the shape of it is
+ * known at all:
+ *
+ *   var itemOrNullObject = slides.getItemOrNullObject(...);   // fresh
+ *   var slide            = slides.getItem(...);               // rewritten
+ *   var shapes1          = slide.shapes;
+ *   var shape            = shapes1.getItem(...);              // refused, 5010
+ *
+ * Only an ID may cross a sync. Where every member can be named, they are
+ * re-resolved off a handle taken in the grouping batch and grouping is safe.
+ * Where they cannot, the answer is to group NOTHING — because handing a refused
+ * handle to `addGroup` does not merely fail to group, it throws, and the throw
+ * takes the batch's tagging with it. Five charts in one run lost their group
+ * AND their config that way, which is strictly worse than an ungrouped chart
+ * that is still re-editable.
+ *
+ * The one case that may still use `created`: a chart that never asked for a
+ * refresh. Nothing has been re-resolved behind it, so `created` is the only
+ * handle there has ever been — the small-chart path that has always worked.
+ */
+export type GroupMembers = { use: "ids"; ids: string[] } | { use: "created" } | { use: "none" };
+
+export function chooseGroupMembers(o: {
+  /** Ids read off the re-read members, or undefined when the re-read produced nothing. */
+  refreshedIds?: (string | undefined)[];
+  askedForRefresh: boolean;
+}): GroupMembers {
+  if (o.refreshedIds) {
+    const named = o.refreshedIds.filter((id): id is string => typeof id === "string" && !!id);
+    // Every member or none. A partial list would group part of the chart and
+    // leave the rest loose beside it, which is worse than not grouping at all —
+    // the loose remainder is then deleted by the next in-place update.
+    return named.length === o.refreshedIds.length && named.length > 0 ? { use: "ids", ids: named } : { use: "none" };
+  }
+  // Asked for a refresh and did not get one. That is the answer of a host which
+  // has just refused to list the slide's shapes at all — this one answered
+  // `shapes-items-count-honest` with `short-0`, twenty-four drawn and none
+  // reported — and it is exactly the host that will refuse `created` too.
+  return o.askedForRefresh ? { use: "none" } : { use: "created" };
+}
+
 async function groupAndTagAll(
   context: PowerPoint.RequestContext,
   items: Grouping[],
@@ -5824,18 +5920,24 @@ async function groupAndTagAll(
         // re-read one sync ago, so the shapes are there — and it is the same
         // access `settleAndTagChart` uses on the path that carries real charts.
         const refreshed = freshMembers.get(i);
-        const members = refreshed
-          ? (() => {
-              const shapes = it.getSlide().shapes;
-              const byId = refreshed
-                .map((s) => loadedValue(() => s.id))
-                .filter((id): id is string => typeof id === "string" && !!id);
-              // Only when every member could be named. A partial list would
-              // group some of the chart and leave the rest loose beside it,
-              // which is worse than not grouping at all.
-              return byId.length === refreshed.length ? byId.map((id) => shapes.getItemOrNullObject(id)) : refreshed;
-            })()
-          : it.created;
+        const choice = chooseGroupMembers({
+          refreshedIds: refreshed?.map((s) => loadedValue(() => s.id)),
+          askedForRefresh: !!it.refreshShapes,
+        });
+        // Nothing safe to group with. Leave the chart loose and let the tag
+        // path have its turn — an ungrouped chart that carries its config is
+        // re-editable; a grouped one that lost its config is not, and grouping
+        // through a refused handle costs BOTH: `addGroup` throws, and the throw
+        // takes the batch's tagging with it.
+        if (choice.use === "none") {
+          trace("group", "not grouping: no member handle this host will accept", {
+            index: i,
+            refreshed: refreshed?.length ?? 0,
+          });
+          continue;
+        }
+        const members =
+          choice.use === "ids" ? choice.ids.map((id) => it.getSlide().shapes.getItemOrNullObject(id)) : it.created;
         const group = (
           it.getSlide().shapes as unknown as { addGroup(items: PowerPoint.Shape[]): PowerPoint.Shape }
         ).addGroup(members);
@@ -5849,12 +5951,28 @@ async function groupAndTagAll(
       await boundedSync(context, "grouping the chart's shapes");
     } catch {
       /* grouping failed — shapes stay ungrouped, charts are already on the slide */
-      // The REFRESHED first shape where there is one. Falling back to
-      // `created[0]` means falling back to the oldest proxy this run holds,
-      // and when grouping failed BECAUSE the proxies were stale that is the
-      // one handle guaranteed to fail again — so the chart lost its config tag
-      // as well as its group, and stopped being re-editable at all.
-      for (const { i } of groupable) tagTargets[i] = freshMembers.get(i)?.[0] ?? items[i].created[0];
+      // RE-RESOLVED by id off a slide handle taken now, which is the same trick
+      // the grouping loop above uses and the one this recovery forgot.
+      //
+      // It used to hand back `freshMembers[0]`, and that is the proxy whose
+      // PARENT was rewritten to `slides.getItem(id)` — the exact handle whose
+      // refusal just failed the grouping. So the recovery reached for the one
+      // thing guaranteed to fail again, and a real host said so twice in the
+      // same breath: `InvalidParam passed to GetItem(id)` on the group, then
+      // `Cannot read properties of undefined (reading 'add')` on the tag.
+      // Five charts in one run lost their config that way.
+      //
+      // Only the id crosses; the handle never does. Where the id cannot be read
+      // there is nothing better to offer than the proxy itself, and the settle
+      // pass gets the last word either way.
+      for (const { i } of groupable) {
+        const fresh = freshMembers.get(i)?.[0];
+        const id = fresh ? loadedValue(() => fresh.id) : undefined;
+        tagTargets[i] =
+          typeof id === "string" && id
+            ? (items[i].getSlide().shapes.getItemOrNullObject(id) as PowerPoint.Shape)
+            : (fresh ?? items[i].created[0]);
+      }
       grouped.clear();
     }
   }
