@@ -25,7 +25,10 @@ import {
   CHART_TAG,
   CHART_PARTS_TAG,
   _setBatchTimeoutForTest,
+  _setReadbackTimeoutForTest,
   targetWithNoTagResult,
+  rasteriseTimeoutMs,
+  readbackTimeoutMs,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -928,5 +931,48 @@ describe("a chart the update could not name afterwards", () => {
     const back = targetWithNoTagResult(old, { drew: false, wrecked: false });
     expect(back.lost).toBeUndefined();
     expect(back).toEqual(old);
+  });
+});
+
+describe("how long to wait for the host to draw a slide", () => {
+  /**
+   * Rasterising is not a readback and must not borrow its budget.
+   *
+   * Every successful `getImageAsBase64` this project has recorded answered in
+   * about a second, and PowerPoint on the web has failed the same call three
+   * different ways across three rounds: `GeneralException` at
+   * `SlideCollection.getItem`, then taking the call and silently producing
+   * nothing, then — 2026-08-06 — never answering the sync at all.
+   *
+   * That last one cost a whole round. `the chart is actually visible` sat on
+   * the full ninety-second readback budget and the tab died moments later on
+   * the delete that followed, taking the run's own report with it. The honest
+   * verdict for that scenario is one word, `skipped`; ninety seconds buys
+   * nothing towards it and costs every scenario after it.
+   */
+  it("gives up on a rasterise far sooner than on a readback", () => {
+    _setReadbackTimeoutForTest(90_000);
+    try {
+      expect(
+        rasteriseTimeoutMs(),
+        "a rasterise that will answer answers in about a second — this waits as long as a 20-slide page read",
+      ).toBeLessThan(readbackTimeoutMs());
+      expect(rasteriseTimeoutMs()).toBeLessThanOrEqual(20_000);
+    } finally {
+      _setReadbackTimeoutForTest(90_000);
+    }
+  });
+
+  it("never out-waits a readback budget a test has shortened", () => {
+    // The trap `readbackTimeoutMs` documents: a hard-coded number is shorter
+    // than ninety seconds in production and far LONGER than the milliseconds a
+    // test shortens the budget to, which would make the wait untestable at
+    // exactly the site that most needed bounding.
+    _setReadbackTimeoutForTest(40);
+    try {
+      expect(rasteriseTimeoutMs(), "a shortened readback budget did not shorten the rasterise").toBeLessThanOrEqual(40);
+    } finally {
+      _setReadbackTimeoutForTest(90_000);
+    }
   });
 });

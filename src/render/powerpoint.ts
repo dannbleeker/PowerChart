@@ -2920,6 +2920,30 @@ export function _setReadbackTimeoutForTest(ms: number): void {
 export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
 
 /**
+ * How long to wait for the host to draw a slide, which is much less than how
+ * long to wait for it to read one.
+ *
+ * A rasterise either answers quickly or does not answer. There is no middle:
+ * every successful `getImageAsBase64` this project has recorded came back in
+ * about a second, and PowerPoint on the web has now failed the same call three
+ * different ways across three rounds — `GeneralException` at
+ * `SlideCollection.getItem`, then taking the call and silently producing
+ * nothing, then (2026-08-06) never answering the sync at all.
+ *
+ * That last one cost a whole round. It burned the full ninety-second readback
+ * budget and the tab died moments later on the delete that followed, taking the
+ * run's own report with it — for a scenario whose honest verdict is one word,
+ * `skipped`. Waiting ninety seconds buys nothing here and costs everything
+ * after it.
+ *
+ * Capped by the readback budget rather than replacing it, for the reason
+ * `readbackTimeoutMs` gives: a fixed number would be longer than the
+ * milliseconds a test shortens the budget to, and the wait would stop being
+ * testable at the one site that most needed bounding.
+ */
+export const rasteriseTimeoutMs = (): number => Math.min(20_000, READBACK_TIMEOUT_MS);
+
+/**
  * Every PowerPointApi set this host admits to.
  *
  * Half of what the add-in does is gated on these, so a run log or an answer
@@ -4524,7 +4548,7 @@ export async function slideImageBase64(slideId: string, width?: number): Promise
       // it had no deadline and no stop check. A self-test that wedges here
       // cannot be cancelled and cannot be timed out — which is exactly what a
       // real host did at 1819 seconds.
-      await step("rasterising a slide", () => withTimeout(context.sync(), READBACK_TIMEOUT_MS, "rasterising a slide"));
+      await step("rasterising a slide", () => withTimeout(context.sync(), rasteriseTimeoutMs(), "rasterising a slide"));
       const v = loadedValue(() => img.value);
       if (typeof v === "string" && v.length) return v;
       // Took the call, raised nothing, produced nothing.
