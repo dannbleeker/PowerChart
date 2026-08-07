@@ -1197,3 +1197,39 @@ describe("asking the host what it actually ran", () => {
     expect(text.length, "put a whole batch into one log line").toBeLessThan(4000);
   });
 });
+
+/**
+ * A settle that found nothing says so.
+ *
+ * Three things end at `settled=0 lost=1` and want different fixes: a settle that
+ * never ran, one that ran and found nothing, and one that ran and was refused.
+ * On 2026-08-07 four of five settles ended on an empty collection read — the
+ * same empty read that defeats the grouping — and the log did not say so once,
+ * so working out what had actually happened meant reading the SHAPES of the
+ * Office.js statements in the error payloads. That is not a diagnosis anyone
+ * should have to make twice.
+ */
+describe("what the settle says when it comes up empty", () => {
+  it("traces an empty re-read instead of returning silently", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    // TWO refusals, not one: the drawing context's write, and then the settle's
+    // by-id write. With only the first, the settle's by-id attempt SUCCEEDS and
+    // the collection read is never reached — the case this is about never runs.
+    faults.refuseTagWrites = 2;
+    faults.hollowReads = 50;
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries.map((e) => e.message);
+      expect(said, `the settle ended silently — said only: ${said.join(" | ")}`).toContain(
+        "the settle's re-read came back empty",
+      );
+    } finally {
+      faults.refuseTagWrites = 0;
+      faults.hollowReads = 0;
+    }
+  });
+});

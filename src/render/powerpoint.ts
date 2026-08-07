@@ -2419,10 +2419,21 @@ async function settleByCollectionRead(slideId: string, tagData: string, shapeId?
       let items: PowerPoint.Shape[];
       try {
         items = shapes.items;
-      } catch {
+      } catch (err) {
+        trace("group", "the settle's re-read would not answer", { slideId, error: errorText(err) });
         return false;
       }
-      if (!items?.length) return false;
+      // Say it. This was a bare `return false`, and reconstructing what the
+      // settle had actually done on a real host then took a forensic pass over
+      // the statement shapes in a run log — because a settle that never ran, one
+      // that ran and found nothing, and one that ran and was refused all end at
+      // `settled=0 lost=1` with nothing between them. Four of five settles in
+      // that round ended HERE, on the same empty collection read that defeats
+      // the grouping, and the log did not say so once.
+      if (!items?.length) {
+        trace("group", "the settle's re-read came back empty", { slideId, askedById: Boolean(shapeId) });
+        return false;
+      }
       // By id where there is one. Note this is the ONLY way an ungrouped chart
       // can be settled: its anchor is a plain shape with an ordinary name, so
       // the name search below cannot see it at all.
@@ -5780,6 +5791,28 @@ async function renderShapesChunked(
     // in a fresh read is "the last N on the slide", which is true of a blank
     // slide this run added and false of the one the user is looking at.
     for (let k = before; k < created.length; k++) created[k].load("id");
+    // TRIED HERE AND REVERTED: writing the config tag on `created[0]` in this
+    // same sync. Recorded because the reasoning behind it is sound and somebody
+    // will have it again.
+    //
+    // The evidence for it is real. Every refused tag write in the 2026-08-07 log
+    // is a proxy several batches old — `shapes.getItem("27") /* originally
+    // addTextBox(...) */`, where 27 is the title box drawn in the FIRST batch and
+    // written to in the LAST — and the probe answers the other half:
+    // `tags-on-fresh-shape: yes`. A shape has its tags collection the moment it
+    // is added; what it does not survive is the round trip that rewrites its
+    // object path. So this sync looks like the one window the web host honours.
+    //
+    // What it breaks is the case where grouping WORKS. The group is tagged as
+    // well, and both tags are then findable, so the deck scan counts one chart
+    // twice and an in-place update can pick the wrong one — eleven tests, and
+    // among them "follows a chart the user has DRAGGED" going 277pt wrong. A
+    // chart that teleports on every desktop edit is a worse bug than one that is
+    // not re-editable on the web.
+    //
+    // The fix this wants is a SECOND key that only the recovery path reads, or
+    // dropping the anchor's tag once the group's lands. Both are real changes
+    // with their own guards, not a line in this loop.
     sent += created.length - before;
     const upTo = Math.min(sent, total);
     // Reported BEFORE the sync, and deliberately: the sync is where a bad host
