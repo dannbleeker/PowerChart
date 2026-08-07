@@ -3498,7 +3498,11 @@ describe("stopping work in flight", () => {
     const slide = makeSlide("s1");
     installHost([slide]);
     faults.strictTags = true;
-    faults.tagsUndefinedOn = 2; // `.tags` undefined for the drawing context AND the settle
+    // `.tags` undefined for the drawing context, the settle's by-id write, AND
+    // the settle's collection-read fallback. Three writers, so refusing "every
+    // tag write" now costs three — and the count going UP is the point of the
+    // case below it.
+    faults.tagsUndefinedOn = 3;
     try {
       const target = await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
       // The chart IS there — this is not a failed insert, and reporting it as
@@ -3517,6 +3521,55 @@ describe("stopping work in flight", () => {
     installHost([makeSlide("s1")]);
     const target = await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
     expect(target?.lost, "marked a perfectly good chart as lost").toBeUndefined();
+  });
+
+  /**
+   * The host from 2026-08-07: it will not name a shape by id, and it will read
+   * the collection.
+   *
+   * Sixty-six errors in that run log, every one `InvalidParam passed to
+   * GetItem(id)` at `errorLocation: ShapeCollection.getItem`. Among them was
+   * `settleAndTagChart`'s own write — a slide and a shape both resolved fresh
+   * inside a first sync of their own, refused anyway. The settle then gave up,
+   * on the reasoning that a collection search "would only find a DIFFERENT
+   * shape to put this chart's config on", and five charts shipped with no
+   * config: `same scale across the deck` reported *"3 of 8 charts carry the
+   * shared scale ... the update reported 5×no-config"*.
+   *
+   * The reasoning is sound with no id and wrong with one. The read loads
+   * `items/id`, so the caller's id picks its own shape out of the answer — no
+   * guess is involved, and a chart that is not in the answer is simply not
+   * tagged. And a collection read is what this host DOES honour: the repair
+   * pass landed 23 retags that way in the same run that lost 46 tag writes.
+   */
+  it("settles the config through a collection read when the host will not name the shape by id", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    // Both halves of the real transcript, and both are needed.
+    //
+    // `refuseTagWrites = 1` is the run log's `tagging failed — charts are not
+    // re-editable until repaired`: the drawing context's write goes, and the
+    // settle is what has to save the chart. `refuseShapeById` is then the host
+    // refusing the settle's by-id write too, which is the line after it.
+    //
+    // Arming only `refuseShapeById` is NOT enough, and it is worth saying why:
+    // the drawing context tags an ungrouped chart through the proxy it created,
+    // never by id, so the write lands, the settle never runs, and the case
+    // passes against the unfixed file — a guard that proves nothing.
+    faults.refuseTagWrites = 1;
+    faults.refuseShapeById = true;
+    try {
+      const target = await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
+      expect(slide.created.filter((s) => !s.deleted).length, "nothing was drawn").toBeGreaterThan(0);
+      // The whole point: re-editable anyway. `lost` set here is the 5×no-config
+      // verdict, reproduced.
+      expect(target?.lost, "gave up on a chart the collection read could still have tagged").toBeUndefined();
+      const tagged = slide.created.filter((s) => !s.deleted && s.tagStore.has(CHART_TAG));
+      expect(tagged.length, "no shape on the slide carries the config").toBeGreaterThan(0);
+    } finally {
+      faults.refuseShapeById = false;
+      faults.refuseTagWrites = 0;
+    }
   });
 
   it("leaves every chart untouched when the stop lands before the first one", async () => {

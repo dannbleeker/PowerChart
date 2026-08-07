@@ -540,19 +540,29 @@ contexts would fix it; if both climb together, the host itself is slowing and
 they would not. It takes a minute or so and leaves two slides of small
 rectangles behind. It reports *ok* only when neither curve climbs.
 
-**Run host self-test** runs the eleven things the demo deck does not cover:
+**Run host self-test** runs the ten things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
 chart on the slide you are looking at, adding charts to a slide that already
 has content, a deck-wide rescale, turning a degraded picture back into native
 shapes, which selection call the host stops answering, whether a shape you had
-selected survives an insert, editing the chart you have *selected*, stopping a
-run part-way, and whether a chart is actually visible on the slide. They run in that order on
+selected survives an insert, editing the chart you have *selected*, and
+stopping a run part-way. They run in that order on
 purpose: the longest-standing checks first, the newest last, so that if a run
 does not survive to the end you still have the verdicts for everything with a
 track record. Each reports what was
 actually observed; one that your host cannot run is reported as skipped rather
 than failed. It leaves its slides in the deck so you can look at them — delete
 them when you are done, exactly like the demo deck.
+
+An eleventh — **whether a chart is actually visible** — is in the **Scenario**
+picker but not in a full run. It killed the browser tab in four consecutive
+rounds on PowerPoint on the web, always within a step or two of borrowing a
+slide to compare against, and it has never once returned a verdict. Because the
+report is written when the battery finishes, a scenario that ends the run takes
+the other ten verdicts' *report* with it even when it runs last. Pick it on its
+own, on a freshly opened deck, if you want that check — and please send the
+result either way, because running it alone is also the experiment that says
+whether the scenario is at fault or simply ten minutes of drawing.
 
 Three of those are new, and are the ones worth understanding. **Editing the
 chart you selected** goes through the same read the pane uses when you click a
@@ -562,17 +572,22 @@ and the one an actual user travels on. On PowerPoint **on the web** it reports
 select a shape from code makes it stop answering selection questions
 altogether, so the scenario waits ten seconds, names the limitation and moves
 on. It is a bug in the host and it does not touch you — the pane only ever
-reads the selection *you* made with a click, which works normally. **Whether a chart is visible** asks the
+reads the selection *you* made with a click, which works normally. **Whether a chart is visible** — the picked-only
+one — asks the
 host to render a slide before and after drawing, and compares: every other
 check in the add-in counts shapes and reads tags, all of which pass happily for
 a chart drawn in white, at zero size, or off the edge of the slide. It borrows
-a slide to do this and takes it away again. On PowerPoint **on the web** it
-often reports *skipped*: the host has refused to rasterise a freshly-added
-slide in three different ways across three rounds, most recently by never
-answering at all. It now gives up on that after twenty seconds rather than the
-ninety a deck read gets — a rasterise that is going to answer answers in about
-a second, and the long wait once cost a whole round when the tab died while it
-was still waiting. **Stopping part-way** confirms a stopped run adds nothing
+a slide to do this and takes it away again. On PowerPoint **on the web** it has
+never got as far as an answer: the host has refused to rasterise a freshly-added
+slide in three different ways across three rounds — a `GeneralException`, a
+call that returned nothing, and once by never answering at all — and each round
+ended with the tab gone. It gives up after twenty seconds rather than the
+ninety a deck read gets, since a rasterise that is going to answer answers in
+about a second, and the long wait once cost a whole round while the tab died
+waiting. Note this is the only check of its kind that needs a host at all:
+every chart shipped here is rasterised in a real browser on every CI run, and a
+chart that draws but is not visible fails the build. **Stopping part-way**
+confirms a stopped run adds nothing
 and leaves nothing behind claiming to be a chart.
 
 **Live steps** is the list at the top of the Testing section, above the

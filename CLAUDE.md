@@ -227,7 +227,47 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   it, so the chart loses its group AND its config. Five charts in one run.
   `chooseGroupMembers` is that decision — group by re-resolved ids, or group
   nothing — and "group nothing" is strictly better, because an ungrouped chart
-  that carries its config is still re-editable.
+  that carries its config is still re-editable. **It worked on 2026-08-07**
+  (`not grouping: no member handle this host will accept index=0 refreshed=0`)
+  and the chart lost its config anyway — for the reason in the next bullet, not
+  this one.
+- **The host may refuse to name a SHAPE by id, and the recovery is a collection
+  read.** Sixty-six errors in the 2026-08-07 run log, every one `InvalidParam
+passed to GetItem(id)`, code 5010, at `errorLocation: ShapeCollection.getItem`
+  — the slide answered, the shape did not. It took the drawing context's tag
+  write, the readback, `ungroupedFallback`'s id read, **and
+  `settleAndTagChart`'s own fresh-context write**, which is exactly what "the
+  update reported 5×no-config" was. The settle then gave up, on the reasoning
+  that a collection search "would only find a DIFFERENT shape to put this
+  chart's config on" — sound with no id, wrong with one, because the read loads
+  `items/id` and the caller's id picks its own shape out of the answer.
+  `settleByCollectionRead` is that fall-through, and a collection read is the
+  pattern this host DOES honour: 23 retags landed that way in the run that lost
+  46 tag writes. `faults.refuseShapeById` is the fake being this host — and it
+  must be paired with a refused in-context tag write, or the settle never runs
+  and the guard passes against the unfixed file, which is how the first version
+  of that test proved nothing.
+- **When the excerpt cannot settle it, make the host say more.** Every
+  `debugInfo` in every real-host log this project owns ends
+  `"fullStatements":["Please enable config.extendedErrorLogging to see full
+statements."]`, so all a reader gets is `surroundingStatements`, an excerpt.
+  On 2026-08-07 that excerpt printed `slides.getItem(...)` for a batch whose
+  slide and shape are both resolved fresh inside a first sync of their own —
+  which either means Office.js collapses `getItemOrNullObject` into `getItem`
+  when it prints, or that batch was not the one it appeared to be. Both
+  readings fit, neither can be argued to a conclusion, and they disagree about
+  whether the settle is repairable or never ran. `enableExtendedErrorLogging`
+  is the two-explanations rule applied to the tooling: stop reasoning, turn the
+  flag on, let the next log say. `trimDebugInfo` keeps the tail of the
+  statement list so the file stays sendable.
+- **A self-test scenario that ends the run costs the whole report, even last.**
+  `the chart is actually visible` ran dead last precisely so its crash could not
+  take other scenarios' verdicts — and it still cost every round, because the
+  report is written when the battery RETURNS. Four rounds, four builds, always
+  within a step or two of `adding a scratch slide`, never once a verdict. It is
+  `pickedOnly` now. "Last" protects the verdicts; only "out of the routine list"
+  protects the report. Whether the scenario or the ten minutes in front of it is
+  the killer has never been separated — running it alone is that experiment.
 - **A rasterise answers fast or not at all — never wait a readback's budget for
   one.** `getImageAsBase64` on a freshly-added slide has now failed on the web
   three different ways in three rounds: `GeneralException` at

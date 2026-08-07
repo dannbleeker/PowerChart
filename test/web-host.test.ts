@@ -31,6 +31,8 @@ import {
   targetWithNoTagResult,
   rasteriseTimeoutMs,
   readbackTimeoutMs,
+  enableExtendedErrorLogging,
+  trimDebugInfo,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -1062,5 +1064,71 @@ describe("a slide that was added a moment ago", () => {
       settled,
       "a pause was reintroduced after adding a slide — it cost 18 of 19 probe answers last time",
     ).toHaveLength(0);
+  });
+});
+
+/**
+ * What the host is allowed to tell us about a failure, and how much of it we keep.
+ *
+ * Every `debugInfo` in every real-host log this project owns ends the same way:
+ * `"fullStatements":["Please enable config.extendedErrorLogging to see full
+ * statements."]`. Without it, all a reader gets is `surroundingStatements` — a
+ * pretty-printed excerpt — and on 2026-08-07 that excerpt was not enough to
+ * decide the question the whole round turned on: whether the batch that failed
+ * was `settleAndTagChart`'s own fresh one, or an older handle wearing its
+ * shape. Two readings, no way to choose between them from the evidence, and one
+ * of them says the settle is repairable while the other says it never ran.
+ */
+describe("asking the host what it actually ran", () => {
+  it("turns on extended error logging, and says whether the host took it", () => {
+    const cfg: { extendedErrorLogging?: boolean } = {};
+    vi.stubGlobal("OfficeExtension", { config: cfg });
+    expect(enableExtendedErrorLogging(), "asked and did not report success").toBe(true);
+    expect(cfg.extendedErrorLogging, "never actually set the flag").toBe(true);
+  });
+
+  it("reports false rather than throwing on a host with no OfficeExtension", () => {
+    // An older host, or the pane running outside Office at all. "The host would
+    // not" and "nobody asked" are different diagnoses and the environment line
+    // carries this so a reader can tell them apart.
+    vi.stubGlobal("OfficeExtension", undefined);
+    expect(enableExtendedErrorLogging()).toBe(false);
+  });
+
+  /**
+   * Extended logging fills `fullStatements` with the WHOLE batch, and the whole
+   * batch is not something a run log can carry: run 9 held 66 of these errors,
+   * each one a 24-shape draw. Keep the tail — the failing call and the handles
+   * resolved just before it — and count what went.
+   */
+  it("keeps the tail of a long statement list and says how much it dropped", () => {
+    const full = Array.from({ length: 200 }, (_, i) => `var shape${i} = shapes.getItem(...);`);
+    const trimmed = trimDebugInfo({ code: "5010", fullStatements: full }) as {
+      code: string;
+      fullStatements: string[];
+    };
+    expect(trimmed.code, "dropped the rest of the debugInfo").toBe("5010");
+    expect(trimmed.fullStatements.length, "kept the whole batch").toBeLessThan(full.length);
+    expect(trimmed.fullStatements[0]).toMatch(/dropped/);
+    // The TAIL, not the head: the failing statement is the last one.
+    expect(trimmed.fullStatements.at(-1), "kept the wrong end of the batch").toBe(full.at(-1));
+  });
+
+  it("leaves a short statement list exactly as it found it", () => {
+    const info = { code: "5010", fullStatements: ["var shape = shapes.getItem(...);"] };
+    expect(trimDebugInfo(info)).toBe(info);
+  });
+
+  it("carries the trimmed statements into the error text a run log records", () => {
+    const full = Array.from({ length: 200 }, (_, i) => `var shape${i} = shapes.getItem(...);`);
+    const text = errorText(
+      Object.assign(new Error("InvalidParam passed to GetItem(id)"), {
+        code: "5010",
+        debugInfo: { errorLocation: "ShapeCollection.getItem", fullStatements: full },
+      }),
+    );
+    expect(text, "the error text lost the statements entirely").toContain("ShapeCollection.getItem");
+    expect(text).toContain("dropped");
+    expect(text.length, "put a whole batch into one log line").toBeLessThan(4000);
   });
 });

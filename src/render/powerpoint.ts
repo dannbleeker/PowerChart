@@ -508,6 +508,40 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
 }
 
 /**
+ * How many of `fullStatements` a trace keeps. See `trimDebugInfo`.
+ *
+ * Twenty is chosen against the batch this project actually issues: a chart is
+ * drawn `SHAPES_PER_SYNC` at a time and each shape costs several statements, so
+ * twenty reaches back past the failing call to the handle it was resolved
+ * through — which is the whole question — without carrying the other nine
+ * shapes' worth of noise.
+ */
+const MAX_FULL_STATEMENTS = 20;
+
+/**
+ * Cut `debugInfo.fullStatements` down to something a run log can carry.
+ *
+ * `extendedErrorLogging` (see `traceEnvironment`) is what makes Office.js fill
+ * that array in at all, and it fills it in with the WHOLE batch. Run 9 held 66
+ * of these errors; at a full batch each that is a file nobody can send. The
+ * tail is what matters — the failing statement and the handles resolved just
+ * before it — so the head is dropped and counted.
+ *
+ * Pure, and separate from `errorText`, so the trimming can be tested without a
+ * PowerPoint anywhere near it.
+ */
+export function trimDebugInfo(info: unknown): unknown {
+  if (!info || typeof info !== "object") return info;
+  const full = (info as { fullStatements?: unknown }).fullStatements;
+  if (!Array.isArray(full) || full.length <= MAX_FULL_STATEMENTS) return info;
+  const dropped = full.length - MAX_FULL_STATEMENTS;
+  return {
+    ...(info as Record<string, unknown>),
+    fullStatements: [`… ${dropped} earlier statement(s) dropped`, ...full.slice(dropped)],
+  };
+}
+
+/**
  * Everything an Office.js error knows. A RichApi.Error's `message` is usually
  * generic ("An internal error has occurred"); the useful part — the failing
  * command and why — lives in `code` and `debugInfo`, which a plain String(err)
@@ -525,7 +559,7 @@ export function errorText(err: unknown): string {
   if (e.code) bits.push(`code=${e.code}`);
   if (e.debugInfo) {
     try {
-      bits.push(`debugInfo=${JSON.stringify(e.debugInfo)}`);
+      bits.push(`debugInfo=${JSON.stringify(trimDebugInfo(e.debugInfo))}`);
     } catch {
       /* not serialisable — the message and code still carry */
     }
@@ -2297,36 +2331,73 @@ async function retagSlideChart(slideIndex: number, tagData: string | undefined):
  */
 async function settleAndTagChart(slideId: string, tagData: string, shapeId?: string): Promise<boolean> {
   if (!supports("1.3") || !tagData) return false;
+  // With an id, try the cheap thing first — one batch, resolve and write, no
+  // collection read at all.
+  //
+  // Not merely fewer round trips. A shape-collection read is the one thing on
+  // this host that comes back SHORT without saying so (`hollowReads` models a
+  // readback that asked about 19 shapes and was told 3), and a chart missing
+  // from a short answer looks exactly like a chart that is gone. So the id path
+  // stays first, and the collection read is what happens when it is refused.
+  //
+  // The whole chain is resolved inside the batch that uses it — slide, then
+  // shape, then the write — because a handle resolved by an earlier sync is
+  // what this host refuses (`shape-add-held-slide-proxy`: GeneralException).
+  if (shapeId) {
+    let refusal: unknown;
+    try {
+      const wrote = await PowerPoint.run(async (context) => {
+        context.presentation.slides
+          .getItemOrNullObject(slideId)
+          .shapes.getItemOrNullObject(shapeId)
+          .tags.add(CHART_TAG, tagData);
+        await boundedSync(context, "settling the chart's config tag");
+        return true;
+      });
+      if (wrote) return true;
+    } catch (err) {
+      refusal = err;
+    }
+    // Refused — and on the web that is the ordinary case, not the rare one.
+    // Run 9 refused all five of them: `InvalidParam passed to GetItem(id)`,
+    // code 5010, at `ShapeCollection.getItem`, on a slide and a shape both
+    // resolved fresh inside a first sync of their own. That run's verdict was
+    // "3 of 8 charts carry the shared scale ... the update reported
+    // 5×no-config", which is those five refusals and nothing else.
+    //
+    // This used to give up here, on the grounds that "a collection search would
+    // only find a DIFFERENT shape to put this chart's config on". That is true
+    // with no id and false with one: the read below loads `items/id`, so the
+    // caller's id picks its own shape out of the answer, and a chart that is
+    // not in the answer is simply not tagged. The objection does not apply to
+    // this branch, and falling through is the difference between a chart that
+    // is re-editable and one that is not.
+    //
+    // Not a retry of the refused write, either — the same distinction the
+    // header draws, and the reason the fallback runs in a context of its own.
+    // The write above resolved the shape by id; the one below re-READS the
+    // slide and writes through a member of that read, which is the one proxy
+    // pattern this host has been observed to honour.
+    trace("group", "the host refused a settle by id — re-reading the slide", {
+      slideId,
+      error: errorText(refusal),
+    });
+  }
+  return settleByCollectionRead(slideId, tagData, shapeId);
+}
+
+/**
+ * Find the chart by re-reading the slide's shapes, and tag the one that matches.
+ *
+ * With a `shapeId` this is exact: the read loads `items/id` and the caller's id
+ * picks its own shape out. Without one it falls back to the reach the repair
+ * pass's `retag` has — the slide must hold exactly ONE thing that calls itself
+ * a chart, because with several nothing here can say which of them lost its
+ * config and a guess overwrites a bystander's.
+ */
+async function settleByCollectionRead(slideId: string, tagData: string, shapeId?: string): Promise<boolean> {
   try {
     return await PowerPoint.run(async (context) => {
-      // With an id, no collection read at all — one batch, resolve and write.
-      //
-      // Not merely fewer round trips. A shape-collection read is the one thing
-      // on this host that comes back SHORT without saying so (`hollowReads`
-      // models a readback that asked about 19 shapes and was told 3), and a
-      // chart missing from a short answer looks exactly like a chart that is
-      // gone. The first version of this searched the collection even when the
-      // caller had handed it an id, and a hollow read is precisely what made it
-      // give up on charts that were sitting right there.
-      //
-      // The whole chain is resolved inside the batch that uses it — slide, then
-      // shape, then the write — because a handle resolved by an earlier sync is
-      // what this host refuses (`shape-add-held-slide-proxy`: GeneralException).
-      if (shapeId) {
-        try {
-          context.presentation.slides
-            .getItemOrNullObject(slideId)
-            .shapes.getItemOrNullObject(shapeId)
-            .tags.add(CHART_TAG, tagData);
-          await boundedSync(context, "settling the chart's config tag");
-          return true;
-        } catch {
-          // The shape is gone, or the host refused the write. Either way there
-          // is nothing further to try: a collection search would only find a
-          // DIFFERENT shape to put this chart's config on.
-          return false;
-        }
-      }
       const shapes = context.presentation.slides.getItemOrNullObject(slideId).shapes;
       shapes.load("items/id,name");
       await boundedSync(context, "re-reading a slide to tag the chart it would not tag");
@@ -2337,16 +2408,22 @@ async function settleAndTagChart(slideId: string, tagData: string, shapeId?: str
         return false;
       }
       if (!items?.length) return false;
-      // No id: the slide must hold exactly ONE thing that calls itself a chart.
-      // With several, nothing here can say which of them lost its config, and a
-      // guess overwrites a bystander's. Note this only ever finds a GROUP or a
-      // degraded picture — an ungrouped chart's anchor is a plain shape with an
-      // ordinary name — which is the same reach the repair pass's `retag` has,
-      // and the reason the id path above is the one that matters.
+      // By id where there is one. Note this is the ONLY way an ungrouped chart
+      // can be settled: its anchor is a plain shape with an ordinary name, so
+      // the name search below cannot see it at all.
+      const byId = shapeId
+        ? items.find((sh) => loadedValue(() => (sh as unknown as { id?: string }).id) === shapeId)
+        : undefined;
+      // Only ever a GROUP or a degraded picture — see above for why the name
+      // search cannot reach anything else.
       const named = items.filter((sh) => loadedValue(() => (sh as unknown as { name?: string }).name) === GROUP_NAME);
-      const target = named.length === 1 ? named[0] : undefined;
+      const target = byId ?? (named.length === 1 ? named[0] : undefined);
       if (!target) {
-        trace("group", "no single untagged chart to settle a tag onto", { slideId, named: named.length });
+        trace("group", "no single untagged chart to settle a tag onto", {
+          slideId,
+          named: named.length,
+          askedById: Boolean(shapeId),
+        });
         return false;
       }
       // Only the config tag. The origin pair is deliberately not rewritten
@@ -5418,6 +5495,8 @@ export function traceEnvironment(build: string): void {
     host: d?.host,
     platform: d?.platform,
     version: d?.version,
+    // Whether the host will tell us what it actually ran. See `enableExtendedErrorLogging`.
+    extendedErrors: enableExtendedErrorLogging(),
     // Every published set, not only the ones this add-in gates on. A log that
     // reports "1.5, 1.8" leaves a reader unable to tell a host that stops at
     // 1.5 from one that has 1.9 and simply is not asked — and the gap between
@@ -5435,6 +5514,47 @@ export function traceEnvironment(build: string): void {
   void slideSize()
     .then((s) => trace("host", "slide size", { ...s }))
     .catch(() => {});
+}
+
+/**
+ * Ask Office.js to record the statements it actually sent, not a summary.
+ *
+ * Every `debugInfo` in every real-host log this project owns ends the same way:
+ * `"fullStatements":["Please enable config.extendedErrorLogging to see full
+ * statements."]`. What survives without it is `surroundingStatements`, a
+ * pretty-printed excerpt — and that excerpt is not enough to answer the
+ * question the last four rounds have turned on.
+ *
+ * The question, concretely. Office.js rewrites a resolved
+ * `getItemOrNullObject(id)` proxy's object path to `getItem(id)`, so a
+ * statement reading `slides.getItem(...)` normally means "a handle held across
+ * a sync" — the thing this whole file is built to avoid. But run 9 printed
+ * exactly that for `settleAndTagChart`, whose slide and shape are both resolved
+ * fresh inside a first sync of their own, which cannot have been rewritten.
+ * Either the printer collapses the two forms under some condition, or that
+ * batch was not the one it appeared to be. Both readings fit; neither can be
+ * argued to a conclusion from an excerpt, and one of them says the settle is
+ * repairable while the other says it never ran.
+ *
+ * So: stop reasoning, and make the host answer. `fullStatements` names the real
+ * call. It costs one assignment and, bounded by `trimDebugInfo`, a few lines
+ * per error in the log.
+ *
+ * Returns what happened, for the environment line — an older host without
+ * `OfficeExtension.config` is a perfectly ordinary outcome, and a reader
+ * looking at a log with no full statements in it should be able to tell "the
+ * host would not" from "nobody asked".
+ */
+export function enableExtendedErrorLogging(): boolean {
+  try {
+    const cfg = (globalThis as { OfficeExtension?: { config?: { extendedErrorLogging?: boolean } } }).OfficeExtension
+      ?.config;
+    if (!cfg) return false;
+    cfg.extendedErrorLogging = true;
+    return cfg.extendedErrorLogging === true;
+  } catch {
+    return false;
+  }
 }
 
 /** True when the host advertises the given PowerPointApi requirement set. */

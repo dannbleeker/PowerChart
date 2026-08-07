@@ -70,6 +70,27 @@ export const faults = {
    * reach the state it produces.
    */
   refuseIdLeftTopLoads: 0,
+  /**
+   * Any sync that resolved a shape BY ID fails; a collection read still works.
+   *
+   * The divergence the 2026-08-07 round is made of. Sixty-six errors in one run
+   * log, every one of them `InvalidParam passed to GetItem(id)`, code 5010, at
+   * `errorLocation: ShapeCollection.getItem` — the slide answered, the shape did
+   * not. It refused the drawing context's tag write, the readback, the ungrouped
+   * chart's id read, AND `settleAndTagChart`'s own fresh-context write, which is
+   * what "the update reported 5×no-config" was.
+   *
+   * The fake had no way to be this host. `strictTags` refuses a tag write on a
+   * proxy that is too old and `refuseTagWrites` refuses one regardless — both
+   * are about the WRITE. This is about the LOOKUP, and it is the difference
+   * that matters, because the recovery it leaves open is a collection read:
+   * `shapes.load("items/id")` answers on this host, which is how the repair
+   * pass landed 23 retags in the same run that lost 46 tag writes.
+   *
+   * Thrown from the sync, never from the call that queued it, because that is
+   * where Office.js raises it.
+   */
+  refuseShapeById: false,
   hollowReads: 0,
   /** Answer HONESTLY for this many `items/id` reads, then short forever. */
   hollowReadsAfter: null as number | null,
@@ -440,6 +461,8 @@ const selectionRef: FakeShape[] = [];
 let selectionWedged = false;
 /** A selection call joined the sync now being built, and it will never land. */
 let wedgeThisSync = false;
+/** A by-id shape lookup joined the sync now being built — see faults.refuseShapeById. */
+let refuseThisSync = false;
 
 /** Called by every selection entry point once the subsystem is wedged. */
 function noteSelectionCall(): void {
@@ -1176,6 +1199,11 @@ export function makeSlide(id: string) {
         // PropertyNotLoaded — which is exactly what editing an ungrouped chart
         // did on a real host while every test here passed, because the fake
         // answered a question the host refuses. Model the refusal.
+        // See faults.refuseShapeById. Armed, the LOOKUP is what poisons the
+        // batch — the proxy is still handed back so the caller's synchronous
+        // `.tags.add` and `.load` queue exactly as they do against the real
+        // host, and the refusal lands where Office.js puts it: the sync.
+        if (faults.refuseShapeById) refuseThisSync = true;
         const found = created.find((s) => s.id === id && !s.deleted);
         // A FRESH handle, for the same reason `items` hands back fresh ones:
         // resolving by id makes a new proxy object, and a new proxy has not
@@ -1759,6 +1787,19 @@ export function installHost(
         wedgeThisSync = false;
         await new Promise(() => {});
       }
+      // Verbatim from the 2026-08-07 run log, because the code that recovers
+      // from this reads `errorLocation` nowhere and a future reader will.
+      if (refuseThisSync) {
+        refuseThisSync = false;
+        throw Object.assign(new Error("InvalidParam passed to GetItem(id)"), {
+          code: "5010",
+          debugInfo: {
+            code: "5010",
+            errorLocation: "ShapeCollection.getItem",
+            statement: "var shape = shapes.getItem(...);",
+          },
+        });
+      }
       if (faults.wedgeAfterSyncs !== null && trips.syncs > faults.wedgeAfterSyncs) await new Promise(() => {});
       if (stallSyncOn.has(trips.syncs)) {
         // Sleep past withTimeout's deadline, then settle successfully. The
@@ -1815,6 +1856,8 @@ export function installHost(
   faults.strictTags = false;
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;
+  faults.refuseShapeById = false;
+  refuseThisSync = false;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;
   faults.hollowReadsAfter = null;

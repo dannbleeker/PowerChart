@@ -68,6 +68,12 @@ export const KNOWN_ISSUES = {
   2328: "SlideMaster.shapes throws GeneralException on the web. Asked by the `layouts-readable` probe; blankLayoutId already degrades to the inherited layout.",
   2699: "A blank slide that is only blank to the eye. Handled by the demo path's blank re-read.",
   2775: "Adding a text box deletes the SELECTED shape, web only. Guarded by `dropShapeSelection` on the insert path, and asked by the self-test's `a selected shape survives an insert`.",
+  2172:
+    "addGeometricShape refused on a slide that is completely blank, web only; the reporter's workaround was to add a text element first. " +
+    "Closed `Status: fixed`. NO EXPOSURE, and worth saying why rather than leaving it to the label: every slide this repo draws onto gets " +
+    "its shapes through `addAndRenderItem`, which stamps a title text box before the chart's shapes on the demo path and otherwise draws " +
+    "onto a slide the user already has. Found on 2026-08-07 while searching for the ShapeCollection.getItem refusal; it is a different " +
+    "failure (the ADD, not the lookup) and it is not this one.",
   2780: "Carried as a caveat in the docs; no code depends on the behaviour.",
   2881: "Complex SVG renders wrong through the picture path. Why charts are native shapes rather than an image by default.",
   2903:

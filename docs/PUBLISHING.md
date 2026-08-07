@@ -414,7 +414,24 @@ which in practice meant eight separate sessions. They are now one button:
 | edit the chart the user selected | the read behind *Edit it* — the only entry point a real user travels on |
 | stop a run part-way | a stopped run adds nothing and leaves nothing behind claiming to be a chart |
 | a selected shape survives an insert | whether office-js#2775 is live here — on the web, adding a text box deletes the shape that was selected, and every chart drawn here has text boxes |
-| the chart is actually visible | the host's own render changed where the chart was drawn — not just that shapes exist |
+
+**Not in that list any more: the chart is actually visible.** It proves the
+host's own render changed where the chart was drawn — not just that shapes
+exist — and it is `pickedOnly` as of 2026-08-07 because it has never proved it.
+Four rounds, four builds (`a5b032d`, `618b8d8`, `cedbc6c`, `cacf58a`), and each
+one stops writing inside that scenario at 602s, 631s, 603s and 645s, always
+within a step or two of `adding a scratch slide`. Running it last already kept
+its crash off the other scenarios' verdicts; it did not keep the crash off the
+**report**, which is only written when the battery returns. So every round so
+far has arrived as a crash file and a screenshot.
+
+Run it as a **second, short round** when you have a minute: open a fresh deck,
+pick it in the **Scenario** box, run, and send whatever comes out. That is also
+the experiment that has never been done — every crash so far came ten minutes
+and nine scenarios into a run, so "this scenario kills the host" and "ten
+minutes of drawing kills the host, and this is what happened to be running" both
+fit the evidence equally well. Alone on a fresh host, thirty seconds in, they
+do not.
 
 The ladder — **which selection call wedges the host** — is in that list now, and
 used to be a separate run. It runs ahead of every scenario that selects a shape —
