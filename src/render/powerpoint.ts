@@ -2944,43 +2944,6 @@ export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
 export const rasteriseTimeoutMs = (): number => Math.min(20_000, READBACK_TIMEOUT_MS);
 
 /**
- * How long to leave a freshly-added slide alone before touching it.
- *
- * office-js#2903 is this project's own bug, reported by somebody else two years
- * earlier: on PowerPoint Online a slide that has been added and synced is not
- * immediately usable. Text does not render on it, images land on the FIRST
- * slide instead, and the console carries `RichApi.Error: InvalidParam passed to
- * GetItem(id)` — the same 5010 this file has been working around from three
- * different directions.
- *
- * The reporter's workaround is the only one in the thread and it is a wait:
- * "If we wait a couple seconds here we avoid an error in PowerPoint Online."
- * Microsoft closed the issue as `not planned`, so waiting is not a stopgap
- * until a fix arrives — it IS the fix that exists.
- *
- * Two seconds is what the issue says. It is paid once per slide added, never
- * on a slide that was already in the deck, and never in the drawing loop.
- */
-let SLIDE_SETTLE_MS = 2_000;
-
-/** Test-only: a settle nobody has to sit through. */
-export function _setSlideSettleForTest(ms: number): void {
-  SLIDE_SETTLE_MS = ms;
-}
-
-/**
- * Wait out `SLIDE_SETTLE_MS`, and say so once.
- *
- * Traced because an unexplained two-second pause in a run log is exactly the
- * kind of thing a future reader measures as "the host is slow".
- */
-async function settleNewSlide(slideId: string): Promise<void> {
-  if (SLIDE_SETTLE_MS <= 0) return;
-  trace("host", "letting a new slide settle before using it", { slideId, ms: SLIDE_SETTLE_MS });
-  await new Promise((resolve) => setTimeout(resolve, SLIDE_SETTLE_MS));
-}
-
-/**
  * Every PowerPointApi set this host admits to.
  *
  * Half of what the add-in does is gated on these, so a run log or an answer
@@ -4954,13 +4917,23 @@ export async function addScratchSlide(): Promise<string | null> {
       return null;
     }
     const id = fresh[0];
-    // Leave it alone for a moment before anyone touches it — office-js#2903.
+    // NO settle here, and the reason is measured rather than argued.
     //
-    // Before the liveness check, not after: that check is itself the first
-    // thing to resolve the id, and on Online it is one of the calls the issue
-    // says is unreliable this soon. Waiting after it would settle the slide for
-    // the caller and still let this function mis-answer whether it landed.
-    await settleNewSlide(id);
+    // office-js#2903's workaround is to wait a couple of seconds after adding a
+    // slide before touching it, and on 2026-08-07 this function did exactly
+    // that. The next real-host round answered **1 of 25** questions, against 19
+    // of 26 on the build before it: `addScratchSlide` returned null every time,
+    // so every question came back `no-scratch-slide` and the only row with an
+    // answer was the cleanup's own.
+    //
+    // So this host is not the host that issue describes. Its freshly-added
+    // slide does not need time — it resolves once and is refused ever after
+    // (the behaviour `deleteSlideById` and `SlideThunk` are already built
+    // around), and spending two seconds first only moves the one resolution
+    // later, by which point the id is gone. Waiting made it strictly worse.
+    //
+    // Left as a comment rather than a switched-off constant: a knob nobody
+    // should turn is worse than a paragraph saying why.
     // Prove the id is worth handing out. Every caller's next move is to resolve
     // it in a context of its own, so do that once here, where the answer is
     // still cheap and a `null` is survivable.

@@ -15,13 +15,6 @@ import { vi } from "vitest";
 // decoder `npm run verify-deck` uses: a fake that parsed the generated deck
 // its own way could agree with the renderer while both disagreed with the file.
 import { readDeckBytes } from "../../scripts/verify-deck.mjs";
-// The one import from `src` in this file, and it earns its place: production
-// waits two real seconds after adding a slide (office-js#2903). A suite that
-// sat through that for every slide it adds would take hours, and a test that
-// forgot to zero it would time out somewhere unrelated to what it was testing.
-// Installing the fake means "there is no real PowerPoint here", and no real
-// PowerPoint is exactly what the wait exists for.
-import { _setSlideSettleForTest } from "../../src/render/powerpoint";
 
 interface DeckRow {
   slot: number | null;
@@ -1454,7 +1447,6 @@ export function installHost(
   // the live array — so an add() queued in the current batch is invisible to a
   // getCount() in the SAME batch, exactly as PowerPoint web behaves. A getCount
   // result resolves at the next sync to the count from before that sync's adds.
-  _setSlideSettleForTest(0);
   let selectedSlide = selectedSlideArg;
   let committedCount = slides.length;
   /** Slides `slides.add()` created here — see `faults.newSlideResolvesTimes`. */

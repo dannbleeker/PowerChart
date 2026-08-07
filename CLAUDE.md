@@ -210,14 +210,15 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   what separates them, so never reason from a deck about which one happened.
   `targetWithNoTagResult` is that decision, extracted so it can be checked
   without a PowerPoint.
-- **A freshly added slide needs a couple of seconds before anyone touches it.**
-  office-js#2903 is this project's own bug, reported by somebody else two years
-  earlier and closed `not planned`: on Online a slide that has been added and
-  synced is not usable yet — text does not render, images land on the FIRST
-  slide, and the console carries `InvalidParam passed to GetItem(id)`. The
-  reporter's wait is the only workaround there is, so `addScratchSlide` settles
-  for `SLIDE_SETTLE_MS` (2 s) before handing the id out. `installHost` zeroes it,
-  or the suite would sit through it once per slide.
+- **Do NOT wait after adding a slide — it was tried and it cost 18 of 19 probe
+  answers.** office-js#2903 says a slide added on Online is unusable for a
+  couple of seconds and its reporter's fix is to wait; `addScratchSlide` did
+  that on 2026-08-07 and the next round answered **1 of 25** questions against
+  19 of 26 the build before. The add landed, the wait ran, and the liveness
+  check after it found nothing, so every question came back `no-scratch-slide`.
+  This host is not the host that issue describes: it resolves a fresh slide's
+  id ONCE and refuses it ever after, so waiting spends the one resolution later
+  rather than buying time. `web-host.test.ts` guards against reintroducing it.
 - **Only an ID may cross a sync — and a proxy's PARENT counts.** A shape proxy
   carries its parent's object path, so members from a re-read collection and
   members from `created` are equally poisoned once Office.js has rewritten that

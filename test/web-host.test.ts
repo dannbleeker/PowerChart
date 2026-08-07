@@ -26,7 +26,6 @@ import {
   CHART_PARTS_TAG,
   _setBatchTimeoutForTest,
   _setReadbackTimeoutForTest,
-  _setSlideSettleForTest,
   addScratchSlide,
   chooseGroupMembers,
   targetWithNoTagResult,
@@ -980,43 +979,6 @@ describe("how long to wait for the host to draw a slide", () => {
   });
 });
 
-describe("a slide that was added a moment ago", () => {
-  /**
-   * office-js#2903, which is this project's own bug reported by somebody else
-   * two years earlier: on PowerPoint Online a slide that has been added and
-   * synced is not immediately usable. Text does not render on it, images land
-   * on the FIRST slide instead, and the console carries `RichApi.Error:
-   * InvalidParam passed to GetItem(id)` — the same 5010 this file works around
-   * from three other directions.
-   *
-   * Microsoft closed it `not planned`. The reporter's wait is therefore not a
-   * stopgap until a fix lands; it is the fix that exists.
-   */
-  afterEach(() => _setSlideSettleForTest(0));
-
-  it("is left alone for a moment before anyone touches it", async () => {
-    installHost([makeSlide("s1")]);
-    setTracing(true);
-    _setSlideSettleForTest(5);
-    const mark = traceMark();
-    const id = await addScratchSlide();
-    expect(id, "the fake would not add a scratch slide").toBeTruthy();
-    const settled = traceLog(mark).entries.filter((e) => e.message.includes("settle"));
-    expect(settled.length, "a freshly added slide was used with no pause at all").toBeGreaterThan(0);
-  });
-
-  it("costs nothing when the wait is switched off", async () => {
-    // Every test in this suite runs with the settle at zero — `installHost`
-    // sets it — so the pause must be genuinely skippable rather than merely
-    // short, or the suite pays two seconds per slide it adds.
-    installHost([makeSlide("s1")]);
-    setTracing(true);
-    const mark = traceMark();
-    await addScratchSlide();
-    expect(traceLog(mark).entries.filter((e) => e.message.includes("settle"))).toHaveLength(0);
-  });
-});
-
 describe("grouping when the host will not name every member", () => {
   /**
    * The state five charts died in on 2026-08-07.
@@ -1068,5 +1030,37 @@ describe("grouping when the host will not name every member", () => {
     // there has ever been. The small-chart path that has always worked, and
     // must keep working.
     expect(chooseGroupMembers({ refreshedIds: undefined, askedForRefresh: false })).toEqual({ use: "created" });
+  });
+});
+
+describe("a slide that was added a moment ago", () => {
+  /**
+   * office-js#2903's workaround was tried on this host and made it strictly
+   * worse. Recorded here so nobody adds it back on the strength of the issue.
+   *
+   * The issue says a slide added on PowerPoint Online is not usable for a
+   * couple of seconds, and its reporter's fix is to wait. `addScratchSlide` did
+   * that on 2026-08-07. The next real-host round answered **1 of 25** probe
+   * questions against 19 of 26 the build before: the add landed, the wait ran,
+   * and the liveness check that follows it then found nothing — so every
+   * question came back `no-scratch-slide` and the only row with an answer was
+   * the cleanup's own.
+   *
+   * This host resolves a freshly-added slide's id ONCE and refuses it ever
+   * after — the behaviour `deleteSlideById` and `SlideThunk` are already built
+   * around. Waiting does not buy it time; it spends the one resolution later,
+   * by which point the id is gone.
+   */
+  it("is used immediately, with no settling pause", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    const mark = traceMark();
+    const id = await addScratchSlide();
+    expect(id, "the fake would not add a scratch slide").toBeTruthy();
+    const settled = traceLog(mark).entries.filter((e) => /settle/i.test(e.message));
+    expect(
+      settled,
+      "a pause was reintroduced after adding a slide — it cost 18 of 19 probe answers last time",
+    ).toHaveLength(0);
   });
 });
