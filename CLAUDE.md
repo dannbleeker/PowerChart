@@ -210,6 +210,23 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   what separates them, so never reason from a deck about which one happened.
   `targetWithNoTagResult` is that decision, extracted so it can be checked
   without a PowerPoint.
+- **A freshly added slide needs a couple of seconds before anyone touches it.**
+  office-js#2903 is this project's own bug, reported by somebody else two years
+  earlier and closed `not planned`: on Online a slide that has been added and
+  synced is not usable yet — text does not render, images land on the FIRST
+  slide, and the console carries `InvalidParam passed to GetItem(id)`. The
+  reporter's wait is the only workaround there is, so `addScratchSlide` settles
+  for `SLIDE_SETTLE_MS` (2 s) before handing the id out. `installHost` zeroes it,
+  or the suite would sit through it once per slide.
+- **Only an ID may cross a sync — and a proxy's PARENT counts.** A shape proxy
+  carries its parent's object path, so members from a re-read collection and
+  members from `created` are equally poisoned once Office.js has rewritten that
+  slide handle to `slides.getItem(id)`. Handing either to `addGroup` does not
+  merely fail to group: it THROWS, and the throw takes the batch's tagging with
+  it, so the chart loses its group AND its config. Five charts in one run.
+  `chooseGroupMembers` is that decision — group by re-resolved ids, or group
+  nothing — and "group nothing" is strictly better, because an ungrouped chart
+  that carries its config is still re-editable.
 - **A rasterise answers fast or not at all — never wait a readback's budget for
   one.** `getImageAsBase64` on a freshly-added slide has now failed on the web
   three different ways in three rounds: `GeneralException` at

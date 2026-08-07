@@ -198,6 +198,21 @@ type ProbeBox = { left: number; top: number; width: number; height: number };
  * what they measured before.
  */
 async function scratchShapes(ctx: ProbeContext, boxes: ProbeBox[], load?: string): Promise<PowerPoint.Shape[]> {
+  // WHICH of the two syncs failed, in the reason the sheet carries.
+  //
+  // Both were wrapped in one `catch` and both produced the same
+  // `no-scratch-shape`, which is two different diagnoses wearing one string —
+  // the mistake `ProbeSetupFailed` itself exists to stop, made one level down.
+  // Adding shapes and NAMING them are separate abilities and this host has
+  // them separately: `shape-add-fresh-slide-proxy` says yes to the add, and
+  // `shape-proxy-survives-one-sync` says `unreadable` to reading anything back
+  // through a proxy a sync later.
+  //
+  // It matters because six of the seven questions this host has never answered
+  // are exactly the six that pass a `load` here, and every probe that calls
+  // this WITHOUT one gets an answer. That correlation is the whole lead, and
+  // until now it could only be read across probes rather than recorded in one.
+  let phase = "adding the setup shapes";
   try {
     const shapes = ctx.scratch().shapes;
     const made = boxes.map((box) => shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box));
@@ -205,6 +220,7 @@ async function scratchShapes(ctx: ProbeContext, boxes: ProbeBox[], load?: string
     await ctx.sync();
     awaitingSetupShapes = false;
     if (load) {
+      phase = `reading "${load}" back off the setup shapes`;
       for (const s of made) s.load(load);
       awaitingSetupShapes = true;
       await ctx.sync();
@@ -213,7 +229,7 @@ async function scratchShapes(ctx: ProbeContext, boxes: ProbeBox[], load?: string
     return made;
   } catch (err) {
     awaitingSetupShapes = false;
-    throw new ProbeSetupFailed(short(err));
+    throw new ProbeSetupFailed(`${phase}: ${short(err)}`);
   }
 }
 
@@ -1158,9 +1174,33 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       if (follow && !NOT_ASKED.has(entry.answer) && follow.when(entry.answer)) {
         const at = Date.now();
         trace("probe", "asking the partner question", { after: probe.id, id: follow.probe.id, was: entry.answer });
-        const r = scratchId
+        let r = scratchId
           ? await ask(follow.probe, scratchId, durableSlideId)
           : { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
+        // The same replacement the main loop gets, and for the same reason.
+        //
+        // A follow-up went unasked in three consecutive rounds:
+        // `getitem-durable-slide` reads the DURABLE slide and never touches the
+        // scratch one, yet `ask` liveness-checks the scratch slide first, so a
+        // question with no use for that slide was refused for its absence. On a
+        // host that loses a scratch slide after almost every question — this one
+        // replaced seventeen in one run — that is not an edge case, it is the
+        // normal path.
+        if (NOT_ASKED.has(r.answer)) {
+          const replacement = await addScratchSlide();
+          if (replacement) {
+            scratchIds.push(replacement);
+            scratchId = replacement;
+            trace("probe", "replaced the scratch slide for a partner question", {
+              id: follow.probe.id,
+              scratchId: replacement,
+              after: r.answer,
+            });
+            const retry = await ask(follow.probe, replacement, durableSlideId);
+            // Same rule as the main loop: only adopt a retry that got somewhere.
+            if (!NOT_ASKED.has(retry.answer)) r = retry;
+          }
+        }
         answers.push({
           id: follow.probe.id,
           question: follow.probe.question,
