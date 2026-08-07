@@ -386,6 +386,62 @@ describe("the everyday paths on a host that refuses stale proxies", () => {
     ).toBe(true);
   });
 
+  /**
+   * The half that bites later, on the host that actually exists.
+   *
+   * `ungroupedFallback` reads its ids off `it.created` — the proxies
+   * `addGeometricShape` handed back — and by the time it runs those span several
+   * batches, so Office.js has rewritten their object paths to
+   * `shapes.getItem(id)`. This host refuses that call: `reading back an ungrouped
+   * chart's shape ids` failed three times in the 2026-08-07 run with
+   * `InvalidParam passed to GetItem(id)`, `errorLocation:
+   * ShapeCollection.getItem`, and each failure cost that chart its parts list.
+   *
+   * The blast radius is the reason this is not a footnote. PowerPoint on the web
+   * ungroups every chart it cannot group, so on that host EVERY chart takes this
+   * path — and the parts tag's own docstring says what its absence costs: an
+   * in-place update "deletes 1 of the chart's 13 shapes and redraws all 13", so
+   * the chart grows by a whole chart on every edit.
+   *
+   * The recovery is the one this host honours everywhere else: members of a
+   * collection read. `groupAndTagAll` already performs that read for grouping;
+   * this is the same answer, used twice.
+   */
+  it("writes an ungrouped chart's parts tag from the re-read when created proxies are refused", async () => {
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    const slideId = await addScratchSlide();
+    expect(slideId, "no freshly-added slide to draw on").toBeTruthy();
+    // Both halves of the real host. `refuseGroups` is what puts the chart down
+    // the ungrouped path at all — on the web that is every chart — and
+    // `strictIdLoads` is the host refusing to read an id off a proxy that has
+    // outlived its batch, which is what `it.created` are by then.
+    faults.refuseGroups = 99;
+    faults.strictIdLoads = true;
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      const scene = buildChart(cfg);
+      expect(scene.nodes.length, "this chart is too small to span batches").toBeGreaterThan(10);
+      await insertSceneIntoSlide(scene, { slideId: slideId!, tagData: JSON.stringify(cfg) });
+
+      const fresh = deck.find((s) => s.id === slideId);
+      const live = fresh?.created.filter((sh) => !sh.deleted) ?? [];
+      const tagged = live.filter((sh) => sh.tagStore.has(CHART_TAG));
+      expect(tagged, "the chart carries no config at all").toHaveLength(1);
+      expect(tagged[0].grouped, "this case is only interesting while the chart is ungrouped").toBeFalsy();
+      const parts = tagged[0].tagStore.get(CHART_PARTS_TAG);
+      expect(parts, "an ungrouped chart with no parts list — the next edit leaves its shapes behind").toBeTruthy();
+      // And it must name the chart's OTHER shapes, not a truncated remnant: a
+      // partial list orphans exactly the shapes it left out.
+      expect(JSON.parse(parts!), "the parts list is too short to be the rest of the chart").toHaveLength(
+        live.length - 1,
+      );
+    } finally {
+      faults.refuseGroups = 0;
+      faults.strictIdLoads = false;
+    }
+  });
+
   it("settles an UPDATE's config tag too, which is the path same-scale drives", async () => {
     // `same scale across the deck` edits every probe chart through
     // `updateChartInSlide` and then counts how many still carry a config. On a
