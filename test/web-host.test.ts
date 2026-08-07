@@ -1153,11 +1153,18 @@ describe("asking the host what it actually ran", () => {
 
   /**
    * Extended logging fills `fullStatements` with the WHOLE batch, and the whole
-   * batch is not something a run log can carry: run 9 held 66 of these errors,
-   * each one a 24-shape draw. Keep the tail — the failing call and the handles
-   * resolved just before it — and count what went.
+   * batch is not something a run log can carry: one round held 66 of these
+   * errors, each one a 24-shape draw.
+   *
+   * BOTH ends, and the first version of this case pinned the wrong one. It kept
+   * the tail, on the assumption that the failing statement is last — and in the
+   * 2026-08-07 round the `>>>>>` marker sat on the FIRST statement of the batch
+   * while the log read "… 37 earlier statement(s) dropped". The one line worth
+   * reading was the one line thrown away. The head is also where the batch's
+   * opening handles are, which is what settled whether a printed `getItem` means
+   * a held handle.
    */
-  it("keeps the tail of a long statement list and says how much it dropped", () => {
+  it("keeps both ends of a long statement list and says how much it dropped", () => {
     const full = Array.from({ length: 200 }, (_, i) => `var shape${i} = shapes.getItem(...);`);
     const trimmed = trimDebugInfo({ code: "5010", fullStatements: full }) as {
       code: string;
@@ -1165,9 +1172,11 @@ describe("asking the host what it actually ran", () => {
     };
     expect(trimmed.code, "dropped the rest of the debugInfo").toBe("5010");
     expect(trimmed.fullStatements.length, "kept the whole batch").toBeLessThan(full.length);
-    expect(trimmed.fullStatements[0]).toMatch(/dropped/);
-    // The TAIL, not the head: the failing statement is the last one.
-    expect(trimmed.fullStatements.at(-1), "kept the wrong end of the batch").toBe(full.at(-1));
+    // The batch's opening handles — where the failing statement sat in the round
+    // that prompted this — and what it was doing when it stopped. Both.
+    expect(trimmed.fullStatements[0], "dropped the head, where the marker was").toBe(full[0]);
+    expect(trimmed.fullStatements.at(-1), "dropped the tail").toBe(full.at(-1));
+    expect(trimmed.fullStatements.join("\n"), "never said what it dropped").toMatch(/dropped/);
   });
 
   it("leaves a short statement list exactly as it found it", () => {

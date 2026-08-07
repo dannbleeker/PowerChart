@@ -508,24 +508,35 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
 }
 
 /**
- * How many of `fullStatements` a trace keeps. See `trimDebugInfo`.
+ * How many of `fullStatements` a trace keeps at each end. See `trimDebugInfo`.
  *
- * Twenty is chosen against the batch this project actually issues: a chart is
- * drawn `SHAPES_PER_SYNC` at a time and each shape costs several statements, so
- * twenty reaches back past the failing call to the handle it was resolved
- * through — which is the whole question — without carrying the other nine
- * shapes' worth of noise.
+ * Ten and ten, against the batch this project actually issues: a chart is drawn
+ * `SHAPES_PER_SYNC` at a time and each shape costs several statements, so ten at
+ * the head carries the handles the batch opened with and ten at the tail carries
+ * what it was doing when it stopped, without the other eight shapes' noise.
  */
-const MAX_FULL_STATEMENTS = 20;
+const FULL_STATEMENT_ENDS = 10;
 
 /**
  * Cut `debugInfo.fullStatements` down to something a run log can carry.
  *
  * `extendedErrorLogging` (see `traceEnvironment`) is what makes Office.js fill
- * that array in at all, and it fills it in with the WHOLE batch. Run 9 held 66
- * of these errors; at a full batch each that is a file nobody can send. The
- * tail is what matters — the failing statement and the handles resolved just
- * before it — so the head is dropped and counted.
+ * that array in at all, and it fills it in with the WHOLE batch. One round held
+ * 66 of these errors; at a full batch each that is a file nobody can send.
+ *
+ * BOTH ends, and the first version's tail-only rule is the reason. It assumed
+ * the failing statement is last. It is not: Office.js reports it separately in
+ * `statement`, and `surroundingStatements` centres its `>>>>>` marker on it —
+ * and in the 2026-08-07 round that marker sat on the FIRST statement of the
+ * batch while `fullStatements` came back "… 37 earlier statement(s) dropped".
+ * The one line worth reading was the one line thrown away.
+ *
+ * The head is also where the batch's opening handles are, and those are the
+ * whole question: `var slide = slides.getItem("282#…") /* originally
+ * getItemOrNullObject("282#…") *​/` is what finally settled whether a printed
+ * `getItem` means a held handle. It does not — Office.js annotates the call the
+ * path was created by, and the rewrite is just how a resolved null-object proxy
+ * prints.
  *
  * Pure, and separate from `errorText`, so the trimming can be tested without a
  * PowerPoint anywhere near it.
@@ -533,11 +544,15 @@ const MAX_FULL_STATEMENTS = 20;
 export function trimDebugInfo(info: unknown): unknown {
   if (!info || typeof info !== "object") return info;
   const full = (info as { fullStatements?: unknown }).fullStatements;
-  if (!Array.isArray(full) || full.length <= MAX_FULL_STATEMENTS) return info;
-  const dropped = full.length - MAX_FULL_STATEMENTS;
+  if (!Array.isArray(full) || full.length <= FULL_STATEMENT_ENDS * 2 + 1) return info;
+  const dropped = full.length - FULL_STATEMENT_ENDS * 2;
   return {
     ...(info as Record<string, unknown>),
-    fullStatements: [`… ${dropped} earlier statement(s) dropped`, ...full.slice(dropped)],
+    fullStatements: [
+      ...full.slice(0, FULL_STATEMENT_ENDS),
+      `… ${dropped} statement(s) dropped from the middle`,
+      ...full.slice(full.length - FULL_STATEMENT_ENDS),
+    ],
   };
 }
 

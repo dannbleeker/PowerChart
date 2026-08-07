@@ -247,19 +247,44 @@ passed to GetItem(id)`, code 5010, at `errorLocation: ShapeCollection.getItem`
   must be paired with a refused in-context tag write, or the settle never runs
   and the guard passes against the unfixed file, which is how the first version
   of that test proved nothing.
+- **A printed `getItem` does NOT mean a held handle — ASKED AND ANSWERED.**
+  Office.js rewrites a resolved `getItemOrNullObject` proxy's path to
+  `getItem(id)`, so for months every log read as though this code were holding
+  handles across syncs. It was not. With `extendedErrorLogging` on, the host
+  annotates the call each path was CREATED by, and the answer is unambiguous:
+  `var slide = slides.getItem("282#543504795") /* originally
+getItemOrNullObject("282#543504795") */`. The rewrite is just how a resolved
+  null-object proxy prints. Do not re-derive this from an excerpt; the
+  annotation is the evidence, and it took one build to get after two sessions
+  of reasoning that got nowhere. The same annotation is what identifies a
+  genuinely poisoned proxy: `shapes.getItem("27") /* originally addTextBox(...)
+*/` is a `created` proxy, and those the host really does refuse.
 - **When the excerpt cannot settle it, make the host say more.** Every
-  `debugInfo` in every real-host log this project owns ends
-  `"fullStatements":["Please enable config.extendedErrorLogging to see full
-statements."]`, so all a reader gets is `surroundingStatements`, an excerpt.
-  On 2026-08-07 that excerpt printed `slides.getItem(...)` for a batch whose
-  slide and shape are both resolved fresh inside a first sync of their own —
-  which either means Office.js collapses `getItemOrNullObject` into `getItem`
-  when it prints, or that batch was not the one it appeared to be. Both
-  readings fit, neither can be argued to a conclusion, and they disagree about
-  whether the settle is repairable or never ran. `enableExtendedErrorLogging`
-  is the two-explanations rule applied to the tooling: stop reasoning, turn the
-  flag on, let the next log say. `trimDebugInfo` keeps the tail of the
-  statement list so the file stays sendable.
+  `debugInfo` before 2026-08-07 ends `"fullStatements":["Please enable
+config.extendedErrorLogging to see full statements."]`, so all a reader got was
+  `surroundingStatements`, an excerpt — and the excerpt could not tell a held
+  handle from a rewritten one, which is the question above. Turning the flag on
+  answered it in a single round. `enableExtendedErrorLogging` is the
+  two-explanations rule applied to the tooling: stop reasoning, make the host
+  say. `trimDebugInfo` keeps BOTH ends of the statement list so the file stays
+  sendable — tail-only was the first version and it was wrong, because
+  `surroundingStatements` centres its `>>>>>` marker on the failing statement
+  and in that round the marker sat on the batch's FIRST line while the log said
+  "… 37 earlier statement(s) dropped".
+- **The web host does not LIST the shapes a run just added.** The finding the
+  extended log produced, and the one everything else downstream hangs off:
+  `the re-read before grouping came back empty index=0 drew=24`, four times in
+  one round, on slides that had just taken 24 shapes each. The probe says the
+  same thing three more ways in the same run — `shapes-items-count-honest:
+unreadable`, `shape-proxy-survives-one-sync: unreadable`,
+  `shapes-items-via-positional-slide: not-listed`. So `refreshed=0` is the EMPTY
+  case, not a throw and not a failed match, which is exactly why that trace was
+  split three ways. The consequence chain is the whole of `same scale across the
+deck`: nothing to group with, no fresh tag target, so the tag goes through a
+  `created` proxy, the host refuses it, and the settle has nothing better to
+  offer. Slides are fine — `getitem-durable-slide: yes`,
+  `shape-add-positional-slide-proxy: yes`. It is the shape COLLECTION that will
+  not answer.
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not
   take other scenarios' verdicts — and it still cost every round, because the
