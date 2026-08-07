@@ -75,7 +75,7 @@ export const KNOWN_ISSUES = {
     "Re-read 2026-08-07 and it says more than we had taken from it: the report is about a freshly ADDED slide, not a stale shape — on Online " +
     "a slide that has been added and synced is not usable yet (text does not render, images land on the first slide instead), and the " +
     "reporter's only workaround is to wait a couple of seconds. Microsoft closed it `not planned`, so the wait is the fix that exists. " +
-    "`addScratchSlide` now settles for `SLIDE_SETTLE_MS` before handing the id out.",
+    "TRIED AND REVERTED: `addScratchSlide` settled for 2s on 2026-08-07 and the next real-host round answered 1 of 25 questions against 19 of 26 before it — the add landed, the wait ran, and the liveness check after it found nothing. This host resolves a fresh slide id ONCE and refuses it ever after, so waiting spends that one resolution later instead of buying time. Do not re-apply the workaround from this issue.",
   3014:
     "PowerPoint's API has no grouping story: creating and reading groups is a known parity gap, grouped shapes come back from getItem() " +
     "as type `unknown`, and sub-shapes cannot be reached. Open since 2022, `Status: in backlog`. No exposure to fix, but it is why " +
