@@ -532,10 +532,10 @@ const FULL_STATEMENT_ENDS = 10;
  * The one line worth reading was the one line thrown away.
  *
  * The head is also where the batch's opening handles are, and those are the
- * whole question: `var slide = slides.getItem("282#…") /* originally
- * getItemOrNullObject("282#…") *​/` is what finally settled whether a printed
- * `getItem` means a held handle. It does not — Office.js annotates the call the
- * path was created by, and the rewrite is just how a resolved null-object proxy
+ * whole question. A slide printed as `slides.getItem("282#…")` carrying the
+ * annotation "originally getItemOrNullObject" is what finally settled whether a
+ * printed `getItem` means a held handle. It does not — Office.js annotates the
+ * call each path was created by, and the rewrite is just how a resolved proxy
  * prints.
  *
  * Pure, and separate from `errorText`, so the trimming can be tested without a
