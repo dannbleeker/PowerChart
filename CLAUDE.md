@@ -199,6 +199,14 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   divergence that had never been asked) and `slideImageBase64` the self-test's
   whole visibility scenario. Pre-existing slides are unaffected — their ids
   round-trip — which is why editing a chart in place has always worked.
+  **Confirmed head-on 2026-08-08, and it is not about the handle at all.** A
+  FRESH `slides.getItem(id)` — nothing held, nothing resolved earlier — answered
+  `threw` (`GeneralException`) for a slide added moments before, while its
+  follow-up partner asked the same call about a pre-existing slide in the same
+  run and got `yes`. So the rule is not "do not hold a slide handle"; it is
+  **`getItem(id)` does not work on a NEW slide, by any route**. That is the call
+  `getTargetSlide` makes. The partner is `Probe.follow` doing its job: one run,
+  two readings separated, no reasoning.
 - **A chart the drawing context could not tag is not finished.** On the web the
   tag write goes through a shape proxy several syncs old and the host refuses it
   (`InvalidParam passed to GetItem(id)`, 46 times in one 38-item run), leaving a
@@ -330,7 +338,15 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   `created` proxy, the host refuses it, and the settle has nothing better to
   offer. Slides are fine — `getitem-durable-slide: yes`,
   `shape-add-positional-slide-proxy: yes`. It is the shape COLLECTION that will
-  not answer.
+  not answer. **Settled 2026-08-08, twice over.** The parent handle was never
+  the problem: `shapes-items-count-honest` and its positional partner
+  `shapes-items-via-positional-slide` both answered `short-0` in the same run,
+  so renaming a readback positionally buys nothing. And the collection is not
+  merely quiet, it is inconsistent with itself —
+  `getcount-populates-same-sync: yes, value=8` next to `items=0`, same host,
+  same minute. The count is right and the list is empty. That is why every
+  collection read in this repo has to be corroborated against the slide's own
+  count (`slideShapeNames`) rather than believed.
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not
   take other scenarios' verdicts — and it still cost every round, because the
@@ -435,12 +451,21 @@ What is left needs the owner, not the agent:
   "does any of this work" but "what does the newest build answer".
 
   What has still never run on a real host: the degradation experiment
-  (_what makes a long run slow down_), _edit the chart YOU click_, _the chart is
-  actually visible_ — which is `pickedOnly` as of 2026-08-07 precisely because it
-  killed the tab four rounds running without ever returning a verdict — and every
-  probe question added since the fixture was recorded. `PENDING_QUESTIONS` in
-  `scripts/host-baseline.mjs` is the authoritative list of those, and it shrinks
-  by itself when a newer sheet lands.
+  (_what makes a long run slow down_) and _the chart is actually visible_ —
+  which is `pickedOnly` as of 2026-08-07 precisely because it killed the tab
+  four rounds running without ever returning a verdict. `PENDING_QUESTIONS` in
+  `scripts/host-baseline.mjs` is the authoritative list of unasked probe
+  questions; the 2026-08-08 sheet took it from nine down to one
+  (`shape-resolve-held-slide-proxy`, which that round could not set up).
+  _edit the chart YOU click_ came off this list the same day — it PASSED.
+
+  **A never-asked answer is not an answer, and the gate used to think it was.**
+  `no-scratch-slide` and `no-scratch-shape` mean the run could not put the
+  question. The contract gate read their absence from `differ` as agreement and
+  their presence in the sheet as an answer, so the first sheet carrying them
+  demanded that two `KNOWN_DIVERGENCES` entries be deleted and a
+  `PENDING_QUESTIONS` entry retired — deleting knowledge on the strength of a
+  setup failure. Both directions now treat `notAsked` as unknown.
 
   **Nothing is owed to the owner right now.** The manifest re-install he was
   asked for was done on 2026-08-06, and nothing since has touched a manifest —
@@ -449,23 +474,20 @@ What is left needs the owner, not the agent:
   a new one per session, and don't ask for the deck or a screenshot — the round's
   own file has carried both since the deck-evidence change.
 
-  **A round is in flight.** `48e9a00` was merged and deployed 2026-08-07 17:49Z,
-  and the owner has been asked for two things: a normal full round, and — on a
-  fresh deck — a second short round with _the chart is actually visible_ picked
-  alone. That second one is an experiment, not a regression check: every crash so
-  far arrived ten minutes and nine scenarios into a run, so "the scenario kills
-  the host" and "ten minutes of drawing kills the host, and this is what happened
-  to be running" both fit, and running it alone is what separates them. Whatever
-  comes back — including another crash — is the answer.
+  **The `2f1e8c4` round landed 2026-08-08 and its sheet is the committed
+  fixture.** Ten scenarios ran, eight passed, and the round returned its file —
+  the first time the whole battery has finished and reported. It also returned
+  every scratch slide it borrowed (`scratch-slides-returned: all`, 19 of 19), so
+  the litter problem is not reproducing. `layouts-readable` and
+  `slide-layout-readable` both answered `yes`, which retires office-js#4906 and
+  #3826 as exposures on this host and this deck.
 
-  Three things in `48e9a00` have never met a real host: the settle's fall-through
-  to a collection read, `enableExtendedErrorLogging`, and the routine round
-  finishing at all. **The extended statements are the one to read first** — every
-  log before this build says `"Please enable config.extendedErrorLogging"`, and
-  the question it was turned on to settle is whether a batch printing
-  `slides.getItem(...)` is a held handle or just how Office.js prints a fresh
-  `getItemOrNullObject`. Those two readings disagree about whether the settle is
-  repairable, and no amount of reasoning has separated them.
+  Still owed, and it is one experiment, not a round: _the chart is actually
+  visible_ picked ALONE on a fresh deck. Every crash so far arrived ten minutes
+  and nine scenarios in, so "the scenario kills the host" and "ten minutes of
+  drawing kills the host, and this is what happened to be running" both fit.
+  Running it alone is what separates them, and it has still never been run that
+  way. Whatever comes back — including another crash — is the answer.
 
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 
