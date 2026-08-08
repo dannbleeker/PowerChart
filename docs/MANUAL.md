@@ -540,7 +540,7 @@ contexts would fix it; if both climb together, the host itself is slowing and
 they would not. It takes a minute or so and leaves two slides of small
 rectangles behind. It reports *ok* only when neither curve climbs.
 
-**Run host self-test** runs the ten things the demo deck does not cover:
+**Run host self-test** runs the eleven things the demo deck does not cover:
 inserting on top of an earlier run, two slides claiming one slot, editing a
 chart on the slide you are looking at, adding charts to a slide that already
 has content, a deck-wide rescale, turning a degraded picture back into native
