@@ -35,6 +35,7 @@ import {
   readDegradation,
   _setClickWaitForTest,
   _setDegradeSizeForTest,
+  wedgedSelection,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -1326,5 +1327,44 @@ describe("the scenario for a shape the user had selected", () => {
     const r = pick(all);
     expect(r.skipped, "attributed a wedged host to this scenario").toBe(true);
     expect(r.detail).toMatch(/ladder found/);
+  });
+});
+
+/**
+ * A diagnosis is worth having only if it can be wrong.
+ *
+ * `edit the chart the user selected` catches a timeout and explains it: "the
+ * host stopped answering selection calls after a programmatic select — known
+ * web-host limitation, same family as office-js#3083 / #3698". It caught ANY
+ * timeout, and `isTimeout` is just as true of a draw that stalled.
+ *
+ * A round on 2026-08-08 skipped with that sentence while its own trace read
+ * `gave up waiting what=drawing shapes 1-10 of 24` and `at=redrawing the
+ * chart's shapes`. The selection subsystem was fine; the host stopped answering
+ * during a redraw; and the report sent the reader to two selection bugs that had
+ * nothing to do with it — while quietly not counting a host stall as a failure.
+ */
+describe("which timeout counts as the known selection limitation", () => {
+  it("does not call a draw stall a selection limitation", () => {
+    const drawStall = new Error("PowerPoint did not respond while drawing shapes 1-10 of 24 (45s)");
+    expect(wedgedSelection(drawStall), "a stalled draw was labelled a selection bug").toBe(false);
+    const redraw = new Error("PowerPoint did not respond while redrawing the chart's shapes (45s)");
+    expect(wedgedSelection(redraw), "a stalled redraw was labelled a selection bug").toBe(false);
+  });
+
+  it("still recognises the selection wedge it was written for", () => {
+    // The negative control. A discriminator that says no to everything would
+    // pass the case above and turn a known, harmless host limitation back into
+    // a red line — which is the failure this branch was added to prevent.
+    expect(wedgedSelection(new Error("PowerPoint did not respond while reading the selected chart (10s)"))).toBe(true);
+    expect(wedgedSelection(new Error("PowerPoint did not respond while selecting a shape (10s)"))).toBe(true);
+  });
+
+  it("treats an unattributable timeout as a failure, not a known limitation", () => {
+    // Unknown is not the same as innocent. An error with nothing to place it
+    // could have come from anywhere, and the honest report is a failure that
+    // says so rather than a confident wrong answer.
+    expect(wedgedSelection(new Error("PowerPoint did not respond"))).toBe(false);
+    expect(wedgedSelection(undefined)).toBe(false);
   });
 });
