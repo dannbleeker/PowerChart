@@ -262,6 +262,23 @@ re-read came back empty`. So the fall-through to a collection read does not
   This host is not the host that issue describes: it resolves a fresh slide's
   id ONCE and refuses it ever after, so waiting spends the one resolution later
   rather than buying time. `web-host.test.ts` guards against reintroducing it.
+- **Two `slides.add()` calls in quick succession kill PowerPoint on the web.**
+  Named on 2026-08-08 by the step tracing added the same day, in one round:
+  `adding the first scratch slide` at 33.2s, `adding the second scratch slide`
+  at 33.6s, and the tab was gone. The first add SURVIVED — the second step is
+  only written if it did — and nothing after the second was reached, which
+  exonerates the ninety-six shapes the scenario was about to draw. Four tenths
+  of a second apart is all it took.
+  Read with the rasterise gotcha below, the pattern is one thing: whatever this
+  host does after `slides.add()` it does slowly and badly, and a second
+  operation arriving before it settles takes the process with it. Rasterising a
+  fresh slide killed five rounds; adding a second slide killed two more.
+  **Nothing in this repo takes a scratch slide any more.** Both scenarios that
+  did have stopped, and `test/selftest.test.ts` asserts it for the whole battery
+  by slide count, so a new one cannot quietly reintroduce it. The host probe
+  still takes them — it has no alternative, every question is about a slide it
+  owns — which is why it churns through so many and why its rounds are the ones
+  that see `no-scratch-slide` windows.
 - **Only an ID may cross a sync — and a proxy's PARENT counts.** A shape proxy
   carries its parent's object path, so members from a re-read collection and
   members from `created` are equally poisoned once Office.js has rewritten that
@@ -549,12 +566,23 @@ What is left needs the owner, not the agent:
   in a human's eyes. Routine again as of that round, on the criterion set in
   advance: comes back PASSING, not merely comes back.
 
-  Owed: one picked round of _what makes a long run slow down_ on a build
-  carrying its step tracing. It killed the tab on `25407ed`, picked alone, at
-  26.9 seconds — announcing itself and then nothing, the same blindness that
-  cost the visibility scenario four rounds. Two calls fit: taking a scratch
-  slide, or drawing ninety-six shapes onto one just added. Do not reason about
-  which; the steps are there now to say.
+  **And the steps answered on their first outing.** _what makes a long run slow
+  down_ killed the tab again on `f8c9386`, and this time the log named the call:
+
+      33.2s  degradation step  what=adding the first scratch slide
+      33.6s  degradation step  what=adding the second scratch slide
+                                                      <- tab died
+
+  The first add survived (the second step only gets written if it did) and
+  nothing after the second was reached, so the drawing is exonerated and it is
+  the SECOND `slides.add()`, four tenths of a second after the first, that this
+  host does not survive. One round, no reasoning. Both scenarios that took
+  scratch slides have stopped; `test/selftest.test.ts` holds the line for the
+  whole battery.
+
+  Nothing is owed. The experiment still has never MEASURED anything — that is
+  what the next round of it is for — but it is no longer blocked on a question
+  nobody had asked.
 
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 

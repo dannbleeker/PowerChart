@@ -48,7 +48,6 @@ import { buildChart } from "../core/chart";
 import { sampleConfig } from "../core/samples";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import {
-  addScratchSlide,
   canInsertPicture,
   canSelectShapes,
   clearShapeSelection,
@@ -1375,23 +1374,41 @@ export function _setDegradeSizeForTest(rounds: number, perRound: number): void {
  * so running it after eight other scenarios would measure them instead of it.
  */
 const degradesOverTime: Scenario = async (prefix) => {
-  // Wrapped after this scenario killed the tab on 2026-08-08, picked alone, at
-  // 26.9 seconds with two scenarios behind it — announcing itself and then
-  // nothing, which is exactly what `chartIsVisible` used to do. Two calls could
-  // have done it and the log cannot say which: taking a scratch slide, or
-  // drawing ninety-six shapes onto one the run had just added. A fresh slide is
-  // the worst surface this host offers, so both are plausible, and this file's
-  // own rule is to ask rather than pick. The steps ARE the question.
+  // The steps answered in one round, which is what they were added for.
+  //
+  // This scenario killed the tab twice. The first time it announced itself at
+  // 26.9s and wrote nothing else, so "taking a scratch slide" and "drawing
+  // ninety-six shapes onto one just added" both fit. Wrapped, the second round
+  // said:
+  //
+  //     33.2s  degradation step  what=adding the first scratch slide
+  //     33.6s  degradation step  what=adding the second scratch slide
+  //                                                     <- tab died
+  //
+  // The first add survived — the second step only gets written if it did — and
+  // nothing after the second was ever reached. So the drawing is exonerated,
+  // and it is the SECOND `slides.add()`, four tenths of a second after the
+  // first, that this host does not survive. No reasoning was involved and none
+  // was needed.
+  //
+  // So it takes no scratch slides. Two of the slides this run already added are
+  // enough: the experiment needs two SEPARATE surfaces so neither arm draws on
+  // top of the other's shapes, and it needs them EQUALLY loaded so the load is
+  // not a fourth variable. Two probe-chart slides are both — one chart each, by
+  // construction. Their absolute times will be higher than a bare slide's; the
+  // curves are what this measures, and a constant offset does not bend a curve.
   const attempt = stepsOf("degradation step");
   const rounds = degradeRounds;
   const perRound = degradePerRound;
-  const slideA = await attempt("adding the first scratch slide", addScratchSlide);
-  const slideB = slideA ? await attempt("adding the second scratch slide", addScratchSlide) : null;
+  const { found, blind, gap } = await probeCharts(prefix);
+  const surfaces = [...new Set(found.map((c) => c.target.slideId))];
+  const [slideA, slideB] = surfaces;
   if (!slideA || !slideB) {
+    if (blind) return blindSkip(gap);
     return {
       ok: false,
       skipped: true,
-      detail: `the host would not give the experiment two slides to draw on (${slideA ? "one" : "none"} of two)`,
+      detail: `the run has only ${surfaces.length} slide(s) of its own to draw on, and the experiment needs two`,
     };
   }
   const deckBefore = await attempt("counting the deck", slideCount);

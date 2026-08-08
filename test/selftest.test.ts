@@ -774,6 +774,30 @@ describe("the scenarios the selection API unlocked", () => {
    * throws leaves a verdict and a call that never returns leaves only the log.
    * Only the second one is the case this line exists for.
    */
+  it("takes no scratch slide anywhere in the battery", async () => {
+    // The rule the real host taught, twice over, and the second time by name:
+    // `chartIsVisible` died rasterising a slide added 0.3s earlier, and
+    // `degradesOverTime` died on its SECOND `slides.add()` 0.4s after its
+    // first. Both stopped taking scratch slides, and no scenario should take
+    // one again without a reason better than convenience.
+    //
+    // Asserted against the DECK, so it holds however the scenarios are written:
+    // a full round adds slides only through the two inserts at its head.
+    const { slideCount } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    _setDegradeSizeForTest(2, 2);
+    try {
+      await runSelfTest("probe", "two slides claiming one slot");
+      const justTheInserts = await slideCount();
+
+      installHost([makeSlide("s1")]);
+      await runSelfTest("probe", "what makes a long run slow down");
+      expect(await slideCount(), "the degradation experiment took a slide of its own").toBe(justTheInserts);
+    } finally {
+      _setDegradeSizeForTest(8, 12);
+    }
+  }, 60_000);
+
   it("names the degradation experiment's host calls too", async () => {
     // The same lesson, learned twice. On 2026-08-08 this scenario was picked
     // alone, announced itself at 26.9s, and took the tab — with no finer step
@@ -789,15 +813,11 @@ describe("the scenarios the selection API unlocked", () => {
       const steps = traceLog()
         .entries.filter((e) => e.message === "degradation step")
         .map((e) => e.data?.what);
-      // Both scratch adds named separately: the first is the one a crash-at-
-      // the-start would stop on, and it is a different finding from the second.
-      expect(steps).toEqual([
-        "adding the first scratch slide",
-        "adding the second scratch slide",
-        "counting the deck",
-        "timing the one-context arm",
-        "timing the fresh-context arm",
-      ]);
+      // The two scratch adds are gone, and their absence is the finding: named
+      // separately, they told a real host exactly which one it dies on — the
+      // SECOND, four tenths of a second after the first — and the scenario
+      // stopped taking them. The arms are what is left to name.
+      expect(steps).toEqual(["counting the deck", "timing the one-context arm", "timing the fresh-context arm"]);
     } finally {
       setTracing(false);
       _setDegradeSizeForTest(8, 12);

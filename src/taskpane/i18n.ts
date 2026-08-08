@@ -127,6 +127,8 @@ export const EN = {
   "Inserting demo slides… {done} of {total}": "Inserting demo slides… {done} of {total}",
   'Loaded chart 1 of {total} — use "Insert batch" for all.': 'Loaded chart 1 of {total} — use "Insert batch" for all.',
   "Working… {phase}": "Working… {phase}",
+  "PowerPoint has not answered for {secs}s. If it has stopped responding, reload the pane — the run's steps are saved and *Download the crashed run* will offer them.":
+    "PowerPoint has not answered for {secs}s. If it has stopped responding, reload the pane — the run's steps are saved and *Download the crashed run* will offer them.",
   // Insert-phase words (the {phase} fill above).
   "opening PowerPoint…": "opening PowerPoint…",
   "building shapes…": "building shapes…",

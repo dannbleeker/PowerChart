@@ -890,3 +890,35 @@ describe("element previews are sized for their own shape", () => {
     expect(svg.getAttribute("height")).toBe("90");
   });
 });
+
+/**
+ * PowerPoint dies; the task pane does not.
+ *
+ * The pane is a separate frame, and the `PowerPoint.run` promise it is waiting
+ * on simply never settles when the host process goes — there is no rejection to
+ * catch and no timeout that helps, because nothing ever answers. So the pane
+ * counted upward under the word "Working…" forever, and the owner watched a
+ * number climb on three separate crashes with no way to tell it from a chart
+ * that was merely slow.
+ *
+ * Silence is the only evidence available, so silence is what the readout
+ * carries. Checked as a rule rather than through a fake clock: what was wrong
+ * was the decision, and the decision is one function.
+ */
+describe("the elapsed readout", () => {
+  it("says only the elapsed seconds while a run is talking", async () => {
+    await bootPane();
+    const { elapsedLabel } = await import("../src/taskpane/app");
+    expect(elapsedLabel(17_000, 0)).toBe("17s");
+    // A draw batch on PowerPoint web has been measured at ~17s and a stalled
+    // sync at 45, so neither may be called silent. A warning that fires on a
+    // merely slow host is one nobody believes.
+    expect(elapsedLabel(60_000, 45_000)).toBe("60s");
+  });
+
+  it("says how long the silence has lasted once it is not credible", async () => {
+    await bootPane();
+    const { elapsedLabel } = await import("../src/taskpane/app");
+    expect(elapsedLabel(200_000, 190_000)).toBe("200s · silent for 190s");
+  });
+});

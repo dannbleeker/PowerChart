@@ -528,16 +528,78 @@ function setProgress(p: number | "busy" | null) {
 }
 
 /**
+ * The last moment anything was heard from a run — see `noteHostActivity`.
+ *
+ * Module-level rather than passed in, because the two things that need it sit
+ * in different parts of the file: the trace subscriber, which sees every step a
+ * run produces, and the elapsed ticker, which is the only thing on screen while
+ * a sync is outstanding.
+ */
+let lastHostActivity = 0;
+
+/** A run just did something. Bumped per traced step. */
+export function noteHostActivity(now = Date.now()): void {
+  lastHostActivity = now;
+}
+
+/**
+ * How long a run may go silent before the pane stops implying it is working.
+ *
+ * Generous on purpose. A single draw batch on PowerPoint web has been measured
+ * at ~17 seconds and a stalled-but-alive sync at 45, so anything under a minute
+ * would cry wolf on a host that is merely slow — the failure mode this replaces
+ * cuts the other way and is worse, but a warning nobody believes is no warning.
+ */
+const SILENT_RUN_MS = 60_000;
+
+/**
+ * What the elapsed readout should say, given how long the run has been going
+ * and how long since anything happened.
+ *
+ * Pure, and exported, because it is the whole of a decision this project has
+ * now watched go wrong on a real host three times: PowerPoint dies, the task
+ * pane survives — it is a separate frame, and the `PowerPoint.run` promise it
+ * is waiting on simply never settles — and the pane counts upward forever under
+ * the word "Working…". The owner is left watching a number climb with no way to
+ * tell it from a slow chart. There is no error to catch here and no timeout
+ * that helps, because nothing rejects; silence is the only evidence there is.
+ */
+export function elapsedLabel(elapsedMs: number, silentMs: number): string {
+  const secs = `${Math.round(elapsedMs / 1000)}s`;
+  return silentMs >= SILENT_RUN_MS ? `${secs} · silent for ${Math.round(silentMs / 1000)}s` : secs;
+}
+
+/**
  * Count the seconds while the host works. It is the only number we can report
  * mid-sync, and on a host that takes 20s to draw a chart, a number that moves
  * is the difference between "working" and "dead".
+ *
+ * Except when it is not, which is why the readout also carries silence. See
+ * `elapsedLabel`.
  */
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+let saidSilent = false;
 function startElapsed() {
   const t0 = Date.now();
   stopElapsed();
+  noteHostActivity(t0);
+  saidSilent = false;
   const tick = () => {
-    if (statusElapsed) statusElapsed.textContent = `${Math.round((Date.now() - t0) / 1000)}s`;
+    const now = Date.now();
+    const silentMs = now - lastHostActivity;
+    if (statusElapsed) statusElapsed.textContent = elapsedLabel(now - t0, silentMs);
+    // Said once, not every second: the note area is shared, and a message that
+    // rewrites itself every tick is one nobody reads. It also must not be an
+    // "err" — nothing has failed as far as this pane knows, and claiming
+    // otherwise over a merely slow host is the mistake in the other direction.
+    if (!saidSilent && silentMs >= SILENT_RUN_MS) {
+      saidSilent = true;
+      note(
+        "PowerPoint has not answered for {secs}s. If it has stopped responding, reload the pane — the run's steps are saved and *Download the crashed run* will offer them.",
+        "busy",
+        { secs: Math.round(silentMs / 1000) },
+      );
+    }
   };
   tick();
   elapsedTimer = setInterval(tick, 1000);
@@ -545,6 +607,7 @@ function startElapsed() {
 function stopElapsed() {
   clearInterval(elapsedTimer);
   elapsedTimer = undefined;
+  saidSilent = false;
   if (statusElapsed) statusElapsed.textContent = "";
 }
 
@@ -3203,6 +3266,9 @@ function wireInsert() {
       // the same run differently — and oldest-first there, because a file is
       // read from the top while a crashed screen is read from where it froze.
       recordCrashStep(line);
+      // Anything traced is the host or the run still moving, which is what the
+      // elapsed readout needs to tell "slow" from "gone".
+      noteHostActivity();
     });
     // The last synchronous moment the pane gets. `pagehide` fires on the tab
     // close that ended the 1819-second run, so it buys back the final debounce
