@@ -555,14 +555,17 @@ than failed. It leaves its slides in the deck so you can look at them — delete
 them when you are done, exactly like the demo deck.
 
 An eleventh — **whether a chart is actually visible** — is in the **Scenario**
-picker but not in a full run. It killed the browser tab in four consecutive
-rounds on PowerPoint on the web, always within a step or two of borrowing a
-slide to compare against, and it has never once returned a verdict. Because the
-report is written when the battery finishes, a scenario that ends the run takes
-the other ten verdicts' *report* with it even when it runs last. Pick it on its
-own, on a freshly opened deck, if you want that check — and please send the
-result either way, because running it alone is also the experiment that says
-whether the scenario is at fault or simply ten minutes of drawing.
+picker but not in a full run. It killed the browser tab in five consecutive
+rounds on PowerPoint on the web and has never once returned a verdict. Because
+the report is written when the battery finishes, a scenario that ends the run
+takes the other ten verdicts' *report* with it even when it runs last.
+
+The fifth of those rounds was run on its own, and that is what identified the
+cause: the scenario used to borrow a brand-new slide and immediately ask
+PowerPoint to render it as an image, and on the web that call kills the tab. It
+now compares before and after on a slide the run already added, so it never
+makes that call. Pick it on its own, on a freshly opened deck, if you want the
+check — and please send the result either way.
 
 Three of those are new, and are the ones worth understanding. **Editing the
 chart you selected** goes through the same read the pane uses when you click a

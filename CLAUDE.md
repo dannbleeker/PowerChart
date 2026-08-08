@@ -371,15 +371,31 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   `pickedOnly` now. "Last" protects the verdicts; only "out of the routine list"
   protects the report. Whether the scenario or the ten minutes in front of it is
   the killer has never been separated — running it alone is that experiment.
-- **A rasterise answers fast or not at all — never wait a readback's budget for
-  one.** `getImageAsBase64` on a freshly-added slide has now failed on the web
-  three different ways in three rounds: `GeneralException` at
-  `SlideCollection.getItem`, then taking the call and silently producing
-  nothing, then never answering the sync. The third cost a whole round —
-  `the chart is actually visible` sat on the full ninety-second readback budget
-  and the tab died on the delete that followed, taking the run's report with it,
-  for a scenario whose honest verdict is `skipped`. `rasteriseTimeoutMs` is
-  twenty seconds, capped by the readback budget so a test can still shorten it.
+- **Do not rasterise a slide the run just added. It kills PowerPoint.**
+  `getImageAsBase64` on a freshly-added slide has now failed on the web FIVE
+  distinct ways: `GeneralException` at `SlideCollection.getItem`; taking the
+  call and silently producing nothing; never answering the sync; sitting on the
+  full ninety-second readback budget; and — 2026-08-08 — killing the tab
+  outright. `rasteriseTimeoutMs` is twenty seconds, capped by the readback
+  budget so a test can still shorten it, and it does not help against the fifth:
+  a timeout cannot save a process that is gone.
+
+  **The isolating experiment ran on 2026-08-08 and it is the scenario, not the
+  load.** `the chart is actually visible`, picked alone on a fresh deck, was
+  reached at 61.5s with only its two inserts in front of it — against ten
+  minutes and nine scenarios in the four rounds before. It added a scratch slide
+  at 61.5s, logged `rasterising the empty slide` at 61.8s, and the tab died.
+  Those same two inserts head every routine round and kill nothing, so elapsed
+  time and volume of drawing are both out. Four rounds of "it crashed again"
+  said nothing; one picked round said this.
+
+  `chartIsVisible` no longer takes a scratch slide at all — it does its
+  before/after on a slide the run added EARLIER, which drops the scratch add,
+  the fresh-slide rasterise and the delete (that delete had killed a round of
+  its own). What is still unasked is whether this host will rasterise ANY slide;
+  the step is named `rasterising a slide that already existed` so the next crash
+  answers that instead of repeating this one.
+
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys
@@ -498,12 +514,22 @@ What is left needs the owner, not the agent:
   `slide-layout-readable` both answered `yes`, which retires office-js#4906 and
   #3826 as exposures on this host and this deck.
 
-  Still owed, and it is one experiment, not a round: _the chart is actually
-  visible_ picked ALONE on a fresh deck. Every crash so far arrived ten minutes
-  and nine scenarios in, so "the scenario kills the host" and "ten minutes of
-  drawing kills the host, and this is what happened to be running" both fit.
-  Running it alone is what separates them, and it has still never been run that
-  way. Whatever comes back — including another crash — is the answer.
+  **The picked-alone experiment ran the same day and answered.** _the chart is
+  actually visible_, on a fresh deck, killed PowerPoint 61.8 seconds in with two
+  scenarios behind it — so it is the scenario, not the ten minutes. See the
+  rasterise gotcha above for what that means and what changed. The crash file
+  carried the fifteen steps that prove it, which is the crash-log mechanism
+  paying for itself: four earlier rounds crashed the same way and produced
+  nothing anyone could reason from.
+
+  Still owed, and it is the same scenario one more time: picked ALONE again, on
+  the build that stopped it taking a scratch slide. What is ruled out is a fresh
+  slide; what has never been asked is whether this host will rasterise any slide
+  at all. It stays `pickedOnly` until it comes back with a verdict, so that
+  question costs a short round rather than a long one.
+
+  Still never run at all: the degradation experiment (_what makes a long run
+  slow down_).
 
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 

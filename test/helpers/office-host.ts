@@ -1050,7 +1050,9 @@ export function makeSlide(id: string) {
           if (faults.emptySlideImage) return "";
           const live = created.filter((s) => !s.deleted);
           const ink = live.reduce((n, s) => n + Math.max(0, s.width) * Math.max(0, s.height), 0);
-          return btoa(`PNG:${slide.id}:shapes=${live.length}:ink=${ink}`);
+          const payload = `PNG:${slide.id}:shapes=${live.length}:ink=${ink}`;
+          rasterised.push(payload);
+          return btoa(payload);
         },
       });
       return result;
@@ -1431,6 +1433,19 @@ export const trips = {
 
 /** Proxy objects the renderer released via untrack(), by kind. */
 export const untracked = { shapes: 0, tags: 0 };
+
+/**
+ * Every slide raster the run asked for, in order, as the payload the fake
+ * built: `PNG:<slideId>:shapes=<n>:ink=<n>`.
+ *
+ * Recorded because WHICH slide a caller rasterises is the whole question on
+ * PowerPoint web. `getImageAsBase64` on a slide added moments earlier has now
+ * failed there five distinct ways, the fifth of them killing the tab, and no
+ * count of slides can see the difference — the caller that did it also deleted
+ * the slide afterwards, so the deck ended the size it started. The payload can:
+ * a slide that already carries a chart reports `shapes` above zero.
+ */
+export const rasterised: string[] = [];
 
 /**
  * Make the Nth context.sync() of the next run throw. Office.js queues commands
@@ -1888,6 +1903,7 @@ export function installHost(
   trips.contexts = 0;
   untracked.shapes = 0;
   untracked.tags = 0;
+  rasterised.length = 0;
   // Proxies from a previous test's host must not become readable inside this
   // one's first sync.
   pendingTagLoads.length = 0;

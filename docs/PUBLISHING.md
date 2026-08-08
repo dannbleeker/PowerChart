@@ -417,21 +417,33 @@ which in practice meant eight separate sessions. They are now one button:
 
 **Not in that list any more: the chart is actually visible.** It proves the
 host's own render changed where the chart was drawn — not just that shapes
-exist — and it is `pickedOnly` as of 2026-08-07 because it has never proved it.
-Four rounds, four builds (`a5b032d`, `618b8d8`, `cedbc6c`, `cacf58a`), and each
-one stops writing inside that scenario at 602s, 631s, 603s and 645s, always
-within a step or two of `adding a scratch slide`. Running it last already kept
-its crash off the other scenarios' verdicts; it did not keep the crash off the
-**report**, which is only written when the battery returns. So every round so
-far has arrived as a crash file and a screenshot.
+exist — and it is `pickedOnly` because it has never proved it. Five rounds, five
+builds, and each one stops writing inside that scenario, always within a step or
+two of `adding a scratch slide`. Running it last already kept its crash off the
+other scenarios' verdicts; it did not keep the crash off the **report**, which
+is only written when the battery returns.
 
-Run it as a **second, short round** when you have a minute: open a fresh deck,
-pick it in the **Scenario** box, run, and send whatever comes out. That is also
-the experiment that has never been done — every crash so far came ten minutes
-and nine scenarios into a run, so "this scenario kills the host" and "ten
-minutes of drawing kills the host, and this is what happened to be running" both
-fit the evidence equally well. Alone on a fresh host, thirty seconds in, they
-do not.
+**The fifth round was the experiment, and it settled the question.** The first
+four crashed around 600 seconds with nine scenarios' worth of drawing behind
+them, so "this scenario kills the host" and "ten minutes of drawing kills the
+host, and this is merely what was running" both fit. Picked alone on `b998a2e`,
+the scenario was reached at **61.5s** with only its two inserts in front of it,
+took a scratch slide, logged `rasterising the empty slide` at 61.8s, and the tab
+died. Those two inserts head every routine round and kill nothing. It is the
+scenario.
+
+More precisely it was the surface: `getImageAsBase64` on a slide added 0.3
+seconds earlier, which is the fifth distinct way that call has failed on a fresh
+slide and the first fatal one. The scenario no longer takes a scratch slide —
+it does its before-and-after on a slide the run added earlier, which drops the
+scratch add, the fresh-slide rasterise and the delete.
+
+**Please run it picked-alone once more**, on a fresh deck, on the build that
+changed it. What is ruled out is a fresh slide; what nobody has asked is whether
+this host will rasterise any slide at all, and the step is named `rasterising a
+slide that already existed` so a crash there answers that rather than repeating
+what is known. Send whatever comes out — a verdict earns it a place back in the
+routine round.
 
 The ladder — **which selection call wedges the host** — is in that list now, and
 used to be a separate run. It runs ahead of every scenario that selects a shape —

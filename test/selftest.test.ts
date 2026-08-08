@@ -4,6 +4,7 @@ import {
   installHost,
   makeSlide,
   makeShape,
+  rasterised,
   applyWebProfile,
   faults,
   trips,
@@ -784,7 +785,7 @@ describe("the scenarios the selection API unlocked", () => {
           .entries.filter((e) => e.scope === "selftest")
           .at(-1);
         expect(last?.message).toBe("visibility step");
-        expect(last?.data?.what).toBe("rasterising the empty slide");
+        expect(last?.data?.what).toBe("rasterising a slide that already existed");
       });
       release();
       await run;
@@ -792,12 +793,12 @@ describe("the scenarios the selection API unlocked", () => {
       const steps = traceLog()
         .entries.filter((e) => e.message === "visibility step")
         .map((e) => e.data?.what);
+      // No scratch add and no delete any more: both were calls that killed a
+      // real PowerPoint, and neither was needed for the comparison.
       expect(steps).toEqual([
-        "adding a scratch slide",
-        "rasterising the empty slide",
+        "rasterising a slide that already existed",
         "drawing the chart",
         "rasterising the slide with the chart",
-        "removing the scratch slide",
       ]);
     } finally {
       release?.();
@@ -806,18 +807,26 @@ describe("the scenarios the selection API unlocked", () => {
     }
   });
 
-  it("says so when it cannot take its own scratch slide back", async () => {
-    // The visibility scenario is the only one that borrows a slide and returns
-    // it, so it is the only one that can leave litter. `deleteSlideById` is
-    // best-effort and answers false rather than throwing, and the first version
-    // of this scenario discarded that answer in a `finally` — so a host that
-    // refused the delete left a tagged chart in the deck under a verdict that
-    // read perfectly clean.
+  it("never asks the host to rasterise a slide it just added", async () => {
+    // The call that killed PowerPoint on the web five rounds running, and the
+    // fifth round is the one that pinned it: picked alone, the scenario was
+    // reached at 61.5s with only its two inserts in front of it, took a scratch
+    // slide at 61.5s, logged `rasterising the empty slide` at 61.8s, and the
+    // tab died. The four rounds before died ten minutes and nine scenarios in,
+    // so elapsed time and volume of drawing were live explanations until then.
+    //
+    // Asserted against the DECK rather than the trace, so it holds however the
+    // steps are named: the scenario must not grow the deck at all.
+    // A slide count cannot see this: the old code deleted its scratch slide
+    // afterwards, so the deck ended the size it started. What the surface WAS
+    // is the observable difference, and the fake's raster payload carries it —
+    // an empty scratch slide reports `shapes=0`.
     installHost([makeSlide("s1")]);
-    faults.refuseSlideDelete = true;
-    const r = byName(await runSelfTest("probe", VISIBLE))[VISIBLE];
-    faults.refuseSlideDelete = false;
-    expect(r.detail, "left a slide behind and said nothing").toMatch(/could not be removed/i);
+    const visible = byName(await runSelfTest("probe", VISIBLE))[VISIBLE];
+    expect(visible.skipped, visible.detail).toBeFalsy();
+    expect(rasterised.length, "the scenario never rasterised anything").toBeGreaterThan(0);
+    const empty = rasterised.filter((p) => /:shapes=0:/.test(p));
+    expect(empty, `it rasterised a slide with nothing on it: ${empty.join(" | ")}`).toEqual([]);
   });
 
   it("runs one scenario plus the two inserts it needs, when asked for one", async () => {
