@@ -2918,7 +2918,21 @@ async function runDemoDeck(
     const expected: ExpectedItem[] = items.map((it, i) => ({
       slot: i,
       title: it.title ?? `Item ${i + 1}`,
-      shapes: estimateOfficeShapes(it.scene),
+      // A DEGRADED item is one picture, not the scene's shape count.
+      //
+      // `estimateOfficeShapes(it.scene)` is what the chart would be as native
+      // shapes, and for everything up to `degradedAt` that is exactly right.
+      // Past it the run drew a single picture on purpose — so expecting 253
+      // shapes on a Violin slide asks the reconcile to compare a healthy chart
+      // against a shape count nothing ever tried to put there, and the honest
+      // verdict for that slide is `wreckage`.
+      //
+      // It has never been SEEN as wreckage, and that is the uncomfortable part:
+      // `unmeasured` short-circuits the comparison on this host, so both bugs
+      // were invisible because they cancelled. A run on 2026-08-08 drew 36 of
+      // its 38 slides as pictures and reported "35 of 38 complete" with per-slide
+      // counts up to 253 — numbers describing a chart that was not on the slide.
+      shapes: degradedAt !== undefined && i >= degradedAt ? 1 : estimateOfficeShapes(it.scene),
       chart: !!it.tagData,
       skipped: results[i]?.status === "skipped",
       // What this run watched happen — see ExpectedItem.wroteTag.

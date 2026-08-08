@@ -523,3 +523,51 @@ describe("reconcile: telling one run's slides from another's", () => {
     expect(plan.orphans[0].blank).toBe(false);
   });
 });
+
+/**
+ * A "complete" that was never counted.
+ *
+ * `contentShapes` returns UNKNOWN_CONTENT for a grouped slide, because a
+ * group's children are unreachable on every PowerPoint (office-js#3014). The
+ * verdict then reports the slide complete and prints the EXPECTED count in
+ * `shapes` — both defensible on their own (the group proves the render reached
+ * the end; the intent is the most useful number available) and indistinguishable
+ * from a measurement in the output.
+ *
+ * A real run made it concrete: 35 verdicts, every one with `shapes` exactly
+ * equal to `expected` — 253/253, 176/176, 122/122 — on a host observed answering
+ * `shapesSeen=0` elsewhere in the same log. Read as measurements they say the
+ * deck is perfect.
+ */
+describe("reconcile: measured, or merely assumed", () => {
+  const grouped = (i: number, slot: number, run?: string) =>
+    slide(i, { slot, title: "Violin", run, shapes: 1, grouped: true, tagged: true });
+
+  it("marks a verdict it could not count, and says how many in the summary", () => {
+    const plan = planReconcile([grouped(0, 0)], [item(0, "Violin", 253)]);
+    const v = plan.verdicts[0];
+    expect(v.status, "a grouped slide should still read as rendered").toBe("rendered");
+    expect(v.shapes, "the intent is still the most useful number to print").toBe(253);
+    expect(v.measured, "reported an assumption as a measurement").toBe(false);
+    expect(plan.summary.assumed, "the summary hides how much of `rendered` was assumed").toBe(1);
+  });
+
+  it("marks a verdict it DID count as measured, and leaves it out of the tally", () => {
+    // The negative control: a flag that is always false is not a signal.
+    const plan = planReconcile([slide(0, { slot: 0, title: "Small", shapes: 3, tagged: true })], [item(0, "Small", 3)]);
+    expect(plan.verdicts[0].measured, "called a real count an assumption").toBe(true);
+    expect(plan.summary.assumed).toBe(0);
+  });
+
+  it("says so in the sentence the user actually reads", () => {
+    const plan = planReconcile([grouped(0, 0)], [item(0, "Violin", 253)]);
+    expect(describeReconcile(plan), "the headline still reads as though the deck had been measured").toMatch(/assumed/);
+    // And a fully measured deck says nothing extra — the note has to mean
+    // something when it appears.
+    const clean = planReconcile(
+      [slide(0, { slot: 0, title: "Small", shapes: 3, tagged: true })],
+      [item(0, "Small", 3)],
+    );
+    expect(describeReconcile(clean), "cried wolf on a deck it counted").not.toMatch(/assumed/);
+  });
+});

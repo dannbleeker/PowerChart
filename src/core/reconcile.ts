@@ -174,6 +174,24 @@ export interface SlotVerdict {
   shapes: number;
   /** Expected shape count, so a report can say "31 of 36". */
   expected: number;
+  /**
+   * Whether `shapes` was COUNTED, or copied from `expected` because the host
+   * would not count it.
+   *
+   * A grouped slide's children are unreachable on every PowerPoint
+   * (office-js#3014), so "could not measure" is the normal case here, not the
+   * edge one — and when it happens this file reports the slide complete and
+   * prints the expected count in `shapes`. Both are defensible: the group is
+   * itself proof the render reached the end, and the intent is the most useful
+   * number available. What is not defensible is printing it identically to a
+   * measurement.
+   *
+   * A real run made that concrete: 35 verdicts, every one with `shapes` exactly
+   * equal to `expected` — 253/253, 176/176, 122/122 — on a host observed
+   * answering `shapesSeen=0`. Read as measurements they say the deck is
+   * perfect. They are assumptions, and nothing in the output said so.
+   */
+  measured: boolean;
   /** Deck index of the slide kept for this item, or null when lost. */
   index: number | null;
   /** Re-editable: a config tag is present, or a regroup action will add one. */
@@ -221,6 +239,17 @@ export interface ReconcilePlan {
      * guessing rewrote fourteen correct charts on a real run.
      */
     undetermined: number;
+    /**
+     * Of the `rendered` count, how many were ASSUMED complete rather than
+     * counted — see `SlotVerdict.measured`.
+     *
+     * Separate from `undetermined`, which is about a chart's TAG. This is about
+     * its shapes, and the two have different causes and different remedies. A
+     * run where this equals `rendered` has verified nothing about completeness,
+     * and the difference between that and a fully measured deck is invisible in
+     * every other number here.
+     */
+    assumed: number;
   };
 }
 
@@ -351,6 +380,9 @@ export function planReconcile(
         title: item.title,
         status: "lost",
         shapes: 0,
+        // A lost item was measured in the only sense that matters: the deck was
+        // read and no slide claimed this slot. Nothing was assumed.
+        measured: true,
         expected: item.shapes,
         index: null,
         tagged: false,
@@ -392,6 +424,7 @@ export function planReconcile(
         status: "skipped",
         shapes: shown,
         expected: item.shapes,
+        measured: !unmeasured,
         index: keeper.index,
         tagged,
         duplicates,
@@ -456,6 +489,7 @@ export function planReconcile(
       status,
       shapes: shown,
       expected: item.shapes,
+      measured: !unmeasured,
       index: keeper.index,
       tagged,
       duplicates,
@@ -517,6 +551,9 @@ export function planReconcile(
       untagged: actions.filter((a) => a.kind === "regroup" || a.kind === "retag").length,
       orphans: orphans.length,
       undetermined,
+      // Counted off the verdicts rather than tracked in the loop, so it cannot
+      // drift from the `measured` flag a reader is looking at.
+      assumed: verdicts.filter((v) => v.status === "rendered" && !v.measured).length,
     },
   };
 }
@@ -528,7 +565,15 @@ export function planReconcile(
  */
 export function describeReconcile(plan: ReconcilePlan): string {
   const s = plan.summary;
-  const bits = [`${s.rendered} of ${s.items} complete`];
+  // "35 of 38 complete" was the whole sentence, and on a host that cannot count
+  // a group's children most of that 35 is an assumption — see
+  // `SlotVerdict.measured`. Saying so in the same breath is the difference
+  // between a measurement and a hope wearing one's clothes.
+  const bits = [
+    s.assumed
+      ? `${s.rendered} of ${s.items} complete (${s.assumed} assumed — the host would not count their shapes)`
+      : `${s.rendered} of ${s.items} complete`,
+  ];
   if (s.partial) bits.push(`${s.partial} partial`);
   if (s.wreckage) bits.push(`${s.wreckage} wreckage`);
   if (s.empty) bits.push(`${s.empty} empty`);
