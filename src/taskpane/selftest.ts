@@ -762,6 +762,53 @@ export function wedgedSelection(err: unknown): boolean {
   return /select/i.test(step ?? "") || /select/i.test(msg);
 }
 
+/**
+ * What two rasters and a naming outcome amount to.
+ *
+ * Pure and exported for the reason `targetWithNoTagResult` is: the state that
+ * exposed the bug needs several simultaneous host failures to reach through the
+ * fake, and every attempt to arm them overshot into a different failure. The
+ * rule is the thing that was wrong; it should be checkable without a
+ * PowerPoint.
+ *
+ * `named` is whether the insert handed back an edit target. It is NOT whether
+ * anything was drawn, and reading it that way is the bug this replaces:
+ * `insertSceneIntoSlide` returns null when it has no id to hand back, which on
+ * PowerPoint web happens after a perfectly good draw. The 2026-08-08 round
+ * committed all three batches (`upTo=24 total=24`) and then failed to name the
+ * group — `shapes.getItem("51")`, annotated by the host as originally an
+ * `addGroup`, refused with InvalidParam — and the scenario reported "nothing
+ * was drawn, so there is
+ * nothing to look at" over twenty-four shapes that were on the slide. Calling a
+ * drawn chart undrawn is the one mistake a visibility check must not make.
+ *
+ * So the image decides, and `named` only colours the answer:
+ *
+ * - changed, named — the plain pass.
+ * - changed, unnamed — still a pass. The chart is visible; that it carries no
+ *   config is a real defect, and a different scenario's business.
+ * - unchanged, named — the chart is on the slide and cannot be seen. This is
+ *   the defect the scenario was written for.
+ * - unchanged, unnamed — "nothing drew" and "it drew invisibly" both fit and
+ *   the image cannot separate them. Say so rather than pick one.
+ */
+export function visibilityVerdict(before: string, after: string, named: boolean): { ok: boolean; detail: string } {
+  if (after !== before)
+    return {
+      ok: true,
+      detail:
+        `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes)` +
+        (named ? "" : " — though the host would not name the chart afterwards, so it carries no config"),
+    };
+  return {
+    ok: false,
+    detail: named
+      ? "the slide renders identically with and without the chart — nothing is visible"
+      : "the slide renders identically and the host would not name a chart on it — " +
+        "cannot tell a chart that never drew from one that drew invisibly",
+  };
+}
+
 const chartIsVisible: Scenario = async (prefix) => {
   // Say what is about to be tried, BEFORE trying it.
   //
@@ -818,20 +865,17 @@ const chartIsVisible: Scenario = async (prefix) => {
   const drawn = await attempt("drawing the chart", () =>
     insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c) }),
   );
-  if (!drawn) return { ok: false, detail: "nothing was drawn, so there is nothing to look at" };
+  // A null target is NOT "nothing was drawn", so the rasterise happens either
+  // way — see `visibilityVerdict`, which is where that used to be decided
+  // wrongly. The measurement is the IMAGE, and the slide id came from the
+  // caller rather than from the draw.
   const after = await attempt("rasterising the slide with the chart", () => slideImageBase64(slideId, 640));
   if (!after) return { ok: false, detail: "the host rasterised the slide before the chart but not after it" };
   // No cleanup. Every other scenario leaves its slides in the deck, and this
   // one only cleaned up because a scratch slide is a control surface nobody
   // would want to open. A chart on a slide the run already owns is an ordinary
   // result, so the delete — which cost one round on its own — simply goes.
-  return {
-    ok: after !== before,
-    detail:
-      after !== before
-        ? `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes)`
-        : "the slide renders identically with and without the chart — nothing is visible",
-  };
+  return visibilityVerdict(before, after, !!drawn);
 };
 
 /**
@@ -1423,11 +1467,22 @@ const SCENARIOS: {
   // two inserts run at the head of every routine round and kill nothing. The
   // scenario no longer makes that call; see `chartIsVisible`.
   //
-  // Still `pickedOnly`, deliberately, for one more round. What has been ruled
-  // out is a fresh slide; what has never been asked is whether this host will
-  // rasterise ANY slide, and the honest place to find that out is a picked run
-  // whose crash costs a short round rather than a long one. If it comes back
-  // with a verdict, it has earned the routine list.
+  // AND THE RE-RUN CAME BACK, 2026-08-08, on `e49cca8`: no crash. It rasterised
+  // a pre-existing slide, drew its 24 shapes, rasterised again, and returned a
+  // verdict — the first this scenario has ever produced in six rounds. So the
+  // last reading is closed too: this host rasterises perfectly well, and it was
+  // the FRESH slide all along, both directions now measured.
+  //
+  // The verdict it returned was wrong, and that was ours: the host refused to
+  // name the group afterwards, `insertSceneIntoSlide` handed back null, and the
+  // scenario called twenty-four committed shapes "nothing was drawn". See
+  // `visibilityVerdict`.
+  //
+  // Still `pickedOnly` for one more round, and the criterion is now that it
+  // comes back PASSING rather than merely returning. One survival is one
+  // sample — the same discipline `UNSTABLE_ANSWERS` applies to answers that
+  // flipped, applied here to a scenario that killed the tab five times and then
+  // did not.
   //
   // Note what does NOT depend on this: `npm run visible-charts` rasterises every
   // sample in a real browser on every CI run and fails on a chart that is drawn

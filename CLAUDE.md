@@ -392,9 +392,15 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   `chartIsVisible` no longer takes a scratch slide at all — it does its
   before/after on a slide the run added EARLIER, which drops the scratch add,
   the fresh-slide rasterise and the delete (that delete had killed a round of
-  its own). What is still unasked is whether this host will rasterise ANY slide;
-  the step is named `rasterising a slide that already existed` so the next crash
-  answers that instead of repeating this one.
+  its own).
+
+  **And the re-run closed the last reading.** On `e49cca8` the step named
+  `rasterising a slide that already existed` answered without incident, the
+  scenario drew its 24 shapes, rasterised again and returned a verdict — the
+  first in six rounds. So this host rasterises perfectly well; it was the FRESH
+  slide, both directions now measured rather than inferred. A slide the run just
+  added remains the worst surface this host offers, and nothing may rasterise
+  one.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.

@@ -710,22 +710,26 @@ export async function insertSceneIntoSlide(
     // the suite asserts grouping or parts on this path, which is how 2016 tests
     // passed over it.
     //
-    // What is actually true today, narrowly:
+    // The question that decided this has been ASKED AND ANSWERED, and the risk
+    // it named is now empty:
     //
-    // - Only ONE caller passes a freshly-added slide's id: `chartIsVisible` in
-    //   the self-test. The demo path does not come through here at all — it
-    //   draws via `drawDemoItem` with its own positional thunk — and the other
-    //   six callers either pass no id or pass a slide the user was already
-    //   editing. An earlier comment here claimed the demo deck was a caller;
-    //   it never was.
-    // - `getTargetSlide` resolves by `slides.getItem(id)`. Whether THAT call
-    //   works on a freshly-added slide has never been asked of a host: all
-    //   seventeen probe questions resolve slides through `getItemOrNullObject`.
-    //   `shape-add-fresh-getitem-slide` asks it, and until a sheet answers,
-    //   both the risk here and the shape of any fix are unsettled.
+    // - `getTargetSlide` resolves by `slides.getItem(id)`, and the 2026-08-08
+    //   sheet says that call answers `threw` (GeneralException) for a slide
+    //   added moments earlier and `yes` for a pre-existing one
+    //   (`shape-add-fresh-getitem-slide` and its follow-up partner
+    //   `getitem-durable-slide`). So a fresh slide is not merely a risk here —
+    //   it does not work, by any route.
+    // - NO caller passes a freshly-added slide's id any more. `chartIsVisible`
+    //   was the only one, and it stopped: it does its before-and-after on a
+    //   slide the run added earlier, because rasterising a fresh slide killed
+    //   PowerPoint five rounds running. The demo path does not come through
+    //   here at all — it draws via `drawDemoItem` with its own positional
+    //   thunk — and every other caller passes no id, or a slide the user was
+    //   already editing.
     //
-    // So: leave the hold, name the risk, and ask the question. Replacing a
-    // known-shaped risk with a measured regression is not a trade worth making.
+    // So the hold stays, and it is no longer a bet: the case it was unsafe for
+    // has no caller. If one is ever added, it must resolve its slide some other
+    // way — `getItem(id)` is not available for a new slide on this host.
     const slide = getTargetSlide(context, opts.slideId);
     slide.load("id");
     const getSlide: SlideThunk = () => slide;
