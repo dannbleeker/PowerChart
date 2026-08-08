@@ -83,18 +83,24 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   which is the rule automated — the reasoning was never the expensive part, the
   round trip was.
 - **One answer sheet is not evidence about this host — it is evidence about
-  this host in that minute.** Two probe questions SWAPPED answers between two
-  runs of the same build, minutes apart: `shape-add-held-slide-proxy` went
-  `threw`→`yes` and `shape-add-positional-slide-proxy` went `yes`→`threw`. The
-  run log says why, and it is not subtle — three `scratch slide landed but its
-id will not resolve` lines mid-run, two replacement scratch slides taken, and
-  every question inside that window answering `no-scratch-slide` before the host
-  came back. The host's ability to resolve a freshly added slide's id comes and
-  goes within a single 37-second run. So a question that has been asked ONCE has
-  not been answered; it has been sampled. Both are declared in `KNOWN_DIVERGENCES` as UNSTABLE with both
-  observations, because the dangerous move is building on the convenient one —
-  `shape-add-positional-slide-proxy: yes` is exactly what would make a positional
-  slide handle look like the safe way out of the by-id refusals.
+  this host in that minute.** Two probe questions ALTERNATE, in lockstep and
+  always opposite: `shape-add-held-slide-proxy` has answered `threw`, `threw`,
+  `yes`, `threw` across four sheets, and `shape-add-positional-slide-proxy`
+  answered `yes`, `yes`, `threw`, `yes` on the same four. Two of those sheets are
+  the same build ninety minutes apart, so this is not a sequence of corrections
+  where the newest value is the true one — it is a coin. The run log says why,
+  and it is not subtle: three `scratch slide landed but its id will not resolve`
+  lines mid-run, two replacement scratch slides taken, and every question inside
+  that window answering `no-scratch-slide` before the host came back. The host's
+  ability to resolve a freshly added slide's id comes and goes within a single
+  37-second run. So a question that has been asked ONCE has not been answered; it
+  has been sampled — and a majority across samples is not a mechanism either.
+  Both are declared in `UNSTABLE_ANSWERS` (a separate table from
+  `KNOWN_DIVERGENCES`, which is for answers that differ from the fake
+  _consistently_) with every observation, because the dangerous move is building
+  on the convenient one — `shape-add-positional-slide-proxy: yes` is exactly what
+  would make a positional slide handle look like the safe way out of the by-id
+  refusals, and it is what three of the four samples say.
 - **The fake is gated against a real host in CI** — `test/host-contract.test.ts`
   diffs `FAKE_BASELINE` against the committed sheet in
   `test/fixtures/host-answers-web.json`. A new divergence fails there unless it
