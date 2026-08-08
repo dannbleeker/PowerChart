@@ -71,6 +71,20 @@ export const faults = {
    */
   refuseIdLeftTopLoads: 0,
   /**
+   * Refuse this many `shape.load("id")` calls outright, however fresh.
+   *
+   * `strictIdLoads` models the age rule; this one refuses regardless, which is
+   * what the probe's own setup meets. `scratchShapes` adds two shapes and reads
+   * their ids back on the very next sync — young enough that the age rule lets
+   * it through, and exactly the read PowerPoint on the web refuses
+   * (`shape-proxy-survives-one-sync: unreadable`).
+   *
+   * Without it the fake cannot reach the state that made three probe questions
+   * unanswerable for weeks: they died in their own setup and reported
+   * `no-scratch-slide`, a statement about the probe rather than the host.
+   */
+  refuseShapeIdLoads: 0,
+  /**
    * `load("id")` is refused on a shape proxy older than one sync.
    *
    * The read-side twin of `strictTags`, and the same age rule, because it is the
@@ -637,6 +651,10 @@ export function makeShape(
       // re-read member as being as old as the batch that drew it — the handle
       // would look fresh and behave stale, which is the exact trap the `tags`
       // rebinding below already documents.
+      if (faults.refuseShapeIdLoads > 0 && props === "id") {
+        faults.refuseShapeIdLoads--;
+        throw new Error("InvalidParam passed to GetItem(id) | code=5010 | errorLocation: ShapeCollection.getItem");
+      }
       const age = (this as unknown as { syncCreated?: number } | undefined)?.syncCreated ?? shape.syncCreated;
       if (faults.strictIdLoads && props === "id" && trips.syncs > age + 1) {
         throw new Error("InvalidParam passed to GetItem(id) | code=5010 | errorLocation: ShapeCollection.getItem");
@@ -1888,6 +1906,7 @@ export function installHost(
   faults.refuseIdLeftTopLoads = 0;
   faults.refuseShapeById = false;
   faults.strictIdLoads = false;
+  faults.refuseShapeIdLoads = 0;
   refuseThisSync = false;
   faults.refuseGroups = 0;
   faults.hollowReads = 0;

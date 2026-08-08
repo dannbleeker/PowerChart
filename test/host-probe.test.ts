@@ -770,3 +770,69 @@ describe("a host that has stopped answering", () => {
     }
   }, 60_000);
 });
+
+/**
+ * The three group questions, on the host that could never answer them.
+ *
+ * They were unanswerable on the one host that matters, and `scratchShapes`' own
+ * comment had already named the lead: the six questions this host never answers
+ * are exactly the six that pass a `load`. They add two shapes, sync, read the
+ * ids back — and it is that read the host refuses, the same refusal behind
+ * `shape-proxy-survives-one-sync: unreadable` and the empty collection reads
+ * everywhere else. The questions were never reached. They died in their own
+ * setup and reported `no-scratch-slide`, which describes the probe rather than
+ * the host.
+ *
+ * They matter more than their position in the list suggests. `contentShapes`
+ * returns UNKNOWN_CONTENT for every grouped slide, which is what makes the
+ * reconcile report a slide complete without counting it — so whether the web
+ * host can count a group's children decides whether those verdicts can ever be
+ * measurements. office-js#5849 is closed for inactivity and is a DESKTOP report;
+ * nobody has established the web answer.
+ */
+describe("the group questions, when the host will not read an id back", () => {
+  const GROUP_QUESTIONS = ["addgroup-returns-usable", "group-reports-its-children", "group-of-existing-shape-readable"];
+
+  it("still asks them, and says which route the members came by", async () => {
+    installHost([makeSlide("s1")]);
+    // The host from the run logs: it will not read an id back off a shape this
+    // run just added, however young the proxy — which is exactly what the strict
+    // setup depends on. A large count, because every group question tries it.
+    faults.refuseShapeIdLoads = 500;
+    try {
+      const sheet = await runHostProbes("no-id-readback", "web");
+      const byId = Object.fromEntries(sheet.answers.map((a) => [a.id, a]));
+      for (const id of GROUP_QUESTIONS) {
+        const a = byId[id];
+        expect(a, `${id} is missing from the sheet entirely`).toBeTruthy();
+        expect(
+          ["no-scratch-slide", "no-scratch-shape", "not-asked"],
+          `${id} still died in its own setup: ${a.answer} — ${a.detail ?? "no detail"}`,
+        ).not.toContain(a.answer);
+        // A fallback that does not SAY it is a fallback is the trap this whole
+        // file is about: grouping same-batch proxies is the friendliest case a
+        // host can be given, and an answer from it says nothing about grouping
+        // by id. The sheet has to keep them apart.
+        expect(a.detail ?? "", `${id} did not record how its members were obtained`).toMatch(
+          /members via (ids|same-batch)/,
+        );
+      }
+    } finally {
+      faults.refuseShapeIdLoads = 0;
+    }
+  }, 60_000);
+
+  it("prefers the strict route when the host allows it", async () => {
+    // The negative control. If the fallback ran unconditionally these questions
+    // would quietly stop testing what production does — grouping by id — and
+    // nothing would say so.
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("healthy", "web");
+    const byId = Object.fromEntries(sheet.answers.map((a) => [a.id, a]));
+    for (const id of GROUP_QUESTIONS) {
+      expect(byId[id]?.detail ?? "", `${id} took the fallback on a host that never needed it`).toContain(
+        "members via ids",
+      );
+    }
+  }, 60_000);
+});
