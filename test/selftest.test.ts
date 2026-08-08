@@ -774,6 +774,36 @@ describe("the scenarios the selection API unlocked", () => {
    * throws leaves a verdict and a call that never returns leaves only the log.
    * Only the second one is the case this line exists for.
    */
+  it("names the degradation experiment's host calls too", async () => {
+    // The same lesson, learned twice. On 2026-08-08 this scenario was picked
+    // alone, announced itself at 26.9s, and took the tab — with no finer step
+    // than its own name, so "taking a scratch slide" and "drawing ninety-six
+    // shapes onto a slide the run just added" both fit and neither could be
+    // ruled out. That is precisely the state wrapping `chartIsVisible` got it
+    // out of, and there was no reason for a second scenario to pay for it.
+    installHost([makeSlide("s1")]);
+    _setDegradeSizeForTest(2, 2);
+    setTracing(true);
+    try {
+      await runSelfTest("probe", "what makes a long run slow down");
+      const steps = traceLog()
+        .entries.filter((e) => e.message === "degradation step")
+        .map((e) => e.data?.what);
+      // Both scratch adds named separately: the first is the one a crash-at-
+      // the-start would stop on, and it is a different finding from the second.
+      expect(steps).toEqual([
+        "adding the first scratch slide",
+        "adding the second scratch slide",
+        "counting the deck",
+        "timing the one-context arm",
+        "timing the fresh-context arm",
+      ]);
+    } finally {
+      setTracing(false);
+      _setDegradeSizeForTest(8, 12);
+    }
+  }, 60_000);
+
   it("names the host call it is on, so a scenario that never ends is not a mystery", async () => {
     setTracing(true);
     let release!: () => void;
