@@ -2036,6 +2036,18 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
 export const DEMO_SHAPE_BUDGET = 90;
 
 /**
+ * How long a demo item that gave up on a call waits to hear how that call
+ * ended, before moving on.
+ *
+ * Deliberately short next to the 45s deadline that preceded it. This is not an
+ * attempt to outlast the host — observed late answers arrive minutes after the
+ * timeout, and no per-item wait can catch those without stalling the whole
+ * deck. It catches the ones already in flight; the rest are reported by the
+ * `a call we gave up on finally answered` trace whenever they land.
+ */
+const LATE_ANSWER_WAIT_MS = 3_000;
+
+/**
  * Should this chart go on as a picture even though nobody asked?
  *
  * Yes on exactly one host, for exactly one reason. PowerPoint on the web has
@@ -2138,9 +2150,24 @@ export interface DemoResult {
   /** Wall-clock time for this slide, ms. A value nearing BATCH_TIMEOUT_MS (45s) is
    *  a near-miss stall — the host was one hair from losing it. */
   ms: number;
-  /** The `lastLateSync` value observed during this item, if any — an abandoned
-   *  sync that later reported success or a real RichApi error. Read the run's
-   *  console.table to see which item stalled and how it eventually resolved. */
+  /**
+   * This item gave up on a call — a deadline fired inside it. Knowable the
+   * instant the item ends, and the reason this field exists separately from
+   * `lateOutcome`: which item stalled is worth reading even when the host has
+   * not yet said how the stall ended.
+   */
+  abandoned?: boolean;
+  /**
+   * How the abandoned sync eventually resolved, when it resolved soon enough
+   * to be paired with the item that abandoned it — success, or a real RichApi
+   * error. Only ever set on an `abandoned` item.
+   *
+   * Empty on an `abandoned` item means "the host has not answered yet", not
+   * "nothing was outstanding": observed answers arrive minutes after the
+   * timeout, and a run cannot wait that long between items. Those land in the
+   * `a call we gave up on finally answered` trace and in the pane's late-sync
+   * note instead.
+   */
   lateOutcome?: string;
   /**
    * The shapes made it onto one native PowerPoint group — the state that makes
@@ -2826,6 +2853,9 @@ async function runDemoDeck(
     // done with evidence instead of a guess.
     const attempts = 1;
     const lateSeqBefore = lastLateSyncSeq;
+    // Did THIS item give up on a call? The only thing about a late sync that is
+    // knowable the moment an item ends — see the `abandoned` field.
+    const deadlinesBefore = deadlinesFired;
     const t0 = Date.now();
     // Slot tag: JSON envelope with the deck-position index and the item title,
     // written at creation so the reconcile pass can pair a slide back to the
@@ -2852,14 +2882,35 @@ async function runDemoDeck(
         () => {},
       );
     }
-    const lateOutcome = lastLateSync && lastLateSyncSeq !== lateSeqBefore ? lastLateSync : undefined;
+    // Read before anything is awaited below: a wait for a late answer must not
+    // be charged to the item as drawing time.
+    const ms = Date.now() - t0;
+    const abandoned = deadlinesFired !== deadlinesBefore;
+    // An abandoned call reports its outcome when the host finally answers,
+    // which is by definition AFTER the deadline that gave up on it. Reading
+    // `lastLateSync` straight through, as this line did, therefore answered
+    // whatever the clock happened to allow: the outcome of THIS item's stall if
+    // the catch path ran long enough for it to land, and otherwise an EARLIER
+    // item's outcome settling during this one — or a call from outside the run
+    // entirely, which is the same bug `lastLateSyncOwner` fixed one level up,
+    // at run granularity, and which is what the foreign-stall test caught here.
+    //
+    // So: give the settle a bounded chance to land, and gate on whether this
+    // item abandoned anything at all. Only a stalled item waits, and it has
+    // already spent BATCH_TIMEOUT_MS, next to which this is noise.
+    //
+    // The host often answers minutes late — far past any wait a run can afford
+    // — so an empty `lateOutcome` on an `abandoned` item means "not yet", not
+    // "never". The `a call we gave up on finally answered` trace and the pane's
+    // late-sync note carry those, whenever they arrive.
+    if (abandoned) await waitForLateSync(LATE_ANSWER_WAIT_MS);
+    const lateOutcome = abandoned && lastLateSync && lastLateSyncSeq !== lateSeqBefore ? lastLateSync : undefined;
     // Is the host still keeping up? We cannot catch the crash itself — the tab
     // dies, there is no rejected promise to handle — so watch what precedes
     // it. In this project's runs the precursors are loud: healthy items land
     // in 2-9 seconds, sick ones take 65-125, and the run that killed the
     // client managed two slides in 458. Any one of these means stop drawing
     // shapes; a finished deck of pictures beats a dead session.
-    const ms = Date.now() - t0;
     shapesDrawn += created;
     if (degradedAt === undefined && runOpts.pictureFor) {
       const why =
@@ -2893,9 +2944,10 @@ async function runDemoDeck(
       picture: !!degradedPicture,
       attempts,
       ms,
+      abandoned,
     });
     lostAdsSeen = lastAddsLost;
-    results.push({ created, status, ms: Date.now() - t0, lateOutcome, grouped, tagged, attempts });
+    results.push({ created, status, ms, lateOutcome, abandoned, grouped, tagged, attempts });
     onProgress?.(i + 1, items.length);
   }
   const totalMs = Date.now() - runStart;
