@@ -67,7 +67,11 @@ belongs with the thing it tests, not with the reason it was written.)
   tracker sweep's matching half, including that its `KNOWN_ISSUES` table covers
   every office-js issue the codebase cites and that every watched term is a call
   this repo actually makes), `visible-charts` (the verdict half of the visual
-  gate — the rasterising half runs in a real browser and cannot run here).
+  gate — the rasterising half runs in a real browser and cannot run here),
+  `runbook` (the controls `docs/PUBLISHING.md` tells the owner to click are
+  spelled the way the pane spells them — the starred row said "Run the whole
+  round" for weeks and no control has ever carried that text, which cost a
+  round).
 - **The deck a run produces, audited from its bytes** — `verify-deck` (did
   PowerChart write what it meant to: slot tags, groups, config parts, shape ids
   unique per slide), `ooxml-validate` (is it a legal `.pptx` at all, against the
