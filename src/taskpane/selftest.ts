@@ -52,7 +52,6 @@ import {
   canInsertPicture,
   canSelectShapes,
   clearShapeSelection,
-  deleteSlideById,
   isStopped,
   isStopRequested,
   isTimeout,
@@ -778,54 +777,60 @@ const chartIsVisible: Scenario = async (prefix) => {
     return fn();
   };
 
-  // Its own slide, taken away afterwards. Before-and-after on ONE slide is the
-  // only comparison that isolates the chart: two different slides differ for a
-  // dozen reasons a rasteriser can see and this scenario should not care about.
-  const slideId = await attempt("adding a scratch slide", addScratchSlide);
-  if (!slideId) return { ok: false, skipped: true, detail: "the host would not add a slide to draw on" };
+  // A slide this run put in the deck EARLIER — never one added moments ago.
+  //
+  // It used to take its own scratch slide, and that is the call which has now
+  // killed PowerPoint on the web five rounds running. The fifth was the
+  // experiment that says so: picked alone, the run reached this scenario at
+  // 61.5s with only the two inserts it depends on in front of it, added a
+  // scratch slide at 61.5s, logged `rasterising the empty slide` at 61.8s, and
+  // the tab died. The four rounds before it died ten minutes and nine
+  // scenarios in, which is why "the scenario kills the host" and "ten minutes
+  // of drawing kills the host, and this is what happened to be running" both
+  // fit. They do not both fit any more.
+  //
+  // A fresh slide is the worst surface this host offers — its id does not
+  // round-trip through `getItem`, its shapes will not list, and
+  // `getImageAsBase64` has now failed on one in five distinct ways: a
+  // GeneralException, a call taken that produced nothing, a sync never
+  // answered, a ninety-second stall, and this. Every one of those is a fresh
+  // slide; a pre-existing slide has never been asked.
+  //
+  // So ask the question that has not been asked, on the surface that has not
+  // failed. Before-and-after on ONE slide is still what isolates the chart —
+  // that part was never the problem — and the slide simply need not be empty
+  // for the comparison to mean anything. It also drops the scratch add and the
+  // delete, and the delete is separately implicated: one earlier round died on
+  // it rather than on the rasterise.
+  const { found, blind, gap } = await probeCharts(prefix);
+  const host = found[0];
+  if (!host)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no slide from this run to draw a chart on" };
+  const slideId = host.target.slideId;
 
-  const measure = async (): Promise<{ ok: boolean; detail: string; skipped?: boolean }> => {
-    const blank = await attempt("rasterising the empty slide", () => slideImageBase64(slideId, 640));
-    if (!blank) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
-    const c = cfg(`${prefix} visible`);
-    const drawn = await attempt("drawing the chart", () =>
-      insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c) }),
-    );
-    if (!drawn) return { ok: false, detail: "nothing was drawn, so there is nothing to look at" };
-    const withChart = await attempt("rasterising the slide with the chart", () => slideImageBase64(slideId, 640));
-    if (!withChart) return { ok: false, detail: "the host rasterised the empty slide but not the one with a chart" };
-    return {
-      ok: withChart !== blank,
-      detail:
-        withChart !== blank
-          ? `drawing the chart changed what the slide looks like (${blank.length} → ${withChart.length} bytes)`
-          : "the slide renders identically with and without the chart — nothing is visible",
-    };
-  };
-
-  // The verdict is computed first, then the slide is given back, and only then
-  // are the two combined. Not a `finally` that appends to the detail — a
-  // `return` inside `try` evaluates its expression BEFORE the `finally` runs,
-  // so the warning would be stitched onto a string that had already left. That
-  // is what the first version of this did, and the test written to prove the
-  // warning appears is the only reason it did not ship that way.
-  let verdict: { ok: boolean; detail: string; skipped?: boolean };
-  let removed: boolean;
-  try {
-    verdict = await measure();
-  } finally {
-    // Unlike every other scenario, this one cleans up: its slide is a control
-    // surface, not a result anyone would want to open. `deleteSlideById` now
-    // verifies from a fresh read rather than assuming, so false here means the
-    // slide is genuinely still in the deck — carrying a config tag, and so a
-    // chart the pane would offer to edit.
-    removed = await attempt("removing the scratch slide", () => deleteSlideById(slideId));
-    if (!removed) trace("selftest", "could not remove the visibility scenario's scratch slide", { slideId });
-  }
-  if (removed) return verdict;
+  // Named apart from the old step on purpose. If a tab still dies here, the
+  // crash log says `rasterising a slide that already existed` and that is the
+  // remaining reading — this host cannot rasterise AT ALL — rather than another
+  // repeat of the one now settled.
+  const before = await attempt("rasterising a slide that already existed", () => slideImageBase64(slideId, 640));
+  if (!before) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
+  const c = cfg(`${prefix} visible`);
+  const drawn = await attempt("drawing the chart", () =>
+    insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c) }),
+  );
+  if (!drawn) return { ok: false, detail: "nothing was drawn, so there is nothing to look at" };
+  const after = await attempt("rasterising the slide with the chart", () => slideImageBase64(slideId, 640));
+  if (!after) return { ok: false, detail: "the host rasterised the slide before the chart but not after it" };
+  // No cleanup. Every other scenario leaves its slides in the deck, and this
+  // one only cleaned up because a scratch slide is a control surface nobody
+  // would want to open. A chart on a slide the run already owns is an ordinary
+  // result, so the delete — which cost one round on its own — simply goes.
   return {
-    ...verdict,
-    detail: `${verdict.detail} — WARNING: the scratch slide it drew on could not be removed, and is still in the deck`,
+    ok: after !== before,
+    detail:
+      after !== before
+        ? `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes)`
+        : "the slide renders identically with and without the chart — nothing is visible",
   };
 };
 
@@ -1404,12 +1409,25 @@ const SCENARIOS: {
   // the tab is not providing coverage; the routine list is the wrong place for
   // it.
   //
-  // Picked, it also becomes the experiment nobody has run. Every crash so far
+  // Picked, it also became the experiment nobody had run. Every crash so far
   // happened around the ten-minute mark with nine scenarios' worth of load
   // behind it, so "this scenario kills the host" and "ten minutes of drawing
   // kills the host, and this is merely what was running" both fit — the same
   // two-readings trap this project keeps paying for. Running it ALONE, on a
-  // fresh host, thirty seconds in, separates them in one short round.
+  // fresh host, separates them in one short round.
+  //
+  // IT RAN, 2026-08-08, and it settled: the scenario. Picked alone it was
+  // reached at 61.5 seconds with only its two inserts in front of it, took a
+  // scratch slide at 61.5s, logged `rasterising the empty slide` at 61.8s, and
+  // PowerPoint died. Elapsed time and volume of drawing are both out — the same
+  // two inserts run at the head of every routine round and kill nothing. The
+  // scenario no longer makes that call; see `chartIsVisible`.
+  //
+  // Still `pickedOnly`, deliberately, for one more round. What has been ruled
+  // out is a fresh slide; what has never been asked is whether this host will
+  // rasterise ANY slide, and the honest place to find that out is a picked run
+  // whose crash costs a short round rather than a long one. If it comes back
+  // with a verdict, it has earned the routine list.
   //
   // Note what does NOT depend on this: `npm run visible-charts` rasterises every
   // sample in a real browser on every CI run and fails on a chart that is drawn
