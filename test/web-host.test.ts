@@ -33,6 +33,7 @@ import {
   readbackTimeoutMs,
   enableExtendedErrorLogging,
   trimDebugInfo,
+  untaggedIndices,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -1283,5 +1284,45 @@ describe("what a collection load asks the host for", () => {
       bare,
       `bare load("items") at line(s) ${bare.join(", ")} — name the properties, as every other collection load here does`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * A run log that leaves the reader a subtraction.
+ *
+ * Both of these cost real time on 2026-08-07. `read the deck back … tagged=38`
+ * sat two lines from `tag pass … tagsFound=17` on the same 38-slide deck and
+ * read as two passes disagreeing about how many charts were re-editable. They
+ * were counting different tags: the first is DEMO_SLOT_TAG, the harness's own
+ * bookkeeping, and it says nothing about a chart's config at all.
+ *
+ * And `tagsFound=14 slides=18` leaves four slides unaccounted for with no way to
+ * settle what they are — four harness pages that never had a config, or four
+ * charts that lost theirs. Opposite responses, same number.
+ */
+describe("what the repair pass's numbers actually count", () => {
+  it("does not call the slot-tag count 'tagged'", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/render/powerpoint.ts", "utf8");
+    const deckRead = src.slice(src.indexOf('trace("repair", "read the deck back"'));
+    const body = deckRead.slice(0, deckRead.indexOf("});"));
+    expect(body, "the deck read still reports a slot count under the name 'tagged'").not.toMatch(/\btagged:/);
+    expect(body, "the slot count lost its name entirely").toMatch(/withSlotTag:/);
+  });
+
+  it("names the slides that came back without a config, not just the count", () => {
+    const page = [{ index: 3 }, { index: 4 }, { index: 5 }];
+    expect(untaggedIndices(page, new Set([4]))).toEqual([3, 5]);
+    expect(untaggedIndices(page, new Set([3, 4, 5])), "invented a missing slide").toEqual([]);
+  });
+
+  it("caps the list so one bad page cannot bury the run log", () => {
+    const page = Array.from({ length: 40 }, (_, i) => ({ index: i }));
+    const named = untaggedIndices(page, new Set(), 12);
+    expect(named).toHaveLength(13);
+    expect(named[0]).toBe(0);
+    // And it SAYS it truncated — a list that silently stops reads as a complete
+    // answer, which is the same defect this whole case is about.
+    expect(String(named.at(-1)), "truncated without saying so").toMatch(/28 more/);
   });
 });

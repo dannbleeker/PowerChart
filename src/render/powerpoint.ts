@@ -3622,7 +3622,14 @@ export async function readAddedSlides(
     range: [before, after],
     read: snapshots.length,
     unread,
-    tagged: snapshots.filter((s) => s.slot !== null).length,
+    // `withSlotTag`, not `tagged`. This counts DEMO_SLOT_TAG — the harness's own
+    // bookkeeping about which generated item a slide is — and says nothing about
+    // whether a chart carries its config. Under the old name it read as the
+    // second thing, and a real run log showing `tagged=38` next to a tag pass
+    // reporting 31 looked like two reads of one deck disagreeing. They were
+    // counting different tags. A number that answers a question nobody asked,
+    // under the name of the question everybody asks, is worse than no number.
+    withSlotTag: snapshots.filter((s) => s.slot !== null).length,
   });
   return { snapshots, unread };
 }
@@ -3694,6 +3701,25 @@ async function markTaggedSlides(snapshots: SlideSnapshot[]): Promise<void> {
  * a slide that had shapes a moment ago and reports none now has not been read,
  * whatever else is true.
  */
+/**
+ * The slide indices in a page that came back with no config tag, capped.
+ *
+ * Pure and exported so the cap and the overflow marker can be tested without a
+ * PowerPoint: the interesting case is a page where EVERY slide is untagged, and
+ * reaching that through the fake costs a whole hostile-host run.
+ */
+export function untaggedIndices(
+  page: { index: number }[],
+  hit: Set<number>,
+  cap = UNTAGGED_NAMED,
+): (number | string)[] {
+  const missing = page.filter((s) => !hit.has(s.index)).map((s) => s.index);
+  return missing.length > cap ? [...missing.slice(0, cap), `…+${missing.length - cap} more`] : missing;
+}
+
+/** How many untagged slide indices a single trace line names. See `untaggedIndices`. */
+const UNTAGGED_NAMED = 12;
+
 async function tagPass(snapshots: SlideSnapshot[], attempt: number): Promise<SlideSnapshot[]> {
   const undetermined: SlideSnapshot[] = [];
   for (let start = 0; start < snapshots.length; start += READBACK_PAGE) {
@@ -3759,6 +3785,18 @@ async function tagPass(snapshots: SlideSnapshot[], attempt: number): Promise<Sli
         shapesSeen: result.shapesSeen,
         tagsFound: result.hit.size,
         undetermined: result.short.length,
+        // WHICH slides came back without a config, not just how many.
+        //
+        // `tagsFound=14 slides=18` leaves a subtraction and no way to settle it:
+        // four slides with no chart tag are either four harness pages that never
+        // had one, or four charts that lost theirs, and those want opposite
+        // responses. A reader can only tell by opening the deck and counting —
+        // which is what this line saves, because a title page and a broken chart
+        // do not look alike once you know which slide to look at.
+        //
+        // Capped, because this runs per page on a deck that can be hundreds of
+        // slides and the whole list would bury the run log it shares.
+        withoutTag: untaggedIndices(page, result.hit),
       });
     } catch {
       // A page that threw told us nothing at all — every slide on it is
