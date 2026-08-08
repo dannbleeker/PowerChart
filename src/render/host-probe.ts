@@ -361,6 +361,46 @@ function unreadable(err: unknown): { answer: string; detail?: string } {
  * so this is a setup failure rather than a finding: `no-scratch-shape`, in the
  * vocabulary no probe can produce as its own answer.
  */
+/**
+ * Two shapes to group, and HOW they were obtained.
+ *
+ * The three group questions were unanswerable on the one host that matters, and
+ * `scratchShapes`' own comment had already named the lead: the six questions
+ * this host never answers are exactly the six that pass a `load`. They add
+ * shapes, sync, read the ids back, and it is that read the host refuses — the
+ * same refusal behind `shape-proxy-survives-one-sync: unreadable` and the empty
+ * collection reads everywhere else. The questions were never reached. They died
+ * in their own setup and reported `no-scratch-slide`, which is a statement about
+ * the probe, not the host.
+ *
+ * So: try the strict route first, and fall back to grouping the proxies in the
+ * batch that created them — no id, no sync in between, nothing crossing.
+ *
+ * The fallback is a DIFFERENT question and must never be allowed to look like
+ * the same one. Grouping members resolved by id is what production does;
+ * grouping same-batch proxies is the friendliest case a host could be given. An
+ * answer from the second says nothing about the first. Hence `via`, which every
+ * caller puts in its `detail` — a sheet that says `two (members via same-batch)`
+ * and one that says `two (members via ids)` record two different facts, and the
+ * diff can tell them apart.
+ */
+async function groupMembers(
+  ctx: ProbeContext,
+  boxes: ProbeBox[],
+): Promise<{ members: PowerPoint.Shape[]; via: "ids" | "same-batch" }> {
+  try {
+    const ids = idsOf(await scratchShapes(ctx, boxes, "id"));
+    if (ids.length === boxes.length) return { members: ids.map((id) => probeShape(ctx, id)), via: "ids" };
+  } catch (err) {
+    // Only a SETUP failure earns the fallback. Anything else is the host
+    // answering the question and must travel on unchanged.
+    if (!(err instanceof ProbeSetupFailed)) throw err;
+  }
+  // No `load`, so nothing is read back and nothing crosses a sync: the members
+  // are the proxies `addGeometricShape` just returned, used in their own batch.
+  return { members: await scratchShapes(ctx, boxes), via: "same-batch" };
+}
+
 function idsOf(made: PowerPoint.Shape[]): string[] {
   const ids = made.map((s) => {
     try {
@@ -792,22 +832,22 @@ const PROBES: Probe[] = [
     // — which said only that a one-sync-old group proxy is refused, a fact
     // three other questions already establish about proxies in general.
     ask: async (ctx) => {
-      const ids = idsOf(
-        await scratchShapes(
-          ctx,
-          [0, 1].map((i) => ({ left: 150 + i * 25, top: 10, width: 20, height: 20 })),
-          "id",
-        ),
+      const { members, via } = await groupMembers(
+        ctx,
+        [0, 1].map((i) => ({ left: 150 + i * 25, top: 10, width: 20, height: 20 })),
       );
       try {
         const group = (
           probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): { load(p: string): void; id: string } }
-        ).addGroup(ids.map((id) => probeShape(ctx, id)));
+        ).addGroup(members);
         group.load("id");
         await ctx.sync();
-        return { answer: typeof group.id === "string" && group.id ? "yes" : "unreadable" };
+        return {
+          answer: typeof group.id === "string" && group.id ? "yes" : "unreadable",
+          detail: `members via ${via}`,
+        };
       } catch (err) {
-        return threw(err);
+        return { ...threw(err), detail: `members via ${via}` };
       }
     },
   },
@@ -821,19 +861,16 @@ const PROBES: Probe[] = [
     // "fixes" charts that were never broken. The fake's own notes say a
     // version of it that put one shape there did exactly that.
     ask: async (ctx) => {
-      const ids = idsOf(
-        await scratchShapes(
-          ctx,
-          [0, 1].map((i) => ({ left: 200 + i * 25, top: 60, width: 20, height: 20 })),
-          "id",
-        ),
+      const { members, via } = await groupMembers(
+        ctx,
+        [0, 1].map((i) => ({ left: 200 + i * 25, top: 60, width: 20, height: 20 })),
       );
       try {
         const group = (
           probeShapes(ctx) as unknown as {
             addGroup(shapes: unknown[]): { load(p: string): void; group: { shapes: { items: unknown[] } } };
           }
-        ).addGroup(ids.map((id) => probeShape(ctx, id)));
+        ).addGroup(members);
         // Queued in the batch that MAKES the group, so the answer arrives on
         // the group's own sync. Asked one sync later — the first version — this
         // host answered PropertyNotLoaded, which is a statement about proxy age
@@ -841,7 +878,10 @@ const PROBES: Probe[] = [
         group.load("group/shapes/items/id");
         await ctx.sync();
         const n = group.group?.shapes?.items?.length;
-        return { answer: n === 2 ? "two" : typeof n === "number" ? `reports-${n}` : "unreadable", detail: `n=${n}` };
+        return {
+          answer: n === 2 ? "two" : typeof n === "number" ? `reports-${n}` : "unreadable",
+          detail: `n=${n}; members via ${via}`,
+        };
       } catch (err) {
         return threw(err);
       }
@@ -954,17 +994,14 @@ const PROBES: Probe[] = [
     // refuses this produces no error and no measurement, and the repair pass
     // then has nothing to go on for the charts it was meant to check.
     ask: async (ctx) => {
-      const ids = idsOf(
-        await scratchShapes(
-          ctx,
-          [0, 1].map((i) => ({ left: 300 + i * 25, top: 160, width: 20, height: 20 })),
-          "id",
-        ),
+      const { members, via } = await groupMembers(
+        ctx,
+        [0, 1].map((i) => ({ left: 300 + i * 25, top: 160, width: 20, height: 20 })),
       );
       try {
         const made = (
           probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): { load(p: string): void; id: string } }
-        ).addGroup(ids.map((id) => probeShape(ctx, id)));
+        ).addGroup(members);
         // The id in its OWN sync, never in the one that made the group.
         // That saving is what cost the 2026-08-05 sheet five of its questions:
         // this host will not name a shape in the batch that created it, and
@@ -982,9 +1019,11 @@ const PROBES: Probe[] = [
         const count = found.group.shapes.getCount();
         await ctx.sync();
         const n = loadedCount(count);
-        return typeof n === "number" ? { answer: String(n) } : { answer: "unreadable" };
+        return typeof n === "number"
+          ? { answer: String(n), detail: `members via ${via}` }
+          : { answer: "unreadable", detail: `members via ${via}` };
       } catch (err) {
-        return threw(err);
+        return { ...threw(err), detail: `members via ${via}` };
       }
     },
   },
