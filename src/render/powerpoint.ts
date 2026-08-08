@@ -5479,25 +5479,32 @@ const SICK_ITEM_MS = 30_000;
 export const OFFSCREEN_BATCH = 40;
 
 /**
- * True when the slide holds ONE shape and that shape is a PowerChart group —
- * i.e. replacing the whole slide loses nothing but the chart itself.
+ * The names of every shape on a slide, or `null` when the host would not say.
  *
- * The gate on `replaceSlideWithDeck`. A slide swap is the fastest possible
- * update (one host call instead of a redraw), but the new slide is a NEW
- * slide: speaker notes, transitions and anything else the old one carried do
- * not come with it. So it is only ever offered where there is demonstrably
- * nothing else to lose.
+ * Two answers, kept apart on purpose. "The slide holds these shapes" and "the
+ * host did not answer for this slide's shapes" are different facts, and this
+ * host produces the second constantly — the shape collection is the one thing
+ * PowerPoint on the web reliably refuses (`the re-read before grouping came
+ * back empty drew=24`), while the slide itself answers fine. A caller that
+ * collapses them into a list reads a refusal as an empty slide.
+ *
+ * `null` covers all of it: the slide would not resolve, the collection did not
+ * load, or the list could not be corroborated against the slide's own count.
+ * That last one is what catches a collection answering SHORT without throwing
+ * — observed on a stalled host as `shapesExpected=19 shapesSeen=15`, and
+ * indistinguishable by name alone from a slide that really is that bare.
+ * `getCount` is a scalar rather than a load, so it does not count against the
+ * >50-item load ceiling (office-js#4272); it can throw outright on a host that
+ * does not offer it, which costs the corroboration and nothing else.
  */
-export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
+export async function slideShapeNames(slideId: string): Promise<string[] | null> {
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       slide.load("id");
       await context.sync();
-      if (!isLive(slide)) return false;
+      if (!isLive(slide)) return null;
       slide.shapes.load("items/name");
-      // The slide's own count, for the one question the names cannot answer:
-      // did this collection tell us about EVERY shape? See below.
       let count: { value: number } | undefined;
       try {
         count = slide.shapes.getCount();
@@ -5506,41 +5513,49 @@ export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
       }
       await context.sync();
       const items = loadedItems(slide.shapes);
-      if (!items) return false;
+      if (!items) return null;
       const names = items.map((s) => loadedValue(() => (s as unknown as { name: string }).name));
-      // Corroborate the list against the slide's own count before answering
-      // yes. This gate authorises DELETING the user's slide — their logo, their
-      // title, their footnote, replaced by a generated one that carries none of
-      // it and no speaker notes either — and it is consulted only AFTER the host
-      // has already stalled, which is precisely the state in which this host
-      // answers shape collections short (`shapesExpected=19 shapesSeen=15`).
-      //
-      // A short read is indistinguishable from a bare slide by name alone: both
-      // arrive as a list this function is happy with. So the count has to
-      // disagree before "empty" or "one chart group" is believed. A count the
-      // host will not give is not a licence either — this is the one gate in
-      // the file where being wrong cannot be undone by anything but Ctrl-Z, so
-      // "I could not check" answers no.
       const n = count ? loadedValue(() => count.value) : undefined;
       if (typeof n !== "number" || n !== names.length) {
-        trace("insert", "slide-swap gate could not corroborate the slide's shapes", {
-          slideId,
-          seen: names.length,
-          count: n,
-        });
-        return false;
+        trace("insert", "the host would not corroborate a slide's shapes", { slideId, seen: names.length, count: n });
+        return null;
       }
-      // An EMPTY slide counts. This gate asks "would replacing this slide lose
-      // anything the user put here", and the answer for a bare slide is no —
-      // but it used to insist on seeing exactly one chart group, so the moment
-      // a failed redraw had deleted that group (and its litter had been swept)
-      // the swap disqualified itself on the evidence of its own damage. That
-      // left the one case this fallback exists for as the one case it refused.
-      return names.length === 0 || (names.length === 1 && names[0] === GROUP_NAME);
+      return names.map((name) => (typeof name === "string" ? name : ""));
     });
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * True when the slide holds ONE shape and that shape is a PowerChart group —
+ * i.e. replacing the whole slide loses nothing but the chart itself.
+ *
+ * The gate on `replaceSlideWithDeck`. A slide swap is the fastest possible
+ * update (one host call instead of a redraw), but the new slide is a NEW
+ * slide: speaker notes, transitions and anything else the old one carried do
+ * not come with it. So it is only ever offered where there is demonstrably
+ * nothing else to lose.
+ *
+ * An unreadable slide answers NO. This gate authorises DELETING the user's
+ * slide — their logo, their title, their footnote, replaced by a generated one
+ * that carries none of it and no speaker notes either — and it is consulted
+ * only AFTER the host has already stalled, which is exactly when the shape
+ * collection stops answering. It is the one gate in the file where being wrong
+ * cannot be undone by anything but Ctrl-Z, so "I could not check" is not a
+ * licence.
+ *
+ * An EMPTY slide counts. The question is "would replacing this slide lose
+ * anything the user put here", and for a bare slide the answer is no — but it
+ * used to insist on seeing exactly one chart group, so the moment a failed
+ * redraw had deleted that group (and its litter had been swept) the swap
+ * disqualified itself on the evidence of its own damage. That left the one case
+ * this fallback exists for as the one case it refused.
+ */
+export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
+  const names = await slideShapeNames(slideId);
+  if (!names) return false;
+  return names.length === 0 || (names.length === 1 && names[0] === GROUP_NAME);
 }
 
 /**

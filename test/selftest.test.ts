@@ -1010,6 +1010,65 @@ describe("scenarios that must not be able to pass without proving anything", () 
     expect(pictured.length, "no picture fill ever reached the host").toBeGreaterThan(0);
   });
 
+  it("fails the picture scenario when the host quietly drew shapes instead", async () => {
+    // `canInsertPicture` is a requirement-set check, so a host that advertises
+    // 1.8 and then refuses the fill passes the scenario's own gate — the
+    // renderer logs PC-IMG-REFUSED and draws native shapes. Everything after
+    // that is a shape-to-shape update being reported as a picture round-trip,
+    // which is the same "cannot fail" trap as the `undefined` png above, one
+    // step later. It was only traced, so the scenario still said "collapsed to
+    // a picture and exploded back, config intact".
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    faults.refusePictureFill = true;
+    try {
+      const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
+      expect(explode.skipped, explode.detail).toBeFalsy();
+      expect(explode.ok, explode.detail).toBe(false);
+      expect(explode.detail).toMatch(/not a picture/);
+    } finally {
+      faults.refusePictureFill = false;
+    }
+  });
+
+  it("does not call an unreadable slide a failed picture", async () => {
+    // The other half. This asked `slideHoldsOnlyChart` — the slide-SWAP gate,
+    // which answers no for a slide it could not read, because it authorises
+    // deleting one. PowerPoint on the web refuses shape collections routinely,
+    // so a perfectly good picture logged "picture may not be a single shape"
+    // on the strength of a host that never looked. The round-trip below is
+    // still worth checking; the verdict just may not say "picture".
+    const deck = [makeSlide("s1")];
+    installHost(deck);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    // Every `items/name` read comes back empty while the slide's own count
+    // does not, which is the corroboration failing — the host answering short
+    // without throwing, rather than a slide that is genuinely bare.
+    faults.hollowNameReads = 99;
+    setTracing(true);
+    try {
+      const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
+      // The old sentence blamed the picture for the host's silence, and it is
+      // the log that carried it — the verdict read "config intact" either way,
+      // so only the trace can tell the two versions apart.
+      const said = traceLog()
+        .entries.filter((e) => e.scope === "selftest")
+        .map((e) => e.message);
+      expect(said, `the log blamed the picture: ${said.join(" | ")}`).not.toContain(
+        "picture may not be a single shape",
+      );
+      expect(said).toContain("the host would not confirm the picture is one shape");
+      // …and the verdict says which of the two round-trips it actually saw.
+      expect(explode.detail).not.toMatch(/not a picture/);
+      expect(explode.detail).toMatch(/would not confirm/);
+      expect(explode.ok, explode.detail).toBe(true);
+    } finally {
+      setTracing(false);
+      faults.hollowNameReads = 0;
+    }
+  });
+
   it("skips the rescale rather than comparing against -Infinity", async () => {
     // `Math.max()` of nothing is -Infinity, and JSON.stringify turns that into
     // `null` — so an all-blank data set wrote {"scale":{"max":null}} and then
