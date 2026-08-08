@@ -103,6 +103,25 @@ type Probe = {
   /** Answers, or throws — a throw is recorded as an answer, not a failure. */
   ask: (ctx: ProbeContext) => Promise<{ answer: string; detail?: string }>;
   /**
+   * This question does not need a LIVE scratch slide, so do not spend one on it.
+   *
+   * `withProbeContext` checks the scratch slide's liveness before handing a
+   * context to any probe, and on this host that check is the single most
+   * likely thing to fail — a fresh slide's id resolves once and then stops. So
+   * a question that never touches the slide inherits a failure that has nothing
+   * to do with it, and the sheet records `no-scratch-slide` where a real answer
+   * was available all along.
+   *
+   * That is not hypothetical: the 2026-08-08 `a546897` round lost
+   * `untrack-available` this way, at 43 seconds, AFTER the host had recovered
+   * and answered four questions in a row. `untrack` is a `typeof` on a proxy —
+   * `getItemOrNullObject` builds one without a round trip — so the question was
+   * answerable and the sheet said otherwise. A statement about the probe wearing
+   * the clothes of a statement about the host is the error this whole file is
+   * built to avoid.
+   */
+  noSlideNeeded?: true;
+  /**
    * A second question, asked in the same run, when this one's answer admits
    * two readings.
    *
@@ -1150,6 +1169,10 @@ const PROBES: Probe[] = [
   {
     id: "untrack-available",
     question: "Do proxies expose untrack()?",
+    // Nothing here syncs: `getItemOrNullObject` returns a proxy without a round
+    // trip, and the question is whether that object carries a method. A live
+    // slide is not required and must not be demanded — see `noSlideNeeded`.
+    noSlideNeeded: true,
     // `untrack` is best-effort here precisely because a null-object proxy may
     // not expose it. Worth knowing which hosts do.
     ask: async (ctx) => {
@@ -1267,10 +1290,15 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           trace("probe", "took another scratch slide after giving up on the last", { id: probe.id });
         }
       }
-      if (!scratchId) {
+      if (!scratchId && !probe.noSlideNeeded) {
         result = { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
+      } else if (probe.noSlideNeeded) {
+        // Not gated on a scratch slide at any level — not on having one, and
+        // not on its liveness. The id is passed through because `ProbeContext`
+        // carries one, but nothing here resolves it. See `Probe.noSlideNeeded`.
+        result = await ask(probe, scratchId ?? "", durableSlideId);
       } else {
-        result = await ask(probe, scratchId, durableSlideId);
+        result = await ask(probe, scratchId as string, durableSlideId);
         // A slide that stopped resolving costs one question, not the sheet.
         //
         // It cost thirteen once: a real host lost the scratch slide after the
@@ -1416,7 +1444,7 @@ async function ask(
 ): Promise<{ answer: string; detail?: string }> {
   awaitingSetupShapes = false;
   try {
-    return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask, durableSlideId);
+    return await withProbeContext(scratchId, PROBE_BUDGET_MS, probe.ask, durableSlideId, probe.noSlideNeeded);
   } catch (err) {
     if (err instanceof ScratchSlideUnavailable) return { answer: "no-scratch-slide", detail: short(err) };
     if (err instanceof ProbeSetupFailed) return { answer: "no-scratch-shape", detail: short(err) };

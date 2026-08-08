@@ -344,12 +344,23 @@ describe("the fake host's answer sheet", () => {
     try {
       const sheet = await runHostProbes("fake-loses-slides", "test");
       expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
-      // Every QUESTION. The cleanup row is not one — it reports what became of
-      // the slides the run borrowed, which is a fact about the host whether or
-      // not a single question got put, and reading it as an answer would make
-      // this assertion demand that the cleanup fail too.
-      for (const a of sheet.answers.filter((x) => x.id !== SCRATCH_CLEANUP_ID))
+      // Every question that NEEDS a slide. Two rows are not those:
+      //
+      // - the cleanup row, which reports what became of the slides the run
+      //   borrowed — a fact about the host whether or not a single question got
+      //   put, and reading it as an answer would make this assertion demand
+      //   that the cleanup fail too;
+      // - a `noSlideNeeded` question, which is answerable with no slide at all
+      //   and must not inherit this failure. Charging it one is how the
+      //   2026-08-08 `a546897` sheet lost `untrack-available`, at 43 seconds,
+      //   after the host had recovered and answered four questions in a row.
+      const excused = new Set([SCRATCH_CLEANUP_ID, "untrack-available"]);
+      for (const a of sheet.answers.filter((x) => !excused.has(x.id)))
         expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
+      expect(
+        sheet.answers.find((a) => a.id === "untrack-available")?.answer,
+        "a question that needs no slide was charged for one",
+      ).toBe("no");
       // And it has to be there. A run that could not ask anything is precisely
       // the run that churns through scratch slides, so a sheet silent about
       // them is silent about the only thing that run left behind.
@@ -506,11 +517,14 @@ describe("a probe run that has lost its scratch slide", () => {
     try {
       const sheet = await runHostProbes("fake-loses-every-slide", "test");
       expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
-      // The cleanup row aside — see the sibling case above. It is not a
-      // question and cannot answer `no-scratch-slide`.
-      for (const a of sheet.answers.filter((x) => x.id !== SCRATCH_CLEANUP_ID)) {
+      // The cleanup row and the slideless question aside — see the sibling case
+      // above for both. One is not a question; the other does not need what
+      // this fault withholds.
+      const excused = new Set([SCRATCH_CLEANUP_ID, "untrack-available"]);
+      for (const a of sheet.answers.filter((x) => !excused.has(x.id))) {
         expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
       }
+      expect(sheet.answers.find((a) => a.id === "untrack-available")?.answer).toBe("no");
       // This is the run that makes one scratch slide per question and throws
       // each away. How many came back is the whole finding, and until this row
       // existed the sheet did not carry it.
@@ -834,6 +848,38 @@ describe("the group questions, when the host will not read an id back", () => {
       expect(byId[id]?.detail ?? "", `${id} took the fallback on a host that never needed it`).toContain(
         "members via ids",
       );
+    }
+  }, 60_000);
+});
+
+describe("a question that needs no slide", () => {
+  /**
+   * The liveness check `withProbeContext` runs before every question is, on
+   * PowerPoint web, the single most likely thing to fail: a fresh slide's id
+   * resolves once and then stops. Charging it to a question that never touches
+   * the slide turns a real answer into `no-scratch-slide`, which is a statement
+   * about the probe wearing the clothes of a statement about the host.
+   *
+   * That is not hypothetical. The 2026-08-08 `a546897` round lost
+   * `untrack-available` this way at 43 seconds — AFTER the host had recovered
+   * and answered four questions in a row. `untrack` is a `typeof` on a proxy
+   * that `getItemOrNullObject` builds without a round trip, so the answer was
+   * there for the taking.
+   */
+  it("answers even when the scratch slide has stopped resolving", async () => {
+    installHost([makeSlide("s1")]);
+    // Every slide this run adds is dead on arrival, so the liveness check can
+    // only fail. Anything that still answers did so without one.
+    faults.newSlideResolvesTimes = 0;
+    try {
+      const sheet = await runHostProbes("fake-dead-scratch", "test");
+      const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
+      expect(answers["untrack-available"], "a question that needs no slide was charged for one").toBe("no");
+      // Non-vacuity: the scratch slide really is unusable, so this is not a run
+      // where the check simply passed.
+      expect(answers["shape-add-fresh-slide-proxy"]).toBe("no-scratch-slide");
+    } finally {
+      faults.newSlideResolvesTimes = null;
     }
   }, 60_000);
 });

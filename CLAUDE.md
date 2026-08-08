@@ -111,6 +111,15 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   is declared in `KNOWN_DIVERGENCES` with a reason. When a fresh sheet arrives:
   replace the fixture, run the suite, deal with what goes red. Do not edit the
   fixture by hand — it is a recording, not a preference.
+  **A newer sheet is not automatically a better one.** The `a546897` round put
+  only 18 of 27 questions, and swapping it in would have turned eight committed
+  ANSWERS — `delete-then-lookup: reports-gone`, `group-reports-its-children:
+threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
+  `no-scratch-slide`, which the gate correctly reads as "unknown". That is
+  deleting knowledge on the strength of a bad ten minutes, the same mistake the
+  gate itself used to make one level up. Replace when the new sheet answers at
+  least as much; otherwise keep the fixture, and put what genuinely moved into
+  `UNSTABLE_ANSWERS` where it belongs.
 - **The office-js tracker is swept weekly** by
   `.github/workflows/office-js-watch.yml`, which reports only issues touching
   APIs this repo calls that are not yet in `KNOWN_ISSUES`
