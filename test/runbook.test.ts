@@ -25,15 +25,33 @@ describe("the standing test run names controls that exist", () => {
   const html = readFileSync("src/taskpane/taskpane.html", "utf8");
   const runbook = readFileSync("docs/PUBLISHING.md", "utf8");
 
-  /** The visible text of the button or option carrying this id. */
+  /**
+   * The visible text of the button or option carrying this id.
+   *
+   * `[^<]*` — the label is captured as text containing no markup at all,
+   * rather than captured loosely and then stripped of tags. Every control in
+   * the list below is plain text today, so nothing is lost; what is gained is
+   * that a label someone later wraps in a `<span>` fails here with a sentence
+   * saying so, instead of being silently unwrapped by a regex.
+   *
+   * The stripping version is also what CodeQL flags as incomplete
+   * sanitization, and it is right to in general: one pass of `<[^>]*>` leaves
+   * `<scr<span>ipt>` behind. Not a vulnerability here — this reads a file from
+   * the repo and compares it to a markdown doc, and renders nothing — but the
+   * alert is a fair description of the code, and not writing that code is
+   * cheaper than arguing with it.
+   */
   function labelOf(id: string): string {
-    const el = new RegExp(`<(button|option)[^>]*\\bid="${id}"[^>]*>([\\s\\S]*?)</\\1>`).exec(html);
-    if (el) return el[2].replace(/<[^>]*>/g, "").trim();
+    const el = new RegExp(`<(button|option)[^>]*\\bid="${id}"[^>]*>([^<]*)</\\1>`).exec(html);
+    if (el) return el[2].trim();
     // Options are commonly written without an id — match on the value instead,
     // which is what the pane's own code selects them by.
-    const byValue = new RegExp(`<option[^>]*\\bvalue="${id}"[^>]*>([\\s\\S]*?)</option>`).exec(html);
-    if (byValue) return byValue[1].replace(/<[^>]*>/g, "").trim();
-    throw new Error(`no button or option in taskpane.html for "${id}"`);
+    const byValue = new RegExp(`<option[^>]*\\bvalue="${id}"[^>]*>([^<]*)</option>`).exec(html);
+    if (byValue) return byValue[1].trim();
+    throw new Error(
+      `no plain-text button or option in taskpane.html for "${id}" — ` +
+        `either it is gone, or its label is now wrapped in markup and this test needs to say how to read it`,
+    );
   }
 
   const CONTROLS = [
