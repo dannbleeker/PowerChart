@@ -1116,7 +1116,13 @@ export function makeSlide(id: string) {
           faults.hollowReads--;
           return [];
         }
-        if (faults.hollowNameReads > 0 && lastShapeLoad === "items/name") {
+        // Any projection that asks for names, not the exact string `items/name`.
+        // `slideShapeList` asks for `items/id,items/name` — it needs ids to tell
+        // one shape from another — and exact matching silently stopped blinding
+        // it the moment that projection changed, which turns a guard green
+        // without anyone touching it. Same lesson as `hollowReads`' own
+        // `startsWith` a few lines up, learned the same way.
+        if (faults.hollowNameReads > 0 && lastShapeLoad.includes("name")) {
           faults.hollowNameReads--;
           return [];
         }

@@ -77,7 +77,7 @@ import {
   showSlide,
   slideCount,
   slideSize,
-  slideShapeNames,
+  slideShapeList,
   timeShapeRounds,
   updateChartInSlide,
   errorText,
@@ -414,6 +414,9 @@ const explodePicture: Scenario = async (prefix) => {
   const asPicture: ChartConfig = { ...chart.cfg, render: "image" };
   const png = await rasterizer(buildChart(asPicture));
   if (!png) return { ok: false, skipped: true, detail: "the browser would not rasterise the chart" };
+  // Read the slide BEFORE the collapse, so what the collapse produced can be
+  // told apart from what was already there. See below for what that cost.
+  const before = await slideShapeList(chart.target.slideId);
   const pictured = await updateChartInSlide(buildChart(asPicture), chart.target, {
     tagData: JSON.stringify(asPicture),
     pictureBase64: png,
@@ -422,25 +425,46 @@ const explodePicture: Scenario = async (prefix) => {
   // One shape is what a picture IS. More than one means the renderer drew
   // shapes instead and the rest of this scenario would prove nothing — the same
   // trap as the `undefined` png above, one step later, so it has to be a
-  // verdict and not a note. This used to ask `slideHoldsOnlyChart`, which is
-  // the slide-SWAP gate: it answers no for an unreadable slide, and this host
-  // refuses shape collections routinely. So "picture may not be a single shape"
-  // was logged on a run where nothing was wrong with the picture, and a run
-  // where the collapse really had drawn shapes still reported a clean picture
-  // round-trip. Three states, three sentences.
-  const held = await slideShapeNames(pictured.slideId);
-  // Stated as what was counted, not as what caused it. Two things produce this
-  // and they are not distinguishable from here: the renderer fell through to
-  // native shapes (PC-IMG-REFUSED, which is what the guard reproduces), or the
-  // picture landed and the old chart's shapes were not deleted. Both leave a
-  // slide that is not one picture, both are worth failing on, and neither may
-  // be named on the evidence of a count.
-  if (held && held.length !== 1)
-    return { ok: false, detail: `the slide holds ${held.length} shapes after the collapse — that is not one picture` };
+  // verdict and not a note.
+  //
+  // Ask what the collapse ADDED, by shape id — never how many shapes the slide
+  // holds. Two earlier versions asked the slide and both were wrong:
+  //
+  //  - `slideHoldsOnlyChart` is the slide-SWAP gate, which answers no for a
+  //    slide it could not read, so a fine picture was logged as suspect
+  //    whenever this host refused a collection (which is routinely);
+  //  - counting the slide's shapes replaced that with a false FAILURE on its
+  //    first real round. The slide held three, and all three were charts: the
+  //    battery deliberately piles them onto one slide two scenarios earlier,
+  //    and `a selected shape survives an insert` reports the same three. A
+  //    neighbouring chart is not a broken picture.
+  //
+  // The id delta has neither problem. It is one shape when a picture lands
+  // beside anything at all, and it is N when the renderer falls through to
+  // native shapes.
+  const after = await slideShapeList(pictured.slideId);
+  const delta =
+    before && after
+      ? {
+          added: after.filter((s) => !new Set(before.map((b) => b.id)).has(s.id)),
+          was: before.length,
+          now: after.length,
+        }
+      : undefined;
+  if (delta && delta.added.length !== 1)
+    return {
+      ok: false,
+      // What was observed, not what caused it: a fall-through to native shapes
+      // and a picture landing next to undeleted leftovers both show up here,
+      // and the names are what a reader needs to tell them apart.
+      detail:
+        `the collapse added ${delta.added.length} shapes (${delta.added.map((s) => s.name).join(", ") || "none"}) — ` +
+        `a picture is one; the slide went from ${delta.was} to ${delta.now}`,
+    };
   // …and when the host will not say, the scenario still runs: the config
   // round-trip below is worth checking either way. It just may not have been a
   // picture making the trip, and the verdict says so rather than claiming one.
-  const confirmed = held !== null;
+  const confirmed = delta !== undefined;
   if (!confirmed) trace("selftest", "the host would not confirm the picture is one shape", { slide: pictured.slideId });
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
