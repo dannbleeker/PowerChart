@@ -68,15 +68,25 @@ export const KNOWN_DIVERGENCES = {
   "shape-proxy-survives-one-sync":
     "office-js#2903. The fake keeps proxies alive on its happy path so that ordinary tests read as tests rather than as stale-proxy exercises; `applyWebProfile` is where the refusal lives. The web host refuses them, and says so here.",
   "shapes-items-count-honest":
-    "WITHDRAWN, awaiting a re-run. The real answer (`items` undefined) came from a build before the probe stopped reading a collection through a handle the same sync resolved. Its partner `shapes-items-via-positional-slide` was added to separate the two; neither has been asked of a host since.",
+    "The fake's happy path answers a shape collection honestly, and `faults.hollowReads` is where the refusal lives. RE-ASKED AND ANSWERED 2026-08-08: `short-0`, items=0, with `getcount-populates-same-sync` answering `yes, value=8` in the same run. Same host, same minute: the count is right and the list is empty. That is the sharpest form this bug has taken, and it is what `slideShapeNames`' corroboration check exists to catch. The earlier WITHDRAWN note (the `items`-undefined answer being about the handle, not the collection) is settled by the partner below.",
   "tags-add-same-key-twice":
     "WITHDRAWN, awaiting a re-run. The real `other — value=undefined` was one shape proxy held across four syncs, not an opinion about tag keys.",
   "addgroup-returns-usable":
-    "WITHDRAWN, awaiting a re-run. The real `unreadable` came from asking a group for its id one sync after making it, out of members that were themselves a sync old.",
+    "The fake's happy path hands back a group usable in the sync that made it. RE-ASKED 2026-08-08 and still `unreadable`, but read the detail before calling it settled: `members via same-batch`. The strict id route could not supply members — the collection answers empty, see above — so this asked with same-batch proxies, which is the weaker form of the question. What it establishes is that the weak form fails; the strong form has still never been put on this host.",
   "group-reports-its-children":
-    "WITHDRAWN, awaiting a re-run. The real PropertyNotLoaded was a nested load queued a sync after the group was made.",
+    "The fake's happy path lists a group's children. RE-ASKED 2026-08-08 with the load queued in the sync that MADE the group — the friendliest form there is — and this host still answered `threw`, \"The property 'items' is not available\": office-js#6363's signature. Its sibling `group-children-via-getcount` was added to ask the other way and answered `unreadable`. Both routes refused, so `contentShapes` returning UNKNOWN_CONTENT for a grouped slide is the permanent answer rather than a gap.",
   "tag-on-group-survives":
-    "WITHDRAWN, awaiting a re-run. Taken at face value the real `no` says no chart in any deck is re-editable, which the same run disproves — its repair pass landed 23 retags on grouped charts.",
+    "WITHDRAWN, awaiting a re-run. Taken at face value the real `no` says no chart in any deck is re-editable, which the same run disproves — its repair pass landed 23 retags on grouped charts. Still owed: the 2026-08-08 round could not put this question either (`no-scratch-slide`).",
+  "group-children-via-getcount":
+    "The fake's happy path counts a group's children; the web host's refusal lives in a named fault rather than the default. ANSWERED 2026-08-08: `unreadable`. Read with `group-reports-its-children` above — both ways into a group's children are refused on this host. Also carried in UNSTABLE_ANSWERS, because it has been asked once and once is a sample.",
+  "group-of-existing-shape-readable":
+    "The fake's happy path names a group it has just made, so the later-batch question can be put at all. This host would not: `no-group-id`. That is an answer and not a setup failure — a host that will not name a fresh group cannot be asked about resolving one from the deck afterwards, and the fact belongs in the sheet. It also means `countGroupChildrenPage`, which swallows failures per shape, produces no error and no measurement here.",
+  "picture-then-shape-read":
+    "The fake's happy path re-reads a shape collection after an image insert. office-js#5022 (open, Microsoft-assigned) reports `context.sync()` running indefinitely on exactly that sequence, and this host answered `unreadable` on 2026-08-08. `drawDemoItem` does this shape whenever a chart degrades to a picture, since `needsRefresh` is true for any item carrying `pictureBase64`.",
+  "shape-add-fresh-getitem-slide":
+    "The fake models the host `getTargetSlide` was written for, where `slides.getItem(id)` resolves any slide. On the web it answered `threw` (GeneralException) for a slide added moments earlier — and its follow-up partner `getitem-durable-slide` answered `yes` in the same run. So the two readings are separated: it is not the by-id form that fails, it is the by-id form applied to a NEW slide. A pre-existing slide's id round-trips fine, which is why editing a chart in place has always worked.",
+  "shapes-items-via-positional-slide":
+    "The fake's happy path answers a shape collection honestly whichever handle names the slide. ANSWERED 2026-08-08: `short-0`, the same as its by-id partner in the same run. That is what the partner was added to decide, and it decides it — the parent handle was never the problem, the COLLECTION is. Every readback in `powerpoint.ts` is therefore no better for being renamed positionally.",
 };
 
 /**
@@ -114,15 +124,18 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
-    "ALTERNATES. Four observations: `threw` (committed sheet), `threw` (2026-08-07), `yes` (2026-08-08 run a), `threw` (2026-08-08 run b). " +
-    "The two 08-08 runs are the same build, ninety minutes apart. Earlier wording here said it flipped once, which reads as though the newer " +
-    "value were the true one and the old one a mistake — it is not a sequence of corrections, it is a coin. " +
+    "ALTERNATES. Five observations: `threw` (2026-08-05), `threw` (2026-08-07), `yes` (2026-08-08 run a), `threw` (2026-08-08 run b), " +
+    "`threw` (2026-08-08 run c, the sheet now committed). The 08-08 runs are one build. Earlier wording here said it flipped once, which " +
+    "reads as though the newer value were the true one and the old one a mistake — it is not a sequence of corrections, it is a coin, and " +
+    "four of five landings do not make the fifth a mechanism. " +
     "The fake keeps refusing held proxies, which is the safe direction: code that never holds one across a sync is correct whichever way the coin lands.",
   "shape-add-positional-slide-proxy":
-    "ALTERNATES, in lockstep with its partner above and always opposite to it: `yes`, `yes`, `threw`, `yes`. " +
+    "ALTERNATES, in lockstep with its partner above and always opposite to it: `yes`, `yes`, `threw`, `yes`, `yes`. " +
     "The more dangerous of the two, because `yes` is exactly the answer that makes a positional slide handle look like a way around the " +
-    "by-id refusals — and three of the four samples say `yes`. A majority is not a mechanism. Whatever decides these two flips within a " +
-    "single run (see the `no-scratch-slide` windows in any probe log), and until that is understood neither answer may be built on.",
+    "by-id refusals — and four of the five samples say `yes`. A majority is not a mechanism. Whatever decides these two flips within a " +
+    "single run (see the `no-scratch-slide` windows in any probe log), and until that is understood neither answer may be built on. " +
+    "`shapes-items-via-positional-slide` is the reason it would not help anyway: a positional handle reads a shape collection exactly as " +
+    "short-0 as a by-id one does.",
 };
 
 /**
@@ -137,24 +150,8 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
-  "picture-then-shape-read":
-    "Added after the fixture's build. office-js#5022 (open, Microsoft-assigned) reports `context.sync()` running indefinitely when shapes are re-read after an image is inserted; the reporter's only workaround is a 1-2 second pause, and it still recurs. `drawDemoItem` does exactly that shape — a chart too dense to draw becomes ONE picture, and `needsRefresh` is true whenever `pictureBase64` is set, so the collection is re-read a sync later in the same context. Every unexplained hang this project has recorded is consistent with it and none can be pinned on it without asking.",
-  "group-of-existing-shape-readable":
-    "Added after the fixture's build. office-js#5849 reports `Shape.group` throwing GeneralException. Distinct from `group-reports-its-children`, which asks in the batch that MADE the group; this asks the way `countGroupChildrenPage` asks, about a group resolved from the deck afterwards. That pass decides whether a chart reads back as intact or as wreckage, and it swallows failures per shape — so a host that refuses produces no error and no measurement, and the repair pass has nothing to go on.",
-  "slide-layout-readable":
-    "Added after the fixture's build. office-js#3826 (open, marked a product bug) reports `slide.load('layout/shapes/items')` failing the sync with GeneralException on the web. The per-slide companion to `layouts-readable`: #4906 and #2328 report the master form, #3826 the slide form, and nothing says whether they are one defect or three. Asked of a pre-existing slide on purpose — a freshly-added slide's handle is single-sync here, so the scratch slide would answer about the handle rather than about layouts.",
-  "layouts-readable":
-    "Added after the fixture's build. office-js#4906 reports SlideLayout/SlideMaster shape loads throwing GeneralException in PowerPoint Online, at `errorLocation: SlideMasterCollection.getItem`, and ONLY on presentations built from a custom template — which is exactly what the owner's decks are. `blankLayoutId` reads this and is try/caught, so a refusal degrades silently to the inherited layout and every slide the add-in creates lands on top of the previous slide's placeholders. Visible defect, no error, and no way to tell which of the two happened without asking.",
-  "shape-add-fresh-getitem-slide":
-    "Added after the fixture's build, and the only question about `slides.getItem(id)` — the call `getTargetSlide` makes and `insertSceneIntoSlide` then holds for a whole multi-batch draw. Every held-handle failure this host has reported names `errorLocation: SlideCollection.getItem`, which reads as though a fresh `getItem` must fail too; but those were all handles resolved a sync earlier, and the fresh `getItemOrNullObject` form works. The two are different claims and this asks the one nobody has.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
-  "shapes-items-via-positional-slide":
-    "Added with the probe rewrite, after the fixture's build. It is the partner that decides whether `shapes-items-count-honest` was ever about collections or only about the handle they hang off, so the pair is worth a run on its own.",
-  "scratch-slides-returned":
-    "Added after the fixture's build, and the only row in the sheet that is not a question — it is what happened to the slides the probe borrowed. Every earlier run threw the answer away, so the probe leaving slides behind was something the owner found by opening a deck: 21 of them in the 2026-08-06 round, 14 in an earlier one, and neither sheet said a word. The fake returns everything it is given, so a host that does not will diverge here and be reported without anyone remembering to look.",
-  "group-children-via-getcount":
-    "Added 2026-08-08, the day the sheet it answers arrived. `group-reports-its-children` asked through `group/shapes/items/id` and this host answered `threw` — \"The property 'items' is not available\", office-js#6363's signature — with the load queued in the sync that MADE the group, which is the friendliest form the question has. The same sheet says `getcount-populates-same-sync: yes, value=9`, so this host COUNTS a collection it will not LIST. Whether that holds for a GROUP's collection is what decides if `contentShapes` can ever measure a grouped slide instead of reporting it complete uncounted.",
 };
 
 /**

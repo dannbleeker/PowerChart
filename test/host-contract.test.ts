@@ -51,9 +51,21 @@ describe("the fake, against the real host it stands for", () => {
     // The other direction, and the one that rots quietly. An entry left behind
     // after the fake was fixed reads as a known problem forever, and the next
     // person to look decides the gate is noise.
-    const { differ } = diffAnswers(real, FAKE_BASELINE);
-    const stillDiffers = new Set(differ.map((d: { id: string }) => d.id));
-    const stale = Object.keys(KNOWN_DIVERGENCES).filter((id) => !stillDiffers.has(id));
+    //
+    // A question the run could not SET UP is not evidence that the divergence
+    // went away. `diffAnswers` sorts `no-scratch-slide` and `no-scratch-shape`
+    // into `notAsked` precisely because they say nothing about the host, and
+    // reading their absence from `differ` as agreement would have this gate
+    // demand the deletion of a declaration nobody has contradicted. The
+    // 2026-08-08 sheet did exactly that to `tags-add-same-key-twice` and
+    // `tag-on-group-survives`, on the strength of a scratch slide that would
+    // not resolve.
+    const { differ, notAsked } = diffAnswers(real, FAKE_BASELINE);
+    const unresolved = new Set([
+      ...differ.map((d: { id: string }) => d.id),
+      ...notAsked.map((n: { id: string }) => n.id),
+    ]);
+    const stale = Object.keys(KNOWN_DIVERGENCES).filter((id) => !unresolved.has(id));
     expect(stale, "declared as divergent, but the fake and the host now agree").toEqual([]);
   });
 
@@ -87,9 +99,15 @@ describe("the fake, against the real host it stands for", () => {
   it("declares nothing as pending that the sheet already answers", () => {
     // The list has to shrink on its own when a newer sheet lands, or it becomes
     // a place where questions go to be forgotten.
-    const { onlyFake } = diffAnswers(real, FAKE_BASELINE);
-    const missing = new Set(onlyFake);
-    const answered = Object.keys(PENDING_QUESTIONS).filter((id) => !missing.has(id));
+    //
+    // But a sheet that CARRIES a question and says `no-scratch-slide` has not
+    // answered it — the run never got as far as putting it. Counting that as
+    // answered would retire the question from the pending list on the strength
+    // of a setup failure, which is the forgetting this list exists to prevent,
+    // arriving by the door marked "shrinks on its own".
+    const { onlyFake, notAsked } = diffAnswers(real, FAKE_BASELINE);
+    const unknown = new Set([...onlyFake, ...notAsked.map((n: { id: string }) => n.id)]);
+    const answered = Object.keys(PENDING_QUESTIONS).filter((id) => !unknown.has(id));
     expect(answered, "declared as unanswered, but the committed sheet answers it").toEqual([]);
   });
 });
