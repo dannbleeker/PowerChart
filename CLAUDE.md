@@ -498,10 +498,15 @@ What is left needs the owner, not the agent:
   what the CI contract gate diffs against. So the standing question is no longer
   "does any of this work" but "what does the newest build answer".
 
-  What has still never run on a real host: the degradation experiment
-  (_what makes a long run slow down_) and _the chart is actually visible_ —
-  which is `pickedOnly` as of 2026-08-07 precisely because it killed the tab
-  four rounds running without ever returning a verdict. `PENDING_QUESTIONS` in
+  Both experiments have now run. _the chart is actually visible_ PASSED on
+  `c7d91d5` and is routine again. _what makes a long run slow down_ ran on
+  `25407ed`, picked alone, and KILLED THE TAB at 26.9 seconds with two scenarios
+  behind it — announcing itself and then nothing, which is exactly the state
+  `chartIsVisible` spent four rounds in. Two calls fit and the log cannot choose
+  between them: taking a scratch slide, or drawing ninety-six shapes onto one
+  the run had just added. It is instrumented now (`degradation step`), so the
+  next picked round names the call instead of the scenario. Do not reason about
+  which; that is what the steps are for. `PENDING_QUESTIONS` in
   `scripts/host-baseline.mjs` is the authoritative list of unasked probe
   questions; the 2026-08-08 sheet took it from nine down to one
   (`shape-resolve-held-slide-proxy`, which that round could not set up).
@@ -538,14 +543,18 @@ What is left needs the owner, not the agent:
   paying for itself: four earlier rounds crashed the same way and produced
   nothing anyone could reason from.
 
-  Still owed, and it is the same scenario one more time: picked ALONE again, on
-  the build that stopped it taking a scratch slide. What is ruled out is a fresh
-  slide; what has never been asked is whether this host will rasterise any slide
-  at all. It stays `pickedOnly` until it comes back with a verdict, so that
-  question costs a short round rather than a long one.
+  **And the follow-ups closed it.** On `e49cca8` it survived, and on `c7d91d5`
+  it PASSED — `10064 → 15652 bytes` through PowerPoint's own rasteriser, the
+  first time this project has confirmed a chart it drew is visible anywhere but
+  in a human's eyes. Routine again as of that round, on the criterion set in
+  advance: comes back PASSING, not merely comes back.
 
-  Still never run at all: the degradation experiment (_what makes a long run
-  slow down_).
+  Owed: one picked round of _what makes a long run slow down_ on a build
+  carrying its step tracing. It killed the tab on `25407ed`, picked alone, at
+  26.9 seconds — announcing itself and then nothing, the same blindness that
+  cost the visibility scenario four rounds. Two calls fit: taking a scratch
+  slide, or drawing ninety-six shapes onto one just added. Do not reason about
+  which; the steps are there now to say.
 
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 

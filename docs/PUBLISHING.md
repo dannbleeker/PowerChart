@@ -473,7 +473,7 @@ from the Scenario menu:
 | scenario | what it proves |
 | --- | --- |
 | edit the chart YOU click | the pane's most-used read, driven by a real human click instead of a call that behaves differently |
-| what makes a long run slow down | whether a long run degrades because of the request CONTEXT, the DECK, or the TAB — the three every artefact so far confounds |
+| what makes a long run slow down | whether a long run degrades because of the request CONTEXT, the DECK, or the TAB — the three every artefact so far confounds. Picked-only, and it killed the tab on its first outing (`25407ed`, 26.9s in) before measuring anything. Its host calls are traced individually now, so the next attempt names the one that does it. |
 
 **What makes a long run slow down** is the newest, and it is the only one here
 that is purely a measurement. Every real-host artefact this project owns

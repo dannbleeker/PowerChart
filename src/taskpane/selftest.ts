@@ -809,20 +809,35 @@ export function visibilityVerdict(before: string, after: string, named: boolean)
   };
 }
 
-const chartIsVisible: Scenario = async (prefix) => {
-  // Say what is about to be tried, BEFORE trying it.
-  //
-  // `scenario starting` names the scenario and nothing finer, and this scenario
-  // makes five host calls — any of which could be the one that does not come
-  // back. A real host proved the difference matters: the run log's last line
-  // was this scenario announcing itself, and nothing after it was ever written,
-  // so the evidence narrowed the cause to "somewhere in here" and stopped. Five
-  // extra entries in a two-thousand-entry ring is a cheap price for a log that
-  // names the call instead of the scenario.
-  const attempt = async <T>(what: string, fn: () => Promise<T>): Promise<T> => {
-    trace("selftest", "visibility step", { what });
+/**
+ * Say what is about to be tried, BEFORE trying it.
+ *
+ * `scenario starting` names the scenario and nothing finer, and a scenario that
+ * makes several host calls can die in any of them. A real host proved the
+ * difference twice, the same way both times: the run log's last line was the
+ * scenario announcing itself and nothing after it was ever written, so the
+ * evidence narrowed the cause to "somewhere in here" and stopped.
+ *
+ * The first time cost `the chart is actually visible` four rounds. Wrapping its
+ * calls turned the fifth into `rasterising the empty slide`, which is a cause
+ * rather than a location, and the scenario was fixed the same day. The second
+ * time was `what makes a long run slow down`, on 2026-08-08, which announced
+ * itself at 26.9s and took the tab with it — and could have been either of two
+ * calls, because it was not wrapped.
+ *
+ * A handful of extra entries in a two-thousand-entry ring is a cheap price for
+ * a log that names the call. Shared rather than copied, because the next
+ * scenario to need it should not have to learn this a third time.
+ */
+const stepsOf =
+  (message: string) =>
+  async <T>(what: string, fn: () => Promise<T>): Promise<T> => {
+    trace("selftest", message, { what });
     return fn();
   };
+
+const chartIsVisible: Scenario = async (prefix) => {
+  const attempt = stepsOf("visibility step");
 
   // A slide this run put in the deck EARLIER — never one added moments ago.
   //
@@ -1360,10 +1375,18 @@ export function _setDegradeSizeForTest(rounds: number, perRound: number): void {
  * so running it after eight other scenarios would measure them instead of it.
  */
 const degradesOverTime: Scenario = async (prefix) => {
+  // Wrapped after this scenario killed the tab on 2026-08-08, picked alone, at
+  // 26.9 seconds with two scenarios behind it — announcing itself and then
+  // nothing, which is exactly what `chartIsVisible` used to do. Two calls could
+  // have done it and the log cannot say which: taking a scratch slide, or
+  // drawing ninety-six shapes onto one the run had just added. A fresh slide is
+  // the worst surface this host offers, so both are plausible, and this file's
+  // own rule is to ask rather than pick. The steps ARE the question.
+  const attempt = stepsOf("degradation step");
   const rounds = degradeRounds;
   const perRound = degradePerRound;
-  const slideA = await addScratchSlide();
-  const slideB = slideA ? await addScratchSlide() : null;
+  const slideA = await attempt("adding the first scratch slide", addScratchSlide);
+  const slideB = slideA ? await attempt("adding the second scratch slide", addScratchSlide) : null;
   if (!slideA || !slideB) {
     return {
       ok: false,
@@ -1371,19 +1394,23 @@ const degradesOverTime: Scenario = async (prefix) => {
       detail: `the host would not give the experiment two slides to draw on (${slideA ? "one" : "none"} of two)`,
     };
   }
-  const deckBefore = await slideCount();
-  const one = await timeShapeRounds(slideA, {
-    rounds,
-    perRound,
-    oneContext: true,
-    label: `${prefix} one-context`,
-  });
-  const fresh = await timeShapeRounds(slideB, {
-    rounds,
-    perRound,
-    oneContext: false,
-    label: `${prefix} fresh-context`,
-  });
+  const deckBefore = await attempt("counting the deck", slideCount);
+  const one = await attempt("timing the one-context arm", () =>
+    timeShapeRounds(slideA, {
+      rounds,
+      perRound,
+      oneContext: true,
+      label: `${prefix} one-context`,
+    }),
+  );
+  const fresh = await attempt("timing the fresh-context arm", () =>
+    timeShapeRounds(slideB, {
+      rounds,
+      perRound,
+      oneContext: false,
+      label: `${prefix} fresh-context`,
+    }),
+  );
   const oneMs = one.rounds.map((r) => r.ms);
   const freshMs = fresh.rounds.map((r) => r.ms);
   const verdict = readDegradation(oneMs, freshMs);
