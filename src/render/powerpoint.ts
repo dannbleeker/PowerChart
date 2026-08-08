@@ -2527,11 +2527,29 @@ async function settleUntaggedCharts(
   // into one bucket, so one settle landing would have cleared the `lost` marker
   // off all of them.
   for (const p of pending) if (await settleAndTagChart(p.slideId, p.tagData, p.shapeId)) settled.add(p.key);
-  trace("group", "settled the config tag the drawing context could not write", {
-    charts: pending.length,
-    settled: settled.size,
-    lost: pending.length - settled.size,
-  });
+  // Say which of the three happened, in the MESSAGE. It used to be one
+  // sentence — "settled the config tag the drawing context could not write" —
+  // with the numbers underneath, and the 2026-08-08 round printed it five times
+  // carrying `settled: 0, lost: 1` every time. Anyone scanning messages, which
+  // is how a 190-entry run log is read, saw five repairs that never happened.
+  // A message that names an outcome has to be the outcome.
+  //
+  // All three share the `settle pass:` prefix, and that is load-bearing rather
+  // than tidy. The absence of this trace is itself a diagnosis — it is
+  // unconditional whenever `settleUntaggedCharts` is handed anything, so a run
+  // with `tagging failed` events and no line here proves the pass was never
+  // INVOKED, which is a different bug from a pass that ran and failed. That
+  // reading only survives if one search still finds every form.
+  const lost = pending.length - settled.size;
+  trace(
+    "group",
+    settled.size === 0
+      ? "settle pass: could not repair any config tag the drawing context lost"
+      : lost === 0
+        ? "settle pass: repaired every config tag the drawing context lost"
+        : "settle pass: repaired SOME of the config tags the drawing context lost",
+    { charts: pending.length, settled: settled.size, lost },
+  );
   return settled;
 }
 
@@ -5497,14 +5515,14 @@ export const OFFSCREEN_BATCH = 40;
  * >50-item load ceiling (office-js#4272); it can throw outright on a host that
  * does not offer it, which costs the corroboration and nothing else.
  */
-export async function slideShapeNames(slideId: string): Promise<string[] | null> {
+export async function slideShapeList(slideId: string): Promise<{ id: string; name: string }[] | null> {
   try {
     return await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemOrNullObject(slideId);
       slide.load("id");
       await context.sync();
       if (!isLive(slide)) return null;
-      slide.shapes.load("items/name");
+      slide.shapes.load("items/id,items/name");
       let count: { value: number } | undefined;
       try {
         count = slide.shapes.getCount();
@@ -5514,17 +5532,28 @@ export async function slideShapeNames(slideId: string): Promise<string[] | null>
       await context.sync();
       const items = loadedItems(slide.shapes);
       if (!items) return null;
-      const names = items.map((s) => loadedValue(() => (s as unknown as { name: string }).name));
+      const read = items.map((s) => ({
+        id: loadedValue(() => (s as unknown as { id: string }).id),
+        name: loadedValue(() => (s as unknown as { name: string }).name),
+      }));
       const n = count ? loadedValue(() => count.value) : undefined;
-      if (typeof n !== "number" || n !== names.length) {
-        trace("insert", "the host would not corroborate a slide's shapes", { slideId, seen: names.length, count: n });
+      if (typeof n !== "number" || n !== read.length) {
+        trace("insert", "the host would not corroborate a slide's shapes", { slideId, seen: read.length, count: n });
         return null;
       }
-      return names.map((name) => (typeof name === "string" ? name : ""));
+      return read.map((s) => ({
+        id: typeof s.id === "string" ? s.id : "",
+        name: typeof s.name === "string" ? s.name : "",
+      }));
     });
   } catch {
     return null;
   }
+}
+
+/** The names alone, for callers that do not need to tell one shape from another. */
+export async function slideShapeNames(slideId: string): Promise<string[] | null> {
+  return (await slideShapeList(slideId))?.map((s) => s.name) ?? null;
 }
 
 /**

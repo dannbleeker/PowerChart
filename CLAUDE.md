@@ -85,10 +85,12 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 - **One answer sheet is not evidence about this host — it is evidence about
   this host in that minute.** Two probe questions ALTERNATE, in lockstep and
   always opposite: `shape-add-held-slide-proxy` has answered `threw`, `threw`,
-  `yes`, `threw` across four sheets, and `shape-add-positional-slide-proxy`
-  answered `yes`, `yes`, `threw`, `yes` on the same four. Two of those sheets are
-  the same build ninety minutes apart, so this is not a sequence of corrections
-  where the newest value is the true one — it is a coin. The run log says why,
+  `yes`, `threw`, `threw` across five sheets, and
+  `shape-add-positional-slide-proxy` answered `yes`, `yes`, `threw`, `yes`,
+  `yes` on the same five. Three of those sheets are the same build within hours,
+  so this is not a sequence of corrections where the newest value is the true
+  one — it is a coin, and four landings the same way do not make the fifth a
+  mechanism. The run log says why,
   and it is not subtle: three `scratch slide landed but its id will not resolve`
   lines mid-run, two replacement scratch slides taken, and every question inside
   that window answering `no-scratch-slide` before the host came back. The host's
@@ -100,7 +102,9 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   _consistently_) with every observation, because the dangerous move is building
   on the convenient one — `shape-add-positional-slide-proxy: yes` is exactly what
   would make a positional slide handle look like the safe way out of the by-id
-  refusals, and it is what three of the four samples say.
+  refusals, and it is what four of the five samples say. It would not help
+  anyway: `shapes-items-via-positional-slide` answers `short-0`, exactly as the
+  by-id form does, so a positional handle reads a shape collection no better.
 - **The fake is gated against a real host in CI** — `test/host-contract.test.ts`
   diffs `FAKE_BASELINE` against the committed sheet in
   `test/fixtures/host-answers-web.json`. A new divergence fails there unless it
@@ -236,7 +240,19 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   failed" look identical from a deck and want different fixes — the trace is
   what separates them, so never reason from a deck about which one happened.
   `targetWithNoTagResult` is that decision, extracted so it can be checked
-  without a PowerPoint.
+  without a PowerPoint. **And on 2026-08-08 the next question was answered too:
+  the settle now RUNS and still loses.** Five `settle pass:` lines in one round,
+  every one of them `settled: 0, lost: 1`, each preceded by `the settle's
+re-read came back empty`. So the fall-through to a collection read does not
+  rescue a chart the run has just drawn — it meets the same empty collection
+  everything else does. That is not in tension with the 23 retags an earlier run
+  landed by collection read: those were pre-existing slides read by the repair
+  pass, and this is a slide the run drew seconds ago. The distinction to hold on
+  to is not by-id versus collection, it is **fresh versus settled**. The
+  messages carry their outcome now — they all begin `settle pass:` so absence
+  still reads as "never invoked" — because for one round the log said
+  "settled the config tag…" five times while its own numbers said nothing was
+  settled.
 - **Do NOT wait after adding a slide — it was tried and it cost 18 of 19 probe
   answers.** office-js#2903 says a slide added on Online is unusable for a
   couple of seconds and its reporter's fix is to wait; `addScratchSlide` did

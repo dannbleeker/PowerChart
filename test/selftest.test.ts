@@ -1026,10 +1026,34 @@ describe("scenarios that must not be able to pass without proving anything", () 
       const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
       expect(explode.skipped, explode.detail).toBeFalsy();
       expect(explode.ok, explode.detail).toBe(false);
-      expect(explode.detail).toMatch(/not one picture/);
+      expect(explode.detail).toMatch(/a picture is one/);
     } finally {
       faults.refusePictureFill = false;
     }
+  });
+
+  it("does not blame the picture for the charts sitting next to it", async () => {
+    // The false alarm the first real round produced. The check counted the
+    // SLIDE's shapes and demanded exactly one, and the battery deliberately
+    // piles charts onto a shared slide two scenarios earlier — so a perfectly
+    // good picture failed with "the slide holds 3 shapes after the collapse".
+    // `a selected shape survives an insert` reports the same three in the same
+    // round, which is what identified them as neighbours rather than wreckage.
+    //
+    // Here the neighbours are put there outright: shapes already on the slide
+    // that no part of this scenario touches.
+    vi.unstubAllGlobals();
+    const slide = makeSlide("s1");
+    for (const name of ["Logo", "Footnote", "Rectangle 4"]) {
+      const neighbour = makeShape("geometric", "rectangle", { left: 0, top: 0, width: 10, height: 10 });
+      neighbour.name = name;
+      slide.created.push(neighbour);
+    }
+    installHost([slide]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
+    expect(explode.detail, "a neighbouring shape was counted as a broken picture").not.toMatch(/a picture is one/);
+    expect(explode.ok, explode.detail).toBe(true);
   });
 
   it("does not call an unreadable slide a failed picture", async () => {
@@ -1060,7 +1084,7 @@ describe("scenarios that must not be able to pass without proving anything", () 
       );
       expect(said).toContain("the host would not confirm the picture is one shape");
       // …and the verdict says which of the two round-trips it actually saw.
-      expect(explode.detail).not.toMatch(/not one picture/);
+      expect(explode.detail).not.toMatch(/a picture is one/);
       expect(explode.detail).toMatch(/would not confirm/);
       expect(explode.ok, explode.detail).toBe(true);
     } finally {

@@ -964,11 +964,12 @@ describe("a chart the update could not name afterwards", () => {
    *
    * `same scale across the deck` reported "3 of 8 charts carry the shared
    * scale" and the run log carried FIVE `tagging failed — charts are not
-   * re-editable until repaired` events and not a single `settled the config tag
-   * the drawing context could not write`. That trace is unconditional whenever
-   * `settleUntaggedCharts` is handed anything, so its absence is proof the
-   * settle was never invoked — not proof it failed. The two look identical from
-   * a deck and want completely different fixes.
+   * re-editable until repaired` events and not a single `settle pass:` line.
+   * That trace is unconditional whenever `settleUntaggedCharts` is handed
+   * anything, so its absence is proof the settle was never invoked — not proof
+   * it failed. The two look identical from a deck and want completely
+   * different fixes. (It printed as one fixed sentence then; it now names its
+   * outcome, and all three forms share that prefix so this reading survives.)
    *
    * It reaches the update through a hole four host failures wide: grouping
    * refused, tagging refused, the id read-back refused, and the shape

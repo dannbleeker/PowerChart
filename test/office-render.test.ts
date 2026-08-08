@@ -3623,6 +3623,69 @@ describe("stopping work in flight", () => {
     }
   });
 
+  /** The settle pass's summary line, identified by its payload rather than its text. */
+  const settleSummary = () =>
+    traceLog().entries.find(
+      (e) => e.scope === "group" && !!e.data && "charts" in e.data && "settled" in e.data && "lost" in e.data,
+    );
+
+  it("does not report a repair the settle did not make", async () => {
+    // The 2026-08-08 round printed `settled the config tag the drawing context
+    // could not write` five times, each carrying `settled: 0, lost: 1`. The
+    // message named an outcome and the numbers underneath contradicted it, so
+    // a reader scanning messages — which is how a 190-entry log is read — saw
+    // five repairs that never happened.
+    //
+    // Every tag write refused, including the settle's own, so nothing can be
+    // repaired and the line has to say so.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.refuseTagWrites = 9999;
+    faults.refuseShapeById = true;
+    setTracing(true);
+    try {
+      await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' }).catch(() => {});
+      // Found by the shape of its DATA, not by its wording. Several lines in
+      // this scope mention the settle; only its summary carries these three
+      // keys — and picking it by wording would mean the guard could not see
+      // the message it exists to judge.
+      const line = settleSummary();
+      expect(line, "the settle pass left no line at all").toBeTruthy();
+      // Non-vacuity: this really is the nothing-was-repaired case. Without it
+      // the assertion below would pass on a run where the settle succeeded.
+      const data = line?.data as { charts: number; settled: number; lost: number };
+      expect(data.charts, "no chart reached the settle").toBeGreaterThan(0);
+      expect(data.settled, "the settle was supposed to fail here").toBe(0);
+      expect(line?.message, `the log claims a repair it did not make: "${line?.message}"`).toMatch(/could not repair/);
+    } finally {
+      setTracing(false);
+      faults.refuseShapeById = false;
+      faults.refuseTagWrites = 0;
+    }
+  });
+
+  it("says the settle repaired the tag when it did", async () => {
+    // The other side of the same mapping, so the message cannot simply be
+    // pessimistic and pass the guard above forever.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.refuseTagWrites = 1;
+    faults.refuseShapeById = true;
+    setTracing(true);
+    try {
+      await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
+      const line = settleSummary();
+      const data = line?.data as { settled: number; lost: number };
+      expect(data.settled, "the settle was supposed to succeed here").toBeGreaterThan(0);
+      expect(data.lost).toBe(0);
+      expect(line?.message).toMatch(/repaired every/);
+    } finally {
+      setTracing(false);
+      faults.refuseShapeById = false;
+      faults.refuseTagWrites = 0;
+    }
+  });
+
   it("leaves every chart untouched when the stop lands before the first one", async () => {
     // updateChartsInSlides checks BEFORE each chart's delete, so a stop taken
     // there costs nothing: no shapes removed, nothing queued. The charts keep
