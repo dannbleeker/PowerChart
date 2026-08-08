@@ -227,6 +227,29 @@ body {
   margin: 0 0 8px;
   line-height: 1.45;
 }
+/* Where a paragraph of design rationale used to sit. A hairline in the muted
+   colour separates the live step list from the buttons under it without
+   spending a reader's attention on why the list is ordered the way it is. */
+/* One runnable thing, plus the settings that change it. See the comment in
+   taskpane.html: a flat row of eight buttons cannot say which select belongs to
+   which button, and two of them belonged to nothing next to them. */
+.run-group {
+  margin: 0 0 10px;
+}
+.run-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+hr.rule {
+  border: 0;
+  border-top: 1px solid var(--border, var(--muted));
+  opacity: 0.4;
+  margin: 8px 0;
+}
 code {
   background: var(--line-2);
   padding: 0 4px;

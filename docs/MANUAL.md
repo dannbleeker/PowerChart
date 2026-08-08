@@ -495,7 +495,7 @@ It stays greyed out until a round has produced such a list, and if the host
 refuses a delete it says how many it actually removed rather than claiming a
 clean sweep.
 
-**Run the whole round** does all of it on one click — the host probe, then the
+**Probe, then self-test** does all of it on one click — the host probe, then the
 self-test, then a look at what actually landed — and saves the lot as one JSON
 file. That file is the whole upload. It carries every shape on every slide (name,
 id, position), which is what questions like *did the old chart's shapes get left
