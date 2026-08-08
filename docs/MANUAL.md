@@ -564,8 +564,11 @@ The fifth of those rounds was run on its own, and that is what identified the
 cause: the scenario used to borrow a brand-new slide and immediately ask
 PowerPoint to render it as an image, and on the web that call kills the tab. It
 now compares before and after on a slide the run already added, so it never
-makes that call. Pick it on its own, on a freshly opened deck, if you want the
-check — and please send the result either way.
+makes that call — and on the next round it survived and reported for the first
+time. Rendering a slide is fine; rendering one that was created moments earlier
+is not. It stays out of the full run until a round comes back with it passing.
+Pick it on its own, on a freshly opened deck, if you want the check — and please
+send the result either way.
 
 Three of those are new, and are the ones worth understanding. **Editing the
 chart you selected** goes through the same read the pane uses when you click a

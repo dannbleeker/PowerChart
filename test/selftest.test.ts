@@ -37,6 +37,7 @@ import {
   _setClickWaitForTest,
   _setDegradeSizeForTest,
   wedgedSelection,
+  visibilityVerdict,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -1063,6 +1064,47 @@ describe("scenarios that must not be able to pass without proving anything", () 
     const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
     expect(explode.detail, "a neighbouring shape was counted as a broken picture").not.toMatch(/a picture is one/);
     expect(explode.ok, explode.detail).toBe(true);
+  });
+
+  it("does not report a drawn chart as never drawn", () => {
+    // The 2026-08-08 round, on the build that stopped it killing the tab. Every
+    // batch committed — `upTo=24 total=24` — and then the host refused to name
+    // the group, so `insertSceneIntoSlide` had no id to hand back and returned
+    // null. The scenario read that as "nothing was drawn, so there is nothing
+    // to look at" over twenty-four shapes that were on the slide.
+    //
+    // Asserted against the rule rather than through the fake, and that is a
+    // deliberate second choice: three attempts to arm the fake into this state
+    // (`refuseShapeById`, `refuseIdLeftTopLoads`, and both plus
+    // `refuseShapeIdLoads`) each overshot into a different failure — the last
+    // one threw during the draw itself, which is not the state at all. Same
+    // reasoning as `targetWithNoTagResult`: the rule is what was wrong, so the
+    // rule is what gets checked.
+    const unnamed = visibilityVerdict("PNG:before", "PNG:after-with-chart", false);
+    expect(unnamed.detail, "called a drawn chart undrawn").not.toMatch(/nothing was drawn/);
+    // The image moved, so the chart IS visible — that is the verdict, and the
+    // naming failure rides along as a caveat rather than replacing it.
+    expect(unnamed.ok, unnamed.detail).toBe(true);
+    expect(unnamed.detail).toMatch(/would not name the chart/);
+  });
+
+  it("keeps the four visibility readings apart", () => {
+    // The other three corners, so the rule cannot drift into always-passing.
+    const named = visibilityVerdict("PNG:before", "PNG:after", true);
+    expect(named.ok).toBe(true);
+    expect(named.detail, "a clean pass should carry no caveat").not.toMatch(/would not name/);
+
+    // On the slide and invisible — the defect the scenario exists for.
+    const invisible = visibilityVerdict("PNG:same", "PNG:same", true);
+    expect(invisible.ok).toBe(false);
+    expect(invisible.detail).toMatch(/nothing is visible/);
+
+    // Nothing changed AND nothing was named: two readings, and the image cannot
+    // separate them, so the verdict must not pretend it can.
+    const blind = visibilityVerdict("PNG:same", "PNG:same", false);
+    expect(blind.ok).toBe(false);
+    expect(blind.detail).toMatch(/cannot tell/);
+    expect(blind.detail, "picked one of two readings the image cannot separate").not.toMatch(/nothing is visible$/);
   });
 
   it("does not call an unreadable slide a failed picture", async () => {

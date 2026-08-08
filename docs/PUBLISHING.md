@@ -163,7 +163,7 @@ beginning, never its end.
 | --- | --- | --- |
 | ⭐ | **Probe, then self-test** — the button of that name, under the *Host probe* heading in the Testing section. (This row used to call it "Run the whole round", which is not a label that appears anywhere in the pane; the owner went looking for it and it was not there.) One click: the probe, then the self-test, then what landed on the slides — saved as **one file**. Send that, and nothing else: the file now carries every shape on every slide (names, ids, positions) and the host's own PNG of each slide the round added, so there is no deck to save and no screenshot to take. Replaces tests 0 and 1 below on any build where you do not need them separately. | Everything those two catch, in one click and one upload. The pane also diffs the probe's answers against the fake on screen, so a run that found nothing says so and needs no upload at all. |
 | 0 | **Run host probe.** One click, nothing you made is touched — it works on scratch slides it appends, and tries to delete them again. On the web it does not always succeed (21 blank slides left behind on 2026-08-06, 14 in an earlier round), so the sheet now carries a `scratch-slides-returned` row saying how many came back; delete any leftovers by hand. Send the saved JSON. | Whether the FAKE POWERPOINT every test in this repo runs against is telling the truth. Its faults are things a real host taught us; its happy path is assumptions. `npm run host-diff` lines the two up, and each disagreement is either a fake that lies (so some tests are worth less than they look) or something the host does that we did not know. This used to say "once per host — it does not change between builds". It does change: two questions have now been observed ALTERNATING between two runs of the same build ninety minutes apart, and swapping back on a third (`UNSTABLE_ANSWERS` in `scripts/host-baseline.mjs` carries all four observations). So a repeat sheet is worth having even when nothing shipped, and **the sheet's own JSON is what the repo needs** — a pasted summary cannot replace `test/fixtures/host-answers-web.json`, which is what the CI contract gate diffs the fake against. |
-| 1 | **Run host self-test.** One click, nine scenarios (below), and the Live steps list names each one as it starts. Chasing one failure? Set **Scenario** to it first — it runs that plus the two inserts it needs, in seconds rather than minutes. Read the verdicts, and if the run does not finish, read the last line. | Nearly everything that used to be tests 1, 2, 3 and 7 of this table. The battery now selects shapes itself (`Slide.setSelectedShapes`, PowerPointApi 1.5), stops its own run, and asks the host to render a slide before and after drawing so it can tell a chart that is *there* from a chart that is *visible*. A verdict of **skipped** is not a failure. |
+| 1 | **Run host self-test.** One click, ten scenarios (below), and the Live steps list names each one as it starts. Chasing one failure? Set **Scenario** to it first — it runs that plus the two inserts it needs, in seconds rather than minutes. Read the verdicts, and if the run does not finish, read the last line. | Nearly everything that used to be tests 1, 2, 3 and 7 of this table. The battery now selects shapes itself (`Slide.setSelectedShapes`, PowerPointApi 1.5), stops its own run, and asks the host to render a slide before and after drawing so it can tell a chart that is *there* from a chart that is *visible*. A verdict of **skipped** is not a failure. |
 | 2a | **Demo deck — file path.** Path → **One file insert** → **Insert demo deck**. ~6 s. | The file half must report **38 of 38 complete** — anything less is a regression. |
 | 2b | **Demo deck — shape path, on a FRESH deck.** Close the deck from 2a without saving, open a new one, then Path → **Shape by shape**. 1–2 minutes. | What the everyday path costs at 38× scale. Some items running short is the *measurement*, not a defect. This is the one thing no battery can stand in for: it is the only test at real scale, and scale is what crashes the tab. |
 | 3 | **Look at the deck.** Scroll the 38 slides the demo run added. | The judgement a machine does not have. The battery's visibility check answers "did anything render"; it does not answer "is this the right chart, drawn well". Look for charts off the slide edge, overlapping labels, and anything that is visibly not what the gallery shows. |
@@ -438,12 +438,21 @@ slide and the first fatal one. The scenario no longer takes a scratch slide —
 it does its before-and-after on a slide the run added earlier, which drops the
 scratch add, the fresh-slide rasterise and the delete.
 
-**Please run it picked-alone once more**, on a fresh deck, on the build that
-changed it. What is ruled out is a fresh slide; what nobody has asked is whether
-this host will rasterise any slide at all, and the step is named `rasterising a
-slide that already existed` so a crash there answers that rather than repeating
-what is known. Send whatever comes out — a verdict earns it a place back in the
-routine round.
+**The re-run happened, and it survived.** On `e49cca8` the step named
+`rasterising a slide that already existed` answered without incident, the
+scenario drew its chart, rasterised again, and returned a verdict — the first
+this scenario has produced in six rounds. So the last reading is closed: this
+host rasterises perfectly well, and it was the freshly-added slide all along.
+
+The verdict it returned was wrong, and that was ours rather than the host's: the
+host refused to name the chart's group afterwards, the insert handed back
+nothing, and the scenario reported *"nothing was drawn"* over twenty-four shapes
+that had committed. Fixed — the image decides now, and an unnamed chart is a
+caveat on the verdict rather than a reason not to take one.
+
+**One more picked round, please**, on the build that fixes that. It stays out of
+the routine list until it comes back PASSING rather than merely returning: it
+killed the tab five times and then did not, and one survival is one sample.
 
 The ladder — **which selection call wedges the host** — is in that list now, and
 used to be a separate run. It runs ahead of every scenario that selects a shape —
