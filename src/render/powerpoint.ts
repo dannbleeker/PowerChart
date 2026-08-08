@@ -557,6 +557,23 @@ export function trimDebugInfo(info: unknown): unknown {
 }
 
 /**
+ * The phase label `step` attached to an error, if it carries one.
+ *
+ * Exported because a caller sometimes has to tell WHICH operation timed out,
+ * not merely that one did. `isTimeout` cannot: every bounded wait produces the
+ * same kind of error, so a scenario that catches one and explains it is
+ * explaining a guess. The self-test's `edit the chart the user selected` did
+ * exactly that — it reported "the host stopped answering selection calls" for a
+ * run whose trace says `gave up waiting what=drawing shapes 1-10 of 24`, and
+ * sent the reader to two selection bugs that had nothing to do with it.
+ */
+export function stepOf(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const at = (err as Record<string, unknown>)[STEP_KEY];
+  return typeof at === "string" ? at : undefined;
+}
+
+/**
  * Everything an Office.js error knows. A RichApi.Error's `message` is usually
  * generic ("An internal error has occurred"); the useful part — the failing
  * command and why — lives in `code` and `debugInfo`, which a plain String(err)

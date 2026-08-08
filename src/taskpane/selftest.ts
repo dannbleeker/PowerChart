@@ -56,6 +56,7 @@ import {
   isStopped,
   isStopRequested,
   isTimeout,
+  stepOf,
   readbackTimeoutMs,
   loadChartFromSelection,
   requestStop,
@@ -581,7 +582,18 @@ const editViaSelection: Scenario = async (prefix) => {
     // add-in is broken by it, because nothing but this battery ever selects a
     // shape programmatically. A red line here would send the next diagnosis
     // after our own code.
-    if (isTimeout(err)) {
+    // ...but only when it was a SELECTION call that went silent.
+    //
+    // This used to accept any timeout, and `isTimeout` is just as true of a
+    // draw that stalled. A round on 2026-08-08 skipped with the sentence below
+    // while its own trace read `gave up waiting what=drawing shapes 1-10 of 24`
+    // and `at=redrawing the chart's shapes` — the selection subsystem was fine,
+    // the host stopped answering during a redraw, and the report sent the reader
+    // to two selection bugs that had nothing to do with it.
+    //
+    // A diagnosis is worth having only if it can be wrong.
+    const at = stepOf(err) ?? (err instanceof Error ? err.message : undefined);
+    if (isTimeout(err) && wedgedSelection(err)) {
       return {
         ok: false,
         skipped: true,
@@ -589,6 +601,12 @@ const editViaSelection: Scenario = async (prefix) => {
           "the host stopped answering selection calls after a programmatic select — known web-host limitation, " +
           "same family as office-js#3083 / #3698; the pane's own Edit-it path is unaffected",
       };
+    }
+    // A timeout somewhere else is a real FAILURE and says where. Skipping it
+    // would hide a stall behind a known-limitation label, which is how a host
+    // problem stops being counted.
+    if (isTimeout(err)) {
+      return { ok: false, detail: `the host stopped answering${at ? ` at: ${at}` : ""} — not a selection failure` };
     }
     throw err;
   } finally {
@@ -676,6 +694,30 @@ const stopPartWay: Scenario = async (prefix) => {
  * The question here is the crude one nobody was asking — did drawing the chart
  * change what the slide looks like at all.
  */
+/**
+ * Whether a timed-out step was a SELECTION call, and so the known web-host wedge.
+ *
+ * Pure and exported because it is the whole of a diagnosis, and a diagnosis
+ * that cannot be tested is a label. The steps that count are the ones this
+ * scenario makes against the selection subsystem; a draw or a redraw that
+ * stalls is a different fact with a different cause, and calling it a selection
+ * limitation buries a host stall under a citation.
+ *
+ * Unknown (`undefined`) is deliberately NOT a selection wedge. An error with no
+ * step attached could have come from anywhere, and the honest report for that is
+ * a failure that says so rather than a confident wrong answer.
+ */
+export function wedgedSelection(err: unknown): boolean {
+  const step = stepOf(err);
+  // The MESSAGE too, and it is not belt-and-braces: a bounded wait rejects with
+  // `PowerPoint did not respond while <what>`, and on the path this scenario
+  // actually takes nothing attaches a step to that error at all. Reading only
+  // the step made every wedge look like "somewhere unknown", which fails the
+  // scenario that this branch exists to skip.
+  const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return /select/i.test(step ?? "") || /select/i.test(msg);
+}
+
 const chartIsVisible: Scenario = async (prefix) => {
   // Say what is about to be tried, BEFORE trying it.
   //

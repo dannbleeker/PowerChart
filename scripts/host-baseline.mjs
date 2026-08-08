@@ -106,6 +106,13 @@ export const KNOWN_DIVERGENCES = {
  * several runs agreeing, not one.
  */
 export const UNSTABLE_ANSWERS = {
+  "group-children-via-getcount":
+    "ASKED AND ANSWERED ONCE, on a degraded host: `unreadable`, 2026-08-08. Its sibling `group-reports-its-children` answered `threw` " +
+    "(\"The property 'items' is not available\") on a healthy round the same day, so BOTH routes into a group's children have now been " +
+    "refused and `contentShapes` returning UNKNOWN_CONTENT for a grouped slide looks permanent rather than a gap. " +
+    "Listed here rather than treated as settled because that round put only 17 of 27 questions — `getcount-populates-same-sync` itself " +
+    "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
+    "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
     "`threw` on the committed sheet and on 2026-08-07; `yes` on 2026-08-08, same build. " +
     "The fake keeps refusing held proxies, which is the safe direction — code that never holds one across a sync is correct on both hosts.",
