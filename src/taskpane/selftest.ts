@@ -429,8 +429,14 @@ const explodePicture: Scenario = async (prefix) => {
   // where the collapse really had drawn shapes still reported a clean picture
   // round-trip. Three states, three sentences.
   const held = await slideShapeNames(pictured.slideId);
+  // Stated as what was counted, not as what caused it. Two things produce this
+  // and they are not distinguishable from here: the renderer fell through to
+  // native shapes (PC-IMG-REFUSED, which is what the guard reproduces), or the
+  // picture landed and the old chart's shapes were not deleted. Both leave a
+  // slide that is not one picture, both are worth failing on, and neither may
+  // be named on the evidence of a count.
   if (held && held.length !== 1)
-    return { ok: false, detail: `the collapse drew ${held.length} shapes — that is not a picture` };
+    return { ok: false, detail: `the slide holds ${held.length} shapes after the collapse — that is not one picture` };
   // …and when the host will not say, the scenario still runs: the config
   // round-trip below is worth checking either way. It just may not have been a
   // picture making the trip, and the verdict says so rather than claiming one.

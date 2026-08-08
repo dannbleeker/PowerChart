@@ -1026,7 +1026,7 @@ describe("scenarios that must not be able to pass without proving anything", () 
       const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
       expect(explode.skipped, explode.detail).toBeFalsy();
       expect(explode.ok, explode.detail).toBe(false);
-      expect(explode.detail).toMatch(/not a picture/);
+      expect(explode.detail).toMatch(/not one picture/);
     } finally {
       faults.refusePictureFill = false;
     }
@@ -1060,7 +1060,7 @@ describe("scenarios that must not be able to pass without proving anything", () 
       );
       expect(said).toContain("the host would not confirm the picture is one shape");
       // …and the verdict says which of the two round-trips it actually saw.
-      expect(explode.detail).not.toMatch(/not a picture/);
+      expect(explode.detail).not.toMatch(/not one picture/);
       expect(explode.detail).toMatch(/would not confirm/);
       expect(explode.ok, explode.detail).toBe(true);
     } finally {
