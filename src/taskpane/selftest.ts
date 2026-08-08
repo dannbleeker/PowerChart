@@ -861,9 +861,29 @@ const chartIsVisible: Scenario = async (prefix) => {
   // repeat of the one now settled.
   const before = await attempt("rasterising a slide that already existed", () => slideImageBase64(slideId, 640));
   if (!before) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
-  const c = cfg(`${prefix} visible`);
+  // Small, and tucked into the bottom-right corner.
+  //
+  // Sharing a slide is the price of never rasterising a fresh one, and the
+  // first round after that trade produced a slide with two full-size charts
+  // drawn over each other — legible to a rasteriser, ugly to a human, and this
+  // battery leaves its slides in the deck for a human to look at. So the chart
+  // this scenario draws is deliberately not a specimen: a quarter-size chart in
+  // the corner changes the image just as decisively, draws fewer shapes, and
+  // sits clear of a full-size chart placed anywhere the probe deck puts one.
+  //
+  // Measured against the slide rather than assumed: `slideSize` is cached after
+  // its first read, so this costs nothing, and a 4:3 or 16:10 deck puts the
+  // corner somewhere else.
+  const { width: slideW, height: slideH } = await slideSize();
+  const box = { width: Math.round(slideW * 0.3), height: Math.round(slideH * 0.3) };
+  const c: ChartConfig = { ...cfg(`${prefix} visible`), ...box };
   const drawn = await attempt("drawing the chart", () =>
-    insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c) }),
+    insertSceneIntoSlide(buildChart(c), {
+      slideId,
+      tagData: JSON.stringify(c),
+      left: slideW - box.width - 24,
+      top: slideH - box.height - 24,
+    }),
   );
   // A null target is NOT "nothing was drawn", so the rasterise happens either
   // way — see `visibilityVerdict`, which is where that used to be decided
@@ -1478,17 +1498,24 @@ const SCENARIOS: {
   // scenario called twenty-four committed shapes "nothing was drawn". See
   // `visibilityVerdict`.
   //
-  // Still `pickedOnly` for one more round, and the criterion is now that it
-  // comes back PASSING rather than merely returning. One survival is one
-  // sample — the same discipline `UNSTABLE_ANSWERS` applies to answers that
-  // flipped, applied here to a scenario that killed the tab five times and then
-  // did not.
+  // AND ON `c7d91d5` IT PASSED — routine again as of that round, which is the
+  // criterion that was set for it in advance: comes back PASSING, not merely
+  // comes back. `drawing the chart changed what the slide looks like (10064 →
+  // 15652 bytes)`, on a real PowerPoint, through the host's own rasteriser.
+  // That is the first time this project has confirmed a chart it drew is
+  // VISIBLE anywhere but in a human's eyes, and it took six rounds to get.
   //
-  // Note what does NOT depend on this: `npm run visible-charts` rasterises every
-  // sample in a real browser on every CI run and fails on a chart that is drawn
-  // but invisible. What is lost here is the check against PowerPoint's OWN
-  // rasteriser, and only from the routine round.
-  { name: "the chart is actually visible", run: chartIsVisible, pickedOnly: true },
+  // It carries a caveat rather than a clean pass — the host would not name the
+  // chart afterwards, so it landed without a config — and that is the right
+  // shape: a different defect, reported next to the verdict instead of
+  // swallowing it.
+  //
+  // What its absence cost while it was picked-only: `npm run visible-charts`
+  // rasterises every sample in a real browser on every CI run and fails on a
+  // chart that is drawn but invisible, so the SVG side was never uncovered.
+  // What was missing was the check against PowerPoint's own rasteriser, and
+  // that is what comes back here.
+  { name: "the chart is actually visible", run: chartIsVisible },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },

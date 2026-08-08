@@ -19,6 +19,7 @@ import {
   isStopRequested,
   _setReadbackTimeoutForTest,
   listChartsInDeck,
+  slideSize,
   timeShapeRounds,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
@@ -58,40 +59,38 @@ afterEach(() => vi.unstubAllGlobals());
 
 const byName = (rs: ScenarioResult[]) => Object.fromEntries(rs.map((r) => [r.name, r]));
 
-/**
- * The visibility scenario is `pickedOnly`, so every case about it must ask for
- * it by name. See its entry in `SCENARIOS` for what put it there.
- */
 const VISIBLE = "the chart is actually visible";
 
 /**
- * The visibility scenario is not in a routine round, and this is what that cost.
+ * The visibility scenario earned its way back into a routine round.
  *
- * Four real-host rounds, four different builds — a5b032d, 618b8d8, cedbc6c,
- * cacf58a — and every one of them stops writing inside this scenario, at 602s,
- * 631s, 603s and 645s, always within a step or two of `adding a scratch slide`.
- * It has never once returned a verdict. Running it LAST already protects the
- * other scenarios (that is why it was put there), but the battery's report is
- * written when the battery returns, and it has not returned yet: every round so
- * far has reached the owner as a crash file rather than a report.
+ * It spent five rounds killing the browser tab — five builds, always within a
+ * step or two of `adding a scratch slide`, never once returning a verdict — and
+ * was parked as `pickedOnly` so that a crash cost a short round instead of the
+ * whole report. Picked alone on `b998a2e` it named its own killer:
+ * `getImageAsBase64` on a slide added 0.3 seconds earlier. It stopped doing
+ * that, survived on `e49cca8`, and PASSED on `c7d91d5` — `10064 → 15652 bytes`
+ * through PowerPoint's own rasteriser.
  *
- * Pinned rather than left to the list, because "move it back, it belongs with
- * the others" is a reasonable-sounding change and the price is a whole
- * real-host round.
+ * What is pinned here is the shape of that history, not the outcome: parking a
+ * scenario is a real decision with a real cost, so both directions have to be
+ * deliberate. Moving it back out needs a reason as good as the one that brought
+ * it back.
  */
-describe("what a routine round leaves out", () => {
-  it("does not run the scenario that has killed the tab in four consecutive rounds", () => {
-    expect(SCENARIO_NAMES, "the scenario was deleted rather than parked").toContain(VISIBLE);
+describe("what a routine round covers", () => {
+  it("runs the visibility scenario, which earned its place back", () => {
+    expect(SCENARIO_NAMES, "the scenario was deleted rather than run").toContain(VISIBLE);
     expect(
       ROUTINE_SCENARIO_NAMES,
-      "put the visibility scenario back in a routine round — it is 0 for 4 and takes the report with it",
-    ).not.toContain(VISIBLE);
+      "parked the visibility scenario again — it passed on a real host, so say why in its entry first",
+    ).toContain(VISIBLE);
   });
 
-  it("still offers it to the picker, because that is the experiment nobody has run", async () => {
-    // Alone, on a fresh host, thirty seconds in — which separates "this
-    // scenario kills the host" from "ten minutes of drawing kills the host, and
-    // this is merely what was running". Both fit every artefact so far.
+  it("still offers it to the picker on its own", async () => {
+    // The picker is how it was diagnosed in the first place: alone, on a fresh
+    // host, a minute in, with only its two inserts in front of it. That is what
+    // separated "this scenario kills the host" from "ten minutes of drawing
+    // kills the host, and this is merely what was running".
     installHost([makeSlide("s1")]);
     const names = (await runSelfTest("probe", VISIBLE)).map((r) => r.name);
     expect(names, "the picker cannot reach it").toContain(VISIBLE);
@@ -121,7 +120,10 @@ describe("the host self-test battery", () => {
       // diagnostic property, not a detail.
       "edit the chart the user selected",
       "stop a run part-way",
-      // and NOT "the chart is actually visible" — see the case below.
+      // Routine again as of `c7d91d5`, where it PASSED on a real host after
+      // five rounds of killing the tab — see the case below. Still last, for
+      // the reason everything newest is last.
+      "the chart is actually visible",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
@@ -1065,6 +1067,38 @@ describe("scenarios that must not be able to pass without proving anything", () 
     expect(explode.detail, "a neighbouring shape was counted as a broken picture").not.toMatch(/a picture is one/);
     expect(explode.ok, explode.detail).toBe(true);
   });
+
+  it("keeps its chart out of the way of the one already on the slide", async () => {
+    // Sharing a slide is the price of never rasterising a fresh one, and the
+    // first round after that trade produced a slide with two full-size charts
+    // drawn over each other. The battery leaves its slides in the deck for a
+    // human to look at, so "the rasteriser can tell them apart" is not the bar.
+    //
+    // The property, not the numbers: a chart small enough and far enough into
+    // the bottom-right corner that a full-size one placed anywhere the probe
+    // deck puts it cannot reach it.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    await runSelfTest("probe", VISIBLE);
+    const { width: slideW, height: slideH } = await slideSize();
+    const scan = await listChartsInDeck();
+    const mine = scan.charts
+      .map((c) => ({ cfg: JSON.parse(c.configJson) as ChartConfig, t: c.target }))
+      .find((c) => typeof c.cfg.title === "string" && c.cfg.title.endsWith("visible"));
+    expect(mine, "the visibility scenario's chart is not in the deck").toBeTruthy();
+    const w = mine!.cfg.width!;
+    const h = mine!.cfg.height!;
+    // Small enough to be a probe rather than a specimen…
+    expect(w).toBeLessThanOrEqual(slideW / 2);
+    expect(h).toBeLessThanOrEqual(slideH / 2);
+    // …in the bottom-right quadrant, so a chart at any of the probe deck's
+    // usual origins (0,0 / 40,40 / 60,90) misses it on both axes…
+    expect(mine!.t.left).toBeGreaterThanOrEqual(slideW / 2);
+    expect(mine!.t.top).toBeGreaterThanOrEqual(slideH / 2);
+    // …and still on the slide, which is the half a corner offset gets wrong.
+    expect(mine!.t.left + w).toBeLessThanOrEqual(slideW);
+    expect(mine!.t.top + h).toBeLessThanOrEqual(slideH);
+  }, 60_000);
 
   it("does not report a drawn chart as never drawn", () => {
     // The 2026-08-08 round, on the build that stopped it killing the tab. Every

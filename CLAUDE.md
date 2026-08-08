@@ -402,6 +402,16 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   added remains the worst surface this host offers, and nothing may rasterise
   one.
 
+  **It PASSED on `c7d91d5` and is routine again** — `drawing the chart changed
+what the slide looks like (10064 → 15652 bytes)`, through PowerPoint's own
+  rasteriser. That is the first time this project has confirmed a chart it drew
+  is VISIBLE anywhere but in a human's eyes. Sharing a slide is the price of
+  never rasterising a fresh one, and the bill came the same round: two full-size
+  charts drawn over each other, which a rasteriser reads fine and a human calls
+  broken. The scenario's chart is 30% of the slide in the bottom-right corner
+  now — this battery leaves its slides in the deck for someone to look at, so
+  "the measurement still works" is not the bar.
+
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys
