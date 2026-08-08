@@ -1326,3 +1326,45 @@ describe("what the repair pass's numbers actually count", () => {
     expect(String(named.at(-1)), "truncated without saying so").toMatch(/28 more/);
   });
 });
+
+/**
+ * A degraded item is ONE picture, and the reconcile has to expect one.
+ *
+ * `expected` came from `estimateOfficeShapes(scene)` unconditionally — what the
+ * chart would be as native shapes. Past `degradedAt` the run draws a single
+ * picture on purpose, so that asks the reconcile to compare a healthy chart
+ * against a shape count nothing ever tried to put there, and the honest verdict
+ * for that slide is `wreckage`.
+ *
+ * It was never SEEN as wreckage, and that is the uncomfortable part: on a host
+ * that cannot count a group's children the comparison is short-circuited, so
+ * this bug and the missing `measured` flag hid each other. A run on 2026-08-08
+ * drew 36 of 38 slides as pictures and reported "35 of 38 complete" with
+ * per-slide counts up to 253 — numbers describing a chart that was not there.
+ */
+describe("what the reconcile expects of a degraded item", () => {
+  it("expects one shape per picture, not the whole scene's worth", async () => {
+    const slides = [makeSlide("s1")];
+    installHost(slides);
+    const report = await insertDemoDeck(demoItems(6), undefined, {
+      reconcile: true,
+      shapeBudget: 1,
+      pictureFor: async () => "data:image/png;base64,UE5H",
+    });
+    const from = report.degradedAt!;
+    expect(from, "the budget did not force any degradation").toBeGreaterThan(0);
+    const verdicts = report.reconcile?.plan.verdicts ?? [];
+    expect(verdicts.length, "no reconcile ran").toBeGreaterThan(from);
+    for (const v of verdicts.slice(from)) {
+      expect(
+        v.expected,
+        `slot ${v.slot} (${v.title}) is one picture but the reconcile expected ${v.expected} shapes`,
+      ).toBe(1);
+    }
+    // And the items BEFORE the switch still expect their real shape counts —
+    // otherwise this "fix" would be switching the check off for everything.
+    for (const v of verdicts.slice(0, from)) {
+      expect(v.expected, `slot ${v.slot} drew native shapes; its expectation collapsed to 1`).toBeGreaterThan(1);
+    }
+  });
+});
