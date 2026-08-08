@@ -114,11 +114,15 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
-    "`threw` on the committed sheet and on 2026-08-07; `yes` on 2026-08-08, same build. " +
-    "The fake keeps refusing held proxies, which is the safe direction — code that never holds one across a sync is correct on both hosts.",
+    "ALTERNATES. Four observations: `threw` (committed sheet), `threw` (2026-08-07), `yes` (2026-08-08 run a), `threw` (2026-08-08 run b). " +
+    "The two 08-08 runs are the same build, ninety minutes apart. Earlier wording here said it flipped once, which reads as though the newer " +
+    "value were the true one and the old one a mistake — it is not a sequence of corrections, it is a coin. " +
+    "The fake keeps refusing held proxies, which is the safe direction: code that never holds one across a sync is correct whichever way the coin lands.",
   "shape-add-positional-slide-proxy":
-    "`yes` on the committed sheet and on 2026-08-07; `threw` on 2026-08-08, same build, minutes apart. " +
-    "The more dangerous of the two: `yes` is what would make a positional slide handle look like a way around the by-id refusals. One sheet is not enough to build that on.",
+    "ALTERNATES, in lockstep with its partner above and always opposite to it: `yes`, `yes`, `threw`, `yes`. " +
+    "The more dangerous of the two, because `yes` is exactly the answer that makes a positional slide handle look like a way around the " +
+    "by-id refusals — and three of the four samples say `yes`. A majority is not a mechanism. Whatever decides these two flips within a " +
+    "single run (see the `no-scratch-slide` windows in any probe log), and until that is understood neither answer may be built on.",
 };
 
 /**
