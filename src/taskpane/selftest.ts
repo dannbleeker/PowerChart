@@ -77,7 +77,7 @@ import {
   showSlide,
   slideCount,
   slideSize,
-  slideHoldsOnlyChart,
+  slideShapeNames,
   timeShapeRounds,
   updateChartInSlide,
   errorText,
@@ -420,9 +420,28 @@ const explodePicture: Scenario = async (prefix) => {
   });
   if (!pictured) return { ok: false, detail: "the chart vanished while being collapsed to a picture" };
   // One shape is what a picture IS. More than one means the renderer drew
-  // shapes instead and the rest of this scenario would prove nothing.
-  const asOne = await slideHoldsOnlyChart(pictured.slideId);
-  if (!asOne) trace("selftest", "picture may not be a single shape", { slide: pictured.slideId });
+  // shapes instead and the rest of this scenario would prove nothing — the same
+  // trap as the `undefined` png above, one step later, so it has to be a
+  // verdict and not a note. This used to ask `slideHoldsOnlyChart`, which is
+  // the slide-SWAP gate: it answers no for an unreadable slide, and this host
+  // refuses shape collections routinely. So "picture may not be a single shape"
+  // was logged on a run where nothing was wrong with the picture, and a run
+  // where the collapse really had drawn shapes still reported a clean picture
+  // round-trip. Three states, three sentences.
+  const held = await slideShapeNames(pictured.slideId);
+  // Stated as what was counted, not as what caused it. Two things produce this
+  // and they are not distinguishable from here: the renderer fell through to
+  // native shapes (PC-IMG-REFUSED, which is what the guard reproduces), or the
+  // picture landed and the old chart's shapes were not deleted. Both leave a
+  // slide that is not one picture, both are worth failing on, and neither may
+  // be named on the evidence of a count.
+  if (held && held.length !== 1)
+    return { ok: false, detail: `the slide holds ${held.length} shapes after the collapse — that is not one picture` };
+  // …and when the host will not say, the scenario still runs: the config
+  // round-trip below is worth checking either way. It just may not have been a
+  // picture making the trip, and the verdict says so rather than claiming one.
+  const confirmed = held !== null;
+  if (!confirmed) trace("selftest", "the host would not confirm the picture is one shape", { slide: pictured.slideId });
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
   if (!exploded) return { ok: false, detail: "the picture vanished while being exploded back to shapes" };
@@ -430,7 +449,9 @@ const explodePicture: Scenario = async (prefix) => {
   return {
     ok: !!back,
     detail: back
-      ? "collapsed to a picture and exploded back, config intact"
+      ? confirmed
+        ? "collapsed to a picture and exploded back, config intact"
+        : "collapsed and exploded back, config intact — but the host would not confirm it was a picture"
       : "exploded, but the config did not survive",
   };
 };
