@@ -2438,6 +2438,13 @@ interface RunLog {
      * broken.
      */
     chart: boolean;
+    /**
+     * This item gave up on a host call. Separate from `lateOutcome` because
+     * the host usually answers an abandoned call minutes later, long after the
+     * run has moved on — so "which item stalled" is readable here even when
+     * "how it ended" is not.
+     */
+    abandoned: boolean;
     lateOutcome: string;
   }[];
   deck: {
@@ -3657,6 +3664,10 @@ function wireInsert() {
                   // a readback fault and nothing else.
                   tagged: !!it.configJson,
                   chart: !!it.configJson,
+                  // The file path draws no item individually — there is one
+                  // insert for the whole deck — so no item can have abandoned
+                  // a call of its own.
+                  abandoned: false,
                   lateOutcome: "",
                 };
               }),
@@ -3759,6 +3770,7 @@ function wireInsert() {
             grouped: !!r.grouped,
             tagged: !!r.tagged,
             ms: r.ms,
+            abandoned: !!r.abandoned,
             lateOutcome: r.lateOutcome ?? "",
           })),
         );
@@ -3898,6 +3910,7 @@ function wireInsert() {
             grouped: !!r.grouped,
             tagged: !!r.tagged,
             chart: !!items[i].configJson,
+            abandoned: !!r.abandoned,
             lateOutcome: r.lateOutcome ?? "",
           })),
           deck: { slidesAdded, addsIssued, lost, blank: blankItems },

@@ -567,7 +567,15 @@ rendered":
 
 A clean run reports every chart rendered + grouped, no ungrouped/blank/
 `addsLostAtCommit`. The full console.table dump under **F12** carries
-`shapes`, `status`, `grouped`, `lateOutcome` and `ms` per item. Better
+`shapes`, `status`, `grouped`, `ms`, `abandoned` and `lateOutcome` per
+item. `abandoned` means a deadline fired inside that item — that is the
+column to scan for "which chart did the host stop answering for".
+`lateOutcome` is how the abandoned call eventually ended, and it is only
+filled in when the host answered soon enough to still be paired with the
+item; observed answers often arrive minutes later, and those land in the
+`a call we gave up on finally answered` trace instead. So an `abandoned`
+item with an empty `lateOutcome` means "no answer yet", not "no stall".
+Better
 still, **Download run log** writes the whole run to JSON — both insert
 paths, the settled repair verdicts, and the activity trace when Verbose
 trace was on. That file is the right attachment for a Phase-2 regression.

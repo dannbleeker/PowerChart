@@ -3244,6 +3244,12 @@ describe("reading a demo deck back and repairing it", () => {
     // And the run, which never stalled, drew shapes throughout.
     expect(report.degradeReason).toBeUndefined();
     expect(report.degradedAt).toBeUndefined();
+    // Same ownership bug, one level down and unfixed for longer: `lateOutcome`
+    // read the global late-sync string with no owner check at all, so the item
+    // that happened to be drawing when the foreign call answered was recorded
+    // as having stalled. Not one of these four gave up on anything.
+    expect(report.results.map((r) => r.lateOutcome)).toEqual([undefined, undefined, undefined, undefined]);
+    expect(report.results.some((r) => r.abandoned)).toBe(false);
   }, 20_000);
 
   it("attributes a stall to the run that issued it", async () => {
@@ -3264,6 +3270,51 @@ describe("reading a demo deck back and repairing it", () => {
       stallSyncOn.clear();
       await waitForLateSync(500);
       expect(lastLateSyncOwner).toBe("the-run");
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncOn.clear();
+    }
+  }, 20_000);
+
+  it("says which item gave up on a call, and pairs the late answer with it", async () => {
+    // The other half of the ownership fix above. `abandoned` is the part that
+    // is knowable the moment an item ends — a deadline fired inside it — and
+    // it is the part a run log can always carry, because the host's eventual
+    // answer routinely arrives minutes later, long after any wait a run can
+    // afford. `lateOutcome` is then only ever set on an item that abandoned
+    // something, so a healthy item can no longer inherit one.
+    installHost([makeSlide("s1")]);
+    _setBatchTimeoutForTest(20);
+    try {
+      // Stall everything item 0 reaches. The fake settles a stalled sync 40ms
+      // in, well past the 20ms deadline, so item 0 is guaranteed to give up
+      // and then be told how it went.
+      for (let k = 1; k <= 40; k++) stallSyncOn.add(trips.syncs + k);
+      const report = await insertDemoDeck(
+        [
+          { scene: buildChart(tinyChart()), title: "One", tagData: `{"i":0}` },
+          { scene: buildChart(tinyChart()), title: "Two", tagData: `{"i":1}` },
+        ],
+        (done) => {
+          // Item 0 is over: let the host be healthy again, on a deadline no
+          // ordinary sync can trip. Item 1 must show a clean sheet.
+          if (done === 1) {
+            stallSyncOn.clear();
+            _setBatchTimeoutForTest(45_000);
+          }
+        },
+        { runId: "the-run" },
+      );
+      // The bug, first: the late answer belongs to the item that gave up.
+      expect(report.results[0].lateOutcome, "item 0 abandoned a call and was never told how it ended").toMatch(
+        /SUCCEEDED/,
+      );
+      // …and it is not handed on to the next item, which stalled on nothing.
+      expect(report.results[1].lateOutcome, "item 1 was credited with item 0's late answer").toBeUndefined();
+      // Which item stalled, readable on its own — the half that is knowable
+      // the moment the item ends, whether or not the host ever answers.
+      expect(report.results[0].abandoned).toBe(true);
+      expect(report.results[1].abandoned).toBe(false);
     } finally {
       _setBatchTimeoutForTest(45_000);
       stallSyncOn.clear();
