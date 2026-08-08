@@ -116,6 +116,14 @@ export const KNOWN_DIVERGENCES = {
  * several runs agreeing, not one.
  */
 export const UNSTABLE_ANSWERS = {
+  "shapes-items-count-honest":
+    "The ANSWER is stable; its FORM is not. `unreadable` (2026-08-05), `short-0` (2026-08-08 on 2f1e8c4), `unreadable` again " +
+    "(2026-08-08 on a546897). Every one of those says the same thing — this host will not tell a caller what is on a slide — and they " +
+    "differ only in how the refusal arrives: a collection that throws, versus one that answers with zero items. Worth keeping apart " +
+    "because the two want different code (a catch versus a corroborated count), and `slideShapeList` handles both for exactly this reason.",
+  "shapes-items-via-positional-slide":
+    "As its by-id partner above, and moving in step with it: `short-0` (2f1e8c4), `not-listed` (a546897). Both runs agree with the " +
+    "by-id form in the same run, which is the finding — the parent handle is not the variable. What varies is the host, run to run.",
   "group-children-via-getcount":
     "ASKED AND ANSWERED ONCE, on a degraded host: `unreadable`, 2026-08-08. Its sibling `group-reports-its-children` answered `threw` " +
     "(\"The property 'items' is not available\") on a healthy round the same day, so BOTH routes into a group's children have now been " +

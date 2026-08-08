@@ -99,14 +99,20 @@ export interface ScenarioResult {
    */
   skipped?: boolean;
   /**
-   * The skip was caused by the DECK SCAN going blind, not by a missing API.
+   * The skip is a HOST failure, not a missing API — nothing was learned.
    *
    * A third state, because the summary used to call every skip a host
-   * capability gap and five of the nine scenarios skip on an empty scan
-   * instead. A run in which the host refused every deck read therefore said, in
-   * green, "2 of 2 scenarios passed · 6 skipped (host cannot run them)" — a
-   * total loss of deck visibility reported as a feature gap, which is the sort
-   * of line someone files and moves on from.
+   * capability gap and five of the scenarios skip on an empty scan instead. A
+   * run in which the host refused every deck read therefore said, in green,
+   * "2 of 2 scenarios passed · 6 skipped (host cannot run them)" — a total loss
+   * of deck visibility reported as a feature gap, which is the sort of line
+   * someone files and moves on from.
+   *
+   * Two things raise it now. A blinded deck scan, which is what it was written
+   * for; and a scenario the host stopped answering part-way through, which used
+   * to be reported as an ordinary failure. Both mean the same thing to a
+   * reader — this verdict is not evidence about the product — which is why they
+   * share a flag rather than getting one each.
    */
   blind?: boolean;
   /** What was actually observed — the sentence a diagnosis starts from. */
@@ -1706,7 +1712,28 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
       const r = await run(prefix);
       result = { name, ...r, ms: Date.now() - t0 };
     } catch (err) {
-      result = { name, ok: false, detail: `threw: ${errorText(err)}`, ms: Date.now() - t0 };
+      // A host that stopped answering did not fail the scenario — it prevented
+      // it. "We did not check" and "we checked and it is broken" is the
+      // distinction this whole file is built on, and the generic catch was
+      // collapsing them: on 2026-08-08 `the chart is actually visible` ran
+      // eleventh, ten minutes into a round, and reported
+      // `FAILED — threw: PowerPoint did not respond while drawing shapes 1-10
+      // of 24 (45s)`. That is a fatigued host, said in the words of a broken
+      // chart. Picked alone at 61 seconds the same build PASSED.
+      //
+      // `blind` because the verdict is not evidence about the product — the
+      // same reason a blinded deck scan carries it — and it is what makes
+      // `selfTestNeedsAttention` still surface the round.
+      result = isTimeout(err)
+        ? {
+            name,
+            ok: false,
+            skipped: true,
+            blind: true,
+            detail: `the host stopped answering during this scenario, so nothing was checked — ${errorText(err)}`,
+            ms: Date.now() - t0,
+          }
+        : { name, ok: false, detail: `threw: ${errorText(err)}`, ms: Date.now() - t0 };
     }
     trace("selftest", result.skipped ? "scenario skipped" : result.ok ? "scenario passed" : "scenario FAILED", {
       name,

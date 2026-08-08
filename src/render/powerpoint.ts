@@ -3253,15 +3253,26 @@ export async function withProbeContext<T>(
   budgetMs: number,
   fn: (ctx: ProbeContext) => Promise<T>,
   durableSlideId?: string,
+  /**
+   * Skip the liveness check for a question that never touches the slide.
+   *
+   * The check is the single most likely thing to fail on this host — a fresh
+   * slide's id resolves once and then stops — so charging it to a question that
+   * does not need a slide turns a real answer into `no-scratch-slide`. See
+   * `Probe.noSlideNeeded` for the round that lost one that way.
+   */
+  slideless = false,
 ): Promise<T> {
   return boundedRun(
     "asking the host a probe question",
     async (context) => {
-      const scratch = context.presentation.slides.getItemOrNullObject(scratchId);
-      queueNullCheck(scratch);
-      await context.sync();
-      const flag = loadedValue(() => scratch.isNullObject);
-      if (flag !== false) throw new ScratchSlideUnavailable(flag === true ? "gone" : "silent");
+      if (!slideless) {
+        const scratch = context.presentation.slides.getItemOrNullObject(scratchId);
+        queueNullCheck(scratch);
+        await context.sync();
+        const flag = loadedValue(() => scratch.isNullObject);
+        if (flag !== false) throw new ScratchSlideUnavailable(flag === true ? "gone" : "silent");
+      }
       // One handle per sync-batch, never the `scratch` proxy the liveness check
       // above already holds — that one is a sync old by the time a probe gets
       // here, which is the whole trap. Per BATCH rather than per call because

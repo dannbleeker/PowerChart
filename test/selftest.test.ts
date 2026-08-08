@@ -798,6 +798,37 @@ describe("the scenarios the selection API unlocked", () => {
     }
   }, 60_000);
 
+  it("calls a host that stopped answering a skip, not a failed scenario", async () => {
+    // The 2026-08-08 `a546897` round. `the chart is actually visible` ran
+    // eleventh, ten minutes in, and the host stalled 45s on its first draw
+    // batch — so the battery reported `FAILED — threw: PowerPoint did not
+    // respond while drawing shapes 1-10 of 24 (45s)`. Picked alone at 61
+    // seconds, the same build PASSED. That verdict is about a fatigued host,
+    // said in the words of a broken chart, and it is the exact distinction —
+    // "we did not check" against "we checked and it is broken" — that the rest
+    // of this file is built on.
+    installHost([makeSlide("s1")]);
+    const { _setBatchTimeoutForTest } = await import("../src/render/powerpoint");
+    _setReadbackTimeoutForTest(20);
+    _setBatchTimeoutForTest(20);
+    faults.wedgeAfterSyncs = 4;
+    try {
+      const r = byName(await runSelfTest("probe", "edit a chart on the visible slide"))[
+        "edit a chart on the visible slide"
+      ];
+      expect(r.detail, "a silent host was reported as a scenario failure").not.toMatch(/^threw:/);
+      expect(r.skipped, r.detail).toBe(true);
+      // …and still surfaced, because nothing was learned and the round should
+      // say so rather than read as a clean pass.
+      expect(r.blind, r.detail).toBe(true);
+      expect(selfTestNeedsAttention([r])).toBe(true);
+    } finally {
+      faults.wedgeAfterSyncs = null;
+      _setReadbackTimeoutForTest(90_000);
+      _setBatchTimeoutForTest(45_000);
+    }
+  }, 60_000);
+
   it("names the degradation experiment's host calls too", async () => {
     // The same lesson, learned twice. On 2026-08-08 this scenario was picked
     // alone, announced itself at 26.9s, and took the tab — with no finer step
