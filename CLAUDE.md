@@ -90,10 +90,8 @@ npm run skill      # build skill-dist/powerchart-charts.zip
 id will not resolve` lines mid-run, two replacement scratch slides taken, and
   every question inside that window answering `no-scratch-slide` before the host
   came back. The host's ability to resolve a freshly added slide's id comes and
-  goes within a single 37-second run, which is the same reversible bimodality
-  the draw times show (~10s or ~41s per chart, recovering mid-run and going
-  again). So a question that has been asked ONCE has not been answered; it has
-  been sampled. Both are declared in `KNOWN_DIVERGENCES` as UNSTABLE with both
+  goes within a single 37-second run. So a question that has been asked ONCE has
+  not been answered; it has been sampled. Both are declared in `KNOWN_DIVERGENCES` as UNSTABLE with both
   observations, because the dangerous move is building on the convenient one —
   `shape-add-positional-slide-proxy: yes` is exactly what would make a positional
   slide handle look like the safe way out of the by-id refusals.
@@ -298,6 +296,21 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   rather than whether the chart is re-editable), and it only surfaced because
   the fake's `hollowReads` keys on the projection string. Guarded by a source
   scan in `web-host.test.ts`.
+- **FAST IS THE BROKEN MODE, not the healthy one.** The draw times are bimodal —
+  ~17s per batch or ~3-5s — and this file said until 2026-08-08 that the host
+  "recovers mid-run and goes again". It does not. Within ONE run of `same scale
+across the deck`, eight updates of the same chart at the same size: charts 1-4
+  took ~17s per batch with no grouping failures at all, and charts 5-8 took
+  ~3-5s and every one of them carries `the re-read before grouping came back
+empty` and `not grouping`. The boundary is exact and the correlation is
+  8-for-8. Batches got cheap because the host stopped answering for the shape
+  collection, so there was nothing left to group or read back — it was not
+  recovering, it was degrading further. Do not read a fast stretch as health,
+  and do not "fix" the slow one: `what makes a long run slow down` was written
+  on the assumption that slow means degraded, and it has that backwards.
+  (AutoSave was the obvious candidate for a periodic slowdown and is ruled out:
+  the regimes are long contiguous blocks — eight slow, then ten fast — not
+  anything alternating on a timer.)
 - **The web host does not LIST the shapes a run just added.** The finding the
   extended log produced, and the one everything else downstream hangs off:
   `the re-read before grouping came back empty index=0 drew=24`, four times in

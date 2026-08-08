@@ -97,7 +97,13 @@ export const KNOWN_ISSUES = {
   5022: "context.sync() runs indefinitely when shapes are re-read after an image insert. Asked by the `picture-then-shape-read` probe; drawDemoItem does exactly that sequence.",
   5101: "A placeholder keeps type: Placeholder when reused. NO EXPOSURE — this repo never reads a shape's type. Checked, not assumed.",
   5264: "A part of the object model Office.js cannot reach. Recorded as a limitation.",
-  5849: "Shape.group throws GeneralException. Asked by the `group-of-existing-shape-readable` probe; countGroupChildrenPage reads groups exactly that way.",
+  5849:
+    "Shape.group throws GeneralException. Asked by the `group-of-existing-shape-readable` probe; countGroupChildrenPage reads groups exactly that way. " +
+    "Re-read 2026-08-08: CLOSED as `Status: no recent activity`, not fixed, and the report is DESKTOP (Windows, 2505 build) — nobody has established " +
+    "the web behaviour. That gap is expensive here: `contentShapes` returns UNKNOWN_CONTENT for every grouped slide, which is what makes the reconcile " +
+    "report a slide complete without counting it (see SlotVerdict.measured). `ShapeGroup.shapes` with `getCount()` does exist in the API, so if the web " +
+    "host honours it the verdicts could be measured instead of assumed. Both probe questions that would settle it — `group-reports-its-children` and " +
+    "`group-of-existing-shape-readable` — have failed at SETUP in every round so far (`no-scratch-slide`), so this is unknown rather than answered.",
   5896: "Reported alongside another SVG defect; same handling.",
   6363:
     'PowerPoint.run\'s batching "fails to load properties reliably — properties not available after context.sync()", web only. ' +
