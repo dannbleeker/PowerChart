@@ -257,82 +257,125 @@
             aria-live="polite"
             aria-label="Live steps of the run in progress"
           ></pre>
-          <p class="hint">
-            Each step appears here as it happens, newest first, and the list sits above the buttons — a crash leaves you
-            whatever was on screen, so the newest line has to be somewhere fixed and somewhere visible. The same steps
-            are also written to browser storage as they happen, so a run that never ENDS — and so never produces a
-            downloadable run log — can still be saved afterwards: reopen the pane and press
-            <em>Download the crashed run</em>. Copying or screenshotting this list before reloading is still the fastest
-            route, and it is the only one that catches the very last moments.
-          </p>
-          <p class="hint">
-            Drop a demo of every chart kind plus key features and elements onto fresh slides (appended at the end of the
-            deck) for quick visual testing. Each chart stays editable — delete the slides when you're done.
-          </p>
-          <div class="actions">
-            <button id="demo-insert" disabled>Insert demo deck</button>
-            <label
-              title="One file insert builds the whole deck as a .pptx and hands it over in one call; shape by shape draws it through Office.js. They fail in different ways, so 'both' runs each in turn into the same deck — one session, one log, directly comparable."
-              >Path
-              <select id="demo-path">
-                <option value="file" selected>One file insert</option>
-                <option value="shapes">Shape by shape</option>
-                <option value="both">Both, one after the other</option>
-              </select></label
-            >
-            <label
-              class="inline"
-              title="Run the whole battery, or one scenario plus the two inserts it needs. A full round takes minutes and leaves slides behind; one scenario is seconds."
-              >Scenario
-              <select id="demo-scenario">
-                <option value="">All</option>
-              </select></label
-            >
-            <button
-              id="demo-round"
-              disabled
-              title="One click: ask the host the probe's questions, then run the self-test, and save both in a single file. The demo deck stays a separate button on purpose — its shape path has to start on a fresh deck."
-            >
-              Run the whole round
-            </button>
-            <button
-              id="demo-selftest"
-              disabled
-              title="Run the nine things the demo deck does not cover: inserting on top of an earlier run, two slides claiming one slot, editing a chart on the visible slide, editing the chart you have selected, stopping a run part-way, whether a chart is actually visible, adding charts to a slide that already has content, a deck-wide rescale, and exploding a degraded picture. Leaves its slides in the deck."
-            >
-              Run host self-test
-            </button>
-            <button id="demo-log" disabled title="Save the last run's report as JSON">Download run log</button>
-            <button
-              id="demo-tidy"
-              disabled
-              title="Delete the slides the last round added, and nothing else. Enabled only once a round has run, because it deletes by the id list that round recorded — never by guessing which slides look like a test."
-            >
-              Clean up the last round
-            </button>
-            <button
-              id="demo-probe"
-              title="Ask this PowerPoint a fixed list of questions and save what it answers, so the fake host used by every test can be checked against it"
-            >
-              Run host probe
-            </button>
-            <button
-              id="demo-crashlog"
-              hidden
-              title="A run recorded here never reported finishing — save the steps it managed to write"
-            >
-              Download the crashed run
-            </button>
-            <label
-              title="Record every step of a run for a bug report. On while the add-in is being validated against real hosts; the run log carries it."
-              ><input type="checkbox" id="demo-trace" checked /> Verbose trace</label
-            >
+          <!-- A rule, not a paragraph.
+               The six sentences that were here explained why the list is newest-first, why it
+               sits above the buttons, and that a crashed run can still be downloaded afterwards.
+               All true, and all of it reasoning the reader does not need: the list is visibly
+               newest-first, and the crashed-run button appears by itself when there is one to
+               press. Prose that justifies a layout to the person already looking at it is
+               weight on every visit for a fact worth knowing once. The design notes live in
+               docs/MANUAL.md, where somebody can go and find them. -->
+          <hr class="rule" />
+          <!-- Grouped, because a flat row of eight buttons cannot say which control
+               belongs to which action. `Path` only changes the demo deck; `Scenario` only
+               changes the self-test; and both sat between buttons they had nothing to do
+               with, so the pane read as one undifferentiated pile. Each group is one thing
+               you can run plus the settings that alter it, and the last two groups are the
+               ones that alter nothing. -->
+          <div class="run-group">
+            <h3 class="run-label">Demo deck</h3>
+            <p class="hint">
+              Every chart kind, plus key features and elements, on fresh slides at the end of the deck. Each chart stays
+              editable — delete the slides when you're done.
+            </p>
+            <div class="actions">
+              <button id="demo-insert" disabled>Insert demo deck</button>
+              <label
+                title="One file insert builds the whole deck as a .pptx and hands it over in one call; shape by shape draws it through Office.js. They fail in different ways, so 'both' runs each in turn into the same deck — one session, one log, directly comparable."
+                >Path
+                <select id="demo-path">
+                  <option value="file" selected>One file insert</option>
+                  <option value="shapes">Shape by shape</option>
+                  <option value="both">Both, one after the other</option>
+                </select></label
+              >
+            </div>
           </div>
-          <p class="hint">
-            Every run ends by re-reading its slides once the host has settled: duplicate slides a stalled retry left
-            behind are deleted, NOT COMPLETE banners are cleared from charts that are in fact complete, and charts that
-            landed loose are re-grouped so they stay editable.
-          </p>
+
+          <div class="run-group">
+            <h3 class="run-label">Self-test</h3>
+            <p class="hint">
+              The ten things the demo deck does not cover. A full round takes minutes and leaves its slides behind; one
+              scenario is seconds.
+            </p>
+            <div class="actions">
+              <button
+                id="demo-selftest"
+                disabled
+                title="Run the ten things the demo deck does not cover: inserting on top of an earlier run, two slides claiming one slot, editing a chart on the visible slide, editing the chart you have selected, stopping a run part-way, adding charts to a slide that already has content, a deck-wide rescale, exploding a degraded picture, which selection call wedges the host, and whether a selected shape survives an insert. Leaves its slides in the deck."
+              >
+                Run host self-test
+              </button>
+              <label
+                class="inline"
+                title="Run the whole battery, or one scenario plus the two inserts it needs. Picked-only scenarios are reachable here and nowhere else."
+                >Scenario
+                <select id="demo-scenario">
+                  <option value="">All</option>
+                </select></label
+              >
+            </div>
+          </div>
+
+          <div class="run-group">
+            <h3 class="run-label">Host probe</h3>
+            <p class="hint">
+              Twenty-six fixed questions about what this PowerPoint actually does, so the fake host every test runs
+              against can be checked against the real one.
+            </p>
+            <div class="actions">
+              <button
+                id="demo-probe"
+                title="Ask this PowerPoint a fixed list of questions and save what it answers, so the fake host used by every test can be checked against it"
+              >
+                Run host probe
+              </button>
+              <button
+                id="demo-round"
+                disabled
+                title="One click: ask the host the probe's questions, then run the self-test, and save both in a single file. The demo deck stays a separate button on purpose — its shape path has to start on a fresh deck."
+              >
+                Probe, then self-test
+              </button>
+            </div>
+          </div>
+
+          <hr class="rule" />
+
+          <div class="run-group">
+            <h3 class="run-label">After a run</h3>
+            <div class="actions">
+              <button id="demo-log" disabled title="Save the last run's report as JSON">Download run log</button>
+              <button
+                id="demo-crashlog"
+                hidden
+                title="A run recorded here never reported finishing — save the steps it managed to write"
+              >
+                Download the crashed run
+              </button>
+              <button
+                id="demo-tidy"
+                disabled
+                title="Delete the slides the last round added, and nothing else. Enabled only once a round has run, because it deletes by the id list that round recorded — never by guessing which slides look like a test."
+              >
+                Clean up the last round
+              </button>
+            </div>
+          </div>
+
+          <div class="run-group">
+            <div class="actions">
+              <label
+                title="Record every step of a run for a bug report. On while the add-in is being validated against real hosts; the run log carries it."
+                ><input type="checkbox" id="demo-trace" checked /> Verbose trace</label
+              >
+            </div>
+          </div>
+          <!-- The repair pass used to be described here. It does not need to be: it runs on
+               every run whether or not anyone read this, and when it does something the run's
+               own summary says so in the same words ("removed 2 slide(s)", "re-grouped 24
+               chart(s)"). A standing description of an automatic behaviour is read once and
+               then occupies the panel forever. docs/MANUAL.md keeps the long version. -->
         </section>
 
         <section class="section">

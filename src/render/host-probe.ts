@@ -32,6 +32,7 @@
  */
 import {
   addScratchSlide,
+  deadlinesFired,
   deckSlideIds,
   deleteSlideById,
   isTimeout,
@@ -81,7 +82,19 @@ export interface HostAnswerSheet {
  * value is that it comes back complete even from a host that is misbehaving,
  * which is exactly when it is most worth having.
  */
-const PROBE_BUDGET_MS = 8_000;
+let PROBE_BUDGET_MS = 8_000;
+
+/**
+ * Test-only: shorten the per-question budget.
+ *
+ * A wedged host is only reachable in a test by letting a question actually miss
+ * its deadline, and at eight seconds a full sheet of those outlasts any sane
+ * test timeout. Production never touches this; the default is the eight seconds
+ * a real host is given. Restore by passing 8_000 back in.
+ */
+export function _setProbeBudgetForTest(ms: number): void {
+  PROBE_BUDGET_MS = ms;
+}
 
 /** What a probe does, given a scratch slide it is free to wreck. */
 type Probe = {
@@ -120,7 +133,16 @@ type Probe = {
  * ever asked about. Both were earned the same way, a round apart — see
  * `ProbeSetupFailed`.
  */
-const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape"]);
+const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+
+/**
+ * Consecutive unanswered questions before the probe stops asking.
+ *
+ * Three, for the reason the self-test's SICK_LIMIT is three: one is often the
+ * finding, and three in a row is a finding about the host rather than about a
+ * question.
+ */
+const PROBE_MUTE_LIMIT = 3;
 
 /**
  * Thrown when a probe could not get the shapes its question is about.
@@ -1094,9 +1116,49 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   }
   let scratchId = await addScratchSlide();
   if (scratchId) scratchIds.push(scratchId);
+  /**
+   * Consecutive questions that could not get an answer out of the host at all.
+   *
+   * Counted on DEADLINE MISSES, not on `no-scratch-slide`, and the distinction
+   * is the whole design. A round on 2026-08-08 answered `no-scratch-slide` four
+   * times running — the host had stopped resolving fresh slide ids for about
+   * fifteen seconds — and then recovered and answered five more questions,
+   * including the two this project cares most about. A breaker keyed on that
+   * signal would have thrown those away. Those questions were still being
+   * ANSWERED, in two to six seconds; they just could not be set up.
+   *
+   * A missed deadline is different: the host took the question and never came
+   * back inside its budget. Three of those in a row is not a finding about a
+   * question, it is a finding about the host — the same argument, and the same
+   * number, as the self-test's SICK_LIMIT.
+   */
+  let mute = 0;
+  let abandoned: string | null = null;
   try {
     for (const probe of PROBES) {
       const started = Date.now();
+      // Stop asking a host that has stopped answering.
+      //
+      // The probe had no rung for this at all while the self-test has had one
+      // for weeks, and PowerPoint's own "Sorry, we ran into a problem" dialog is
+      // what exposed the gap: the host was gone, the pane's timer kept counting,
+      // and the run went on putting questions to a dead document — every one of
+      // them spending its full budget to record an answer about nothing.
+      if (!abandoned && mute >= PROBE_MUTE_LIMIT) {
+        abandoned = `${mute} questions in a row got no answer out of the host`;
+        trace("probe", "giving up on the host", { after: answers.length, why: abandoned });
+      }
+      if (abandoned) {
+        answers.push({
+          id: probe.id,
+          question: probe.question,
+          answer: "not-asked",
+          ms: 0,
+          detail: `not reached — ${abandoned}`,
+        });
+        continue;
+      }
+      const deadlinesBefore = deadlinesFired;
       trace("probe", "asking", { id: probe.id });
       let result: { answer: string; detail?: string };
       // One more attempt at a slide, every question, rather than writing the
@@ -1166,6 +1228,10 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       const entry: HostAnswer = { id: probe.id, question: probe.question, ms: Date.now() - started, ...result };
       answers.push(entry);
       trace("probe", "answered", { id: probe.id, answer: entry.answer, ms: entry.ms });
+      // Reset on ANY question that came back inside its budget, including one
+      // that could not be set up: a host still refusing questions promptly is a
+      // host still talking to us.
+      mute = deadlinesFired > deadlinesBefore ? mute + 1 : 0;
       // The partner question, in the same run, when the answer admits two
       // readings. Never asked when the question was never PUT: a follow-up to
       // `no-scratch-shape` would be a second question about the probe's own

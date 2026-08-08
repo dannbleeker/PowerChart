@@ -8,6 +8,7 @@ import {
   SCRATCH_CLEANUP_ID,
   describeHostSheet,
   sheetNeedsAttention,
+  _setProbeBudgetForTest,
 } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
@@ -245,6 +246,7 @@ describe("the fake host's answer sheet", () => {
     const { _setReadbackTimeoutForTest } = await import("../src/render/powerpoint");
     _setReadbackTimeoutForTest(20);
     faults.wedgeAfterSyncs = 0;
+    _setProbeBudgetForTest(20);
     try {
       const sheet = await Promise.race([
         runHostProbes("fake-goes-silent", "test"),
@@ -723,4 +725,48 @@ describe("a host that answers every call and reads back nothing", () => {
       faults.hollowNameReads = 0;
     }
   });
+});
+
+/**
+ * The probe stops asking a host that has stopped answering.
+ *
+ * The self-test has had this rung for weeks; the probe had none, and
+ * PowerPoint's own "Sorry, we ran into a problem" dialog is what exposed the
+ * gap — the host was gone, the pane's elapsed timer kept counting, and the run
+ * went on putting questions to a dead document, each one spending its full
+ * budget to record an answer about nothing.
+ *
+ * Only the NO-FALSE-POSITIVE half is guarded here, and that is worth stating
+ * rather than leaving to be discovered. Reaching the positive case needs a host
+ * that takes a question and never answers, and the fake's wedge hangs
+ * `addScratchSlide` first — the run stops before any question can miss its
+ * deadline, so the test times out instead of exercising the breaker. A fault
+ * that wedges question syncs while leaving slide adds alone is what it would
+ * take, and that is a change to the fake with its own justification owed.
+ */
+describe("a host that has stopped answering", () => {
+  /**
+   * Why the breaker counts deadline misses and not `no-scratch-slide`.
+   *
+   * A round on 2026-08-08 answered `no-scratch-slide` FOUR times running — the
+   * host had stopped resolving fresh slide ids for about fifteen seconds — then
+   * recovered and answered five more questions, including two of the three this
+   * project cares most about. Those questions were still being answered, in two
+   * to six seconds; they just could not be set up. A breaker keyed on that
+   * signal throws the recovery away.
+   */
+  it("keeps going through a host that refuses slides but still answers promptly", async () => {
+    installHost([makeSlide("s1")]);
+    faults.newSlideResolvesTimes = 1;
+    try {
+      const sheet = await runHostProbes("flaky-slides", "web");
+      const notReached = sheet.answers.filter((a) => a.answer === "not-asked");
+      expect(
+        notReached,
+        `gave up on a host that was still answering — ${notReached.length} question(s) abandoned`,
+      ).toHaveLength(0);
+    } finally {
+      faults.newSlideResolvesTimes = null;
+    }
+  }, 60_000);
 });

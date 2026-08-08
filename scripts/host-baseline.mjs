@@ -79,6 +79,41 @@ export const KNOWN_DIVERGENCES = {
 };
 
 /**
+ * Questions this host has answered DIFFERENTLY on different runs of one build.
+ *
+ * Deliberately not a `KNOWN_DIVERGENCES` entry, and the contract gate rejecting
+ * the first attempt at that is the reason this list exists. A divergence is
+ * "the fake and the real host disagree", which is a fact about two systems and
+ * is either true or it is not. This is a fact about ONE system: the real host
+ * gave answer A, then gave answer B, minutes apart, same build. The gate has
+ * nothing to say about that and should not be made to.
+ *
+ * What it is for is stopping the next reader — human or agent — from building
+ * on whichever answer a sheet happens to carry. `shape-add-positional-slide-
+ * proxy: yes` is exactly the answer that makes a positional slide handle look
+ * like the safe route out of the by-id refusals, and it is one of the two that
+ * flipped.
+ *
+ * The mechanism is in the run log rather than inferred: three `scratch slide
+ * landed but its id will not resolve` lines mid-run, two replacement scratch
+ * slides taken, and every question asked inside that window answering
+ * `no-scratch-slide` before the host came back. The host's ability to resolve a
+ * freshly added slide's id comes and goes within a single 37-second run — the
+ * same reversible bimodality the draw times show.
+ *
+ * A question in here has been SAMPLED, not answered. Removing an entry needs
+ * several runs agreeing, not one.
+ */
+export const UNSTABLE_ANSWERS = {
+  "shape-add-held-slide-proxy":
+    "`threw` on the committed sheet and on 2026-08-07; `yes` on 2026-08-08, same build. " +
+    "The fake keeps refusing held proxies, which is the safe direction — code that never holds one across a sync is correct on both hosts.",
+  "shape-add-positional-slide-proxy":
+    "`yes` on the committed sheet and on 2026-08-07; `threw` on 2026-08-08, same build, minutes apart. " +
+    "The more dangerous of the two: `yes` is what would make a positional slide handle look like a way around the by-id refusals. One sheet is not enough to build that on.",
+};
+
+/**
  * Questions the committed real-host sheet cannot answer, because they were
  * added after it was taken.
  *
