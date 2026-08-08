@@ -302,6 +302,7 @@ describe("the fake host's answer sheet", () => {
       const sheet = await runHostProbes("fake-refuses-shapes", "test");
       const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
       const needShapes = [
+        "group-children-via-getcount",
         "shape-proxy-survives-one-sync",
         "shape-resolve-held-slide-proxy",
         "shapes-items-count-honest",

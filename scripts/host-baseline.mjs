@@ -28,6 +28,7 @@ export const FAKE_BASELINE = {
   "tags-on-fresh-shape": "yes",
   "delete-then-lookup": "reports-gone",
   "addgroup-returns-usable": "yes",
+  "group-children-via-getcount": "two",
   "group-reports-its-children": "two",
   "tag-on-group-survives": "yes",
   "getitemat-past-end": "threw",
@@ -141,6 +142,8 @@ export const PENDING_QUESTIONS = {
     "Added with the probe rewrite, after the fixture's build. It is the partner that decides whether `shapes-items-count-honest` was ever about collections or only about the handle they hang off, so the pair is worth a run on its own.",
   "scratch-slides-returned":
     "Added after the fixture's build, and the only row in the sheet that is not a question — it is what happened to the slides the probe borrowed. Every earlier run threw the answer away, so the probe leaving slides behind was something the owner found by opening a deck: 21 of them in the 2026-08-06 round, 14 in an earlier one, and neither sheet said a word. The fake returns everything it is given, so a host that does not will diverge here and be reported without anyone remembering to look.",
+  "group-children-via-getcount":
+    "Added 2026-08-08, the day the sheet it answers arrived. `group-reports-its-children` asked through `group/shapes/items/id` and this host answered `threw` — \"The property 'items' is not available\", office-js#6363's signature — with the load queued in the sync that MADE the group, which is the friendliest form the question has. The same sheet says `getcount-populates-same-sync: yes, value=9`, so this host COUNTS a collection it will not LIST. Whether that holds for a GROUP's collection is what decides if `contentShapes` can ever measure a grouped slide instead of reporting it complete uncounted.",
 };
 
 /**
@@ -175,6 +178,8 @@ const WHAT_IT_MEANS = {
     "`faults.tagsUndefinedOn` models `.tags` coming back undefined, where reading `.add` throws SYNCHRONOUSLY and escapes the tagging loop — losing the config for every chart after it in the batch, not just the one.",
   "delete-then-lookup":
     "`deleteSlideById` re-checks from a FRESH context because the same-context answer was not trusted. If a host answers honestly here, that second round trip is removable.",
+  "group-children-via-getcount":
+    "Added 2026-08-08, in response to the sheet taken that day. Its sibling `group-reports-its-children` asked through `group/shapes/items/id` and this host answered `threw` — \"The property 'items' is not available\", office-js#6363's exact signature — with the load queued in the sync that MADE the group, which is the friendliest form the question has. But the same sheet says `getcount-populates-same-sync: yes, value=9`: this host COUNTS a shape collection it will not LIST. Nobody has asked whether that holds for a GROUP's collection, and the answer decides something concrete — `contentShapes` returns UNKNOWN_CONTENT for every grouped slide, which is what makes the reconcile report a slide complete without counting it. A count is all it needs.",
   "group-reports-its-children":
     "The single most load-bearing answer here. A chart IS a group, and the readback measures whether a chart survived by counting what is inside it — so a host that groups successfully and then reports no children makes every chart read back as wreckage, and the repair pass 'fixes' charts that were never broken. WITHDRAWN: the 2026-08-04 PropertyNotLoaded was a nested load queued a sync after the group was made. It is queued in the grouping batch now.",
   "tag-on-group-survives":

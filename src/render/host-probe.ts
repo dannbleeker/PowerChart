@@ -852,6 +852,47 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "group-children-via-getcount",
+    question: "Does a group report its child COUNT, where it will not list them?",
+    // The variant that separates two things `group-reports-its-children` runs
+    // together, and the 2026-08-08 sheet is why it exists. That question asked
+    // through `group/shapes/items/id` and the host answered `threw` — "The
+    // property 'items' is not available", office-js#6363's exact signature —
+    // even with the load queued in the sync that made the group.
+    //
+    // But the same sheet says `getcount-populates-same-sync: yes, value=9`. This
+    // host COUNTS a shape collection it will not LIST. Nobody has asked whether
+    // that also holds for a GROUP's collection, and the answer decides something
+    // concrete: `contentShapes` returns UNKNOWN_CONTENT for every grouped slide,
+    // which is what makes the reconcile report a slide complete without counting
+    // it (`SlotVerdict.measured`). A count is all it needs. If this answers with
+    // a number, those verdicts become measurements.
+    //
+    // Asked in the group's own sync for the same reason its sibling is: a proxy
+    // one sync old is refused here, and that would answer a different question.
+    ask: async (ctx) => {
+      const { members, via } = await groupMembers(
+        ctx,
+        [0, 1].map((i) => ({ left: 250 + i * 25, top: 110, width: 20, height: 20 })),
+      );
+      try {
+        const group = (
+          probeShapes(ctx) as unknown as {
+            addGroup(shapes: unknown[]): { group: { shapes: { getCount(): { value: number } } } };
+          }
+        ).addGroup(members);
+        const count = group.group.shapes.getCount();
+        await ctx.sync();
+        const n = loadedCount(count);
+        return typeof n === "number"
+          ? { answer: n === 2 ? "two" : `reports-${n}`, detail: `members via ${via}` }
+          : { answer: "unreadable", detail: `members via ${via}` };
+      } catch (err) {
+        return { ...threw(err), detail: `members via ${via}` };
+      }
+    },
+  },
+  {
     id: "group-reports-its-children",
     question: "After grouping two shapes, does the group report two children?",
     // The single most load-bearing answer here. A chart IS a group, and the
@@ -1010,7 +1051,13 @@ const PROBES: Probe[] = [
         made.load("id");
         await ctx.sync();
         const groupId = readShapeId(made);
-        if (!groupId) throw new ProbeSetupFailed("the host would not name the group it just made");
+        // An ANSWER, not a setup failure. A host that will not name a group it
+        // just made cannot be asked the later-batch question at all — there is
+        // no id to resolve one with — and that is a fact about the host, so it
+        // belongs in the sheet. Reported as `no-scratch-slide` it read as the
+        // probe having lost its slide, which is what kept this question out of
+        // four consecutive rounds while the actual finding sat one line away.
+        if (!groupId) return { answer: "no-group-id", detail: "the host would not name the group it just made" };
         // A LATER batch, through a fresh handle — the thing that separates this
         // question from the one above it.
         const found = probeShape(ctx, groupId) as unknown as {
