@@ -554,21 +554,22 @@ actually observed; one that your host cannot run is reported as skipped rather
 than failed. It leaves its slides in the deck so you can look at them — delete
 them when you are done, exactly like the demo deck.
 
-An eleventh — **whether a chart is actually visible** — is in the **Scenario**
-picker but not in a full run. It killed the browser tab in five consecutive
-rounds on PowerPoint on the web and has never once returned a verdict. Because
-the report is written when the battery finishes, a scenario that ends the run
-takes the other ten verdicts' *report* with it even when it runs last.
+One of the eleven — **whether a chart is actually visible** — was out of the
+full run for a while, and the reason is worth knowing because it shapes what the
+battery does. It killed the browser tab in five consecutive rounds on PowerPoint
+on the web without once returning a verdict, and because the report is written
+when the battery finishes, a scenario that ends the run takes every other
+verdict's *report* with it even when it runs last.
 
-The fifth of those rounds was run on its own, and that is what identified the
-cause: the scenario used to borrow a brand-new slide and immediately ask
-PowerPoint to render it as an image, and on the web that call kills the tab. It
-now compares before and after on a slide the run already added, so it never
-makes that call — and on the next round it survived and reported for the first
-time. Rendering a slide is fine; rendering one that was created moments earlier
-is not. It stays out of the full run until a round comes back with it passing.
-Pick it on its own, on a freshly opened deck, if you want the check — and please
-send the result either way.
+Running it on its own is what identified the cause. It used to borrow a
+brand-new slide and immediately ask PowerPoint to render it as an image, and on
+the web that call kills the tab. It compares before and after on a slide the run
+already added now, so it never makes that call — and it passes. Rendering a
+slide is fine; rendering one created moments earlier is not.
+
+The same turned out to be true of **adding** a slide: a second `slides.add()`
+four tenths of a second after the first killed the tab twice in the degradation
+experiment. Nothing in the battery takes a scratch slide any more.
 
 Three of those are new, and are the ones worth understanding. **Editing the
 chart you selected** goes through the same read the pane uses when you click a
