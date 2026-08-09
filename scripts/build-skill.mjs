@@ -5,8 +5,9 @@
  * → skill-dist/powerchart-charts.zip  (upload at claude.ai → Customize → Skills;
  *   it then also appears inside Claude for PowerPoint)
  */
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { join, relative } from "node:path";
+import JSZip from "jszip";
 
 if (!existsSync("dist-lib/powerchart.js")) {
   console.error("run `npm run build:lib` first");
@@ -59,5 +60,40 @@ if (!patched.includes("../lib/powerchart.js")) {
 }
 writeFileSync(renderSvg, patched);
 
-execSync(`cd skill-dist && python3 -m zipfile -c powerchart-charts.zip powerchart-charts`);
+/**
+ * Zip the package in-process, because the interpreter this used to borrow is
+ * not always there.
+ *
+ * `python3 -m zipfile` is a fine zipper on a machine that has Python. On
+ * Windows `python3` is the Microsoft Store's alias STUB — it prints "Python was
+ * not found; run without arguments to install from the Microsoft Store" and
+ * fails — so `npm run skill` could not complete on the owner's own box, and
+ * `test/skill.test.ts`'s packaging check went with it. `jszip` is already a
+ * dependency of this repo and reads the result back in that same test, so the
+ * zipper and the reader are now the same library.
+ *
+ * Entries are added in sorted order and given a fixed date. A zip is an
+ * artifact this project attaches to releases, and one that differs run to run
+ * for no reason is one nobody can diff. `DeflateLevel` 9 keeps the upload small.
+ */
+function filesUnder(dir) {
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((e) => e.isFile())
+    .map((e) => join(e.parentPath ?? e.path, e.name))
+    .sort();
+}
+
+const zip = new JSZip();
+for (const file of filesUnder(root)) {
+  // Forward slashes and a path relative to skill-dist, so the archive unpacks
+  // to `powerchart-charts/…` exactly as the python version's did.
+  const name = relative("skill-dist", file).split("\\").join("/");
+  zip.file(name, readFileSync(file), { date: new Date(0) });
+}
+const bytes = await zip.generateAsync({
+  type: "nodebuffer",
+  compression: "DEFLATE",
+  compressionOptions: { level: 9 },
+});
+writeFileSync("skill-dist/powerchart-charts.zip", bytes);
 console.log("skill-dist/powerchart-charts.zip");

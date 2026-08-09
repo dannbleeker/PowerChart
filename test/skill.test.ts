@@ -8,9 +8,32 @@ import { join } from "node:path";
  * End-to-end check of the Agent Skill's pptx renderer: build the lib, render
  * a config, and assert the OOXML contains the expected native shapes.
  */
-/** Read one part out of a .pptx — it is a zip; python3 has zipfile. */
-function readPart(pptx: string, part: string): string {
-  return execSync(`python3 -c "import zipfile;print(zipfile.ZipFile('${pptx}').read('${part}').decode())"`).toString();
+/**
+ * Read one part out of a .pptx — it is a zip, and `jszip` is already a
+ * dependency of this repo.
+ *
+ * This used to shell out to `python3 -c "...ZipFile('<path>')..."`, and both
+ * halves of that were a problem on Windows, where the whole file has been
+ * unrunnable:
+ *
+ * - The temp path was interpolated INTO a Python string literal, so its
+ *   backslashes became escapes. `\rings.pptx` is a carriage return and a path
+ *   that cannot exist, and `C:\Users\…` dies one step earlier on `\U`. The
+ *   filename decided whether the test could run.
+ * - `python3` on Windows is the Microsoft Store alias stub, not an interpreter.
+ *   Getting these two tests to run needed a `.cmd` shim in a directory AppLocker
+ *   allows, which is a lot of setup for reading a zip entry.
+ *
+ * Neither is worth carrying for `zipfile.read`. `CLAUDE.md` told local runs to
+ * `--exclude` this file, so the only gate on it was CI — on the one file that
+ * checks what the SKILL ships.
+ */
+async function readPart(pptx: string, part: string): Promise<string> {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(readFileSync(pptx));
+  const file = zip.file(part);
+  if (!file) throw new Error(`${pptx} has no part ${part}`);
+  return file.async("string");
 }
 
 describe("skill pptx renderer", () => {
@@ -31,18 +54,18 @@ describe("skill pptx renderer", () => {
     execSync(`node skill/scripts/render-pptx.mjs ${input} ${out}`, { stdio: "pipe" });
   }, 120000);
 
-  it("wraps each chart in one group carrying its config, so the pane can re-open it", () => {
+  it("wraps each chart in one group carrying its config, so the pane can re-open it", async () => {
     // Before this, a deck Claude generated was a pile of loose shapes with no
     // identity: it looked right, and the add-in could do nothing with it —
     // no "Edit selected chart", no dragging a chart as one object.
-    const slide = readPart(out, "ppt/slides/slide1.xml");
+    const slide = await readPart(out, "ppt/slides/slide1.xml");
     expect(slide.match(/<p:grpSp>/g)).toHaveLength(1);
     expect(slide).toContain(`name="PowerChart"`);
     expect(slide).toContain("<p:custDataLst><p:tags r:id=");
 
     // The config round-trips, which is what makes the chart editable rather
     // than merely grouped.
-    const tag = readPart(out, "ppt/tags/tag1.xml");
+    const tag = await readPart(out, "ppt/tags/tag1.xml");
     const raw = /name="POWERCHART_CONFIG" val="([^"]*)"/.exec(tag)![1];
     const cfg = JSON.parse(
       raw
@@ -54,18 +77,15 @@ describe("skill pptx renderer", () => {
     expect(cfg).toMatchObject({ kind: "pie", title: "Split" });
 
     // …and the tag part is declared, or PowerPoint refuses the file outright.
-    expect(readPart(out, "[Content_Types].xml")).toContain(`PartName="/ppt/tags/tag1.xml"`);
+    expect(await readPart(out, "[Content_Types].xml")).toContain(`PartName="/ppt/tags/tag1.xml"`);
   });
 
   it("produces a non-trivial pptx", () => {
     expect(statSync(out).size).toBeGreaterThan(10000);
   });
 
-  it("emits solid pie wedges as custGeom, not the wrap-broken pie preset", () => {
-    // A .pptx is a zip; read the slide XML via python3 zipfile.
-    const xml = execSync(
-      `python3 -c "import zipfile;print(zipfile.ZipFile('${out}').read('ppt/slides/slide1.xml').decode())"`,
-    ).toString();
+  it("emits solid pie wedges as custGeom, not the wrap-broken pie preset", async () => {
+    const xml = await readPart(out, "ppt/slides/slide1.xml");
     // The OOXML "pie" preset computes swAng = end − start over two independently
     // normalized angles, so any slice crossing 3 o'clock (every pie has one)
     // renders the wrong wedge. Solid pies now take the SAME custGeom path as the
@@ -83,10 +103,7 @@ describe("skill pptx renderer", () => {
 describe("skill pptx renderer — annular sectors", () => {
   const dir = mkdtempSync(join(tmpdir(), "pc-rings-"));
   const out = join(dir, "rings.pptx");
-  const readSlide = (n: number) =>
-    execSync(
-      `python3 -c "import zipfile;print(zipfile.ZipFile('${out}').read('ppt/slides/slide${n}.xml').decode())"`,
-    ).toString();
+  const readSlide = (n: number) => readPart(out, `ppt/slides/slide${n}.xml`);
 
   beforeAll(() => {
     if (!existsSync("dist-lib/powerchart.js")) {
@@ -114,14 +131,14 @@ describe("skill pptx renderer — annular sectors", () => {
     execSync(`node skill/scripts/render-pptx.mjs ${input} ${out}`, { stdio: "pipe" });
   }, 120000);
 
-  it("emits real filled custGeom annular sectors for sunburst rings (not center-anchored pie slices)", () => {
-    const xml = readSlide(1);
+  it("emits real filled custGeom annular sectors for sunburst rings (not center-anchored pie slices)", async () => {
+    const xml = await readSlide(1);
     expect(xml).toContain("custGeom");
     expect(xml).not.toContain("NaN");
   });
 
-  it("emits custGeom for the semi-doughnut gauge, honouring the inner radius", () => {
-    const xml = readSlide(2);
+  it("emits custGeom for the semi-doughnut gauge, honouring the inner radius", async () => {
+    const xml = await readSlide(2);
     expect(xml.match(/custGeom/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
     expect(xml).not.toContain("NaN");
   });
@@ -146,10 +163,8 @@ describe("skill pptx renderer — dotted lines stay dotted", () => {
     execSync(`node skill/scripts/render-pptx.mjs ${input} ${out}`, { stdio: "pipe" });
   }, 120000);
 
-  it("emits sysDot for the dotted connector, not a generic dash", () => {
-    const xml = execSync(
-      `python3 -c "import zipfile;print(zipfile.ZipFile('${out}').read('ppt/slides/slide1.xml').decode())"`,
-    ).toString();
+  it("emits sysDot for the dotted connector, not a generic dash", async () => {
+    const xml = await readPart(out, "ppt/slides/slide1.xml");
     // The dotted carry connector must survive as a dot preset; a plain waterfall
     // has no other dashed line, so there should be no generic "dash".
     expect(xml).toContain('<a:prstDash val="sysDot"/>');
@@ -176,10 +191,8 @@ describe("skill pptx renderer — 8-digit hex colours", () => {
     execSync(`node skill/scripts/render-pptx.mjs ${input} ${out}`, { stdio: "pipe" });
   }, 120000);
 
-  it("keeps the hue and folds the alpha into transparency (not solid black)", () => {
-    const xml = execSync(
-      `python3 -c "import zipfile;print(zipfile.ZipFile('${out}').read('ppt/slides/slide1.xml').decode())"`,
-    ).toString();
+  it("keeps the hue and folds the alpha into transparency (not solid black)", async () => {
+    const xml = await readPart(out, "ppt/slides/slide1.xml");
     // pptxgenjs only validates 6-digit RGB: an unhandled #RRGGBBAA would have been
     // rejected and replaced with DEF_FONT_COLOR ("000000"). The hue must survive
     // as the 6-digit prefix, with the alpha byte (0x80) carried as an <a:alpha>.

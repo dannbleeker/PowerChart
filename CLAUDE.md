@@ -89,17 +89,21 @@ fail in ways that read as code bugs:
 
 ```bash
 node ./node_modules/typescript/bin/tsc --noEmit                 # typecheck
-node ./node_modules/vitest/vitest.mjs run --exclude '**/skill.test.ts'
+node ./node_modules/vitest/vitest.mjs run                       # whole suite, nothing excluded
 npm run build:lib && node scripts/build-showcase.mjs            # = npm run showcase
 npm run build:lib && node scripts/build-skill.mjs               # = npm run skill
 ```
 
-`test/skill.test.ts` cannot pass there: it embeds an OS temp path in a
-`python3 -c` one-liner, where `\rings.pptx` becomes a carriage return. Exclude
-it locally — it imports nothing from `src/`, so src coverage is unchanged — and
-let CI cover those paths. (`python3` is the MS-Store alias stub too; real python
-is `python`, and a `.cmd` shim has to live under `C:\devtools\*` because
-AppLocker script-blocks one in Temp.)
+**The whole suite runs there now — do not exclude anything.** This paragraph
+used to say `test/skill.test.ts` could not pass and to run with
+`--exclude '**/skill.test.ts'`, which was true and cost more than it looked: the
+file that checks what the SKILL ships was gated by CI alone. Both reasons are
+gone. It read a `.pptx` by interpolating an OS temp path into a `python3 -c`
+string, where `\rings.pptx` is a carriage return, and `build-skill.mjs` zipped
+through `python3 -m zipfile`, which on Windows is the Microsoft Store alias stub
+and simply fails. Both now use `jszip`, already a dependency — so the zipper and
+the reader are one library, no interpreter is involved, and the zip is
+byte-identical run to run.
 
 `node scripts/build-showcase.mjs` **alone renders with a stale engine** — it
 imports `dist-lib/`, so without `build:lib` first you are diffing the showcase
