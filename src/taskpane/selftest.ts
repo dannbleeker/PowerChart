@@ -1086,35 +1086,66 @@ const rasteriseThenDraw: Scenario = async (prefix) => {
   if (!host) return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to draw beside" };
   const slideId = host.target.slideId;
   const slide = await slideSize();
-  // Both arms in the band below the chart, like every other scenario that
-  // shares a slide — see `sideSlot`. Slots 0-3 are spoken for; these two take
-  // the grid slot's band by splitting it, because the grid only appears in a
-  // picked round and never alongside this.
   const cell = sideSlot(GRID_SLOT, slide, boxOf(host));
-  const half = { width: Math.max(1, Math.floor(cell.width / 2) - 4), height: cell.height };
-  /** Draw one small chart, and say whether the host answered rather than throwing. */
-  const arm = async (label: string, left: number, before: () => Promise<unknown>) => {
-    await attempt(`${label}: the call before the draw`, before);
-    const c: ChartConfig = { ...cfg(`${prefix} ${label}`), ...half };
+  const w = Math.max(1, Math.floor(cell.width / 4) - 3);
+  /**
+   * Two categories, one series, no decorations — about eight shapes, one batch.
+   *
+   * The first version drew the battery's ordinary sample chart, twenty-four
+   * shapes over three batches, and each arm cost most of a minute. Four of
+   * those is three and a half minutes on a battery already at thirteen, and the
+   * measurement does not need a specimen: what is under test is whether the
+   * FIRST sync of a draw comes back, and one batch asks that exactly.
+   */
+  const tiny = (title: string): ChartConfig => ({
+    kind: "clustered",
+    title,
+    width: w,
+    height: cell.height,
+    data: { categories: ["A", "B"], series: [{ name: "s", values: [1, 2] }] },
+  });
+  const arm = async (label: string, n: number, before: () => Promise<unknown>): Promise<DrawArm> => {
+    await attempt(`${label} #${n}: the call before the draw`, before);
+    const c = tiny(`${prefix} ${label} ${n}`);
     try {
-      await attempt(`${label}: drawing`, () =>
-        insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c), left, top: cell.top }),
+      await attempt(`${label} #${n}: drawing`, () =>
+        insertSceneIntoSlide(buildChart(c), {
+          slideId,
+          tagData: JSON.stringify(c),
+          left: cell.left + n * (w + 3),
+          top: cell.top,
+        }),
       );
-      return { label, drew: true, why: "" };
+      return { drew: true, why: "" };
     } catch (err) {
       // A stall here is the RESULT, not a failure of the battery — so it is
       // caught per arm rather than allowed to reach the runner, which would
-      // turn the whole scenario into a blind skip and discard the other arm's
-      // answer with it.
-      return { label, drew: false, why: isTimeout(err) ? "the host stopped answering" : errorText(err) };
+      // turn the whole scenario into a blind skip and discard the other arms.
+      return { drew: false, why: isTimeout(err) ? "the host stopped answering" : errorText(err) };
     }
   };
-  // Control first, so a host that dies during the experiment has still answered
-  // the half that says the surface was usable at all.
-  const control = await arm("after a cheap read", cell.left, () => slideCount());
-  const test = await arm("after a rasterise", cell.left + half.width + 8, () => slideImageBase64(slideId, 640));
-  trace("selftest", "rasterise-draw arms", { control: control.drew, test: test.drew });
-  return rasteriseArmVerdict(control, test);
+  // COUNTERBALANCED, and the first version was not — which round 11 showed is
+  // not a nicety. With the cheap arm first and the rasterise arm second, the
+  // rasterise arm always ran later, on a fuller slide and an older tab, and the
+  // scenario duly reported `the draw after a RASTERISE did not land` for a
+  // difference that position explains just as well. The same round contained a
+  // draw after a rasterise that SUCCEEDED 150 seconds earlier, so the verdict
+  // was a claim the round's own log contradicted.
+  //
+  // Rasterise, cheap, cheap, rasterise: each call type runs once early and once
+  // late, so position is held across the pair instead of confounded with it.
+  const raster = () => slideImageBase64(slideId, 640);
+  const cheap = () => slideCount();
+  const rasterEarly = await arm("after a rasterise", 0, raster);
+  const cheapEarly = await arm("after a cheap read", 1, cheap);
+  const cheapLate = await arm("after a cheap read", 2, cheap);
+  const rasterLate = await arm("after a rasterise", 3, raster);
+  trace("selftest", "rasterise-draw arms", {
+    rasterise: [rasterEarly.drew, rasterLate.drew],
+    cheap: [cheapEarly.drew, cheapLate.drew],
+    order: "raster, cheap, cheap, raster",
+  });
+  return rasteriseArmVerdict([rasterEarly, rasterLate], [cheapEarly, cheapLate]);
 };
 
 /** One arm's outcome: did the draw land, and if not, what the host said. */
@@ -1124,40 +1155,57 @@ export interface DrawArm {
 }
 
 /**
- * What the two arms mean together — pure, because the reading is the thing that
- * can be wrong.
+ * What four counterbalanced arms mean together — pure, because the reading is
+ * the thing that can be wrong, and the first version of it WAS.
  *
- * `visibilityVerdict` was extracted for exactly this reason and for exactly this
- * cost: three attempts to arm the fake into each state each overshot into a
- * different failure, and the rule went untested while the plumbing was
- * exercised. Four combinations, four different conclusions, and the one that
- * matters most is the one a careless reading gets wrong — a slide that refuses
- * EVERY draw looks identical to a rasterise that poisons the next one unless
- * the control arm is consulted.
+ * Two arms were not enough. With the cheap arm first and the rasterise arm
+ * second, the rasterise arm always ran later, and round 11 duly reported "the
+ * draw after a RASTERISE did not land" — for a difference that position
+ * explains just as well, in a round whose own log contained a draw after a
+ * rasterise succeeding 150 seconds earlier. A diagnostic that manufactures a
+ * finding is worse than no diagnostic.
+ *
+ * So each call type runs once early and once late, and the verdict names the
+ * CALL only when the call is what separates them: every rasterise arm failing
+ * while every cheap arm draws is the call; both LATE arms failing while both
+ * early ones draw is position or elapsed time; anything else is no separation,
+ * which after eleven rounds of eliminated candidates is the expected answer.
+ *
+ * Each pair is [early, late], which is what makes the second reading available.
  */
-export function rasteriseArmVerdict(control: DrawArm, test: DrawArm): { ok: boolean; detail: string } {
-  if (control.drew && test.drew)
+export function rasteriseArmVerdict(raster: DrawArm[], cheap: DrawArm[]): { ok: boolean; detail: string } {
+  const drew = (a: DrawArm[]) => a.filter((x) => x.drew).length;
+  const why = [...raster, ...cheap].find((a) => !a.drew)?.why ?? "";
+  const all = raster.length + cheap.length;
+  const landed = drew(raster) + drew(cheap);
+  if (landed === all)
     return {
       ok: true,
-      detail: "both draws landed — a draw straight after a rasterise is no worse than one after a cheap read",
+      detail: "all four draws landed — a draw straight after a rasterise is no worse than one after a cheap read",
     };
-  if (control.drew)
+  if (landed === 0)
+    return { ok: false, detail: `no draw landed at all (${why}) — the slide or the moment, not the call before them` };
+  if (drew(raster) === 0 && drew(cheap) === cheap.length)
     return {
       ok: false,
       detail:
-        `the draw after a RASTERISE did not land (${test.why}); the one after a cheap read did, ` +
-        "on the same slide seconds earlier",
+        `every draw after a RASTERISE failed (${why}) and every one after a cheap read landed, ` +
+        "interleaved so position cannot account for it — the call before the draw is the difference",
     };
-  if (test.drew)
+  const early = [raster[0], cheap[0]].filter(Boolean);
+  const late = [raster[1], cheap[1]].filter(Boolean);
+  if (late.length === 2 && drew(late) === 0 && drew(early) === early.length)
     return {
       ok: false,
       detail:
-        `the draw after a cheap read did not land (${control.why}) while the one after a rasterise did — ` +
-        "whatever this is, it is not the rasterise",
+        `both LATER draws failed (${why}) and both earlier ones landed, whichever call preceded them — ` +
+        "this is position or elapsed time, not the rasterise",
     };
   return {
     ok: false,
-    detail: `neither draw landed (${control.why}) — the slide or the moment, not the call before the draw`,
+    detail:
+      `${landed} of ${all} draws landed (${why}), with no pattern in either the call before them or their ` +
+      "position — the stall is intermittent, which is what eleven rounds of eliminated candidates already said",
   };
 }
 

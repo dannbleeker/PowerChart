@@ -1739,16 +1739,16 @@ describe("the experiment that asks whether a rasterise poisons the next draw", (
   const NAME = "does a rasterise poison the next draw";
   const pick = async () => byName(await runSelfTest("probe", NAME))[NAME];
 
-  it("passes when both arms draw, and says so", async () => {
+  it("passes when every arm draws, and says so", async () => {
     installHost([makeSlide("s1")]);
     setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
     const r = await pick();
     expect(r.skipped, r.detail).toBeFalsy();
     expect(r.ok, r.detail).toBe(true);
-    expect(r.detail).toMatch(/both draws landed/);
+    expect(r.detail).toMatch(/all four draws landed/);
   });
 
-  it("reads all four combinations of the two arms apart", () => {
+  it("names the CALL only when the call is what separates the arms", () => {
     // Pure, and extracted for the reason `visibilityVerdict` was: three
     // attempts to arm the fake into each of these states each overshot into a
     // different failure, exercising the fake's plumbing while the RULE — which
@@ -1756,29 +1756,38 @@ describe("the experiment that asks whether a rasterise poisons the next draw", (
     const ok = { drew: true, why: "" };
     const dead = { drew: false, why: "the host stopped answering" };
 
-    expect(rasteriseArmVerdict(ok, ok).ok, "both arms drew and it did not pass").toBe(true);
-    expect(rasteriseArmVerdict(ok, ok).detail).toMatch(/both draws landed/);
+    // All four landed.
+    expect(rasteriseArmVerdict([ok, ok], [ok, ok]).ok).toBe(true);
+    expect(rasteriseArmVerdict([ok, ok], [ok, ok]).detail).toMatch(/all four draws landed/);
 
-    // The finding this experiment exists to produce.
-    const guilty = rasteriseArmVerdict(ok, dead);
+    // The finding the experiment exists to produce: every rasterise arm
+    // refused, every cheap arm drew, interleaved so position cannot explain it.
+    const guilty = rasteriseArmVerdict([dead, dead], [ok, ok]);
     expect(guilty.ok).toBe(false);
-    expect(guilty.detail, "did not name the rasterise arm").toMatch(/after a RASTERISE did not land/);
-    expect(guilty.detail, "dropped the control arm, which is what makes the test arm mean anything").toMatch(
-      /after a cheap read did/,
-    );
+    expect(guilty.detail, "did not name the call").toMatch(/every draw after a RASTERISE failed/);
+    expect(guilty.detail, "did not say why position is excluded").toMatch(/interleaved/);
 
-    // The one a careless reading gets wrong, and the expensive direction: a
-    // slide that refuses EVERY draw looks exactly like a rasterise that
-    // poisons the next one, unless the control arm is consulted.
-    const both = rasteriseArmVerdict(dead, dead);
-    expect(both.ok).toBe(false);
-    expect(both.detail, "blamed the rasterise for a slide that refuses everything").toMatch(/neither draw landed/);
-    expect(both.detail).not.toMatch(/after a RASTERISE did not land/);
+    // The reading the TWO-arm version could not reach, and got wrong on its
+    // first real round: the late half failed and the early half did not,
+    // whichever call preceded them.
+    const positional = rasteriseArmVerdict([ok, dead], [ok, dead]);
+    expect(positional.ok).toBe(false);
+    expect(positional.detail, "blamed the rasterise for a late-in-the-round stall").toMatch(/both LATER draws failed/);
+    expect(positional.detail).not.toMatch(/every draw after a RASTERISE failed/);
 
-    // And the reverse, which would exonerate the rasterise outright.
-    const backwards = rasteriseArmVerdict(dead, ok);
-    expect(backwards.ok).toBe(false);
-    expect(backwards.detail).toMatch(/it is not the rasterise/);
+    // A slide that refuses everything looks identical to a poisoned call unless
+    // the cheap arms are consulted.
+    const dying = rasteriseArmVerdict([dead, dead], [dead, dead]);
+    expect(dying.detail, "blamed the rasterise for a slide that refuses everything").toMatch(/no draw landed at all/);
+    expect(dying.detail).not.toMatch(/every draw after a RASTERISE failed/);
+
+    // And the shape round 11 actually produced — one rasterise arm each way —
+    // which is no separation and must say so rather than pick a side.
+    const mixed = rasteriseArmVerdict([ok, dead], [ok, ok]);
+    expect(mixed.ok).toBe(false);
+    expect(mixed.detail, "claimed a pattern from a mixed result").toMatch(/no pattern/);
+    expect(mixed.detail).not.toMatch(/every draw after a RASTERISE failed/);
+    expect(mixed.detail).not.toMatch(/both LATER draws failed/);
   });
 });
 

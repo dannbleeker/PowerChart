@@ -537,20 +537,34 @@ an insert` stalled after a selection call, having passed the two rounds before.
   `selecting a shape` — round 9's other stall — turns up among round 10's
   survivors, which is what a non-cause looks like.
 
-  **It is still confounded, and exactly.** Only `chartIsVisible` rasterises
-  before drawing, so "the draw followed a rasterise" and "the draw was that
-  scenario" are the same event, one per round. That is the shape this project
-  has now been caught by three times, and reasoning has never once broken it.
+  **And round 11 killed it, the same way every other candidate died.** That
+  round contains two draws after a rasterise, 150 seconds apart:
 
-  So `does a rasterise poison the next draw` is the control: two arms, one
-  scenario, one slide, seconds apart — one draw after a cheap read, one after a
-  rasterise. Everything a scenario-level account could appeal to is held
-  identical between them. Both draw → the rasterise is innocent and
-  `chartIsVisible` stalls for a reason still unnamed. Only the test arm stalls →
-  the call is the cause on a surface that is not `chartIsVisible`, and there is
-  finally something to fix. Neither draws → the slide or the moment.
-  `rasteriseArmVerdict` is that reading, pure, for the reason
-  `visibilityVerdict` is.
+      584.5s  pass   after="rasterising a slide"    (the chart is actually visible — PASSED)
+      734.8s  STALL  after="rasterising a slide"    (the control's rasterise arm)
+
+  A value that occurs in both populations cannot separate them. So
+  `afterAnswering` has gone the way of `idleMs`: **no call before the draw
+  predicts the stall.** Every candidate is now eliminated — the scenario, the
+  preceding scenario, the tab's age, the idle gap, and the identity of the
+  preceding call. What is left is a host that stalls the first sync of a draw
+  intermittently, at roughly one or two draws in fifteen, and nothing yet
+  distinguishes which.
+
+  **The control's own verdict that round was WRONG, and that is the more useful
+  lesson.** It reported `the draw after a RASTERISE did not land` — a claim the
+  same log contradicts — because the two arms ran in a fixed order, cheap first
+  and rasterise second, so the rasterise arm was always the later one. A
+  diagnostic that manufactures a finding is worse than no diagnostic, and this
+  one would have manufactured that finding every round it stalled.
+
+  It is counterbalanced now: rasterise, cheap, cheap, rasterise, with each call
+  type running once early and once late. `rasteriseArmVerdict` names the CALL
+  only when every rasterise arm fails and every cheap arm draws; it names
+  POSITION when both late arms fail and both early ones draw; and it says "no
+  pattern" for anything else, which on eleven rounds of evidence is the answer
+  to expect. The arms draw eight-shape charts rather than the battery's
+  twenty-four, so four of them cost about what two of the old ones did.
 
   This is the same shape as the two experiments that already paid: `the chart is
 actually visible` and `what makes a long run slow down` each spent four rounds
