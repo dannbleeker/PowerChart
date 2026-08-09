@@ -442,7 +442,7 @@ chart the user selected` passes at 459-514s, `the chart is actually visible`
   takes elapsed time down with it for that scenario.
 
   So of the four candidates, three are now out for `a selected shape survives an
-  insert`: the scenario, its predecessor, and the tab's age. What is left is
+insert`: the scenario, its predecessor, and the tab's age. What is left is
   that this host stalls INTERMITTENTLY, and the run of four was a run.
 
   **Both things that were built to settle it have now reported, and both did.**

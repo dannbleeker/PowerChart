@@ -1836,12 +1836,15 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
       await insertSceneIntoSlide(buildChart(sampleConfig("stacked")), { tagData: "{}" });
       const batches = traceLog().entries.filter((e) => e.message === "batch committed");
       expect(batches.length, "the draw did not batch, so there is nothing to check").toBeGreaterThan(1);
-      expect(batches[0].data, "the first batch carries no idle gap to compare a stall against").toHaveProperty("idleMs");
+      expect(batches[0].data, "the first batch carries no idle gap to compare a stall against").toHaveProperty(
+        "idleMs",
+      );
       expect(typeof batches[0].data?.idleMs).toBe("number");
       for (const b of batches.slice(1)) {
-        expect(b.data, "a later batch reported an idle gap that can only describe the batch before it").not.toHaveProperty(
-          "idleMs",
-        );
+        expect(
+          b.data,
+          "a later batch reported an idle gap that can only describe the batch before it",
+        ).not.toHaveProperty("idleMs");
       }
     } finally {
       setTracing(false);
