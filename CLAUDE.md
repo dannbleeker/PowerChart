@@ -83,28 +83,35 @@ npm run skill      # build skill-dist/powerchart-charts.zip
   which is the rule automated — the reasoning was never the expensive part, the
   round trip was.
 - **One answer sheet is not evidence about this host — it is evidence about
-  this host in that minute.** Two probe questions ALTERNATE, in lockstep and
-  always opposite: `shape-add-held-slide-proxy` has answered `threw`, `threw`,
-  `yes`, `threw`, `threw` across five sheets, and
-  `shape-add-positional-slide-proxy` answered `yes`, `yes`, `threw`, `yes`,
-  `yes` on the same five. Three of those sheets are the same build within hours,
-  so this is not a sequence of corrections where the newest value is the true
-  one — it is a coin, and four landings the same way do not make the fifth a
-  mechanism. The run log says why,
-  and it is not subtle: three `scratch slide landed but its id will not resolve`
-  lines mid-run, two replacement scratch slides taken, and every question inside
-  that window answering `no-scratch-slide` before the host came back. The host's
-  ability to resolve a freshly added slide's id comes and goes within a single
-  37-second run. So a question that has been asked ONCE has not been answered; it
-  has been sampled — and a majority across samples is not a mechanism either.
-  Both are declared in `UNSTABLE_ANSWERS` (a separate table from
-  `KNOWN_DIVERGENCES`, which is for answers that differ from the fake
-  _consistently_) with every observation, because the dangerous move is building
-  on the convenient one — `shape-add-positional-slide-proxy: yes` is exactly what
-  would make a positional slide handle look like the safe way out of the by-id
-  refusals, and it is what four of the five samples say. It would not help
-  anyway: `shapes-items-via-positional-slide` answers `short-0`, exactly as the
-  by-id form does, so a positional handle reads a shape collection no better.
+  this host in that minute.** Several probe questions give different answers on
+  different runs of the SAME build, minutes apart —
+  `shape-add-held-slide-proxy` and `shape-add-positional-slide-proxy` most
+  sharply, and for a while in lockstep and always opposite. That is not a
+  sequence of corrections where the newest value is the true one; it is a coin,
+  and a majority across samples is not a mechanism either. A question that has
+  been asked ONCE has not been answered, it has been sampled.
+
+  The run log says why, and it is not subtle: `scratch slide landed but its id
+will not resolve` several times mid-run, replacement scratch slides taken, and
+  every question inside that window answering `no-scratch-slide` before the host
+  came back. The host's ability to resolve a freshly added slide's id comes and
+  goes within a single run.
+
+  **`UNSTABLE_ANSWERS` in `scripts/host-baseline.mjs` is the authoritative list,
+  with every observation on every entry — do not restate its counts here.** A
+  tally in this file and a list in that one drift the moment either changes, and
+  this paragraph spent several rounds claiming "five sheets" while the table had
+  six and eight; the same mistake the backlog paragraph further down already
+  warns about. Read the table.
+
+  What the table is FOR is stopping the next reader building on whichever answer
+  a sheet happens to carry. `shape-add-positional-slide-proxy: yes` is exactly
+  what would make a positional slide handle look like the safe way out of the
+  by-id refusals, and it is what most of its samples say. It would not help
+  anyway: `shapes-items-via-positional-slide` answers as short as the by-id form
+  does in every run that put both, so a positional handle reads a shape
+  collection no better.
+
 - **The fake is gated against a real host in CI** — `test/host-contract.test.ts`
   diffs `FAKE_BASELINE` against the committed sheet in
   `test/fixtures/host-answers-web.json`. A new divergence fails there unless it
@@ -459,12 +466,26 @@ committed` — three to five seconds of probe reads, deck inventories and
     A rasterise answered, the draw's first sync went out a millisecond later,
     and it never came back. Every future round carries this for free.
 
-    **Do not read `idleMs: 1` as a finding yet.** Sequential code issues its
-    next call the instant the previous one answers, so 1ms may be true of every
-    draw in the round — a number with no baseline is not a measurement, and this
-    file has been wrong exactly that way before. The first batch of every draw
-    records the same gap now, stalled or not, so the next round says whether it
-    discriminates.
+    **`idleMs` IS NOT THE VARIABLE — asked and answered on the next round.**
+    The gap was recorded for the first batch of every draw, stalled or not, and
+    round 8 (`d812d0c`) reported four batches that all SURVIVED:
+
+        82.6s  idleMs=2182   edit a chart on the visible slide
+
+    100.1s idleMs=2 insert onto a slide that already has content
+    129.9s idleMs=1 insert onto a slide that already has content
+    188.3s idleMs=854 same scale across the deck
+
+    A surviving first batch went out **one millisecond** after the previous
+    answer, which is exactly what the stall reported. A value that occurs in
+    both populations cannot separate them, so the gap is dead as a lead and
+    nothing should be built on it — least of all a wait before drawing, which
+    this host has already punished once (see the scratch-slide gotcha).
+
+    The instrumentation stays. It cost one trace field, it killed a plausible
+    hypothesis in a single round, and the half that is still live rides along
+    with it: `afterAnswering` names the CALL, and the identity of the call is
+    the lead the gap turned out not to be.
 
   - **The picked round ran and answered.** The criterion was set in advance:
     stalls → the scenario itself; passes → predecessor or position. It PASSED,
@@ -476,7 +497,12 @@ visible` is now the only stall on record — 4 of the last 5 rounds — and it i
   the only scenario that rasterises immediately before drawing. That is a much
   narrower target than "the last third of a round", and it needs no new
   experiment: the record names the predecessor on every future stall, and the
-  baseline says whether the gap matters. Two more rounds decide it.
+  baseline has already answered — the gap does not matter, the identity of the
+  call is all that is left. What would settle it is the same shape as everything
+  else here: a scenario that draws immediately after a rasterise and one that
+  draws immediately after something else, in the same round. `chartIsVisible`
+  is the first; every other drawing scenario is the second, and they do not
+  stall. That is suggestive and it is one scenario, so it stays a lead.
 
   This is the same shape as the two experiments that already paid: `the chart is
 actually visible` and `what makes a long run slow down` each spent four rounds

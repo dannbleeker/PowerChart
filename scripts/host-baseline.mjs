@@ -118,11 +118,11 @@ export const KNOWN_DIVERGENCES = {
 export const UNSTABLE_ANSWERS = {
   "shapes-items-count-honest":
     "The ANSWER is stable; its FORM is not. `unreadable` (2026-08-05), `short-0` (2026-08-08 on 2f1e8c4), `unreadable` again " +
-    "(2026-08-08 on a546897), `short-0` again (2026-08-09 on 8bb9e8f). Four samples, two forms, no trend. Every one of those says the same thing — this host will not tell a caller what is on a slide — and they " +
+    "(2026-08-08 on a546897), `short-0` again (2026-08-09 on 8bb9e8f), `unreadable` again (2026-08-09 on d812d0c). Five samples, two forms, still no trend. Every one of those says the same thing — this host will not tell a caller what is on a slide — and they " +
     "differ only in how the refusal arrives: a collection that throws, versus one that answers with zero items. Worth keeping apart " +
     "because the two want different code (a catch versus a corroborated count), and `slideShapeList` handles both for exactly this reason.",
   "shapes-items-via-positional-slide":
-    "As its by-id partner above, and moving in step with it: `short-0` (2f1e8c4), `not-listed` (a546897). Both runs agree with the " +
+    "As its by-id partner above, and moving in step with it: `short-0` (2f1e8c4), `not-listed` (a546897), `not-listed` (d812d0c). Every run agrees with the " +
     "by-id form in the same run, which is the finding — the parent handle is not the variable. What varies is the host, run to run.",
   "group-children-via-getcount":
     "ASKED AND ANSWERED ONCE, on a degraded host: `unreadable`, 2026-08-08. Its sibling `group-reports-its-children` answered `threw` " +
@@ -132,14 +132,14 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
-    "ALTERNATES. Five observations: `threw` (2026-08-05), `threw` (2026-08-07), `yes` (2026-08-08 run a), `threw` (2026-08-08 run b), " +
-    "`threw` (2026-08-08 run c, the sheet now committed). The 08-08 runs are one build. Earlier wording here said it flipped once, which " +
+    "ALTERNATES. Six observations: `threw` (2026-08-05), `threw` (2026-08-07), `yes` (2026-08-08 run a), `threw` (2026-08-08 run b), " +
+    "`threw` (2026-08-08 run c, the sheet now committed), `threw` (2026-08-09 on d812d0c). Five of the six are `threw`. Earlier wording here said it flipped once, which " +
     "reads as though the newer value were the true one and the old one a mistake — it is not a sequence of corrections, it is a coin, and " +
-    "four of five landings do not make the fifth a mechanism. " +
+    "five of six landings do not make the seventh a mechanism. " +
     "The fake keeps refusing held proxies, which is the safe direction: code that never holds one across a sync is correct whichever way the coin lands.",
   "shape-add-positional-slide-proxy":
-    "THREE-SIDED, which is worth saying because this entry called it a coin. Seven observations: `yes`, `yes`, `threw`, `yes`, `yes`, " +
-    "`threw`, `not-listed` (2026-08-08, `1fd6aa3`). The third face is not a variant of the other two — `not-listed` means the DECK'S " +
+    "THREE-SIDED, which is worth saying because this entry called it a coin. Eight observations: `yes`, `yes`, `threw`, `yes`, `yes`, " +
+    "`threw`, `not-listed` (2026-08-08, `1fd6aa3`), `yes` (2026-08-09, `d812d0c`). The third face is not a variant of the other two — `not-listed` means the DECK'S " +
     "OWN SLIDE LIST did not contain the scratch slide's id, so the question was never really put, while `threw` means it was put and " +
     "refused. A host that will not list a slide it has just added is the same story as everything else here, arriving at a different door. " +
     "For the first six observations it did alternate in lockstep with its partner above and always opposite to it: `yes`, `yes`, `threw`, `yes`, `yes`, `threw`. " +
