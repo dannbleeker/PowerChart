@@ -3841,6 +3841,13 @@ describe("a hostile config cannot take down a live insert", () => {
       (c) => ({ ...c, data: { ...c.data, series: c.data.series.map((s) => ({ ...s, name: 7 })) } }),
     ],
     ["numeric palette", (c) => ({ ...c, style: { palette: [1, 2, 3] } })],
+    // The fourth copy of the same hole, found the same way and in all three
+    // sinks at once. `officeHex` hands anything non-alphabetic to `toHex6`, and
+    // `toHex6` used to CRASH on a colour whose numbers are not numbers: the
+    // regex that finds them matches a bare ".", `parseFloat(".")` is NaN, and
+    // the hue sector table has no NaN entry. A malformed colour is exactly what
+    // a hand-edited config or a template written in another deck arrives with.
+    ["a palette colour whose numbers are not numbers", (c) => ({ ...c, style: { palette: ["hsl(., 50%, 50%)"] } })],
     ["labelContent a bare string", (c) => ({ ...c, decorations: { ...c.decorations, labelContent: "value" } })],
     ["numberFormat null", (c) => ({ ...c, numberFormat: null })],
     ["numeric valueAxisTitle", (c) => ({ ...c, valueAxisTitle: 5 })],

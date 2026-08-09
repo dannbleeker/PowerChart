@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { contrastInk } from "../src/core/scene";
-import { toRgb, toHex6, alphaOf } from "../src/core/color";
+import { toRgb, toHex6, alphaOf, lerpColor } from "../src/core/color";
 
 /** Colour parsing and normalisation — every paint form the config admits. */
 
@@ -49,5 +49,58 @@ describe("toRgb parses every allow-listed colour form", () => {
     expect(toRgb("hsl(0,0%,0%)")).toEqual([0, 0, 0]);
     // A malformed paint falls back to mid grey, never NaN/black.
     expect(toRgb("not-a-color")).toEqual([128, 128, 128]);
+  });
+});
+
+describe("a colour string that is not a number where a number was expected", () => {
+  /**
+   * `parseFloat` is looser than the regex that feeds it. `[\d.]+` matches a
+   * bare "." and a "..", and `parseFloat(".")` is NaN — so `hsl(., 50%, 50%)`
+   * reached the maths as NaN.
+   *
+   * In the hsl branch that was a CRASH rather than a wrong colour:
+   * `Math.floor(NaN / 60) % 6` is NaN, the hue sector table has no NaN entry,
+   * and destructuring `undefined` throws. In the rgb branch it produced
+   * `#NaNNaNNaN`, which is not a colour anywhere.
+   *
+   * Ordinary input, too: a config arrives from the JSON box, a saved template,
+   * a shape tag written in another deck, and the skill's caller — the same
+   * boundary that made `categories: [2023, 2024]` crash.
+   */
+  const BROKEN = [
+    "hsl(., 50%, 50%)",
+    "hsl(-.., 50%, 50%)",
+    "hsla(., ., .)",
+    "rgb(., ., .)",
+    "rgba(-.., 1, 1)",
+    "hsl(50, ., .)",
+  ];
+
+  it("never throws, whatever it is handed", () => {
+    for (const c of BROKEN) expect(() => toRgb(c), `toRgb threw on ${c}`).not.toThrow();
+  });
+
+  it("falls back to mid grey rather than to NaN", () => {
+    for (const c of BROKEN) {
+      expect(toRgb(c), `${c} produced a non-colour`).toEqual([128, 128, 128]);
+      expect(toHex6(c), `${c} produced a non-colour`).toBe("#808080");
+    }
+  });
+
+  it("always produces six hex digits, from any channel value at all", () => {
+    // Guarded in `rgbToHex` rather than at its four call sites: every producer
+    // of a channel can arrive with a NaN for its own reasons, and `lerpColor`
+    // does — an interpolation weight of NaN clamps to NaN, not to 0 or 1.
+    expect(toHex6("rgb(., ., .)")).toMatch(/^#[0-9a-f]{6}$/);
+    expect(lerpColor("#000000", "#ffffff", NaN)).toMatch(/^#[0-9a-f]{6}$/);
+    expect(lerpColor("#000000", "#ffffff", Infinity)).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  it("still reads the colours that were always fine", () => {
+    // The negative control. A parser that answered grey to everything would
+    // pass all three cases above and silently grey out every chart.
+    expect(toRgb("hsl(-30, 50%, 50%)")).toEqual([191, 64, 128]);
+    expect(toRgb("rgb(10, 20, 30)")).toEqual([10, 20, 30]);
+    expect(toHex6("#abc")).toBe("#aabbcc");
   });
 });

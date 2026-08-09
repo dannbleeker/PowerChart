@@ -58,7 +58,16 @@ import { demoItems, buildResultsScenes, type ResultRow, type ResultsSummary } fr
 import type { Scene } from "../core/scene";
 import { estimateOfficeShapes } from "../core/scene";
 import { describeReconcile, planReconcile } from "../core/reconcile";
-import { onTrace, setTracing, trace, traceLog, traceMark, tracing, type TraceSummary } from "../core/trace";
+import {
+  formatTraceLine,
+  onTrace,
+  setTracing,
+  trace,
+  traceLog,
+  traceMark,
+  tracing,
+  type TraceSummary,
+} from "../core/trace";
 import {
   beginCrashLog,
   clearCrashLog,
@@ -2981,6 +2990,149 @@ function downloadJson(name: string, payload: unknown): boolean {
   }
 }
 
+/**
+ * The live transcript panel: the step list, its copy button and its clear
+ * button.
+ *
+ * Lifted whole out of `wireInsert`, which was 1113 lines and is the reason the
+ * line formatter inside it went untested for months while it silently dropped
+ * every array-valued payload. A panel that owns one DOM node, one bounded
+ * buffer and three handlers is a thing that can be read in one screen; the same
+ * code as a middle third of a thousand-line function is not.
+ *
+ * Returns `revealSteps`, which the run buttons call once as a run starts —
+ * markup order is not position, and a log you must scroll to before you can
+ * photograph it is a log a dying tab takes with it.
+ */
+function wireStepsPanel(): { revealSteps: () => void } {
+  // The live transcript.
+  //
+  // Wired to the trace stream rather than to the run's own reporting, so it
+  // costs no new instrumentation and shows exactly what the log would have —
+  // including the `at=<phase>` on any error. It exists because the log does
+  // NOT survive the failures worth explaining: it becomes downloadable only
+  // when a run ends, and two real-host rounds have now been lost to a run
+  // that never ended (a wedge at 1819s) and one PowerPoint killed outright
+  // ("Sorry, we ran into a problem", at 108s). What is on screen survives
+  // both, and can be copied or photographed before the reload.
+  const steps = $("demo-steps");
+  /** Newest FIRST, capped — a pane is not a heap, and the head is what is read. */
+  const STEP_LINES = 300;
+  const lines: string[] = [];
+  // NEWEST FIRST, and that ordering is the whole point rather than a
+  // preference.
+  //
+  // The first version appended and auto-scrolled to the bottom, which reads
+  // better while a run is healthy and fails at the only moment this list
+  // exists for. When PowerPoint dies, what you have is whatever pixels were
+  // on screen — no scrolling, no clicking, often a modal dialog over half the
+  // pane. An append-and-follow list puts the last thing that happened at the
+  // bottom of a small scrolled box, which is exactly where it cannot be
+  // relied on to be visible. Prepending puts it at a FIXED position, one line
+  // below the header, and needs no scroll to have worked.
+  //
+  // It also removes the follow-the-tail logic entirely: there is no tail to
+  // follow, so there is no "unless the user scrolled" case to get wrong.
+  const paintSteps = (): void => {
+    steps.textContent = lines.join("\n");
+  };
+  /**
+   * Put the step list where it can be seen, once, as a run starts.
+   *
+   * Newest-first fixes WHERE in the box the last line is; it does nothing
+   * about whether the box itself is on screen. Two things now answer that.
+   * The list is the FIRST thing in the Testing section, above the buttons
+   * that start a run — a real-host round crashed with the log still under
+   * nine controls and a paragraph, which is a log you must scroll to before
+   * you can photograph it. And this scrolls the panel to it anyway, because
+   * markup order is not position: the Automation tab scrolls, and a run
+   * started after reading the JSON section below would otherwise begin with
+   * the box off the top. Once per run, on the click that starts it — never
+   * while the run is going, because a pane that moves under the cursor
+   * mid-run is its own problem.
+   */
+  const revealSteps = (): void => {
+    try {
+      steps.scrollIntoView({ block: "nearest" });
+    } catch {
+      /* an older host without scrollIntoView options — the list still fills */
+    }
+  };
+  onTrace((e) => {
+    // The data payload matters as much as the message for the lines that
+    // locate a failure — `error`, `name`, `detail` are where the phase and
+    // the verdict live. `formatTraceLine` is where that is decided, and it
+    // lives in `trace.ts` rather than here because it used to live here: an
+    // inline formatter in a DOM closure is a formatter nothing can test, and
+    // for months it silently dropped every array-valued payload — including
+    // the two timing series `degradation curves` exists to produce.
+    const line = formatTraceLine(e);
+    lines.unshift(line);
+    // Drop the OLDEST, which is now the end of the array.
+    if (lines.length > STEP_LINES) lines.length = STEP_LINES;
+    paintSteps();
+    // The same line, to storage, where it outlives this JavaScript context.
+    // One formatter for both, so the file and the screen can never describe
+    // the same run differently — and oldest-first there, because a file is
+    // read from the top while a crashed screen is read from where it froze.
+    recordCrashStep(line);
+    // Anything traced is the host or the run still moving, which is what the
+    // elapsed readout needs to tell "slow" from "gone".
+    noteHostActivity();
+  });
+  // The last synchronous moment the pane gets. `pagehide` fires on the tab
+  // close that ended the 1819-second run, so it buys back the final debounce
+  // window — the part of a dying run that nothing else can reach.
+  window.addEventListener("pagehide", flushCrashLog);
+  $("demo-steps-copy").addEventListener("click", () => {
+    if (!lines.length) {
+      note("No steps to copy yet.", "err");
+      return;
+    }
+    // Labelled, because the order is the opposite of what a log usually is
+    // and a reader who assumes otherwise reads the run backwards.
+    const text = [`PowerChart steps — NEWEST FIRST (${lines.length} lines)`, ...lines].join("\n");
+    // Two ways, because the first one does not work where this runs.
+    //
+    // `navigator.clipboard` needs a secure context, a user gesture AND the
+    // `clipboard-write` permission — and an Office task pane is a nested
+    // cross-origin iframe that is routinely refused it. Observed, on the run
+    // this button exists for: "The browser would not give us the clipboard".
+    // Telling the user to select the text by hand is not a fallback, it is
+    // an apology, and it arrives at the moment they can least afford one.
+    //
+    // So: select the transcript and run the legacy copy command, which is
+    // permitted from a user gesture in an iframe. It is deprecated and it
+    // works. If even that is refused the text is at least now SELECTED, so
+    // Ctrl+C finishes the job.
+    const selectAndCopy = (): boolean => {
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(steps);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        return document.execCommand("copy");
+      } catch {
+        return false;
+      }
+    };
+    const done = (n: number) => note(`Copied ${n} step(s).`, "ok");
+    void Promise.resolve()
+      .then(() => navigator.clipboard?.writeText(text))
+      .then(() => done(lines.length))
+      .catch(() => {
+        if (selectAndCopy()) done(lines.length);
+        else note("The browser refused the clipboard — the steps are selected, press Ctrl+C.", "err");
+      });
+  });
+  $("demo-steps-clear").addEventListener("click", () => {
+    lines.length = 0;
+    paintSteps();
+  });
+  return { revealSteps };
+}
+
 function wireInsert() {
   const insertBtn = $("insert") as HTMLButtonElement;
   const insertNewBtn = $("insert-new") as HTMLButtonElement;
@@ -3195,131 +3347,8 @@ function wireInsert() {
     // validated against real hosts, uncheck it in taskpane.html and drop the
     // `checked` — the module, its call sites and this toggle all keep working,
     // so a future investigation is one click away rather than a re-implementation.
-    // The live transcript.
-    //
-    // Wired to the trace stream rather than to the run's own reporting, so it
-    // costs no new instrumentation and shows exactly what the log would have —
-    // including the `at=<phase>` on any error. It exists because the log does
-    // NOT survive the failures worth explaining: it becomes downloadable only
-    // when a run ends, and two real-host rounds have now been lost to a run
-    // that never ended (a wedge at 1819s) and one PowerPoint killed outright
-    // ("Sorry, we ran into a problem", at 108s). What is on screen survives
-    // both, and can be copied or photographed before the reload.
-    const steps = $("demo-steps");
-    /** Newest FIRST, capped — a pane is not a heap, and the head is what is read. */
-    const STEP_LINES = 300;
-    const lines: string[] = [];
-    // NEWEST FIRST, and that ordering is the whole point rather than a
-    // preference.
-    //
-    // The first version appended and auto-scrolled to the bottom, which reads
-    // better while a run is healthy and fails at the only moment this list
-    // exists for. When PowerPoint dies, what you have is whatever pixels were
-    // on screen — no scrolling, no clicking, often a modal dialog over half the
-    // pane. An append-and-follow list puts the last thing that happened at the
-    // bottom of a small scrolled box, which is exactly where it cannot be
-    // relied on to be visible. Prepending puts it at a FIXED position, one line
-    // below the header, and needs no scroll to have worked.
-    //
-    // It also removes the follow-the-tail logic entirely: there is no tail to
-    // follow, so there is no "unless the user scrolled" case to get wrong.
-    const paintSteps = (): void => {
-      steps.textContent = lines.join("\n");
-    };
-    /**
-     * Put the step list where it can be seen, once, as a run starts.
-     *
-     * Newest-first fixes WHERE in the box the last line is; it does nothing
-     * about whether the box itself is on screen. Two things now answer that.
-     * The list is the FIRST thing in the Testing section, above the buttons
-     * that start a run — a real-host round crashed with the log still under
-     * nine controls and a paragraph, which is a log you must scroll to before
-     * you can photograph it. And this scrolls the panel to it anyway, because
-     * markup order is not position: the Automation tab scrolls, and a run
-     * started after reading the JSON section below would otherwise begin with
-     * the box off the top. Once per run, on the click that starts it — never
-     * while the run is going, because a pane that moves under the cursor
-     * mid-run is its own problem.
-     */
-    const revealSteps = (): void => {
-      try {
-        steps.scrollIntoView({ block: "nearest" });
-      } catch {
-        /* an older host without scrollIntoView options — the list still fills */
-      }
-    };
-    onTrace((e) => {
-      // The data payload matters as much as the message for the lines that
-      // locate a failure — `error`, `name`, `detail` are where the phase and
-      // the verdict live. Kept short so one step is one readable line.
-      const bits = Object.entries(e.data ?? {})
-        .filter(([, v]) => v !== undefined && v !== "" && typeof v !== "object")
-        .map(([k, v]) => `${k}=${String(v)}`)
-        .join(" ");
-      const line = `${String(Math.round(e.ms / 100) / 10).padStart(6)}s  ${e.scope}  ${e.message}${bits ? "  " + bits : ""}`;
-      lines.unshift(line);
-      // Drop the OLDEST, which is now the end of the array.
-      if (lines.length > STEP_LINES) lines.length = STEP_LINES;
-      paintSteps();
-      // The same line, to storage, where it outlives this JavaScript context.
-      // One formatter for both, so the file and the screen can never describe
-      // the same run differently — and oldest-first there, because a file is
-      // read from the top while a crashed screen is read from where it froze.
-      recordCrashStep(line);
-      // Anything traced is the host or the run still moving, which is what the
-      // elapsed readout needs to tell "slow" from "gone".
-      noteHostActivity();
-    });
-    // The last synchronous moment the pane gets. `pagehide` fires on the tab
-    // close that ended the 1819-second run, so it buys back the final debounce
-    // window — the part of a dying run that nothing else can reach.
-    window.addEventListener("pagehide", flushCrashLog);
-    $("demo-steps-copy").addEventListener("click", () => {
-      if (!lines.length) {
-        note("No steps to copy yet.", "err");
-        return;
-      }
-      // Labelled, because the order is the opposite of what a log usually is
-      // and a reader who assumes otherwise reads the run backwards.
-      const text = [`PowerChart steps — NEWEST FIRST (${lines.length} lines)`, ...lines].join("\n");
-      // Two ways, because the first one does not work where this runs.
-      //
-      // `navigator.clipboard` needs a secure context, a user gesture AND the
-      // `clipboard-write` permission — and an Office task pane is a nested
-      // cross-origin iframe that is routinely refused it. Observed, on the run
-      // this button exists for: "The browser would not give us the clipboard".
-      // Telling the user to select the text by hand is not a fallback, it is
-      // an apology, and it arrives at the moment they can least afford one.
-      //
-      // So: select the transcript and run the legacy copy command, which is
-      // permitted from a user gesture in an iframe. It is deprecated and it
-      // works. If even that is refused the text is at least now SELECTED, so
-      // Ctrl+C finishes the job.
-      const selectAndCopy = (): boolean => {
-        try {
-          const range = document.createRange();
-          range.selectNodeContents(steps);
-          const sel = window.getSelection();
-          sel?.removeAllRanges();
-          sel?.addRange(range);
-          return document.execCommand("copy");
-        } catch {
-          return false;
-        }
-      };
-      const done = (n: number) => note(`Copied ${n} step(s).`, "ok");
-      void Promise.resolve()
-        .then(() => navigator.clipboard?.writeText(text))
-        .then(() => done(lines.length))
-        .catch(() => {
-          if (selectAndCopy()) done(lines.length);
-          else note("The browser refused the clipboard — the steps are selected, press Ctrl+C.", "err");
-        });
-    });
-    $("demo-steps-clear").addEventListener("click", () => {
-      lines.length = 0;
-      paintSteps();
-    });
+    // The live transcript — see `wireStepsPanel`.
+    const { revealSteps } = wireStepsPanel();
 
     const traceToggle = $("demo-trace") as HTMLInputElement | null;
     if (traceToggle?.checked) {

@@ -76,6 +76,28 @@ describe("hex — normalises any allow-listed paint to 6 hex digits", () => {
       expect(hex(c)).toMatch(/^[0-9a-f]{6}$/);
     }
   });
+
+  it("holds that guarantee for a number that is not a number", () => {
+    // The cases above all reached the maths as numbers. These do not: the regex
+    // that finds a colour's components matches a bare "." and a "..", and
+    // `parseFloat(".")` is NaN. `rgb(., ., .)` returned the nine-character
+    // string "NaNNaNNaN", and `hsl(., 50%, 50%)` THREW — the hue sector table
+    // has no NaN entry, so destructuring `undefined` blew up.
+    //
+    // A throw is the worse of the two. It happens inside pptxgenjs at
+    // writeFile, outside every per-chart guard, so one bad colour destroys the
+    // whole batch — which is exactly what the prototype-named colours below did
+    // once already. So the guarantee is enforced where it is stated, at the
+    // exit, rather than trusted to each branch.
+    for (const c of ["hsl(., 50%, 50%)", "hsl(-.., 50%, 50%)", "rgb(., ., .)", "rgba(-.., 1, 1)", "hsl(50, ., .)"]) {
+      expect(() => hex(c), `hex() threw on ${c}`).not.toThrow();
+      expect(hex(c), `hex() broke the six-digit guarantee on ${c}`).toMatch(/^[0-9a-f]{6}$/);
+    }
+    // The negative control: a sink that answered black to everything would pass
+    // the line above and paint every deck one colour.
+    expect(hex("hsl(-30,50%,50%)")).toBe("bf4080");
+    expect(hex("steelblue")).toBe("4682b4");
+  });
 });
 
 describe("alphaOf / fillOf / visible", () => {

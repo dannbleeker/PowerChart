@@ -599,6 +599,16 @@ what the slide looks like (10064 → 15652 bytes)`, through PowerPoint's own
   pptx), `officeHex` in `powerpoint.ts` (the live add-in). The same bug has now
   been found in all three independently — each was fixed when a sweep aimed at
   _that_ renderer found it. Change one, check the other two.
+  **Done deliberately once, on 2026-08-09, and it paid immediately**: probing
+  all three with the same six inputs found the same defect in all three in one
+  pass, rather than one at a time over three sessions. The defect: `parseFloat`
+  is looser than the regex feeding it — `[\d.]+` matches a bare `.` and
+  `parseFloat(".")` is NaN — so `hsl(., 50%, 50%)` **threw** (the hue sector
+  table has no NaN entry, so destructuring `undefined` blew up) and
+  `rgb(., ., .)` returned `#NaNNaNNaN`, which in the pptx sink is not the six
+  hex digits that path's own security note requires. Both are now enforced at
+  the root — `rgbToHex` for the preview, an exit check in `hex()` for pptx —
+  rather than per branch, and `officeHex` inherits the first.
 - **A `string` in the types is not a string in the file someone pasted.** A
   config arrives from the JSON box, a saved template, a shape tag written in
   another deck, and the skill's caller. `categories: [2023, 2024]` and
