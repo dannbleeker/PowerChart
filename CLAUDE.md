@@ -503,27 +503,42 @@ committed` — three to five seconds of probe reads, deck inventories and
     so the scenario is out, and the routine round passing it at the same
     position takes the predecessor with it.
 
-  **What is left standing is one scenario and one call.** `the chart is actually
-visible` is now the only stall on record — 4 of the last 5 rounds — and it is
-  the only scenario that rasterises immediately before drawing. That is a much
-  narrower target than "the last third of a round", and it needs no new
-  experiment: the record names the predecessor on every future stall, and the
-  baseline has already answered — the gap does not matter, the identity of the
-  call is all that is left. What would settle it is the same shape as everything
-  else here: a scenario that draws immediately after a rasterise and one that
-  draws immediately after something else, in the same round. `chartIsVisible`
-  is the first; every other drawing scenario is the second, and they do not
-  stall. That is suggestive and it is one scenario, so it stays a lead.
+  **Round 9 removed the last of that too.** It produced TWO stalls, and they
+  named two DIFFERENT predecessors:
+
+      496.6s  drawing shapes 1-10 of 24   afterAnswering="selecting a shape"     idleMs=1
+      608.2s  drawing shapes 1-10 of 24   afterAnswering="rasterising a slide"   idleMs=1
+
+  So "the sync after a rasterise" is not the pattern — `a selected shape survives
+an insert` stalled after a selection call, having passed the two rounds before.
+  And `edit the chart the user selected` ALSO selects a shape and then draws, in
+  the same round, and survived.
+
+  **And the predecessor's name is in exactly the condition the gap was in: no
+  baseline.** It is recorded on stalls and nowhere else, so thirteen draws
+  survived in that round without saying what they followed. That is the same
+  mistake `idleMs` cost two rounds to kill, made a second time with a different
+  field — which is why the first batch of every draw now records BOTH. One round
+  decides whether the identity of the preceding call discriminates or goes the
+  way the gap did.
+
+  Nothing else is standing. The scenario, the predecessor scenario, the tab's
+  age, and the idle gap are all out; what is left is a host that stalls the first
+  sync of a draw intermittently, and one field that has not been given its
+  baseline yet.
 
   This is the same shape as the two experiments that already paid: `the chart is
 actually visible` and `what makes a long run slow down` each spent four rounds
   saying "it crashed again" and one picked round saying which call.
 
 - **A stall is DEATH, not slowness — do not raise `BATCH_TIMEOUT_MS` hoping for
-  an answer.** Thirteen abandoned calls across seven rounds, and not one of them
+  an answer.** Seventeen abandoned calls across nine rounds, and not one of them
   ever came back: `a call we gave up on finally answered` appears zero times in
   any round file, including the 100-200 seconds each round keeps running
-  afterwards. And the population is bimodal with an empty band — of 327 batches
+  afterwards. Round 9 looked like a counter-example and is not — two probe
+  questions there answered at 8429ms and 8399ms against an 8000ms budget, which
+  reads as a late answer and is the probe's RETRY: it replaced the scratch slide
+  and re-asked, and the elapsed time is measured from the first attempt. And the population is bimodal with an empty band — of 327 batches
   that DID answer the slowest took **29.2s**, against a 45-second budget, so
   nothing has ever landed between 29s and 45s. A batch answers within ~29s or
   never.
@@ -580,10 +595,21 @@ could not repair any`). The verdict was **3 of 8**, which is the three slow
       chart  5       8.3s      fast    grouped; tag refused; settle refused too
       charts 6-8   ~8.2s each  fast    NOT grouped; tag refused; settle empty
 
-  4 of 8 = the three slow charts plus the one the settle rescued. The speed flip
-  and the collection-read failure are NOT the same boundary: speed flips at
-  chart 4, grouping survives it, and the collection only stops answering at
-  chart 6. Two rounds of "fast means broken" had those collapsed into one line.
+  4 of 8 = the three slow charts plus the one the settle rescued.
+
+  **Round 9 (`448ffc6`) narrows that: the three stages were one round's shape,
+  not a structure.** Same scenario, same build family, and the two boundaries
+  land together — charts 1-3 slow and grouped, charts 4-8 fast and NOT grouped,
+  five settles all `settled: 0, lost: 1`, score 3 of 8:
+
+      charts 1-3   ~35s each   SLOW    grouped, clean
+      charts 4-8   ~8.4s each  fast    NOT grouped, all lost
+
+  So the speed flip and the grouping death are INDEPENDENT and may or may not
+  coincide: a chart apart in round 8, together in round 9. What survives both is
+  narrower and more useful than either — **the score counts the charts that
+  GROUPED and kept a tag, and grouping is what the collection read decides.**
+  Speed is a symptom sitting near that boundary, not the thing that sets it.
 
   **And the settle repaired a chart for the first time on record** —
   `settle pass: repaired every config tag the drawing context lost, charts=1
