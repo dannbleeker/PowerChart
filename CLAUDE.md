@@ -264,11 +264,22 @@ re-read came back empty`. So the fall-through to a collection read does not
   everything else does. That is not in tension with the 23 retags an earlier run
   landed by collection read: those were pre-existing slides read by the repair
   pass, and this is a slide the run drew seconds ago. The distinction to hold on
-  to is not by-id versus collection, it is **fresh versus settled**. The
+  to is not by-id versus collection, it is **fresh versus settled**.
+
+  **Partly overturned on 2026-08-09 by round 8: the settle CAN rescue a
+  freshly-drawn chart, and did.** One of five settles in that round reported
+  `settled: 1, lost: 0` — the first success on record. What separates it from
+  the four that failed is not freshness: it is whether the chart was GROUPED.
+  A grouped chart gives the settle a shape id to write through; an ungrouped one
+  leaves it a collection read, and the collection is what this host will not
+  answer. So the rule is narrower than "the settle does not rescue fresh
+  charts": it rescues the ones grouping survived for, which on a degrading host
+  is the chart or two either side of the flip. The
   messages carry their outcome now — they all begin `settle pass:` so absence
   still reads as "never invoked" — because for one round the log said
   "settled the config tag…" five times while its own numbers said nothing was
   settled.
+
 - **Do NOT wait after adding a slide — it was tried and it cost 18 of 19 probe
   answers.** office-js#2903 says a slide added on Online is unusable for a
   couple of seconds and its reporter's fix is to wait; `addScratchSlide` did
@@ -560,6 +571,25 @@ could not repair any`). The verdict was **3 of 8**, which is the three slow
   the host flips regime: 3 of 8 and 4 of 8 across rounds is the flip landing one
   chart earlier or later. Read it that way, and stop treating a move from 4 to 3
   as a regression.
+
+  **Round 8 (`d812d0c`) decomposes the score exactly, and the degradation turns
+  out to have THREE stages rather than two.** Per-chart wall clock:
+
+      charts 1-3   ~35s each   SLOW    clean: grouped, tagged, done
+      chart  4       8.1s      fast    grouped; tag refused; SETTLE REPAIRED IT
+      chart  5       8.3s      fast    grouped; tag refused; settle refused too
+      charts 6-8   ~8.2s each  fast    NOT grouped; tag refused; settle empty
+
+  4 of 8 = the three slow charts plus the one the settle rescued. The speed flip
+  and the collection-read failure are NOT the same boundary: speed flips at
+  chart 4, grouping survives it, and the collection only stops answering at
+  chart 6. Two rounds of "fast means broken" had those collapsed into one line.
+
+  **And the settle repaired a chart for the first time on record** —
+  `settle pass: repaired every config tag the drawing context lost, charts=1
+settled=1 lost=0`. Every previous observation was `settled: 0, lost: 1`, and
+  this file said so. The recovery works; it needs the chart to have been grouped,
+  because that is what gives it an id to write through.
 
 - **The web host does not LIST the shapes a run just added.** The finding the
   extended log produced, and the one everything else downstream hangs off:

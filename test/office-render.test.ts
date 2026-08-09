@@ -60,6 +60,7 @@ import {
  * recovered add and a lost one differ only in numbers the test did not check.
  */
 const ADDS_TO_DEFEAT_ONE_SLIDE = 1 + MAX_ADD_RETRY_ROUNDS;
+import { readFileSync } from "fs";
 import { setTracing, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
@@ -3622,6 +3623,36 @@ describe("stopping work in flight", () => {
       faults.refuseShapeById = false;
       faults.refuseTagWrites = 0;
     }
+  });
+
+  it("gives the two settle writes different names in the source", () => {
+    // `settleAndTagChart` writes the tag twice by two different routes — once
+    // by shape id, and once through a member of a collection re-read — and both
+    // used to pass the SAME label to `boundedSync`. A refusal in a round log
+    // then named a write without naming which write.
+    //
+    // Round 8 was decodable anyway, but only by reasoning across two traces:
+    // the absence of `the host refused a settle by id` said the by-id branch
+    // had been skipped, so the refusal had to be the collection read's. That is
+    // an inference from a missing line, which is the reading this project gets
+    // wrong most often. Distinct labels make it direct.
+    //
+    // Checked against the SOURCE because the labels only reach a log when a
+    // write is refused, and arming a fake to refuse both halves in one run
+    // exercises the fake's error plumbing rather than this property.
+    const src = readFileSync("src/render/powerpoint.ts", "utf8");
+    // The whole settle path: the by-id write, the collection re-read, and the
+    // write through a member of that read. Sliced by function rather than
+    // matched on wording, so renaming a label cannot quietly stop this looking.
+    const from = src.indexOf("async function settleAndTagChart");
+    const to = src.indexOf("async function settleUntaggedCharts");
+    expect(from, "settleAndTagChart is gone — this guard is looking at nothing").toBeGreaterThan(0);
+    expect(to, "settleUntaggedCharts is gone — the slice below has no end").toBeGreaterThan(from);
+    const labels = [...src.slice(from, to).matchAll(/boundedSync\([^,]+,\s*[`"]([^`"]+)[`"]/g)].map((m) => m[1]);
+    expect(labels.length, `expected three bounded syncs in the settle path, saw ${JSON.stringify(labels)}`).toBe(3);
+    expect(new Set(labels).size, `two calls in the settle path share a label: ${JSON.stringify(labels)}`).toBe(
+      labels.length,
+    );
   });
 
   /** The settle pass's summary line, identified by its payload rather than its text. */
