@@ -45,7 +45,7 @@ import { trace } from "../core/trace";
 // @ts-expect-error — a plain .mjs table with no types, and deliberately the
 // SAME one the CLI and the CI gate read. Two copies of it is how a claim
 // quietly stops matching its check.
-import { FAKE_BASELINE, KNOWN_DIVERGENCES, diffAnswers } from "../../scripts/host-baseline.mjs";
+import { FAKE_BASELINE, KNOWN_DIVERGENCES, UNSTABLE_ANSWERS, diffAnswers } from "../../scripts/host-baseline.mjs";
 
 /** One question and what this host said. */
 export interface HostAnswer {
@@ -1516,8 +1516,16 @@ export function summariseHostSheet(sheet: HostAnswerSheet): {
   const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
   const neverPut = sheet.answers.filter((a) => NOT_ASKED.has(a.answer)).map((a) => a.id);
   const { differ } = diffAnswers(answers, FAKE_BASELINE) as { differ: { id: string }[] };
-  const known = differ.filter((d) => d.id in KNOWN_DIVERGENCES).map((d) => d.id);
-  const fresh = differ.filter((d) => !(d.id in KNOWN_DIVERGENCES)).map((d) => d.id);
+  // `UNSTABLE_ANSWERS` counts as declared too, and leaving it out made the pane
+  // cry wolf on a schedule. `shape-add-positional-slide-proxy` is a coin: it has
+  // answered `yes, yes, threw, yes, yes, threw` across six rounds, and the fake
+  // says `yes`. So every round the coin lands `threw` the pane announced
+  // "NEW: shape-add-positional-slide-proxy" — news the sixth time it was seen,
+  // about the one question this repo has documented at greatest length as
+  // varying run to run. A declaration is a declaration wherever it lives.
+  const declared = (id: string) => id in KNOWN_DIVERGENCES || id in UNSTABLE_ANSWERS;
+  const known = differ.filter((d) => declared(d.id)).map((d) => d.id);
+  const fresh = differ.filter((d) => !declared(d.id)).map((d) => d.id);
   return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh };
 }
 

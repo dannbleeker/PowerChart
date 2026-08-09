@@ -503,6 +503,50 @@ const explodePicture: Scenario = async (prefix) => {
  * Two charts, onto a slide that starts with one. The second lands on a slide
  * holding two already, which is where a positional heuristic goes wrong.
  */
+/**
+ * Where a scenario may draw so it does not land on top of another scenario.
+ *
+ * Several scenarios share a slide on purpose — `insertOntoUsedSlide` needs one
+ * that already has a chart, and `chartIsVisible` needs a before-and-after on a
+ * surface the run already owns — and both pick the FIRST probe chart, so they
+ * pick the same slide. Left to their own devices they drew full-size charts at
+ * the default origin and the result was three charts in a heap: a rasteriser
+ * reads that perfectly well, and a human opening the deck calls it broken.
+ *
+ * This battery leaves its slides for a human to look at, so that is the bar.
+ *
+ * A column of quarter-size boxes down the right-hand edge, because that is the
+ * part of the slide a 480x300 chart at any origin the probe deck uses (0,0 /
+ * 40,40 / 60,90) cannot reach. Measured against `slideSize` rather than
+ * assumed — it is cached after its first read, so this costs nothing, and a 4:3
+ * deck has its edge somewhere else.
+ *
+ * Pure, so the arithmetic that keeps them apart can be checked without a
+ * PowerPoint.
+ */
+export const SIDE_SLOTS = 4;
+
+export function sideSlot(
+  n: number,
+  slide: { width: number; height: number },
+): { left: number; top: number; width: number; height: number } {
+  const margin = Math.round(slide.height * 0.037);
+  const width = Math.round(slide.width * 0.28);
+  // Sized so the whole column fits, rather than picked and hoped. Four, because
+  // four is how many charts the scenarios that share a slide draw between them:
+  // two from `insertOntoUsedSlide`, one from `chartIsVisible`, one from the
+  // selected-shape insert. A fifth caller must raise SIDE_SLOTS, and then every
+  // box gets shorter — the right trade, since none of them is a specimen.
+  // `leaves no two charts stacked on one slide` is what notices if nobody does.
+  const height = Math.floor((slide.height - (SIDE_SLOTS + 1) * margin) / SIDE_SLOTS);
+  return {
+    width,
+    height,
+    left: slide.width - width - margin,
+    top: margin + n * (height + margin),
+  };
+}
+
 const insertOntoUsedSlide: Scenario = async (prefix) => {
   const { found: hosts, blind, gap } = await probeCharts(prefix);
   const [host] = hosts;
@@ -510,15 +554,15 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
   const shown = await showSlide(host.target.slideId);
   const before = await slideCount();
   const added = [`${prefix} onto A`, `${prefix} onto B`];
+  const slide = await slideSize();
   for (const [n, title] of added.entries()) {
-    const c = cfg(title);
-    // Cascaded, the way a repeated insert does, so the second does not land
-    // exactly on top of the first.
-    await insertSceneIntoSlide(buildChart(c), {
-      tagData: JSON.stringify(c),
-      left: 40 + n * 24,
-      top: 40 + n * 24,
-    });
+    // Slots 0 and 1 down the right edge — `chartIsVisible` takes slot 2 on this
+    // same slide. The old code cascaded these by 24pt, which on a 480x300 chart
+    // is not a cascade: both landed on each other AND on the chart already
+    // there. See `sideSlot`.
+    const { left, top, ...box } = sideSlot(n, slide);
+    const c: ChartConfig = { ...cfg(title), ...box };
+    await insertSceneIntoSlide(buildChart(c), { tagData: JSON.stringify(c), left, top });
   }
   const after = await slideCount();
   const { found: mine, blind: mineBlind, gap: mineGap } = await probeCharts(`${prefix} onto`);
@@ -894,16 +938,12 @@ const chartIsVisible: Scenario = async (prefix) => {
   // Measured against the slide rather than assumed: `slideSize` is cached after
   // its first read, so this costs nothing, and a 4:3 or 16:10 deck puts the
   // corner somewhere else.
-  const { width: slideW, height: slideH } = await slideSize();
-  const box = { width: Math.round(slideW * 0.3), height: Math.round(slideH * 0.3) };
+  // Slot 2 — the two `insertOntoUsedSlide` draws take 0 and 1 on this same
+  // slide, because both scenarios pick the first probe chart. See `sideSlot`.
+  const { left, top, ...box } = sideSlot(2, await slideSize());
   const c: ChartConfig = { ...cfg(`${prefix} visible`), ...box };
   const drawn = await attempt("drawing the chart", () =>
-    insertSceneIntoSlide(buildChart(c), {
-      slideId,
-      tagData: JSON.stringify(c),
-      left: slideW - box.width - 24,
-      top: slideH - box.height - 24,
-    }),
+    insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c), left, top }),
   );
   // A null target is NOT "nothing was drawn", so the rasterise happens either
   // way — see `visibilityVerdict`, which is where that used to be decided
@@ -1187,8 +1227,12 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
     // And now draw, with that shape still selected. Text boxes and all — which
     // is exactly #2775's repro, and exactly what the pane did on every insert
     // before `dropShapeSelection`.
-    const extra = cfg(`${prefix} drawn while selected`);
-    await insertSceneIntoSlide(buildChart(extra), { slideId, tagData: JSON.stringify(extra) });
+    // Slot 3 — the last of the four. See `sideSlot`: three other charts share
+    // this slide, and drawing full-size on top of them is what left the owner a
+    // heap to look at.
+    const { left, top, ...box } = sideSlot(3, await slideSize());
+    const extra: ChartConfig = { ...cfg(`${prefix} drawn while selected`), ...box };
+    await insertSceneIntoSlide(buildChart(extra), { slideId, tagData: JSON.stringify(extra), left, top });
   } finally {
     // Never leave a chart selected: on the web a picture cannot be inserted
     // while one is (office-js#3698), so the scenario after this would fail

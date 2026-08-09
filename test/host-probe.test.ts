@@ -8,6 +8,7 @@ import {
   SCRATCH_CLEANUP_ID,
   describeHostSheet,
   sheetNeedsAttention,
+  summariseHostSheet,
   _setProbeBudgetForTest,
 } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
@@ -882,4 +883,35 @@ describe("a question that needs no slide", () => {
       faults.newSlideResolvesTimes = null;
     }
   }, 60_000);
+});
+
+describe("the pane's own read of a sheet", () => {
+  /**
+   * A declared answer must not be announced as news, wherever it is declared.
+   *
+   * `shape-add-positional-slide-proxy` is a coin — `yes, yes, threw, yes, yes,
+   * threw` across six rounds — and the fake says `yes`. The summary counted
+   * only `KNOWN_DIVERGENCES`, so every round the coin landed `threw` the pane
+   * said "NEW: shape-add-positional-slide-proxy", about the single question
+   * this repo documents at greatest length as varying run to run. A gate that
+   * cries wolf on a schedule is one people stop reading.
+   */
+  it("does not call a documented coin flip a new divergence", () => {
+    const sheet = {
+      kind: "powerchart-host-answers" as const,
+      source: "test",
+      build: "test",
+      requirementSets: [],
+      answers: [
+        // The coin, landed on the side the fake does not take.
+        { id: "shape-add-positional-slide-proxy", question: "?", answer: "threw", ms: 1 },
+        // Non-vacuity: something genuinely undeclared, so this is not a sheet
+        // in which nothing could have been reported either way.
+        { id: "getitemat-past-end", question: "?", answer: "surprise", ms: 1 },
+      ],
+    };
+    const s = summariseHostSheet(sheet);
+    expect(s.fresh, "a documented unstable answer was announced as news").toEqual(["getitemat-past-end"]);
+    expect(s.known).toContain("shape-add-positional-slide-proxy");
+  });
 });
