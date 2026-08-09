@@ -17,6 +17,32 @@ renderers: SVG (`src/render/svg.ts`, preview + tests), Office.js
 (`skill/scripts/render-pptx.mjs`, the skill's headless output). Details:
 `docs/ARCHITECTURE.md`; the research that shaped it: `docs/RESEARCH.md`.
 
+## Where things live
+
+`test/README.md` maps the test suite; this is the source side.
+
+| directory                       | what it owns                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/`                     | the engine, **zero Office imports**: `chart.ts` (`buildChart`), `layout/<kind>.ts` one per chart kind, `decor.ts`, `scene.ts` (the node contract **and** the three-renderer parity rules), `geometry.ts`, `format.ts`, `color.ts`, `collide.ts`, `samples.ts`                                                                          |
+| `src/core/`, run-time reasoning | `placement.ts` (where a chart goes on a slide that already has content), `reconcile.ts` (what a run ACTUALLY produced, once the host stopped moving), `trace.ts` (the ordered record a run nobody watched leaves behind)                                                                                                               |
+| `src/render/`                   | `svg.ts` (the reference renderer), `powerpoint.ts` (Office.js, the live add-in), `ooxml.ts` (post-processes a `.pptx` to carry the slot tags and groups pptxgenjs cannot write), `pptx-deck.ts` (builds a whole deck in the browser, handed over in one call), `host-probe.ts` (the answer sheet — what THIS PowerPoint actually does) |
+| `src/taskpane/`                 | `app.ts`, `datasheet.ts`, `selftest.ts` (the in-host battery), `crashlog.ts` (the record that survives a run which never ends), `i18n.ts`, `templates.ts`                                                                                                                                                                              |
+| `skill/scripts/`                | `render-pptx.mjs` + `pptx-paint.mjs`, the headless renderer. **Outside `tsconfig.include` (`["src", "test"]`), so never typechecked**                                                                                                                                                                                                  |
+| `scripts/`                      | `triage.mjs`, `verify-deck.mjs`, `validate-ooxml.mjs`, `host-baseline.mjs`, `visible-charts.mjs`, `office-js-watch.mjs`, and the `build-*` set                                                                                                                                                                                         |
+
+**Adding a `SceneNode` kind: four seams fail loudly, three do not.** Loud, as
+compile errors — `nodeToSvg` (`src/render/svg.ts`), `addNode`
+(`src/render/powerpoint.ts`), the coordinate chain in `test/fuzz.test.ts`, and
+`translateNodes` in `src/core/chart.ts`, which carries an explicit `never`
+guard for exactly this. Silent:
+
+- `shiftNode` in `src/demo/demo.ts` — a duck-typed `Record<string, number>`
+  cast over a fixed key list, so it can never fail to compile; a new coordinate
+  field is simply left unshifted.
+- `src/core/collide.ts` — text-only, matched by `MOVABLE` name prefixes, so a
+  new label-like node is invisible to the de-collision pass.
+- `skill/scripts/render-pptx.mjs` — not typechecked at all (see the table).
+
 ## The lockstep rule (CI-enforced — do not skip)
 
 Any feature change must update, in the same PR:
@@ -34,11 +60,50 @@ Any feature change must update, in the same PR:
 
 ```bash
 npm run dev        # gallery + pane at localhost:3000
-npm test           # full suite (1500+); npm run coverage enforces thresholds
+npm test           # full suite; npm run coverage enforces thresholds
 npm run typecheck
 npm run showcase   # regenerate the showcase deck (required after feature work)
 npm run skill      # build skill-dist/powerchart-charts.zip
+npm run triage     # join a real run's deck + run log, and say where they differ
+npm run host-diff  # line a probe answer sheet up against the fake
 ```
+
+The suite's size lives in `test/fixtures/test-count.json` and is gated by
+`scripts/test-count.mjs` — read it there. This line used to restate the number,
+and drifted to claiming 1500 against a recorded floor of 2224: the same failure
+the backlog and `UNSTABLE_ANSWERS` paragraphs below already warn about.
+
+### Running the gate on the owner's Windows box
+
+Environment only — CI on ubuntu is unaffected — but locally the commands above
+fail in ways that read as code bugs:
+
+- **`npx` is dead under PowerShell Constrained Language Mode.** `npx.ps1` does
+  method invocation and throws
+  `MethodInvocationNotSupportedInConstrainedLanguage` before reaching the tool.
+  Call the entry point with `node`, or run it from git-bash.
+- **AppLocker blocks an npm script that NESTS `npm run`** ("blocked by group
+  policy"). That kills `showcase`, `skill`, `build:pages` and `visible-charts`
+  — every one starts with `npm run build:lib`. Split them into their two flat
+  halves. **Any new npm script must stay flat** or it is unrunnable there.
+
+```bash
+node ./node_modules/typescript/bin/tsc --noEmit                 # typecheck
+node ./node_modules/vitest/vitest.mjs run --exclude '**/skill.test.ts'
+npm run build:lib && node scripts/build-showcase.mjs            # = npm run showcase
+npm run build:lib && node scripts/build-skill.mjs               # = npm run skill
+```
+
+`test/skill.test.ts` cannot pass there: it embeds an OS temp path in a
+`python3 -c` one-liner, where `\rings.pptx` becomes a carriage return. Exclude
+it locally — it imports nothing from `src/`, so src coverage is unchanged — and
+let CI cover those paths. (`python3` is the MS-Store alias stub too; real python
+is `python`, and a `.cmd` shim has to live under `C:\devtools\*` because
+AppLocker script-blocks one in Temp.)
+
+`node scripts/build-showcase.mjs` **alone renders with a stale engine** — it
+imports `dist-lib/`, so without `build:lib` first you are diffing the showcase
+against your own uncompiled change, and it reads as non-determinism.
 
 ## Working conventions (established with the repo owner)
 
@@ -891,13 +956,6 @@ What is left needs the owner, not the agent:
   counterbalanced control that will say "no pattern" until something changes;
   a few rounds of that IS the finding, and is the point at which to stop
   instrumenting and live with it.
-
-  **Nothing is owed to the owner.** The manifest re-install he was asked for was
-  done on 2026-08-06 and nothing since has touched a manifest — do not ask again
-  unless a PR actually changes one. What to ask him to click is written down:
-  "The standing test run" in `docs/PUBLISHING.md`. Don't improvise a new one per
-  session, and don't ask for the deck or a screenshot — the round's own file has
-  carried both since the deck-evidence change.
 
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 
