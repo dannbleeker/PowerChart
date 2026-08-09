@@ -1763,6 +1763,61 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
     expect(d, "a call that answered must not also be reported as silent").not.toMatch(/still not answered/);
   });
 
+  it("names the call the host last answered before the stall", () => {
+    // The half no round file has ever carried, and the reason the stalls could
+    // only ever be described at SCENARIO level.
+    //
+    // Every draw stall on record is the FIRST batch of a scenario's draw, eight
+    // for eight — so what the host did immediately before that sync is the
+    // question. The log answered it for nobody: between a scenario announcing
+    // itself and its first `batch committed` there is not one entry, while
+    // three to five seconds of probe reads, deck inventories and selection
+    // calls go by.
+    //
+    // So the only account available was "it follows the selection ladder" — and
+    // the battery's order is FIXED, which makes "which scenario ran before" and
+    // "which position in the battery" the same variable. No number of rounds
+    // separates those. The call before the stall is a different variable.
+    const d = stallDetail(drew, undefined, { call: "selecting a shape", idleMs: 430 });
+    expect(d).toContain('the last thing the host answered was "selecting a shape"');
+    expect(d, "the gap must be the idle time, not the 45s budget").toContain("0.4s earlier");
+  });
+
+  it("says nothing about a predecessor when there was not one", () => {
+    // A stall on the run's very first bounded call has no predecessor, and
+    // inventing one — or printing an empty quotation — is how a reader ends up
+    // diagnosing a call that never happened.
+    const d = stallDetail(drew, undefined);
+    expect(d).not.toContain("the last thing the host answered");
+    expect(d).toMatch(/still not answered/);
+  });
+
+  it("carries the call before the stall through a real stalled scenario", async () => {
+    // The plumbing half, on the DRAW path. `lastStall` is written by the
+    // deadline handler in `withTimeout`, and it has to still hold the PREVIOUS
+    // completed call — a call that never answered must not overwrite it with
+    // itself, which would make every stall report that it followed itself.
+    const { _setBatchTimeoutForTest, _resetStallContextForTest } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    _resetStallContextForTest();
+    _setBatchTimeoutForTest(5);
+    try {
+      for (let k = 1; k <= 60; k++) stallSyncOn.add(trips.syncs + k);
+      const r = byName(await runSelfTest("probe", "the chart is actually visible"))["the chart is actually visible"];
+      stallSyncOn.clear();
+      expect(r.skipped, `expected a stall, got: ${r.detail}`).toBe(true);
+      expect(r.detail, "the stall did not name what the host last answered").toContain(
+        "the last thing the host answered was",
+      );
+      expect(r.detail, "a stalled call was reported as its own predecessor").not.toContain(
+        'answered was "drawing shapes 1-10',
+      );
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncOn.clear();
+    }
+  }, 20_000);
+
   it("carries the late answer through a real stalled scenario", async () => {
     const { _setBatchTimeoutForTest } = await import("../src/render/powerpoint");
     // The plumbing half. `stallDetail` is pure and cannot know whether the

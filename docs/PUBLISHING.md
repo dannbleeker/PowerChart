@@ -186,6 +186,26 @@ that it did so (`refusedShapeHalf`). Four attempts at both halves on one deck
 have produced four crash dialogs; this stops the fifth from costing twenty
 minutes. On a fresh deck the option behaves exactly as before.
 
+**One extra click, once, on a fresh deck: set Scenario to *a selected shape
+survives an insert* and run just that.** It takes about a minute.
+
+This is an experiment with its answer written down in advance, not another
+round. That scenario has stalled in every routine round on record — always on
+its first batch of shapes, always after 45 seconds — and in the routine order it
+always runs eighth and always straight after the selection ladder. Those are the
+same fact, so no number of ordinary rounds can say whether the stall is caused
+by the scenario, by what ran before it, or by how late in the round it is.
+Picked alone it runs at about sixty seconds with only the two head-of-round
+inserts in front of it, which separates all three:
+
+- **It stalls** → the scenario itself. It is the only one that draws while a
+  shape is still selected, and that would be the mechanism.
+- **It passes** → the predecessor or the elapsed time, and the stall report now
+  names the call the host last answered before giving up, which says which.
+
+Send the run file either way — a pass is the finding here, not the absence of
+one.
+
 **Run it on a 4:3 deck at least once**, and on desktop PowerPoint at least once
 per release — everything above is normally run on the web, which is where the
 bugs have been, but it is not the only host and the battery is not a substitute

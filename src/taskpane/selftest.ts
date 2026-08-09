@@ -82,6 +82,7 @@ import {
   // A live binding, read fresh on every access — the whole point is to diff it
   // around a scenario.
   deadlinesFired,
+  lastStall,
   lastLateSync,
   lastLateSyncSeq,
   waitForLateSync,
@@ -894,12 +895,29 @@ const LATE_ANSWER_WAIT_MS = 3_000;
  * So the report says which it was, in words, every time. A future round that
  * finally sees a late answer will say so on the line, instead of waiting for
  * somebody to notice a message that is no longer missing.
+ *
+ * `after` is the other half, and the one a round summary could not carry at
+ * all. Every draw stall on record is the FIRST batch of a scenario's draw,
+ * which makes "what did the host answer immediately before it" the question —
+ * and the log had nothing between a scenario announcing itself and its first
+ * batch, so the only available account was at scenario level. Scenario order is
+ * fixed, so "which scenario ran before" and "which position in the battery" are
+ * the same variable and no number of rounds can separate them. The call before
+ * the stall is a different variable, and it costs nothing to record.
  */
-export function stallDetail(errText: string, late: string | undefined): string {
+export function stallDetail(
+  errText: string,
+  late: string | undefined,
+  after?: { call: string; idleMs: number },
+): string {
   const head = `the host stopped answering during this scenario, so nothing was checked — ${errText}`;
-  return late
-    ? `${head}; the abandoned call DID come back afterwards (${late}), so the host was slow rather than gone`
-    : `${head}; the abandoned call had still not answered ${LATE_ANSWER_WAIT_MS / 1000}s later`;
+  const answered = late
+    ? `; the abandoned call DID come back afterwards (${late}), so the host was slow rather than gone`
+    : `; the abandoned call had still not answered ${LATE_ANSWER_WAIT_MS / 1000}s later`;
+  const before = after
+    ? `; the last thing the host answered was "${after.call}", ${Math.round(after.idleMs / 100) / 10}s earlier`
+    : "";
+  return `${head}${answered}${before}`;
 }
 
 export function visibilityVerdict(before: string, after: string, named: boolean): { ok: boolean; detail: string } {
@@ -1851,6 +1869,11 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
       // same reason a blinded deck scan carries it — and it is what makes
       // `selfTestNeedsAttention` still surface the round.
       if (isTimeout(err)) {
+        // Read BEFORE the wait below: `waitForLateSync` can let the abandoned
+        // call finally answer, which would overwrite the record with the very
+        // call that stalled and lose the predecessor this exists to name.
+        const after =
+          lastStall?.afterAnswering != null ? { call: lastStall.afterAnswering, idleMs: lastStall.idleMs } : undefined;
         // Then ask the one question the round log could not answer: did the
         // call we gave up on ever come back?
         //
@@ -1867,7 +1890,7 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
           ok: false,
           skipped: true,
           blind: true,
-          detail: stallDetail(errorText(err), late),
+          detail: stallDetail(errorText(err), late, after),
           ms: Date.now() - t0,
         };
       } else {
