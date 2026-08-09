@@ -252,7 +252,23 @@ function report(deck, log, run, t, showAll) {
   }
   for (const o of t.orphans) console.log(`  orphan slot ${o.slot} on slide(s) ${o.indexes.join(", ")}`);
 
-  const trace = run.trace;
+  reportTrace(run.trace);
+
+  console.log(
+    t.disagreements
+      ? `\n  ${t.disagreements} slot(s) where the deck and the log disagree\n`
+      : `\n  deck and log agree on every slot\n`,
+  );
+}
+
+/**
+ * The trace tallies, from wherever the trace hangs.
+ *
+ * A run carries its own; a self-test round is not a run and hangs one at the
+ * top level, which is why this is a function rather than four lines inside
+ * `report`. Both shapes have the same tallies and deserve the same reading.
+ */
+function reportTrace(trace) {
   if (trace?.summary) {
     console.log(`\n  TRACE ${trace.entries?.length ?? 0} entries${trace.dropped ? `, ${trace.dropped} dropped` : ""}`);
     for (const s of trace.summary.steps.slice(0, 8)) console.log(`    ${pad(s.n, 6)}${s.scope}  ${s.message}`);
@@ -282,12 +298,83 @@ function report(deck, log, run, t, showAll) {
   } else if (trace) {
     console.log(`\n  TRACE ${trace.entries?.length ?? 0} entries (written before summaries existed — no tallies)`);
   }
+}
 
+/** The self-test verdicts, with the host bugs their own words give away. */
+export function reportSelfTest(selftest) {
+  if (!selftest.length) return 0;
+  const failed = selftest.filter((s) => !s.ok && !s.skipped).length;
+  console.log(`\n  SELF-TEST ${selftest.filter((s) => s.ok).length} of ${selftest.length} scenarios passed\n`);
+  for (const s of selftest) {
+    const mark = s.skipped ? "skip" : s.ok ? "ok" : "FAIL";
+    console.log(`  ${pad(mark, 6)}${pad(s.name, 46)}${s.detail}`);
+    // A scenario's own words are a problem string like any other, and the
+    // one place a host bug is stated in plain language rather than in a
+    // host error code. Annotating only the `problems` tally missed it.
+    const known = knownBug(s.detail ?? "");
+    if (known) console.log(`  ${pad("", 6)}${pad("", 46)}  ^ known host bug: ${known}`);
+  }
+  console.log("");
+  return failed;
+}
+
+/**
+ * What the round left in the deck, from the round's OWN evidence.
+ *
+ * The deck-evidence change made the file self-contained on purpose — "there is
+ * no deck to save and no screenshot to take" — and then nothing read the part
+ * that replaced them. Working the 2026-08-09 round out by hand took a dozen
+ * ad-hoc queries to reach three numbers that are right here: how many added
+ * slides carry shapes, how many read back empty, and how many of the empties
+ * the host's own rasteriser AGREES are empty.
+ *
+ * That last column is the one worth having. An empty readback and a blank
+ * picture are two witnesses; an empty readback alone is one, and this host is
+ * known to answer a shape collection short without throwing
+ * (`shapes-items-count-honest`). A slide with no shot is not evidence of
+ * anything — the rasterise pass is capped — so it is counted apart rather than
+ * folded in with the confirmed blanks.
+ */
+export function deckEvidence(deck) {
+  if (!deck || !Array.isArray(deck.inventory) || !deck.inventory.length) return null;
+  const shots = new Map((deck.shots ?? []).filter((s) => s.png).map((s) => [s.slideId, s.png]));
+  // A blank slide's PNG is tiny and every blank on one deck renders to the same
+  // bytes, so the smallest size present is what "blank" looks like here.
+  // Compared rather than hard-coded: it is a function of slide size and theme.
+  const bytes = (png) => Math.round((png.length * 3) / 4);
+  const sizes = [...shots.values()].map(bytes);
+  const blankPng = sizes.length ? Math.min(...sizes) : 0;
+  const added = new Set(deck.newSlides ?? []);
+  const out = { scanned: deck.inventory.length, added: added.size, withShapes: 0, confirmed: 0, unseen: 0, lying: 0 };
+  for (const s of deck.inventory) {
+    if (!added.has(s.slideId)) continue;
+    // `count` is the host's own number and `shapes.length` is what the scan
+    // managed to list; the SMALLER would call a partial listing empty, so the
+    // larger is what decides whether anything is there.
+    const n = Math.max(s.count ?? 0, s.shapes?.length ?? 0);
+    if (n > 0) {
+      out.withShapes++;
+      continue;
+    }
+    const png = shots.get(s.slideId);
+    if (!png) out.unseen++;
+    else if (bytes(png) <= blankPng) out.confirmed++;
+    else out.lying++;
+  }
+  return out;
+}
+
+function reportDeckEvidence(deck) {
+  const e = deckEvidence(deck);
+  if (!e) return;
   console.log(
-    t.disagreements
-      ? `\n  ${t.disagreements} slot(s) where the deck and the log disagree\n`
-      : `\n  deck and log agree on every slot\n`,
+    `\n  DECK EVIDENCE ${e.scanned} slide(s) scanned, ${e.added} added by this round:` +
+      `\n    ${e.withShapes} carry shapes` +
+      `\n    ${e.confirmed} read back empty AND rasterise blank` +
+      `\n    ${e.unseen} read back empty, no picture taken (the rasterise pass is capped — not evidence)` +
+      (e.lying ? `\n    ${e.lying} read back empty but rasterise with CONTENT — the readback is lying` : ""),
   );
+  if (deck.gap) console.log(`    scan gap: ${deck.gap}`);
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith("triage.mjs");
@@ -328,9 +415,36 @@ if (invokedDirectly) {
     console.log("");
     process.exit(crash.finishedAt ? 0 : 1);
   }
+  // A round with no .pptx is the NORMAL case now, and this used to refuse it.
+  //
+  // The starred runbook step tells the owner to send one file and nothing else,
+  // because the round carries every shape on every slide and the host's own
+  // picture of each — "there is no deck to save and no screenshot to take". A
+  // file produced by following that instruction landed here on 2026-08-09 with
+  // 12 self-test verdicts and 246 trace entries, and got `usage:` and exit 2.
+  // It was then read by hand, which is the job this script exists to remove.
+  //
+  // Only the slot join needs the .pptx. The self-test, the trace and the round's
+  // own deck evidence are all readable without one, so they are reported and the
+  // join is skipped — and the exit code still means what it meant.
   if (!deckPath) {
-    console.error("usage: node scripts/triage.mjs <deck.pptx> <run-log.json> [--all] [--json]");
-    process.exit(2);
+    const selftest = selfTestIn(log);
+    if (!selftest.length && !log?.trace && !log?.deck) {
+      console.error("usage: node scripts/triage.mjs <deck.pptx> <run-log.json> [--all] [--json]");
+      console.error("       node scripts/triage.mjs <crashed-run.json>            (no deck needed)");
+      console.error("       node scripts/triage.mjs <round.json>                  (self-test / trace half)");
+      process.exit(2);
+    }
+    const runs = runsIn(log).filter((r) => r?.run);
+    console.log(
+      `\n  ROUND — no deck supplied, so slots are not joined` +
+        `\n  build ${log.build ?? "?"} · ${log.host ?? "?"}` +
+        (runs.length ? `\n  ${runs.length} insert run(s) in this file — pass the .pptx to check their slots` : ""),
+    );
+    reportDeckEvidence(log.deck);
+    reportTrace(log.trace);
+    const failed = reportSelfTest(selftest);
+    process.exit(failed ? 1 : 0);
   }
   let deck;
   try {
@@ -355,19 +469,8 @@ if (invokedDirectly) {
       for (const f of faults) console.log(`    - ${f}`);
     }
     for (const { run, t } of results) report(deck, log, run, t, flags.includes("--all"));
-    if (selftest.length) {
-      console.log(`\n  SELF-TEST ${selftest.filter((s) => s.ok).length} of ${selftest.length} scenarios passed\n`);
-      for (const s of selftest) {
-        const mark = s.skipped ? "skip" : s.ok ? "ok" : "FAIL";
-        console.log(`  ${pad(mark, 6)}${pad(s.name, 36)}${s.detail}`);
-        // A scenario's own words are a problem string like any other, and the
-        // one place a host bug is stated in plain language rather than in a
-        // host error code. Annotating only the `problems` tally missed it.
-        const known = knownBug(s.detail ?? "");
-        if (known) console.log(`  ${pad("", 6)}${pad("", 36)}  ^ known host bug: ${known}`);
-      }
-      console.log("");
-    }
+    reportDeckEvidence(log.deck);
+    reportSelfTest(selftest);
     if (!results.length && !selftest.length) console.log("\n  this log holds no runs and no self-test\n");
   }
   const disagreements =

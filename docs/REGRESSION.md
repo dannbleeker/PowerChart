@@ -55,11 +55,30 @@ exists to survive.
 
 ```bash
 npm run triage -- Presentation.pptx powerchart-run-log.json   # --all, --json
+npm run triage -- powerchart-round.json                       # no deck to give
 ```
 
 The two files may be given in either order — the extension says which is which.
 Piping `--json` anywhere needs `npm run --silent` (or `node scripts/triage.mjs`
 directly), because npm prints its own banner to stdout ahead of the script.
+
+**A round file on its own is the normal case now**, and the second form is not a
+degraded mode. The starred runbook step saves the probe, the self-test and the
+round's own deck evidence as one file precisely so there is nothing else to
+send — no deck to save, no screenshot to take — and only the SLOT JOIN needs a
+`.pptx`. Given a round alone this reports the self-test verdicts, the trace
+tallies with their known-host-bug annotations, and what the round left in the
+deck; it skips the join and says so. It used to answer `usage:` and exit 2,
+which sent the reader back to reading 150 KB of JSON by hand.
+
+The deck-evidence block counts an added slide as blank only when **two**
+witnesses agree — the readback said zero shapes AND the host's own picture of
+that slide is blank. One witness is not enough here: this host is known to
+answer a shape collection short without throwing (`shapes-items-count-honest`),
+and the rasterise pass is capped, so a slide with no picture is counted apart as
+*not evidence* rather than folded in. A slide that reads back empty while its
+picture has CONTENT is called out separately — that is the readback lying, and
+it is the one shape of this that a screenshot alone would never show.
 
 A log holds a **list** of runs, because one click can take both insert paths.
 Each is reported separately against the same deck — merging them would produce
