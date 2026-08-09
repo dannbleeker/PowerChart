@@ -323,6 +323,30 @@ function probeShape(ctx: ProbeContext, id: string): PowerPoint.Shape {
   }
 }
 
+/** The 1.8 binding collection, as much of it as one probe needs. */
+type BindingsLike = {
+  add(shape: PowerPoint.Shape, bindingType: string, id: string): unknown;
+  getItemOrNullObject(id: string): { getShape(): PowerPoint.Shape };
+};
+
+/**
+ * `presentation.bindings`, or undefined on a host that does not have it.
+ *
+ * Feature-detected rather than read off `isSetSupported`. The requirement set a
+ * host ADMITS to and the API surface it actually exposes are two facts, this
+ * file exists because they have come apart before, and the sheet already
+ * records the admitted list beside every answer — so a reader can tell "1.8 is
+ * missing" from "1.8 is claimed and the object is not there".
+ */
+function bindingsOf(ctx: ProbeContext): BindingsLike | undefined {
+  try {
+    const b = (ctx.presentation as unknown as { bindings?: BindingsLike }).bindings;
+    return b && typeof b.add === "function" && typeof b.getItemOrNullObject === "function" ? b : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * A probe's own catch, for the answers that are real answers.
  *
@@ -984,6 +1008,90 @@ const PROBES: Probe[] = [
         await ctx.sync();
         const v = (tag as unknown as { value: string }).value;
         return { answer: v === "kept" ? "yes" : "no", detail: `value=${String(v)}` };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "binding-names-shape-later",
+    question: "Can a binding made in a shape's CREATING sync still name that shape afterwards?",
+    // The only untried route out of the failure that costs this project the most.
+    //
+    // `same scale across the deck` fails the same way every round: the chart
+    // DRAWS, and then the host refuses every handle to it —
+    // `InvalidParam passed to GetItem(id)`, code 5010, at
+    // `ShapeCollection.getItem` — so there is no group, no config tag, and no id
+    // to settle one onto later. On 2026-08-09 that was five charts of eight, each
+    // leaving 24 shapes on a slide that is no longer a chart. Both handles the
+    // settle pass has are refused: `shapes-items-count-honest` says the
+    // collection reads back empty, and `shapes-items-via-positional-slide` says
+    // renaming the parent does not help.
+    //
+    // A binding is the one reference that never crosses either. `bindings.add`
+    // takes the live Shape proxy in the batch that CREATED it — no id round trip,
+    // no collection read — and the document persists it, so a later, healthier
+    // context can ask for the shape back by a key we chose ourselves. If that
+    // works here, the repair pass gets the handle it currently lacks and a lost
+    // tag becomes a repairable one rather than a chart the user cannot edit.
+    //
+    // PowerPointApi 1.8 (GA), and this host reports 1.10 — but feature-detected
+    // rather than gated on `isSetSupported`, which is a claim about the host
+    // rather than a look at it.
+    //
+    // Deliberately asked across a sync boundary: resolving the binding in the
+    // batch that made it would answer a question nobody has, since the live
+    // proxy is right there. The later sync IS the question.
+    ask: async (ctx) => {
+      const bindings = bindingsOf(ctx);
+      if (!bindings) return { answer: "no-binding-api", detail: "presentation.bindings is absent (needs 1.8)" };
+      // A fixed key on purpose: the docs say a repeat id overwrites its binding,
+      // so a run cannot accumulate them, and deleting the scratch slide's shape
+      // takes the binding with it.
+      const key = "POWERCHART_PROBE_BINDING";
+      // Three failure points, and they belong in three different buckets. The
+      // first version put all three in one `catch` and answered `add-threw` for
+      // every one of them, which made a host that refuses ANY shape add look
+      // like a host with an opinion about bindings — the exact substitution
+      // `ProbeSetupFailed` exists to stop, and `test/host-probe.test.ts` caught
+      // it against a host that refuses every add.
+      let shape: PowerPoint.Shape;
+      try {
+        shape = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+          left: 320,
+          top: 10,
+          width: 20,
+          height: 20,
+        });
+      } catch (err) {
+        // Getting a shape to bind is setup. Whether this host takes one at all
+        // is `shape-add-fresh-slide-proxy`'s question, not this one's.
+        throw new ProbeSetupFailed(`adding the shape to bind: ${short(err)}`);
+      }
+      let made: unknown;
+      try {
+        made = bindings.add(shape, "Shape", key);
+      } catch (err) {
+        // Synchronous, before any round trip, so this is `bindings.add` itself
+        // objecting to the call — a genuine answer about the binding API.
+        return { answer: "add-threw", detail: short(err) };
+      }
+      try {
+        await ctx.sync();
+      } catch (err) {
+        // The batch carries the shape add AND the binding, so a refusal here
+        // cannot be attributed to either. Two explanations fit, and the rule is
+        // to say so rather than pick: read this row beside
+        // `shape-add-fresh-slide-proxy` in the same sheet.
+        throw new ProbeSetupFailed(`committing the shape and its binding: ${short(err)}`);
+      }
+      if (!made) return { answer: "add-returned-nothing" };
+      try {
+        const got = bindingsOf(ctx)!.getItemOrNullObject(key).getShape();
+        got.load("id");
+        await ctx.sync();
+        const id = readShapeId(got as unknown as { id?: string });
+        return id ? { answer: "yes", detail: `shape id=${id}` } : { answer: "unreadable" };
       } catch (err) {
         return threw(err);
       }

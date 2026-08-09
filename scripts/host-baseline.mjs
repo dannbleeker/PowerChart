@@ -31,6 +31,7 @@ export const FAKE_BASELINE = {
   "group-children-via-getcount": "two",
   "group-reports-its-children": "two",
   "tag-on-group-survives": "yes",
+  "binding-names-shape-later": "yes",
   "getitemat-past-end": "threw",
   "picture-then-shape-read": "yes",
   "group-of-existing-shape-readable": "2",
@@ -164,6 +165,8 @@ export const UNSTABLE_ANSWERS = {
 export const PENDING_QUESTIONS = {
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
+  "binding-names-shape-later":
+    "Added 2026-08-09, after the round on `551ad42` failed `same scale across the deck` for the fifth time in the same shape: five charts of eight drew all 24 shapes and were then unreachable — `InvalidParam passed to GetItem(id)`, 5010, at `ShapeCollection.getItem`, three times each (ids, config tag, positions) — so each left 24 shapes on a slide that is no longer a chart, and the settle pass repaired none of them (`{charts:1, settled:0, lost:1}`). Both handles that pass has are already known-refused here: `shapes-items-count-honest` says the collection reads back empty and `shapes-items-via-positional-slide` says a positional parent reads no better. A PowerPointApi 1.8 binding is the only reference that goes through neither — made from the live proxy in the shape's CREATING batch, persisted by the document, asked for later by our own key. If it survives, the repair pass gets the handle it lacks and a lost config tag becomes repairable instead of a chart the user cannot edit; if it does not, that closes the last cheap idea and the answer is worth as much. Nothing in `src/` uses bindings today — this is a question, not a half-built feature.",
 };
 
 /**
@@ -204,6 +207,8 @@ const WHAT_IT_MEANS = {
     "The single most load-bearing answer here. A chart IS a group, and the readback measures whether a chart survived by counting what is inside it — so a host that groups successfully and then reports no children makes every chart read back as wreckage, and the repair pass 'fixes' charts that were never broken. WITHDRAWN: the 2026-08-04 PropertyNotLoaded was a nested load queued a sync after the group was made. It is queued in the grouping batch now.",
   "tag-on-group-survives":
     "Where a chart's config actually lives. WITHDRAWN: the 2026-08-04 NO was the probe writing through a group proxy a sync old. Taken at face value it says no chart in any deck is re-editable, which the same run disproves — its repair pass landed 23 retags on grouped charts. The group's id is what crosses the sync now, and every use resolves its own handle.",
+  "binding-names-shape-later":
+    "Whether the repair pass can be given a handle that does not go through `ShapeCollection.getItem(id)`. Every 5010 this host throws is at that call, and it is what leaves a chart drawn and nameless — no group, no tag, nothing to settle one onto. A binding is made from the live Shape proxy inside the batch that created it, so it needs neither an id round trip nor a collection read, and the document persists it. A real `yes` means `settleAndTagChart` has a route it does not have today; a real `no` retires the idea. Watch the answer WORD: `no-binding-api` is a missing 1.8 surface and says nothing about the idea, `add-threw` means the binding could not be made at all, and `unreadable` means it was made and then would not name its shape — which would be the same refusal wearing a new coat.",
   "getitemat-past-end":
     "Nothing in this repo currently depends on the answer — it is here to find out before something does.",
   "untrack-available":

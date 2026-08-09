@@ -1694,6 +1694,47 @@ export function installHost(
           },
         };
       })(),
+      /**
+       * PowerPointApi 1.8 shape bindings — the happy path, and only that.
+       *
+       * A binding is the one handle to a shape that never goes through
+       * `ShapeCollection.getItem(id)`: it is made from the live proxy in the
+       * batch that created the shape, and asked for later by a key the caller
+       * chose. That is exactly the route around the 5010 refusals this fake
+       * models everywhere else, which is why `binding-names-shape-later` asks
+       * about it and why the answer here is `yes`.
+       *
+       * `yes` is a claim about a host that BEHAVES, in keeping with the rest of
+       * this happy path — not a claim that PowerPoint on the web behaves. It has
+       * never been asked there, so the entry sits in `PENDING_QUESTIONS` and the
+       * first real sheet to answer it will either agree or land as a divergence.
+       * Nothing in `src/` uses bindings yet; do not build on this until it has.
+       *
+       * Deliberately NOT wired into the stale-proxy faults. Whether a binding
+       * outlives the refusals is the open question, and a fake that answered it
+       * either way would be inventing the finding the probe exists to get.
+       */
+      bindings: (() => {
+        const store = new Map<string, FakeShape>();
+        /** A binding that names nothing — the shape it held is gone. */
+        const noShape = () => ({ load(_p?: string) {}, id: undefined as unknown as string });
+        return {
+          add: (shape: FakeShape, _bindingType: string, id: string) => {
+            // "If the provided ID is already being used by a binding, the
+            // existing binding will be overwritten" — so a repeat key replaces
+            // rather than accumulates, and a probe can use a fixed one.
+            store.set(id, shape);
+            return { id };
+          },
+          getItemOrNullObject: (id: string) => ({ getShape: () => store.get(id) ?? noShape() }),
+          getItem: (id: string) => ({ getShape: () => store.get(id) ?? noShape() }),
+          getCount: () => ({ value: store.size }),
+          load() {},
+          get items() {
+            return [...store.keys()].map((id) => ({ id }));
+          },
+        };
+      })(),
       // A real deck's master carries several layouts; only one is blank, and
       // its NAME is localised — which is why the renderer matches on type.
       slideMasters: {
