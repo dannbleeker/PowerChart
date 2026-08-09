@@ -1201,8 +1201,25 @@ export function rasteriseArmVerdict(raster: DrawArm[], cheap: DrawArm[]): { ok: 
         `both LATER draws failed (${why}) and both earlier ones landed, whichever call preceded them — ` +
         "this is position or elapsed time, not the rasterise",
     };
+  // No separation — and that is this control's EXPECTED result, not a failure.
+  //
+  // It reported `ok: false` here, and the sentence it printed while doing so
+  // said "no pattern ... which is what eleven rounds of eliminated candidates
+  // already said". A control cannot call its own documented answer a failure:
+  // `CLAUDE.md` records that a few rounds of "no pattern" IS the finding and the
+  // point at which to stop instrumenting.
+  //
+  // It also went red on a schedule. The stall this scenario runs alongside is
+  // intermittent at roughly one or two draws in fifteen, and a round makes four
+  // — so one round in three or four would fail for the known reason, on a
+  // verdict whose own words said nothing was wrong. A red that appears on a
+  // timer teaches a reader to stop reading reds.
+  //
+  // The three verdicts above stay `false`, because each of them IS a
+  // separation: the call, the position, or a slide refusing everything. What
+  // changes is only the case where the arms disagree with each other.
   return {
-    ok: false,
+    ok: true,
     detail:
       `${landed} of ${all} draws landed (${why}), with no pattern in either the call before them or their ` +
       "position — the stall is intermittent, which is what eleven rounds of eliminated candidates already said",
