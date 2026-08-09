@@ -196,6 +196,17 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   gate itself used to make one level up. Replace when the new sheet answers at
   least as much; otherwise keep the fixture, and put what genuinely moved into
   `UNSTABLE_ANSWERS` where it belongs.
+
+  **The rule has now refused a sheet, so it is not theoretical.** The 2026-08-09
+  evening round (`619d24b`) is the best-LOOKING sheet this project has taken —
+  the probe's end-of-run second pass got it to 21 answers where the two rounds
+  before it managed 15 and 13 — and it still must not be committed. It answers
+  **21 of 28** against the fixture's **24 of 27**, and swapping it would turn
+  `tags-on-fresh-shape: yes`, `group-reports-its-children: threw` and
+  `group-of-existing-shape-readable: no-group-id` into `no-scratch-slide`, which
+  the gate correctly reads as unknown. Count the ANSWERS, not how much better
+  the round went.
+
 - **The office-js tracker is swept weekly** by
   `.github/workflows/office-js-watch.yml`, which reports only issues touching
   APIs this repo calls that are not yet in `KNOWN_ISSUES`

@@ -504,6 +504,18 @@ round added, so there is nothing to screenshot. If the host will not describe it
 deck, the round still writes the file: you lose the pictures and keep the
 verdicts.
 
+**A round leaves its slides in the deck, and most of them look empty.** That is
+deliberate — the scenarios' working slides are the evidence, and the deck is
+meant to be something you can open and scroll. But there are a lot of them and
+they are mostly blank: one real round added 43 slides of which 36 read back with
+nothing on them. The round now says so when it finishes, and **Clean up the last
+round** removes exactly the slides it added, by id, so nothing of yours is
+touched. Nothing is lost by clearing them once the file is saved — the file
+carries the shape list and the pictures.
+
+If you want to look at them first, do that before pressing it: the button works
+from the id list the round recorded, and reloading the pane drops that list.
+
 **Picture every slide** (off by default) removes the limit on that last part.
 Normally the first twelve added slides are photographed and the rest are recorded
 as never asked about — the pictures are the heaviest thing the add-in does, and

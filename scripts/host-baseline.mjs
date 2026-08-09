@@ -118,6 +118,7 @@ export const KNOWN_DIVERGENCES = {
  */
 export const UNSTABLE_ANSWERS = {
   "shapes-items-count-honest":
+    "`short-0` again on 2026-08-09 (`619d24b`), against `unreadable` in the committed fixture — nine samples now, still alternating between the two forms with no trend. " +
     "The ANSWER is stable; its FORM is not. `unreadable` (2026-08-05), `short-0` (2026-08-08 on 2f1e8c4), `unreadable` again " +
     "(2026-08-08 on a546897), `short-0` again (2026-08-09 on 8bb9e8f), then `unreadable` on the last three (448ffc6, cfa1f50 and the round after it, which answered identically). Seven samples, two forms, no trend — though the last three held still, which is the longest it has. Every one of those says the same thing — this host will not tell a caller what is on a slide — and they " +
     "differ only in how the refusal arrives: a collection that throws, versus one that answers with zero items. Worth keeping apart " +
@@ -139,6 +140,7 @@ export const UNSTABLE_ANSWERS = {
     "five of six landings do not make the seventh a mechanism. " +
     "The fake keeps refusing held proxies, which is the safe direction: code that never holds one across a sync is correct whichever way the coin lands.",
   "shape-add-positional-slide-proxy":
+    "A ninth observation on 2026-08-09 (`619d24b`): `not-listed` again, the third face, on a run that answered 21 of 28 — so it is not a symptom of a badly degraded round either. " +
     "THREE-SIDED, which is worth saying because this entry called it a coin. Eight observations: `yes`, `yes`, `threw`, `yes`, `yes`, " +
     "`threw`, `not-listed` (2026-08-08, `1fd6aa3`), `yes` (2026-08-09, `d812d0c`). The third face is not a variant of the other two — `not-listed` means the DECK'S " +
     "OWN SLIDE LIST did not contain the scratch slide's id, so the question was never really put, while `threw` means it was put and " +

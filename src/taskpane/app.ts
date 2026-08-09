@@ -2923,6 +2923,43 @@ const MAX_SHOTS = 12;
 const MAX_SHOTS_ALL = 200;
 
 /**
+ * What the round left in the deck, in the sentence the owner reads at the end.
+ *
+ * A round leaves its slides behind ON PURPOSE — the scenarios' working slides
+ * are the evidence, and `docs/REGRESSION.md` is written around a deck someone
+ * can open. What was missing is that the pane never SAID so. The 2026-08-09
+ * evening round added 43 slides of which 36 came back empty, said "Saved as one
+ * file", and left the owner to discover a 44-slide deck by opening it.
+ *
+ * This repo has already paid for that once at the other end of the same run:
+ * the host probe left 21 blank slides in a deck, reported nothing, and the only
+ * way to find out was to look. That got a row in the answer sheet. The
+ * self-test never got the equivalent.
+ *
+ * The count is what the READBACK said, and the wording says so rather than
+ * claiming the slides are empty: this host reports a shape collection short
+ * without throwing (`shapes-items-count-honest`), so a zero here is one witness.
+ * `npm run triage` is where that gets cross-examined against the host's own
+ * pictures — deliberately not duplicated into the pane, because two copies of
+ * one claim is how the two stop agreeing.
+ */
+function describeLitter(deck: RunLogFile["deck"]): string {
+  if (!deck?.newSlides?.length) return "";
+  const added = new Set(deck.newSlides);
+  // The larger of the two readings, so a partial listing is not called empty —
+  // `count` is the host's own number, `shapes` is what the scan managed to list.
+  const empty = (deck.inventory ?? []).filter(
+    (s) => added.has(s.slideId) && Math.max(s.count ?? 0, s.shapes?.length ?? 0) === 0,
+  ).length;
+  const n = added.size;
+  return (
+    ` It left ${n} slide${n === 1 ? "" : "s"} in this deck${empty ? `, ${empty} of which read back empty` : ""} —` +
+    " the scenarios' own working slides, kept so the deck is evidence." +
+    " Press Clean up the last round when you have finished with them."
+  );
+}
+
+/**
  * What landed on the slides — the two uploads a person has been making by hand.
  *
  * Best-effort by construction, and that is deliberate: this runs at the END of a
@@ -3539,6 +3576,7 @@ function wireInsert() {
         // deck is not a trade this pane makes.
         tidyable = deck?.newSlides ?? [];
         ($("demo-tidy") as HTMLButtonElement).disabled = tidyable.length === 0;
+        const litter = describeLitter(deck);
         // SAVE FIRST, then end the record — and end it with what the save
         // actually did. The other order is what lost a real round: the run was
         // marked finished, which made it unrecoverable, and the download was
@@ -3553,7 +3591,8 @@ function wireInsert() {
               ? "The browser would NOT save the file — press Download run log, or copy the Live steps."
               : needed
                 ? "Saved as one file — send it over. If it is not in your downloads, press Download run log."
-                : "Saved as one file; nothing in it is new."),
+                : "Saved as one file; nothing in it is new.") +
+            litter,
           needed || !saved ? "err" : "ok",
         );
       }),
