@@ -118,7 +118,7 @@ export const KNOWN_DIVERGENCES = {
 export const UNSTABLE_ANSWERS = {
   "shapes-items-count-honest":
     "The ANSWER is stable; its FORM is not. `unreadable` (2026-08-05), `short-0` (2026-08-08 on 2f1e8c4), `unreadable` again " +
-    "(2026-08-08 on a546897). Every one of those says the same thing — this host will not tell a caller what is on a slide — and they " +
+    "(2026-08-08 on a546897), `short-0` again (2026-08-09 on 8bb9e8f). Four samples, two forms, no trend. Every one of those says the same thing — this host will not tell a caller what is on a slide — and they " +
     "differ only in how the refusal arrives: a collection that throws, versus one that answers with zero items. Worth keeping apart " +
     "because the two want different code (a catch versus a corroborated count), and `slideShapeList` handles both for exactly this reason.",
   "shapes-items-via-positional-slide":
