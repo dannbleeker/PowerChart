@@ -522,10 +522,35 @@ an insert` stalled after a selection call, having passed the two rounds before.
   decides whether the identity of the preceding call discriminates or goes the
   way the gap did.
 
-  Nothing else is standing. The scenario, the predecessor scenario, the tab's
-  age, and the idle gap are all out; what is left is a host that stalls the first
-  sync of a draw intermittently, and one field that has not been given its
-  baseline yet.
+  **Round 10 gave that field its baseline, and unlike the gap it SURVIVED.**
+  With `afterAnswering` on every first batch rather than only on stalls, the two
+  populations separate cleanly:
+
+      survivors followed   moving the view to a slide, counting the deck's slides,
+                           writing the chart's origin tag (x5), re-reading a slide
+                           to tag the chart it would not tag (x4), selecting a
+                           shape, reading the selected chart
+      the stall followed   rasterising a slide
+
+  Twenty-nine surviving first batches across rounds 9 and 10, not one of them
+  after a rasterise; two stalls after a rasterise, in consecutive rounds. And
+  `selecting a shape` — round 9's other stall — turns up among round 10's
+  survivors, which is what a non-cause looks like.
+
+  **It is still confounded, and exactly.** Only `chartIsVisible` rasterises
+  before drawing, so "the draw followed a rasterise" and "the draw was that
+  scenario" are the same event, one per round. That is the shape this project
+  has now been caught by three times, and reasoning has never once broken it.
+
+  So `does a rasterise poison the next draw` is the control: two arms, one
+  scenario, one slide, seconds apart — one draw after a cheap read, one after a
+  rasterise. Everything a scenario-level account could appeal to is held
+  identical between them. Both draw → the rasterise is innocent and
+  `chartIsVisible` stalls for a reason still unnamed. Only the test arm stalls →
+  the call is the cause on a surface that is not `chartIsVisible`, and there is
+  finally something to fix. Neither draws → the slide or the moment.
+  `rasteriseArmVerdict` is that reading, pure, for the reason
+  `visibilityVerdict` is.
 
   This is the same shape as the two experiments that already paid: `the chart is
 actually visible` and `what makes a long run slow down` each spent four rounds
