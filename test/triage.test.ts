@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // independent of src/ so they cannot inherit a bug from the code they audit.
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
-import { triage, runsIn, selfTestIn, knownBug } from "../scripts/triage.mjs";
+import { triage, runsIn, selfTestIn, knownBug, deckEvidence } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -274,6 +274,73 @@ describe("triage — logs that are not inserts", () => {
   it("finds nothing to report in a log that is neither", async () => {
     expect(selfTestIn({ build: "b", host: "h", runs: [] })).toEqual([]);
     expect(selfTestIn(undefined)).toEqual([]);
+  });
+
+  /**
+   * The round's own deck evidence — the half that replaced saving a .pptx and
+   * taking a screenshot, and that nothing read until a round had to be worked
+   * out by hand.
+   *
+   * The distinction each case pins is between an empty slide and an empty
+   * ANSWER. This host is known to report a shape collection short without
+   * throwing (`shapes-items-count-honest`), so a readback of zero is one
+   * witness; the host's own picture of the same slide is a second, and only
+   * the two together say a slide is really blank.
+   */
+  const evidenceDeck = (slides: { id: string; count: number; png?: number }[], added?: string[]) => ({
+    inventory: slides.map((s, i) => ({ slideId: s.id, index: i, shapes: [], count: s.count })),
+    newSlides: added ?? slides.map((s) => s.id),
+    // Base64 is 4 characters per 3 bytes, which is the ratio the reader undoes.
+    shots: slides.filter((s) => s.png !== undefined).map((s) => ({ slideId: s.id, png: "A".repeat(s.png! * 4) })),
+  });
+
+  it("only calls a slide blank when its picture agrees with its readback", () => {
+    const e = deckEvidence(
+      evidenceDeck([
+        { id: "a", count: 12, png: 900 }, // has shapes — not a blank at all
+        { id: "b", count: 0, png: 300 }, // empty, and the smallest picture here
+        { id: "c", count: 0 }, // empty, no picture — the rasterise cap
+        { id: "d", count: 0, png: 900 }, // empty, but the picture has content
+      ]),
+    );
+    expect(e.withShapes).toBe(1);
+    expect(e.confirmed, "only the slide whose picture is blank too").toBe(1);
+    expect(e.unseen, "no picture is not evidence of an empty slide").toBe(1);
+    expect(e.lying, "a blank readback over a picture with content is the host lying").toBe(1);
+  });
+
+  it("counts only the slides this round added, never the deck it landed in", () => {
+    // A round drops its slides into whatever the user already had. Counting the
+    // pre-existing ones would report someone's own empty slides as our losses.
+    const e = deckEvidence(
+      evidenceDeck(
+        [
+          { id: "theirs", count: 0 },
+          { id: "ours", count: 0 },
+        ],
+        ["ours"],
+      ),
+    );
+    expect(e.added).toBe(1);
+    expect(e.unseen).toBe(1);
+  });
+
+  it("reads a slide the scan could only partly list as carrying shapes", () => {
+    // `count` is the host's own number, `shapes` is what the scan managed to
+    // list. Taking the smaller would call a partial listing empty — the exact
+    // mistake of trusting one witness that this whole block exists to avoid.
+    const e = deckEvidence({
+      inventory: [{ slideId: "a", index: 0, shapes: [{ id: "1" }], count: 24 }],
+      newSlides: ["a"],
+      shots: [],
+    });
+    expect(e.withShapes).toBe(1);
+    expect(e.unseen).toBe(0);
+  });
+
+  it("has nothing to say about a log that carries no deck evidence", () => {
+    expect(deckEvidence(undefined)).toBeNull();
+    expect(deckEvidence({ inventory: [], newSlides: [], shots: [] })).toBeNull();
   });
 
   it("calls a slide tagged with a slot before the run's range an orphan", async () => {
