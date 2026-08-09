@@ -374,8 +374,18 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   own slide and the shared deck together, so a third arm on a fresh slide per
   round is what would tell them apart — and this host will not give one out.
   The 22% gap between the two arms' first rounds (2339 against 2852, second arm
-  starting after the first had put 96 shapes in the deck) is the only hint, and
-  it is small next to the within-arm growth.
+  starting after the first had put 96 shapes in the deck) is the only hint from
+  the experiment itself, and it is small next to the within-arm growth.
+
+  **The routine rounds add a second hint, and it points the other way.** Two
+  consecutive rounds stalled in the same two scenarios, on the same call, at
+  much the same times — `drawing shapes 1-10 of 24` giving up after 45 seconds
+  at 481s and 591s on `1fd6aa3`, and at 456s and 567s on `40b5e44`, the latter
+  on a deck that started with ONE slide (`round starting deckSlides: 1`). Those
+  draws go onto slides holding a couple of charts, not ninety-six shapes, so
+  per-slide cost does not explain them: something that accumulates across the
+  DECK or the tab does. Both effects are real, then, and the experiment measured
+  only the first.
 
 - **FAST IS THE BROKEN MODE, not the healthy one.** The draw times are bimodal —
   ~17s per batch or ~3-5s — and this file said until 2026-08-08 that the host
