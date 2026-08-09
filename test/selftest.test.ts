@@ -1545,9 +1545,38 @@ describe("the experiment that asks what makes a long run slow down", () => {
     const fresh = await series("s1", false);
     const v = readDegradation(one, fresh);
     expect(v.suspect, `one: ${one.join(",")} | fresh: ${fresh.join(",")}`).toBe("host");
-    expect(Math.abs(v.oneContext - v.freshContext), "the arms were hit equally and must read equally").toBeLessThan(
-      0.35,
-    );
+
+    // The NUMBER is pinned on synthetic arrays rather than on the timed arms
+    // above, and that is a measurement rather than a preference.
+    //
+    // It used to read the timed arms with a tolerance of 0.35. That fails on
+    // Windows five runs out of five — gaps of 0.355, 0.375, 0.387, 0.387,
+    // 0.452 — and passes in CI, which is how it survived. The clock is the
+    // cause, not the reader: the fault charges 6ms per sync and each round
+    // spends exactly ONE sync (measured on both arms, so they really are hit
+    // equally), while Windows' timer granularity is ~15.6ms. A series that
+    // should climb 6ms a round instead climbs in ~16ms steps every third round
+    // — `one` came back 26,32,31 · 48,47,46 · 63,64,79 — and `growth`'s
+    // median-of-thirds lands the two arms on different phases of that
+    // staircase. Re-run at 20ms per sync, comfortably over one tick, it passed
+    // five out of five.
+    //
+    // Widening the tolerance would have buried that, and raising the modelled
+    // cost until it clears the tick pushes this test into its own 30-second
+    // budget (80ms per sync blows it). A round the clock cannot resolve is
+    // below the instrument — the same thing `readDegradation`'s own
+    // `Math.max(one.head, 1)` says one level down — so the arithmetic is
+    // asserted where no clock can reach it, and the timed arms above keep the
+    // end-to-end half.
+    //
+    // Both arms climb 10 a round; `fresh` merely starts higher, which is the
+    // entire trap. A reader dividing each arm by its OWN head calls this +55%
+    // against +30% and blames THE CONTEXT for a host-wide slowdown.
+    const flatOne = [100, 110, 120, 130, 140, 150, 160, 170, 180];
+    const flatFresh = [190, 200, 210, 220, 230, 240, 250, 260, 270];
+    const exact = readDegradation(flatOne, flatFresh);
+    expect(exact.suspect, "two arms climbing at one rate are a HOST slowdown").toBe("host");
+    expect(exact.oneContext - exact.freshContext, "the arms were hit equally and must read equally").toBe(0);
   });
 
   it("blames nothing when the host is steady", async () => {
