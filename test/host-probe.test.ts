@@ -416,6 +416,51 @@ describe("the fake host's answer sheet", () => {
     }
   });
 
+  /**
+   * The binding question's two ways of being refused, and why they are two.
+   *
+   * A binding has to be made in the batch that CREATES its shape — a proxy one
+   * sync old is refused on this host — so the batch carries two things and its
+   * failure is attributable to neither. That is not a hypothetical: the
+   * 2026-08-09 evening round came back `UnexpectedError` from the commit in 1.3
+   * seconds, and the probe honestly reported "never asked" while
+   * `shape-add-fresh-slide-proxy` answered `yes` two rows above it.
+   *
+   * The control arm is what makes the difference readable. The same batch minus
+   * the binding runs first, on the same slide; if it commits and the bound one
+   * does not, the binding is the only variable left.
+   */
+  it("blames the binding only when the same batch without one just worked", async () => {
+    installHost([makeSlide("s1")]);
+    faults.refuseBindings = "sync";
+    try {
+      const sheet = await runHostProbes("fake-refuses-bindings-at-sync", "test");
+      const row = sheet.answers.find((a) => a.id === "binding-names-shape-later");
+      expect(row?.answer, "a refusal the control had already ruled out is an ANSWER, not a missing question").toBe(
+        "commit-threw",
+      );
+      expect(row?.detail).toMatch(/without a binding committed seconds earlier/);
+    } finally {
+      faults.refuseBindings = null;
+    }
+  });
+
+  it("tells a binding refused at the call apart from one refused at the commit", async () => {
+    // Same API, two different facts about it: `bindings.add` objecting on the
+    // spot is not the host rejecting the batch that carried it, and a single
+    // word for both would put them in one bucket in the diff.
+    installHost([makeSlide("s1")]);
+    faults.refuseBindings = "call";
+    try {
+      const sheet = await runHostProbes("fake-refuses-bindings-at-call", "test");
+      const row = sheet.answers.find((a) => a.id === "binding-names-shape-later");
+      expect(row?.answer).toBe("add-threw");
+      expect(row?.detail).toMatch(/BindingCollection\.add/);
+    } finally {
+      faults.refuseBindings = null;
+    }
+  });
+
   it("gives up on a second pass the host is never going to answer", async () => {
     // The other side of the rung, and the one that keeps it from being a way to
     // spend three minutes on a dead host. A window wider than the whole run
