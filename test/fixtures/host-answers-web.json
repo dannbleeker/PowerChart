@@ -1,189 +1,189 @@
 {
   "kind": "powerchart-host-answers",
   "source": "PowerPoint · OfficeOnline · 0.0.0.0",
-  "build": "2f1e8c4 · 2026-08-08 16:47Z",
+  "build": "40b5e44 · 2026-08-09 07:59Z",
   "requirementSets": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"],
   "answers": [
     {
       "id": "load-isnullobject-populates",
       "question": "Does load('isNullObject') make isNullObject readable after a sync?",
-      "ms": 29,
+      "ms": 17,
       "answer": "yes",
       "detail": "read false"
     },
     {
       "id": "load-id-populates-isnullobject",
       "question": "Does loading a REAL property make isNullObject readable?",
-      "ms": 27,
+      "ms": 26,
       "answer": "yes",
       "detail": "read false"
     },
     {
       "id": "getitemornullobject-missing",
       "question": "What does getItemOrNullObject give for an id that does not exist?",
-      "ms": 28,
+      "ms": 32,
       "answer": "null-object"
     },
     {
       "id": "shape-add-fresh-slide-proxy",
       "question": "Can a shape be added through a slide proxy resolved in THIS sync?",
-      "ms": 209,
+      "ms": 273,
       "answer": "yes"
     },
     {
       "id": "shape-add-held-slide-proxy",
       "question": "Can a shape be added through a slide proxy resolved a sync ago?",
-      "ms": 626,
+      "ms": 396,
       "answer": "threw",
       "detail": "GeneralException"
     },
     {
       "id": "shape-resolve-held-slide-proxy",
       "question": "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
-      "ms": 667,
-      "answer": "no-scratch-slide",
-      "detail": "the host says the scratch slide is gone"
+      "ms": 1134,
+      "answer": "no-scratch-shape",
+      "detail": "the probe never got as far as its question: the host would not read back the shapes' ids"
     },
     {
       "id": "shape-add-fresh-getitem-slide",
       "question": "Can a shape be added through slides.getItem(id) on a freshly-added slide?",
-      "ms": 390,
+      "ms": 900,
       "answer": "threw",
       "detail": "GeneralException"
     },
     {
       "id": "getitem-durable-slide",
       "question": "Does slides.getItem(id) resolve a slide that was in the deck before this run?",
-      "ms": 33,
+      "ms": 440,
       "answer": "yes",
       "detail": "asked because shape-add-fresh-getitem-slide answered \"threw\" — getItem refused a freshly-added slide, which could be about getItem or about the slide's newness"
     },
     {
       "id": "shape-add-positional-slide-proxy",
       "question": "Can a shape be added through slides.getItemAt(index) rather than by id?",
-      "ms": 207,
+      "ms": 351,
       "answer": "yes"
     },
     {
       "id": "shape-proxy-survives-one-sync",
       "question": "Is a shape proxy still usable one sync after it was created?",
-      "ms": 594,
+      "ms": 449,
       "answer": "unreadable"
     },
     {
       "id": "shapes-items-count-honest",
       "question": "After adding 5 shapes, how many does the collection report?",
-      "ms": 471,
-      "answer": "short-0",
-      "detail": "items=0"
+      "ms": 218,
+      "answer": "unreadable",
+      "detail": "Cannot read properties of undefined (reading 'length')"
     },
     {
       "id": "shapes-items-via-positional-slide",
       "question": "Same collection read, but through slides.getItemAt(index) — any different?",
-      "ms": 8510,
+      "ms": 435,
       "answer": "short-0",
       "detail": "items=0"
     },
     {
       "id": "getcount-populates-same-sync",
       "question": "Does getCount()'s value arrive on the sync that queued it?",
-      "ms": 33,
+      "ms": 36,
       "answer": "yes",
       "detail": "value=8"
     },
     {
       "id": "tags-add-same-key-twice",
       "question": "Does writing the same tag key twice overwrite, or duplicate?",
-      "ms": 851,
+      "ms": 1010,
       "answer": "no-scratch-shape",
       "detail": "the probe never got as far as its question: the host would not read back the shapes' ids"
     },
     {
       "id": "tags-on-fresh-shape",
       "question": "Does a shape added THIS sync already have a .tags collection?",
-      "ms": 8718,
+      "ms": 8672,
       "answer": "yes"
     },
     {
       "id": "delete-then-lookup",
       "question": "Right after delete()+sync, does getItemOrNullObject report it gone?",
-      "ms": 547,
+      "ms": 517,
       "answer": "reports-gone"
     },
     {
       "id": "addgroup-returns-usable",
       "question": "Is a group proxy usable in the same sync that created it?",
-      "ms": 610,
+      "ms": 792,
       "answer": "unreadable",
       "detail": "members via same-batch"
     },
     {
       "id": "group-children-via-getcount",
       "question": "Does a group report its child COUNT, where it will not list them?",
-      "ms": 797,
+      "ms": 525,
       "answer": "unreadable",
       "detail": "members via same-batch"
     },
     {
       "id": "group-reports-its-children",
       "question": "After grouping two shapes, does the group report two children?",
-      "ms": 764,
+      "ms": 838,
       "answer": "threw",
       "detail": "The property 'items' is not available. Before reading the property's value, call the load method on the containing object and call \"context."
     },
     {
       "id": "tag-on-group-survives",
       "question": "Does a tag written on a GROUP read back?",
-      "ms": 575,
+      "ms": 383,
       "answer": "no-scratch-slide",
       "detail": "the host says the scratch slide is gone"
     },
     {
       "id": "getitemat-past-end",
       "question": "What does slides.getItemAt() past the end of the deck do?",
-      "ms": 467,
+      "ms": 34,
       "answer": "threw",
       "detail": "InvalidParam passed to GetItemAt(index)"
     },
     {
       "id": "picture-then-shape-read",
       "question": "After a picture is added, does re-reading the slide's shapes still answer?",
-      "ms": 424,
+      "ms": 236,
       "answer": "unreadable"
     },
     {
       "id": "group-of-existing-shape-readable",
       "question": "Can a group found in a later batch report its children?",
-      "ms": 1085,
+      "ms": 871,
       "answer": "no-group-id",
       "detail": "the host would not name the group it just made"
     },
     {
       "id": "slide-layout-readable",
       "question": "Can a slide's layout shapes be read?",
-      "ms": 757,
+      "ms": 718,
       "answer": "yes",
       "detail": "5 layout shape(s)"
     },
     {
       "id": "layouts-readable",
       "question": "Can the deck's slide masters and their layouts be read?",
-      "ms": 862,
+      "ms": 1012,
       "answer": "yes",
       "detail": "1 master(s), 11 layout(s)"
     },
     {
       "id": "untrack-available",
       "question": "Do proxies expose untrack()?",
-      "ms": 879,
+      "ms": 32,
       "answer": "no"
     },
     {
       "id": "scratch-slides-returned",
       "question": "Does the host give back the scratch slides this probe added?",
       "answer": "all",
-      "ms": 1288,
-      "detail": "19 of 19 scratch slide(s) deleted"
+      "ms": 1394,
+      "detail": "17 of 17 scratch slide(s) deleted"
     }
   ]
 }
