@@ -504,48 +504,74 @@ const explodePicture: Scenario = async (prefix) => {
  * holding two already, which is where a positional heuristic goes wrong.
  */
 /**
- * Where a scenario may draw so it does not land on top of another scenario.
+ * Where a scenario may draw so it lands on top of neither the chart already
+ * there nor another scenario's.
  *
  * Several scenarios share a slide on purpose — `insertOntoUsedSlide` needs one
- * that already has a chart, and `chartIsVisible` needs a before-and-after on a
- * surface the run already owns — and both pick the FIRST probe chart, so they
- * pick the same slide. Left to their own devices they drew full-size charts at
- * the default origin and the result was three charts in a heap: a rasteriser
- * reads that perfectly well, and a human opening the deck calls it broken.
+ * that already has a chart, `chartIsVisible` needs a before-and-after on a
+ * surface the run already owns — and all of them pick the FIRST probe chart, so
+ * they pick the same slide. Left to themselves they drew full-size at the
+ * default origin and the owner opened a deck with four charts in a heap.
  *
- * This battery leaves its slides for a human to look at, so that is the bar.
+ * The first fix put them in a fixed column down the right-hand edge, sized as a
+ * share of the slide. That worked on 16:9 and failed on the first 4:3 deck it
+ * met, exactly as its own test admitted it would: 720pt across leaves nothing
+ * wide enough to clear a 480pt chart, and the round put the column at x=498
+ * over a chart running to x=600. The test said the guarantee did not hold
+ * there; it did not make the guarantee hold.
  *
- * A column of quarter-size boxes down the right-hand edge, because that is the
- * part of the slide a 480x300 chart at any origin the probe deck uses (0,0 /
- * 40,40 / 60,90) cannot reach. Measured against `slideSize` rather than
- * assumed — it is cached after its first read, so this costs nothing, and a 4:3
- * deck has its edge somewhere else.
+ * The reason it could not is that the column's position was GUESSED. Nothing
+ * asked where the chart actually was — the code assumed an origin of 60 and the
+ * host had used 120. So: take the occupied box, which every caller already
+ * holds, and lay the slots out in the band below it. That band exists on both
+ * deck shapes, is computed rather than assumed, and does not care what the host
+ * decided to do with the first chart.
  *
  * Pure, so the arithmetic that keeps them apart can be checked without a
  * PowerPoint.
  */
-export const SIDE_SLOTS = 4;
+/**
+ * Five, not four: the four charts, plus the square of rectangles
+ * `degradesOverTime` measures with. That grid used to be placed by hand at
+ * (20, 430) with a comment claiming clearance from the old right-hand column —
+ * true of a column, false of a band, and the band is what the slots are now. It
+ * draws onto the same slides, so it takes a slot like everything else rather
+ * than being reasoned about separately.
+ */
+export const SIDE_SLOTS = 5;
 
-export function sideSlot(
-  n: number,
-  slide: { width: number; height: number },
-): { left: number; top: number; width: number; height: number } {
+/** The slot the degradation experiment's measurement grid draws in. */
+export const GRID_SLOT = SIDE_SLOTS - 1;
+
+export interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export function sideSlot(n: number, slide: { width: number; height: number }, occupied: Box): Box {
   const margin = Math.round(slide.height * 0.037);
-  const width = Math.round(slide.width * 0.28);
-  // Sized so the whole column fits, rather than picked and hoped. Four, because
-  // four is how many charts the scenarios that share a slide draw between them:
-  // two from `insertOntoUsedSlide`, one from `chartIsVisible`, one from the
-  // selected-shape insert. A fifth caller must raise SIDE_SLOTS, and then every
-  // box gets shorter — the right trade, since none of them is a specimen.
-  // `leaves no two charts stacked on one slide` is what notices if nobody does.
-  const height = Math.floor((slide.height - (SIDE_SLOTS + 1) * margin) / SIDE_SLOTS);
+  // A row, not a column: the free band on a slide holding one landscape chart
+  // is underneath it on every deck shape this battery has met, while the strip
+  // beside it disappears as soon as the slide narrows.
+  const top = occupied.top + occupied.height + margin;
+  const width = Math.floor((slide.width - (SIDE_SLOTS + 1) * margin) / SIDE_SLOTS);
   return {
     width,
-    height,
-    left: slide.width - width - margin,
-    top: margin + n * (height + margin),
+    height: Math.max(1, slide.height - top - margin),
+    left: margin + n * (width + margin),
+    top,
   };
 }
+
+/** The box a probe chart occupies, from its target and the config it carries. */
+const boxOf = (c: { target: { left: number; top: number }; cfg: ChartConfig }): Box => ({
+  left: c.target.left,
+  top: c.target.top,
+  width: c.cfg.width ?? 480,
+  height: c.cfg.height ?? 300,
+});
 
 const insertOntoUsedSlide: Scenario = async (prefix) => {
   const { found: hosts, blind, gap } = await probeCharts(prefix);
@@ -556,11 +582,11 @@ const insertOntoUsedSlide: Scenario = async (prefix) => {
   const added = [`${prefix} onto A`, `${prefix} onto B`];
   const slide = await slideSize();
   for (const [n, title] of added.entries()) {
-    // Slots 0 and 1 down the right edge — `chartIsVisible` takes slot 2 on this
-    // same slide. The old code cascaded these by 24pt, which on a 480x300 chart
-    // is not a cascade: both landed on each other AND on the chart already
-    // there. See `sideSlot`.
-    const { left, top, ...box } = sideSlot(n, slide);
+    // Slots 0 and 1 of the band below the chart already there — `chartIsVisible`
+    // takes slot 2 on this same slide. The old code cascaded these by 24pt,
+    // which on a 480x300 chart is not a cascade: both landed on each other AND
+    // on the chart already there. See `sideSlot`.
+    const { left, top, ...box } = sideSlot(n, slide, boxOf(host));
     const c: ChartConfig = { ...cfg(title), ...box };
     await insertSceneIntoSlide(buildChart(c), { tagData: JSON.stringify(c), left, top });
   }
@@ -940,7 +966,7 @@ const chartIsVisible: Scenario = async (prefix) => {
   // corner somewhere else.
   // Slot 2 — the two `insertOntoUsedSlide` draws take 0 and 1 on this same
   // slide, because both scenarios pick the first probe chart. See `sideSlot`.
-  const { left, top, ...box } = sideSlot(2, await slideSize());
+  const { left, top, ...box } = sideSlot(2, await slideSize(), boxOf(host));
   const c: ChartConfig = { ...cfg(`${prefix} visible`), ...box };
   const drawn = await attempt("drawing the chart", () =>
     insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c), left, top }),
@@ -1230,7 +1256,7 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
     // Slot 3 — the last of the four. See `sideSlot`: three other charts share
     // this slide, and drawing full-size on top of them is what left the owner a
     // heap to look at.
-    const { left, top, ...box } = sideSlot(3, await slideSize());
+    const { left, top, ...box } = sideSlot(3, await slideSize(), boxOf(victim));
     const extra: ChartConfig = { ...cfg(`${prefix} drawn while selected`), ...box };
     await insertSceneIntoSlide(buildChart(extra), { slideId, tagData: JSON.stringify(extra), left, top });
   } finally {
@@ -1451,7 +1477,12 @@ const degradesOverTime: Scenario = async (prefix) => {
   const rounds = degradeRounds;
   const perRound = degradePerRound;
   const { found, blind, gap } = await probeCharts(prefix);
-  const surfaces = [...new Set(found.map((c) => c.target.slideId))];
+  // Keyed by slide rather than deduplicated separately, so every surface comes
+  // with the chart that made it one — the grid below needs both and a second
+  // lookup could miss.
+  const surfaceBox = new Map<string, Box>();
+  for (const c of found) if (!surfaceBox.has(c.target.slideId)) surfaceBox.set(c.target.slideId, boxOf(c));
+  const surfaces = [...surfaceBox.keys()];
   const [slideA, slideB] = surfaces;
   if (!slideA || !slideB) {
     if (blind) return blindSkip(gap);
@@ -1462,12 +1493,22 @@ const degradesOverTime: Scenario = async (prefix) => {
     };
   }
   const deckBefore = await attempt("counting the deck", slideCount);
+  // Each arm's grid goes in the grid slot of ITS OWN slide, measured from the
+  // chart that slide actually carries. The arms are on different slides and
+  // those slides' charts need not sit at the same origin, so one shared box
+  // would be the guess this whole helper exists to remove.
+  const slide = await slideSize();
+  const gridOn = (box: Box) => {
+    const { left, top } = sideSlot(GRID_SLOT, slide, box);
+    return { left, top };
+  };
   const one = await attempt("timing the one-context arm", () =>
     timeShapeRounds(slideA, {
       rounds,
       perRound,
       oneContext: true,
       label: `${prefix} one-context`,
+      origin: gridOn(surfaceBox.get(slideA)!),
     }),
   );
   const fresh = await attempt("timing the fresh-context arm", () =>
@@ -1476,6 +1517,7 @@ const degradesOverTime: Scenario = async (prefix) => {
       perRound,
       oneContext: false,
       label: `${prefix} fresh-context`,
+      origin: gridOn(surfaceBox.get(slideB)!),
     }),
   );
   const oneMs = one.rounds.map((r) => r.ms);

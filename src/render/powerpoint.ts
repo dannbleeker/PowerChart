@@ -3314,6 +3314,26 @@ export interface ShapeRoundSeries {
 }
 
 /**
+ * The measurement grid `timeShapeRounds` lays its rectangles out on.
+ *
+ * Exported so the caller that hands it an origin can check the footprint fits
+ * where it is putting it, rather than the two agreeing by coincidence.
+ */
+export const GRID_COLS = 12;
+export const GRID_PITCH = 10;
+export const GRID_CELL = 8;
+
+/** How much room `n` shapes need at this pitch. */
+export function gridFootprint(n: number): { width: number; height: number } {
+  const cols = Math.min(n, GRID_COLS);
+  const rows = Math.ceil(n / GRID_COLS);
+  return {
+    width: Math.max(0, (cols - 1) * GRID_PITCH + GRID_CELL),
+    height: Math.max(0, (rows - 1) * GRID_PITCH + GRID_CELL),
+  };
+}
+
+/**
  * Add shapes to one slide in N timed rounds — either all inside ONE request
  * context, or one context per round.
  *
@@ -3343,10 +3363,20 @@ export interface ShapeRoundSeries {
  */
 export async function timeShapeRounds(
   slideId: string,
-  opts: { rounds: number; perRound: number; oneContext: boolean; label: string; budgetMs?: number },
+  opts: {
+    rounds: number;
+    perRound: number;
+    oneContext: boolean;
+    label: string;
+    budgetMs?: number;
+    origin?: { left: number; top: number };
+  },
 ): Promise<ShapeRoundSeries> {
   const { rounds, perRound, oneContext, label } = opts;
   const budgetMs = opts.budgetMs ?? READBACK_TIMEOUT_MS;
+  // Bottom-left of a 960x540 deck when the caller does not say, which is what
+  // this drew before the slot came in. Callers on a real deck pass a slot.
+  const origin = opts.origin ?? { left: 20, top: 400 };
   const out: ShapeRound[] = [];
   let cutShort: string | undefined;
   /**
@@ -3362,22 +3392,22 @@ export async function timeShapeRounds(
     const slide = context.presentation.slides.getItemOrNullObject(slideId);
     for (let i = 0; i < perRound; i++) {
       const n = (round - 1) * perRound + i;
-      // Bottom-left, small, and out of the way. This used to grid from (20,20)
-      // — fine when the experiment took a scratch slide of its own, and not
-      // fine since it stopped: it now draws onto a slide the run already owns,
-      // and ninety-six squares from the top-left corner sit squarely on that
-      // chart's title. The owner opens these decks, so a measurement artefact
-      // has to look like one and stay out of the way of what it is measuring
-      // beside.
+      // Small, and out of the way. This used to grid from (20,20) — fine when
+      // the experiment took a scratch slide of its own, and not fine since it
+      // stopped: it now draws onto a slide the run already owns, and ninety-six
+      // squares from the top-left corner sit squarely on that chart's title.
+      // The owner opens these decks, so a measurement artefact has to look like
+      // one and stay out of the way of what it is measuring beside.
       //
-      // 8pt cells on a 10pt pitch: ninety-six of them fit in 120x80, which is
-      // clear of both a full-size chart at any origin the probe deck uses and
-      // of `sideSlot`'s right-hand column.
+      // 8pt cells on a 10pt pitch: GRID_COLS x GRID_COLS of them fit in
+      // 120x120. WHERE that footprint goes is the caller's to decide and is
+      // passed in — a hardcoded corner was a guess about the slide, and a guess
+      // about the slide is what put a fixed column across a 4:3 chart.
       const shape = slide.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-        left: 20 + (n % 12) * 10,
-        top: 430 + Math.floor(n / 12) * 10,
-        width: 8,
-        height: 8,
+        left: origin.left + (n % GRID_COLS) * GRID_PITCH,
+        top: origin.top + Math.floor(n / GRID_COLS) * GRID_PITCH,
+        width: GRID_CELL,
+        height: GRID_CELL,
       });
       shape.name = `${label} r${round} #${i}`;
     }

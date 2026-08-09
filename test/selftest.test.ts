@@ -5,6 +5,7 @@ import {
   makeSlide,
   makeShape,
   rasterised,
+  hostSlideSize,
   applyWebProfile,
   faults,
   trips,
@@ -20,6 +21,7 @@ import {
   _setReadbackTimeoutForTest,
   listChartsInDeck,
   timeShapeRounds,
+  gridFootprint,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { buildChart } from "../src/core/chart";
@@ -40,6 +42,7 @@ import {
   visibilityVerdict,
   sideSlot,
   SIDE_SLOTS,
+  GRID_SLOT,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -1159,41 +1162,61 @@ describe("scenarios that must not be able to pass without proving anything", () 
   });
 
   it("gives every scenario that shares a slide its own place on it", () => {
-    // Two rounds of the same complaint, from the owner, looking at the deck the
-    // battery left him. First a full-size chart drawn on top of a full-size
-    // chart; then three of them in a heap, because `insertOntoUsedSlide` and
-    // `chartIsVisible` both pick the FIRST probe chart and therefore the same
-    // slide. A rasteriser reads that fine and a human calls it broken, and this
-    // battery leaves its slides for a human.
+    // Three rounds of the same complaint from the owner, looking at the deck
+    // the battery left him. The third was a 4:3 deck, where the first fix — a
+    // fixed column down the right-hand edge — put charts at x=498 across one
+    // running to x=600. Its own test had said the clearance could not hold at
+    // 720pt wide, which was honest and did not stop it happening.
     //
-    // The arithmetic is what keeps them apart, so the arithmetic is what is
-    // checked — not the numbers it happens to produce on one deck size.
+    // The column's position was GUESSED: it assumed the chart began at x=60 and
+    // the host had used 120. Placing from the box the caller actually holds is
+    // what removes the guess, so the property is now checkable on any deck.
     const decks = [
-      { width: 960, height: 540 },
-      { width: 720, height: 540 }, // 4:3
+      { width: 960, height: 540 }, // 16:9, as observed
+      { width: 720, height: 540 }, // 4:3, as observed
     ];
-    for (const slide of decks) {
-      const slots = Array.from({ length: SIDE_SLOTS }, (_, n) => sideSlot(n, slide));
+    // The chart already on the slide, at the origins each deck really used.
+    const occupied = [
+      { left: 60, top: 90, width: 480, height: 300 },
+      { left: 120, top: 120, width: 480, height: 300 },
+    ];
+    for (const [d, slide] of decks.entries()) {
+      const chart = occupied[d];
+      const slots = Array.from({ length: SIDE_SLOTS }, (_, n) => sideSlot(n, slide, chart));
+      const apart = (a: typeof chart, b: typeof chart) =>
+        a.left + a.width <= b.left ||
+        b.left + b.width <= a.left ||
+        a.top + a.height <= b.top ||
+        b.top + b.height <= a.top;
       for (const [i, box] of slots.entries()) {
-        // On the slide, both axes. The half a corner offset usually gets wrong.
         expect(box.left, `slot ${i} runs off the left of a ${slide.width}pt deck`).toBeGreaterThanOrEqual(0);
         expect(box.left + box.width, `slot ${i} runs off the right`).toBeLessThanOrEqual(slide.width);
         expect(box.top, `slot ${i} starts above the slide`).toBeGreaterThanOrEqual(0);
         expect(box.top + box.height, `slot ${i} runs off the bottom`).toBeLessThanOrEqual(slide.height);
-        // Clear of a full-size chart at any origin the probe deck uses — the
-        // rightmost of those is 60, and the chart is 480 wide, so it ends at
-        // 540. Asserted only where the deck is wide enough to allow it: a 4:3
-        // slide is 720pt across and 540 of that is already spoken for, so
-        // nothing 200pt wide can clear it horizontally. On that deck the charts
-        // touch, and saying so is better than an assertion that quietly means
-        // less than it reads.
-        if (slide.width >= 960)
-          expect(box.left, `slot ${i} overlaps a 480pt chart at x=60`).toBeGreaterThanOrEqual(540);
+        expect(box.height, `slot ${i} has no room to draw in`).toBeGreaterThan(0);
+        // Clear of the chart that is already there — on BOTH deck shapes now.
+        // The old rule could not promise this at 720pt and said so; this one
+        // can, because it is told where the chart is instead of assuming.
+        expect(apart(box, chart), `slot ${i} overlaps the chart already on a ${slide.width}pt deck`).toBe(true);
       }
-      // And clear of each other, which is the whole point of numbering them.
       for (const [i, a] of slots.entries())
         for (const b of slots.slice(i + 1))
-          expect(a.top + a.height, `slots overlap on a ${slide.width}x${slide.height} deck`).toBeLessThanOrEqual(b.top);
+          expect(apart(a, b), `slots overlap on a ${slide.width}x${slide.height} deck`).toBe(true);
+      // And the measurement grid fits in the slot it was given. It used to be
+      // placed by hand at (20, 430) under a comment asserting it cleared the
+      // old right-hand column — which it did, and which stopped being the
+      // question the moment the slots became a band along the bottom. Checked
+      // against the renderer's own constants so the two cannot drift.
+      const grid = slots[GRID_SLOT];
+      const need = gridFootprint(96);
+      expect(
+        need.width,
+        `the 96-shape grid does not fit across its slot on a ${slide.width}pt deck`,
+      ).toBeLessThanOrEqual(grid.width);
+      expect(
+        need.height,
+        `the 96-shape grid does not fit down its slot on a ${slide.width}pt deck`,
+      ).toBeLessThanOrEqual(grid.height);
     }
   });
 
@@ -1208,6 +1231,13 @@ describe("scenarios that must not be able to pass without proving anything", () 
     // that lacked it. This can: it reads back what was actually drawn.
     installHost([makeSlide("s1")]);
     setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    // On a 4:3 deck, because that is where the fixed right-hand column broke on
+    // a real host: 720pt across leaves no strip wide enough beside a 480pt
+    // chart, and the round put charts at x=498 over one running to x=600. 16:9
+    // is covered by the arithmetic case above; this is the shape that caught a
+    // rule its own test had already admitted could not hold.
+    hostSlideSize.cx = 9144000; // 720pt
+    hostSlideSize.cy = 6858000; // 540pt
     // The FULL battery, not a picked scenario: `insertOntoUsedSlide` is the one
     // that draws two charts onto an occupied slide, and the picker's "plus the
     // two inserts it needs" does not reach it.
@@ -1227,6 +1257,8 @@ describe("scenarios that must not be able to pass without proving anything", () 
           const apart = a.l + a.w <= b.l || b.l + b.w <= a.l || a.t + a.h <= b.t || b.t + b.h <= a.t;
           expect(apart, `"${a.title}" and "${b.title}" are drawn on top of each other`).toBe(true);
         }
+    hostSlideSize.cx = 12192000;
+    hostSlideSize.cy = 6858000;
   }, 60_000);
 
   it("does not report a drawn chart as never drawn", () => {
@@ -1570,6 +1602,36 @@ describe("the experiment that asks what makes a long run slow down", () => {
       _setDegradeSizeForTest(8, 12);
     }
   }, 60_000);
+
+  it("draws its grid where the caller put it, not at a corner it picked itself", async () => {
+    // The grid's origin used to be the constant (20, 430), under a comment
+    // asserting it cleared `sideSlot`'s right-hand column. It did — and the
+    // column became a band along the bottom of the slide, which is exactly
+    // where those two numbers point. So the experiment's measurement artefact
+    // would have been drawn across the first chart slot on the same slides the
+    // other scenarios use.
+    //
+    // The fix is not a better constant: it is that the caller decides, because
+    // only the caller knows where the chart on that slide actually is. This
+    // checks the parameter is honoured at all, which a constant cannot do.
+    const deck: FakeSlide[] = [makeSlide("s1")];
+    installHost(deck);
+    const origin = { left: 600, top: 300 };
+    await timeShapeRounds("s1", { rounds: 2, perRound: 3, oneContext: true, label: "t", budgetMs: 30_000, origin });
+    const need = gridFootprint(6);
+    const boxes = deck[0].created.map((s) => s.box!);
+    expect(boxes.length, "the arm drew nothing to check").toBe(6);
+    for (const b of boxes) {
+      expect(b.left, "a grid cell landed left of the origin it was given").toBeGreaterThanOrEqual(origin.left);
+      expect(b.top, "a grid cell landed above the origin it was given").toBeGreaterThanOrEqual(origin.top);
+      expect(b.left + b.width, "a grid cell ran off the right of its box").toBeLessThanOrEqual(
+        origin.left + need.width,
+      );
+      expect(b.top + b.height, "a grid cell ran off the bottom of its box").toBeLessThanOrEqual(
+        origin.top + need.height,
+      );
+    }
+  });
 });
 
 describe("the scenario for a shape the user had selected", () => {
