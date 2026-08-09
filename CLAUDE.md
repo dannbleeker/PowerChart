@@ -160,6 +160,19 @@ against your own uncompiled change, and it reads as non-determinism.
   and a majority across samples is not a mechanism either. A question that has
   been asked ONCE has not been answered, it has been sampled.
 
+  **The sheet's YIELD is a sample too, and it is noisier than anything you will
+  ship.** Four rounds on 2026-08-09 answered 15, 21, 18 and 24 of 28 — and the
+  last two are the SAME BUILD, `1fa0509`, six questions apart. So a round that
+  answers more than the one before it is not evidence that the change between
+  them worked, and a round that answers fewer is not evidence that it broke:
+  the swing on identical code is larger than any fix measured here so far. The
+  probe's end-of-run second pass is the case in point — its real contribution is
+  4 rescues in one round, well inside that noise. What DOES attribute is the
+  per-question tag: `answered on a second pass at the end of the run` names the
+  rung that produced the answer, one row at a time, and cannot be confused with
+  the host having a good minute. Read those, not the total. **And read the build
+  stamp first** — rounds 15 and 16 look like a before/after and are not one.
+
   The run log says why, and it is not subtle: `scratch slide landed but its id
 will not resolve` several times mid-run, replacement scratch slides taken, and
   every question inside that window answering `no-scratch-slide` before the host
