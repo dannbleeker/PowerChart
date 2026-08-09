@@ -1787,6 +1787,32 @@ describe("demo-insert one-shot deck insert", () => {
    * The demo deck is deliberately NOT chained in: its two halves have to run on
    * different decks, and a button cannot open a fresh one.
    */
+  it("says how loaded the deck was before it starts", async () => {
+    // A round that dies leaves only its steps, and on 2026-08-09 one died
+    // sixteen seconds in — two 8-second stalls and then the tab — with nothing
+    // in the file to say whether PowerPoint had been fresh or already carrying
+    // a self-test's worth of shapes. This project has documented since
+    // 2026-08-06 that heavy work on an already-large deck is what kills the
+    // tab, and `docs/PUBLISHING.md` splits the demo halves across two decks for
+    // exactly that reason. Both readings fitted the crash file and neither
+    // could be checked.
+    const { setTracing, traceLog } = await import("../src/core/trace");
+    host.deckSlideIds = ["a", "b", "c"];
+    setTracing(true);
+    try {
+      $("demo-round").click();
+      await settle();
+      const said = traceLog().entries.filter((e) => e.message === "round starting");
+      expect(said, "a round that dies cannot say what deck it died on").toHaveLength(1);
+      // The number, not merely the line. A line carrying nothing would satisfy
+      // a check for its own existence and answer the question no better.
+      expect(said[0].data?.deckSlides).toBe(3);
+    } finally {
+      setTracing(false);
+      host.deckSlideIds = undefined;
+    }
+  });
+
   it("runs the probe and the self-test on one click, and saves them as one file", async () => {
     const dl = captureDownloads();
     $("demo-round").click();

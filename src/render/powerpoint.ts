@@ -3362,11 +3362,22 @@ export async function timeShapeRounds(
     const slide = context.presentation.slides.getItemOrNullObject(slideId);
     for (let i = 0; i < perRound; i++) {
       const n = (round - 1) * perRound + i;
+      // Bottom-left, small, and out of the way. This used to grid from (20,20)
+      // — fine when the experiment took a scratch slide of its own, and not
+      // fine since it stopped: it now draws onto a slide the run already owns,
+      // and ninety-six squares from the top-left corner sit squarely on that
+      // chart's title. The owner opens these decks, so a measurement artefact
+      // has to look like one and stay out of the way of what it is measuring
+      // beside.
+      //
+      // 8pt cells on a 10pt pitch: ninety-six of them fit in 120x80, which is
+      // clear of both a full-size chart at any origin the probe deck uses and
+      // of `sideSlot`'s right-hand column.
       const shape = slide.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-        left: 20 + (n % 12) * 24,
-        top: 20 + Math.floor(n / 12) * 24,
-        width: 20,
-        height: 20,
+        left: 20 + (n % 12) * 10,
+        top: 430 + Math.floor(n / 12) * 10,
+        width: 8,
+        height: 8,
       });
       shape.name = `${label} r${round} #${i}`;
     }

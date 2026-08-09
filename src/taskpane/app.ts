@@ -3428,6 +3428,18 @@ function wireInsert() {
         // nothing else, and the round says so rather than reporting an empty
         // diff as "the round added nothing".
         const idsBefore = await deckSlideIds();
+        // How loaded the deck was when the round started, as the first thing the
+        // crash log carries.
+        //
+        // A run that dies leaves only its steps, and on 2026-08-09 a round died
+        // sixteen seconds in — two 8-second stalls and then the tab — with no
+        // way to tell an already-tired PowerPoint from a fresh one. The deck is
+        // the difference: this project has documented since 2026-08-06 that
+        // heavy work on a deck that is already large is what kills the tab, and
+        // the runbook splits the demo halves across two decks for exactly that.
+        // Whether a crashed round was on a fresh deck is the first question
+        // anyone asks, and nothing recorded the answer.
+        trace("selftest", "round starting", { deckSlides: idsBefore?.length ?? "unreadable" });
         note("Round 1 of 2 — asking this PowerPoint what it actually does…", "busy");
         const sheet = await runHostProbes(host, buildStamp);
         // Written into the bundle before the long half starts. A self-test that
