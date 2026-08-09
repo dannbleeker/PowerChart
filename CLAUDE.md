@@ -868,45 +868,36 @@ What is left needs the owner, not the agent:
   a new one per session, and don't ask for the deck or a screenshot — the round's
   own file has carried both since the deck-evidence change.
 
-  **The `2f1e8c4` round landed 2026-08-08 and its sheet is the committed
-  fixture.** Ten scenarios ran, eight passed, and the round returned its file —
-  the first time the whole battery has finished and reported. It also returned
-  every scratch slide it borrowed (`scratch-slides-returned: all`, 19 of 19), so
-  the litter problem is not reproducing. `layouts-readable` and
-  `slide-layout-readable` both answered `yes`, which retires office-js#4906 and
+  **Eleven rounds have now run, and the battery reports.** The committed fixture
+  is whichever sheet last answered at least as much as the one before it — read
+  its `build` field rather than trusting a commit named here, because this
+  paragraph has already been wrong about that once. `layouts-readable` and
+  `slide-layout-readable` both answer `yes`, which retires office-js#4906 and
   #3826 as exposures on this host and this deck.
 
-  **The picked-alone experiment ran the same day and answered.** _the chart is
-  actually visible_, on a fresh deck, killed PowerPoint 61.8 seconds in with two
-  scenarios behind it — so it is the scenario, not the ten minutes. See the
-  rasterise gotcha above for what that means and what changed. The crash file
-  carried the fifteen steps that prove it, which is the crash-log mechanism
-  paying for itself: four earlier rounds crashed the same way and produced
-  nothing anyone could reason from.
+  **Both picked-alone experiments ran and answered, and neither is pending.**
+  _the chart is actually visible_ is routine again and has PASSED twice
+  (`c7d91d5`, and again on `1cd7ea3` at 15704 → 16580 bytes). _what makes a long
+  run slow down_ has MEASURED — twice, on two builds — and the quadratic
+  per-slide cost written up above is its result; it is `pickedOnly` and does not
+  need running again unless that number is in doubt.
 
-  **And the follow-ups closed it.** On `e49cca8` it survived, and on `c7d91d5`
-  it PASSED — `10064 → 15652 bytes` through PowerPoint's own rasteriser, the
-  first time this project has confirmed a chart it drew is visible anywhere but
-  in a human's eyes. Routine again as of that round, on the criterion set in
-  advance: comes back PASSING, not merely comes back.
+  **The stall investigation is closed as far as candidates go.** Eleven rounds
+  eliminated the scenario, the preceding scenario, the tab's age, the idle gap
+  before the sync, and the identity of the preceding call — each by a later
+  round putting the candidate in both populations. What remains is a host that
+  stalls the first sync of a draw intermittently, one or two draws in fifteen,
+  with no known discriminator. `does a rasterise poison the next draw` is the
+  counterbalanced control that will say "no pattern" until something changes;
+  a few rounds of that IS the finding, and is the point at which to stop
+  instrumenting and live with it.
 
-  **And the steps answered on their first outing.** _what makes a long run slow
-  down_ killed the tab again on `f8c9386`, and this time the log named the call:
-
-      33.2s  degradation step  what=adding the first scratch slide
-      33.6s  degradation step  what=adding the second scratch slide
-                                                      <- tab died
-
-  The first add survived (the second step only gets written if it did) and
-  nothing after the second was reached, so the drawing is exonerated and it is
-  the SECOND `slides.add()`, four tenths of a second after the first, that this
-  host does not survive. One round, no reasoning. Both scenarios that took
-  scratch slides have stopped; `test/selftest.test.ts` holds the line for the
-  whole battery.
-
-  Nothing is owed. The experiment still has never MEASURED anything — that is
-  what the next round of it is for — but it is no longer blocked on a question
-  nobody had asked.
+  **Nothing is owed to the owner.** The manifest re-install he was asked for was
+  done on 2026-08-06 and nothing since has touched a manifest — do not ask again
+  unless a PR actually changes one. What to ask him to click is written down:
+  "The standing test run" in `docs/PUBLISHING.md`. Don't improvise a new one per
+  session, and don't ask for the deck or a screenshot — the round's own file has
+  carried both since the deck-evidence change.
 
 - **Phase 3 — activate the Claude skill** (upload the zip on claude.ai).
 
