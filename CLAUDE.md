@@ -352,6 +352,31 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   rather than whether the chart is re-editable), and it only surfaced because
   the fake's `hollowReads` keys on the projection string. Guarded by a source
   scan in `web-host.test.ts`.
+- **Drawing cost grows with the shapes ALREADY on the slide — and the request
+  context has nothing to do with it.** `what makes a long run slow down` finally
+  measured something on 2026-08-09, after two outings that died in setup. Eight
+  rounds of twelve rectangles per arm, one arm holding a single context open and
+  the other taking a fresh one each round:
+
+      one context     2339 3177 3704 4363 5010 5775 6372 6769 ms   +101%
+      fresh contexts  2852 3397 3936 4636 5165 5635 6736 7352 ms   +105%
+
+  Both arms grew, within four points of each other, so the CONTEXT is not the
+  variable — which is what the experiment was built to decide, and it is now
+  decided. What each round shares is that it adds twelve shapes to a slide that
+  already holds twelve times the round number: the per-round increments are
+  roughly constant (+838, +527, +659, +647, +765, +597, +397), so a round costs
+  about `2339 + 630(n-1)` ms and the TOTAL is quadratic in shapes per slide.
+  Ninety-six shapes on one slide cost 37.5 seconds; the same ninety-six over
+  eight slides would cost about nineteen. That is the arithmetic behind the
+  17-second batches, and behind dense charts being the ones that fail.
+  **What is NOT separated: per-slide against per-deck.** Both arms grew their
+  own slide and the shared deck together, so a third arm on a fresh slide per
+  round is what would tell them apart — and this host will not give one out.
+  The 22% gap between the two arms' first rounds (2339 against 2852, second arm
+  starting after the first had put 96 shapes in the deck) is the only hint, and
+  it is small next to the within-arm growth.
+
 - **FAST IS THE BROKEN MODE, not the healthy one.** The draw times are bimodal —
   ~17s per batch or ~3-5s — and this file said until 2026-08-08 that the host
   "recovers mid-run and goes again". It does not. Within ONE run of `same scale
