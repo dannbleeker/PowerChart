@@ -1038,6 +1038,130 @@ const chartIsVisible: Scenario = async (prefix) => {
 };
 
 /**
+ * Does a rasterise poison the next draw?
+ *
+ * Eight rounds of stalls have had every one of their candidate causes killed by
+ * a later round: the scenario, the scenario before it, the tab's age, and the
+ * idle gap before the sync. Round 10 left exactly one thing standing. With the
+ * predecessor call recorded on EVERY first batch rather than only on stalls,
+ * its populations separate cleanly:
+ *
+ *   survivors followed  moving the view to a slide, counting the deck's slides,
+ *                       writing the chart's origin tag, re-reading a slide to
+ *                       tag the chart it would not tag, selecting a shape,
+ *                       reading the selected chart
+ *   the stall followed  rasterising a slide
+ *
+ * Twenty-nine surviving first batches across two rounds, not one of them after
+ * a rasterise; two stalls after a rasterise, in consecutive rounds. And
+ * `selecting a shape` — round 9's other stall — turns up among round 10's
+ * survivors, which is what a non-cause looks like.
+ *
+ * It is still confounded, and exactly. Only `chartIsVisible` rasterises before
+ * drawing, so "the draw followed a rasterise" and "the draw was that scenario"
+ * are the same event, one per round. This project has now been caught by that
+ * shape three times, and reasoning has never once broken it.
+ *
+ * So: two arms, one scenario, one slide, seconds apart. The CONTROL draws after
+ * a cheap read; the TEST draws after a rasterise. Everything a scenario-level
+ * account could appeal to — which scenario, what ran before it, how old the tab
+ * is, how loaded the deck is — is held identical between them, and the only
+ * difference is the call immediately before the draw.
+ *
+ * - both arms draw          → the rasterise is innocent, and `chartIsVisible`
+ *                             is stalling for a reason still unnamed.
+ * - only the test arm stalls → the call is the cause, on a surface that is not
+ *                             `chartIsVisible`, and there is finally something
+ *                             to fix rather than to watch.
+ * - both stall              → the slide or the moment, not the rasterise.
+ *
+ * Deliberately small charts. This is a measurement, not a specimen, and it runs
+ * every round — a full-size pair would add a minute to a battery that already
+ * takes ten.
+ */
+const rasteriseThenDraw: Scenario = async (prefix) => {
+  const attempt = stepsOf("rasterise-draw step");
+  const { found, blind, gap } = await probeCharts(prefix);
+  const host = found[0];
+  if (!host) return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to draw beside" };
+  const slideId = host.target.slideId;
+  const slide = await slideSize();
+  // Both arms in the band below the chart, like every other scenario that
+  // shares a slide — see `sideSlot`. Slots 0-3 are spoken for; these two take
+  // the grid slot's band by splitting it, because the grid only appears in a
+  // picked round and never alongside this.
+  const cell = sideSlot(GRID_SLOT, slide, boxOf(host));
+  const half = { width: Math.max(1, Math.floor(cell.width / 2) - 4), height: cell.height };
+  /** Draw one small chart, and say whether the host answered rather than throwing. */
+  const arm = async (label: string, left: number, before: () => Promise<unknown>) => {
+    await attempt(`${label}: the call before the draw`, before);
+    const c: ChartConfig = { ...cfg(`${prefix} ${label}`), ...half };
+    try {
+      await attempt(`${label}: drawing`, () =>
+        insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c), left, top: cell.top }),
+      );
+      return { label, drew: true, why: "" };
+    } catch (err) {
+      // A stall here is the RESULT, not a failure of the battery — so it is
+      // caught per arm rather than allowed to reach the runner, which would
+      // turn the whole scenario into a blind skip and discard the other arm's
+      // answer with it.
+      return { label, drew: false, why: isTimeout(err) ? "the host stopped answering" : errorText(err) };
+    }
+  };
+  // Control first, so a host that dies during the experiment has still answered
+  // the half that says the surface was usable at all.
+  const control = await arm("after a cheap read", cell.left, () => slideCount());
+  const test = await arm("after a rasterise", cell.left + half.width + 8, () => slideImageBase64(slideId, 640));
+  trace("selftest", "rasterise-draw arms", { control: control.drew, test: test.drew });
+  return rasteriseArmVerdict(control, test);
+};
+
+/** One arm's outcome: did the draw land, and if not, what the host said. */
+export interface DrawArm {
+  drew: boolean;
+  why: string;
+}
+
+/**
+ * What the two arms mean together — pure, because the reading is the thing that
+ * can be wrong.
+ *
+ * `visibilityVerdict` was extracted for exactly this reason and for exactly this
+ * cost: three attempts to arm the fake into each state each overshot into a
+ * different failure, and the rule went untested while the plumbing was
+ * exercised. Four combinations, four different conclusions, and the one that
+ * matters most is the one a careless reading gets wrong — a slide that refuses
+ * EVERY draw looks identical to a rasterise that poisons the next one unless
+ * the control arm is consulted.
+ */
+export function rasteriseArmVerdict(control: DrawArm, test: DrawArm): { ok: boolean; detail: string } {
+  if (control.drew && test.drew)
+    return {
+      ok: true,
+      detail: "both draws landed — a draw straight after a rasterise is no worse than one after a cheap read",
+    };
+  if (control.drew)
+    return {
+      ok: false,
+      detail:
+        `the draw after a RASTERISE did not land (${test.why}); the one after a cheap read did, ` +
+        "on the same slide seconds earlier",
+    };
+  if (test.drew)
+    return {
+      ok: false,
+      detail:
+        `the draw after a cheap read did not land (${control.why}) while the one after a rasterise did — ` +
+        "whatever this is, it is not the rasterise",
+    };
+  return {
+    ok: false,
+    detail: `neither draw landed (${control.why}) — the slide or the moment, not the call before the draw`,
+  };
+}
+
+/**
  * Order: the scenarios with a track record first, the new ones last.
  *
  * A battery is only worth its whole run if it survives to the end, and this one
@@ -1705,6 +1829,11 @@ const SCENARIOS: {
   // What was missing was the check against PowerPoint's own rasteriser, and
   // that is what comes back here.
   { name: "the chart is actually visible", run: chartIsVisible },
+  // Immediately after it, and deliberately: `chartIsVisible` is the only other
+  // draw in the battery that follows a rasterise, and this is its control. Last
+  // in the routine list because it is the newest, which is the rule the comment
+  // at the head of this array states.
+  { name: "does a rasterise poison the next draw", run: rasteriseThenDraw },
   // Picked only for the plainest reason there is: it blocks on a human.
   { name: "edit the chart YOU click", run: editViaRealClick, pickedOnly: true },
   { name: "what makes a long run slow down", run: degradesOverTime, pickedOnly: true },

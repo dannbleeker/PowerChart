@@ -45,6 +45,7 @@ import {
   SIDE_SLOTS,
   GRID_SLOT,
   stallDetail,
+  rasteriseArmVerdict,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -130,6 +131,10 @@ describe("the host self-test battery", () => {
       // five rounds of killing the tab — see the case below. Still last, for
       // the reason everything newest is last.
       "the chart is actually visible",
+      // Its control, and the newest thing here. Immediately after it on
+      // purpose: these are the only two draws in the battery that follow a
+      // rasterise, and the pair is what separates the CALL from the SCENARIO.
+      "does a rasterise poison the next draw",
     ]);
     for (const r of results) {
       expect(typeof r.ok).toBe("boolean");
@@ -1727,6 +1732,53 @@ describe("which timeout counts as the known selection limitation", () => {
     // says so rather than a confident wrong answer.
     expect(wedgedSelection(new Error("PowerPoint did not respond"))).toBe(false);
     expect(wedgedSelection(undefined)).toBe(false);
+  });
+});
+
+describe("the experiment that asks whether a rasterise poisons the next draw", () => {
+  const NAME = "does a rasterise poison the next draw";
+  const pick = async () => byName(await runSelfTest("probe", NAME))[NAME];
+
+  it("passes when both arms draw, and says so", async () => {
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    const r = await pick();
+    expect(r.skipped, r.detail).toBeFalsy();
+    expect(r.ok, r.detail).toBe(true);
+    expect(r.detail).toMatch(/both draws landed/);
+  });
+
+  it("reads all four combinations of the two arms apart", () => {
+    // Pure, and extracted for the reason `visibilityVerdict` was: three
+    // attempts to arm the fake into each of these states each overshot into a
+    // different failure, exercising the fake's plumbing while the RULE — which
+    // is the thing that can be wrong — went unchecked.
+    const ok = { drew: true, why: "" };
+    const dead = { drew: false, why: "the host stopped answering" };
+
+    expect(rasteriseArmVerdict(ok, ok).ok, "both arms drew and it did not pass").toBe(true);
+    expect(rasteriseArmVerdict(ok, ok).detail).toMatch(/both draws landed/);
+
+    // The finding this experiment exists to produce.
+    const guilty = rasteriseArmVerdict(ok, dead);
+    expect(guilty.ok).toBe(false);
+    expect(guilty.detail, "did not name the rasterise arm").toMatch(/after a RASTERISE did not land/);
+    expect(guilty.detail, "dropped the control arm, which is what makes the test arm mean anything").toMatch(
+      /after a cheap read did/,
+    );
+
+    // The one a careless reading gets wrong, and the expensive direction: a
+    // slide that refuses EVERY draw looks exactly like a rasterise that
+    // poisons the next one, unless the control arm is consulted.
+    const both = rasteriseArmVerdict(dead, dead);
+    expect(both.ok).toBe(false);
+    expect(both.detail, "blamed the rasterise for a slide that refuses everything").toMatch(/neither draw landed/);
+    expect(both.detail).not.toMatch(/after a RASTERISE did not land/);
+
+    // And the reverse, which would exonerate the rasterise outright.
+    const backwards = rasteriseArmVerdict(dead, ok);
+    expect(backwards.ok).toBe(false);
+    expect(backwards.detail).toMatch(/it is not the rasterise/);
   });
 });
 
