@@ -48,8 +48,16 @@ describe("the standing test run names controls that exist", () => {
     // which is what the pane's own code selects them by.
     const byValue = new RegExp(`<option[^>]*\\bvalue="${id}"[^>]*>([^<]*)</option>`).exec(html);
     if (byValue) return byValue[1].trim();
+    // A checkbox wears its label as the text after the input, inside the
+    // wrapping <label>. These were not covered at all, and the runbook already
+    // told the owner to tick one: "Verbose trace" has been named in the
+    // *Before you start* paragraph with nothing checking the pane still spells
+    // it that way — the exact drift this file exists to catch, in the same file
+    // it was written for.
+    const checkbox = new RegExp(`<input[^>]*\\bid="${id}"[^>]*>\\s*([^<]*)</label`).exec(html);
+    if (checkbox) return checkbox[1].trim();
     throw new Error(
-      `no plain-text button or option in taskpane.html for "${id}" — ` +
+      `no plain-text button, option or checkbox in taskpane.html for "${id}" — ` +
         `either it is gone, or its label is now wrapped in markup and this test needs to say how to read it`,
     );
   }
@@ -63,6 +71,8 @@ describe("the standing test run names controls that exist", () => {
     { id: "shapes", what: "the demo path for test 2b" },
     { id: "demo-log", what: "what to send after a run" },
     { id: "demo-crashlog", what: "what to send after a run that died" },
+    { id: "demo-trace", what: "the box Before you start says to tick" },
+    { id: "demo-shot-all", what: "the box that makes an empty slide provable" },
   ];
 
   for (const { id, what } of CONTROLS) {

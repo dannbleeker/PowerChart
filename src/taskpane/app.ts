@@ -2901,6 +2901,28 @@ function boundedRaster(scene: Scene): Promise<string | undefined> {
 const MAX_SHOTS = 12;
 
 /**
+ * The cap when **Picture every slide** is ticked — high enough not to bind.
+ *
+ * The default twelve is right for an ordinary round and wrong for one specific
+ * question, which the 2026-08-09 round asked and could not answer: 29 of that
+ * deck's 36 slides read back with zero shapes, and only 12 had a picture to
+ * corroborate it. So 12 were confirmed blank on two witnesses and 17 were
+ * unknowable — and "unknowable" is the answer the cap produced, not the host.
+ *
+ * A readback of zero is one witness, and this host answers a shape collection
+ * short without throwing (`shapes-items-count-honest`), so one witness is not
+ * enough to call a slide empty. The picture is the second. Ticking the box
+ * spends the extra time and the extra megabytes to get it for every slide.
+ *
+ * Opt-in rather than a new default, because the pictures are the heaviest call
+ * the add-in makes and they run at the END of a round, on a host that has just
+ * been through the self-test — which is exactly when it is least able to take
+ * more. `slideShots` still reports anything it skips, so even this can bind and
+ * say so.
+ */
+const MAX_SHOTS_ALL = 200;
+
+/**
  * What landed on the slides — the two uploads a person has been making by hand.
  *
  * Best-effort by construction, and that is deliberate: this runs at the END of a
@@ -2919,7 +2941,11 @@ async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<Run
     // taken from ids rather than from counts.
     const known = new Set(idsBefore ?? []);
     const newSlides = idsBefore && idsAfter ? idsAfter.filter((id) => !known.has(id)) : (idsAfter ?? []);
-    const shots = await slideShots(newSlides, { max: MAX_SHOTS });
+    // Read at collection time, not at boot: the box is ticked for the round
+    // about to be read, and a value captured when the pane loaded would be the
+    // one from before the owner ticked it.
+    const shotAll = ($("demo-shot-all") as HTMLInputElement | null)?.checked ?? false;
+    const shots = await slideShots(newSlides, { max: shotAll ? MAX_SHOTS_ALL : MAX_SHOTS });
     return {
       inventory: scan.inventory ?? [],
       ...(scanIsComplete(scan) ? {} : { gap: scanGap(scan) }),
