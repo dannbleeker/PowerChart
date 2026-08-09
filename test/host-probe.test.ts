@@ -379,6 +379,62 @@ describe("the fake host's answer sheet", () => {
     }
   });
 
+  it("puts the questions a dead window swallowed, once the host is answering again", async () => {
+    // Two consecutive real rounds lost roughly HALF their questions this way —
+    // 14 of 27, then 13 of 28 — every one of them `no-scratch-slide`, and the
+    // immediate retry beside each failure fired 21 times between them and
+    // changed nothing. It could not: this host's ability to resolve a freshly
+    // added slide comes and goes in windows of about fifteen seconds, so a retry
+    // issued straight away lands inside the window that just refused.
+    //
+    // What both rounds also show is the recovery, in the same run: 2026-08-09
+    // answered positions 17, 18, 22, 24 and 26 after losing 10 through 16. So
+    // the questions were answerable; the run simply asked them all at the wrong
+    // moment and never went back.
+    //
+    // `newSlideRefusedForFirst` is that window, counted in slides because
+    // nothing the probe does consults a clock. Six is comfortably wider than the
+    // handful of slides the opening questions spend, so questions genuinely fall
+    // into it — and it closes, which is the half the fake could not express
+    // before.
+    installHost([makeSlide("s1")]);
+    faults.newSlideRefusedForFirst = 12;
+    try {
+      const sheet = await runHostProbes("fake-loses-then-recovers", "test");
+      const lost = sheet.answers.filter((a) => NOT_ASKED_WORDS.includes(a.answer));
+      const recovered = sheet.answers.filter((a) => a.detail?.includes("second pass"));
+      expect(recovered.length, "the second pass rescued nothing — the window never closed for it").toBeGreaterThan(5);
+      expect(
+        lost.map((a) => a.id),
+        "a question the host would have answered was still filed unanswerable",
+      ).toEqual([]);
+      // A rescued row carries a real answer, not a relabelled failure.
+      for (const a of recovered)
+        expect(NOT_ASKED_WORDS, `${a.id} "recovered" into ${a.answer}`).not.toContain(a.answer);
+    } finally {
+      faults.newSlideRefusedForFirst = 0;
+    }
+  });
+
+  it("gives up on a second pass the host is never going to answer", async () => {
+    // The other side of the rung, and the one that keeps it from being a way to
+    // spend three minutes on a dead host. A window wider than the whole run
+    // never closes, so every question stays unasked and the sweep must stop
+    // asking rather than work through the list. The sheet still comes back
+    // complete — that is the invariant every other case here defends too.
+    installHost([makeSlide("s1")]);
+    faults.newSlideRefusedForFirst = 500;
+    try {
+      const sheet = await runHostProbes("fake-never-recovers", "test");
+      expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
+      expect(sheet.answers.filter((a) => a.detail?.includes("second pass"))).toEqual([]);
+      const cleanup = sheet.answers.find((a) => a.id === SCRATCH_CLEANUP_ID);
+      expect(cleanup, "a run that asked nothing still owes an account of the slides it borrowed").toBeTruthy();
+    } finally {
+      faults.newSlideRefusedForFirst = 0;
+    }
+  });
+
   it("reports the scratch slides it could NOT give back", async () => {
     // The failure this row exists for, and it is not hypothetical: a real round
     // on 2026-08-06 left 21 blank slides in the owner's deck, an earlier one

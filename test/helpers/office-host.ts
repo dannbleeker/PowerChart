@@ -355,6 +355,25 @@ export const faults = {
    */
   newSlideResolvesTimes: null as number | null,
   /**
+   * The first N slides this deck adds never resolve; every one after them does.
+   *
+   * The sibling above models a host that loses a slide and keeps losing it.
+   * This one models what two real rounds actually showed: the ability to resolve
+   * a freshly added slide comes and goes, in windows of roughly fifteen seconds,
+   * and the SAME RUN recovers on the other side. The 2026-08-09 round answered
+   * questions at positions 17, 18, 22, 24 and 26 after losing 10 through 16.
+   *
+   * Counted in slides rather than seconds because nothing the probe does
+   * consults a clock, and a window measured in slides is the one the code can
+   * actually be driven through. Without it the fake could express "the host
+   * never resolves a scratch slide" and "the host always does", and the interval
+   * between them — the state every real sheet has been taken in — not at all.
+   *
+   * Off by default (`0`). Set it and the probe's end-of-run second pass has
+   * something to recover from.
+   */
+  newSlideRefusedForFirst: 0,
+  /**
    * A freshly-added slide's `slides.getItem(id)` handle is single-sync too.
    *
    * A FAULT, not the default, and the distinction is the point. Every
@@ -1551,6 +1570,18 @@ export function installHost(
   /** How many times each of those has been asked for by id. */
   const addedSlideLookups = new Map<string, number>();
   /**
+   * Which ADD each live slide id came from — see `faults.newSlideRefusedForFirst`.
+   *
+   * Keyed off a monotonic counter rather than the set's size, because ids here
+   * are minted from `slides.length` and a scratch slide that is added, refused
+   * and deleted frees its id for the next add to mint again. `addScratchSlide`
+   * does exactly that on every refusal, so the same id can be the first add and
+   * the twentieth — and an order taken from the set's size stayed 0 forever,
+   * which made a window that closes look like one that never does.
+   */
+  let slideAddSeq = 0;
+  const addedSlideOrder = new Map<string, number>();
+  /**
    * Whether an added slide's lease on being resolvable has run out.
    *
    * Only added slides, and only while the fault is armed: a deck's original
@@ -1558,8 +1589,17 @@ export function installHost(
    * made ones a real host lost.
    */
   const newSlideLeaseSpent = (id: string): boolean => {
+    if (!addedSlideIds.has(id)) return false;
+    // The window: the first N added slides are refused outright, whatever their
+    // lookup count, and everything added after the window resolves normally.
+    // Checked before the lease so the two faults compose rather than one hiding
+    // the other — a run can be inside the window AND spending a lease.
+    if (faults.newSlideRefusedForFirst > 0) {
+      const order = addedSlideOrder.get(id) ?? 0;
+      if (order < faults.newSlideRefusedForFirst) return true;
+    }
     const lease = faults.newSlideResolvesTimes;
-    if (lease === null || !addedSlideIds.has(id)) return false;
+    if (lease === null) return false;
     const used = (addedSlideLookups.get(id) ?? 0) + 1;
     addedSlideLookups.set(id, used);
     return used > lease;
@@ -1661,6 +1701,7 @@ export function installHost(
             return;
           }
           const made = makeSlide(`slide-${slides.length + 1}`);
+          addedSlideOrder.set(made.id, slideAddSeq++);
           addedSlideIds.add(made.id);
           slides.push(made);
         },
@@ -1996,6 +2037,7 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
+  faults.newSlideRefusedForFirst = 0;
   faults.newSlideGetItemExpires = false;
   faults.refuseGetItemOnNewSlide = false;
   faults.textBoxDeletesSelection = false;

@@ -1828,8 +1828,17 @@ describe("the experiment that asks whether a rasterise poisons the next draw", (
 
     // And the shape round 11 actually produced — one rasterise arm each way —
     // which is no separation and must say so rather than pick a side.
+    //
+    // It PASSES, and that is the correction. This returned `ok: false` while
+    // printing "no pattern ... which is what eleven rounds of eliminated
+    // candidates already said" — a control failing on its own documented answer.
+    // The 2026-08-09 round is what surfaced it: `3 of 4 draws landed`, reported
+    // as a scenario failure, from the intermittent stall this control was built
+    // to sit beside. At one or two draws in fifteen against four draws a round,
+    // that red arrives roughly every third round for a reason nobody needs to
+    // act on, and a red on a schedule is one people learn to skip.
     const mixed = rasteriseArmVerdict([ok, dead], [ok, ok]);
-    expect(mixed.ok).toBe(false);
+    expect(mixed.ok, "a control that finds no separation has done its job").toBe(true);
     expect(mixed.detail, "claimed a pattern from a mixed result").toMatch(/no pattern/);
     expect(mixed.detail).not.toMatch(/every draw after a RASTERISE failed/);
     expect(mixed.detail).not.toMatch(/both LATER draws failed/);

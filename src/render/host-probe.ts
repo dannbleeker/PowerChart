@@ -1502,6 +1502,59 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         trace("probe", "partner answered", { id: follow.probe.id, answer: r.answer });
       }
     }
+
+    // A SECOND pass over the questions this run never managed to put, at the
+    // END of the run rather than beside the failure.
+    //
+    // The retry above already takes a fresh slide and asks again — and it is not
+    // enough. Two consecutive rounds lost fourteen of twenty-seven and thirteen
+    // of twenty-eight questions to `no-scratch-slide`, with twenty-one slide
+    // replacements between them: the retries fired, and failed the same way.
+    //
+    // Time is what they were missing. This host's ability to resolve a freshly
+    // added slide comes and goes in windows of roughly fifteen seconds, so a
+    // retry issued immediately lands INSIDE the window that just refused. A pass
+    // at the end is a different sample, and both rounds show the recovery
+    // happening within the same run: the 2026-08-09 round answered questions at
+    // positions 17, 18, 22, 24 and 26 after losing 10 through 16.
+    //
+    // Which questions get lost is close to random — the two rounds disagree on
+    // six of them — so this is not a fix for one question. It is the difference
+    // between a sheet that answers half its questions and one that answers as
+    // many as the host will take.
+    //
+    // Skipped entirely when the breaker fired: `not-asked` means the run gave up
+    // on a host that had stopped answering, and asking it thirteen more times is
+    // the behaviour the breaker exists to stop.
+    const lost = abandoned ? [] : answers.filter((a) => NOT_ASKED.has(a.answer));
+    if (lost.length) {
+      trace("probe", "second pass over the questions that were never put", { count: lost.length });
+      for (const entry of lost) {
+        const probe = PROBE_BY_ID.get(entry.id);
+        if (!probe) continue;
+        if (mute >= PROBE_MUTE_LIMIT) {
+          trace("probe", "stopping the second pass — the host is not answering", { at: entry.id });
+          break;
+        }
+        const replacement = await addScratchSlide();
+        if (!replacement) break; // no slide to be had; the rest would say the same
+        scratchIds.push(replacement);
+        scratchId = replacement;
+        const deadlinesBefore = deadlinesFired;
+        const started = Date.now();
+        const retry = await ask(probe, replacement, durableSlideId);
+        mute = deadlinesFired > deadlinesBefore ? mute + 1 : 0;
+        // Only an answer replaces a never-asked. A second failure is the same
+        // fact the first one already recorded, and overwriting the row with it
+        // would lose the original `ms` for no gain.
+        if (!NOT_ASKED.has(retry.answer)) {
+          entry.answer = retry.answer;
+          entry.ms = Date.now() - started;
+          entry.detail = `${retry.detail ? `${retry.detail}; ` : ""}answered on a second pass at the end of the run`;
+          trace("probe", "second pass answered", { id: probe.id, answer: retry.answer });
+        }
+      }
+    }
   } finally {
     // The scratch slides go back whatever happened. A diagnostic that litters
     // the user's deck is one they will stop running.
@@ -1577,6 +1630,14 @@ async function ask(
  * know about it would report its answer as an id nobody recognises.
  */
 const withFollows = (p: Probe): string[] => [p.id, ...(p.follow ? withFollows(p.follow.probe) : [])];
+
+/**
+ * Every probe by id, follow-ups included — what the end-of-run second pass
+ * re-asks from. A follow-up only has a row at all when its trigger fired, so a
+ * row that is there and never put is a fair thing to put again.
+ */
+const flatten = (p: Probe): Probe[] => [p, ...(p.follow ? flatten(p.follow.probe) : [])];
+const PROBE_BY_ID = new Map(PROBES.flatMap(flatten).map((p) => [p.id, p]));
 
 /**
  * The cleanup's own row in the sheet.
