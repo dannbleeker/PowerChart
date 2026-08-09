@@ -316,6 +316,12 @@ describe("the fake host's answer sheet", () => {
         "group-of-existing-shape-readable",
         "picture-then-shape-read",
         "tag-on-group-survives",
+        // The binding question needs a shape to bind, so a host that refuses
+        // every add has told it nothing. Its first version answered `add-threw`
+        // here — a statement about `bindings.add` from a run in which
+        // `bindings.add` was never reached — which is why the shape add, the
+        // binding call and the commit are now three separate failure points.
+        "binding-names-shape-later",
       ];
       for (const id of needShapes) expect(answers[id], `${id} claimed a host answer`).toBe("no-scratch-shape");
       // And the questions that need no shape are still answered — one refusal

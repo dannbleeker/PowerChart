@@ -914,9 +914,11 @@ What is left needs the owner, not the agent:
   next picked round names the call instead of the scenario. Do not reason about
   which; that is what the steps are for. `PENDING_QUESTIONS` in
   `scripts/host-baseline.mjs` is the authoritative list of unasked probe
-  questions; the 2026-08-08 sheet took it from nine down to one
-  (`shape-resolve-held-slide-proxy`, which that round could not set up).
-  _edit the chart YOU click_ came off this list the same day — it PASSED.
+  questions — **read the table rather than a count here**, which is the rule
+  the `UNSTABLE_ANSWERS` paragraph above already states and which this sentence
+  broke within a day of being written: it said "nine down to one" and a probe
+  added on 2026-08-09 (`binding-names-shape-later`) made it two.
+  _edit the chart YOU click_ came off this list on 2026-08-08 — it PASSED.
 
   **A never-asked answer is not an answer, and the gate used to think it was.**
   `no-scratch-slide` and `no-scratch-shape` mean the run could not put the
