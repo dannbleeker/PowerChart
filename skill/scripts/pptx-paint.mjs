@@ -88,6 +88,28 @@ const paintText = (c) => (typeof c === "string" ? c.trim() : "");
 // `000"/><a:x` could otherwise inject markup. rgb()/hsl() are parsed, named
 // colours resolve through CSS_NAMES; anything unrecognised is black.
 export const hex = (c) => {
+  // The guarantee, enforced where it is stated rather than trusted to every
+  // branch below.
+  //
+  // Two of those branches broke it. `hsl(., 50%, 50%)` THREW — the regex that
+  // finds the numbers matches a bare ".", `parseFloat(".")` is NaN, and the
+  // hue sector table has no NaN entry — and `rgb(., ., .)` returned the
+  // nine-character string "NaNNaNNaN". Neither is injection, but the six-digit
+  // rule is what makes this safe, and a rule that holds "except for two inputs"
+  // is not a rule. A throw is worse still: it happens inside pptxgenjs at
+  // writeFile, outside every per-chart guard, so one bad colour destroys the
+  // whole batch — which is exactly what the CSS_NAMES note below records
+  // happening once already.
+  let out;
+  try {
+    out = readHex(c);
+  } catch {
+    out = undefined;
+  }
+  return typeof out === "string" && /^[0-9a-fA-F]{6}$/.test(out) ? out : "000000";
+};
+
+const readHex = (c) => {
   const raw = paintText(c);
   const h = raw.replace("#", "");
   if (/^[0-9a-fA-F]{3,4}$/.test(h))

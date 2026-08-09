@@ -409,6 +409,51 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   is a narrower answer than "the deck or the tab", and it is narrower because a
   second sample was taken rather than argued for.
 
+  **But elapsed time is not the whole of it either, and the 2026-08-09 sweep of
+  seven rounds says why.** Read as a distribution rather than as anecdotes, the
+  stalls have two properties nothing here had noticed:
+
+  - **Every stall is the FIRST batch of a scenario's draw. Eight for eight,
+    `drawing shapes 1-10 of 24`, never batch 2 or 3.** If the host were simply
+    fatigued, stalls would land anywhere in a chart's three batches. They land
+    on the first sync after some other operation and nowhere else.
+  - **Elapsed time cannot be the variable on its own**, because in every one of
+    those rounds the scenario immediately AFTER the stalled one — older tab,
+    more elapsed time — drew its full twenty-four shapes and passed. r6 is the
+    clean case: `a selected shape survives an insert` stalls at 410s, `edit the
+chart the user selected` passes at 459-514s, `the chart is actually visible`
+    passes at 517-586s.
+
+  What every stalled scenario has in common is its PREDECESSOR: the selection
+  ladder (×4), `stop a run part-way`, which aborts a draw mid-flight (×3), and
+  a scenario that itself selected and stalled (×1). That is 8 of 8, and it is a
+  correlation, not a mechanism — `edit the chart the user selected` also follows
+  a selection-touching scenario and never stalls. Recorded because it is the
+  first hypothesis about these stalls that a single designed round could kill,
+  and because "the tab" cannot be tested at all.
+
+- **A stall is DEATH, not slowness — do not raise `BATCH_TIMEOUT_MS` hoping for
+  an answer.** Thirteen abandoned calls across seven rounds, and not one of them
+  ever came back: `a call we gave up on finally answered` appears zero times in
+  any round file, including the 100-200 seconds each round keeps running
+  afterwards. And the population is bimodal with an empty band — of 327 batches
+  that DID answer the slowest took **29.2s**, against a 45-second budget, so
+  nothing has ever landed between 29s and 45s. A batch answers within ~29s or
+  never.
+
+  Two things follow. Raising the budget buys nothing, and lowering it to ~35s
+  would save ten seconds a round for a 1.2× margin instead of 1.5× — not worth
+  it either. Leave it alone; the number is fine and the finding is what it means.
+
+  **That was read out of a trace line's ABSENCE, which is this project's most
+  expensive habit** (`settleUntaggedCharts` was "ran and failed" for two
+  sessions when it had never run). So it is measured now rather than inferred:
+  a stalled scenario waits `LATE_ANSWER_WAIT_MS` and its verdict says which
+  happened, in words, every time (`stallDetail`). The plumbing behind that had
+  never been tested on the DRAW path either — every existing late-answer test
+  goes through `insertDemoDeck` — so there is now one that stalls a real draw
+  batch and checks the report carries the late answer.
+
 - **FAST IS THE BROKEN MODE, not the healthy one.** The draw times are bimodal —
   ~17s per batch or ~3-5s — and this file said until 2026-08-08 that the host
   "recovers mid-run and goes again". It does not. Within ONE run of `same scale
@@ -554,6 +599,16 @@ what the slide looks like (10064 → 15652 bytes)`, through PowerPoint's own
   pptx), `officeHex` in `powerpoint.ts` (the live add-in). The same bug has now
   been found in all three independently — each was fixed when a sweep aimed at
   _that_ renderer found it. Change one, check the other two.
+  **Done deliberately once, on 2026-08-09, and it paid immediately**: probing
+  all three with the same six inputs found the same defect in all three in one
+  pass, rather than one at a time over three sessions. The defect: `parseFloat`
+  is looser than the regex feeding it — `[\d.]+` matches a bare `.` and
+  `parseFloat(".")` is NaN — so `hsl(., 50%, 50%)` **threw** (the hue sector
+  table has no NaN entry, so destructuring `undefined` blew up) and
+  `rgb(., ., .)` returned `#NaNNaNNaN`, which in the pptx sink is not the six
+  hex digits that path's own security note requires. Both are now enforced at
+  the root — `rgbToHex` for the preview, an exit check in `hex()` for pptx —
+  rather than per branch, and `officeHex` inherits the first.
 - **A `string` in the types is not a string in the file someone pasted.** A
   config arrives from the JSON box, a saved template, a shape tag written in
   another deck, and the skill's caller. `categories: [2023, 2024]` and

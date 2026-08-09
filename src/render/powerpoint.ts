@@ -4907,16 +4907,35 @@ export async function slideShots(
 ): Promise<SlideShot[]> {
   const max = opts.max ?? 12;
   const out: SlideShot[] = [];
+  // Three different reasons a slide comes back without a picture, counted
+  // apart. They used to share one line — `slides the host would not draw
+  // {asked: 22, drew: 12, max: 12}` — which reads as a host refusing ten
+  // slides, and every real round said exactly that while the host had refused
+  // nothing at all: ten slides were over OUR cap and never asked about. That is
+  // the same "never asked looks like answered no" mistake the contract gate
+  // used to make, in the message a reader reaches for first.
+  let overCap = 0;
+  let stopped = 0;
   for (const slideId of slideIds) {
-    if (out.length >= max || isStopRequested()) {
+    if (out.length >= max) {
+      overCap++;
+      out.push({ slideId });
+      continue;
+    }
+    if (isStopRequested()) {
+      stopped++;
       out.push({ slideId });
       continue;
     }
     const png = await slideImageBase64(slideId, opts.width ?? 480);
-    out.push(png ? { slideId, png } : { slideId });
+    if (!png) out.push({ slideId });
+    else out.push({ slideId, png });
   }
   const drew = out.filter((s) => s.png).length;
-  if (drew < out.length) trace("host", "slides the host would not draw", { asked: out.length, drew, max });
+  const refused = out.length - drew - overCap - stopped;
+  if (refused > 0) trace("host", "slides the host would not draw", { asked: out.length, drew, refused });
+  if (overCap > 0 || stopped > 0)
+    trace("host", "slides never asked about", { asked: out.length, drew, overCap, stopped, max });
   return out;
 }
 

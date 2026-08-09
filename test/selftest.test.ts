@@ -9,6 +9,7 @@ import {
   applyWebProfile,
   faults,
   trips,
+  stallSyncOn,
   userClicksShape,
   selectionHandlerCount,
   type FakeSlide,
@@ -43,6 +44,7 @@ import {
   sideSlot,
   SIDE_SLOTS,
   GRID_SLOT,
+  stallDetail,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -1726,4 +1728,62 @@ describe("which timeout counts as the known selection limitation", () => {
     expect(wedgedSelection(new Error("PowerPoint did not respond"))).toBe(false);
     expect(wedgedSelection(undefined)).toBe(false);
   });
+});
+
+describe("what a stalled scenario reports about the call it gave up on", () => {
+  /**
+   * Seven real-host rounds, thirteen abandoned calls, and not one of them ever
+   * came back — the slowest of 327 batches that DID answer took 29.2s against a
+   * 45-second budget, so the band between them is empty and a stall looks like
+   * death rather than slowness.
+   *
+   * That was read out of a trace line's ABSENCE, which is the inference this
+   * project has misread more than any other: `settleUntaggedCharts` was
+   * diagnosed as "ran and failed" for two sessions when it had never run at
+   * all. A log that only writes on yes cannot tell "no" from "not asked". So
+   * the verdict says which, in words, on every stall.
+   */
+  const drew = "PowerPoint did not respond while drawing shapes 1-10 of 24 (45s)";
+
+  it("says the call never came back when nothing answered", () => {
+    const d = stallDetail(drew, undefined);
+    expect(d).toContain("nothing was checked");
+    expect(d, "a silent host must be reported as silent, not left ambiguous").toMatch(/still not answered/);
+    expect(d, "no late answer arrived, so nothing may claim one did").not.toMatch(/DID come back/);
+  });
+
+  it("says the host was merely slow when the call answers late", () => {
+    // The reading that has never yet been observed on a real host, and the
+    // whole reason the question is asked out loud: the day it happens, the
+    // round must say so rather than wait for someone to notice a message that
+    // has stopped being missing.
+    const d = stallDetail(drew, "drawing shapes 1-10 of 24: the host eventually SUCCEEDED after 61s");
+    expect(d).toMatch(/DID come back/);
+    expect(d).toContain("eventually SUCCEEDED after 61s");
+    expect(d, "a call that answered must not also be reported as silent").not.toMatch(/still not answered/);
+  });
+
+  it("carries the late answer through a real stalled scenario", async () => {
+    const { _setBatchTimeoutForTest } = await import("../src/render/powerpoint");
+    // The plumbing half. `stallDetail` is pure and cannot know whether the
+    // battery ever hands it a late answer — and until this ran, the draw path's
+    // late-answer trace had no test at all: every existing one goes through
+    // `insertDemoDeck`. The conclusion above rests on the draw path reporting
+    // late answers when they happen, so that has to be checked, not assumed.
+    installHost([makeSlide("s1")]);
+    _setBatchTimeoutForTest(5);
+    try {
+      // The fake settles a stalled sync 40ms in, well past the 5ms deadline —
+      // so the scenario gives up and is then told how it went.
+      for (let k = 1; k <= 60; k++) stallSyncOn.add(trips.syncs + k);
+      const r = byName(await runSelfTest("probe", "the chart is actually visible"))["the chart is actually visible"];
+      stallSyncOn.clear();
+      expect(r.skipped, `expected a stall, got: ${r.detail}`).toBe(true);
+      expect(r.blind).toBe(true);
+      expect(r.detail, "the host answered late and the report did not say so").toMatch(/DID come back/);
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncOn.clear();
+    }
+  }, 20_000);
 });

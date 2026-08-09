@@ -44,6 +44,7 @@ import {
   wreckageOf,
   requestStop,
   resetStop,
+  slideShots,
   isStopped,
   slideSize,
   _resetSlideSizeCache,
@@ -3840,6 +3841,13 @@ describe("a hostile config cannot take down a live insert", () => {
       (c) => ({ ...c, data: { ...c.data, series: c.data.series.map((s) => ({ ...s, name: 7 })) } }),
     ],
     ["numeric palette", (c) => ({ ...c, style: { palette: [1, 2, 3] } })],
+    // The fourth copy of the same hole, found the same way and in all three
+    // sinks at once. `officeHex` hands anything non-alphabetic to `toHex6`, and
+    // `toHex6` used to CRASH on a colour whose numbers are not numbers: the
+    // regex that finds them matches a bare ".", `parseFloat(".")` is NaN, and
+    // the hue sector table has no NaN entry. A malformed colour is exactly what
+    // a hand-edited config or a template written in another deck arrives with.
+    ["a palette colour whose numbers are not numbers", (c) => ({ ...c, style: { palette: ["hsl(., 50%, 50%)"] } })],
     ["labelContent a bare string", (c) => ({ ...c, decorations: { ...c.decorations, labelContent: "value" } })],
     ["numberFormat null", (c) => ({ ...c, numberFormat: null })],
     ["numeric valueAxisTitle", (c) => ({ ...c, valueAxisTitle: 5 })],
@@ -3864,4 +3872,81 @@ describe("a hostile config cannot take down a live insert", () => {
       30_000,
     );
   }
+});
+
+describe("the pictures a diagnostic round sends back", () => {
+  /**
+   * Three different reasons a slide comes back without a picture, and for a
+   * long time one message for all of them.
+   *
+   * Every real round said `slides the host would not draw {asked: 22, drew: 12,
+   * max: 12}` — which reads as a host refusing ten slides, and the host had
+   * refused nothing at all: ten slides were over OUR cap and never asked about.
+   * That is the same "never asked looks like answered no" mistake the contract
+   * gate used to make, in the line a reader reaches for first when a deck comes
+   * back short.
+   */
+  it("blames the cap for slides it never asked about, not the host", async () => {
+    installHost([makeSlide("s1"), makeSlide("s2"), makeSlide("s3")]);
+    setTracing(true);
+    try {
+      const shots = await slideShots(["s1", "s2", "s3"], { max: 1 });
+      // Every id still comes back — a capped run that showed the first one only
+      // would read as a deck of one.
+      expect(shots.map((s) => s.slideId)).toEqual(["s1", "s2", "s3"]);
+      expect(shots.filter((s) => s.png)).toHaveLength(1);
+      const said = traceLog().entries.filter((e) => e.scope === "host");
+      const refusal = said.find((e) => e.message === "slides the host would not draw");
+      expect(
+        refusal,
+        `the host refused nothing and was blamed anyway: ${JSON.stringify(refusal?.data)}`,
+      ).toBeUndefined();
+      const capped = said.find((e) => e.message === "slides never asked about");
+      expect(capped?.data).toMatchObject({ asked: 3, drew: 1, overCap: 2, stopped: 0, max: 1 });
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("still blames the host when the host is the one that would not draw", async () => {
+    // The negative control. A message that never fires is not an improvement on
+    // one that fires wrongly — a real refusal has to keep reaching the log.
+    installHost([makeSlide("s1"), makeSlide("s2")]);
+    setTracing(true);
+    faults.emptySlideImage = true;
+    try {
+      const shots = await slideShots(["s1", "s2"], { max: 12 });
+      expect(shots.filter((s) => s.png)).toHaveLength(0);
+      const said = traceLog().entries.filter((e) => e.scope === "host");
+      expect(said.find((e) => e.message === "slides the host would not draw")?.data).toMatchObject({
+        asked: 2,
+        drew: 0,
+        refused: 2,
+      });
+      expect(
+        said.find((e) => e.message === "slides never asked about"),
+        "nothing was capped or stopped",
+      ).toBeUndefined();
+    } finally {
+      faults.emptySlideImage = false;
+      setTracing(false);
+    }
+  });
+
+  it("counts a stop apart from the cap, so a short deck says which", async () => {
+    // The third reason, and the one most likely to be misread: a run the user
+    // stopped comes back with the same shape of gap as a capped one.
+    installHost([makeSlide("s1"), makeSlide("s2")]);
+    setTracing(true);
+    requestStop();
+    try {
+      const shots = await slideShots(["s1", "s2"], { max: 12 });
+      expect(shots.filter((s) => s.png)).toHaveLength(0);
+      const capped = traceLog().entries.find((e) => e.message === "slides never asked about");
+      expect(capped?.data).toMatchObject({ asked: 2, drew: 0, overCap: 0, stopped: 2 });
+    } finally {
+      resetStop();
+      setTracing(false);
+    }
+  });
 });

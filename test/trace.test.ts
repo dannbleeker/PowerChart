@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { onTrace, setTracing, trace, traceLog, traceMark, tracing } from "../src/core/trace";
+import {
+  formatTraceLine,
+  formatTraceValue,
+  onTrace,
+  setTracing,
+  trace,
+  traceLog,
+  traceMark,
+  tracing,
+} from "../src/core/trace";
 
 afterEach(() => setTracing(false));
 
@@ -222,5 +231,84 @@ describe("watching the trace as it happens", () => {
     onTrace((e) => seen.push(e.message));
     trace("demo", "something happened");
     expect(seen).toEqual([]);
+  });
+});
+
+describe("the one line a step list and a crash log share", () => {
+  /**
+   * The formatter lived inside `wireInsert`, a 1113-line DOM closure, where
+   * nothing could reach it — and it dropped every value whose `typeof` was
+   * "object". That is every array, and the arrays are the payloads that matter:
+   * `degradation curves` carries the two timing series its whole experiment
+   * exists to produce, and `tag pass over a page` carries `withoutTag`, the
+   * list of charts that lost their config.
+   *
+   * Both go to the screen AND to the crash log through this one function. So an
+   * experiment that killed the tab left behind its verdict and none of its
+   * numbers — in the one artefact that survives a dead tab.
+   */
+  it("keeps an array payload instead of dropping it", () => {
+    const line = formatTraceLine({
+      ms: 12_340,
+      scope: "selftest",
+      message: "degradation curves",
+      data: { oneContext: [2339, 3177, 3704], freshContext: [2852, 3397], suspect: "the slide" },
+    });
+    expect(line, "the timing series the experiment exists to produce was dropped").toContain(
+      "oneContext=[2339,3177,3704]",
+    );
+    expect(line).toContain("freshContext=[2852,3397]");
+    expect(line).toContain("suspect=the slide");
+  });
+
+  it("keeps the list of charts a repair pass could not tag", () => {
+    const line = formatTraceLine({
+      ms: 100,
+      scope: "repair",
+      message: "tag pass over a page",
+      data: { slides: 4, withoutTag: ["17", "23"] },
+    });
+    expect(line, "the only part of this line worth reading was dropped").toContain('withoutTag=["17","23"]');
+  });
+
+  it("caps one value rather than letting it push the line off the pane", () => {
+    const long = Array.from({ length: 200 }, (_, i) => i);
+    const line = formatTraceLine({ ms: 0, scope: "host", message: "many", data: { ids: long, after: "kept" } });
+    expect(line.length, "a breadcrumb became a heap dump").toBeLessThan(260);
+    expect(line, "the cap ate the values after it").toContain("after=kept");
+    expect(line).toMatch(/ids=\[0,1,2/);
+    expect(line).toContain("…");
+  });
+
+  it("keeps 0, false and null, and leaves out only what has nothing to say", () => {
+    // `0` is an answer — `settled=0` is the whole finding in a settle-pass line
+    // — and so is `false`. Only undefined and the empty string mean "nothing to
+    // report", and `key=` with nothing after it is noise on a line read at a
+    // glance.
+    expect(formatTraceValue(0)).toBe("0");
+    expect(formatTraceValue(false)).toBe("false");
+    expect(formatTraceValue(null)).toBe("null");
+    expect(formatTraceValue(undefined)).toBeUndefined();
+    expect(formatTraceValue("")).toBeUndefined();
+    const line = formatTraceLine({ ms: 0, scope: "group", message: "settle pass:", data: { settled: 0, lost: 1 } });
+    expect(line).toContain("settled=0 lost=1");
+  });
+
+  it("survives a payload that cannot be stringified", () => {
+    // A circular payload is a caller's mistake. Losing the step it was
+    // attached to would make that mistake cost the evidence too.
+    const circular: Record<string, unknown> = { name: "loop" };
+    circular.self = circular;
+    const line = formatTraceLine({ ms: 0, scope: "host", message: "odd", data: { circular, keep: 7 } });
+    expect(line).toContain("keep=7");
+    expect(line).toContain("odd");
+  });
+
+  it("renders the elapsed stamp the way the crash logs are read", () => {
+    // One decimal, right-aligned, so a column of steps lines up — the crash log
+    // is read as a timeline and a ragged left edge is what made the previous
+    // format hard to scan.
+    expect(formatTraceLine({ ms: 33_249, scope: "selftest", message: "step" })).toBe("  33.2s  selftest  step");
+    expect(formatTraceLine({ ms: 0, scope: "pane", message: "start" })).toBe("     0s  pane  start");
   });
 });

@@ -38,6 +38,13 @@ function paintText(color: unknown): string {
  * 148-entry table is not worth carrying here. They fall back to mid grey, which
  * at least yields a sane ink instead of asserting black.
  */
+/**
+ * What an unparseable colour becomes. Mid grey, which is what every branch
+ * below already falls back to — named here so the guard and the fallbacks stay
+ * the same answer.
+ */
+const UNREADABLE: [number, number, number] = [128, 128, 128];
+
 export function toRgb(color: string): [number, number, number] {
   const c = paintText(color);
   if (c.startsWith("#")) {
@@ -45,19 +52,32 @@ export function toRgb(color: string): [number, number, number] {
     // 4/8-digit forms carry an alpha byte the colour math has no use for.
     const rgb = h.length === 3 || h.length === 4 ? h.slice(0, 3).replace(/./g, "$&$&") : h.slice(0, 6);
     const n = parseInt(rgb, 16);
-    return Number.isNaN(n) ? [128, 128, 128] : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    return Number.isNaN(n) ? UNREADABLE : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
+  // `parseFloat` is looser than the regex that fed it: `[\d.]+` matches a bare
+  // "." and a "..", and `parseFloat(".")` is NaN. So a colour of `hsl(., 50%,
+  // 50%)` — the sort of thing a hand-edited config or a template written in
+  // another deck arrives with — used to reach the maths as NaN. In the hsl
+  // branch that was a CRASH, not a wrong colour: `Math.floor(NaN / 60) % 6` is
+  // NaN, the sector table has no NaN entry, and destructuring `undefined`
+  // throws. In the rgb branch it was `#NaNNaNNaN`, which is not a colour and,
+  // in the pptx sink, not the six hex digits that path's own security note
+  // requires. Both are the same root: a `string` in the types is not a number
+  // in the file someone pasted.
   const nums = (s: string) => (s.match(/-?[\d.]+%?/g) ?? []).map((v) => parseFloat(v));
+  const finite = (vs: number[]) => vs.every((v) => Number.isFinite(v));
   if (/^rgba?\(/i.test(c)) {
     const [r = 0, g = 0, b = 0] = nums(c);
+    if (!finite([r, g, b])) return UNREADABLE;
     const scale = /%/.test(c) ? 2.55 : 1; // percentages are 0–100, bare numbers 0–255
     return [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v * scale)))) as [number, number, number];
   }
   if (/^hsla?\(/i.test(c)) {
     const [h = 0, s = 0, l = 0] = nums(c);
+    if (!finite([h, s, l])) return UNREADABLE;
     return hslToRgb(((h % 360) + 360) % 360, Math.max(0, Math.min(1, s / 100)), Math.max(0, Math.min(1, l / 100)));
   }
-  return [128, 128, 128];
+  return UNREADABLE;
 }
 
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
@@ -113,11 +133,25 @@ export function alphaOf(color: string): number {
   return 1;
 }
 
+/**
+ * Three channels to `#RRGGBB`, always — six hex digits, whatever it is handed.
+ *
+ * The clamp used to be `Math.max(0, Math.min(255, Math.round(c)))`, which is
+ * total for numbers and not for NaN: every one of those returns NaN, and
+ * `NaN.toString(16)` is the STRING "NaN", so a single unreadable channel
+ * produced `#NaNNaNNaN`. That is not a colour in SVG, and in the pptx sink it
+ * is not the six hex digits that path's security note requires.
+ *
+ * Guarded here rather than at the four call sites, because every producer of a
+ * channel — `toRgb`, `lerpColor`'s interpolation, both colour scales — can
+ * arrive with a NaN for its own reasons, and a fix at the root cannot be
+ * forgotten by the next one.
+ */
 const rgbToHex = (rgb: number[]): string =>
   "#" +
   rgb
     .map((c) =>
-      Math.max(0, Math.min(255, Math.round(c)))
+      Math.max(0, Math.min(255, Number.isFinite(c) ? Math.round(c) : 0))
         .toString(16)
         .padStart(2, "0"),
     )
