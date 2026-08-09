@@ -374,6 +374,23 @@ export const faults = {
    */
   newSlideRefusedForFirst: 0,
   /**
+   * How this host refuses a PowerPointApi 1.8 shape binding, if it does.
+   *
+   * `"call"` throws from `bindings.add` itself. `"sync"` takes the call and
+   * rejects the batch carrying it — which is the shape the 2026-08-09 evening
+   * round showed: `UnexpectedError` back from the commit in 1.3 seconds, on a
+   * run where `shape-add-fresh-slide-proxy` answered `yes`.
+   *
+   * Two different facts about the same API, and `binding-names-shape-later` has
+   * a distinct answer word for each, so the fake has to be able to produce both
+   * or neither word is reachable in a test.
+   *
+   * `null` (the default) is a host that binds — the happy path the rest of this
+   * file models. Nothing has established which of the three a real PowerPoint
+   * is; closing that is what the probe is for.
+   */
+  refuseBindings: null as null | "call" | "sync",
+  /**
    * A freshly-added slide's `slides.getItem(id)` handle is single-sync too.
    *
    * A FAULT, not the default, and the distinction is the point. Every
@@ -1606,6 +1623,8 @@ export function installHost(
   };
   /** Decks handed to insertSlidesFromBase64 and not yet resolved by a sync. */
   const pendingDecks: string[] = [];
+  /** Reasons the NEXT sync must reject, queued by the call that poisoned it. */
+  const pendingSyncFailures: string[] = [];
   findShape = (id) => {
     for (const sl of slides) {
       const hit = sl.created.find((sh: FakeShape) => !sh.deleted && sh.id === id);
@@ -1761,6 +1780,13 @@ export function installHost(
         const noShape = () => ({ load(_p?: string) {}, id: undefined as unknown as string });
         return {
           add: (shape: FakeShape, _bindingType: string, id: string) => {
+            if (faults.refuseBindings === "call")
+              throw new Error("UnexpectedError | errorLocation: BindingCollection.add");
+            // Taken, and the BATCH is what fails — see `faults.refuseBindings`.
+            // Queued like any other command, so the rejection lands on the sync
+            // rather than here, which is the whole distinction the two words
+            // `add-threw` and `commit-threw` are there to keep apart.
+            if (faults.refuseBindings === "sync") pendingSyncFailures.push("UnexpectedError");
             // "If the provided ID is already being used by a binding, the
             // existing binding will be overwritten" — so a repeat key replaces
             // rather than accumulates, and a probe can use a fixed one.
@@ -1930,6 +1956,16 @@ export function installHost(
         discard();
         throw new Error("host refused a queued command");
       }
+      // A batch poisoned by one of the commands IN it, rather than by its
+      // number. `faults.failSyncOn` needs a sync index, which is the fragile
+      // magic number this repo has been bitten by; this fires on the sync that
+      // actually carries the offending call, wherever that lands.
+      if (pendingSyncFailures.length) {
+        const why = pendingSyncFailures.shift()!;
+        pendingSyncFailures.length = 0;
+        discard();
+        throw new Error(why);
+      }
       // A sync carrying a selection call on a wedged host. Never settles —
       // neither resolve nor reject, which is what the web host did and is why
       // the wait had to be bounded rather than caught. The caller's
@@ -2038,6 +2074,7 @@ export function installHost(
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
   faults.newSlideRefusedForFirst = 0;
+  faults.refuseBindings = null;
   faults.newSlideGetItemExpires = false;
   faults.refuseGetItemOnNewSlide = false;
   faults.textBoxDeletesSelection = false;

@@ -1049,23 +1049,38 @@ const PROBES: Probe[] = [
       // so a run cannot accumulate them, and deleting the scratch slide's shape
       // takes the binding with it.
       const key = "POWERCHART_PROBE_BINDING";
-      // Three failure points, and they belong in three different buckets. The
-      // first version put all three in one `catch` and answered `add-threw` for
-      // every one of them, which made a host that refuses ANY shape add look
-      // like a host with an opinion about bindings — the exact substitution
-      // `ProbeSetupFailed` exists to stop, and `test/host-probe.test.ts` caught
-      // it against a host that refuses every add.
+      const box = (left: number) => ({ left, top: 10, width: 20, height: 20 });
+      // The CONTROL arm, and the whole reason this question is answerable.
+      //
+      // The binding has to be made in the batch that CREATES the shape — a
+      // proxy one sync old is refused here (`shape-proxy-survives-one-sync`), so
+      // binding a committed shape would measure staleness instead. That leaves
+      // one batch carrying two things, and its refusal attributable to neither.
+      //
+      // The 2026-08-09 evening round is exactly that dead end: the commit came
+      // back `UnexpectedError` in 1.3 seconds and this probe honestly reported
+      // "never asked". `shape-add-fresh-slide-proxy` answered `yes` in the same
+      // sheet, which points hard at the binding — but that is a different
+      // question asked at a different moment on a host that flaps between
+      // minutes, and inferring across two of those has cost this project two
+      // full sheets already.
+      //
+      // So the probe carries its own control: the identical batch WITHOUT the
+      // binding, on the same slide, seconds earlier. If that commits and the
+      // bound one does not, the binding is the only difference and the answer
+      // is about bindings. If the control fails, this host is not taking shapes
+      // right now and the question was never put — which is the truth, said by
+      // the probe rather than assembled by a reader.
+      try {
+        probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box(290));
+        await ctx.sync();
+      } catch (err) {
+        throw new ProbeSetupFailed(`the control shape would not commit: ${short(err)}`);
+      }
       let shape: PowerPoint.Shape;
       try {
-        shape = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
-          left: 320,
-          top: 10,
-          width: 20,
-          height: 20,
-        });
+        shape = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box(320));
       } catch (err) {
-        // Getting a shape to bind is setup. Whether this host takes one at all
-        // is `shape-add-fresh-slide-proxy`'s question, not this one's.
         throw new ProbeSetupFailed(`adding the shape to bind: ${short(err)}`);
       }
       let made: unknown;
@@ -1079,11 +1094,12 @@ const PROBES: Probe[] = [
       try {
         await ctx.sync();
       } catch (err) {
-        // The batch carries the shape add AND the binding, so a refusal here
-        // cannot be attributed to either. Two explanations fit, and the rule is
-        // to say so rather than pick: read this row beside
-        // `shape-add-fresh-slide-proxy` in the same sheet.
-        throw new ProbeSetupFailed(`committing the shape and its binding: ${short(err)}`);
+        // An ANSWER now, not a setup failure: the same batch minus the binding
+        // committed on this slide moments ago.
+        return {
+          answer: "commit-threw",
+          detail: `the same batch without a binding committed seconds earlier: ${short(err)}`,
+        };
       }
       if (!made) return { answer: "add-returned-nothing" };
       try {
