@@ -402,6 +402,22 @@ empty` and `not grouping`. The boundary is exact and the correlation is
   (AutoSave was the obvious candidate for a periodic slowdown and is ruled out:
   the regimes are long contiguous blocks — eight slow, then ten fast — not
   anything alternating on a timer.)
+
+  **Reproduced exactly on 2026-08-09, and it makes the scenario's SCORE
+  readable.** In the `40b5e44` round, `same scale across the deck` redrew its
+  eight charts between 134.7s and 342.4s. Charts 1-3 ran at 16-18s per batch;
+  chart 4 straddled the boundary; charts 5-8 ran at 0.6-5s. The five grouping
+  failures in that window land at 291.8, 303.8, 316.5, 328.9 and 341.1s — one
+  per fast chart, none for a slow one, each the full chain (`the re-read before
+grouping came back empty` → `not grouping` → `tagging failed` → `settle pass:
+could not repair any`). The verdict was **3 of 8**, which is the three slow
+  charts.
+
+  So this scenario's score is not a variable defect. It is a measurement of WHEN
+  the host flips regime: 3 of 8 and 4 of 8 across rounds is the flip landing one
+  chart earlier or later. Read it that way, and stop treating a move from 4 to 3
+  as a regression.
+
 - **The web host does not LIST the shapes a run just added.** The finding the
   extended log produced, and the one everything else downstream hangs off:
   `the re-read before grouping came back empty index=0 drew=24`, four times in
