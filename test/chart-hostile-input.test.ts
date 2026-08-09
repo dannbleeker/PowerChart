@@ -354,8 +354,27 @@ describe("a hostile data SHAPE cannot take the renderer down", () => {
  * which is exactly why this sweep runs every kind rather than a representative
  * few.
  */
+/**
+ * The last three were missing, and that is why they were broken.
+ *
+ * This list was written by hand from the decoration keys somebody thought of,
+ * and it happened to contain only the scalar ones. `valueLines`, `callouts` and
+ * `bands` are the LIST-valued decorations — each read as `decor.<key>.forEach`
+ * and each entry as a record with named fields — so a value of the wrong shape
+ * did not mis-render, it crashed: nine kinds for `valueLines`, thirteen for
+ * `callouts`, fifteen for `bands`, and a null entry died one field later on
+ * `Cannot read properties of null`.
+ *
+ * Twelve crash modes, all reachable from the JSON box, a saved template, a
+ * POWERCHART_CONFIG tag authored in another deck, or the skill's caller. And
+ * `valueLines: "mean"` is not even an exotic guess — the pane's own control for
+ * it is a checkbox labelled "mean". Fixed in `normalizeConfig`, at the
+ * boundary, like every other malformed-input repair.
+ *
+ * Any new decoration goes here as it is added.
+ */
 const DECOR_KEYS =
-  "segmentLabels seriesLabels totals grandTotal variance categoryAxis valueAxis tickMode gridShape fillOpacity gridlines labelContent cagr difference".split(
+  "segmentLabels seriesLabels totals grandTotal variance categoryAxis valueAxis tickMode gridShape fillOpacity gridlines labelContent cagr difference valueLines callouts bands".split(
     " ",
   );
 
