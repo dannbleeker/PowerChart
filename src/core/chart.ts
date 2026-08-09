@@ -90,16 +90,36 @@ function normalizeData(raw: ChartData): ChartData {
     .map((s) => {
       const rawValues = Array.isArray(s.values) ? s.values : [];
       const values = Array.from({ length: n }, (_, c) => cell(rawValues[c]));
-      // Only when present: an unnamed series is legitimate, and coercing
-      // `undefined` to `""` would give it a name it never had.
-      const named = s.name == null ? s : { ...s, name: labelText(s.name) };
+      // ALWAYS a string, including when there was no name at all.
+      //
+      // This used to read `s.name == null ? s : …`, on the reasoning that an
+      // unnamed series is legitimate and coercing `undefined` to `""` would
+      // give it a name it never had. The first half is true and the second was
+      // wrong twice over. `Series.name` is `string`, not `string | undefined`,
+      // and five places in this file act on it unguarded —
+      // `CARRIED_ROW.test(s.name.trim())` and its four siblings — so a series
+      // written as `{ values: [1, 2, 3] }`, which is the obvious way to write a
+      // single-series chart, crashed SEVENTEEN of the twenty-five kinds on
+      // `Cannot read properties of undefined (reading 'trim')`. Not a hostile
+      // input; an ordinary one.
+      //
+      // And `""` does not give it a name: the only consumer that lists names
+      // does `series.map((s) => s.name).filter(Boolean)`, which drops an empty
+      // name exactly as it dropped an absent one.
+      const named = { ...s, name: labelText(s.name) };
       if (named.colors) {
         return { ...named, values, colors: Array.from({ length: n }, (_, c) => named.colors![c] ?? null) };
       }
       return { ...named, values };
     });
+  // `Array.isArray`, not truthiness. The guard used to be `arr ? … : arr`,
+  // which hands a FALSY non-array straight back: `xExtent: NaN` survived
+  // untouched and `data.xExtent?.some(...)` in the mekko layout then died on
+  // `some is not a function` — the optional chain does not help, because NaN is
+  // not nullish. Truthy non-arrays were already repaired by accident, since
+  // `Array.from` reads them by index; this makes the two cases agree.
   const pad = <T>(arr: (T | null)[] | undefined): (T | null)[] | undefined =>
-    arr ? Array.from({ length: n }, (_, c) => arr[c] ?? null) : arr;
+    Array.isArray(arr) ? Array.from({ length: n }, (_, c) => arr[c] ?? null) : undefined;
   return { ...data, categories, series, hundredPercent: pad(data.hundredPercent), xExtent: pad(data.xExtent) };
 }
 
@@ -136,6 +156,15 @@ const OBJECT_LIST_DECORATIONS = ["valueLines", "callouts", "bands"] as const;
  */
 function cleanDecorations(decor: Partial<Decorations>): Partial<Decorations> {
   let out: Record<string, unknown> | undefined;
+  // `fillBetween` is a pair of series indices, and the line layout DESTRUCTURES
+  // it — `const [ai, bi] = decor.fillBetween` — which throws on anything that
+  // is not iterable rather than reading undefined. Same class as the lists
+  // below, different shape, so it is checked as the pair it is.
+  const fb: unknown = decor.fillBetween;
+  if (fb !== undefined && !(Array.isArray(fb) && fb.length === 2 && fb.every((v) => Number.isFinite(v)))) {
+    out = { ...decor } as Record<string, unknown>;
+    delete out.fillBetween;
+  }
   for (const key of OBJECT_LIST_DECORATIONS) {
     const v: unknown = decor[key];
     if (v === undefined) continue;

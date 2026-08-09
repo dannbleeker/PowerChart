@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
 import { buildChart } from "../src/core/chart";
 import { niceTicks } from "../src/core/format";
 import { BoxHash } from "../src/core/grid";
@@ -355,28 +356,48 @@ describe("a hostile data SHAPE cannot take the renderer down", () => {
  * few.
  */
 /**
- * The last three were missing, and that is why they were broken.
+ * The keys, read from the type rather than remembered.
  *
- * This list was written by hand from the decoration keys somebody thought of,
- * and it happened to contain only the scalar ones. `valueLines`, `callouts` and
- * `bands` are the LIST-valued decorations — each read as `decor.<key>.forEach`
- * and each entry as a record with named fields — so a value of the wrong shape
- * did not mis-render, it crashed: nine kinds for `valueLines`, thirteen for
- * `callouts`, fifteen for `bands`, and a null entry died one field later on
- * `Cannot read properties of null`.
+ * `DECOR_KEYS` used to be a hand-written string of the decoration names
+ * somebody thought of, and it happened to contain only the SCALAR ones. The
+ * three list-valued decorations — `valueLines`, `callouts`, `bands`, each read
+ * as `decor.<key>.forEach` with each entry a record of named fields — were
+ * simply never in it, and all three crashed the renderer on a value of the
+ * wrong shape: nine kinds, thirteen kinds, fifteen kinds, plus a null entry
+ * dying one field later on `Cannot read properties of null`. Twelve crash modes
+ * behind a sweep that reported clean.
  *
- * Twelve crash modes, all reachable from the JSON box, a saved template, a
- * POWERCHART_CONFIG tag authored in another deck, or the skill's caller. And
- * `valueLines: "mean"` is not even an exotic guess — the pane's own control for
- * it is a checkbox labelled "mean". Fixed in `normalizeConfig`, at the
- * boundary, like every other malformed-input repair.
+ * A sweep is only as good as the list it was given, and a hand-written list
+ * goes stale in silence — the same shape of gap as the three colour sinks,
+ * where each hole was found by a sweep aimed at that renderer alone. So the
+ * list comes from `types.ts` now: add a decoration to the interface and it is
+ * swept, with nothing to remember.
  *
- * Any new decoration goes here as it is added.
+ * The parse is asserted too. A regex that quietly matched nothing would turn
+ * this whole file into a sweep of zero keys that passes in 4ms.
  */
-const DECOR_KEYS =
-  "segmentLabels seriesLabels totals grandTotal variance categoryAxis valueAxis tickMode gridShape fillOpacity gridlines labelContent cagr difference valueLines callouts bands".split(
-    " ",
-  );
+function keysOf(iface: string): string[] {
+  const src = readFileSync(new URL(`../src/core/types.ts`, import.meta.url), "utf8");
+  const body = new RegExp(`export interface ${iface} \\{([\\s\\S]*?)\\n\\}`).exec(src)?.[1] ?? "";
+  return [...body.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*)\??:/gm)].map((m) => m[1]);
+}
+
+const DECOR_KEYS = keysOf("Decorations");
+const SERIES_KEYS = keysOf("Series");
+const DATA_KEYS = keysOf("ChartData");
+
+describe("the hostile sweep covers what the types declare", () => {
+  it("reads the key lists out of types.ts", () => {
+    // Counts, not contents: the point is that the parse worked and the
+    // interfaces are being read, not that they have a particular shape.
+    expect(DECOR_KEYS.length, "no decoration keys parsed — the sweep below would test nothing").toBeGreaterThan(30);
+    expect(SERIES_KEYS.length, "no series keys parsed").toBeGreaterThan(6);
+    expect(DATA_KEYS.length, "no data keys parsed").toBeGreaterThan(4);
+    // Spot-checks for the three that were missing, so a parser that finds only
+    // the first field of an interface cannot pass the counts above.
+    for (const k of ["valueLines", "callouts", "bands", "fillBetween"]) expect(DECOR_KEYS).toContain(k);
+  });
+});
 
 describe("a decoration of the wrong type cannot take the renderer down", () => {
   for (const key of DECOR_KEYS) {
@@ -386,6 +407,82 @@ describe("a decoration of the wrong type cannot take the renderer down", () => {
         for (const [label, value] of WRONG_TYPES) {
           const base = sampleConfig(kind);
           const cfg = { ...base, decorations: { ...base.decorations, [key]: value } } as unknown as ChartConfig;
+          try {
+            sceneToSvg(buildChart(cfg));
+          } catch (e) {
+            bad.push(`${kind}/${key}=${label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      }
+      expect(bad.slice(0, 4)).toEqual([]);
+    });
+  }
+});
+
+/**
+ * The same question of a SERIES field and a DATA field, which nothing asked.
+ *
+ * `Series.name` is `string` in the type and five places in `chart.ts` act on it
+ * unguarded — `CARRIED_ROW.test(s.name.trim())` and its siblings. A series
+ * written as `{ values: [1, 2, 3] }`, which is the obvious way to write a
+ * single-series chart, therefore crashed seventeen of the twenty-five kinds.
+ * That is not a hostile input at all; it is the shape a person writes by hand.
+ *
+ * And `data.xExtent: NaN` survived `normalizeData` untouched — the pad guard
+ * was `arr ? … : arr`, which hands a FALSY non-array straight back — so the
+ * mekko layout died on `data.xExtent?.some is not a function`, where the
+ * optional chain does not help because NaN is not nullish.
+ */
+describe("a series field of the wrong type cannot take the renderer down", () => {
+  for (const key of SERIES_KEYS) {
+    it(key, () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS) {
+        for (const [label, value] of WRONG_TYPES) {
+          const base = sampleConfig(kind);
+          const series = base.data.series.map((s) => ({ ...s, [key]: value }));
+          const cfg = { ...base, data: { ...base.data, series } } as unknown as ChartConfig;
+          try {
+            sceneToSvg(buildChart(cfg));
+          } catch (e) {
+            bad.push(`${kind}/${key}=${label}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      }
+      expect(bad.slice(0, 4)).toEqual([]);
+    });
+  }
+
+  it("a series with no name at all renders every kind", () => {
+    // Stated on its own, because it is the ordinary case rather than an
+    // adversarial one and it deserves to fail by name.
+    const bad: string[] = [];
+    for (const { kind } of CHART_KINDS) {
+      const base = sampleConfig(kind);
+      const series = base.data.series.map((s) => {
+        const o = { ...s } as Partial<typeof s>;
+        delete o.name;
+        return o;
+      });
+      const cfg = { ...base, data: { ...base.data, series } } as unknown as ChartConfig;
+      try {
+        sceneToSvg(buildChart(cfg));
+      } catch (e) {
+        bad.push(`${kind}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    expect(bad.slice(0, 4)).toEqual([]);
+  });
+});
+
+describe("a data field of the wrong type cannot take the renderer down", () => {
+  for (const key of DATA_KEYS) {
+    it(key, () => {
+      const bad: string[] = [];
+      for (const { kind } of CHART_KINDS) {
+        for (const [label, value] of WRONG_TYPES) {
+          const base = sampleConfig(kind);
+          const cfg = { ...base, data: { ...base.data, [key]: value } } as unknown as ChartConfig;
           try {
             sceneToSvg(buildChart(cfg));
           } catch (e) {
