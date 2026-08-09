@@ -1544,7 +1544,23 @@ describe("the experiment that asks what makes a long run slow down", () => {
     const one = await series("s1", true);
     const fresh = await series("s1", false);
     const v = readDegradation(one, fresh);
-    expect(v.suspect, `one: ${one.join(",")} | fresh: ${fresh.join(",")}`).toBe("host");
+    // What this test is NAMED for, and all the timed arms can honestly carry.
+    //
+    // Asserting `=== "host"` here was the residual half of the same clock
+    // problem the block below describes, and it survived the first fix because
+    // it fails far less often: it needs the quantisation to push `oneGrew` past
+    // `freshGrew * 1.5`, which flips the verdict to `both`. Three isolated runs
+    // and a full suite pass; one full suite under load did not. A test that goes
+    // red once every several runs is worse than one that goes red always —
+    // nobody learns anything from it except to re-run.
+    //
+    // `both` and `host` differ only in whether holding a context ADDS to a
+    // slowdown both arms already show, which is exactly the distinction one tick
+    // of timer granularity can invent. The thing that must never happen is the
+    // one in the title: reading a host-wide linear slowdown as THE CONTEXT. That
+    // is what is asserted, and the exact verdict is pinned below where no clock
+    // can reach it.
+    expect(v.suspect, `one: ${one.join(",")} | fresh: ${fresh.join(",")}`).not.toBe("context");
 
     // The NUMBER is pinned on synthetic arrays rather than on the timed arms
     // above, and that is a measurement rather than a preference.

@@ -499,10 +499,19 @@ clean sweep.
 self-test, then a look at what actually landed — and saves the lot as one JSON
 file. That file is the whole upload. It carries every shape on every slide (name,
 id, position), which is what questions like *did the old chart's shapes get left
-behind* are really about, and it carries the host's own picture of each slide the
+behind* are really about, and it carries the host's own picture of the slides the
 round added, so there is nothing to screenshot. If the host will not describe its
 deck, the round still writes the file: you lose the pictures and keep the
 verdicts.
+
+**Picture every slide** (off by default) removes the limit on that last part.
+Normally the first twelve added slides are photographed and the rest are recorded
+as never asked about — the pictures are the heaviest thing the add-in does, and
+they run at the end of a round. The limit is worth knowing about because it
+decides what a round can settle: a slide that reads back with no shapes is only
+*probably* empty, since this host will report a shape collection short without
+saying so, and the picture is what turns that into a fact. Tick it when an empty
+slide is the question; expect a slower finish and a much bigger file.
 
 **Verbose trace** records every step the add-in takes — each drawing batch, each
 slide the host loses, each call it stops waiting for, each repair action, and

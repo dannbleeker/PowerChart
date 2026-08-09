@@ -120,6 +120,19 @@ mean to test — PowerPoint caches the pane aggressively, and a whole session ca
 otherwise go into testing code the host never fetched. Hard-reload if it is
 older. Then tick **Verbose trace** in the Testing section and leave it on.
 
+**Beside it sits "Picture every slide", off by default, and it decides what a
+round can prove.** The round photographs the first twelve slides it adds; past
+that it records the slide and says it never asked. That default is usually
+right — the pictures are the heaviest call the add-in makes, and they run at the
+end of a round, on a host that has just been through the self-test. But on
+2026-08-09, 29 of that deck's 36 slides read back with **zero shapes** and only
+12 had a picture to check that against: 12 were confirmed empty on two
+witnesses, and 17 stayed unknowable. The cap made them unknowable, not the host.
+A readback of zero is one witness, and this host is known to report a shape
+collection short without throwing; the picture is the second. **Tick it for a
+round where an empty slide is the question** — and expect a slower tail and a
+run log several times bigger.
+
 **"Merged to main" and "on the site" are different facts, and the stamp is the
 only one that counts.** On 2026-08-06 they diverged for eight hours: four pull
 requests merged green while every Pages deploy was cancelled by
