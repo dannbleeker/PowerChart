@@ -2501,7 +2501,16 @@ async function settleAndTagChart(slideId: string, tagData: string, shapeId?: str
           .getItemOrNullObject(slideId)
           .shapes.getItemOrNullObject(shapeId)
           .tags.add(CHART_TAG, tagData);
-        await boundedSync(context, "settling the chart's config tag");
+        // Named apart from the collection-read write below, and that is the
+        // whole point of the wording. Both used to say "settling the chart's
+        // config tag", so a refusal in the round log could be either — and
+        // round 8 turned on exactly that: one chart's settle failed with the
+        // shared label and nothing said whether the by-id write had been
+        // refused, or whether it had been skipped for want of an id and the
+        // collection read's write refused instead. Those are different bugs
+        // wanting different fixes, and the two readings cost a forensic pass
+        // over Office.js statement annotations that could not settle it either.
+        await boundedSync(context, "settling the config tag by shape id");
         return true;
       });
       if (wrote) return true;
@@ -2592,7 +2601,8 @@ async function settleByCollectionRead(slideId: string, tagData: string, shapeId?
       // know where the chart was originally drawn, and a wrong origin
       // teleports the chart on its first edit.
       target.tags.add(CHART_TAG, tagData);
-      await boundedSync(context, "settling the chart's config tag");
+      // See the by-id write's label: these two must not share a name.
+      await boundedSync(context, `settling the config tag on a shape found by ${byId ? "id" : "name"}`);
       return true;
     });
   } catch {
