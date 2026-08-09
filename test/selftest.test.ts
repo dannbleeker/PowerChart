@@ -333,7 +333,15 @@ describe("the host self-test battery", () => {
     ];
     const text = describeSelfTest(results);
     expect(text).toContain("1 skipped (host cannot run them)");
-    expect(text).toMatch(/1 could not run — the deck scan went blind/);
+    // `blind` covers two host failures now — a scan that could not see, and a
+    // scenario the host stopped answering — so the line no longer names one of
+    // them for both. The 2026-08-08 `1fd6aa3` round said "the deck scan went
+    // blind" about two scenarios that had timed out drawing, having scanned
+    // nothing at all.
+    expect(text).toMatch(/1 could not run — the host got in the way/);
+    // …and says which, because a summary that reports a count without a name
+    // is one somebody has to open the file to use.
+    expect(text).toContain("gamma");
     // And the run is not green: a deck nobody could read is something to look at.
     expect(selfTestNeedsAttention(results)).toBe(true);
     expect(selfTestNeedsAttention(results.slice(0, 2)), "a plain capability skip is not a problem").toBe(false);

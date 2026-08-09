@@ -1801,14 +1801,23 @@ export function selfTestNeedsAttention(results: ScenarioResult[]): boolean {
 export function describeSelfTest(results: ScenarioResult[]): string {
   const ran = results.filter((r) => !r.skipped);
   const failed = ran.filter((r) => !r.ok);
-  const blind = results.filter((r) => r.skipped && r.blind).length;
-  const skipped = results.length - ran.length - blind;
+  const blind = results.filter((r) => r.skipped && r.blind);
+  const skipped = results.length - ran.length - blind.length;
   const parts = [`${ran.length - failed.length} of ${ran.length} scenarios passed`];
   if (failed.length) parts.push(`failed: ${failed.map((f) => f.name).join(", ")}`);
   if (skipped) parts.push(`${skipped} skipped (host cannot run them)`);
   // Counted apart, and never folded into the line above. These are not a
-  // capability gap: the host would not let the add-in see the deck, which is a
-  // finding, and the one time it happened it was reported in green.
-  if (blind) parts.push(`${blind} could not run — the deck scan went blind`);
+  // capability gap: the host got in the way, which is a finding, and the one
+  // time it happened it was reported in green.
+  //
+  // And it says WHICH way. `blind` covers two things now — a deck scan that
+  // could not see, and a host that stopped answering mid-scenario — and this
+  // line called both of them "the deck scan went blind". The 2026-08-08
+  // `1fd6aa3` round reported two scenarios that way when neither had scanned
+  // anything: both had timed out drawing. Naming the scenarios is the rest of
+  // it, because a summary that says two of eleven went wrong without saying
+  // which is a summary someone has to open the file to use.
+  if (blind.length)
+    parts.push(`${blind.length} could not run — the host got in the way: ${blind.map((r) => r.name).join(", ")}`);
   return `Self-test — ${parts.join(" · ")}.`;
 }

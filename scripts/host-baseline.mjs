@@ -138,7 +138,11 @@ export const UNSTABLE_ANSWERS = {
     "four of five landings do not make the fifth a mechanism. " +
     "The fake keeps refusing held proxies, which is the safe direction: code that never holds one across a sync is correct whichever way the coin lands.",
   "shape-add-positional-slide-proxy":
-    "ALTERNATES, in lockstep with its partner above and always opposite to it: `yes`, `yes`, `threw`, `yes`, `yes`. " +
+    "THREE-SIDED, which is worth saying because this entry called it a coin. Seven observations: `yes`, `yes`, `threw`, `yes`, `yes`, " +
+    "`threw`, `not-listed` (2026-08-08, `1fd6aa3`). The third face is not a variant of the other two — `not-listed` means the DECK'S " +
+    "OWN SLIDE LIST did not contain the scratch slide's id, so the question was never really put, while `threw` means it was put and " +
+    "refused. A host that will not list a slide it has just added is the same story as everything else here, arriving at a different door. " +
+    "For the first six observations it did alternate in lockstep with its partner above and always opposite to it: `yes`, `yes`, `threw`, `yes`, `yes`, `threw`. " +
     "The more dangerous of the two, because `yes` is exactly the answer that makes a positional slide handle look like a way around the " +
     "by-id refusals — and four of the five samples say `yes`. A majority is not a mechanism. Whatever decides these two flips within a " +
     "single run (see the `no-scratch-slide` windows in any probe log), and until that is understood neither answer may be built on. " +
