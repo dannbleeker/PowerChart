@@ -2071,6 +2071,15 @@ async function addSlides(
   let landed = await slideCount();
   let have = landed - start;
   let deficit = count - have;
+  // Every add this add-in makes, traced — not only the ones that go wrong.
+  //
+  // The 2026-08-09 evening round left 43 slides in the owner's deck and its own
+  // log accounted for four of them: the two `handed the host a generated deck`
+  // pairs. Every other add came through here and said nothing unless it FAILED,
+  // so "36 of these came back empty" could be measured from the deck evidence
+  // and attributed to nothing. A record that only speaks up on failure cannot
+  // answer "which part of the run made this slide".
+  trace("host", "slides added", { requested: count, landed: have, from: start });
   for (let round = 0; deficit > 0 && round < MAX_ADD_RETRY_ROUNDS; round++) {
     const toAdd = deficit;
     await PowerPoint.run(async (retryContext) => {

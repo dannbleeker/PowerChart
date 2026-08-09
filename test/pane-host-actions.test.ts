@@ -1855,6 +1855,39 @@ describe("demo-insert one-shot deck insert", () => {
     dl.restore();
   });
 
+  it("says what it left in the deck, and points at the button that clears it", async () => {
+    // A round leaves its slides on purpose — they ARE the evidence, and
+    // `docs/REGRESSION.md` is written around a deck someone can open. What it
+    // never did was say so. The 2026-08-09 evening round added 43 slides, 36 of
+    // which read back empty, reported "Saved as one file", and left the owner
+    // to discover a 44-slide deck by opening it. `Clean up the last round` had
+    // existed the whole time and nothing named it at the moment it mattered.
+    //
+    // The same gap cost a round at the other end of this one: the host probe
+    // left 21 blank slides and reported nothing, which is why it carries a row
+    // in the answer sheet now. The self-test never got the equivalent.
+    host.deckSlideIds = ["s1"];
+    host.roundAddsSlides = ["added-full", "added-empty"];
+    // `s1` is EMPTY on purpose, and it is the whole point of the fixture: it is
+    // the user's own blank slide, sitting in the deck before the round started.
+    // With it full, dropping the added-slides filter changed no number and the
+    // assertion below passed against the bug it names.
+    host.deckInventory = [
+      { slideId: "s1", index: 0, shapes: [] },
+      { slideId: "added-full", index: 1, shapes: [{ id: "sh2", name: "bar 1" }] },
+      { slideId: "added-empty", index: 2, shapes: [] },
+    ];
+    $("demo-round").click();
+    await settle();
+    const said = $("host-note").textContent ?? "";
+    expect(said, "the round never said it left anything behind").toMatch(/left 2 slides in this deck/);
+    // ONE of the two, and not the slide that was already there: an empty count
+    // that swept in the deck the round landed in would report a user's own
+    // blank slides as our litter.
+    expect(said, "counted the wrong slides as empty").toMatch(/1 of which read back empty/);
+    expect(said, "named no way to clear them").toContain("Clean up the last round");
+  });
+
   it("photographs only the slides the round added, never the whole deck", async () => {
     // A picture of a forty-slide deck is mostly slides nobody touched. The id
     // diff is what makes the pictures worth the bytes — and ids rather than
