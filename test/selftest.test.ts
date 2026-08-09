@@ -19,7 +19,6 @@ import {
   isStopRequested,
   _setReadbackTimeoutForTest,
   listChartsInDeck,
-  slideSize,
   timeShapeRounds,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
@@ -39,6 +38,8 @@ import {
   _setDegradeSizeForTest,
   wedgedSelection,
   visibilityVerdict,
+  sideSlot,
+  SIDE_SLOTS,
   type ScenarioResult,
 } from "../src/taskpane/selftest";
 
@@ -1149,36 +1150,75 @@ describe("scenarios that must not be able to pass without proving anything", () 
     expect(explode.ok, explode.detail).toBe(true);
   });
 
-  it("keeps its chart out of the way of the one already on the slide", async () => {
-    // Sharing a slide is the price of never rasterising a fresh one, and the
-    // first round after that trade produced a slide with two full-size charts
-    // drawn over each other. The battery leaves its slides in the deck for a
-    // human to look at, so "the rasteriser can tell them apart" is not the bar.
+  it("gives every scenario that shares a slide its own place on it", () => {
+    // Two rounds of the same complaint, from the owner, looking at the deck the
+    // battery left him. First a full-size chart drawn on top of a full-size
+    // chart; then three of them in a heap, because `insertOntoUsedSlide` and
+    // `chartIsVisible` both pick the FIRST probe chart and therefore the same
+    // slide. A rasteriser reads that fine and a human calls it broken, and this
+    // battery leaves its slides for a human.
     //
-    // The property, not the numbers: a chart small enough and far enough into
-    // the bottom-right corner that a full-size one placed anywhere the probe
-    // deck puts it cannot reach it.
+    // The arithmetic is what keeps them apart, so the arithmetic is what is
+    // checked — not the numbers it happens to produce on one deck size.
+    const decks = [
+      { width: 960, height: 540 },
+      { width: 720, height: 540 }, // 4:3
+    ];
+    for (const slide of decks) {
+      const slots = Array.from({ length: SIDE_SLOTS }, (_, n) => sideSlot(n, slide));
+      for (const [i, box] of slots.entries()) {
+        // On the slide, both axes. The half a corner offset usually gets wrong.
+        expect(box.left, `slot ${i} runs off the left of a ${slide.width}pt deck`).toBeGreaterThanOrEqual(0);
+        expect(box.left + box.width, `slot ${i} runs off the right`).toBeLessThanOrEqual(slide.width);
+        expect(box.top, `slot ${i} starts above the slide`).toBeGreaterThanOrEqual(0);
+        expect(box.top + box.height, `slot ${i} runs off the bottom`).toBeLessThanOrEqual(slide.height);
+        // Clear of a full-size chart at any origin the probe deck uses — the
+        // rightmost of those is 60, and the chart is 480 wide, so it ends at
+        // 540. Asserted only where the deck is wide enough to allow it: a 4:3
+        // slide is 720pt across and 540 of that is already spoken for, so
+        // nothing 200pt wide can clear it horizontally. On that deck the charts
+        // touch, and saying so is better than an assertion that quietly means
+        // less than it reads.
+        if (slide.width >= 960)
+          expect(box.left, `slot ${i} overlaps a 480pt chart at x=60`).toBeGreaterThanOrEqual(540);
+      }
+      // And clear of each other, which is the whole point of numbering them.
+      for (const [i, a] of slots.entries())
+        for (const b of slots.slice(i + 1))
+          expect(a.top + a.height, `slots overlap on a ${slide.width}x${slide.height} deck`).toBeLessThanOrEqual(b.top);
+    }
+  });
+
+  it("leaves no two charts stacked on one slide", async () => {
+    // What the owner saw, twice, opening the deck the battery left him: first
+    // one full-size chart drawn over another, then three in a heap. Both
+    // scenarios that share a slide pick the FIRST probe chart, so they pick the
+    // same one.
+    //
+    // Checked against the DECK rather than the arithmetic, because the geometry
+    // helper is new and a test of a new function cannot fail against the file
+    // that lacked it. This can: it reads back what was actually drawn.
     installHost([makeSlide("s1")]);
     setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
-    await runSelfTest("probe", VISIBLE);
-    const { width: slideW, height: slideH } = await slideSize();
+    // The FULL battery, not a picked scenario: `insertOntoUsedSlide` is the one
+    // that draws two charts onto an occupied slide, and the picker's "plus the
+    // two inserts it needs" does not reach it.
+    await runSelfTest("probe");
     const scan = await listChartsInDeck();
-    const mine = scan.charts
-      .map((c) => ({ cfg: JSON.parse(c.configJson) as ChartConfig, t: c.target }))
-      .find((c) => typeof c.cfg.title === "string" && c.cfg.title.endsWith("visible"));
-    expect(mine, "the visibility scenario's chart is not in the deck").toBeTruthy();
-    const w = mine!.cfg.width!;
-    const h = mine!.cfg.height!;
-    // Small enough to be a probe rather than a specimen…
-    expect(w).toBeLessThanOrEqual(slideW / 2);
-    expect(h).toBeLessThanOrEqual(slideH / 2);
-    // …in the bottom-right quadrant, so a chart at any of the probe deck's
-    // usual origins (0,0 / 40,40 / 60,90) misses it on both axes…
-    expect(mine!.t.left).toBeGreaterThanOrEqual(slideW / 2);
-    expect(mine!.t.top).toBeGreaterThanOrEqual(slideH / 2);
-    // …and still on the slide, which is the half a corner offset gets wrong.
-    expect(mine!.t.left + w).toBeLessThanOrEqual(slideW);
-    expect(mine!.t.top + h).toBeLessThanOrEqual(slideH);
+    const bySlide = new Map<string, { title: string; l: number; t: number; w: number; h: number }[]>();
+    for (const c of scan.charts) {
+      const cfg = JSON.parse(c.configJson) as ChartConfig;
+      const box = { title: String(cfg.title), l: c.target.left, t: c.target.top, w: cfg.width!, h: cfg.height! };
+      bySlide.set(c.target.slideId, [...(bySlide.get(c.target.slideId) ?? []), box]);
+    }
+    const shared = [...bySlide.values()].filter((v) => v.length > 1);
+    expect(shared.length, "no slide ended up with two charts, so this proves nothing").toBeGreaterThan(0);
+    for (const charts of shared)
+      for (const [i, a] of charts.entries())
+        for (const b of charts.slice(i + 1)) {
+          const apart = a.l + a.w <= b.l || b.l + b.w <= a.l || a.t + a.h <= b.t || b.t + b.h <= a.t;
+          expect(apart, `"${a.title}" and "${b.title}" are drawn on top of each other`).toBe(true);
+        }
   }, 60_000);
 
   it("does not report a drawn chart as never drawn", () => {
