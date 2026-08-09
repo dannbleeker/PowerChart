@@ -1840,7 +1840,19 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
         "idleMs",
       );
       expect(typeof batches[0].data?.idleMs).toBe("number");
+      // And the predecessor's NAME, which spent two rounds in exactly the
+      // condition the gap was in: recorded on stalls, never on successes. Round
+      // 9 produced two stalls naming two different calls while thirteen draws
+      // survived without saying what they followed, so the comparison nobody
+      // could make was the whole question.
+      expect(
+        batches[0].data,
+        "the first batch does not say what the host last answered, so a stall's predecessor has nothing to be compared against",
+      ).toHaveProperty("afterAnswering");
       for (const b of batches.slice(1)) {
+        expect(b.data, "a later batch named a predecessor that is always the batch before it").not.toHaveProperty(
+          "afterAnswering",
+        );
         expect(
           b.data,
           "a later batch reported an idle gap that can only describe the batch before it",

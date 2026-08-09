@@ -6164,14 +6164,27 @@ async function renderShapesChunked(
     // The idle gap, on the FIRST batch only — the baseline the stall record has
     // no meaning without. Every draw stall on record is a first batch, and the
     // first one to name its predecessor said `rasterising a slide, idleMs: 1`.
-    // Whether 1ms is remarkable depends entirely on what the batches that
-    // SURVIVE report, and nothing measured that. First batch only, because a
-    // later batch's predecessor is always the batch before it and would say
-    // nothing.
+    // Whether either number is remarkable depends entirely on what the batches
+    // that SURVIVE report.
+    //
+    // `idleMs` got its baseline first and DIED of it — survivors span 1ms to
+    // 2182ms, two of them at exactly 1ms, so the gap separates nothing. The
+    // predecessor's NAME was then left in the same condition for two more
+    // rounds: recorded on stalls, never on successes. Round 9 made that
+    // untenable by producing two stalls naming two DIFFERENT calls (`selecting
+    // a shape` and `rasterising a slide`) while thirteen draws in the same round
+    // survived and said nothing about what they followed.
+    //
+    // So both halves are recorded here, together, and one round decides whether
+    // the identity of the preceding call discriminates or goes the way the gap
+    // did. First batch only: a later batch's predecessor is always the batch
+    // before it, which says nothing and would cost three lines a chart.
     trace("draw", "batch committed", {
       upTo,
       total,
-      ...(batchNo === 1 ? { idleMs: Math.round(idleSinceLastAnswer()) } : {}),
+      ...(batchNo === 1
+        ? { idleMs: Math.round(idleSinceLastAnswer()), afterAnswering: lastAnsweredCall ?? "nothing yet" }
+        : {}),
     });
     // Budget per BATCH, not per chart: a stalled host must still be caught, but
     // the limit now measures a batch we know the host can swallow.
