@@ -103,6 +103,53 @@ function normalizeData(raw: ChartData): ChartData {
   return { ...data, categories, series, hundredPercent: pad(data.hundredPercent), xExtent: pad(data.xExtent) };
 }
 
+/**
+ * Decoration keys whose value is a list of OBJECTS the layout then iterates.
+ *
+ * Each one is read as `decor.<key>.forEach(...)` and each entry as a record
+ * with named fields, with nothing in between. A value of the wrong shape
+ * therefore does not mis-render, it CRASHES: `valueLines: "mean"` gives
+ * `valueLines.forEach is not a function` on nine of the twenty-five kinds,
+ * `callouts` on thirteen and `bands` on fifteen, and a null entry dies one
+ * field later on `Cannot read properties of null`.
+ *
+ * All of them are ordinary things to write. `valueLines` mirrors a checkbox in
+ * the pane labelled "mean", so `"valueLines": "mean"` is the obvious guess for
+ * anyone hand-editing the JSON box — and a config also arrives from a saved
+ * template, from a POWERCHART_CONFIG tag authored in another deck, and from the
+ * skill's caller.
+ *
+ * `labelContent` is deliberately NOT here. It is a list of strings read with
+ * `.includes`, which a bare string answers plausibly rather than fatally, and
+ * changing that would change a rendering rather than prevent a crash.
+ */
+const OBJECT_LIST_DECORATIONS = ["valueLines", "callouts", "bands"] as const;
+
+/**
+ * Keep only the entries of those lists that the layout can actually read: an
+ * array of non-null objects, or nothing at all.
+ *
+ * Dropping beats repairing here. There is no sensible reading of `"mean"` as a
+ * value line — the entry it stands for is `{ mode: "mean" }`, and guessing that
+ * would make a typo silently mean something — so a decoration that cannot be
+ * understood is simply not drawn, which is what omitting it already does.
+ */
+function cleanDecorations(decor: Partial<Decorations>): Partial<Decorations> {
+  let out: Record<string, unknown> | undefined;
+  for (const key of OBJECT_LIST_DECORATIONS) {
+    const v: unknown = decor[key];
+    if (v === undefined) continue;
+    const kept = Array.isArray(v) ? v.filter((e) => !!e && typeof e === "object" && !Array.isArray(e)) : [];
+    // A no-op unless something was actually wrong, so a valid config keeps its
+    // own array object and renders byte-identically.
+    if (Array.isArray(v) && kept.length === v.length) continue;
+    out ??= { ...decor } as Record<string, unknown>;
+    if (kept.length) out[key] = kept;
+    else delete out[key];
+  }
+  return (out as Partial<Decorations> | undefined) ?? decor;
+}
+
 /** Drop label nudges carrying a non-finite delta (they corrupt a node's coords). */
 function cleanOffsets(offs: Record<string, { dx: number; dy: number }>): Record<string, { dx: number; dy: number }> {
   const out: Record<string, { dx: number; dy: number }> = {};
@@ -156,6 +203,10 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
     scale,
     style,
     data: normalizeData(cfg.data),
+    decorations:
+      cfg.decorations && typeof cfg.decorations === "object" && !Array.isArray(cfg.decorations)
+        ? cleanDecorations(cfg.decorations)
+        : cfg.decorations,
     labelOffsets: cfg.labelOffsets ? cleanOffsets(cfg.labelOffsets) : cfg.labelOffsets,
   };
 }
