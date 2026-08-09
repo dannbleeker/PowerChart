@@ -1818,6 +1818,36 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
     }
   }, 20_000);
 
+  it("records the idle gap on the first batch of a draw, and only the first", async () => {
+    // The baseline the stall record is worthless without.
+    //
+    // Round 7 was the first to name the call before a stall — `afterAnswering:
+    // "rasterising a slide", idleMs: 1` — and 1ms looks damning until you ask
+    // what the batches that SURVIVE report. Sequential code issues its next
+    // call the instant the previous one answers, so a 1ms gap may be true of
+    // every draw in the round. A number with no baseline is not a measurement.
+    //
+    // First batch only: a later batch's predecessor is always the batch before
+    // it, which says nothing and would cost three lines a chart in the log.
+    const { insertSceneIntoSlide } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    try {
+      await insertSceneIntoSlide(buildChart(sampleConfig("stacked")), { tagData: "{}" });
+      const batches = traceLog().entries.filter((e) => e.message === "batch committed");
+      expect(batches.length, "the draw did not batch, so there is nothing to check").toBeGreaterThan(1);
+      expect(batches[0].data, "the first batch carries no idle gap to compare a stall against").toHaveProperty("idleMs");
+      expect(typeof batches[0].data?.idleMs).toBe("number");
+      for (const b of batches.slice(1)) {
+        expect(b.data, "a later batch reported an idle gap that can only describe the batch before it").not.toHaveProperty(
+          "idleMs",
+        );
+      }
+    } finally {
+      setTracing(false);
+    }
+  }, 20_000);
+
   it("carries the late answer through a real stalled scenario", async () => {
     const { _setBatchTimeoutForTest } = await import("../src/render/powerpoint");
     // The plumbing half. `stallDetail` is pure and cannot know whether the

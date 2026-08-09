@@ -424,36 +424,59 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
 chart the user selected` passes at 459-514s, `the chart is actually visible`
     passes at 517-586s.
 
-  What every stalled scenario has in common is its PREDECESSOR: the selection
+  What every stalled scenario had in common was its PREDECESSOR: the selection
   ladder (×4), `stop a run part-way`, which aborts a draw mid-flight (×3), and
-  a scenario that itself selected and stalled (×1). That is 8 of 8, and it is a
-  correlation, not a mechanism — `edit the chart the user selected` also follows
-  a selection-touching scenario and never stalls.
+  a scenario that itself selected and stalled (×1). That was 8 of 8.
 
-  **And that account can never be improved by another routine round, because
-  predecessor and POSITION are the same variable.** The battery's order is
-  fixed, so `a selected shape survives an insert` is always eighth AND always
-  after the ladder; nothing in seven rounds separates "what ran before it" from
-  "how far into the round it is". Two things change that, and neither is another
-  round of the same shape:
+  **RETRACTED on 2026-08-09 by round 7, which is why it was written down as a
+  correlation.** `a selected shape survives an insert` PASSED — in the routine
+  round, at 407s, eighth in the list and immediately after the ladder, which is
+  the exact position and the exact predecessor that had stalled it four times
+  out of four. Same build family, same battery, same order. A clean
+  counter-example at the identical position kills the predecessor account
+  outright; nothing about "what ran before it" survives.
 
-  - **Ask at CALL level instead of scenario level.** The log had nothing at all
-    between a scenario announcing itself and its first `batch committed` — three
-    to five seconds of probe reads, deck inventories and selection calls, all
-    invisible — which is the only reason the account was ever at scenario level.
-    `lastStall` now records what the host last ANSWERED before the call it
-    refused, and how long before, and the verdict says so in words: `the last
-thing the host answered was "selecting a shape", 0.4s earlier`. Every future
-    round carries it, with no experiment to design. If the stall is always the
-    first sync after some particular kind of call, that names it.
-  - **Break the confound with a picked round.** `a selected shape survives an
-insert`, picked ALONE, has the two head-of-round inserts as its predecessor
-    instead of the ladder, and runs at ~60s instead of ~410s. The criterion, set
-    in advance: **stalls → the scenario itself** (it is the only one that draws
-    while a shape is selected); **does not stall → predecessor or position**,
-    and the call-level record then says which. Picking one scenario does not
-    violate the ladder-first rule, which is a property of `ROUTINE_SCENARIO_NAMES`
-    — with the ladder out of the run there is nothing for it to be ahead of.
+  The picked round ran the same day and agrees. Alone on the deck, with only the
+  two head-of-round inserts in front of it, it drew all three batches (8.2s,
+  12.2s, 12.4s) and passed — at 750s of tab life, thirteen minutes in, which
+  takes elapsed time down with it for that scenario.
+
+  So of the four candidates, three are now out for `a selected shape survives an
+  insert`: the scenario, its predecessor, and the tab's age. What is left is
+  that this host stalls INTERMITTENTLY, and the run of four was a run.
+
+  **Both things that were built to settle it have now reported, and both did.**
+
+  - **The call-level record fired on its first outing.** The log used to have
+    nothing at all between a scenario announcing itself and its first `batch
+committed` — three to five seconds of probe reads, deck inventories and
+    selection calls, all invisible — which is the only reason the account was
+    ever at scenario level. Round 7's one draw stall says:
+
+        gave up waiting  what="drawing shapes 1-10 of 24"
+                         afterAnswering="rasterising a slide"  idleMs=1
+
+    A rasterise answered, the draw's first sync went out a millisecond later,
+    and it never came back. Every future round carries this for free.
+
+    **Do not read `idleMs: 1` as a finding yet.** Sequential code issues its
+    next call the instant the previous one answers, so 1ms may be true of every
+    draw in the round — a number with no baseline is not a measurement, and this
+    file has been wrong exactly that way before. The first batch of every draw
+    records the same gap now, stalled or not, so the next round says whether it
+    discriminates.
+
+  - **The picked round ran and answered.** The criterion was set in advance:
+    stalls → the scenario itself; passes → predecessor or position. It PASSED,
+    so the scenario is out, and the routine round passing it at the same
+    position takes the predecessor with it.
+
+  **What is left standing is one scenario and one call.** `the chart is actually
+visible` is now the only stall on record — 4 of the last 5 rounds — and it is
+  the only scenario that rasterises immediately before drawing. That is a much
+  narrower target than "the last third of a round", and it needs no new
+  experiment: the record names the predecessor on every future stall, and the
+  baseline says whether the gap matters. Two more rounds decide it.
 
   This is the same shape as the two experiments that already paid: `the chart is
 actually visible` and `what makes a long run slow down` each spent four rounds

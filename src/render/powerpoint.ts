@@ -448,6 +448,23 @@ export interface StallContext {
 
 export let lastStall: StallContext | null = null;
 
+/**
+ * How long the host has been idle — from its last answer to now.
+ *
+ * Exported because the stall record alone is not evidence. The first round to
+ * carry it reported `afterAnswering: "rasterising a slide", idleMs: 1`, which
+ * looks damning and may be meaningless: sequential code issues its next call
+ * the instant the previous one answers, so a 1ms gap could be true of every
+ * draw in the round. A number with no baseline is not a measurement, and this
+ * project has been wrong exactly that way before.
+ *
+ * So the first batch of every draw records the same gap, stalled or not, and
+ * one round says whether it discriminates.
+ */
+export function idleSinceLastAnswer(now = Date.now()): number {
+  return lastAnsweredAt ? now - lastAnsweredAt : Infinity;
+}
+
 /** Forget the stall record. Test seam, and reset alongside the deadline count. */
 export function _resetStallContextForTest(): void {
   lastAnsweredCall = null;
@@ -6076,6 +6093,9 @@ async function renderShapesChunked(
   const total = estimateOfficeShapes(scene);
   let sent = 0;
   let s = 0;
+  // Which batch this is. `created` can arrive as a non-empty sink, so its length
+  // is not a batch counter.
+  let batchNo = 0;
   while (s < steps.length) {
     // The stop check, and the only place it can honestly go: batches already
     // committed are on the slide and a sync in flight cannot be recalled, so
@@ -6088,6 +6108,7 @@ async function renderShapesChunked(
     // Fresh slide proxy per batch: a proxy held across the previous sync may have
     // been rewritten to an unusable getItem(id) — see SlideThunk.
     const shapes = getSlide().shapes;
+    batchNo++;
     const before = created.length;
     // Always draw at least one step, then keep going while the batch stays under
     // budget — a single indivisible node (a 16-triangle wedge fan) is its own
@@ -6130,7 +6151,18 @@ async function renderShapesChunked(
     // wait. Reporting after would leave the pane naming the previous phase and
     // blaming the wrong one for the stall.
     onBatch?.(upTo, total);
-    trace("draw", "batch committed", { upTo, total });
+    // The idle gap, on the FIRST batch only — the baseline the stall record has
+    // no meaning without. Every draw stall on record is a first batch, and the
+    // first one to name its predecessor said `rasterising a slide, idleMs: 1`.
+    // Whether 1ms is remarkable depends entirely on what the batches that
+    // SURVIVE report, and nothing measured that. First batch only, because a
+    // later batch's predecessor is always the batch before it and would say
+    // nothing.
+    trace("draw", "batch committed", {
+      upTo,
+      total,
+      ...(batchNo === 1 ? { idleMs: Math.round(idleSinceLastAnswer()) } : {}),
+    });
     // Budget per BATCH, not per chart: a stalled host must still be caught, but
     // the limit now measures a batch we know the host can swallow.
     await withTimeout(
