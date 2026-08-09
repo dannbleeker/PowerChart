@@ -402,6 +402,12 @@ vi.mock("../src/render/powerpoint", () => ({
     throw new Error("no scratch slide in this harness");
   }),
   deadlinesFired: 0,
+  // The other half of a stall report: a scenario that gives up asks whether the
+  // call ever came back. This harness has no host to answer late, so the double
+  // says "nothing arrived" — which is the reading every real round has produced.
+  lastLateSync: null,
+  lastLateSyncSeq: 0,
+  waitForLateSync: vi.fn(async () => false),
 }));
 
 // The deck builder is a real pptxgenjs run; the pane's own tests care about

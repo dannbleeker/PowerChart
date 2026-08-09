@@ -82,6 +82,9 @@ import {
   // A live binding, read fresh on every access — the whole point is to diff it
   // around a scenario.
   deadlinesFired,
+  lastLateSync,
+  lastLateSyncSeq,
+  waitForLateSync,
 } from "../render/powerpoint";
 import { trace } from "../core/trace";
 
@@ -867,6 +870,38 @@ export function wedgedSelection(err: unknown): boolean {
  * - unchanged, unnamed — "nothing drew" and "it drew invisibly" both fit and
  *   the image cannot separate them. Say so rather than pick one.
  */
+/**
+ * How long to keep listening for a call the scenario gave up on.
+ *
+ * Short on purpose. The host's eventual answer routinely arrives minutes later
+ * when it arrives at all, and a battery cannot spend minutes per stall — but
+ * the DIFFERENCE between "answered at 46s" and "still nothing" is most of what
+ * a stall report is worth, and three seconds buys it.
+ */
+const LATE_ANSWER_WAIT_MS = 3_000;
+
+/**
+ * What to say about a scenario the host stopped answering during.
+ *
+ * The measurement, not the conclusion. Seven real-host rounds have produced
+ * thirteen abandoned calls and not one late answer, and the slowest of 327
+ * batches that DID answer took 29.2 seconds against a 45-second budget — so the
+ * gap between 29s and 45s is empty and a stalled call looks like death rather
+ * than slowness. That reading came out of a trace line's absence, though, and
+ * absence is the evidence this project has most often misread: `settleUntagged`
+ * was diagnosed as "ran and failed" for two sessions when it had never run.
+ *
+ * So the report says which it was, in words, every time. A future round that
+ * finally sees a late answer will say so on the line, instead of waiting for
+ * somebody to notice a message that is no longer missing.
+ */
+export function stallDetail(errText: string, late: string | undefined): string {
+  const head = `the host stopped answering during this scenario, so nothing was checked — ${errText}`;
+  return late
+    ? `${head}; the abandoned call DID come back afterwards (${late}), so the host was slow rather than gone`
+    : `${head}; the abandoned call had still not answered ${LATE_ANSWER_WAIT_MS / 1000}s later`;
+}
+
 export function visibilityVerdict(before: string, after: string, named: boolean): { ok: boolean; detail: string } {
   if (after !== before)
     return {
@@ -1793,6 +1828,11 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
     // whether THIS one could not get an answer, not whether the run ever
     // couldn't.
     const deadlinesBefore = deadlinesFired;
+    // Same reasoning as `deadlinesBefore`, for the other half of a stall: a
+    // late answer that arrived during an EARLIER scenario must not be read as
+    // this one's call coming back. See `lastLateSyncOwner` for the same bug one
+    // level down.
+    const lateSeqBefore = lastLateSyncSeq;
     let result: ScenarioResult;
     try {
       const r = await run(prefix);
@@ -1810,16 +1850,29 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
       // `blind` because the verdict is not evidence about the product — the
       // same reason a blinded deck scan carries it — and it is what makes
       // `selfTestNeedsAttention` still surface the round.
-      result = isTimeout(err)
-        ? {
-            name,
-            ok: false,
-            skipped: true,
-            blind: true,
-            detail: `the host stopped answering during this scenario, so nothing was checked — ${errorText(err)}`,
-            ms: Date.now() - t0,
-          }
-        : { name, ok: false, detail: `threw: ${errorText(err)}`, ms: Date.now() - t0 };
+      if (isTimeout(err)) {
+        // Then ask the one question the round log could not answer: did the
+        // call we gave up on ever come back?
+        //
+        // It has never once been answered in the affirmative — 13 abandoned
+        // calls across seven real-host rounds, not one late answer — but that
+        // was read out of the ABSENCE of a trace line, which is precisely the
+        // inference this project has been burned by. "Never asked" and "asked
+        // and answered no" look identical in a log that only writes on yes.
+        // So the scenario waits, briefly, and says which one happened.
+        await waitForLateSync(LATE_ANSWER_WAIT_MS);
+        const late = lastLateSyncSeq !== lateSeqBefore ? (lastLateSync ?? undefined) : undefined;
+        result = {
+          name,
+          ok: false,
+          skipped: true,
+          blind: true,
+          detail: stallDetail(errorText(err), late),
+          ms: Date.now() - t0,
+        };
+      } else {
+        result = { name, ok: false, detail: `threw: ${errorText(err)}`, ms: Date.now() - t0 };
+      }
     }
     trace("selftest", result.skipped ? "scenario skipped" : result.ok ? "scenario passed" : "scenario FAILED", {
       name,
