@@ -406,6 +406,55 @@ export let lastLateSyncOwner: string | null = null;
 /** The run currently issuing host calls, or null outside a demo run. */
 let activeRun: string | null = null;
 
+/**
+ * The last bounded call the host actually ANSWERED, and when it finished.
+ *
+ * Every draw stall this project has recorded — thirteen of them, across seven
+ * real-host rounds — is the FIRST batch of a scenario's draw, never a later
+ * one. Which makes the interesting question "what did the host do immediately
+ * before the sync it then refused to answer", and no round file can say: the
+ * log records nothing at all between a scenario announcing itself and its first
+ * `batch committed`, so three to five seconds of probe reads, deck inventories
+ * and selection calls happen invisibly.
+ *
+ * That absence is why the only account of the stalls anyone could give was at
+ * SCENARIO level — "it follows the selection ladder" — and scenario order is
+ * fixed, so predecessor and position in the battery are the same variable and
+ * nothing in seven rounds separates them. A call-level record does separate
+ * them, in every round, with no experiment to design: the stall names the call
+ * before it.
+ *
+ * Read at TIMEOUT time, when it still holds the previous COMPLETED call —
+ * a call that never answered never writes here.
+ */
+let lastAnsweredCall: string | null = null;
+let lastAnsweredAt = 0;
+
+/**
+ * What the host was doing either side of the most recent stall.
+ *
+ * `idleMs` is measured from the last answer to the moment the stalled call was
+ * ISSUED, not to the moment we gave up on it — otherwise every stall would
+ * report the 45-second budget back to us and say nothing.
+ */
+export interface StallContext {
+  /** The call that stalled. */
+  what: string;
+  /** The last call the host answered before it, or null if it never has. */
+  afterAnswering: string | null;
+  /** Gap between that answer and this call being issued. */
+  idleMs: number;
+}
+
+export let lastStall: StallContext | null = null;
+
+/** Forget the stall record. Test seam, and reset alongside the deadline count. */
+export function _resetStallContextForTest(): void {
+  lastAnsweredCall = null;
+  lastAnsweredAt = 0;
+  lastStall = null;
+}
+
 let lateSubscriber: ((msg: string) => void) | null = null;
 
 /** Be told when a call we already gave up on finally settles. */
@@ -469,6 +518,12 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
     lastLateSyncSeq += 1;
     lateSubscriber?.(lastLateSync);
   };
+  // An ANSWER, not a success: a call the host refused still tells us it was
+  // listening, which is the distinction a stall is measured against.
+  const answered = (): void => {
+    lastAnsweredCall = what;
+    lastAnsweredAt = Date.now();
+  };
   return new Promise<T>((resolve, reject) => {
     let done = false;
     p.then(
@@ -476,6 +531,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         if (!done) {
           done = true;
           clearTimeout(timer);
+          answered();
           resolve(v);
         } else {
           describe("the host eventually SUCCEEDED");
@@ -485,6 +541,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         if (!done) {
           done = true;
           clearTimeout(timer);
+          answered();
           reject(err);
         } else {
           describe(`the host eventually FAILED — ${errorText(err)}`);
@@ -501,7 +558,20 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         () => undefined,
       );
       deadlinesFired += 1;
-      trace("host", "gave up waiting", { what, afterMs: ms });
+      // What the host last answered, and how long ago. `lastAnsweredCall` still
+      // holds the PREVIOUS completed call here, because this one never wrote to
+      // it — which is exactly the fact no round file has ever carried.
+      lastStall = {
+        what,
+        afterAnswering: lastAnsweredCall,
+        idleMs: lastAnsweredAt ? started - lastAnsweredAt : Infinity,
+      };
+      trace("host", "gave up waiting", {
+        what,
+        afterMs: ms,
+        afterAnswering: lastAnsweredCall ?? "nothing yet this run",
+        idleMs: Math.round(lastStall.idleMs),
+      });
       reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
     }, ms);
   });

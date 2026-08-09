@@ -428,9 +428,36 @@ chart the user selected` passes at 459-514s, `the chart is actually visible`
   ladder (×4), `stop a run part-way`, which aborts a draw mid-flight (×3), and
   a scenario that itself selected and stalled (×1). That is 8 of 8, and it is a
   correlation, not a mechanism — `edit the chart the user selected` also follows
-  a selection-touching scenario and never stalls. Recorded because it is the
-  first hypothesis about these stalls that a single designed round could kill,
-  and because "the tab" cannot be tested at all.
+  a selection-touching scenario and never stalls.
+
+  **And that account can never be improved by another routine round, because
+  predecessor and POSITION are the same variable.** The battery's order is
+  fixed, so `a selected shape survives an insert` is always eighth AND always
+  after the ladder; nothing in seven rounds separates "what ran before it" from
+  "how far into the round it is". Two things change that, and neither is another
+  round of the same shape:
+
+  - **Ask at CALL level instead of scenario level.** The log had nothing at all
+    between a scenario announcing itself and its first `batch committed` — three
+    to five seconds of probe reads, deck inventories and selection calls, all
+    invisible — which is the only reason the account was ever at scenario level.
+    `lastStall` now records what the host last ANSWERED before the call it
+    refused, and how long before, and the verdict says so in words: `the last
+thing the host answered was "selecting a shape", 0.4s earlier`. Every future
+    round carries it, with no experiment to design. If the stall is always the
+    first sync after some particular kind of call, that names it.
+  - **Break the confound with a picked round.** `a selected shape survives an
+insert`, picked ALONE, has the two head-of-round inserts as its predecessor
+    instead of the ladder, and runs at ~60s instead of ~410s. The criterion, set
+    in advance: **stalls → the scenario itself** (it is the only one that draws
+    while a shape is selected); **does not stall → predecessor or position**,
+    and the call-level record then says which. Picking one scenario does not
+    violate the ladder-first rule, which is a property of `ROUTINE_SCENARIO_NAMES`
+    — with the ladder out of the run there is nothing for it to be ahead of.
+
+  This is the same shape as the two experiments that already paid: `the chart is
+actually visible` and `what makes a long run slow down` each spent four rounds
+  saying "it crashed again" and one picked round saying which call.
 
 - **A stall is DEATH, not slowness — do not raise `BATCH_TIMEOUT_MS` hoping for
   an answer.** Thirteen abandoned calls across seven rounds, and not one of them
