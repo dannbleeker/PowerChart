@@ -370,12 +370,29 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   Ninety-six shapes on one slide cost 37.5 seconds; the same ninety-six over
   eight slides would cost about nineteen. That is the arithmetic behind the
   17-second batches, and behind dense charts being the ones that fail.
-  **What is NOT separated: per-slide against per-deck.** Both arms grew their
-  own slide and the shared deck together, so a third arm on a fresh slide per
-  round is what would tell them apart — and this host will not give one out.
-  The 22% gap between the two arms' first rounds (2339 against 2852, second arm
-  starting after the first had put 96 shapes in the deck) is the only hint from
-  the experiment itself, and it is small next to the within-arm growth.
+  **REPRODUCED on a second round (`87dc418`), and the second round corrects the
+  first's reading of it.** The curves land on top of each other:
+
+      one context     2395 3095 3713 4400 5072 5734 6398 7455 ms   +107%
+      fresh contexts  2428 3056 3676 4356 5557 5619 6345 7264 ms   +106%
+
+  Round for round within a few percent of the run above, on a different build,
+  with the same `deckBefore=7`. The per-round increment is ~660ms both times.
+  That part is solid.
+
+  **And it is PER-SLIDE, not per-deck — the two arms already separated that.**
+  This file said a third arm on a fresh slide per round would be needed and that
+  the host would not give one out. Wrong: the arms run in SEQUENCE on DIFFERENT
+  slides, so the second arm's first round is the measurement. It starts after
+  the first arm has put ninety-six shapes on another slide in the same deck, and
+  if the cost were deck-wide it would start slow. It does not: 2395 against 2428,
+  a 1.4% gap. The 22% gap in the first round (2339 against 2852) that this file
+  called "the only hint" of a deck effect did not reproduce, and one sample of a
+  22% gap next to one of 1.4% is noise, not a mechanism.
+
+  So: adding shapes to a slide makes THAT slide expensive to draw on, and costs
+  the next slide nothing. Which is why spreading a deck's charts one per slide
+  is not merely tidier — it is the difference between linear and quadratic.
 
   **The routine rounds add a second hint, and it points the other way.** Two
   consecutive rounds stalled in the same two scenarios, on the same call, at
@@ -383,9 +400,14 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   at 481s and 591s on `1fd6aa3`, and at 456s and 567s on `40b5e44`, the latter
   on a deck that started with ONE slide (`round starting deckSlides: 1`). Those
   draws go onto slides holding a couple of charts, not ninety-six shapes, so
-  per-slide cost does not explain them: something that accumulates across the
-  DECK or the tab does. Both effects are real, then, and the experiment measured
-  only the first.
+  per-slide cost does not explain them.
+
+  And per-deck SHAPE COUNT does not either, now that the second experiment round
+  has ruled it out — ninety-six shapes on a neighbouring slide cost the next
+  slide 1.4%. What is left is the TAB: elapsed time, memory, or whatever else a
+  long-lived Office.js session accumulates that a shape count cannot see. That
+  is a narrower answer than "the deck or the tab", and it is narrower because a
+  second sample was taken rather than argued for.
 
 - **FAST IS THE BROKEN MODE, not the healthy one.** The draw times are bimodal —
   ~17s per batch or ~3-5s — and this file said until 2026-08-08 that the host
