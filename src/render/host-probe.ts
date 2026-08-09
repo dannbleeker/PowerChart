@@ -503,6 +503,8 @@ const PROBES: Probe[] = [
   },
   {
     id: "getitemornullobject-missing",
+    // Resolves a deliberately bogus id. Needing a real slide to ask about a missing one is a contradiction.
+    noSlideNeeded: true,
     question: "What does getItemOrNullObject give for an id that does not exist?",
     ask: async (ctx) => {
       const slide = ctx.slides.getItemOrNullObject("powerchart-no-such-slide");
@@ -789,6 +791,8 @@ const PROBES: Probe[] = [
   },
   {
     id: "getcount-populates-same-sync",
+    // `slides.getCount()` on the deck. No slide of ours involved.
+    noSlideNeeded: true,
     question: "Does getCount()'s value arrive on the sync that queued it?",
     ask: async (ctx) => {
       const count = ctx.slides.getCount();
@@ -1115,6 +1119,8 @@ const PROBES: Probe[] = [
   },
   {
     id: "getitemat-past-end",
+    // Asks `slides.getItemAt(9999)` of the DECK collection and never touches the scratch slide. Round 15 lost it to `no-scratch-slide` — a free answer thrown away, which is the `untrack-available` incident repeating.
+    noSlideNeeded: true,
     question: "What does slides.getItemAt() past the end of the deck do?",
     ask: async (ctx) => {
       try {
@@ -1219,6 +1225,8 @@ const PROBES: Probe[] = [
   },
   {
     id: "slide-layout-readable",
+    // Asked of `ctx.durableSlideId` on purpose — a slide that predates the run — so demanding a live scratch slide refuses it for the absence of something it deliberately avoids.
+    noSlideNeeded: true,
     question: "Can a slide's layout shapes be read?",
     // office-js#3826, open and marked a product bug: on Office on the web
     // `slide.load("layout/shapes/items")` fails the sync with GeneralException.
@@ -1255,6 +1263,8 @@ const PROBES: Probe[] = [
   },
   {
     id: "layouts-readable",
+    // Reads `presentation.slideMasters`. Nothing to do with any slide this run added.
+    noSlideNeeded: true,
     question: "Can the deck's slide masters and their layouts be read?",
     // office-js#4906 and office-js#2328: loading shapes off `SlideLayout` or
     // `SlideMaster` throws GeneralException in PowerPoint Online — and #4906
@@ -1545,6 +1555,8 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     const lost = abandoned ? [] : answers.filter((a) => NOT_ASKED.has(a.answer));
     if (lost.length) {
       trace("probe", "second pass over the questions that were never put", { count: lost.length });
+      let rescued = 0;
+      let noSlide = 0;
       for (const entry of lost) {
         const probe = PROBE_BY_ID.get(entry.id);
         if (!probe) continue;
@@ -1553,7 +1565,30 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           break;
         }
         const replacement = await addScratchSlide();
-        if (!replacement) break; // no slide to be had; the rest would say the same
+        // One refused slide is not a dead host, and treating it as one made
+        // this whole pass theatre.
+        //
+        // It used to `break` here, silently. Round 15 is what that looks like
+        // from outside: `second pass over the questions that were never put
+        // {count: 10}`, one slide attempt two seconds later, `scratch slide
+        // landed but its id will not resolve`, and then nothing — no rescues,
+        // and no line saying why. Ten questions decided by one coin flip, on a
+        // host whose slide resolution is known to flap in fifteen-second
+        // windows, and a log that could not tell "tried them all and failed"
+        // from "gave up on the first".
+        //
+        // The main loop has always taken one add attempt PER QUESTION, which is
+        // the right shape against that host. The sweep took one for the whole
+        // list. They match now, bounded by CONSECUTIVE failures so a genuinely
+        // dead host still costs a few adds rather than one per lost question.
+        if (!replacement) {
+          if (++noSlide >= PROBE_MUTE_LIMIT) {
+            trace("probe", "stopping the second pass — no scratch slide to be had", { at: entry.id, tried: noSlide });
+            break;
+          }
+          continue;
+        }
+        noSlide = 0;
         scratchIds.push(replacement);
         scratchId = replacement;
         const deadlinesBefore = deadlinesFired;
@@ -1568,8 +1603,13 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           entry.ms = Date.now() - started;
           entry.detail = `${retry.detail ? `${retry.detail}; ` : ""}answered on a second pass at the end of the run`;
           trace("probe", "second pass answered", { id: probe.id, answer: retry.answer });
+          rescued++;
         }
       }
+      // What the pass was WORTH, every time, including nothing. A sweep that
+      // rescued none and a sweep that never ran read identically in round 15's
+      // log, and the difference is the whole question of whether to keep it.
+      trace("probe", "second pass finished", { of: lost.length, rescued });
     }
   } finally {
     // The scratch slides go back whatever happened. A diagnostic that litters
@@ -1667,6 +1707,19 @@ const PROBE_BY_ID = new Map(PROBES.flatMap(flatten).map((p) => [p.id, p]));
 export const SCRATCH_CLEANUP_ID = "scratch-slides-returned";
 
 export const PROBE_IDS: readonly string[] = [...PROBES.flatMap(withFollows), SCRATCH_CLEANUP_ID];
+
+/**
+ * The questions that answer with no live scratch slide at all.
+ *
+ * Exported so the tests can ask the probes rather than carry a copy of this
+ * list. The copy is what drifts: a hardcoded `excused` set is why marking five
+ * genuinely slide-free questions turned two passing tests red for the right
+ * reason, and a list that has to be edited by hand is a list that will one day
+ * be edited wrong in the quiet direction.
+ */
+export const NO_SLIDE_NEEDED_IDS: readonly string[] = PROBES.flatMap(flatten)
+  .filter((p) => p.noSlideNeeded)
+  .map((p) => p.id);
 
 /**
  * The questions EVERY run puts, whatever the host says.

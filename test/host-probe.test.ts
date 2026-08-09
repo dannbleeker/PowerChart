@@ -6,6 +6,7 @@ import {
   PROBE_IDS,
   ALWAYS_ASKED_IDS,
   SCRATCH_CLEANUP_ID,
+  NO_SLIDE_NEEDED_IDS,
   describeHostSheet,
   sheetNeedsAttention,
   summariseHostSheet,
@@ -361,13 +362,24 @@ describe("the fake host's answer sheet", () => {
       //   and must not inherit this failure. Charging it one is how the
       //   2026-08-08 `a546897` sheet lost `untrack-available`, at 43 seconds,
       //   after the host had recovered and answered four questions in a row.
-      const excused = new Set([SCRATCH_CLEANUP_ID, "untrack-available"]);
+      //
+      // The excused set is DERIVED from the probes rather than listed here, so
+      // it cannot drift from what the code actually declares — and the loop
+      // below is what stops that from being a way to silence this test. An
+      // excusal has to be earned: a question marked `noSlideNeeded` must come
+      // back with a real answer on a host that has no slide to give, and one
+      // that answers `no-scratch-slide` anyway is mismarked and says so here.
+      const excused = new Set([SCRATCH_CLEANUP_ID, ...NO_SLIDE_NEEDED_IDS]);
       for (const a of sheet.answers.filter((x) => !excused.has(x.id)))
         expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
-      expect(
-        sheet.answers.find((a) => a.id === "untrack-available")?.answer,
-        "a question that needs no slide was charged for one",
-      ).toBe("no");
+      expect(NO_SLIDE_NEEDED_IDS.length, "no question claims to be answerable without a slide").toBeGreaterThan(0);
+      for (const id of NO_SLIDE_NEEDED_IDS) {
+        const a = sheet.answers.find((x) => x.id === id);
+        expect(a, `${id} is marked noSlideNeeded and produced no row at all`).toBeTruthy();
+        expect(NOT_ASKED_WORDS, `${id} is marked noSlideNeeded but was charged for a slide anyway`).not.toContain(
+          a!.answer,
+        );
+      }
       // And it has to be there. A run that could not ask anything is precisely
       // the run that churns through scratch slides, so a sheet silent about
       // them is silent about the only thing that run left behind.
@@ -458,6 +470,31 @@ describe("the fake host's answer sheet", () => {
       expect(row?.detail).toMatch(/BindingCollection\.add/);
     } finally {
       faults.refuseBindings = null;
+    }
+  });
+
+  it("keeps sweeping after the host refuses it a slide, instead of bailing on the first", async () => {
+    // Round 15 is this bug, in the owner's own deck: `second pass over the
+    // questions that were never put {count: 10}`, ONE slide attempt two seconds
+    // later, `scratch slide landed but its id will not resolve`, and then
+    // nothing. Ten questions decided by a single coin flip on a host whose
+    // slide resolution is known to flap — and the `break` was silent, so the
+    // log could not tell "tried them all and failed" from "gave up at once".
+    //
+    // A window of 28 is the discriminator, measured rather than picked: it
+    // closes DURING the sweep, so the first attempts are refused and later ones
+    // succeed. With the loop continuing past a refusal that rescues 19 of 20;
+    // bailing on the first rescues none of them.
+    installHost([makeSlide("s1")]);
+    faults.newSlideRefusedForFirst = 28;
+    try {
+      const sheet = await runHostProbes("fake-refuses-then-relents-mid-sweep", "test");
+      const rescued = sheet.answers.filter((a) => a.detail?.includes("second pass"));
+      expect(rescued.length, "one refused slide ended the whole sweep").toBeGreaterThan(10);
+      const lost = sheet.answers.filter((a) => NOT_ASKED_WORDS.includes(a.answer));
+      expect(lost.length, `still lost: ${lost.map((a) => a.id).join(", ")}`).toBeLessThan(3);
+    } finally {
+      faults.newSlideRefusedForFirst = 0;
     }
   });
 
@@ -628,7 +665,7 @@ describe("a probe run that has lost its scratch slide", () => {
       // The cleanup row and the slideless question aside — see the sibling case
       // above for both. One is not a question; the other does not need what
       // this fault withholds.
-      const excused = new Set([SCRATCH_CLEANUP_ID, "untrack-available"]);
+      const excused = new Set([SCRATCH_CLEANUP_ID, ...NO_SLIDE_NEEDED_IDS]);
       for (const a of sheet.answers.filter((x) => !excused.has(x.id))) {
         expect(a.answer, `${a.id} claimed a host answer`).toBe("no-scratch-slide");
       }
