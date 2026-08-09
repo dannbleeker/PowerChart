@@ -556,6 +556,22 @@ an insert` stalled after a selection call, having passed the two rounds before.
 actually visible` and `what makes a long run slow down` each spent four rounds
   saying "it crashed again" and one picked round saying which call.
 
+- **A value recorded only on FAILURES cannot be compared against anything, and
+  this project keeps building them.** Four in one session: `idleMs` and
+  `afterAnswering` were written on stalls but not on the draws that survived;
+  the settle's two writes shared one label so a refusal named neither; and
+  `listChartsInDeck` traced only when a scan came back SHORT, which made every
+  deck scan in every round invisible. That last one has a price tag: round 10's
+  `stop a run part-way` took 39.4 seconds against 2.6-3.2s in the eight rounds
+  before it, and the log had a 39-second hole where the scan was. The stop
+  itself was instant — the verification after it was not, and nothing said so.
+  The scan is also the operation the quadratic per-slide cost predicts should
+  grow worst, since it reads every slide's shapes on a deck the battery keeps
+  adding to, and it was the one operation never measured. Before adding a
+  diagnostic field, ask what its value is on the runs that WORK; if the answer is
+  "it is not written", the field cannot discriminate and is not yet a
+  measurement.
+
 - **A stall is DEATH, not slowness — do not raise `BATCH_TIMEOUT_MS` hoping for
   an answer.** Seventeen abandoned calls across nine rounds, and not one of them
   ever came back: `a call we gave up on finally answered` appears zero times in

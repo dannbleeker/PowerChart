@@ -3905,6 +3905,55 @@ describe("a hostile config cannot take down a live insert", () => {
   }
 });
 
+describe("what a deck scan says about itself", () => {
+  /**
+   * It used to say nothing at all unless it came back short.
+   *
+   * The battery scans the deck about a dozen times a round — once per scenario,
+   * through `probeCharts` — and every one of those was invisible. Round 10 is
+   * what that cost: `stop a run part-way` reported 39.4 seconds against 2.6-3.2s
+   * in the eight rounds before it, and the log had a 39-second HOLE where the
+   * scan was. The stop itself was instant; the verification after it was not,
+   * and nothing in the file said so.
+   *
+   * It is also the one operation the quadratic per-slide cost predicts should
+   * grow worst — it reads every slide's shapes, on a deck the battery keeps
+   * adding to — and it was the one operation never measured.
+   */
+  it("reports a CLEAN scan, not only a short one", async () => {
+    installHost([makeSlide("s1"), makeSlide("s2")]);
+    setTracing(true);
+    try {
+      const scan = await listChartsInDeck();
+      expect(scan.unread, "this fixture was supposed to scan cleanly").toBe(0);
+      const line = traceLog().entries.find((e) => e.message === "scanned the deck for charts");
+      expect(line, "a clean scan left no trace, so a slow one is a hole in the log").toBeDefined();
+      expect(line?.data).toMatchObject({ slides: 2, unread: 0, complete: true });
+      expect(typeof line?.data?.ms, "no duration, which is the number the hole was hiding").toBe("number");
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("still says a short scan was short, in the same line", async () => {
+    // The negative control. Moving the trace out of the failure branch must not
+    // cost the failure branch its report — a scan that read nothing and one
+    // that read everything have to stay distinguishable.
+    installHost([makeSlide("s1"), makeSlide("s2")]);
+    setTracing(true);
+    faults.failSyncOn = 2;
+    try {
+      await listChartsInDeck();
+      const line = traceLog().entries.find((e) => e.message === "scanned the deck for charts");
+      expect(line?.data?.complete, "a scan that could not read a page reported itself complete").toBe(false);
+      expect(line?.data?.unread, "the unread count went missing with the old message").toBeGreaterThan(0);
+    } finally {
+      faults.failSyncOn = 0;
+      setTracing(false);
+    }
+  });
+});
+
 describe("the pictures a diagnostic round sends back", () => {
   /**
    * Three different reasons a slide comes back without a picture, and for a

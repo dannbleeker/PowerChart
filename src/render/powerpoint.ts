@@ -1922,6 +1922,7 @@ async function readChartsPage(
  * `DeckScan`, and `scanIsComplete` for the question every such caller owes.
  */
 export async function listChartsInDeck(opts: { withInventory?: boolean } = {}): Promise<DeckScan> {
+  const t0 = Date.now();
   const total = await slideCount();
   const charts: { configJson: string; target: EditTarget }[] = [];
   const inventory: SlideInventory[] = [];
@@ -1943,8 +1944,31 @@ export async function listChartsInDeck(opts: { withInventory?: boolean } = {}): 
     }
   }
   const scan = { charts, unread, short, tagsUnread, slides: total, ...(opts.withInventory ? { inventory } : {}) };
-  if (!scanIsComplete(scan))
-    trace("pane", "slides that would not answer a chart scan", { unread, short, tagsUnread, slides: total });
+  // ALWAYS, not only when the scan came back short.
+  //
+  // This used to trace on failure alone, which made every deck scan in every
+  // round invisible — and the battery scans the deck a dozen times a round,
+  // once per scenario through `probeCharts`. Round 10 is what that costs: `stop
+  // a run part-way` reported 39.4 seconds against 2.6-3.2s in the eight rounds
+  // before it, and the log had a 39-second HOLE where the scan was. The stop
+  // itself was instant; the verification after it was not, and nothing said so.
+  //
+  // It is also the one operation the quadratic-cost finding predicts should
+  // grow worst — it reads every slide's shapes, on a deck the battery is
+  // steadily adding to — and it was the one operation never measured.
+  //
+  // A value recorded only on failures cannot be compared against anything.
+  // That is the third time this session; `idleMs`, `afterAnswering` and the
+  // settle's labels were the others.
+  trace("pane", "scanned the deck for charts", {
+    ms: Date.now() - t0,
+    slides: total,
+    charts: charts.length,
+    unread,
+    short,
+    tagsUnread,
+    complete: scanIsComplete(scan),
+  });
   return scan;
 }
 
