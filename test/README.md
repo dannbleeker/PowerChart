@@ -68,6 +68,9 @@ belongs with the thing it tests, not with the reason it was written.)
   every office-js issue the codebase cites and that every watched term is a call
   this repo actually makes), `visible-charts` (the verdict half of the visual
   gate — the rasterising half runs in a real browser and cannot run here),
+  `host-history` (the arithmetic behind `UNSTABLE_ANSWERS` and the
+  fixture-swap decision — a streak counted from the end, with the words that
+  mean "never put" ignored so one bad night does not read as instability),
   `is-main` (whether a tool script was RUN or merely imported — three CLIs
   answered that wrong on Windows and exited 0 in silence, so both platforms are
   driven here rather than whichever one the runner happens to be),

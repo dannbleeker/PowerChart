@@ -239,6 +239,16 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   **with what was done about it** — including "no exposure", which records that
   somebody checked. Anything left out comes back next Monday. Five of the guards
   in this repo came from one manual sweep; this is so the next one is not luck.
+- **Count the rounds before you write down what this host "usually" does.**
+  `scripts/host-history.mjs <round*.json>` prints every question's answer per
+  round, ignores the words that mean the run never put it, and reports the
+  streak from the END. It also does the fixture-swap arithmetic this file asks
+  for ("replace it when a new sheet answers at least as much") rather than
+  leaving somebody to eyeball it. `UNSTABLE_ANSWERS` was written by hand from
+  whatever rounds were open at the time and four of its five entries had gone
+  stale by 2026-08-10 — one called a question "a coin" that had answered the
+  same way ten rounds running, which tells the next reader they may not build on
+  an answer that has in fact never moved.
 - **Dependabot's banner gets read, and the reading gets written down** in
   `docs/DEPENDENCY-ALERTS.md`. Same rule as the table above: an entry says what
   was decided, "no exposure" included. It sat at 9 alerts for weeks with nobody
