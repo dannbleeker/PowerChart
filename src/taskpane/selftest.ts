@@ -1020,7 +1020,28 @@ const chartIsVisible: Scenario = async (prefix) => {
   // Slot 2 — the two `insertOntoUsedSlide` draws take 0 and 1 on this same
   // slide, because both scenarios pick the first probe chart. See `sideSlot`.
   const { left, top, ...box } = sideSlot(2, await slideSize(), boxOf(host));
-  const c: ChartConfig = { ...cfg(`${prefix} visible`), ...box };
+  // TWO categories, not the sample's full set — the box was already quarter
+  // size and the shape count was not, which is what kept this scenario from
+  // running.
+  //
+  // Nine rounds, and it completed ONE of them. Every other round skipped it on
+  // `PowerPoint did not respond while drawing shapes 1-10 of 24 (45s)`. The
+  // paragraph above already reached for "draws fewer shapes" and only shrank
+  // the frame; `sampleConfig("clustered")` is 24 shapes over three batches
+  // whatever size it is drawn at, and this host stalls the first batch of a
+  // draw often enough that three of them is a coin flip repeated.
+  //
+  // The counterbalanced scenario made exactly this trade already and completes
+  // eight rounds in nine — its `tiny` chart is one batch, and its note says
+  // why: "what is under test is whether the FIRST sync of a draw comes back,
+  // and one batch asks that exactly". Nothing here is about density either.
+  // The question is whether the slide's PICTURE changes when a chart is drawn
+  // on it, and seven shapes change it as decisively as twenty-four.
+  const c: ChartConfig = {
+    ...cfg(`${prefix} visible`),
+    ...box,
+    data: { categories: ["A", "B"], series: [{ name: "s", values: [1, 2] }] },
+  };
   const drawn = await attempt("drawing the chart", () =>
     insertSceneIntoSlide(buildChart(c), { slideId, tagData: JSON.stringify(c), left, top }),
   );

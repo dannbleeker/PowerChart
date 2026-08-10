@@ -16,6 +16,7 @@ import {
 } from "./helpers/office-host";
 import {
   CHART_TAG,
+  SHAPES_PER_SYNC,
   requestStop,
   resetStop,
   isStopRequested,
@@ -761,6 +762,39 @@ describe("the scenarios the selection API unlocked", () => {
    * throwing without making it work, and traded a loud wrong answer for a
    * silent one. Both are failures. Only one can be diagnosed.
    */
+  /**
+   * The visibility chart fits in ONE batch, and that is the whole reason the
+   * scenario ever runs.
+   *
+   * It completed one round in nine. The other eight skipped on
+   * `PowerPoint did not respond while drawing shapes 1-10 of 24 (45s)` — this
+   * host stalls the first batch of a draw often enough that needing three of
+   * them is a coin flip repeated, and `sampleConfig("clustered")` is 24 shapes
+   * however small the frame it is drawn into. The scenario's own note had
+   * already reached for "draws fewer shapes" and only shrank the box.
+   *
+   * The counterbalanced scenario made this trade first and completes eight
+   * rounds in nine. Nothing here is about density: the question is whether the
+   * slide's PICTURE changes when a chart is drawn on it.
+   *
+   * Pinned on the batch TOTAL rather than the config, because that is the
+   * property that matters — a future edit that restores the full sample, or
+   * adds a series, costs nine more rounds of skips before anyone notices.
+   */
+  it("draws a chart small enough to land in a single batch", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    await runSelfTest("probe", "the chart is actually visible");
+    const draws = traceLog()
+      .entries.filter((e) => e.scope === "draw" && e.message === "batch committed")
+      .map((e) => (e.data as { total?: number }).total ?? 0);
+    expect(draws.length, "the scenario drew nothing at all — this no longer tests what it says").toBeGreaterThan(0);
+    expect(
+      Math.max(...draws),
+      `the visibility chart needs ${Math.max(...draws)} shapes, so more than one batch`,
+    ).toBeLessThanOrEqual(SHAPES_PER_SYNC);
+  });
+
   it("says why it could not rasterise, instead of quietly reporting nothing", async () => {
     installHost([makeSlide("s1")]);
     setTracing(true);
@@ -1519,12 +1553,31 @@ describe("the experiment that asks what makes a long run slow down", () => {
     const one = await series("s1", true);
     const fresh = await series("s1", false);
     const v = readDegradation(one, fresh);
-    // The load-bearing assertion: the FRESH arm grew. That is the one thing a
-    // context-accumulation story cannot produce, and the one thing that tells
-    // a reader shortening contexts will not help.
-    expect(v.freshContext, `fresh: ${fresh.join(",")}`).toBeGreaterThan(0.5);
-    expect(["host", "both"]).toContain(v.suspect);
+    // The VERDICT from the timed arms — robust, because "which of three words"
+    // rides out a tick of jitter in a way a threshold on a ratio does not.
+    expect(["host", "both"], `one: ${one.join(",")} | fresh: ${fresh.join(",")}`).toContain(v.suspect);
     expect(v.headline).toContain("THE HOST");
+
+    // The NUMBER moves onto synthetic arrays, for the reason its sibling below
+    // already sets out — and this test is the evidence that the reason applies
+    // here too.
+    //
+    // It was deliberately left alone when that one was fixed, on the grounds
+    // that `> 0.5` is coarse enough to ride out the clock. It is not. Windows
+    // resolves timers at ~15.6ms while the fault charges 6ms a sync, so the
+    // series climbs in steps three rounds wide; under full-suite load this went
+    // red having passed three times out of three in isolation.
+    //
+    // The load-bearing claim is that the FRESH arm grew — the one thing a
+    // context-accumulation story cannot produce, and the one thing that tells a
+    // reader shortening contexts will not help. Both arms climb 10 a round,
+    // hit equally, which is what "the host is slowing whatever the context
+    // does" looks like.
+    const flatOne = [100, 110, 120, 130, 140, 150, 160, 170, 180];
+    const flatFresh = [190, 200, 210, 220, 230, 240, 250, 260, 270];
+    const exact = readDegradation(flatOne, flatFresh);
+    expect(exact.freshContext, "a fresh-context arm that grew was not reported as growing").toBeGreaterThan(0.5);
+    expect(["host", "both"]).toContain(exact.suspect);
   });
 
   it("does not read a host that slows LINEARLY as a context problem", async () => {
