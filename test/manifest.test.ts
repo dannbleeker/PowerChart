@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 // @ts-expect-error — plain .mjs tools with no types. The rules live THERE so the
 // weekly published-install sweep and this test cannot drift apart.
-import { checkManifest } from "../scripts/manifest-rules.mjs";
+import { checkManifest, urlsIn } from "../scripts/manifest-rules.mjs";
 // @ts-expect-error — as above.
 import { judgePublished, reportBody } from "../scripts/check-published-install.mjs";
 
@@ -115,5 +115,30 @@ describe("the published install path", () => {
     expect(reportBody([], "v9.9.9")).toContain("sound");
     expect(reportBody(["something"], "v0.3.0")).toContain("v0.3.0");
     expect(reportBody(["something"], "v0.3.0")).toContain("Cut a release");
+  });
+});
+
+/**
+ * Which URLs the sweep will actually go and fetch.
+ *
+ * The first version filtered namespaces with `u.includes("schemas.microsoft.com")`,
+ * and CodeQL failed the PR for it — `js/incomplete-url-substring-sanitization`,
+ * high. The consequence here is not an injection: it is that any real URL
+ * carrying that string anywhere would be silently excused from being checked,
+ * which is the sanitiser deciding what the checker gets to look at.
+ */
+describe("the URLs a manifest asks the host to fetch", () => {
+  it("drops namespaces by hostname, and is not fooled by one in a query string", () => {
+    const urls = urlsIn(read("manifest-prod.xml"));
+    expect(urls.some((u: string) => u.includes("schemas.microsoft.com"))).toBe(false);
+    expect(urls.some((u: string) => u.includes("powerchart.struktureretsundfornuft.dk"))).toBe(true);
+    // The substring test excused this one. It is a real host and must be checked.
+    expect(urlsIn('"https://evil.example/x?ref=schemas.microsoft.com"')).toEqual([
+      "https://evil.example/x?ref=schemas.microsoft.com",
+    ]);
+    // And a subdomain is not the namespace host either.
+    expect(urlsIn('"https://schemas.microsoft.com.evil.example/x"')).toEqual([
+      "https://schemas.microsoft.com.evil.example/x",
+    ]);
   });
 });

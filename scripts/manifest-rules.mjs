@@ -84,7 +84,33 @@ export function checkManifest(xml, name, opts = {}) {
   return problems;
 }
 
-/** Every absolute URL a manifest asks the host to fetch. */
+/**
+ * Every absolute URL a manifest asks the host to FETCH.
+ *
+ * XML namespace declarations are not fetched, so they are dropped — but by
+ * HOSTNAME, not by substring. `u.includes("schemas.microsoft.com")` was the
+ * first attempt and CodeQL was right to fail it (`js/incomplete-url-substring-
+ * sanitization`): `https://anything.example/?x=schemas.microsoft.com` matches
+ * that test, and here the consequence is a real URL quietly excused from being
+ * checked at all — the sanitiser deciding what the checker gets to see.
+ *
+ * A URL that will not parse is KEPT. It cannot be a namespace we recognise, and
+ * a manifest carrying an unparseable URL is a finding rather than a thing to
+ * skip quietly.
+ */
+const NOT_FETCHED = new Set(["schemas.microsoft.com", "schemas.openxmlformats.org", "www.w3.org"]);
+
 export function urlsIn(xml) {
-  return [...new Set((xml.match(/https?:\/\/[^"'<>\s]+/g) ?? []).filter((u) => !u.includes("schemas.microsoft.com")))];
+  const found = xml.match(/https?:\/\/[^"'<>\s]+/g) ?? [];
+  return [
+    ...new Set(
+      found.filter((u) => {
+        try {
+          return !NOT_FETCHED.has(new URL(u).hostname);
+        } catch {
+          return true;
+        }
+      }),
+    ),
+  ];
 }
