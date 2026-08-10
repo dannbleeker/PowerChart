@@ -70,7 +70,14 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const ticks = rawTicks.filter((t) => t >= min - 1e-9 && t <= max + 1e-9);
   if (!ticks.length) ticks.push(max);
   const fmt = resolveFormat(ticks, cfg.numberFormat);
-  const toR = (v: number) => ((v - min) / (max - min || 1)) * r;
+  // Clamped at BOTH ends. It held values below `scale.min` on the centre and let
+  // anything above `scale.max` run past the outer radius unbounded — and
+  // `sampleConfig("radar")` ships `{min:0,max:5}`, so no bad scale has to be
+  // typed: edit one datasheet cell from 4 to 8, as anyone would for a 1-10
+  // maturity scale, and the vertex leaves the web and the canvas with no ring
+  // anywhere near it. A web is a picture of a scale; a point outside it is not
+  // on the scale.
+  const toR = (v: number) => ((Math.min(max, Math.max(min, v)) - min) / (max - min || 1)) * r;
   const angle = (c: number) => (360 / Math.max(1, n)) * c;
   // Per-spoke scales: normalise each spoke to its own maximum so spokes in
   // different KPI units become comparable in shape (numeric ticks dropped).
@@ -331,7 +338,8 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const ticks = rawTicks.filter((t) => t <= max + 1e-9);
   if (!ticks.length) ticks.push(max);
   const fmt = resolveFormat(ticks, cfg.numberFormat);
-  const toR = (v: number) => innerR + (Math.max(0, v) / (max || 1)) * (r - innerR);
+  // Same one-sided clamp, same fix — see the radar web above.
+  const toR = (v: number) => innerR + (Math.min(max, Math.max(0, v)) / (max || 1)) * (r - innerR);
   const sector = 360 / Math.max(1, n);
   const angle = (c: number) => sector * c;
   const pad = sector * 0.12;
