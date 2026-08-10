@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
+// @ts-expect-error — plain .mjs tools with no types. The rules live THERE so the
+// weekly published-install sweep and this test cannot drift apart.
+import { checkManifest, urlsIn } from "../scripts/manifest-rules.mjs";
+// @ts-expect-error — as above.
+import { judgePublished, reportBody } from "../scripts/check-published-install.mjs";
 
 /**
  * The manifests, checked offline against the rules that matter.
@@ -23,37 +28,120 @@ const MANIFESTS = ["manifest.xml", "manifest-excel.xml", "manifest-prod.xml", "m
 const read = (name: string) => readFileSync(fileURLToPath(new URL(`../${name}`, import.meta.url)), "utf8");
 
 describe("the add-in manifests", () => {
-  it.each(MANIFESTS)("%s declares a version Office will accept", (name) => {
-    const version = /<Version>([^<]+)<\/Version>/.exec(read(name))?.[1];
-    expect(version, `${name} has no <Version>`).toBeTruthy();
-    const parts = version!.split(".").map((p) => Number(p));
+  // The rules live in `scripts/manifest-rules.mjs` because a SECOND caller needs
+  // them: the file a user downloads is not this file, and the two have diverged
+  // twice. See `scripts/check-published-install.mjs`.
+  it.each(MANIFESTS)("%s satisfies every rule this project has been bitten by", (name) => {
+    expect(checkManifest(read(name), name)).toEqual([]);
+  });
+
+  it("would catch each of those rules being broken", () => {
+    // The rules are only worth importing if they can still fail. Every branch
+    // below is a thing this repo has actually shipped or nearly shipped.
+    const good = read("manifest-prod.xml");
+    // "Manifest Version Too Low" — an error on all four manifests since the day
+    // they were written, found by Microsoft's validator on its first CI run.
     expect(
-      parts.every((p) => Number.isInteger(p) && p >= 0),
-      `${name}: "${version}" is not a dotted number`,
-    ).toBe(true);
-    expect(parts.length, `${name}: "${version}" needs at least major.minor`).toBeGreaterThanOrEqual(2);
-    // The rule verbatim: "unsupported version number less than 1.0". A major of
-    // zero is what the four shipped manifests had, and it is the one thing here
-    // that has actually been wrong.
-    expect(parts[0], `${name}: "${version}" is below 1.0, which Office rejects`).toBeGreaterThanOrEqual(1);
+      checkManifest(good.replace(/<Version>[^<]+<\/Version>/, "<Version>0.1.0</Version>"), "manifest-prod.xml"),
+    ).toEqual([expect.stringContaining("below 1.0")]);
+    // A changed GUID is a different add-in: every sideload orphaned.
+    expect(
+      checkManifest(
+        good.replace(/<Id>[^<]+<\/Id>/, "<Id>00000000-0000-0000-0000-000000000000</Id>"),
+        "manifest-prod.xml",
+      ),
+    ).toEqual([expect.stringContaining("orphaned")]);
+    // A prod manifest can be perfectly CURRENT and full of localhost, if the
+    // rewrite in build-manifest.mjs ever stops matching.
+    expect(
+      checkManifest(good.replace("powerchart.struktureretsundfornuft.dk", "localhost:3000"), "manifest-prod.xml"),
+    ).toEqual([expect.stringContaining("localhost")]);
+    expect(checkManifest("<html>not a manifest</html>", "manifest-prod.xml")).toEqual([
+      expect.stringContaining("not an Office add-in manifest"),
+    ]);
+  });
+});
+
+/**
+ * The install path the README hands a user, which nothing else here can see.
+ *
+ * Every other gate in this repo reads the working tree. A user downloads the
+ * asset attached to the latest RELEASE, and those two have now diverged twice —
+ * v0.1.0 shipped the dev manifests, and v0.3.0 shipped the `<Version>0.1.0</Version>`
+ * that Microsoft's validator rejects, a fix that landed in the repo on
+ * 2026-08-06 and has still reached nobody.
+ *
+ * The network half runs weekly in `quality-sweep.yml`. This is the half that
+ * decides what it found, and it is the half that was missing: a byte comparison,
+ * not just a rules check, because the release was VALID when it was cut and went
+ * stale when main moved past it.
+ */
+describe("the published install path", () => {
+  const committed = read("manifest-prod.xml");
+
+  it("passes when the release carries exactly what is committed", () => {
+    expect(judgePublished([{ name: "manifest-prod.xml", published: committed, committed }])).toEqual([]);
+    // Line endings alone are not a finding — a release asset that has been
+    // through a checkout elsewhere can differ by \r, and crying wolf about that
+    // trains the reader to ignore this check inside a fortnight.
+    const crlf = committed.replace(/\n/g, "\r\n");
+    expect(judgePublished([{ name: "manifest-prod.xml", published: crlf, committed }])).toEqual([]);
   });
 
-  it.each(MANIFESTS)("%s keeps its own <Id>", (name) => {
-    // Changing an add-in's GUID makes it a different add-in: every sideload is
-    // orphaned and every deck's association with it is lost. `CLAUDE.md` says
-    // "never do this"; this is what makes it a test rather than a hope.
-    const id = /<Id>([^<]+)<\/Id>/.exec(read(name))?.[1];
-    const expected = name.startsWith("manifest-excel")
-      ? "c8a7e4b3-5d2f-4f9b-8a3c-8e6d1b2f7a54"
-      : "b7f6d3a2-4c1e-4e8a-9f2b-7d5c0a1e6f43";
-    expect(id, `${name}'s add-in GUID changed — every existing sideload would be orphaned`).toBe(expected);
+  it("says so when the release is missing the file the README names", () => {
+    // v0.1.0, verbatim: the only documented install path was a 404 for twelve
+    // days while release.yml sat correct and un-run.
+    expect(judgePublished([{ name: "manifest-prod.xml", published: null, committed }])).toEqual([
+      expect.stringContaining("not in the latest release"),
+    ]);
   });
 
-  it.each(["manifest-prod.xml", "manifest-excel-prod.xml"])("%s points at no localhost URL", (name) => {
-    // `build-manifest.mjs --check` already gates staleness in CI, which is a
-    // different question: a prod manifest can be perfectly current AND full of
-    // localhost if the rewrite ever stops matching. This asks the thing that
-    // makes the file worth sideloading.
-    expect(read(name)).not.toMatch(/localhost/i);
+  it("says so when main has moved past the release", () => {
+    // The live case, and the one a rules check alone cannot see: the published
+    // manifest is a perfectly well-formed manifest. It is just the OLD one.
+    const stale = committed.replace(/<Version>[^<]+<\/Version>/, "<Version>1.0.0.1</Version>");
+    const problems = judgePublished([{ name: "manifest-prod.xml", published: stale, committed }]);
+    expect(problems).toEqual([expect.stringContaining("NOT the committed one")]);
+    expect(problems[0]).toContain("Cut a release");
+  });
+
+  it("reports a published manifest Office would reject, whatever main says", () => {
+    const rejected = committed.replace(/<Version>[^<]+<\/Version>/, "<Version>0.1.0</Version>");
+    const problems = judgePublished([{ name: "manifest-prod.xml", published: rejected, committed }]);
+    expect(problems.some((p: string) => p.includes("below 1.0"))).toBe(true);
+  });
+
+  it("never reads a clean sweep as a broken one", () => {
+    expect(reportBody([], "v9.9.9")).toContain("sound");
+    expect(reportBody(["something"], "v0.3.0")).toContain("v0.3.0");
+    expect(reportBody(["something"], "v0.3.0")).toContain("Cut a release");
+  });
+});
+
+/**
+ * Which URLs the sweep will actually go and fetch.
+ *
+ * The first version filtered namespaces with `u.includes("schemas.microsoft.com")`,
+ * and CodeQL failed the PR for it — `js/incomplete-url-substring-sanitization`,
+ * high. The consequence here is not an injection: it is that any real URL
+ * carrying that string anywhere would be silently excused from being checked,
+ * which is the sanitiser deciding what the checker gets to look at.
+ */
+describe("the URLs a manifest asks the host to fetch", () => {
+  it("drops namespaces by hostname, and is not fooled by one in a query string", () => {
+    // Asserted on HOSTNAMES, not substrings — CodeQL flags a substring test
+    // against a URL wherever it appears, and it is right to: the assertion would
+    // pass for a host that merely carries the string. Same rule as the code.
+    const hosts = urlsIn(read("manifest-prod.xml")).map((u: string) => new URL(u).hostname);
+    expect(hosts).not.toContain("schemas.microsoft.com");
+    expect(hosts).toContain("powerchart.struktureretsundfornuft.dk");
+    // The substring test excused this one. It is a real host and must be checked.
+    expect(urlsIn('"https://evil.example/x?ref=schemas.microsoft.com"')).toEqual([
+      "https://evil.example/x?ref=schemas.microsoft.com",
+    ]);
+    // And a subdomain is not the namespace host either.
+    expect(urlsIn('"https://schemas.microsoft.com.evil.example/x"')).toEqual([
+      "https://schemas.microsoft.com.evil.example/x",
+    ]);
   });
 });

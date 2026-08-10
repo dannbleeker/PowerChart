@@ -249,16 +249,28 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
 - **Test files are named by topic, never by increment** (`test/README.md` has
   the map). No `batch-N` / `bug-hunt-N` / `coverage-*` grab-bags: a test
   belongs with the thing it tests, not with the reason it was written.
-- **Three sweeps run on a schedule, none of them gating a PR** — the office-js
-  tracker (above), plus `.github/workflows/quality-sweep.yml`: a **flake hunt**
-  (the suite three times under CPU load, reporting any test that disagreed with
-  itself — `scripts/flaky.mjs` tells that apart from a suite that is red the
-  same way every time) and a **mutation run** over `src/core` (`npx stryker run`,
-  scoped by `vitest.mutation.config.ts`). Mutation is the rule below, automated:
-  it answers "which assertions are decorative" for the whole engine at once,
-  where the stash-and-re-run answers it for one. Not required checks on purpose —
-  minutes-long jobs in front of every merge get switched off after the first bad
-  week.
+- **Four sweeps run on a schedule, none of them gating a PR** — the office-js
+  tracker (above), plus three in `.github/workflows/quality-sweep.yml`: a
+  **flake hunt** (the suite three times under CPU load, reporting any test that
+  disagreed with itself — `scripts/flaky.mjs` tells that apart from a suite that
+  is red the same way every time), a **mutation run** over `src/core`
+  (`npx stryker run`, scoped by `vitest.mutation.config.ts`), and an
+  **install-path check** (`scripts/check-published-install.mjs`). Mutation is
+  the rule below, automated: it answers "which assertions are decorative" for
+  the whole engine at once, where the stash-and-re-run answers it for one. Not
+  required checks on purpose — minutes-long jobs in front of every merge get
+  switched off after the first bad week.
+- **Every gate here reads the working tree; a user downloads the RELEASE.**
+  Those two have diverged twice, and both times a fully green repo said nothing.
+  v0.1.0 shipped the dev manifests while the README pointed at a
+  `manifest-prod.xml` that was not in the release at all — twelve days, with
+  `release.yml` sitting correct and un-run. Then v0.3.0 (2026-07-31) shipped
+  `<Version>0.1.0</Version>`, the version Microsoft's validator rejects outright;
+  #289 fixed the repo on 2026-08-06 and, with no release cut since, **the fix has
+  reached nobody.** The weekly check now compares what is published against what
+  is committed and says "cut a release" when they part. **After a fix that
+  changes a manifest, ask the owner for a release** — merging it is not shipping
+  it.
 - **When moving tests between files, pin the total first and check it after.**
   A reorg once silently deleted 43 tests — the suite still went green because
   the count was never compared. `npx vitest run | grep "Tests "` before and

@@ -52,8 +52,19 @@ jobs:
             echo "::endgroup::"
           done
           kill %1 %2 %3 %4 2>/dev/null || true
+          # `set +e` around the capture, exactly as office-js-watch.yml does it.
+          #
+          # Without it the step's default shell — Actions runs `bash -e {0}` —
+          # exits the instant flaky.mjs returns 3, and 3 IS THE FINDING. `code`
+          # was never read, `found=yes` was never written, the "File or update
+          # the flake report" step was skipped by its own `if`, and the one case
+          # this whole job exists for surfaced as an unexplained red step. The
+          # sibling sweep has had the guard since it was written; this one never
+          # did.
+          set +e
           node scripts/flaky.mjs /tmp/run-1.json /tmp/run-2.json /tmp/run-3.json > /tmp/flaky.md
           code=$?
+          set -e
           cat /tmp/flaky.md
           # 3 means "a test disagreed with itself", which is the finding. A plain
           # red suite across ALL runs is a broken build, not a flake, and must
@@ -77,6 +88,59 @@ jobs:
             gh issue reopen "$existing" || true
           else
             gh issue create --title "$title" --body-file /tmp/flaky.md
+          fi
+
+  # Does the install path in the README still work?
+  #
+  # Every other gate in this repo reads the working tree. A user downloads the
+  # asset attached to the latest RELEASE, and those two have diverged twice:
+  # v0.1.0 shipped the dev manifests while the README pointed at a
+  # `manifest-prod.xml` that was not in the release at all, and v0.3.0 shipped
+  # `<Version>0.1.0</Version>` — the version Microsoft's own validator rejects,
+  # fixed in the repo on 2026-08-06 by #289 and, with no release cut since,
+  # never delivered to anyone.
+  #
+  # Weekly rather than per-PR because a PR cannot break it and cannot fix it:
+  # what goes stale is the gap between main and the last release, and that grows
+  # on its own with nobody touching anything.
+  published-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check what a user actually downloads
+        id: install
+        run: |
+          # `set +e` around the capture — see the flake job above. Under the
+          # default `bash -e` the step dies on exit 3, which is the FINDING.
+          set +e
+          node scripts/check-published-install.mjs > /tmp/install.md
+          code=$?
+          set -e
+          cat /tmp/install.md
+          # 3 is "the published path is broken or stale"; 0 is sound; 2 means the
+          # check could not reach GitHub, which must not read as a clean bill.
+          if [ "$code" != "0" ] && [ "$code" != "3" ]; then
+            echo "the check itself could not run (exit $code)" >&2
+            exit "$code"
+          fi
+          if [ "$code" = "3" ]; then echo "found=yes" >> "$GITHUB_OUTPUT"; fi
+      - name: File or update the install-path report
+        if: steps.install.outputs.found == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="install watch: the published manifest is broken or stale"
+          existing=$(gh issue list --state all --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file /tmp/install.md
+            gh issue reopen "$existing" || true
+          else
+            gh issue create --title "$title" --body-file /tmp/install.md
           fi
 
   # Which assertions are decorative?
