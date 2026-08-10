@@ -301,6 +301,82 @@ function reportTrace(trace) {
 }
 
 /** The self-test verdicts, with the host bugs their own words give away. */
+/**
+ * Pool the rasterise/cheap-read arms across MANY rounds.
+ *
+ * `does a rasterise poison the next draw` is a counterbalanced control that
+ * makes four draws a round — two after a rasterise, two after a cheap read,
+ * interleaved so position cannot account for the difference. Four is enough to
+ * spot a call that fails EVERY time and far too few for anything smaller, so
+ * for eleven rounds it has correctly reported "no pattern" and correctly been
+ * unable to say more.
+ *
+ * Pooled over eight rounds the same arms read 5 stalls in 16 draws after a
+ * rasterise against 2 in 16 after a cheap read — 31% against 12.5%. That is a
+ * direction, and it is still not an answer: Fisher's exact on those counts is
+ * p≈0.39. Separating rates that close needs somewhere near 60-100 draws an arm,
+ * which is 30-50 more rounds at two an arm each.
+ *
+ * So the verdict a single round can reach is not the interesting one, and the
+ * evidence was accumulating in files nobody was adding up. This adds them up.
+ *
+ * A draw's outcome is NOT its `batch committed` line: that is logged before the
+ * sync, deliberately, because the sync is where a bad host goes quiet — so
+ * every stall has a `batch committed` of its own immediately before it. Pairing
+ * the two is how a first pass at this produced 0 stalls in 32 draws, and then
+ * an unrelated cut of the same data produced a 6x effect that was not there.
+ * The outcome is whether a `gave up waiting` lands between this draw's step and
+ * the next one.
+ */
+export function poolRasteriseArms(logs) {
+  const arms = { rasterise: { ok: 0, stall: 0 }, "cheap read": { ok: 0, stall: 0 } };
+  let rounds = 0;
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    rounds++;
+    const es = [...entries].sort((a, b) => (a.ms ?? 0) - (b.ms ?? 0));
+    const draws = [];
+    es.forEach((e, i) => {
+      const m = /^after a (rasterise|cheap read) #\d+: drawing$/.exec(String(e.data?.what ?? ""));
+      if (m) draws.push([i, m[1]]);
+    });
+    draws.forEach(([i, arm], k) => {
+      const end = k + 1 < draws.length ? draws[k + 1][0] : es.length;
+      let stalled = false;
+      for (let z = i + 1; z < end; z++) {
+        const e = es[z];
+        if (e.scope === "host" && e.message === "gave up waiting" && /drawing shapes/.test(String(e.data?.what ?? "")))
+          stalled = true;
+        if (/scenario (passed|FAILED|skipped)/.test(String(e.message))) break;
+      }
+      arms[arm][stalled ? "stall" : "ok"]++;
+    });
+  }
+  return { rounds, arms };
+}
+
+/** The pooled arms, printed — or nothing when no round carried the scenario. */
+function reportPool(logs) {
+  const { rounds, arms } = poolRasteriseArms(logs);
+  const total = Object.values(arms).reduce((n, a) => n + a.ok + a.stall, 0);
+  if (!total) return;
+  console.log(`\n  DOES A RASTERISE POISON THE NEXT DRAW — pooled over ${rounds} round(s)`);
+  for (const [name, a] of Object.entries(arms)) {
+    const n = a.ok + a.stall;
+    const rate = n ? `${((100 * a.stall) / n).toFixed(1)}%` : "—";
+    console.log(
+      `    after a ${name.padEnd(11)} ${String(a.stall).padStart(3)} stalled / ${String(n).padStart(3)} drawn = ${rate}`,
+    );
+  }
+  const n = Math.min(...Object.values(arms).map((a) => a.ok + a.stall));
+  if (n < 60)
+    console.log(
+      `    NOT an answer yet: ${n} draws in the smaller arm. Telling rates this close apart\n` +
+        `    needs nearer 60-100 an arm, which is dozens more rounds at two an arm each.`,
+    );
+}
+
 export function reportSelfTest(selftest) {
   if (!selftest.length) return 0;
   const failed = selftest.filter((s) => !s.ok && !s.skipped).length;
@@ -383,10 +459,12 @@ if (invokedDirectly) {
   const flags = args.filter((a) => a.startsWith("--"));
   const paths = args.filter((a) => !a.startsWith("--"));
   const deckPath = paths.find((p) => p.endsWith(".pptx"));
-  const logPath = paths.find((p) => p.endsWith(".json"));
+  const logPaths = paths.filter((p) => p.endsWith(".json"));
+  const logPath = logPaths[0];
   if (!logPath) {
     console.error("usage: node scripts/triage.mjs <deck.pptx> <run-log.json> [--all] [--json]");
     console.error("       node scripts/triage.mjs <crashed-run.json>            (no deck needed)");
+    console.error("       node scripts/triage.mjs <round-*.json>                (pools the counterbalanced arms)");
     process.exit(2);
   }
   let log;
@@ -396,6 +474,18 @@ if (invokedDirectly) {
     console.error(`could not read the run: ${err.message}`);
     process.exit(2);
   }
+  // Every round given, for the pooled view. Unreadable ones are skipped rather
+  // than fatal: pooling is a bonus on top of reading the FIRST file, and one
+  // bad archive should not stop the run in front of you being triaged.
+  const pooled = logPaths
+    .map((p) => {
+      try {
+        return JSON.parse(readFileSync(p, "utf8"));
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
   // A crashed run answers on its own. There is no deck to join it to — the run
   // never reached the point of producing one, which is the whole reason this
   // file exists — so requiring a .pptx would refuse the one artifact a crash
@@ -444,6 +534,7 @@ if (invokedDirectly) {
     reportDeckEvidence(log.deck);
     reportTrace(log.trace);
     const failed = reportSelfTest(selftest);
+    reportPool(pooled);
     process.exit(failed ? 1 : 0);
   }
   let deck;
@@ -471,6 +562,7 @@ if (invokedDirectly) {
     for (const { run, t } of results) report(deck, log, run, t, flags.includes("--all"));
     reportDeckEvidence(log.deck);
     reportSelfTest(selftest);
+    reportPool(pooled);
     if (!results.length && !selftest.length) console.log("\n  this log holds no runs and no self-test\n");
   }
   const disagreements =
