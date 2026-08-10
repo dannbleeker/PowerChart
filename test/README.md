@@ -68,6 +68,9 @@ belongs with the thing it tests, not with the reason it was written.)
   every office-js issue the codebase cites and that every watched term is a call
   this repo actually makes), `visible-charts` (the verdict half of the visual
   gate — the rasterising half runs in a real browser and cannot run here),
+  `is-main` (whether a tool script was RUN or merely imported — three CLIs
+  answered that wrong on Windows and exited 0 in silence, so both platforms are
+  driven here rather than whichever one the runner happens to be),
   `runbook` (the controls `docs/PUBLISHING.md` tells the owner to click are
   spelled the way the pane spells them — the starred row said "Run the whole
   round" for weeks and no control has ever carried that text, which cost a

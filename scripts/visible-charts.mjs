@@ -22,10 +22,20 @@
  * there is ink; the ink is not all one colour; it is inside the frame; and there
  * is neither almost none of it nor almost nothing but.
  */
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { accessSync, constants, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { chromium } from "playwright-core";
+import { isMain } from "./is-main.mjs";
 
-/** Where Chromium lives. The env var is what CI sets; the rest are what dev boxes have. */
+/**
+ * Where a browser lives. The env var is what CI sets; the rest are what dev
+ * boxes have.
+ *
+ * The Windows entries are here because the owner's box is Windows and had no
+ * candidate at all: playwright-core ships no browser, so `chromium.launch({})`
+ * threw, and before the entry guard was fixed the script never got that far
+ * anyway. Installed Chrome is what this repo already uses for its other visual
+ * checks.
+ */
 const BROWSER_CANDIDATES = [
   process.env.PLAYWRIGHT_CHROMIUM,
   process.env.CHROME_BIN,
@@ -33,6 +43,9 @@ const BROWSER_CANDIDATES = [
   "/usr/bin/chromium",
   "/usr/bin/chromium-browser",
   "/usr/bin/google-chrome",
+  "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
 ].filter(Boolean);
 
 /**
@@ -52,7 +65,10 @@ const BROWSER_CANDIDATES = [
 function findBrowser() {
   for (const path of BROWSER_CANDIDATES) {
     try {
-      readFileSync(path, { flag: "r" });
+      // `accessSync`, not `readFileSync`: the old check read the entire browser
+      // binary into memory — a few hundred megabytes — to answer "does this file
+      // exist", once per candidate, on a runner with a memory limit.
+      accessSync(path, constants.R_OK);
       return path;
     } catch {
       /* next */
@@ -201,6 +217,6 @@ async function main() {
   process.stdout.write(`\n${results.length} charts render something a person could see.\n`);
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+if (isMain(import.meta.url, process.argv[1])) {
   await main();
 }

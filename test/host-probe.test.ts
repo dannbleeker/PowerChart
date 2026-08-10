@@ -15,7 +15,7 @@ import {
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
 // copies of the same table is how a claim quietly stops matching its check.
-import { FAKE_BASELINE, diffAnswers, answersOf } from "../scripts/host-diff.mjs";
+import { FAKE_BASELINE, diffAnswers, answersOf, sheetOf } from "../scripts/host-diff.mjs";
 
 /**
  * The fake's own answer sheet, frozen.
@@ -42,7 +42,7 @@ afterEach(() => vi.unstubAllGlobals());
 /** The probe's own "this was never put" vocabulary — never a host answer. */
 const NOT_ASKED_WORDS = ["no-scratch-slide", "no-scratch-shape"];
 
-const sheetOf = async () => {
+const probeSheet = async () => {
   const answers = await runHostProbes("fake", "test");
   return Object.fromEntries(answers.answers.map((a) => [a.id, a.answer]));
 };
@@ -50,7 +50,7 @@ const sheetOf = async () => {
 describe("the fake host's answer sheet", () => {
   it("answers every question, and says what it claims", async () => {
     installHost([makeSlide("s1")]);
-    const sheet = await sheetOf();
+    const sheet = await probeSheet();
     // Two-sided, because a follow-up is conditional and a single list cannot
     // say both things. Every question a run ALWAYS puts is here, and nothing
     // here is a question this build does not know how to ask — an id outside
@@ -99,6 +99,34 @@ describe("the fake host's answer sheet", () => {
     expect(answersOf(sheet)).toEqual({ "untrack-available": "yes" });
     expect(answersOf({ nonsense: true })).toEqual({ nonsense: true });
     expect(answersOf(null)).toBeNull();
+    // A bare sheet is already the sheet; a bare map passes through, so the
+    // committed baseline still reads.
+    expect(sheetOf(sheet)).toBe(sheet);
+    expect(sheetOf({ nonsense: true })).toEqual({ nonsense: true });
+    expect(sheetOf(null)).toBeNull();
+  });
+
+  it("finds the sheet's HEADER inside a whole round's file, not only its answers", () => {
+    // `host-diff.mjs` unwrapped the answers and then read `source` and
+    // `requirementSets` off the OUTER object, so the round file the pane
+    // actually writes reported `REAL HOST ?` and `requirement sets: unknown`
+    // above a page of real answers. Which host it was, and whether it offers
+    // PowerPointApi 1.8, is what several open questions turn on.
+    const round = {
+      build: "3d17165 · 2026-08-10 12:43Z",
+      hostAnswers: {
+        kind: "powerchart-host-answers",
+        source: "PowerPoint · OfficeOnline · 0.0.0.0",
+        build: "3d17165 · 2026-08-10 12:43Z",
+        requirementSets: ["1.1", "1.8"],
+        answers: [{ id: "untrack-available", question: "?", answer: "yes", ms: 1 }],
+      },
+      selftest: { scenarios: [] },
+    };
+    expect(sheetOf(round).source).toBe("PowerPoint · OfficeOnline · 0.0.0.0");
+    expect(sheetOf(round).requirementSets).toContain("1.8");
+    // And the answers still come out of the same shape, through the same seam.
+    expect(answersOf(round)).toEqual({ "untrack-available": "yes" });
   });
 
   it("still comes back complete from a host at its worst", async () => {

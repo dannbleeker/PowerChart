@@ -218,15 +218,34 @@ const WHAT_IT_MEANS = {
     "The fake does not implement `untrack`, so every `untrack()` call in `powerpoint.ts` is a no-op under test and the proxy-release path is entirely unexercised. A real host saying 'yes' does not fix that; it means the path is real and still untested.",
 };
 
+/**
+ * Find the answer sheet inside whatever arrived — the sheet itself, or a whole
+ * round's file with the sheet nested in it.
+ *
+ * Split out of `answersOf` because the ANSWERS were being unwrapped and the
+ * HEADER was not: `host-diff.mjs` read `source` and `requirementSets` off the
+ * outer object, so a round file — the shape the pane actually writes, and the
+ * one `answersOf` exists to accept — printed `REAL HOST ?` and
+ * `requirement sets: unknown` above a page of real answers. Which host, and
+ * which API versions it offers, is not decoration here: the whole binding lead
+ * turns on whether PowerPointApi 1.8 is present, and the file said 1.1 through
+ * 1.10 while the report said it did not know.
+ *
+ * "Run the whole round" writes one file for both halves precisely so there is
+ * one thing to send; every reader of it has to unwrap the same way.
+ */
+export function sheetOf(file) {
+  if (file?.kind === "powerchart-host-answers") return file;
+  if (file?.hostAnswers) return sheetOf(file.hostAnswers);
+  return file ?? null;
+}
+
 /** Read a sheet, whichever shape it arrived in. */
-export function answersOf(sheet) {
+export function answersOf(file) {
+  const sheet = sheetOf(file);
   if (sheet?.kind === "powerchart-host-answers" && Array.isArray(sheet.answers)) {
     return Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
   }
-  // A whole round's file, with the sheet inside it. "Run the whole round"
-  // writes one file for both halves precisely so there is one thing to send;
-  // this tool refusing to read it would put the second upload straight back.
-  if (sheet?.hostAnswers) return answersOf(sheet.hostAnswers);
   // A bare map, e.g. the committed baseline.
   if (sheet && typeof sheet === "object" && !Array.isArray(sheet)) return sheet;
   return null;

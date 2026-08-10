@@ -22,6 +22,7 @@
  * keeps it free in CI.
  */
 import { readFileSync, writeFileSync } from "fs";
+import { isMain } from "./is-main.mjs";
 
 const MARK_FILE = new URL("../test/fixtures/test-count.json", import.meta.url);
 
@@ -84,4 +85,4 @@ function main() {
   else if (now > mark) writeFileSync(MARK_FILE, `${JSON.stringify({ tests: now }, null, 2)}\n`);
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) main();
+if (isMain(import.meta.url, process.argv[1])) main();
