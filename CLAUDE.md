@@ -239,6 +239,14 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   **with what was done about it** — including "no exposure", which records that
   somebody checked. Anything left out comes back next Monday. Five of the guards
   in this repo came from one manual sweep; this is so the next one is not luck.
+- **Dependabot's banner gets read, and the reading gets written down** in
+  `docs/DEPENDENCY-ALERTS.md`. Same rule as the table above: an entry says what
+  was decided, "no exposure" included. It sat at 9 alerts for weeks with nobody
+  looking, which is the state a scanner is worth nothing in — a standing red
+  count trains everyone to scroll past the one that matters. `npm audit fix`
+  without `--force` cleared four; the rest are upstream pins with the analysis
+  recorded. **Never take `npm audit`'s advice unread**: its proposed remedy for
+  `image-size` is to move `pptxgenjs` back three major versions.
 - **Stale documentation is a defect — fix it when you find it, in that turn.**
   Don't file it, don't mention it and move on. This applies to comments that
   justify a design with a claim that is no longer true, which is the expensive
