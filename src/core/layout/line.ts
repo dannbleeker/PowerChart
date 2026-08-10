@@ -959,6 +959,24 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
     for (let c = 0; c < n; c++) columnTop[c] = toX(posBase[c]);
   } else {
+    // The actuals/forecast divider, mirroring the vertical path. Across the
+    // plot at the boundary between two categories — which is a HORIZONTAL rule
+    // here, because the categories run down the side.
+    const fc = decor.forecastFrom;
+    if (fc != null && fc > 0 && fc < n) {
+      const dy = centers[fc - 1] + (centers[fc] - centers[fc - 1]) / 2;
+      nodes.push({
+        kind: "line",
+        x1: frame.x,
+        y1: dy,
+        x2: frame.x + frame.w,
+        y2: dy,
+        stroke: style.gridline,
+        strokeWidth: 1,
+        dash: [2, 3],
+        name: "forecast-divider",
+      });
+    }
     data.series.forEach((s, si) => {
       const color = seriesColor(style, si, s.color);
       let prev: { x: number; y: number } | null = null;
@@ -968,28 +986,62 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
           if (!decor.bridgeGaps) prev = null;
           continue;
         }
+        // Everything from here down was reading three decoration fields and
+        // stopping, so `forecastFrom`, `stepped` and the per-cell marker colour
+        // were byte-identical no-ops sideways. A projection drawn with the same
+        // solid stroke and filled marker as measured data is the worst of them:
+        // the reader is shown a forecast as if it were fact, on a chart that
+        // looks entirely correct. `stepped` is next — a step series drawn as
+        // straight interpolation claims the value slid where the data says it
+        // jumped.
+        const forecast = fc != null && c >= fc;
         const pt = { x: toX(v), y: centers[c] };
         columnTop[c] = Math.max(columnTop[c], pt.x);
-        if (prev)
-          nodes.push({
-            kind: "line",
-            x1: prev.x,
-            y1: prev.y,
-            x2: pt.x,
-            y2: pt.y,
-            stroke: color,
-            strokeWidth: 2,
-            name: `line-${si}-${c}`,
-          });
-        const r = 2.4;
+        if (prev) {
+          const p = prev;
+          const dashOpt = forecast ? { dash: [4, 3] } : {};
+          const seg = (x1: number, y1: number, x2: number, y2: number, suffix: string) =>
+            nodes.push({
+              kind: "line",
+              x1,
+              y1,
+              x2,
+              y2,
+              stroke: color,
+              strokeWidth: 2,
+              ...dashOpt,
+              name: `line-${si}-${c}${suffix}`,
+            });
+          // Turned, not reinterpreted: "after" still means hold the VALUE to
+          // the next category and jump there, which sideways is a move along y
+          // followed by a move along x.
+          if (decor.stepped === "after") {
+            seg(p.x, p.y, p.x, pt.y, "a");
+            seg(p.x, pt.y, pt.x, pt.y, "b");
+          } else if (decor.stepped === "before") {
+            seg(p.x, p.y, pt.x, p.y, "a");
+            seg(pt.x, p.y, pt.x, pt.y, "b");
+          } else if (decor.stepped === "center") {
+            const my = (p.y + pt.y) / 2;
+            seg(p.x, p.y, p.x, my, "a");
+            seg(p.x, my, pt.x, my, "b");
+            seg(pt.x, my, pt.x, pt.y, "c");
+          } else {
+            seg(p.x, p.y, pt.x, pt.y, "");
+          }
+        }
+        // Forecast points render hollow, and a per-cell colour highlights one
+        // (max/min/last) with a larger recoloured marker — both as vertical.
+        const cellColor = s.colors?.[c];
+        const r = cellColor ? 3.4 : 2.4;
         nodes.push({
           kind: "rect",
           x: pt.x - r,
           y: pt.y - r,
           w: r * 2,
           h: r * 2,
-          fill: color,
-          stroke: style.background,
+          fill: forecast && !cellColor ? style.background : (cellColor ?? color),
+          stroke: forecast && !cellColor ? color : style.background,
           strokeWidth: 1,
           name: `marker-${si}-${c}`,
         });

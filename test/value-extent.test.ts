@@ -586,3 +586,92 @@ describe("Target and Error rows follow the value axis, whichever way it runs", (
     for (const b of drawn) expect(b.h, "a value band was laid out as if the chart were vertical").toBeGreaterThan(b.w);
   });
 });
+
+/**
+ * What ELSE the rotation toggle used to drop.
+ *
+ * The Target/Error fix found the "assumes a vertical value axis" assumption in
+ * four places. It was in more. Each of these is a documented feature the chart
+ * silently omitted sideways — silently being the operative word: the output
+ * looks entirely correct, so nothing prompts anyone to check.
+ */
+describe("the rotation toggle keeps the decorations that mean something", () => {
+  const line = (horizontal: boolean, decorations: Record<string, unknown>) =>
+    ({
+      ...DEFAULT_SIZE,
+      kind: "line",
+      horizontal,
+      decorations: { categoryAxis: true, valueAxis: true, ...decorations },
+      data: {
+        categories: ["2022", "2023", "2024", "2025F", "2026F"],
+        series: [{ name: "revenue", values: [40, 46, 52, 58, 65] }],
+      },
+    }) as unknown as ChartConfig;
+
+  it("draws a forecast as a forecast in both orientations", () => {
+    // A projection rendered with the same solid stroke and the same filled
+    // marker as measured data shows the reader a guess as if it were fact.
+    for (const horizontal of [false, true]) {
+      const scene = buildChart(line(horizontal, { forecastFrom: 3 }));
+      const dashed = scene.nodes.filter(
+        (n) => n.kind === "line" && /^line-/.test(n.name ?? "") && (n as { dash?: number[] }).dash,
+      );
+      const hollow = scene.nodes.filter(
+        (n) => /^marker-/.test(n.name ?? "") && (n as { fill?: string }).fill === "#ffffff",
+      );
+      const divider = scene.nodes.filter((n) => n.name === "forecast-divider");
+      expect(dashed.length, `horizontal=${horizontal}: forecast segments are not dashed`).toBe(2);
+      expect(hollow.length, `horizontal=${horizontal}: forecast markers are not hollow`).toBe(2);
+      expect(divider.length, `horizontal=${horizontal}: no actuals/forecast divider`).toBe(1);
+    }
+  });
+
+  it("honours `stepped` in both orientations", () => {
+    // A step series drawn as straight interpolation claims the value slid
+    // gradually where the data says it jumped — the chart asserts something
+    // about the world that the numbers do not.
+    for (const horizontal of [false, true]) {
+      const stepped = JSON.stringify(buildChart(line(horizontal, { stepped: "after" })));
+      const plain = JSON.stringify(buildChart(line(horizontal, {})));
+      expect(stepped, `horizontal=${horizontal}: \`stepped\` was a silent no-op`).not.toBe(plain);
+    }
+  });
+
+  it("keeps lollipop, dot and dumbbell-range marks when the chart is turned", () => {
+    // A Cleveland dot plot and a dumbbell are NORMALLY horizontal — long
+    // category labels down the left is the whole point. Sideways, `range` gave
+    // two full-length bars from zero: the connector carrying the entire meaning
+    // gone, and the endpoints reading as two independent magnitudes.
+    for (const barStyle of ["range", "dot", "lollipop"]) {
+      for (const horizontal of [false, true]) {
+        const scene = buildChart({
+          ...DEFAULT_SIZE,
+          kind: "clustered",
+          horizontal,
+          decorations: { categoryAxis: true, valueAxis: true, barStyle },
+          data: {
+            categories: ["N", "S", "E", "W"],
+            series: [
+              { name: "2024", values: [20, 30, 25, 18] },
+              { name: "2025", values: [28, 34, 31, 26] },
+            ],
+          },
+        } as unknown as ChartConfig);
+        const dots = scene.nodes.filter((n) => n.kind === "ellipse");
+        expect(dots.length, `${barStyle} horizontal=${horizontal}: collapsed back to plain bars`).toBe(8);
+        for (const d of dots as unknown as { cx: number; cy: number }[]) {
+          expect(d.cx, `${barStyle} horizontal=${horizontal}: a dot ran off the frame`).toBeGreaterThanOrEqual(0);
+          expect(d.cy).toBeGreaterThanOrEqual(0);
+          expect(d.cx).toBeLessThanOrEqual(DEFAULT_SIZE.width!);
+          expect(d.cy).toBeLessThanOrEqual(DEFAULT_SIZE.height!);
+        }
+        if (barStyle === "range") {
+          expect(
+            scene.nodes.filter((n) => /^range-/.test(n.name ?? "")).length,
+            `range horizontal=${horizontal}: the connector is what carries the meaning`,
+          ).toBe(4);
+        }
+      }
+    }
+  });
+});
