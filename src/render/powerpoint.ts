@@ -6033,7 +6033,7 @@ function supports(version: string): boolean {
  * Ten is comfortably under the last known-good (18) and still coarse enough
  * that the round-trips (~0.1s each) disappear next to the drawing.
  */
-const SHAPES_PER_SYNC = 10;
+export const SHAPES_PER_SYNC = 10;
 
 /**
  * Did this chart take more than one sync to draw?
