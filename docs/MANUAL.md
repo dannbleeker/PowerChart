@@ -516,14 +516,14 @@ carries the shape list and the pictures.
 If you want to look at them first, do that before pressing it: the button works
 from the id list the round recorded, and reloading the pane drops that list.
 
-**Picture every slide** (off by default) removes the limit on that last part.
-Normally the first twelve added slides are photographed and the rest are recorded
-as never asked about — the pictures are the heaviest thing the add-in does, and
-they run at the end of a round. The limit is worth knowing about because it
-decides what a round can settle: a slide that reads back with no shapes is only
-*probably* empty, since this host will report a shape collection short without
-saying so, and the picture is what turns that into a fact. Tick it when an empty
-slide is the question; expect a slower finish and a much bigger file.
+**Picture every slide** is **on by default**, and it is what makes the pictures
+worth having. Without it the first twelve added slides are photographed and the
+rest are recorded as never asked about — and that limit decides what a round can
+settle, because a slide that reads back with no shapes is only *probably* empty:
+this host will report a shape collection short without saying so, and the
+picture is what turns a readback into a fact. Untick it for a struggling host or
+a smaller file; the pictures are the heaviest thing the add-in does and they run
+at the end of a round.
 
 **Verbose trace** records every step the add-in takes — each drawing batch, each
 slide the host loses, each call it stops waiting for, each repair action, and
