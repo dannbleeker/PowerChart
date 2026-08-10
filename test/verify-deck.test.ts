@@ -3,6 +3,7 @@ import JSZip from "jszip";
 // @ts-expect-error — plain .mjs tool, no types; the audit is deliberately
 // independent of src/ so it cannot inherit a bug from the code it audits.
 import { readDeckBytes, faultsIn } from "../scripts/verify-deck.mjs";
+import { tagPart, tagFirstShape } from "../src/render/ooxml";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -265,5 +266,45 @@ describe("counting what is inside the chart object", () => {
     ]);
     const audited = await readDeckBytes(Uint8Array.from(atob(built.base64), (c) => c.charCodeAt(0)));
     expect(audited.rows[0].chartShapes).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * Files this repo writes that PowerPoint would refuse, or that its own repair
+ * paths could not find.
+ */
+describe("what the writer must never emit", () => {
+  it("strips XML-illegal characters from a tag part, not just from the slide", () => {
+    // `xmlAttr` escaped `& < > " '` and nothing else, and it is the only writer
+    // of `ppt/tags/tagN.xml` — where the whole serialized ChartConfig lands as
+    // an attribute value. `JSON.stringify` escapes C0 controls and lone
+    // surrogates but NOT U+FFFE/U+FFFF, so those reached the part raw: the slide
+    // XML came out clean, the tags part was not well-formed, and PowerPoint
+    // offered to repair a file the renderer had called a success. The two
+    // sibling sinks have run `xmlText` first for exactly this reason.
+    const hostile = `ok${String.fromCharCode(0xffff)}${String.fromCharCode(0xfffe)}`;
+    const part = tagPart([["POWERCHART_CONFIG", JSON.stringify({ title: hostile })]]);
+    for (const code of [0xffff, 0xfffe]) {
+      expect(part.includes(String.fromCharCode(code)), `U+${code.toString(16)} survived into a tag part`).toBe(false);
+    }
+    // And the ordinary escaping still happens.
+    expect(tagPart([["k", `a"b&c<d`]])).toContain("&quot;");
+  });
+
+  it("names the shape it tags when a chart is too small to group", () => {
+    // "PowerChart" is the single string every downstream consumer keys on —
+    // `retagSlideChart`, `rescueGroupAndTag`, `slideHoldsOnlyChart`,
+    // `snapshotAddedSlides` and this file's own chart-object test. The
+    // fewer-than-two-children fallback hung the config on pptxgenjs's default
+    // `Text 0`, so an ordinary "no data yet" chart shipped re-editable in the
+    // file and invisible to every path that looks for one.
+    const slide =
+      `<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>` +
+      `<p:grpSpPr/></p:grpSpPr>` +
+      `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Text 0"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr></p:sp></p:spTree>`;
+    const out = tagFirstShape(slide, "rId9");
+    expect(out).toContain('name="PowerChart"');
+    expect(out, "the shape TREE was renamed instead of the shape").toContain('<p:cNvPr id="1" name=""/>');
+    expect(out).toContain('<p:tags r:id="rId9"/>');
   });
 });

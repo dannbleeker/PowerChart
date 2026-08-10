@@ -675,3 +675,56 @@ describe("the rotation toggle keeps the decorations that mean something", () => 
     }
   });
 });
+
+/**
+ * A chart may be zoomed. It may not be drawn off the slide.
+ */
+describe("a manual scale narrower than the data", () => {
+  it("clips at the axis instead of extrapolating off the canvas", () => {
+    // The pane invites this — "Axis scale min / max" are free-text boxes — and
+    // pinning a revenue chart to 0-100 (thinking percent) put the bars at
+    // y = -231558 on a 300pt canvas. The SVG preview hides it behind its
+    // viewBox, so the first anyone saw was a .pptx whose group extent exceeds
+    // the OOXML coordinate limit and which PowerPoint offers to repair.
+    const cfg = {
+      ...DEFAULT_SIZE,
+      kind: "clustered",
+      scale: { min: 0, max: 100 },
+      decorations: { valueAxis: true, categoryAxis: true },
+      data: { categories: ["Q1", "Q2"], series: [{ name: "Rev", values: [80000, 92000] }] },
+    } as unknown as ChartConfig;
+    const rects = buildChart(cfg).nodes.filter((n) => n.kind === "rect") as unknown as {
+      y: number;
+      h: number;
+    }[];
+    expect(rects.length, "nothing was drawn, so this proves nothing").toBeGreaterThan(0);
+    for (const r of rects) {
+      expect(r.y, "a bar was drawn above the canvas").toBeGreaterThanOrEqual(0);
+      expect(r.y + r.h, "a bar was drawn below the canvas").toBeLessThanOrEqual(DEFAULT_SIZE.height! + 1);
+    }
+  });
+
+  it("caps a chart dimension below the size pptxgenjs stops rounding", () => {
+    // pptxgenjs treats any number >= 100 as EMU already, so past 100 INCHES
+    // (7200pt) it writes the value through unrounded — and
+    // `ST_PositiveCoordinate` is an xsd:long, so that part is schema-invalid and
+    // the user meets the repair dialog. 7200pt is fifteen times the widest
+    // slide, so the ceiling costs nothing real.
+    expect(
+      buildChart({
+        ...DEFAULT_SIZE,
+        width: 7300,
+        kind: "clustered",
+        data: { categories: ["A"], series: [] },
+      } as unknown as ChartConfig).width,
+    ).toBe(7200);
+    expect(
+      buildChart({
+        ...DEFAULT_SIZE,
+        width: 900,
+        kind: "clustered",
+        data: { categories: ["A"], series: [] },
+      } as unknown as ChartConfig).width,
+    ).toBe(900);
+  });
+});

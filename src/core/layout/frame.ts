@@ -114,7 +114,23 @@ export function valueScale(
     min = ticks[0];
     max = ticks[ticks.length - 1];
   }
-  let toY = (v: number) => frame.y + frame.h - ((v - min) / (max - min || 1)) * frame.h;
+  // CLIPPED to the plot, which is what a manual scale narrower than the data
+  // has to mean.
+  //
+  // The repair above only catches a scale that is fully unusable. One that is
+  // merely far too narrow passed straight through and `toY` extrapolated with
+  // nothing to stop it: pin the axis to 0-100 on revenue data — which the pane
+  // invites, "Axis scale min / max" being free-text boxes — and the bars land at
+  // y = -231558 on a 300pt canvas. The SVG preview hides it behind its viewBox,
+  // so the first anyone sees of it is a .pptx whose group extent exceeds the
+  // OOXML coordinate limit, which PowerPoint offers to repair.
+  //
+  // Clamping is not a compromise here, it is the behaviour: every charting tool
+  // draws a value above the axis maximum as a bar reaching the top of the plot.
+  // Anything inside the scale is untouched, so this changes only what was
+  // previously drawn off the slide.
+  const clip = (y: number) => Math.max(frame.y, Math.min(frame.y + frame.h, y));
+  let toY = (v: number) => clip(frame.y + frame.h - ((v - min) / (max - min || 1)) * frame.h);
   let breakBand: ValueScale["breakBand"];
 
   // think-cell axis break: the [from, to] range is compressed into a small
