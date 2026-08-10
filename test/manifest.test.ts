@@ -129,9 +129,12 @@ describe("the published install path", () => {
  */
 describe("the URLs a manifest asks the host to fetch", () => {
   it("drops namespaces by hostname, and is not fooled by one in a query string", () => {
-    const urls = urlsIn(read("manifest-prod.xml"));
-    expect(urls.some((u: string) => u.includes("schemas.microsoft.com"))).toBe(false);
-    expect(urls.some((u: string) => u.includes("powerchart.struktureretsundfornuft.dk"))).toBe(true);
+    // Asserted on HOSTNAMES, not substrings — CodeQL flags a substring test
+    // against a URL wherever it appears, and it is right to: the assertion would
+    // pass for a host that merely carries the string. Same rule as the code.
+    const hosts = urlsIn(read("manifest-prod.xml")).map((u: string) => new URL(u).hostname);
+    expect(hosts).not.toContain("schemas.microsoft.com");
+    expect(hosts).toContain("powerchart.struktureretsundfornuft.dk");
     // The substring test excused this one. It is a real host and must be checked.
     expect(urlsIn('"https://evil.example/x?ref=schemas.microsoft.com"')).toEqual([
       "https://evil.example/x?ref=schemas.microsoft.com",
