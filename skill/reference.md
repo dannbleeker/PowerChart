@@ -197,8 +197,8 @@ weekday numbers (1=Mon … 7=Sun) sets a custom week, e.g. `[7,1,2,3,4]` for
 Sun–Thu. `Holiday` rows drop out of the scale too, and weekend/holiday shading
 switches off with it. Calendar timelines only; a no-op on a numeric one.
 
-| `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, vertical |
-| `Target` | bullet tick across each column; on waterfalls also a hatched gap-to-target segment + label |
+| `Error`, `Error+`, `Error-` | error bars at the column total / line point (± or asymmetric); stacked/clustered/line/area, either orientation |
+| `Target` | bullet tick across each column or bar (set `horizontal: true` for a conventional bullet graph — `decorations.bands` follow); on waterfalls also a hatched gap-to-target segment + label |
 | `Band low`, `Band high` | line charts: shaded confidence/uncertainty ribbon (rows never draw as lines) |
 | `Min`, `Q1`, `Median`, `Q3`, `Max` | boxplot five-number summary (whiskers to Min/Max, think-cell style); suffix "\| group" ("Min \| 2024") for side-by-side grouped boxes |
 | `Mean` | boxplot mean marker (×) |

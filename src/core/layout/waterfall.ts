@@ -321,6 +321,10 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: H ? undefined : scale.toY,
+      // The horizontal twin, published for the same reason `column.ts` publishes
+      // it: a `Target` row is extracted from the data whatever the orientation,
+      // and without a map to draw it back the values simply disappear.
+      valueToX: H ? (v: number) => frame.x + qOf(v) : undefined,
     },
   };
 }

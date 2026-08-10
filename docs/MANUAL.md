@@ -127,7 +127,7 @@ toggle — the axis and every decoration rotate with them.
 | `X line`, `Y line` | scatter partition lines |
 | `Trend` | OLS trend line with R² and p-value |
 | `Error`, `Error+`, `Error-` | error bars at the column total / line point (symmetric or asymmetric) |
-| `Target` | bullet tick across each column; on waterfalls also a hatched gap-to-target segment |
+| `Target` | bullet tick across each column — or across each bar with **Horizontal** on, which is how a bullet graph is usually drawn; on waterfalls also a hatched gap-to-target segment |
 | `Band low`, `Band high` | line charts: shaded confidence/uncertainty ribbon |
 | `Min`, `Q1`, `Median`, `Q3`, `Max`, `Mean` | boxplot five-number summary (+ mean marker) |
 | `Outlier <n>` | extra boxplot outlier dots |

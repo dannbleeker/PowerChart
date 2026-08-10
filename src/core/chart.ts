@@ -719,7 +719,13 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // Widen the auto scale so error bars and target ticks stay inside the plot.
   // valueExtent already folds the whiskers and ticks in — it has to, since Same
   // Scale reads it — so this only has to round the result to nice ticks.
-  if ((errors || targets) && !cfg.horizontal && cfg.scale?.max == null) {
+  //
+  // The `!cfg.horizontal` this carried was the THIRD place that assumption was
+  // written down, and the last one to bite: with the marks now drawn on a bar
+  // chart, an unwidened axis put a whisker for 34 at x = 530.9 on a 480-wide
+  // canvas. The widening was never orientation-specific — it is arithmetic on
+  // the value domain — it was only unreachable while nothing drew there.
+  if ((errors || targets) && cfg.scale?.max == null) {
     const ext = drawnExtent(cfg, errors, targets);
     if (ext) {
       const ticks = niceTicks(ext.min, ext.max, 5);
@@ -793,113 +799,112 @@ export function buildChart(rawCfg: ChartConfig): Scene {
       result = layoutColumns(cfg, style, decor);
   }
 
-  // Decorations assume a vertical value axis; skip them for bar orientation
-  // and butterfly charts.
-  const skipDecor =
-    cfg.horizontal ||
-    [
-      "butterfly",
-      "scatter",
-      "bubble",
-      "gantt",
-      "pie",
-      "doughnut",
-      "radar",
-      "heatmap",
-      "tilemap",
-      "cascade",
-      "funnel",
-      "waffle",
-    ].includes(cfg.kind);
+  // Two different reasons to skip, and they were one flag.
+  //
+  // Most decorations really do assume a vertical value axis. The Error and
+  // Target marks do not — they follow whichever axis carries the value, and the
+  // anchors already publish both maps. Folding "this kind has no decorations"
+  // together with "this chart is on its side" meant a `Target` row on a bar
+  // chart was extracted from the data and then never drawn back: the numbers
+  // the user typed vanished from the chart entirely, which is worse than
+  // undecorated, because the row would at least have rendered as a bar. That is
+  // the documented bullet-chart recipe, and a bullet graph is conventionally
+  // horizontal.
+  const decorlessKind = [
+    "butterfly",
+    "scatter",
+    "bubble",
+    "gantt",
+    "pie",
+    "doughnut",
+    "radar",
+    "heatmap",
+    "tilemap",
+    "cascade",
+    "funnel",
+    "waffle",
+  ].includes(cfg.kind);
+  const skipDecor = cfg.horizontal || decorlessKind;
+  /** The map from a value to its position, whichever way the value axis runs. */
+  const valueToPos = cfg.horizontal ? result.anchors.valueToX : result.anchors.valueToY;
+  /** Where a value mark may be drawn: any kind that has them, either orientation. */
+  const markValues = !decorlessKind && !!valueToPos;
   // Background bands go BEFORE the layout's nodes so they render behind the
   // data (scatter/bubble draw their own, in value units).
-  const bands = !skipDecor && decor.bands?.length ? bandNodes(cfg, style, decor, result.anchors) : [];
+  // Bands are the other half of the bullet recipe and follow the same rule:
+  // `bandNodes` reads the orientation itself now, so only the kind gates them.
+  const bands = !decorlessKind && decor.bands?.length ? bandNodes(cfg, style, decor, result.anchors) : [];
   const nodes = skipDecor
     ? [...bands, ...result.nodes]
     : [...bands, ...result.nodes, ...decorationNodes(cfg, style, decor, result.anchors)];
 
   // Error bars from Error / Error+ / Error− rows: a whisker with caps at the
   // column total (or line point), on the shared value scale.
-  if (errors && !skipDecor && result.anchors.valueToY) {
+  if (errors && markValues) {
     const a = result.anchors;
+    const H = !!cfg.horizontal;
     cfg.data.categories.forEach((_, c) => {
       const plus = errors.plus[c];
       const minus = errors.minus[c];
       if (plus == null && minus == null) return;
       const base = a.columnValue[c];
-      const x = a.categoryX[c];
+      // `categoryX` is the category's centre on the CROSS axis — its x on a
+      // column chart, its y on a bar. `types.ts` says so where it is declared.
+      const mid = a.categoryX[c];
       const capW = Math.min(a.categoryWidth[c] * 0.35, 10);
-      const yHi = a.valueToY!(base + (plus ?? 0));
-      const yLo = a.valueToY!(base - (minus ?? 0));
-      nodes.push({
-        kind: "line",
-        x1: x,
-        y1: yHi,
-        x2: x,
-        y2: yLo,
-        stroke: style.axis,
-        strokeWidth: 1,
-        name: `error-${c}`,
-      });
+      const hi = valueToPos!(base + (plus ?? 0));
+      const lo = valueToPos!(base - (minus ?? 0));
+      /** A line along the VALUE axis, at `mid` on the cross axis. */
+      const along = (v1: number, v2: number) =>
+        H ? { x1: v1, y1: mid, x2: v2, y2: mid } : { x1: mid, y1: v1, x2: mid, y2: v2 };
+      /** A cap ACROSS the value axis, at value `v`. */
+      const across = (v: number) =>
+        H
+          ? { x1: v, y1: mid - capW / 2, x2: v, y2: mid + capW / 2 }
+          : { x1: mid - capW / 2, y1: v, x2: mid + capW / 2, y2: v };
+      nodes.push({ kind: "line", ...along(hi, lo), stroke: style.axis, strokeWidth: 1, name: `error-${c}` });
       if (plus != null)
-        nodes.push({
-          kind: "line",
-          x1: x - capW / 2,
-          y1: yHi,
-          x2: x + capW / 2,
-          y2: yHi,
-          stroke: style.axis,
-          strokeWidth: 1,
-          name: `error-cap-hi-${c}`,
-        });
+        nodes.push({ kind: "line", ...across(hi), stroke: style.axis, strokeWidth: 1, name: `error-cap-hi-${c}` });
       if (minus != null)
-        nodes.push({
-          kind: "line",
-          x1: x - capW / 2,
-          y1: yLo,
-          x2: x + capW / 2,
-          y2: yLo,
-          stroke: style.axis,
-          strokeWidth: 1,
-          name: `error-cap-lo-${c}`,
-        });
+        nodes.push({ kind: "line", ...across(lo), stroke: style.axis, strokeWidth: 1, name: `error-cap-lo-${c}` });
     });
   }
 
   // Bullet-chart target ticks: a bold marker across each column at the
   // target value (combine with decorations.bands for the range zones).
-  if (targets && !skipDecor && result.anchors.valueToY) {
+  if (targets && markValues) {
     const a = result.anchors;
+    const H = !!cfg.horizontal;
     cfg.data.categories.forEach((_, c) => {
       const t = targets[c];
       if (t == null) return;
-      const x = a.categoryX[c];
+      const mid = a.categoryX[c];
       const half = Math.min(a.categoryWidth[c] * 0.62, 26);
-      const y = a.valueToY!(t);
-      nodes.push({
-        kind: "line",
-        x1: x - half,
-        y1: y,
-        x2: x + half,
-        y2: y,
-        stroke: style.text,
-        strokeWidth: 2.25,
-        name: `target-${c}`,
-      });
+      const v = valueToPos!(t);
+      // ACROSS the bar at the target value: a horizontal rule on a column
+      // chart, a vertical one on a bar. Same mark, same meaning, turned.
+      const tick = H
+        ? { x1: v, y1: mid - half, x2: v, y2: mid + half }
+        : { x1: mid - half, y1: v, x2: mid + half, y2: v };
+      nodes.push({ kind: "line", ...tick, stroke: style.text, strokeWidth: 2.25, name: `target-${c}` });
       // Budget-vs-actual bridge: on a waterfall, a hatched gap segment shows
       // the distance from the achieved level to the target.
       if (cfg.kind === "waterfall") {
         const actual = a.columnValue[c];
         const gap = t - actual;
         if (Math.abs(gap) > 1e-9) {
-          const yA = a.valueToY!(actual);
-          const w = a.categoryWidth[c];
+          const vA = valueToPos!(actual);
+          const thick = a.categoryWidth[c];
+          const lo = Math.min(v, vA);
+          const span = Math.abs(vA - v);
+          // The hatched gap runs ALONG the value axis and is as thick as the
+          // bar, whichever way round that is.
+          const box = H
+            ? { x: lo, y: mid - thick / 2, w: span, h: thick }
+            : { x: mid - thick / 2, y: lo, w: thick, h: span };
           nodes.push({
             kind: "rect",
-            x: x - w / 2,
-            y: Math.min(y, yA),
-            w,
-            h: Math.abs(yA - y),
+            ...box,
             fill: style.neutral,
             pattern: "diagonal",
             stroke: style.mutedText,
@@ -907,12 +912,14 @@ export function buildChart(rawCfg: ChartConfig): Scene {
             name: `target-gap-${c}`,
           });
           const fs = style.fontSize;
+          // Just clear of the bar on the cross axis, centred on the gap along
+          // the value axis — the same relationship in both orientations.
+          const labelBox = H
+            ? { x: lo - 4, y: mid - thick / 2 - fs * 1.5, w: span + 8, h: fs * 1.4 }
+            : { x: mid - thick / 2 - 4, y: lo - fs * 1.5, w: thick + 8, h: fs * 1.4 };
           nodes.push({
             kind: "text",
-            x: x - w / 2 - 4,
-            y: Math.min(y, yA) - fs * 1.5,
-            w: w + 8,
-            h: fs * 1.4,
+            ...labelBox,
             text: `Gap ${formatNumber(gap, { ...resolveFormat([t, actual], cfg.numberFormat), forceSign: true })}`,
             fontSize: fs * 0.95,
             bold: true,

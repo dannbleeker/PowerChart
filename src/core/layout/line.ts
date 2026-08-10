@@ -1022,6 +1022,10 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
       columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
       baselineY: x0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
+      // Published for the same reason the column and waterfall layouts publish
+      // it: `Error` and `Target` rows are extracted from the data whatever the
+      // orientation, and with no map to draw them back they simply vanish.
+      valueToX: toX,
     },
   };
 }

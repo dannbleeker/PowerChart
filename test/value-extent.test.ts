@@ -489,3 +489,100 @@ describe("columnValue on a clustered chart", () => {
     expect(label!.text).toContain("25");
   });
 });
+
+/**
+ * A bullet graph is conventionally horizontal, and until now that was the one
+ * orientation where it silently lost its data.
+ *
+ * `extractErrorRows` pulls `Target` and `Error*` rows out of the series for
+ * every kind that supports them, regardless of orientation. The blocks that
+ * draw them back were gated on `skipDecor` — which began with `cfg.horizontal`
+ * — and on `valueToY`, which the layouts leave undefined when horizontal. So on
+ * a bar chart the row was removed and never redrawn: the numbers the user typed
+ * vanished, which is worse than undecorated, because the row would at least
+ * have rendered as a bar.
+ */
+describe("Target and Error rows follow the value axis, whichever way it runs", () => {
+  const KINDS = ["stacked", "clustered", "waterfall", "line", "area"] as const;
+  const withRows = (kind: string, horizontal: boolean) =>
+    ({
+      ...DEFAULT_SIZE,
+      kind,
+      horizontal,
+      data: {
+        categories: ["A", "B", "C"],
+        series: [
+          { name: "Actual", values: [20, 30, 25] },
+          { name: "Target", values: [28, 34, 31] },
+          { name: "Error", values: [4, 4, 4] },
+        ],
+      },
+    }) as unknown as ChartConfig;
+
+  const marks = (scene: { nodes: { name?: string; kind: string }[] }, re: RegExp) =>
+    scene.nodes.filter((n) => n.kind === "line" && re.test(n.name ?? "")) as unknown as {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    }[];
+
+  it.each(KINDS)("%s draws its target ticks in both orientations", (kind) => {
+    for (const horizontal of [false, true]) {
+      const scene = buildChart(withRows(kind, horizontal));
+      const ticks = marks(scene, /^target-\d/);
+      expect(ticks.length, `${kind} horizontal=${horizontal}: the Target row was deleted and never drawn`).toBe(3);
+      // A tick runs ACROSS the bar: along x on a column chart, along y on a bar.
+      for (const t of ticks) {
+        const acrossX = Math.abs(t.x2 - t.x1) > Math.abs(t.y2 - t.y1);
+        expect(acrossX, `${kind} horizontal=${horizontal}: the tick is turned the wrong way`).toBe(!horizontal);
+      }
+    }
+  });
+
+  it.each(KINDS)("%s keeps every mark inside the frame, both ways", (kind) => {
+    // The widening that makes room for a whisker was ALSO gated on
+    // `!cfg.horizontal` — the third place that assumption was written down.
+    // Unwidened, a whisker for 34 landed at x = 530.9 on a 480-wide canvas.
+    for (const horizontal of [false, true]) {
+      const cfg = withRows(kind, horizontal);
+      const scene = buildChart(cfg);
+      const all = marks(scene, /^(target|error)/);
+      expect(all.length, `${kind} horizontal=${horizontal}: nothing drawn, so this proves nothing`).toBeGreaterThan(0);
+      for (const m of all) {
+        const xs = [m.x1, m.x2];
+        const ys = [m.y1, m.y2];
+        expect(Math.min(...xs), `${kind} horizontal=${horizontal}: a mark ran off the left`).toBeGreaterThanOrEqual(0);
+        expect(Math.max(...xs), `${kind} horizontal=${horizontal}: a mark ran off the right`).toBeLessThanOrEqual(
+          cfg.width!,
+        );
+        expect(Math.min(...ys), `${kind} horizontal=${horizontal}: a mark ran off the top`).toBeGreaterThanOrEqual(0);
+        expect(Math.max(...ys), `${kind} horizontal=${horizontal}: a mark ran off the bottom`).toBeLessThanOrEqual(
+          cfg.height!,
+        );
+      }
+    }
+  });
+
+  it("draws the bullet's range bands on a bar chart too", () => {
+    // The other half of the documented recipe, dropped by the same gate. A
+    // value band is a range of VALUES whichever way the chart is turned, so on
+    // a bar it is a vertical strip spanning the plot's height.
+    // Inside the value domain — a band entirely outside the plot is clipped to
+    // nothing and dropped, which is correct and would make this vacuous.
+    const bands = {
+      bands: [
+        { axis: "y", from: 0, to: 15 },
+        { axis: "y", from: 15, to: 30 },
+      ],
+    };
+    const cfg = { ...withRows("stacked", true), decorations: bands } as unknown as ChartConfig;
+    const drawn = buildChart(cfg).nodes.filter((n) => /^band-\d/.test(n.name ?? "")) as unknown as {
+      w: number;
+      h: number;
+    }[];
+    expect(drawn.length, "the range bands were dropped on a bar chart").toBe(2);
+    // Strips ACROSS the value axis: full plot height, narrower than they are tall.
+    for (const b of drawn) expect(b.h, "a value band was laid out as if the chart were vertical").toBeGreaterThan(b.w);
+  });
+});
