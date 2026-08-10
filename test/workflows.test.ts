@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { execFileSync } from "child_process";
 
 /**
@@ -50,6 +50,56 @@ describe("the Pages deploy workflow", () => {
     // serving neither commit.
     expect(pages).toMatch(/concurrency:/);
     expect(pages, "a queued Pages deploy may not cancel the one in flight").toMatch(/cancel-in-progress:\s*false/);
+  });
+});
+
+describe("a workflow step that reads an exit code", () => {
+  /**
+   * `code=$?` under Actions' default shell never runs.
+   *
+   * Every `run:` block is executed as `bash -e {0}`, so a non-zero exit from a
+   * bare command ends the step on the spot — the next line does not run. Two
+   * sweeps in this repo are built on reading a deliberate exit code (3 = "there
+   * is something to report"), and one of them captured it without disabling
+   * `-e` first. The step died the instant the sweep found something, `code` was
+   * never read, `found=yes` was never written, and the "File the report" step
+   * was skipped by its own `if`. The one outcome the job exists to produce was
+   * the one outcome it could not produce, and it looked like a broken sweep.
+   *
+   * `office-js-watch.yml` had the `set +e` guard from the day it was written.
+   * `quality-sweep.yml` never did — the same author, the same pattern, one file
+   * protected and one not, which is how this class of bug survives in this repo.
+   * Checked rather than remembered.
+   */
+  const dir = ".github/workflows";
+  const files = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f));
+
+  it("turns `set -e` off first, or the finding kills the step meant to report it", () => {
+    const offenders: string[] = [];
+    let captures = 0;
+    for (const file of files) {
+      const lines = readFileSync(`${dir}/${file}`, "utf8").split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (!/^\s*[A-Za-z_]\w*=\$\?\s*$/.test(lines[i])) continue;
+        captures++;
+        let guarded = false;
+        // Backwards to the top of this `run:` block only — a `set +e` in some
+        // other step of the same file protects nothing.
+        for (let j = i - 1; j >= 0; j--) {
+          if (/^\s*(-\s+)?(run|uses|name|id|with|env|shell):/.test(lines[j])) break;
+          if (/^\s*set \+e\s*$/.test(lines[j])) {
+            guarded = true;
+            break;
+          }
+          if (/^\s*set -e\s*$/.test(lines[j])) break;
+        }
+        if (!guarded) offenders.push(`${file}:${i + 1}  ${lines[i].trim()}`);
+      }
+    }
+    expect(offenders, "these capture $? under `bash -e`, so the line never runs when it matters").toEqual([]);
+    // A detector that scanned nothing reports a clean sweep. Both sweeps read an
+    // exit code, so finding fewer than two means the scan stopped working.
+    expect(captures, "no `code=$?` found at all — the scan matched nothing").toBeGreaterThanOrEqual(2);
   });
 });
 
