@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 // @ts-expect-error — plain .mjs tools, no types; both are deliberately
 // independent of src/ so they cannot inherit a bug from the code they audit.
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
@@ -473,4 +477,63 @@ describe("triage — naming the host bug behind a failure", () => {
     expect(knownBug("empty slide left behind by a lost add")).toBeNull();
     expect(knownBug("")).toBeNull();
   });
+});
+
+/**
+ * The tool's own documented invocation must not print LESS than the degraded one.
+ *
+ * `reportTrace` was reachable only from the no-deck branch, so
+ * `triage.mjs <deck.pptx> <run-log.json>` — the form in the usage line and in
+ * CLAUDE.md, the one you use when you actually have a deck — dropped the entry
+ * histogram, "phases an error escaped", the problems tally and every
+ * `known host bug: office-js#…` annotation, and said nothing about it. A round
+ * with a trace and no self-test went further and reported "this log holds no
+ * runs and no self-test" over 186 entries, exit 0.
+ *
+ * Driven through the CLI rather than the exported functions on purpose: what
+ * was wrong was the WIRING, and every function involved was already correct.
+ */
+describe("triage's two invocations", () => {
+  const run = (args: string[]) =>
+    spawnSync(process.execPath, ["scripts/triage.mjs", ...args], { encoding: "utf8", timeout: 60_000 });
+
+  it("reports the trace whether or not a deck was passed", async () => {
+    const log = {
+      build: "test-build",
+      host: "test-host",
+      runs: [],
+      trace: {
+        summary: {
+          steps: [{ scope: "draw", message: "batch committed", n: 2 }],
+          problems: [
+            {
+              text: "PowerPoint did not respond while drawing shapes 1-10 of 24 (45s) | at=drawing the chart's shapes",
+              n: 1,
+            },
+          ],
+        },
+        entries: [
+          { ms: 1, scope: "draw", message: "batch committed" },
+          { ms: 2, scope: "draw", message: "batch committed" },
+        ],
+      },
+      selftest: [],
+    };
+    const dir = mkdtempSync(join(tmpdir(), "pc-triage-"));
+    const logPath = join(dir, "round.json");
+    writeFileSync(logPath, JSON.stringify(log));
+
+    const withoutDeck = run([logPath]);
+    const withDeck = run(["examples/showcase.pptx", logPath]);
+
+    // The trace is a property of the FILE, like the structural faults, so both
+    // forms must show it — and in particular the problem line, which is the
+    // most locating thing in any round.
+    expect(withoutDeck.stdout).toMatch(/TRACE 2 entries/);
+    expect(withDeck.stdout, "the deck path dropped the whole trace section").toMatch(/TRACE 2 entries/);
+    expect(withDeck.stdout).toMatch(/did not respond while drawing/);
+    // And a round that carries a trace is never described as holding nothing.
+    expect(withDeck.stdout).not.toMatch(/holds no runs and no self-test/);
+    rmSync(dir, { recursive: true, force: true });
+  }, 120_000);
 });

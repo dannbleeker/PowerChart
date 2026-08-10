@@ -39,6 +39,7 @@
  * description, which is long, and whose wording is the validator's to change.
  */
 import { validateFile } from "@xarsh/ooxml-validator";
+import { isMain } from "./is-main.mjs";
 
 /**
  * Findings that are known, understood, and deliberately not fixed.
@@ -104,7 +105,15 @@ async function main(argv) {
   return bad ? 1 : 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// The FOURTH spelling of this guard, and the fourth one wrong on Windows:
+// `file://${process.argv[1]}` builds `file://C:\repo\scripts\validate-ooxml.mjs`
+// against an `import.meta.url` of `file:///C:/repo/scripts/validate-ooxml.mjs`.
+// Never equal — so the OOXML grammar gate printed nothing and exited 0 on the
+// owner's box, a clean pass from a check that never opened the file. Its three
+// siblings were fixed hours earlier and a grep for THEIR wording did not reach
+// this one, which is why `test/is-main.test.ts` now checks the shape of every
+// guard in the repo rather than any single spelling of it.
+if (isMain(import.meta.url, process.argv[1])) {
   main(process.argv.slice(2)).then((code) => {
     process.exitCode = code;
   });

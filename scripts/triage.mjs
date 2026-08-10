@@ -561,9 +561,20 @@ if (invokedDirectly) {
     }
     for (const { run, t } of results) report(deck, log, run, t, flags.includes("--all"));
     reportDeckEvidence(log.deck);
+    // The trace belongs to the FILE, like the faults above, and it was reachable
+    // only from the no-deck branch. So the tool's own documented invocation —
+    // `triage.mjs <deck.pptx> <run-log.json>`, the one in its usage line and in
+    // CLAUDE.md — printed 28 FEWER lines than the degraded one-file form and
+    // said nothing about it. What went missing: the entry histogram, "phases an
+    // error escaped", the problems tally, and every `known host bug: office-js#…`
+    // annotation — the most locating lines in the whole log. A round carrying a
+    // trace and no self-test went further and reported "this log holds no runs
+    // and no self-test" over 186 entries, then exited 0.
+    reportTrace(log.trace);
     reportSelfTest(selftest);
     reportPool(pooled);
-    if (!results.length && !selftest.length) console.log("\n  this log holds no runs and no self-test\n");
+    if (!results.length && !selftest.length && !log?.trace)
+      console.log("\n  this log holds no runs and no self-test\n");
   }
   const disagreements =
     results.reduce((n, { t }) => n + t.disagreements, 0) + selftest.filter((s) => !s.ok && !s.skipped).length;

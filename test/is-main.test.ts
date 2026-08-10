@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "fs";
 // @ts-expect-error — a plain .mjs tool with no types.
 import { isMain } from "../scripts/is-main.mjs";
 
@@ -68,5 +69,51 @@ describe("isMain", () => {
     const cwd = process.cwd();
     const url = new URL(`file://${cwd.replace(/\\/g, "/").replace(/^([A-Za-z]:)/, "/$1")}/scripts/flaky.mjs`).href;
     expect(isMain(url, "scripts/flaky.mjs", process.platform)).toBe(true);
+  });
+});
+
+/**
+ * And every script uses THAT predicate, not a fifth spelling of its own.
+ *
+ * Three scripts were fixed in the morning by grepping for the wording they
+ * shared — `import.meta.url.endsWith(argv[1].split("/").pop())`. A fourth,
+ * `validate-ooxml.mjs`, wrote the same idea a different way,
+ * `import.meta.url === \`file://${process.argv[1]}\``, and the grep sailed past
+ * it: `file://C:\repo\…` never equals `file:///C:/repo/…`, so the OOXML grammar
+ * gate exited 0 without opening the file, for as long as it has existed.
+ *
+ * Four spellings, four bugs, one of them found only after the "sweep". So this
+ * does not look for a wording. It asserts the SHAPE: a script that decides
+ * whether it is the CLI must ask `is-main.mjs`.
+ */
+describe("every tool script asks the same question the same way", () => {
+  const dirs = ["scripts", "skill/scripts"];
+  const files = dirs.flatMap((d) =>
+    readdirSync(d)
+      .filter((f) => f.endsWith(".mjs"))
+      .map((f) => `${d}/${f}`),
+  );
+
+  it("uses isMain(), never a hand-rolled comparison against import.meta.url", () => {
+    const offenders: string[] = [];
+    let guards = 0;
+    for (const file of files) {
+      if (file.endsWith("is-main.mjs")) continue; // the definition, and its docstring quotes the bad forms
+      const src = readFileSync(file, "utf8");
+      // Comments are stripped first: three of these files explain the old bug in
+      // prose, and a detector that reads its own postmortem as a violation is
+      // one somebody deletes.
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const usesImportMeta = /import\.meta\.url/.test(code.replace(/new URL\([^)]*import\.meta\.url[^)]*\)/g, ""));
+      if (!usesImportMeta) continue;
+      guards++;
+      if (!/isMain\(\s*import\.meta\.url\s*,\s*process\.argv\[1\]\s*\)/.test(code)) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders, "these hand-roll the CLI check; three of four such spellings were wrong on Windows").toEqual([]);
+    // A scan that matched nothing reports a clean sweep. Several scripts are
+    // CLIs, so finding none means the detector stopped working.
+    expect(guards, "no entry guard found at all — the scan matched nothing").toBeGreaterThanOrEqual(4);
   });
 });

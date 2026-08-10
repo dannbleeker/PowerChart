@@ -205,10 +205,17 @@ type Probe = {
  *
  * None of them is in any probe's own vocabulary, which is the point: a diff
  * that mistook one for an answer would report a host divergence that nobody
- * ever asked about. Both were earned the same way, a round apart — see
+ * ever asked about. They were earned the same way, rounds apart — see
  * `ProbeSetupFailed`.
+ *
+ * EXPORTED because `NEVER_ASKED` in `scripts/host-baseline.mjs` is the same
+ * vocabulary, read by the diff tool — and a comment promising the two are kept
+ * in step is not a mechanism. `not-asked` was added here and not there, so every
+ * question the mute breaker abandons was being compared against the fake and
+ * reported as a real-host divergence. `test/host-probe.test.ts` asserts the two
+ * sets are equal now.
  */
-const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+export const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
 
 /**
  * Consecutive unanswered questions before the probe stops asking.

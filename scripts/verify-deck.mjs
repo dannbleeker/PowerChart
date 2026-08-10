@@ -180,6 +180,15 @@ export async function readDeckBytes(bytes) {
     rows.push({
       index: i,
       slot: slot?.i ?? null,
+      // Its own flag, exactly like `configMalformed` below, because the row
+      // cannot carry it otherwise: a `{malformed}` marker has no `i`, so
+      // `slot?.i ?? null` collapses it to null and the fault check —
+      // `r.slot !== null && typeof r.slot !== "number"` — could never fire for
+      // the one case it was written for. A deck this repo emitted with a corrupt
+      // slot tag was certified "no structural faults" and exited 0; triage then
+      // counted the slide as carrying no slot tag and reported its item LOST,
+      // blaming the host for dropping a slide sitting right there.
+      slotMalformed: typeof slot?.malformed === "string",
       title: slot?.title ?? null,
       run: slot?.run ?? null,
       shapes: shapes.length,
@@ -251,7 +260,8 @@ export function faultsIn({ rows, allTagParts, referencedTagParts, types }) {
       faults.push(
         `slide ${r.index + 1}: shape id(s) ${r.duplicateShapeIds.join(", ")} used more than once — PowerPoint will offer to repair the file`,
       );
-    if (r.slot !== null && typeof r.slot !== "number") faults.push(`slide ${r.index + 1}: slot tag is malformed`);
+    if (r.slotMalformed || (r.slot !== null && typeof r.slot !== "number"))
+      faults.push(`slide ${r.index + 1}: slot tag is malformed`);
     // A config with nothing to hang it on would be unreachable from the pane.
     if (r.config && !r.chartObject)
       faults.push(`slide ${r.index + 1}: carries a config tag but no "${GROUP_NAME}" object to load it from`);
