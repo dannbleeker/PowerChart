@@ -37,9 +37,20 @@ writeFileSync(
       type: "module",
       dependencies: {
         pptxgenjs: "^4.0.1",
-        // Rasteriser for render:"image" mode. Optional at runtime — the CLI
-        // only imports it when a config sets render:"image", so a shapes-only
-        // skill install still works if npm can't pull the native binary.
+      },
+      // Rasteriser for render:"image" mode — and OPTIONAL now means optional.
+      //
+      // It used to sit in `dependencies` under a comment saying a shapes-only
+      // install still works if npm cannot pull the native binary. The runtime
+      // half of that is true, since the CLI lazy-imports it. The INSTALL half
+      // was not: npm resolves a manifest atomically, so a registry that will not
+      // serve a scoped native package — a mirrored corporate one, which is
+      // exactly what this add-in's users have — aborts the whole install and
+      // rolls back. No node_modules at all, pptxgenjs included, so the
+      // shapes-only path SKILL.md says needs nothing extra was dead as well.
+      //
+      // `optionalDependencies` is the field that means what the comment claimed.
+      optionalDependencies: {
         "@resvg/resvg-js": "^2.6.2",
       },
     },

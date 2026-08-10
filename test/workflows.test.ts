@@ -118,15 +118,31 @@ describe("the source tree stays searchable", () => {
    * A file nothing can search is a file nothing will fix, so this is checked
    * rather than remembered.
    */
-  it("has no NUL byte in any tracked source file", () => {
+  it("has no invisible control character in any tracked source file", () => {
     const files = execFileSync("git", ["ls-files", "*.ts", "*.mjs", "*.js", "*.json", "*.md", "*.html", "*.css"], {
       encoding: "utf8",
       maxBuffer: 8 << 20,
     })
       .split("\n")
       .filter(Boolean);
-    const withNul = files.filter((f) => readFileSync(f).includes(0));
-    expect(withNul, "grep reports these as binary and skips them entirely").toEqual([]);
+    // Widened from NUL to every C0 control except tab, newline and carriage
+    // return, because NUL is not the only one that gets in — and the second one
+    // did, hours after this test was written. A python heredoc patching a regex
+    // turned `\b` into a literal BACKSPACE (0x08) inside `GANTT_DATE_ROW`,
+    // which reads as a word-boundary in the diff, is invisible to grep and to
+    // the Read tool, and silently changed what the pattern matched. `CLAUDE.md`
+    // has a rule against patching escapes that way; a rule is not a check.
+    // Written as a character-code test rather than a regex literal on purpose:
+    // a regex range for the control characters has to SPELL them, and spelling
+    // them is what put four of them in this very line the first time it was
+    // written. Codes cannot be mangled by whatever edits this next.
+    const isControl = (code: number) => code < 32 && code !== 9 && code !== 10 && code !== 13;
+    const hasControl = (text: string) => {
+      for (let i = 0; i < text.length; i++) if (isControl(text.charCodeAt(i))) return true;
+      return false;
+    };
+    const withControl = files.filter((f) => hasControl(readFileSync(f, "utf8")));
+    expect(withControl, "a control character here is invisible in every tool that reads it").toEqual([]);
     // The scan is only worth anything if it actually read the tree.
     expect(files.length, "the file list came back empty, so nothing was checked").toBeGreaterThan(100);
   });

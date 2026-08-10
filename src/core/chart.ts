@@ -24,7 +24,7 @@ import { layoutCandlestick } from "./layout/candlestick";
 import { titleHeight, titleNode } from "./layout/frame";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
-import { formatNumber, niceTicks, resolveFormat } from "./format";
+import { formatNumber, niceTicks, parseDateToken, resolveFormat, GANTT_DATE_ROW } from "./format";
 import type { SceneNode } from "./scene";
 import { finiteNodes } from "./scene";
 import type { LayoutResult } from "./layout/column";
@@ -89,7 +89,20 @@ function normalizeData(raw: ChartData): ChartData {
     .filter((s): s is NonNullable<typeof s> => !!s && typeof s === "object")
     .map((s) => {
       const rawValues = Array.isArray(s.values) ? s.values : [];
-      const values = Array.from({ length: n }, (_, c) => cell(rawValues[c]));
+      // A Gantt Start/End row may arrive as ISO strings, because that is what
+      // the skill tells an agent to write: SKILL.md says "ISO dates supported"
+      // and, as a hard Rule, "dates as ISO strings only in Gantt rows". Only the
+      // datasheet ever parsed them. Through any other door — the skill, a
+      // hand-written JSON, a POWERCHART_CONFIG tag — every string fell to `null`
+      // here, so `layoutGantt` saw tasks with no Start and no End, read each as
+      // a section header, and drew a plan slide with the task names on grey
+      // bands: no bars, no date labels, no timeline. Silently, exit 0, looking
+      // deliberate. That is the skill's primary use case.
+      const dateRow = GANTT_DATE_ROW.test(labelText(s.name).trim());
+      const values = Array.from({ length: n }, (_, c) => {
+        const raw = rawValues[c];
+        return dateRow && typeof raw === "string" ? parseDateToken(raw) : cell(raw);
+      });
       // ALWAYS a string, including when there was no name at all.
       //
       // This used to read `s.name == null ? s : …`, on the reasoning that an

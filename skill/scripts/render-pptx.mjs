@@ -129,6 +129,18 @@ if (!Array.isArray(raw) && !("kind" in raw) && !("data" in raw) && !("chapters" 
   process.exit(1);
 }
 const configs = Array.isArray(raw) ? raw : [raw];
+// An empty array passes the shape guard above and then writes a deck PowerPoint
+// REFUSES to open: with no slides, pptxgenjs emits a package whose
+// [Content_Types].xml has no Override for the slide master, so the part falls
+// back to the `xml` Default and the whole file is invalid — the repo's own
+// `validate-ooxml` says "the document cannot be opened". The CLI printed
+// "0 slide(s), native shapes" and exited 0. An agent whose data query came back
+// empty handed the user an unopenable file having been told it worked, which is
+// the same shape as Explode reporting a lost chart as a success.
+if (configs.length === 0) {
+  console.error("no chart configs in that file — nothing to render (an empty array writes an unopenable .pptx)");
+  process.exit(1);
+}
 
 const SLIDE = { w: 13.333, h: 7.5 };
 

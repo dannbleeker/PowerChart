@@ -1,6 +1,6 @@
 import type { ChartData } from "../core/types";
 import { isTotalToken } from "../core/layout/waterfall";
-import { parseDateToken } from "../core/format";
+import { GANTT_DATE_ROW, parseDateToken } from "../core/format";
 
 export interface SheetModel {
   /** Raw cell text; row 0 = category names, column 0 = series names. */
@@ -235,7 +235,9 @@ const XEXTENT_ROW = /^x\s*extent$/i;
 // milestone here, re-opening your own calendar Gantt showed the raw epoch day
 // ("20494") where you had typed "2026-02-10", so the row could only be edited in
 // epoch days. "% complete" and "After" are NOT dates and stay out.
-const GANTT_DATE_ROW = /^(?:start|end|milestone|today|holidays?|baseline\s*(?:start|end))$|^bracket\b/i;
+// Declared in `core/format.ts` beside `parseDateToken`, because the engine now
+// needs the same answer: a config authored anywhere but this grid — the skill, a
+// hand-written JSON, a POWERCHART_CONFIG tag — was losing its dates in silence.
 
 /**
  * An epoch-day value as "YYYY-MM-DD", or null when it is not a calendar day.

@@ -285,6 +285,17 @@ const DATE_WORDS = new Set([
  * Parse a calendar-date cell ("2026-01-15", "15.01.2026", "Jan 2026", …)
  * into days since the Unix epoch. Returns null for non-dates.
  */
+/**
+ * Gantt rows whose values are calendar days rather than plain numbers.
+ *
+ * Lives here, beside `parseDateToken`, because two callers need the same answer:
+ * the datasheet, which renders epoch days back as ISO on the way out, and
+ * `normalizeConfig`, which reads ISO in on the way IN. It was only in the
+ * datasheet, so a config authored anywhere else — the skill, a hand-written
+ * JSON, a POWERCHART_CONFIG tag — lost its dates in silence.
+ */
+export const GANTT_DATE_ROW = /^(?:start|end|milestone|today|holidays?|baseline\s*(?:start|end))$|^bracket\b/i;
+
 export function parseDateToken(raw: string): number | null {
   const t = raw.trim();
   if (!t) return null;
