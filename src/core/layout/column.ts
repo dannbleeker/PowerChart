@@ -219,6 +219,17 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const zeroQ = qOf(0);
   const y0 = H ? frame.x + zeroQ : frame.y + frame.h - zeroQ;
   const columnTop: number[] = [];
+  /**
+   * The DATA value `columnTop` is drawn at, per category.
+   *
+   * The pixel anchor and the number a decoration prints have to describe the
+   * same mark, and on a clustered chart they did not: `columnValue` published
+   * the SUM of every series while `columnTop` is the tallest single bar, which
+   * is drawn nowhere near it. Its sibling `seriesLevels` was fixed for exactly
+   * this ("clustered, each bar stands on the baseline") and this one was not
+   * swept with it.
+   */
+  const drawnTopValue: number[] = [];
   const seriesLevels: number[][] = [];
   /** Segment mid-position of the last category per series, for series labels. */
   const lastSegMid: (number | null)[] = data.series.map(() => null);
@@ -408,6 +419,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         : Math.max(0, ...data.series.map((s) => s.values[c] ?? 0));
     const topQ = qOf(Math.max(0, topV));
     columnTop.push(H ? frame.x + topQ : frame.y + frame.h - topQ);
+    drawnTopValue.push(topV);
 
     // Clustered-stacked: one total per stack sub-column (vertical only).
     if (decor.totals && !pct && nStacks > 1 && !H) {
@@ -616,7 +628,19 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       categoryX: centers,
       categoryWidth: data.categories.map(() => colThick),
       columnTop,
-      columnValue: pct ? posTotals : signedTotals,
+      // Stacked keeps the signed total, which IS the drawn column top there.
+      // Clustered takes the value `columnTop` was placed at — the tallest bar —
+      // because the sum of a clustered category is drawn nowhere on the chart.
+      // Two consumers put ink at whatever this says: the Error-row whiskers
+      // (`base = a.columnValue[c]`) and `decorations.valueLines: [{mode:"mean"}]`.
+      // With the sum, a 3-category 2-series chart anchored its whiskers at
+      // y = -3, -80 and -63 on a 300pt canvas, and its mean line at y = -141
+      // labelled "Ø 46" against a value axis topping out near 30 — real shapes
+      // on the slide ABOVE the chart, since the Office renderer applies no clamp.
+      // `decorations.difference`/`cagr` were hit more quietly: their Y came from
+      // `columnTop` and their NUMBER from here, so the arrow sat over a +25% rise
+      // and read "+29%".
+      columnValue: pct ? posTotals : stacked ? signedTotals : drawnTopValue,
       seriesLevels,
       baselineY: y0,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
