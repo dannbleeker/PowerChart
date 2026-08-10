@@ -55,7 +55,18 @@ configs.forEach((cfg, i) => {
   // must not throw away the previews of all the others.
   try {
     const svg = sceneToSvg(sceneFor(cfg), { background: "#ffffff" });
-    const name = (cfg?.title ?? cfg?.kind ?? `chart-${i}`).replace(/[^\w-]+/g, "-").toLowerCase();
+    // `String(...)`, because a NUMERIC title is what someone writes for a year —
+    // `svg.ts` and `chart-hostile-input.test.ts` both name it as ordinary rather
+    // than exotic. This line called `.replace` on the raw field, and the chart
+    // had ALREADY rendered by then: the throw is at the filename, so a perfectly
+    // good preview was discarded and the CLI printed an engine message about
+    // `.replace` not being a function. This file ships in the skill zip as
+    // `render-svg.mjs`, the command SKILL.md tells an agent to run for previews,
+    // so an agent titling a chart `2024` got its deck and no preview, with
+    // nothing saying why.
+    const name = String(cfg?.title ?? cfg?.kind ?? `chart-${i}`)
+      .replace(/[^\w-]+/g, "-")
+      .toLowerCase();
     const file = join(outDir, `${String(i + 1).padStart(2, "0")}-${name}.svg`);
     writeFileSync(file, svg);
     console.log(file);

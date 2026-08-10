@@ -554,3 +554,65 @@ describe("non-contiguous stack groups", () => {
     expect(sheetToData(dataToSheet(fine)).series.map((s) => s.name)).toEqual(["A", "B", "C"]);
   });
 });
+
+/**
+ * The skill's documented inputs have to work through the engine, not only
+ * through the pane's grid.
+ */
+describe("a Gantt row of ISO dates", () => {
+  const plan = (values: (string | number)[][]) =>
+    ({
+      ...DEFAULT_SIZE,
+      kind: "gantt",
+      data: {
+        categories: ["Design", "Build", "Test"],
+        series: [
+          { name: "Start", values: values[0] },
+          { name: "End", values: values[1] },
+        ],
+        dates: true,
+      },
+    }) as unknown as ChartConfig;
+
+  it("draws the same plan whether the dates are ISO strings or epoch days", () => {
+    // SKILL.md says "ISO dates supported" and, as a hard Rule, "dates as ISO
+    // strings only in Gantt rows" — so this is what an agent writes. Only the
+    // datasheet ever parsed them: through the skill, every string fell to null,
+    // `layoutGantt` read each task as a section header, and the slide came back
+    // with names on grey bands and no bars, no labels, no timeline. Exit 0.
+    const iso = buildChart(
+      plan([
+        ["2026-01-05", "2026-02-02", "2026-03-09"],
+        ["2026-01-30", "2026-03-06", "2026-03-27"],
+      ]),
+    );
+    const days = buildChart(
+      plan([
+        [20458, 20486, 20521],
+        [20483, 20518, 20539],
+      ]),
+    );
+    const bars = (s: typeof iso) => s.nodes.filter((n) => n.kind === "rect").length;
+    expect(bars(iso), "the ISO plan drew no bars at all").toBeGreaterThan(3);
+    expect(bars(iso)).toBe(bars(days));
+  });
+
+  it("leaves a non-date row's strings alone", () => {
+    // Only rows the Gantt grammar calls dates are parsed — "% complete" and
+    // "After" are numbers and must keep falling to null if they arrive as text.
+    const cfg = {
+      ...DEFAULT_SIZE,
+      kind: "gantt",
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "Start", values: ["2026-01-05"] },
+          { name: "End", values: ["2026-01-30"] },
+          { name: "% complete", values: ["2026-01-05"] },
+        ],
+        dates: true,
+      },
+    } as unknown as ChartConfig;
+    expect(() => buildChart(cfg)).not.toThrow();
+  });
+});
