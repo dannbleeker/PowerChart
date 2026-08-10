@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart, valueExtent } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
+import { alphaOf } from "../src/core/color";
 import { textWidth } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
@@ -726,5 +728,55 @@ describe("a manual scale narrower than the data", () => {
         data: { categories: ["A"], series: [] },
       } as unknown as ChartConfig).width,
     ).toBe(900);
+  });
+});
+
+/**
+ * Four smaller ways the output disagreed with itself.
+ */
+describe("labels, webs and the two paint sinks", () => {
+  it("gives a sub-unit chart labels that are not all '0.00'", () => {
+    // The auto ladder stopped at 2 decimals however small the data got, so
+    // rates, yields, defect fractions and probabilities — everything under 1 —
+    // printed "0.00" on every label for values that plainly differ. And the
+    // chart said so out loud: `resolveAxisFormat` widens on the tick STEP, so
+    // the same chart's axis read 0.000 / 0.001 / 0.002 beside those bars.
+    const scene = buildChart({
+      ...DEFAULT_SIZE,
+      kind: "clustered",
+      decorations: { segmentLabels: true },
+      data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [0.0012, 0.0031, 0.0024] }] },
+    } as unknown as ChartConfig);
+    const labels = scene.nodes.filter((n) => /^label-/.test(n.name ?? "")) as unknown as { text: string }[];
+    expect(labels.length, "no labels drawn, so this proves nothing").toBe(3);
+    expect(new Set(labels.map((l) => l.text)).size, "three different values printed the same text").toBe(3);
+    for (const l of labels) expect(l.text).not.toBe("0.00");
+  });
+
+  it("keeps a radar vertex inside its own web when a value exceeds the scale", () => {
+    // The scale clamped values below `min` onto the centre and let anything
+    // above `max` run past the outer radius unbounded — and `sampleConfig`
+    // ships `{min:0,max:5}`, so no bad scale has to be typed: edit one cell
+    // from 4 to 8, as anyone would for a 1-10 maturity scale, and the vertex
+    // leaves the web and the canvas. A web is a picture of a scale; a point
+    // outside it is not on the scale.
+    const cfg = JSON.parse(JSON.stringify(sampleConfig("radar")));
+    cfg.data.series[0].values[0] = 8;
+    const scene = buildChart({ ...DEFAULT_SIZE, ...cfg });
+    const ys = scene.nodes.filter((n) => n.kind === "ellipse") as unknown as { cy: number }[];
+    expect(ys.length, "no markers drawn, so this proves nothing").toBeGreaterThan(0);
+    expect(Math.min(...ys.map((e) => e.cy)), "a vertex left the canvas").toBeGreaterThanOrEqual(0);
+  });
+
+  it("treats `transparent` as transparent in the live renderer's colour sink", () => {
+    // The documented floating-segment idiom. Only two layouts guarded it before
+    // it reached a renderer, and mekko's guard spells out why — "Office.js hands
+    // 'transparent' to setSolidColor, which it rejects" — but the guard was
+    // never swept to the SINK, so every other kind sent the bare word to a live
+    // host. `alphaOf` now knows the keyword its own sibling in the skill's
+    // paint module has always known.
+    expect(alphaOf("transparent")).toBe(0);
+    expect(alphaOf("TRANSPARENT")).toBe(0);
+    expect(alphaOf("#2a78d6"), "an ordinary colour lost its opacity").toBe(1);
   });
 });

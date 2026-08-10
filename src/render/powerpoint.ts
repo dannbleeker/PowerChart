@@ -7020,6 +7020,12 @@ const officeHex = (color: string): string => {
   // `toHex6` handles anything unrecognised already, so a non-string just needs
   // to reach it rather than die on the way.
   const raw = typeof color === "string" ? color.trim() : "";
+  // `transparent` is a NAMED colour by the test below and Office.js is not one
+  // of the things that knows it: `setSolidColor("transparent")` is rejected, and
+  // the shape is left with whatever fill it had. It carries alpha 0 through
+  // `alphaOf`, so the concrete value here is never seen — it only has to be
+  // something the host accepts.
+  if (/^transparent$/i.test(raw)) return "#ffffff";
   return /^[a-zA-Z]+$/.test(raw) ? raw : toHex6(raw);
 };
 

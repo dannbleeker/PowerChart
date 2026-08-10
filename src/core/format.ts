@@ -79,7 +79,21 @@ export function resolveFormat(values: number[], format?: Partial<NumberFormat> |
     return { ...DEFAULT_FORMAT, ...fmt, decimals: fmt.decimals };
   }
   const maxAbs = maxOf(values.filter((v) => Number.isFinite(v)).map(Math.abs), 0);
-  const decimals = maxAbs >= 10 ? 0 : maxAbs >= 1 ? 1 : 2;
+  // Below 1, keep widening until the largest value shows two significant digits.
+  //
+  // The ladder used to stop at 2 decimals however small the data got, so a chart
+  // of rates, yields, defect fractions or probabilities — everything that lives
+  // under 1 — printed "0.00" on every label for values that plainly differ. The
+  // chart then contradicted itself out loud: `resolveAxisFormat` widens on the
+  // TICK STEP, so the same chart's axis read 0.000 / 0.001 / 0.002 beside bars
+  // all labelled "0.00".
+  //
+  // Capped at six: six resolves to a millionth, and past that the label is
+  // longer than the bar it sits on.
+  let decimals = maxAbs >= 10 ? 0 : maxAbs >= 1 ? 1 : 2;
+  if (maxAbs > 0 && maxAbs < 1) {
+    while (decimals < 6 && maxAbs * Math.pow(10, decimals) < 10) decimals++;
+  }
   return { ...DEFAULT_FORMAT, ...fmt, decimals };
 }
 
