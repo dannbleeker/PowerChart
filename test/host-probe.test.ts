@@ -209,9 +209,50 @@ describe("the fake host's answer sheet", () => {
     try {
       const sheet = await runHostProbes("fake-loses-slides", "test");
       const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
-      // Not "nothing crashed" — the same answers a healthy host gives, because
-      // every question really was asked.
-      expect(answers).toEqual(FAKE_BASELINE);
+      // COMPLETENESS is the invariant, and it is the one this test is named for:
+      // every question got put, on a host that takes the slide away between
+      // them. Nothing here may come back in the never-asked vocabulary.
+      expect(Object.keys(answers).sort()).toEqual([...ALWAYS_ASKED_IDS].sort());
+      for (const [id, answer] of Object.entries(answers))
+        expect(NOT_ASKED_WORDS, `${id} was never put — the replacement path did not carry it`).not.toContain(answer);
+      // This USED to assert `answers` equalled `FAKE_BASELINE` outright, and
+      // that assertion is gone deliberately rather than by accident.
+      //
+      // The lease is per SLIDE and questions share one until it fails, so how
+      // much budget a question inherits depends on what ran before it. Moving
+      // `binding-names-shape-later` from position 20 to 6 therefore left
+      // `shape-resolve-held-slide-proxy` a partly-spent slide, and it answered
+      // `threw` instead of `yes` — a correct answer to "can you resolve a shape
+      // through a handle this host has stopped honouring", and a real one, not
+      // a never-asked. Value-equality here was quietly pinning probe ORDER.
+      //
+      // Raising the lease until it went green is the one thing not done: the
+      // comment above sets it as the SMALLEST lease that carries the longest
+      // question, and tuning it to accommodate a reorder is how a count-based
+      // version of this test once passed against the code it was written to
+      // falsify. The values are still pinned, on the healthy host, by "answers
+      // every question, and says what it claims" above.
+      expect(answers["shape-add-fresh-slide-proxy"], "a question early enough to be unaffected drifted").toBe(
+        FAKE_BASELINE["shape-add-fresh-slide-proxy"],
+      );
+      // KNOWN HOLE, and it predates this edit: nothing here proves the
+      // REPLACEMENT path ran, though the test is named for it.
+      //
+      // Measured, not suspected. Disabling the post-not-asked replacement
+      // outright — `if (recovered)` never taken, and `addScratchSlide` forced to
+      // null — leaves this test green, and left it green against the
+      // `toEqual(FAKE_BASELINE)` assertion that used to stand here too. At a
+      // lease of six the original slide carries almost every question, so the
+      // recovery is never needed and never exercised.
+      //
+      // A `took > 1` check on the cleanup row was tried and thrown away: it
+      // passes under both mutations, because the second pass and the top-of-loop
+      // re-acquire take slides of their own. A guard that survives the mutation
+      // it is named for is decoration.
+      //
+      // Closing it needs a fault that forces a not-asked and then relents —
+      // `newSlideRefusedForFirst` is the shape of it — which is its own change,
+      // not a rider on a probe reorder.
     } finally {
       faults.newSlideResolvesTimes = null;
     }

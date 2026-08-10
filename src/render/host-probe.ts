@@ -568,6 +568,127 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "binding-names-shape-later",
+    question: "Can a binding made in a shape's CREATING sync still name that shape afterwards?",
+    // ASKED SIXTH ON PURPOSE, beside the questions its control arm duplicates.
+    //
+    // It sat at position 20 for five rounds and was answered in none of them.
+    // That is not bad luck, and six sheets say what it is. Sorting every
+    // question by whether it needs a SHAPE and by where it runs:
+    //
+    //   needs no shape, any position  43/48  90%
+    //   needs a shape, positions 1-8  23/30  77%
+    //   needs a shape, positions 9+   36/77  47%
+    //
+    // Two effects and both are large: needing a shape costs you, and needing one
+    // LATE costs you again. This question needed a shape at position 20, which
+    // is the worst quadrant there is.
+    //
+    // Position alone is not the whole story, and the same table says so:
+    // `shape-resolve-held-slide-proxy` is 0/6 at position 6, because it reads
+    // ids back off its setup shapes — the failure the `scratchShapes` note above
+    // documents. This probe does no such thing. It adds a shape and syncs,
+    // exactly as `shape-add-fresh-slide-proxy` (6/6) and
+    // `shape-add-held-slide-proxy` (6/6) do, immediately above it now.
+    //
+    // The only untried route out of the failure that costs this project the most.
+    //
+    // `same scale across the deck` fails the same way every round: the chart
+    // DRAWS, and then the host refuses every handle to it —
+    // `InvalidParam passed to GetItem(id)`, code 5010, at
+    // `ShapeCollection.getItem` — so there is no group, no config tag, and no id
+    // to settle one onto later. On 2026-08-09 that was five charts of eight, each
+    // leaving 24 shapes on a slide that is no longer a chart. Both handles the
+    // settle pass has are refused: `shapes-items-count-honest` says the
+    // collection reads back empty, and `shapes-items-via-positional-slide` says
+    // renaming the parent does not help.
+    //
+    // A binding is the one reference that never crosses either. `bindings.add`
+    // takes the live Shape proxy in the batch that CREATED it — no id round trip,
+    // no collection read — and the document persists it, so a later, healthier
+    // context can ask for the shape back by a key we chose ourselves. If that
+    // works here, the repair pass gets the handle it currently lacks and a lost
+    // tag becomes a repairable one rather than a chart the user cannot edit.
+    //
+    // PowerPointApi 1.8 (GA), and this host reports 1.10 — but feature-detected
+    // rather than gated on `isSetSupported`, which is a claim about the host
+    // rather than a look at it.
+    //
+    // Deliberately asked across a sync boundary: resolving the binding in the
+    // batch that made it would answer a question nobody has, since the live
+    // proxy is right there. The later sync IS the question.
+    ask: async (ctx) => {
+      const bindings = bindingsOf(ctx);
+      if (!bindings) return { answer: "no-binding-api", detail: "presentation.bindings is absent (needs 1.8)" };
+      // A fixed key on purpose: the docs say a repeat id overwrites its binding,
+      // so a run cannot accumulate them, and deleting the scratch slide's shape
+      // takes the binding with it.
+      const key = "POWERCHART_PROBE_BINDING";
+      const box = (left: number) => ({ left, top: 10, width: 20, height: 20 });
+      // The CONTROL arm, and the whole reason this question is answerable.
+      //
+      // The binding has to be made in the batch that CREATES the shape — a
+      // proxy one sync old is refused here (`shape-proxy-survives-one-sync`), so
+      // binding a committed shape would measure staleness instead. That leaves
+      // one batch carrying two things, and its refusal attributable to neither.
+      //
+      // The 2026-08-09 evening round is exactly that dead end: the commit came
+      // back `UnexpectedError` in 1.3 seconds and this probe honestly reported
+      // "never asked". `shape-add-fresh-slide-proxy` answered `yes` in the same
+      // sheet, which points hard at the binding — but that is a different
+      // question asked at a different moment on a host that flaps between
+      // minutes, and inferring across two of those has cost this project two
+      // full sheets already.
+      //
+      // So the probe carries its own control: the identical batch WITHOUT the
+      // binding, on the same slide, seconds earlier. If that commits and the
+      // bound one does not, the binding is the only difference and the answer
+      // is about bindings. If the control fails, this host is not taking shapes
+      // right now and the question was never put — which is the truth, said by
+      // the probe rather than assembled by a reader.
+      try {
+        probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box(290));
+        await ctx.sync();
+      } catch (err) {
+        throw new ProbeSetupFailed(`the control shape would not commit: ${short(err)}`);
+      }
+      let shape: PowerPoint.Shape;
+      try {
+        shape = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box(320));
+      } catch (err) {
+        throw new ProbeSetupFailed(`adding the shape to bind: ${short(err)}`);
+      }
+      let made: unknown;
+      try {
+        made = bindings.add(shape, "Shape", key);
+      } catch (err) {
+        // Synchronous, before any round trip, so this is `bindings.add` itself
+        // objecting to the call — a genuine answer about the binding API.
+        return { answer: "add-threw", detail: short(err) };
+      }
+      try {
+        await ctx.sync();
+      } catch (err) {
+        // An ANSWER now, not a setup failure: the same batch minus the binding
+        // committed on this slide moments ago.
+        return {
+          answer: "commit-threw",
+          detail: `the same batch without a binding committed seconds earlier: ${short(err)}`,
+        };
+      }
+      if (!made) return { answer: "add-returned-nothing" };
+      try {
+        const got = bindingsOf(ctx)!.getItemOrNullObject(key).getShape();
+        got.load("id");
+        await ctx.sync();
+        const id = readShapeId(got as unknown as { id?: string });
+        return id ? { answer: "yes", detail: `shape id=${id}` } : { answer: "unreadable" };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
     id: "shape-resolve-held-slide-proxy",
     question: "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
     // The half of the held-handle rule nobody has asked about, and three
@@ -1012,106 +1133,6 @@ const PROBES: Probe[] = [
         await ctx.sync();
         const v = (tag as unknown as { value: string }).value;
         return { answer: v === "kept" ? "yes" : "no", detail: `value=${String(v)}` };
-      } catch (err) {
-        return threw(err);
-      }
-    },
-  },
-  {
-    id: "binding-names-shape-later",
-    question: "Can a binding made in a shape's CREATING sync still name that shape afterwards?",
-    // The only untried route out of the failure that costs this project the most.
-    //
-    // `same scale across the deck` fails the same way every round: the chart
-    // DRAWS, and then the host refuses every handle to it —
-    // `InvalidParam passed to GetItem(id)`, code 5010, at
-    // `ShapeCollection.getItem` — so there is no group, no config tag, and no id
-    // to settle one onto later. On 2026-08-09 that was five charts of eight, each
-    // leaving 24 shapes on a slide that is no longer a chart. Both handles the
-    // settle pass has are refused: `shapes-items-count-honest` says the
-    // collection reads back empty, and `shapes-items-via-positional-slide` says
-    // renaming the parent does not help.
-    //
-    // A binding is the one reference that never crosses either. `bindings.add`
-    // takes the live Shape proxy in the batch that CREATED it — no id round trip,
-    // no collection read — and the document persists it, so a later, healthier
-    // context can ask for the shape back by a key we chose ourselves. If that
-    // works here, the repair pass gets the handle it currently lacks and a lost
-    // tag becomes a repairable one rather than a chart the user cannot edit.
-    //
-    // PowerPointApi 1.8 (GA), and this host reports 1.10 — but feature-detected
-    // rather than gated on `isSetSupported`, which is a claim about the host
-    // rather than a look at it.
-    //
-    // Deliberately asked across a sync boundary: resolving the binding in the
-    // batch that made it would answer a question nobody has, since the live
-    // proxy is right there. The later sync IS the question.
-    ask: async (ctx) => {
-      const bindings = bindingsOf(ctx);
-      if (!bindings) return { answer: "no-binding-api", detail: "presentation.bindings is absent (needs 1.8)" };
-      // A fixed key on purpose: the docs say a repeat id overwrites its binding,
-      // so a run cannot accumulate them, and deleting the scratch slide's shape
-      // takes the binding with it.
-      const key = "POWERCHART_PROBE_BINDING";
-      const box = (left: number) => ({ left, top: 10, width: 20, height: 20 });
-      // The CONTROL arm, and the whole reason this question is answerable.
-      //
-      // The binding has to be made in the batch that CREATES the shape — a
-      // proxy one sync old is refused here (`shape-proxy-survives-one-sync`), so
-      // binding a committed shape would measure staleness instead. That leaves
-      // one batch carrying two things, and its refusal attributable to neither.
-      //
-      // The 2026-08-09 evening round is exactly that dead end: the commit came
-      // back `UnexpectedError` in 1.3 seconds and this probe honestly reported
-      // "never asked". `shape-add-fresh-slide-proxy` answered `yes` in the same
-      // sheet, which points hard at the binding — but that is a different
-      // question asked at a different moment on a host that flaps between
-      // minutes, and inferring across two of those has cost this project two
-      // full sheets already.
-      //
-      // So the probe carries its own control: the identical batch WITHOUT the
-      // binding, on the same slide, seconds earlier. If that commits and the
-      // bound one does not, the binding is the only difference and the answer
-      // is about bindings. If the control fails, this host is not taking shapes
-      // right now and the question was never put — which is the truth, said by
-      // the probe rather than assembled by a reader.
-      try {
-        probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box(290));
-        await ctx.sync();
-      } catch (err) {
-        throw new ProbeSetupFailed(`the control shape would not commit: ${short(err)}`);
-      }
-      let shape: PowerPoint.Shape;
-      try {
-        shape = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, box(320));
-      } catch (err) {
-        throw new ProbeSetupFailed(`adding the shape to bind: ${short(err)}`);
-      }
-      let made: unknown;
-      try {
-        made = bindings.add(shape, "Shape", key);
-      } catch (err) {
-        // Synchronous, before any round trip, so this is `bindings.add` itself
-        // objecting to the call — a genuine answer about the binding API.
-        return { answer: "add-threw", detail: short(err) };
-      }
-      try {
-        await ctx.sync();
-      } catch (err) {
-        // An ANSWER now, not a setup failure: the same batch minus the binding
-        // committed on this slide moments ago.
-        return {
-          answer: "commit-threw",
-          detail: `the same batch without a binding committed seconds earlier: ${short(err)}`,
-        };
-      }
-      if (!made) return { answer: "add-returned-nothing" };
-      try {
-        const got = bindingsOf(ctx)!.getItemOrNullObject(key).getShape();
-        got.load("id");
-        await ctx.sync();
-        const id = readShapeId(got as unknown as { id?: string });
-        return id ? { answer: "yes", detail: `shape id=${id}` } : { answer: "unreadable" };
       } catch (err) {
         return threw(err);
       }
