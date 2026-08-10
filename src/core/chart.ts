@@ -1050,8 +1050,19 @@ function dataExtent(cfg: ChartConfig): { min: number; max: number } | null {
  * the shape.
  */
 export function valueExtent(cfg: ChartConfig): { min: number; max: number } | null {
-  const { cfg: clean, errors, targets } = extractErrorRows(cfg);
-  return drawnExtent(clean, errors, targets);
+  // The SAME normalisation `buildChart` runs before it lays anything out, in the
+  // same order. Anything this skips is measured on data the chart does not draw.
+  //
+  // `collapseOther` is the one that changes VALUES rather than order, and it was
+  // missing: on a clustered chart the synthesized "Other" series is the SUM of
+  // the collapsed tail, which is taller than any single series `dataExtent` can
+  // see. Same Scale writes this answer straight back as a hard `cfg.scale`,
+  // which suppresses every auto-widen downstream — precisely the failure this
+  // function's own docstring names. Measured: an `otherBucket:{max:3}` chart
+  // whose Other bar reaches 120 reported max 50, and Same Scale then drew that
+  // bar at y = -375.6 with h = 657.6 on a 300pt canvas.
+  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(cfg))));
+  return drawnExtent(collapseOther(extracted.cfg), extracted.errors, extracted.targets);
 }
 
 /**

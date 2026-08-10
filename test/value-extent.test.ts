@@ -393,3 +393,99 @@ describe("valueExtent (Same Scale)", () => {
     expect(valueExtent(c({ kind: "pie" }))).toBeNull();
   });
 });
+
+/**
+ * The two seams where "what the extent says" and "what the chart draws" parted.
+ *
+ * This is the recurring family in this codebase — `boxplotBoxes`, `drawnExtent`,
+ * `waterfallChain` were all the same shape. It matters because the pane's Same
+ * Scale writes `valueExtent`'s answer back as a HARD `cfg.scale`, which
+ * suppresses every auto-widen downstream: anything under-reported here renders
+ * off the shape, and the Office renderer applies no clamp, so the rects land on
+ * the slide above the chart.
+ */
+describe("the extent measures what is drawn", () => {
+  it("collapses the Other bucket first, as buildChart does", () => {
+    // `collapseOther` sums the tail into one synthesized series. On a clustered
+    // chart that bar is taller than any series `dataExtent` can see, and
+    // `valueExtent` never ran the collapse — so it reported the largest single
+    // series and Same Scale pinned the chart to a scale it does not fit.
+    const cfg = {
+      ...DEFAULT_SIZE,
+      kind: "clustered",
+      otherBucket: { max: 3 },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "A", values: [50, 50] },
+          { name: "B", values: [40, 40] },
+          { name: "C", values: [30, 30] },
+          { name: "D", values: [30, 30] },
+          { name: "E", values: [30, 30] },
+          { name: "F", values: [30, 30] },
+        ],
+      },
+    } as unknown as ChartConfig;
+    const ext = valueExtent(cfg)!;
+    // C+D+E+F = 120, and that bar is on the chart.
+    expect(ext.max, "the extent did not see the Other bar it will be asked to fit").toBeGreaterThanOrEqual(120);
+    // And the chart drawn under Same Scale's own transform stays inside its frame.
+    const scaled = buildChart({ ...cfg, scale: { min: undefined, max: ext.max } } as ChartConfig);
+    const { top } = rectSpan(scaled);
+    expect(top, "Same Scale drew the chart off the top of the shape").toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * The anchor a decoration hangs its ink on must name a mark that exists.
+ */
+describe("columnValue on a clustered chart", () => {
+  const clustered = (extra: Record<string, unknown> = {}, series?: unknown[]) =>
+    ({
+      ...DEFAULT_SIZE,
+      kind: "clustered",
+      data: {
+        categories: ["Q1", "Q2", "Q3"],
+        series: series ?? [
+          { name: "2024", values: [20, 30, 25] },
+          { name: "2025", values: [18, 22, 24] },
+        ],
+      },
+      ...extra,
+    }) as unknown as ChartConfig;
+
+  const named = (scene: { nodes: { name?: string }[] }, re: RegExp) => scene.nodes.filter((n) => re.test(n.name ?? ""));
+
+  it("anchors an Error row's whiskers on the bars, not on their sum", () => {
+    // `columnValue` published the SUM of every series while `columnTop` is the
+    // tallest single bar — two anchors naming different marks, and the sum is
+    // drawn nowhere. `widenForAnatomy` widens to (tallest bar + maxPlus), so it
+    // structurally cannot contain a whisker hung off the sum: measured at
+    // y1 = -3.0, -79.7 and -63.2 on a 300pt canvas, real line shapes ABOVE the
+    // chart, because the Office renderer applies no clamp.
+    const scene = buildChart(
+      clustered({}, [
+        { name: "2024", values: [20, 30, 25] },
+        { name: "2025", values: [18, 22, 24] },
+        { name: "Error", values: [4, 4, 4] },
+      ]),
+    );
+    const whiskers = named(scene, /^error-/) as { y1?: number; y2?: number }[];
+    expect(whiskers.length, "no error whiskers were drawn, so this proves nothing").toBeGreaterThan(0);
+    const ys = whiskers.flatMap((w) => [w.y1 ?? 0, w.y2 ?? 0]);
+    expect(Math.min(...ys), "a whisker was drawn above the top of the shape").toBeGreaterThanOrEqual(0);
+  });
+
+  it("draws a mean value-line inside the plot, at the mean of the BARS", () => {
+    const scene = buildChart(clustered({ decorations: { valueLines: [{ mode: "mean" }] } }));
+    const lines = named(scene, /^value-line-\d/) as { y1?: number }[];
+    expect(lines.length, "no value line was drawn, so this proves nothing").toBeGreaterThan(0);
+    expect(Math.min(...lines.map((l) => l.y1 ?? 0)), "the mean line was drawn off the top").toBeGreaterThanOrEqual(0);
+    // mean(20, 30, 25) = 25, the mean of what is drawn. The mean of the SUMS is
+    // 46, against a value axis topping out near 30 — a label naming a level the
+    // chart does not have.
+    const label = named(scene, /^value-line-label-/)[0] as { text?: string } | undefined;
+    expect(label?.text, "the mean line lost its label, so its number is unchecked").toBeTruthy();
+    expect(label!.text).toContain("25");
+  });
+});
