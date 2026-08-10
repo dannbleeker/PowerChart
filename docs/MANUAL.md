@@ -781,4 +781,8 @@ practical substitute for live data links.
 - **"Theme unavailable"** — host below 1.10.
 - **Chart not recognized for editing** — it must carry the PowerChart tag;
   charts inserted before tagging existed can't be re-opened.
-- **German UI** — the pane localizes automatically when Office reports German.
+- **Other languages** — the pane is translation-ready and localizes itself from
+  `Office.context.displayLanguage`, but **no dictionary ships today**: every
+  string is English. Adding one is a single entry in `DICTS` in
+  `src/taskpane/i18n.ts`. This line used to promise German, which the repo's
+  own test asserts the pane does not have.

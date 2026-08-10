@@ -157,9 +157,10 @@ source when you know it.
 - Emit **valid JSON only** for configs; validate values are numbers (dates as
   ISO strings only in Gantt rows).
 - Keep one message of data → one chart. For decks, pass an array.
-- In the headless `.pptx` the shapes are NOT grouped per chart (pptxgenjs has no
-  native shape-group API) — every bar, label and line is a separate editable
-  shape, which is fine since think-cell users tweak individual shapes anyway.
-  The live add-in DOES group each chart into one object.
+- In the headless `.pptx` each chart IS one group carrying its config, exactly
+  as the add-in draws it — so a deck rendered here opens re-editable in the
+  pane. (This bullet used to say the opposite, and contradicted the usage note
+  124 lines above it: grouping shipped in #228, and the committed showcase deck
+  has one `p:grpSp` named `PowerChart` per slide.)
 - Prefer `waterfall` over generic columns whenever the story is a change
   decomposition. Prefer `mekko` when both share and size matter.

@@ -414,12 +414,34 @@ export function reportSelfTest(selftest) {
 export function deckEvidence(deck) {
   if (!deck || !Array.isArray(deck.inventory) || !deck.inventory.length) return null;
   const shots = new Map((deck.shots ?? []).filter((s) => s.png).map((s) => [s.slideId, s.png]));
-  // A blank slide's PNG is tiny and every blank on one deck renders to the same
-  // bytes, so the smallest size present is what "blank" looks like here.
-  // Compared rather than hard-coded: it is a function of slide size and theme.
+  /**
+   * How big a slide's PNG can be and still be nothing.
+   *
+   * This used to be `Math.min` over the very shots being classified, and that
+   * cannot work: the smallest picture satisfies `<= itself` unconditionally, so
+   * the tool could never report a round with NO blank in it. At least one added
+   * slide was always printed under "read back empty AND rasterise blank" — the
+   * two-witness line a maintainer reads as proven data loss — however much
+   * chart was on it. It got the right answer on all ten real rounds only
+   * because each contains genuine blanks; it breaks in exactly the regime the
+   * column exists for, the round after the drawing bug is fixed, where every
+   * slide has content and one answers its shape collection short (documented
+   * host behaviour). The honest verdict there is "the readback is lying", and
+   * the tool said "confirmed blank".
+   *
+   * A relative test cannot replace it either. Rounds 12 and 13 ran with the
+   * picture cap at 12 and EVERY shot they took is a blank, so there is no
+   * contrast in the round to measure against — judging by bimodality calls
+   * those 23 genuinely blank slides content.
+   *
+   * So the assumption is made explicit instead of hidden in a `min`. Every
+   * round this tool reads is a 960×540 deck from this add-in, and the measured
+   * spread is not close: a blank is 1146 bytes across all ten rounds, and the
+   * smallest picture with a chart on it is 5142. Two kilobytes sits 4.5× above
+   * the one and 2.5× below the other.
+   */
+  const BLANK_PNG_CEILING = 2048;
   const bytes = (png) => Math.round((png.length * 3) / 4);
-  const sizes = [...shots.values()].map(bytes);
-  const blankPng = sizes.length ? Math.min(...sizes) : 0;
   const added = new Set(deck.newSlides ?? []);
   const out = { scanned: deck.inventory.length, added: added.size, withShapes: 0, confirmed: 0, unseen: 0, lying: 0 };
   for (const s of deck.inventory) {
@@ -434,7 +456,10 @@ export function deckEvidence(deck) {
     }
     const png = shots.get(s.slideId);
     if (!png) out.unseen++;
-    else if (bytes(png) <= blankPng) out.confirmed++;
+    else if (bytes(png) <= BLANK_PNG_CEILING) out.confirmed++;
+    // A picture that is not blank and not obviously a chart cannot be called
+    // either way — and calling it blank is the expensive mistake, because that
+    // is the reading that alleges data loss.
     else out.lying++;
   }
   return out;
