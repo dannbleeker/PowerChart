@@ -162,6 +162,50 @@ trying first if this is ever built.
 
 ## 2. Rejected or already covered (do not re-propose)
 
+- **A PowerPointApi 1.8 binding as a durable handle to a drawn chart** — the
+  last untried route out of `same scale across the deck`, and it cannot be
+  ASKED on this host. Not refuted: unanswerable, which is a different and more
+  annoying thing.
+
+  The idea is sound and stays written down in case the host changes.
+  `ShapeCollection.getItem(id)` is where every 5010 lands, and it is what leaves
+  a chart drawn and nameless — no group, no config tag, nothing to settle one
+  onto. `bindings.add` takes the live Shape proxy inside the batch that CREATED
+  it, so it needs neither an id round trip nor a collection read, and the
+  document persists it. If it worked, the repair pass would have a handle it
+  does not have today.
+
+  The probe `binding-names-shape-later` asked eight times across eight rounds
+  and never once reached its own question:
+
+      13  no-scratch-slide   15  no-scratch-slide   18  no-scratch-slide
+      14  no-scratch-shape   16  no-scratch-slide   19  no-scratch-slide
+      17  no-scratch-shape   21  no-scratch-shape
+
+  Six distinct causes were found and five of them fixed — the end-of-run second
+  pass (#353/#356), the poisoned slot after `shape-add-held-slide-proxy` (#360),
+  an unclaimable add when the host renumbers a slide (#364), a slide-acquisition
+  budget of ninety seconds against a question budget of eight (#364), and the
+  probe's position in the order (#359). Each fix got it one step further. The
+  sixth is not a defect and is not going away.
+
+  **A shape question needs the scratch slide resolved once per batch, and this
+  host hands out about one usable resolution per slide** — round 21's trace
+  shows nearly every question taking a replacement before it can answer. The
+  binding question needs more resolutions than any other shape probe, because
+  an honest answer needs a CONTROL: the same batch without the binding, proving
+  the host would have taken a plain shape. Without that control the probe claims
+  `commit-threw` on a host refusing every shape add, which
+  `test/host-probe.test.ts` catches. Running the control second does not help —
+  a failed sync poisons its own context, so the control cannot resolve the slide
+  afterwards. Both were tried and reverted, in that order.
+
+  So: honest and unanswerable, or answerable and dishonest. Recorded rather than
+  re-litigated. `same scale across the deck` therefore has **no route found**,
+  and the failure under it (a chart that draws and is then unreachable) stands
+  as a host limit. Anything that revisits this needs a host that resolves a
+  scratch slide more than once, and the probe will say so the day one appears.
+
 - **A golden-image gate on the generated deck** — rejected as a hash comparison,
   and largely covered as a structural one. The cheap half of this DID ship:
   `validate-ooxml.mjs` checks the deck against the OOXML grammar and
