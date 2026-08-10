@@ -26,7 +26,7 @@
  * its own repositories and the office-js API is out of reach from one. The
  * matching half is pure and is what the tests drive, through `--from`.
  */
-import { pathToFileURL } from "node:url";
+import { isMain } from "./is-main.mjs";
 
 /**
  * The Office.js surface this add-in actually calls.
@@ -279,15 +279,12 @@ async function main() {
   if (fresh.length) process.exitCode = 3;
 }
 
-// Only when run directly — the tests import the pure half.
-//
-// Compared as a file URL rather than by basename. The old form split argv[1] on
-// "/" and asked whether `import.meta.url` ended with the last piece, which on
-// Windows never splits at all: the whole `C:\…\office-js-watch.mjs` path came
-// back, no file URL ends with that, and the CLI silently did nothing on the
-// owner's machine — `--from`, `--json`, the lot, exit 0 and no output. A
-// basename test is also wrong in the other direction, matching any script that
-// happens to share the filename.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Only when run directly — the tests import the pure half. The predicate is
+// SHARED now (`is-main.mjs`), because this file is where the bug was found and
+// fixed and its three siblings were left standing with it: the old form split
+// argv[1] on "/" and asked whether `import.meta.url` ended with the last piece,
+// which on Windows never splits at all, so the CLI silently did nothing on the
+// owner's machine — `--from`, `--json`, the lot, exit 0 and no output.
+if (isMain(import.meta.url, process.argv[1])) {
   await main();
 }

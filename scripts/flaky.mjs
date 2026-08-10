@@ -16,18 +16,24 @@
  * Usage: node scripts/flaky.mjs run-1.json run-2.json run-3.json
  */
 import { readFileSync } from "fs";
+import { basename } from "node:path";
+import { isMain } from "./is-main.mjs";
 
 /**
  * Every test in a vitest JSON report, by full name, with what it did.
  *
  * Full name rather than title, because two files may legitimately use the same
  * `it()` text and merging them would invent a disagreement that never happened.
+ *
+ * `basename` rather than a split on "/": vitest reports absolute paths, and on
+ * Windows those are backslashed, so the split left the whole path in the key and
+ * the report printed `C:\repo\test\foo.test.ts › …` for every row.
  */
 export function outcomes(report) {
   const out = new Map();
   for (const file of report?.testResults ?? []) {
     for (const t of file.assertionResults ?? []) {
-      const name = `${file.name?.split("/").pop() ?? "?"} › ${(t.ancestorTitles ?? []).join(" › ")} › ${t.title}`;
+      const name = `${file.name ? basename(file.name) : "?"} › ${(t.ancestorTitles ?? []).join(" › ")} › ${t.title}`;
       out.set(name, t.status);
     }
   }
@@ -75,4 +81,4 @@ function main() {
   if (found.length) process.exitCode = 3;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) main();
+if (isMain(import.meta.url, process.argv[1])) main();

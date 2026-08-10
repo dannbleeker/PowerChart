@@ -92,7 +92,19 @@ node ./node_modules/typescript/bin/tsc --noEmit                 # typecheck
 node ./node_modules/vitest/vitest.mjs run                       # whole suite, nothing excluded
 npm run build:lib && node scripts/build-showcase.mjs            # = npm run showcase
 npm run build:lib && node scripts/build-skill.mjs               # = npm run skill
+npm run build:lib && node scripts/visible-charts.mjs            # = npm run visible-charts
 ```
+
+**The tool CLIs run there now, and until 2026-08-10 three of them did not.**
+`test-count.mjs`, `flaky.mjs` and `visible-charts.mjs` each guarded `main()`
+with `import.meta.url.endsWith(process.argv[1].split("/").pop())`, which never
+splits a backslashed path — so every invocation printed nothing and exited 0.
+Not a crash: a clean exit from the suite-shrink guard, the flake sweep and the
+visual gate, which reads exactly like a pass. The predicate is shared now
+(`scripts/is-main.mjs`) and `test/is-main.test.ts` drives BOTH platforms,
+because the broken form works perfectly on the ubuntu runner and a same-platform
+test could never have caught it. `visible-charts` also had no browser candidate
+on Windows; it takes installed Chrome or Edge now.
 
 **The whole suite runs there now — do not exclude anything.** This paragraph
 used to say `test/skill.test.ts` could not pass and to run with

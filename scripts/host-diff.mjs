@@ -22,15 +22,22 @@
  * well as inform.
  */
 import { readFileSync } from "fs";
-import { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers } from "./host-baseline.mjs";
+import {
+  FAKE_BASELINE,
+  KNOWN_DIVERGENCES,
+  PENDING_QUESTIONS,
+  answersOf,
+  diffAnswers,
+  sheetOf,
+} from "./host-baseline.mjs";
+import { isMain } from "./is-main.mjs";
 
 // Re-exported so the tables have ONE home and every existing importer keeps
 // working: two copies of this data is how a claim quietly stops matching its
 // check, which is the failure this whole file exists to prevent.
-export { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers };
+export { FAKE_BASELINE, KNOWN_DIVERGENCES, PENDING_QUESTIONS, answersOf, diffAnswers, sheetOf };
 
-const invokedDirectly = process.argv[1] && process.argv[1].endsWith("host-diff.mjs");
-if (invokedDirectly) {
+if (isMain(import.meta.url, process.argv[1])) {
   const [realPath, fakePath] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
   if (!realPath) {
     console.error("usage: node scripts/host-diff.mjs <real-host-answers.json> [fake-answers.json]");
@@ -52,9 +59,14 @@ if (invokedDirectly) {
   }
 
   const { agree, differ, notAsked, onlyReal, onlyFake } = diffAnswers(real, fake);
-  const sets = Array.isArray(realSheet.requirementSets) ? realSheet.requirementSets.join(", ") : "unknown";
+  // The header comes off the SAME object the answers did. Reading it off the
+  // outer file left a whole round's upload reporting `REAL HOST ?` and
+  // `requirement sets: unknown` over a page of real answers, because those
+  // fields live one level down in that shape.
+  const header = sheetOf(realSheet) ?? realSheet;
+  const sets = Array.isArray(header.requirementSets) ? header.requirementSets.join(", ") : "unknown";
   console.log(
-    `\n  REAL HOST ${realSheet.source ?? "?"} · build ${realSheet.build ?? "?"}` +
+    `\n  REAL HOST ${header.source ?? realSheet.source ?? "?"} · build ${header.build ?? realSheet.build ?? "?"}` +
       `\n  requirement sets: ${sets}` +
       `\n  ${agree.length} of ${agree.length + differ.length} answers match the fake\n`,
   );
