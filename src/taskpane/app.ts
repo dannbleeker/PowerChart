@@ -90,7 +90,7 @@ import { buildDeckBase64 } from "../render/pptx-deck";
 import type { ExpectedItem, SlideSnapshot } from "../core/reconcile";
 import { buildTableScene } from "../core/elements";
 import { localizePane, localizeTree, t } from "./i18n";
-import { dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
+import { contiguousStacks, dataToSheet, mountDatasheet, sheetToData, type SheetModel } from "./datasheet";
 import { BUILTIN_TEMPLATES } from "./templates";
 import { harveyScene, checkScene, flowScene, kpiScene, wireElementPreviews } from "./elements-ui";
 import { agendaChapters, wireAgendaPreview } from "./agenda-ui";
@@ -189,7 +189,13 @@ interface AppState {
 const state: AppState = { ...stateFromConfig(sampleConfig("stacked")), editTarget: null };
 
 function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
-  const sheet = dataToSheet(cfg.data);
+  // ONE ordering for the sheet and for the two positional side-channels below.
+  // `dataToSheet` regroups a non-contiguous stack so the grid can express it at
+  // all; deriving `seriesColors`/`seriesMeta` from the ORIGINAL order would put
+  // them out of step with the rows the user sees, which is the same class of
+  // bug the undo history had.
+  const data = contiguousStacks(cfg.data);
+  const sheet = dataToSheet(data);
   if (cfg.kind === "waterfall") {
     // Show "e" tokens in the sheet where totals are computed.
     for (const i of cfg.waterfall?.totalIndices ?? []) {
@@ -215,8 +221,8 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     labelContent: cfg.decorations?.labelContent?.join(",") ?? "",
     paletteName: paletteNameFor(cfg.style?.palette),
     style: cfg.style ? { ...cfg.style } : undefined,
-    seriesColors: cfg.data.series.map((s) => s.color),
-    seriesMeta: cfg.data.series.map((s) =>
+    seriesColors: data.series.map((s) => s.color),
+    seriesMeta: data.series.map((s) =>
       s.type || s.pattern || s.colors || s.scenario
         ? { type: s.type, pattern: s.pattern, colors: s.colors, scenario: s.scenario }
         : undefined,
@@ -1388,8 +1394,31 @@ function renderActionState() {
 // Datasheet undo/redo (Ctrl+Z / Ctrl+Y while the pane has focus).
 const history: string[] = [];
 const redoStack: string[] = [];
+/**
+ * What an undo step has to restore — the grid AND the two arrays that hang off
+ * it by position.
+ *
+ * It used to be the cells alone, and `seriesColors`/`seriesMeta` are kept in
+ * step only by the `onStructure` handler below, which fires on the EDIT and has
+ * no inverse. So undo rewound the grid and left the side-channels spliced: take
+ * a three-series combo, delete the middle row, press Ctrl+Z, and the row comes
+ * back wearing the colour and the combo type of the series that followed it —
+ * a chart that now says something different, from a keystroke whose entire
+ * promise is that it changes nothing.
+ *
+ * Transpose was worse: its `reset` branch empties both arrays, and undo brought
+ * the cells back to an empty palette with no way to recover but re-importing
+ * the original JSON.
+ *
+ * The unit of undo is now the whole thing an edit changes. Serialising is also
+ * the deep copy this needs — `seriesMeta[i].colors` is spliced in place.
+ */
 function snapshot() {
-  const snap = JSON.stringify(state.sheet.cells);
+  const snap = JSON.stringify({
+    cells: state.sheet.cells,
+    seriesColors: state.seriesColors,
+    seriesMeta: state.seriesMeta,
+  });
   if (history[history.length - 1] !== snap) {
     history.push(snap);
     if (history.length > 100) history.shift();
@@ -1404,10 +1433,19 @@ function snapshot() {
 function resetHistory() {
   history.length = 0;
   redoStack.length = 0;
-  history.push(JSON.stringify(state.sheet.cells));
+  history.push(
+    JSON.stringify({ cells: state.sheet.cells, seriesColors: state.seriesColors, seriesMeta: state.seriesMeta }),
+  );
 }
-function restore(cells: string[][]) {
+function restore(snap: string) {
+  const { cells, seriesColors, seriesMeta } = JSON.parse(snap) as {
+    cells: string[][];
+    seriesColors: AppState["seriesColors"];
+    seriesMeta: AppState["seriesMeta"];
+  };
   state.sheet = { cells };
+  state.seriesColors = seriesColors;
+  state.seriesMeta = seriesMeta;
   sheetApi.setSheet(state.sheet);
   renderPreview();
 }
@@ -1416,12 +1454,12 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "z" && history.length > 1) {
     e.preventDefault();
     redoStack.push(history.pop()!);
-    restore(JSON.parse(history[history.length - 1]));
+    restore(history[history.length - 1]);
   } else if (e.key === "y" && redoStack.length) {
     e.preventDefault();
     const snap = redoStack.pop()!;
     history.push(snap);
-    restore(JSON.parse(snap));
+    restore(snap);
   }
 });
 

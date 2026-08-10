@@ -137,6 +137,32 @@ describe("mountDatasheet", () => {
     expect(model.cells[1]).toEqual(["A", "1", "3"]);
   });
 
+  it("does not turn a pasted gap into a stack separator", () => {
+    // A row the paste APPENDS and leaves fully blank is `sheetToData`'s
+    // clustered-stacked separator, so pasting a column that runs past the end of
+    // the sheet with an ordinary Excel spacer row in it split one stacked column
+    // into two side-by-side sub-stacks — no error, no cue. "+ Row" is guarded
+    // against creating exactly this row and says so; paste grows rows too and
+    // never was.
+    const host = document.createElement("div");
+    let model = sheet();
+    mountDatasheet(host, model, (m) => (model = m));
+    const e = new Event("paste") as ClipboardEvent;
+    Object.defineProperty(e, "clipboardData", { value: { getData: () => ["10", "20", "", "40"].join("\n") } });
+    cell(host, 1, 1).dispatchEvent(e);
+    const appended = model.cells.slice(3);
+    expect(appended.length, "the paste did not grow the sheet, so this proves nothing").toBeGreaterThan(0);
+    for (const row of appended) {
+      expect(
+        row.every((c) => c.trim() === ""),
+        `a fully blank row survived: ${JSON.stringify(row)}`,
+      ).toBe(false);
+    }
+    // And the gap itself is still there — the row is what keeps every later
+    // value on the category it was pasted against.
+    expect(model.cells.length).toBe(5);
+  });
+
   it("expands the grid on multi-cell TSV paste", () => {
     const host = document.createElement("div");
     let model = sheet();

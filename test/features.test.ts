@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildChart } from "../src/core/chart";
+import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import { layoutColumns } from "../src/core/layout/column";
 import { layoutMekko } from "../src/core/layout/mekko";
@@ -500,5 +500,57 @@ describe("IBCS variance tier (decorations.variance)", () => {
       variance: { actual: 0, reference: 1 },
     });
     expect(horiz.nodes.find((n) => n.name === "variance-zero")).toBeUndefined();
+  });
+});
+
+/**
+ * Stack membership survives the grid, which can only express it by adjacency.
+ */
+describe("non-contiguous stack groups", () => {
+  const data = {
+    categories: ["Q1"],
+    series: [
+      { name: "Retail", values: [1], stack: 0 },
+      { name: "Online", values: [2], stack: 1 },
+      { name: "Wholesale", values: [3], stack: 0 },
+    ],
+  };
+
+  it("round-trips as the same GROUPING, not as three separate columns", () => {
+    // `dataToSheet` could only emit a separator when the stack changed from the
+    // previous series, and `sheetToData` renumbered by separator count — so
+    // [0,1,0] came back [0,1,2]. Two columns became three, and merely loading
+    // such a chart into the pane restructured it on the next update.
+    const back = sheetToData(dataToSheet(data));
+    const groups = new Map<number, string[]>();
+    for (const s of back.series) {
+      const k = s.stack ?? 0;
+      groups.set(k, [...(groups.get(k) ?? []), s.name]);
+    }
+    expect([...groups.values()].map((g) => g.sort().join("+")).sort()).toEqual(["Online", "Retail+Wholesale"]);
+  });
+
+  it("draws the same chart before and after the round trip", () => {
+    // The grouping is what the reader sees; the series ORDER inside the config
+    // is not, as long as paint order within a group is kept.
+    const xs = (d: { categories: string[]; series: { name: string; values: (number | null)[]; stack?: number }[] }) =>
+      buildChart({ ...DEFAULT_SIZE, kind: "stacked", data: d } as unknown as ChartConfig)
+        .nodes.filter((n) => /^seg-/.test(n.name ?? ""))
+        .map((n) => Math.round((n as unknown as { x: number }).x));
+    expect(new Set(xs(sheetToData(dataToSheet(data)))).size, "the round trip changed the column count").toBe(
+      new Set(xs(data)).size,
+    );
+  });
+
+  it("leaves a chart that was already contiguous exactly as it was", () => {
+    const fine = {
+      categories: ["Q1"],
+      series: [
+        { name: "A", values: [1], stack: 0 },
+        { name: "B", values: [2], stack: 0 },
+        { name: "C", values: [3], stack: 1 },
+      ],
+    };
+    expect(sheetToData(dataToSheet(fine)).series.map((s) => s.name)).toEqual(["A", "B", "C"]);
   });
 });

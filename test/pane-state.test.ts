@@ -269,6 +269,40 @@ describe("task pane — loading a chart config", () => {
     expect(exportConfig().data).toEqual(loaded.data);
   });
 
+  it("undoes the colours and combo types with the cells, not just the cells", () => {
+    // `seriesColors`/`seriesMeta` are positional side-channels kept in step only
+    // by the structure handler, which fires on the EDIT and has no inverse. Undo
+    // rewound the grid and left them spliced, so deleting the middle row of a
+    // three-series combo and pressing Ctrl+Z brought the row back wearing the
+    // colour and type of the series that had followed it — a chart that now says
+    // something different, from the one keystroke whose whole promise is that it
+    // changes nothing.
+    const combo = {
+      kind: "clustered",
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "Revenue", values: [10, 20], color: "#ff0000" },
+          { name: "Margin", values: [3, 4], color: "#00ff00", type: "line" },
+          { name: "Costs", values: [7, 8], color: "#0000ff", pattern: "hatch" },
+        ],
+      },
+    };
+    importConfig(combo as never);
+    const before = exportConfig().data.series;
+    // Delete the middle row through the grid's own button, so the structure
+    // handler runs exactly as it does for a user.
+    const rows = document.querySelectorAll<HTMLElement>("#datasheet tr");
+    (rows[2].querySelector("td, th") as HTMLElement).click();
+    [...document.querySelectorAll<HTMLButtonElement>("#datasheet button")]
+      .find((b) => b.textContent?.includes("− Row"))!
+      .click();
+    expect(exportConfig().data.series, "the row was not removed, so this proves nothing").toHaveLength(2);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    expect(exportConfig().data.series, "undo did not restore the row").toHaveLength(3);
+    expect(exportConfig().data.series).toEqual(before);
+  });
+
   it("keeps a renamed series' colour, combo type, pattern and scenario", () => {
     // Renaming a row is the datasheet's core edit. The side-channel used to be
     // keyed by series NAME, so the new name matched nothing and the overlay line
