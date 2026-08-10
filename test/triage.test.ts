@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // independent of src/ so they cannot inherit a bug from the code they audit.
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
-import { triage, runsIn, selfTestIn, knownBug, deckEvidence } from "../scripts/triage.mjs";
+import { triage, runsIn, selfTestIn, knownBug, deckEvidence, poolRasteriseArms } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -336,6 +336,77 @@ describe("triage — logs that are not inserts", () => {
     });
     expect(e.withShapes).toBe(1);
     expect(e.unseen).toBe(0);
+  });
+
+  /**
+   * Pooling the counterbalanced arms, and the trap under it.
+   *
+   * `batch committed` is logged BEFORE the sync, deliberately — the sync is
+   * where a bad host goes quiet, so the number has to be on screen while you
+   * wait. That means every stall has a `batch committed` of its own immediately
+   * before it, and reading commits as successes is wrong twice over: it counts
+   * a failure as a success, and it inflates the denominator with the same event.
+   *
+   * Both mistakes were made analysing this data by hand. One pass produced 0
+   * stalls in 32 draws; another produced a 6x rasterise effect that was not
+   * there. The outcome of a draw is whether a `gave up waiting` lands between
+   * that draw's step and the next one — nothing else.
+   */
+  const drawStep = (ms: number, arm: string, i: number) => ({
+    ms,
+    scope: "selftest",
+    message: "rasterise-draw step",
+    data: { what: `after a ${arm} #${i}: drawing` },
+  });
+  const committed = (ms: number) => ({ ms, scope: "draw", message: "batch committed", data: { upTo: 7, total: 7 } });
+  const gaveUp = (ms: number) => ({
+    ms,
+    scope: "host",
+    message: "gave up waiting",
+    data: { what: "drawing shapes 1-7 of 7", afterMs: 45000 },
+  });
+
+  it("counts a draw that was SENT and never landed as a stall, not a success", () => {
+    const log = {
+      trace: {
+        entries: [
+          drawStep(10, "rasterise", 0),
+          committed(11),
+          gaveUp(60),
+          drawStep(70, "cheap read", 1),
+          committed(71),
+        ],
+      },
+    };
+    const { arms } = poolRasteriseArms([log]);
+    expect(arms.rasterise, "a committed-then-abandoned draw was read as a success").toEqual({ ok: 0, stall: 1 });
+    expect(arms["cheap read"]).toEqual({ ok: 1, stall: 0 });
+  });
+
+  it("adds the arms up across rounds, which is the whole point", () => {
+    // One round gives two draws an arm — enough to catch a call that fails
+    // every time, hopeless for anything smaller. Eight rounds of that sat in
+    // separate files, each independently reporting "no pattern".
+    const round = (stallArm: string) => ({
+      trace: {
+        entries: [
+          drawStep(10, "rasterise", 0),
+          committed(11),
+          ...(stallArm === "rasterise" ? [gaveUp(60)] : []),
+          drawStep(70, "cheap read", 1),
+          committed(71),
+          ...(stallArm === "cheap read" ? [gaveUp(120)] : []),
+        ],
+      },
+    });
+    const { rounds, arms } = poolRasteriseArms([round("rasterise"), round("rasterise"), round("cheap read")]);
+    expect(rounds).toBe(3);
+    expect(arms.rasterise).toEqual({ ok: 1, stall: 2 });
+    expect(arms["cheap read"]).toEqual({ ok: 2, stall: 1 });
+  });
+
+  it("says nothing about a log that never ran the scenario", () => {
+    expect(poolRasteriseArms([{ trace: { entries: [committed(1)] } }, {}]).arms.rasterise).toEqual({ ok: 0, stall: 0 });
   });
 
   it("has nothing to say about a log that carries no deck evidence", () => {
