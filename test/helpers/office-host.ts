@@ -391,6 +391,43 @@ export const faults = {
    */
   refuseBindings: null as null | "call" | "sync",
   /**
+   * Appending a slide RENUMBERS an existing one, so a before/after id diff shows
+   * two new ids for one added slide.
+   *
+   * Straight off the wire, and common rather than exotic: seven observations
+   * across four real rounds, every one the same arithmetic — the deck grew by
+   * exactly one and two ids read as new (`before=20 after=21 fresh=2`). One id
+   * has to leave the list for that to add up.
+   *
+   * It is not a curiosity. `addScratchSlide` refused to claim either candidate,
+   * which on 2026-08-10 cost the probe's entire second pass: three attempts,
+   * three `fresh=2`, five questions never re-asked. The fake could not express
+   * it, so nothing in CI could have caught the refusal.
+   *
+   * The renumbered slide is always one that was ALREADY there and keeps its
+   * position; the appended slide is untouched and stays last. That is exactly
+   * the property the fix relies on, so a fake that scrambled the new slide too
+   * would be asserting something no round has shown.
+   */
+  renumbersOnAdd: false,
+  /**
+   * An added slide does NOT land at the end of the deck.
+   *
+   * The counter-case to `renumbersOnAdd`. `addScratchSlide` may claim the last
+   * slide only when that slide is genuinely new, and claiming by position is
+   * safe precisely because `add()` appends — so a fake that ALWAYS appends
+   * cannot exercise the check that makes it safe, and it could be deleted with
+   * every test still green. It was.
+   *
+   * Not invented for the test either: this deck is documented as scrambling
+   * under load — `DemoReport.blankSlides` is reported by POSITION exactly
+   * because "the host reorders/merges/loses slides, which breaks any positional
+   * item mapping". If that can happen to a demo run's slides it can happen to a
+   * scratch one, and the answer there must be to give up rather than claim
+   * somebody else's slide and delete it afterwards.
+   */
+  addsAtFront: false,
+  /**
    * A freshly-added slide's `slides.getItem(id)` handle is single-sync too.
    *
    * A FAULT, not the default, and the distinction is the point. Every
@@ -1722,7 +1759,15 @@ export function installHost(
           const made = makeSlide(`slide-${slides.length + 1}`);
           addedSlideOrder.set(made.id, slideAddSeq++);
           addedSlideIds.add(made.id);
-          slides.push(made);
+          // Appending renumbers an EXISTING slide — see `faults.renumbersOnAdd`.
+          // Done before the push so the new slide is untouched and stays last,
+          // which is the whole basis on which `addScratchSlide` claims it.
+          if (faults.renumbersOnAdd && slides.length) {
+            const victim = slides[0];
+            victim.id = `${victim.id}-renumbered-${slideAddSeq}`;
+          }
+          if (faults.addsAtFront) slides.unshift(made);
+          else slides.push(made);
         },
       },
       /**
@@ -2075,6 +2120,8 @@ export function installHost(
   faults.newSlideResolvesTimes = null;
   faults.newSlideRefusedForFirst = 0;
   faults.refuseBindings = null;
+  faults.renumbersOnAdd = false;
+  faults.addsAtFront = false;
   faults.newSlideGetItemExpires = false;
   faults.refuseGetItemOnNewSlide = false;
   faults.textBoxDeletesSelection = false;

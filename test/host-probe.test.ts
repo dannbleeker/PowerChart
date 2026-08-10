@@ -514,6 +514,75 @@ describe("the fake host's answer sheet", () => {
     }
   });
 
+  it("claims the slide it appended even when the host renumbers another one", async () => {
+    // The failure that cost a whole second pass on 2026-08-10: three attempts,
+    // three `scratch slide did not land ... fresh=2`, five questions never
+    // re-asked. And it is not rare — seven observations across four rounds,
+    // every one the same arithmetic:
+    //
+    //   before=20 after=21 fresh=2      before=3  after=4  fresh=2
+    //   before=37 after=38 fresh=2      before=18 after=19 fresh=2
+    //   before=21 after=22 fresh=2      before=19 after=20 fresh=2
+    //   before=20 after=21 fresh=2
+    //
+    // The deck grows by ONE and TWO ids read as new, so an existing id has to
+    // have changed. `addScratchSlide` refused both candidates — right about the
+    // danger (claiming a slide that was already there would later delete the
+    // user's work) and wrong about this host, where nothing else is adding
+    // slides at all.
+    //
+    // What makes it claimable is position: `add()` appends, so ours is last and
+    // a renumbered slide keeps the place it always had.
+    installHost([makeSlide("s1")]);
+    faults.renumbersOnAdd = true;
+    try {
+      const sheet = await runHostProbes("fake-renumbers-on-add", "test");
+      const lost = sheet.answers.filter((a) => NOT_ASKED_WORDS.includes(a.answer));
+      expect(
+        lost.map((a) => a.id),
+        "the churned id list cost questions their slide",
+      ).toEqual([]);
+      const cleanup = sheet.answers.find((a) => a.id === SCRATCH_CLEANUP_ID)!;
+      expect(cleanup.answer, `slides were claimed but not given back — "${cleanup.detail}"`).toBe("all");
+    } finally {
+      faults.renumbersOnAdd = false;
+    }
+  });
+
+  it("refuses to claim a slide that was already in the deck", async () => {
+    // The safety half of the rule above, and it needed its own fault to exist:
+    // with a fake that always appends, the "is the last slide actually new"
+    // check could be deleted and every test stayed green.
+    //
+    // Claiming by position is only safe because `add()` appends. When the added
+    // slide lands somewhere else — and this deck is documented as reordering
+    // under load, which is why `blankSlides` is reported by position at all —
+    // the last slide belongs to the USER. Giving up costs a question. Claiming
+    // it costs them a slide, later, silently, when the probe tidies up.
+    // BOTH faults, and it takes both to build the dangerous shape. Front-insert
+    // alone still leaves exactly one fresh id, so the positional branch is never
+    // reached and the check under test never runs — the first version of this
+    // armed only that one and passed against the mutation it names.
+    // Renumbering is what forces the fallback; front-insert is what puts a
+    // slide that is not ours in the last position once we get there.
+    const deck = [makeSlide("theirs-1"), makeSlide("theirs-2")];
+    installHost(deck);
+    faults.renumbersOnAdd = true;
+    faults.addsAtFront = true;
+    try {
+      // By IDENTITY, not by id. `renumbersOnAdd` renames these slides as it
+      // goes, so an id lookup fails whether or not they survived — the first
+      // version of this asserted on ids and went red against correct code.
+      const [one, two] = deck;
+      await runHostProbes("fake-adds-at-front", "test");
+      expect(deck.includes(one), "the probe deleted a slide it never added").toBe(true);
+      expect(deck.includes(two), "the probe deleted a slide it never added").toBe(true);
+    } finally {
+      faults.renumbersOnAdd = false;
+      faults.addsAtFront = false;
+    }
+  });
+
   it("takes a fresh slide after a question that wrecks the one it used", async () => {
     // The finding seven rounds took to see, and only because a reorder ran the
     // control by accident.

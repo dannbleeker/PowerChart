@@ -85,6 +85,36 @@ export interface HostAnswerSheet {
 let PROBE_BUDGET_MS = 8_000;
 
 /**
+ * How long the probe will wait for a scratch slide to land.
+ *
+ * The per-question budget above bounds the QUESTION and nothing else, and the
+ * slide a question needs is acquired outside it — so on 2026-08-10
+ * `shape-resolve-held-slide-proxy` took 95.6 seconds against an eight-second
+ * budget, because `addScratchSlide` defaults to `READBACK_TIMEOUT_MS`: ninety
+ * seconds, sized for a twenty-slide repair page. A bound that something else
+ * can walk around is not a bound, and the sheet's whole promise is that a
+ * wedged host costs one question rather than the run.
+ *
+ * Fifteen because the two outcomes are nowhere near each other. Every scratch
+ * add that worked in that run took between 0.21 and 4.0 seconds; every one that
+ * failed took the full ninety. Fifteen is nearly four times the slowest success
+ * and a sixth of the failure, so it cannot turn a slow add into a lost question
+ * — and a probe run makes twenty-odd of these.
+ */
+let SCRATCH_ADD_BUDGET_MS = 15_000;
+
+/**
+ * Test-only: shorten the scratch-add budget.
+ *
+ * The same reason `_setProbeBudgetForTest` exists one screen up — a bound is
+ * only reachable by letting an add actually miss it, and fifteen seconds of
+ * that per case is longer than any suite should sit still for.
+ */
+export function _setScratchAddBudgetForTest(ms: number): void {
+  SCRATCH_ADD_BUDGET_MS = ms;
+}
+
+/**
  * Test-only: shorten the per-question budget.
  *
  * A wedged host is only reachable in a test by letting a question actually miss
@@ -1410,7 +1440,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   } catch {
     trace("probe", "no durable slide to use as a control — the deck would not list itself", {});
   }
-  let scratchId = await addScratchSlide();
+  let scratchId = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
   if (scratchId) scratchIds.push(scratchId);
   /**
    * Consecutive questions that could not get an answer out of the host at all.
@@ -1470,7 +1500,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       // A host that genuinely will not keep a slide pays one `addScratchSlide`
       // per question for the honest answer, which is what the budget is for.
       if (!scratchId) {
-        const recovered = await addScratchSlide();
+        const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
         if (recovered) {
           scratchIds.push(recovered);
           scratchId = recovered;
@@ -1501,7 +1531,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // cost is one add and one question, and the alternative is a sheet
         // that gives up on eight questions because one slide went bad.
         if (NOT_ASKED.has(result.answer)) {
-          const replacement = await addScratchSlide();
+          const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
           if (replacement) {
             scratchIds.push(replacement);
             scratchId = replacement;
@@ -1565,7 +1595,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // replaced seventeen in one run — that is not an edge case, it is the
         // normal path.
         if (NOT_ASKED.has(r.answer)) {
-          const replacement = await addScratchSlide();
+          const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
           if (replacement) {
             scratchIds.push(replacement);
             scratchId = replacement;
@@ -1628,7 +1658,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           trace("probe", "stopping the second pass — the host is not answering", { at: entry.id });
           break;
         }
-        const replacement = await addScratchSlide();
+        const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
         // One refused slide is not a dead host, and treating it as one made
         // this whole pass theatre.
         //
