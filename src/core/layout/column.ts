@@ -266,7 +266,15 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       const fill = seriesColor(style, si, s.colors?.[c] ?? s.color);
 
       const sp = stackPos.get(s.stack ?? 0) ?? 0;
-      const barStyle = !stacked && !H ? (decor.barStyle ?? "bar") : "bar";
+      // The `!H` that used to be here forced every clustered chart back to
+      // plain rectangles the moment the rotation toggle went on — and a
+      // Cleveland dot plot and a dumbbell range chart are NORMALLY horizontal,
+      // which is the whole point of them: long category labels run down the
+      // left. `barStyle: "range"` sideways gave two full-length bars from zero
+      // instead of dot–line–dot, so the connector carrying the entire meaning
+      // was gone and the endpoints read as two independent magnitudes. Stacked
+      // is still excluded, because a stack has no single point to mark.
+      const barStyle = stacked ? "bar" : (decor.barStyle ?? "bar");
       if (raw != null && v !== 0) {
         if (stacked) {
           const catPos = nStacks > 1 ? centers[c] - colThick / 2 + (sp + 0.5) * stackThick : centers[c];
@@ -301,29 +309,34 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // Lollipop / dot / dumbbell-range rendering for clustered charts:
         // the value point is a dot; lollipops add a stem from the baseline;
         // range connects the two series' dots with a line (drawn once).
-        const dotX = barStyle === "range" ? centers[c] : r.x + r.w / 2;
-        const dotY = v >= 0 ? r.y : r.y + r.h;
+        // Two coordinates rather than an x and a y: `cross` is the position on
+        // the CATEGORY axis (a bar's x on a column chart, its y on a bar) and
+        // `val` is the position on the VALUE axis. The rest of the block places
+        // marks in those terms and maps them once, which is what lets the same
+        // dot, stem and connector serve both orientations.
+        const cross = barStyle === "range" ? centers[c] : H ? r.y + r.h / 2 : r.x + r.w / 2;
+        const val = H ? (v >= 0 ? r.x + r.w : r.x) : v >= 0 ? r.y : r.y + r.h;
         const dotR = 4;
+        /** A line along the value axis, at `cross` on the category axis. */
+        const alongValue = (v1: number, v2: number) =>
+          H ? { x1: v1, y1: cross, x2: v2, y2: cross } : { x1: cross, y1: v1, x2: cross, y2: v2 };
         if (barStyle === "lollipop") {
           nodes.push({
             kind: "line",
-            x1: dotX,
-            y1: frame.y + frame.h - qOf(0),
-            x2: dotX,
-            y2: dotY,
+            // `y0` is the baseline in whichever direction the value axis runs.
+            ...alongValue(y0, val),
             stroke: fill,
             strokeWidth: 1.5,
             name: `stem-${si}-${c}`,
           });
         }
         if (barStyle === "range" && si === 1 && data.series[0].values[c] != null) {
-          const y0r = frame.y + frame.h - qOf(data.series[0].values[c]!);
+          const other = H
+            ? frame.x + qOf(data.series[0].values[c]!)
+            : frame.y + frame.h - qOf(data.series[0].values[c]!);
           nodes.push({
             kind: "line",
-            x1: dotX,
-            y1: y0r,
-            x2: dotX,
-            y2: dotY,
+            ...alongValue(other, val),
             stroke: style.mutedText,
             strokeWidth: 1.5,
             name: `range-${c}`,
@@ -331,8 +344,8 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         }
         nodes.push({
           kind: "ellipse",
-          cx: dotX,
-          cy: dotY,
+          cx: H ? val : cross,
+          cy: H ? cross : val,
           rx: dotR,
           ry: dotR,
           fill,
@@ -340,13 +353,14 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           strokeWidth: 1,
           name: `seg-${si}-${c}`,
         });
-        if (c === n - 1) lastSegMid[si] = dotY;
+        if (c === n - 1) lastSegMid[si] = H ? cross : val;
         if (decor.segmentLabels) {
           const label = formatNumber(raw!, fmt);
           nodes.push({
             kind: "text",
-            x: dotX + dotR + 2,
-            y: dotY - fs * 0.7,
+            // Clear of the dot along the value axis, centred on it across.
+            x: (H ? val : cross) + dotR + 2,
+            y: (H ? cross : val) - fs * 0.7,
             w: textWidth(label, fs) + 4,
             h: fs * 1.4,
             text: label,
