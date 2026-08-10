@@ -708,6 +708,38 @@ describe("image render mode", () => {
       raster.restore();
     }
   });
+
+  it("does not report a successful auto-picture rescue as a fallback to shapes", async () => {
+    // `chartPicture` returns a warn WITH a png on its SUCCESS path: a chart too
+    // dense for the web host, rasterised and inserted as a picture, the warn
+    // being the explanation. Treating every warn as a failure printed, in red,
+    // "N image chart(s) fell back to native shapes" — over charts that went in
+    // as PICTURES, overwriting the true success line, claiming the dangerous
+    // thing had happened when the guard against it had just worked, and
+    // steering the user away from "Explode to native shapes".
+    const raster = stubRaster();
+    try {
+      host.autoPicture = true;
+      host.canPicture = true;
+      host.deckCharts = [
+        { configJson: chartJson([1, 5]), target: { shapeId: "a" } },
+        { configJson: chartJson([2, 90]), target: { shapeId: "b" } },
+      ];
+      $("same-scale").click();
+      await settle();
+      // Both really are pictures — the premise of the complaint.
+      const payloads = host.calls.updateCharts.at(-1) ?? [];
+      expect(payloads.length, "no update was issued").toBeGreaterThan(0);
+      expect(
+        payloads.every((it) => !!(it.opts as { pictureBase64?: string } | undefined)?.pictureBase64),
+        "the rescue did not produce pictures, so this proves nothing",
+      ).toBe(true);
+      expect($("host-note").textContent ?? "").not.toMatch(/fell back to native shapes/i);
+      expect($("host-note").className, "a successful rescue was reported in red").not.toMatch(/status-err/);
+    } finally {
+      raster.restore();
+    }
+  });
 });
 
 describe("Explode to native shapes", () => {
@@ -742,6 +774,38 @@ describe("Explode to native shapes", () => {
     await settle();
     expect(host.calls.updateChart).toHaveLength(0);
     expect($("host-note").textContent).toMatch(/select an inserted powerchart/i);
+  });
+
+  it("does not claim success when the host would not save the config back", async () => {
+    // The same host answer the ordinary update path handles carefully — and on
+    // the web it is ordinary: five `no-config` results in a single recorded
+    // round. Explode used to print GREEN over a chart that could no longer be
+    // opened, and then adopt the lost target as the live edit target, so the
+    // next push resolved a dead id and did nothing at all.
+    host.loadSelectionResult = {
+      configJson: JSON.stringify({ ...JSON.parse(chartJson([1, 2])), render: "image" }),
+      target: { slideId: "s1", shapeId: "pic-1", left: 10, top: 20 },
+    };
+    host.updateResult = { slideId: "s1", shapeId: "grp-1", left: 10, top: 20, lost: "no-config" };
+    $("explode").click();
+    await settle();
+    expect($("host-note").className, "a lost chart was reported as a success").toMatch(/status-err/);
+    expect($("host-note").textContent).toMatch(/no longer editable/i);
+    // And the dead target is not kept: the Insert button must not offer Update
+    // against a chart the pane cannot resolve.
+    expect($("insert").textContent).not.toMatch(/update/i);
+  });
+
+  it("does not claim success when the host would not say where the shapes landed", async () => {
+    host.loadSelectionResult = {
+      configJson: JSON.stringify({ ...JSON.parse(chartJson([1, 2])), render: "image" }),
+      target: { slideId: "s1", shapeId: "pic-1", left: 10, top: 20 },
+    };
+    host.updateResult = { slideId: "s1", shapeId: "grp-1", left: 10, top: 20, lost: "unknown-shape" };
+    $("explode").click();
+    await settle();
+    expect($("host-note").className).toMatch(/status-err/);
+    expect($("host-note").textContent).toMatch(/lost track/i);
   });
 
   it("says so when the picture is already gone from the slide", async () => {
@@ -1948,6 +2012,19 @@ describe("demo-insert one-shot deck insert", () => {
     $("demo-tidy").click();
     await settle();
     expect($("host-note").textContent ?? "").toMatch(/Removed \d+ of \d+/);
+
+    // And it STAYS dead. The handler empties `tidyable` and disables itself on
+    // purpose — after a partial sweep there is no longer a list it trusts — but
+    // `guard()` captured the clicked button before running the handler and its
+    // finally brought it back. A second press then printed a green
+    // "Cleaned up — 0 slide(s) removed." over the slides the host had just
+    // refused, which docs/MANUAL.md and the button's own title both deny.
+    expect(($("demo-tidy") as HTMLButtonElement).disabled, "guard resurrected a button meant to stay dead").toBe(true);
+    const deletedSoFar = [...host.deletedSlides];
+    $("demo-tidy").click();
+    await settle();
+    expect(host.deletedSlides, "a second press asked the host again").toEqual(deletedSoFar);
+    expect($("host-note").textContent ?? "").not.toMatch(/Cleaned up/);
   });
 
   it("still writes the file when the host will not describe its own deck", async () => {

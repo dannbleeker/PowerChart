@@ -2041,7 +2041,23 @@ async function doSameScale(scope: "deck" | "selection" = "deck") {
     return;
   }
   note("Same scale applied to {n} charts (max {max}).", "ok", { n: applied.length, max });
-  const degraded = pictures.filter((p) => p.warn).length;
+  // `warn` alone is not a failure. `chartPicture` returns a warn WITH a png on
+  // its SUCCESS path — the web auto-picture rescue, where a chart too dense for
+  // this host was rasterised and inserted as a picture, and the warn is the
+  // explanation. Counting every warn reported those in RED as "fell back to
+  // native shapes", the opposite of what happened: it overwrote the true
+  // success line one statement above, claimed the dangerous thing had occurred
+  // when the guard against it had just worked, and steered the user away from
+  // "Explode to native shapes" — the one control that turns a picture back.
+  const rescued = pictures.filter((p) => p.warn && p.png).length;
+  const degraded = pictures.filter((p) => p.warn && !p.png).length;
+  if (rescued) {
+    note(
+      'Same scale applied. {n} chart(s) were too dense for this host and went in as pictures — "Explode to native shapes" turns them back.',
+      "ok",
+      { n: rescued },
+    );
+  }
   if (degraded) {
     note("Same scale applied, but {n} image chart(s) fell back to native shapes.", "err", { n: degraded });
   }
@@ -2097,6 +2113,29 @@ async function doExplode() {
       renderActionState();
     }
     note("That chart is no longer on the slide.", "err");
+    return;
+  }
+  if (next.lost) {
+    // The shapes are on the slide and the pane cannot come back to them —
+    // exactly the case the ordinary update path handles at length, and this
+    // door onto the same host answer used to print green and adopt the dead
+    // target anyway. On a web host that refuses a shape tag write (the 5010
+    // family, recorded five times in a single round) Explode claimed success
+    // over a chart that could no longer be opened, and installed the lost
+    // target as `state.editTarget` — so the next push resolved a dead id, was
+    // filtered out as "the user deleted this chart", and did nothing. With
+    // auto-update on, every debounced push after it did nothing too.
+    state.editTarget = null;
+    renderActionState();
+    $("selection-banner").style.display = "none";
+    note(
+      next.lost === "no-config"
+        ? "Exploded to native shapes, but PowerPoint would not save the chart's settings onto them — it is no " +
+            "longer editable from the pane. Undo (Ctrl+Z) restores the picture."
+        : "Exploded to native shapes, but PowerPoint would not say where they landed, so the pane has lost track " +
+            "of them. Click the chart and press Edit it to carry on.",
+      "err",
+    );
     return;
   }
   // Adopt the returned target: every shape was replaced, so the old one is dead
@@ -3223,6 +3262,20 @@ function wireInsert() {
      *
      * The clicked button comes from the event, so no call site can forget it.
      */
+    /**
+     * Disable a button and mean it, from inside a guarded action.
+     *
+     * `guard()` captures which buttons it disabled BEFORE running the handler and
+     * re-enables exactly those afterwards. A handler that disables its OWN button
+     * during the action is therefore undone by the very next line of the finally —
+     * which is how "Clean up the last round" came back to life after emptying its
+     * list, so a second press reported a clean sweep of nothing in green.
+     */
+    function keepDisabled(btn: HTMLButtonElement): void {
+      btn.disabled = true;
+      btn.dataset.keepDisabled = "1";
+    }
+
     const guard = (fn: () => Promise<void>) =>
       async function (this: unknown, ev?: Event) {
         const clicked = ev?.currentTarget as HTMLButtonElement | undefined;
@@ -3282,7 +3335,22 @@ function wireInsert() {
           resetStop();
           // Only re-enable what this call disabled — never resurrect a button
           // some other state (no host, no selection) means to keep dead.
-          for (const b of lock) b.disabled = false;
+          //
+          // `lock` is captured BEFORE `fn()`, so a button the HANDLER itself
+          // disabled during the action was still in it and came back to life.
+          // "Clean up the last round" is the case: it empties `tidyable` and
+          // disables itself on purpose, because after a partial sweep there is
+          // no longer a list it trusts — and this line undid that, so a second
+          // press printed a GREEN "Cleaned up — 0 slide(s) removed." over slides
+          // the host had just refused. `keepDisabled` is how a handler says it
+          // means it.
+          for (const b of lock) {
+            if (b.dataset.keepDisabled) {
+              delete b.dataset.keepDisabled;
+              continue;
+            }
+            b.disabled = false;
+          }
           // Last: this releases the selection watcher, and it must not be let
           // loose while the lines above are still touching the pane.
           hostWorkFinished();
@@ -3338,16 +3406,27 @@ function wireInsert() {
         const parsed = JSON.parse(($("json-io") as HTMLTextAreaElement).value);
         const configs: ChartConfig[] = Array.isArray(parsed) ? parsed : [parsed];
         let degraded = 0;
+        let rescued = 0;
         for (const c of configs) {
           const cfg = { ...DEFAULT_SIZE, ...c };
           const scene = buildChart(cfg);
           // Batch insert honours render:"image" per config — without this a
           // pasted image-mode array silently drew native shapes.
           const { png, warn } = await chartPicture(cfg, scene);
-          if (warn) degraded++;
+          // A warn WITH a png is the rescue succeeding, not failing — see the
+          // same distinction in doSameScale.
+          if (warn && !png) degraded++;
+          else if (warn) rescued++;
           await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg), pictureBase64: png });
         }
         note("Inserted {n} chart(s) on the current slide.", "ok", { n: configs.length });
+        if (rescued) {
+          note(
+            '{r} of them were too dense for this host and went in as pictures — "Explode to native shapes" turns them back.',
+            "ok",
+            { r: rescued },
+          );
+        }
         if (degraded) {
           note("Inserted {n} chart(s), but {d} image chart(s) fell back to native shapes.", "err", {
             n: configs.length,
@@ -3625,7 +3704,7 @@ function wireInsert() {
         // the host has already refused once, and the honest state after a
         // partial sweep is "there is no longer a list I trust".
         tidyable = [];
-        ($("demo-tidy") as HTMLButtonElement).disabled = true;
+        keepDisabled($("demo-tidy") as HTMLButtonElement);
         note(
           gone === ids.length
             ? `Cleaned up — ${gone} slide(s) removed.`
