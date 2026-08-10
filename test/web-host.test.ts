@@ -34,8 +34,11 @@ import {
   enableExtendedErrorLogging,
   trimDebugInfo,
   untaggedIndices,
+  insertAgendaSlides,
+  MAX_ADD_RETRY_ROUNDS,
 } from "../src/render/powerpoint";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
+import { buildAgendaScene } from "../src/core/agenda";
 import { sampleConfig } from "../src/core/samples";
 import { setTracing, traceLog, traceMark } from "../src/core/trace";
 import type { ChartConfig, ChartKind } from "../src/core/types";
@@ -1367,5 +1370,77 @@ describe("what the reconcile expects of a degraded item", () => {
     for (const v of verdicts.slice(0, from)) {
       expect(v.expected, `slot ${v.slot} drew native shapes; its expectation collapsed to 1`).toBeGreaterThan(1);
     }
+  });
+});
+
+/**
+ * Two index spaces, and the settle pass used to mix them.
+ *
+ * `updateChartsInSlides` filters `items` down to the ones whose slide and shape
+ * the host still resolves, then maps over THAT. The settle plan paired each
+ * result with `items[i]` — a different space the moment one item is dropped,
+ * which is ordinary here: the user deletes a chart and runs Same Scale, or the
+ * host declines one shape with a 5010.
+ */
+describe("the settle pass tags the chart it is holding", () => {
+  const conf = (i: number) => ({ ...sampleConfig("clustered"), title: `chart-${i}` });
+
+  it("writes each chart's own config, even when an earlier item was filtered out", async () => {
+    const slide = makeSlide("s1");
+    const kept = makeShape("geometric", "rectangle", { left: 10, top: 20, width: 100, height: 100 });
+    kept.name = "PowerChart";
+    kept.tagStore.set(CHART_TAG, JSON.stringify(conf(1)));
+    slide.created.push(kept);
+    installHost([slide], [kept], slide);
+    // The config-tag write inside the drawing context is refused, so the settle
+    // pass runs — the ordinary documented outcome on the web host.
+    faults.refuseTagWrites = 1;
+
+    await updateChartsInSlides([
+      // Filtered out: the user deleted this chart between reading and pushing.
+      {
+        scene: buildChart(conf(0)),
+        target: { slideId: "s1", shapeId: "the-user-deleted-this", left: 10, top: 20 },
+        opts: { tagData: '{"i":0}' },
+      },
+      {
+        scene: buildChart(conf(1)),
+        target: { slideId: "s1", shapeId: kept.id, left: 10, top: 20 },
+        opts: { tagData: '{"i":1}' },
+      },
+    ]);
+
+    const written = slide.created
+      .map((sh: { tagStore: Map<string, string> }) => sh.tagStore.get(CHART_TAG))
+      .filter((v: string | undefined) => v === '{"i":0}' || v === '{"i":1}');
+    // The surviving chart is chart 1. The old code wrote chart 0's config onto
+    // it and then reported it re-editable, so opening it would have loaded the
+    // DELETED chart's data and the next Update would have written that in.
+    expect(written, "the settle tagged a chart with another chart's config").not.toContain('{"i":0}');
+  });
+});
+
+/**
+ * The guard `addAndRenderItem` has, and the sibling call site never got.
+ */
+describe("insertAgendaSlides when the host drops a slide add", () => {
+  it("reports the host's reason, not a TypeError from renderer internals", async () => {
+    installHost([makeSlide("s1")]);
+    const chapters = ["Intro", "Body", "Close"];
+    const scenes = chapters.map((_, i) => buildAgendaScene(chapters, { highlight: i }));
+    // Every add swallowed, retry budget included: `addSlides` then hands back
+    // fewer thunks than scenes, which is its documented contract.
+    faults.swallowAdds = chapters.length * (1 + MAX_ADD_RETRY_ROUNDS) - 1;
+    let err: unknown;
+    try {
+      await insertAgendaSlides(scenes);
+    } catch (e) {
+      err = e;
+    }
+    expect(err, "the dropped add went unreported").toBeDefined();
+    expect(String((err as Error).message)).toMatch(/agenda slides/i);
+    // "getSlide is not a function" is a TypeError from renderer internals, for
+    // a condition `addSlides` diagnosed precisely one frame earlier.
+    expect(String((err as Error).message)).not.toMatch(/is not a function/);
   });
 });
