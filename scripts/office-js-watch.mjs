@@ -26,6 +26,7 @@
  * its own repositories and the office-js API is out of reach from one. The
  * matching half is pure and is what the tests drive, through `--from`.
  */
+import { pathToFileURL } from "node:url";
 
 /**
  * The Office.js surface this add-in actually calls.
@@ -52,8 +53,56 @@ export const WATCHED_APIS = [
   { term: "shape.tags", why: "config tags — what makes a chart re-editable" },
   { term: "pageSetup", why: "the slide size every placement depends on" },
   { term: "fill.setImage", why: "the degrade-to-picture path" },
-  { term: "context.sync", why: "the one call every failure this project has met goes through" },
+  {
+    term: "context.sync",
+    why: "the one call every failure this project has met goes through",
+    // TRUE of this repo, and useless on its own. Both at once.
+    //
+    // Every Office.js issue in every host goes through `context.sync`, so as a
+    // standalone signal it matches the TRACKER rather than our exposure. The
+    // 2026-08-10 sweep is what that looks like: 63 issues to triage, 56 of them
+    // found by this term alone, 37 naming Word, Excel or Outlook in the title,
+    // and 2 naming PowerPoint. A weekly list of 63 to find 2 is a list nobody
+    // opens — and `KNOWN_ISSUES` wants an entry for every one of them or they
+    // all come back next Monday.
+    //
+    // So it corroborates rather than nominates: it counts when something else
+    // already ties the issue to us, and never by itself.
+    needsCorroboration: true,
+  },
 ];
+
+/**
+ * The office-js issue template's Host line, and specifically its ANSWER.
+ *
+ * `* Host [Excel, Word, PowerPoint, etc.]: *Excel*`
+ *
+ * The menu names PowerPoint in EVERY templated issue, which is a trap worth
+ * spelling out because the first version of this walked straight into it: a
+ * plain "does the body say powerpoint" rescue kept `Excel Data Validation -
+ * Whole Numbers have restricted integer values`, on the strength of the square
+ * brackets. Only what the reporter typed after the colon counts.
+ */
+const HOST_ANSWER = /host\s*\[[^\]]*\]\s*:?\s*\**\s*([^\n*]{0,40})/i;
+
+/**
+ * Does this issue say it is about PowerPoint?
+ *
+ * The second signal a corroboration-only term looks for, and it never reads the
+ * raw body — see `HOST_ANSWER`. A stated host is believed outright, in both
+ * directions: "Excel" is a no whatever else the text mentions. With no host
+ * line to go on it falls back to the TITLE, which is the one part of an issue
+ * nobody fills in from a menu.
+ *
+ * Only ever used to RESCUE an issue a broad term found, never to reject one a
+ * specific term did — so being wrong here costs a line in a weekly list, not a
+ * missed defect.
+ */
+function mentionsPowerPoint(title, body) {
+  const stated = HOST_ANSWER.exec(body ?? "")?.[1];
+  if (stated && /\w/.test(stated)) return /powerpoint|\bppt\b/i.test(stated);
+  return /powerpoint|\bslides?\b|\bpptx?\b/i.test(title ?? "");
+}
 
 /**
  * Issues this project has already read and responded to.
@@ -94,6 +143,15 @@ export const KNOWN_ISSUES = {
   3826: "A freshly-added slide's layout shapes throw GeneralException. Asked by the `slide-layout-readable` probe.",
   4272: "A load of more than ~50 items answers short. Why the deck scan is paged at READBACK_PAGE.",
   4906: "SlideLayout.shapes throws on decks built from a custom template — the owner's case. Asked by the `layouts-readable` probe.",
+  5455:
+    "PowerPoint throws GeneralException READING ParagraphFormat.horizontalAlignment on a text range with no alignment set " +
+    "(no `align` on `a:pPr`). Closed. NO EXPOSURE, and the direction is the whole reason: this repo only ever WRITES that " +
+    "property — `stampSlide`'s banner and the text renderer, both plain assignments — and never loads it. Checked on " +
+    "2026-08-10 rather than assumed, because the property name matching ours is exactly what makes an issue look like a hit.",
+  6867:
+    "Slide.exportAsBase64 omits modern comments and ppt/authors.xml from the exported deck. NO EXPOSURE: the add-in calls it " +
+    "through `slideImageBase64` to get a PICTURE of a slide for the round's deck evidence, and a round has no comments in it " +
+    "and no interest in them if it did. Kept in the table rather than dropped so the next sweep does not re-raise it.",
   5022: "context.sync() runs indefinitely when shapes are re-read after an image insert. Asked by the `picture-then-shape-read` probe; drawDemoItem does exactly that sequence.",
   5101: "A placeholder keeps type: Placeholder when reused. NO EXPOSURE — this repo never reads a shape's type. Checked, not assumed.",
   5264: "A part of the object model Office.js cannot reach. Recorded as a limitation.",
@@ -136,6 +194,10 @@ export function freshIssues(issues, known = KNOWN_ISSUES, apis = WATCHED_APIS) {
     const text = haystack(issue);
     const hits = apis.filter((a) => text.includes(a.term.toLowerCase()));
     if (!hits.length) continue;
+    // A hit that only ever corroborates cannot nominate an issue on its own —
+    // see `needsCorroboration`. Something specific has to have matched too, or
+    // the issue has to say it is about PowerPoint.
+    if (hits.every((a) => a.needsCorroboration) && !mentionsPowerPoint(issue.title, issue.body)) continue;
     out.push({
       number: issue.number,
       title: issue.title,
@@ -218,6 +280,14 @@ async function main() {
 }
 
 // Only when run directly — the tests import the pure half.
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+//
+// Compared as a file URL rather than by basename. The old form split argv[1] on
+// "/" and asked whether `import.meta.url` ended with the last piece, which on
+// Windows never splits at all: the whole `C:\…\office-js-watch.mjs` path came
+// back, no file URL ends with that, and the CLI silently did nothing on the
+// owner's machine — `--from`, `--json`, the lot, exit 0 and no output. A
+// basename test is also wrong in the other direction, matching any script that
+// happens to share the filename.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

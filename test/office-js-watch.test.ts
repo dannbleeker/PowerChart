@@ -48,6 +48,78 @@ describe("watching the office-js tracker", () => {
     expect(freshIssues([issue(2775, "text box deletes selection", "addTextBox")])).toHaveLength(0);
   });
 
+  /**
+   * `context.sync` is true of this repo and useless on its own.
+   *
+   * Every Office.js issue in every host goes through it, so alone it matches
+   * the TRACKER rather than our exposure. The 2026-08-10 sweep opened with 63
+   * issues to triage: 56 found by that term alone, 37 naming Word, Excel or
+   * Outlook in the title, and 2 naming PowerPoint. A weekly list of 63 to find
+   * 2 is a list nobody opens — and `KNOWN_ISSUES` wants an entry for every one
+   * or they all come back next Monday.
+   *
+   * Measured against a real page of 100 tracker issues: 25 reported before, 2
+   * after, and both survivors right.
+   */
+  it("does not nominate a Word issue on the strength of context.sync alone", () => {
+    const word = issue(9101, "Word: Range.split not splitting in Office Online", "we call context.sync and it hangs");
+    expect(freshIssues([word])).toHaveLength(0);
+  });
+
+  it("still reports a PowerPoint issue that only mentions context.sync", () => {
+    // The rescue has to work, or scoping the term merely loses the issues it
+    // was there for. A stated host is believed outright.
+    // The title deliberately says NOTHING about PowerPoint, so only the stated
+    // host can rescue this. With a title like "Slides stop rendering" the
+    // fallback matched too and the stated-host branch could be deleted with
+    // every test still green.
+    const ppt = issue(
+      9102,
+      "Rendering stops after a large batch",
+      "* Host [Excel, Word, PowerPoint, etc.]: *PowerPoint*\ncontext.sync never returns",
+    );
+    const fresh = freshIssues([ppt]);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0].hits).toEqual(["context.sync"]);
+  });
+
+  it("believes the stated host over a title that sounds like ours", () => {
+    // The other direction, and the reason the comment says "believed outright".
+    // "Slide" is a common enough word elsewhere — a slide-out panel, a slider —
+    // that a title alone must not overrule a reporter who typed Excel.
+    const notOurs = issue(
+      9105,
+      "Slide-out task pane loses focus",
+      "* Host [Excel, Word, PowerPoint, etc.]: *Excel*\ncontext.sync then stalls",
+    );
+    expect(freshIssues([notOurs]), "a title matched over the reporter's own answer").toHaveLength(0);
+  });
+
+  it("reads the host the reporter TYPED, not the menu the template offers", () => {
+    // The trap the first attempt walked into. Every templated issue carries
+    // `Host [Excel, Word, PowerPoint, etc.]` in its body, so a plain "does the
+    // body say powerpoint" rescue kept `Excel Data Validation — Whole Numbers
+    // have restricted integer values`, and twenty-two more like it.
+    const excel = issue(
+      9103,
+      "Excel Data Validation - Whole Numbers have restricted integer values",
+      "* Host [Excel, Word, PowerPoint, etc.]: *Excel*\nthen context.sync throws",
+    );
+    expect(freshIssues([excel]), "rescued an Excel issue on the template's own menu text").toHaveLength(0);
+  });
+
+  it("still reports a specific call whatever host the issue names", () => {
+    // Corroboration gates the BROAD term only. A named call we make is a
+    // finding wherever it was found: the API is shared across hosts and so are
+    // its bugs.
+    const other = issue(
+      9104,
+      "Performance discrepancy",
+      "* Host [Excel, Word, PowerPoint, etc.]: *Excel*\ngetItemOrNullObject is slow",
+    );
+    expect(freshIssues([other])).toHaveLength(1);
+  });
+
   it("drops pull requests", () => {
     // The issues endpoint returns them too, and a PR against office-js is not a
     // defect report about it.
