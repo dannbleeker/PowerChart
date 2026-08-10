@@ -1427,6 +1427,31 @@ const features = [
     },
     decorations: { categoryAxis: true, valueAxis: true },
   },
+  // APPENDED, never inserted: a new slide in the middle renumbers every
+  // downstream slideN.xml and buries the real diff in the determinism check.
+  {
+    kind: "stacked",
+    horizontal: true,
+    width: 480,
+    height: 300,
+    title: "Bullet graph — actual vs target, the way one is usually drawn",
+    decorations: {
+      categoryAxis: true,
+      valueAxis: true,
+      bands: [
+        { axis: "y", from: 0, to: 55, label: "poor" },
+        { axis: "y", from: 55, to: 75, label: "ok" },
+        { axis: "y", from: 75, to: 100, label: "good" },
+      ],
+    },
+    data: {
+      categories: ["North", "South", "East"],
+      series: [
+        { name: "Actual", values: [70, 55, 90] },
+        { name: "Target", values: [80, 60, 85] },
+      ],
+    },
+  },
 ];
 
 const configs = [...kinds, ...features];

@@ -226,22 +226,37 @@ export function bandNodes(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   decor.bands?.forEach((band, i) => {
     const fill = band.color ?? "#f2f1ec";
     let r: { x: number; y: number; w: number; h: number } | null = null;
-    if (band.axis === "y" && a.valueToY) {
+    // `axis` names the DATA axis the band spans, not a screen direction: a "y"
+    // band is a range of VALUES and a "x" band is a range of CATEGORIES,
+    // whichever way the chart is turned. Reading `valueToY` alone meant the
+    // range zones of a bullet chart — conventionally horizontal — were dropped
+    // silently along with its target tick.
+    const H = !!cfg.horizontal;
+    const valueToPos = H ? a.valueToX : a.valueToY;
+    if (band.axis === "y" && valueToPos) {
       // Clip to the plot: band.from/to are data values that may fall outside the
-      // value domain, and valueToY extrapolates past the axis, so an unclamped
-      // band renders off-frame. (The x-branch below already clamps its indices;
-      // a band entirely outside the plot collapses to h<=0 and is dropped below.)
-      const y1 = a.valueToY(band.from);
-      const y2 = a.valueToY(band.to);
-      const top = Math.max(a.plot.y, Math.min(y1, y2));
-      const bot = Math.min(a.plot.y + a.plot.h, Math.max(y1, y2));
-      r = { x: a.plot.x, y: top, w: a.plot.w, h: bot - top };
+      // value domain, and the map extrapolates past the axis, so an unclamped
+      // band renders off-frame. (The category branch below clamps its indices;
+      // a band entirely outside the plot collapses to w/h <= 0 and is dropped.)
+      const v1 = valueToPos(band.from);
+      const v2 = valueToPos(band.to);
+      if (H) {
+        const left = Math.max(a.plot.x, Math.min(v1, v2));
+        const right = Math.min(a.plot.x + a.plot.w, Math.max(v1, v2));
+        r = { x: left, y: a.plot.y, w: right - left, h: a.plot.h };
+      } else {
+        const top = Math.max(a.plot.y, Math.min(v1, v2));
+        const bot = Math.min(a.plot.y + a.plot.h, Math.max(v1, v2));
+        r = { x: a.plot.x, y: top, w: a.plot.w, h: bot - top };
+      }
     } else if (band.axis === "x" && a.categoryX.length) {
       const c1 = Math.max(0, Math.min(a.categoryX.length - 1, Math.min(band.from, band.to)));
       const c2 = Math.max(0, Math.min(a.categoryX.length - 1, Math.max(band.from, band.to)));
-      const x1 = a.categoryX[c1] - a.categoryWidth[c1] * 0.75;
-      const x2 = a.categoryX[c2] + a.categoryWidth[c2] * 0.75;
-      r = { x: x1, y: a.plot.y, w: x2 - x1, h: a.plot.h };
+      // `categoryX` is the category's centre on the CROSS axis — x on a column
+      // chart, y on a bar.
+      const m1 = a.categoryX[c1] - a.categoryWidth[c1] * 0.75;
+      const m2 = a.categoryX[c2] + a.categoryWidth[c2] * 0.75;
+      r = H ? { x: a.plot.x, y: m1, w: a.plot.w, h: m2 - m1 } : { x: m1, y: a.plot.y, w: m2 - m1, h: a.plot.h };
     }
     if (!r || r.w <= 0 || r.h <= 0) return;
     nodes.push({ kind: "rect", ...r, fill, name: `band-${i}` });
