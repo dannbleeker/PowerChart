@@ -217,6 +217,41 @@ describe("the host self-test battery", () => {
   });
 
   /**
+   * The same rule, swept across every scenario that draws a conclusion from a
+   * READBACK.
+   *
+   * Each of these guards its first scan and then made its loudest claim off a
+   * second one it never checked. `insertOntoUsedSlide` was fixed for exactly
+   * this and its siblings were not swept with it, so a host answering one page
+   * short produced a hard FAILED verdict asserting data loss the add-in did not
+   * cause — "its config did not survive the redraw", "no longer re-editable",
+   * "the config did not survive". Those are the sentences that send a
+   * maintainer after the tag-write path.
+   */
+  it.each([
+    "edit a chart on the visible slide",
+    "explode a degraded picture",
+    "insert on top of an earlier run",
+    "two slides claiming one slot",
+    "edit the chart the user selected",
+    "same scale across the deck",
+  ])("does not report data loss from a blind readback: %s", async (name) => {
+    installHost([makeSlide("s1")]);
+    faults.hollowReads = 500;
+    try {
+      const r = byName(await runSelfTest("probe", name))[name];
+      // Either it never got far enough to read back (skipped for its own
+      // reasons), or it read back blind — but it must never be a hard FAIL that
+      // blames the add-in for what the host would not show it.
+      if (r.ok === false && !r.skipped) {
+        expect.fail(`reported a hard failure off a blinded host: ${r.detail}`);
+      }
+    } finally {
+      faults.hollowReads = 0;
+    }
+  });
+
+  /**
    * Stop asking a host that has stopped answering.
    *
    * Every real-host artefact this project owns ends the same way. The last one:
