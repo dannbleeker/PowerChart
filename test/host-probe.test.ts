@@ -11,11 +11,12 @@ import {
   sheetNeedsAttention,
   summariseHostSheet,
   _setProbeBudgetForTest,
+  NOT_ASKED,
 } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
 // copies of the same table is how a claim quietly stops matching its check.
-import { FAKE_BASELINE, diffAnswers, answersOf, sheetOf } from "../scripts/host-diff.mjs";
+import { FAKE_BASELINE, diffAnswers, answersOf, sheetOf, NEVER_ASKED } from "../scripts/host-diff.mjs";
 
 /**
  * The fake's own answer sheet, frozen.
@@ -86,6 +87,19 @@ describe("the fake host's answer sheet", () => {
     expect(d.differ[0].means, "a divergence with nothing said about what rests on it").toBeTruthy();
     expect(d.onlyReal).toEqual(["extra-question"]);
     expect(d.onlyFake).toEqual(["getitemat-past-end"]);
+  });
+
+  it("shares its never-asked vocabulary with the diff tool, word for word", () => {
+    // A comment saying the two are "kept in step" is not a mechanism. `not-asked`
+    // — what the mute breaker records when it abandons the rest of a sheet — was
+    // added on the probe side and not on the tool's, so every question that
+    // breaker gives up on was compared against the fake and reported as a real
+    // host DIVERGENCE. That is the exact failure diffAnswers' `notAsked` branch
+    // exists for, wearing a word that did not exist when it was written.
+    expect([...NEVER_ASKED].sort()).toEqual([...NOT_ASKED].sort());
+    // And no probe may ever answer with one of these words, or the diff would
+    // read a genuine answer as a question nobody put.
+    for (const w of NOT_ASKED) expect(FAKE_BASELINE, `the fake answers "${w}"`).not.toHaveProperty(w);
   });
 
   it("reads a real sheet's wrapper, not just a bare map", () => {

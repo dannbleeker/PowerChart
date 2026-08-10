@@ -93,6 +93,26 @@ describe("verify-deck: the faults it must catch", () => {
   // Without these the tool could return "no structural faults" unconditionally
   // and every test above would still pass.
 
+  it("catches a slot tag whose payload will not parse", async () => {
+    // The fault existed and could not fire. `slot = { malformed }` has no `i`,
+    // so the row's `slot: slot?.i ?? null` collapsed it to null, and the check
+    // read `r.slot !== null && typeof r.slot !== "number"` — satisfied only by a
+    // slot tag that parses FINE and carries a non-numeric `i`, which is the one
+    // case it was not written for. A deck this repo emitted with a corrupt slot
+    // tag was certified "no structural faults", exit 0; triage then counted the
+    // slide as untagged and reported its item lost, blaming the host for
+    // dropping a slide sitting right there.
+    const broken = await mutateWhere(await deck(), /POWERCHART_DEMO_SLOT/, (s) =>
+      s.replace(/(name="POWERCHART_DEMO_SLOT" val=")[^"]*"/, '$1{&quot;i&quot;:0,&quot;title&quot;:&quot;X"'),
+    );
+    expect(faultsIn(await readDeckBytes(broken)).join(" ")).toMatch(/slot tag is malformed/i);
+    // And the case the old check DID cover still fires: parses, `i` is a string.
+    const stringy = await mutateWhere(await deck(), /POWERCHART_DEMO_SLOT/, (s) =>
+      s.replace(/(name="POWERCHART_DEMO_SLOT" val=")[^"]*"/, '$1{&quot;i&quot;:&quot;0&quot;}"'),
+    );
+    expect(faultsIn(await readDeckBytes(stringy)).join(" ")).toMatch(/slot tag is malformed/i);
+  }, 30_000);
+
   it("catches a slide pointing at a tag part that is not there", async () => {
     const bytes = await mutate(await deck(), "ppt/tags/tag1.xml", () => null);
     const faults = faultsIn(await readDeckBytes(bytes));

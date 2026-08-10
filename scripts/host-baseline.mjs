@@ -255,10 +255,22 @@ export function answersOf(file) {
  * Answers that mean the question was never put, so they are never divergences.
  *
  * The probe's own vocabulary, kept in step with `NOT_ASKED` in
- * `src/render/host-probe.ts`. No probe can produce either word as an answer,
- * which is what makes them safe to read this way.
+ * `src/render/host-probe.ts`. No probe can produce any of these words as an
+ * answer, which is what makes them safe to read this way.
+ *
+ * "Kept in step" was a hope, and it drifted: `not-asked` — what the probe's mute
+ * breaker records when it abandons the rest of a sheet — was added on the probe
+ * side and never here. Every question that breaker gives up on was therefore
+ * compared against the fake and reported as a real-host DIVERGENCE, which is the
+ * exact failure the third bullet of `diffAnswers` was written for ("PowerPoint
+ * refused eight setups on 2026-08-04 and this tool reported eight host
+ * divergences from questions nobody had asked"). The same bug, wearing a word
+ * that did not exist yet. No round has tripped the breaker so far, so nothing
+ * published has been wrong — it would have fired the first time a host degraded
+ * badly enough to matter. `test/host-probe.test.ts` now asserts the two sets are
+ * equal, so the next word cannot be added to one side alone.
  */
-const NEVER_ASKED = new Set(["no-scratch-slide", "no-scratch-shape"]);
+export const NEVER_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
 
 /**
  * Compare two answer sheets.
