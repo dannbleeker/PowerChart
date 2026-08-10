@@ -147,6 +147,26 @@ stamp said so; nothing else did. The timeout is now half an hour and
 hard reload means the deploy did not land — check the `Deploy Pages` run before
 spending a session on it.
 
+**The pane now checks itself, so the stamp turns RED when it is out of date.**
+It reads `build.json` off the site on every boot and compares it to the build it
+is running; if they differ it says so in place —
+`abc1234 · … — SITE HAS def5678 · …` — and that is your signal to hard-reload
+before doing anything else. Reading the stamp only ever helped if you already
+knew which commit it should say, and that number is on GitHub, not in the pane.
+
+The cache is why this exists rather than being a nicety. Pages serves the pane's
+HTML with `Cache-Control: max-age=600` and gives us no way to set headers, so
+for ten minutes after a deploy PowerPoint keeps handing back the cached page,
+which names the previous hashed bundle — still in the browser's cache even after
+that file 404s on the server. **Ctrl+F5 on the whole PowerPoint tab** is what
+clears it; reopening the pane alone often does not, because the iframe re-asks
+for a URL the browser still considers fresh. Two rounds were lost to this before
+the check existed: one ran a fix that was not in the build under test.
+
+A stamp with no warning on it means one of two things — you are current, or the
+pane could not reach `build.json` at all. It stays silent when it cannot tell,
+deliberately, because a warning that fires on every boot is one nobody reads.
+
 **If a run dies, the evidence is no longer lost.** The run log is downloadable
 only once a run ends, and two rounds were lost to runs that did not end: one
 wedged at 1819 seconds, one killed by PowerPoint's own *"Sorry, we ran into a

@@ -4162,6 +4162,52 @@ declare const __BUILD_STAMP__: string;
 const stampEl = document.getElementById("build-stamp");
 if (stampEl) stampEl.textContent = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
 
+/**
+ * Say so when this pane is older than the site it came from.
+ *
+ * The stamp above has always been readable, and reading it is a habit the
+ * runbook asks for — but it can only be checked against something you already
+ * know, and the number you need is on GitHub. Twice now a round has been run on
+ * a build that predated the fix it was meant to test, and the second time was
+ * spent hard-reloading a pane that looked identical either way.
+ *
+ * The cause is not the reload. GitHub Pages serves the pane HTML with
+ * `Cache-Control: max-age=600` and gives us no way to set headers, so for ten
+ * minutes after a deploy PowerPoint hands back the cached page, which names the
+ * previous hashed bundle — still in the browser's cache even after it 404s on
+ * the server. `build.json` is written by `pages-postbuild.mjs` from the stamp
+ * inside the built bundle, and is small enough to re-fetch every boot.
+ *
+ * **This is the first outbound request this add-in has ever made**, and that
+ * matters beyond the feature: the standing read of the ~83 CSP `connect-src`
+ * violations in the host console has been "not ours — we make no connections".
+ * That argument is now weaker by one same-origin GET, so if those violations
+ * change shape, look here first.
+ *
+ * Everything about it fails quiet. No `build.json` (a dev server, an older
+ * deploy, a host CSP that blocks it) leaves the pane exactly as it was: this is
+ * a convenience, and a diagnostic that breaks the pane it is diagnosing is
+ * worse than the trap it replaces.
+ */
+async function warnIfStale(): Promise<void> {
+  const running = typeof __BUILD_STAMP__ === "string" ? __BUILD_STAMP__ : "dev";
+  if (!stampEl || running === "dev") return;
+  try {
+    // Cache-busted, or the check inherits the very caching it exists to detect.
+    const res = await fetch(`/build.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const live = (await res.json())?.build;
+    if (typeof live !== "string" || !live || live === running) return;
+    stampEl.textContent = `${running} — SITE HAS ${live}`;
+    stampEl.classList.add("stale");
+    stampEl.title = "This pane is older than the deployed site. Hard-reload the whole PowerPoint tab (Ctrl+F5).";
+    trace("pane", "the pane is older than the site", { running, live });
+  } catch {
+    /* offline, blocked, or no such file — say nothing rather than something wrong */
+  }
+}
+void warnIfStale();
+
 const chartWInput = $("chart-w") as HTMLInputElement | null;
 const chartHInput = $("chart-h") as HTMLInputElement | null;
 // Seed the inputs from state, then let them WRITE state on edit (state is the
