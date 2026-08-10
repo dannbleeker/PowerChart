@@ -118,6 +118,10 @@ export const KNOWN_DIVERGENCES = {
  */
 export const UNSTABLE_ANSWERS = {
   "shapes-items-count-honest":
+    "MEASURED AGAIN 2026-08-10: `unreadable` on the last SEVEN consecutive rounds (1fa0509 through 3d17165), not the three this " +
+    "entry claimed. `short-0` has not appeared since 619d24b. The ANSWER never moved — this host will not tell a caller what is on " +
+    "a slide — and the FORM now looks settled too, though `slideShapeList` still handles both and should, because nothing explains " +
+    "why the form ever changed. Original note follows. " +
     "`short-0` again on 2026-08-09 (`619d24b`), against `unreadable` in the committed fixture — nine samples now, still alternating between the two forms with no trend. " +
     "The ANSWER is stable; its FORM is not. `unreadable` (2026-08-05), `short-0` (2026-08-08 on 2f1e8c4), `unreadable` again " +
     "(2026-08-08 on a546897), `short-0` again (2026-08-09 on 8bb9e8f), then `unreadable` on the last three (448ffc6, cfa1f50 and the round after it, which answered identically). Seven samples, two forms, no trend — though the last three held still, which is the longest it has. Every one of those says the same thing — this host will not tell a caller what is on a slide — and they " +
@@ -127,6 +131,10 @@ export const UNSTABLE_ANSWERS = {
     "As its by-id partner above, and moving in step with it: `short-0` (2f1e8c4), then `not-listed` on every run since (a546897, d812d0c, 448ffc6, cfa1f50). Every run agrees with the " +
     "by-id form in the same run, which is the finding — the parent handle is not the variable. What varies is the host, run to run.",
   "group-children-via-getcount":
+    "NO LONGER ONCE: eight of eight `unreadable` across the ten rounds to 2026-08-10 (the other two never put the question). " +
+    'The hedge below — "two consistent answers from two routes is a strong hint, not a finding" — was right when it was written and ' +
+    "is now overtaken: both routes into a group's children are refused, consistently, on every round that could ask. `contentShapes` " +
+    "returning UNKNOWN_CONTENT for a grouped slide is the permanent answer. Original note follows. " +
     "ASKED AND ANSWERED ONCE, on a degraded host: `unreadable`, 2026-08-08. Its sibling `group-reports-its-children` answered `threw` " +
     "(\"The property 'items' is not available\") on a healthy round the same day, so BOTH routes into a group's children have now been " +
     "refused and `contentShapes` returning UNKNOWN_CONTENT for a grouped slide looks permanent rather than a gap. " +
@@ -134,12 +142,21 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
+    "MEASURED AGAIN 2026-08-10 over ten consecutive rounds (`scripts/host-history.mjs`): `threw` TEN times out of ten, " +
+    "551ad42 through 3d17165. That makes fifteen of sixteen observations, with the single `yes` now eleven rounds and two " +
+    "days behind — this entry called it a coin, and a coin does not do that. Read it as a mechanism with one early outlier " +
+    "rather than a fifty-fifty, and keep the entry only because the outlier has never been explained. Original note follows. " +
     "ALTERNATES. Six observations: `threw` (2026-08-05), `threw` (2026-08-07), `yes` (2026-08-08 run a), `threw` (2026-08-08 run b), " +
     "`threw` (2026-08-08 run c, the sheet now committed), `threw` (2026-08-09 on d812d0c). Five of the six are `threw`. Earlier wording here said it flipped once, which " +
     "reads as though the newer value were the true one and the old one a mistake — it is not a sequence of corrections, it is a coin, and " +
     "five of six landings do not make the seventh a mechanism. " +
     "The fake keeps refusing held proxies, which is the safe direction: code that never holds one across a sync is correct whichever way the coin lands.",
   "shape-add-positional-slide-proxy":
+    "MEASURED AGAIN 2026-08-10 over ten rounds: `yes` on the last five consecutively, `not-listed` on three before that, and `threw` " +
+    "NOT ONCE. So the face that made this dangerous — `threw`, the one that says the question was put and refused — has not appeared " +
+    "in ten rounds, while `yes` is on its longest run. That does NOT retire the warning: `yes` is still exactly the answer that makes " +
+    "a positional slide handle look like a way around the by-id refusals, and `shapes-items-via-positional-slide` (genuinely " +
+    "unstable, still alternating) is why it would not help anyway. Original note follows. " +
     "A ninth observation on 2026-08-09 (`619d24b`): `not-listed` again, the third face, on a run that answered 21 of 28 — so it is not a symptom of a badly degraded round either. " +
     "THREE-SIDED, which is worth saying because this entry called it a coin. Eight observations: `yes`, `yes`, `threw`, `yes`, `yes`, " +
     "`threw`, `not-listed` (2026-08-08, `1fd6aa3`), `yes` (2026-08-09, `d812d0c`). The third face is not a variant of the other two — `not-listed` means the DECK'S " +
