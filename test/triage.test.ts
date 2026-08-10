@@ -537,3 +537,41 @@ describe("triage's two invocations", () => {
     rmSync(dir, { recursive: true, force: true });
   }, 120_000);
 });
+
+/**
+ * A picture can be called blank only if it looks like nothing.
+ *
+ * The baseline used to be `Math.min` over the very shots being classified, so
+ * the smallest picture satisfied `<=` against itself and at least one added
+ * slide was ALWAYS reported under "read back empty AND rasterise blank" — the
+ * two-witness line a maintainer reads as proven data loss.
+ */
+describe("deckEvidence's blank test", () => {
+  const png = (bytes: number) => "A".repeat(Math.ceil((bytes * 4) / 3));
+  const deckOf = (sizes: number[]) => ({
+    newSlides: sizes.map((_, i) => `s${i}`),
+    inventory: sizes.map((_, i) => ({ slideId: `s${i}`, index: i, shapes: [], count: 0 })),
+    shots: sizes.map((b, i) => ({ slideId: `s${i}`, png: png(b) })),
+  });
+
+  it("does not call the smallest CHART on the slide a blank", () => {
+    // Every slide reads back empty (the documented short-collection answer) and
+    // every picture is chart-sized. The honest verdict is that the readback is
+    // lying — the old code confirmed one of them blank and sent the reader
+    // after a drawing bug that is not there.
+    const e = deckEvidence(deckOf([5142, 5307, 5307, 5319, 5322, 5322]))!;
+    expect(e.confirmed, "a 5kB picture of a chart was called blank").toBe(0);
+    expect(e.lying).toBe(6);
+  });
+
+  it("still confirms a real blank, and does so with no chart in the round to contrast against", () => {
+    // Rounds 12 and 13 ran with the picture cap at 12, so every shot they took
+    // is a blank. A test that judges by contrast within the round calls those
+    // 23 genuinely blank slides content — which is why the ceiling is absolute.
+    const mixed = deckEvidence(deckOf([1146, 1146, 5322, 5319]))!;
+    expect(mixed.confirmed).toBe(2);
+    expect(mixed.lying).toBe(2);
+    const allBlank = deckEvidence(deckOf([1146, 1146, 1146]))!;
+    expect(allBlank.confirmed, "a round with nothing to contrast against lost its blanks").toBe(3);
+  });
+});
