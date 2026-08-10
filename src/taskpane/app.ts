@@ -2914,11 +2914,15 @@ const MAX_SHOTS = 12;
  * enough to call a slide empty. The picture is the second. Ticking the box
  * spends the extra time and the extra megabytes to get it for every slide.
  *
- * Opt-in rather than a new default, because the pictures are the heaviest call
- * the add-in makes and they run at the END of a round, on a host that has just
- * been through the self-test — which is exactly when it is least able to take
- * more. `slideShots` still reports anything it skips, so even this can bind and
- * say so.
+ * **Now the default**, at the owner's call, and the rounds since have earned it:
+ * the two-witness count is the only thing that has actually settled an
+ * empty-slide question, and it was the capped rounds that could not. Shipped
+ * opt-in first because the pictures are the heaviest call the add-in makes and
+ * they run at the END of a round, on a host that has just been through the
+ * self-test — the moment it is least able to take more. That cost is real and
+ * has not changed; what changed is which side of it is worth defaulting to.
+ * Untick the box for a struggling host or a smaller file. `slideShots` still
+ * reports anything it skips, so even this cap can bind and say so.
  */
 const MAX_SHOTS_ALL = 200;
 

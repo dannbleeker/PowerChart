@@ -2304,20 +2304,38 @@ describe("the live step list", () => {
     // Asserted as document order rather than pixels, because jsdom has no
     // layout: `compareDocumentPosition` is what actually decides which of two
     // blocks a scrolled-to-top pane shows first.
+    // ONE control is allowed above it, and only one.
+    //
+    // "Probe, then self-test" sits at the top of the section at the owner's
+    // request: it is the starred row of the standing test run and the thing he
+    // opens the pane to press, and it was three groups down behind two buttons
+    // it supersedes. The rule this test defends is about a log buried under
+    // "nine controls and a paragraph", and one button with no prose does not
+    // bury anything — so the exception is measured rather than argued, and the
+    // count is what stops it growing back into the thing the rule forbids.
     const steps = document.getElementById("demo-steps")!;
     const section = steps.closest("section")!;
-    const actions = section.querySelector(".actions")!;
     expect(section.querySelector("h2")!.textContent).toContain("Testing");
-    // FOLLOWING means `actions` comes after `steps` — the log is drawn first.
-    const where = steps.compareDocumentPosition(actions);
+    const above = [...section.querySelectorAll(".actions")].filter(
+      (a) => steps.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_PRECEDING,
+    );
     expect(
-      where & Node.DOCUMENT_POSITION_FOLLOWING,
-      "the run controls come BEFORE the live step list — a crash leaves the log off-screen",
-    ).toBeTruthy();
+      above.flatMap((a) => [...a.querySelectorAll("button, select, input")]).map((el) => el.id),
+      "more than one control now sits above the live step list — a crash leaves the log off-screen",
+    ).toEqual(["demo-round"]);
+    // Everything else still follows it. FOLLOWING means `actions` comes after
+    // `steps`, which is the order a scrolled-to-top pane draws them in.
+    const rest = [...section.querySelectorAll(".actions")].filter((a) => !above.includes(a));
+    expect(rest.length, "the run controls vanished from the Testing section").toBeGreaterThan(2);
+    for (const a of rest)
+      expect(
+        steps.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `${a.querySelector("button")?.id ?? "a control group"} comes BEFORE the live step list`,
+      ).toBeTruthy();
     // And the header goes with it, or the box arrives with no Copy button and
     // nothing saying which end is newest.
     const head = section.querySelector(".steps-head")!;
     expect(head.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(head.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(head.compareDocumentPosition(rest[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

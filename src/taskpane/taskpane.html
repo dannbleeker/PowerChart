@@ -236,6 +236,27 @@
       <div class="tab-panel" data-panel="automation">
         <section class="section">
           <h2>Testing</h2>
+          <!-- The one control that starts a standard round, above everything, because
+               it is the one the owner presses. Every other button here is occasional;
+               this is the starred row of the standing test run and the thing he opens
+               the pane to do.
+
+               It is the ONE exception to the live-log-first rule below, and the size of
+               the exception is the reason it is allowed: that rule is about a log
+               sitting under "nine buttons and a paragraph", and this is one button and
+               no paragraph. Do not grow this group — anything added here comes out of
+               the log's visible space at the moment there is no second chance. -->
+          <div class="run-group">
+            <div class="actions">
+              <button
+                id="demo-round"
+                disabled
+                title="One click: ask the host the probe's questions, then run the self-test, and save both in a single file. The demo deck stays a separate button on purpose — its shape path has to start on a fresh deck."
+              >
+                Probe, then self-test
+              </button>
+            </div>
+          </div>
           <!-- The live log comes FIRST, above the controls that start a run.
                Ordering inside the box (newest at the top) fixes where the last
                line is; this fixes whether the box is on screen at all. A crash
@@ -330,13 +351,10 @@
               >
                 Run host probe
               </button>
-              <button
-                id="demo-round"
-                disabled
-                title="One click: ask the host the probe's questions, then run the self-test, and save both in a single file. The demo deck stays a separate button on purpose — its shape path has to start on a fresh deck."
-              >
-                Probe, then self-test
-              </button>
+              <!-- "Probe, then self-test" used to sit here beside its half. It is at the
+                   TOP of the section now: it is what gets pressed, and grouping it with
+                   the probe put the common action three groups down behind two it
+                   supersedes. -->
             </div>
           </div>
 
@@ -370,8 +388,8 @@
                 ><input type="checkbox" id="demo-trace" checked /> Verbose trace</label
               >
               <label
-                title="Picture EVERY slide the round adds, not just the first twelve. Slower, and makes the run log several times bigger — tick it for a round where you need to know whether an empty slide is really empty."
-                ><input type="checkbox" id="demo-shot-all" /> Picture every slide</label
+                title="Picture EVERY slide the round adds, not just the first twelve. On by default: a slide that reads back empty is only PROBABLY empty until the host's own picture agrees, and that is the question rounds keep raising. Untick it for a slower host or a smaller file."
+                ><input type="checkbox" id="demo-shot-all" checked /> Picture every slide</label
               >
             </div>
           </div>
