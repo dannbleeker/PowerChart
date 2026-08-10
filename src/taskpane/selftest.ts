@@ -224,7 +224,16 @@ const insertTwice: Scenario = async (prefix) => {
     await insertSlidesFromPptx(base64, titles.length);
   }
   const after = await slideCount();
-  const { found } = await probeCharts(`${prefix} twice`);
+  // A blind READBACK is not a finding. Every scenario here guards its first
+  // scan and then draws its loudest conclusion from a second one it never
+  // checked — and on the web a short deck scan is routine, which is why
+  // `DeckScan.short` exists at all. `insertOntoUsedSlide` was fixed for exactly
+  // this and its five siblings were never swept with it, so a host that answered
+  // one page short produced a hard FAILED verdict asserting data loss the
+  // add-in did not cause. Those sentences are what send a maintainer after the
+  // tag-write path; this repo has already spent rounds on that hunt.
+  const { found, blind, gap } = await probeCharts(`${prefix} twice`);
+  if (blind) return blindSkip(gap);
   const ok = after - before === 4 && found.length === 4;
   return {
     ok,
@@ -260,7 +269,16 @@ const duplicateSlot: Scenario = async (prefix) => {
     { run },
   );
   const settled = await slideCount();
-  const { found: kept } = await probeCharts(`${prefix} dup`);
+  // A blind READBACK is not a finding. Every scenario here guards its first
+  // scan and then draws its loudest conclusion from a second one it never
+  // checked — and on the web a short deck scan is routine, which is why
+  // `DeckScan.short` exists at all. `insertOntoUsedSlide` was fixed for exactly
+  // this and its five siblings were never swept with it, so a host that answered
+  // one page short produced a hard FAILED verdict asserting data loss the
+  // add-in did not cause. Those sentences are what send a maintainer after the
+  // tag-write path; this repo has already spent rounds on that hunt.
+  const { found: kept, blind, gap } = await probeCharts(`${prefix} dup`);
+  if (blind) return blindSkip(gap);
   // Four slides in, two out, and both survivors still charts. A pass that
   // deleted both copies of one item would leave two slides and read as
   // success on the count alone — hence the second half of this.
@@ -288,7 +306,16 @@ const editOnVisibleSlide: Scenario = async (prefix) => {
   const next = { ...chart.cfg, title: `${chart.cfg.title} (edited)` };
   const target = await updateChartInSlide(buildChart(next), chart.target, { tagData: JSON.stringify(next) });
   if (!target) return { ok: false, detail: "the chart was gone from the slide after the update" };
-  const { found: again } = await probeCharts(prefix);
+  // A blind READBACK is not a finding. Every scenario here guards its first
+  // scan and then draws its loudest conclusion from a second one it never
+  // checked — and on the web a short deck scan is routine, which is why
+  // `DeckScan.short` exists at all. `insertOntoUsedSlide` was fixed for exactly
+  // this and its five siblings were never swept with it, so a host that answered
+  // one page short produced a hard FAILED verdict asserting data loss the
+  // add-in did not cause. Those sentences are what send a maintainer after the
+  // tag-write path; this repo has already spent rounds on that hunt.
+  const { found: again, blind: againBlind, gap: againGap } = await probeCharts(prefix);
+  if (againBlind) return blindSkip(againGap);
   const round = again.find((c) => c.cfg.title === next.title);
   return {
     ok: !!round,
@@ -368,7 +395,16 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
     const why = back === null ? "chart-gone" : back.lost;
     if (why) lost[why] = (lost[why] ?? 0) + 1;
   }
-  const { found: after } = await probeCharts(prefix);
+  // A blind READBACK is not a finding. Every scenario here guards its first
+  // scan and then draws its loudest conclusion from a second one it never
+  // checked — and on the web a short deck scan is routine, which is why
+  // `DeckScan.short` exists at all. `insertOntoUsedSlide` was fixed for exactly
+  // this and its five siblings were never swept with it, so a host that answered
+  // one page short produced a hard FAILED verdict asserting data loss the
+  // add-in did not cause. Those sentences are what send a maintainer after the
+  // tag-write path; this repo has already spent rounds on that hunt.
+  const { found: after, blind: afterBlind, gap: afterGap } = await probeCharts(prefix);
+  if (afterBlind) return blindSkip(afterGap);
   const scaled = after.filter((c) => c.cfg.scale?.max === max).length;
   const shrunk = wasInk > 0 ? `, bars redraw at ${Math.round((nowInk / wasInk) * 100)}% of their height` : "";
   const why = Object.entries(lost)
@@ -477,7 +513,17 @@ const explodePicture: Scenario = async (prefix) => {
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
   if (!exploded) return { ok: false, detail: "the picture vanished while being exploded back to shapes" };
-  const back = (await probeCharts(prefix)).found.find((c) => c.target.shapeId === exploded.shapeId);
+  // A blind READBACK is not a finding. Every scenario here guards its first
+  // scan and then draws its loudest conclusion from a second one it never
+  // checked — and on the web a short deck scan is routine, which is why
+  // `DeckScan.short` exists at all. `insertOntoUsedSlide` was fixed for exactly
+  // this and its five siblings were never swept with it, so a host that answered
+  // one page short produced a hard FAILED verdict asserting data loss the
+  // add-in did not cause. Those sentences are what send a maintainer after the
+  // tag-write path; this repo has already spent rounds on that hunt.
+  const rescan = await probeCharts(prefix);
+  if (rescan.blind) return blindSkip(rescan.gap);
+  const back = rescan.found.find((c) => c.target.shapeId === exploded.shapeId);
   return {
     ok: !!back,
     detail: back
@@ -685,7 +731,10 @@ const editViaSelection: Scenario = async (prefix) => {
     const next = { ...was, title: `${was.title} (via selection)` };
     const target = await updateChartInSlide(buildChart(next), picked.target, { tagData: JSON.stringify(next) });
     if (!target) return { ok: false, detail: "the chart was gone from the slide after editing the selection" };
-    const round = (await probeCharts(prefix)).found.find((c) => c.cfg.title === next.title);
+    // A blind READBACK is not a finding — see the sweep note above.
+    const rescan = await probeCharts(prefix);
+    if (rescan.blind) return blindSkip(rescan.gap);
+    const round = rescan.found.find((c) => c.cfg.title === next.title);
     return {
       ok: !!round,
       detail: round
@@ -1530,6 +1579,26 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
   }
   const after = await inventory();
   if (!after) return { ok: false, skipped: true, detail: "the host would not say what is on the slide afterwards" };
+  // Both readings have to be WHOLE, and this scenario was the only one in the
+  // file that could report `ok: true` off a blinded scan.
+  //
+  // `SlideInventory.count` is the slide's own count and exists for exactly this
+  // corroboration — a short collection read is routine on the web, and this
+  // repo has recorded a readback page asking about 19 shapes and getting 3.
+  // Unchecked it goes wrong in both directions from one omission: a short
+  // BEFORE empties the vanished-shape filter, so the scenario reports GREEN
+  // ("all 0 shape(s) … survived") off a read that saw nothing; a short AFTER
+  // makes every shape look deleted and the scenario declares office-js#2775
+  // live on this host — the loudest claim it can make, from a host that merely
+  // answered short.
+  const partial = (inv: { shapes: unknown[]; count?: number }) =>
+    typeof inv.count === "number" && inv.shapes.length < inv.count;
+  if (partial(before) || partial(after)) {
+    return blindSkip(
+      `the slide's shape list came back short — ${before.shapes.length}/${before.count ?? "?"} before, ` +
+        `${after.shapes.length}/${after.count ?? "?"} after`,
+    );
+  }
   const kept = new Set(after.shapes.map((s) => s.id));
   const lost = before.shapes.filter((s) => s.id && !kept.has(s.id));
   return {
