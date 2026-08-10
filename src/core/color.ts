@@ -116,6 +116,19 @@ export function toHex6(color: string): string {
  */
 export function alphaOf(color: string): number {
   const c = paintText(color);
+  // The `transparent` KEYWORD, which the sibling in `skill/scripts/pptx-paint.mjs`
+  // has always known and this one did not. It is the documented floating-segment
+  // idiom, and only two layouts guarded it before it reached a renderer — mekko's
+  // guard even says why: "Office.js hands 'transparent' to setSolidColor, which
+  // it rejects". The guard was never swept to the SINK, so on every other kind
+  // the bare word went to the live host.
+  if (/^transparent$/i.test(c)) return 0;
+  // The `transparent` KEYWORD, which the sibling in `skill/scripts/pptx-paint.mjs`
+  // has always known and this one did not. It is the documented floating-segment
+  // idiom, and only two layouts guarded it before it reached a renderer — mekko's
+  // guard even says why: "Office.js hands 'transparent' to setSolidColor, which
+  // it rejects". The guard was never swept to the SINK, so on every other kind
+  // the bare word went to the live host.
   const hex = /^#([0-9a-fA-F]{4}|[0-9a-fA-F]{8})$/.exec(c);
   if (hex) {
     const h = hex[1];

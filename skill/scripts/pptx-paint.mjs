@@ -165,6 +165,18 @@ export const alphaOf = (c) => {
 // A pptxgenjs solid fill folding an 8-digit-hex alpha and any scene fillOpacity
 // into OOXML transparency (0 = opaque, 100 = clear). A zero transparency is
 // dropped by pptxgenjs, so an opaque fill is byte-identical to the bare {color}.
+// The STROKE twin of fillOf, and the reason it exists: every stroke site handed
+// pptxgenjs a bare `hex(n.stroke)` with no transparency, so a translucent series
+// colour rendered at two opacities inside one chart — fill honoured, outline
+// opaque — and disagreed with both other renderers. SVG emits
+// `stroke="#2a78d659"`; Office.js splits it through `strokeColor` into
+// `transparency: 0.651`. Stroke alpha is not among the divergences the parity
+// contract at the top of `src/core/scene.ts` declares intentional.
+export const lineOf = (color) => {
+  const t = Math.round((1 - alphaOf(color)) * 100);
+  return t > 0 ? { color: hex(color), transparency: t } : { color: hex(color) };
+};
+
 export const fillOf = (color, fillOpacity = 1) => {
   const t = Math.round((1 - alphaOf(color) * fillOpacity) * 100);
   // Fully clear: emit no fill rather than a colour. `color: "transparent"` is the
@@ -233,7 +245,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           fill: n.fill === "none" ? { type: "none" } : fillOf(n.fill),
           line:
             visible(n.stroke) && (n.strokeWidth ?? 0) > 0
-              ? { color: hex(n.stroke), width: n.strokeWidth }
+              ? { ...lineOf(n.stroke), width: n.strokeWidth }
               : { type: "none" },
         });
         break;
@@ -248,7 +260,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           h: Math.abs(n.y2 - n.y1) * IN,
           flipV: rising,
           line: {
-            color: hex(n.stroke),
+            ...lineOf(n.stroke),
             width: n.strokeWidth ?? 1,
             ...(n.dash ? { dashType: dashKind(n.dash) === "dot" ? "sysDot" : "dash" } : {}),
           },
@@ -282,7 +294,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           fill: n.fill === "none" ? { type: "none" } : fillOf(n.fill),
           line:
             visible(n.stroke) && (n.strokeWidth ?? 0) > 0
-              ? { color: hex(n.stroke), width: n.strokeWidth }
+              ? { ...lineOf(n.stroke), width: n.strokeWidth }
               : { type: "none" },
         });
         break;
@@ -304,7 +316,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
             { close: true },
           ],
           fill: n.fill ? fillOf(n.fill, n.fillOpacity) : { type: "none" },
-          line: visible(n.stroke) ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
+          line: visible(n.stroke) ? { ...lineOf(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
         });
         break;
       }
@@ -318,7 +330,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           w: n.r * 2 * IN,
           h: n.r * 2 * IN,
           fill: fillOf(n.fill),
-          line: visible(n.stroke) ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
+          line: visible(n.stroke) ? { ...lineOf(n.stroke), width: n.strokeWidth ?? 1 } : { type: "none" },
         };
         if (span >= 359.9 && n.innerR <= 0) {
           slide.addShape("ellipse", box);
@@ -363,7 +375,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           fill: fillOf(n.fill),
           line:
             visible(n.stroke) && (n.strokeWidth ?? 0) > 0
-              ? { color: hex(n.stroke), width: n.strokeWidth ?? 1 }
+              ? { ...lineOf(n.stroke), width: n.strokeWidth ?? 1 }
               : { type: "none" },
         });
         break;

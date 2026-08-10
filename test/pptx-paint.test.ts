@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // subprocess (unmeasurable by v8); this module is imported in-process, so the
 // third renderer's colour normalisation and scene→pptx node mapping finally get
 // direct assertions and coverage instead of only black-box XML checks.
-import { hex, alphaOf, fillOf, visible, hslToHex, makeAddNode, xmlText } from "../skill/scripts/pptx-paint.mjs";
+import { hex, alphaOf, fillOf, visible, hslToHex, makeAddNode, xmlText, lineOf } from "../skill/scripts/pptx-paint.mjs";
 
 /** Records the PptxgenJS calls a node mapping makes, so the mapping is assertable. */
 function recorder() {
@@ -347,5 +347,21 @@ describe("hostile input never breaks the OOXML contract (regression)", () => {
     expect(xmlText("tab\tnewline\n")).toBe("tab\tnewline\n"); // legal whitespace survives
     expect(xmlText("emoji \u{1F4C8}")).toBe("emoji \u{1F4C8}"); // a valid surrogate PAIR survives
     expect(xmlText(`lone \uD83D`)).toBe("lone "); // an unpaired surrogate does not
+  });
+});
+
+/**
+ * A stroke's alpha, which only the fill ever had.
+ */
+describe("lineOf", () => {
+  it("folds an alpha into transparency, like fillOf does", () => {
+    // Every stroke site handed pptxgenjs a bare `hex(n.stroke)`, so one
+    // translucent series colour rendered at two opacities inside a single chart
+    // — fill honoured, outline opaque — and disagreed with both other
+    // renderers. SVG emits `stroke="#2a78d659"`; Office.js splits it through
+    // `strokeColor` into `transparency: 0.651`. Stroke alpha is not in the
+    // parity contract's list of intentional divergences.
+    expect(lineOf("#2a78d659")).toEqual({ color: "2a78d6", transparency: 65 });
+    expect(lineOf("#2a78d6"), "an opaque stroke gained a transparency key").toEqual({ color: "2a78d6" });
   });
 });

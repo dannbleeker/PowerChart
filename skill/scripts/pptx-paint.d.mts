@@ -18,6 +18,15 @@ export function fillOf(
   fillOpacity?: number,
 ): { color: string; transparency?: number } | { type: "none" };
 
+/**
+ * The stroke twin of `fillOf` — a pptxgenjs line colour carrying its alpha.
+ *
+ * Every stroke site used to hand over a bare `hex()`, so one translucent series
+ * colour rendered at two opacities inside a single chart and disagreed with
+ * both other renderers.
+ */
+export function lineOf(color: string | null | undefined): { color: string; transparency?: number };
+
 /** Text with XML-illegal characters removed (C0 controls, unpaired surrogates). */
 export function xmlText(s: unknown): string;
 
