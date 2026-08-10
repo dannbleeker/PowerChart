@@ -1148,6 +1148,14 @@ input[type="checkbox"] {
   user-select: all; /* one click selects it for pasting into a bug report */
 }
 
+/* The pane is older than the site it came from — see `warnIfStale`.
+   Loud on purpose: in muted grey this is the line somebody skims past and then
+   spends twenty minutes testing a build that does not contain their fix. */
+.build-stamp.stale {
+  color: var(--err);
+  font-weight: 600;
+}
+
 /* ── Pane-wide status strip ──────────────────────────────────────────────
    Sits under the tabs, so it is visible on every tab — the action bar is
    Chart-only. Collapsed entirely when there is nothing to say. */
