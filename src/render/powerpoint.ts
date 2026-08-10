@@ -1159,6 +1159,12 @@ export async function updateChartsInSlides(
    * identifies them.
    */
   const untargeted = new Set<number>();
+  /**
+   * Each returned target's own `tagData`, in the SAME index space as `updated`.
+   *
+   * `items` is not that space. See where this is filled, inside the map below.
+   */
+  const planned: (string | undefined)[] = [];
   const updated = await PowerPoint.run(async (context) => {
     // 1. Resolve every old shape — one sync for all of them.
     //
@@ -1376,6 +1382,22 @@ export async function updateChartsInSlides(
     //    nothing at all — silently. Auto-update died the same way after its
     //    first push. Returning the new target is what lets a caller stay live.
     return alive.map(({ it, at }, i) => {
+      // The config THIS entry's chart carries, captured here and nowhere else.
+      //
+      // The settle plan below used to read `items[i]`, and `i` counts `alive`,
+      // not `items` — `alive` is what survives the live-slide and live-shape
+      // filters. Drop one item and every later pair is off by one, so the
+      // settle wrote chart N's POWERCHART_CONFIG onto chart N+1's shape, then
+      // returned true, which cleared `lost` and reported the chart fully
+      // re-editable. The user opens a good chart, gets someone else's data, and
+      // the next Update writes it in. That is precisely what
+      // `settleByCollectionRead`'s own header forbids, reached from the far side.
+      //
+      // Both triggers are ordinary on the web host: the user deletes one chart
+      // and runs Same Scale (the `alive` filter drops it), or the host declines
+      // to resolve one shape with the 5010 this repo has logged 66 times in a
+      // single run.
+      planned[i] = it.opts?.tagData;
       // Through `placed`, never by position: a chart that failed above is
       // absent from `rendered`, so `tagged` is shorter than `alive` and
       // indexing it directly would hand every chart after the failure the
@@ -1426,7 +1448,9 @@ export async function updateChartsInSlides(
   // Outside the run, for the reason the insert path is: the context that could
   // not write the tag cannot write it now either.
   const wanted = updated
-    .map((t, i) => ({ t, i, tagData: items[i]?.opts?.tagData }))
+    // `planned`, not `items` — the two are different index spaces the moment a
+    // single item is filtered out, and mixing them tagged the wrong chart.
+    .map((t, i) => ({ t, i, tagData: planned[i] }))
     .filter(({ t, tagData }) => t.lost === "no-config" && tagData);
   for (const { t, i, tagData } of wanted)
     untagged.push({
@@ -2137,6 +2161,23 @@ export async function insertAgendaSlides(scenes: Scene[]): Promise<void> {
     // what the host refuses. Off-screen slides tolerate more than the live
     // canvas does, but "more" is not a number worth betting on twice.
     for (let i = 0; i < scenes.length; i++) {
+      // `addSlides` hands back a thunk only for an add that LANDED — its own
+      // `Array.from({ length: actual })` is deliberately short of `count`,
+      // because PowerPoint on the web drops `slides.add()` under load (this
+      // file records a deck growing by 10 slides for 20 issued adds). Unchecked,
+      // the first missing thunk dies inside the batch loop as "getSlide is not a
+      // function": a TypeError from renderer internals, for a condition
+      // `addSlides` diagnosed precisely one frame earlier and already logged.
+      //
+      // `addAndRenderItem` carries this guard with ten lines explaining it. The
+      // fix was never swept to this caller, so an agenda insert of N chapters
+      // landed some slides and reported "Failed: getSlide is not a function"
+      // instead of the host reason.
+      if (!slideThunks[i]) {
+        throw new Error(
+          `PowerPoint added ${slideThunks.length} of ${scenes.length} agenda slides — the host dropped the rest and every retry.`,
+        );
+      }
       await renderShapesChunked(context, slideThunks[i], scenes[i], {
         left: 0,
         top: 0,
