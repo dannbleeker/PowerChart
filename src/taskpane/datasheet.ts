@@ -256,7 +256,40 @@ function isoDay(v: number): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
-export function dataToSheet(data: ChartData): SheetModel {
+/**
+ * Reorder series so every stack group is contiguous, keeping the chart the same.
+ *
+ * The grid can only say which series stack together by putting them NEXT TO each
+ * other and separating groups with a blank row — so a group interrupted in the
+ * series list, `stack: [0, 1, 0]`, cannot be written down at all. `dataToSheet`
+ * emitted a separator whenever the stack changed from the previous series and
+ * `sheetToData` then renumbered by separator count, so [0,1,0] came back as
+ * [0,1,2]: two columns became three, and merely loading such a chart into the
+ * pane restructured it on the next update.
+ *
+ * Grouping by first appearance draws the identical chart — within a group the
+ * paint order is unchanged, and groups keep the column order they already had —
+ * so this loses nothing except an ordering the sheet was never able to express.
+ * `undefined` counts as group 0, which is what `sheetToData` assigns it anyway.
+ *
+ * Idempotent, and returns the SAME object when nothing needs moving, so a caller
+ * can lean on identity.
+ */
+export function contiguousStacks(data: ChartData): ChartData {
+  if (!data.series.some((s) => s.stack != null)) return data;
+  const groups = new Map<number, ChartData["series"]>();
+  for (const s of data.series) {
+    const key = s.stack ?? 0;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(s);
+    else groups.set(key, [s]);
+  }
+  const series = [...groups.values()].flat();
+  return series.every((s, i) => s === data.series[i]) ? data : { ...data, series };
+}
+
+export function dataToSheet(input: ChartData): SheetModel {
+  const data = contiguousStacks(input);
   const cells: string[][] = [["", ...data.categories]];
   const numRow = (name: string, values: (number | null)[]) => [
     name,
@@ -547,6 +580,7 @@ export function mountDatasheet(
     // "\t\t", which is why this only ever bit single-column pastes.)
     const rows = text.replace(/\r/g, "").split("\n");
     while (rows.length && rows[rows.length - 1] === "") rows.pop();
+    const grewFrom = model.cells.length;
     rows.forEach((row, dr) => {
       row.split("\t").forEach((val, dc) => {
         const r = ri + dr;
@@ -558,6 +592,25 @@ export function mountDatasheet(
         model.cells[r][c] = val;
       });
     });
+    // A row this paste APPENDED and left FULLY blank is `sheetToData`'s stack
+    // separator, so pasting a column that runs past the end of the sheet with a
+    // gap in it — an ordinary Excel spacer row — split one stacked column into
+    // two side-by-side sub-stacks. No error, no cue. "+ Row" is guarded against
+    // creating exactly this row and says so in its own comment; paste grows
+    // rows too and never was.
+    //
+    // Seeded rather than dropped: the blank row is what keeps every later value
+    // on the category it was pasted against, which is a separate bug this file
+    // already fixed once. A row with a name and no numbers is an empty series,
+    // which is what the user pasted.
+    const used = new Set(model.cells.map((r) => (r[0] ?? "").trim()));
+    for (let r = grewFrom; r < model.cells.length; r++) {
+      if (model.cells[r].some((v) => v.trim() !== "")) continue;
+      let n = r;
+      while (used.has(`Series ${n}`)) n++;
+      used.add(`Series ${n}`);
+      model.cells[r][0] = `Series ${n}`;
+    }
     render();
     onChange(model);
   }
