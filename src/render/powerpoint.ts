@@ -5323,8 +5323,32 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
  * way, resolved once and then never again. Reading an id is not the same as
  * having a usable handle on a slide, and the only way to tell the two apart is
  * to go back and ask.
+ *
+ * **Position is back, and the warning above still stands — read both.** The
+ * diff alone stopped being enough: this host renumbers an existing slide when
+ * it appends one, so the deck grows by exactly ONE while TWO ids read as new,
+ * eleven times across five rounds with no exception. The diff then names two
+ * candidates, cannot choose, and refuses — which cost the probe's whole second
+ * pass on 2026-08-10.
+ *
+ * So the fallback claims the LAST slide, and it is not the first version
+ * returning. That one asked position ALONE, which is the thing this comment
+ * warns about. This one may only claim a slide the diff has already proved was
+ * not in the deck a moment ago, and only when the deck grew by exactly one — so
+ * a host that appends somewhere other than the end hands back nothing rather
+ * than one of the user's slides. `test/host-probe.test.ts` arms
+ * `renumbersOnAdd` and `addsAtFront` together to prove that second half: drop
+ * the freshness check and the probe deletes a slide it never added.
+ *
+ * `budgetMs` bounds the add for callers who cannot afford the default. The
+ * probe is one: `READBACK_TIMEOUT_MS` is ninety seconds, sized for a
+ * twenty-slide repair page, and a per-question budget of eight seconds means
+ * nothing while the slide the question needs can take ninety on its own. One
+ * question on 2026-08-10 took 95.6 seconds against that eight-second budget.
+ * Measured, the choice is easy: successful adds in that run ran 0.21s to 4.0s
+ * and failures took the full ninety, so the two are nowhere near each other.
  */
-export async function addScratchSlide(): Promise<string | null> {
+export async function addScratchSlide(budgetMs?: number): Promise<string | null> {
   try {
     const before = await slideIds();
     // Bounded, and then ASKED — the same treatment the other three slide-adds
@@ -5342,7 +5366,7 @@ export async function addScratchSlide(): Promise<string | null> {
         context.presentation.slides.add(layoutId ? { layoutId } : undefined);
         await context.sync();
       }),
-      readbackTimeoutMs(),
+      budgetMs ?? readbackTimeoutMs(),
       "adding a scratch slide",
     );
     const after = await slideIds();
