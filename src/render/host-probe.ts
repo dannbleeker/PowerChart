@@ -122,6 +122,32 @@ type Probe = {
    */
   noSlideNeeded?: true;
   /**
+   * Asking this question leaves the scratch slide unusable, so the run takes a
+   * fresh one before the NEXT question rather than handing on the wreckage.
+   *
+   * Earned by seven rounds of evidence and one accidental control. The question
+   * after `shape-add-held-slide-proxy` has never been answered — not once in
+   * seven sheets — and for six of them that was `shape-resolve-held-slide-proxy`,
+   * whose 0/6 everything here (this file's own notes included) put down to its
+   * reading ids back off setup shapes. Then a reorder for unrelated reasons put
+   * `binding-names-shape-later` in that slot instead, and the slot failed
+   * exactly the same way, in 397ms, at the liveness check, before the probe's
+   * own code ran at all:
+   *
+   *   round 12-17  #5 shape-add-held-slide-proxy threw | #6 shape-resolve-…  never put
+   *   round 18     #5 shape-add-held-slide-proxy threw | #6 binding-names-…  never put
+   *
+   * Two different questions, one slot, seven for seven. It is the SLOT, and the
+   * cause is what the probe above it is for: `shape-add-held-slide-proxy`
+   * deliberately writes through a slide proxy the host has stopped honouring,
+   * and this host does not forgive that on the slide afterwards.
+   *
+   * It ANSWERS, so none of the not-asked machinery notices — the replacement
+   * paths all trigger on a question that failed, and this one succeeds and
+   * poisons the well on its way out.
+   */
+  burnsTheSlide?: true;
+  /**
    * A second question, asked in the same run, when this one's answer admits
    * two readings.
    *
@@ -545,6 +571,10 @@ const PROBES: Probe[] = [
   {
     id: "shape-add-held-slide-proxy",
     question: "Can a shape be added through a slide proxy resolved a sync ago?",
+    // Writing through a handle the host has stopped honouring is this question,
+    // and it costs the slide. Seven rounds say whoever follows never gets an
+    // answer — see `Probe.burnsTheSlide`.
+    burnsTheSlide: true,
     // What `withProbeContext` used to hand every probe, and what the whole
     // add-in avoids on freshly-added slides through `SlideThunk`: Office.js
     // rewrites a resolved proxy's object path to `getItem(id)`, and a new
@@ -584,12 +614,14 @@ const PROBES: Probe[] = [
     // LATE costs you again. This question needed a shape at position 20, which
     // is the worst quadrant there is.
     //
-    // Position alone is not the whole story, and the same table says so:
-    // `shape-resolve-held-slide-proxy` is 0/6 at position 6, because it reads
-    // ids back off its setup shapes — the failure the `scratchShapes` note above
-    // documents. This probe does no such thing. It adds a shape and syncs,
-    // exactly as `shape-add-fresh-slide-proxy` (6/6) and
-    // `shape-add-held-slide-proxy` (6/6) do, immediately above it now.
+    // Position alone was not the whole story, and the round after this moved
+    // found out why in the sharpest possible way: it landed in the one slot on
+    // the sheet that has never produced an answer — the one directly after
+    // `shape-add-held-slide-proxy`, which wrecks the scratch slide on its way
+    // out. `shape-resolve-held-slide-proxy`'s 0/6 was blamed here on its reading
+    // ids back off setup shapes; it was the neighbour. See `Probe.burnsTheSlide`,
+    // which this move is what uncovered, and which now takes a fresh slide in
+    // between so the slot is worth having.
     //
     // The only untried route out of the failure that costs this project the most.
     //
@@ -1497,6 +1529,17 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       const entry: HostAnswer = { id: probe.id, question: probe.question, ms: Date.now() - started, ...result };
       answers.push(entry);
       trace("probe", "answered", { id: probe.id, answer: entry.answer, ms: entry.ms });
+      // A question that wrecks the slide on its way out gives up the slide, so
+      // the next one starts on a fresh handle instead of inheriting the damage.
+      //
+      // Dropped AFTER the answer is recorded, and only on `burnsTheSlide`: this
+      // question succeeded, so nothing else here would have replaced anything.
+      // The `if (!scratchId)` at the top of the loop takes the new one, which is
+      // the same path a lost slide already uses — no second mechanism.
+      if (probe.burnsTheSlide && scratchId) {
+        trace("probe", "giving up the scratch slide this question wrecked", { id: probe.id, scratchId });
+        scratchId = null;
+      }
       // Reset on ANY question that came back inside its budget, including one
       // that could not be set up: a host still refusing questions promptly is a
       // host still talking to us.

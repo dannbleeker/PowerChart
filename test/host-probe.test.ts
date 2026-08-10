@@ -514,6 +514,38 @@ describe("the fake host's answer sheet", () => {
     }
   });
 
+  it("takes a fresh slide after a question that wrecks the one it used", async () => {
+    // The finding seven rounds took to see, and only because a reorder ran the
+    // control by accident.
+    //
+    // The slot after `shape-add-held-slide-proxy` has never produced an answer.
+    // For six rounds that slot held `shape-resolve-held-slide-proxy`, and its
+    // 0/6 was put down to its own nature — it reads ids back off setup shapes,
+    // which is a known-bad thing to do here. Then `binding-names-shape-later`
+    // was moved into the slot for unrelated reasons and failed identically, in
+    // 397ms, at the liveness check, before its own code ran:
+    //
+    //   12-17  #5 shape-add-held-slide-proxy threw | #6 shape-resolve-…  never put
+    //   18     #5 shape-add-held-slide-proxy threw | #6 binding-names-…  never put
+    //
+    // Two questions, one slot, seven for seven: it is the slot. #5 writes
+    // through a slide proxy the host has stopped honouring — that IS its
+    // question — and the slide does not survive it. Because it ANSWERS, none of
+    // the not-asked replacement paths ever noticed.
+    //
+    // Asserted structurally rather than through a fault, because the fake does
+    // not model the poisoning and inventing it would be asserting a mechanism
+    // nobody has measured. What IS measured is the rule: a question that
+    // declares it wrecks the slide must not hand that slide to the next one.
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    const cleanup = sheet.answers.find((a) => a.id === SCRATCH_CLEANUP_ID)!;
+    const took = Number(/of (\d+) scratch/.exec(cleanup.detail ?? "")?.[1] ?? 0);
+    // A healthy fake loses nothing, so without the rule ONE slide serves the
+    // whole run. Any second slide here is the burnt one being given up.
+    expect(took, `the run never replaced the wrecked slide — "${cleanup.detail}"`).toBeGreaterThan(1);
+  });
+
   it("keeps sweeping after the host refuses it a slide, instead of bailing on the first", async () => {
     // Round 15 is this bug, in the owner's own deck: `second pass over the
     // questions that were never put {count: 10}`, ONE slide attempt two seconds
