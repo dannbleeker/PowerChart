@@ -5356,14 +5356,48 @@ export async function addScratchSlide(): Promise<string | null> {
     const known = new Set(before);
     const fresh = after.filter((id) => !known.has(id));
     // Exactly one new slide, or give up. None means the host swallowed the add;
-    // more than one means something else is adding slides at the same time, and
-    // neither case leaves a slide this function can claim to own — deleting one
-    // later would then delete the user's work.
-    if (fresh.length !== 1) {
+    // more than one USED to mean something else was adding slides at the same
+    // time, and neither case leaves a slide this function can claim to own —
+    // deleting one later would then delete the user's work.
+    //
+    // On this host "more than one" means something else entirely, and it is
+    // common. Seven observations across four rounds, every single one the same
+    // arithmetic: the deck grows by exactly ONE and TWO ids read as new.
+    //
+    //   before=20 after=21 fresh=2      before=37 after=38 fresh=2
+    //   before=21 after=22 fresh=2      before=3  after=4  fresh=2
+    //   before=18 after=19 fresh=2      before=19 after=20 fresh=2
+    //   before=20 after=21 fresh=2
+    //
+    // One id has to leave the list for that to add up: appending a slide makes
+    // this host RENUMBER an existing one. Nothing else is adding slides — the
+    // probe is the only caller — so refusing both cost the question and left the
+    // slide behind anyway. On 2026-08-10 it took the probe's whole second pass:
+    // three attempts, three `fresh=2`, five questions never re-asked.
+    //
+    // So claim by POSITION rather than by set difference, and only in the case
+    // the evidence actually covers. `slides.add()` APPENDS, so the slide we just
+    // added is the last one; a renumbered pre-existing slide keeps the place it
+    // always had. Requiring the deck to have grown by exactly one, and the last
+    // id to be one of the new ones, is a stricter test than "pick a fresh id"
+    // and strictly safer than the old rule in the direction that matters —
+    // it never claims a slide that was already in the deck.
+    let id = fresh.length === 1 ? fresh[0] : undefined;
+    if (!id && after.length - before.length === 1) {
+      const last = after[after.length - 1];
+      if (!known.has(last)) {
+        id = last;
+        trace("host", "claimed the appended slide though the id list churned", {
+          before: before.length,
+          after: after.length,
+          fresh: fresh.length,
+        });
+      }
+    }
+    if (!id) {
       trace("host", "scratch slide did not land", { before: before.length, after: after.length, fresh: fresh.length });
       return null;
     }
-    const id = fresh[0];
     // NO settle here, and the reason is measured rather than argued.
     //
     // office-js#2903's workaround is to wait a couple of seconds after adding a
