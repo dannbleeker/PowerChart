@@ -27,6 +27,7 @@
  * marker it expects — a pptxgenjs upgrade that changes the output fails loudly
  * here instead of silently producing a deck PowerPoint will not open.
  */
+import { xmlText } from "./svg";
 
 const TAGS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags";
 const TAGS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.tags+xml";
@@ -99,9 +100,21 @@ export interface SlideDressing {
   group?: boolean;
 }
 
-/** Escape a string for use inside an XML attribute value. */
+/**
+ * Escape a string for use inside an XML attribute value.
+ *
+ * `xmlText` FIRST, like the two sibling sinks (`svg.ts`, `pptx-paint.mjs`) and
+ * for the reason their comment gives: XML 1.0 forbids those characters
+ * outright, so they cannot be escaped, only removed. This third sink never got
+ * it, and it is the one that writes `ppt/tags/tagN.xml` — where the entire
+ * serialized ChartConfig lands as an attribute value. `JSON.stringify` escapes
+ * C0 controls and lone surrogates but NOT U+FFFE/U+FFFF, so those reached the
+ * tag part raw: the slide XML came out clean, the tags part was not
+ * well-formed, and PowerPoint offered to repair a file both the skill CLI and
+ * the add-in had reported as a success.
+ */
 export function xmlAttr(value: string): string {
-  return value
+  return xmlText(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -239,6 +252,25 @@ export function groupSlideShapes(slideXml: string, groupTagRid?: string): string
 export function tagFirstShape(slideXml: string, rid: string): string {
   const at = slideXml.indexOf("</p:grpSpPr>");
   if (at < 0) return slideXml;
+  // And NAME it, because a tag nobody can find is not a chart.
+  //
+  // Every downstream consumer keys on the single string "PowerChart":
+  // `retagSlideChart`, `rescueGroupAndTag`, `slideHoldsOnlyChart` and
+  // `snapshotAddedSlides` in `powerpoint.ts`, and `verify-deck`'s own
+  // chart-object test. This fallback hung the config on whatever pptxgenjs had
+  // called the shape — `Text 0` — so an ordinary "no data yet" chart (a pie,
+  // treemap, funnel or violin with empty categories or all-zero values, which
+  // makes `groupSlideShapes` decline at fewer than two children) shipped
+  // re-editable in the file and invisible to every path that looks for one.
+  //
+  // AFTER `at`, always. The first `<p:cNvPr>` in a slide belongs to the shape
+  // TREE itself — `<p:cNvPr id="1" name=""/>` inside `<p:nvGrpSpPr>` — so a
+  // whole-document replace renamed the tree and left the shape as "Text 0",
+  // which reads exactly like a fix and is none.
+  const NAMED = new RegExp('(<p:cNvPr[^>]*?name=")[^"]*(")');
+  const head = slideXml.slice(0, at);
+  const tail = slideXml.slice(at).replace(NAMED, (_m, open, close) => open + GROUP_NAME + close);
+  slideXml = head + tail;
   const empty = slideXml.indexOf("<p:nvPr/>", at);
   if (empty >= 0) {
     return (

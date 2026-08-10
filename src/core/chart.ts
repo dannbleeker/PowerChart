@@ -31,9 +31,25 @@ import type { LayoutResult } from "./layout/column";
 
 export const DEFAULT_SIZE = { width: 480, height: 300 };
 
-/** A positive, finite dimension, or the fallback for a zero/negative/NaN one. */
+/**
+ * A slide is 13.33 inches wide. Nothing on one is a hundred.
+ *
+ * pptxgenjs has a documented rule — "any number >= 100 sure isn't inches,
+ * assume it is EMU already" — so the moment a dimension crosses 100 INCHES
+ * (7200pt) it writes the value through unrounded: `<a:ext cx="101.388…"/>`.
+ * `ST_PositiveCoordinate` is an xsd:long, so that part is schema-invalid and
+ * what the user meets is PowerPoint's repair dialog. The renderer reported
+ * success, and two of this repo's three gates disagreed about the file.
+ *
+ * 7200pt is already fifteen times the widest slide, so the ceiling costs
+ * nothing real and turns an unopenable deck into a very large chart.
+ */
+const MAX_DIM = 7200;
+
+/** A positive, finite dimension within the ceiling, or the fallback. */
 function clampDim(v: number | undefined, fallback: number): number {
-  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback;
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return fallback;
+  return Math.min(v, MAX_DIM);
 }
 
 /** Coerce a data block to trustworthy arrays: every series padded to the
