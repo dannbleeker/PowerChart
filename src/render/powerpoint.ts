@@ -5505,7 +5505,29 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
  * Measured, the choice is easy: successful adds in that run ran 0.21s to 4.0s
  * and failures took the full ninety, so the two are nowhere near each other.
  */
-export async function addScratchSlide(budgetMs?: number): Promise<string | null> {
+export async function addScratchSlide(
+  budgetMs?: number,
+  /**
+   * Called for a slide this run added, could not use, and could not take back
+   * out — i.e. one it has LEFT BEHIND.
+   *
+   * The clean-up sweep deletes by position and clamps at "no more than this run
+   * added", so its notion of what this run added has to include every slide the
+   * run put in the deck — including the ones it then refused to use. It did not:
+   * a slide that lands and will not resolve is removed here, and when that
+   * removal fails (which on this host is every time — delete-by-id cannot work)
+   * the function returns null and the caller never hears the id. The 2026-08-11
+   * round left exactly two slides behind for that reason: the deck grew by 70
+   * while the run could account for 68, so the clamp correctly refused the
+   * other two.
+   *
+   * Reported here rather than in the return value because the return value
+   * means "an id you may use", and these are precisely the ids you may not.
+   * They are still slides this run created and left in the deck, which is the
+   * question the sweep is asking.
+   */
+  onAdded?: (id: string) => void,
+): Promise<string | null> {
   try {
     const before = await slideIds();
     // Bounded, and then ASKED — the same treatment the other three slide-adds
@@ -5612,7 +5634,14 @@ export async function addScratchSlide(budgetMs?: number): Promise<string | null>
       // the deck on every attempt, which is the litter this whole function is
       // careful about everywhere else. `deleteSlideById` has a path that does
       // not need the id to resolve, which is exactly the case here.
-      if (!(await deleteSlideById(id))) trace("host", "could not remove the unusable scratch slide", { id });
+      if (!(await deleteSlideById(id))) {
+        trace("host", "could not remove the unusable scratch slide", { id });
+        // Still in the deck, still this run's. Told to the caller here and only
+        // here: a slide that was successfully taken back out is not left
+        // behind, and counting it would make the clean-up owe a delete for a
+        // slide already gone.
+        onAdded?.(id);
+      }
       return null;
     }
     return id;
