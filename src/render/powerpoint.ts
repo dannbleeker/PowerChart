@@ -6978,18 +6978,44 @@ async function groupAndTagAll(
         const byId = new Map<string, PowerPoint.Shape>();
         for (const sh of items) if (sh.id) byId.set(sh.id, sh);
         const matched = it.created.map((sh) => (sh.id ? byId.get(sh.id) : undefined)).filter(Boolean);
-        if (matched.length) {
+        if (matched.length === it.created.length) {
           // Same order as `created`, so index 0 stays the chart's anchor and
           // `ungroupedFallback`'s "everything after it is a part" holds.
-          //
-          // A PARTIAL match is still worth having, and is used rather than
-          // falling back: every shape in it is provably ours, whereas the
-          // positional rule below is a guess that gets worse the more of the
-          // chart went missing. A run that lost a batch has fewer shapes on
-          // the slide than it drew, so "the last N" reaches back past the
-          // chart and into whatever the user already had there — and those
-          // shapes then get grouped into the chart and deleted with it.
           freshMembers.set(i, matched as PowerPoint.Shape[]);
+        } else if (matched.length) {
+          // A PARTIAL match is thrown away, and this used to be kept.
+          //
+          // The argument for keeping it was that every shape in it is provably
+          // ours, where the positional rule below is a guess. True, and beside
+          // the point: what it produces is a chart split into a group plus a
+          // remainder that does not move with it. The user drags the chart and
+          // leaves its baseline behind — and it LOOKS like one object, so
+          // nothing warns them. `4feb5be` left exactly that on a real slide,
+          // `grouped the chart's shapes charts=1 partial=1 left=0:4`, with
+          // `label-1-3`, `baseline`, `series-label-0` and `series-label-1`
+          // stranded inside the chart's own box. The round before it left the
+          // same four, and neither round could say why until the success path
+          // learned to speak.
+          //
+          // Grouping nothing keeps the chart WHOLE. It is still tagged, still
+          // re-editable, and still deleted correctly on the next update — the
+          // parts tag, not the group, is what carries a chart's membership.
+          // Ugly beats silently destructible: the same reasoning this file
+          // already applies to a chart that loses its group but keeps its
+          // config, and the same conclusion `chooseGroupMembers` reaches when
+          // one member cannot be named at all.
+          //
+          // Deliberately NOT falling through to the positional rule below. That
+          // branch is safe only when NOTHING matched by id, because a slide
+          // holding the user's own shapes can satisfy `items.length >=
+          // created.length` while the chart itself read short — and "the last
+          // N" would then reach past the chart into the user's content and
+          // group it in, to be deleted with the chart on the next update.
+          trace("group", "the re-read matched only some of the chart's shapes", {
+            index: i,
+            drew: it.created.length,
+            matched: matched.length,
+          });
         } else if (items.length >= it.created.length) {
           // No ids to match on at all — a host that would not read them back.
           // The positional rule is still right for a slide this run added
@@ -7078,10 +7104,15 @@ async function groupAndTagAll(
       // `series-label-0`, `series-label-1`, all inside the chart's own box, all
       // with lower ids than the group — and the log could not say whether the
       // group took a subset or four shapes from an earlier draw survived it.
-      // A partial match is deliberately kept rather than discarded (see the
-      // re-read above), so a subset group is a designed outcome; what was
-      // missing is that it never announced itself. A group that leaves four
-      // shapes behind is a chart the user drags away from its own baseline.
+      // It said so on its very next outing (`partial=1 left=0:4`), which is
+      // what got the partial match thrown away rather than kept.
+      //
+      // `partial` therefore reports an INVARIANT now, not an outcome: the
+      // re-read hands over whole matches only, so it should read 0 forever.
+      // Kept because a zero that is checked is worth more than a field that was
+      // removed once the bug it found was fixed — if a future change puts a
+      // short match back into `freshMembers`, this is the line that says so,
+      // and the alternative is finding out from someone's deck again.
       if (took.length) {
         const partial = took.filter((t) => t.took < t.drew);
         trace("group", "grouped the chart's shapes", {
