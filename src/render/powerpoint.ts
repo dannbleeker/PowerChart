@@ -12,6 +12,9 @@
  */
 import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, symbolPreset, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
+import { buildChart } from "../core/chart";
+import type { ChartConfig } from "../core/types";
+import { planSceneUpdate, sceneFingerprint, worthUpdating } from "../core/scene-diff";
 import { toHex6, alphaOf, isNamedColor } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
@@ -36,6 +39,14 @@ export interface InsertOptions {
    * Falls back to the selected slide when the id no longer resolves.
    */
   slideId?: string;
+  /**
+   * Fingerprint of the scene being drawn, written alongside the config tag.
+   *
+   * Set by whoever HAS the scene — the tagging pass only sees `opts`. Absent is
+   * fine and means the chart's next update takes the redraw, which is what
+   * every chart drawn before this existed will do once, on its first edit.
+   */
+  sceneTag?: string;
   /** Group the shapes after insertion (default true). */
   group?: boolean;
   fontFamily?: string;
@@ -116,6 +127,20 @@ export const CHART_PARTS_TAG = "POWERCHART_PARTS";
  * existed, which fall back to the old shape-position behaviour.
  */
 export const CHART_ORIGIN_TAG = "POWERCHART_ORIGIN";
+
+/**
+ * A fingerprint of the scene this chart was DRAWN from.
+ *
+ * Read by the in-place update to decide whether the scene it rebuilds from the
+ * stored config is the one actually on the slide. See `sceneFingerprint` — an
+ * update that skipped unchanged nodes without this check would leave a chart
+ * drawn by an older engine stale forever, where redraw-everything repairs it.
+ *
+ * Its own tag rather than a field inside the config, because the config is a
+ * document the user edits, exports and pastes between decks; a rendering detail
+ * has no business in it. A chart without this tag simply takes the redraw.
+ */
+export const CHART_SCENE_TAG = "POWERCHART_SCENE";
 
 /**
  * Slide-level tag written on every demo-deck slide at creation time — a JSON
@@ -853,6 +878,10 @@ export async function insertSceneIntoSlide(
   opts: InsertOptions = {},
   onPhase?: (phase: InsertPhase, detail?: string) => void,
 ): Promise<EditTarget | null> {
+  // Stamp what this draw produces, so the chart's next update can diff against
+  // the scene actually on the slide rather than against whatever the stored
+  // config renders to by then. A caller that set its own wins.
+  opts = { sceneTag: sceneFingerprint(scene), ...opts };
   onPhase?.("context");
   // Filled inside the run, acted on after it — a chart whose config tag the
   // drawing context could not write is settled and tagged from a fresh one.
@@ -1276,6 +1305,29 @@ export async function updateChartsInSlides(
       // update puts it back where it was. Only the host knows where the shape is
       // now.
       old.load("left,top");
+      // The config this chart was drawn from, and the fingerprint of the scene
+      // it produced — both read in the sync that was already resolving the
+      // shape, so the fast path below costs no extra round trip when it does
+      // not apply. See `tryInPlaceUpdate`.
+      //
+      // Wrapped, because `old` may name a shape the user has since deleted and
+      // reading `.tags` off a resolved-to-nothing proxy THROWS at queue time —
+      // synchronously, out of the whole PowerPoint.run. That is not a theory:
+      // the same access is what produced "Cannot read properties of undefined
+      // (reading 'add')" on a real host, four times in one run. The liveness
+      // check that would have caught it is a sync away, and this has to be
+      // queued before it. No tags read is simply no fast path.
+      let wasConfig: PowerPoint.Tag | undefined;
+      let wasScene: PowerPoint.Tag | undefined;
+      try {
+        wasConfig = old.tags.getItemOrNullObject(CHART_TAG);
+        wasConfig.load("value");
+        wasScene = old.tags.getItemOrNullObject(CHART_SCENE_TAG);
+        wasScene.load("value");
+      } catch {
+        wasConfig = undefined;
+        wasScene = undefined;
+      }
       // An ungrouped chart is more than its tagged shape (see CHART_PARTS_TAG).
       // Resolved in this same sync, so the delete below already knows which of
       // them the user has since removed by hand.
@@ -1288,7 +1340,7 @@ export async function updateChartsInSlides(
       // its load("left,top") is what put it in the sync — a REAL property,
       // which is the only kind that counts. See `queueNullCheck`.
       for (const p of parts) queueNullCheck(p);
-      return { it, old, parts };
+      return { it, old, parts, wasConfig, wasScene };
     });
     await step("resolving the charts' shapes", () => context.sync());
 
@@ -1373,6 +1425,8 @@ export async function updateChartsInSlides(
         // rescale under one `(visible)` key and reported 260 shapes on a slide
         // that held 24.
         slideId: it.target.slideId,
+        // What this redraw will have drawn, for the NEXT update to diff against.
+        sceneTag: sceneFingerprint(it.scene),
         // The recorded frame origin, shifted by however far the user has dragged
         // the chart since it was tagged (livePos - anchor). Untouched, that delta
         // is zero and the chart re-renders exactly where it is; dragged, it
@@ -1403,6 +1457,20 @@ export async function updateChartsInSlides(
       // A fresh by-id resolve costs nothing and works on both kinds of slide;
       // the host probe's `shape-add-fresh-slide-proxy` says yes and
       // `shape-add-held-slide-proxy` threw.
+      // Write only what changed, when that is provably the same thing as
+      // redrawing. Before the delete, so a refusal costs nothing: nothing has
+      // been removed yet and the loop below does the whole job as it always
+      // has. See `tryInPlaceUpdate` for every reason it says no.
+      if (
+        await tryInPlaceUpdate(
+          context,
+          entry,
+          opts,
+          { config: entry.wasConfig && tagValue(entry.wasConfig), scene: entry.wasScene && tagValue(entry.wasScene) },
+          step,
+        )
+      )
+        continue;
       const getSlide: SlideThunk = () => context.presentation.slides.getItemOrNullObject(it.target.slideId);
       // Everything the redraw manages to commit, whether or not it finishes.
       // On the failure path this is the litter to clear; see the catch.
@@ -6590,8 +6658,7 @@ async function renderShapesChunked(
     }
     // Refused: fall through and draw the nodes instead, in this same context.
   }
-  const left = opts.left ?? 60;
-  const top = opts.top ?? 90;
+  const { dx: left, dy: top } = frameOrigin(opts);
   const batchSize = opts.shapesPerSync ?? SHAPES_PER_SYNC;
   // The sink IS the accumulator when one was passed, so a throw leaves the
   // caller holding exactly what got drawn — no copying, nothing to keep in step.
@@ -7178,6 +7245,9 @@ async function groupAndTagAll(
           // The rest of an ungrouped chart travels with the tagged shape, so an
           // in-place update can delete all of it — see CHART_PARTS_TAG.
           if (partsJson[i]) target!.tags.add(CHART_PARTS_TAG, partsJson[i]!);
+          // What this chart was drawn from, so its next update can tell a scene
+          // it can diff from one it only thinks it can. See CHART_SCENE_TAG.
+          if (it.opts.sceneTag) target!.tags.add(CHART_SCENE_TAG, it.opts.sceneTag);
           target!.load("id,left,top");
           queued.push(t);
         } catch (err) {
@@ -7574,6 +7644,188 @@ function strokeColor(lf: PowerPoint.ShapeLineFormat, color: string): void {
       /* line transparency unsupported — opaque is the graceful floor */
     }
   }
+}
+
+/**
+ * Redraw a chart by writing only what changed, or say no.
+ *
+ * The add-in's normal update deletes every shape and adds every shape back. On
+ * PowerPoint for the web that costs ~50 seconds for a 24-shape chart, and the
+ * measured diffs say almost none of it is needed: a retitle changes one node of
+ * twenty-four, a single edited data point changes two.
+ *
+ * Returns true only when the chart is now correct on the slide. Every other
+ * answer is false, and false means the caller deletes and redraws exactly as it
+ * always has — so this can only ever make an update faster, never wrong. It
+ * refuses when:
+ *
+ * - the chart carries no stored config, so there is no old scene to diff;
+ * - the stored config does not parse, or renders to a different node count than
+ *   the shapes the chart actually has;
+ * - the scene fingerprint is missing or does not match what the stored config
+ *   renders to NOW — the engine has changed since this chart was drawn, and the
+ *   scene being diffed is not the one on the slide;
+ * - `planSceneUpdate` refuses, or the change is too much of the chart to be
+ *   worth it;
+ * - any shape it would have to write to is one the host will not confirm.
+ *
+ * The tag writes ride in the same sync as the property writes, deliberately. A
+ * chart whose picture is new and whose config is old is the worst outcome
+ * available here — re-opening it would silently revert the edit — so if the
+ * host refuses the batch, nothing has been deleted, this returns false, and the
+ * redraw does the whole job.
+ */
+async function tryInPlaceUpdate(
+  context: PowerPoint.RequestContext,
+  entry: {
+    it: { scene: Scene; target: EditTarget; opts?: InsertOptions };
+    old: PowerPoint.Shape;
+    parts: PowerPoint.Shape[];
+  },
+  opts: InsertOptions,
+  tags: { config?: string; scene?: string },
+  step: <T>(what: string, run: () => Promise<T>) => Promise<T>,
+): Promise<boolean> {
+  const { it, old, parts } = entry;
+  if (!tags.config || !tags.scene || !it.opts?.tagData) return false;
+  let prev: Scene;
+  try {
+    prev = buildChart(JSON.parse(tags.config) as ChartConfig);
+  } catch {
+    return false;
+  }
+  // The shapes have to line up with the nodes ONE FOR ONE, because that is how
+  // they are found: the anchor is node 0 and the parts tag lists the rest in
+  // drawing order. A chart whose parts tag is short — one the host would not
+  // read back when it was drawn — has no usable mapping at all.
+  if (prev.nodes.length !== parts.length + 1) return false;
+  if (sceneFingerprint(prev) !== tags.scene) return false;
+  const plan = planSceneUpdate(prev, it.scene);
+  if (!plan || !worthUpdating(plan, it.scene.nodes.length)) return false;
+  const shapes = [old, ...parts];
+  // Only shapes the host CONFIRMED. `isLive` is the same test the delete path
+  // uses before touching anything, and for the same reason: writing to a shape
+  // the host would not answer for is how an update comes to edit something that
+  // is not ours.
+  if (plan.changed.some((n) => !isLive(shapes[n]))) return false;
+  const { dx, dy } = frameOrigin(opts);
+  try {
+    for (const n of plan.changed) applyNodeInPlace(shapes[n], it.scene.nodes[n], dx, dy, opts);
+    old.tags.add(CHART_TAG, it.opts.tagData);
+    old.tags.add(CHART_SCENE_TAG, sceneFingerprint(it.scene));
+    await step("updating the shapes a chart actually changed", () => context.sync());
+  } catch (err) {
+    trace("draw", "in-place update refused — redrawing instead", {
+      changed: plan.changed.length,
+      of: it.scene.nodes.length,
+      error: errorText(err),
+    });
+    return false;
+  }
+  trace("draw", "updated only the shapes that changed", {
+    changed: plan.changed.length,
+    of: it.scene.nodes.length,
+    saved: it.scene.nodes.length * 2 - plan.changed.length,
+  });
+  return true;
+}
+
+/**
+ * Where a scene's origin lands on the slide.
+ *
+ * One reader, two callers: the draw places every node at `dx + n.x`, and the
+ * in-place update has to write the identical number onto shapes that are
+ * already there. If the two ever disagree, an edit silently teleports every
+ * changed shape by the difference — a defect no test that only ever draws could
+ * see, and the reason the pair of defaults lives here instead of being spelled
+ * twice.
+ */
+function frameOrigin(opts: InsertOptions): { dx: number; dy: number } {
+  return { dx: opts.left ?? 60, dy: opts.top ?? 90 };
+}
+
+/**
+ * Write a changed node onto the shape that already draws it.
+ *
+ * The other half of `planSceneUpdate`: the planner decides which shapes a
+ * change can be applied to, and this applies it. Only `rect` and `text` reach
+ * here, because they are the only kinds whose whole drawn appearance is a
+ * closed set of property writes — everything else has geometry baked at
+ * creation with no freeform path to edit afterwards.
+ *
+ * MUST set every property `addNode` sets for the same kind, and that is not a
+ * style note. A property the adder writes and this one does not is a chart that
+ * looks right when first drawn and wrong after an edit — a bar that keeps its
+ * old colour, a label that keeps its old font — with nothing in any log to say
+ * so, because from the host's point of view the update succeeded. The two are
+ * held in lockstep by a source scan in `test/office-render.test.ts`; if you add
+ * a line to one of the adders, that test will name the one you forgot.
+ *
+ * Queues only. The caller owns the sync, so a whole chart's changed shapes go
+ * out in one batch and a refusal takes the fallback rather than half a chart.
+ */
+function applyNodeInPlace(shape: PowerPoint.Shape, n: SceneNode, dx: number, dy: number, opts: InsertOptions): void {
+  if (n.kind === "rect") {
+    shape.left = dx + n.x;
+    shape.top = dy + n.y;
+    shape.width = Math.max(0.2, n.w);
+    shape.height = Math.max(0.2, n.h);
+    if (n.fill === "none") shape.fill.clear();
+    else solidFill(shape.fill, n.fill);
+    if (n.stroke && (n.strokeWidth ?? 0) > 0) {
+      strokeColor(shape.lineFormat, n.stroke);
+      shape.lineFormat.weight = n.strokeWidth ?? 1;
+    } else {
+      shape.lineFormat.visible = false;
+    }
+    if (n.name) shape.name = n.name;
+    return;
+  }
+  if (n.kind !== "text") return;
+  shape.left = dx + n.x;
+  shape.top = dy + n.y;
+  shape.width = Math.max(4, n.w);
+  shape.height = Math.max(4, n.h);
+  shape.fill.clear();
+  shape.lineFormat.visible = false;
+  const tf = shape.textFrame;
+  // The string itself. `addTextBox` takes it as an argument, so this is the one
+  // write with no counterpart in the adder's body — and it is the whole point
+  // of the fast path: a retitle changes one node, and this is the line that
+  // applies it.
+  tf.textRange.text = n.text;
+  try {
+    tf.wordWrap = false;
+    tf.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeNone;
+    tf.leftMargin = 0;
+    tf.rightMargin = 0;
+    tf.topMargin = 0;
+    tf.bottomMargin = 0;
+    tf.verticalAlignment =
+      n.valign === "top"
+        ? PowerPoint.TextVerticalAlignment.top
+        : n.valign === "bottom"
+          ? PowerPoint.TextVerticalAlignment.bottom
+          : PowerPoint.TextVerticalAlignment.middle;
+  } catch {
+    /* margin/alignment properties unavailable on this host */
+  }
+  const font = tf.textRange.font;
+  font.size = n.fontSize;
+  font.color = officeHex(n.color);
+  font.bold = !!n.bold;
+  font.name = n.fontFamily ?? opts.fontFamily ?? DEFAULT_FONT;
+  try {
+    tf.textRange.paragraphFormat.horizontalAlignment =
+      n.align === "left"
+        ? PowerPoint.ParagraphHorizontalAlignment.left
+        : n.align === "right"
+          ? PowerPoint.ParagraphHorizontalAlignment.right
+          : PowerPoint.ParagraphHorizontalAlignment.center;
+  } catch {
+    /* paragraph alignment unavailable */
+  }
+  if (n.name) shape.name = n.name;
 }
 
 function addNode(

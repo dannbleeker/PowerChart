@@ -4145,3 +4145,209 @@ describe("what the per-slide shape counter counts", () => {
     }
   });
 });
+
+/**
+ * Redrawing a chart to change one string.
+ *
+ * The add-in's update deletes every shape and adds every shape back, and on
+ * PowerPoint for the web that is ~50 seconds for a 24-shape chart. A retitle
+ * changes one node of twenty-four; a single edited data point changes two.
+ *
+ * The fast path applies to UNGROUPED charts, which is not a limitation so much
+ * as the case that matters: a grouped chart's shapes are inside the group and
+ * its parts tag does not list them, so there is no mapping from node to shape —
+ * and the web host, which is where the 50 seconds live, ungroups every chart it
+ * cannot group. A healthy host keeps its groups and keeps redrawing, which it
+ * can afford.
+ */
+describe("updating only what changed", () => {
+  const clustered = () => ({ ...sampleConfig("clustered"), ...DEFAULT_SIZE }) as ChartConfig;
+  const liveIds = (slide: ReturnType<typeof makeSlide>) => slide.created.filter((s) => !s.deleted).map((s) => s.id);
+
+  /** An ungrouped chart, which is what the web host produces for everything. */
+  const drawLoose = async (cfg: ChartConfig) => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.refuseGroups = 99;
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+    return slide;
+  };
+
+  afterEach(() => {
+    faults.refuseGroups = 0;
+    setTracing(false);
+  });
+
+  it("writes one shape for a retitle and leaves the other 23 alone", async () => {
+    const cfg = clustered();
+    const slide = await drawLoose(cfg);
+    const before = liveIds(slide);
+    const target = (await listChartsInDeck()).charts[0].target;
+    setTracing(true);
+    const next = { ...cfg, title: "Renamed" };
+    const back = await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+
+    const said = traceLog().entries.filter((e) => e.message === "updated only the shapes that changed");
+    expect(said.length, "the chart was redrawn rather than updated").toBe(1);
+    expect(said[0].data).toMatchObject({ changed: 1, of: 24 });
+
+    // The strongest evidence available: an update that redraws cannot possibly
+    // hand back the same shape ids, because every shape is new.
+    expect(liveIds(slide), "the shapes were replaced, so this was a redraw").toEqual(before);
+    expect(back?.lost, "an in-place update reported a loss").toBeFalsy();
+
+    // And the chart is actually correct afterwards — both the picture and the
+    // config, which is the pair a wrong fast path would split.
+    const found = (await listChartsInDeck()).charts;
+    expect(found).toHaveLength(1);
+    expect((JSON.parse(found[0].configJson) as ChartConfig).title).toBe("Renamed");
+    expect(
+      slide.created.some((s) => !s.deleted && s.text === "Renamed"),
+      "the new title never reached the slide",
+    ).toBe(true);
+  });
+
+  it("falls back to a redraw when the engine has moved on", async () => {
+    // The fingerprint is the whole reason this is sound. A chart drawn by a
+    // different engine renders from its stored config to a scene that is NOT
+    // what is on the slide, and diffing against it would skip nodes that really
+    // did change and leave them stale forever.
+    const cfg = clustered();
+    const slide = await drawLoose(cfg);
+    const target = (await listChartsInDeck()).charts[0].target;
+    // Exactly the state an upgrade produces: the config is intact, the
+    // fingerprint names a scene this build does not produce.
+    const anchor = slide.created.find((s) => s.id === target.shapeId)!;
+    anchor.tagStore.set("POWERCHART_SCENE", "notthisone");
+    const before = liveIds(slide);
+    setTracing(true);
+    const next = { ...cfg, title: "Renamed" };
+    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+
+    expect(
+      traceLog().entries.some((e) => e.message === "updated only the shapes that changed"),
+      "a chart whose fingerprint did not match was updated in place anyway",
+    ).toBe(false);
+    expect(liveIds(slide), "the fallback did not actually redraw").not.toEqual(before);
+    const found = (await listChartsInDeck()).charts;
+    expect((JSON.parse(found[0].configJson) as ChartConfig).title, "the fallback lost the edit").toBe("Renamed");
+  });
+
+  it("falls back when the chart was resized, because every node moved", async () => {
+    const cfg = clustered();
+    const slide = await drawLoose(cfg);
+    const target = (await listChartsInDeck()).charts[0].target;
+    const before = liveIds(slide);
+    setTracing(true);
+    const next = { ...cfg, width: cfg.width! + 40 };
+    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+    expect(
+      traceLog().entries.some((e) => e.message === "updated only the shapes that changed"),
+      "a resized chart took the in-place path",
+    ).toBe(false);
+    expect(liveIds(slide)).not.toEqual(before);
+  });
+
+  it("redraws a GROUPED chart, which has no node-to-shape mapping", async () => {
+    // Its shapes are inside the group and the parts tag does not list them, so
+    // there is nothing to write to. Asserted rather than assumed: the fast path
+    // reading a short parts list as a mapping would write a bar's geometry onto
+    // whatever shape happened to be at that index.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg = clustered();
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+    const target = (await listChartsInDeck()).charts[0].target;
+    setTracing(true);
+    const next = { ...cfg, title: "Renamed" };
+    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+    expect(
+      traceLog().entries.some((e) => e.message === "updated only the shapes that changed"),
+      "a grouped chart was updated through a parts list it does not have",
+    ).toBe(false);
+    const found = (await listChartsInDeck()).charts;
+    expect((JSON.parse(found[0].configJson) as ChartConfig).title).toBe("Renamed");
+  });
+
+  it("still lands the chart when the host refuses the in-place batch", async () => {
+    // Nothing has been deleted when the writes go out, so a refusal costs the
+    // chart nothing but time — the redraw does the whole job. The alternative,
+    // a chart whose picture is new and whose config is old, would silently
+    // revert the user's edit the next time they opened it.
+    const cfg = clustered();
+    await drawLoose(cfg);
+    const target = (await listChartsInDeck()).charts[0].target;
+    setTracing(true);
+    faults.refuseTagWrites = 1;
+    try {
+      const next = { ...cfg, title: "Renamed" };
+      await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+    } finally {
+      faults.refuseTagWrites = 0;
+    }
+    const said = traceLog().entries.map((e) => e.message);
+    expect(said, "a refused in-place update passed without a word").toContain(
+      "in-place update refused — redrawing instead",
+    );
+    const found = (await listChartsInDeck()).charts;
+    expect(found, "the chart was lost when the fast path was refused").toHaveLength(1);
+    expect((JSON.parse(found[0].configJson) as ChartConfig).title).toBe("Renamed");
+  });
+});
+
+/**
+ * `applyNodeInPlace` and the adders must write the same properties.
+ *
+ * A property the adder sets and the applier does not is a chart that looks
+ * right when first drawn and wrong after an edit — a bar keeping its old
+ * colour, a label keeping its old font — with nothing in any log to say so,
+ * because from the host's point of view the update succeeded. Neither the type
+ * checker nor any behavioural test can see that: the applier compiles fine
+ * without the line, and a test that drew a chart and edited it would only catch
+ * the properties it happened to assert on.
+ *
+ * So the source is the check. Crude by design, and it fails with the NAME of
+ * whichever property was forgotten — which is exactly what a reader adding a
+ * line to `addText` needs to be told.
+ */
+describe("the in-place applier and the adders it mirrors", () => {
+  const source = readFileSync("src/render/powerpoint.ts", "utf8");
+  const body = (start: RegExp): string => {
+    const at = source.search(start);
+    expect(at, `could not find ${start} in powerpoint.ts`).toBeGreaterThan(-1);
+    const rest = source.slice(at + 1);
+    const end = rest.search(/\n(?:export )?(?:async )?function /);
+    return rest.slice(0, end === -1 ? undefined : end);
+  };
+  /** Property writes, as `receiver.property`, ignoring the local's name. */
+  const writes = (text: string): Set<string> => {
+    const found = new Set<string>();
+    for (const m of text.matchAll(/\b(?:shape|tf|font|lf)\.([A-Za-z]+(?:\.[A-Za-z]+)*)\s*=/g)) found.add(m[1]);
+    for (const m of text.matchAll(/\b(?:solidFill|strokeColor)\(\s*\w+\.([A-Za-z]+)/g)) found.add(`${m[1]}:filled`);
+    for (const m of text.matchAll(/\b\w+\.([A-Za-z]+)\.clear\(\)/g)) found.add(`${m[1]}:cleared`);
+    return found;
+  };
+  const applier = writes(body(/\nfunction applyNodeInPlace\(/));
+  const rectCase = writes(body(/\nfunction addNode\(/).split('case "line"')[0]);
+  const textAdder = writes(body(/\nfunction addText\(/));
+
+  it("writes everything the rect adder writes", () => {
+    const missing = [...rectCase].filter((p) => !applier.has(p));
+    expect(missing, `applyNodeInPlace never sets: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("writes everything the text adder writes", () => {
+    const missing = [...textAdder].filter((p) => !applier.has(p));
+    expect(missing, `applyNodeInPlace never sets: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("also writes the string, which the adder passes as an argument", () => {
+    expect(applier, "the applier cannot change a chart's text").toContain("textRange.text");
+  });
+
+  it("is comparing a real set of properties, not an empty one", () => {
+    // A regex that stopped matching would make both tests above pass forever.
+    expect(rectCase.size, "the rect scan found nothing to compare").toBeGreaterThan(3);
+    expect(textAdder.size, "the text scan found nothing to compare").toBeGreaterThan(6);
+  });
+});
