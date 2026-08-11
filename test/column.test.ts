@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
-import type { EllipseNode, LineNode, RectNode } from "../src/core/scene";
+import type { EllipseNode, LineNode, RectNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /** Columns — clustered/stacked, gap width, overlap, stacked-100 negatives, bar styles. */
@@ -331,5 +331,62 @@ describe("stacked100 honors an inconsistent 100%= denominator", () => {
       .filter((n) => n.name === "value-axis")
       .map((n) => n.text);
     expect(labels).toEqual(["0%", "25%", "50%", "75%", "100%"]);
+  });
+});
+
+/**
+ * A decoration's pixel anchor and the number it prints have to describe the
+ * same mark. `columnTop` is the DRAWN top and `columnValue` is what the label
+ * reads, and on a stacked column with a negative segment they are different
+ * quantities: the positive total against the net. Two shapes came out of that —
+ * a zero-length arrow carrying a non-zero percentage, and an arrow pointing the
+ * opposite way to its own sign.
+ */
+describe("a difference arrow on a mixed-sign stack points where its number says", () => {
+  const stack = (a: [number, number], b: [number, number]): ChartConfig =>
+    ({
+      kind: "stacked",
+      width: 400,
+      height: 300,
+      decorations: { difference: { from: 0, to: 1 } },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "P", values: [a[0], b[0]] },
+          { name: "N", values: [a[1], b[1]] },
+        ],
+      },
+    }) as unknown as ChartConfig;
+
+  const arrow = (cfg: ChartConfig) => {
+    const nodes = buildChart(cfg).nodes;
+    const line = nodes.find((n): n is LineNode => n.kind === "line" && n.name === "diff-line")!;
+    const label = nodes.find((n): n is TextNode => n.kind === "text" && n.name === "diff-label")!;
+    return { line, label };
+  };
+
+  it("draws a real length when the totals differ", () => {
+    // +10/−4 → +10/−8 is a net 6 → 2. Both POSITIVE totals are 10, so anchoring
+    // on the drawn top gave a zero-length arrow labelled "−67%".
+    const { line, label } = arrow(stack([10, -4], [10, -8]));
+    expect(label.text).toContain("-");
+    expect(Math.abs(line.y2 - line.y1), "zero-length arrow").toBeGreaterThan(1);
+    expect(line.y2).toBeGreaterThan(line.y1); // a fall goes DOWN the canvas
+  });
+
+  it("points up for a rise and down for a fall", () => {
+    // +10/−8 → +5/0 is a net 2 → 5, a RISE — drawn pointing down before.
+    const { line, label } = arrow(stack([10, -8], [5, 0]));
+    expect(label.text).toContain("+");
+    expect(line.y2).toBeLessThan(line.y1);
+  });
+
+  it("leaves an all-positive stack exactly where it was", () => {
+    // The negative control: the two anchors agree whenever no segment is
+    // negative, so this must be an identity — as it is for every chart in the
+    // showcase deck.
+    const { line, label } = arrow(stack([10, 5], [20, 6]));
+    expect(label.text).toContain("+");
+    expect(line.y2).toBeLessThan(line.y1);
   });
 });

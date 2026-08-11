@@ -610,3 +610,40 @@ describe("the right-hand series label names the line it points at", () => {
     ).toEqual(["A", "B"]);
   });
 });
+
+/**
+ * The same anchor mismatch on a multi-series LINE chart: `columnTop` is the
+ * topmost point across every series and `columnValue` is the FIRST series'
+ * value, so the arrow spanned one series' points and printed another's growth.
+ */
+describe("a difference arrow on a multi-series line reads the series it spans", () => {
+  it("does not span one series and label another's growth", () => {
+    const { nodes } = buildChart({
+      kind: "line",
+      width: 400,
+      height: 300,
+      decorations: { difference: { from: 0, to: 1 } },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "A", values: [10, 20] }, // +100%
+          { name: "B", values: [100, 300] }, // +200%, and the topmost line
+        ],
+      },
+    } as ChartConfig);
+    const line = nodes.find((n): n is LineNode => n.kind === "line" && n.name === "diff-line")!;
+    const markers = (si: number) =>
+      nodes
+        .filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith(`marker-${si}-`))
+        .map((n) => n.y + n.h / 2);
+    const label = nodes.find((n): n is TextNode => n.kind === "text" && n.name === "diff-label")!;
+    expect(label.text).toContain("100");
+    // The arrow must sit on series A's points — the ones it is reporting — not
+    // on series B's, which is where `columnTop` put it.
+    const [aFrom, aTo] = markers(0);
+    const [bFrom] = markers(1);
+    expect(Math.abs(line.y1 - aFrom), "arrow start off series A").toBeLessThan(1);
+    expect(Math.abs(line.y2 - aTo), "arrow end off series A").toBeLessThan(1);
+    expect(Math.abs(line.y1 - bFrom), "arrow still anchored on series B").toBeGreaterThan(1);
+  });
+});

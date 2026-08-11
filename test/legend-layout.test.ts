@@ -210,6 +210,29 @@ describe("right-hand series labels stay on the canvas", () => {
     });
   }
 
+  it("keeps the labels in the order of the lines they name", () => {
+    // The spread's step is by definition below the gap the labels wanted, so
+    // every neighbouring pair overlaps — and `series-label-` is movable, with a
+    // nudge that only goes UP. Left alone it pushed each label past the one
+    // above it and handed back a full set of REORDERED labels: every one on the
+    // canvas, each naming the wrong line. Shrinking the spread set to its own
+    // step leaves the de-collision pass nothing to do.
+    for (const [w, h, count] of [
+      [240, 160, 12],
+      [400, 300, 30],
+      [480, 300, 24],
+    ] as const) {
+      const labels = buildChart(sized(w, h, count))
+        .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"))
+        .sort((a, b) => a.y - b.y)
+        .map((n) => n.text);
+      // Series i has values [i+1, i+2], so the highest index ends highest.
+      expect(labels, `${w}x${h}, ${count} series`).toEqual(
+        Array.from({ length: count }, (_, i) => `S${count - 1 - i}`),
+      );
+    }
+  });
+
   it("leaves a chart with room to spare exactly where it was", () => {
     // The negative control: spreading unconditionally would move every label on
     // every chart, and these three are nowhere near needing it.

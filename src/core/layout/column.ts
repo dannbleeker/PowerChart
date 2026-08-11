@@ -1164,6 +1164,8 @@ export function seriesLabelNodes(
 ): SceneNode[] {
   const fs = style.fontSize;
   const lineH = fs * 1.35;
+  /** Font the labels are actually drawn at — reduced only if they must be spread. */
+  let labelFs = fs;
   const entries = cfg.data.series
     .map((s, i) => ({
       name: s.scenario ? `${s.name} (${s.scenario})` : s.name,
@@ -1195,6 +1197,16 @@ export function seriesLabelNodes(
       const bottom = Math.max(top, Math.min(frame.y + frame.h, cfg.height - lineH / 2));
       const step = entries.length > 1 ? (bottom - top) / (entries.length - 1) : 0;
       entries.forEach((e, i) => (e.y = top + i * step));
+      // Spread AND shrunk, because a spread alone trades one defect for a worse
+      // one. The step here is by definition below the gap the labels wanted, so
+      // every neighbouring pair overlaps — and `series-label-` is in
+      // `collide.ts`'s MOVABLE list, whose nudge only goes UP. It therefore
+      // pushed each label past the one above it and returned them REORDERED:
+      // every label on the canvas, each naming the wrong line. An unreadably
+      // small label is a bad chart; a legible label naming someone else's line
+      // is a wrong one. Shrink to the step so nothing overlaps and the
+      // de-collision pass has nothing to do.
+      labelFs = Math.max(5, Math.min(fs, step / 1.25));
     }
   }
   const x = frame.x + frame.w + 4;
@@ -1205,7 +1217,7 @@ export function seriesLabelNodes(
     w: cfg.width - x,
     h: lineH,
     text: e.name,
-    fontSize: fs,
+    fontSize: labelFs,
     color: style.text,
     align: "left" as const,
     valign: "middle" as const,

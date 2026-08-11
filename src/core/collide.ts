@@ -52,8 +52,17 @@ export function resolveLabelCollisions(nodes: SceneNode[]): void {
     if (rank >= 0) movable.push({ node: t, rank });
     else fixed.push(tightBox(t));
   }
-  // Lower rank settles first and becomes an obstacle for the rest.
-  movable.sort((a, b) => a.rank - b.rank);
+  // Lower rank settles first and becomes an obstacle for the rest; within a
+  // rank, the LOWEST label settles first.
+  //
+  // The order within a rank used to be the order the layout emitted, and the
+  // nudge only ever goes up — so of two overlapping labels the one that
+  // happened to come first stayed put and the other was pushed past it. On a
+  // chart dense enough that its series labels cannot all fit at their minimum
+  // gap, that reordered them: every label still on the canvas, each naming the
+  // wrong line. Settling bottom-up makes the nudge move a label AWAY from the
+  // one below it, which can never cross.
+  movable.sort((a, b) => a.rank - b.rank || b.node.y - a.node.y);
 
   // Spatial hash over the settled boxes so each movable label tests only its
   // neighbourhood, not the whole settled set on every one of its ≤10 nudges. The
