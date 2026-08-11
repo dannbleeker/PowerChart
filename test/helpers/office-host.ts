@@ -146,6 +146,16 @@ export const faults = {
    */
   readsMissing: 0,
   /**
+   * The id a SELECTION reports for its slide, when that is not the deck's id.
+   *
+   * office-js#2474: a `SlideRange`'s id lacks the `#XYZ` suffix the same slide
+   * carries in `presentation.slides`, so an id taken from the selection cannot
+   * be handed to `getItem`. The fake returned the very same object for both
+   * reads, so the divergence the issue is about could not exist here — and the
+   * add-in stores exactly that id as an edit target's `slideId`.
+   */
+  selectedSlideIdAs: null as string | null,
+  /**
    * The same short answer, on an `items/name` load.
    *
    * A real host does not care which properties were asked for — a collection
@@ -1926,7 +1936,15 @@ export function installHost(
         ],
         load() {},
       },
-      getSelectedSlides: () => ({ getItemAt: () => selectedSlide }),
+      getSelectedSlides: () => ({
+        getItemAt: () =>
+          faults.selectedSlideIdAs === null
+            ? selectedSlide
+            : // Same slide, different id — which is the whole of #2474.
+              new Proxy(selectedSlide as object, {
+                get: (t, k) => (k === "id" ? faults.selectedSlideIdAs : Reflect.get(t, k)),
+              }),
+      }),
       getSelectedShapes: () => ({
         // The LIVE selection, not the array installHost was handed — otherwise
         // `setSelectedShapes` would write somewhere nothing reads.
@@ -2159,6 +2177,7 @@ export function installHost(
   faults.hollowReads = 0;
   faults.hollowReadsAfter = null;
   faults.readsMissing = 0;
+  faults.selectedSlideIdAs = null;
   faults.hollowNameReads = 0;
   lastShapeLoad = "";
   faults.refusePictureFill = false;

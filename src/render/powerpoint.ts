@@ -1656,6 +1656,40 @@ export function afterSettle(t: EditTarget, o: { settled: boolean; untargeted: bo
 }
 
 /**
+ * The deck's own id for a slide named by a SELECTION.
+ *
+ * office-js#2474: a `SlideRange`'s `id` is not roundtrippable — it lacks the
+ * `#XYZ` suffix the same slide carries when read from `presentation.slides`, so
+ * `slides.getItem(rangeId)` answers InvalidArgument where `getItemAt(index)`
+ * works. Reported on Windows desktop, closed `not planned`, and this repo hands
+ * exactly such an id back as an EditTarget's `slideId` from
+ * `loadChartFromSelection` — the pane's most-used read.
+ *
+ * The failure it produces is the silent kind. An update resolves that id with
+ * `getItemOrNullObject`, gets a null object, and the chart is filtered out as
+ * "the slide is gone, nothing to do": the user clicks their chart, edits it,
+ * and nothing happens, with no error anywhere. On this web host the ids happen
+ * to round-trip today — `edit the chart the user selected` has passed every
+ * round — which is precisely why this must not be left to luck on a host
+ * nobody here has run.
+ *
+ * The repair is the issue's own observation turned into a rule: the deck's id
+ * is the range's id plus a `#suffix`, so an id that is not in the deck's list
+ * is matched by that prefix. Pure, because the alternative is discovering on
+ * someone's desktop that Edit does nothing.
+ */
+export function deckIdForSelectedSlide(rangeId: string | undefined, deckIds: string[]): string | undefined {
+  if (!rangeId) return undefined;
+  if (deckIds.includes(rangeId)) return rangeId;
+  const withSuffix = deckIds.filter((id) => id.startsWith(`${rangeId}#`));
+  // Exactly one, or nothing. Two slides answering to one prefix means the
+  // assumption behind this whole repair is wrong on that host, and guessing
+  // between them would put the user's edit on the wrong slide — which is worse
+  // than the silent no-op this exists to prevent.
+  return withSuffix.length === 1 ? withSuffix[0] : undefined;
+}
+
+/**
  * Read the PowerChart config back from the current selection (the tag written
  * at insert time). Returns null when the selection is not a PowerChart.
  * Requires PowerPointApi 1.5 (getSelectedShapes).
@@ -1669,6 +1703,11 @@ export async function loadChartFromSelection(
       const slides = context.presentation.getSelectedSlides();
       const slide = slides.getItemAt(0);
       slide.load("id");
+      // The DECK's ids too, in the sync this read already costs. A SlideRange's
+      // id is not roundtrippable (office-js#2474) and the target built below is
+      // resolved by id on every later edit — see `deckIdForSelectedSlide`.
+      const deck = context.presentation.slides;
+      deck.load("items/id");
       const shapes = context.presentation.getSelectedShapes();
       shapes.load("items/id,items/left,items/top");
       await context.sync();
@@ -1683,7 +1722,16 @@ export async function loadChartFromSelection(
       // The selected slide's id, once. A host that will not name the slide leaves
       // no target to hand back — the pane's "not a PowerChart" answer, which is
       // survivable, rather than a throw out of the pane's most-used read.
-      const slideId = loadedValue(() => slide.id);
+      const rangeId = loadedValue(() => slide.id);
+      // Matched against the deck's own list rather than trusted. A host that
+      // will not answer for the deck leaves the range's id as the only thing
+      // there is, which is the behaviour every round on this host has had.
+      const deckIds = (loadedItems(deck) ?? [])
+        .map((sl) => loadedValue(() => sl.id))
+        .filter((id): id is string => !!id);
+      const slideId = deckIds.length ? deckIdForSelectedSlide(rangeId, deckIds) : rangeId;
+      if (rangeId && slideId !== rangeId)
+        trace("pane", "the selected slide's id is not the deck's id for it", { rangeId, slideId: slideId ?? null });
       for (let i = 0; i < selected.length; i++) {
         const { config, parts, origin } = tags[i];
         const configJson = tagValue(config);

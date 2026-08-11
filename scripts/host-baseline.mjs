@@ -36,6 +36,7 @@ export const FAKE_BASELINE = {
   "addgroup-returns-usable": "yes",
   "group-children-via-getcount": "two",
   "group-reports-its-children": "two",
+  "grouped-child-by-id-from-slide": "yes",
   "tag-on-group-survives": "yes",
   "binding-names-shape-later": "yes",
   "getitemat-past-end": "threw",
@@ -254,6 +255,15 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "grouped-child-by-id-from-slide":
+    "Added 2026-08-11, and it decides whether the in-place update has a future on this host. `tryInPlaceUpdate` needs a " +
+    "node-to-shape mapping and gets one from CHART_PARTS_TAG, which is written only for UNGROUPED charts — so the " +
+    "`53ec985` round declined ELEVEN times out of eleven with `the chart has no parts list`, the grouped charts having no " +
+    "tag and the ungrouped ones having had their id readback refused. But 'the parts tag does not list them' is a fact " +
+    "about our code, not about the host. If the slide's own collection still resolves a child by id, a grouped chart can " +
+    "carry a parts list written from ids the grouping pass already holds, and the fast path applies to the fourteen " +
+    "grouped charts a round produces instead of none. office-js#3014 says sub-shapes cannot be reached, so a no is " +
+    "expected — and worth having as a measured no rather than an assumed one, because the whole feature turns on it.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
   "binding-names-shape-later":
