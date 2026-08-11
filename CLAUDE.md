@@ -1081,6 +1081,28 @@ settled=1 lost=0`. Every previous observation was `settled: 0, lost: 1`, and
   sliding along the scenario. Read a move from 4 to 3 as that coin, not as a
   regression and not as the flip landing earlier.
 
+  **The scenario reports the index itself now, and stops once it has it.**
+  Every one of those decompositions was done by hand, from a log where all
+  eight charts say `index: 0` — within a single-chart update each chart IS the
+  first one. Two changes end that:
+
+  - `traceAbout({ chart: "4/8" }, …)` in `src/core/trace.ts` attaches a subject
+    to every line written inside a span — draw batches, grouping, tag writes,
+    the settle, errors. Merged UNDER the payload so a call site naming the same
+    key still wins, restored on the way out including on a throw, and the deck
+    path uses the same mechanism for `item: "3/38"`.
+  - `rescaleShouldStop` ends the scenario once TWO charts in a row have lost
+    their config, and the verdict carries `the host flipped at chart N of M`.
+    Two rather than one because the first degraded chart is the one the settle
+    may still rescue, which is exactly the 3-versus-4 coin. On round 16's data
+    it would have stopped after chart 5 and saved ~38s of an 818s round.
+
+  **On a healthy host the stop never fires**, so nothing is skipped and the
+  scenario still proves every chart in the deck takes the shared scale. That
+  property is what makes the shortcut safe, and it is guarded from both sides —
+  one test that it fires when the host refuses twice, one that it does not fire
+  when the host behaves (proven against a build whose rule always says stop).
+
 - **The web host does not LIST the shapes a run just added.** The finding the
   extended log produced, and the one everything else downstream hangs off:
   `the re-read before grouping came back empty index=0 drew=24`, four times in

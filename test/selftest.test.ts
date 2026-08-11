@@ -41,6 +41,8 @@ import {
   _setClickWaitForTest,
   _setDegradeSizeForTest,
   wedgedSelection,
+  rescaleFlipIndex,
+  rescaleShouldStop,
   visibilityVerdict,
   sideSlot,
   SIDE_SLOTS,
@@ -1499,6 +1501,89 @@ describe("scenarios that must not be able to pass without proving anything", () 
     } finally {
       faults.refuseTagWrites = 0;
     }
+  });
+
+  it("stops once the host has refused twice, and says where it flipped", async () => {
+    // 212 seconds of an 818-second round, the longest thing in the battery, and
+    // on a degrading host its tail is repetition: three rounds decomposed by
+    // hand put the boundary in the same place and every chart past it did the
+    // same thing at ~12s each. Round 16 would have stopped after chart 5.
+    //
+    // The flip INDEX is the number worth carrying. What moved a score between
+    // 3 and 4 across rounds was one binary event — whether the settle caught
+    // the first degraded chart — not a boundary sliding along the scenario, and
+    // a score alone cannot say that.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    setTracing(true);
+    faults.refuseTagWrites = 9999;
+    try {
+      const scale = named(await runSelfTest("probe"))["same scale across the deck"];
+      expect(scale.detail, `the verdict names no flip point: ${scale.detail}`).toMatch(
+        /the host flipped at chart 1 of \d+/,
+      );
+      expect(scale.detail, "every chart was attempted on a host that refused the first two").toMatch(
+        /so the last \d+ were not attempted/,
+      );
+      const stopped = traceLog().entries.filter(
+        (e) => e.message === "stopping the rescale — the host has already flipped",
+      );
+      expect(stopped.length, "the scenario gave up without saying so").toBe(1);
+      expect(stopped[0].data).toMatchObject({ done: 2, flippedAt: 1 });
+    } finally {
+      faults.refuseTagWrites = 0;
+      setTracing(false);
+    }
+  });
+
+  it("attempts every chart on a host that behaves", async () => {
+    // The property that makes the shortcut safe: it can only skip work the host
+    // has already refused twice. A healthy deck loses nothing, so nothing is
+    // skipped and the scenario still proves every chart takes the shared scale.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    setTracing(true);
+    try {
+      const scale = named(await runSelfTest("probe"))["same scale across the deck"];
+      expect(scale.detail, `a healthy host was cut short: ${scale.detail}`).not.toMatch(/not attempted/);
+      expect(scale.detail, "a healthy host was reported as having flipped").not.toMatch(/flipped at chart/);
+      expect(
+        traceLog().entries.some((e) => e.message === "stopping the rescale — the host has already flipped"),
+        "the rescale gave up on a host that never refused anything",
+      ).toBe(false);
+    } finally {
+      setTracing(false);
+    }
+  });
+});
+
+describe("when the deck-wide rescale has learned everything it will", () => {
+  it("keeps going until two charts in a row have lost their config", () => {
+    // Two, not one. A single loss is the flip's first chart and may still be
+    // rescued by the settle — round 16's chart 4 was, and it counted toward the
+    // score — so stopping on one throws away the observation that decides
+    // whether a round scores 3 or 4.
+    expect(rescaleShouldStop([])).toBe(false);
+    expect(rescaleShouldStop(["no-config"])).toBe(false);
+    expect(rescaleShouldStop([undefined, "no-config"])).toBe(false);
+    expect(rescaleShouldStop(["no-config", "no-config"])).toBe(true);
+    // Round 16's shape: three clean, then the flip. Chart 4 alone is not enough.
+    expect(rescaleShouldStop([undefined, undefined, undefined, "unknown-shape"])).toBe(false);
+    expect(rescaleShouldStop([undefined, undefined, undefined, "unknown-shape", "no-config"])).toBe(true);
+  });
+
+  it("does not stop on two losses that are not consecutive", () => {
+    // A host that drops one chart and recovers has not flipped, and the tail is
+    // still worth drawing.
+    expect(rescaleShouldStop(["no-config", undefined])).toBe(false);
+    expect(rescaleShouldStop(["no-config", undefined, "no-config", undefined])).toBe(false);
+  });
+
+  it("reports the first chart that lost its config, not the last", () => {
+    expect(rescaleFlipIndex([])).toBeNull();
+    expect(rescaleFlipIndex([undefined, undefined])).toBeNull();
+    expect(rescaleFlipIndex([undefined, undefined, undefined, "unknown-shape", "no-config"])).toBe(4);
+    expect(rescaleFlipIndex(["chart-gone"])).toBe(1);
   });
 });
 
