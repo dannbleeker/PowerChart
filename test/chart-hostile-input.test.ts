@@ -8,7 +8,8 @@ import type { ChartConfig } from "../src/core/types";
 import { sceneToSvg } from "../src/render/svg";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { toRgb, alphaOf } from "../src/core/color";
-import { textWidth } from "../src/core/scene";
+import { finiteNodes, textWidth } from "../src/core/scene";
+import type { SceneNode } from "../src/core/scene";
 
 /**
  * Values a datasheet cell can hold, against every chart kind.
@@ -548,5 +549,61 @@ describe("a config value the renderer can draw must not silently vanish", () => 
       if (axisTitleText(asString).length && !axisTitleText(cfg).length) missing.push(kind);
     }
     expect(missing).toEqual([]);
+  });
+});
+
+/**
+ * A node with no numbers passes a filter that checks numbers.
+ *
+ * `finiteNodes` is the engine's last gate before the scene reaches three
+ * renderers, and its own comment says why: the PowerPoint renderers write a
+ * file, so a bad coordinate produces a .pptx PowerPoint may refuse to open. It
+ * asked whether every number in a node is finite — and an EMPTY point list
+ * satisfies that trivially, because there are no numbers to fail.
+ *
+ * So a `polygon` carrying `points: []` went straight through the gate and broke
+ * exactly the renderer the gate exists to protect. `pptx-paint.mjs` takes the
+ * bounding box with `Math.min(...xs)`, which is `Infinity` for no points, and
+ * writes `x="Infinity"` into the OOXML. Not an Int64; Microsoft's own validator
+ * rejects the deck.
+ *
+ * Found by rendering 3033 hostile configs through the skill's headless
+ * renderer and scanning the output for numeric attributes that are not numbers.
+ * Four of them, on one slide, from `{kind: "radar", data: {}}`.
+ */
+describe("a polygon with nothing to draw", () => {
+  it("is dropped rather than handed to a renderer that will divide by nothing", () => {
+    const poly = (name: string, points: { x: number; y: number }[]): SceneNode => ({
+      kind: "polygon",
+      points,
+      stroke: "#000000",
+      name,
+    });
+    const empty = poly("grid-2", []);
+    const one = poly("grid-3", [{ x: 1, y: 2 }]);
+    const real = poly("series-0", [
+      { x: 0, y: 0 },
+      { x: 5, y: 5 },
+    ]);
+    const kept = finiteNodes([empty, one, real]);
+    expect(
+      kept.map((n) => n.name),
+      "a degenerate polygon reached the renderers",
+    ).toEqual(["series-0"]);
+  });
+
+  it("never leaves one in a real chart's scene", () => {
+    // The producer: a radar lays out its grid rings before it knows it has no
+    // axes to hang them on. Asserted across every kind, because any layout that
+    // emits a ring, web or outline can do the same from empty data.
+    const bad: string[] = [];
+    for (const { kind } of CHART_KINDS) {
+      for (const data of [{}, { series: [] }, { series: [], categories: [] }]) {
+        const scene = buildChart({ ...sampleConfig(kind), data } as unknown as ChartConfig);
+        for (const n of scene.nodes)
+          if (n.kind === "polygon" && n.points.length < 2) bad.push(`${kind}: ${n.name ?? "(unnamed)"}`);
+      }
+    }
+    expect([...new Set(bad)], "a chart shipped a polygon with no geometry").toEqual([]);
   });
 });

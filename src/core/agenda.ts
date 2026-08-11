@@ -20,6 +20,11 @@ export interface AgendaOptions {
  * each before its section.
  */
 export function buildAgendaScene(chapters: string[], opts: AgendaOptions = {}): Scene {
+  // A `string[]` in the types is not an array in the object someone passed.
+  // Exported from `src/index.ts`, so the caller may be anyone — and an agenda
+  // with no chapters is an ordinary thing to ask for, not a crash. Same rule
+  // and same reason as `buildProcessFlow`.
+  const list: string[] = Array.isArray(chapters) ? chapters.map((c) => String(c ?? "")) : [];
   const width = opts.width ?? SLIDE.width;
   const height = opts.height ?? SLIDE.height;
   const highlight = opts.highlight ?? -1;
@@ -29,7 +34,7 @@ export function buildAgendaScene(chapters: string[], opts: AgendaOptions = {}): 
   const marginX = width * 0.09;
   const titleY = height * 0.09;
   const listY = height * 0.28;
-  const rowH = Math.min(46, (height * 0.62) / Math.max(1, chapters.length));
+  const rowH = Math.min(46, (height * 0.62) / Math.max(1, list.length));
   const fsTitle = 28;
   // The chapter text starts after the number column (fs * 2.6) and its box ends
   // at width - marginX. The row font came from the chapter COUNT alone, so a
@@ -37,7 +42,7 @@ export function buildAgendaScene(chapters: string[], opts: AgendaOptions = {}): 
   // renderer wraps it. Shrink until the widest title fits, then ellipsize.
   const itemW = (f: number) => width - marginX * 2 - f * 2.6;
   let fs = Math.min(18, rowH * 0.42);
-  const overflows = (f: number) => chapters.some((c, i) => textWidth(c, f, i === highlight) > itemW(f));
+  const overflows = (f: number) => list.some((c, i) => textWidth(c, f, i === highlight) > itemW(f));
   while (fs > 9 && overflows(fs)) fs -= 0.5;
 
   const nodes: SceneNode[] = [
@@ -67,7 +72,7 @@ export function buildAgendaScene(chapters: string[], opts: AgendaOptions = {}): 
     },
   ];
 
-  chapters.forEach((chapter, i) => {
+  list.forEach((chapter, i) => {
     const y = listY + i * rowH;
     const active = i === highlight;
     if (active) {
