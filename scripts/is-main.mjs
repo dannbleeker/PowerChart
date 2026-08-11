@@ -23,6 +23,7 @@
  * green against the bug it exists to catch.
  */
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -49,5 +50,24 @@ export function isMain(moduleUrl, argv1, platform = process.platform) {
   // Windows paths are case-insensitive and the drive letter's case is not
   // stable — the shell's `c:\` and node's `C:\` name one file and would
   // otherwise compare unequal.
-  return windows ? self.toLowerCase() === invoked.toLowerCase() : self === invoked;
+  const same = (a, b) => (windows ? a.toLowerCase() === b.toLowerCase() : a === b);
+  if (same(self, invoked)) return true;
+  // A SYMLINK names one file by two paths, and the two sides of this comparison
+  // come from different places: `import.meta.url` is always the resolved REAL
+  // path, while `process.argv[1]` is whatever the shell handed over. Reached
+  // through a link — a pnpm/workspace bin shim, a checkout under a linked
+  // parent directory, `/tmp` on a mac — the strings differ and every one of
+  // these CLIs printed nothing and exited 0. That is the exact failure this
+  // file exists to stop, arriving by a second route.
+  //
+  // Only asked when the platform is the real one: an injected platform (which
+  // is what lets an ubuntu runner exercise the Windows case) has no filesystem
+  // to resolve against, and must keep answering from the strings alone.
+  if (platform !== process.platform) return false;
+  try {
+    return same(fs.realpathSync(self), fs.realpathSync(invoked));
+  } catch {
+    // One of them does not exist on disk. Then it is not the file node ran.
+    return false;
+  }
 }

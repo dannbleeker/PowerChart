@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync } from "fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { pathToFileURL } from "url";
 // @ts-expect-error — a plain .mjs tool with no types.
 import { isMain } from "../scripts/is-main.mjs";
 
@@ -115,5 +118,48 @@ describe("every tool script asks the same question the same way", () => {
     // A scan that matched nothing reports a clean sweep. Several scripts are
     // CLIs, so finding none means the detector stopped working.
     expect(guards, "no entry guard found at all — the scan matched nothing").toBeGreaterThanOrEqual(4);
+  });
+});
+
+/**
+ * The second route to the same silent pass. `import.meta.url` is always the
+ * RESOLVED real path; `process.argv[1]` is whatever the shell handed over. Run
+ * a script through a symlink — a workspace bin shim, a checkout under a linked
+ * parent, `/tmp` on a mac — and the two strings differ, so `main()` never ran
+ * and the tool printed nothing and exited 0. That is exactly what this file
+ * exists to stop, arriving by a different door.
+ */
+describe("a script reached through a symlink is still the script that was run", () => {
+  const dir = mkdtempSync(join(tmpdir(), "is-main-"));
+  const real = join(dir, "tool.mjs");
+  const link = join(dir, "link.mjs");
+  writeFileSync(real, "export default 1;\n");
+  try {
+    symlinkSync(real, link);
+  } catch {
+    /* a filesystem without symlinks — the assertions below are skipped by the guard */
+  }
+  const canLink = existsSync(link);
+
+  it("answers true when argv[1] is a link to this module", () => {
+    if (!canLink) return;
+    expect(isMain(pathToFileURL(real).href, link)).toBe(true);
+  });
+
+  it("still answers false for a DIFFERENT file", () => {
+    // The negative control: resolving links must not turn every invocation into
+    // a match.
+    const other = join(dir, "other.mjs");
+    writeFileSync(other, "export default 2;\n");
+    expect(isMain(pathToFileURL(real).href, other)).toBe(false);
+    expect(isMain(pathToFileURL(real).href, join(dir, "missing.mjs"))).toBe(false);
+  });
+
+  it("keeps answering from the strings alone when the platform is injected", () => {
+    // The Windows case has no filesystem to resolve against on an ubuntu
+    // runner, and it is the case this file was written for — it must not start
+    // depending on realpath.
+    expect(isMain("file:///C:/repo/scripts/flaky.mjs", "C:\\repo\\scripts\\flaky.mjs", "win32")).toBe(true);
+    expect(isMain("file:///C:/repo/scripts/flaky.mjs", "C:\\repo\\scripts\\other.mjs", "win32")).toBe(false);
   });
 });
