@@ -240,6 +240,19 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   sheet" are different things, and only one of them is checkable. Do the
   subtraction before swapping; it takes a minute and it has now said no twice.
 
+  **The counts in this paragraph are historical and the fixture has moved since
+  — read `test/fixtures/host-answers-web.json`'s own `build` and count its
+  answers, never a number written here.** As of 2026-08-11 the committed sheet
+  is `756682e`, answering 25 of 29. The round after it (`4feb5be`) answered 25
+  of 29 as well, lost no ANSWER, and changed two —
+  `shapes-items-via-positional-slide: not-listed → short-0` and
+  `scratch-slides-returned: none → all`. That clears the bar and was still not
+  swapped, deliberately: the count is identical, the first of the two changes is
+  between two spellings of "the collection did not answer", and that same
+  question CHANGED ITS ANSWER MID-ROUND — so committing its final value would be
+  recording a coin-toss as a recording. Clearing the arithmetic makes a swap
+  permitted, not obligatory.
+
 - **The office-js tracker is swept weekly** by
   `.github/workflows/office-js-watch.yml`, which reports only issues touching
   APIs this repo calls that are not yet in `KNOWN_ISSUES`
@@ -714,6 +727,13 @@ committed` — three to five seconds of probe reads, deck inventories and
     It is written on the first batch of EVERY draw and on every stall, which is
     the rule two rounds above paid for.
 
+    **It answered on its first outing, and the answer is that the rasterise is
+    not the expensive half.** Round 17 (`4feb5be`) puts a rasterise at 915ms,
+    1246ms and 2387ms, against 2-3ms for `counting the deck's slides` and
+    ~700-900ms for a tag write. The control's arms take 22-29 seconds, so the
+    rasterise is at most a tenth of one and the rest is the seven-shape draw.
+    Anything still hunting the arms' cost should be looking at the draw.
+
   - **The picked round ran and answered.** The criterion was set in advance:
     stalls → the scenario itself; passes → predecessor or position. It PASSED,
     so the scenario is out, and the routine round passing it at the same
@@ -873,6 +893,19 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   `onSlideKey` beside the count so a reader can see when a total may span more
   than one slide rather than having to assume it does not.
 
+  **The next round caught the field being wrong, and the KEY is the only reason
+  it did.** With `onSlide` on every batch, round 17 (`4feb5be`) showed the
+  deck-wide rescale climbing 72, 82, 92, 96 … 260 — a smooth rising curve, on a
+  deck whose fullest slide held 24 shapes. `updateChartsInSlides` never filled
+  `slideId` in, so eight charts on eight slides all keyed on `(visible)` and the
+  counter pooled them. The numbers looked perfectly healthy and described no
+  slide in the deck; `onSlideKey: "(visible)"` on every line is what gave it
+  away. The update path names its slide now.
+
+  Two rules out of one field: emit a key beside any POOLED total, and when a
+  diagnostic starts reporting the shape you expected, check what it is keyed on
+  before believing it.
+
 - **A value recorded only on FAILURES cannot be compared against anything, and
   this project keeps building them.** Four in one session: `idleMs` and
   `afterAnswering` were written on stalls but not on the draws that survived;
@@ -912,6 +945,17 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   makes `chooseGroupMembers` say "group nothing" and the chart stays loose in
   one piece; a SHORT read is kept and grouped, so the chart is split. Opposite
   branches. `faults.readsMissing` is the short case.
+
+  **ANSWERED on the line's first outing (`4feb5be`, 2026-08-11): the group took
+  a SUBSET.** Fifteen successful groups in that round, fourteen of them
+  `partial: 0`, and exactly one — chart 4 of 8 —
+  `grouped the chart's shapes charts=1 partial=1 left=0:4 by=ids`. The deck it
+  left carries the same slide as the round before, with the same four names
+  loose beside the group: `label-1-3`, `baseline`, `series-label-0`,
+  `series-label-1`. So the other reading — four shapes from an earlier draw
+  outliving a redraw — is dead, and the defect is the one that was designed in:
+  a re-read that matched 20 of 24 ids groups the 20 and leaves 4 on the slide.
+  One round, no reasoning, because the success path finally spoke.
 
 - **A trace may not be NAMED for an outcome it is written before knowing.** The
   per-batch draw line was called `batch committed` and is emitted one statement
@@ -1103,6 +1147,26 @@ settled=1 lost=0`. Every previous observation was `settled: 0, lost: 1`, and
   one test that it fires when the host refuses twice, one that it does not fire
   when the host behaves (proven against a build whose rule always says stop).
 
+  **Round 17 (`4feb5be`, 2026-08-11) scored 7 OF 8 — the best this scenario has
+  ever recorded — and it separates two things this file had been treating as
+  one.** Charts 1-3 slow (17.0, 17.7, 18.5s per batch) and clean; chart 4 fast,
+  grouped PARTIALLY, tag refused, settle repaired it by id; chart 5 the only
+  loss; charts 6-8 fast, ungrouped, and chart 7 rescued by the settle again.
+
+  So the SPEED flip is still after chart 3 — four rounds, four times — while the
+  config-loss index was 5 and only one chart was lost at all. Those are not the
+  same boundary and this file's "the flip's index is stable" paragraph was about
+  the first. Read the speed flip as the stable one; the losses are a coin the
+  settle gets to toss each time, and this round it won six of seven.
+
+  **The verdict's wording was wrong on its first outing and is fixed.** One lost
+  chart printed `the host flipped at chart 5 of 8` — the word three earlier
+  rounds use for a host that degraded and never came back, on the best round on
+  file. `rescaleLossNote` now reserves "flipped" for the two-consecutive case
+  the scenario actually stops on, and says `1 of the 8 charts redrawn lost its
+config, the first at chart 5 of 8` otherwise. A verdict and the decision it
+  reports on must not be able to disagree.
+
 - **The web host does not LIST the shapes a run just added.** The finding the
   extended log produced, and the one everything else downstream hangs off:
   `the re-read before grouping came back empty index=0 drew=24`, four times in
@@ -1184,6 +1248,14 @@ what the slide looks like (10064 → 15652 bytes)`, through PowerPoint's own
   red would fail a round on a judgement no measurement here supports. Reporting
   it lets a reader tell 0.7% from 55% without opening the file, which is all
   that was actually missing.
+
+  **And the very next round made the flag look prophetic. `14988 → 15096` is
+  +108 bytes AGAIN** — the same delta as `14868 → 14976`, from a different
+  starting size, two rounds running. A chart appearing in a rasterised slide
+  does not cost the same 108 bytes twice by coincidence; something constant is
+  moving and the chart is not visibly in it. Nothing has been changed on the
+  strength of two samples, and the verdict still passes, but a third +108 should
+  be read as this gate measuring a header rather than a chart. Watch for it.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.

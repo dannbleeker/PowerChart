@@ -1363,6 +1363,16 @@ export async function updateChartsInSlides(
       const { it, old, parts, at } = entry;
       const opts: InsertOptions = {
         ...it.opts,
+        // Which slide this redraw is aimed at. Read ONLY by the per-slide shape
+        // counter in the trace — the slide itself comes from `getSlide` below,
+        // and must go on doing so: `getTargetSlide`, the other reader of this
+        // field, resolves by `slides.getItem(id)`, which this host refuses for
+        // any slide a run has just added.
+        //
+        // Absent until now, so the counter pooled every chart in a deck-wide
+        // rescale under one `(visible)` key and reported 260 shapes on a slide
+        // that held 24.
+        slideId: it.target.slideId,
         // The recorded frame origin, shifted by however far the user has dragged
         // the chart since it was tagged (livePos - anchor). Untouched, that delta
         // is zero and the chart re-renders exactly where it is; dragged, it
@@ -6719,6 +6729,15 @@ async function renderShapesChunked(
     // key is emitted beside the count, so a reader can see when a total is
     // accumulating across what may be more than one slide instead of having to
     // assume it is not.
+    //
+    // That escape hatch earned its keep immediately, and then had to be closed.
+    // The round of `4feb5be` redrew eight charts on eight DIFFERENT slides
+    // through `updateChartsInSlides`, which never filled `slideId` in, so every
+    // one of them keyed on `(visible)` and the counter climbed to 260 — a
+    // number that describes no slide in the deck. `onSlideKey` said so on every
+    // line, which is the only reason it was caught rather than plotted; the
+    // update path names the slide now (`it.target.slideId`), so the counter is
+    // per-slide there as it always claimed to be.
     const slideKey = opts.slideId ?? "(visible)";
     trace("draw", "batch issued", {
       upTo,

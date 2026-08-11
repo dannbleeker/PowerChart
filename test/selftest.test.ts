@@ -42,6 +42,7 @@ import {
   _setDegradeSizeForTest,
   wedgedSelection,
   rescaleFlipIndex,
+  rescaleLossNote,
   rescaleShouldStop,
   visibilityVerdict,
   sideSlot,
@@ -1584,6 +1585,37 @@ describe("when the deck-wide rescale has learned everything it will", () => {
     expect(rescaleFlipIndex([undefined, undefined])).toBeNull();
     expect(rescaleFlipIndex([undefined, undefined, undefined, "unknown-shape", "no-config"])).toBe(4);
     expect(rescaleFlipIndex(["chart-gone"])).toBe(1);
+  });
+
+  it("does not call one lost chart a FLIP", () => {
+    // Caught on the sentence's first outing. The `4feb5be` round lost exactly
+    // one chart of eight and scored 7 of 8 — the best this scenario has ever
+    // recorded — and the verdict announced `the host flipped at chart 5 of 8`,
+    // the same word three earlier rounds use for a host that degraded and never
+    // came back. A reader comparing rounds would have read a regime change into
+    // the best round on file.
+    const oneLost = [undefined, undefined, undefined, undefined, "no-config", undefined, undefined, undefined];
+    const note = rescaleLossNote(oneLost, 8);
+    expect(note, `a single loss was called a flip: ${note}`).not.toMatch(/flip/i);
+    expect(note, "the index of the one loss went unreported").toMatch(/the first at chart 5 of 8/);
+    expect(note).toMatch(/1 of the 8 charts redrawn/);
+
+    // And nothing at all to say when nothing was lost.
+    expect(rescaleLossNote([undefined, undefined], 2)).toBe("");
+  });
+
+  it("says FLIPPED only for the two-in-a-row the scenario stops on", () => {
+    // The word is reserved for the evidence `rescaleShouldStop` acts on, so the
+    // verdict and the decision to stop can never disagree.
+    const flipped = [undefined, undefined, undefined, "unknown-shape", "no-config"];
+    const note = rescaleLossNote(flipped, 8);
+    expect(note).toMatch(/the host flipped at chart 4 of 8/);
+    expect(note, "a scenario that stopped early did not say what it skipped").toMatch(
+      /so the last 3 were not attempted/,
+    );
+
+    // Two in a row at the very end: a flip, but nothing was skipped.
+    expect(rescaleLossNote([undefined, "no-config", "no-config"], 3)).toMatch(/flipped at chart 2 of 3$/);
   });
 });
 
