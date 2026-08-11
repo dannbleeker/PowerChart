@@ -2271,6 +2271,9 @@ describe("the context a round records around every scenario", () => {
     for (const b of batches) {
       expect(b.data, "a batch did not say how loaded its slide already was").toHaveProperty("onSlide");
       expect(typeof b.data?.onSlide).toBe("number");
+      // And which slide it is counting, so a reader can tell an accumulation on
+      // one slide from one that may span several.
+      expect(b.data, "a batch counted shapes without saying what it counted them on").toHaveProperty("onSlideKey");
     }
     // The first batch has no predecessor, every later one does.
     expect(batches[0].data, "the first batch invented a previous batch").not.toHaveProperty("prevBatchMs");
@@ -2284,5 +2287,26 @@ describe("the context a round records around every scenario", () => {
     expect(counts[counts.length - 1], "the on-slide count never grew, so it is not counting").toBeGreaterThan(
       counts[0],
     );
+  }, 30_000);
+
+  it("records the on-slide count on EVERY batch, not only when the caller named a slide", async () => {
+    // It was conditional on `opts.slideId`, which most draws do not pass: in its
+    // first real round the field appeared on SEVEN of forty-six batches, and on
+    // exactly ONE alongside `prevBatchMs`. A number missing five times out of
+    // six cannot answer the question it exists for — the per-slide cost curve
+    // this project has asserted for weeks without ever measuring its input.
+    const { insertSceneIntoSlide } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    // No `slideId` — the ordinary case, and the one that was blank before.
+    await insertSceneIntoSlide(buildChart(sampleConfig("stacked")), { tagData: "{}" });
+    const batches = traceLog().entries.filter((e) => e.message === "batch issued");
+    expect(batches.length).toBeGreaterThan(1);
+    for (const b of batches) {
+      expect(b.data, "an unnamed target left the count blank").toHaveProperty("onSlide");
+      expect(typeof b.data?.onSlide).toBe("number");
+    }
+    const counts = batches.map((b) => b.data?.onSlide as number);
+    expect(counts[counts.length - 1], "the count never grew, so it is not counting").toBeGreaterThan(counts[0]);
   }, 30_000);
 });
