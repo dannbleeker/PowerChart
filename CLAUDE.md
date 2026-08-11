@@ -232,6 +232,14 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   the gate correctly reads as unknown. Count the ANSWERS, not how much better
   the round went.
 
+  **Refused a second time on 2026-08-11** (`7027f96`, 23 of 28 against the
+  committed 24 of 28): one ANSWER — `group-of-existing-shape-readable` — would
+  have become unknown, and none would have changed. A one-question drop is
+  inside this host's yield noise in both directions, which is exactly why the
+  rule is arithmetic rather than judgement: "the newer sheet" and "the better
+  sheet" are different things, and only one of them is checkable. Do the
+  subtraction before swapping; it takes a minute and it has now said no twice.
+
 - **The office-js tracker is swept weekly** by
   `.github/workflows/office-js-watch.yml`, which reports only issues touching
   APIs this repo calls that are not yet in `KNOWN_ISSUES`
@@ -713,6 +721,12 @@ actually visible` and `what makes a long run slow down` each spent four rounds
   ordering the verdict would have had nothing to manufacture from either. Run a
   few more of these and "no pattern" repeated IS the finding; stop instrumenting
   at that point.
+
+  **Round 13 (`7027f96`, 2026-08-11) ran it again and said "no pattern" again**
+  — `all four draws landed — a draw straight after a rasterise did not stall`.
+  Two counterbalanced rounds, four arms each, zero stalls. That is two of the
+  "few more" this paragraph asks for; one more like it and the instrumenting
+  should stop, because "no pattern" repeated IS the finding.
 
   That round also re-killed `afterAnswering` by a second route, without anyone
   designing for it:

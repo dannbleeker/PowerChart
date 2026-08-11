@@ -142,7 +142,27 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
-    "SETTLED 2026-08-11 (`3223293`), and it is a coin after all. The first round to ask every question three times " +
+    "THE POPULATIONS WERE NEVER SEPARATED — 2026-08-11 (`7027f96`), and this supersedes both readings below. " +
+    "Every observation this entry has ever recorded, sorted by WHICH PASS asked it:\n" +
+    "  pass 1 (asked ~1-2s into the probe):  17 x `threw`, 1 x `yes`   (18 observations)\n" +
+    "  any later pass (34s-80s in):           3 x `yes`,   0 x `threw` ( 3 observations)\n" +
+    "The second row did not exist until 2026-08-11, because `PROBE_PASSES` shipped that day (780cf02) and every " +
+    "round before it asked each question exactly ONCE. So the sixteen pre-3x observations are not sixteen samples " +
+    "of a coin — they are sixteen samples of ONE condition, and the ten-in-a-row `threw` that the note below calls " +
+    "a trend is ten rounds asking at the same moment and getting the same answer. Both 3x rounds agree: `threw` " +
+    "first, `yes` on every later pass (R12 threw@2.1s then yes@79.4s; R13 threw@1.1s then yes@34.4s and yes@47.7s). " +
+    "DO NOT read that as settled. Three readings still fit and this round cannot choose between them: the age of " +
+    "the RUN, the pass number itself, or the state of the SCRATCH SLIDE — and the third is live, because the run " +
+    "log shows this question WRECKS its own scratch slide every time it is asked (`giving up the scratch slide " +
+    "this question wrecked`, three times in R13), so pass 1 meets a deck with no scratch history and later passes " +
+    "do not. What is settled is that the variable is not the round, which is what fifteen one-sample rounds were " +
+    "implicitly testing. The partner question that separates run-age from slide-state is the `Probe.follow` case " +
+    "to write next: ask it twice in quick succession LATE in a run, once on a fresh scratch slide and once on one " +
+    "the run has already used. One answer to each, one round, no reasoning. " +
+    "The regime stamps ARE readable now (`regimeFrom` shipped in #390 and R13 is the first round on a build " +
+    "carrying it — 24/19/6 across three regimes, moving back and forth, against 55-of-65-identical before). They " +
+    "say `healthy` for the `threw` and `slide-trouble` for both `yes`. That is one round; it is consistent with " +
+    "the scratch-slide reading and does not establish it. Original notes follow. SETTLED 2026-08-11 (`3223293`), and it is a coin after all. The first round to ask every question three times " +
     "got BOTH answers out of one host, one tab, 77 seconds apart: `threw` at 2.1s and `yes` at 79.4s, run never " +
     "restarted, build never changed. That is the observation this entry has wanted since the single `yes` of " +
     "2026-08-08, and it retires the reading below: a mechanism with one early outlier cannot reproduce its outlier " +

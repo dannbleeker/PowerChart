@@ -115,6 +115,27 @@ export function tracing(): boolean {
 }
 
 /**
+ * The trace's own clock — ms since tracing was switched on — or `null` when it
+ * is off and there is therefore no timeline to be on.
+ *
+ * Exported so that anything ELSE stamping times into the same round file can
+ * use one origin. It could not, and that cost a real misreading: the host
+ * probe stamped its samples from its own `runStarted`, which begins when
+ * `runHostProbes` is called — 7.9 seconds after `setTracing(true)` in the
+ * 2026-08-11 round. Two time series in one file, on two origins, with nothing
+ * anywhere saying so. Every cross-reference between a sample and a trace line
+ * is the whole analysis method for these rounds, and every one of them was off
+ * by that constant: pass 2 began at 41.6s by the trace and at 34.4s by the
+ * samples, which reads as a sample arriving before the pass that produced it.
+ *
+ * The same family as `idleMs` and `afterAnswering` — a number that cannot be
+ * compared against the numbers beside it is not yet a measurement.
+ */
+export function traceElapsed(): number | null {
+  return enabled ? Date.now() - startedAt : null;
+}
+
+/**
  * Record one step. A no-op — and specifically NOT a stringification — when
  * tracing is off, so call sites can be liberal without costing a live run.
  */
