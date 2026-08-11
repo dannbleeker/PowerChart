@@ -2974,8 +2974,11 @@ async function addAndRenderItem(
     // Refresh only when the render spanned more than one batch: a single-batch
     // chart's proxies are still in their sync's window at group time, so the
     // reload sync adds no safety and just costs a round-trip. Multi-batch
-    // charts (>SHAPES_PER_SYNC) are the ones the web host tripped on — every
-    // ungrouped chart in the real run has more than 10 native shapes.
+    // charts are the ones the web host tripped on — every ungrouped chart in
+    // the real run had more shapes than its own batch could carry. "Its own",
+    // because this sentence used to say `>SHAPES_PER_SYNC` and mean the live
+    // canvas's ten while the draw below it used forty; see the note on
+    // `needsRefresh`.
     // …or when the item is a single degraded picture. Its one proxy is created
     // in one sync and tagged in another, and the web host rejected exactly that
     // — `InvalidParam passed to GetItem(id)`, code 5010, 28 times in one run,
