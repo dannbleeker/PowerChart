@@ -2065,7 +2065,26 @@ export const ROUTINE_SCENARIO_NAMES: readonly string[] = SCENARIOS.filter((s) =>
  * an honest answer, and a useless round. So "only" means "only this, plus what
  * it needs", and the report says which is which.
  */
-export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: string): Promise<ScenarioResult[]> {
+export async function runSelfTest(
+  prefix = `selftest ${newRunId()}`,
+  only?: string,
+  /**
+   * Called with each verdict the moment it exists.
+   *
+   * The battery returns ONE array, after the last scenario, and the round
+   * writes its file from that — so a tab that dies mid-battery has always taken
+   * every finished verdict with it. That is not a hypothetical: it is why
+   * `chartIsVisible` is `pickedOnly`, why the scenario order in `SCENARIOS` is
+   * load-bearing, and why this file already carries the sentence "a battery
+   * that never returns never writes its report".
+   *
+   * Ordering the list can only ever decide WHICH verdicts a crash costs. This
+   * decides whether it costs any: the caller writes each one somewhere that
+   * outlives the pane's JavaScript context. Optional, and wrapped by the
+   * caller's own guard — a reporting sink must not be able to fail a run.
+   */
+  onResult?: (result: ScenarioResult) => void,
+): Promise<ScenarioResult[]> {
   const wanted = only ? SCENARIOS.filter((s, i) => i < 2 || s.name === only) : SCENARIOS.filter((s) => !s.pickedOnly);
   // Per run, never carried between them: a stale "this host wedges" from the
   // last round would make the next one skip a scenario on evidence it no longer
@@ -2073,6 +2092,23 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
   // built to avoid.
   selectionWedged = null;
   const out: ScenarioResult[] = [];
+  /**
+   * Keep the verdict, and hand it to the caller in the same breath.
+   *
+   * One helper rather than a call beside each `push`, because there are three
+   * push sites and the two that report "not reached" are exactly the ones a
+   * future edit would forget — they are the verdicts of a run that is already
+   * going wrong, which is when this matters most. A sink that throws must not
+   * cost the verdict it was given, let alone the run.
+   */
+  const report = (result: ScenarioResult, into: ScenarioResult[]) => {
+    into.push(result);
+    try {
+      onResult?.(result);
+    } catch {
+      /* a reporting sink is never a reason for the battery to stop */
+    }
+  };
   /** Consecutive scenarios that told us the host is in trouble. */
   let sick = 0;
   /** Set once the breaker has tripped, so the rest report why. */
@@ -2098,7 +2134,7 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
       trace("selftest", "giving up on the host", { after: out.length, why: abandoned });
     }
     if (abandoned) {
-      out.push({ name, ok: false, skipped: true, blind: true, detail: `not reached — ${abandoned}`, ms: 0 });
+      report({ name, ok: false, skipped: true, blind: true, detail: `not reached — ${abandoned}`, ms: 0 }, out);
       continue;
     }
     // The battery had no stop check of its own — none at all. So even where a
@@ -2112,7 +2148,7 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
     // that crashed, and that is a different diagnosis from one that was
     // stopped.
     if (isStopRequested()) {
-      out.push({ name, ok: false, skipped: true, detail: "not reached — the run was stopped", ms: 0 });
+      report({ name, ok: false, skipped: true, detail: "not reached — the run was stopped", ms: 0 }, out);
       continue;
     }
     // Announced BEFORE it runs, not only after it finishes.
@@ -2189,7 +2225,7 @@ export async function runSelfTest(prefix = `selftest ${newRunId()}`, only?: stri
     const timedOut = deadlinesFired > deadlinesBefore;
     if (timedOut) trace("selftest", "the host missed a deadline in this scenario", { name, sick: sick + 1 });
     sick = hostSeemsSick(result, timedOut) ? sick + 1 : 0;
-    out.push(result);
+    report(result, out);
   }
   return out;
 }

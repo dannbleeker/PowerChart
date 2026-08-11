@@ -22,11 +22,18 @@
  *
  * Three things this deliberately does NOT do:
  *
- * - **Structured entries.** It keeps the formatted one-line steps, not the
- *   trace's objects. A real run's entries pretty-print to 160 KB and a stalled
- *   one emits thousands; lines are ~100 bytes and are what a person actually
- *   reads. The full structured log still rides in the normal run log, which
- *   exists whenever the run got far enough to have one.
+ * - **Structured TRACE entries.** It keeps the formatted one-line steps, not
+ *   the trace's objects. A real run's entries pretty-print to 160 KB and a
+ *   stalled one emits thousands; lines are ~100 bytes and are what a person
+ *   actually reads.
+ *
+ *   It does now keep the run's FINDINGS — the probe's answer sheet, each
+ *   scenario's verdict (see `findings`). That is not a softening of the rule
+ *   above, it is the rule read properly: a dozen small objects is not thousands
+ *   of large ones, and these are the part of a round everyone wants. The
+ *   sentence this replaces said the structured log "still rides in the normal
+ *   run log, which exists whenever the run got far enough to have one" — true,
+ *   and it is the whole problem. These runs do not get that far.
  * - **Flush per step.** A synchronous `localStorage.setItem` per trace entry
  *   would put a serialize-and-write in the hot path of a run that is already
  *   struggling. Debounced instead, so a crash costs at most the last window.
@@ -57,6 +64,19 @@ const MAX_STEPS = 2000;
 
 /** How long writes are batched for. A crash costs at most this much record. */
 const FLUSH_MS = 400;
+
+/**
+ * Findings kept, and how big one may be.
+ *
+ * A round has one answer sheet and about a dozen verdicts, so the count is
+ * headroom rather than a limit anything real approaches. The BYTE cap is the
+ * one doing work: a finding is caller-supplied, and the store this shares with
+ * the 2000-step log is the same ~5 MB that a long crashed run already fills.
+ * Over the cap the finding is replaced by a note saying so — losing one
+ * oversized value, never the record.
+ */
+const MAX_FINDINGS = 40;
+const MAX_FINDING_BYTES = 128 * 1024;
 
 /** One captured run, as written to storage and handed back for download. */
 export interface CrashLog {
@@ -98,6 +118,26 @@ export interface CrashLog {
   dropped: number;
   /** Formatted one-line steps, OLDEST FIRST — the reading order for a file. */
   steps: string[];
+  /**
+   * The round's FINDINGS, as opposed to its narration.
+   *
+   * The "no structured entries" rule above is about the trace: thousands of
+   * objects, 160 KB, and lines are what a person reads. It was never about
+   * these. A round produces one probe answer sheet and about a dozen scenario
+   * verdicts — a few KB, the part everyone actually wants, and until now the
+   * part a crash destroyed. Both were held in a module variable and written to
+   * a file after the last `await`, so a tab that died mid-battery took the
+   * probe's answers with it even though the probe had finished minutes earlier
+   * and the code's own comment calls that half "complete, cheap, and the half
+   * most likely to be worth reading".
+   *
+   * Steps alone cannot replace them: a step says a scenario started, not what
+   * it concluded, and `npm run triage` reads verdicts.
+   *
+   * Bounded on both counts (see `MAX_FINDINGS`), because the argument against
+   * structure here is size and it stays answered rather than merely asserted.
+   */
+  findings?: { key: string; value: unknown }[];
 }
 
 /**
@@ -215,7 +255,7 @@ export function beginCrashLog(meta: { build: string; host: string; label: string
   // makes to `recoverCrashLog`. A finished run whose file never reached the
   // disk is exactly as worth keeping as one that crashed, and starting the
   // next run was the moment that record used to be overwritten.
-  if (previous && !previous.savedAt && previous.steps.length) {
+  if (previous && !previous.savedAt && (previous.steps.length || previous.findings?.length)) {
     try {
       s.setItem(KEPT_KEY, JSON.stringify(previous));
     } catch {
@@ -252,6 +292,39 @@ export function recordCrashStep(line: string): void {
     live.steps.shift();
     live.dropped++;
   }
+  schedule();
+}
+
+/**
+ * Record one FINDING — a probe answer sheet, a scenario verdict — as soon as it
+ * exists, rather than when the run ends.
+ *
+ * Called under the same rule as `recordCrashStep`: never throws, never blocks,
+ * and does nothing at all when no run is being recorded. `key` is what the
+ * reader will look for (`"hostAnswers"`, `"selftest:<scenario>"`), and the same
+ * key may be recorded twice — the later value wins, so a caller can record a
+ * growing result without the record growing with it.
+ */
+export function recordCrashFinding(key: string, value: unknown): void {
+  if (!live) return;
+  let stored: unknown = value;
+  try {
+    const size = JSON.stringify(value)?.length ?? 0;
+    if (size > MAX_FINDING_BYTES) stored = `[dropped: ${size} bytes, over the ${MAX_FINDING_BYTES}-byte cap]`;
+  } catch {
+    // A value that will not serialise cannot be written to the store at all,
+    // and it must not take the record down on its way past.
+    stored = "[dropped: not serialisable]";
+  }
+  live.findings ??= [];
+  const at = live.findings.findIndex((f) => f.key === key);
+  if (at >= 0) live.findings[at] = { key, value: stored };
+  else live.findings.push({ key, value: stored });
+  // Oldest out. A round records its answer sheet first, so if anything is ever
+  // going to be dropped here it should be the fortieth verdict rather than the
+  // sheet — but nothing real gets near this, and the cap exists so the claim
+  // "bounded" is true rather than intended.
+  while (live.findings.length > MAX_FINDINGS) live.findings.shift();
   schedule();
 }
 
@@ -329,9 +402,18 @@ export function markCrashLogSaved(): void {
  * were testing. Checking the kept slot first handed back the first.
  */
 export function recoverCrashLog(): CrashLog | null {
-  const crashed = [read(KEPT_KEY), read(LIVE_KEY)].filter(
-    (r): r is CrashLog => !!r && !r.savedAt && r.steps.length > 0,
-  );
+  // Worth offering when it holds ANYTHING a reader wants — a step or a finding.
+  //
+  // The gate used to be `steps.length > 0`, i.e. "did this run narrate itself",
+  // and narration is optional: `recordCrashStep` writes nothing unless Verbose
+  // trace is ticked. So a round that crashed with the box unticked was
+  // unrecoverable even when the probe half had finished and its answer sheet
+  // was sitting right there. The runbook does say to tick it; a recovery path
+  // that depends on the owner having done so is one that fails on the round
+  // where they did not.
+  const worthKeeping = (r: CrashLog | null): r is CrashLog =>
+    !!r && !r.savedAt && (r.steps.length > 0 || (r.findings?.length ?? 0) > 0);
+  const crashed = [read(KEPT_KEY), read(LIVE_KEY)].filter(worthKeeping);
   // `seq` counts up across reloads; a record written before it existed sorts
   // as 0, which puts it behind any newer one — the right way round.
   return crashed.sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))[0] ?? null;

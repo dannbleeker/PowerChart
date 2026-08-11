@@ -8,6 +8,10 @@ import { join } from "path";
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
 import { triage, runsIn, selfTestIn, knownBug, deckEvidence, poolRasteriseArms } from "../scripts/triage.mjs";
+// Its own line: adding it above pushes that import over the print width, and a
+// reflowed import moves this directive off the statement it is annotating.
+// @ts-expect-error — as above.
+import { describeFinding } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -573,5 +577,30 @@ describe("deckEvidence's blank test", () => {
     expect(mixed.lying).toBe(2);
     const allBlank = deckEvidence(deckOf([1146, 1146, 1146]))!;
     expect(allBlank.confirmed, "a round with nothing to contrast against lost its blanks").toBe(3);
+  });
+});
+
+/**
+ * A crashed round's verdicts are banked as they land now, so the file carries
+ * them — and this is the reader that has to show them, or they are invisible in
+ * a different place.
+ */
+describe("triage shows what a crashed run had already concluded", () => {
+  it("reads a scenario verdict as its verdict", () => {
+    expect(describeFinding({ name: "insert a chart", ok: true, ms: 2400 })).toContain("passed");
+    expect(describeFinding({ name: "same scale", ok: false, detail: "3 of 8 charts", ms: 34000 })).toContain(
+      "FAILED — 3 of 8 charts",
+    );
+    expect(describeFinding({ name: "picked", ok: false, skipped: true, detail: "not reached" })).toContain("SKIPPED");
+  });
+
+  it("reads an answer sheet as how much of it got answered", () => {
+    const sheet = { answers: [{ answer: "yes" }, { answer: "threw" }, { answer: null }] };
+    expect(describeFinding(sheet)).toBe("answer sheet, 2 of 3 question(s) answered");
+  });
+
+  it("falls back to the value rather than dropping it", () => {
+    expect(describeFinding("[dropped: 200000 bytes, over the cap]")).toContain("dropped");
+    expect(describeFinding({ odd: 1 })).toBe('{"odd":1}');
   });
 });

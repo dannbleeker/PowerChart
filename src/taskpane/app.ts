@@ -74,6 +74,7 @@ import {
   endCrashLog,
   flushCrashLog,
   markCrashLogSaved,
+  recordCrashFinding,
   recordCrashStep,
   recoverCrashLog,
 } from "./crashlog";
@@ -3659,6 +3660,13 @@ function wireInsert() {
         // takes the tab down must not also lose the probe's answers, which are
         // complete, cheap, and the half most likely to be worth reading.
         lastRunLog = { build: buildStamp, host, runs: [], hostAnswers: sheet };
+        // …and into the store that outlives this JavaScript context, for the
+        // same reason and against a bigger loss. `lastRunLog` is a module
+        // variable: the line above protects the probe's answers from a battery
+        // that FAILS, and not at all from a tab that DIES, which is the way
+        // these rounds actually end. The sheet was already complete and minutes
+        // old at that point, and it went with the tab every time.
+        recordCrashFinding("hostAnswers", sheet);
         note(`Probe done — ${describeHostSheet(sheet)} Now the self-test…`, "busy");
         if (isStopRequested()) {
           const saved = downloadJson("powerchart-round.json", lastRunLog);
@@ -3673,7 +3681,13 @@ function wireInsert() {
         }
         setSelfTestRasterizer(boundedRaster);
         setSelfTestPrompt((message) => note(message, "busy"));
-        const results = await runSelfTest(undefined, scenarioPick?.value || undefined);
+        const results = await runSelfTest(undefined, scenarioPick?.value || undefined, (r) =>
+          // Each verdict banked as it lands. A battery that never returns never
+          // writes its report, and ordering `SCENARIOS` can only choose which
+          // verdicts a crash costs — this is what makes it cost none of the
+          // ones already reached.
+          recordCrashFinding(`selftest:${r.name}`, r),
+        );
         // Gathered after the scenarios, before the file is written: this is the
         // upload that used to be the owner's job — save the deck, screenshot the
         // pane, attach both. It is a best-effort tail, so a host too far gone to
