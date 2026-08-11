@@ -437,6 +437,12 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       baselineY: H ? frame.x : frame.y + frame.h,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: H ? undefined : qOf,
+      // Publish the sideways map too, for the reason the column and waterfall
+      // layouts publish theirs: `bandNodes` reads whichever axis carries the
+      // value, and with only the vertical one here a rotated boxplot dropped
+      // every `decorations.bands` zone in silence — the band was computed,
+      // found no map, and returned nothing.
+      valueToX: H ? qOf : undefined,
     },
   };
 }

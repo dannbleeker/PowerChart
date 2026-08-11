@@ -1035,12 +1035,28 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const xU0 = toX(upper[c]);
         const xU1 = toX(upper[c + 1]);
         const span = centers[c + 1] - centers[c];
-        const steps = slabSteps(span);
+        const steps = slabSteps(span, decor.stepped);
         const h = span / steps;
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
-          const xL = xL0 + (xL1 - xL0) * t;
-          const xU = xU0 + (xU1 - xU0) * t;
+          // Stepped areas hold a flat edge across the interval (staircase);
+          // "after" carries the left value, "before" the right, "center" both.
+          // The vertical path has done this since `stepped` shipped; sideways
+          // the slab interpolated regardless, so a stepped AREA chart claimed
+          // the value slid where the data says it jumped — the same silent
+          // no-op that `stepped` on a sideways LINE already had fixed.
+          let xL: number;
+          let xU: number;
+          if (decor.stepped === "after" || (decor.stepped === "center" && t < 0.5)) {
+            xL = xL0;
+            xU = xU0;
+          } else if (decor.stepped === "before" || decor.stepped === "center") {
+            xL = xL1;
+            xU = xU1;
+          } else {
+            xL = xL0 + (xL1 - xL0) * t;
+            xU = xU0 + (xU1 - xU0) * t;
+          }
           nodes.push({
             kind: "rect",
             x: Math.min(xL, xU),

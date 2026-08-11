@@ -32,6 +32,28 @@ import type { LayoutResult } from "./layout/column";
 export const DEFAULT_SIZE = { width: 480, height: 300 };
 
 /**
+ * The kinds whose layout actually reads `horizontal` and rotates. Every other
+ * kind draws the same chart either way — see `normalizeConfig`, which drops the
+ * flag where it cannot apply so that nothing downstream acts on a rotation that
+ * never happened.
+ *
+ * Kept as a list rather than derived, because there is no way to ask a layout
+ * whether it consulted the flag. `test/layouts.test.ts` builds every kind both
+ * ways and fails if the list and the layouts disagree, in either direction.
+ */
+export const ROTATABLE_KINDS: ReadonlySet<ChartKind> = new Set<ChartKind>([
+  "stacked",
+  "clustered",
+  "stacked100",
+  "combo",
+  "waterfall",
+  "mekko",
+  "line",
+  "area",
+  "boxplot",
+]);
+
+/**
  * A slide is 13.33 inches wide. Nothing on one is a hundred.
  *
  * pptxgenjs has a documented rule — "any number >= 100 sure isn't inches,
@@ -230,6 +252,20 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
   const width = clampDim(cfg.width, DEFAULT_SIZE.width);
   const height = clampDim(cfg.height, DEFAULT_SIZE.height);
 
+  // `horizontal` is a request to rotate, and only these kinds have a layout
+  // that can honour it. On every other kind the layout ignores the flag — but
+  // the decoration stage did not: `skipDecor` and the value-axis map keyed off
+  // the raw flag, so setting it on a treemap, sunburst, violin or candlestick
+  // drew a byte-identical chart with its CAGR arrow, difference arrow, value
+  // lines, callouts and Error/Target marks silently removed. The pane's
+  // "Horizontal (bar)" toggle is offered for every kind and its state survives
+  // a kind change, so that is one click away.
+  //
+  // Dropped here rather than at each reader, so the layouts, the decoration
+  // gate and the accessible description all see the same world. `test/
+  // layouts.test.ts` pins the set against what the layouts actually do.
+  const horizontal = cfg.horizontal && ROTATABLE_KINDS.has(cfg.kind) ? cfg.horizontal : undefined;
+
   // Order a reversed manual scale and drop non-finite ends — a NaN or inverted
   // bound reaches niceTicks and blanks the whole value axis.
   let scale = cfg.scale;
@@ -260,6 +296,7 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
     height,
     scale,
     style,
+    horizontal,
     data: normalizeData(cfg.data),
     decorations:
       cfg.decorations && typeof cfg.decorations === "object" && !Array.isArray(cfg.decorations)

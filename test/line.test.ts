@@ -540,3 +540,34 @@ describe("a sideways line chart keeps the rules the upright one has", () => {
     expect(ys[1] - ys[0]).toBeLessThan((ys[2] - ys[1]) / 5);
   });
 });
+
+/**
+ * `stepped` held a flat edge across the interval on an upright area chart and
+ * interpolated on a sideways one — so a staircase series drawn as a bar profile
+ * claimed the value slid where the data says it jumped. The sideways LINE path
+ * already stepped; only the area slabs did not.
+ */
+describe("a sideways area chart steps when it is told to", () => {
+  const cfg = (stepped?: "before" | "after" | "center"): ChartConfig => ({
+    kind: "area",
+    horizontal: true,
+    ...DEFAULT_SIZE,
+    data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [3, 7, 5] }] },
+    decorations: stepped ? { stepped } : {},
+  });
+  const slabWidths = (c: ChartConfig) =>
+    buildChart(c)
+      .nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("area-0-0-"))
+      .map((n) => Math.round(n.w * 100) / 100);
+
+  it("holds one width across the interval instead of ramping", () => {
+    const ramped = slabWidths(cfg());
+    const held = slabWidths(cfg("after"));
+    expect(new Set(ramped).size).toBeGreaterThan(1); // the control: interpolation ramps
+    expect(new Set(held).size).toBe(1); // "after" holds the left value the whole way
+  });
+
+  it("carries the RIGHT value for `before`, so the two are not the same staircase", () => {
+    expect(slabWidths(cfg("before"))[0]).not.toBe(slabWidths(cfg("after"))[0]);
+  });
+});

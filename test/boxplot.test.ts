@@ -355,3 +355,40 @@ describe("grouped boxplot reserves its wrapped group-legend rows", () => {
     expect(laid(wrapped).anchors.plot.y - laid(oneRow).anchors.plot.y).toBeCloseTo((rows - 1) * rowH, 5);
   });
 });
+
+/**
+ * A rotated boxplot published no value→x map, so `bandNodes` — which reads
+ * whichever axis carries the value — found nothing and returned nothing. Every
+ * `decorations.bands` zone was computed and then silently dropped, which is the
+ * same failure the column and waterfall layouts already publish `valueToX` to
+ * avoid.
+ */
+describe("a sideways boxplot still draws its value bands", () => {
+  const cfg = (horizontal: boolean): ChartConfig => ({
+    kind: "boxplot",
+    horizontal,
+    ...DEFAULT_SIZE,
+    data: {
+      categories: ["A", "B"],
+      series: [
+        { name: "s1", values: [1, 4] },
+        { name: "s2", values: [2, 6] },
+        { name: "s3", values: [3, 9] },
+        { name: "s4", values: [5, 11] },
+      ],
+    },
+    decorations: { bands: [{ axis: "y", from: 2, to: 6, color: "#eef3fa", label: "target zone" }] },
+  });
+
+  it("draws the band, and spans the VALUE axis whichever way that runs", () => {
+    const flat = buildChart(cfg(false)).nodes.find((n): n is RectNode => n.name === "band-0");
+    const turned = buildChart(cfg(true)).nodes.find((n): n is RectNode => n.name === "band-0");
+    expect(flat, "upright band").toBeTruthy();
+    expect(turned, "rotated band").toBeTruthy();
+    const plot = layoutBoxplot(cfg(true), DEFAULT_STYLE, DEFAULT_DECOR).anchors.plot;
+    // Upright the band is a horizontal stripe across the plot; rotated it is a
+    // vertical one, i.e. it spans the full plot HEIGHT and only part of its width.
+    expect(turned!.h).toBeCloseTo(plot.h, 5);
+    expect(turned!.w).toBeLessThan(plot.w);
+  });
+});
