@@ -105,6 +105,18 @@ What to do on **every** build that lands a real-host fix. Four items, ordered
 by risk. Two are one click each and run themselves; the other two are a scroll
 and a single click-and-edit — about three minutes of attention in total.
 
+**The probe asks every question three times, spread across the round.** That is
+where the extra five to eight minutes went. A question asked ONCE has been
+sampled, not answered — which is why `UNSTABLE_ANSWERS` had to be built by hand
+across ten rounds — so a round now says on its own whether an answer held still,
+and the pane's summary line names any question that **CHANGED ITS ANSWER
+MID-ROUND**. That alone makes a round worth sending, whatever the diff says.
+
+When the host starts refusing scratch slides — it does, in windows of about
+fifteen seconds — the later passes drop to the shortlist of questions this
+project does not yet trust, rather than bidding for slides against them. The
+trace says which it did and why.
+
 This used to be seven tests. Tests 1, 2, 3 and 7 were absorbed into the
 self-test battery once `Slide.setSelectedShapes` turned out to have been
 available since PowerPointApi 1.5, and the old test 4 (the `=SUM(A1:ZZ999)`
@@ -179,6 +191,17 @@ problem"* at 108 seconds. Neither produced a log. Two things cover that now:
   pane and a red note offers **Download the crashed run**. Send that file;
   `npm run triage` reads it on its own, with no deck
   (`node scripts/triage.mjs powerchart-crashed-run.json`).
+- **The findings go to that same storage, not just the narration.** The probe's
+  whole answer sheet is banked the moment the probe finishes, and each
+  scenario's verdict the moment it lands. A round that dies half way through the
+  battery now hands back every verdict it had already reached, plus the entire
+  probe half — which used to die with the tab even though it had finished
+  minutes earlier. `npm run triage` prints them under "finding(s) banked before
+  it stopped".
+
+  This also means **Verbose trace is no longer what makes a crashed round
+  recoverable**. Leave it on anyway — the steps are what say where it stopped —
+  but a round that crashes with it off is no longer worthless.
 
 A third round was lost a different way, and it is worth knowing about because
 nothing above would have caught it. The round **completed**, said "Saved as one
