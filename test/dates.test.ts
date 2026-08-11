@@ -93,3 +93,27 @@ describe("parseDateToken reads mmm-yy as a month and a year", () => {
     expect(parseDateToken("3-5")).toBeNull();
   });
 });
+
+/**
+ * A cell is not reliably a string.
+ *
+ * This function's whole job is to decide whether a cell is a date, and its
+ * input arrives from a pasted block, a JSON config and the skill's caller.
+ * `null`/`undefined` threw `Cannot read properties of null (reading 'trim')`,
+ * and a NUMBER threw `raw.trim is not a function` — the case that matters,
+ * because a bare number is explicitly not a date (the guard below the trim says
+ * so) and it could not reach that answer without crashing first.
+ */
+describe("parseDateToken is handed whatever the cell held", () => {
+  it("says 'not a date' for an absent cell instead of throwing", () => {
+    for (const v of [null, undefined, ""] as unknown as string[]) {
+      expect(parseDateToken(v)).toBeNull();
+    }
+  });
+
+  it("says 'not a date' for a bare number, the answer it already gives the string", () => {
+    expect(parseDateToken(2024 as unknown as string)).toBeNull();
+    expect(parseDateToken("2024")).toBeNull();
+    expect(parseDateToken(0 as unknown as string)).toBeNull();
+  });
+});

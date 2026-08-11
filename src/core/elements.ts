@@ -156,9 +156,14 @@ export interface KpiTileOptions {
  * (good/bad) from the direction and `goodIsUp`.
  */
 export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Scene {
+  // Coerced on the way in, like every other text boundary here: `delta` is typed
+  // `string` and arrives as JSON, and a bare `delta: 12` reached `.replace` and
+  // threw. `RegExp.test` coerces silently, so the direction was inferred fine
+  // and only the render step fell over — which is why it needs fixing once here
+  // rather than at the one call that happened to be strict.
+  const delta = opts.delta == null || opts.delta === "" ? undefined : String(opts.delta);
   const dir =
-    opts.direction ??
-    (opts.delta ? (/^\s*[-−▼]/.test(opts.delta) ? "down" : /^\s*[+▲]/.test(opts.delta) ? "up" : "flat") : undefined);
+    opts.direction ?? (delta ? (/^\s*[-−▼]/.test(delta) ? "down" : /^\s*[+▲]/.test(delta) ? "up" : "flat") : undefined);
   const goodIsUp = opts.goodIsUp ?? true;
   const deltaColor = dir === "flat" || dir == null ? S.mutedText : (dir === "up") === goodIsUp ? "#0ca30c" : "#d03b3b";
 
@@ -212,7 +217,7 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
     valign: "top",
     name: "kpi-value",
   });
-  if (opts.delta) {
+  if (delta) {
     const dy = height - pad - labelFs * 0.75;
     let dx = pad;
     if (dir && dir !== "flat") {
@@ -232,7 +237,7 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
       dx += size * 2 + 4;
     }
     // Strip a leading arrow glyph — the arrowhead node already shows it.
-    const text = opts.delta.replace(/^\s*[▲▼]\s*/, "");
+    const text = delta.replace(/^\s*[▲▼]\s*/, "");
     nodes.push({
       kind: "text",
       x: dx,
@@ -279,8 +284,15 @@ const BAD = "#d03b3b";
  *   "[good] on track" / "[bad] at risk"
  */
 function parseCell(raw: string): { text: string; harvey?: number; trend?: "up" | "down" | "flat"; color?: string } {
-  let text = raw;
-  const out: ReturnType<typeof parseCell> = { text: raw };
+  // Coerced for the same reason `xmlText` and `textWidth` are: `cells` is typed
+  // `string[][]` and arrives as JSON — from the skill's caller, from a template,
+  // from the pane's datasheet. A cell holding the NUMBER 2024 is not exotic, it
+  // is a year in a table, and `(2024).match` threw `t.match is not a function`
+  // and took the whole element down. The `?? ""` at the call site caught null
+  // and undefined and nothing else.
+  const text0 = String(raw ?? "");
+  let text = text0;
+  const out: ReturnType<typeof parseCell> = { text: text0 };
   let m: RegExpMatchArray | null;
   while ((m = text.match(/^\s*\[(hb:([\d.]+%?)|up|down|flat|good|bad)\]\s*/i))) {
     const tok = m[1].toLowerCase();
@@ -358,9 +370,15 @@ const effectW = (cell: ReturnType<typeof parseCell>, fs: number) =>
  * between data rows — with a separator gap every 5 rows and an optional
  * bold totals row. Cells accept in-cell effect tokens (see parseCell).
  */
-export function buildTableScene(cells: string[][], width = 480, opts: TableOptions = {}): Scene {
+export function buildTableScene(cellsIn: string[][], width = 480, opts: TableOptions = {}): Scene {
   const styleMode = opts.style ?? "rules";
   const groupEvery = opts.groupRows ?? 5;
+  // A ROW is as untrusted as a cell. `string[][]` is the type; the value is
+  // JSON, and a row that came through as `null` (a blank line in a pasted
+  // block) or as a bare string (one row written without its inner array) threw
+  // out of `.map`/`.length` before any of the cell-level care below could run.
+  // A non-array row reads as an empty row, which is what it looks like.
+  const cells = (Array.isArray(cellsIn) ? cellsIn : []).map((r) => (Array.isArray(r) ? r : []));
   const rows = cells.length;
   // No rows: the closing rule would be drawn at y = -0.5, i.e. above the top of
   // a zero-height scene (and at a negative offset from the insertion point in
@@ -370,7 +388,7 @@ export function buildTableScene(cells: string[][], width = 480, opts: TableOptio
   const fs = 10;
   const rowH = fs * 2.1;
   const gapH = rowH * 0.4;
-  const parsed = cells.map((row) => row.map((c) => parseCell(c ?? "")));
+  const parsed = cells.map((row) => row.map((c) => parseCell(c)));
   // Column widths proportional to their longest content (incl. effect glyphs).
   const widths = Array.from({ length: cols }, (_, c) =>
     Math.max(fs * 3, ...parsed.map((r) => textWidth(r[c]?.text ?? "", fs) + effectW(r[c] ?? { text: "" }, fs) + 12)),

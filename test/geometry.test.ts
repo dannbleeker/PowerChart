@@ -171,6 +171,36 @@ describe("annularSectorPoints", () => {
     // 90° → ceil(90/6)=15 segments → 16 points per arc → 32 total
     expect(annularSectorPoints(0, 0, 5, 10, 0, 90)).toHaveLength(2 * (15 + 1));
   });
+
+  /**
+   * The loop had a floor and no CEILING, and its bound came from the data.
+   *
+   * `wedgeFanSteps` — twenty lines above, consuming the same WedgeNode for the
+   * Office.js renderer — already clamps to 60. This one did not, so a span of
+   * 1e9 asked for 167 million steps twice, each pushing an object: unbounded in
+   * time and in memory, the shape where the tab dies before the chart does.
+   * It runs on both file-writing paths (the skill's headless render and the
+   * browser deck builder), and nothing in the scene contract promises a span of
+   * one turn — that is a property today's layouts happen to have, exactly as
+   * "every coordinate is finite" was before `finiteNodes`.
+   */
+  it("caps the segment count instead of letting the angle set it", () => {
+    const huge = annularSectorPoints(0, 0, 5, 10, 0, 1e9);
+    expect(huge.length).toBeLessThanOrEqual(2 * (60 + 1));
+    // Returns promptly and finitely rather than hanging.
+    expect(huge.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+  });
+
+  it("binds only beyond a full turn, so a real wedge samples exactly as before", () => {
+    // ceil(360/6) is 60, so the cap and the natural value coincide at one turn
+    // and the clamp changes nothing for any wedge a layout can produce.
+    expect(annularSectorPoints(0, 0, 5, 10, 0, 360)).toHaveLength(2 * (60 + 1));
+    expect(annularSectorPoints(0, 0, 5, 10, 0, 359)).toHaveLength(2 * (60 + 1));
+    // The same ceiling the sibling applies to the same wedge — its own step
+    // count is radius-dependent and lower here, but 60 is where it stops.
+    expect(wedgeFanSteps(10, 1e9).steps).toBe(60);
+    expect(wedgeFanSteps(10, 360).steps).toBeLessThanOrEqual(60);
+  });
 });
 
 /** Area of a simple polygon (shoelace), sign-independent. */
