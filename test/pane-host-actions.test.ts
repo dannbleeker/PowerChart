@@ -161,6 +161,15 @@ const host = vi.hoisted(() => ({
 
 vi.mock("../src/render/powerpoint", () => ({
   isPowerPointHost: () => true,
+  // The round-start line evaluates this as an argument, so a mock without it
+  // throws and the line vanishes — which is how eight tests in this file went
+  // red at once when it was added. Kept minimal on purpose: the pane must not
+  // depend on any field of it.
+  roundEnvironment: () => ({ requirementSets: [] }),
+  // Same reason: the battery stamps every scenario with the host-friction
+  // delta, so it is on the round's critical path now. (`deckSlideIds` is
+  // already mocked further down, with the round's own growth modelled.)
+  hostFrictionCounts: () => ({ errors: 0, idRefusals: 0, generalExceptions: 0, emptyReReads: 0 }),
   canInsertPicture: vi.fn(() => host.canPicture),
   getSelectionBounds: vi.fn(async () => host.selectionBounds),
   dropShapeSelection: vi.fn(async () => {

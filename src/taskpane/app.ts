@@ -4,6 +4,7 @@ import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types"
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
 import {
+  roundEnvironment,
   canInsertPicture,
   getSelectionBounds,
   getSlideShapeBounds,
@@ -3653,7 +3654,14 @@ function wireInsert() {
         // the runbook splits the demo halves across two decks for exactly that.
         // Whether a crashed round was on a fresh deck is the first question
         // anyone asks, and nothing recorded the answer.
-        trace("selftest", "round starting", { deckSlides: idsBefore?.length ?? "unreadable" });
+        // The round's own environment, once, from local sources only. Half the
+        // hypotheses this project has entertained are about the tab rather than
+        // the deck — its age most of all, which has been a live candidate for
+        // ten rounds with nothing measuring it.
+        trace("selftest", "round starting", {
+          deckSlides: idsBefore?.length ?? "unreadable",
+          env: roundEnvironment(),
+        });
         note("Round 1 of 2 — asking this PowerPoint what it actually does…", "busy");
         const sheet = await runHostProbes(host, buildStamp);
         // Written into the bundle before the long half starts. A self-test that

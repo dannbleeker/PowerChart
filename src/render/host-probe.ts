@@ -2201,6 +2201,13 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       deckAfter,
       shrankBy,
       stillListed,
+      // A SAMPLE of both id lists, side by side. Reconstructing the id-space
+      // mismatch by hand cost two rounds — the scratch ids read
+      // `4123571115#123571113` while the deck listed `256#109857222`, and
+      // nothing in the file put those two facts next to each other. Three of
+      // each is enough to see it and small enough never to crowd the buffer.
+      heldIds: scratchIds.slice(0, 3),
+      deckIds: (idsBefore ?? []).slice(0, 3),
     });
   }
   // Said by the sheet, from its own samples — the fact `UNSTABLE_ANSWERS` was
