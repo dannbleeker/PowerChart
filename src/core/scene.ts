@@ -213,7 +213,31 @@ export type { SymbolShape };
  * For a valid config this drops nothing, so it is a floor and not a filter.
  */
 export function finiteNodes(nodes: SceneNode[]): SceneNode[] {
-  return nodes.filter((n) => allNumbersFinite(n));
+  return nodes.filter((n) => allNumbersFinite(n) && !degeneratePolygon(n));
+}
+
+/**
+ * A polygon with nothing to draw — and the hole this gate had.
+ *
+ * `allNumbersFinite` asks whether every number in a node is finite, and an
+ * EMPTY point list satisfies that trivially: there are no numbers to fail. So a
+ * polygon carrying `points: []` sailed through a filter whose whole job is to
+ * keep un-openable files from being written, and then broke exactly the
+ * renderer the filter exists to protect. `pptx-paint.mjs` takes the polygon's
+ * bounding box with `Math.min(...xs)`, which is `Infinity` for no points, and
+ * writes `x="Infinity"` into the OOXML — not a number, not an Int64, and
+ * Microsoft's own validator rejects the deck.
+ *
+ * Found by rendering 3033 hostile configs through the skill's headless
+ * renderer: `{kind: "radar", data: {}}` lays out its grid rings before it knows
+ * it has no axes, and emits two of them empty.
+ *
+ * Two points, not one, because a polygon is a closed path: one point has no
+ * edges and cannot be a shape either. The rest of the chart is kept, which is
+ * the same trade the filter above already makes.
+ */
+function degeneratePolygon(n: SceneNode): boolean {
+  return n.kind === "polygon" && (n.points?.length ?? 0) < 2;
 }
 
 /** Every number anywhere in the node — including a polygon's point list. */

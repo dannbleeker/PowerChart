@@ -3,7 +3,7 @@
  * and a simple table — all as scenes for the same renderers as charts.
  */
 import type { Scene, SceneNode } from "./scene";
-import { contrastInk, textWidth } from "./scene";
+import { contrastInk, finiteNodes, textWidth } from "./scene";
 import { DEFAULT_STYLE, PALETTE } from "./style";
 
 const S = DEFAULT_STYLE;
@@ -57,7 +57,7 @@ export function buildHarveyBall(fraction: number, size = 24): Scene {
       name: "harvey-fill",
     });
   }
-  return { width: size, height: size, nodes };
+  return { width: size, height: size, nodes: finiteNodes(nodes) };
 }
 
 export type CheckState = "yes" | "no" | "partial";
@@ -101,7 +101,13 @@ export function buildCheckbox(state: CheckState, size = 20): Scene {
 
 /** Process flow: a row of chevrons with the active step highlighted. */
 export function buildProcessFlow(steps: string[], highlight = -1, width = 480, height = 40): Scene {
-  const n = Math.max(1, steps.length);
+  // A `string[]` in the types is not an array in the object someone passed.
+  // These builders are public API (`src/index.ts` exports all five), so a
+  // caller with no steps, or with a config field that came back undefined, gets
+  // an empty flow rather than "Cannot read properties of undefined (reading
+  // 'length')" out of a render. Same rule the config boundary already follows.
+  const list: string[] = Array.isArray(steps) ? steps.map((s) => String(s ?? "")) : [];
+  const n = Math.max(1, list.length);
   const overlap = height * 0.28; // chevron notch overlaps the previous step
   const stepW = (width + overlap * (n - 1)) / n;
   const labelW = stepW - overlap * 1.6; // the flat part of the chevron
@@ -109,10 +115,10 @@ export function buildProcessFlow(steps: string[], highlight = -1, width = 480, h
   // number): at a fixed 11pt a crowded flow drew each label over its neighbour
   // and the first one off the left edge of the scene.
   let fontSize = Math.min(11, height * 0.3);
-  const overflows = (f: number) => steps.some((s, i) => textWidth(s, f, i === highlight) > labelW);
+  const overflows = (f: number) => list.some((s, i) => textWidth(s, f, i === highlight) > labelW);
   while (fontSize > 6 && overflows(fontSize)) fontSize -= 0.5;
   const nodes: SceneNode[] = [];
-  steps.forEach((label, i) => {
+  list.forEach((label, i) => {
     const x = i * (stepW - overlap);
     const active = i === highlight;
     const fill = active ? PALETTE[0] : "#dcdbd2";
@@ -134,7 +140,7 @@ export function buildProcessFlow(steps: string[], highlight = -1, width = 480, h
       },
     );
   });
-  return { width, height, nodes };
+  return { width, height, nodes: finiteNodes(nodes) };
 }
 
 export interface KpiTileOptions {
@@ -253,7 +259,7 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
       name: "kpi-delta",
     });
   }
-  return { width, height, nodes };
+  return { width, height, nodes: finiteNodes(nodes) };
 }
 
 export interface TableOptions {
@@ -467,5 +473,5 @@ export function buildTableScene(cellsIn: string[][], width = 480, opts: TableOpt
     nodes.unshift(rule(0.5, 1.25, "rule-top"));
     nodes.push(rule(y - 0.5, 1.25, "rule-bottom"));
   }
-  return { width, height: y, nodes };
+  return { width, height: y, nodes: finiteNodes(nodes) };
 }

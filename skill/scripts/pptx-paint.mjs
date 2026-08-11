@@ -336,6 +336,13 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
       case "polygon": {
         // Real freeform geometry: filled, optionally translucent polygons
         // (radar series and grid webs) as native editable shapes.
+        // Nothing to bound. `Math.min(...[])` is Infinity, and this writes
+        // straight into the OOXML as an EMU offset — `x="Infinity"`, which is
+        // not an Int64 and which Microsoft's validator rejects outright, so
+        // the whole deck is one PowerPoint may refuse to open. The engine drops
+        // these now (`finiteNodes`), and this file is checked by NOTHING —
+        // it sits outside tsconfig — so it does not get to assume that.
+        if (!Array.isArray(n.points) || n.points.length < 2) break;
         const xs = n.points.map((p) => p.x);
         const ys = n.points.map((p) => p.y);
         const x0 = Math.min(...xs);
