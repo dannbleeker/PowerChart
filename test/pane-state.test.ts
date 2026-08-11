@@ -2,6 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 import type { ChartConfig } from "../src/core/types";
+import { clampDim } from "../src/core/chart";
+import { placeChart } from "../src/core/placement";
 
 /**
  * Task-pane state tests. app.ts is a side-effecting entry module: it wires
@@ -1032,4 +1034,47 @@ describe("a config whose arrays are not arrays", () => {
   // repo already records as "a guard can fail for the wrong reason and still
   // look proven". The in-range path stays covered by the ragged-row assertion
   // above, which requires the grid to stay rectangular whatever is written.
+});
+
+/**
+ * `??` catches null and undefined. A config's `width` can be anything.
+ *
+ * A config arrives from the JSON box, a saved template, a shape tag written in
+ * another deck and the skill's caller, so `width: number` in the types is a
+ * promise nothing enforces. The pane built the size it hands `placeChart` as
+ * `cfg.width ?? DEFAULT_SIZE.width` — which passes NaN, Infinity, 0 and
+ * negatives straight through, because none of them is nullish.
+ *
+ * The engine's own `clampDim` handles exactly those, and it runs INSIDE
+ * `buildChart` — after the placement. So `placeChart` shrank a NaN width to fit
+ * the slide and returned **882 points**: wider than the 720pt slide, finite,
+ * and therefore waved through by every check after it. The user gets a chart
+ * running off the edge with nothing said.
+ *
+ * One rule in one place. Two clamps agree until somebody changes one.
+ */
+describe("a chart size the pane will act on", () => {
+  it("refuses the values `??` lets through", () => {
+    for (const v of [NaN, Infinity, -Infinity, 0, -5]) {
+      expect(clampDim(v, 480), `clampDim(${v}) kept a size no chart can have`).toBe(480);
+    }
+    expect(clampDim(undefined, 480)).toBe(480);
+    // And a real width is untouched, or this "fix" would be a regression.
+    expect(clampDim(300, 480)).toBe(300);
+    // Above the engine's ceiling it clamps rather than falls back: a too-wide
+    // chart is a user's intent expressed badly, not a broken value.
+    expect(clampDim(1e6, 480)).toBeLessThanOrEqual(7199);
+  });
+
+  it("never hands the placer a size that becomes a chart wider than a slide", () => {
+    // The number the bug actually produced, reached through the real call.
+    const occupied = [{ left: 0, top: 0, width: 100, height: 100 }];
+    for (const v of [NaN, Infinity, 0, -5]) {
+      const size = { width: clampDim(v, 480), height: clampDim(v, 300) };
+      const p = placeChart(occupied, size, { left: 60, top: 90 }, { left: 60, top: 90 });
+      expect(Number.isFinite(p.width), `width ${v} → ${p.width}`).toBe(true);
+      expect(Number.isFinite(p.height), `height ${v} → ${p.height}`).toBe(true);
+      expect(p.width, `width ${v} produced a chart wider than the slide`).toBeLessThanOrEqual(720);
+    }
+  });
 });

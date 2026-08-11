@@ -1,4 +1,4 @@
-import { buildChart, DEFAULT_SIZE, valueExtent } from "../core/chart";
+import { buildChart, clampDim, DEFAULT_SIZE, valueExtent } from "../core/chart";
 import { PALETTES } from "../core/style";
 import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
@@ -218,8 +218,10 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     decorations: { ...cfg.decorations },
     horizontal: !!cfg.horizontal,
     title: cfg.title ?? "",
-    width: cfg.width ?? DEFAULT_SIZE.width,
-    height: cfg.height ?? DEFAULT_SIZE.height,
+    // Same clamp as the engine — the state these fields hold is written back
+    // into a config, so a NaN here becomes a NaN in the user's saved template.
+    width: clampDim(cfg.width, DEFAULT_SIZE.width),
+    height: clampDim(cfg.height, DEFAULT_SIZE.height),
     segmentOrder: cfg.segmentOrder ?? "sheet",
     scaleMin: cfg.scale?.min != null ? String(cfg.scale.min) : "",
     scaleMax: cfg.scale?.max != null ? String(cfg.scale.max) : "",
@@ -672,8 +674,8 @@ function applyConfig(cfg: ChartConfig, editTarget: EditTarget | null) {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) el.value = String(value);
   };
-  sizeField("chart-w", cfg.width ?? DEFAULT_SIZE.width);
-  sizeField("chart-h", cfg.height ?? DEFAULT_SIZE.height);
+  sizeField("chart-w", clampDim(cfg.width, DEFAULT_SIZE.width));
+  sizeField("chart-h", clampDim(cfg.height, DEFAULT_SIZE.height));
   const renderBox = document.getElementById("render-image") as HTMLInputElement | null;
   if (renderBox) renderBox.checked = state.renderImage;
   resetHistory();
@@ -1928,7 +1930,16 @@ async function runInsert(asNew: boolean) {
     // host would not read therefore landed on exactly the same point — the pile
     // this whole rule exists to prevent, and worse than the fixed cascade it
     // replaced. A real host refused every shape read on a whole deck.
-    const size = { width: cfg.width ?? DEFAULT_SIZE.width, height: cfg.height ?? DEFAULT_SIZE.height };
+    // The ENGINE's clamp, not `??`. A config arrives from the JSON box, a saved
+    // template, a shape tag written in another deck and the skill's caller, so
+    // `width` is a number in the types and anything at all in practice —
+    // `??` passes NaN, Infinity, 0 and negatives straight through. `placeChart`
+    // then shrinks a NaN width to fit and hands back 882 points, which is wider
+    // than the slide and finite enough to survive every check after it.
+    const size = {
+      width: clampDim(cfg.width, DEFAULT_SIZE.width),
+      height: clampDim(cfg.height, DEFAULT_SIZE.height),
+    };
     const occupied = await getSlideShapeBounds();
     at = occupied
       ? placeChart(

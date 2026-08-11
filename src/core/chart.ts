@@ -78,7 +78,22 @@ export const ROTATABLE_KINDS: ReadonlySet<ChartKind> = new Set<ChartKind>([
 const MAX_DIM = 7199;
 
 /** A positive, finite dimension within the ceiling, or the fallback. */
-function clampDim(v: number | undefined, fallback: number): number {
+/**
+ * A chart dimension the rest of the engine can rely on.
+ *
+ * Exported because the PANE needs the same rule before `buildChart` ever sees
+ * the config. `app.ts` builds a size for `placeChart` as
+ * `cfg.width ?? DEFAULT_SIZE.width`, and `??` catches only null and undefined —
+ * so `width: NaN` from a pasted config, a saved template or a shape tag written
+ * in another deck went straight to the placer, which shrank it to fit and
+ * returned **882** points. Wider than the 720pt slide, finite, and therefore
+ * waved through by this very function on the way back in: the user gets a chart
+ * running off the edge of the slide with nothing said.
+ *
+ * One rule, one place. The alternative is two clamps that agree until somebody
+ * changes one.
+ */
+export function clampDim(v: number | undefined, fallback: number): number {
   if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return fallback;
   return Math.min(v, MAX_DIM);
 }
