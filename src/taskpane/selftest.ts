@@ -1103,7 +1103,18 @@ export function renderDifference(before: string, after: string): { at: number; d
   return { at: at < 0 ? n : at, differing, of: Math.max(before.length, after.length) };
 }
 
-export function visibilityVerdict(before: string, after: string, named: boolean): { ok: boolean; detail: string } {
+/**
+ * @param stable Whether two renders of the UNCHANGED slide came back identical.
+ *   `undefined` when the control could not be taken. This is what separates
+ *   "the chart is visible" from "this host's rasteriser is not deterministic",
+ *   and without it a before/after difference means neither.
+ */
+export function visibilityVerdict(
+  before: string,
+  after: string,
+  named: boolean,
+  stable?: boolean,
+): { ok: boolean; detail: string } {
   if (after !== before) {
     const delta = after.length - before.length;
     const share = before.length ? Math.abs(delta) / before.length : 1;
@@ -1113,12 +1124,21 @@ export function visibilityVerdict(before: string, after: string, named: boolean)
     // difference that starts in the first few percent of the data and touches
     // little of it is a header; one spread through the body is a picture.
     const where = `, first differ at ${Math.round((diff.at / Math.max(1, diff.of)) * 100)}% in, ${diff.differing} byte(s) differing`;
+    // The control decides what the difference is EVIDENCE of. A host whose
+    // rasteriser answers differently for an unchanged slide makes this whole
+    // gate meaningless, and it would look identical to a pass.
+    const noise =
+      stable === false
+        ? " — but two renders of the UNCHANGED slide also differed, so this proves NOTHING about the chart"
+        : stable === undefined
+          ? " (no control render, so an unstable rasteriser cannot be ruled out)"
+          : "";
     return {
       ok: true,
       detail:
         `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes, ${
           delta >= 0 ? "+" : ""
-        }${delta}, ${pct}%${where})` +
+        }${delta}, ${pct}%${where})${noise}` +
         (share < THIN_VISIBILITY_RATIO
           ? " — a THIN margin: this is a change, but too small to tell a drawn chart from a re-encode"
           : "") +
@@ -1201,6 +1221,27 @@ const chartIsVisible: Scenario = async (prefix) => {
   // repeat of the one now settled.
   const before = await attempt("rasterising a slide that already existed", () => slideImageBase64(slideId, 640));
   if (!before) return { ok: false, skipped: true, detail: "host will not rasterise a slide (PowerPointApi 1.8)" };
+  // The SAME slide, rasterised again, with nothing drawn in between.
+  //
+  // This gate asserts that the two renders differ, and until 2026-08-11 that
+  // was all it could say. Its length delta read +108 bytes on three
+  // consecutive rounds from three different starting sizes, which looked
+  // exactly like a header or a counter; `renderDifference` then reported the
+  // two renders differing across 97% of their bytes, which kills the header
+  // reading and leaves two others standing. Either the chart is in the picture,
+  // or this host's rasteriser does not produce the same bytes twice — and a
+  // before/after pair cannot tell those apart, because both make a drawn chart
+  // and an untouched slide look equally different.
+  //
+  // One extra rasterise decides it. If two renders of an UNCHANGED slide are
+  // identical, then a difference afterwards is the chart and this gate means
+  // what it says. If they differ, the gate has been passing on encoder noise
+  // and every "the chart is visible" verdict on record is worth nothing.
+  //
+  // Costs one call on a slide the run has already rasterised safely, which is
+  // the operation this scenario exists to have proven.
+  const again = await attempt("rasterising the same slide a second time", () => slideImageBase64(slideId, 640));
+  const control = again === undefined ? undefined : again === before;
   // Small, and tucked into the bottom-right corner.
   //
   // Sharing a slide is the price of never rasterising a fresh one, and the
@@ -1252,7 +1293,7 @@ const chartIsVisible: Scenario = async (prefix) => {
   // one only cleaned up because a scratch slide is a control surface nobody
   // would want to open. A chart on a slide the run already owns is an ordinary
   // result, so the delete — which cost one round on its own — simply goes.
-  return visibilityVerdict(before, after, !!drawn);
+  return visibilityVerdict(before, after, !!drawn, control);
 };
 
 /**

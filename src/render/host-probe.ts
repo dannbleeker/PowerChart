@@ -1408,6 +1408,66 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "grouped-child-by-id-from-slide",
+    question: "Can a shape INSIDE a group still be resolved by id off the slide?",
+    // Sampled on every pass while it is pending: a question asked once has been
+    // sampled, not answered, and this one gates a feature.
+    resample: true,
+    // The question that decides whether the in-place update can ever work on
+    // this host, and it has never been asked.
+    //
+    // `tryInPlaceUpdate` writes to a chart's individual shapes, so it needs a
+    // node-to-shape mapping. It gets one from CHART_PARTS_TAG, which is only
+    // written for UNGROUPED charts — a grouped chart's shapes are inside the
+    // group and the tag does not list them. On this host that closes both
+    // doors: the `53ec985` round declined eleven times out of eleven with `the
+    // chart has no parts list`, because the charts that grouped have no tag and
+    // the ones that did not group had their id readback refused.
+    //
+    // But "the parts tag does not list them" is a fact about OUR code, not
+    // about the host. If the slide's own shape collection will still resolve a
+    // child by id, then a grouped chart can carry a parts list too, written
+    // from the ids the grouping pass already holds — and the fast path applies
+    // to the fourteen grouped charts a round produces instead of none of them.
+    //
+    // Asked one sync AFTER the group is made, which is how an update would ask:
+    // it resolves the id a previous run wrote down, off a slide handle taken
+    // now. office-js#3014 says grouped shapes come back from getItem as type
+    // `unknown` and sub-shapes cannot be reached, so a no here is expected and
+    // is worth recording as a measured no rather than an assumed one.
+    ask: async (ctx) => {
+      const { members, via } = await groupMembers(
+        ctx,
+        [0, 1].map((i) => ({ left: 420 + i * 25, top: 200, width: 20, height: 20 })),
+      );
+      try {
+        const first = members[0] as unknown as { load(p: string): void; id: string };
+        first.load("id");
+        await ctx.sync();
+        const childId = readShapeId(first);
+        if (!childId) return { answer: "no-child-id", detail: `members via ${via}` };
+        (probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): unknown }).addGroup(members);
+        await ctx.sync();
+        // A FRESH handle, the way an update asks a run later.
+        const back = probeShapes(ctx).getItemOrNullObject(childId);
+        back.load("isNullObject,id");
+        await ctx.sync();
+        let gone: boolean | undefined;
+        try {
+          gone = (back as unknown as { isNullObject: boolean }).isNullObject;
+        } catch {
+          gone = undefined;
+        }
+        return {
+          answer: gone === false ? "yes" : gone === true ? "null-object" : "unreadable",
+          detail: `childId=${childId}; members via ${via}`,
+        };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
     id: "tag-on-group-survives",
     question: "Does a tag written on a GROUP read back?",
     // Where a chart's config actually lives. Tags on a plain shape are covered

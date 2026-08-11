@@ -28,6 +28,7 @@ import {
   _setReadbackTimeoutForTest,
   addScratchSlide,
   chooseGroupMembers,
+  deckIdForSelectedSlide,
   OFFSCREEN_BATCH,
   mayTakeConfig,
   afterSettle,
@@ -1672,5 +1673,108 @@ describe("a settled chart whose shape was never named", () => {
   it("does not touch a target that was never marked", () => {
     const fine = { slideId: "s1", shapeId: "shape-9", left: 0, top: 0 };
     expect(afterSettle(fine, { settled: true, untargeted: true })).toEqual(fine);
+  });
+});
+
+/**
+ * Every tag key this add-in writes must be UPPER CASE.
+ *
+ * office-js#6079: PowerPoint on the web uppercases tag keys internally and then
+ * requires the uppercased spelling to read them back — a lowercase
+ * `tags.getItem` throws GeneralException. Desktop is case-insensitive, so an
+ * add-in developed against desktop works there and breaks online, and the
+ * symptom lands nowhere near the write.
+ *
+ * There is no exposure today: every key is a constant and every one is already
+ * upper case. This is the check that keeps it that way, because the trap is
+ * invisible in review — a lowercase key looks exactly as correct as an
+ * uppercase one, and only one host disagrees.
+ */
+describe("the tag keys this add-in writes", () => {
+  it("are all upper case, because the web host will not answer for any other", async () => {
+    const mod = (await import("../src/render/powerpoint")) as unknown as Record<string, unknown>;
+    const keys = Object.entries(mod)
+      .filter(([name]) => /_TAG$/.test(name))
+      .map(([name, value]) => [name, String(value)] as const);
+    expect(keys.length, "no tag-key constants found — this test is checking nothing").toBeGreaterThan(3);
+    for (const [name, value] of keys)
+      expect(value, `${name} is "${value}" — the web host would not read it back`).toBe(value.toUpperCase());
+  });
+
+  it("catches a lowercase key written anywhere in the renderer", async () => {
+    // The constants are one route; a string literal passed straight to
+    // `tags.add` is the other, and the probe already uses that form.
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/render/powerpoint.ts", "utf8") + readFileSync("src/render/host-probe.ts", "utf8");
+    const literals = [...src.matchAll(/tags\.(?:add|getItem|getItemOrNullObject)\(\s*"([^"]+)"/g)].map((m) => m[1]);
+    for (const key of literals)
+      expect(key, `the tag key "${key}" is not upper case — see office-js#6079`).toBe(key.toUpperCase());
+  });
+});
+
+/**
+ * A slide id read off a SELECTION is not the deck's id for that slide.
+ *
+ * office-js#2474, reported on Windows desktop and closed `not planned`: a
+ * `SlideRange`'s `id` lacks the `#XYZ` suffix the same slide carries when read
+ * from `presentation.slides`, so `slides.getItem(rangeId)` answers
+ * InvalidArgument where `getItemAt(index)` works.
+ *
+ * This repo hands exactly such an id back as an EditTarget's `slideId` from
+ * `loadChartFromSelection`, and every later edit resolves the target by id. The
+ * failure is silent: `getItemOrNullObject` answers a null object, the chart is
+ * filtered out as "the slide is gone, nothing to do", and the user's edit does
+ * nothing with no error anywhere.
+ *
+ * It has never bitten on THIS host — `edit the chart the user selected` passes
+ * every round — which is the reason to fix it by rule rather than leave it to a
+ * host nobody here has run.
+ */
+describe("the id of a slide the user selected", () => {
+  it("takes the deck's own id when the selection's is a prefix of it", () => {
+    // The exact shape the issue reports: `{269…}` from the range, `{269…}#2`
+    // from the collection.
+    expect(deckIdForSelectedSlide("269", ["256#1", "269#2", "270#3"])).toBe("269#2");
+  });
+
+  it("keeps an id that is already the deck's", () => {
+    // The web host's behaviour today, and it must stay a no-op there.
+    expect(deckIdForSelectedSlide("269#2", ["256#1", "269#2"])).toBe("269#2");
+  });
+
+  it("gives up rather than guess when two slides share the prefix", () => {
+    // Putting the user's edit on the WRONG slide is worse than the silent
+    // no-op this rule exists to prevent.
+    expect(deckIdForSelectedSlide("269", ["269#2", "269#7"])).toBeUndefined();
+  });
+
+  it("gives up when the deck does not list the slide at all", () => {
+    expect(deckIdForSelectedSlide("999", ["256#1", "269#2"])).toBeUndefined();
+    expect(deckIdForSelectedSlide(undefined, ["256#1"])).toBeUndefined();
+  });
+
+  it("still reads a chart back when the host answers a suffix-less id", async () => {
+    // End to end, on the failure the issue describes: the selection names the
+    // slide without its suffix, and the target must still be usable.
+    const slide = makeSlide("s1#7");
+    installHost([slide]);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+    const shape = slide.created.find((s) => s.tagStore.has("POWERCHART_CONFIG"))!;
+    // AFTER installHost, which resets every fault — set first, this armed
+    // nothing and the guard passed against a build with no repair in it.
+    installHost([slide], [shape]);
+    // What #2474 describes: the range answers the id without its suffix.
+    faults.selectedSlideIdAs = "s1";
+    try {
+      const read = await loadChartFromSelection();
+      expect(read, "the selected chart could not be read at all").not.toBeNull();
+      expect(
+        read!.target.slideId,
+        "the target kept the selection's suffix-less id, so the next edit would resolve nothing",
+      ).toBe("s1#7");
+    } finally {
+      faults.selectedSlideIdAs = null;
+    }
   });
 });

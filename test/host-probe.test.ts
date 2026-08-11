@@ -420,6 +420,9 @@ describe("the fake host's answer sheet", () => {
         "addgroup-returns-usable",
         "group-reports-its-children",
         "group-of-existing-shape-readable",
+        // Needs two shapes to group and then a child id to look up; a host that
+        // refuses every add has told it nothing about children.
+        "grouped-child-by-id-from-slide",
         "picture-then-shape-read",
         "tag-on-group-survives",
         // The binding question needs a shape to bind, so a host that refuses
