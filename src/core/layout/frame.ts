@@ -80,11 +80,20 @@ export function valueScale(
   // Logarithmic axis: decade ticks; requires positive data (falls back otherwise).
   if (logScale && dataMax > 0) {
     const minPos = Math.max(dataMin > 0 ? dataMin : dataMax / 1000, 1e-12);
-    const lo10 = Math.floor(Math.log10(override?.min && override.min > 0 ? override.min : minPos));
+    let lo10 = Math.floor(Math.log10(override?.min && override.min > 0 ? override.min : minPos));
     // Never let the top decade fall below the bottom one: a manual scale.min set
     // above the data would give an empty tick list → undefined min → NaN toY for
     // the whole axis. Clamp to at least one decade.
     const hi10 = Math.max(lo10, Math.ceil(Math.log10(override?.max && override.max > 0 ? override.max : dataMax)));
+    // "At least one decade" is what the line above says and is not what it did:
+    // `max(lo10, …)` clamps to at least ZERO decades. Data that is all one exact
+    // power of ten — `logScale` with values [100, 100], or a single 1000 —
+    // yields lo10 === hi10, one tick, and a `max - min || 1` span of 1 log unit.
+    // Every value then maps to the axis floor: a chart whose every bar is
+    // 0pt high, drawn under a one-tick axis. Give it the decade BELOW, because
+    // the floor is where a bar starts, so lowering it is what makes the data
+    // visible; raising the top would leave the bars on the baseline.
+    if (hi10 === lo10) lo10 -= 1;
     const ticks: number[] = [];
     for (let e = lo10; e <= hi10; e++) ticks.push(Math.pow(10, e));
     const min = ticks[0];
