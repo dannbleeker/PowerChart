@@ -388,6 +388,24 @@ left in the deck (the deletes reported 45 but the deck only shrank by 0)`.
   than the deck grew" clamp removed a plan reaches `from: -54`, i.e. into the
   user's own slides, and the guard names it.
 
+  **IT WORKS, and a clamp fired on its first outing** (2026-08-11, `c792072`).
+  The deck went from 1 slide to 71 during the probe and back to 3:
+  `sweeping the run's own slides by position {from: 3, count: 68, deckAtStart: 1,
+deckNow: 71}` then `swept: 68`. The round left the owner **8 slides, 2 of them
+  empty**, against 70 and 61 the round before.
+
+  The two it left are the interesting part. The deck grew by SEVENTY while the
+  run could only account for sixty-eight scratch ids — `addScratchSlide` returns
+  null when an add lands but cannot be claimed — so the "never more than this
+  run added" clamp held the count at 68 and left the other two alone. That is
+  the clamp doing exactly its job on live data: two blank slides is the price of
+  never deleting a slide this run cannot prove it created, and it is the right
+  price.
+
+  `stillListed: 0 of 68` again, so the by-id finding reproduces and the sweep is
+  not papering over an intermittent fault — it is the only mechanism that works
+  here.
+
 - **`getItemOrNullObject` is not the last word on whether a slide exists.**
   PowerPoint on the web resolved a freshly-added slide's id once and refused it
   ever after, while still listing that id in `slides.load("items/id")`. So

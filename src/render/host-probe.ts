@@ -2159,7 +2159,14 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       ms: Date.now() - cleanupStarted,
       detail:
         `${actually} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}` +
-        (shrankBy !== undefined && shrankBy !== returned
+        // Only when the deck lost LESS than the deletes claimed. That clause was
+        // written when the by-id path was the only one, where any disagreement
+        // meant an over-claim — and the sweep made it read backwards on its
+        // first outing: `the deletes reported 0 but the deck only shrank by 68`,
+        // which is the sweep working, described as a shortfall. A line that says
+        // the opposite of what happened is the `batch committed` mistake in a
+        // new place, so it is conditioned on the direction it describes.
+        (shrankBy !== undefined && shrankBy < returned
           ? ` (the deletes reported ${returned} but the deck only shrank by ${shrankBy})`
           : "") +
         (stillListed !== undefined && stillListed < scratchIds.length

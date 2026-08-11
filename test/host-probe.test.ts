@@ -1719,3 +1719,30 @@ describe("what a positional sweep is allowed to delete", () => {
     expect(plan({ added: 62, alreadyDeleted: 0 })).toBeNull();
   });
 });
+
+/**
+ * The clean-up's own sentence, in both directions.
+ *
+ * The shortfall clause was written when delete-by-id was the only mechanism, so
+ * any disagreement between the claim and the deck meant an over-claim. The
+ * positional sweep made the deck lose MORE than the deletes claimed, and the
+ * line then read `the deletes reported 0 but the deck only shrank by 68` — the
+ * sweep working, described as a shortfall. A line that says the opposite of
+ * what happened is the `batch committed` mistake in a new place.
+ */
+describe("what the clean-up's report may say about a disagreement", () => {
+  it("is a shortfall only when the deck lost LESS than the deletes claimed", () => {
+    // The real round: by-id took none, the sweep took 68, the deck lost 68.
+    expect(slidesActuallyReturned({ claimed: 68, added: 68, deckBefore: 71, deckAfter: 3 })).toEqual({
+      actually: 68,
+      left: 0,
+      shrankBy: 68,
+    });
+    // and the other direction, which IS a shortfall and must still be caught.
+    expect(slidesActuallyReturned({ claimed: 45, added: 45, deckBefore: 57, deckAfter: 57 })).toEqual({
+      actually: 0,
+      left: 45,
+      shrankBy: 0,
+    });
+  });
+});
