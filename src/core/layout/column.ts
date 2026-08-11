@@ -200,9 +200,18 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   // Value coordinate: distance along the value axis from the scale minimum.
   // Vertical charts route through toY so axis breaks apply; horizontal stays linear.
+  //
+  // CLAMPED either way. `toY` clips to the plot and says why (frame.ts: "every
+  // charting tool draws a value above the axis maximum as a bar reaching the top
+  // of the plot"), so the vertical branch inherited that and the horizontal one
+  // — its own linear map — did not. Pin the axis to 0–100 on revenue data, which
+  // the pane invites since "Axis scale min / max" are free-text boxes, and the
+  // same config that draws a full-height bar upright drew a 30,128pt one
+  // sideways: off the slide, and past the OOXML coordinate limit that makes
+  // PowerPoint offer to repair the file.
   const valLen = H ? frame.w : frame.h;
   const qOf = H
-    ? (v: number) => ((v - scale.min) / (scale.max - scale.min || 1)) * valLen
+    ? (v: number) => Math.max(0, Math.min(valLen, ((v - scale.min) / (scale.max - scale.min || 1)) * valLen))
     : (v: number) => frame.y + frame.h - scale.toY(v);
   /** Rect spanning [v0, v1] on the value axis at category position/thickness. */
   const segRect = (catPos: number, thick: number, v0: number, v1: number) => {
@@ -1155,6 +1164,8 @@ export function seriesLabelNodes(
 ): SceneNode[] {
   const fs = style.fontSize;
   const lineH = fs * 1.35;
+  /** Font the labels are actually drawn at — reduced only if they must be spread. */
+  let labelFs = fs;
   const entries = cfg.data.series
     .map((s, i) => ({
       name: s.scenario ? `${s.name} (${s.scenario})` : s.name,
@@ -1173,6 +1184,30 @@ export function seriesLabelNodes(
     for (let i = entries.length - 2; i >= 0; i--) {
       if (entries[i + 1].y - entries[i].y < lineH) entries[i].y = entries[i + 1].y - lineH;
     }
+    // Only the BOTTOM was clamped, so the upward propagation walked straight
+    // past the canvas top: twelve series on a 240×160 chart put two labels at
+    // negative y, and thirty on a 400×300 put the topmost at −123. `collide.ts`
+    // refuses to nudge a label off the top for the reason that applies here too
+    // — an overlapping label still reads, an off-canvas one is lost — but it
+    // only moves labels UP, so it cannot rescue one already emitted above the
+    // canvas. Spread evenly over the band when the gap cannot be honoured,
+    // which is what `layoutSlope.place()` does after the same discovery.
+    const top = lineH / 2;
+    if (entries[0].y < top) {
+      const bottom = Math.max(top, Math.min(frame.y + frame.h, cfg.height - lineH / 2));
+      const step = entries.length > 1 ? (bottom - top) / (entries.length - 1) : 0;
+      entries.forEach((e, i) => (e.y = top + i * step));
+      // Spread AND shrunk, because a spread alone trades one defect for a worse
+      // one. The step here is by definition below the gap the labels wanted, so
+      // every neighbouring pair overlaps — and `series-label-` is in
+      // `collide.ts`'s MOVABLE list, whose nudge only goes UP. It therefore
+      // pushed each label past the one above it and returned them REORDERED:
+      // every label on the canvas, each naming the wrong line. An unreadably
+      // small label is a bad chart; a legible label naming someone else's line
+      // is a wrong one. Shrink to the step so nothing overlaps and the
+      // de-collision pass has nothing to do.
+      labelFs = Math.max(5, Math.min(fs, step / 1.25));
+    }
   }
   const x = frame.x + frame.w + 4;
   return entries.map((e, i) => ({
@@ -1182,7 +1217,7 @@ export function seriesLabelNodes(
     w: cfg.width - x,
     h: lineH,
     text: e.name,
-    fontSize: fs,
+    fontSize: labelFs,
     color: style.text,
     align: "left" as const,
     valign: "middle" as const,

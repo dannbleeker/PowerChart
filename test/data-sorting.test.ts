@@ -175,3 +175,50 @@ describe("decorations travel with a reordered category", () => {
     expect(centerOf(scene, "callout-box-0")).toBeCloseTo(categoryCenter(scene, "Small"), 0);
   });
 });
+
+/**
+ * `pie.explode` and `pie.breakout` are category indices too — they just live on
+ * the top-level config rather than under `decorations`, so `remapDecorations`
+ * never saw them. Unpermuted, the highlight followed the SCREEN SLOT: with
+ * `categorySort` on, `explode: [0]` offset whichever category the sort put
+ * first, and `breakout: [0, 2]` collapsed a different pair of data points than
+ * the author named. Pie and doughnut are both in `SORTABLE`, so this is
+ * reachable from the pane.
+ */
+describe("a pie highlight belongs to its data point, not its slot", () => {
+  const cfg = (extra: Record<string, unknown>): ChartConfig =>
+    ({
+      kind: "pie",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["Alpha", "Beta", "Gamma", "Delta"],
+        series: [{ name: "Share", values: [10, 40, 20, 30] }],
+      },
+      ...extra,
+    }) as unknown as ChartConfig;
+
+  /** Index of the one wedge that is offset from the common centre. */
+  const explodedSlot = (c: ChartConfig) => {
+    const wedges = buildChart(c).nodes.filter((n) => n.kind === "wedge") as unknown as { cx: number }[];
+    const common = wedges.map((w) => w.cx).sort((a, b) => a - b)[Math.floor(wedges.length / 2)];
+    return wedges.findIndex((w) => Math.abs(w.cx - common) > 0.5);
+  };
+
+  it("explodes the same category before and after sorting", () => {
+    // Descending by value is Beta(40), Delta(30), Gamma(20), Alpha(10) — so
+    // Alpha, named as index 0, is drawn in slot 3.
+    expect(explodedSlot(cfg({ pie: { explode: [0] } }))).toBe(0);
+    expect(explodedSlot(cfg({ pie: { explode: [0] }, categorySort: "descending" }))).toBe(3);
+  });
+
+  it("breaks out the same categories before and after sorting", () => {
+    const broken = (c: ChartConfig) =>
+      buildChart(c)
+        .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("breakout-label"))
+        .map((n) => n.text);
+    const flat = broken(cfg({ pie: { breakout: [0, 2] } }));
+    const sorted = broken(cfg({ pie: { breakout: [0, 2] }, categorySort: "descending" }));
+    expect(flat.length, "no breakout labels, so this proves nothing").toBeGreaterThan(0);
+    expect(sorted).toEqual(flat);
+  });
+});

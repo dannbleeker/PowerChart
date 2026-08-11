@@ -51,8 +51,22 @@ export const DEFAULT_DECOR: Decorations = {
   gridlines: false,
 };
 
+/**
+ * The colour a series is painted: its own override, else its slot in the
+ * palette.
+ *
+ * Routed through `paletteColor` rather than indexing directly, so the guard
+ * that function's docstring already advertises actually covers the PRIMARY
+ * colour path. Indexing an empty palette is `index % 0` → NaN → `undefined`,
+ * written straight into `RectNode.fill`, which the scene contract types as a
+ * string — and the three renderers then disagree about what an absent fill is
+ * (black in SVG and pptx, mid grey through `officeHex`). `style.palette: []`
+ * arrives from the pane's style import, the JSON box, a POWERCHART_CONFIG tag
+ * and the skill's caller; the hostile-input sweep already feeds it, but its bar
+ * is "does not throw", so the wrong output went unpinned.
+ */
 export function seriesColor(style: ChartStyle, index: number, override?: string): string {
-  return override ?? style.palette[index % style.palette.length];
+  return override ?? paletteColor(style.palette, index);
 }
 
 /**

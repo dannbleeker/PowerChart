@@ -134,6 +134,43 @@ describe("log scale", () => {
     // 100 sits halfway between 1 and 10000 in log space.
     expect(s.toY(100)).toBeCloseTo(50, 1);
   });
+
+  /**
+   * "Clamp to at least one decade" is what the comment above the clamp said,
+   * and `Math.max(lo10, …)` clamps to at least ZERO of them. Data that is all
+   * one exact power of ten — `logScale` with [100, 100], or a single 1000 —
+   * produced one tick and a span that collapsed every value onto the axis
+   * floor: a chart whose every bar is 0pt high, under a one-tick axis.
+   */
+  it("spans a decade even when the data is a single power of ten", () => {
+    for (const v of [1, 100, 1000]) {
+      const s = valueScale({ x: 0, y: 0, w: 100, h: 100 }, v, v, undefined, undefined, true);
+      expect(s.ticks.length, `${v} ticks`).toBeGreaterThan(1);
+      expect(s.max, `${v} max`).toBeGreaterThan(s.min);
+      // The value is at the TOP of the axis, not on its floor — the decade is
+      // added below, because a bar starts at the floor.
+      expect(s.toY(v), `${v} position`).toBeCloseTo(0, 6);
+    }
+  });
+
+  it("draws a bar for every column of an all-equal log chart", () => {
+    const s = buildChart({
+      kind: "clustered",
+      logScale: true,
+      width: 480,
+      height: 300,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [100, 100] }] },
+    } as ChartConfig);
+    const bars = s.nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("seg-"));
+    expect(bars).toHaveLength(2);
+    for (const b of bars) expect(b.h).toBeGreaterThan(50);
+  });
+
+  it("leaves an axis that already spanned a decade alone", () => {
+    // The negative control: widening unconditionally would move every log axis.
+    const s = valueScale({ x: 0, y: 0, w: 100, h: 100 }, 20, 100, undefined, undefined, true);
+    expect(s.ticks).toEqual([10, 100]);
+  });
 });
 
 describe("niceTicks edge cases", () => {

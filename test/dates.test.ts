@@ -53,3 +53,43 @@ describe("parseDateToken rejects things that only LOOK parseable", () => {
     }
   });
 });
+
+/**
+ * `Jan-24` is Excel's `mmm-yy` and the commonest monthly category label there
+ * is. `Date.parse` read the 24 as a DAY in its own default year (2001), which
+ * looks harmless inside one year — the month-to-month gaps come out right — and
+ * is not harmless across a year boundary: January landed 333 days BEFORE the
+ * previous December, so a line chart drew its newest two months at the far left
+ * of the plot, in front of October.
+ */
+describe("parseDateToken reads mmm-yy as a month and a year", () => {
+  const day = (iso: string) => Math.floor(Date.parse(iso + "T00:00:00Z") / 86400000);
+
+  it("puts the month first and the two-digit year second", () => {
+    expect(parseDateToken("Jan-24")).toBe(day("2024-01-01"));
+    expect(parseDateToken("Dec-23")).toBe(day("2023-12-01"));
+    expect(parseDateToken("Jan/24")).toBe(day("2024-01-01"));
+    expect(parseDateToken("January-24")).toBe(day("2024-01-01"));
+  });
+
+  it("orders a series that crosses new year", () => {
+    const months = ["Oct-23", "Nov-23", "Dec-23", "Jan-24", "Feb-24"].map((m) => parseDateToken(m)!);
+    for (let i = 1; i < months.length; i++) {
+      expect(months[i], `${i}`).toBeGreaterThan(months[i - 1]);
+    }
+  });
+
+  it("pivots two-digit years at 30, as Excel does", () => {
+    expect(parseDateToken("Jan-29")).toBe(day("2029-01-01"));
+    expect(parseDateToken("Jan-30")).toBe(day("1930-01-01"));
+    expect(parseDateToken("Jan-99")).toBe(day("1999-01-01"));
+  });
+
+  it("leaves the genuinely ambiguous and the non-months alone", () => {
+    // A space is how a day-of-month is written; only the hyphen/slash forms are
+    // claimed. And a word that is not a month still falls through as before.
+    expect(parseDateToken("Jan 24")).toBe(parseDateToken("24 Jan"));
+    expect(parseDateToken("Mon-24")).toBeNull();
+    expect(parseDateToken("3-5")).toBeNull();
+  });
+});

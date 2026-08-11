@@ -234,11 +234,21 @@ describe("toRgb parsing", () => {
     expect(toRgb("hsl(120, 100%, 50%)")).toEqual([0, 255, 0]); // pure green
   });
 
-  it("falls back to mid grey for empty, null, malformed hex, and named colours", () => {
+  it("falls back to mid grey for empty, null and malformed hex", () => {
     expect(toRgb("")).toEqual([128, 128, 128]);
     expect(toRgb(undefined as unknown as string)).toEqual([128, 128, 128]);
     expect(toRgb("#zzzzzz")).toEqual([128, 128, 128]); // NaN hex
-    expect(toRgb("rebeccapurple")).toEqual([128, 128, 128]); // named — known gap
+    expect(toRgb("not-a-colour")).toEqual([128, 128, 128]); // a word that names nothing
+  });
+
+  it("reads a NAMED colour, which used to be the same mid grey", () => {
+    // The grey was never a sane fallback for a name — it is a confident wrong
+    // answer, and two helpers act on it: `contrastInk` put WHITE ink on a
+    // `lightyellow` fill, and `relLuminance(style.background)` put a chart
+    // written `background: "white"` into DARK-canvas mode.
+    expect(toRgb("rebeccapurple")).toEqual([0x66, 0x33, 0x99]);
+    expect(toRgb("white")).toEqual(toRgb("#ffffff"));
+    expect(toRgb("  LightYellow  ")).toEqual([255, 255, 224]);
   });
 });
 

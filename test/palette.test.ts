@@ -63,3 +63,52 @@ describe("paletteColor wraps by the palette's actual length", () => {
     expect(paletteColor([], 0)).toBe("#888888");
   });
 });
+
+/**
+ * `seriesColor` — the PRIMARY colour path — indexed `style.palette` directly,
+ * so the guard `paletteColor` advertises never covered it. An empty palette
+ * made `index % 0` NaN and wrote `undefined` into `RectNode.fill`, a field the
+ * scene contract types as a string; the three renderers then disagreed about
+ * what an absent fill is (black in SVG and in the pptx sink, mid grey through
+ * `officeHex`). `style.palette: []` arrives from the pane's style import, the
+ * JSON box, a POWERCHART_CONFIG tag and the skill's caller.
+ */
+describe("an empty palette still paints a colour", () => {
+  it("gives every series a real fill rather than undefined", () => {
+    const { nodes } = buildChart({
+      kind: "stacked",
+      width: 480,
+      height: 300,
+      style: { palette: [] },
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "S1", values: [1] },
+          { name: "S2", values: [2] },
+        ],
+      },
+    } as unknown as ChartConfig);
+    const fills = nodes.filter((n) => n.name?.startsWith("seg-")).map((n) => (n as { fill: string }).fill);
+    expect(fills.length).toBeGreaterThan(0);
+    for (const f of fills) expect(f, "a segment carries no fill").toBe("#888888");
+  });
+
+  it("still hands out the palette when there is one", () => {
+    // The negative control: falling back unconditionally would grey every chart.
+    const { nodes } = buildChart({
+      kind: "stacked",
+      width: 480,
+      height: 300,
+      style: { palette: ["#112233", "#445566"] },
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "S1", values: [1] },
+          { name: "S2", values: [2] },
+        ],
+      },
+    } as unknown as ChartConfig);
+    const fills = nodes.filter((n) => n.name?.startsWith("seg-")).map((n) => (n as { fill: string }).fill);
+    expect(new Set(fills)).toEqual(new Set(["#112233", "#445566"]));
+  });
+});

@@ -136,6 +136,41 @@ function markerNode(
 /** Drawn half-extent of a marker whose data radius is `r`. */
 const markerExtent = (shape: MarkerSymbol, r: number) => r * markerScale(shape);
 
+/**
+ * The part of a segment that lies between `top` and `bot`, or null when none of
+ * it does. Clipping, not clamping: moving an endpoint onto the boundary bends
+ * the line, and the segments this serves are straight fits whose slope is the
+ * claim being made.
+ */
+function clipToPlotY(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  top: number,
+  bot: number,
+): { x1: number; y1: number; x2: number; y2: number } | null {
+  const dy = y2 - y1;
+  let t0 = 0;
+  let t1 = 1;
+  if (dy === 0) {
+    if (y1 < top || y1 > bot) return null;
+  } else {
+    const ta = (top - y1) / dy;
+    const tb = (bot - y1) / dy;
+    t0 = Math.max(0, Math.min(ta, tb));
+    t1 = Math.min(1, Math.max(ta, tb));
+    if (!(t1 > t0)) return null;
+  }
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  return {
+    x1: lerp(x1, x2, t0),
+    y1: lerp(y1, y2, t0),
+    x2: lerp(x1, x2, t1),
+    y2: lerp(y1, y2, t1),
+  };
+}
+
 export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
@@ -378,6 +413,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       name: "x-axis",
     });
   }
+  const zeroSpineX = Math.max(plot.x, Math.min(plot.x + plot.w, toX(0)));
   nodes.push(
     {
       kind: "line",
@@ -391,9 +427,14 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     },
     {
       kind: "line",
-      x1: toX(0) >= plot.x ? toX(0) : plot.x,
+      // Clamped on BOTH sides. `toX(0) >= plot.x ? … : plot.x` pinned the spine
+      // to the left edge when zero fell left of the domain and left it free
+      // when zero fell right of it — so an all-negative x axis (a variance or
+      // drawdown scatter) put a full-height spine 109pt past the right edge of
+      // the canvas. A guard that guards one direction is not a guard.
+      x1: zeroSpineX,
       y1: plot.y,
-      x2: toX(0) >= plot.x ? toX(0) : plot.x,
+      x2: zeroSpineX,
       y2: plot.y + plot.h,
       stroke: style.axis,
       strokeWidth: 1,
@@ -435,24 +476,43 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // straight OLS line; a higher `scatter.trendDegree` fits a polynomial drawn as
   // a sampled curve.
   const trendDeg = Math.max(1, Math.min(4, Math.floor(cfg.scatter?.trendDegree ?? 1)));
-  if (wantTrend && pts.length >= 2 && (trendDeg <= 1 || pts.length < 3)) {
+  // The fallback has to cover THREE points as well as two. `polyTrend` clamps
+  // its degree to `n - 2` to keep a residual degree of freedom, so three points
+  // come back as a degree-1 fit, and the caller below discards anything under
+  // degree 2 — so a `Trend` row with `trendDegree: 2` and exactly three points
+  // drew no line, no R² and no diagnostic, while the same config with two
+  // points drew a straight fit. Three points is not a degenerate input.
+  if (wantTrend && pts.length >= 2 && (trendDeg <= 1 || pts.length < 4)) {
     const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
     const my = pts.reduce((s, p) => s + p.y, 0) / pts.length;
     const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
     if (sxx > 0) {
       const slope = pts.reduce((s, p) => s + (p.x - mx) * (p.y - my), 0) / sxx;
       const at = (x: number) => my + slope * (x - mx);
-      nodes.push({
-        kind: "line",
-        x1: toX(x0),
-        y1: toY(at(x0)),
-        x2: toX(x1),
-        y2: toY(at(x1)),
-        stroke: style.negative,
-        strokeWidth: 1.25,
-        dash: [4, 2],
-        name: "trend",
-      });
+      // CLIPPED to the plot, which the polynomial branch below already does and
+      // this one — the default — did not.
+      //
+      // The line is drawn across the padded NICE-TICK ends, not the data's own
+      // x range, and `scatterDomain` deliberately folds in `X line` rows, x-axis
+      // `bands` and a `quadrants` crossing. Any of those three documented
+      // decorations therefore stretches x0 far past the data and the
+      // extrapolated y explodes with it: an `X line` at −1000 put the trend's
+      // endpoints at y = 93043 and −45957 on a 300pt canvas.
+      //
+      // Clipped rather than clamped: clamping the endpoints would bend a
+      // straight line, and the whole claim of an OLS fit is that it is straight.
+      // Only y needs it — `toX(x0)`/`toX(x1)` are the plot's own edges.
+      const seg = clipToPlotY(toX(x0), toY(at(x0)), toX(x1), toY(at(x1)), plot.y, plot.y + plot.h);
+      if (seg) {
+        nodes.push({
+          kind: "line",
+          ...seg,
+          stroke: style.negative,
+          strokeWidth: 1.25,
+          dash: [4, 2],
+          name: "trend",
+        });
+      }
       const stats = trendStats(pts);
       if (stats) {
         const label = `R² = ${stats.r2.toFixed(2)}${stats.p != null ? `, p ${formatP(stats.p)}` : ""}`;
@@ -677,7 +737,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Bubble size legend: without a key, bubble AREA is unreadable. Two
   // outline reference circles (a nice maximum and its half), top-right.
   const legendBoxes: Box[] = [];
-  if (cfg.kind === "bubble" && pts.some((p) => p.size != null)) {
+  // A `Size` row that is entirely zero has nothing to key: `maxSize` is floored
+  // to a tiny epsilon so the ratios stay finite, so the two reference circles
+  // came out different sizes and BOTH were labelled "0.00", over a plot where
+  // every bubble sits at the 2.5pt floor. A legend that contradicts itself and
+  // the marks it explains is worse than none.
+  if (cfg.kind === "bubble" && pts.some((p) => Math.abs(p.size ?? 0) > 0)) {
     const sizeFmt = resolveFormat(
       pts.map((p) => Math.abs(p.size ?? 0)),
       cfg.numberFormat,

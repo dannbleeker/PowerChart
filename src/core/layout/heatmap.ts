@@ -497,7 +497,14 @@ function calendarLayout(
   const gridY = titleH + monthH + 2;
   const availW = cfg.width - gridX - 4;
   const availH = cfg.height - gridY - legendH - footnoteH(cfg, style, decor);
-  const cell = Math.max(4, Math.min(availW / Math.max(1, nWeeks), availH / 7));
+  // The 4pt floor is a readability minimum, not a licence to leave the canvas.
+  // `nWeeks` is unbounded — CLAUDE.md names "a multi-year daily calendar
+  // heatmap is ~1-4k days" as a real chart shape — so past ~118 week columns the
+  // floor took over from the fit and the grid marched off the right edge: a
+  // four-year calendar drew 377pt beyond a 480pt canvas. A cell under 4pt is
+  // hard to read; a cell outside the chart is not drawn at all.
+  const weekW = availW / Math.max(1, nWeeks);
+  const cell = Math.min(Math.max(4, Math.min(weekW, availH / 7)), weekW);
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);

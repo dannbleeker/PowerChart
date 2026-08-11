@@ -32,6 +32,28 @@ import type { LayoutResult } from "./layout/column";
 export const DEFAULT_SIZE = { width: 480, height: 300 };
 
 /**
+ * The kinds whose layout actually reads `horizontal` and rotates. Every other
+ * kind draws the same chart either way — see `normalizeConfig`, which drops the
+ * flag where it cannot apply so that nothing downstream acts on a rotation that
+ * never happened.
+ *
+ * Kept as a list rather than derived, because there is no way to ask a layout
+ * whether it consulted the flag. `test/layouts.test.ts` builds every kind both
+ * ways and fails if the list and the layouts disagree, in either direction.
+ */
+export const ROTATABLE_KINDS: ReadonlySet<ChartKind> = new Set<ChartKind>([
+  "stacked",
+  "clustered",
+  "stacked100",
+  "combo",
+  "waterfall",
+  "mekko",
+  "line",
+  "area",
+  "boxplot",
+]);
+
+/**
  * A slide is 13.33 inches wide. Nothing on one is a hundred.
  *
  * pptxgenjs has a documented rule — "any number >= 100 sure isn't inches,
@@ -230,6 +252,20 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
   const width = clampDim(cfg.width, DEFAULT_SIZE.width);
   const height = clampDim(cfg.height, DEFAULT_SIZE.height);
 
+  // `horizontal` is a request to rotate, and only these kinds have a layout
+  // that can honour it. On every other kind the layout ignores the flag — but
+  // the decoration stage did not: `skipDecor` and the value-axis map keyed off
+  // the raw flag, so setting it on a treemap, sunburst, violin or candlestick
+  // drew a byte-identical chart with its CAGR arrow, difference arrow, value
+  // lines, callouts and Error/Target marks silently removed. The pane's
+  // "Horizontal (bar)" toggle is offered for every kind and its state survives
+  // a kind change, so that is one click away.
+  //
+  // Dropped here rather than at each reader, so the layouts, the decoration
+  // gate and the accessible description all see the same world. `test/
+  // layouts.test.ts` pins the set against what the layouts actually do.
+  const horizontal = cfg.horizontal && ROTATABLE_KINDS.has(cfg.kind) ? cfg.horizontal : undefined;
+
   // Order a reversed manual scale and drop non-finite ends — a NaN or inverted
   // bound reaches niceTicks and blanks the whole value axis.
   let scale = cfg.scale;
@@ -260,6 +296,7 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
     height,
     scale,
     style,
+    horizontal,
     data: normalizeData(cfg.data),
     decorations:
       cfg.decorations && typeof cfg.decorations === "object" && !Array.isArray(cfg.decorations)
@@ -286,10 +323,15 @@ const SORTABLE: ChartKind[] = ["stacked", "clustered", "stacked100", "mekko", "p
  * contiguous; its endpoints are moved and re-ordered, which is the best a
  * span can do.
  */
+/** Old category index → new one, after `order` has been applied. */
+function positionMap(order: number[]): (i: number) => number {
+  const pos = new Map(order.map((oldIdx, newIdx) => [oldIdx, newIdx]));
+  return (i: number) => pos.get(i) ?? i;
+}
+
 function remapDecorations<T extends Partial<Decorations> | undefined>(decor: T, order: number[]): T {
   if (!decor) return decor;
-  const pos = new Map(order.map((oldIdx, newIdx) => [oldIdx, newIdx]));
-  const at = (i: number) => pos.get(i) ?? i;
+  const at = positionMap(order);
   const pair = <T extends { from: number; to: number }>(p: T): T => {
     const [from, to] = [at(p.from), at(p.to)].sort((a, b) => a - b);
     return { ...p, from, to };
@@ -330,6 +372,24 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
       xExtent: pick(data.xExtent),
     },
     decorations: remapDecorations(cfg.decorations, order),
+    // `pie.explode` and `pie.breakout` are category indices too — they just
+    // live on the top-level config rather than under `decorations`, so
+    // `remapDecorations` never saw them. Unpermuted, `explode: [0]` offset
+    // whichever category the SORT put in slot 0 and `breakout: [0, 2]`
+    // collapsed whichever two landed there: a different set of data points
+    // than the author named. That is the exact failure `remapDecorations`'
+    // docstring exists for — a highlight belongs to a data point, not to a
+    // screen position — and pie/doughnut are in `SORTABLE`.
+    ...(cfg.pie ? { pie: remapPieIndices(cfg.pie, order) } : {}),
+  };
+}
+
+function remapPieIndices(pie: NonNullable<ChartConfig["pie"]>, order: number[]): NonNullable<ChartConfig["pie"]> {
+  const at = positionMap(order);
+  return {
+    ...pie,
+    ...(pie.explode ? { explode: pie.explode.map(at) } : {}),
+    ...(pie.breakout ? { breakout: pie.breakout.map(at) } : {}),
   };
 }
 
@@ -754,11 +814,14 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // chart, an unwidened axis put a whisker for 34 at x = 530.9 on a 480-wide
   // canvas. The widening was never orientation-specific — it is arithmetic on
   // the value domain — it was only unreachable while nothing drew there.
-  if ((errors || targets) && cfg.scale?.max == null) {
+  if ((errors || targets) && (cfg.scale?.max == null || cfg.scale?.min == null)) {
     const ext = drawnExtent(cfg, errors, targets);
     if (ext) {
       const ticks = niceTicks(ext.min, ext.max, 5);
-      cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: ticks[ticks.length - 1] } };
+      cfg = {
+        ...cfg,
+        scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: cfg.scale?.max ?? ticks[ticks.length - 1] },
+      };
     }
   }
 
@@ -1097,7 +1160,16 @@ export function valueExtent(cfg: ChartConfig): { min: number; max: number } | nu
   // function's own docstring names. Measured: an `otherBucket:{max:3}` chart
   // whose Other bar reaches 120 reported max 50, and Same Scale then drew that
   // bar at y = -375.6 with h = 657.6 on a 300pt canvas.
-  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(cfg))));
+  //
+  // `normalizeConfig` was the OTHER one missing, and it is the first thing
+  // `buildChart` does. It is what guarantees `Series.name` is a string and drops
+  // a null series entry, and the three passes below all call `s.name.trim()`
+  // unguarded — so a series written as `{ values: [...] }` with no name, which
+  // the skill will happily write into a POWERCHART_CONFIG tag, rendered fine
+  // through `buildChart` and threw a TypeError here. `doSameScale` maps this
+  // over the deck without a guard, so one such chart aborted the whole
+  // Same-Scale operation and nothing was rescaled.
+  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(normalizeConfig(cfg)))));
   return drawnExtent(collapseOther(extracted.cfg), extracted.errors, extracted.targets);
 }
 

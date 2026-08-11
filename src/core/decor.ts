@@ -32,10 +32,16 @@ export function decorationNodes(
     const rate = cagr(vFrom, vTo, to - from);
     // Clear the column totals row and difference arrows when shown.
     const lift = fs * 1.6 + (decor.totals ? fs * 1.5 : 0) + (decor.difference ? fs * 1.2 : 0);
+    // Anchored on the value it PRINTS, for the reason spelled out on the
+    // difference arrow below — this block carries the identical mismatch, and
+    // when `decor.cagr.series` names a series it is worse: the rate is that
+    // series' and the arrow sat on the drawn top of whichever series happened
+    // to be highest.
+    const cagrY = (c: number, v: number) => (a.valueToY ? a.valueToY(sVals ? v : a.columnValue[c]) : a.columnTop[c]);
     const x1 = a.categoryX[from];
-    const y1 = a.columnTop[from] - lift;
+    const y1 = cagrY(from, vFrom) - lift;
     const x2 = a.categoryX[to];
-    const y2 = a.columnTop[to] - lift;
+    const y2 = cagrY(to, vTo) - lift;
     const angle = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
     nodes.push(
       { kind: "line", x1, y1, x2, y2, stroke: style.text, strokeWidth: 1.25, name: "cagr-line" },
@@ -65,10 +71,28 @@ export function decorationNodes(
     const si = decor.difference.series;
     const useLevel =
       si != null && a.seriesLevels != null && a.valueToY != null && si >= 0 && si < (a.seriesLevels[0]?.length ?? 0);
+    // The pixel anchor and the number the arrow prints have to describe the same
+    // mark, so take BOTH from `columnValue` wherever the layout publishes a
+    // value→y map. `columnTop` is the drawn top, and the two part company more
+    // often than they look:
+    //
+    //  - a multi-series LINE chart publishes the topmost point as `columnTop`
+    //    and the FIRST series' value as `columnValue`, so the arrow spanned one
+    //    series' points and read the other's growth (+100% over a span that is
+    //    +200%);
+    //  - a STACKED column with a negative segment puts `columnTop` at the
+    //    positive total and `columnValue` at the net, so +10/−4 → +10/−8 drew a
+    //    ZERO-LENGTH arrow labelled −67%, and +10/−8 → +5/0 drew one pointing
+    //    DOWN labelled +150%.
+    //
+    // Anchoring on the printed value fixes both without touching what any
+    // layout publishes — and it is an identity wherever the two already agree,
+    // which is every chart in the showcase.
+    const anchorY = (c: number) => (a.valueToY ? a.valueToY(a.columnValue[c]) : a.columnTop[c]);
     let vFrom = useLevel ? a.seriesLevels![from][si!] : a.columnValue[from];
-    let yFrom = useLevel ? a.valueToY!(vFrom) : a.columnTop[from];
+    let yFrom = useLevel ? a.valueToY!(vFrom) : anchorY(from);
     const vTo = useLevel ? a.seriesLevels![to][si!] : a.columnValue[to];
-    const yTo = useLevel ? a.valueToY!(vTo) : a.columnTop[to];
+    const yTo = useLevel ? a.valueToY!(vTo) : anchorY(to);
     // Anchor the arrow's start at a value line instead of a column.
     const vlIdx = decor.difference.fromValueLine;
     const vls = decor.valueLines ?? (decor.valueLine ? [decor.valueLine] : []);

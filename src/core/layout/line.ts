@@ -1,4 +1,4 @@
-import type { ChartConfig, ChartStyle, Decorations } from "../types";
+import type { ChartConfig, ChartData, ChartStyle, Decorations, Series } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../format";
 import { maxOf, minOf } from "../agg";
@@ -34,6 +34,35 @@ function slabSteps(spanPx: number, stepped?: "before" | "after" | "center"): num
   return Math.max(2, Math.min(24, Math.ceil(Math.abs(spanPx) / 4)));
 }
 
+// Band low/high rows shade an uncertainty ribbon instead of drawing lines.
+const BAND_LOW = /^band\s*low$/i;
+const BAND_HIGH = /^band\s*high$/i;
+const isBandRow = (s: Series) => BAND_LOW.test(s.name.trim()) || BAND_HIGH.test(s.name.trim());
+
+/**
+ * Split a `Band low` / `Band high` pair out of the series list.
+ *
+ * The rows are documented as never drawing as lines — they are the shaded
+ * confidence ribbon — so the DRAWN data is the rest of the list. Shared by the
+ * vertical and horizontal layouts because the horizontal one did not do it at
+ * all: sideways, a chart with band rows drew them as two ordinary lines with
+ * their own legend chips and no ribbon, which is neither what the reference
+ * documents nor what the same config renders upright.
+ *
+ * Returns the input untouched when there is no band row, so the ordinary chart
+ * is byte-identical.
+ */
+function splitBandRows(raw: ChartData): {
+  data: ChartData;
+  bandLow?: (number | null)[];
+  bandHigh?: (number | null)[];
+} {
+  const bandLow = raw.series.find((s) => BAND_LOW.test(s.name.trim()))?.values;
+  const bandHigh = raw.series.find((s) => BAND_HIGH.test(s.name.trim()))?.values;
+  if (!bandLow && !bandHigh) return { data: raw };
+  return { data: { ...raw, series: raw.series.filter((s) => !isBandRow(s)) }, bandLow, bandHigh };
+}
+
 /** Line and area charts over categories. Lines are 2pt with ≥3pt markers. */
 export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   if ((cfg.kind === "line" || cfg.kind === "area") && decor.sparkline) {
@@ -48,16 +77,10 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   if ((cfg.kind === "line" || cfg.kind === "area") && cfg.horizontal) {
     return layoutLineHorizontal(cfg, style, decor);
   }
-  const rawData = cfg.data;
-  // Band low/high rows shade an uncertainty ribbon instead of drawing lines.
-  const BAND_LOW = /^band\s*low$/i;
-  const BAND_HIGH = /^band\s*high$/i;
-  const bandLow = rawData.series.find((s) => BAND_LOW.test(s.name.trim()))?.values;
-  const bandHigh = rawData.series.find((s) => BAND_HIGH.test(s.name.trim()))?.values;
-  const data = {
-    ...rawData,
-    series: rawData.series.filter((s) => !BAND_LOW.test(s.name.trim()) && !BAND_HIGH.test(s.name.trim())),
-  };
+  const { data, bandLow, bandHigh } = splitBandRows(cfg.data);
+  // The config as the plot sees it: band rows are not drawn, so anything that
+  // indexes series positionally must index THIS list, not the raw one.
+  const drawn: ChartConfig = data === cfg.data ? cfg : { ...cfg, data };
   const n = data.categories.length;
   const area = cfg.kind === "area";
   const fs = style.fontSize;
@@ -331,7 +354,12 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   }
 
   nodes.push(baselineNode(frame, y0, style));
-  if (decor.seriesLabels) nodes.push(...seriesLabelNodes(cfg, style, frame, lastSegMid));
+  // The FILTERED series list, because `lastSegMid` is indexed by it. Handing
+  // over `cfg` paired the drawn line's end-y with `cfg.data.series[0].name`, so
+  // a chart whose `Band low` / `Band high` rows came first labelled its one
+  // drawn line "Band low" — a row the reference says is never drawn as a line
+  // at all.
+  if (decor.seriesLabels) nodes.push(...seriesLabelNodes(drawn, style, frame, lastSegMid));
 
   return {
     nodes,
@@ -881,26 +909,51 @@ export function splineSegments(
 }
 
 function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
-  const { data } = cfg;
+  const { data, bandLow, bandHigh } = splitBandRows(cfg.data);
+  // The chrome legends `cfg.data.series`, so it has to see the same list the
+  // plot draws — otherwise a band row that is (correctly) not drawn still gets
+  // a legend chip. Untouched when there is no band row.
+  const drawn: ChartConfig = data === cfg.data ? cfg : { ...cfg, data };
   const n = data.categories.length;
   const area = cfg.kind === "area";
   const fs = style.fontSize;
 
-  const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  const all = [
+    ...data.series.flatMap((s) => s.values.filter((v): v is number => v != null)),
+    ...(bandLow ?? []).filter((v): v is number => v != null),
+    ...(bandHigh ?? []).filter((v): v is number => v != null),
+  ];
   const stackedPos = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0));
   const stackedNeg = data.categories.map((_, c) => data.series.reduce((a, s) => a + Math.min(0, s.values[c] ?? 0), 0));
   const dataMax = area ? maxOf(stackedPos, 0) : maxOf(all, 0);
   const dataMin = area ? minOf(stackedNeg, 0) : minOf(all, 0);
   const fmt = resolveFormat(all, cfg.numberFormat);
 
-  const frame = computeFrameHorizontal(cfg, style, decor);
+  const frame = computeFrameHorizontal(drawn, style, decor);
   const scale = valueScale(frame, dataMin, dataMax, cfg.scale);
-  const toX = (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w;
+  // Clamped like `scale.toY` is — see the note on the same map in column.ts. A
+  // manual scale narrower than the data extrapolated off the slide here too.
+  const toX = (v: number) =>
+    frame.x + Math.max(0, Math.min(frame.w, ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w));
   const slotH = frame.h / Math.max(1, n);
   const centers = data.categories.map((_, c) => frame.y + slotH * (c + 0.5));
+  // Date categories space proportionally to time — the same rule the manual
+  // states for line charts without qualifying it by orientation, and the same
+  // arithmetic the vertical path runs along x. Sideways it was simply absent,
+  // so "2024-01, 2024-02, 2024-12" sat in three equal rows and a reader saw a
+  // steady march where the data has a ten-month gap.
+  const days = data.categories.map((c) => parseDateToken(c));
+  if (!area && n > 1 && days.every((d): d is number => d != null)) {
+    const d0 = Math.min(...days);
+    const d1 = Math.max(...days);
+    const inset = slotH / 2;
+    for (let c = 0; c < n; c++) {
+      centers[c] = frame.y + inset + ((days[c] - d0) / (d1 - d0 || 1)) * (frame.h - inset * 2);
+    }
+  }
   const x0 = toX(0);
 
-  const nodes: SceneNode[] = horizontalChrome(cfg, style, decor, frame, centers, scale, (v) => toX(v) - frame.x);
+  const nodes: SceneNode[] = horizontalChrome(drawn, style, decor, frame, centers, scale, (v) => toX(v) - frame.x);
   const columnTop: number[] = data.categories.map(() => x0);
 
   /**
@@ -935,6 +988,18 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
       }
     }
   };
+  // The confidence band from `Band low` / `Band high` rows. Sideways those rows
+  // were never split off the series list at all, so they drew as two ordinary
+  // lines — the reference says they never do — and the ribbon they exist to
+  // shade was missing.
+  if (!area && bandLow && bandHigh) {
+    ribbon(
+      bandLow,
+      bandHigh,
+      lerpColor(style.background, seriesColor(style, 0, data.series[0]?.color), 0.18),
+      "band-ribbon",
+    );
+  }
   // The plan-vs-actual ribbon. It was one of four decorations this branch
   // simply did not read, so `fillBetween` was a byte-identical no-op sideways
   // while changing the vertical scene — the band a reader is meant to see as
@@ -947,39 +1012,14 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
       ribbon(sa, sb, lerpColor(style.background, seriesColor(style, ai, data.series[ai]?.color), 0.22), "fill-between");
   }
 
-  // Legend chips (multi-series) in the reserved top strip.
-  if (decor.seriesLabels && data.series.length > 1) {
-    let lx = frame.x;
-    const ly = (cfg.title ? fs * 1.6 + 6 : 0) + fs * 0.3;
-    data.series.forEach((s, si) => {
-      const chip = fs * 0.7;
-      nodes.push(
-        {
-          kind: "rect",
-          x: lx,
-          y: ly,
-          w: chip,
-          h: chip,
-          fill: seriesColor(style, si, s.color),
-          name: `legend-chip-${si}`,
-        },
-        {
-          kind: "text",
-          x: lx + chip + 3,
-          y: ly - fs * 0.3,
-          w: textWidth(s.name, fs) + 6,
-          h: fs * 1.4,
-          text: s.name,
-          fontSize: fs,
-          color: style.text,
-          align: "left",
-          valign: "middle",
-          name: `legend-${si}`,
-        },
-      );
-      lx += chip + 3 + textWidth(s.name, fs) + 12;
-    });
-  }
+  // NO legend block here. `horizontalChrome` already draws one (`legendRow`,
+  // shared with every other sideways chart) under the same condition, so this
+  // path had TWO: the shipped showcase slide "Horizontal profile chart
+  // (stacked area)" carried both, 2.5pt apart, and rendered every series name
+  // as a smear. The shared one is also the better one — it wraps to a second
+  // row via `legendWrapWalk`, matching what `computeFrameHorizontal` reserved,
+  // and its chips carry the series' pattern/scenario paint rather than the bare
+  // colour.
 
   if (area) {
     const posBase = data.categories.map(() => 0);
@@ -1006,12 +1046,28 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const xU0 = toX(upper[c]);
         const xU1 = toX(upper[c + 1]);
         const span = centers[c + 1] - centers[c];
-        const steps = slabSteps(span);
+        const steps = slabSteps(span, decor.stepped);
         const h = span / steps;
         for (let k = 0; k < steps; k++) {
           const t = (k + 0.5) / steps;
-          const xL = xL0 + (xL1 - xL0) * t;
-          const xU = xU0 + (xU1 - xU0) * t;
+          // Stepped areas hold a flat edge across the interval (staircase);
+          // "after" carries the left value, "before" the right, "center" both.
+          // The vertical path has done this since `stepped` shipped; sideways
+          // the slab interpolated regardless, so a stepped AREA chart claimed
+          // the value slid where the data says it jumped — the same silent
+          // no-op that `stepped` on a sideways LINE already had fixed.
+          let xL: number;
+          let xU: number;
+          if (decor.stepped === "after" || (decor.stepped === "center" && t < 0.5)) {
+            xL = xL0;
+            xU = xU0;
+          } else if (decor.stepped === "before" || decor.stepped === "center") {
+            xL = xL1;
+            xU = xU1;
+          } else {
+            xL = xL0 + (xL1 - xL0) * t;
+            xU = xU0 + (xU1 - xU0) * t;
+          }
           nodes.push({
             kind: "rect",
             x: Math.min(xL, xU),

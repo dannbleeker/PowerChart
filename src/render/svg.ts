@@ -48,7 +48,23 @@ const esc = (s: string) =>
  * passes unchanged, so valid charts render byte-identically.
  */
 const PAINT_OK = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|url\(#[\w.-]+\)|[a-zA-Z]{1,24})$/;
-const paint = (c: string | undefined): string => (c && PAINT_OK.test(c) ? c : "#000000");
+/**
+ * A paint the markup can carry, or black.
+ *
+ * TRIMMED first, which the three other colour parsers in this repo have always
+ * done (`paintText` in `src/core/color.ts` and in `skill/scripts/pptx-paint.mjs`,
+ * and `officeHex`) and this one did not — so a colour with a stray space around
+ * it, exactly what a pasted palette entry or a hand-edited config carries,
+ * rendered BLACK in the reference renderer while both PowerPoint renderers
+ * rendered it correctly. Non-strings read as empty for the same reason they do
+ * there: the type says `string`, and TypeScript checks the code, not the file
+ * someone pasted.
+ */
+const paintOr = (c: unknown, fallback: string): string => {
+  const t = typeof c === "string" ? c.trim() : "";
+  return t && PAINT_OK.test(t) ? t : fallback;
+};
+const paint = (c: unknown): string => paintOr(c, "#000000");
 
 /**
  * NUMERIC attributes are the second injection surface, and the one the colour
@@ -135,7 +151,13 @@ export function sceneToSvg(scene: Scene, opts: { background?: string } = {}): st
   }
   if (defs.size) parts.push(`<defs>${[...defs.values()].join("")}</defs>`);
   if (opts.background) {
-    parts.push(`<rect width="100%" height="100%" fill="${paint(opts.background)}"/>`);
+    // An UNREADABLE background is the one place `paint`'s black fallback is the
+    // wrong answer: this rect covers the whole canvas and is drawn before every
+    // node, so a background of "not-a-colour" — or of anything the allow-list
+    // declines — painted the chart out entirely. Nothing else in the scene can
+    // hide behind a bad value like that. Fall back to the canvas the engine
+    // documents as its default instead.
+    parts.push(`<rect width="100%" height="100%" fill="${paintOr(opts.background, "#ffffff")}"/>`);
   }
   for (const n of scene.nodes) parts.push(nodeToSvg(n));
   parts.push("</svg>");

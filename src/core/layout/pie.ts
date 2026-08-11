@@ -271,7 +271,24 @@ function layoutGauge(
   const footH = footnoteH(cfg, style, decor);
   const availH = cfg.height - titleH - footH;
   const cx = cfg.width / 2;
-  const r = Math.max(20, Math.min(cfg.width / 2 - fs * 3, availH * 0.82));
+  /** The label each slice will get, so the margin can be measured rather than guessed. */
+  const sliceLabel = (v: number, c: number) =>
+    segmentLabel(decor.labelContent ?? ["category", "percent"], {
+      value: v,
+      fraction: v / denom,
+      series: data.series[0]?.name ?? "",
+      category: data.categories[c],
+      fmt,
+    });
+  // The side margin has to hold the LABELS. `fs * 3` is 30pt at the default
+  // font, and "Others 12%" is 58 — so the outer labels of the shipped showcase
+  // gauge ran 32pt past the right edge of the slide. Measure the widest label
+  // and reserve that, never less than the old guess (so a gauge whose labels
+  // are short is unchanged).
+  const sideMargin = decor.segmentLabels
+    ? Math.max(fs * 3, values.reduce((m, v, c) => Math.max(m, textWidth(sliceLabel(v, c), fs) + 4), 0) + fs * 0.8)
+    : fs * 3;
+  const r = Math.max(20, Math.min(cfg.width / 2 - sideMargin, availH * 0.82));
   const cy = titleH + r + fs * 0.3; // arc peak at the top, flat side at cy
   const innerR = r * 0.58;
 
@@ -299,13 +316,7 @@ function layoutGauge(
     });
     if (decor.segmentLabels) {
       const mid = angle + span / 2;
-      const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
-        value: v,
-        fraction: v / denom,
-        series: data.series[0]?.name ?? "",
-        category: data.categories[c],
-        fmt,
-      });
+      const label = sliceLabel(v, c);
       const p = polar(cx, cy, r + fs * 0.8, mid);
       const w = textWidth(label, fs) + 4;
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
@@ -323,7 +334,10 @@ function layoutGauge(
       });
       nodes.push({
         kind: "text",
-        x: rightHalf ? p.x : p.x - w,
+        // Clamped as a floor: the margin above sizes the arc so the labels fit,
+        // but on a chart too narrow to hold them at all the arc bottoms out at
+        // its 20pt minimum and the label would still leave the canvas.
+        x: Math.max(0, Math.min(cfg.width - w, rightHalf ? p.x : p.x - w)),
         y: p.y - fs * 0.75,
         w,
         h: fs * 1.5,

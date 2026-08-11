@@ -475,3 +475,175 @@ describe("date-spaced line categories", () => {
     expect(xs[1] - xs[0]).toBeLessThan((xs[2] - xs[1]) / 5);
   });
 });
+
+/**
+ * The rotation toggle used to drop two more things, both of them documented
+ * behaviour rather than decoration: the `Band low` / `Band high` split (the
+ * reference says those rows "never draw as lines") and the date-proportional
+ * category spacing the manual states for line charts without qualifying it by
+ * orientation. Sideways, band rows drew as two ordinary series with their own
+ * legend chips and no ribbon, and a ten-month gap between categories sat in an
+ * evenly spaced row.
+ */
+describe("a sideways line chart keeps the rules the upright one has", () => {
+  const banded: ChartConfig = {
+    kind: "line",
+    horizontal: true,
+    ...DEFAULT_SIZE,
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "Actual", values: [10, 14, 12, 18] },
+        { name: "Band low", values: [8, 12, 10, 15] },
+        { name: "Band high", values: [12, 16, 14, 21] },
+      ],
+    },
+    decorations: { seriesLabels: true },
+  };
+
+  it("shades the Band low/high ribbon instead of drawing the rows as lines", () => {
+    const { nodes } = buildChart(banded);
+    expect(nodes.filter((n) => n.name?.startsWith("band-ribbon")).length).toBeGreaterThan(0);
+    // One drawn series, not three: the band rows are the ribbon, not lines.
+    const drawn = new Set(
+      nodes.map((n) => /^(?:line|marker)-(\d+)-/.exec(n.name ?? "")?.[1]).filter((v): v is string => !!v),
+    );
+    expect([...drawn]).toEqual(["0"]);
+    // …and they are not legended either.
+    const labels = nodes.filter((n): n is TextNode => n.kind === "text" && /^legend-\d+$/.test(n.name ?? ""));
+    expect(labels.map((n) => n.text)).not.toContain("Band low");
+  });
+
+  it("widens the value scale to cover the band", () => {
+    // The negative control for the split: dropping the rows entirely would also
+    // stop them drawing as lines, and would silently clip the ribbon.
+    const { nodes } = buildChart(banded);
+    const rects = (prefix: string) =>
+      nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith(prefix));
+    const bandRight = Math.max(...rects("band-ribbon").map((s) => s.x + s.w));
+    const lineRight = Math.max(...rects("marker-").map((m) => m.x + m.w));
+    expect(bandRight).toBeGreaterThan(lineRight);
+  });
+
+  it("spaces date categories proportionally to time down the axis", () => {
+    const { nodes } = buildChart({
+      kind: "line",
+      horizontal: true,
+      ...DEFAULT_SIZE,
+      data: { categories: ["2025-01", "2025-02", "2025-12"], series: [{ name: "S", values: [1, 2, 3] }] },
+    } as ChartConfig);
+    const ys = nodes
+      .filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("marker-0-"))
+      .map((p) => p.y);
+    expect(ys).toHaveLength(3);
+    // Jan→Feb gap must be far smaller than Feb→Dec, exactly as it is upright.
+    expect(ys[1] - ys[0]).toBeLessThan((ys[2] - ys[1]) / 5);
+  });
+});
+
+/**
+ * `stepped` held a flat edge across the interval on an upright area chart and
+ * interpolated on a sideways one — so a staircase series drawn as a bar profile
+ * claimed the value slid where the data says it jumped. The sideways LINE path
+ * already stepped; only the area slabs did not.
+ */
+describe("a sideways area chart steps when it is told to", () => {
+  const cfg = (stepped?: "before" | "after" | "center"): ChartConfig => ({
+    kind: "area",
+    horizontal: true,
+    ...DEFAULT_SIZE,
+    data: { categories: ["A", "B", "C"], series: [{ name: "S", values: [3, 7, 5] }] },
+    decorations: stepped ? { stepped } : {},
+  });
+  const slabWidths = (c: ChartConfig) =>
+    buildChart(c)
+      .nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("area-0-0-"))
+      .map((n) => Math.round(n.w * 100) / 100);
+
+  it("holds one width across the interval instead of ramping", () => {
+    const ramped = slabWidths(cfg());
+    const held = slabWidths(cfg("after"));
+    expect(new Set(ramped).size).toBeGreaterThan(1); // the control: interpolation ramps
+    expect(new Set(held).size).toBe(1); // "after" holds the left value the whole way
+  });
+
+  it("carries the RIGHT value for `before`, so the two are not the same staircase", () => {
+    expect(slabWidths(cfg("before"))[0]).not.toBe(slabWidths(cfg("after"))[0]);
+  });
+});
+
+/**
+ * `lastSegMid` is indexed by the FILTERED series list (band rows are not drawn
+ * as lines), and `seriesLabelNodes` was handed the raw config — so a chart
+ * whose `Band low` / `Band high` rows came first paired the drawn line's end-y
+ * with `cfg.data.series[0].name` and labelled it "Band low".
+ */
+describe("the right-hand series label names the line it points at", () => {
+  const labels = (series: { name: string; values: number[] }[]) =>
+    buildChart({
+      kind: "line",
+      ...DEFAULT_SIZE,
+      decorations: { seriesLabels: true },
+      data: { categories: ["a", "b"], series },
+    } as ChartConfig)
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"))
+      .map((n) => n.text);
+
+  const band = [
+    { name: "Band low", values: [1, 2] },
+    { name: "Band high", values: [3, 4] },
+  ];
+  const actual = { name: "Actual", values: [2, 3] };
+
+  it("labels the drawn line whichever end the band rows sit at", () => {
+    expect(labels([...band, actual])).toEqual(["Actual"]);
+    expect(labels([actual, ...band])).toEqual(["Actual"]);
+  });
+
+  it("still labels every drawn series when there are no band rows", () => {
+    // The negative control: filtering the wrong list would drop real labels.
+    expect(
+      labels([
+        { name: "A", values: [1, 2] },
+        { name: "B", values: [3, 4] },
+      ]).sort(),
+    ).toEqual(["A", "B"]);
+  });
+});
+
+/**
+ * The same anchor mismatch on a multi-series LINE chart: `columnTop` is the
+ * topmost point across every series and `columnValue` is the FIRST series'
+ * value, so the arrow spanned one series' points and printed another's growth.
+ */
+describe("a difference arrow on a multi-series line reads the series it spans", () => {
+  it("does not span one series and label another's growth", () => {
+    const { nodes } = buildChart({
+      kind: "line",
+      width: 400,
+      height: 300,
+      decorations: { difference: { from: 0, to: 1 } },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "A", values: [10, 20] }, // +100%
+          { name: "B", values: [100, 300] }, // +200%, and the topmost line
+        ],
+      },
+    } as ChartConfig);
+    const line = nodes.find((n): n is LineNode => n.kind === "line" && n.name === "diff-line")!;
+    const markers = (si: number) =>
+      nodes
+        .filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith(`marker-${si}-`))
+        .map((n) => n.y + n.h / 2);
+    const label = nodes.find((n): n is TextNode => n.kind === "text" && n.name === "diff-label")!;
+    expect(label.text).toContain("100");
+    // The arrow must sit on series A's points — the ones it is reporting — not
+    // on series B's, which is where `columnTop` put it.
+    const [aFrom, aTo] = markers(0);
+    const [bFrom] = markers(1);
+    expect(Math.abs(line.y1 - aFrom), "arrow start off series A").toBeLessThan(1);
+    expect(Math.abs(line.y2 - aTo), "arrow end off series A").toBeLessThan(1);
+    expect(Math.abs(line.y1 - bFrom), "arrow still anchored on series B").toBeGreaterThan(1);
+  });
+});

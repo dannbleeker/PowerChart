@@ -3,6 +3,7 @@ import { DEFAULT_SIZE, buildChart, valueExtent } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import { alphaOf } from "../src/core/color";
 import { textWidth } from "../src/core/scene";
+import type { LineNode, RectNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /** Cross-kind value-extent / auto-scale / layout-indexing invariants. */
@@ -679,6 +680,87 @@ describe("the rotation toggle keeps the decorations that mean something", () => 
 });
 
 /**
+ * `valueExtent`'s own comment claims it runs "the SAME normalisation buildChart
+ * runs before it lays anything out, in the same order" — and it skipped
+ * `normalizeConfig`, the first thing buildChart does. That is what guarantees
+ * `Series.name` is a string and drops a null series entry, and the three passes
+ * after it call `s.name.trim()` unguarded. So a series written as
+ * `{ values: [...] }` with no name — which the skill writes verbatim into a
+ * POWERCHART_CONFIG tag — rendered fine and made this throw. `doSameScale` maps
+ * it over the deck without a guard, so one such chart aborted the whole
+ * Same-Scale operation and nothing was rescaled.
+ */
+describe("valueExtent survives everything buildChart survives", () => {
+  const cases: [string, unknown][] = [
+    ["a series with no name", { categories: ["A", "B"], series: [{ values: [1, 2] }] }],
+    ["a null series entry", { categories: ["A", "B"], series: [null, { name: "S", values: [1, 3] }] }],
+    ["a numeric series name", { categories: ["A", "B"], series: [{ name: 7, values: [1, 2] }] }],
+  ];
+  for (const [label, data] of cases) {
+    it(`measures ${label} instead of throwing`, () => {
+      const cfg = { kind: "clustered", ...DEFAULT_SIZE, data } as unknown as ChartConfig;
+      // The control: buildChart already copes, so the two must not disagree.
+      expect(() => buildChart(cfg), `buildChart broke on ${label}`).not.toThrow();
+      const ext = valueExtent(cfg);
+      expect(ext, label).not.toBeNull();
+      expect(Number.isFinite(ext!.max), label).toBe(true);
+    });
+  }
+});
+
+/**
+ * The block that widens the auto scale so error whiskers and target ticks stay
+ * inside the plot was entered only when `cfg.scale?.max == null` — while the
+ * block itself already honoured a pinned min. So the widening was asymmetric:
+ * pinning only `scale.min` still widened the max, and pinning only `scale.max`
+ * skipped the min widening entirely. `toY` then clipped the out-of-range mark
+ * to the plot edge (deliberate, for bars), so a Target below the auto minimum
+ * was drawn exactly on the zero baseline — a mark that asserts a value,
+ * printed at the wrong one, with nothing to say it was clipped.
+ */
+describe("pinning one end of the scale still widens the other", () => {
+  const withTarget = (scale?: { min?: number; max?: number }) =>
+    buildChart({
+      kind: "clustered",
+      ...DEFAULT_SIZE,
+      ...(scale ? { scale } : {}),
+      decorations: { valueAxis: true },
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "V", values: [10] },
+          { name: "Target", values: [-30] },
+        ],
+      },
+    } as unknown as ChartConfig).nodes;
+
+  const marks = (scale?: { min?: number; max?: number }) => {
+    const nodes = withTarget(scale);
+    const line = (name: string) => nodes.find((n): n is LineNode => n.kind === "line" && n.name === name)!;
+    return { baseline: line("baseline").y1, target: line("target-0").y1 };
+  };
+
+  it("does not print a below-range Target on the zero baseline", () => {
+    const pinnedMax = marks({ max: 100 });
+    expect(Math.abs(pinnedMax.target - pinnedMax.baseline), "target clipped onto the baseline").toBeGreaterThan(1);
+    // Both ends already widen when nothing is pinned, and pinning only the min
+    // always worked — the controls that say the fix did not simply disable the
+    // pin.
+    const auto = marks();
+    expect(Math.abs(auto.target - auto.baseline)).toBeGreaterThan(1);
+    const pinnedMin = marks({ min: -40 });
+    expect(Math.abs(pinnedMin.target - pinnedMin.baseline)).toBeGreaterThan(1);
+  });
+
+  it("still honours a pin that the data does fit inside", () => {
+    // The negative control: the widen must not overwrite a usable pinned max.
+    const nodes = withTarget({ min: -40, max: 100 });
+    const axis = nodes.filter((n) => n.name === "value-axis").map((n) => (n as unknown as { text: string }).text);
+    expect(axis.some((t) => t.includes("100"))).toBe(true);
+  });
+});
+
+/**
  * A chart may be zoomed. It may not be drawn off the slide.
  */
 describe("a manual scale narrower than the data", () => {
@@ -703,6 +785,37 @@ describe("a manual scale narrower than the data", () => {
     for (const r of rects) {
       expect(r.y, "a bar was drawn above the canvas").toBeGreaterThanOrEqual(0);
       expect(r.y + r.h, "a bar was drawn below the canvas").toBeLessThanOrEqual(DEFAULT_SIZE.height! + 1);
+    }
+  });
+
+  it("clips SIDEWAYS too, on every kind that rotates", () => {
+    // The clamp lived in `valueScale.toY`, and only the vertical branch of each
+    // layout routed through it — the horizontal branch is its own linear map and
+    // had none. The same config that drew a full-height bar upright drew a
+    // 30,128pt one sideways, off the slide and past the OOXML coordinate limit.
+    for (const kind of ["clustered", "stacked", "waterfall", "boxplot", "line", "area"] as const) {
+      const cfg = {
+        width: 400,
+        height: 300,
+        kind,
+        horizontal: true,
+        scale: { min: 0, max: 100 },
+        data: {
+          categories: ["A", "B"],
+          series: [
+            { name: "Rev", values: [5000, 8000] },
+            { name: "Two", values: [6000, 9000] },
+          ],
+        },
+      } as unknown as ChartConfig;
+      const drawn = buildChart(cfg).nodes.filter(
+        (n): n is RectNode => n.kind === "rect" && !n.name?.startsWith("band-"),
+      );
+      expect(drawn.length, `${kind}: nothing was drawn, so this proves nothing`).toBeGreaterThan(0);
+      for (const r of drawn) {
+        expect(r.x, `${kind}: drawn left of the canvas`).toBeGreaterThanOrEqual(-1);
+        expect(r.x + r.w, `${kind}: drawn past the right edge`).toBeLessThanOrEqual(401);
+      }
     }
   });
 

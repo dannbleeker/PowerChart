@@ -127,3 +127,119 @@ describe("a wrapped legend reserves its rows and never overlaps the plot", () =>
     }
   });
 });
+
+/**
+ * A horizontal line/area chart drew its legend TWICE: `horizontalChrome` emits
+ * the shared `legendRow` under `decor.seriesLabels`, and the line layout had a
+ * hand-rolled copy of its own under the same condition. The two sat 2.5pt
+ * apart, so every series name rendered as a smear — visible in the shipped
+ * showcase deck ("Horizontal profile chart (stacked area)"), where "Retail" and
+ * "Online" were each drawn over themselves.
+ */
+describe("a sideways line/area chart legends its series once", () => {
+  const cfg = (kind: "line" | "area"): ChartConfig => ({
+    kind,
+    horizontal: true,
+    width: W,
+    height: H,
+    data: {
+      categories: ["North", "South", "East"],
+      series: [
+        { name: "Retail", values: [10, 20, 15] },
+        { name: "Online", values: [5, 8, 12] },
+      ],
+    },
+    decorations: { seriesLabels: true },
+  });
+
+  for (const kind of ["line", "area"] as const) {
+    it(`emits one chip and one label per series (${kind})`, () => {
+      const { nodes } = buildChart(cfg(kind));
+      for (const si of [0, 1]) {
+        expect(
+          nodes.filter((n) => n.name === `legend-chip-${si}`),
+          `chips for series ${si}`,
+        ).toHaveLength(1);
+        expect(
+          nodes.filter((n) => n.name === `legend-${si}`),
+          `labels for series ${si}`,
+        ).toHaveLength(1);
+      }
+      // Non-vacuous: the legend is actually drawn, not merely not duplicated.
+      const labels = nodes.filter((n): n is TextNode => n.kind === "text" && /^legend-\d+$/.test(n.name ?? ""));
+      expect(labels.map((n) => n.text)).toEqual(["Retail", "Online"]);
+    });
+  }
+});
+
+/**
+ * `seriesLabelNodes` pushes overlapping labels DOWN, then — if the last one
+ * overflows the plot — shifts the whole stack up and re-propagates upward, with
+ * nothing clamping the top. Twelve series on a 240×160 chart put two labels at
+ * negative y; thirty on a 400×300 put the topmost at −123. `collide.ts` refuses
+ * to nudge a label off the top for the same reason, but it only moves labels
+ * UP, so it cannot rescue one already emitted above the canvas.
+ */
+describe("right-hand series labels stay on the canvas", () => {
+  const sized = (w: number, h: number, count: number): ChartConfig =>
+    ({
+      kind: "line",
+      width: w,
+      height: h,
+      decorations: { seriesLabels: true },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: Array.from({ length: count }, (_, i) => ({ name: `S${i}`, values: [i + 1, i + 2] })),
+      },
+    }) as ChartConfig;
+
+  for (const [w, h, count] of [
+    [240, 160, 12],
+    [400, 300, 30],
+    [480, 300, 24],
+  ] as const) {
+    it(`fits ${count} labels on a ${w}×${h} chart`, () => {
+      const labels = buildChart(sized(w, h, count)).nodes.filter(
+        (n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"),
+      );
+      expect(labels.length, "no labels drawn, so this proves nothing").toBeGreaterThan(count / 2);
+      for (const l of labels) {
+        expect(l.y, "a label was drawn above the canvas").toBeGreaterThanOrEqual(-0.01);
+        expect(l.y + l.h, "a label was drawn below the canvas").toBeLessThanOrEqual(h + 0.01);
+      }
+    });
+  }
+
+  it("keeps the labels in the order of the lines they name", () => {
+    // The spread's step is by definition below the gap the labels wanted, so
+    // every neighbouring pair overlaps — and `series-label-` is movable, with a
+    // nudge that only goes UP. Left alone it pushed each label past the one
+    // above it and handed back a full set of REORDERED labels: every one on the
+    // canvas, each naming the wrong line. Shrinking the spread set to its own
+    // step leaves the de-collision pass nothing to do.
+    for (const [w, h, count] of [
+      [240, 160, 12],
+      [400, 300, 30],
+      [480, 300, 24],
+    ] as const) {
+      const labels = buildChart(sized(w, h, count))
+        .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"))
+        .sort((a, b) => a.y - b.y)
+        .map((n) => n.text);
+      // Series i has values [i+1, i+2], so the highest index ends highest.
+      expect(labels, `${w}x${h}, ${count} series`).toEqual(
+        Array.from({ length: count }, (_, i) => `S${count - 1 - i}`),
+      );
+    }
+  });
+
+  it("leaves a chart with room to spare exactly where it was", () => {
+    // The negative control: spreading unconditionally would move every label on
+    // every chart, and these three are nowhere near needing it.
+    const ys = buildChart(sized(480, 300, 3))
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"))
+      .map((n) => Math.round(n.y * 10) / 10);
+    expect(new Set(ys).size).toBe(3);
+    expect(Math.min(...ys)).toBeGreaterThan(0);
+  });
+});

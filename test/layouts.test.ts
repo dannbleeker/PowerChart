@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
+import { DEFAULT_SIZE, ROTATABLE_KINDS, buildChart } from "../src/core/chart";
 import { layoutColumns } from "../src/core/layout/column";
 import { layoutWaterfall } from "../src/core/layout/waterfall";
 import { layoutMekko } from "../src/core/layout/mekko";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
-import { sampleConfig } from "../src/core/samples";
+import { CHART_KINDS, sampleConfig } from "../src/core/samples";
 import type { ChartConfig } from "../src/core/types";
 import type { RectNode, TextNode } from "../src/core/scene";
 
@@ -218,5 +218,52 @@ describe("horizontal bar chrome", () => {
       }),
     );
     expect(texts(s).map((t) => t.text)).toContain("S1");
+  });
+});
+
+/**
+ * `horizontal` is a request to rotate, and only nine kinds have a layout that
+ * can honour it. The decoration stage keyed off the RAW flag, though, so
+ * setting it on a kind that ignores it — treemap, sunburst, violin,
+ * candlestick — drew a byte-identical chart with its CAGR arrow, difference
+ * arrow, value lines and callouts silently removed. The pane offers the
+ * "Horizontal (bar)" toggle for every kind and keeps its state across a kind
+ * change, so that was one click away.
+ */
+describe("the rotation flag only acts where the chart actually rotates", () => {
+  const geometry = (c: ChartConfig) =>
+    JSON.stringify(
+      buildChart(c).nodes.map((n) => [
+        n.kind,
+        n.name ?? "",
+        ...Object.values(n)
+          .filter((v): v is number => typeof v === "number")
+          .map((v) => Math.round(v * 100) / 100),
+      ]),
+    );
+
+  it("ROTATABLE_KINDS is exactly the set whose layout turns", () => {
+    // Both directions: a kind listed here that does not turn would keep the
+    // decoration bug alive, and one that turns but is missing would have its
+    // decorations drawn against the wrong axis.
+    for (const { kind } of CHART_KINDS) {
+      const flat = sampleConfig(kind);
+      const turned = { ...sampleConfig(kind), horizontal: true };
+      expect(geometry(turned) !== geometry(flat), `${kind} rotates`).toBe(ROTATABLE_KINDS.has(kind));
+    }
+  });
+
+  it("keeps the decorations a non-rotating kind was given", () => {
+    for (const kind of ["treemap", "sunburst", "violin", "candlestick"] as const) {
+      const decorated = {
+        ...sampleConfig(kind),
+        decorations: { ...sampleConfig(kind).decorations, callouts: [{ text: "Note", category: 1 }] },
+      } as ChartConfig;
+      const plain = sampleConfig(kind);
+      // The callout lands…
+      expect(geometry(decorated), `${kind} callout upright`).not.toBe(geometry(plain));
+      // …and setting a flag the layout ignores does not take it away again.
+      expect(geometry({ ...decorated, horizontal: true }), `${kind} callout sideways`).toBe(geometry(decorated));
+    }
   });
 });

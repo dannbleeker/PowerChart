@@ -191,7 +191,11 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const hi = drawn.length ? maxOf(drawn) : 1;
   const scale = valueScale(frame, lo, hi, cfg.scale, undefined, undefined, false); // no forced zero: data-driven domain
   // Value coordinate along the value axis (x when horizontal, y otherwise).
-  const qOf = H ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w : scale.toY;
+  // Clamped like `scale.toY` is — see the note on the same map in column.ts.
+  const qOf = H
+    ? (v: number) =>
+        frame.x + Math.max(0, Math.min(frame.w, ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w))
+    : scale.toY;
 
   const catStart = H ? frame.y : frame.x;
   const catLen = H ? frame.h : frame.w;
@@ -437,6 +441,12 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       baselineY: H ? frame.x : frame.y + frame.h,
       plot: { x: frame.x, y: frame.y, w: frame.w, h: frame.h },
       valueToY: H ? undefined : qOf,
+      // Publish the sideways map too, for the reason the column and waterfall
+      // layouts publish theirs: `bandNodes` reads whichever axis carries the
+      // value, and with only the vertical one here a rotated boxplot dropped
+      // every `decorations.bands` zone in silence — the band was computed,
+      // found no map, and returned nothing.
+      valueToX: H ? qOf : undefined,
     },
   };
 }

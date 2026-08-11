@@ -280,3 +280,139 @@ describe("scatter edge cases", () => {
     expect(labels.map((l) => l.text)).toContain("P1 (1.0, 2.0)");
   });
 });
+
+/**
+ * Two guards that guarded one direction only.
+ */
+describe("a scatter stays inside its own plot", () => {
+  const cfg = (extra: Partial<ChartConfig>, xs = [1, 2, 3, 4]): ChartConfig =>
+    ({
+      kind: "scatter",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["a", "b", "c", "d"],
+        series: [
+          { name: "X", values: xs },
+          { name: "Y", values: [100, 200, 300, 400] },
+        ],
+      },
+      ...extra,
+    }) as ChartConfig;
+
+  it("rides the RIGHT edge with an all-negative x domain, as it rides the left", () => {
+    // `toX(0) >= plot.x ? toX(0) : plot.x` pinned the spine when zero fell left
+    // of the domain and left it free when zero fell right of it, so a variance
+    // or drawdown scatter put a full-height axis 109pt past the canvas.
+    const spine = (xs: number[]) => buildChart(cfg({}, xs)).nodes.find((n): n is LineNode => n.name === "y-axis-line")!;
+    const neg = spine([-100, -60, -20]);
+    const pos = spine([1000, 1025, 1050]);
+    expect(neg.x1).toBeLessThanOrEqual(DEFAULT_SIZE.width!);
+    expect(pos.x1).toBeGreaterThanOrEqual(0);
+    // Non-vacuous: zero inside the domain is still drawn where zero is.
+    const inside = spine([-5, 0, 5]);
+    expect(inside.x1).toBeGreaterThan(pos.x1);
+    expect(inside.x1).toBeLessThan(neg.x1);
+  });
+
+  it("clips the OLS trend line to the plot rather than extrapolating off-canvas", () => {
+    // The line spans the padded NICE-TICK ends, and `scatterDomain` folds in
+    // `X line` rows, x-axis bands and a quadrants crossing — so any of those
+    // three stretched x0 far past the data and the fitted y exploded with it
+    // (y = 93043 on a 300pt canvas). The polynomial branch already clipped.
+    const withTrend = (extra: Partial<ChartConfig>): LineNode | undefined =>
+      buildChart({
+        ...cfg(extra),
+        data: {
+          categories: ["a", "b", "c", "d"],
+          series: [
+            { name: "X", values: [1, 2, 3, 4] },
+            { name: "Y", values: [100, 200, 300, 400] },
+            { name: "Trend", values: [1, 1, 1, 1] },
+          ],
+          ...(extra.data ?? {}),
+        },
+      } as ChartConfig).nodes.find((n): n is LineNode => n.name === "trend");
+
+    const stretchers: [string, Partial<ChartConfig>][] = [
+      ["plain", {}],
+      ["a quadrants crossing far left", { decorations: { quadrants: { x: -500, y: 200 } } }],
+      ["an x band far left", { decorations: { bands: [{ axis: "x", from: -100, to: -90 }] } }],
+    ];
+    for (const [label, extra] of stretchers) {
+      const t = withTrend(extra);
+      expect(t, `${label}: no trend line drawn`).toBeTruthy();
+      for (const y of [t!.y1, t!.y2]) {
+        expect(y, `${label}: trend above the canvas`).toBeGreaterThanOrEqual(0);
+        expect(y, `${label}: trend below the canvas`).toBeLessThanOrEqual(DEFAULT_SIZE.height!);
+      }
+      // Still a real fit, not a flattened one: it rises across the plot.
+      expect(Math.abs(t!.y2 - t!.y1), `${label}: trend collapsed`).toBeGreaterThan(10);
+    }
+  });
+});
+
+/**
+ * Two ways a fit or a key said nothing, or said something untrue.
+ */
+describe("a trend the user asked for is drawn, or is not claimed", () => {
+  const cloud = (n: number, degree: number): ChartConfig =>
+    ({
+      kind: "scatter",
+      ...DEFAULT_SIZE,
+      scatter: { trendDegree: degree },
+      data: {
+        categories: Array.from({ length: n }, (_, i) => `p${i}`),
+        series: [
+          { name: "X", values: Array.from({ length: n }, (_, i) => i + 1) },
+          { name: "Y", values: Array.from({ length: n }, (_, i) => (i + 1) * (i + 1)) },
+          { name: "Trend", values: Array(n).fill(1) },
+        ],
+      },
+    }) as unknown as ChartConfig;
+  const trendNodes = (c: ChartConfig) => buildChart(c).nodes.filter((n) => n.name?.startsWith("trend")).length;
+
+  it("still fits three points when a polynomial degree was asked for", () => {
+    // `polyTrend` clamps its degree to n − 2 to keep a residual degree of
+    // freedom, so three points come back degree 1 — and the caller discarded
+    // anything under degree 2. Two points drew a straight fit; three drew
+    // nothing at all, with no diagnostic.
+    for (const degree of [2, 3, 4]) {
+      expect(trendNodes(cloud(3, degree)), `degree ${degree}`).toBeGreaterThan(0);
+      expect(trendNodes(cloud(2, degree)), `degree ${degree}, two points`).toBeGreaterThan(0);
+    }
+  });
+
+  it("still draws the CURVE once there are enough points for one", () => {
+    // The negative control: widening the fallback too far would turn every
+    // polynomial request into a straight line.
+    expect(trendNodes(cloud(6, 2))).toBeGreaterThan(10);
+  });
+});
+
+describe("a bubble size legend keys something", () => {
+  const bubbles = (sizes: number[]): ChartConfig =>
+    ({
+      kind: "bubble",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["a", "b", "c"],
+        series: [
+          { name: "X", values: [1, 2, 3] },
+          { name: "Y", values: [1, 2, 3] },
+          { name: "Size", values: sizes },
+        ],
+      },
+    }) as unknown as ChartConfig;
+  const legend = (c: ChartConfig) => buildChart(c).nodes.filter((n) => n.name?.startsWith("size-legend"));
+
+  it("draws nothing when every Size is zero", () => {
+    // `maxSize` is floored to an epsilon so the ratios stay finite, so the two
+    // reference circles came out DIFFERENT sizes and both were labelled "0.00",
+    // over a plot where every bubble sits at the 2.5pt floor.
+    expect(legend(bubbles([0, 0, 0]))).toHaveLength(0);
+  });
+
+  it("still draws one for a Size row that means something", () => {
+    expect(legend(bubbles([5, 10, 20])).length).toBeGreaterThan(0);
+  });
+});
