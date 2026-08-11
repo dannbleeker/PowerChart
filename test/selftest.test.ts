@@ -973,6 +973,11 @@ describe("the scenarios the selection API unlocked", () => {
       // real PowerPoint, and neither was needed for the comparison.
       expect(steps).toEqual([
         "rasterising a slide that already existed",
+        // The control: the same slide again with nothing drawn between. Without
+        // it a before/after difference cannot tell a chart from a rasteriser
+        // that does not answer the same way twice — and the two are
+        // indistinguishable in a verdict.
+        "rasterising the same slide a second time",
         "drawing the chart",
         "rasterising the slide with the chart",
       ]);
@@ -1407,6 +1412,27 @@ describe("scenarios that must not be able to pass without proving anything", () 
     const same = renderDifference("abcd", "abcd");
     expect(same.differing).toBe(0);
     expect(same.at).toBe(4);
+  });
+
+  it("refuses to claim anything when the rasteriser is not stable", () => {
+    // The reading that would make every "the chart is visible" verdict on
+    // record worth nothing, and which a before/after pair alone cannot rule
+    // out: a host whose rasteriser answers differently for an UNCHANGED slide
+    // produces exactly the same evidence as one that drew the chart.
+    const unstable = visibilityVerdict("x".repeat(1000), "y".repeat(1000), true, false);
+    expect(unstable.detail, `an unstable rasteriser was reported as proof: ${unstable.detail}`).toMatch(
+      /proves NOTHING about the chart/,
+    );
+
+    // Control taken and clean: the difference IS the chart, and the verdict
+    // says so by saying nothing extra.
+    const stable = visibilityVerdict("x".repeat(1000), "y".repeat(1000), true, true);
+    expect(stable.detail).not.toMatch(/proves NOTHING|no control render/);
+
+    // Control not taken at all — the state every round before this one was in.
+    // Absence must not read as a clean control.
+    const unknown = visibilityVerdict("x".repeat(1000), "y".repeat(1000), true);
+    expect(unknown.detail, "a missing control read as a passing one").toMatch(/no control render/);
   });
 
   it("carries that reading into the verdict a reader actually sees", () => {

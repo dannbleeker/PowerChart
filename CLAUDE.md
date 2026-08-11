@@ -504,14 +504,20 @@ deckNow: 71}` then `swept: 68`. The round left the owner **8 slides, 2 of them
   a fact about the host. Three different next steps behind one silent `return
 false`.
 
-  What the round says without that line, by inference and therefore weakly: 14
-  charts grouped cleanly (`by: ids`, `partial: 0` throughout — the partial-group
-  fix held), and grouped charts carry no parts tag. The five that ended
-  ungrouped hit `reading back an ungrouped chart's shape ids` three times, so
-  they got no parts tag either. If that holds up next round, the precondition
-  this path needs is one this host refuses in both branches, and the honest
-  conclusion is that the fast path is for healthier hosts than this one. Do not
-  write that down as settled until a round says it in words.
+  **ANSWERED on the next round (`53ec985`), in words, unanimously: ELEVEN
+  refusals and every one of them `the chart has no parts list, so its nodes
+cannot be mapped to shapes`.** Not one other reason in the round — no
+  fingerprint mismatch, no refused shape, no plan the differ declined. So the
+  inference above is confirmed and can be stated: on this host the fast path's
+  precondition is unavailable in BOTH branches. A grouped chart's shapes are
+  inside the group and its parts tag does not list them; an ungrouped chart's
+  parts tag needs an id readback this host refuses. The in-place update is for
+  healthier hosts, and here it costs one cheap check per chart and nothing else.
+
+  That is not a reason to remove it. It is correct, it is guarded, and the
+  moment a chart arrives with a parts list — a desktop host, or this one on a
+  good day — an edit stops costing fifty seconds. What it is a reason for is
+  not counting on it in any reasoning about THIS host's numbers.
 
 - **A chart the drawing context could not tag is not finished.** On the web the
   tag write goes through a shape proxy several syncs old and the host refuses it
@@ -1352,9 +1358,26 @@ what the slide looks like (10064 → 15652 bytes)`, through PowerPoint's own
   the two renders first differ and how many bytes differ at all
   (`renderDifference`). An encoder header, a timestamp or a counter differs
   early and in a handful of places; a chart drawn into the image differs across
-  the body of the data. Still not a failure — the next round's two numbers are
-  what should decide that, and turning it red first would be the judgement this
-  file keeps warning against.
+  the body of the data.
+
+  **The next round KILLED the header reading, and the answer was not what this
+  paragraph predicted.** `53ec985` reported `14864 → 14976 bytes, +112, 0.8%,
+first differ at 1% in, 14540 byte(s) differing` — **97% of the image differs.**
+  The near-constant length delta is a coincidence of compression, not a constant
+  header, and three rounds of `+108` had been read as a mechanism when they were
+  a red herring. A length is not a measurement of difference; this file spent
+  three rounds treating it as one.
+
+  **Two readings survive, and a before/after pair cannot separate them**: the
+  chart is in the picture, or this host's rasteriser does not produce the same
+  bytes twice. Both make a drawn chart and an untouched slide look equally
+  different. So the scenario now takes a CONTROL — the same slide rasterised
+  twice with nothing drawn between — and the verdict says
+  `two renders of the UNCHANGED slide also differed, so this proves NOTHING
+about the chart` when the rasteriser is unstable. If that fires, every "the
+  chart is visible" verdict on record is worth nothing; if the control comes
+  back clean, this gate finally means what it has been claiming for six rounds.
+  One extra call on a slide the run has already rasterised safely.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
