@@ -333,6 +333,29 @@ export function parseDateToken(raw: string): number | null {
   for (const w of t.match(/[A-Za-z]+/g) ?? []) {
     if (!DATE_WORDS.has(w.toLowerCase())) return null;
   }
+  // `Jan-24` is Excel's `mmm-yy`, the commonest monthly category label there
+  // is — and `Date.parse` reads the 24 as a DAY, in whatever year it defaults
+  // to (2001 in V8). Relative spacing survives that inside one year, so it
+  // looked fine; across a year boundary it does not. `Oct-23, Nov-23, Dec-23,
+  // Jan-24, Feb-24` gave January an epoch day 333 LOWER than December's, and
+  // the line chart drew its last two months at the far left of the plot, before
+  // October — data silently plotted in the wrong place, which is worse than
+  // refusing the label.
+  //
+  // Only the hyphen/slash forms are claimed here. `Jan 24` with a space is
+  // genuinely ambiguous with "January 24" and is left to `Date.parse`; nobody
+  // writes a day-of-month as "Jan-24".
+  //
+  // Two-digit years pivot at 30, which is Excel's own rule for the cells these
+  // labels are formatted from.
+  const mmmYY = /^([A-Za-z]{3,9})[-/](\d{2})$/.exec(t);
+  if (mmmYY) {
+    const m = MONTH_INDEX.get(mmmYY[1].slice(0, 3).toLowerCase());
+    if (m != null) {
+      const yy = Number(mmmYY[2]);
+      return Math.floor(Date.UTC(yy < 30 ? 2000 + yy : 1900 + yy, m, 1) / DAY_MS);
+    }
+  }
   const ms = dmy
     ? Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
     : // An ISO token (bare date OR a full date-time with T/offset) parses as-is;
@@ -348,6 +371,9 @@ export function parseDateToken(raw: string): number | null {
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Three-letter month prefix → month index, for the `mmm-yy` form. */
+const MONTH_INDEX = new Map(MONTHS.map((m, i) => [m.toLowerCase(), i]));
 
 /** Short label for an epoch-day value: "5 Jan" or "Jan 26" on month starts. */
 export function formatDay(days: number, withYear = false): string {

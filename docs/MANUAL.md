@@ -76,7 +76,7 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
 | 100% | share of total | `100%=` row lets columns fall short of 100% |
 | Waterfall | bridges (EBITDA, headcount) | values are deltas; type `e` in a cell for a computed total; multiple series stack |
 | Mekko | two-dimensional composition | width ∝ column total; `X extent` row for explicit widths |
-| Line | trends | date categories ("2025-01", "Jan 2025") space proportionally to time; forecast periods draw dashed with hollow markers; `decorations.slope: true` turns two-period data into a slope chart (end rails, "Name value" labels both ends, no axis) |
+| Line | trends | date categories ("2025-01", "Jan 2025", Excel's "Jan-25") space proportionally to time; forecast periods draw dashed with hollow markers; `decorations.slope: true` turns two-period data into a slope chart (end rails, "Name value" labels both ends, no axis) |
 | Area | stacked trends | |
 | Butterfly | two-sided comparison (pyramids) | first two series, back to back, one scale |
 | Scatter | correlation | `X`/`Y` rows; `Group` colors points; `X line`/`Y line` partitions; `Trend` fits an OLS line labelled with R² and p, or a **polynomial** curve (`scatter.trendDegree` 2–4, quadratic/cubic/quartic); quadrants shade a 2×2 matrix |
@@ -96,9 +96,16 @@ picking a type auto-collapses the gallery to a compact "current type" summary.
 | Violin | full distribution per category | raw samples per column form a mirrored kernel-density shape with a median tick (fills degrade to outline in the live add-in) |
 | Candlestick | financial OHLC / price action | datasheet rows `Open`/`High`/`Low`/`Close`; green when the period rose, red when it fell |
 
-All column-family charts (stacked/clustered/100%), waterfall, Mekko, and
-boxplot rotate into **horizontal** bars/rows with the "Horizontal (bar)"
-toggle — the axis and every decoration rotate with them.
+Nine kinds rotate into **horizontal** bars/rows with the "Horizontal (bar)"
+toggle: the column family (stacked/clustered/100%), combo, waterfall, Mekko,
+boxplot, and line/area (the profile chart, under Options and decorations). The
+axes, the labels, the totals, the value bands and the Error/Target marks all
+turn with them.
+
+The analytical overlays — CAGR and difference arrows, value lines, callouts,
+the grand total and the IBCS variance tier — are drawn only on an upright
+chart: they are built around a vertical value axis. On the other sixteen kinds
+the toggle does nothing at all, and leaves the chart exactly as it was.
 
 ## The datasheet
 
