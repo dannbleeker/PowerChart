@@ -9,6 +9,13 @@ export const IN: number;
 /** Normalise any allow-listed paint to exactly six hex digits (no leading #). */
 export function hex(color: string | null | undefined): string;
 
+/**
+ * Like `hex`, but falls back to `fallbackHex` rather than to black when the
+ * paint is not recognised. For a slide BACKGROUND, where black is not a safe
+ * default — it is the one paint everything else is read against.
+ */
+export function hexOr(color: string | null | undefined, fallbackHex: string): string;
+
 /** Opacity 0..1 carried by a paint; 1 when opaque, 0 for `transparent`. */
 export function alphaOf(color: string | null | undefined): number;
 

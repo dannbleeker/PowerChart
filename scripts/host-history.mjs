@@ -22,6 +22,19 @@
  *
  * Rounds are not in the repo — they are uploads. Keep them somewhere and pass a
  * glob. Exit 0 always: this reports, it does not gate.
+ *
+ * ORDERED BY THE ROUND'S OWN TIMESTAMP, never by the order the shell listed the
+ * files. This tool's entire output is directional — "settled" counts from the
+ * END, `latest` is the last column, and the fixture table's bottom line is read
+ * as "the newest sheet" — and the docstring above tells you to pass a GLOB,
+ * whose order is alphabetical by filename. Real round files are named by content
+ * hash, so that order is effectively random.
+ *
+ * The cost was not hypothetical: the six rounds of 2026-08-11 in glob order made
+ * `shapes-items-count-honest` read `steady lately — "unreadable" x 5` when the
+ * NEWEST round had said `short-0`, and in true order the same six say
+ * `UNSTABLE`. Opposite verdicts, same data. That is precisely the staleness this
+ * tool was written to stop `UNSTABLE_ANSWERS` suffering by hand.
  */
 import { readFileSync } from "fs";
 import { FAKE_BASELINE, answersOf, diffAnswers, sheetOf } from "./host-baseline.mjs";
@@ -32,6 +45,25 @@ export function readRound(path) {
   const file = JSON.parse(readFileSync(path, "utf8"));
   const sheet = sheetOf(file) ?? file;
   return { path, build: sheet?.build ?? "?", answers: answersOf(file) ?? {} };
+}
+
+/**
+ * Oldest first, by the timestamp the round stamped on itself.
+ *
+ * `build` is `"<sha> · <ISO timestamp>"`, so the time is there to be read and
+ * nothing was reading it. A round whose stamp cannot be parsed sorts LAST and
+ * keeps its relative order, which is the safe direction: an unparseable stamp
+ * is most likely a hand-made or future file, and putting it at the end makes it
+ * visible in the `latest` column rather than silently reordering real rounds
+ * around it.
+ */
+export function byRoundTime(a, b) {
+  const t = (r) => {
+    const m = /(\d{4}-\d{2}-\d{2}[T ][\d:]+Z?)/.exec(String(r.build ?? ""));
+    const v = m ? Date.parse(m[1].replace(" ", "T")) : NaN;
+    return Number.isFinite(v) ? v : Infinity;
+  };
+  return t(a) - t(b);
 }
 
 /**
@@ -66,7 +98,7 @@ function main(argv) {
     console.error("usage: node scripts/host-history.mjs <round1.json> <round2.json> …");
     return;
   }
-  const rounds = files.map(readRound);
+  const rounds = files.map(readRound).sort(byRoundTime);
   console.log(`\n  ${rounds.length} round(s):`);
   for (const r of rounds) console.log(`    ${r.build}`);
 

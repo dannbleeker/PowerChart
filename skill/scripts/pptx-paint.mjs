@@ -109,6 +109,35 @@ export const hex = (c) => {
   return typeof out === "string" && /^[0-9a-fA-F]{6}$/.test(out) ? out : "000000";
 };
 
+/**
+ * Like `hex`, but says "I did not recognise that" instead of guessing black.
+ *
+ * `hex`'s black fallback is right for INK — a label in an unknown colour is
+ * still a label — and catastrophic for a slide BACKGROUND, which is the one
+ * paint that decides whether everything else can be seen. `background:
+ * "off-white"` (a typo) or `"transparent"` (a paint PowerChart documents
+ * elsewhere) produced `<a:srgbClr val="000000"/>` with the chart's own near-
+ * black ink on top: a deck of black slides carrying invisible charts, opening
+ * cleanly, validating, and reported as a success by the CLI.
+ *
+ * The SVG renderer already falls back to white here, so the two sinks disagreed
+ * about the same config — the divergence class this project has now found in
+ * all three colour sinks independently.
+ *
+ * Kept separate from `hex` rather than changing it: the six-hex-digit guarantee
+ * `hex` makes is load-bearing for every other call site, and a paint that is
+ * merely unrecognised is a different fact from one that is unreadable.
+ */
+export const hexOr = (c, fallbackHex) => {
+  let out;
+  try {
+    out = readHex(c);
+  } catch {
+    out = undefined;
+  }
+  return typeof out === "string" && /^[0-9a-fA-F]{6}$/.test(out) ? out : hex(fallbackHex);
+};
+
 const readHex = (c) => {
   const raw = paintText(c);
   const h = raw.replace("#", "");
@@ -139,7 +168,12 @@ const readHex = (c) => {
   // guard, so one bad colour destroyed the entire batch.
   const key = raw.toLowerCase();
   const named = Object.prototype.hasOwnProperty.call(CSS_NAMES, key) ? CSS_NAMES[key] : undefined;
-  return typeof named === "string" ? named : "000000";
+  // UNDEFINED for "I did not recognise that", not "000000". Returning black here
+  // made the failure indistinguishable from a genuine black, so `hexOr` — whose
+  // entire job is to tell those apart — could not, and a slide background of
+  // `off-white` still came out black. `hex` supplies the black fallback one
+  // level up, so its six-hex-digit guarantee is unchanged.
+  return typeof named === "string" ? named : undefined;
 };
 
 // Opacity 0..1 carried by a paint (8-digit #RRGGBBAA, rgba(), hsla(), or the

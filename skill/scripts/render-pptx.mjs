@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import pptxgen from "pptxgenjs";
 // Pure paint + node mapping (split out so it is unit-testable and measurable —
 // this CLI runs as a subprocess and can't be). Shipped alongside by build-skill.
-import { IN, hex, makeAddNode } from "./pptx-paint.mjs";
+import { IN, hex, hexOr, makeAddNode } from "./pptx-paint.mjs";
 
 // Engine location: packaged skill layout first, then repo layout.
 let engine;
@@ -214,7 +214,13 @@ for (let i = 0; i < configs.length; i++) {
     // The chart's own canvas colour, not a fixed white: a dark-styled config
     // paints its ink for `style.background`, so a white slide under it put white
     // labels on white. Default (no style.background) stays FFFFFF.
-    const bgHex = hex(cfg?.style?.background ?? "#ffffff");
+    // `hexOr`, not `hex`: an unrecognised paint must fall back to the caller's
+    // WHITE, not to `hex`'s black. A typo like `background: "off-white"` — or
+    // `"transparent"`, which PowerChart documents as a paint elsewhere — turned
+    // the slide black under the chart's own near-black ink, producing a deck of
+    // invisible charts that opens cleanly and validates. The SVG renderer has
+    // always fallen back to white here, so the two sinks disagreed.
+    const bgHex = hexOr(cfg?.style?.background, "#ffffff");
     slide.background = { color: bgHex };
     if (cfg?.render === "image") {
       // Rasterise the whole scene into one picture object. Skips the per-node

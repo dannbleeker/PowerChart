@@ -27,7 +27,7 @@
  */
 import { arrowheadBox, annularSectorPoints, dashKind, symbolPreset } from "../core/geometry";
 import type { Scene } from "../core/scene";
-import { IN, hex, makeAddNode } from "../../skill/scripts/pptx-paint.mjs";
+import { IN, hex, hexOr, makeAddNode } from "../../skill/scripts/pptx-paint.mjs";
 import { injectGroupsAndTags, EMU_PER_POINT, type SlideDressing } from "./ooxml";
 
 /** 16:9 at PowerPoint's default size, in inches — the skill renderer's deck. */
@@ -80,7 +80,10 @@ export async function buildDeckBase64(
   const dressing: SlideDressing[] = [];
   for (const item of items) {
     const slide = pres.addSlide();
-    slide.background = { color: hex(item.background ?? "#ffffff") };
+    // `hexOr`, not `hex` — see the note at its definition. An unrecognised
+    // background must fall back to white, because `hex`'s black is right for ink
+    // and catastrophic for the paint everything else is read against.
+    slide.background = { color: hexOr(item.background, "#ffffff") };
     // Centre the scene on the slide — the same arithmetic the skill renderer
     // uses, so a chart lands in the same place whichever path produced it.
     const dx = (size.w - item.scene.width * IN) / 2;

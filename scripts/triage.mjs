@@ -57,7 +57,24 @@ function verdictFor(item, rows) {
   if (rows.length > 1) return "duplicated";
   const row = rows[0];
   if (row.shapes === 0) return "blank";
-  if (row.config) {
+  // `configOnChart`, NOT `config`. `verify-deck.mjs` draws that distinction on
+  // purpose and says why on the field itself: `config` only reports that the
+  // tag part EXISTS, which is equally true of a tag nothing in the shape tree
+  // points at. The pane loads a chart by walking from the PowerChart object to
+  // its tag rid, so a config anchored on the SLIDE is a config the user cannot
+  // reach — the chart is not re-editable, which is the whole thing this report
+  // is about.
+  //
+  // triage was never migrated when that field was added, so for the exact case
+  // `verify-deck` was extended to catch it printed `ok` and counted zero
+  // disagreements, while verify-deck's own report on the same deck said
+  // `orphan`. `--json` consumers saw `verdict: "ok"`.
+  //
+  // Falls back to `config` for a deck read by an older `verify-deck` that did
+  // not report the anchor: unknown must not become a fault, and the two agree
+  // wherever the anchor is known.
+  const reachable = row.configOnChart ?? row.config;
+  if (reachable) {
     // The repair pass got there after the run gave up on the tag — a success,
     // and one worth seeing, because it is the difference between a fix working
     // and a fix never having been needed.
@@ -78,7 +95,11 @@ function verdictFor(item, rows) {
 function describeRow(row) {
   if (!row) return "—";
   const kind = row.picture ? "picture" : row.groups ? "group" : row.chartObject ? "shape" : "loose";
-  return `${kind} ${row.shapes}sh ${row.config ? "config" : "no-config"}${row.stamped ? " NOT-COMPLETE" : ""}`;
+  // Names the orphan case rather than calling it `config`: a tag the pane
+  // cannot reach is not the same fact as a tag it can, and the deck column is
+  // where a reader looks to see which.
+  const cfg = row.configOrphaned ? "config-ORPHANED" : (row.configOnChart ?? row.config) ? "config" : "no-config";
+  return `${kind} ${row.shapes}sh ${cfg}${row.stamped ? " NOT-COMPLETE" : ""}`;
 }
 
 export function triage(deck, log) {

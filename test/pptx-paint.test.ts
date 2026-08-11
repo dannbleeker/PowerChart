@@ -3,7 +3,17 @@ import { describe, expect, it } from "vitest";
 // subprocess (unmeasurable by v8); this module is imported in-process, so the
 // third renderer's colour normalisation and scene→pptx node mapping finally get
 // direct assertions and coverage instead of only black-box XML checks.
-import { hex, alphaOf, fillOf, visible, hslToHex, makeAddNode, xmlText, lineOf } from "../skill/scripts/pptx-paint.mjs";
+import {
+  hex,
+  hexOr,
+  alphaOf,
+  fillOf,
+  visible,
+  hslToHex,
+  makeAddNode,
+  xmlText,
+  lineOf,
+} from "../skill/scripts/pptx-paint.mjs";
 
 /** Records the PptxgenJS calls a node mapping makes, so the mapping is assertable. */
 function recorder() {
@@ -363,5 +373,46 @@ describe("lineOf", () => {
     // parity contract's list of intentional divergences.
     expect(lineOf("#2a78d659")).toEqual({ color: "2a78d6", transparency: 65 });
     expect(lineOf("#2a78d6"), "an opaque stroke gained a transparency key").toEqual({ color: "2a78d6" });
+  });
+});
+
+/**
+ * The slide BACKGROUND is the one paint black is not a safe default for.
+ *
+ * `hex`'s black fallback is right for ink — a label in an unknown colour is
+ * still a label — and catastrophic here: `background: "off-white"` (a typo) or
+ * `"transparent"` (a paint PowerChart documents elsewhere) wrote
+ * `<a:srgbClr val="000000"/>` with the chart's own near-black ink on top. A
+ * deck of black slides carrying invisible charts, which opens cleanly,
+ * validates, and is reported as a success by the CLI. The SVG renderer has
+ * always fallen back to white, so the two sinks disagreed about one config.
+ */
+describe("hexOr — an unrecognised paint falls back to the caller's default", () => {
+  it("gives back the fallback, not black, for a paint it does not know", () => {
+    for (const bad of ["off-white", "transparent", "not-a-colour", "", null, undefined, 5 as unknown as string]) {
+      expect(hexOr(bad, "#ffffff"), `hexOr(${JSON.stringify(bad)})`).toBe("ffffff");
+    }
+  });
+
+  it("still returns a recognised paint unchanged", () => {
+    expect(hexOr("#1a1a1a", "#ffffff")).toBe("1a1a1a");
+    expect(hexOr("red", "#ffffff")).toBe("ff0000");
+    expect(hexOr("#abc", "#ffffff")).toBe("aabbcc");
+    expect(hexOr("rgb(1,2,3)", "#ffffff")).toBe("010203");
+  });
+
+  it("returns a genuine black as black — the fallback must not swallow it", () => {
+    // The distinction the old code could not make: `readHex` returned "000000"
+    // for BOTH a real black and an unrecognised paint, so a fallback keyed on
+    // the value could never tell them apart.
+    expect(hexOr("#000000", "#ffffff")).toBe("000000");
+    expect(hexOr("black", "#ffffff")).toBe("000000");
+  });
+
+  it("leaves hex()'s own black guarantee alone", () => {
+    // Every other call site depends on six hex digits, whatever arrives.
+    for (const bad of ["off-white", "", null, undefined]) {
+      expect(hex(bad as unknown as string)).toBe("000000");
+    }
   });
 });

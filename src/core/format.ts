@@ -385,6 +385,17 @@ const MONTH_INDEX = new Map(MONTHS.map((m, i) => [m.toLowerCase(), i]));
 /** Short label for an epoch-day value: "5 Jan" or "Jan 26" on month starts. */
 export function formatDay(days: number, withYear = false): string {
   const d = new Date(days * DAY_MS);
+  // A day number JS cannot make a Date of prints as literal text, and text is
+  // not what `finiteNodes` filters — that net catches non-finite NUMBERS, so a
+  // string sails through it into all three renderers and into the .pptx the
+  // skill hands back. A Gantt whose dates arrived as epoch SECONDS (an ordinary
+  // thing for an export or an agent to produce, and `data.dates` is a plain
+  // passthrough flag) put "NaN undefined" in 18 of its 21 text nodes.
+  //
+  // Empty rather than a guess, which is exactly what `formatNumber` does for a
+  // non-finite value four hundred lines up: a label that cannot be computed has
+  // no right answer, and a blank tick is readable where "NaN undefined" is not.
+  if (!Number.isFinite(days) || Number.isNaN(d.getTime())) return "";
   const m = MONTHS[d.getUTCMonth()];
   if (withYear) return `${m} ${String(d.getUTCFullYear()).slice(2)}`;
   return d.getUTCDate() === 1 ? m : `${d.getUTCDate()} ${m}`;

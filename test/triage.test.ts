@@ -610,3 +610,51 @@ describe("triage shows what a crashed run had already concluded", () => {
     expect(describeFinding({ odd: 1 })).toBe('{"odd":1}');
   });
 });
+
+/**
+ * A config the pane cannot reach is not a chart the user can edit.
+ *
+ * `verify-deck.mjs` draws that distinction on the field itself: `config` only
+ * reports that the tag part EXISTS, which is equally true of a tag nothing in
+ * the shape tree points at. The pane loads a chart by walking from the
+ * PowerChart object to its tag rid, so a config anchored on the SLIDE is
+ * unreachable and the chart is not re-editable.
+ *
+ * triage was never migrated when that field was added. For the exact case
+ * `verify-deck` was extended to catch, its slot table printed `ok`, its deck
+ * column printed `config`, and `disagreements` — the number the final line and
+ * the `--json` payload both carry — was 0, while verify-deck's own report on
+ * the same deck said `orphan`.
+ */
+describe("triage reads the config the pane can actually reach", () => {
+  const log = { run: "r1", items: [{ title: "chart", status: "ok", tagged: true, chart: true }] };
+  const row = (extra: Record<string, unknown>) => ({
+    index: 0,
+    slot: 0,
+    run: "r1",
+    shapes: 3,
+    groups: 1,
+    chartObject: true,
+    ...extra,
+  });
+
+  it("calls an orphaned config what it is, not ok", () => {
+    const t = triage({ rows: [row({ config: true, configOnChart: false, configOrphaned: true })] }, log);
+    expect(t.slots[0].verdict, "a config the pane cannot load was reported as fine").not.toBe("ok");
+    expect(t.disagreements, "an unreachable config counted as agreement").toBeGreaterThan(0);
+    expect(t.slots[0].deck).toContain("ORPHANED");
+  });
+
+  it("still calls a properly anchored config ok", () => {
+    const t = triage({ rows: [row({ config: true, configOnChart: true, configOrphaned: false })] }, log);
+    expect(t.slots[0].verdict).toBe("ok");
+    expect(t.disagreements).toBe(0);
+  });
+
+  it("falls back to `config` for a deck read before the anchor was reported", () => {
+    // Unknown must not become a fault: an older verify-deck did not say where
+    // the tag was anchored, and the two agree wherever it does.
+    const t = triage({ rows: [row({ config: true })] }, log);
+    expect(t.slots[0].verdict).toBe("ok");
+  });
+});
