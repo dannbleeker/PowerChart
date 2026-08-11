@@ -414,3 +414,42 @@ describe("heatmap row clustering (precomputed distance matrix)", () => {
     expect(JSON.stringify(buildChart(cfg).nodes)).toBe(JSON.stringify(buildChart(cfg).nodes));
   });
 });
+
+/**
+ * The calendar grid's 4pt cell floor is a readability minimum, and it was
+ * applied without clamping the grid: `nWeeks` is unbounded, so past ~118 week
+ * columns the floor took over from the fit and a four-year calendar drew 377pt
+ * beyond a 480pt canvas.
+ */
+describe("a multi-year calendar heatmap fits its canvas", () => {
+  const calendar = (days: number): ChartConfig => {
+    const categories: string[] = [];
+    const values: number[] = [];
+    for (let i = 0; i < days; i++) {
+      categories.push(new Date(Date.UTC(2024, 0, 1) + i * 86400000).toISOString().slice(0, 10));
+      values.push(i % 7);
+    }
+    return {
+      kind: "heatmap",
+      ...DEFAULT_SIZE,
+      heatmap: { calendar: true },
+      data: { categories, series: [{ name: "v", values }] },
+    } as unknown as ChartConfig;
+  };
+
+  for (const days of [365, 1000, 1460]) {
+    it(`keeps every cell on the canvas at ${days} days`, () => {
+      const { nodes, width } = buildChart(calendar(days));
+      const cells = nodes.filter((n): n is RectNode => n.kind === "rect");
+      expect(cells.length, "nothing was drawn, so this proves nothing").toBeGreaterThan(days / 2);
+      expect(Math.max(...cells.map((c) => c.x + c.w))).toBeLessThanOrEqual(width + 1);
+    });
+  }
+
+  it("still honours the 4pt floor when the grid has room for it", () => {
+    // The negative control: clamping unconditionally would shrink every short
+    // calendar to its exact fit and lose the readability minimum.
+    const cells = buildChart(calendar(90)).nodes.filter((n): n is RectNode => n.kind === "rect");
+    expect(Math.max(...cells.map((c) => c.w))).toBeGreaterThanOrEqual(4);
+  });
+});

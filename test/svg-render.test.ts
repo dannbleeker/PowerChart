@@ -99,3 +99,41 @@ describe("SVG marker symbols", () => {
     }
   });
 });
+
+/**
+ * `paint` was the only one of this repo's four colour parsers that did not
+ * trim, and the background rect was the one place its black fallback covers the
+ * whole chart.
+ */
+describe("what the reference renderer does with an imperfect paint", () => {
+  const chart = (extra: Partial<ChartConfig> = {}): ChartConfig =>
+    ({
+      kind: "clustered",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A"], series: [{ name: "S", values: [1] }] },
+      ...extra,
+    }) as ChartConfig;
+
+  it("trims a padded colour instead of rendering it black", () => {
+    // A pasted palette entry or a hand-edited config carries stray whitespace,
+    // and `src/core/color.ts`, `pptx-paint.mjs` and `officeHex` all trim — so
+    // the preview alone drew the series black while both decks drew it blue.
+    const svg = sceneToSvg(
+      buildChart(chart({ data: { categories: ["A"], series: [{ name: "S", values: [1], color: "  #2a78d6  " }] } })),
+    );
+    expect(svg).toContain('fill="#2a78d6"');
+    expect(svg).not.toContain('fill="#000000"');
+  });
+
+  it("falls back to the default canvas for an unreadable background, not to black", () => {
+    // This rect is `width="100%" height="100%"` and is drawn before every node,
+    // so black here does not degrade the chart — it hides it.
+    expect(sceneToSvg(buildChart(chart()), { background: "not-a-colour" })).toContain(
+      '<rect width="100%" height="100%" fill="#ffffff"/>',
+    );
+    // The negative control: a background it CAN read is still honoured.
+    expect(sceneToSvg(buildChart(chart()), { background: "#1b1b1b" })).toContain(
+      '<rect width="100%" height="100%" fill="#1b1b1b"/>',
+    );
+  });
+});

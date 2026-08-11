@@ -814,11 +814,11 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // chart, an unwidened axis put a whisker for 34 at x = 530.9 on a 480-wide
   // canvas. The widening was never orientation-specific — it is arithmetic on
   // the value domain — it was only unreachable while nothing drew there.
-  if ((errors || targets) && cfg.scale?.max == null) {
+  if ((errors || targets) && (cfg.scale?.max == null || cfg.scale?.min == null)) {
     const ext = drawnExtent(cfg, errors, targets);
     if (ext) {
       const ticks = niceTicks(ext.min, ext.max, 5);
-      cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: ticks[ticks.length - 1] } };
+      cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: cfg.scale?.max ?? ticks[ticks.length - 1] } };
     }
   }
 
