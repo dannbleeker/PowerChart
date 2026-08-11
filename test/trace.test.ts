@@ -75,14 +75,14 @@ describe("the trace is a record, not a live view", () => {
     // already have downloaded and be reading as fact.
     setTracing(true);
     const payload: Record<string, unknown> = { shapes: 10 };
-    trace("draw", "batch committed", payload);
+    trace("draw", "batch issued", payload);
     payload.shapes = 999;
     expect(traceLog().entries[0].data).toEqual({ shapes: 10 });
   });
 
   it("hands each reader its own copy of the data, not a shared one", () => {
     setTracing(true);
-    trace("draw", "batch committed", { shapes: 10 });
+    trace("draw", "batch issued", { shapes: 10 });
     const first = traceLog().entries[0].data!;
     first.shapes = 999;
     expect(traceLog().entries[0].data).toEqual({ shapes: 10 });
