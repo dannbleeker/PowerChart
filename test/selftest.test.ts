@@ -41,6 +41,7 @@ import {
   _setClickWaitForTest,
   _setDegradeSizeForTest,
   wedgedSelection,
+  renderDifference,
   rescaleFlipIndex,
   rescaleLossNote,
   rescaleShouldStop,
@@ -1379,6 +1380,42 @@ describe("scenarios that must not be able to pass without proving anything", () 
     expect(blind.ok).toBe(false);
     expect(blind.detail).toMatch(/cannot tell/);
     expect(blind.detail, "picked one of two readings the image cannot separate").not.toMatch(/nothing is visible$/);
+  });
+
+  it("says WHERE the two renders differ, not only by how much", () => {
+    // `+108 bytes` on three consecutive rounds, from three different starting
+    // sizes. A chart appearing in a rasterised slide does not cost the same
+    // hundred and eight bytes three times by coincidence — but a length cannot
+    // tell a header from a picture, and the round file carried nothing else.
+    //
+    // A header, a timestamp or a counter differs EARLY and in few places; a
+    // chart drawn into the image differs across the body of the data.
+    const head = renderDifference("HEADERxxxxxxxxxxxxxxxxxxxxxx", "HEADYRxxxxxxxxxxxxxxxxxxxxxx");
+    expect(head.at, "a difference in the first bytes was not reported as early").toBeLessThan(6);
+    expect(head.differing).toBe(1);
+
+    const body = renderDifference("aaaaaaaaaaaaaaaaaaaa", "aaaaabcbcbcbcbcbcbcb");
+    expect(body.differing, "a difference through the body read as a handful of bytes").toBeGreaterThan(10);
+
+    // A longer render counts its extra bytes as differing, or an image that
+    // only grew would read as identical.
+    const grew = renderDifference("aaaa", "aaaabbbb");
+    expect(grew.differing).toBe(4);
+    expect(grew.of).toBe(8);
+
+    // Identical inputs: nothing differs, and `at` must not claim a position.
+    const same = renderDifference("abcd", "abcd");
+    expect(same.differing).toBe(0);
+    expect(same.at).toBe(4);
+  });
+
+  it("carries that reading into the verdict a reader actually sees", () => {
+    const v = visibilityVerdict("x".repeat(14856), "x".repeat(14856) + "y".repeat(108), true);
+    expect(v.ok).toBe(true);
+    expect(v.detail, `the verdict says nothing about where they differ: ${v.detail}`).toMatch(
+      /first differ at \d+% in/,
+    );
+    expect(v.detail).toMatch(/108 byte\(s\) differing/);
   });
 
   it("says how big the visible change was, and calls a thin one thin", () => {

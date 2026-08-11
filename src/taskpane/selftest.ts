@@ -1075,17 +1075,50 @@ export function stallDetail(
  */
 export const THIN_VISIBILITY_RATIO = 0.02;
 
+/**
+ * WHERE two renderings of a slide first differ, and how much of them does.
+ *
+ * The length delta alone has now said `+108 bytes` on three consecutive rounds
+ * — 14868→14976, 14988→15096, 14856→14964 — from three different starting
+ * sizes. A chart appearing in a rasterised slide does not cost the same
+ * hundred and eight bytes three times by coincidence; something constant is
+ * moving and the chart may not be in the picture at all.
+ *
+ * A length cannot tell those apart, and the round file carried nothing else. So
+ * measure the difference rather than its size: an encoder's header, a timestamp
+ * or a counter differs EARLY and in a handful of places, where a chart drawn
+ * into the image differs across the body of the data. This is not a judgement
+ * with a threshold — it is the two numbers a reader needs to make one, and it
+ * costs a single pass over a string the round already holds.
+ */
+export function renderDifference(before: string, after: string): { at: number; differing: number; of: number } {
+  const n = Math.min(before.length, after.length);
+  let at = -1;
+  let differing = Math.abs(before.length - after.length);
+  for (let i = 0; i < n; i++) {
+    if (before[i] === after[i]) continue;
+    if (at < 0) at = i;
+    differing++;
+  }
+  return { at: at < 0 ? n : at, differing, of: Math.max(before.length, after.length) };
+}
+
 export function visibilityVerdict(before: string, after: string, named: boolean): { ok: boolean; detail: string } {
   if (after !== before) {
     const delta = after.length - before.length;
     const share = before.length ? Math.abs(delta) / before.length : 1;
     const pct = Math.round(share * 1000) / 10;
+    const diff = renderDifference(before, after);
+    // Where the two renders part company, beside how much longer one is. A
+    // difference that starts in the first few percent of the data and touches
+    // little of it is a header; one spread through the body is a picture.
+    const where = `, first differ at ${Math.round((diff.at / Math.max(1, diff.of)) * 100)}% in, ${diff.differing} byte(s) differing`;
     return {
       ok: true,
       detail:
         `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes, ${
           delta >= 0 ? "+" : ""
-        }${delta}, ${pct}%)` +
+        }${delta}, ${pct}%${where})` +
         (share < THIN_VISIBILITY_RATIO
           ? " — a THIN margin: this is a change, but too small to tell a drawn chart from a re-encode"
           : "") +
