@@ -16,6 +16,7 @@ import {
   RESAMPLE_IDS,
   stabilityOf,
   regimeFrom,
+  slidesActuallyReturned,
   type HostAnswerSheet,
 } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. Imported so the shortlist
@@ -1604,5 +1605,53 @@ describe("regimeFrom describes the host NOW, not the host at any point", () => {
   it("takes the window as a parameter, so the boundary is testable", () => {
     expect(regimeFrom({ at: 100, lastRefusalAt: 0 }, 100)).toBe("collection-refused");
     expect(regimeFrom({ at: 101, lastRefusalAt: 0 }, 100)).toBe("unknown");
+  });
+});
+
+/**
+ * A clean-up that says it happened, into a deck that says otherwise.
+ *
+ * The 2026-08-11 round reported `all — 42 of 42 scratch slide(s) deleted,
+ * left: 0` and ended holding 56 slides it had added, 47 of them blank; the
+ * owner's screenshot showed one carrying the 20x20 rectangle
+ * `shape-add-held-slide-proxy` draws. `deleteSlideByPosition` reads
+ * `indexOf(id) < 0` as "already gone", which is sound only while the id we hold
+ * and the ids the deck lists are the same strings — and in that round the
+ * scratch ids read `4123571115#123571113` while the deck listed
+ * `257#2599158489`. An id nobody can find is UNKNOWN, not absent.
+ *
+ * This is the second time this project has shipped a clean-up that reported
+ * work it had not done (`deleteSlideById` itself was the first), and both times
+ * the deck was the thing that knew.
+ */
+describe("what the scratch clean-up may claim", () => {
+  it("believes the deck over the deletes when they disagree", () => {
+    // The real round, in numbers: every delete said yes, the deck did not move.
+    const r = slidesActuallyReturned({ claimed: 42, added: 42, deckBefore: 57, deckAfter: 57 });
+    expect(r.actually, "a clean-up nothing corroborates was reported as complete").toBe(0);
+    expect(r.left).toBe(42);
+    expect(r.shrankBy).toBe(0);
+  });
+
+  it("still reports success when the deck agrees", () => {
+    const r = slidesActuallyReturned({ claimed: 42, added: 42, deckBefore: 99, deckAfter: 57 });
+    expect(r.actually).toBe(42);
+    expect(r.left).toBe(0);
+  });
+
+  it("takes the smaller number, never the larger", () => {
+    // A deck that shrank MORE than we deleted is not 50 successes — something
+    // else removed slides, and claiming them would be claiming the user's work.
+    expect(slidesActuallyReturned({ claimed: 10, added: 42, deckBefore: 99, deckAfter: 49 }).actually).toBe(10);
+    // And a deck that GREW during clean-up is not negative progress.
+    expect(slidesActuallyReturned({ claimed: 10, added: 42, deckBefore: 50, deckAfter: 57 }).actually).toBe(0);
+  });
+
+  it("falls back to the claim when the deck will not give a count", () => {
+    // Not a licence to believe it — there is simply nothing else, and a host
+    // that will not list its slides has already said the interesting thing.
+    const r = slidesActuallyReturned({ claimed: 42, added: 42 });
+    expect(r.actually).toBe(42);
+    expect(r.shrankBy).toBeUndefined();
   });
 });

@@ -2079,17 +2079,30 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     // that does not diverges and is reported without anyone remembering to
     // look.
     const cleanupStarted = Date.now();
+    // COUNT the deck either side, and let the count outrank the per-slide
+    // booleans — see `slidesActuallyReturned` for what that is worth.
+    const deckBefore = (await deckSlideIds().catch(() => undefined))?.length;
     let returned = 0;
     for (const id of scratchIds) if (await deleteSlideById(id).catch(() => false)) returned++;
-    const left = scratchIds.length - returned;
+    const deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
+    const { actually, left, shrankBy } = slidesActuallyReturned({
+      claimed: returned,
+      added: scratchIds.length,
+      deckBefore,
+      deckAfter,
+    });
     answers.push({
       id: SCRATCH_CLEANUP_ID,
       question: "Does the host give back the scratch slides this probe added?",
-      answer: !scratchIds.length ? "none-added" : !left ? "all" : returned ? "some" : "none",
+      answer: !scratchIds.length ? "none-added" : !left ? "all" : actually ? "some" : "none",
       ms: Date.now() - cleanupStarted,
-      detail: `${returned} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}`,
+      detail:
+        `${actually} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}` +
+        (shrankBy !== undefined && shrankBy !== returned
+          ? ` (the deletes reported ${returned} but the deck only shrank by ${shrankBy})`
+          : ""),
     });
-    trace("probe", "gave the scratch slides back", { returned, left });
+    trace("probe", "gave the scratch slides back", { returned, left, deckBefore, deckAfter, shrankBy });
   }
   // Said by the sheet, from its own samples — the fact `UNSTABLE_ANSWERS` was
   // assembled by hand across ten rounds to say. Only REAL answers count: a
@@ -2163,6 +2176,42 @@ const PROBE_BY_ID = new Map(PROBES.flatMap(flatten).map((p) => [p.id, p]));
  * only place anyone will read it. So it is listed here by hand rather than
  * derived, and the two lists below are where it joins the invariant.
  */
+/**
+ * How many scratch slides ACTUALLY went back, from the deck rather than from
+ * the deletes' own opinion of themselves.
+ *
+ * Extracted so it can be checked without a PowerPoint, which is the only way
+ * this particular bug is checkable at all: reproducing it through the fake
+ * needs three knobs turned together (a delete that no-ops, a host that refuses
+ * the id, and a deck listing that id under another string), and a test built
+ * out of three coincidences tests the coincidences.
+ *
+ * `claimed` is what `deleteSlideById` reported. The deck's own count outranks
+ * it, because on 2026-08-11 the two disagreed completely: `42 of 42 deleted,
+ * left: 0` into a deck that ended the round holding 56 slides it had added, 47
+ * of them blank, with the owner's screenshot showing one carrying the 20x20
+ * rectangle `shape-add-held-slide-proxy` draws. `deleteSlideByPosition` reads
+ * `indexOf(id) < 0` as "already gone", which is sound only while the id we hold
+ * and the ids the deck lists are the same strings — and there they were not:
+ * scratch ids read `4123571115#123571113`, the deck listed `257#2599158489`.
+ *
+ * The MINIMUM of the two, never the maximum: a delete that cannot be
+ * corroborated is unknown, and reporting an unknown as a success is how a run
+ * comes to leave forty blank slides in someone's deck and say it left none.
+ * When the deck will not give a count at all the claim is all there is and
+ * stands — with `shrankBy` undefined, so nothing pretends otherwise.
+ */
+export function slidesActuallyReturned(o: {
+  claimed: number;
+  added: number;
+  deckBefore?: number;
+  deckAfter?: number;
+}): { actually: number; left: number; shrankBy?: number } {
+  const shrankBy = o.deckBefore !== undefined && o.deckAfter !== undefined ? o.deckBefore - o.deckAfter : undefined;
+  const actually = shrankBy === undefined ? o.claimed : Math.min(o.claimed, Math.max(0, shrankBy));
+  return { actually, left: o.added - actually, shrankBy };
+}
+
 export const SCRATCH_CLEANUP_ID = "scratch-slides-returned";
 
 export const PROBE_IDS: readonly string[] = [...PROBES.flatMap(withFollows), SCRATCH_CLEANUP_ID];
