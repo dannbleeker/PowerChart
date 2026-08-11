@@ -956,3 +956,80 @@ describe("the elapsed readout", () => {
     expect(elapsedLabel(200_000, 190_000)).toBe("200s · silent for 190s");
   });
 });
+
+/**
+ * The pane's ingest boundary, handed the configs it writes itself.
+ *
+ * `stateFromConfig` trusted its own types. The ENGINE does not —
+ * `test/chart-hostile-input.test.ts` pins that `{ palette: "red" }` renders
+ * fine — so a config that draws correctly in the preview, in the deck and in
+ * the skill's .pptx could not be OPENED in the pane that has to edit it. The
+ * JSON box reported the user's perfectly valid JSON as
+ * `Invalid JSON: palette.join is not a function`, sending them to hunt a syntax
+ * error that is not there.
+ *
+ * It is more than a hostile-input case because the pane WRITES these: a style
+ * file imported through `style-import` is persisted with no shape check, and
+ * from then on every export, every saved template and every POWERCHART_CONFIG
+ * shape tag carries it.
+ */
+describe("a config whose arrays are not arrays", () => {
+  const note = () => $("host-note").textContent ?? "";
+
+  it("opens a config the pane itself could have written", () => {
+    importConfig({
+      kind: "stacked",
+      style: { palette: "red" },
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 2] }] },
+    } as unknown as Partial<ChartConfig>);
+    expect(note(), "the pane called its own valid JSON invalid").not.toMatch(/Invalid JSON/);
+    // And it round-trips, rather than merely not throwing.
+    expect(() => exportConfig()).not.toThrow();
+  });
+
+  it("survives every field that used to throw, and says nothing about invalid JSON", () => {
+    const cases: [string, Partial<ChartConfig>][] = [
+      ["palette as a string", { style: { palette: "red" } } as unknown as Partial<ChartConfig>],
+      ["palette as an object", { style: { palette: { a: 1 } } } as unknown as Partial<ChartConfig>],
+      ["palette as a number", { style: { palette: 5 } } as unknown as Partial<ChartConfig>],
+      ["labelContent as a string", { decorations: { labelContent: "value" } } as unknown as Partial<ChartConfig>],
+      ["pie.explode as a number", { pie: { explode: 1 } } as unknown as Partial<ChartConfig>],
+      [
+        "waterfall.totalIndices as a number",
+        { kind: "waterfall", waterfall: { totalIndices: 1 } } as unknown as Partial<ChartConfig>,
+      ],
+    ];
+    for (const [what, extra] of cases) {
+      importConfig({
+        kind: "stacked",
+        data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 2] }] },
+        ...extra,
+      } as unknown as Partial<ChartConfig>);
+      expect(note(), `${what}: the pane reported valid JSON as invalid`).not.toMatch(/Invalid JSON/);
+    }
+  });
+
+  it("drops an out-of-range waterfall total instead of holing the datasheet grid", () => {
+    // The write had no bound on `i`, so it wrote past the row's end and left
+    // `cells[1]` SPARSE. `mountDatasheet`'s `row.forEach` skips holes, so the
+    // grid rendered one stray cell under no column header while every other row
+    // was short — visibly misaligned, and editing nothing the chart reads.
+    importConfig({
+      kind: "waterfall",
+      data: { categories: ["a", "b", "c"], series: [{ name: "Delta", values: [1, 2, 3] }] },
+      waterfall: { totalIndices: [8] },
+    } as unknown as Partial<ChartConfig>);
+    expect(note()).not.toMatch(/Invalid JSON/);
+    const rows = [...document.querySelectorAll("#datasheet tr")];
+    const widths = new Set(rows.map((r) => r.querySelectorAll("td,th").length));
+    expect(widths.size, `the grid has ragged rows: ${[...widths].join(", ")}`).toBe(1);
+  });
+
+  // NO in-range negative control here, deliberately. One was written and
+  // removed: it failed against a build with ONLY the bound removed, which the
+  // arithmetic says it should have passed, so it was not testing what it
+  // claimed. A guard nobody can explain is worse than no guard — the trap this
+  // repo already records as "a guard can fail for the wrong reason and still
+  // look proven". The in-range path stays covered by the ragged-row assertion
+  // above, which requires the grid to stay rectangular whatever is written.
+});
