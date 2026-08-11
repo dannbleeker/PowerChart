@@ -129,6 +129,23 @@ export const faults = {
   /** Answer HONESTLY for this many `items/id` reads, then short forever. */
   hollowReadsAfter: null as number | null,
   /**
+   * Leave this many shapes OUT of every `items/id` read, rather than all of them.
+   *
+   * `hollowReads`' own comment describes a host that "asked about 19 shapes and
+   * got 3 back", and then returns `[]` — so for two years the fake modelled the
+   * limit case and never the one it documents. The difference is not academic:
+   * an empty read makes `chooseGroupMembers` say "group nothing", while a SHORT
+   * one is deliberately kept and grouped (see the partial-match comment in
+   * `powerpoint.ts`), so the two faults drive opposite branches.
+   *
+   * The real host produced the short case on 2026-08-11: one slide came back
+   * carrying a `PowerChart` group plus four loose shapes — `label-1-3`,
+   * `baseline`, `series-label-0`, `series-label-1` — all inside the chart's own
+   * box and all with lower ids than the group. That is a partial group, and a
+   * partial group is a chart the user drags away from its own baseline.
+   */
+  readsMissing: 0,
+  /**
    * The same short answer, on an `items/name` load.
    *
    * A real host does not care which properties were asked for — a collection
@@ -1207,6 +1224,10 @@ export function makeSlide(id: string) {
           faults.hollowReads--;
           return [];
         }
+        // Short, not empty — the case `hollowReads` describes and does not do.
+        if (faults.readsMissing > 0 && lastShapeLoad.startsWith("items/id")) {
+          return live.slice(0, Math.max(0, live.length - faults.readsMissing));
+        }
         // Any projection that asks for names, not the exact string `items/name`.
         // `slideShapeList` asks for `items/id,items/name` — it needs ids to tell
         // one shape from another — and exact matching silently stopped blinding
@@ -2122,6 +2143,7 @@ export function installHost(
   faults.refuseGroups = 0;
   faults.hollowReads = 0;
   faults.hollowReadsAfter = null;
+  faults.readsMissing = 0;
   faults.hollowNameReads = 0;
   lastShapeLoad = "";
   faults.refusePictureFill = false;

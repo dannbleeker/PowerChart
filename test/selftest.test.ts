@@ -1378,6 +1378,24 @@ describe("scenarios that must not be able to pass without proving anything", () 
     expect(blind.detail, "picked one of two readings the image cannot separate").not.toMatch(/nothing is visible$/);
   });
 
+  it("says how big the visible change was, and calls a thin one thin", () => {
+    // Three passes on record read identically in the round file — 10064 → 15652
+    // (+55%), 15704 → 16580 (+5.6%) and 14868 → 14976, which is a hundred and
+    // eight bytes. The gate asserts the two renders DIFFER, which a re-encode
+    // satisfies on its own, and nothing in the verdict let a reader tell 0.7%
+    // from 55% without opening the file.
+    const fat = visibilityVerdict("x".repeat(10064), "y".repeat(15652), true);
+    expect(fat.ok).toBe(true);
+    expect(fat.detail, "a 55% change did not report its size").toMatch(/\+5588, 55\.5%/);
+    expect(fat.detail, "a 55% change was called thin").not.toMatch(/THIN/);
+
+    // The 2026-08-11 round, to the byte.
+    const thin = visibilityVerdict("x".repeat(14868), "y".repeat(14976), true);
+    expect(thin.ok, "a change is still a change — thinness is reported, not failed").toBe(true);
+    expect(thin.detail, "a 0.7% change read exactly like a 55% one").toMatch(/\+108, 0\.7%/);
+    expect(thin.detail).toMatch(/THIN margin/);
+  });
+
   it("does not call an unreadable slide a failed picture", async () => {
     // The other half. This asked `slideHoldsOnlyChart` — the slide-SWAP gate,
     // which answers no for a slide it could not read, because it authorises
@@ -2146,7 +2164,21 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
         batches[0].data,
         "the first batch does not say what the host last answered, so a stall's predecessor has nothing to be compared against",
       ).toHaveProperty("afterAnswering");
+      // And how long that call TOOK. The name alone could not split the
+      // 2026-08-11 control apart: its four arms rasterise a slide and then draw
+      // seven shapes, and they came back 22.7s, 25.6s and 28.9s — one lump per
+      // arm, with the rasterise and the draw inside it and no way to say which
+      // half was growing. `withTimeout` already stamps both ends of every named
+      // call, so the duration is a subtraction at a seam that exists.
+      expect(
+        batches[0].data,
+        "the first batch names the call before it but not how long that call took, so a rasterise and the draw after it stay one number",
+      ).toHaveProperty("afterAnsweringMs");
+      expect(typeof batches[0].data?.afterAnsweringMs).toBe("number");
       for (const b of batches.slice(1)) {
+        expect(b.data, "a later batch timed a predecessor that is always the batch before it").not.toHaveProperty(
+          "afterAnsweringMs",
+        );
         expect(b.data, "a later batch named a predecessor that is always the batch before it").not.toHaveProperty(
           "afterAnswering",
         );

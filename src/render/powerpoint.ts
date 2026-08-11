@@ -439,6 +439,22 @@ let lastAnsweredCall: string | null = null;
 let lastAnsweredAt = 0;
 
 /**
+ * How long that last answered call TOOK.
+ *
+ * `afterAnswering` names the call a draw followed and nothing else about it,
+ * which left the round of 2026-08-11 unable to split its own control apart: the
+ * four arms of `does a rasterise poison the next draw` took 22.7s, 25.6s and
+ * 28.9s each, and a rasterise plus a seven-shape draw is a single lump in that
+ * number. Which half is growing is the whole question the arm exists to answer.
+ *
+ * It costs nothing — `withTimeout` already stamps the start of every named call
+ * and the moment it answers, so the duration is a subtraction at a seam that is
+ * already there. Recorded on the same line as the name, on every first batch and
+ * on every stall, so it has the baseline `idleMs` spent two rounds acquiring.
+ */
+let lastAnsweredMs = 0;
+
+/**
  * How many shapes THIS RUN has already put on each slide.
  *
  * The input to this project's main performance claim and the one number it has
@@ -497,6 +513,8 @@ export interface StallContext {
   afterAnswering: string | null;
   /** Gap between that answer and this call being issued. */
   idleMs: number;
+  /** How long that preceding call itself took. */
+  afterAnsweringMs: number;
 }
 
 export let lastStall: StallContext | null = null;
@@ -522,6 +540,7 @@ export function idleSinceLastAnswer(now = Date.now()): number {
 export function _resetStallContextForTest(): void {
   lastAnsweredCall = null;
   lastAnsweredAt = 0;
+  lastAnsweredMs = 0;
   lastStall = null;
   shapesDrawnOnSlide.clear();
   resetHostFriction();
@@ -595,6 +614,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   const answered = (): void => {
     lastAnsweredCall = what;
     lastAnsweredAt = Date.now();
+    lastAnsweredMs = lastAnsweredAt - started;
   };
   return new Promise<T>((resolve, reject) => {
     let done = false;
@@ -637,11 +657,13 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         what,
         afterAnswering: lastAnsweredCall,
         idleMs: lastAnsweredAt ? started - lastAnsweredAt : Infinity,
+        afterAnsweringMs: lastAnsweredMs,
       };
       trace("host", "gave up waiting", {
         what,
         afterMs: ms,
         afterAnswering: lastAnsweredCall ?? "nothing yet this run",
+        afterAnsweringMs: lastAnsweredMs,
         idleMs: Math.round(lastStall.idleMs),
       });
       reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
@@ -2864,7 +2886,15 @@ async function settleUntaggedCharts(
       : lost === 0
         ? "settle pass: repaired every config tag the drawing context lost"
         : "settle pass: repaired SOME of the config tags the drawing context lost",
-    { charts: pending.length, settled: settled.size, lost },
+    // `withId` is what separates the settle's two routes, and the round of
+    // 2026-08-11 shows why the summary needs it. Four charts in that scenario
+    // hit `the settle's re-read came back empty` and were lost; a fifth was
+    // repaired — and the call that repaired it was `settling the config tag on
+    // a shape found by NAME`, not by id. So the discriminator there was not
+    // whether the chart had been grouped (it had): it was whether the settle's
+    // own fresh-context collection read answered at all. Reading that out took
+    // a hand pass over `afterAnswering` strings; the count says it directly.
+    { charts: pending.length, settled: settled.size, lost, withId: pending.filter((p) => p.shapeId).length },
   );
   return settled;
 }
@@ -6691,7 +6721,11 @@ async function renderShapesChunked(
       onSlideKey: slideKey,
       ...(prevBatchMs === undefined ? {} : { prevBatchMs }),
       ...(batchNo === 1
-        ? { idleMs: Math.round(idleSinceLastAnswer()), afterAnswering: lastAnsweredCall ?? "nothing yet" }
+        ? {
+            idleMs: Math.round(idleSinceLastAnswer()),
+            afterAnswering: lastAnsweredCall ?? "nothing yet",
+            afterAnsweringMs: lastAnsweredMs,
+          }
         : {}),
     });
     const batchStarted = Date.now();
@@ -6956,6 +6990,7 @@ async function groupAndTagAll(
   // refreshing it. Grouped items get their target replaced by the group below.
   for (const [i, fresh] of freshMembers) if (fresh.length === 1) tagTargets[i] = fresh[0];
   if (groupable.length && supports("1.8")) {
+    const took: { index: number; drew: number; took: number; by: string }[] = [];
     try {
       for (const { it, i } of groupable) {
         // Members RE-RESOLVED in this batch, off a slide handle taken in this
@@ -7005,8 +7040,32 @@ async function groupAndTagAll(
         applyAltText(group, it.opts);
         tagTargets[i] = group;
         grouped.add(i);
+        took.push({ index: i, drew: it.created.length, took: members.length, by: choice.use });
       }
       await boundedSync(context, "grouping the chart's shapes");
+      // AFTER the sync, so the name is an outcome the line knows — the mistake
+      // `batch committed` made, and the reason there is no commit line here
+      // either. Written unconditionally whenever anything grouped.
+      //
+      // This is the fifth failure-only field this repo has built. Grouping spoke
+      // only when it refused, so the 2026-08-11 round left a slide carrying one
+      // `PowerChart` group PLUS four loose shapes — `label-1-3`, `baseline`,
+      // `series-label-0`, `series-label-1`, all inside the chart's own box, all
+      // with lower ids than the group — and the log could not say whether the
+      // group took a subset or four shapes from an earlier draw survived it.
+      // A partial match is deliberately kept rather than discarded (see the
+      // re-read above), so a subset group is a designed outcome; what was
+      // missing is that it never announced itself. A group that leaves four
+      // shapes behind is a chart the user drags away from its own baseline.
+      if (took.length) {
+        const partial = took.filter((t) => t.took < t.drew);
+        trace("group", "grouped the chart's shapes", {
+          charts: took.length,
+          partial: partial.length,
+          ...(partial.length ? { left: partial.map((t) => `${t.index}:${t.drew - t.took}`).join(",") } : {}),
+          by: [...new Set(took.map((t) => t.by))].join(","),
+        });
+      }
     } catch {
       /* grouping failed — shapes stay ungrouped, charts are already on the slide */
       // RE-RESOLVED by id off a slide handle taken now, which is the same trick
