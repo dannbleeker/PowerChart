@@ -6671,11 +6671,24 @@ async function renderShapesChunked(
     // recorded; `prevBatchMs` is the batch duration, which until now had to be
     // differenced out of consecutive `issued` timestamps and so silently
     // included every bit of inter-batch work.
-    const slideKey = opts.slideId;
+    // Keyed on the slide when the caller named one, and on a sentinel when it
+    // did not — because `opts.slideId` is absent on most draws and this field
+    // was populated on SEVEN of forty-six batches in its first real round. A
+    // number that is missing five times out of six cannot answer the question
+    // it was added for, which is the cost curve's own input.
+    //
+    // `(visible)` is honest rather than convenient: an unnamed target is the
+    // slide the user is looking at, which is exactly where the repeated-draw
+    // case lives (editing a chart in place redraws every shape onto it). The
+    // key is emitted beside the count, so a reader can see when a total is
+    // accumulating across what may be more than one slide instead of having to
+    // assume it is not.
+    const slideKey = opts.slideId ?? "(visible)";
     trace("draw", "batch issued", {
       upTo,
       total,
-      ...(slideKey ? { onSlide: shapesDrawnOnSlide.get(slideKey) ?? 0 } : {}),
+      onSlide: shapesDrawnOnSlide.get(slideKey) ?? 0,
+      onSlideKey: slideKey,
       ...(prevBatchMs === undefined ? {} : { prevBatchMs }),
       ...(batchNo === 1
         ? { idleMs: Math.round(idleSinceLastAnswer()), afterAnswering: lastAnsweredCall ?? "nothing yet" }
@@ -6690,7 +6703,7 @@ async function renderShapesChunked(
       `drawing shapes ${upTo - (created.length - before) + 1}-${upTo} of ${total}`,
     );
     prevBatchMs = Date.now() - batchStarted;
-    if (slideKey) shapesDrawnOnSlide.set(slideKey, (shapesDrawnOnSlide.get(slideKey) ?? 0) + (created.length - before));
+    shapesDrawnOnSlide.set(slideKey, (shapesDrawnOnSlide.get(slideKey) ?? 0) + (created.length - before));
   }
   return created;
 }

@@ -829,6 +829,23 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   seconds while survivors stay under three, that is a real signal. One is an
   anecdote, and this file has a paragraph about exactly that mistake.
 
+- **A field can be recorded on both populations and STILL be useless, if it is
+  rarely populated.** `onSlide` — how many shapes this run had already put on
+  the slide, the input to the quadratic cost curve — was added on every batch,
+  stalled or not, exactly as the rule below demands. Its first real round
+  (`1fc21b9`) carried it on **7 of 46 batches**, and on exactly ONE alongside
+  `prevBatchMs`, because it was conditional on `opts.slideId` and most draws do
+  not pass one. So the pair that was supposed to measure the cost curve produced
+  a single point.
+
+  The rule below asks "what is this value on the runs that WORK". Ask the second
+  question too: **on how many of them is it there at all?** A field present a
+  sixth of the time answers nothing, and the shortfall is invisible until a
+  round is read — the numbers that ARE there look perfectly healthy. It keys on
+  a `(visible)` sentinel when the caller names no slide now, and emits
+  `onSlideKey` beside the count so a reader can see when a total may span more
+  than one slide rather than having to assume it does not.
+
 - **A value recorded only on FAILURES cannot be compared against anything, and
   this project keeps building them.** Four in one session: `idleMs` and
   `afterAnswering` were written on stalls but not on the draws that survived;
