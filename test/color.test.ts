@@ -165,6 +165,17 @@ describe("the preview sink and the pptx sink answer the same colour", () => {
     "hsl(400, 50%, 50%)",
     "rgb(300,-20,50)",
     "rgb(", // a truncated function is not a function to either sink: black both sides
+    // Named colours. This sink read every one of them as mid grey until the
+    // table it shares with the pptx sink was carried here too — a gap that put
+    // white ink on light fills and flipped `background: "white"` into
+    // dark-canvas mode. Listed here so the two tables are pinned to each other.
+    "white",
+    "black",
+    "rebeccapurple",
+    "lightyellow",
+    "  LightYellow  ",
+    "STEELBLUE",
+    "darkgrey",
   ];
 
   /** Paints neither sink can read — the one place they answer differently. */

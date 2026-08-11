@@ -34,15 +34,67 @@ function paintText(color: unknown): string {
  * mis-read reached contrastInk (white ink chosen for a near-white fill) and
  * lerpColor (tints lerping toward black instead of the real hue).
  *
- * Named CSS colours stay a known gap: PAINT_OK admits any bare word, and a
- * 148-entry table is not worth carrying here. They fall back to mid grey, which
- * at least yields a sane ink instead of asserting black.
+ * Named CSS colours were a "known gap" here for as long as the table looked
+ * like more weight than it was worth, and the gap cost more than the table:
+ * every one of them read as MID GREY, which is not a sane fallback — it is a
+ * confident wrong answer, and two helpers act on it.
+ *
+ *  - `contrastInk` chose WHITE ink for a `lightyellow` fill. Grey's luminance
+ *    sits just under the threshold, so every light named colour got invisible
+ *    labels.
+ *  - `relLuminance(style.background)` decides whether the canvas is dark, so
+ *    `background: "white"` put every canvas-aware helper into DARK mode: the
+ *    same chart written `#ffffff` and `white` came out with different heatmap
+ *    tints, zone fills and no-data greys.
+ *
+ * The table is the one the pptx sink has always carried. The two are separate
+ * files on purpose (that one ships standalone inside the skill zip), and
+ * `test/color.test.ts` now drives NAMED colours through both sinks, so they are
+ * pinned to each other by a test rather than by hope.
  */
 /**
  * What an unparseable colour becomes. Mid grey, which is what every branch
  * below already falls back to — named here so the guard and the fallbacks stay
  * the same answer.
  */
+/**
+ * The CSS Color 4 named colours as "name rrggbb" pairs — the same table the
+ * headless pptx sink carries (`skill/scripts/pptx-paint.mjs`, which ships
+ * standalone in the skill zip and so cannot import this one). `test/color.test.ts`
+ * drives named colours through both, so a change to one fails against the other.
+ */
+const CSS_NAMES: Record<string, string> = Object.fromEntries(
+  `aliceblue f0f8ff, antiquewhite faebd7, aqua 00ffff, aquamarine 7fffd4, azure f0ffff, beige f5f5dc,
+  bisque ffe4c4, black 000000, blanchedalmond ffebcd, blue 0000ff, blueviolet 8a2be2, brown a52a2a,
+  burlywood deb887, cadetblue 5f9ea0, chartreuse 7fff00, chocolate d2691e, coral ff7f50, cornflowerblue 6495ed,
+  cornsilk fff8dc, crimson dc143c, cyan 00ffff, darkblue 00008b, darkcyan 008b8b, darkgoldenrod b8860b,
+  darkgray a9a9a9, darkgreen 006400, darkgrey a9a9a9, darkkhaki bdb76b, darkmagenta 8b008b,
+  darkolivegreen 556b2f, darkorange ff8c00, darkorchid 9932cc, darkred 8b0000, darksalmon e9967a,
+  darkseagreen 8fbc8f, darkslateblue 483d8b, darkslategray 2f4f4f, darkslategrey 2f4f4f, darkturquoise 00ced1,
+  darkviolet 9400d3, deeppink ff1493, deepskyblue 00bfff, dimgray 696969, dimgrey 696969, dodgerblue 1e90ff,
+  firebrick b22222, floralwhite fffaf0, forestgreen 228b22, fuchsia ff00ff, gainsboro dcdcdc,
+  ghostwhite f8f8ff, gold ffd700, goldenrod daa520, gray 808080, green 008000, greenyellow adff2f, grey 808080,
+  honeydew f0fff0, hotpink ff69b4, indianred cd5c5c, indigo 4b0082, ivory fffff0, khaki f0e68c,
+  lavender e6e6fa, lavenderblush fff0f5, lawngreen 7cfc00, lemonchiffon fffacd, lightblue add8e6,
+  lightcoral f08080, lightcyan e0ffff, lightgoldenrodyellow fafad2, lightgray d3d3d3, lightgreen 90ee90,
+  lightgrey d3d3d3, lightpink ffb6c1, lightsalmon ffa07a, lightseagreen 20b2aa, lightskyblue 87cefa,
+  lightslategray 778899, lightslategrey 778899, lightsteelblue b0c4de, lightyellow ffffe0, lime 00ff00,
+  limegreen 32cd32, linen faf0e6, magenta ff00ff, maroon 800000, mediumaquamarine 66cdaa, mediumblue 0000cd,
+  mediumorchid ba55d3, mediumpurple 9370db, mediumseagreen 3cb371, mediumslateblue 7b68ee,
+  mediumspringgreen 00fa9a, mediumturquoise 48d1cc, mediumvioletred c71585, midnightblue 191970,
+  mintcream f5fffa, mistyrose ffe4e1, moccasin ffe4b5, navajowhite ffdead, navy 000080, oldlace fdf5e6,
+  olive 808000, olivedrab 6b8e23, orange ffa500, orangered ff4500, orchid da70d6, palegoldenrod eee8aa,
+  palegreen 98fb98, paleturquoise afeeee, palevioletred db7093, papayawhip ffefd5, peachpuff ffdab9,
+  peru cd853f, pink ffc0cb, plum dda0dd, powderblue b0e0e6, purple 800080, rebeccapurple 663399, red ff0000,
+  rosybrown bc8f8f, royalblue 4169e1, saddlebrown 8b4513, salmon fa8072, sandybrown f4a460, seagreen 2e8b57,
+  seashell fff5ee, sienna a0522d, silver c0c0c0, skyblue 87ceeb, slateblue 6a5acd, slategray 708090,
+  slategrey 708090, snow fffafa, springgreen 00ff7f, steelblue 4682b4, tan d2b48c, teal 008080, thistle d8bfd8,
+  tomato ff6347, turquoise 40e0d0, violet ee82ee, wheat f5deb3, white ffffff, whitesmoke f5f5f5, yellow ffff00,
+  yellowgreen 9acd32`
+    .split(",")
+    .map((pair) => pair.trim().split(" ") as [string, string]),
+);
+
 const UNREADABLE: [number, number, number] = [128, 128, 128];
 
 export function toRgb(color: string): [number, number, number] {
@@ -84,6 +136,15 @@ export function toRgb(color: string): [number, number, number] {
     const [h = 0, s = 0, l = 0] = nums(c);
     if (!finite([h, s, l])) return UNREADABLE;
     return hslToRgb(((h % 360) + 360) % 360, Math.max(0, Math.min(1, s / 100)), Math.max(0, Math.min(1, l / 100)));
+  }
+  // A named CSS colour. Own-property only: a series coloured `__proto__` or
+  // `constructor` would otherwise reach Object.prototype and come back an object
+  // or a FUNCTION, which is how the same table broke the pptx sink and the SVG
+  // pattern table before it.
+  const named = Object.prototype.hasOwnProperty.call(CSS_NAMES, c.toLowerCase()) ? CSS_NAMES[c.toLowerCase()] : "";
+  if (/^[0-9a-fA-F]{6}$/.test(named)) {
+    const n = parseInt(named, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
   return UNREADABLE;
 }
