@@ -28,6 +28,9 @@ import {
   _setReadbackTimeoutForTest,
   addScratchSlide,
   chooseGroupMembers,
+  OFFSCREEN_BATCH,
+  mayTakeConfig,
+  afterSettle,
   targetWithNoTagResult,
   rasteriseTimeoutMs,
   readbackTimeoutMs,
@@ -1442,5 +1445,139 @@ describe("insertAgendaSlides when the host drops a slide add", () => {
     // "getSlide is not a function" is a TypeError from renderer internals, for
     // a condition `addSlides` diagnosed precisely one frame earlier.
     expect(String((err as Error).message)).not.toMatch(/is not a function/);
+  });
+});
+
+/**
+ * The demo/deck path drew at the OFF-SCREEN batch size (40) and then decided
+ * whether the draw had spanned batches by comparing against the LIVE one (10).
+ * So every chart of 11 to 40 shapes drew in a single batch — every proxy still
+ * inside its own sync's window — and was told to go and re-read the collection
+ * anyway.
+ *
+ * That is not a spare round trip on this host. It does not list the shapes a
+ * run has just added, so the re-read comes back empty, and `chooseGroupMembers`
+ * reads an empty answer to a refresh it ASKED for as "group nothing" — where not
+ * asking would have grouped the perfectly good created proxies. The chart loses
+ * its group, and with it the shape id the settle needs to write the config
+ * through.
+ */
+describe("an off-screen chart that fitted in one batch is not sent to re-read the slide", () => {
+  const midSizedScene = () => ({
+    width: 480,
+    height: 300,
+    nodes: Array.from({ length: 24 }, (_, i) => ({
+      kind: "rect" as const,
+      x: i * 10,
+      y: 10,
+      w: 8,
+      h: 40,
+      fill: "#2a78d6",
+      name: `seg-0-${i}`,
+    })),
+  });
+
+  it("groups it even on a host that will not list a slide's shapes", async () => {
+    const slides = [makeSlide("s1")];
+    installHost(slides);
+    applyWebProfile();
+    // The refusal this is about, and only it: the collection answers nothing,
+    // for good. `applyWebProfile` also refuses the first addGroup outright,
+    // which is a different failure and would mask the one under test.
+    faults.hollowReads = 99;
+    faults.refuseGroups = 0;
+    try {
+      await insertDemoDeck([{ scene: midSizedScene(), tagData: '{"kind":"stacked"}' }]);
+      const drawn = slides[slides.length - 1];
+      expect(drawn.created.length, "nothing was drawn, so this proves nothing").toBeGreaterThan(10);
+      expect(
+        drawn.created.length,
+        "24 shapes must fit one off-screen batch, or this tests something else",
+      ).toBeLessThan(OFFSCREEN_BATCH);
+      // The chart survived as a chart: grouped, and carrying its config.
+      expect(
+        drawn.created.some((s) => s.type === "group"),
+        "the chart was left loose",
+      ).toBe(true);
+      expect(
+        drawn.created.some((s) => s.tagStore.get(CHART_TAG) === '{"kind":"stacked"}'),
+        "the chart lost its config tag",
+      ).toBe(true);
+    } finally {
+      faults.hollowReads = 0;
+    }
+  });
+});
+
+/**
+ * The settle's name search guarded "several charts on the slide" and not "the
+ * one I found is somebody else's".
+ *
+ * Our chart is UNGROUPED — which is why it has no shape id, and why the name
+ * search cannot see it. The group that IS on the slide belongs to a chart whose
+ * own config landed perfectly well. The settle wrote our config over theirs and
+ * reported a repair, so opening that chart hands back a different one's data.
+ *
+ * Asked of the rule directly, as `chooseGroupMembers` and
+ * `targetWithNoTagResult` are: the end-to-end path resolves its shape by id and
+ * never reaches this branch, so driving four simultaneous host failures through
+ * the fake to arrive at it would test the fake's plumbing, not the rule.
+ */
+describe("the settle does not take a bystander chart's config", () => {
+  it("writes through a shape it found BY ID, which is proof it is ours", () => {
+    expect(mayTakeConfig({ foundById: true, hasConfig: undefined })).toBe(true);
+    // Even one that already has a config: by id it IS our chart, and the config
+    // it carries is the one this settle is replacing.
+    expect(mayTakeConfig({ foundById: true, hasConfig: true })).toBe(true);
+  });
+
+  it("writes through a name match only when it carries no config", () => {
+    expect(mayTakeConfig({ foundById: false, hasConfig: false })).toBe(true);
+    expect(mayTakeConfig({ foundById: false, hasConfig: true })).toBe(false);
+  });
+
+  it("refuses a name match the host would not describe", () => {
+    // An ungrouped chart carrying no config can be inserted again; a bystander
+    // carrying the WRONG config means editing one chart rewrites another. So an
+    // unreadable answer is refused rather than guessed.
+    expect(mayTakeConfig({ foundById: false, hasConfig: undefined })).toBe(false);
+  });
+});
+
+/**
+ * A settle that lands puts the config back on the slide, so `no-config` should
+ * go — and stripping it said nothing about whether the target it was clearing
+ * still NAMED anything.
+ *
+ * For a chart whose new shapes were never read back, `shapeId` names the shape
+ * that same call deleted. Handing it back bare is the trap the update path
+ * documents in its own comments: the pane keeps it as the live edit target,
+ * prints "Done." in green, and the next push resolves a dead id, is filtered out
+ * as "the user deleted this chart", and tells them their chart is gone. The
+ * settle SUCCEEDING made that worse — it was the one path that cleared the
+ * marker protecting against it.
+ */
+describe("a settled chart whose shape was never named", () => {
+  const target = { slideId: "s1", shapeId: "shape-25", left: 60, top: 90, lost: "no-config" as const };
+
+  it("keeps a marker when the id it carries is the one this call deleted", () => {
+    const back = afterSettle(target, { settled: true, untargeted: true });
+    expect(back.lost, "handed back a live target pointing at a deleted shape").toBe("unknown-shape");
+  });
+
+  it("clears the marker when the target still names the new shape", () => {
+    // The case the strip was written for, and it must keep working: the settle
+    // landed and the target is real, so the chart is editable again.
+    expect(afterSettle(target, { settled: true, untargeted: false }).lost).toBeUndefined();
+  });
+
+  it("leaves a chart the settle could not repair exactly as it was", () => {
+    expect(afterSettle(target, { settled: false, untargeted: false }).lost).toBe("no-config");
+    expect(afterSettle(target, { settled: false, untargeted: true }).lost).toBe("no-config");
+  });
+
+  it("does not touch a target that was never marked", () => {
+    const fine = { slideId: "s1", shapeId: "shape-9", left: 0, top: 0 };
+    expect(afterSettle(fine, { settled: true, untargeted: true })).toEqual(fine);
   });
 });

@@ -3649,7 +3649,12 @@ describe("stopping work in flight", () => {
     expect(from, "settleAndTagChart is gone — this guard is looking at nothing").toBeGreaterThan(0);
     expect(to, "settleUntaggedCharts is gone — the slice below has no end").toBeGreaterThan(from);
     const labels = [...src.slice(from, to).matchAll(/boundedSync\([^,]+,\s*[`"]([^`"]+)[`"]/g)].map((m) => m[1]);
-    expect(labels.length, `expected three bounded syncs in the settle path, saw ${JSON.stringify(labels)}`).toBe(3);
+    // FOUR since the name branch started checking that the chart it matched is
+    // not already carrying someone else's config: the by-id write, the
+    // collection re-read, that check, and the write through a member of the
+    // read. The number is a tripwire for a sync added without thinking — raise
+    // it deliberately, as here, or find out why one appeared.
+    expect(labels.length, `expected four bounded syncs in the settle path, saw ${JSON.stringify(labels)}`).toBe(4);
     expect(new Set(labels).size, `two calls in the settle path share a label: ${JSON.stringify(labels)}`).toBe(
       labels.length,
     );
@@ -4027,6 +4032,40 @@ describe("the pictures a diagnostic round sends back", () => {
     } finally {
       resetStop();
       setTracing(false);
+    }
+  });
+});
+
+/**
+ * `officeHex` handed the host any run of LETTERS verbatim, on the reasoning
+ * that Office.js knows the CSS names. It knows the names; it does not know
+ * every word. `style.palette: ["banana"]` — or a series colour of
+ * `constructor`, which the pane's own saved-template store made reachable — is
+ * a run of letters and is not a colour, and `setSolidColor` on a name the host
+ * does not know is rejected inside the draw batch. One bad word did not degrade
+ * one shape; it took the batch, and with it the chart.
+ */
+describe("only colour names the host actually knows reach the host", () => {
+  const drawWith = async (color: string) => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide({
+      width: 100,
+      height: 60,
+      nodes: [{ kind: "rect", x: 0, y: 0, w: 40, h: 20, fill: color, name: "seg-0-0" }],
+    });
+    return slide.created.map((s) => s.fillColor).filter(Boolean) as string[];
+  };
+
+  it("passes a real CSS name through, because Office knows it", async () => {
+    expect(await drawWith("steelblue")).toContain("steelblue");
+  });
+
+  it("normalises a word that is not a colour instead of handing it over", async () => {
+    for (const word of ["banana", "constructor", "notacolour"]) {
+      const fills = await drawWith(word);
+      expect(fills, `${word} was handed to the host verbatim`).not.toContain(word);
+      for (const f of fills) expect(f, `${word} produced ${f}`).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
 });
