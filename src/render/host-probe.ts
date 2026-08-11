@@ -62,7 +62,63 @@ export interface HostAnswer {
   ms: number;
   /** Error text, counts, whatever helps read a surprising answer. Never diffed. */
   detail?: string;
+  /**
+   * Every answer this run got for this question, in the order it got them.
+   *
+   * A question asked ONCE has been sampled, not answered — this project has
+   * written that sentence in three places and still had to learn each unstable
+   * answer the expensive way, across ten rounds, because one round could only
+   * ever produce one sample. `UNSTABLE_ANSWERS` in `scripts/host-baseline.mjs`
+   * is the artefact of that: a table maintained by hand from whatever rounds
+   * happened to be open.
+   *
+   * A run asks each question up to `PROBE_PASSES` times, spread across the run
+   * rather than back to back, so the samples land in different minutes of the
+   * host's life. `stable` is then a fact one sheet can state on its own.
+   *
+   * The ROW stays one per id, and `answer` keeps its meaning — the diff, the
+   * contract gate, `host-diff` and `host-baseline` all read that field and none
+   * of them needed to change.
+   */
+  samples?: ProbeSample[];
+  /**
+   * Whether every real sample agreed. Undefined when the run got fewer than two.
+   *
+   * `false` here is the finding `UNSTABLE_ANSWERS` exists to record, said by
+   * the sheet itself instead of by a human comparing rounds.
+   */
+  stable?: boolean;
 }
+
+/** One ask of one question, and the state the host was in when it answered. */
+export interface ProbeSample {
+  answer: string;
+  /** Which pass over the question list this came from — 1, 2, 3. */
+  pass: number;
+  /** Milliseconds into the probe run, so two samples can be told apart in time. */
+  atMs: number;
+  /**
+   * What the run had already seen the host doing when this was asked.
+   *
+   * Derived from what the run has ALREADY observed — no extra call, so asking
+   * cannot itself disturb the thing being measured. Recorded on every sample
+   * and not only on the odd ones: a value written down only when something goes
+   * wrong cannot be compared against anything, which is a mistake this project
+   * has now made four times with four different fields.
+   */
+  regime: HostRegime;
+}
+
+/**
+ * How the host was behaving, in the only terms this run can honestly claim.
+ *
+ * `collection-refused` is the documented regime flip — the shape collection
+ * stops answering, and everything downstream of it degrades. `slide-trouble` is
+ * the other known window: freshly added slides stop resolving for ~15 seconds
+ * at a time. Neither is a guess about the host's insides; both are things this
+ * run watched happen.
+ */
+export type HostRegime = "healthy" | "slide-trouble" | "collection-refused";
 
 /** A complete sheet, plus what produced it. */
 export interface HostAnswerSheet {
@@ -198,6 +254,19 @@ type Probe = {
     because: string;
     probe: Probe;
   };
+  /**
+   * Ask this one again even when the run is short of scratch slides.
+   *
+   * The shortlist the later passes fall back to under pressure: the questions
+   * whose answers this project does NOT yet trust — everything in
+   * `UNSTABLE_ANSWERS` (answered differently on different runs of one build)
+   * and everything in `PENDING_QUESTIONS` (never answered at all). Marked on
+   * the question rather than kept as a list somewhere else, so it cannot drift
+   * from the question it describes; `test/host-probe.test.ts` reads those two
+   * tables out of `scripts/host-baseline.mjs` and fails if the marks and the
+   * tables disagree, which is what keeps them honest in the other direction.
+   */
+  resample?: true;
 };
 
 /**
@@ -216,6 +285,48 @@ type Probe = {
  * sets are equal now.
  */
 export const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+
+/**
+ * How many times a run asks each question.
+ *
+ * Three, and the number is the whole point of the exercise: one sample cannot
+ * say whether an answer is stable, two cannot say which of a disagreeing pair is
+ * the odd one, and three is where a round starts producing the fact that
+ * `UNSTABLE_ANSWERS` was built by hand across ten rounds to produce.
+ *
+ * Spread across the run, not asked back to back — three asks inside four
+ * seconds sample one minute of the host's life three times, which is one
+ * sample wearing a hat. Pass 1 is the whole list, exactly as before, so a host
+ * that dies early still yields today's sheet and nothing regresses.
+ */
+export const PROBE_PASSES = 3;
+
+/**
+ * Whether a question's samples agree — `undefined` when it has fewer than two
+ * real ones to compare.
+ *
+ * Only REAL answers count. A question put once and refused twice is not
+ * unstable; it is a question this run mostly could not ask, and calling that
+ * instability would manufacture exactly the noise `UNSTABLE_ANSWERS` warns
+ * against. Pure, and exported, so the rule can be checked without a host.
+ */
+export function stabilityOf(samples: ProbeSample[] | undefined): boolean | undefined {
+  const real = (samples ?? []).map((x) => x.answer).filter((a) => !NOT_ASKED.has(a));
+  return real.length >= 2 ? new Set(real).size === 1 : undefined;
+}
+
+/**
+ * The share of a pass that may come back never-asked before the later passes
+ * stop being worth their scratch slides.
+ *
+ * Scratch slides are the scarcest thing on this host and the repeats spend
+ * three times as many of them. When a pass is already losing a third of its
+ * questions to `no-scratch-slide`, asking the settled ones twice more is
+ * bidding for slides against the questions that actually need a second sample —
+ * so the later passes fall back to the resample shortlist, and the run says so
+ * in its trace rather than quietly doing less.
+ */
+export const PASS_PRESSURE_LIMIT = 1 / 3;
 
 /**
  * Consecutive unanswered questions before the probe stops asking.
@@ -607,6 +718,7 @@ const PROBES: Probe[] = [
   },
   {
     id: "shape-add-held-slide-proxy",
+    resample: true,
     question: "Can a shape be added through a slide proxy resolved a sync ago?",
     // Writing through a handle the host has stopped honouring is this question,
     // and it costs the slide. Seven rounds say whoever follows never gets an
@@ -636,6 +748,7 @@ const PROBES: Probe[] = [
   },
   {
     id: "binding-names-shape-later",
+    resample: true,
     question: "Can a binding made in a shape's CREATING sync still name that shape afterwards?",
     // ASKED SIXTH ON PURPOSE, beside the questions its control arm duplicates.
     //
@@ -759,6 +872,7 @@ const PROBES: Probe[] = [
   },
   {
     id: "shape-resolve-held-slide-proxy",
+    resample: true,
     question: "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
     // The half of the held-handle rule nobody has asked about, and three
     // production sites rest on it: `deleteShapesById`, `setShapeSelection` and
@@ -860,6 +974,7 @@ const PROBES: Probe[] = [
   },
   {
     id: "shape-add-positional-slide-proxy",
+    resample: true,
     question: "Can a shape be added through slides.getItemAt(index) rather than by id?",
     // The other half of the same fork. If by-index works where by-id does not,
     // the id is what this host will not take, and every write path that names a
@@ -910,6 +1025,7 @@ const PROBES: Probe[] = [
   },
   {
     id: "shapes-items-count-honest",
+    resample: true,
     question: "After adding 5 shapes, how many does the collection report?",
     // `faults.hollowReads` models a host that answers SHORT without throwing —
     // observed asking about 19 shapes and being told 3. If a host is honest
@@ -935,6 +1051,7 @@ const PROBES: Probe[] = [
   },
   {
     id: "shapes-items-via-positional-slide",
+    resample: true,
     question: "Same collection read, but through slides.getItemAt(index) — any different?",
     // The one contaminated answer that could NOT be cleaned up by re-resolving,
     // and the reason it needs a pair instead.
@@ -1090,6 +1207,7 @@ const PROBES: Probe[] = [
   },
   {
     id: "group-children-via-getcount",
+    resample: true,
     question: "Does a group report its child COUNT, where it will not list them?",
     // The variant that separates two things `group-reports-its-children` runs
     // together, and the 2026-08-08 sheet is why it exists. That question asked
@@ -1467,170 +1585,241 @@ export async function runHostProbes(source: string, build: string): Promise<Host
    */
   let mute = 0;
   let abandoned: string | null = null;
+  const runStarted = Date.now();
+  /**
+   * What the run has already watched the host do. Never a guess, never a call.
+   */
+  let sawSlideTrouble = false;
+  let sawCollectionRefused = false;
+  const regimeNow = (): HostRegime =>
+    sawCollectionRefused ? "collection-refused" : sawSlideTrouble ? "slide-trouble" : "healthy";
+  /** Answers that mean the shape collection has stopped answering. */
+  const REFUSAL = new Set(["unreadable", "short-0", "not-listed"]);
+  /**
+   * One row per question, however many times it is asked.
+   *
+   * `answer` keeps exactly the meaning it has always had — the first REAL
+   * answer, with a never-asked sentinel standing only until a later pass
+   * replaces it. That is what the second pass has always done to a lost row;
+   * this generalises it to three passes without the diff, the contract gate or
+   * any reader of a sheet noticing. The repeats go to `samples`.
+   */
+  const rows = new Map<string, HostAnswer>();
+  const record = (row: HostAnswer, pass: number): HostAnswer => {
+    if (REFUSAL.has(row.answer) && /^shapes?-/.test(row.id)) sawCollectionRefused = true;
+    if (row.answer === "no-scratch-slide") sawSlideTrouble = true;
+    const sample: ProbeSample = { answer: row.answer, pass, atMs: Date.now() - runStarted, regime: regimeNow() };
+    const seen = rows.get(row.id);
+    if (!seen) {
+      const created: HostAnswer = { ...row, samples: [sample] };
+      rows.set(row.id, created);
+      answers.push(created);
+      return created;
+    }
+    seen.samples = [...(seen.samples ?? []), sample];
+    // A real answer replaces a never-asked, and nothing replaces a real one:
+    // the FIRST real answer is the row's answer, so a sheet means today what it
+    // meant yesterday. Disagreement between samples is `stable`'s job to report,
+    // not `answer`'s to hide.
+    if (NOT_ASKED.has(seen.answer) && !NOT_ASKED.has(row.answer)) {
+      seen.answer = row.answer;
+      seen.ms = row.ms;
+      seen.detail = row.detail;
+    }
+    return seen;
+  };
   try {
-    for (const probe of PROBES) {
-      const started = Date.now();
-      // Stop asking a host that has stopped answering.
-      //
-      // The probe had no rung for this at all while the self-test has had one
-      // for weeks, and PowerPoint's own "Sorry, we ran into a problem" dialog is
-      // what exposed the gap: the host was gone, the pane's timer kept counting,
-      // and the run went on putting questions to a dead document — every one of
-      // them spending its full budget to record an answer about nothing.
-      if (!abandoned && mute >= PROBE_MUTE_LIMIT) {
-        abandoned = `${mute} questions in a row got no answer out of the host`;
-        trace("probe", "giving up on the host", { after: answers.length, why: abandoned });
-      }
-      if (abandoned) {
-        answers.push({
-          id: probe.id,
-          question: probe.question,
-          answer: "not-asked",
-          ms: 0,
-          detail: `not reached — ${abandoned}`,
+    /** Questions the current pass will put. Pass 1 is always the whole list. */
+    let list: Probe[] = [...PROBES];
+    for (let pass = 1; pass <= PROBE_PASSES; pass++) {
+      if (pass > 1) {
+        // Decided from the pass just finished, not from the run's whole
+        // history: pressure comes and goes here in fifteen-second windows, and
+        // a run that struggled early and recovered should get its repeats.
+        const put = [...rows.values()].filter((r) => r.samples?.some((x) => x.pass === pass - 1));
+        const lostLast = put.filter((r) => NOT_ASKED.has(r.samples!.find((x) => x.pass === pass - 1)!.answer)).length;
+        const pressured = put.length > 0 && lostLast / put.length > PASS_PRESSURE_LIMIT;
+        list = pressured ? PROBES.filter((pr) => pr.resample) : [...PROBES];
+        trace("probe", "starting another pass over the questions", {
+          pass,
+          asking: list.length,
+          of: PROBES.length,
+          why: pressured ? `${lostLast} of ${put.length} were never put last pass — shortlist only` : "full list",
         });
-        continue;
+        if (!list.length) break;
       }
-      const deadlinesBefore = deadlinesFired;
-      trace("probe", "asking", { id: probe.id });
-      let result: { answer: string; detail?: string };
-      // One more attempt at a slide, every question, rather than writing the
-      // rest of the sheet off.
-      //
-      // `scratchId` goes null when a replacement also failed to resolve, and
-      // nothing used to set it back — so a single bad moment cost every
-      // question after it, all of them recorded `no-scratch-slide` as though
-      // the host had been asked. That is the same shape as the failure this
-      // whole rung exists to prevent, one level up: an answer that describes
-      // the run's own state rather than the host's.
-      //
-      // A host that genuinely will not keep a slide pays one `addScratchSlide`
-      // per question for the honest answer, which is what the budget is for.
-      if (!scratchId) {
-        const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
-        if (recovered) {
-          scratchIds.push(recovered);
-          scratchId = recovered;
-          trace("probe", "took another scratch slide after giving up on the last", { id: probe.id });
+      for (const probe of list) {
+        const started = Date.now();
+        // Stop asking a host that has stopped answering.
+        //
+        // The probe had no rung for this at all while the self-test has had one
+        // for weeks, and PowerPoint's own "Sorry, we ran into a problem" dialog is
+        // what exposed the gap: the host was gone, the pane's timer kept counting,
+        // and the run went on putting questions to a dead document — every one of
+        // them spending its full budget to record an answer about nothing.
+        if (!abandoned && mute >= PROBE_MUTE_LIMIT) {
+          abandoned = `${mute} questions in a row got no answer out of the host`;
+          trace("probe", "giving up on the host", { after: answers.length, why: abandoned });
         }
-      }
-      if (!scratchId && !probe.noSlideNeeded) {
-        result = { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
-      } else if (probe.noSlideNeeded) {
-        // Not gated on a scratch slide at any level — not on having one, and
-        // not on its liveness. The id is passed through because `ProbeContext`
-        // carries one, but nothing here resolves it. See `Probe.noSlideNeeded`.
-        result = await ask(probe, scratchId ?? "", durableSlideId);
-      } else {
-        result = await ask(probe, scratchId as string, durableSlideId);
-        // A slide that stopped resolving costs one question, not the sheet.
-        //
-        // It cost thirteen once: a real host lost the scratch slide after the
-        // first probe and the remaining thirteen questions each reported the
-        // same failure as if it were their own answer. Thirteen apparent
-        // divergences, one cause, and none of the questions actually asked.
-        // Replacing the slide is the difference between a sheet that reports a
-        // finding and a sheet that IS the finding.
-        //
-        // Either kind of never-asked gets the replacement: a slide the host
-        // will not resolve, and a slide that resolves and will not take a
-        // shape. The second is a weaker reason to suspect the slide, but the
-        // cost is one add and one question, and the alternative is a sheet
-        // that gives up on eight questions because one slide went bad.
-        if (NOT_ASKED.has(result.answer)) {
-          const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
-          if (replacement) {
-            scratchIds.push(replacement);
-            scratchId = replacement;
-            trace("probe", "replaced the scratch slide", {
+        if (abandoned) {
+          record(
+            {
               id: probe.id,
-              scratchId: replacement,
-              after: result.answer,
-            });
-            const retry = await ask(probe, replacement, durableSlideId);
-            // Only adopt a retry that actually got somewhere. A second failure
-            // on a brand-new slide is a stronger statement than the first, and
-            // overwriting it with a never-asked would hide that.
-            if (!NOT_ASKED.has(retry.answer)) result = retry;
-            // Give up on the SLIDE only when the slide is what failed. A host
-            // that resolves slides and refuses shapes has nothing wrong with
-            // its slides, and writing off the scratch slide there would turn
-            // one refusal into "no-scratch-slide" for every question after it —
-            // the very noise this whole rung exists to prevent.
-            else if (retry.answer === "no-scratch-slide") scratchId = null;
-          } else if (result.answer === "no-scratch-slide") {
-            scratchId = null;
-          }
+              question: probe.question,
+              answer: "not-asked",
+              ms: 0,
+              detail: `not reached — ${abandoned}`,
+            },
+            pass,
+          );
+          continue;
         }
-      }
-      const entry: HostAnswer = { id: probe.id, question: probe.question, ms: Date.now() - started, ...result };
-      answers.push(entry);
-      trace("probe", "answered", { id: probe.id, answer: entry.answer, ms: entry.ms });
-      // A question that wrecks the slide on its way out gives up the slide, so
-      // the next one starts on a fresh handle instead of inheriting the damage.
-      //
-      // Dropped AFTER the answer is recorded, and only on `burnsTheSlide`: this
-      // question succeeded, so nothing else here would have replaced anything.
-      // The `if (!scratchId)` at the top of the loop takes the new one, which is
-      // the same path a lost slide already uses — no second mechanism.
-      if (probe.burnsTheSlide && scratchId) {
-        trace("probe", "giving up the scratch slide this question wrecked", { id: probe.id, scratchId });
-        scratchId = null;
-      }
-      // Reset on ANY question that came back inside its budget, including one
-      // that could not be set up: a host still refusing questions promptly is a
-      // host still talking to us.
-      mute = deadlinesFired > deadlinesBefore ? mute + 1 : 0;
-      // The partner question, in the same run, when the answer admits two
-      // readings. Never asked when the question was never PUT: a follow-up to
-      // `no-scratch-shape` would be a second question about the probe's own
-      // setup, dressed as a fact about the host.
-      const follow = probe.follow;
-      if (follow && !NOT_ASKED.has(entry.answer) && follow.when(entry.answer)) {
-        const at = Date.now();
-        trace("probe", "asking the partner question", { after: probe.id, id: follow.probe.id, was: entry.answer });
-        let r = scratchId
-          ? await ask(follow.probe, scratchId, durableSlideId)
-          : { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
-        // The same replacement the main loop gets, and for the same reason.
+        const deadlinesBefore = deadlinesFired;
+        trace("probe", "asking", { id: probe.id });
+        let result: { answer: string; detail?: string };
+        // One more attempt at a slide, every question, rather than writing the
+        // rest of the sheet off.
         //
-        // A follow-up went unasked in three consecutive rounds:
-        // `getitem-durable-slide` reads the DURABLE slide and never touches the
-        // scratch one, yet `ask` liveness-checks the scratch slide first, so a
-        // question with no use for that slide was refused for its absence. On a
-        // host that loses a scratch slide after almost every question — this one
-        // replaced seventeen in one run — that is not an edge case, it is the
-        // normal path.
-        if (NOT_ASKED.has(r.answer)) {
-          const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
-          if (replacement) {
-            scratchIds.push(replacement);
-            scratchId = replacement;
-            trace("probe", "replaced the scratch slide for a partner question", {
-              id: follow.probe.id,
-              scratchId: replacement,
-              after: r.answer,
-            });
-            const retry = await ask(follow.probe, replacement, durableSlideId);
-            // Same rule as the main loop: only adopt a retry that got somewhere.
-            if (!NOT_ASKED.has(retry.answer)) r = retry;
+        // `scratchId` goes null when a replacement also failed to resolve, and
+        // nothing used to set it back — so a single bad moment cost every
+        // question after it, all of them recorded `no-scratch-slide` as though
+        // the host had been asked. That is the same shape as the failure this
+        // whole rung exists to prevent, one level up: an answer that describes
+        // the run's own state rather than the host's.
+        //
+        // A host that genuinely will not keep a slide pays one `addScratchSlide`
+        // per question for the honest answer, which is what the budget is for.
+        if (!scratchId) {
+          const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+          if (recovered) {
+            scratchIds.push(recovered);
+            scratchId = recovered;
+            trace("probe", "took another scratch slide after giving up on the last", { id: probe.id });
           }
         }
-        answers.push({
-          id: follow.probe.id,
-          question: follow.probe.question,
-          ms: Date.now() - at,
-          ...r,
-          // Which answer triggered it, in the sheet itself. Two rows that do
-          // not say they are a pair are two unrelated facts to whoever reads
-          // them a week later.
-          detail: `asked because ${probe.id} answered "${entry.answer}" — ${follow.because}${r.detail ? `; ${r.detail}` : ""}`,
-        });
-        trace("probe", "partner answered", { id: follow.probe.id, answer: r.answer });
+        if (!scratchId && !probe.noSlideNeeded) {
+          result = { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
+        } else if (probe.noSlideNeeded) {
+          // Not gated on a scratch slide at any level — not on having one, and
+          // not on its liveness. The id is passed through because `ProbeContext`
+          // carries one, but nothing here resolves it. See `Probe.noSlideNeeded`.
+          result = await ask(probe, scratchId ?? "", durableSlideId);
+        } else {
+          result = await ask(probe, scratchId as string, durableSlideId);
+          // A slide that stopped resolving costs one question, not the sheet.
+          //
+          // It cost thirteen once: a real host lost the scratch slide after the
+          // first probe and the remaining thirteen questions each reported the
+          // same failure as if it were their own answer. Thirteen apparent
+          // divergences, one cause, and none of the questions actually asked.
+          // Replacing the slide is the difference between a sheet that reports a
+          // finding and a sheet that IS the finding.
+          //
+          // Either kind of never-asked gets the replacement: a slide the host
+          // will not resolve, and a slide that resolves and will not take a
+          // shape. The second is a weaker reason to suspect the slide, but the
+          // cost is one add and one question, and the alternative is a sheet
+          // that gives up on eight questions because one slide went bad.
+          if (NOT_ASKED.has(result.answer)) {
+            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+            if (replacement) {
+              scratchIds.push(replacement);
+              scratchId = replacement;
+              trace("probe", "replaced the scratch slide", {
+                id: probe.id,
+                scratchId: replacement,
+                after: result.answer,
+              });
+              const retry = await ask(probe, replacement, durableSlideId);
+              // Only adopt a retry that actually got somewhere. A second failure
+              // on a brand-new slide is a stronger statement than the first, and
+              // overwriting it with a never-asked would hide that.
+              if (!NOT_ASKED.has(retry.answer)) result = retry;
+              // Give up on the SLIDE only when the slide is what failed. A host
+              // that resolves slides and refuses shapes has nothing wrong with
+              // its slides, and writing off the scratch slide there would turn
+              // one refusal into "no-scratch-slide" for every question after it —
+              // the very noise this whole rung exists to prevent.
+              else if (retry.answer === "no-scratch-slide") scratchId = null;
+            } else if (result.answer === "no-scratch-slide") {
+              scratchId = null;
+            }
+          }
+        }
+        const entry = record({ id: probe.id, question: probe.question, ms: Date.now() - started, ...result }, pass);
+        trace("probe", "answered", { id: probe.id, answer: entry.answer, ms: entry.ms });
+        // A question that wrecks the slide on its way out gives up the slide, so
+        // the next one starts on a fresh handle instead of inheriting the damage.
+        //
+        // Dropped AFTER the answer is recorded, and only on `burnsTheSlide`: this
+        // question succeeded, so nothing else here would have replaced anything.
+        // The `if (!scratchId)` at the top of the loop takes the new one, which is
+        // the same path a lost slide already uses — no second mechanism.
+        if (probe.burnsTheSlide && scratchId) {
+          trace("probe", "giving up the scratch slide this question wrecked", { id: probe.id, scratchId });
+          scratchId = null;
+        }
+        // Reset on ANY question that came back inside its budget, including one
+        // that could not be set up: a host still refusing questions promptly is a
+        // host still talking to us.
+        mute = deadlinesFired > deadlinesBefore ? mute + 1 : 0;
+        // The partner question, in the same run, when the answer admits two
+        // readings. Never asked when the question was never PUT: a follow-up to
+        // `no-scratch-shape` would be a second question about the probe's own
+        // setup, dressed as a fact about the host.
+        const follow = probe.follow;
+        if (follow && !NOT_ASKED.has(entry.answer) && follow.when(entry.answer)) {
+          const at = Date.now();
+          trace("probe", "asking the partner question", { after: probe.id, id: follow.probe.id, was: entry.answer });
+          let r = scratchId
+            ? await ask(follow.probe, scratchId, durableSlideId)
+            : { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
+          // The same replacement the main loop gets, and for the same reason.
+          //
+          // A follow-up went unasked in three consecutive rounds:
+          // `getitem-durable-slide` reads the DURABLE slide and never touches the
+          // scratch one, yet `ask` liveness-checks the scratch slide first, so a
+          // question with no use for that slide was refused for its absence. On a
+          // host that loses a scratch slide after almost every question — this one
+          // replaced seventeen in one run — that is not an edge case, it is the
+          // normal path.
+          if (NOT_ASKED.has(r.answer)) {
+            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+            if (replacement) {
+              scratchIds.push(replacement);
+              scratchId = replacement;
+              trace("probe", "replaced the scratch slide for a partner question", {
+                id: follow.probe.id,
+                scratchId: replacement,
+                after: r.answer,
+              });
+              const retry = await ask(follow.probe, replacement, durableSlideId);
+              // Same rule as the main loop: only adopt a retry that got somewhere.
+              if (!NOT_ASKED.has(retry.answer)) r = retry;
+            }
+          }
+          record(
+            {
+              id: follow.probe.id,
+              question: follow.probe.question,
+              ms: Date.now() - at,
+              ...r,
+              // Which answer triggered it, in the sheet itself. Two rows that do
+              // not say they are a pair are two unrelated facts to whoever reads
+              // them a week later.
+              detail: `asked because ${probe.id} answered "${entry.answer}" — ${follow.because}${r.detail ? `; ${r.detail}` : ""}`,
+            },
+            pass,
+          );
+          trace("probe", "partner answered", { id: follow.probe.id, answer: r.answer });
+        }
       }
+      // The breaker is a fact about the host, not about a pass: once the run has
+      // given up there is nothing for a later pass to sample.
+      if (abandoned) break;
     }
 
-    // A SECOND pass over the questions this run never managed to put, at the
+    // A LAST pass over the questions this run never managed to put, at the
     // END of the run rather than beside the failure.
     //
     // The retry above already takes a fresh slide and asks again — and it is not
@@ -1699,6 +1888,14 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // Only an answer replaces a never-asked. A second failure is the same
         // fact the first one already recorded, and overwriting the row with it
         // would lose the original `ms` for no gain.
+        // Recorded as a SAMPLE like every other ask, so the rescue is visible
+        // as the late sample it is rather than as an answer with no provenance.
+        // `record` applies the same rule this block always did — only a real
+        // answer replaces a never-asked — so the row reads exactly as before.
+        entry.samples = [
+          ...(entry.samples ?? []),
+          { answer: retry.answer, pass: PROBE_PASSES + 1, atMs: Date.now() - runStarted, regime: regimeNow() },
+        ];
         if (!NOT_ASKED.has(retry.answer)) {
           entry.answer = retry.answer;
           entry.ms = Date.now() - started;
@@ -1740,6 +1937,14 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       detail: `${returned} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}`,
     });
     trace("probe", "gave the scratch slides back", { returned, left });
+  }
+  // Said by the sheet, from its own samples — the fact `UNSTABLE_ANSWERS` was
+  // assembled by hand across ten rounds to say. Only REAL answers count: a
+  // question that was put once and refused twice is not unstable, it is a
+  // question this run mostly could not ask.
+  for (const row of answers) {
+    const verdict = stabilityOf(row.samples);
+    if (verdict !== undefined) row.stable = verdict;
   }
   return { kind: "powerchart-host-answers", source, build, requirementSets: requirementSets(), answers };
 }
@@ -1818,6 +2023,17 @@ export const PROBE_IDS: readonly string[] = [...PROBES.flatMap(withFollows), SCR
  * reason, and a list that has to be edited by hand is a list that will one day
  * be edited wrong in the quiet direction.
  */
+/**
+ * The shortlist the later passes fall back to when scratch slides are scarce.
+ *
+ * Derived from the marks rather than listed again, for the same reason
+ * `NO_SLIDE_NEEDED_IDS` is: a hand-kept copy is a copy that will one day be
+ * edited wrong in the quiet direction.
+ */
+export const RESAMPLE_IDS: readonly string[] = PROBES.flatMap(flatten)
+  .filter((p) => p.resample)
+  .map((p) => p.id);
+
 export const NO_SLIDE_NEEDED_IDS: readonly string[] = PROBES.flatMap(flatten)
   .filter((p) => p.noSlideNeeded)
   .map((p) => p.id);
@@ -1851,6 +2067,15 @@ export function summariseHostSheet(sheet: HostAnswerSheet): {
   neverPut: string[];
   known: string[];
   fresh: string[];
+  /**
+   * Questions that answered one way and then another INSIDE this run.
+   *
+   * The fact `UNSTABLE_ANSWERS` was assembled by hand across ten rounds to
+   * state, now stated by the round that saw it. A sheet that knows it disagreed
+   * with itself and does not say so has only moved the finding somewhere nobody
+   * looks.
+   */
+  unstable: string[];
 } {
   const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
   const neverPut = sheet.answers.filter((a) => NOT_ASKED.has(a.answer)).map((a) => a.id);
@@ -1865,23 +2090,36 @@ export function summariseHostSheet(sheet: HostAnswerSheet): {
   const declared = (id: string) => id in KNOWN_DIVERGENCES || id in UNSTABLE_ANSWERS;
   const known = differ.filter((d) => declared(d.id)).map((d) => d.id);
   const fresh = differ.filter((d) => !declared(d.id)).map((d) => d.id);
-  return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh };
+  const unstable = sheet.answers.filter((a) => a.stable === false).map((a) => a.id);
+  return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh, unstable };
 }
 
 /** Whether a probe run is worth sending on — anything unexplained in it. */
 export function sheetNeedsAttention(sheet: HostAnswerSheet): boolean {
   const s = summariseHostSheet(sheet);
-  return s.fresh.length > 0 || s.neverPut.length > 0;
+  // Instability counts. A question that answered two ways inside one round is
+  // the finding this project used to need ten rounds and a hand-kept table to
+  // reach, and the verdict line already says so — a round that says "worth
+  // sending" in words and "nothing to see" in its return value is worse than
+  // either.
+  return s.fresh.length > 0 || s.neverPut.length > 0 || s.unstable.length > 0;
 }
 
 /** The same summary, in the words the pane shows. */
 export function describeHostSheet(sheet: HostAnswerSheet): string {
-  const { asked, neverPut, known, fresh } = summariseHostSheet(sheet);
+  const { asked, neverPut, known, fresh, unstable } = summariseHostSheet(sheet);
   const parts = [`${asked} of ${sheet.answers.length} questions answered`];
   if (neverPut.length) parts.push(`${neverPut.length} never put (${neverPut.join(", ")})`);
   if (known.length) parts.push(`${known.length} known divergence${known.length === 1 ? "" : "s"}`);
   if (fresh.length) parts.push(`NEW: ${fresh.join(", ")}`);
+  // A question that changed its answer mid-round is worth sending whatever the
+  // diff says: it is the one thing a single sheet could never report before.
+  if (unstable.length) parts.push(`CHANGED ITS ANSWER MID-ROUND: ${unstable.join(", ")}`);
   // The verdict the owner actually needs: send it, or don't.
-  parts.push(fresh.length || neverPut.length ? "Saved — worth sending." : "Saved. Nothing new — no need to send it.");
+  parts.push(
+    fresh.length || neverPut.length || unstable.length
+      ? "Saved — worth sending."
+      : "Saved. Nothing new — no need to send it.",
+  );
   return parts.join(" · ");
 }

@@ -12,7 +12,14 @@ import {
   summariseHostSheet,
   _setProbeBudgetForTest,
   NOT_ASKED,
+  PROBE_PASSES,
+  RESAMPLE_IDS,
+  stabilityOf,
+  type HostAnswerSheet,
 } from "../src/render/host-probe";
+// @ts-expect-error — a plain .mjs tool with no types. Imported so the shortlist
+// and the tables that define it are pinned to each other by a test.
+import { UNSTABLE_ANSWERS, PENDING_QUESTIONS } from "../scripts/host-baseline.mjs";
 // @ts-expect-error — a plain .mjs tool with no types. The baseline lives THERE
 // rather than here, so the diff tool and this test cannot drift apart: two
 // copies of the same table is how a claim quietly stops matching its check.
@@ -497,8 +504,14 @@ describe("the fake host's answer sheet", () => {
     try {
       const sheet = await runHostProbes("fake-loses-then-recovers", "test");
       const lost = sheet.answers.filter((a) => NOT_ASKED_WORDS.includes(a.answer));
-      const recovered = sheet.answers.filter((a) => a.detail?.includes("second pass"));
-      expect(recovered.length, "the second pass rescued nothing — the window never closed for it").toBeGreaterThan(5);
+      // Asked on the PROPERTY, not on which rung delivered it. A run makes three
+      // passes now, so a question swallowed by an early window is usually put
+      // again long before the end-of-run sweep — and this test exists to say the
+      // window does not cost the question, not to say which pass rescued it.
+      const recovered = sheet.answers.filter(
+        (a) => !NOT_ASKED_WORDS.includes(a.answer) && (a.samples ?? []).some((x) => NOT_ASKED_WORDS.includes(x.answer)),
+      );
+      expect(recovered.length, "nothing was re-asked after the window closed").toBeGreaterThan(5);
       expect(
         lost.map((a) => a.id),
         "a question the host would have answered was still filed unanswerable",
@@ -673,7 +686,10 @@ describe("the fake host's answer sheet", () => {
     faults.newSlideRefusedForFirst = 28;
     try {
       const sheet = await runHostProbes("fake-refuses-then-relents-mid-sweep", "test");
-      const rescued = sheet.answers.filter((a) => a.detail?.includes("second pass"));
+      // The property, as above: refused once, asked again, answered in the end.
+      const rescued = sheet.answers.filter(
+        (a) => !NOT_ASKED_WORDS.includes(a.answer) && (a.samples ?? []).some((x) => NOT_ASKED_WORDS.includes(x.answer)),
+      );
       expect(rescued.length, "one refused slide ended the whole sweep").toBeGreaterThan(10);
       const lost = sheet.answers.filter((a) => NOT_ASKED_WORDS.includes(a.answer));
       expect(lost.length, `still lost: ${lost.map((a) => a.id).join(", ")}`).toBeLessThan(3);
@@ -1241,5 +1257,173 @@ describe("the pane's own read of a sheet", () => {
     const s = summariseHostSheet(sheet);
     expect(s.fresh, "a documented unstable answer was announced as news").toEqual(["getitemat-past-end"]);
     expect(s.known).toContain("shape-add-positional-slide-proxy");
+  });
+});
+
+/**
+ * A question asked ONCE has been sampled, not answered — this project has
+ * written that sentence in three places and still had to learn each unstable
+ * answer the expensive way, across ten rounds, because one round could only
+ * ever produce one sample. A run asks each question up to `PROBE_PASSES` times
+ * now, spread across the run, so the sheet can state stability on its own.
+ */
+describe("a run samples each question more than once", () => {
+  it("asks a healthy host every question three times", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    const asked = sheet.answers.filter((a) => a.id !== SCRATCH_CLEANUP_ID);
+    expect(asked.length).toBeGreaterThan(10);
+    for (const a of asked) {
+      expect(a.samples?.length, `${a.id} was asked ${a.samples?.length ?? 0} time(s)`).toBe(PROBE_PASSES);
+    }
+  });
+
+  it("still files ONE row per question, which is what every reader of a sheet needs", () => {
+    // The contract gate, `host-diff`, `host-baseline` and `host-history` all key
+    // off one row per id and read `answer`. The repeats had to go somewhere that
+    // none of them would notice.
+    installHost([makeSlide("s1")]);
+    return runHostProbes("fake", "test").then((sheet) => {
+      const ids = sheet.answers.map((a) => a.id);
+      expect(new Set(ids).size, `duplicate rows: ${ids.filter((x, i) => ids.indexOf(x) !== i).join(", ")}`).toBe(
+        ids.length,
+      );
+    });
+  });
+
+  it("says a healthy host's answers are stable, and stamps each sample", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    const answered = sheet.answers.filter((a) => a.samples?.length && !NOT_ASKED_WORDS.includes(a.answer));
+    expect(answered.length).toBeGreaterThan(10);
+    for (const a of answered) expect(a.stable, `${a.id} disagreed with itself on a healthy host`).toBe(true);
+    // Every sample carries its pass, its time and the regime — recorded always,
+    // not only when something goes wrong, because a value written down only on
+    // failures cannot be compared against anything.
+    for (const s of answered[0].samples!) {
+      expect(s.pass).toBeGreaterThan(0);
+      expect(typeof s.atMs).toBe("number");
+      expect(["healthy", "slide-trouble", "collection-refused"]).toContain(s.regime);
+    }
+  });
+});
+
+describe("stabilityOf", () => {
+  const at = (answer: string) => ({ answer, pass: 1, atMs: 0, regime: "healthy" as const });
+
+  it("needs two REAL samples before it will say anything", () => {
+    expect(stabilityOf(undefined)).toBeUndefined();
+    expect(stabilityOf([at("yes")])).toBeUndefined();
+    // Put once and refused twice is not instability, it is a run that could not
+    // ask — calling it unstable would manufacture the noise this exists to find.
+    expect(stabilityOf([at("yes"), at("no-scratch-slide"), at("not-asked")])).toBeUndefined();
+  });
+
+  it("reports agreement and disagreement", () => {
+    expect(stabilityOf([at("yes"), at("yes"), at("yes")])).toBe(true);
+    expect(stabilityOf([at("yes"), at("threw")])).toBe(false);
+    // A never-asked between two agreeing answers does not make them disagree.
+    expect(stabilityOf([at("yes"), at("no-scratch-slide"), at("yes")])).toBe(true);
+  });
+});
+
+/**
+ * The shortlist the later passes fall back to under slide pressure is marked on
+ * the questions themselves, and the two tables that define it live in
+ * `scripts/host-baseline.mjs`. Pinned to each other here, because a list in one
+ * file and a set of marks in another drift the moment either changes — which is
+ * the failure mode this repo's own memory warns about by name.
+ */
+describe("the resample shortlist matches the tables that define it", () => {
+  it("marks every question this project does not yet trust", () => {
+    const shouldResample = new Set([...Object.keys(UNSTABLE_ANSWERS), ...Object.keys(PENDING_QUESTIONS)]);
+    const marked = new Set(RESAMPLE_IDS);
+    for (const id of shouldResample) {
+      expect(marked.has(id), `${id} is in UNSTABLE_ANSWERS/PENDING_QUESTIONS but is not marked resample`).toBe(true);
+    }
+    for (const id of marked) {
+      expect(shouldResample.has(id), `${id} is marked resample but neither table asks for it`).toBe(true);
+    }
+    expect(marked.size, "the shortlist is empty, so the fallback asks nothing").toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Scratch slides are the scarcest thing on this host, and three passes spend
+ * three times as many. When a pass is already losing a third of its questions
+ * to `no-scratch-slide`, asking the settled ones twice more bids for slides
+ * against the questions that actually need a second sample.
+ */
+describe("under slide pressure the later passes ask only the shortlist", () => {
+  it("keeps re-asking the untrusted questions and stops re-asking the settled ones", async () => {
+    installHost([makeSlide("s1")]);
+    // Wide enough that pass 1 loses well over a third of its questions, and
+    // measured rather than picked: the assertion below reads the ratio the run
+    // actually saw, so a fake that stops refusing early fails loudly instead of
+    // passing for the wrong reason.
+    faults.newSlideRefusedForFirst = 40;
+    try {
+      const sheet = await runHostProbes("fake-under-slide-pressure", "test");
+      const asked = sheet.answers.filter((a) => a.id !== SCRATCH_CLEANUP_ID);
+      const passesFor = (id: string) =>
+        new Set((asked.find((a) => a.id === id)?.samples ?? []).map((s) => s.pass).filter((p) => p <= PROBE_PASSES))
+          .size;
+      const shortlisted = RESAMPLE_IDS.filter((id) => asked.some((a) => a.id === id));
+      const settled = asked.filter((a) => !RESAMPLE_IDS.includes(a.id)).map((a) => a.id);
+      // The precondition, asserted rather than assumed.
+      const firstPass = asked.map((a) => a.samples?.find((x) => x.pass === 1)?.answer).filter(Boolean) as string[];
+      const lostFirst = firstPass.filter((x) => NOT_ASKED_WORDS.includes(x)).length;
+      expect(lostFirst / firstPass.length, "pass 1 was not under pressure, so this proves nothing").toBeGreaterThan(
+        1 / 3,
+      );
+      expect(shortlisted.length, "no shortlisted question was asked at all").toBeGreaterThan(0);
+      // The shortlist still gets its repeats…
+      expect(Math.max(...shortlisted.map(passesFor))).toBeGreaterThan(1);
+      // …and the settled questions stop after the first pass, which is the
+      // whole point: the slides go to the questions that need them.
+      expect(Math.max(...settled.map(passesFor)), "settled questions kept spending slides").toBe(1);
+    } finally {
+      faults.newSlideRefusedForFirst = 0;
+    }
+  });
+
+  it("gives every question its repeats when there is no pressure", async () => {
+    // The negative control: the fallback must be a response to pressure, not
+    // the normal path wearing a justification.
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    const settled = sheet.answers.filter((a) => a.id !== SCRATCH_CLEANUP_ID && !RESAMPLE_IDS.includes(a.id));
+    expect(settled.length).toBeGreaterThan(5);
+    for (const a of settled) expect(a.samples?.length, `${a.id}`).toBe(PROBE_PASSES);
+  });
+});
+
+/**
+ * A sheet that knows it disagreed with itself has to say so, or the finding has
+ * only moved somewhere nobody looks.
+ */
+describe("the summary reports a question that changed its answer mid-round", () => {
+  const sheetWith = (rows: { id: string; answer: string; stable?: boolean }[]) =>
+    ({
+      kind: "powerchart-host-answers",
+      source: "fake",
+      build: "test",
+      requirementSets: [],
+      answers: rows.map((r) => ({ ...r, question: r.id, ms: 1 })),
+    }) as HostAnswerSheet;
+
+  it("names it, and calls the round worth sending", () => {
+    const sheet = sheetWith([{ id: "shape-add-held-slide-proxy", answer: "threw", stable: false }]);
+    expect(summariseHostSheet(sheet).unstable).toEqual(["shape-add-held-slide-proxy"]);
+    expect(describeHostSheet(sheet)).toContain("CHANGED ITS ANSWER MID-ROUND");
+    expect(sheetNeedsAttention(sheet)).toBe(true);
+  });
+
+  it("stays quiet when every question agreed with itself", () => {
+    // The negative control: a round of stable answers must still be able to say
+    // "no need to send it".
+    const sheet = sheetWith([{ id: "getitem-durable-slide", answer: "yes", stable: true }]);
+    expect(summariseHostSheet(sheet).unstable).toEqual([]);
+    expect(describeHostSheet(sheet)).not.toContain("CHANGED ITS ANSWER");
   });
 });
