@@ -807,14 +807,33 @@ describe("looking away while a chart redraws", () => {
     }
   });
 
-  it("deletes nothing when the id is not in the deck at all", async () => {
+  it("deletes nothing when the id is not in the deck at all, and does not claim it did", async () => {
     // The other half of the same question. A positional delete driven by an id
     // nobody can find is how an add-in destroys work, so an id the deck does
-    // not list must end the search — already gone, and nothing to remove.
+    // not list must end the search — nothing to remove, and nothing removed.
+    // That half is unchanged and is the one that protects the user's deck.
+    //
+    // What CHANGED is the verdict it reports. "Not in the deck's list" used to
+    // return true, i.e. "already gone", and 2026-08-11 (`756682e`) measured
+    // that reading false on this host: of the 62 scratch slides a probe run was
+    // deleting, `the deck still lists 0 of 62 of these ids` — zero — while the
+    // deck stayed at 65 slides and the run reported a clean sweep. Both id
+    // lists come from the same `slideIds()` projection minutes apart, so "the
+    // id is not there" cannot mean the slide is not there.
+    //
+    // Unfindable is UNKNOWN. For an id that genuinely never existed this is now
+    // a shade pessimistic, and that is the right way to be wrong: an
+    // under-count costs a line in a report, while an over-count leaves sixty
+    // blank slides in someone's deck and says it left none. The caller's deck
+    // count (`slidesActuallyReturned`) is what turns this honest false back
+    // into an honest number.
     const deck = [makeSlide("s1"), makeSlide("s2")];
     installHost(deck);
-    expect(await deleteSlideById("no-such-slide")).toBe(true);
-    expect(deck.map((s) => s.id)).toEqual(["s1", "s2"]);
+    expect(await deleteSlideById("no-such-slide"), "an id nobody can find was reported as confirmed gone").toBe(false);
+    expect(
+      deck.map((s) => s.id),
+      "a delete driven by an unfindable id touched the deck",
+    ).toEqual(["s1", "s2"]);
   });
 
   /**

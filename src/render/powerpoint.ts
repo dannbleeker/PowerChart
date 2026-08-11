@@ -5723,9 +5723,24 @@ async function deleteSlideByPosition(slideId: string): Promise<boolean> {
   const ids = await slideIds().catch(() => undefined);
   if (!ids) return false;
   const index = ids.indexOf(slideId);
-  // Not in the deck at all. That is the one reading that means "already gone",
-  // and it comes from the deck rather than from a proxy that would not answer.
-  if (index < 0) return true;
+  // NOT in the deck's list, which this used to read as "already gone" — the one
+  // reading that came from the deck rather than from a proxy that would not
+  // answer. On this host that reading is false, and 2026-08-11 (`756682e`)
+  // measured it rather than arguing it: of the 62 scratch slides a probe run
+  // was deleting, `the deck still lists 0 of 62 of these ids`. Zero. Every one
+  // of those deletes took this branch, returned true, and deleted nothing; the
+  // deck went from 65 slides to 65 while the run reported a clean sweep.
+  //
+  // Both id lists come from the SAME `slideIds()` projection minutes apart —
+  // the add captured its id from it, this reads it back — so "the id is not
+  // there" cannot mean the slide is not there. It means the deck is answering
+  // about the same slide under a different name.
+  //
+  // So: UNKNOWN, not gone. This makes the function claim less and delete no
+  // more, which is the only safe direction on a call that removes slides from
+  // someone's presentation. The caller's count check (`slidesActuallyReturned`)
+  // is what turns the honest false into an honest report.
+  if (index < 0) return false;
   try {
     await PowerPoint.run(async (context) => {
       const slide = context.presentation.slides.getItemAt(index);
