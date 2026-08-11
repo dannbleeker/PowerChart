@@ -957,6 +957,26 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   a re-read that matched 20 of 24 ids groups the 20 and leaves 4 on the slide.
   One round, no reasoning, because the success path finally spoke.
 
+  **A partial match is now thrown away, and the chart is left WHOLE.** The
+  argument for keeping it was that every shape in it is provably ours where the
+  positional rule is a guess — true, and beside the point. What it produces is a
+  chart that looks like one object and is not: drag it and the baseline stays
+  behind, with nothing said. Ungrouped is ugly and survivable; grouped-and-split
+  is silently destructible, and the parts tag rather than the group is what
+  carries a chart's membership, so an ungrouped chart is still tagged, still
+  re-editable and still deleted correctly on the next update. Same conclusion
+  `chooseGroupMembers` already reached for a member that cannot be named at all.
+
+  The partial branch does NOT fall through to the positional rule. That branch
+  is safe only when nothing matched by id: a slide holding the user's own shapes
+  can satisfy `items.length >= created.length` while the chart itself read
+  short, and "the last N" would then reach past the chart into the user's
+  content and group it in — to be deleted with the chart on the next update.
+
+  `partial` on the success line is an INVARIANT now rather than an outcome, and
+  is kept for that: it should read 0 forever, and it is the line that will say
+  so if a future change puts a short match back.
+
 - **A trace may not be NAMED for an outcome it is written before knowing.** The
   per-batch draw line was called `batch committed` and is emitted one statement
   before the sync it describes — on purpose, because the sync is where a bad

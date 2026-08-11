@@ -1307,27 +1307,47 @@ describe("what a group that SUCCEEDS leaves behind", () => {
     }
   });
 
-  it("names the shapes a PARTIAL group left loose on the slide", async () => {
-    installHost([makeSlide("s1")]);
+  it("keeps the chart WHOLE rather than grouping the part the host would name", async () => {
+    // Short, not empty — the case `hollowReads` documents and does not do, and
+    // the one this host really produces. An empty re-read makes
+    // `chooseGroupMembers` say "group nothing"; a SHORT one used to be kept and
+    // grouped, which splits the chart into a group plus a remainder that does
+    // not move with it.
+    //
+    // `4feb5be` left exactly that on a real slide — `partial=1 left=0:4`, with
+    // `label-1-3`, `baseline`, `series-label-0` and `series-label-1` stranded
+    // inside the chart's own box. It looks like one object and is not, so the
+    // user drags the chart and leaves its baseline behind with nothing said.
+    const slide = makeSlide("s1");
+    installHost([slide]);
     setTracing(true);
     const mark = traceMark();
-    // Short, not empty. An empty re-read makes `chooseGroupMembers` say "group
-    // nothing" and the chart stays loose in one piece; a SHORT one is kept and
-    // grouped on purpose, so the chart is split. Opposite branches, and until
-    // `readsMissing` the fake could only model the first — even though
-    // `hollowReads`' own comment describes the second ("asked about 19 shapes
-    // and got 3 back").
     faults.readsMissing = 4;
     try {
       const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
       await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
-      const said = traceLog(mark).entries.filter((e) => e.message === "grouped the chart's shapes");
-      expect(said.length, "a partial group said nothing at all").toBe(1);
-      expect(said[0].data?.partial, "a group that left four shapes behind reported no remainder").toBe(1);
+      const said = traceLog(mark).entries;
+      const short = said.filter((e) => e.message === "the re-read matched only some of the chart's shapes");
+      expect(short.length, "a short re-read passed without a word").toBe(1);
+      expect(short[0].data?.matched).toBe(Number(short[0].data?.drew) - 4);
+
+      // Nothing grouped, and specifically not the part the host could name.
+      const groups = said.filter((e) => e.message === "grouped the chart's shapes");
       expect(
-        String(said[0].data?.left),
-        "the round file could not say how many shapes were left loose, which is the whole question",
-      ).toMatch(/:4$/);
+        groups.flatMap((g) => [g.data?.partial]),
+        `a partial group was formed anyway: ${JSON.stringify(groups.map((g) => g.data))}`,
+      ).not.toContain(1);
+      const live = slide.created.filter((s) => !s.deleted);
+      expect(
+        live.some((s) => s.type === "group"),
+        "the chart was split into a group plus a loose remainder",
+      ).toBe(false);
+
+      // Whole, and still re-editable — which is the trade. An ugly chart the
+      // user can still open beats a tidy one that comes apart when dragged.
+      expect(live.length, "the chart lost shapes as well as its group").toBeGreaterThan(4);
+      const found = (await listChartsInDeck()).charts;
+      expect(found.length, "an ungrouped chart stopped being re-editable").toBe(1);
     } finally {
       faults.readsMissing = 0;
       setTracing(false);
