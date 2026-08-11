@@ -155,15 +155,6 @@ export const KNOWN_ISSUES = {
     "upper case — POWERCHART_CONFIG, _PARTS, _ORIGIN, _SCENE, _DEMO_SLOT, and the probe's POWERCHART_PROBE pair. Worth keeping in " +
     "the table because the trap is invisible: it fires only on the web, only for a key somebody spells in lower case, and the " +
     "symptom is a GeneralException nowhere near the write.",
-  6363:
-    'PowerPoint on the web, reported December 2025 and labelled `regression` + `under investigation`: `slides.load("items")` ' +
-    "followed by `context.sync()` leaves `items` UNAVAILABLE — the same code works pasted into the console and fails inside " +
-    "`PowerPoint.run`. The reporter tried ten workarounds including trackedObjects and re-querying after the sync, and none of " +
-    "them helped. This is the closest published account of the wall this repo has been up against all year: a collection read " +
-    "that does not answer for a run that just drew. It is NOT identical — what we see is an empty `items` and a short one, not " +
-    "a PropertyNotLoaded throw — and this repo already corroborates every collection read against `getCount` and degrades " +
-    "rather than trusting it. Kept because it is the one entry here Microsoft may actually FIX, and a fix would change what " +
-    "`same scale across the deck` scores.",
   2474:
     "`SlideRange.id` is not roundtrippable: the id read off a selection lacks the `#XYZ` suffix the same slide carries when " +
     "read from the collection, so `slides.getItem(id)` answers InvalidArgument while `slides.getItemAt(index)` works. Closed " +
