@@ -4088,3 +4088,60 @@ describe("only colour names the host actually knows reach the host", () => {
     }
   });
 });
+
+/**
+ * A deck-wide rescale redraws each chart on its own slide, and the trace's
+ * per-slide shape counter is the input to this project's only performance
+ * claim — that drawing cost grows with what is already on the slide.
+ *
+ * It pooled them. `updateChartsInSlides` never named the slide it was aimed at,
+ * so every chart in the `4feb5be` round keyed on the `(visible)` sentinel and
+ * the counter climbed to 260 on a deck whose fullest slide held 24. The number
+ * described nothing, and it looked perfectly healthy — a curve, rising, on
+ * every line.
+ *
+ * `onSlideKey` is the only reason it was caught rather than plotted, which is
+ * the argument for emitting a key beside any pooled total.
+ */
+describe("what the per-slide shape counter counts", () => {
+  it("keys on the slide each chart is redrawn on, not on one sentinel", async () => {
+    // Slide ids nothing else in this file uses. `shapesDrawnOnSlide` is a
+    // per-RUN total by design — it answers "how much has this run already put
+    // here" — so it is not reset between operations, and a shared `s1` would
+    // carry every earlier test's draws into this one's first reading.
+    const slides = [makeSlide("counter-a"), makeSlide("counter-b")];
+    installHost(slides);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg), slideId: "counter-a" });
+    await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg), slideId: "counter-b" });
+
+    const found = (await listChartsInDeck()).charts;
+    expect(found.length, "the two charts did not both land").toBe(2);
+    setTracing(true);
+    try {
+      await updateChartsInSlides(
+        found.map((c) => ({ scene, target: c.target, opts: { tagData: JSON.stringify(cfg) } })),
+      );
+      const batches = traceLog().entries.filter((e) => e.message === "batch issued");
+      expect(batches.length, "the redraw issued no batches to check").toBeGreaterThan(1);
+      const keys = new Set(batches.map((b) => String(b.data?.onSlideKey)));
+      expect(
+        keys.has("(visible)"),
+        "the redraw pooled its charts under the unnamed-slide sentinel, so the count spans slides",
+      ).toBe(false);
+      expect(keys.size, `every chart keyed the same: ${[...keys].join(", ")}`).toBe(2);
+      // Independent, not merely differently labelled. Both slides took exactly
+      // one identical insert before this redraw, so their first batches must
+      // start from the same count — if the totals were still pooled, whichever
+      // slide was redrawn second would start where the first one finished.
+      const firsts = [...keys].map((key) => Number(batches.find((b) => b.data?.onSlideKey === key)!.data?.onSlide));
+      expect(
+        firsts[0],
+        `the two slides' counters started at ${firsts.join(" and ")} after identical work, so one is carrying the other's total`,
+      ).toBe(firsts[1]);
+    } finally {
+      setTracing(false);
+    }
+  });
+});

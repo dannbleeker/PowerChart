@@ -414,8 +414,6 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
       break;
     }
   }
-  const attempted = outcomes.length;
-  const flippedAt = rescaleFlipIndex(outcomes);
   // A blind READBACK is not a finding. Every scenario here guards its first
   // scan and then draws its loudest conclusion from a second one it never
   // checked — and on the web a short deck scan is routine, which is why
@@ -431,20 +429,12 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
   const why = Object.entries(lost)
     .map(([k, n]) => `${n}×${k}`)
     .join(", ");
-  // The FLIP INDEX, not just the score. Three rounds that decomposed this
-  // scenario by hand put the boundary in the same place — charts 1-3 clean,
-  // chart 4 onward degraded — and what moved between a 3 and a 4 was one binary
-  // event, whether the settle caught chart 4. A score alone cannot say that; an
-  // index can, and it is the number worth comparing across rounds.
-  const flip = flippedAt
-    ? `; the host flipped at chart ${flippedAt} of ${charts.length}` +
-      (attempted < charts.length ? `, so the last ${charts.length - attempted} were not attempted` : "")
-    : "";
   return {
     ok: scaled === charts.length && after.length === charts.length,
     detail:
       `${scaled} of ${charts.length} charts carry the shared scale (max=${max}${shrunk}); ` +
-      `${after.length} still re-editable${why ? `; the update reported ${why}` : ""}${flip}`,
+      `${after.length} still re-editable${why ? `; the update reported ${why}` : ""}` +
+      rescaleLossNote(outcomes, charts.length),
   };
 };
 
@@ -485,6 +475,36 @@ export function rescaleShouldStop(outcomes: (string | undefined)[]): boolean {
 export function rescaleFlipIndex(outcomes: (string | undefined)[]): number | null {
   const i = outcomes.findIndex(Boolean);
   return i < 0 ? null : i + 1;
+}
+
+/**
+ * What the verdict says about the losses — and specifically, when it may use
+ * the word FLIPPED.
+ *
+ * Caught on this sentence's first outing. The round of `4feb5be` lost exactly
+ * ONE chart of eight and scored 7 of 8, the best this scenario has ever
+ * recorded, and the verdict announced `the host flipped at chart 5 of 8`. That
+ * is the same word three earlier rounds use for a host that degraded and never
+ * came back, applied to a host that dropped one chart and carried on — and
+ * a reader comparing rounds would have read a regime change into the best round
+ * on file.
+ *
+ * A flip is the thing the scenario stops for: two consecutive losses, the same
+ * evidence `rescaleShouldStop` acts on. One loss is one loss, and the index is
+ * still worth reporting — it is where the settle's coin landed — but it must
+ * not be dressed as a boundary.
+ */
+export function rescaleLossNote(outcomes: (string | undefined)[], total: number): string {
+  const first = rescaleFlipIndex(outcomes);
+  if (first === null) return "";
+  const losses = outcomes.filter(Boolean).length;
+  if (!rescaleShouldStop(outcomes))
+    return `; ${losses} of the ${outcomes.length} charts redrawn lost its config, the first at chart ${first} of ${total}`;
+  const skipped = total - outcomes.length;
+  return (
+    `; the host flipped at chart ${first} of ${total}` +
+    (skipped > 0 ? `, so the last ${skipped} were not attempted` : "")
+  );
 }
 
 /**
