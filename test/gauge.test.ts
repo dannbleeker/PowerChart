@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
-import type { WedgeNode } from "../src/core/scene";
+import type { TextNode, WedgeNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /** Semi-circle gauge. */

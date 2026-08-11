@@ -350,3 +350,69 @@ describe("a scatter stays inside its own plot", () => {
     }
   });
 });
+
+/**
+ * Two ways a fit or a key said nothing, or said something untrue.
+ */
+describe("a trend the user asked for is drawn, or is not claimed", () => {
+  const cloud = (n: number, degree: number): ChartConfig =>
+    ({
+      kind: "scatter",
+      ...DEFAULT_SIZE,
+      scatter: { trendDegree: degree },
+      data: {
+        categories: Array.from({ length: n }, (_, i) => `p${i}`),
+        series: [
+          { name: "X", values: Array.from({ length: n }, (_, i) => i + 1) },
+          { name: "Y", values: Array.from({ length: n }, (_, i) => (i + 1) * (i + 1)) },
+          { name: "Trend", values: Array(n).fill(1) },
+        ],
+      },
+    }) as unknown as ChartConfig;
+  const trendNodes = (c: ChartConfig) => buildChart(c).nodes.filter((n) => n.name?.startsWith("trend")).length;
+
+  it("still fits three points when a polynomial degree was asked for", () => {
+    // `polyTrend` clamps its degree to n − 2 to keep a residual degree of
+    // freedom, so three points come back degree 1 — and the caller discarded
+    // anything under degree 2. Two points drew a straight fit; three drew
+    // nothing at all, with no diagnostic.
+    for (const degree of [2, 3, 4]) {
+      expect(trendNodes(cloud(3, degree)), `degree ${degree}`).toBeGreaterThan(0);
+      expect(trendNodes(cloud(2, degree)), `degree ${degree}, two points`).toBeGreaterThan(0);
+    }
+  });
+
+  it("still draws the CURVE once there are enough points for one", () => {
+    // The negative control: widening the fallback too far would turn every
+    // polynomial request into a straight line.
+    expect(trendNodes(cloud(6, 2))).toBeGreaterThan(10);
+  });
+});
+
+describe("a bubble size legend keys something", () => {
+  const bubbles = (sizes: number[]): ChartConfig =>
+    ({
+      kind: "bubble",
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["a", "b", "c"],
+        series: [
+          { name: "X", values: [1, 2, 3] },
+          { name: "Y", values: [1, 2, 3] },
+          { name: "Size", values: sizes },
+        ],
+      },
+    }) as unknown as ChartConfig;
+  const legend = (c: ChartConfig) => buildChart(c).nodes.filter((n) => n.name?.startsWith("size-legend"));
+
+  it("draws nothing when every Size is zero", () => {
+    // `maxSize` is floored to an epsilon so the ratios stay finite, so the two
+    // reference circles came out DIFFERENT sizes and both were labelled "0.00",
+    // over a plot where every bubble sits at the 2.5pt floor.
+    expect(legend(bubbles([0, 0, 0]))).toHaveLength(0);
+  });
+
+  it("still draws one for a Size row that means something", () => {
+    expect(legend(bubbles([5, 10, 20])).length).toBeGreaterThan(0);
+  });
+});

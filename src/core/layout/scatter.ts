@@ -476,7 +476,13 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // straight OLS line; a higher `scatter.trendDegree` fits a polynomial drawn as
   // a sampled curve.
   const trendDeg = Math.max(1, Math.min(4, Math.floor(cfg.scatter?.trendDegree ?? 1)));
-  if (wantTrend && pts.length >= 2 && (trendDeg <= 1 || pts.length < 3)) {
+  // The fallback has to cover THREE points as well as two. `polyTrend` clamps
+  // its degree to `n - 2` to keep a residual degree of freedom, so three points
+  // come back as a degree-1 fit, and the caller below discards anything under
+  // degree 2 — so a `Trend` row with `trendDegree: 2` and exactly three points
+  // drew no line, no R² and no diagnostic, while the same config with two
+  // points drew a straight fit. Three points is not a degenerate input.
+  if (wantTrend && pts.length >= 2 && (trendDeg <= 1 || pts.length < 4)) {
     const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
     const my = pts.reduce((s, p) => s + p.y, 0) / pts.length;
     const sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0);
@@ -731,7 +737,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Bubble size legend: without a key, bubble AREA is unreadable. Two
   // outline reference circles (a nice maximum and its half), top-right.
   const legendBoxes: Box[] = [];
-  if (cfg.kind === "bubble" && pts.some((p) => p.size != null)) {
+  // A `Size` row that is entirely zero has nothing to key: `maxSize` is floored
+  // to a tiny epsilon so the ratios stay finite, so the two reference circles
+  // came out different sizes and BOTH were labelled "0.00", over a plot where
+  // every bubble sits at the 2.5pt floor. A legend that contradicts itself and
+  // the marks it explains is worse than none.
+  if (cfg.kind === "bubble" && pts.some((p) => Math.abs(p.size ?? 0) > 0)) {
     const sizeFmt = resolveFormat(
       pts.map((p) => Math.abs(p.size ?? 0)),
       cfg.numberFormat,
