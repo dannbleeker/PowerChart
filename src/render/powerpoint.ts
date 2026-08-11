@@ -12,7 +12,7 @@
  */
 import { polar, arrowheadBox, wedgeFanSteps, wedgeFanChord, symbolPreset, dashKind } from "../core/geometry";
 import { estimateOfficeShapes } from "../core/scene";
-import { toHex6, alphaOf } from "../core/color";
+import { toHex6, alphaOf, isNamedColor } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
 import { trace } from "../core/trace";
@@ -1469,9 +1469,35 @@ export async function updateChartsInSlides(
   // not report both as re-editable, and the pane reads `lost` per target. Shape
   // id cannot do this job — the charts that most need the settle are exactly
   // the ones with no id to be keyed by.
-  return updated.map((t, i) =>
-    t.lost === "no-config" && settledIds.has(String(i)) ? (({ lost: _lost, ...ok }) => ok)(t) : t,
-  );
+  return updated.map((t, i) => afterSettle(t, { settled: settledIds.has(String(i)), untargeted: untargeted.has(i) }));
+}
+
+/**
+ * What a target is worth once the settle has had its turn.
+ *
+ * A settle that lands puts the config back on the slide, so the chart IS
+ * re-editable again and `no-config` should go. That is what this did — and it
+ * stripped the marker without asking whether the target it was clearing still
+ * NAMED anything.
+ *
+ * For a chart whose new shapes were never read back, `shapeId` names the shape
+ * THIS call deleted; `untargeted` is the set of exactly those. Handing one back
+ * bare is the trap the update path already documents twenty lines up: the pane
+ * keeps it as the live edit target and prints "Done." in green, and the next
+ * push resolves a dead id, is filtered out as "the user deleted this chart",
+ * and tells them their chart is gone. The settle succeeding made that WORSE,
+ * because it is the one path that cleared the marker protecting against it.
+ *
+ * `unknown-shape` is the honest answer and the pane already says the right
+ * thing for it — "PowerPoint would not say where the new chart landed … click
+ * the chart and press Edit it to carry on" — which is now true rather than
+ * pessimistic: the config did land, so clicking the chart works.
+ */
+export function afterSettle(t: EditTarget, o: { settled: boolean; untargeted: boolean }): EditTarget {
+  if (t.lost !== "no-config" || !o.settled) return t;
+  if (o.untargeted) return { ...t, lost: "unknown-shape" };
+  const { lost: _lost, ...ok } = t;
+  return ok;
 }
 
 /**
@@ -2628,6 +2654,35 @@ async function settleAndTagChart(slideId: string, tagData: string, shapeId?: str
  * a chart, because with several nothing here can say which of them lost its
  * config and a guess overwrites a bystander's.
  */
+/**
+ * May this shape take the config the settle is carrying?
+ *
+ * The settle finds its shape two ways, and only one of them is proof. By ID it
+ * is exactly ours — the read loads `items/id` and the caller's id picks its own
+ * shape out. By NAME it is a guess, and the guard for that guess used to be
+ * "the slide holds exactly one thing that calls itself a chart".
+ *
+ * That stops the guess when there are several. It does not stop it when the one
+ * on the slide is somebody ELSE'S: our chart is ungrouped — which is why it has
+ * no shape id, and why the name search cannot see it — while the group that is
+ * there belongs to a chart whose own config landed perfectly well. Writing over
+ * it reports a repair and hands the user a chart that opens as a different one.
+ *
+ * A shape that already carries a config is by definition not the shape that
+ * lost one. `undefined` means the host would not say, and that is refused too:
+ * an ungrouped chart carrying no config can be inserted again, while a
+ * bystander carrying the WRONG config means editing one chart silently
+ * rewrites another.
+ *
+ * Extracted because the end-to-end path resolves by id and never reaches the
+ * name branch — the same reason `chooseGroupMembers` and `targetWithNoTagResult`
+ * are their own functions. The rule is what is worth checking; driving four
+ * simultaneous host failures through the fake to reach it tells you less.
+ */
+export function mayTakeConfig(o: { foundById: boolean; hasConfig?: boolean }): boolean {
+  return o.foundById || o.hasConfig === false;
+}
+
 async function settleByCollectionRead(slideId: string, tagData: string, shapeId?: string): Promise<boolean> {
   try {
     return await PowerPoint.run(async (context) => {
@@ -2669,6 +2724,37 @@ async function settleByCollectionRead(slideId: string, tagData: string, shapeId?
           askedById: Boolean(shapeId),
         });
         return false;
+      }
+      // A chart found BY NAME is not provably ours, and the header above only
+      // guarded half of that.
+      //
+      // "Exactly one thing that calls itself a chart" stops the guess when there
+      // are several. It does not stop the guess when the one on the slide is
+      // somebody else's: our chart is ungrouped — which is WHY it has no
+      // shapeId, and why the name search cannot see it — while the group that
+      // is there belongs to a chart whose own config landed perfectly well. The
+      // settle would then write our config over theirs and report a repair, so
+      // the user opens that chart and gets a different one's data.
+      //
+      // A shape that already carries a config is by definition not the shape
+      // that lost one. Asked only on the name branch, and only after a
+      // candidate exists, so the by-id path — the one that carries real charts
+      // — pays nothing.
+      if (!byId) {
+        const existing = target.tags.getItemOrNullObject(CHART_TAG);
+        existing.load("value");
+        let hasConfig: boolean | undefined;
+        try {
+          await boundedSync(context, "checking the chart found by name is not already someone else's");
+          hasConfig = !loadedValue(() => existing.isNullObject);
+        } catch (err) {
+          trace("group", "could not read the name-matched chart's tags", { slideId, error: errorText(err) });
+          hasConfig = undefined;
+        }
+        if (!mayTakeConfig({ foundById: false, hasConfig })) {
+          trace("group", "the chart found by name is not ours to tag", { slideId, hasConfig });
+          return false;
+        }
       }
       // Only the config tag. The origin pair is deliberately not rewritten
       // here, for the reason `retagSlideChart` spells out: this context cannot
@@ -2896,7 +2982,22 @@ async function addAndRenderItem(
     // which is where that run's missing config tags went. The original
     // condition only considered multi-batch charts because grouping was the
     // only consumer at the time; tagging crosses the same boundary.
-    const needsRefresh = drawn.length > SHAPES_PER_SYNC || !!item.pictureBase64;
+    //
+    // Asked with the batch size this draw ACTUALLY used, which is what
+    // `spansBatches` is for and what the other two callers already do. This one
+    // hand-rolled the comparison against `SHAPES_PER_SYNC` — the LIVE canvas's
+    // 10 — while drawing at `SHAPES_PER_SYNC_OFFSCREEN`'s 40. So every chart of
+    // 11 to 40 shapes drew in ONE batch, with every proxy still inside its own
+    // sync's window, and was then told to go and re-read the collection anyway.
+    //
+    // That is not a harmless extra round trip on this host. The web host does
+    // not list the shapes a run has just added, so the re-read comes back
+    // empty — and `chooseGroupMembers` reads an EMPTY answer to a refresh it
+    // asked for as "group nothing", where not asking would have grouped the
+    // perfectly good created proxies. The chart loses its group, and with it
+    // the shape id the settle needs to write the config tag through: round 8's
+    // finding is that the settle rescues the charts grouping survived for.
+    const needsRefresh = spansBatches(drawn, opts) || !!item.pictureBase64;
     const [result] = await groupAndTagAll(context, [{ getSlide, created: drawn, opts, refreshShapes: needsRefresh }]);
     grouped = !!result?.grouped;
     tagged = !!result?.tagged;
@@ -7006,8 +7107,9 @@ function addSegment(
  * A colour Office.js will accept. `setSolidColor` / `lineFormat.color` validate
  * only a 6-digit `#RRGGBB` or a named HTML colour — but the engine's allow-list
  * also passes rgb()/hsl()/3-digit/8-digit forms, which would mis-render or be
- * dropped. Named colours go through verbatim (Office.js knows them, and toHex6
- * would flatten them to grey); everything else normalises to `#RRGGBB`.
+ * dropped. Colour NAMES the CSS table knows go through verbatim, since Office
+ * knows the same ones; everything else — including a bare word that is not a
+ * colour at all — normalises to `#RRGGBB`.
  */
 const officeHex = (color: string): string => {
   // The THIRD colour sink, and the one that runs in a real PowerPoint. The
@@ -7026,7 +7128,21 @@ const officeHex = (color: string): string => {
   // `alphaOf`, so the concrete value here is never seen — it only has to be
   // something the host accepts.
   if (/^transparent$/i.test(raw)) return "#ffffff";
-  return /^[a-zA-Z]+$/.test(raw) ? raw : toHex6(raw);
+  // A word Office actually KNOWS, not merely a word.
+  //
+  // The test used to be `/^[a-zA-Z]+$/` — any run of letters at all — on the
+  // reasoning that Office.js knows the CSS names and `toHex6` would flatten
+  // them to grey. Half of that is no longer true: this sink's `toRgb` carries
+  // the CSS table now, so a known name survives `toHex6` intact and only an
+  // UNKNOWN word becomes grey.
+  //
+  // The other half was never true. `style.palette: ["banana"]` — or a series
+  // colour of `constructor`, which the pane's own template store made reachable
+  // — is a run of letters and is not a colour, and `setSolidColor` on a name
+  // the host does not know is rejected. That rejection lands inside a draw
+  // batch, so one bad word did not degrade one shape: it took the whole batch,
+  // and with it the chart.
+  return isNamedColor(raw) ? raw : toHex6(raw);
 };
 
 /**

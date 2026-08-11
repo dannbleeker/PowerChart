@@ -97,6 +97,18 @@ const CSS_NAMES: Record<string, string> = Object.fromEntries(
 
 const UNREADABLE: [number, number, number] = [128, 128, 128];
 
+/**
+ * Is this a CSS colour NAME the table knows?
+ *
+ * Exported for the live Office renderer, which hands named colours to the host
+ * verbatim — Office knows the same names — and needs to tell a name from any
+ * other bare word. Own-property only, like every lookup on this table.
+ */
+export function isNamedColor(color: string): boolean {
+  const c = paintText(color).toLowerCase();
+  return Object.prototype.hasOwnProperty.call(CSS_NAMES, c);
+}
+
 export function toRgb(color: string): [number, number, number] {
   const c = paintText(color);
   if (c.startsWith("#")) {
