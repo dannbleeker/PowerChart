@@ -34,6 +34,7 @@ import {
   addScratchSlide,
   deadlinesFired,
   deckSlideIds,
+  deleteTrailingSlides,
   deleteSlideById,
   isTimeout,
   requirementSets,
@@ -1688,6 +1689,10 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   } catch {
     trace("probe", "no durable slide to use as a control — the deck would not list itself", {});
   }
+  // The deck's size before this run added anything — the floor the positional
+  // sweep may never reach past. Read here rather than in the clean-up because
+  // by then the run's own slides are already in the count.
+  const deckAtStart = (await deckSlideIds().catch(() => undefined))?.length;
   let scratchId = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
   if (scratchId) scratchIds.push(scratchId);
   /**
@@ -2102,9 +2107,47 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     const stillListed = idsBefore ? scratchIds.filter((id) => idsBefore.includes(id)).length : undefined;
     let returned = 0;
     for (const id of scratchIds) if (await deleteSlideById(id).catch(() => false)) returned++;
-    const deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
-    const { actually, left, shrankBy } = slidesActuallyReturned({
+    let deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
+    const byId = slidesActuallyReturned({
       claimed: returned,
+      added: scratchIds.length,
+      deckBefore,
+      deckAfter,
+    });
+    // The sweep, and ONLY when delete-by-id left something behind. On a host
+    // where the ids work this never runs and nothing about the old path
+    // changes; on this one it is the only thing that can work, because the ids
+    // it would need are not ids the deck lists.
+    let swept = 0;
+    if (byId.left > 0) {
+      const plan = positionalSweepPlan({
+        deckAtStart,
+        deckNow: deckAfter,
+        added: scratchIds.length,
+        alreadyDeleted: byId.actually,
+      });
+      if (plan) {
+        trace("probe", "sweeping the run's own slides by position", {
+          ...plan,
+          deckAtStart,
+          deckNow: deckAfter,
+          why: "delete-by-id left slides behind and this host does not list the ids they were added under",
+        });
+        swept = await deleteTrailingSlides(plan.from, plan.count);
+        deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
+        trace("probe", "swept", { swept, deckNow: deckAfter });
+      } else {
+        trace("probe", "no positional sweep — the deck does not support one safely", {
+          deckAtStart,
+          deckNow: deckAfter,
+          added: scratchIds.length,
+        });
+      }
+    }
+    // Re-derived from the deck AFTER the sweep, so the number reported is what
+    // the deck lost overall rather than what either mechanism claimed.
+    const { actually, left, shrankBy } = slidesActuallyReturned({
+      claimed: returned + swept,
       added: scratchIds.length,
       deckBefore,
       deckAfter,
@@ -2121,9 +2164,18 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           : "") +
         (stillListed !== undefined && stillListed < scratchIds.length
           ? `; the deck still lists ${stillListed} of ${scratchIds.length} of these ids`
-          : ""),
+          : "") +
+        (swept ? `; ${swept} removed by a positional sweep after delete-by-id took none` : ""),
     });
-    trace("probe", "gave the scratch slides back", { returned, left, deckBefore, deckAfter, shrankBy, stillListed });
+    trace("probe", "gave the scratch slides back", {
+      returned,
+      swept,
+      left,
+      deckBefore,
+      deckAfter,
+      shrankBy,
+      stillListed,
+    });
   }
   // Said by the sheet, from its own samples — the fact `UNSTABLE_ANSWERS` was
   // assembled by hand across ten rounds to say. Only REAL answers count: a
@@ -2197,6 +2249,54 @@ const PROBE_BY_ID = new Map(PROBES.flatMap(flatten).map((p) => [p.id, p]));
  * only place anyone will read it. So it is listed here by hand rather than
  * derived, and the two lists below are where it joins the invariant.
  */
+/**
+ * Which slides a positional clean-up sweep may remove — and it is a SAFETY
+ * rule before it is a clean-up one.
+ *
+ * Delete-by-id cannot work here: 2026-08-11 (`756682e`) measured `the deck
+ * still lists 0 of 62 of these ids`, so every by-id delete takes the "already
+ * gone" branch and removes nothing. What survives that finding is position: the
+ * probe's slides are APPENDED by `slides.add()`, so they are the last N in the
+ * deck and need no id at all.
+ *
+ * Position is also how an add-in destroys someone's work, so this returns a
+ * plan only when every one of these holds, and each is a separate way of saying
+ * "never touch a slide this run did not add":
+ *
+ *  - Both deck counts are known. A host that will not count its slides does not
+ *    get to have slides deleted from it by arithmetic.
+ *  - The deck GREW. If it did not, the run added nothing that is still there.
+ *  - Never more than this run added, minus whatever already went back.
+ *  - Never more than the deck grew — if something else removed slides while the
+ *    probe ran, the sum no longer describes the deck and the smaller number is
+ *    the honest one.
+ *  - The first index to delete is at or after the deck's size when the run
+ *    started. This is implied by the two rules above and asserted anyway,
+ *    because it is THE property: everything before that index was the user's
+ *    before this run began.
+ *
+ * The caller deletes from the highest index down, so removing one cannot shift
+ * the index of another still to go.
+ */
+export function positionalSweepPlan(o: {
+  deckAtStart?: number;
+  deckNow?: number;
+  added: number;
+  alreadyDeleted: number;
+}): { from: number; count: number } | null {
+  if (o.deckAtStart === undefined || o.deckNow === undefined) return null;
+  const grew = o.deckNow - o.deckAtStart;
+  if (grew <= 0) return null;
+  const count = Math.min(o.added - o.alreadyDeleted, grew);
+  if (count <= 0) return null;
+  const from = o.deckNow - count;
+  // Belt and braces: the arithmetic above already guarantees this, and a plan
+  // that reached into the user's own slides would be the one bug here that
+  // cannot be apologised for.
+  if (from < o.deckAtStart) return null;
+  return { from, count };
+}
+
 /**
  * How many scratch slides ACTUALLY went back, from the deck rather than from
  * the deletes' own opinion of themselves.

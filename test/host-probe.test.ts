@@ -17,6 +17,7 @@ import {
   stabilityOf,
   regimeFrom,
   slidesActuallyReturned,
+  positionalSweepPlan,
   type HostAnswerSheet,
 } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. Imported so the shortlist
@@ -1653,5 +1654,68 @@ describe("what the scratch clean-up may claim", () => {
     const r = slidesActuallyReturned({ claimed: 42, added: 42 });
     expect(r.actually).toBe(42);
     expect(r.shrankBy).toBeUndefined();
+  });
+});
+
+/**
+ * Which slides a positional sweep may remove.
+ *
+ * This is the safety, not the clean-up. Delete-by-id cannot work on this host —
+ * 2026-08-11 measured `the deck still lists 0 of 62 of these ids` — and what
+ * survives is position, because `slides.add()` appends and a run's own slides
+ * are therefore the last N. Position is also how an add-in destroys someone's
+ * work, so every case below is a way of asking the same question: can this plan
+ * ever reach a slide that was in the deck before the run started?
+ */
+describe("what a positional sweep is allowed to delete", () => {
+  const plan = positionalSweepPlan;
+
+  it("removes exactly the run's own slides, off the end", () => {
+    // The real shape: deck started at 3, the run added 62 and got none back.
+    expect(plan({ deckAtStart: 3, deckNow: 65, added: 62, alreadyDeleted: 0 })).toEqual({ from: 3, count: 62 });
+  });
+
+  it("never reaches below the deck's size when the run started", () => {
+    // The property everything else exists to protect. Whatever the arithmetic,
+    // `from` is the floor and the user's slides live below it.
+    for (const added of [1, 5, 62, 500]) {
+      for (const deckNow of [3, 4, 10, 65]) {
+        const p = plan({ deckAtStart: 3, deckNow, added, alreadyDeleted: 0 });
+        if (p) expect(p.from, `a plan reached into the deck's original ${3} slides`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it("never removes more than this run added", () => {
+    // A deck that grew by more than we added grew for some other reason, and
+    // the extra is not ours to take.
+    expect(plan({ deckAtStart: 3, deckNow: 90, added: 10, alreadyDeleted: 0 })).toEqual({ from: 80, count: 10 });
+  });
+
+  it("never removes more than the deck actually grew", () => {
+    // Something else removed slides while the probe ran, so the count we added
+    // no longer describes the deck. The smaller number is the honest one.
+    expect(plan({ deckAtStart: 3, deckNow: 8, added: 62, alreadyDeleted: 0 })).toEqual({ from: 3, count: 5 });
+  });
+
+  it("subtracts whatever delete-by-id already got back", () => {
+    expect(plan({ deckAtStart: 3, deckNow: 65, added: 62, alreadyDeleted: 60 })).toEqual({ from: 63, count: 2 });
+  });
+
+  it("refuses when the deck did not grow, or shrank", () => {
+    expect(plan({ deckAtStart: 10, deckNow: 10, added: 5, alreadyDeleted: 0 })).toBeNull();
+    expect(plan({ deckAtStart: 10, deckNow: 4, added: 5, alreadyDeleted: 0 })).toBeNull();
+  });
+
+  it("refuses when nothing is left to take back", () => {
+    expect(plan({ deckAtStart: 3, deckNow: 65, added: 62, alreadyDeleted: 62 })).toBeNull();
+  });
+
+  it("refuses when the deck will not say how big it is or was", () => {
+    // A host that will not count its slides does not get to have slides
+    // deleted from it by arithmetic.
+    expect(plan({ deckAtStart: undefined, deckNow: 65, added: 62, alreadyDeleted: 0 })).toBeNull();
+    expect(plan({ deckAtStart: 3, deckNow: undefined, added: 62, alreadyDeleted: 0 })).toBeNull();
+    expect(plan({ added: 62, alreadyDeleted: 0 })).toBeNull();
   });
 });
