@@ -127,3 +127,47 @@ describe("a wrapped legend reserves its rows and never overlaps the plot", () =>
     }
   });
 });
+
+/**
+ * A horizontal line/area chart drew its legend TWICE: `horizontalChrome` emits
+ * the shared `legendRow` under `decor.seriesLabels`, and the line layout had a
+ * hand-rolled copy of its own under the same condition. The two sat 2.5pt
+ * apart, so every series name rendered as a smear — visible in the shipped
+ * showcase deck ("Horizontal profile chart (stacked area)"), where "Retail" and
+ * "Online" were each drawn over themselves.
+ */
+describe("a sideways line/area chart legends its series once", () => {
+  const cfg = (kind: "line" | "area"): ChartConfig => ({
+    kind,
+    horizontal: true,
+    width: W,
+    height: H,
+    data: {
+      categories: ["North", "South", "East"],
+      series: [
+        { name: "Retail", values: [10, 20, 15] },
+        { name: "Online", values: [5, 8, 12] },
+      ],
+    },
+    decorations: { seriesLabels: true },
+  });
+
+  for (const kind of ["line", "area"] as const) {
+    it(`emits one chip and one label per series (${kind})`, () => {
+      const { nodes } = buildChart(cfg(kind));
+      for (const si of [0, 1]) {
+        expect(
+          nodes.filter((n) => n.name === `legend-chip-${si}`),
+          `chips for series ${si}`,
+        ).toHaveLength(1);
+        expect(
+          nodes.filter((n) => n.name === `legend-${si}`),
+          `labels for series ${si}`,
+        ).toHaveLength(1);
+      }
+      // Non-vacuous: the legend is actually drawn, not merely not duplicated.
+      const labels = nodes.filter((n): n is TextNode => n.kind === "text" && /^legend-\d+$/.test(n.name ?? ""));
+      expect(labels.map((n) => n.text)).toEqual(["Retail", "Online"]);
+    });
+  }
+});

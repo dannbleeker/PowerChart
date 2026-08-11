@@ -475,3 +475,68 @@ describe("date-spaced line categories", () => {
     expect(xs[1] - xs[0]).toBeLessThan((xs[2] - xs[1]) / 5);
   });
 });
+
+/**
+ * The rotation toggle used to drop two more things, both of them documented
+ * behaviour rather than decoration: the `Band low` / `Band high` split (the
+ * reference says those rows "never draw as lines") and the date-proportional
+ * category spacing the manual states for line charts without qualifying it by
+ * orientation. Sideways, band rows drew as two ordinary series with their own
+ * legend chips and no ribbon, and a ten-month gap between categories sat in an
+ * evenly spaced row.
+ */
+describe("a sideways line chart keeps the rules the upright one has", () => {
+  const banded: ChartConfig = {
+    kind: "line",
+    horizontal: true,
+    ...DEFAULT_SIZE,
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { name: "Actual", values: [10, 14, 12, 18] },
+        { name: "Band low", values: [8, 12, 10, 15] },
+        { name: "Band high", values: [12, 16, 14, 21] },
+      ],
+    },
+    decorations: { seriesLabels: true },
+  };
+
+  it("shades the Band low/high ribbon instead of drawing the rows as lines", () => {
+    const { nodes } = buildChart(banded);
+    expect(nodes.filter((n) => n.name?.startsWith("band-ribbon")).length).toBeGreaterThan(0);
+    // One drawn series, not three: the band rows are the ribbon, not lines.
+    const drawn = new Set(
+      nodes.map((n) => /^(?:line|marker)-(\d+)-/.exec(n.name ?? "")?.[1]).filter((v): v is string => !!v),
+    );
+    expect([...drawn]).toEqual(["0"]);
+    // …and they are not legended either.
+    const labels = nodes.filter((n): n is TextNode => n.kind === "text" && /^legend-\d+$/.test(n.name ?? ""));
+    expect(labels.map((n) => n.text)).not.toContain("Band low");
+  });
+
+  it("widens the value scale to cover the band", () => {
+    // The negative control for the split: dropping the rows entirely would also
+    // stop them drawing as lines, and would silently clip the ribbon.
+    const { nodes } = buildChart(banded);
+    const rects = (prefix: string) =>
+      nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith(prefix));
+    const bandRight = Math.max(...rects("band-ribbon").map((s) => s.x + s.w));
+    const lineRight = Math.max(...rects("marker-").map((m) => m.x + m.w));
+    expect(bandRight).toBeGreaterThan(lineRight);
+  });
+
+  it("spaces date categories proportionally to time down the axis", () => {
+    const { nodes } = buildChart({
+      kind: "line",
+      horizontal: true,
+      ...DEFAULT_SIZE,
+      data: { categories: ["2025-01", "2025-02", "2025-12"], series: [{ name: "S", values: [1, 2, 3] }] },
+    } as ChartConfig);
+    const ys = nodes
+      .filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("marker-0-"))
+      .map((p) => p.y);
+    expect(ys).toHaveLength(3);
+    // Jan→Feb gap must be far smaller than Feb→Dec, exactly as it is upright.
+    expect(ys[1] - ys[0]).toBeLessThan((ys[2] - ys[1]) / 5);
+  });
+});

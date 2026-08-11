@@ -67,9 +67,17 @@ export function toRgb(color: string): [number, number, number] {
   const nums = (s: string) => (s.match(/-?[\d.]+%?/g) ?? []).map((v) => parseFloat(v));
   const finite = (vs: number[]) => vs.every((v) => Number.isFinite(v));
   if (/^rgba?\(/i.test(c)) {
-    const [r = 0, g = 0, b = 0] = nums(c);
+    // Only the r/g/b components decide the 0–255 vs 0–100% scale. Testing the
+    // whole string let a percentage ALPHA — the perfectly legal
+    // `rgba(200,100,50,50%)` — multiply the CHANNELS by 2.55 and clip the
+    // colour to near-white. The pptx sink (`skill/scripts/pptx-paint.mjs`) was
+    // fixed for exactly this and carries a note saying so; this sink was not,
+    // and it is the one `officeHex` calls — so the same config drew the right
+    // colour in the headless deck and a washed-out one in the live add-in.
+    const comps = (c.slice(c.indexOf("(") + 1).match(/-?[\d.]+%?/g) ?? []).slice(0, 3);
+    const [r = 0, g = 0, b = 0] = comps.map((v) => parseFloat(v));
     if (!finite([r, g, b])) return UNREADABLE;
-    const scale = /%/.test(c) ? 2.55 : 1; // percentages are 0–100, bare numbers 0–255
+    const scale = comps.some((v) => v.endsWith("%")) ? 2.55 : 1; // percentages are 0–100, bare numbers 0–255
     return [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v * scale)))) as [number, number, number];
   }
   if (/^hsla?\(/i.test(c)) {
@@ -123,12 +131,7 @@ export function alphaOf(color: string): number {
   // it rejects". The guard was never swept to the SINK, so on every other kind
   // the bare word went to the live host.
   if (/^transparent$/i.test(c)) return 0;
-  // The `transparent` KEYWORD, which the sibling in `skill/scripts/pptx-paint.mjs`
-  // has always known and this one did not. It is the documented floating-segment
-  // idiom, and only two layouts guarded it before it reached a renderer — mekko's
-  // guard even says why: "Office.js hands 'transparent' to setSolidColor, which
-  // it rejects". The guard was never swept to the SINK, so on every other kind
-  // the bare word went to the live host.
+  // 4- and 8-digit hex carry the alpha in their last digit / last byte.
   const hex = /^#([0-9a-fA-F]{4}|[0-9a-fA-F]{8})$/.exec(c);
   if (hex) {
     const h = hex[1];

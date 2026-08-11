@@ -311,7 +311,9 @@ count of how many of its options are currently on.
 - **Horizontal profile chart** (`horizontal` on line/area): rotates the chart
   so categories run down the left and values extend to the right. Every line
   decoration rotates with it — forecast styling, stepped, smooth, the
-  plan-vs-actual ribbon, gap bridging and per-point highlights.
+  plan-vs-actual ribbon, gap bridging and per-point highlights — and so do the
+  `Band low`/`Band high` confidence ribbon and the date-proportional category
+  spacing. (`logScale` is the one exception, as on horizontal columns.)
 - **Critical path** (`decorations.criticalPath` on Gantt): red-outlines the
   longest chain of `After`-dependent tasks — the tasks that drive the finish
   date — and draws its dependency arrows thicker in red.
