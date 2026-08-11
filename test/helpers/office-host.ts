@@ -355,6 +355,22 @@ export const faults = {
    */
   newSlideResolvesTimes: null as number | null,
   /**
+   * Refuse a held slide handle the first N times, then start honouring it.
+   *
+   * Models the one behaviour a real host has shown that no fake here could:
+   * `shape-add-held-slide-proxy` answers `threw` early in a run and `yes`
+   * later, in the SAME run, on the same build — seventeen `threw` on pass 1
+   * against three `yes` on later passes, across two rounds. Every fake host
+   * until now refused a stale handle consistently, so the probe pair built to
+   * decide whether that flip is a host state or a coin had nothing to fire
+   * against and its trigger condition could not be tested at all.
+   *
+   * Counted in REFUSALS rather than syncs or seconds, because what the guard
+   * needs is "the answer changes partway through a run" and a refusal count is
+   * the only clock the fake and the probe agree on.
+   */
+  heldSlideProxyRelentsAfter: null as number | null,
+  /**
    * The first N slides this deck adds never resolve; every one after them does.
    *
    * The sibling above models a host that loses a slide and keeps losing it.
@@ -1423,11 +1439,21 @@ function expiringSlideHandle(real: FakeSlide) {
 }
 
 /** A slide handle that is only good inside the sync it was acquired in. */
+/** Held-handle refusals so far — see `faults.heldSlideProxyRelentsAfter`. */
+let heldProxyRefusals = 0;
+
 function windowedHandle(real: FakeSlide, makeError: () => Error) {
   const acquiredSync = trips.syncs;
   // Valid only until the next sync moves past the window it was acquired in.
   const ok = () => {
     if (trips.syncs <= acquiredSync) return true;
+    // A host that stops refusing stale handles partway through a run — see
+    // `faults.heldSlideProxyRelentsAfter`. Off by default, so every existing
+    // test keeps the consistent host it was written against.
+    if (faults.heldSlideProxyRelentsAfter !== null) {
+      if (heldProxyRefusals >= faults.heldSlideProxyRelentsAfter) return true;
+      heldProxyRefusals += 1;
+    }
     pendingHostError = makeError();
     return false;
   };
@@ -2118,6 +2144,8 @@ export function installHost(
   faults.selectionReadThrows = false;
   faults.tagsUndefinedOn = 0;
   faults.newSlideResolvesTimes = null;
+  faults.heldSlideProxyRelentsAfter = null;
+  heldProxyRefusals = 0;
   faults.newSlideRefusedForFirst = 0;
   faults.refuseBindings = null;
   faults.renumbersOnAdd = false;
