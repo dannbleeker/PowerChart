@@ -227,58 +227,21 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
     data.series.forEach((s, si) => {
       const color = seriesColor(style, si, s.color);
       if (smooth) {
-        // Split into contiguous runs (nulls break the line), then draw each
-        // run as a Catmull-Rom spline sampled at STEPS points per segment.
-        const seq = s.values.map((v, c) => (v == null ? null : { x: slots.centers[c], y: scale.toY(v), c }));
-        const runs: { x: number; y: number; c: number }[][] = [];
-        let cur: { x: number; y: number; c: number }[] = [];
-        for (const p of seq) {
-          if (p) cur.push(p);
-          else if (cur.length) {
-            runs.push(cur);
-            cur = [];
-          }
-        }
-        if (cur.length) runs.push(cur);
-        const STEPS = 16;
-        for (const run of runs) {
-          for (let i = 0; i < run.length - 1; i++) {
-            const p0 = run[Math.max(0, i - 1)];
-            const p1 = run[i];
-            const p2 = run[i + 1];
-            const p3 = run[Math.min(run.length - 1, i + 2)];
-            const forecast = fc != null && p2.c >= fc;
-            let pp = { x: p1.x, y: p1.y };
-            for (let k = 1; k <= STEPS; k++) {
-              const t = k / STEPS;
-              const t2 = t * t;
-              const t3 = t2 * t;
-              const cx =
-                0.5 *
-                (2 * p1.x +
-                  (-p0.x + p2.x) * t +
-                  (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
-                  (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
-              const cy =
-                0.5 *
-                (2 * p1.y +
-                  (-p0.y + p2.y) * t +
-                  (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
-                  (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
-              nodes.push({
-                kind: "line",
-                x1: pp.x,
-                y1: pp.y,
-                x2: cx,
-                y2: cy,
-                stroke: color,
-                strokeWidth: 2,
-                ...(forecast ? { dash: [4, 3] } : {}),
-                name: `line-${si}-${p2.c}-s${k}`,
-              });
-              pp = { x: cx, y: cy };
-            }
-          }
+        // The sampler lives at the top of this file now, because the horizontal
+        // layout needs the same curve from points built the other way round.
+        const pts = s.values.map((v, c) => (v == null ? null : { x: slots.centers[c], y: scale.toY(v), c }));
+        for (const seg of splineSegments(pts)) {
+          nodes.push({
+            kind: "line",
+            x1: seg.x1,
+            y1: seg.y1,
+            x2: seg.x2,
+            y2: seg.y2,
+            stroke: color,
+            strokeWidth: 2,
+            ...(fc != null && seg.c >= fc ? { dash: [4, 3] } : {}),
+            name: `line-${si}-${seg.c}-s${seg.k}`,
+          });
         }
       }
       let prev: { x: number; y: number } | null = null;
@@ -857,6 +820,66 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): L
  * the left axis and values extend to the right (think-cell parity). Kept
  * separate from the vertical path so that stays byte-identical.
  */
+/**
+ * A Catmull-Rom spline through a series' points, as line segments.
+ *
+ * Nulls break the line: the points are split into contiguous runs first, and
+ * each run is sampled at STEPS points per segment. The maths is symmetric in x
+ * and y, which is the whole reason this is shared — a horizontal chart's points
+ * are (value, category) where a vertical chart's are (category, value), and
+ * nothing else about the curve changes. It was inlined in the vertical path,
+ * and the horizontal path simply had no curve at all.
+ *
+ * `c` is the category index the segment ENDS at, which is what decides whether
+ * it belongs to the forecast; `k` distinguishes the samples within a segment so
+ * every node gets its own name.
+ */
+export function splineSegments(
+  pts: ({ x: number; y: number; c: number } | null)[],
+  steps = 16,
+): { x1: number; y1: number; x2: number; y2: number; c: number; k: number }[] {
+  const runs: { x: number; y: number; c: number }[][] = [];
+  let cur: { x: number; y: number; c: number }[] = [];
+  for (const p of pts) {
+    if (p) cur.push(p);
+    else if (cur.length) {
+      runs.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length) runs.push(cur);
+  const out: { x1: number; y1: number; x2: number; y2: number; c: number; k: number }[] = [];
+  for (const run of runs) {
+    for (let i = 0; i < run.length - 1; i++) {
+      const p0 = run[Math.max(0, i - 1)];
+      const p1 = run[i];
+      const p2 = run[i + 1];
+      const p3 = run[Math.min(run.length - 1, i + 2)];
+      let pp = { x: p1.x, y: p1.y };
+      for (let k = 1; k <= steps; k++) {
+        const t = k / steps;
+        const t2 = t * t;
+        const t3 = t2 * t;
+        const cx =
+          0.5 *
+          (2 * p1.x +
+            (-p0.x + p2.x) * t +
+            (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+            (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+        const cy =
+          0.5 *
+          (2 * p1.y +
+            (-p0.y + p2.y) * t +
+            (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+            (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+        out.push({ x1: pp.x, y1: pp.y, x2: cx, y2: cy, c: p2.c, k });
+        pp = { x: cx, y: cy };
+      }
+    }
+  }
+  return out;
+}
+
 function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const n = data.categories.length;
@@ -879,6 +902,50 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   const nodes: SceneNode[] = horizontalChrome(cfg, style, decor, frame, centers, scale, (v) => toX(v) - frame.x);
   const columnTop: number[] = data.categories.map(() => x0);
+
+  /**
+   * A filled band between two value series — the same slab trick the vertical
+   * path uses, turned: the renderers have no polygon fill, so the gap between
+   * two lines is drawn as thin rects marching along the CATEGORY axis, which
+   * runs down the side here rather than across the bottom.
+   */
+  const ribbon = (lows: (number | null)[], highs: (number | null)[], fill: string, name: string) => {
+    for (let c = 0; c < n - 1; c++) {
+      const l0 = lows[c];
+      const l1 = lows[c + 1];
+      const h0 = highs[c];
+      const h1 = highs[c + 1];
+      if (l0 == null || l1 == null || h0 == null || h1 == null) continue;
+      const span = centers[c + 1] - centers[c];
+      const steps = slabSteps(span);
+      const h = span / steps;
+      for (let k = 0; k < steps; k++) {
+        const t = (k + 0.5) / steps;
+        const xH = toX(h0 + (h1 - h0) * t);
+        const xL = toX(l0 + (l1 - l0) * t);
+        nodes.push({
+          kind: "rect",
+          x: Math.min(xH, xL),
+          y: centers[c] + k * h,
+          w: Math.abs(xH - xL),
+          h: h + 0.5,
+          fill,
+          name: `${name}-${c}-${k}`,
+        });
+      }
+    }
+  };
+  // The plan-vs-actual ribbon. It was one of four decorations this branch
+  // simply did not read, so `fillBetween` was a byte-identical no-op sideways
+  // while changing the vertical scene — the band a reader is meant to see as
+  // the GAP between plan and actual was not drawn at all.
+  if (!area && decor.fillBetween) {
+    const [ai, bi] = decor.fillBetween;
+    const sa = data.series[ai]?.values;
+    const sb = data.series[bi]?.values;
+    if (sa && sb)
+      ribbon(sa, sb, lerpColor(style.background, seriesColor(style, ai, data.series[ai]?.color), 0.22), "fill-between");
+  }
 
   // Legend chips (multi-series) in the reserved top strip.
   if (decor.seriesLabels && data.series.length > 1) {
@@ -977,8 +1044,30 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
         name: "forecast-divider",
       });
     }
+    // `smooth` was the fourth silent no-op here. The Catmull-Rom itself is
+    // symmetric in x and y, so nothing about the CURVE needed turning — only
+    // the points it is built from, which are (value, category) here and
+    // (category, value) there. Shared with the vertical path rather than
+    // copied, because two spline implementations would drift.
+    const smooth = !!decor.smooth && !decor.stepped;
     data.series.forEach((s, si) => {
       const color = seriesColor(style, si, s.color);
+      if (smooth) {
+        const pts = s.values.map((v, c) => (v == null ? null : { x: toX(v), y: centers[c], c }));
+        for (const seg of splineSegments(pts)) {
+          nodes.push({
+            kind: "line",
+            x1: seg.x1,
+            y1: seg.y1,
+            x2: seg.x2,
+            y2: seg.y2,
+            stroke: color,
+            strokeWidth: 2,
+            ...(fc != null && seg.c >= fc ? { dash: [4, 3] } : {}),
+            name: `line-${si}-${seg.c}-s${seg.k}`,
+          });
+        }
+      }
       let prev: { x: number; y: number } | null = null;
       for (let c = 0; c < n; c++) {
         const v = s.values[c];
@@ -997,7 +1086,7 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const forecast = fc != null && c >= fc;
         const pt = { x: toX(v), y: centers[c] };
         columnTop[c] = Math.max(columnTop[c], pt.x);
-        if (prev) {
+        if (prev && !smooth) {
           const p = prev;
           const dashOpt = forecast ? { dash: [4, 3] } : {};
           const seg = (x1: number, y1: number, x2: number, y2: number, suffix: string) =>

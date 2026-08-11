@@ -780,3 +780,61 @@ describe("labels, webs and the two paint sinks", () => {
     expect(alphaOf("#2a78d6"), "an ordinary colour lost its opacity").toBe(1);
   });
 });
+
+/**
+ * The last two the rotation toggle dropped — the two that needed real geometry
+ * rather than a turned coordinate.
+ */
+describe("smooth and fillBetween, sideways", () => {
+  const line = (horizontal: boolean, decorations: Record<string, unknown>) =>
+    ({
+      ...DEFAULT_SIZE,
+      kind: "line",
+      horizontal,
+      decorations: { categoryAxis: true, valueAxis: true, ...decorations },
+      data: {
+        categories: ["Q1", "Q2", "Q3", "Q4"],
+        series: [
+          { name: "Plan", values: [10, 18, 14, 22] },
+          { name: "Actual", values: [12, 15, 19, 20] },
+        ],
+      },
+    }) as unknown as ChartConfig;
+
+  it("curves a smoothed series in both orientations", () => {
+    for (const horizontal of [false, true]) {
+      const curved = buildChart(line(horizontal, { smooth: true }));
+      const straight = buildChart(line(horizontal, {}));
+      expect(JSON.stringify(curved), `horizontal=${horizontal}: \`smooth\` was a silent no-op`).not.toBe(
+        JSON.stringify(straight),
+      );
+      // Sampled segments, not one line per category gap.
+      const sampled = curved.nodes.filter((n) => /-s\d+$/.test(n.name ?? ""));
+      expect(sampled.length, `horizontal=${horizontal}: no spline samples`).toBeGreaterThan(20);
+    }
+  });
+
+  it("fills the gap between two series in both orientations", () => {
+    for (const horizontal of [false, true]) {
+      const scene = buildChart(line(horizontal, { fillBetween: [0, 1] }));
+      const band = scene.nodes.filter((n) => /^fill-between-/.test(n.name ?? "")) as unknown as {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }[];
+      expect(band.length, `horizontal=${horizontal}: the plan-vs-actual band was not drawn`).toBeGreaterThan(10);
+      for (const r of band) {
+        expect(r.x, `horizontal=${horizontal}: a band slab left the frame`).toBeGreaterThanOrEqual(0);
+        expect(r.y).toBeGreaterThanOrEqual(0);
+        expect(r.x + r.w).toBeLessThanOrEqual(DEFAULT_SIZE.width! + 1);
+        expect(r.y + r.h).toBeLessThanOrEqual(DEFAULT_SIZE.height! + 1);
+      }
+      // Turned: the slabs march along the CATEGORY axis, which is y here.
+      const spread = (vals: number[]) => Math.max(...vals) - Math.min(...vals);
+      const alongY = spread(band.map((r) => r.y));
+      const alongX = spread(band.map((r) => r.x));
+      expect(horizontal ? alongY > alongX : alongX > alongY, "the band marched along the wrong axis").toBe(true);
+    }
+  });
+});
