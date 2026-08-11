@@ -148,7 +148,19 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
-    "THE POPULATIONS WERE NEVER SEPARATED — 2026-08-11 (`7027f96`), and this supersedes both readings below. " +
+    "THE CLEAN SPLIT IS GONE — 2026-08-11 (`96461eb`), the round that first carried the partner. A LATER pass " +
+    "answered `threw` for the first time (pass 3, 46.7s), so the tally below is no longer 3-of-3 either side:\n" +
+    "  pass 1 : 18 x `threw`, 1 x `yes`   (19 observations)\n" +
+    "  later  :  3 x `yes`,   1 x `threw` ( 4 observations)\n" +
+    "Read that as: pass 1 is near-deterministic and the LATER passes are where the variability lives — which is a " +
+    "different claim from two clean populations, and a better fit to every round on file. " +
+    "THE PARTNER ANSWERED ONCE AND AGREED: trigger `threw` at 7.7s, `shape-add-held-slide-proxy-again` `threw` at " +
+    "8.4s, seven tenths of a second apart on two different fresh slides. One agreeing pair is weak evidence against " +
+    "a fast coin (a coin agrees half the time) and it is the LEAST informative pair available, because pass 1 is the " +
+    "condition that barely varies. The pair worth having is on a LATER pass, and that round did not get one — the " +
+    "pass-3 partner came back `no-scratch-slide`. The pair costs two scratch slides on the host least willing to " +
+    "give them, which is the thing to fix if this is still open after another round or two. " +
+    "Original notes follow. THE POPULATIONS WERE NEVER SEPARATED — 2026-08-11 (`7027f96`), and this supersedes both readings below. " +
     "Every observation this entry has ever recorded, sorted by WHICH PASS asked it:\n" +
     "  pass 1 (asked ~1-2s into the probe):  17 x `threw`, 1 x `yes`   (18 observations)\n" +
     "  any later pass (34s-80s in):           3 x `yes`,   0 x `threw` ( 3 observations)\n" +

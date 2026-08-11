@@ -2081,7 +2081,24 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     const cleanupStarted = Date.now();
     // COUNT the deck either side, and let the count outrank the per-slide
     // booleans — see `slidesActuallyReturned` for what that is worth.
-    const deckBefore = (await deckSlideIds().catch(() => undefined))?.length;
+    const idsBefore = await deckSlideIds().catch(() => undefined);
+    const deckBefore = idsBefore?.length;
+    // Does the deck still LIST the ids we are about to delete by?
+    //
+    // The one number that separates the two readings of a clean-up that
+    // reports 45 deletes into a deck that does not shrink. Either the ids are
+    // stable and the deletes simply fail, or the id we captured at add time is
+    // not the id the deck answers to any more — in which case
+    // `deleteSlideByPosition`'s `indexOf(id) < 0` reads "already gone" for a
+    // slide sitting right there, and delete-by-id is not merely failing, it is
+    // structurally impossible.
+    //
+    // 2026-08-11 made this worth asking rather than assuming: the scratch ids
+    // read `4123571115#123571113` while the deck listed `256#109857222`
+    // through `314#195537992`, and both come from the SAME `slideIds()`
+    // projection minutes apart. Reasoning cannot choose between "the host
+    // renumbers" and "two readers disagree"; one count can.
+    const stillListed = idsBefore ? scratchIds.filter((id) => idsBefore.includes(id)).length : undefined;
     let returned = 0;
     for (const id of scratchIds) if (await deleteSlideById(id).catch(() => false)) returned++;
     const deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
@@ -2100,9 +2117,12 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         `${actually} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}` +
         (shrankBy !== undefined && shrankBy !== returned
           ? ` (the deletes reported ${returned} but the deck only shrank by ${shrankBy})`
+          : "") +
+        (stillListed !== undefined && stillListed < scratchIds.length
+          ? `; the deck still lists ${stillListed} of ${scratchIds.length} of these ids`
           : ""),
     });
-    trace("probe", "gave the scratch slides back", { returned, left, deckBefore, deckAfter, shrankBy });
+    trace("probe", "gave the scratch slides back", { returned, left, deckBefore, deckAfter, shrankBy, stillListed });
   }
   // Said by the sheet, from its own samples — the fact `UNSTABLE_ANSWERS` was
   // assembled by hand across ten rounds to say. Only REAL answers count: a

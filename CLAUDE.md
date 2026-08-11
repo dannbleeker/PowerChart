@@ -342,6 +342,32 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   last (the wedge happens before the ladder asks) and third (the ladder wedges
   six scenarios instead of two). The test states it as the property, because
   adjacency to one named scenario was only ever a proxy for it.
+- **A slide id captured early in a run may not be the id the deck answers to
+  later — and that is why the probe's clean-up leaves slides behind.** The
+  2026-08-11 round (`96461eb`) reported `0 of 45 scratch slide(s) deleted; 45
+left in the deck (the deletes reported 45 but the deck only shrank by 0)`.
+  Every one of the 45 `deleteSlideById` calls returned true and the deck went
+  from 53 slides to 53. The route is `deleteSlideByPosition`'s
+  `indexOf(id) < 0`, which reads "not in the deck's list" as "already gone" —
+  sound only while the id we hold and the ids the deck lists are the same
+  strings. In that round the scratch ids read `4123571115#123571113` while the
+  deck listed `256#109857222` through `314#195537992`, and BOTH come from the
+  same `slideIds()` projection minutes apart.
+
+  **Two readings fit and this file will not choose between them**: the host
+  renumbers its slide ids over the life of a run, or two readers of the same
+  deck disagree about what an id is. They are distinguishable by one number, so
+  the clean-up now records it — `stillListed`, how many of the ids it is about
+  to delete by are in the deck's own current list. 45 of 45 means the ids are
+  stable and the deletes simply fail; 0 of 45 means delete-by-id is not failing
+  but structurally impossible, and every id-holding path in this file needs the
+  same doubt. Do not build on either until a round says which.
+
+  Until then the owner's deck grows by ~45 slides a round, which is the visible
+  cost and the reason this is near the top rather than filed. The clean-up is
+  honest about it now (it takes the MINIMUM of what the deletes claimed and what
+  the deck actually lost) but honest is not fixed.
+
 - **`getItemOrNullObject` is not the last word on whether a slide exists.**
   PowerPoint on the web resolved a freshly-added slide's id once and refused it
   ever after, while still listing that id in `slides.load("items/id")`. So
