@@ -1084,11 +1084,17 @@ describe("grouping when the host will not name every member", () => {
    * the throw takes the batch's tagging with it (`Cannot read properties of
    * undefined (reading 'add')`). The chart loses its group AND its config.
    *
-   * Asked as the rule rather than end-to-end: reaching it through the fake
-   * needs the re-read to answer short, and `groupAndTagAll` loads `"items"`,
-   * which neither `hollowReads` (`items/id`) nor `hollowNameReads`
-   * (`items/name`) shortens. Bending the fake to that shape would test the
-   * bend.
+   * Asked as the rule rather than end-to-end, and the reason has changed since
+   * this was written. It used to say the fake could not reach the short re-read
+   * at all, because `groupAndTagAll` loaded `"items"` and neither `hollowReads`
+   * nor `hollowNameReads` shortens that. The load became `"items/id"` on
+   * 2026-08-07, so both faults reach it now and `readsMissing` shortens it
+   * without emptying it — "what a group that SUCCEEDS leaves behind" drives
+   * exactly that path end to end.
+   *
+   * The rule keeps its own tests anyway: these four are the corners of a
+   * decision, and `use: "none"` versus `use: "ids"` is checkable in a line
+   * where reaching each corner through the fake costs a draw apiece.
    */
   it("re-resolves by id when every member can be named", () => {
     expect(chooseGroupMembers({ refreshedIds: ["a", "b"], askedForRefresh: true })).toEqual({
@@ -1258,6 +1264,73 @@ describe("what the settle says when it comes up empty", () => {
     } finally {
       faults.refuseTagWrites = 0;
       faults.hollowReads = 0;
+    }
+  });
+});
+
+/**
+ * Grouping spoke only when it refused, which is the fifth failure-only field
+ * this repo has built and the one that cost the most to read around.
+ *
+ * The 2026-08-11 round left a slide carrying one `PowerChart` group (id 51)
+ * PLUS four loose shapes — `label-1-3`, `baseline`, `series-label-0`,
+ * `series-label-1`, ids 47 to 50, every one of them inside the chart's own box
+ * and every one with a LOWER id than the group. Two readings fit and the log
+ * could not choose: the group took a subset of the chart, or four shapes from
+ * an earlier draw outlived a redraw. A single line on the success path
+ * separates them, and the rule this file already states — a value recorded only
+ * on failures cannot be compared against anything — says it should always have
+ * been there.
+ *
+ * A partial group is not cosmetic. The loose remainder does not move with the
+ * group, so the user drags the chart and leaves its baseline behind.
+ */
+describe("what a group that SUCCEEDS leaves behind", () => {
+  it("says how many shapes the group actually took", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    const mark = traceMark();
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries.filter((e) => e.message === "grouped the chart's shapes");
+      expect(
+        said.length,
+        `a group that worked said nothing — said only: ${traceLog(mark)
+          .entries.map((e) => e.message)
+          .join(" | ")}`,
+      ).toBe(1);
+      expect(said[0].data).toMatchObject({ charts: 1, partial: 0 });
+      expect(said[0].data, "a whole group reported a remainder").not.toHaveProperty("left");
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("names the shapes a PARTIAL group left loose on the slide", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    const mark = traceMark();
+    // Short, not empty. An empty re-read makes `chooseGroupMembers` say "group
+    // nothing" and the chart stays loose in one piece; a SHORT one is kept and
+    // grouped on purpose, so the chart is split. Opposite branches, and until
+    // `readsMissing` the fake could only model the first — even though
+    // `hollowReads`' own comment describes the second ("asked about 19 shapes
+    // and got 3 back").
+    faults.readsMissing = 4;
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries.filter((e) => e.message === "grouped the chart's shapes");
+      expect(said.length, "a partial group said nothing at all").toBe(1);
+      expect(said[0].data?.partial, "a group that left four shapes behind reported no remainder").toBe(1);
+      expect(
+        String(said[0].data?.left),
+        "the round file could not say how many shapes were left loose, which is the whole question",
+      ).toMatch(/:4$/);
+    } finally {
+      faults.readsMissing = 0;
+      setTracing(false);
     }
   });
 });

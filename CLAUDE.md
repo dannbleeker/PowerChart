@@ -705,6 +705,15 @@ committed` — three to five seconds of probe reads, deck inventories and
     with it: `afterAnswering` names the CALL, and the identity of the call is
     the lead the gap turned out not to be.
 
+    **The name alone was still not enough, and `afterAnsweringMs` is the third
+    field on that line.** Round 16's control arms take 22-29 seconds each and a
+    rasterise plus a seven-shape draw sits inside one number, so "which half is
+    growing" — the question the arm exists to answer — could not be asked.
+    `withTimeout` already stamps when a named call is issued and when it
+    answers, so the duration is a subtraction at a seam that was already there.
+    It is written on the first batch of EVERY draw and on every stall, which is
+    the rule two rounds above paid for.
+
   - **The picked round ran and answered.** The criterion was set in advance:
     stalls → the scenario itself; passes → predecessor or position. It PASSED,
     so the scenario is out, and the routine round passing it at the same
@@ -786,6 +795,24 @@ actually visible` and `what makes a long run slow down` each spent four rounds
   few more of these and "no pattern" repeated IS the finding; stop instrumenting
   at that point.
 
+  **Round 16 (`1fc21b9`) is the third "no pattern", and the control turned out
+  to be measuring something else for free.** All four arms drew; the verdict was
+  `a draw straight after a rasterise is no worse than one after a cheap read`.
+  That is three counterbalanced rounds, twelve arms, and this paragraph's own
+  criterion says the instrumenting can stop.
+
+  The by-product is the useful part. The four arms draw the same seven shapes
+  onto the SAME slide in sequence, so with `onSlide` recorded they are four
+  points on the per-slide cost curve, in an ordinary round, with no experiment
+  to schedule:
+
+      onSlide 23 → 22.7s      onSlide 30 → 25.6s      onSlide 37 → 28.9s
+
+  About **+0.44s per shape already on the slide**, for a seven-shape draw. The
+  dedicated experiment (`what makes a long run slow down`) is `pickedOnly` and
+  costs a whole round; this arrives every time the battery runs. If the curve is
+  ever in doubt again, read these three numbers before scheduling anything.
+
   **Round 15 (`756682e`, 2026-08-11) said POSITION, and that is the design
   earning its keep — and contradicting round 14.** Round 14 reported `every draw
 after a RASTERISE failed and every one after a cheap read landed, interleaved
@@ -862,6 +889,30 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   "it is not written", the field cannot discriminate and is not yet a
   measurement.
 
+  **A fifth, found 2026-08-11: GROUPING spoke only when it refused.** Round 16
+  left a slide carrying one `PowerChart` group (id 51) **plus four loose
+  shapes** — `label-1-3`, `baseline`, `series-label-0`, `series-label-1`, ids 47
+  to 50, every one inside the chart's own box and every one with a lower id than
+  the group. Two readings fit and no log could choose between them: the group
+  took a subset of the chart, or four shapes from an earlier draw outlived a
+  redraw. Both are real defects and they want different fixes.
+
+  A partial group is a designed outcome, not an accident — the re-read
+  deliberately KEEPS a partial match rather than falling back, because every
+  shape in it is provably ours where the positional rule is a guess. What was
+  missing is that it never announced itself. `grouped the chart's shapes` is
+  written after the grouping sync (so the name is an outcome it knows) and
+  carries `charts`, `partial`, `left` and `by`. A partial group is worth naming
+  on its own account: the loose remainder does not move with the group, so the
+  user drags the chart and leaves its baseline behind.
+
+  The fake could not model it either, and its own comment said so wrongly.
+  `hollowReads` describes a host that "asked about 19 shapes and got 3 back" and
+  then returns `[]` — the limit case, never the one it documents. An empty read
+  makes `chooseGroupMembers` say "group nothing" and the chart stays loose in
+  one piece; a SHORT read is kept and grouped, so the chart is split. Opposite
+  branches. `faults.readsMissing` is the short case.
+
 - **A trace may not be NAMED for an outcome it is written before knowing.** The
   per-batch draw line was called `batch committed` and is emitted one statement
   before the sync it describes — on purpose, because the sync is where a bad
@@ -930,6 +981,34 @@ empty` and `not grouping`. The boundary is exact and the correlation is
   the regimes are long contiguous blocks — eight slow, then ten fast — not
   anything alternating on a timer.)
 
+  **The bimodality is now MEASURED rather than inferred, and the heading needs
+  narrowing.** Round 16 (`1fc21b9`) recorded `prevBatchMs` on 27 batches:
+
+      fast   3020 3178 3281 3303 3623 3700 4789 5124 5165 5372 5413 6036
+      slow   11723 14236 16294 16488 16603 16708 17070 17263 17312 17359
+             17714 17791 21195 23022 23428
+
+  Nothing between 6.0s and 11.7s. Two populations with an empty band, which is
+  what every earlier round asserted from wall-clock arithmetic and none had ever
+  put a number on.
+
+  And the same round contains a fast batch that is not broken at all: `edit a
+chart on the visible slide` drew at 3.0s and 4.8s, passed, round-tripped its
+  config, and reported `errors: 0`. So FAST ALONE IS NOT THE SIGNAL — a healthy
+  host draws fast onto a slide with little on it, which the per-slide cost curve
+  already predicts. What the heading is really about is a flip to fast INSIDE a
+  scenario that was drawing slowly, which arrives with the collection going
+  quiet a chart later. Do not read a fast batch as broken; read a flip as
+  broken.
+
+  **The friction is astonishingly local.** That round logged 15 errors in 818
+  seconds and **14 of them belong to `same scale across the deck`** (14
+  idRefusals, 4 emptyReReads); one to `stop a run part-way`; every other
+  scenario reported `errors: 0, idRefusals: 0, generalExceptions: 0,
+emptyReReads: 0`. This host is not generally degraded — it fails in exactly one
+  shape, and the per-scenario friction delta is what makes that visible at a
+  glance instead of by counting error lines.
+
   **Reproduced exactly on 2026-08-09, and it makes the scenario's SCORE
   readable.** In the `40b5e44` round, `same scale across the deck` redrew its
   eight charts between 134.7s and 342.4s. Charts 1-3 ran at 16-18s per batch;
@@ -972,8 +1051,35 @@ could not repair any`). The verdict was **3 of 8**, which is the three slow
   **And the settle repaired a chart for the first time on record** —
   `settle pass: repaired every config tag the drawing context lost, charts=1
 settled=1 lost=0`. Every previous observation was `settled: 0, lost: 1`, and
-  this file said so. The recovery works; it needs the chart to have been grouped,
-  because that is what gives it an id to write through.
+  this file said so. The recovery works.
+
+  **What it needs is NOT the chart having been grouped — that reading is
+  corrected by round 16 (`1fc21b9`, 2026-08-11), which reproduces round 8's
+  three stages exactly:**
+
+      charts 1-3   ~34s each   SLOW    grouped, clean
+      chart  4       9.6s      fast    grouped; tag refused; SETTLE REPAIRED IT
+      charts 5-8   ~8.5s each  fast    NOT grouped; tag refused; settle empty
+
+  Score 4 of 8 = three slow-clean plus one settle-rescue, and the rescue lands
+  on chart 4 in both rounds. So the three-stage shape is not one round's
+  accident after all; round 9's two-stage round is the variant.
+
+  The correction is what the settle's rescue turned on. Chart 4 had been
+  grouped, and its repair still did not go through a shape id: the call that
+  landed it was `settling the config tag on a shape found by NAME`, because the
+  id readback had been refused for chart 4 too. What separates it from charts
+  5-8 is only that its fresh-context collection read ANSWERED, where theirs
+  reported `the settle's re-read came back empty`. Grouping is correlated
+  because the same collection decides both — it is not the mechanism. The settle
+  pass now carries `withId` beside `charts/settled/lost` so the two routes are a
+  count rather than a hand pass over `afterAnswering` strings.
+
+  **The flip's INDEX is the stable thing.** Charts 1-3 slow and 4-onward fast in
+  all three rounds that decomposed — 8, 9 and 16. What varies between a 3 and a
+  4 is one binary event, whether the settle catches chart 4, not a boundary
+  sliding along the scenario. Read a move from 4 to 3 as that coin, not as a
+  regression and not as the flip landing earlier.
 
 - **The web host does not LIST the shapes a run just added.** The finding the
   extended log produced, and the one everything else downstream hangs off:
@@ -1045,6 +1151,17 @@ what the slide looks like (10064 → 15652 bytes)`, through PowerPoint's own
   broken. The scenario's chart is 30% of the slide in the bottom-right corner
   now — this battery leaves its slides in the deck for someone to look at, so
   "the measurement still works" is not the bar.
+
+  **The three passes on record are not equally strong, and until 2026-08-11 the
+  verdict could not say so.** 10064 → 15652 is +55%; 15704 → 16580 is +5.6%;
+  round 16's is 14868 → 14976 — **a hundred and eight bytes, 0.7%** — and all
+  three read identically in the round file. The gate asserts the two renders
+  DIFFER, which a re-encode satisfies on its own. The verdict now carries the
+  delta and the share, and flags anything under `THIN_VISIBILITY_RATIO`.
+  Deliberately NOT a failure: a change is still a change, and turning a thin one
+  red would fail a round on a judgement no measurement here supports. Reporting
+  it lets a reader tell 0.7% from 55% without opening the file, which is all
+  that was actually missing.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.

@@ -971,14 +971,40 @@ export function stallDetail(
   return `${head}${answered}${before}`;
 }
 
+/**
+ * Below this share of the original rasterised size, a change is reported but
+ * not trusted.
+ *
+ * Three passes on record: 10064 → 15652 (+55%), 15704 → 16580 (+5.6%) and, on
+ * 2026-08-11, 14868 → 14976 — **+0.7%, a hundred and eight bytes**. The gate
+ * asserts that the two renders DIFFER, which a re-encode can satisfy on its own,
+ * and all three read identically in the round file. That is a pass whose margin
+ * is invisible, and this project has a rule about numbers with no baseline.
+ *
+ * Deliberately not a failure. A change is still a change, and turning a thin one
+ * red would fail the round on a judgement no measurement here supports; the
+ * honest move is to keep the verdict and say how thin it was, so a reader can
+ * tell 0.7% from 55% without opening the round file.
+ */
+export const THIN_VISIBILITY_RATIO = 0.02;
+
 export function visibilityVerdict(before: string, after: string, named: boolean): { ok: boolean; detail: string } {
-  if (after !== before)
+  if (after !== before) {
+    const delta = after.length - before.length;
+    const share = before.length ? Math.abs(delta) / before.length : 1;
+    const pct = Math.round(share * 1000) / 10;
     return {
       ok: true,
       detail:
-        `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes)` +
+        `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes, ${
+          delta >= 0 ? "+" : ""
+        }${delta}, ${pct}%)` +
+        (share < THIN_VISIBILITY_RATIO
+          ? " — a THIN margin: this is a change, but too small to tell a drawn chart from a re-encode"
+          : "") +
         (named ? "" : " — though the host would not name the chart afterwards, so it carries no config"),
     };
+  }
   return {
     ok: false,
     detail: named
