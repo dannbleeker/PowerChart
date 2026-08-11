@@ -25,6 +25,7 @@ import { UNSTABLE_ANSWERS, PENDING_QUESTIONS } from "../scripts/host-baseline.mj
 // rather than here, so the diff tool and this test cannot drift apart: two
 // copies of the same table is how a claim quietly stops matching its check.
 import { FAKE_BASELINE, diffAnswers, answersOf, sheetOf, NEVER_ASKED } from "../scripts/host-diff.mjs";
+import { setTracing, trace, traceLog } from "../src/core/trace";
 
 /**
  * The fake's own answer sheet, frozen.
@@ -1306,6 +1307,50 @@ describe("a run samples each question more than once", () => {
       expect(typeof s.atMs).toBe("number");
       expect(["healthy", "slide-trouble", "collection-refused", "unknown"]).toContain(s.regime);
     }
+  });
+
+  /**
+   * One round file, one clock.
+   *
+   * A sample's time and a trace line's time are the two series every analysis
+   * of these rounds joins, and they were on different origins: the trace starts
+   * at `setTracing(true)`, the probe's own stamp started when `runHostProbes`
+   * was called — 7.9 seconds later in the round of 2026-08-11. Nothing in the
+   * file said so. The trace put pass 2 at 41.6s and the samples put its first
+   * answer at 34.4s, which reads as a sample arriving before the pass that
+   * produced it, and that is exactly how far a reader gets before drawing a
+   * wrong conclusion about which host state an answer came from.
+   *
+   * Asserted as the property — a sample is timed on the same clock as the trace
+   * lines it sits between — rather than against the offset, which is whatever
+   * the caller did before the probe.
+   */
+  it("stamps samples on the same clock the run log uses", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    // Burn a little time on the trace clock BEFORE the probe starts, which is
+    // what a real round does (the battery traces its start, then probes).
+    trace("selftest", "round starting");
+    const spin = Date.now();
+    while (Date.now() - spin < 25) {
+      /* make the two origins provably different */
+    }
+    const sheet = await runHostProbes("fake", "test");
+    const entries = traceLog().entries.filter((e) => e.scope === "probe");
+    expect(entries.length, "the probe traced nothing, so there is no clock to compare against").toBeGreaterThan(0);
+    const samples = sheet.answers.flatMap((a) => a.samples ?? []);
+    expect(samples.length).toBeGreaterThan(0);
+    // Every sample must sit inside the window the probe's own trace lines span.
+    // On the old origin the earliest samples read as ~0ms while the probe's
+    // first trace line was already tens of ms in, so they fell outside it.
+    const first = Math.min(...entries.map((e) => e.ms));
+    const last = Math.max(...entries.map((e) => e.ms));
+    const early = samples.filter((s) => s.atMs < first);
+    expect(
+      early.length,
+      `${early.length} sample(s) are stamped before the probe's first trace line — the two are on different clocks`,
+    ).toBe(0);
+    expect(Math.min(...samples.map((s) => s.atMs))).toBeLessThanOrEqual(last);
   });
 });
 

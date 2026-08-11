@@ -41,7 +41,7 @@ import {
   withProbeContext,
   type ProbeContext,
 } from "./powerpoint";
-import { trace } from "../core/trace";
+import { trace, traceElapsed } from "../core/trace";
 // @ts-expect-error — a plain .mjs table with no types, and deliberately the
 // SAME one the CLI and the CI gate read. Two copies of it is how a claim
 // quietly stops matching its check.
@@ -95,7 +95,19 @@ export interface ProbeSample {
   answer: string;
   /** Which pass over the question list this came from — 1, 2, 3. */
   pass: number;
-  /** Milliseconds into the probe run, so two samples can be told apart in time. */
+  /**
+   * Milliseconds on the RUN LOG's clock, so a sample can be lined up against
+   * the trace lines around it.
+   *
+   * It used to be milliseconds into the probe, which is a different origin —
+   * the probe starts several seconds after tracing does (7.9s in the round of
+   * 2026-08-11). Nothing in the file said so, so joining the two series, which
+   * is how every one of these rounds gets analysed, was silently off by that
+   * constant: the trace put pass 2 at 41.6s and the samples put its first
+   * answer at 34.4s, i.e. a sample apparently arriving before the pass that
+   * produced it. Falls back to probe-relative only when tracing is off, in
+   * which case the file carries no trace to be misjoined with.
+   */
   atMs: number;
   /**
    * What the run had already seen the host doing when this was asked.
@@ -1626,6 +1638,11 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   let abandoned: string | null = null;
   const runStarted = Date.now();
   /**
+   * A sample's timestamp, on the run log's clock so it can be read beside the
+   * trace lines around it. See `ProbeSample.atMs` for what that cost.
+   */
+  const stampNow = (): number => traceElapsed() ?? Date.now() - runStarted;
+  /**
    * What the run has already watched the host do. Never a guess, never a call.
    */
   /** When this run last SAW each thing. Timestamps, not flags — see `regimeFrom`. */
@@ -1646,7 +1663,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
    */
   const rows = new Map<string, HostAnswer>();
   const record = (row: HostAnswer, pass: number): HostAnswer => {
-    const atMs = Date.now() - runStarted;
+    const atMs = stampNow();
     // Each observation stamped with WHEN, so a later reading can tell a host
     // that is refusing now from one that refused a minute ago.
     const aboutTheCollection = /^shapes?-/.test(row.id);
@@ -1938,7 +1955,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // as the late sample it is rather than as an answer with no provenance.
         // `record` applies the same rule this block always did — only a real
         // answer replaces a never-asked — so the row reads exactly as before.
-        const retriedAt = Date.now() - runStarted;
+        const retriedAt = stampNow();
         entry.samples = [
           ...(entry.samples ?? []),
           { answer: retry.answer, pass: PROBE_PASSES + 1, atMs: retriedAt, regime: regimeNow(retriedAt) },
