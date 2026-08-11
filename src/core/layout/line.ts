@@ -923,7 +923,10 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   const frame = computeFrameHorizontal(drawn, style, decor);
   const scale = valueScale(frame, dataMin, dataMax, cfg.scale);
-  const toX = (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w;
+  // Clamped like `scale.toY` is — see the note on the same map in column.ts. A
+  // manual scale narrower than the data extrapolated off the slide here too.
+  const toX = (v: number) =>
+    frame.x + Math.max(0, Math.min(frame.w, ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w));
   const slotH = frame.h / Math.max(1, n);
   const centers = data.categories.map((_, c) => frame.y + slotH * (c + 0.5));
   // Date categories space proportionally to time — the same rule the manual

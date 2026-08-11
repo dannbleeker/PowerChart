@@ -323,10 +323,15 @@ const SORTABLE: ChartKind[] = ["stacked", "clustered", "stacked100", "mekko", "p
  * contiguous; its endpoints are moved and re-ordered, which is the best a
  * span can do.
  */
+/** Old category index → new one, after `order` has been applied. */
+function positionMap(order: number[]): (i: number) => number {
+  const pos = new Map(order.map((oldIdx, newIdx) => [oldIdx, newIdx]));
+  return (i: number) => pos.get(i) ?? i;
+}
+
 function remapDecorations<T extends Partial<Decorations> | undefined>(decor: T, order: number[]): T {
   if (!decor) return decor;
-  const pos = new Map(order.map((oldIdx, newIdx) => [oldIdx, newIdx]));
-  const at = (i: number) => pos.get(i) ?? i;
+  const at = positionMap(order);
   const pair = <T extends { from: number; to: number }>(p: T): T => {
     const [from, to] = [at(p.from), at(p.to)].sort((a, b) => a - b);
     return { ...p, from, to };
@@ -367,6 +372,24 @@ function sortCategories(cfg: ChartConfig): ChartConfig {
       xExtent: pick(data.xExtent),
     },
     decorations: remapDecorations(cfg.decorations, order),
+    // `pie.explode` and `pie.breakout` are category indices too — they just
+    // live on the top-level config rather than under `decorations`, so
+    // `remapDecorations` never saw them. Unpermuted, `explode: [0]` offset
+    // whichever category the SORT put in slot 0 and `breakout: [0, 2]`
+    // collapsed whichever two landed there: a different set of data points
+    // than the author named. That is the exact failure `remapDecorations`'
+    // docstring exists for — a highlight belongs to a data point, not to a
+    // screen position — and pie/doughnut are in `SORTABLE`.
+    ...(cfg.pie ? { pie: remapPieIndices(cfg.pie, order) } : {}),
+  };
+}
+
+function remapPieIndices(pie: NonNullable<ChartConfig["pie"]>, order: number[]): NonNullable<ChartConfig["pie"]> {
+  const at = positionMap(order);
+  return {
+    ...pie,
+    ...(pie.explode ? { explode: pie.explode.map(at) } : {}),
+    ...(pie.breakout ? { breakout: pie.breakout.map(at) } : {}),
   };
 }
 
@@ -1134,7 +1157,16 @@ export function valueExtent(cfg: ChartConfig): { min: number; max: number } | nu
   // function's own docstring names. Measured: an `otherBucket:{max:3}` chart
   // whose Other bar reaches 120 reported max 50, and Same Scale then drew that
   // bar at y = -375.6 with h = 657.6 on a 300pt canvas.
-  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(cfg))));
+  //
+  // `normalizeConfig` was the OTHER one missing, and it is the first thing
+  // `buildChart` does. It is what guarantees `Series.name` is a string and drops
+  // a null series entry, and the three passes below all call `s.name.trim()`
+  // unguarded — so a series written as `{ values: [...] }` with no name, which
+  // the skill will happily write into a POWERCHART_CONFIG tag, rendered fine
+  // through `buildChart` and threw a TypeError here. `doSameScale` maps this
+  // over the deck without a guard, so one such chart aborted the whole
+  // Same-Scale operation and nothing was rescaled.
+  const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(normalizeConfig(cfg)))));
   return drawnExtent(collapseOther(extracted.cfg), extracted.errors, extracted.targets);
 }
 

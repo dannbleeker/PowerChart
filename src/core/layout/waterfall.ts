@@ -150,8 +150,12 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const colThick = slotLen * (2 / 3);
   const centers = Array.from({ length: n }, (_, i) => catStart + slotLen * (i + 0.5));
   const valLen = H ? frame.w : frame.h;
+  // Clamped on both branches — see the note on the same map in column.ts. The
+  // vertical one inherits `toY`'s clip; the horizontal one is its own linear
+  // map and had none, so a manual scale narrower than the data extrapolated
+  // straight off the slide.
   const qOf = H
-    ? (v: number) => ((v - scale.min) / (scale.max - scale.min || 1)) * valLen
+    ? (v: number) => Math.max(0, Math.min(valLen, ((v - scale.min) / (scale.max - scale.min || 1)) * valLen))
     : (v: number) => frame.y + frame.h - scale.toY(v);
   const vRect = (catPos: number, v0: number, v1: number) => {
     const q0 = Math.min(qOf(v0), qOf(v1));

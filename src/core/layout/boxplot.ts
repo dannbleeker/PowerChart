@@ -191,7 +191,11 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const hi = drawn.length ? maxOf(drawn) : 1;
   const scale = valueScale(frame, lo, hi, cfg.scale, undefined, undefined, false); // no forced zero: data-driven domain
   // Value coordinate along the value axis (x when horizontal, y otherwise).
-  const qOf = H ? (v: number) => frame.x + ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w : scale.toY;
+  // Clamped like `scale.toY` is — see the note on the same map in column.ts.
+  const qOf = H
+    ? (v: number) =>
+        frame.x + Math.max(0, Math.min(frame.w, ((v - scale.min) / (scale.max - scale.min || 1)) * frame.w))
+    : scale.toY;
 
   const catStart = H ? frame.y : frame.x;
   const catLen = H ? frame.h : frame.w;

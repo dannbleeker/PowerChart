@@ -200,9 +200,18 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   // Value coordinate: distance along the value axis from the scale minimum.
   // Vertical charts route through toY so axis breaks apply; horizontal stays linear.
+  //
+  // CLAMPED either way. `toY` clips to the plot and says why (frame.ts: "every
+  // charting tool draws a value above the axis maximum as a bar reaching the top
+  // of the plot"), so the vertical branch inherited that and the horizontal one
+  // — its own linear map — did not. Pin the axis to 0–100 on revenue data, which
+  // the pane invites since "Axis scale min / max" are free-text boxes, and the
+  // same config that draws a full-height bar upright drew a 30,128pt one
+  // sideways: off the slide, and past the OOXML coordinate limit that makes
+  // PowerPoint offer to repair the file.
   const valLen = H ? frame.w : frame.h;
   const qOf = H
-    ? (v: number) => ((v - scale.min) / (scale.max - scale.min || 1)) * valLen
+    ? (v: number) => Math.max(0, Math.min(valLen, ((v - scale.min) / (scale.max - scale.min || 1)) * valLen))
     : (v: number) => frame.y + frame.h - scale.toY(v);
   /** Rect spanning [v0, v1] on the value axis at category position/thickness. */
   const segRect = (catPos: number, thick: number, v0: number, v1: number) => {
