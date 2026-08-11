@@ -370,12 +370,23 @@ left in the deck (the deletes reported 45 but the deck only shrank by 0)`.
   genuinely never existed it is a shade pessimistic, and an under-count costs a
   line in a report where an over-count costs sixty blank slides.
 
-  **The clean-up is honest and still does not work**, and the owner's deck grows
-  by ~60 slides a round. The repair that survives this finding is positional —
-  the probe's slides are appended, so "delete the last N" needs no id at all —
-  and it is NOT written yet on purpose: it is code that removes slides from a
-  real presentation on a host whose ids demonstrably lie about which slide is
-  which, and it wants the owner's say-so rather than a guess.
+  **The repair is positional, and it is written now** (authorised 2026-08-11).
+  The probe's slides are appended by `slides.add()`, so they are the last N in
+  the deck and need no id at all. `deleteTrailingSlides` is the hands;
+  `positionalSweepPlan` is the decision, kept pure and away from any host call
+  because on this path the decision IS the safety. It returns a plan only when
+  both deck counts are known, the deck actually grew, and the count is at most
+  the smaller of "what this run added, less what already went back" and "how
+  much the deck grew" — which together guarantee the first index to delete is at
+  or after the deck's size when the run started. Everything below that index was
+  the user's before the run began, and that floor is asserted a second time
+  rather than trusted to the arithmetic. Deletion runs highest index first so
+  removing one cannot shift another, and the sweep fires ONLY when delete-by-id
+  left something behind, so a host whose ids work never reaches it.
+
+  `test/host-probe.test.ts` proves each clamp is load-bearing: with the "no more
+  than the deck grew" clamp removed a plan reaches `from: -54`, i.e. into the
+  user's own slides, and the guard names it.
 
 - **`getItemOrNullObject` is not the last word on whether a slide exists.**
   PowerPoint on the web resolved a freshly-added slide's id once and refused it

@@ -5703,6 +5703,45 @@ async function slideIsGone(slideId: string): Promise<boolean> {
 }
 
 /**
+ * Delete `count` slides ending at the deck's end, by POSITION, highest first.
+ *
+ * The only clean-up that survives 2026-08-11's finding. Delete-by-id cannot
+ * work on this host — `the deck still lists 0 of 62 of these ids`, so every
+ * by-id delete reports "already gone" and removes nothing — and position needs
+ * no id at all: `slides.add()` appends, so a run's own slides are the last N.
+ *
+ * WHICH slides is decided by `positionalSweepPlan`, away from any host call and
+ * under test, because that decision is the safety and this function is only the
+ * hands. It never chooses for itself.
+ *
+ * Highest index first, so removing one cannot shift the index of another still
+ * to go. Each delete is queued into one batch and committed together: on a host
+ * that stops answering mid-sweep this leaves the deck consistent, and the
+ * caller's own before/after count is what says how much actually went.
+ *
+ * Returns how many the DECK lost, never how many deletes were issued. This file
+ * has now twice shipped a clean-up that reported work it had not done, and both
+ * times the deck was the thing that knew.
+ */
+export async function deleteTrailingSlides(from: number, count: number): Promise<number> {
+  if (count <= 0 || from < 0) return 0;
+  const before = (await slideIds().catch(() => undefined))?.length;
+  try {
+    await PowerPoint.run(async (context) => {
+      for (let i = from + count - 1; i >= from; i--) {
+        context.presentation.slides.getItemAt(i).delete();
+      }
+      await boundedSync(context, `deleting ${count} trailing slide(s)`, READBACK_TIMEOUT_MS);
+    });
+  } catch {
+    /* fall through to the count — a throw does not say nothing was removed */
+  }
+  const after = (await slideIds().catch(() => undefined))?.length;
+  if (before === undefined || after === undefined) return 0;
+  return Math.max(0, before - after);
+}
+
+/**
  * Take out a slide the host will not hand back by id, by finding it in the
  * deck's own list and deleting it where it stands.
  *
