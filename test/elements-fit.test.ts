@@ -116,3 +116,61 @@ describe("empty table", () => {
     expect(scene.nodes).toEqual([]);
   });
 });
+
+/**
+ * The type says `string`; the value came out of a file someone pasted.
+ *
+ * All five element builders are exported from `src/index.ts`, so the skill's
+ * caller reaches them with hand-written JSON, and the pane builds its table
+ * straight from datasheet cells. Every case below is something an author
+ * plainly meant — a year in a table, a tile with no value yet, a blank line in
+ * a pasted block — and every one of them used to throw a TypeError out of the
+ * engine and take the whole element down.
+ */
+describe("elements survive the JSON they are actually handed", () => {
+  it("renders a numeric table cell instead of throwing on it", () => {
+    // `(2024).match is not a function`. A year in a table is not exotic input.
+    const scene = buildTableScene([["Year", 2024 as unknown as string]], 480);
+    const texts = scene.nodes.filter((n): n is TextNode => n.kind === "text").map((n) => n.text);
+    expect(texts).toContain("2024");
+  });
+
+  it("treats a row that is not an array as an empty row, not a crash", () => {
+    // A blank line in a pasted block arrives as null; one row written without
+    // its inner array arrives as a bare string. Both threw before any of the
+    // cell-level care could run.
+    for (const rows of [[["a"], null], [["a"], "b"], null] as unknown as string[][][]) {
+      expect(() => buildTableScene(rows, 480)).not.toThrow();
+    }
+  });
+
+  it("builds a KPI tile that has no value yet", () => {
+    // `buildKpiTile({})` — the tile before its number is filled in — threw
+    // `Cannot read properties of undefined (reading 'length')` from textWidth.
+    for (const opts of [{}, { value: null }, { value: undefined }] as never[]) {
+      expect(() => buildKpiTile(opts)).not.toThrow();
+    }
+  });
+
+  it("renders a numeric delta rather than throwing on it", () => {
+    // `RegExp.test` coerces and `.replace` does not, so the direction was
+    // inferred correctly and only the render step fell over.
+    const scene = buildKpiTile({ value: "4.2", delta: 12 as unknown as string });
+    expect((node(scene, "kpi-delta") as TextNode).text).toBe("12");
+  });
+
+  it("keeps a process flow whose step is missing", () => {
+    for (const steps of [[null], [undefined], ["ok", null]] as unknown as string[][]) {
+      expect(() => buildProcessFlow(steps)).not.toThrow();
+    }
+  });
+
+  it("measures a number as its digits, so fit-to-width still shrinks", () => {
+    // The quiet half. `(2024).length` is undefined, so textWidth returned NaN,
+    // and every fit test here is a comparison that is FALSE against NaN — the
+    // shrink loop simply stopped shrinking. Same text, same measurement.
+    expect(textWidth(2024 as unknown as string, 10)).toBe(textWidth("2024", 10));
+    expect(textWidth(null as unknown as string, 10)).toBe(0);
+    expect(textWidth(undefined as unknown as string, 10)).toBe(0);
+  });
+});

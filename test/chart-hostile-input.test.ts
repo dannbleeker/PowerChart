@@ -8,6 +8,7 @@ import type { ChartConfig } from "../src/core/types";
 import { sceneToSvg } from "../src/render/svg";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { toRgb, alphaOf } from "../src/core/color";
+import { textWidth } from "../src/core/scene";
 
 /**
  * Values a datasheet cell can hold, against every chart kind.
@@ -493,4 +494,59 @@ describe("a data field of the wrong type cannot take the renderer down", () => {
       expect(bad.slice(0, 4)).toEqual([]);
     });
   }
+});
+
+/**
+ * Not a crash — a DISAPPEARANCE. The half the sweeps above cannot see.
+ *
+ * Every suite in this file asks the same question: does the wrong type take a
+ * renderer DOWN. That question has an answer for `valueAxisTitle: 99` — no, it
+ * does not — and the answer was wrong about the chart. `textWidth` returned
+ * `NaN` for a number (`(99).length` is `undefined`), the axis-title node was
+ * built as `w: Math.max(…, NaN)`, and `finiteNodes` — the safety net whose own
+ * comment calls itself "a floor and not a filter" — dropped the node. The units
+ * label vanished from all 25 kinds with no error anywhere, and a guard that
+ * only watches for throws reported everything fine.
+ *
+ * So this asserts the content SURVIVES, not merely that nothing exploded. A
+ * value the renderers will happily draw must reach them.
+ */
+describe("a config value the renderer can draw must not silently vanish", () => {
+  // Asserted through the RENDERER, not off the node: the scene may carry the
+  // number verbatim (all three sinks coerce their own text, which is the rule
+  // this repo already settled on), so what matters is that the label reaches
+  // the output at all. The bug was that the node never got there.
+  const axisTitleText = (cfg: ChartConfig) =>
+    buildChart(cfg)
+      .nodes.filter((n) => n.name === "value-axis-title")
+      .map((n) => String((n as { text?: unknown }).text));
+
+  it("keeps a numeric axis title, exactly as it keeps the string form", () => {
+    const base = sampleConfig("stacked");
+    expect(axisTitleText({ ...base, valueAxisTitle: 99 } as unknown as ChartConfig)).toEqual(["99"]);
+    expect(axisTitleText({ ...base, valueAxisTitle: "99" } as ChartConfig)).toEqual(["99"]);
+    // And it survives all the way into the SVG a reader actually looks at.
+    expect(sceneToSvg(buildChart({ ...base, valueAxisTitle: 99 } as unknown as ChartConfig))).toContain(
+      'data-name="value-axis-title"',
+    );
+  });
+
+  it("measures numeric text as its digits, so no layout decision reads NaN", () => {
+    // The root. Every fit-to-width test in the engine is a comparison, and each
+    // one is FALSE against NaN — so shrink-to-fit stops shrinking and a width
+    // built with Math.max becomes NaN. Sixty-odd call sites share this.
+    expect(textWidth(2024 as unknown as string, 10)).toBe(textWidth("2024", 10));
+  });
+
+  it("draws every kind's numeric axis title, not just the one sampled above", () => {
+    const missing: string[] = [];
+    for (const { kind } of CHART_KINDS) {
+      const cfg = { ...sampleConfig(kind), valueAxisTitle: 42 } as unknown as ChartConfig;
+      const asString = { ...sampleConfig(kind), valueAxisTitle: "42" } as ChartConfig;
+      // Only kinds that draw the label at all — the comparison is against the
+      // string form, so a kind with no value axis is simply "both empty".
+      if (axisTitleText(asString).length && !axisTitleText(cfg).length) missing.push(kind);
+    }
+    expect(missing).toEqual([]);
+  });
 });

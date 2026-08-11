@@ -264,9 +264,33 @@ export function estimateOfficeShapes(scene: Scene): number {
   return total;
 }
 
-/** Approximate rendered text width in points (average glyph ≈ 0.54 em for UI sans). */
+/**
+ * Approximate rendered text width in points (average glyph ≈ 0.54 em for UI sans).
+ *
+ * Coerces, for the same reason `xmlText` and `paintText` do: the type says
+ * `string` and the value came out of a file someone pasted. Sixty-odd call
+ * sites across every layout ask this question about a title, a category, a
+ * series name or a table cell, and a non-string used to answer two different
+ * ways, both silent:
+ *
+ * - `null`/`undefined` THREW `Cannot read properties of null (reading
+ *   'length')`, taking the whole chart down. `buildKpiTile({})` — a tile with
+ *   no value yet — and `buildProcessFlow([null])` did exactly that, and both
+ *   are exported from `src/index.ts` as the skill's public API.
+ * - a NUMBER returned `NaN`, because `(2024).length` is `undefined`. That is
+ *   the worse one. Every fit-to-width test here is a comparison, and each of
+ *   them is FALSE against NaN — so shrink-to-fit silently stopped shrinking,
+ *   and a width built as `Math.max(w, textWidth(...))` became NaN and had its
+ *   whole node dropped by `finiteNodes`. `valueAxisTitle: 99` — a units label
+ *   of `99`, or any year — vanished from the chart in all 25 kinds, with no
+ *   error anywhere: the safety net turned a crash into a disappearance.
+ *
+ * `String()` rather than a rejection, matching `xmlText`: the renderers will
+ * draw `2024`, so measuring it as four characters is the honest answer, and
+ * measuring a missing string as zero is what every caller already means by it.
+ */
 export function textWidth(text: string, fontSize: number, bold = false): number {
-  return text.length * fontSize * (bold ? 0.58 : 0.54);
+  return String(text ?? "").length * fontSize * (bold ? 0.58 : 0.54);
 }
 
 /**
