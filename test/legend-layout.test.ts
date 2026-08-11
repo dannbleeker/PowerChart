@@ -243,3 +243,58 @@ describe("right-hand series labels stay on the canvas", () => {
     expect(Math.min(...ys)).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Scatter's group legend is hand-rolled — it does not go through
+ * `legendRow`/`legendRowCount` the way mekko, boxplot, radar, butterfly and
+ * column all do — and it never wrapped. Entries marched right until they left
+ * the frame: eight groups on the DEFAULT 480pt frame ran to x=520. In SVG the
+ * viewBox clips them, so a group goes silently unexplained; in PowerPoint it is
+ * worse, because the Office renderer applies no clamp and they become real
+ * shapes sitting off the chart on the slide.
+ */
+describe("the scatter group legend wraps instead of marching off-canvas", () => {
+  const scatterWith = (groups: number, width: number) => {
+    const cats = Array.from({ length: groups }, (_, i) => `P${i}`);
+    return buildChart({
+      kind: "scatter",
+      width,
+      height: 180,
+      data: {
+        categories: cats,
+        series: [
+          { name: "X", values: cats.map((_, i) => i + 1) },
+          { name: "Y", values: cats.map((_, i) => groups - i) },
+          { name: "Group", values: cats.map((_, i) => i + 1) },
+        ],
+      },
+    } as unknown as ChartConfig);
+  };
+
+  it("keeps every legend chip and label inside the frame", () => {
+    for (const [groups, width] of [
+      [3, 180],
+      [4, 240],
+      [6, 360],
+      [8, 480],
+      [12, 480],
+    ] as const) {
+      const scene = scatterWith(groups, width);
+      const legend = scene.nodes.filter((n) => /^legend-/.test(n.name ?? ""));
+      expect(legend.length, `${groups} groups produced no legend`).toBeGreaterThan(0);
+      for (const n of legend) {
+        const right = (n as { x: number; w?: number }).x + ((n as { w?: number }).w ?? 0);
+        expect(right, `${n.name} runs to ${right} on a ${width}pt frame`).toBeLessThanOrEqual(width + 0.5);
+      }
+    }
+  });
+
+  it("still draws a legend that fits on one row exactly where it always did", () => {
+    // The reservation grows only when the walk actually wraps, so the common
+    // case must be untouched.
+    const one = scatterWith(2, 480);
+    const chips = one.nodes.filter((n) => /^legend-chip-/.test(n.name ?? ""));
+    expect(chips.length).toBe(2);
+    expect(new Set(chips.map((c) => (c as { y: number }).y)).size, "a two-entry legend wrapped").toBe(1);
+  });
+});

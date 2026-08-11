@@ -6,7 +6,7 @@ import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
 import { lerpColor, sequentialScale, zoneFill } from "../color";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { footnoteH, titleHeight, titleNode, legendRowCount, legendWrapWalk } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -221,7 +221,29 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const titleH = titleHeight(cfg, style);
   const axisW = 34;
   const multiGroup = !colorScale && new Set(pts.map((p) => p.group)).size > 1;
-  const legendH = multiGroup || colorScale ? fs * 1.8 : 0;
+  // ROWS, not one row. This legend is hand-rolled — it does not go through
+  // `legendRow`/`legendRowCount` the way mekko, boxplot, radar, butterfly and
+  // column all do — and it never wrapped: entries marched right until they left
+  // the frame. Eight groups on the DEFAULT 480pt frame ran to x=520. In SVG the
+  // viewBox clips them (a group silently unexplained); in PowerPoint it is
+  // worse, because the Office renderer applies no clamp and they become real
+  // shapes sitting off the chart on the slide.
+  //
+  // Reserved from a deliberately CONSERVATIVE width — the frame is not computed
+  // yet here, and the drawing walk below uses the real plot, which is never
+  // narrower than this. Reserving with the narrower bound can only over-reserve,
+  // and an extra empty row costs a few points where an unreserved one overlaps
+  // the plot.
+  const groupLegendRows =
+    multiGroup && !colorScale
+      ? legendRowCount(
+          [...new Set(pts.map((p) => p.group))].filter((g) => g !== undefined).map((g) => `Group ${g}`),
+          fs,
+          0,
+          Math.max(40, cfg.width - axisW - 8),
+        )
+      : 0;
+  const legendH = colorScale ? fs * 1.8 : multiGroup ? fs * 1.8 * Math.max(1, groupLegendRows) : 0;
   /** Where the plot starts before any marginal gutter — the legends' anchor. */
   const chromeTop = titleH + 6 + legendH;
   // Marginal gutters, in font-size units like the heatmap's already-shipped
@@ -657,9 +679,22 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // Clear the gradient bar when both legends are up — they share this row and
     // both anchor at plot.x, so without the offset the chips land on the ramp.
     let lx = plot.x + (colorScale ? COLOR_BAR_W + 16 : 0);
-    for (const g of groupIds) {
+    // The same shared walk the reservation used, so the drawer and the reserver
+    // cannot disagree about how many rows this legend takes.
+    const slots = legendWrapWalk(
+      groupIds.map((g) => `Group ${g}`),
+      fs,
+      lx,
+      plot.x + plot.w,
+    );
+    groupIds.forEach((g, gi) => {
       const chip = fs * 0.7;
       const label = `Group ${g}`;
+      lx = slots[gi].x;
+      // Rows stack upward from the plot: the LAST row sits where the single row
+      // always did, so a one-row legend is byte-identical to before.
+      const rows = slots[slots.length - 1].row + 1;
+      const dy = -(rows - 1 - slots[gi].row) * fs * 1.8;
       // Under a color scale the chip's color would be a lie (color means the
       // Color row there), so the shape carries the legend in neutral ink.
       const chipFill = colorScale ? style.mutedText : paletteColor(cfg.style?.palette ?? PALETTE, g - 1);
@@ -673,7 +708,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           ? markerNode(
               markerFor(g),
               lx + drawn / 2,
-              chromeTop - fs * 1.2 + chip / 2,
+              chromeTop + dy - fs * 1.2 + chip / 2,
               chip / 2,
               chipFill,
               style.background,
@@ -683,7 +718,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           : {
               kind: "rect",
               x: lx,
-              y: chromeTop - fs * 1.2,
+              y: chromeTop + dy - fs * 1.2,
               w: chip,
               h: chip,
               fill: chipFill,
@@ -692,7 +727,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         {
           kind: "text",
           x: lx + drawn + 3,
-          y: chromeTop - fs * 1.55,
+          y: chromeTop + dy - fs * 1.55,
           w: textWidth(label, fs) + 6,
           h: fs * 1.4,
           text: label,
@@ -703,8 +738,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           name: `legend-${g}`,
         },
       );
-      lx += drawn + 3 + textWidth(label, fs) + 14;
-    }
+    });
   }
 
   // Bubble radius: area ∝ size, max radius 9% of the smaller plot dimension.
