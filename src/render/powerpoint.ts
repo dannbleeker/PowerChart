@@ -15,7 +15,7 @@ import { estimateOfficeShapes } from "../core/scene";
 import { toHex6, alphaOf, isNamedColor } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
-import { trace } from "../core/trace";
+import { trace, traceAbout } from "../core/trace";
 import type { Rect } from "../core/placement";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
 import { parseSlideSizeEmu, EMU_PER_POINT } from "./ooxml";
@@ -3260,7 +3260,13 @@ async function runDemoDeck(
     // back when the host is willing.
     const itemWithTag = { ...items[i], slotTag, pictureBase64: degradedPicture };
     try {
-      ({ created, grouped, tagged } = await addAndRenderItem(itemWithTag, tooDense, shapeCount, layout));
+      // Which item of how many, on every line this draw writes. The grouping
+      // pass already reports a meaningful `index` because it sees the whole
+      // batch at once; the draw batches never did, so a deck run's log had to
+      // be read by adjacency.
+      ({ created, grouped, tagged } = await traceAbout({ item: `${i + 1}/${items.length}` }, () =>
+        addAndRenderItem(itemWithTag, tooDense, shapeCount, layout),
+      ));
     } catch (err) {
       // Do NOT infer from here what landed. A throw means the sync we were
       // waiting on gave up, not that the host discarded the work: the commits

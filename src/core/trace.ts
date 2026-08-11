@@ -136,6 +136,55 @@ export function traceElapsed(): number | null {
 }
 
 /**
+ * What every line written right now is ABOUT — set by the caller, carried by
+ * the log.
+ *
+ * A deck-wide rescale redraws eight charts through one call each, and every
+ * trace line those calls produce — three draw batches, the grouping, the tag
+ * write, the settle, each error — says `index: 0`, because within a single
+ * chart's own call it IS the first chart. So the 2026-08-11 round's most
+ * useful result, that charts 1-3 drew slowly and cleanly, chart 4 flipped and
+ * was rescued by the settle, and charts 5-8 lost their config, had to be
+ * reconstructed by hand from interleaved timestamps: pair each `batch issued`
+ * with the group and settle lines that follow it before the next batch, and
+ * count. That is a forensic pass over a 300-entry log to recover a number the
+ * caller knew the whole time.
+ *
+ * A subject is the caller saying it once. Merged UNDER the payload, never over
+ * it, so a call site that names the same key still wins.
+ */
+let subject: Record<string, unknown> | undefined;
+
+/**
+ * Run `fn` with `about` attached to every trace line it writes.
+ *
+ * Restores the previous subject on the way out, including on a throw, so a
+ * caller cannot leak one into the rest of the run — the failure mode a bare
+ * setter would have, and this log is read most closely on exactly the runs
+ * where things throw.
+ *
+ * Nested subjects merge, so an outer "which chart" and an inner "which batch"
+ * both appear. Strictly sequential: two overlapping `traceAbout` calls in
+ * flight at once would interleave and mislabel each other's lines. Everything
+ * this add-in does to a host is sequential — Office.js batches are — but a
+ * future concurrent caller must not use this.
+ */
+export async function traceAbout<T>(about: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
+  const prev = subject;
+  subject = { ...prev, ...about };
+  try {
+    return await fn();
+  } finally {
+    subject = prev;
+  }
+}
+
+/** What the log would currently attach. Test seam. */
+export function traceSubject(): Record<string, unknown> | undefined {
+  return subject;
+}
+
+/**
  * Record one step. A no-op — and specifically NOT a stringification — when
  * tracing is off, so call sites can be liberal without costing a live run.
  */
@@ -146,7 +195,8 @@ export function trace(scope: string, message: string, data?: Record<string, unkn
   // reference meant a caller who reused or mutated its object afterwards
   // rewrote history — silently, and in a file someone may already have
   // downloaded and be reading as fact.
-  const entry: TraceEntry = { ms: Date.now() - startedAt, scope, message, ...(data ? { data: { ...data } } : {}) };
+  const payload = subject || data ? { ...subject, ...data } : undefined;
+  const entry: TraceEntry = { ms: Date.now() - startedAt, scope, message, ...(payload ? { data: payload } : {}) };
   entries.push(entry);
   // Never let a watcher's failure cost the log the entry it was recording.
   try {

@@ -5,8 +5,10 @@ import {
   onTrace,
   setTracing,
   trace,
+  traceAbout,
   traceLog,
   traceMark,
+  traceSubject,
   tracing,
 } from "../src/core/trace";
 
@@ -310,5 +312,59 @@ describe("the one line a step list and a crash log share", () => {
     // format hard to scan.
     expect(formatTraceLine({ ms: 33_249, scope: "selftest", message: "step" })).toBe("  33.2s  selftest  step");
     expect(formatTraceLine({ ms: 0, scope: "pane", message: "start" })).toBe("     0s  pane  start");
+  });
+});
+
+/**
+ * A deck-wide rescale redraws eight charts through one single-chart call each,
+ * so every line those calls write says `index: 0` — within its own call each
+ * chart IS the first one. Recovering "charts 1-3 were clean, chart 4 flipped
+ * and the settle caught it, charts 5-8 were lost" therefore meant pairing draw
+ * batches against the group and settle lines that followed them, by timestamp,
+ * over a 300-entry log. The caller knew which chart it was on the whole time.
+ */
+describe("what a run of trace lines is ABOUT", () => {
+  it("attaches the subject to every line written inside the span", async () => {
+    setTracing(true);
+    trace("draw", "before");
+    await traceAbout({ chart: "4/8" }, async () => {
+      trace("draw", "batch issued", { upTo: 10 });
+      trace("group", "tagging failed");
+    });
+    trace("draw", "after");
+    const said = traceLog().entries;
+    expect(said[0].data, "a line outside the span picked up a subject").toBeUndefined();
+    expect(said[1].data).toEqual({ chart: "4/8", upTo: 10 });
+    expect(said[2].data, "a line with no payload of its own carried no subject").toEqual({ chart: "4/8" });
+    expect(said[3].data, "the subject leaked past the span that set it").toBeUndefined();
+  });
+
+  it("lets the call site win when it names the same key", async () => {
+    // Under, never over. A subject is context; a payload is what the line came
+    // to say, and a line that has measured something must not have it replaced.
+    setTracing(true);
+    await traceAbout({ chart: "4/8" }, async () => trace("group", "settle pass:", { chart: "the one by name" }));
+    expect(traceLog().entries[0].data).toEqual({ chart: "the one by name" });
+  });
+
+  it("restores the previous subject even when the span throws", async () => {
+    // The log is read most closely on exactly the runs where things throw, so a
+    // subject that leaks on the failure path would mislabel everything after
+    // the one line anybody cares about.
+    setTracing(true);
+    await expect(
+      traceAbout({ chart: "4/8" }, async () => {
+        throw new Error("the host stopped answering");
+      }),
+    ).rejects.toThrow("stopped answering");
+    expect(traceSubject(), "a throwing span left its subject attached to the rest of the run").toBeUndefined();
+    trace("draw", "after");
+    expect(traceLog().entries[0].data).toBeUndefined();
+  });
+
+  it("merges nested subjects", async () => {
+    setTracing(true);
+    await traceAbout({ chart: "4/8" }, () => traceAbout({ batch: 2 }, async () => trace("draw", "batch issued")));
+    expect(traceLog().entries[0].data).toEqual({ chart: "4/8", batch: 2 });
   });
 });

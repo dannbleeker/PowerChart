@@ -89,7 +89,7 @@ import {
   lastLateSyncSeq,
   waitForLateSync,
 } from "../render/powerpoint";
-import { trace, traceElapsed } from "../core/trace";
+import { trace, traceAbout, traceElapsed } from "../core/trace";
 
 /** One scenario's verdict, as it goes into the run log. */
 export interface ScenarioResult {
@@ -391,12 +391,31 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
   // session to read afterwards. The renderer knew which four and why while it
   // was happening.
   const lost: Record<string, number> = {};
-  for (const c of charts) {
+  const outcomes: (string | undefined)[] = [];
+  for (const [n, c] of charts.entries()) {
     const next: ChartConfig = { ...c.cfg, scale: { max } };
-    const back = await updateChartInSlide(buildChart(next), c.target, { tagData: JSON.stringify(next) });
+    // Which chart of how many, on every line these calls write — the draw
+    // batches, the grouping, the tag write, the settle and every error. Within
+    // one chart's own update they all say `index: 0`, so the per-chart table
+    // this scenario's result is made of used to be recovered by pairing trace
+    // lines against timestamps by hand.
+    const back = await traceAbout({ chart: `${n + 1}/${charts.length}` }, () =>
+      updateChartInSlide(buildChart(next), c.target, { tagData: JSON.stringify(next) }),
+    );
     const why = back === null ? "chart-gone" : back.lost;
     if (why) lost[why] = (lost[why] ?? 0) + 1;
+    outcomes.push(why ?? undefined);
+    if (rescaleShouldStop(outcomes)) {
+      trace("selftest", "stopping the rescale — the host has already flipped", {
+        done: n + 1,
+        of: charts.length,
+        flippedAt: rescaleFlipIndex(outcomes),
+      });
+      break;
+    }
   }
+  const attempted = outcomes.length;
+  const flippedAt = rescaleFlipIndex(outcomes);
   // A blind READBACK is not a finding. Every scenario here guards its first
   // scan and then draws its loudest conclusion from a second one it never
   // checked — and on the web a short deck scan is routine, which is why
@@ -412,13 +431,61 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
   const why = Object.entries(lost)
     .map(([k, n]) => `${n}×${k}`)
     .join(", ");
+  // The FLIP INDEX, not just the score. Three rounds that decomposed this
+  // scenario by hand put the boundary in the same place — charts 1-3 clean,
+  // chart 4 onward degraded — and what moved between a 3 and a 4 was one binary
+  // event, whether the settle caught chart 4. A score alone cannot say that; an
+  // index can, and it is the number worth comparing across rounds.
+  const flip = flippedAt
+    ? `; the host flipped at chart ${flippedAt} of ${charts.length}` +
+      (attempted < charts.length ? `, so the last ${charts.length - attempted} were not attempted` : "")
+    : "";
   return {
     ok: scaled === charts.length && after.length === charts.length,
     detail:
       `${scaled} of ${charts.length} charts carry the shared scale (max=${max}${shrunk}); ` +
-      `${after.length} still re-editable${why ? `; the update reported ${why}` : ""}`,
+      `${after.length} still re-editable${why ? `; the update reported ${why}` : ""}${flip}`,
   };
 };
+
+/**
+ * Consecutive charts that must lose their config before the rescale gives up.
+ *
+ * Two, not one. A single loss is the flip's first chart and may still be
+ * rescued by the settle — round 16's chart 4 was, and it counted toward the
+ * score — so stopping on one would throw away the observation that decides
+ * whether the round scores 3 or 4.
+ */
+const RESCALE_LOSSES_BEFORE_STOPPING = 2;
+
+/**
+ * Whether the deck-wide rescale has learned everything this host will teach it.
+ *
+ * The scenario is 212 seconds of an 818-second round, the longest thing in the
+ * battery, and on a degrading host its tail is pure repetition: once two charts
+ * in a row have lost their config, every remaining chart in three separate
+ * rounds has done exactly the same thing, at ~12s each. Round 16 would have
+ * stopped after chart 5 and skipped three charts and ~38 seconds, for the same
+ * score and the same flip index.
+ *
+ * On a HEALTHY host this never fires — nothing is lost, so nothing is skipped
+ * and the scenario still proves every chart in the deck takes the shared scale.
+ * That is the property that makes the shortcut safe: it can only skip work the
+ * host has already refused twice.
+ *
+ * Pure, and separate from the scenario, because the decision is the part worth
+ * checking — same reason as `positionalSweepPlan` and `chooseGroupMembers`.
+ */
+export function rescaleShouldStop(outcomes: (string | undefined)[]): boolean {
+  if (outcomes.length < RESCALE_LOSSES_BEFORE_STOPPING) return false;
+  return outcomes.slice(-RESCALE_LOSSES_BEFORE_STOPPING).every(Boolean);
+}
+
+/** 1-based index of the first chart that lost its config, or null if none did. */
+export function rescaleFlipIndex(outcomes: (string | undefined)[]): number | null {
+  const i = outcomes.findIndex(Boolean);
+  return i < 0 ? null : i + 1;
+}
 
 /**
  * Total height of a scene's bars — the one number a rescale has to move.
