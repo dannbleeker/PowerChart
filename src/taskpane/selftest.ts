@@ -48,6 +48,8 @@ import { buildChart } from "../core/chart";
 import { sampleConfig } from "../core/samples";
 import { buildDeckBase64 } from "../render/pptx-deck";
 import {
+  deckSlideIds,
+  hostFrictionCounts,
   canInsertPicture,
   canSelectShapes,
   clearShapeSelection,
@@ -87,7 +89,7 @@ import {
   lastLateSyncSeq,
   waitForLateSync,
 } from "../render/powerpoint";
-import { trace } from "../core/trace";
+import { trace, traceElapsed } from "../core/trace";
 
 /** One scenario's verdict, as it goes into the run log. */
 export interface ScenarioResult {
@@ -2159,7 +2161,18 @@ export async function runSelfTest(
     // now a real-host failure has been diagnosed from a screenshot rather than
     // a log, because the log only exists once the run ends and these runs did
     // not. This line is what makes such a screenshot name the right scenario.
-    trace("selftest", "scenario starting", { name });
+    // What the deck and the host looked like GOING IN. A scenario's verdict has
+    // never carried either, so "the host stopped answering" has always been a
+    // sentence with nothing beside it: no deck size, no elapsed time, no
+    // indication of how the host had been behaving in the seconds before.
+    //
+    // Recorded on every scenario, not only the ones that fail — a value written
+    // down only on failures cannot be compared against anything, which is the
+    // mistake `idleMs`, `afterAnswering`, the settle's shared label and
+    // `listChartsInDeck` each made in turn.
+    const deckBefore = (await deckSlideIds().catch(() => undefined))?.length;
+    const frictionBefore = hostFrictionCounts();
+    trace("selftest", "scenario starting", { name, deckSlides: deckBefore ?? "unreadable", atMs: traceElapsed() ?? 0 });
     const t0 = Date.now();
     // Deadlines already fired before this scenario ran, so the diff below is
     // this scenario's own. Read here rather than once per run: what matters is
@@ -2217,10 +2230,28 @@ export async function runSelfTest(
         result = { name, ok: false, detail: `threw: ${errorText(err)}`, ms: Date.now() - t0 };
       }
     }
+    // How much the host misbehaved DURING this scenario, on the same terms
+    // whether it passed or failed. `errors` is every host refusal the renderer
+    // caught, `idRefusals` the `InvalidParam passed to GetItem(id)` this deck is
+    // made of, and `emptyReReads` the shape collection coming back empty —
+    // which is what decides whether a chart gets grouped and so whether it stays
+    // re-editable. Recorded on passes too, because a value written only on
+    // failures cannot be compared against anything.
+    const f0 = frictionBefore;
+    const f1 = hostFrictionCounts();
+    const deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
     trace("selftest", result.skipped ? "scenario skipped" : result.ok ? "scenario passed" : "scenario FAILED", {
       name,
       detail: result.detail,
       ms: result.ms,
+      deckSlides: deckAfter ?? "unreadable",
+      ...(deckBefore !== undefined && deckAfter !== undefined ? { deckGrew: deckAfter - deckBefore } : {}),
+      friction: {
+        errors: f1.errors - f0.errors,
+        idRefusals: f1.idRefusals - f0.idRefusals,
+        generalExceptions: f1.generalExceptions - f0.generalExceptions,
+        emptyReReads: f1.emptyReReads - f0.emptyReReads,
+      },
     });
     const timedOut = deadlinesFired > deadlinesBefore;
     if (timedOut) trace("selftest", "the host missed a deadline in this scenario", { name, sick: sick + 1 });

@@ -2221,3 +2221,68 @@ describe("every verdict is reported as it lands, not only on return", () => {
     expect(results.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * What a round records BESIDE its verdicts.
+ *
+ * Four fields in this project have been built and then thrown away because they
+ * were written only when something went wrong — `idleMs`, `afterAnswering`, the
+ * settle's shared label, `listChartsInDeck`. Each was a number with no
+ * population to compare against. Everything asserted here is therefore asserted
+ * on a scenario that PASSED: if a field is only present on failures it is not a
+ * measurement, and this is the test that says so.
+ */
+describe("the context a round records around every scenario", () => {
+  it("stamps each scenario with the deck it ran on and the friction it met", async () => {
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    await runSelfTest("probe", "the chart is actually visible");
+    const started = traceLog().entries.filter((e) => e.message === "scenario starting");
+    const ended = traceLog().entries.filter((e) => String(e.message).startsWith("scenario "));
+    expect(started.length, "no scenario announced itself").toBeGreaterThan(0);
+    for (const e of started) {
+      expect(e.data, "a scenario began without saying what deck it was on").toHaveProperty("deckSlides");
+      expect(e.data, "a scenario began without saying how far into the round it was").toHaveProperty("atMs");
+    }
+    const verdicts = ended.filter((e) => e.message !== "scenario starting");
+    expect(verdicts.length, "no scenario reported a verdict").toBeGreaterThan(0);
+    for (const e of verdicts) {
+      // On the verdict, whatever the verdict is — including "passed".
+      expect(e.data, `${String(e.data?.name)} reported no friction count`).toHaveProperty("friction");
+      const f = e.data?.friction as Record<string, number>;
+      for (const k of ["errors", "idRefusals", "generalExceptions", "emptyReReads"]) {
+        expect(typeof f[k], `friction.${k} is not a number`).toBe("number");
+      }
+      expect(e.data, `${String(e.data?.name)} reported no deck size`).toHaveProperty("deckSlides");
+    }
+  }, 30_000);
+
+  it("records the on-slide shape count and the previous batch's duration on every batch", async () => {
+    // The input to the quadratic per-slide cost, which is this project's main
+    // performance claim and had never been recorded, plus the batch duration
+    // that until now had to be differenced out of consecutive timestamps — and
+    // so silently included every bit of inter-batch work.
+    const { insertSceneIntoSlide } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    await insertSceneIntoSlide(buildChart(sampleConfig("stacked")), { tagData: "{}", slideId: "s1" });
+    const batches = traceLog().entries.filter((e) => e.message === "batch issued");
+    expect(batches.length, "the draw did not batch").toBeGreaterThan(1);
+    for (const b of batches) {
+      expect(b.data, "a batch did not say how loaded its slide already was").toHaveProperty("onSlide");
+      expect(typeof b.data?.onSlide).toBe("number");
+    }
+    // The first batch has no predecessor, every later one does.
+    expect(batches[0].data, "the first batch invented a previous batch").not.toHaveProperty("prevBatchMs");
+    for (const b of batches.slice(1)) {
+      expect(b.data, "a batch did not say how long the one before it took").toHaveProperty("prevBatchMs");
+      expect(typeof b.data?.prevBatchMs).toBe("number");
+    }
+    // And it ACCUMULATES — the whole point is that the nth batch reports more
+    // than the first, because that is the variable the cost grows with.
+    const counts = batches.map((b) => b.data?.onSlide as number);
+    expect(counts[counts.length - 1], "the on-slide count never grew, so it is not counting").toBeGreaterThan(
+      counts[0],
+    );
+  }, 30_000);
+});

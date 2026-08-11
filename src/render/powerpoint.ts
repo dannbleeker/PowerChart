@@ -283,7 +283,15 @@ async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
       } catch {
         /* a frozen error still carries its own message */
       }
-      trace("error", label, { error: errorText(err) });
+      const text = errorText(err);
+      hostFriction.errors += 1;
+      // The two refusals this host is made of, counted apart from everything
+      // else. Both are named in a dozen places in this file as the cause of a
+      // lost chart; neither has ever been a NUMBER a reader could compare
+      // between one scenario and the next.
+      if (/InvalidParam|GetItem/i.test(text)) hostFriction.idRefusals += 1;
+      if (/GeneralException/i.test(text)) hostFriction.generalExceptions += 1;
+      trace("error", label, { error: text });
     }
     throw err;
   }
@@ -431,6 +439,51 @@ let lastAnsweredCall: string | null = null;
 let lastAnsweredAt = 0;
 
 /**
+ * How many shapes THIS RUN has already put on each slide.
+ *
+ * The input to this project's main performance claim and the one number it has
+ * never recorded. `what makes a long run slow down` measured that drawing cost
+ * grows with the shapes already on the slide — a round costs about
+ * `2339 + 630(n-1)` ms for the nth twelve — and every reading of a stalled draw
+ * since has had to guess at n. It is free: the draw loop already knows how many
+ * shapes it queued and onto which slide.
+ *
+ * Counts only what this run drew, which is the honest limit and is stated on
+ * the trace line: a slide that arrived with fifty shapes reads as zero here.
+ * Keyed by slide id, so a chart redrawn in place accumulates exactly as the
+ * host sees it.
+ */
+const shapesDrawnOnSlide = new Map<string, number>();
+
+/**
+ * Running counts of the ways this host refuses, since the run began.
+ *
+ * The self-test's scenarios are the things that actually fail, and they carry
+ * no host-state context at all — the probe's `regime` is stamped on probe
+ * answers, and no probe answer happens while the battery runs. So a verdict
+ * says "the host stopped answering" with nothing beside it saying how the host
+ * had been behaving in the seconds before.
+ *
+ * These are cumulative on purpose. A scenario records the delta across itself,
+ * which makes the number comparable between a scenario that passed and one that
+ * did not — the property four fields in this project have been built without.
+ */
+const hostFriction = { errors: 0, idRefusals: 0, generalExceptions: 0, emptyReReads: 0 };
+
+/** A snapshot a caller can difference against a later one. */
+export function hostFrictionCounts(): Readonly<typeof hostFriction> {
+  return { ...hostFriction };
+}
+
+/** Reset alongside the stall context — same lifetime, same reason. */
+function resetHostFriction(): void {
+  hostFriction.errors = 0;
+  hostFriction.idRefusals = 0;
+  hostFriction.generalExceptions = 0;
+  hostFriction.emptyReReads = 0;
+}
+
+/**
  * What the host was doing either side of the most recent stall.
  *
  * `idleMs` is measured from the last answer to the moment the stalled call was
@@ -470,6 +523,8 @@ export function _resetStallContextForTest(): void {
   lastAnsweredCall = null;
   lastAnsweredAt = 0;
   lastStall = null;
+  shapesDrawnOnSlide.clear();
+  resetHostFriction();
 }
 
 let lateSubscriber: ((msg: string) => void) | null = null;
@@ -3449,6 +3504,88 @@ export function requirementSets(): string[] {
   return ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"].filter((v) => supports(v));
 }
 
+/**
+ * What this tab is, and how long it has been one.
+ *
+ * Recorded once per round because half the hypotheses this project has
+ * entertained are about the ENVIRONMENT — the tab's age most of all, which has
+ * been alive as a candidate for ten rounds with nothing measuring it. Every one
+ * of these is free (no host round trip) and constant for the round, so it costs
+ * one trace line and can never evict anything that matters.
+ *
+ * Everything is optional because every one of these APIs is absent somewhere:
+ * `Office.context.diagnostics` predates nothing but is not in the fake,
+ * `performance.memory` is Chromium-only, and a missing value must read as
+ * "not available" rather than as a number.
+ */
+export interface RoundEnvironment {
+  /** Host, platform and version as Office itself reports them. */
+  host?: string;
+  platform?: string;
+  officeVersion?: string;
+  /** Requirement sets this host admits to. */
+  requirementSets: string[];
+  /**
+   * Milliseconds since this DOCUMENT was created — the tab's age at round
+   * start, which is the number "does a long-lived session degrade" needs and
+   * has never had. `performance.timeOrigin` is when the page began; a round
+   * that starts twenty minutes in says so.
+   */
+  tabAgeMs?: number;
+  /** JS heap in MB, when the browser exposes it. Chromium does; others do not. */
+  heapUsedMb?: number;
+  heapLimitMb?: number;
+  /** Viewport, because the live canvas is the bottleneck and its size is part of that. */
+  viewport?: string;
+}
+
+/** Read the round's environment. No host round trip — every source is local. */
+export function roundEnvironment(): RoundEnvironment {
+  // EVERY read here is in a try, including the requirement sets. This function
+  // is evaluated as an argument to `trace("round starting", …)`, so anything it
+  // throws does not degrade the environment block — it deletes the round-start
+  // line entirely, which is the one line that says which deck a round that dies
+  // died on. Found by `pane-host-actions.test.ts` on the first run, in exactly
+  // that form: eight tests red because a diagnostic threw where no diagnostic
+  // had been before.
+  let sets: string[] = [];
+  try {
+    sets = requirementSets();
+  } catch {
+    /* a host that will not enumerate its API surface still has a round to log */
+  }
+  const env: RoundEnvironment = { requirementSets: sets };
+  try {
+    const d = (Office as unknown as { context?: { diagnostics?: Record<string, unknown> } })?.context?.diagnostics;
+    if (d) {
+      if (typeof d.host === "string") env.host = d.host;
+      if (typeof d.platform === "string") env.platform = d.platform;
+      if (typeof d.version === "string") env.officeVersion = d.version;
+    }
+  } catch {
+    /* diagnostics is not everywhere, and a missing environment must not cost a round */
+  }
+  try {
+    const perf = globalThis.performance as
+      (Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }) | undefined;
+    if (perf && typeof perf.now === "function") env.tabAgeMs = Math.round(perf.now());
+    const mem = perf?.memory;
+    if (mem) {
+      env.heapUsedMb = Math.round(mem.usedJSHeapSize / 1048576);
+      env.heapLimitMb = Math.round(mem.jsHeapSizeLimit / 1048576);
+    }
+  } catch {
+    /* same */
+  }
+  try {
+    const w = globalThis as unknown as { innerWidth?: number; innerHeight?: number };
+    if (w.innerWidth && w.innerHeight) env.viewport = `${w.innerWidth}x${w.innerHeight}`;
+  } catch {
+    /* same */
+  }
+  return env;
+}
+
 /** What a host probe is handed: a live context, and a slide it may wreck. */
 export interface ProbeContext {
   /** The deck's slide collection, for questions about lookup and counting. */
@@ -5505,7 +5642,29 @@ async function slideSizeFromDocumentFile(): Promise<{ width: number; height: num
  * Measured, the choice is easy: successful adds in that run ran 0.21s to 4.0s
  * and failures took the full ninety, so the two are nowhere near each other.
  */
-export async function addScratchSlide(budgetMs?: number): Promise<string | null> {
+export async function addScratchSlide(
+  budgetMs?: number,
+  /**
+   * Called for a slide this run added, could not use, and could not take back
+   * out — i.e. one it has LEFT BEHIND.
+   *
+   * The clean-up sweep deletes by position and clamps at "no more than this run
+   * added", so its notion of what this run added has to include every slide the
+   * run put in the deck — including the ones it then refused to use. It did not:
+   * a slide that lands and will not resolve is removed here, and when that
+   * removal fails (which on this host is every time — delete-by-id cannot work)
+   * the function returns null and the caller never hears the id. The 2026-08-11
+   * round left exactly two slides behind for that reason: the deck grew by 70
+   * while the run could account for 68, so the clamp correctly refused the
+   * other two.
+   *
+   * Reported here rather than in the return value because the return value
+   * means "an id you may use", and these are precisely the ids you may not.
+   * They are still slides this run created and left in the deck, which is the
+   * question the sweep is asking.
+   */
+  onAdded?: (id: string) => void,
+): Promise<string | null> {
   try {
     const before = await slideIds();
     // Bounded, and then ASKED — the same treatment the other three slide-adds
@@ -5612,7 +5771,14 @@ export async function addScratchSlide(budgetMs?: number): Promise<string | null>
       // the deck on every attempt, which is the litter this whole function is
       // careful about everywhere else. `deleteSlideById` has a path that does
       // not need the id to resolve, which is exactly the case here.
-      if (!(await deleteSlideById(id))) trace("host", "could not remove the unusable scratch slide", { id });
+      if (!(await deleteSlideById(id))) {
+        trace("host", "could not remove the unusable scratch slide", { id });
+        // Still in the deck, still this run's. Told to the caller here and only
+        // here: a slide that was successfully taken back out is not left
+        // behind, and counting it would make the clean-up owe a delete for a
+        // slide already gone.
+        onAdded?.(id);
+      }
       return null;
     }
     return id;
@@ -6408,6 +6574,8 @@ async function renderShapesChunked(
   // Which batch this is. `created` can arrive as a non-empty sink, so its length
   // is not a batch counter.
   let batchNo = 0;
+  /** The previous batch's sync duration — the number differencing could not give. */
+  let prevBatchMs: number | undefined;
   while (s < steps.length) {
     // The stop check, and the only place it can honestly go: batches already
     // committed are on the slide and a sync in flight cannot be recalled, so
@@ -6494,13 +6662,26 @@ async function renderShapesChunked(
     // fix; a truthful name in the writer is. The commit has no line of its own
     // on purpose — the next batch's `issued` implies it, and the last one's is
     // the draw returning.
+    // What this run had already put on THIS slide before the batch, and how long
+    // the previous batch took. Both recorded on every batch, stalled or not,
+    // because a value written down only when something goes wrong cannot be
+    // compared against anything — the mistake this file has now made four times.
+    //
+    // `onSlide` is the input to the quadratic per-slide cost and has never been
+    // recorded; `prevBatchMs` is the batch duration, which until now had to be
+    // differenced out of consecutive `issued` timestamps and so silently
+    // included every bit of inter-batch work.
+    const slideKey = opts.slideId;
     trace("draw", "batch issued", {
       upTo,
       total,
+      ...(slideKey ? { onSlide: shapesDrawnOnSlide.get(slideKey) ?? 0 } : {}),
+      ...(prevBatchMs === undefined ? {} : { prevBatchMs }),
       ...(batchNo === 1
         ? { idleMs: Math.round(idleSinceLastAnswer()), afterAnswering: lastAnsweredCall ?? "nothing yet" }
         : {}),
     });
+    const batchStarted = Date.now();
     // Budget per BATCH, not per chart: a stalled host must still be caught, but
     // the limit now measures a batch we know the host can swallow.
     await withTimeout(
@@ -6508,6 +6689,8 @@ async function renderShapesChunked(
       BATCH_TIMEOUT_MS,
       `drawing shapes ${upTo - (created.length - before) + 1}-${upTo} of ${total}`,
     );
+    prevBatchMs = Date.now() - batchStarted;
+    if (slideKey) shapesDrawnOnSlide.set(slideKey, (shapesDrawnOnSlide.get(slideKey) ?? 0) + (created.length - before));
   }
   return created;
 }
@@ -6710,6 +6893,7 @@ async function groupAndTagAll(
         // because the alternative readings of `refreshed=0` want different
         // fixes, and from a run log they are indistinguishable.
         if (!items?.length && it.created.length) {
+          hostFriction.emptyReReads += 1;
           trace("group", "the re-read before grouping came back empty", { index: i, drew: it.created.length });
           return;
         }

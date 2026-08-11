@@ -1673,7 +1673,26 @@ export async function runHostProbes(source: string, build: string): Promise<Host
    * point of replacing a lost slide is to keep going — which means keeping a
    * list rather than overwriting the id of the thing still to be cleaned up.
    */
+  /**
+   * Every slide this run put in the deck, usable or not.
+   *
+   * The sweep clamps at "no more than this run added", so this set has to be
+   * everything the run LEFT IN THE DECK — including the slides
+   * `addScratchSlide` landed, refused, and then could not take back out. It
+   * swallowed those, because its return value means "an id you may use" and
+   * these are precisely the ids you may not. The 2026-08-11 round left exactly
+   * two behind for that reason: the deck grew by 70 while this list held 68, so
+   * the clamp correctly refused to touch the other two.
+   *
+   * Fed by `addScratchSlide`'s callback for that case, and de-duplicating,
+   * because a slide it successfully removes must NOT appear here — counting it
+   * would make the clean-up owe a delete for a slide that is already gone, and
+   * report "some" where the truth is "all".
+   */
   const scratchIds: string[] = [];
+  const noteScratch = (id: string): void => {
+    if (!scratchIds.includes(id)) scratchIds.push(id);
+  };
   // Read BEFORE the first scratch slide is added, so it cannot pick one up.
   // Follow-up questions use it as the control for "was that about the call, or
   // about the slide being new" — the one distinction this project has paid for
@@ -1693,7 +1712,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   // sweep may never reach past. Read here rather than in the clean-up because
   // by then the run's own slides are already in the count.
   const deckAtStart = (await deckSlideIds().catch(() => undefined))?.length;
-  let scratchId = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+  let scratchId = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
   if (scratchId) scratchIds.push(scratchId);
   /**
    * Consecutive questions that could not get an answer out of the host at all.
@@ -1830,9 +1849,9 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // A host that genuinely will not keep a slide pays one `addScratchSlide`
         // per question for the honest answer, which is what the budget is for.
         if (!scratchId) {
-          const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+          const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
           if (recovered) {
-            scratchIds.push(recovered);
+            noteScratch(recovered);
             scratchId = recovered;
             trace("probe", "took another scratch slide after giving up on the last", { id: probe.id });
           }
@@ -1861,9 +1880,9 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           // cost is one add and one question, and the alternative is a sheet
           // that gives up on eight questions because one slide went bad.
           if (NOT_ASKED.has(result.answer)) {
-            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
             if (replacement) {
-              scratchIds.push(replacement);
+              noteScratch(replacement);
               scratchId = replacement;
               trace("probe", "replaced the scratch slide", {
                 id: probe.id,
@@ -1942,9 +1961,9 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           // replaced seventeen in one run — that is not an edge case, it is the
           // normal path.
           if (NOT_ASKED.has(r.answer)) {
-            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
             if (replacement) {
-              scratchIds.push(replacement);
+              noteScratch(replacement);
               scratchId = replacement;
               trace("probe", "replaced the scratch slide for a partner question", {
                 id: follow.probe.id,
@@ -2012,7 +2031,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           trace("probe", "stopping the second pass — the host is not answering", { at: entry.id });
           break;
         }
-        const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS);
+        const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
         // One refused slide is not a dead host, and treating it as one made
         // this whole pass theatre.
         //
@@ -2037,7 +2056,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           continue;
         }
         noSlide = 0;
-        scratchIds.push(replacement);
+        noteScratch(replacement);
         scratchId = replacement;
         const deadlinesBefore = deadlinesFired;
         const started = Date.now();
@@ -2159,7 +2178,14 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       ms: Date.now() - cleanupStarted,
       detail:
         `${actually} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}` +
-        (shrankBy !== undefined && shrankBy !== returned
+        // Only when the deck lost LESS than the deletes claimed. That clause was
+        // written when the by-id path was the only one, where any disagreement
+        // meant an over-claim — and the sweep made it read backwards on its
+        // first outing: `the deletes reported 0 but the deck only shrank by 68`,
+        // which is the sweep working, described as a shortfall. A line that says
+        // the opposite of what happened is the `batch committed` mistake in a
+        // new place, so it is conditioned on the direction it describes.
+        (shrankBy !== undefined && shrankBy < returned
           ? ` (the deletes reported ${returned} but the deck only shrank by ${shrankBy})`
           : "") +
         (stillListed !== undefined && stillListed < scratchIds.length
@@ -2175,6 +2201,13 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       deckAfter,
       shrankBy,
       stillListed,
+      // A SAMPLE of both id lists, side by side. Reconstructing the id-space
+      // mismatch by hand cost two rounds — the scratch ids read
+      // `4123571115#123571113` while the deck listed `256#109857222`, and
+      // nothing in the file put those two facts next to each other. Three of
+      // each is enough to see it and small enough never to crowd the buffer.
+      heldIds: scratchIds.slice(0, 3),
+      deckIds: (idsBefore ?? []).slice(0, 3),
     });
   }
   // Said by the sheet, from its own samples — the fact `UNSTABLE_ANSWERS` was
