@@ -354,19 +354,28 @@ left in the deck (the deletes reported 45 but the deck only shrank by 0)`.
   deck listed `256#109857222` through `314#195537992`, and BOTH come from the
   same `slideIds()` projection minutes apart.
 
-  **Two readings fit and this file will not choose between them**: the host
-  renumbers its slide ids over the life of a run, or two readers of the same
-  deck disagree about what an id is. They are distinguishable by one number, so
-  the clean-up now records it — `stillListed`, how many of the ids it is about
-  to delete by are in the deck's own current list. 45 of 45 means the ids are
-  stable and the deletes simply fail; 0 of 45 means delete-by-id is not failing
-  but structurally impossible, and every id-holding path in this file needs the
-  same doubt. Do not build on either until a round says which.
+  **ANSWERED 2026-08-11 (`756682e`): `stillListed` came back ZERO of 62.** The
+  measurement was built to separate two readings — the ids are stable and the
+  deletes fail, or the id we hold is not the id the deck answers to — and it
+  chose the second, unambiguously. Delete-by-id on a slide this run added is not
+  failing, it is **structurally impossible**: `indexOf(id) < 0` is true for every
+  one of them, so every delete takes the "already gone" branch and removes
+  nothing. Both id lists come from the SAME `slideIds()` projection minutes
+  apart — the add captured its id from it, the clean-up reads it back — which is
+  what makes this a fact about the host rather than about two readers.
 
-  Until then the owner's deck grows by ~45 slides a round, which is the visible
-  cost and the reason this is near the top rather than filed. The clean-up is
-  honest about it now (it takes the MINIMUM of what the deletes claimed and what
-  the deck actually lost) but honest is not fixed.
+  `deleteSlideByPosition` now returns **false** for an unfindable id rather than
+  true. That claims less and deletes no more, which is the only safe direction
+  on a call that removes slides from someone's presentation; for an id that
+  genuinely never existed it is a shade pessimistic, and an under-count costs a
+  line in a report where an over-count costs sixty blank slides.
+
+  **The clean-up is honest and still does not work**, and the owner's deck grows
+  by ~60 slides a round. The repair that survives this finding is positional —
+  the probe's slides are appended, so "delete the last N" needs no id at all —
+  and it is NOT written yet on purpose: it is code that removes slides from a
+  real presentation on a host whose ids demonstrably lie about which slide is
+  which, and it wants the owner's say-so rather than a guess.
 
 - **`getItemOrNullObject` is not the last word on whether a slide exists.**
   PowerPoint on the web resolved a freshly-added slide's id once and refused it
@@ -747,6 +756,24 @@ actually visible` and `what makes a long run slow down` each spent four rounds
   ordering the verdict would have had nothing to manufacture from either. Run a
   few more of these and "no pattern" repeated IS the finding; stop instrumenting
   at that point.
+
+  **Round 15 (`756682e`, 2026-08-11) said POSITION, and that is the design
+  earning its keep — and contradicting round 14.** Round 14 reported `every draw
+after a RASTERISE failed and every one after a cheap read landed, interleaved
+so position cannot account for it`; round 15 reported `both LATER draws failed
+and both earlier ones landed, whichever call preceded them — this is position
+or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
+  rounds, opposite verdicts. Pooled across the four counterbalanced rounds the
+  arms are `rasterise 5 ok / 3 stall` against `cheap 7 ok / 1 stall`, which is a
+  direction and not a result.
+
+  Read the disagreement as the finding rather than as one of the two rounds
+  being wrong. It also settles a question about the WORDING: these verdicts were
+  nearly softened to "consistent with" on the grounds that four arms cannot
+  support a causal claim, and that would have been a mistake — each verdict is a
+  true statement about its own round, the cross-round uncertainty belongs in
+  `poolRasteriseArms`, and hedging both would have hidden exactly the
+  disagreement that is informative here.
 
   **Round 13 (`7027f96`, 2026-08-11) ran it again and said "no pattern" again**
   — `all four draws landed — a draw straight after a rasterise did not stall`.

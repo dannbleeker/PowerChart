@@ -835,12 +835,13 @@ const PROBES: Probe[] = [
       probe: {
         id: "shape-add-held-slide-proxy-again",
         question: "Asked a second time moments later on another fresh slide, does it answer the same way?",
-        // In `PENDING_QUESTIONS`, so the shortlist invariant wants the mark and
-        // the mark is true: this answer is not trusted yet. The scheduler never
-        // reads it for a follow-up — a follow is not scheduled on its own, it
-        // rides its trigger, and the trigger carries `resample` too, so this
-        // pair is re-asked together on every pass the shortlist keeps.
-        resample: true,
+        // No `resample` mark, and it does not need one: a follow-up is never
+        // scheduled on its own, it rides its trigger, and the trigger carries
+        // the mark — which is how this pair got three paired samples in one
+        // round. It carried the mark while it sat in `PENDING_QUESTIONS`; it
+        // has been answered now (2026-08-11, `756682e`, stable across three
+        // passes) and the shortlist invariant would fail on a mark neither
+        // table asks for.
         // Same damage as its trigger — it writes through a proxy this host has
         // stopped honouring — so it gives up its slide too rather than handing
         // the wreckage to whatever runs next. See `Probe.burnsTheSlide`.

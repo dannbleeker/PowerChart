@@ -70,6 +70,16 @@ export const FAKE_BASELINE = {
  * is a to-do wearing a passing test's clothes.
  */
 export const KNOWN_DIVERGENCES = {
+  "scratch-slides-returned":
+    "The fake returns every scratch slide it is given, and models the host this add-in was written against — one where a " +
+    "slide you added is a slide you can delete. PowerPoint on the web is not that host, and 2026-08-11 (`756682e`) " +
+    "measured why rather than inferring it: `0 of 62 deleted; 62 left in the deck (the deletes reported 62 but the deck " +
+    "only shrank by 0); the deck still lists 0 of 62 of these ids`. Zero. The ids the probe holds are not ids the deck " +
+    "lists, so `deleteSlideByPosition`'s `indexOf(id) < 0` reads `already gone` for every one of them and delete-by-id " +
+    "is not failing, it is structurally impossible. Both id lists come from the SAME `slideIds()` projection minutes " +
+    "apart, which is what makes this a statement about the host rather than about two readers. " +
+    "This entry stays until the clean-up is fixed — it is a real defect with a visible cost (the owner's deck grows by " +
+    "~60 slides a round), not an approximation the fake is allowed to keep.",
   "load-isnullobject-populates":
     "The fake models the host `queueNullCheck` was written for, where loading the flag by name populates nothing. PowerPoint on the web does populate it. Both hosts are real; the workaround is harmless on this one rather than necessary.",
   "shape-proxy-survives-one-sync":
@@ -148,7 +158,21 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
-    "THE CLEAN SPLIT IS GONE — 2026-08-11 (`96461eb`), the round that first carried the partner. A LATER pass " +
+    "THE PARTNER HAS ANSWERED, AND IT IS NOT A COIN — 2026-08-11 (`756682e`). Three paired asks in one round, " +
+    "TWO of them on later passes, and all three agreed:\n" +
+    "  pass 1   trigger `threw` 37.8s  / partner `threw` 39.2s\n" +
+    "  pass 2   trigger `threw` 89.0s  / partner `threw` 90.1s\n" +
+    "  pass 3   trigger `threw` 127.5s / partner `threw` 129.1s\n" +
+    "With the agreeing pair from `96461eb` that is four pairs, four agreements, zero disagreements. A fifty-fifty " +
+    "coin agrees half the time, so four for four is p=0.0625 against it — not proof, and much stronger than anything " +
+    "fifteen one-sample rounds could say. Read it as: at any given instant this host has a DEFINITE answer, and the " +
+    "variation across a run is a state changing, not a coin landing. " +
+    "The honest limit: all four pairs are `threw` pairs. Nothing yet pairs a `yes`, so what is shown is consistency " +
+    "in the `threw` state rather than consistency in general. A pair taken while the host is answering `yes` is the " +
+    "one still missing, and it cannot be scheduled — it has to be caught. " +
+    "The later-pass tally moved too, and against the old story: this round answered `threw` on ALL THREE passes, so " +
+    "later passes now stand at 3 x `yes` and 3 x `threw`. Pass 1 remains near-deterministic (18 of 19 `threw`). " +
+    "Original notes follow. THE CLEAN SPLIT IS GONE — 2026-08-11 (`96461eb`), the round that first carried the partner. A LATER pass " +
     "answered `threw` for the first time (pass 3, 46.7s), so the tally below is no longer 3-of-3 either side:\n" +
     "  pass 1 : 18 x `threw`, 1 x `yes`   (19 observations)\n" +
     "  later  :  3 x `yes`,   1 x `threw` ( 4 observations)\n" +
@@ -230,19 +254,6 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
-  "shape-add-held-slide-proxy-again":
-    "Added 2026-08-11 (`78e8c74`) as the `Probe.follow` partner named in the `shape-add-held-slide-proxy` entry " +
-    "above, and it exists to close the one open lead on this host. Sorted by which pass asked it, that question's " +
-    "observations separate almost perfectly — pass 1 gave `threw` 17 times of 18, every later pass gave `yes` 3 of " +
-    "3 — and two readings fit: the answer is a property of the MOMENT (there is a host state to find), or it is a " +
-    "COIN and the split is an artefact of when we happened to look. A third reading, the scratch slide's own age, " +
-    "is already dead from the 2026-08-11 run log: the recorded answer came from a brand-new REPLACEMENT slide in " +
-    "all three passes, so slide age was identical while the answer changed. " +
-    "This asks the identical question a second time at the same instant, on another fresh slide — same second of " +
-    "the run, same host state, same slide age, one difference: it is a second toss. AGREEMENT means the host has a " +
-    "definite behaviour right now and the moment is the variable; DISAGREEMENT means it is a coin and the " +
-    "populations collapse. Either way one round decides it, which is the whole point of the mechanism. " +
-    "The fake answers `threw` to both, i.e. the agreeing case, so CI covers the pair rather than the trigger alone.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
   "binding-names-shape-later":
