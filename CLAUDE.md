@@ -787,6 +787,16 @@ issued` now, which is what the line actually knows, and there is no commit line
   sessions when it had never run). So it is measured now rather than inferred:
   a stalled scenario waits `LATE_ANSWER_WAIT_MS` and its verdict says which
   happened, in words, every time (`stallDetail`). The plumbing behind that had
+  Round 12 is the first round where that measurement did the talking rather
+  than an absence: `same scale across the deck` came back
+  `the abandoned call had still not answered 3s later`, in the verdict, in
+  words. Two more abandoned calls that round (one probe question, one draw
+  batch) and still no `a call we gave up on finally answered` anywhere — but
+  the point is that the round SAYS so now instead of leaving a reader to infer
+  it from a line that is not there. (The count above is not re-tallied here on
+  purpose; it is the one number this file owns, and adding to it from a single
+  round file is how it would start to drift.)
+
   never been tested on the DRAW path either — every existing late-answer test
   goes through `insertDemoDeck` — so there is now one that stalls a real draw
   batch and checks the report carries the late answer.
