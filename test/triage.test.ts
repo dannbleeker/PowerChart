@@ -349,16 +349,22 @@ describe("triage — logs that are not inserts", () => {
   /**
    * Pooling the counterbalanced arms, and the trap under it.
    *
-   * `batch committed` is logged BEFORE the sync, deliberately — the sync is
+   * The per-batch line is logged BEFORE the sync, deliberately — the sync is
    * where a bad host goes quiet, so the number has to be on screen while you
-   * wait. That means every stall has a `batch committed` of its own immediately
-   * before it, and reading commits as successes is wrong twice over: it counts
-   * a failure as a success, and it inflates the denominator with the same event.
+   * wait. That means every stall has one of its own immediately before it, and
+   * reading those lines as successes is wrong twice over: it counts a failure
+   * as a success, and it inflates the denominator with the same event.
    *
    * Both mistakes were made analysing this data by hand. One pass produced 0
    * stalls in 32 draws; another produced a 6x rasterise effect that was not
    * there. The outcome of a draw is whether a `gave up waiting` lands between
    * that draw's step and the next one — nothing else.
+   *
+   * The line was CALLED `batch committed` while both of those went wrong, which
+   * is why the writer does not call it that any more (`batch issued`). These
+   * fixtures keep the old name on purpose: the owner's saved rounds carry it,
+   * and a pooling function that reads either name is a pooling function that
+   * reads neither — which is the property being pinned here.
    */
   const drawStep = (ms: number, arm: string, i: number) => ({
     ms,

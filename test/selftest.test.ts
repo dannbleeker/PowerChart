@@ -821,7 +821,7 @@ describe("the scenarios the selection API unlocked", () => {
     setTracing(true);
     await runSelfTest("probe", "the chart is actually visible");
     const draws = traceLog()
-      .entries.filter((e) => e.scope === "draw" && e.message === "batch committed")
+      .entries.filter((e) => e.scope === "draw" && e.message === "batch issued")
       .map((e) => (e.data as { total?: number }).total ?? 0);
     expect(draws.length, "the scenario drew nothing at all — this no longer tests what it says").toBeGreaterThan(0);
     expect(
@@ -2019,7 +2019,7 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
     // Every draw stall on record is the FIRST batch of a scenario's draw, eight
     // for eight — so what the host did immediately before that sync is the
     // question. The log answered it for nobody: between a scenario announcing
-    // itself and its first `batch committed` there is not one entry, while
+    // itself and its first `batch issued` there is not one entry, while
     // three to five seconds of probe reads, deck inventories and selection
     // calls go by.
     //
@@ -2067,6 +2067,54 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
     }
   }, 20_000);
 
+  it("leaves no trace line claiming a batch landed when that batch is the one that stalled", async () => {
+    // The per-batch line is written one statement BEFORE the sync it describes,
+    // deliberately — the sync is where a bad host goes quiet, so the number has
+    // to be on screen while you wait. For as long as it existed it was called
+    // `batch committed`, which made that deliberate ordering a lie: every stall
+    // on record left behind a line saying the batch it killed had committed.
+    //
+    // This is not pedantry about a word. Two hand analyses of the round files
+    // died on it — one paired the lines with draws and reported 0 stalls in 32,
+    // the other counted them as successes and manufactured a 6x rasterise
+    // effect that was not there — and `scripts/triage.mjs` carries a comment
+    // block whose entire job is to warn the next reader off it. The round of
+    // 2026-08-11 has the clean instance: one line at 351.6s reporting
+    // `upTo:10 total:24`, and 45 seconds later `gave up waiting` for that exact
+    // batch, with the same `idleMs` and the same predecessor. Same batch, and
+    // the log calls it committed.
+    //
+    // Asserted as the property rather than against the new spelling: whatever
+    // this line is named, a batch the host never answered must not have left
+    // one claiming it did.
+    const { _setBatchTimeoutForTest, _resetStallContextForTest } = await import("../src/render/powerpoint");
+    installHost([makeSlide("s1")]);
+    _resetStallContextForTest();
+    setTracing(true);
+    _setBatchTimeoutForTest(5);
+    try {
+      for (let k = 1; k <= 60; k++) stallSyncOn.add(trips.syncs + k);
+      await runSelfTest("probe", "the chart is actually visible");
+      stallSyncOn.clear();
+      const entries = traceLog().entries;
+      const stalled = entries.filter((e) => e.message === "gave up waiting");
+      expect(stalled.length, "nothing stalled, so this asserts nothing").toBeGreaterThan(0);
+      // Every draw line the run left behind, from a run in which no batch ever
+      // got an answer out of the host.
+      const drawLines = entries.filter((e) => e.scope === "draw").map((e) => e.message);
+      expect(drawLines.length, "the draw never reported a batch at all").toBeGreaterThan(0);
+      for (const m of drawLines) {
+        expect(
+          m,
+          `a batch the host never answered left the log saying "${m}" — a reader counting those counts a stall as a success`,
+        ).not.toMatch(/committed|landed|done|succeeded/i);
+      }
+    } finally {
+      _setBatchTimeoutForTest(45_000);
+      stallSyncOn.clear();
+    }
+  }, 20_000);
+
   it("records the idle gap on the first batch of a draw, and only the first", async () => {
     // The baseline the stall record is worthless without.
     //
@@ -2083,7 +2131,7 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
     setTracing(true);
     try {
       await insertSceneIntoSlide(buildChart(sampleConfig("stacked")), { tagData: "{}" });
-      const batches = traceLog().entries.filter((e) => e.message === "batch committed");
+      const batches = traceLog().entries.filter((e) => e.message === "batch issued");
       expect(batches.length, "the draw did not batch, so there is nothing to check").toBeGreaterThan(1);
       expect(batches[0].data, "the first batch carries no idle gap to compare a stall against").toHaveProperty(
         "idleMs",

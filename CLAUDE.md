@@ -705,6 +705,34 @@ an insert` stalled after a selection call, having passed the two rounds before.
 actually visible` and `what makes a long run slow down` each spent four rounds
   saying "it crashed again" and one picked round saying which call.
 
+  **Round 12 (`3223293`, 2026-08-11) ran the counterbalanced control for the
+  first time, and it said "no pattern" — which is the design working.** Both
+  rasterise arms drew and both cheap arms drew, no stall in any of the four
+  (`poolRasteriseArms` on that round: `rasterise 2/0, cheap read 2/0`). The
+  round's one draw stall was somewhere else entirely, and under the OLD fixed
+  ordering the verdict would have had nothing to manufacture from either. Run a
+  few more of these and "no pattern" repeated IS the finding; stop instrumenting
+  at that point.
+
+  That round also re-killed `afterAnswering` by a second route, without anyone
+  designing for it:
+
+      152.7s  pass   after="moving the view to a slide"   idleMs=1109
+      351.6s  STALL  after="moving the view to a slide"   idleMs=14108
+
+  Same predecessor, both populations, 200 seconds apart in one round. Every
+  candidate stays dead.
+
+  **The one genuinely new number is that `idleMs=14108`, and it does not bring
+  the gap back.** It is seven times the largest gap ever recorded on a surviving
+  first batch (survivors span 1ms to 2182ms across all rounds; that round's own
+  span 1ms to 2054ms), so it is tempting to read as sufficient-though-not-
+  necessary. Do not, yet: it is a single observation, and 1ms sits in both
+  populations, so the field still cannot classify a draw. Worth one line in the
+  next round's read — if a second stall arrives with a gap in the tens of
+  seconds while survivors stay under three, that is a real signal. One is an
+  anecdote, and this file has a paragraph about exactly that mistake.
+
 - **A value recorded only on FAILURES cannot be compared against anything, and
   this project keeps building them.** Four in one session: `idleMs` and
   `afterAnswering` were written on stalls but not on the draws that survived;
@@ -720,6 +748,23 @@ actually visible` and `what makes a long run slow down` each spent four rounds
   diagnostic field, ask what its value is on the runs that WORK; if the answer is
   "it is not written", the field cannot discriminate and is not yet a
   measurement.
+
+- **A trace may not be NAMED for an outcome it is written before knowing.** The
+  per-batch draw line was called `batch committed` and is emitted one statement
+  before the sync it describes — on purpose, because the sync is where a bad
+  host goes quiet and the number has to be on screen while you wait. The
+  ordering was right and the name was false, so every stall on record left
+  behind a line saying the batch it killed had committed. It cost two hand
+  analyses of the same data: one paired the lines with draws and reported 0
+  stalls in 32, the other counted them as successes and produced a 6x rasterise
+  effect that was not there. `scripts/triage.mjs` and `test/triage.test.ts` both
+  carry comment blocks whose whole job was to warn the next reader off it — a
+  workaround in every reader is the tell that the writer is wrong. It is `batch
+issued` now, which is what the line actually knows, and there is no commit line
+  at all: the next batch's `issued` implies it and the last one's is the draw
+  returning. The triage fixtures deliberately keep the old spelling, because
+  rounds saved before 2026-08-11 carry it and the pooling function must go on
+  reading neither name.
 
 - **A stall is DEATH, not slowness — do not raise `BATCH_TIMEOUT_MS` hoping for
   an answer.** Seventeen abandoned calls across nine rounds, and not one of them

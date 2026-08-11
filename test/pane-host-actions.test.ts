@@ -2365,7 +2365,7 @@ describe("the live step list", () => {
     // that is full of the start of a run and silent about how it ended.
     const trace = await paneTrace();
     const steps = document.getElementById("demo-steps")!;
-    for (let i = 0; i < 320; i++) trace("draw", "batch committed", { n: i });
+    for (let i = 0; i < 320; i++) trace("draw", "batch issued", { n: i });
     const lines = steps.textContent!.trim().split("\n");
     expect(lines.length).toBeLessThanOrEqual(300);
     expect(lines[0], "the newest step fell off the cap").toContain("n=319");

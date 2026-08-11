@@ -340,13 +340,17 @@ function reportTrace(trace) {
  * So the verdict a single round can reach is not the interesting one, and the
  * evidence was accumulating in files nobody was adding up. This adds them up.
  *
- * A draw's outcome is NOT its `batch committed` line: that is logged before the
+ * A draw's outcome is NOT its `batch issued` line: that is logged before the
  * sync, deliberately, because the sync is where a bad host goes quiet — so
- * every stall has a `batch committed` of its own immediately before it. Pairing
+ * every stall has a `batch issued` of its own immediately before it. Pairing
  * the two is how a first pass at this produced 0 stalls in 32 draws, and then
  * an unrelated cut of the same data produced a 6x effect that was not there.
  * The outcome is whether a `gave up waiting` lands between this draw's step and
  * the next one.
+ *
+ * Both mistakes were made while that line was NAMED `batch committed`, which is
+ * why it is not called that any more — but round files saved before 2026-08-11
+ * still carry the old name, and this function reads neither, by design.
  */
 export function poolRasteriseArms(logs) {
   const arms = { rasterise: { ok: 0, stall: 0 }, "cheap read": { ok: 0, stall: 0 } };

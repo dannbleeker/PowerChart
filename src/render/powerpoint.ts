@@ -414,7 +414,7 @@ let activeRun: string | null = null;
  * one. Which makes the interesting question "what did the host do immediately
  * before the sync it then refused to answer", and no round file can say: the
  * log records nothing at all between a scenario announcing itself and its first
- * `batch committed`, so three to five seconds of probe reads, deck inventories
+ * `batch issued`, so three to five seconds of probe reads, deck inventories
  * and selection calls happen invisibly.
  *
  * That absence is why the only account of the stalls anyone could give was at
@@ -3000,6 +3000,18 @@ async function addAndRenderItem(
     // perfectly good created proxies. The chart loses its group, and with it
     // the shape id the settle needs to write the config tag through: round 8's
     // finding is that the settle rescues the charts grouping survived for.
+    //
+    // NOT YET EXERCISED ON A REAL HOST, and nobody may credit it until it is.
+    // This branch only differs from the old hand-rolled comparison for a chart
+    // of 11 to 40 shapes drawn at `SHAPES_PER_SYNC_OFFSCREEN`, i.e. the deck
+    // path. Round 12 (`3223293`) was the first round on a build carrying the
+    // fix and every draw in it went down the LIVE path at `total:24` in batches
+    // of 10 — so `spansBatches` answered true throughout, exactly as the old
+    // code did, and the round says nothing about the change either way. The
+    // round did come back without the empty-re-read chain, and that is NOT
+    // evidence: this host produces that chain intermittently and the fix was
+    // never reached. What would settle it is a round that inserts a demo deck
+    // the shape-by-shape way, where charts of 11-40 shapes exist.
     const needsRefresh = spansBatches(drawn, opts) || !!item.pictureBase64;
     const [result] = await groupAndTagAll(context, [{ getSlide, created: drawn, opts, refreshShapes: needsRefresh }]);
     grouped = !!result?.grouped;
@@ -6415,7 +6427,20 @@ async function renderShapesChunked(
     // the identity of the preceding call discriminates or goes the way the gap
     // did. First batch only: a later batch's predecessor is always the batch
     // before it, which says nothing and would cost three lines a chart.
-    trace("draw", "batch committed", {
+    //
+    // ISSUED, not committed — and the name is load-bearing. This line was called
+    // `batch committed` for as long as it existed, while being written one
+    // statement BEFORE the sync it describes, so every stall on record left a
+    // line claiming the batch it killed had committed. Two hand analyses of the
+    // same data died on it: one paired the lines with draws and reported 0
+    // stalls in 32, the other counted them as successes and manufactured a 6x
+    // rasterise effect that was not there. Both are written up in
+    // `scripts/triage.mjs`, which compensates by ignoring this message entirely
+    // and reading `gave up waiting` instead. A comment in the reader is not the
+    // fix; a truthful name in the writer is. The commit has no line of its own
+    // on purpose — the next batch's `issued` implies it, and the last one's is
+    // the draw returning.
+    trace("draw", "batch issued", {
       upTo,
       total,
       ...(batchNo === 1

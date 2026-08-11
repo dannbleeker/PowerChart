@@ -142,6 +142,16 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
+    "SETTLED 2026-08-11 (`3223293`), and it is a coin after all. The first round to ask every question three times " +
+    "got BOTH answers out of one host, one tab, 77 seconds apart: `threw` at 2.1s and `yes` at 79.4s, run never " +
+    "restarted, build never changed. That is the observation this entry has wanted since the single `yes` of " +
+    "2026-08-08, and it retires the reading below: a mechanism with one early outlier cannot reproduce its outlier " +
+    "on demand inside one run. It is not a claim of fifty-fifty — two samples are two samples — but the variation is " +
+    "WITHIN a session, so re-running whole rounds was never going to settle it, and the fifteen observations below " +
+    "were fifteen one-sample rounds rather than a trend. " +
+    "The regime stamped on those two samples (`healthy` for the `threw`, `collection-refused` for the `yes`) is NOT " +
+    "yet evidence: the flag it came from latched 8.9s into a 110s probe, so `collection-refused` may mean no more " +
+    "than `later`. Fixed the same day (`regimeFrom`), so the next round's stamps can be read. Original note follows. " +
     "MEASURED AGAIN 2026-08-10 over ten consecutive rounds (`scripts/host-history.mjs`): `threw` TEN times out of ten, " +
     "551ad42 through 3d17165. That makes fifteen of sixteen observations, with the single `yes` now eleven rounds and two " +
     "days behind — this entry called it a coin, and a coin does not do that. Read it as a mechanism with one early outlier " +
@@ -185,6 +195,13 @@ export const PENDING_QUESTIONS = {
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
   "binding-names-shape-later":
+    "ASKED FOUR TIMES IN ONE ROUND on 2026-08-11 (`3223293`) and answered none of them — `no-scratch-shape`, " +
+    "`no-scratch-slide`, `no-scratch-shape`, `no-scratch-shape`, at 4.6s, 43.7s, 83.5s and 101.2s. That is the " +
+    "three-pass sampling doing what whole extra ROUNDS could not: the question now gets several separated attempts per " +
+    "round, and it still never reaches its own commit. Nine rounds, twelve-odd attempts, no answer. Read the entry " +
+    "below as confirmed rather than pending-in-practice — it stays here because the probe should still fire the day a " +
+    "host resolves a scratch slide twice, and because its cost is now four cheap refusals rather than a round. " +
+    "Original note follows. " +
     "UNANSWERABLE ON THIS HOST, and left in place deliberately — see `docs/BACKLOG.md` §2. Asked eight times across eight rounds and never once reached its own question. Six causes found, five fixed (#353/#356 second pass, #359 order, #360 the poisoned slot, #364 the unclaimable add and the ninety-second acquisition budget); the sixth is that a shape question needs the scratch slide resolved once per batch and this host gives about one resolution per slide, while an HONEST answer here needs a control batch as well. Control first starves the question; control second cannot run, because a failed sync poisons its own context. Both tried, both reverted. The probe stays so it answers the day a host resolves a scratch slide twice. Original note follows. " +
     "Added 2026-08-09, after the round on `551ad42` failed `same scale across the deck` for the fifth time in the same shape: five charts of eight drew all 24 shapes and were then unreachable — `InvalidParam passed to GetItem(id)`, 5010, at `ShapeCollection.getItem`, three times each (ids, config tag, positions) — so each left 24 shapes on a slide that is no longer a chart, and the settle pass repaired none of them (`{charts:1, settled:0, lost:1}`). Both handles that pass has are already known-refused here: `shapes-items-count-honest` says the collection reads back empty and `shapes-items-via-positional-slide` says a positional parent reads no better. A PowerPointApi 1.8 binding is the only reference that goes through neither — made from the live proxy in the shape's CREATING batch, persisted by the document, asked for later by our own key. If it survives, the repair pass gets the handle it lacks and a lost config tag becomes repairable instead of a chart the user cannot edit; if it does not, that closes the last cheap idea and the answer is worth as much. Nothing in `src/` uses bindings today — this is a question, not a half-built feature. ASKED TWICE, ANSWERED NEITHER TIME: `no-scratch-slide` on `2a44f64` morning (the run never got a slide for it), then `no-scratch-shape` on `2a44f64` evening — that one reached its own commit and got `UnexpectedError` in 1.3 seconds, which is the first real signal and is written up in `WHAT_IT_MEANS`. The control arm added after that round is what will make the third attempt an answer either way.",
 };

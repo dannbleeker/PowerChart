@@ -118,7 +118,46 @@ export interface ProbeSample {
  * at a time. Neither is a guess about the host's insides; both are things this
  * run watched happen.
  */
-export type HostRegime = "healthy" | "slide-trouble" | "collection-refused";
+export type HostRegime = "healthy" | "slide-trouble" | "collection-refused" | "unknown";
+
+/**
+ * How long an observation still describes the host.
+ *
+ * This host's states come and go in windows of roughly fifteen seconds — a
+ * freshly added slide stops resolving, then starts again — so a refusal from a
+ * minute ago is history, not a description of now. Twenty seconds is one such
+ * window plus a little, and it is the number that turns this field from a latch
+ * into a measurement.
+ */
+export const REGIME_WINDOW_MS = 20_000;
+
+/**
+ * What the host was doing, from the most RECENT thing this run watched it do.
+ *
+ * The first version of this was two sticky booleans: once any shape question
+ * answered a refusal, every later sample was stamped `collection-refused` for
+ * the rest of the run. The first real round showed what that is worth — the
+ * flag latched 8.9 seconds into a 110-second probe and 55 of 65 samples came
+ * back carrying the same value. A field that nearly every sample shares cannot
+ * separate anything, which is the exact mistake this project has now recorded
+ * against `idleMs`, `afterAnswering`, the settle's shared label and
+ * `listChartsInDeck` — four fields, four times, and this was the fifth.
+ *
+ * So: timestamps, a window, and an explicit `unknown` for "nothing recent
+ * enough to say". Refusal outranks slide trouble because a host that will not
+ * list shapes is in the deeper hole, and both outrank `healthy`, which is only
+ * claimed on the strength of something that actually worked.
+ */
+export function regimeFrom(
+  o: { at: number; lastRefusalAt?: number; lastSlideTroubleAt?: number; lastGoodAt?: number },
+  windowMs = REGIME_WINDOW_MS,
+): HostRegime {
+  const recent = (t?: number) => t !== undefined && o.at - t <= windowMs;
+  if (recent(o.lastRefusalAt)) return "collection-refused";
+  if (recent(o.lastSlideTroubleAt)) return "slide-trouble";
+  if (recent(o.lastGoodAt)) return "healthy";
+  return "unknown";
+}
 
 /** A complete sheet, plus what produced it. */
 export interface HostAnswerSheet {
@@ -1589,10 +1628,11 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   /**
    * What the run has already watched the host do. Never a guess, never a call.
    */
-  let sawSlideTrouble = false;
-  let sawCollectionRefused = false;
-  const regimeNow = (): HostRegime =>
-    sawCollectionRefused ? "collection-refused" : sawSlideTrouble ? "slide-trouble" : "healthy";
+  /** When this run last SAW each thing. Timestamps, not flags — see `regimeFrom`. */
+  let lastRefusalAt: number | undefined;
+  let lastSlideTroubleAt: number | undefined;
+  let lastGoodAt: number | undefined;
+  const regimeNow = (at: number): HostRegime => regimeFrom({ at, lastRefusalAt, lastSlideTroubleAt, lastGoodAt });
   /** Answers that mean the shape collection has stopped answering. */
   const REFUSAL = new Set(["unreadable", "short-0", "not-listed"]);
   /**
@@ -1606,9 +1646,15 @@ export async function runHostProbes(source: string, build: string): Promise<Host
    */
   const rows = new Map<string, HostAnswer>();
   const record = (row: HostAnswer, pass: number): HostAnswer => {
-    if (REFUSAL.has(row.answer) && /^shapes?-/.test(row.id)) sawCollectionRefused = true;
-    if (row.answer === "no-scratch-slide") sawSlideTrouble = true;
-    const sample: ProbeSample = { answer: row.answer, pass, atMs: Date.now() - runStarted, regime: regimeNow() };
+    const atMs = Date.now() - runStarted;
+    // Each observation stamped with WHEN, so a later reading can tell a host
+    // that is refusing now from one that refused a minute ago.
+    const aboutTheCollection = /^shapes?-/.test(row.id);
+    if (aboutTheCollection && REFUSAL.has(row.answer)) lastRefusalAt = atMs;
+    else if (aboutTheCollection && !NOT_ASKED.has(row.answer)) lastGoodAt = atMs;
+    if (row.answer === "no-scratch-slide") lastSlideTroubleAt = atMs;
+    else if (!NOT_ASKED.has(row.answer)) lastGoodAt = atMs;
+    const sample: ProbeSample = { answer: row.answer, pass, atMs, regime: regimeNow(atMs) };
     const seen = rows.get(row.id);
     if (!seen) {
       const created: HostAnswer = { ...row, samples: [sample] };
@@ -1892,9 +1938,10 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // as the late sample it is rather than as an answer with no provenance.
         // `record` applies the same rule this block always did — only a real
         // answer replaces a never-asked — so the row reads exactly as before.
+        const retriedAt = Date.now() - runStarted;
         entry.samples = [
           ...(entry.samples ?? []),
-          { answer: retry.answer, pass: PROBE_PASSES + 1, atMs: Date.now() - runStarted, regime: regimeNow() },
+          { answer: retry.answer, pass: PROBE_PASSES + 1, atMs: retriedAt, regime: regimeNow(retriedAt) },
         ];
         if (!NOT_ASKED.has(retry.answer)) {
           entry.answer = retry.answer;

@@ -15,6 +15,7 @@ import {
   PROBE_PASSES,
   RESAMPLE_IDS,
   stabilityOf,
+  regimeFrom,
   type HostAnswerSheet,
 } from "../src/render/host-probe";
 // @ts-expect-error — a plain .mjs tool with no types. Imported so the shortlist
@@ -1303,7 +1304,7 @@ describe("a run samples each question more than once", () => {
     for (const s of answered[0].samples!) {
       expect(s.pass).toBeGreaterThan(0);
       expect(typeof s.atMs).toBe("number");
-      expect(["healthy", "slide-trouble", "collection-refused"]).toContain(s.regime);
+      expect(["healthy", "slide-trouble", "collection-refused", "unknown"]).toContain(s.regime);
     }
   });
 });
@@ -1425,5 +1426,40 @@ describe("the summary reports a question that changed its answer mid-round", () 
     const sheet = sheetWith([{ id: "getitem-durable-slide", answer: "yes", stable: true }]);
     expect(summariseHostSheet(sheet).unstable).toEqual([]);
     expect(describeHostSheet(sheet)).not.toContain("CHANGED ITS ANSWER");
+  });
+});
+
+/**
+ * The first version of this was two sticky booleans, and the first real round
+ * showed what that is worth: the flag latched 8.9 seconds into a 110-second
+ * probe and 55 of 65 samples came back carrying the same value. A field nearly
+ * every sample shares cannot separate anything — the same mistake this project
+ * has recorded against `idleMs`, `afterAnswering`, the settle's shared label and
+ * `listChartsInDeck`.
+ */
+describe("regimeFrom describes the host NOW, not the host at any point", () => {
+  it("reports the most recent thing seen", () => {
+    expect(regimeFrom({ at: 1000, lastRefusalAt: 900 })).toBe("collection-refused");
+    expect(regimeFrom({ at: 1000, lastSlideTroubleAt: 900 })).toBe("slide-trouble");
+    expect(regimeFrom({ at: 1000, lastGoodAt: 900 })).toBe("healthy");
+  });
+
+  it("lets a refusal go stale instead of latching for the rest of the run", () => {
+    // The bug, stated as a test: a refusal a minute old is history.
+    const stale = { at: 90_000, lastRefusalAt: 8_900, lastGoodAt: 89_000 };
+    expect(regimeFrom(stale)).toBe("healthy");
+    // …and while it IS recent it still outranks a good read, because a host
+    // that will not list shapes is in the deeper hole.
+    expect(regimeFrom({ at: 10_000, lastRefusalAt: 9_000, lastGoodAt: 9_500 })).toBe("collection-refused");
+  });
+
+  it("says unknown rather than guessing when nothing recent is known", () => {
+    expect(regimeFrom({ at: 90_000 })).toBe("unknown");
+    expect(regimeFrom({ at: 90_000, lastRefusalAt: 100, lastSlideTroubleAt: 200, lastGoodAt: 300 })).toBe("unknown");
+  });
+
+  it("takes the window as a parameter, so the boundary is testable", () => {
+    expect(regimeFrom({ at: 100, lastRefusalAt: 0 }, 100)).toBe("collection-refused");
+    expect(regimeFrom({ at: 101, lastRefusalAt: 0 }, 100)).toBe("unknown");
   });
 });
