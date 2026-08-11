@@ -27,7 +27,7 @@
  */
 import { arrowheadBox, annularSectorPoints, dashKind, symbolPreset } from "../core/geometry";
 import type { Scene } from "../core/scene";
-import { IN, hex, hexOr, makeAddNode } from "../../skill/scripts/pptx-paint.mjs";
+import { IN, hexOr, makeAddNode } from "../../skill/scripts/pptx-paint.mjs";
 import { injectGroupsAndTags, EMU_PER_POINT, type SlideDressing } from "./ooxml";
 
 /** 16:9 at PowerPoint's default size, in inches — the skill renderer's deck. */

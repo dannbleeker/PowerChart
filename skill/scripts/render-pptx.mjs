@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import pptxgen from "pptxgenjs";
 // Pure paint + node mapping (split out so it is unit-testable and measurable —
 // this CLI runs as a subprocess and can't be). Shipped alongside by build-skill.
-import { IN, hex, hexOr, makeAddNode } from "./pptx-paint.mjs";
+import { IN, hexOr, makeAddNode } from "./pptx-paint.mjs";
 
 // Engine location: packaged skill layout first, then repo layout.
 let engine;
