@@ -2136,3 +2136,40 @@ describe("what a stalled scenario reports about the call it gave up on", () => {
     }
   }, 20_000);
 });
+
+/**
+ * The battery returns one array, after the last scenario, and the round writes
+ * its file from that — so a tab that died mid-battery took every finished
+ * verdict with it. Ordering `SCENARIOS` can only ever choose WHICH verdicts a
+ * crash costs; reporting each one as it lands is what makes it cost none of the
+ * ones already reached.
+ */
+describe("every verdict is reported as it lands, not only on return", () => {
+  it("reports each scenario before the battery returns", async () => {
+    const seen: string[] = [];
+    const results = await runSelfTest("probe", undefined, (r) => seen.push(r.name));
+    expect(results.length, "no scenarios ran, so this proves nothing").toBeGreaterThan(0);
+    // Same verdicts, same order — the callback is the array being built, not a
+    // summary of it.
+    expect(seen).toEqual(results.map((r) => r.name));
+  });
+
+  it("reports the 'not reached' verdicts too", async () => {
+    // These are the ones a future edit forgets, and they are the verdicts of a
+    // run that is already going wrong — which is when this matters most.
+    const seen: ScenarioResult[] = [];
+    const results = await runSelfTest("probe", undefined, (r) => seen.push(r));
+    const skipped = results.filter((r) => r.skipped);
+    for (const s of skipped) {
+      expect(seen.some((r) => r.name === s.name && r.skipped)).toBe(true);
+    }
+  });
+
+  it("survives a sink that throws", async () => {
+    // A reporting sink is never a reason for the battery to stop.
+    const results = await runSelfTest("probe", undefined, () => {
+      throw new Error("storage is full");
+    });
+    expect(results.length).toBeGreaterThan(0);
+  });
+});

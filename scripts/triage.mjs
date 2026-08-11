@@ -168,6 +168,26 @@ export function selfTestIn(log) {
  * built for are produced at the end of a run, and the runs worth reading are
  * the ones that do not get there.
  */
+/**
+ * One banked finding in a line: a scenario verdict as its verdict, an answer
+ * sheet as its count, anything else as JSON.
+ *
+ * Kept shallow on purpose. This runs on the file from a round that died, and the
+ * reader wants to know which scenarios got a verdict and whether the probe half
+ * survived — not to read a sheet pretty-printed down the terminal.
+ */
+export function describeFinding(value) {
+  if (value && typeof value === "object" && typeof value.name === "string" && "ok" in value) {
+    const state = value.skipped ? "SKIPPED" : value.ok ? "passed" : "FAILED";
+    return `${state}${value.detail ? ` — ${value.detail}` : ""}${value.ms ? ` (${(value.ms / 1000).toFixed(1)}s)` : ""}`;
+  }
+  if (value && typeof value === "object" && Array.isArray(value.answers)) {
+    const asked = value.answers.filter((a) => a && typeof a.answer === "string").length;
+    return `answer sheet, ${asked} of ${value.answers.length} question(s) answered`;
+  }
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
 export function crashLogIn(log) {
   return log?.kind === "powerchart-crash-log" && Array.isArray(log.steps) ? log : null;
 }
@@ -525,6 +545,17 @@ if (invokedDirectly) {
         `\n  ${crash.steps.length} step(s), OLDEST FIRST — the last line is where it stopped\n`,
     );
     for (const line of crash.steps) console.log(`    ${line}`);
+    // What the run CONCLUDED, as opposed to what it narrated.
+    //
+    // A crashed round's steps say a scenario started; they never said what it
+    // decided, because verdicts only existed in memory until the run ended and
+    // these runs do not end. They are recorded as they land now, so a crash log
+    // carries them — and this is the reader that has to show them, or they are
+    // back to being invisible in a different place.
+    if (crash.findings?.length) console.log(`\n  ${crash.findings.length} finding(s) banked before it stopped:\n`);
+    for (const { key, value } of crash.findings ?? []) {
+      console.log(`    ${key}: ${describeFinding(value)}`);
+    }
     const known = crash.steps.map((l) => knownBug(l)).filter(Boolean);
     if (known.length) console.log(`\n  known host bug: ${[...new Set(known)].join("\n  known host bug: ")}`);
     console.log("");

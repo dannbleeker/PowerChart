@@ -6,6 +6,7 @@ import {
   endCrashLog,
   flushCrashLog,
   markCrashLogSaved,
+  recordCrashFinding,
   recordCrashStep,
   recoverCrashLog,
   _resetCrashLogForTest,
@@ -367,5 +368,67 @@ describe("the crash-surviving run log", () => {
     expect(crashLogIn({ runs: [], build: "x" })).toBeNull();
     expect(crashLogIn({ selftest: [], build: "x" })).toBeNull();
     expect(crashLogIn(null)).toBeNull();
+  });
+});
+
+/**
+ * A run's FINDINGS, not just its narration.
+ *
+ * The steps say a scenario started; they do not say what it concluded, and
+ * `npm run triage` reads verdicts. Both halves of a round — the probe's answer
+ * sheet and each scenario's verdict — were held in a module variable and
+ * written to a file after the last `await`, so a tab that died mid-battery took
+ * the probe's answers with it even though the probe had finished minutes
+ * earlier.
+ */
+describe("findings recorded during a run survive the run dying", () => {
+  beforeEach(() => {
+    _resetCrashLogForTest();
+    window.localStorage.clear();
+  });
+
+  it("hands back a finding recorded before the crash", () => {
+    beginCrashLog({ build: "abc1234", host: "web", label: "self-test" });
+    recordCrashFinding("hostAnswers", { answers: [{ id: "getitem-durable-slide", answer: "yes" }] });
+    recordCrashFinding("selftest:insert a chart", { name: "insert a chart", ok: true });
+    flushCrashLog();
+    // The run never finishes — the tab is gone.
+    _resetCrashLogForTest();
+    const recovered = recoverCrashLog();
+    expect(recovered, "nothing was offered back").toBeTruthy();
+    const byKey = Object.fromEntries((recovered!.findings ?? []).map((f) => [f.key, f.value]));
+    expect(byKey["hostAnswers"]).toEqual({ answers: [{ id: "getitem-durable-slide", answer: "yes" }] });
+    expect(byKey["selftest:insert a chart"]).toEqual({ name: "insert a chart", ok: true });
+  });
+
+  it("lets a key be re-recorded, so a growing result does not grow the record", () => {
+    beginCrashLog({ build: "abc1234", host: "web", label: "self-test" });
+    recordCrashFinding("progress", { done: 1 });
+    recordCrashFinding("progress", { done: 2 });
+    flushCrashLog();
+    _resetCrashLogForTest();
+    const findings = recoverCrashLog()?.findings ?? [];
+    expect(findings.filter((f) => f.key === "progress")).toHaveLength(1);
+    expect(findings.find((f) => f.key === "progress")?.value).toEqual({ done: 2 });
+  });
+
+  it("drops an oversized or unserialisable finding, never the record", () => {
+    beginCrashLog({ build: "abc1234", host: "web", label: "self-test" });
+    recordCrashFinding("keep", { small: true });
+    recordCrashFinding("huge", { blob: "x".repeat(200_000) });
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() => recordCrashFinding("cyclic", cyclic)).not.toThrow();
+    flushCrashLog();
+    _resetCrashLogForTest();
+    const byKey = Object.fromEntries((recoverCrashLog()?.findings ?? []).map((f) => [f.key, f.value]));
+    expect(byKey["keep"], "an oversized sibling cost a good finding").toEqual({ small: true });
+    expect(String(byKey["huge"])).toContain("dropped");
+    expect(String(byKey["cyclic"])).toContain("dropped");
+  });
+
+  it("does nothing at all when no run is being recorded", () => {
+    expect(() => recordCrashFinding("orphan", { a: 1 })).not.toThrow();
+    expect(recoverCrashLog()).toBeNull();
   });
 });
