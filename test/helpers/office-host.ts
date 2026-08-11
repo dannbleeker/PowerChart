@@ -855,9 +855,24 @@ export function makeShape(
     fillType: undefined as string | undefined,
     lineFormat: {} as Record<string, unknown>,
     textFrame: {
-      textRange: { font: {} as Record<string, unknown>, paragraphFormat: {} as Record<string, unknown> },
+      // `textRange.text` is a WRITE-THROUGH to the shape's own string, not a
+      // property that happens to sit on a bag. `addTextBox` takes the string as
+      // an argument, so this setter is the only way to change one afterwards —
+      // and it is the whole of what an in-place retitle does. Modelled as an
+      // inert field, the fake would have let a fast path that changed nothing
+      // at all pass every assertion about which shapes it touched.
+      textRange: {
+        font: {} as Record<string, unknown>,
+        paragraphFormat: {} as Record<string, unknown>,
+        get text(): string | undefined {
+          return shape.text;
+        },
+        set text(v: string | undefined) {
+          shape.text = v;
+        },
+      },
     } as Record<string, unknown> & {
-      textRange: { font: Record<string, unknown>; paragraphFormat: Record<string, unknown> };
+      textRange: { font: Record<string, unknown>; paragraphFormat: Record<string, unknown>; text?: string };
     },
     grouped: undefined as unknown[] | undefined,
     // PowerPointApi 1.8's `Shape.group` — present only on an actual group, and

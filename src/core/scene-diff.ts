@@ -1,0 +1,160 @@
+/**
+ * What actually changed between two renderings of the same chart.
+ *
+ * The add-in redraws a chart by deleting every shape and adding every shape
+ * back. On PowerPoint for the web that is the single most expensive thing it
+ * does: the 2026-08-11 rounds put a 24-shape chart at ~50 seconds — three
+ * batches at ~17s each — and the cost grows with what is already on the slide,
+ * so it gets worse as a deck fills up.
+ *
+ * Almost none of that work is needed. Measured against the clustered sample:
+ *
+ *     retitle                 1 of 24 nodes changed
+ *     one data point edited   2 of 24
+ *     rescale (scale.max)    18 of 24
+ *
+ * A retitle costs 24 deletes and 24 adds to move one text box's string.
+ *
+ * This module decides, from the two scenes alone, whether the difference can be
+ * applied to the shapes already on the slide — and says no whenever anything is
+ * less than obvious. It is pure so that the decision can be checked without a
+ * PowerPoint, which is the same reason `positionalSweepPlan` and
+ * `chooseGroupMembers` are their own functions: on this host the decision is
+ * where the safety lives, and the host calls are just hands.
+ */
+
+import type { Scene, SceneNode } from "./scene";
+
+/**
+ * Node kinds whose every drawn property can be written back onto an existing
+ * shape, exactly as `addNode` would have set it.
+ *
+ * `rect` and `text` only, and the list is short on purpose rather than by
+ * accident. Both are `addGeometricShape`/`addTextBox` calls with a closed set
+ * of property writes — geometry, fill, line, name; plus the string, font and
+ * alignment for text — so an in-place applier can mirror them line for line and
+ * be checked against the adder.
+ *
+ * Everything else is geometry BAKED AT CREATION and unreachable afterwards.
+ * A wedge is a fan of rotated triangles, an arrowhead is a triangle rotated
+ * about a computed box, a polygon degrades to an outline: changing the numbers
+ * that produced them means producing them again. Office.js has no freeform
+ * paths to edit, so there is nothing to write to.
+ *
+ * These two cover the cases that matter — every `seg-*`, `label-*`, `title`,
+ * `category-*`, `series-label-*` and `baseline` in a bar, column, line or area
+ * chart is one or the other.
+ */
+const UPDATABLE = new Set<SceneNode["kind"]>(["rect", "text"]);
+
+/** Whether every changed property of this kind can be written to a live shape. */
+export function isUpdatableKind(kind: SceneNode["kind"]): boolean {
+  return UPDATABLE.has(kind);
+}
+
+/**
+ * A stable fingerprint of a scene's nodes.
+ *
+ * This is what closes the version-skew hole, and without it the whole idea is
+ * unsound. An update rebuilds the OLD scene from the config stored on the chart
+ * and diffs it against the new one — but "what the stored config renders to
+ * today" and "what was actually drawn on that slide" are the same thing only
+ * while the engine has not changed. Ship a new default colour, a nudged label
+ * offset, an extra gridline, and every chart already in the deck is one the
+ * rebuilt scene does not describe. The diff would then report those nodes as
+ * unchanged, skip them, and leave the old rendering on the slide FOREVER —
+ * where today's redraw-everything quietly repairs them on the next edit.
+ *
+ * So the fingerprint is written when the chart is drawn and checked when it is
+ * updated. Matching means the rebuilt scene is the one on the slide; anything
+ * else — a different engine, a hand-edited tag, a chart from another deck —
+ * fails the check and takes the full redraw, which is the behaviour that has
+ * always been correct.
+ *
+ * FNV-1a over the same JSON the diff compares, so the hash cannot disagree with
+ * the comparison it guards. Not a security boundary — a chart's tags are
+ * editable in the host, and the worst a forged fingerprint buys is the redraw
+ * path this function exists to avoid.
+ */
+export function sceneFingerprint(scene: Scene): string {
+  const text = JSON.stringify([scene.width, scene.height, scene.nodes]);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    // 16777619, as shifts — `Math.imul` keeps it in 32 bits on every host.
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/** Which shapes an in-place update would have to write to. */
+export interface SceneUpdatePlan {
+  /** Indices into `next.nodes`, ascending. Empty means nothing changed at all. */
+  changed: number[];
+}
+
+/**
+ * The plan for turning `prev` into `next` by writing to shapes that already
+ * exist, or `null` when that cannot be done safely.
+ *
+ * Null means "redraw the chart" and is the answer to every question this
+ * function is not certain about. The bar is deliberately high, because the
+ * fallback costs seconds and a wrong plan costs a chart:
+ *
+ * - **The frame must be identical.** A chart that changed size is re-laid-out;
+ *   every node moves, and the shapes' own box no longer matches the scene's.
+ * - **Same node count, same order, same kind and same name at every index.**
+ *   This is not a similarity metric. The shape a plan writes to is found
+ *   POSITIONALLY — the chart's anchor is node 0 and its parts tag lists the
+ *   rest in drawing order — so an index that means a different node in the two
+ *   scenes writes a bar's geometry onto a label. Structural change of any sort
+ *   is a redraw.
+ * - **Every CHANGED node must be an updatable kind.** An unchanged wedge is
+ *   fine and stays where it is; a changed one has no writable geometry, so its
+ *   chart is redrawn whole.
+ *
+ * An empty `changed` is a real answer and not the same as null: the config
+ * round-tripped without altering the picture, and the right response is to
+ * write the new config tag and touch no shapes at all.
+ */
+export function planSceneUpdate(prev: Scene, next: Scene): SceneUpdatePlan | null {
+  if (prev.width !== next.width || prev.height !== next.height) return null;
+  if (prev.nodes.length !== next.nodes.length) return null;
+  const changed: number[] = [];
+  for (let i = 0; i < next.nodes.length; i++) {
+    const a = prev.nodes[i];
+    const b = next.nodes[i];
+    if (a.kind !== b.kind) return null;
+    // A node with no name cannot be found on the slide by any route, so a
+    // change to one is not applicable — but an unchanged one is harmless, and
+    // several kinds legitimately go unnamed. Compared rather than required.
+    if (a.name !== b.name) return null;
+    if (JSON.stringify(a) === JSON.stringify(b)) continue;
+    if (!isUpdatableKind(b.kind)) return null;
+    // A changed node has to be nameable to be written to.
+    if (!b.name) return null;
+    changed.push(i);
+  }
+  return { changed };
+}
+
+/**
+ * Whether a plan is worth taking, given what the redraw would have cost.
+ *
+ * A plan that rewrites almost every shape saves almost nothing and still runs
+ * the slower, less-tested path, so past a share of the chart the honest answer
+ * is to redraw. Kept separate from `planSceneUpdate` because it is a judgement
+ * about cost, where the plan is a judgement about safety — and only one of the
+ * two should ever change because a benchmark moved.
+ *
+ * The threshold is not tuned, and should not be read as though it were. It is
+ * set where the arithmetic stops being obvious: a redraw is one delete plus one
+ * add per node, so an update touching more than half the nodes is already doing
+ * more host calls per shape saved than the redraw it replaces.
+ */
+export const UPDATE_SHARE_LIMIT = 0.5;
+
+export function worthUpdating(plan: SceneUpdatePlan, total: number): boolean {
+  if (!total) return false;
+  return plan.changed.length / total <= UPDATE_SHARE_LIMIT;
+}

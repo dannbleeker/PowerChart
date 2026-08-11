@@ -447,6 +447,51 @@ deckNow: 71}` then `swept: 68`. The round left the owner **8 slides, 2 of them
   **`getItem(id)` does not work on a NEW slide, by any route**. That is the call
   `getTargetSlide` makes. The partner is `Probe.follow` doing its job: one run,
   two readings separated, no reasoning.
+- **An update writes only what changed, when it can prove that is the same
+  thing as redrawing.** The add-in used to delete every shape and add every
+  shape back for any edit at all, and on the web that is ~50 seconds for a
+  24-shape chart. The diffs say almost none of it was needed: a retitle changes
+  ONE node of twenty-four, a single edited data point changes two, a full
+  rescale eighteen.
+
+  `src/core/scene-diff.ts` is the decision, pure and testable without a
+  PowerPoint. It answers null to everything it is not sure of — the frame must
+  be identical, and the node count, order, kind and name at every index, because
+  shapes are found POSITIONALLY (anchor is node 0, the parts tag lists the rest
+  in drawing order) and a structural difference would write a bar's geometry
+  onto a label. Only `rect` and `text` may be written to: they are the two kinds
+  whose whole appearance is a closed set of property writes, where a wedge is a
+  fan of rotated triangles and an arrowhead a rotated triangle, both baked at
+  creation with no freeform path to edit.
+
+  **`CHART_SCENE_TAG` is what makes it sound rather than merely fast.** The
+  update rebuilds the OLD scene from the config stored on the chart, and "what
+  that config renders to today" is "what is on that slide" only while the engine
+  has not changed. Ship a nudged label offset and the diff would call those
+  nodes unchanged, skip them, and leave the stale rendering there FOREVER —
+  where redraw-everything repairs it on the next edit. So a fingerprint of the
+  scene as drawn is written with the config and checked before any diff is
+  trusted. A consequence worth knowing: the first edit of every chart already in
+  a deck is a full redraw that stamps the fingerprint, and only later edits are
+  fast.
+
+  **It applies to UNGROUPED charts only, which is the case that matters.** A
+  grouped chart's shapes are inside the group and its parts tag does not list
+  them, so there is no node-to-shape mapping at all — and this host ungroups
+  every chart it cannot group, which is where the fifty seconds live. A healthy
+  host keeps its groups and keeps redrawing, which it can afford.
+
+  Every refusal falls through to the redraw, and the fast path runs BEFORE the
+  delete, so a refusal costs time and nothing else. The tag writes ride in the
+  same sync as the property writes deliberately: a chart whose picture is new
+  and whose config is old would silently revert the user's edit next time they
+  opened it, and that is the one outcome worse than being slow.
+
+  `applyNodeInPlace` must set every property the adders set, and a source scan
+  in `test/office-render.test.ts` holds them in lockstep — it names the
+  forgotten property, because a missing line is a chart that draws right and
+  edits wrong with nothing in any log to say so.
+
 - **A chart the drawing context could not tag is not finished.** On the web the
   tag write goes through a shape proxy several syncs old and the host refuses it
   (`InvalidParam passed to GetItem(id)`, 46 times in one 38-item run), leaving a
