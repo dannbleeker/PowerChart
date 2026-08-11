@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildHarveyBall, buildKpiTile, buildProcessFlow, buildTableScene } from "../src/core/elements";
+import { buildAgendaScene } from "../src/core/agenda";
 import type { ArrowheadNode, Scene, TextNode } from "../src/core/scene";
 
 /** Standalone elements — KPI tile scene layout. */
@@ -67,6 +68,15 @@ describe("what an element builder promises about its coordinates", () => {
         for (const [k, v] of Object.entries(n))
           if (typeof v === "number" && !Number.isFinite(v)) bad.push(`${name} → ${n.kind}.${k}=${v}`);
     expect(bad, "an element handed a renderer a coordinate that is not a number").toEqual([]);
+  });
+
+  it("builds an empty agenda rather than throwing when there are no chapters", () => {
+    // Same defect, same class: an exported builder that trusts its parameter's
+    // declared type. An agenda with no chapters is an ordinary thing to ask
+    // for, and `src/index.ts` exports this to callers this repo never sees.
+    for (const chapters of [undefined, null, "a,b", 42, {}] as unknown as string[][])
+      expect(() => buildAgendaScene(chapters), `buildAgendaScene(${JSON.stringify(chapters)}) threw`).not.toThrow();
+    expect(buildAgendaScene(["One", "Two"]).nodes.length).toBeGreaterThan(0);
   });
 
   it("builds an empty flow rather than throwing when there are no steps", () => {
