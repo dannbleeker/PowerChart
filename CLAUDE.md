@@ -492,6 +492,27 @@ deckNow: 71}` then `swept: 68`. The round left the owner **8 slides, 2 of them
   forgotten property, because a missing line is a chart that draws right and
   edits wrong with nothing in any log to say so.
 
+  **It fired ZERO times on its first real round (`b7e183d`), and the round could
+  not say why — the SIXTH failure-only field in this repo, written by the same
+  session that wrote the rule down.** There was no success line and no refusal
+  line, which is indistinguishable from the code not being there; the reason had
+  to be reasoned out of grouping traces and a deck inventory instead of read.
+  It declines with `not updating in place — redrawing instead` and a `why` now,
+  because the reasons are not interchangeable: a grouped chart has no
+  node-to-shape mapping BY DESIGN and never will, a missing fingerprint means an
+  older build drew it and this very redraw fixes it, and a refused id readback is
+  a fact about the host. Three different next steps behind one silent `return
+false`.
+
+  What the round says without that line, by inference and therefore weakly: 14
+  charts grouped cleanly (`by: ids`, `partial: 0` throughout — the partial-group
+  fix held), and grouped charts carry no parts tag. The five that ended
+  ungrouped hit `reading back an ungrouped chart's shape ids` three times, so
+  they got no parts tag either. If that holds up next round, the precondition
+  this path needs is one this host refuses in both branches, and the honest
+  conclusion is that the fast path is for healthier hosts than this one. Do not
+  write that down as settled until a round says it in words.
+
 - **A chart the drawing context could not tag is not finished.** On the web the
   tag write goes through a shape proxy several syncs old and the host refuses it
   (`InvalidParam passed to GetItem(id)`, 46 times in one 38-item run), leaving a
@@ -1321,6 +1342,19 @@ what the slide looks like (10064 → 15652 bytes)`, through PowerPoint's own
   moving and the chart is not visibly in it. Nothing has been changed on the
   strength of two samples, and the verdict still passes, but a third +108 should
   be read as this gate measuring a header rather than a chart. Watch for it.
+
+  **The third arrived on the next round: `14856 → 14964`, +108 again.** Three
+  consecutive rounds, three different starting sizes, one delta. That is no
+  longer an anecdote, and by this paragraph's own criterion the gate is
+  measuring something constant.
+
+  A length cannot tell a header from a picture, so the verdict now reports WHERE
+  the two renders first differ and how many bytes differ at all
+  (`renderDifference`). An encoder header, a timestamp or a counter differs
+  early and in a handful of places; a chart drawn into the image differs across
+  the body of the data. Still not a failure — the next round's two numbers are
+  what should decide that, and turning it red first would be the judgement this
+  file keeps warning against.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.

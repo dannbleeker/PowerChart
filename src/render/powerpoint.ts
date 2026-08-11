@@ -7687,27 +7687,61 @@ async function tryInPlaceUpdate(
   step: <T>(what: string, run: () => Promise<T>) => Promise<T>,
 ): Promise<boolean> {
   const { it, old, parts } = entry;
-  if (!tags.config || !tags.scene || !it.opts?.tagData) return false;
+  // Say WHY, every time it declines.
+  //
+  // The first real round on a build carrying this path produced not one line —
+  // no success, no refusal — which is indistinguishable from the code not being
+  // there at all, and left the reason to be reasoned out from grouping traces
+  // and a deck inventory. That is the sixth failure-only field this repo has
+  // built, and the first one written by the same session that wrote the rule
+  // down. The reasons are not interchangeable: "this chart is grouped, so there
+  // is no node-to-shape mapping" is a fact about the design, "the host would not
+  // read the shape ids back" is a fact about the host, and "the fingerprint did
+  // not match" means an engine change is being handled correctly. Three
+  // different next steps, one silent `return false`.
+  const no = (why: string, extra?: Record<string, unknown>): false => {
+    trace("draw", "not updating in place — redrawing instead", { why, ...extra });
+    return false;
+  };
+  if (!it.opts?.tagData) return no("this update carries no config to write");
+  if (!tags.config) return no("the chart carries no stored config to diff against");
+  // Grouped charts land here: their shapes are inside the group and the parts
+  // tag does not list them, so there is nothing to write to. Named separately
+  // from a missing fingerprint because it is permanent for that chart, not a
+  // one-off.
+  if (!parts.length) return no("the chart has no parts list, so its nodes cannot be mapped to shapes");
+  if (!tags.scene) return no("the chart carries no scene fingerprint — it was drawn by an older build");
   let prev: Scene;
   try {
     prev = buildChart(JSON.parse(tags.config) as ChartConfig);
   } catch {
-    return false;
+    return no("the stored config will not parse");
   }
   // The shapes have to line up with the nodes ONE FOR ONE, because that is how
   // they are found: the anchor is node 0 and the parts tag lists the rest in
   // drawing order. A chart whose parts tag is short — one the host would not
   // read back when it was drawn — has no usable mapping at all.
-  if (prev.nodes.length !== parts.length + 1) return false;
-  if (sceneFingerprint(prev) !== tags.scene) return false;
+  if (prev.nodes.length !== parts.length + 1)
+    return no("the parts list does not match the scene one for one", {
+      parts: parts.length + 1,
+      nodes: prev.nodes.length,
+    });
+  if (sceneFingerprint(prev) !== tags.scene)
+    return no("the stored config no longer renders to the scene that was drawn");
   const plan = planSceneUpdate(prev, it.scene);
-  if (!plan || !worthUpdating(plan, it.scene.nodes.length)) return false;
+  if (!plan) return no("the two scenes are not node-compatible");
+  if (!worthUpdating(plan, it.scene.nodes.length))
+    return no("too much of the chart changed to be worth writing shape by shape", {
+      changed: plan.changed.length,
+      of: it.scene.nodes.length,
+    });
   const shapes = [old, ...parts];
   // Only shapes the host CONFIRMED. `isLive` is the same test the delete path
   // uses before touching anything, and for the same reason: writing to a shape
   // the host would not answer for is how an update comes to edit something that
   // is not ours.
-  if (plan.changed.some((n) => !isLive(shapes[n]))) return false;
+  if (plan.changed.some((n) => !isLive(shapes[n])))
+    return no("the host would not confirm every shape that had to change", { changed: plan.changed.length });
   const { dx, dy } = frameOrigin(opts);
   try {
     for (const n of plan.changed) applyNodeInPlace(shapes[n], it.scene.nodes[n], dx, dy, opts);

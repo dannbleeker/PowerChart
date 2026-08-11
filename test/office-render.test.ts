@@ -4248,6 +4248,46 @@ describe("updating only what changed", () => {
     expect(liveIds(slide)).not.toEqual(before);
   });
 
+  it("says WHY it declined, every time it declines", async () => {
+    // The first real round on a build carrying the fast path produced not one
+    // line — no success, no refusal — which is indistinguishable from the code
+    // not being there, and left the reason to be reasoned out of grouping
+    // traces and a deck inventory. The reasons are not interchangeable: a
+    // grouped chart has no mapping by design, a missing fingerprint means an
+    // older build drew it, and a refused id readback is a fact about the host.
+    // Three different next steps, one silent `return false`.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    const cfg = clustered();
+    await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+    const target = (await listChartsInDeck()).charts[0].target;
+    setTracing(true);
+    const next = { ...cfg, title: "Renamed" };
+    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+    const said = traceLog().entries.filter((e) => e.message === "not updating in place — redrawing instead");
+    expect(said.length, "a declined in-place update passed without a word").toBe(1);
+    // The grouped case, named as itself rather than as a generic refusal.
+    expect(String(said[0].data?.why)).toMatch(/parts list/);
+  });
+
+  it("names a missing fingerprint separately from a missing mapping", async () => {
+    // An older build's chart and a grouped chart both decline, and they want
+    // different responses: the first fixes itself on this very redraw, the
+    // second never will.
+    const cfg = clustered();
+    const slide = await drawLoose(cfg);
+    const target = (await listChartsInDeck()).charts[0].target;
+    slide.created.find((s) => s.id === target.shapeId)!.tagStore.delete("POWERCHART_SCENE");
+    setTracing(true);
+    const next = { ...cfg, title: "Renamed" };
+    await updateChartInSlide(buildChart(next), target, { tagData: JSON.stringify(next) });
+    const said = traceLog().entries.filter((e) => e.message === "not updating in place — redrawing instead");
+    expect(said.length).toBe(1);
+    expect(String(said[0].data?.why), "an older build's chart was reported as having no parts list").toMatch(
+      /older build/,
+    );
+  });
+
   it("redraws a GROUPED chart, which has no node-to-shape mapping", async () => {
     // Its shapes are inside the group and the parts tag does not list them, so
     // there is nothing to write to. Asserted rather than assumed: the fast path
