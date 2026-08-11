@@ -796,6 +796,77 @@ const PROBES: Probe[] = [
         return threw(err);
       }
     },
+    // THE PARTNER: the same question again, immediately, on a second fresh slide.
+    //
+    // This question is the one open lead on this host. Sorted by which pass
+    // asked it, the observations separate almost perfectly — pass 1 gave
+    // `threw` seventeen times out of eighteen, every later pass gave `yes`
+    // three times out of three — and that second row did not exist until
+    // `PROBE_PASSES` shipped, so sixteen earlier rounds were sixteen samples of
+    // ONE condition rather than sixteen tosses of a coin.
+    //
+    // Two readings fit that, and they want opposite things from this project:
+    //
+    //   the MOMENT   the host's answer is a property of when it is asked, so
+    //                there is a state to find and `yes` is reachable on purpose.
+    //   a COIN       it lands differently every time, the pass split is luck,
+    //                and no amount of re-running whole rounds will ever settle it.
+    //
+    // A third reading — the scratch slide's own age — is already dead, and from
+    // data rather than argument: the 2026-08-11 run log shows the recorded
+    // answer came from a brand-new REPLACEMENT slide in all three passes (first
+    // attempt `no-scratch-slide`, replacement added, retry answered), so slide
+    // age was identical while the answer changed.
+    //
+    // Asking again at the same instant is what separates the two that are left.
+    // Same second of the run, same host state, same brand-new slide, one
+    // difference: this is a second toss. Agreement says the host has a definite
+    // behaviour right now and the variable is the moment; disagreement says it
+    // is a coin and the populations above are an artefact of when we happened to
+    // look. Either way one round decides it, which is the whole point of
+    // `Probe.follow` — the reasoning was never the expensive part, the round
+    // trip was.
+    //
+    // Fires on BOTH real answers on purpose. A partner that only followed `yes`
+    // would sample the coin exactly where the old design already sampled it.
+    follow: {
+      when: (answer) => answer === "yes" || answer === "threw",
+      because: "asking the identical question a second time at the same instant is what tells a host state from a coin",
+      probe: {
+        id: "shape-add-held-slide-proxy-again",
+        question: "Asked a second time moments later on another fresh slide, does it answer the same way?",
+        // In `PENDING_QUESTIONS`, so the shortlist invariant wants the mark and
+        // the mark is true: this answer is not trusted yet. The scheduler never
+        // reads it for a follow-up — a follow is not scheduled on its own, it
+        // rides its trigger, and the trigger carries `resample` too, so this
+        // pair is re-asked together on every pass the shortlist keeps.
+        resample: true,
+        // Same damage as its trigger — it writes through a proxy this host has
+        // stopped honouring — so it gives up its slide too rather than handing
+        // the wreckage to whatever runs next. See `Probe.burnsTheSlide`.
+        burnsTheSlide: true,
+        // Deliberately byte-for-byte the trigger's question. A partner that
+        // differed in any detail would be a second question, and the answer
+        // would no longer be about the host's consistency.
+        ask: async (ctx) => {
+          const held = ctx.scratch();
+          held.load("id");
+          await ctx.sync();
+          try {
+            held.shapes.addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+              left: 40,
+              top: 100,
+              width: 20,
+              height: 20,
+            });
+            await ctx.sync();
+            return { answer: "yes" };
+          } catch (err) {
+            return threw(err);
+          }
+        },
+      },
+    },
   },
   {
     id: "binding-names-shape-later",
@@ -1809,8 +1880,21 @@ export async function runHostProbes(source: string, build: string): Promise<Host
             }
           }
         }
-        const entry = record({ id: probe.id, question: probe.question, ms: Date.now() - started, ...result }, pass);
-        trace("probe", "answered", { id: probe.id, answer: entry.answer, ms: entry.ms });
+        const askedMs = Date.now() - started;
+        record({ id: probe.id, question: probe.question, ms: askedMs, ...result }, pass);
+        // THIS PASS's answer, not the row's.
+        //
+        // `record` returns the accumulated ROW, whose `answer` is deliberately
+        // the FIRST real answer so a sheet means today what it meant yesterday.
+        // Every line below wants the opposite — what the host said just now —
+        // and for three passes they all read the row instead. The 2026-08-11
+        // round is the proof: the samples say `threw, yes, yes` for
+        // `shape-add-held-slide-proxy` while the run log says `answered: threw`
+        // three times, with an identical `ms: 637` on asks forty-five seconds
+        // apart. A reader of that log concludes the opposite of what the host
+        // did. Same family as `batch committed`: a line asserting something it
+        // does not know.
+        trace("probe", "answered", { id: probe.id, answer: result.answer, ms: askedMs, pass });
         // A question that wrecks the slide on its way out gives up the slide, so
         // the next one starts on a fresh handle instead of inheriting the damage.
         //
@@ -1831,9 +1915,14 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // `no-scratch-shape` would be a second question about the probe's own
         // setup, dressed as a fact about the host.
         const follow = probe.follow;
-        if (follow && !NOT_ASKED.has(entry.answer) && follow.when(entry.answer)) {
+        // Gated on THIS pass's answer for the same reason. Reading the row here
+        // meant a partner conditioned on a later pass's answer could never fire
+        // on it, and one conditioned on the first answer fired on every pass
+        // regardless of what the host had just said — a follow-up asked
+        // "because X answered yes" when X had, that time, answered no.
+        if (follow && !NOT_ASKED.has(result.answer) && follow.when(result.answer)) {
           const at = Date.now();
-          trace("probe", "asking the partner question", { after: probe.id, id: follow.probe.id, was: entry.answer });
+          trace("probe", "asking the partner question", { after: probe.id, id: follow.probe.id, was: result.answer });
           let r = scratchId
             ? await ask(follow.probe, scratchId, durableSlideId)
             : { answer: "no-scratch-slide", detail: "the host would not add a slide to work on" };
@@ -1870,7 +1959,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
               // Which answer triggered it, in the sheet itself. Two rows that do
               // not say they are a pair are two unrelated facts to whoever reads
               // them a week later.
-              detail: `asked because ${probe.id} answered "${entry.answer}" — ${follow.because}${r.detail ? `; ${r.detail}` : ""}`,
+              detail: `asked because ${probe.id} answered "${result.answer}" — ${follow.because}${r.detail ? `; ${r.detail}` : ""}`,
             },
             pass,
           );

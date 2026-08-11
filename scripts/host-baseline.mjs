@@ -17,6 +17,12 @@ export const FAKE_BASELINE = {
   "getitemornullobject-missing": "null-object",
   "shape-add-fresh-slide-proxy": "yes",
   "shape-add-held-slide-proxy": "threw",
+  // Its partner does the identical thing a moment later on another fresh slide.
+  // The fake refuses held proxies consistently, so the pair AGREES here — which
+  // is the "the host has a definite behaviour" outcome the question exists to
+  // tell apart from a coin. A real host that answered these two differently in
+  // one run would be saying the opposite, and that is the finding.
+  "shape-add-held-slide-proxy-again": "threw",
   "shape-resolve-held-slide-proxy": "yes",
   "shape-add-fresh-getitem-slide": "yes",
   "shape-add-positional-slide-proxy": "yes",
@@ -212,6 +218,19 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "shape-add-held-slide-proxy-again":
+    "Added 2026-08-11 (`78e8c74`) as the `Probe.follow` partner named in the `shape-add-held-slide-proxy` entry " +
+    "above, and it exists to close the one open lead on this host. Sorted by which pass asked it, that question's " +
+    "observations separate almost perfectly — pass 1 gave `threw` 17 times of 18, every later pass gave `yes` 3 of " +
+    "3 — and two readings fit: the answer is a property of the MOMENT (there is a host state to find), or it is a " +
+    "COIN and the split is an artefact of when we happened to look. A third reading, the scratch slide's own age, " +
+    "is already dead from the 2026-08-11 run log: the recorded answer came from a brand-new REPLACEMENT slide in " +
+    "all three passes, so slide age was identical while the answer changed. " +
+    "This asks the identical question a second time at the same instant, on another fresh slide — same second of " +
+    "the run, same host state, same slide age, one difference: it is a second toss. AGREEMENT means the host has a " +
+    "definite behaviour right now and the moment is the variable; DISAGREEMENT means it is a coin and the " +
+    "populations collapse. Either way one round decides it, which is the whole point of the mechanism. " +
+    "The fake answers `threw` to both, i.e. the agreeing case, so CI covers the pair rather than the trigger alone.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
   "binding-names-shape-later":

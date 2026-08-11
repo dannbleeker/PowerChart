@@ -65,7 +65,13 @@ describe("the fake host's answer sheet", () => {
     // say both things. Every question a run ALWAYS puts is here, and nothing
     // here is a question this build does not know how to ask — an id outside
     // `PROBE_IDS` would be an answer the baseline could never account for.
-    expect(Object.keys(sheet).sort()).toEqual([...ALWAYS_ASKED_IDS].sort());
+    //
+    // Containment rather than equality on the first half, because a follow-up
+    // whose trigger the FAKE happens to satisfy is always put on the fake and
+    // never unconditional in general — `shape-add-held-slide-proxy-again`
+    // follows an answer the fake always gives. Exact membership is not lost:
+    // `toEqual(FAKE_BASELINE)` below pins it, and pins the answers too.
+    for (const id of ALWAYS_ASKED_IDS) expect(Object.keys(sheet), `${id} was not asked`).toContain(id);
     for (const id of Object.keys(sheet)) expect(PROBE_IDS, `${id} is not a question this build asks`).toContain(id);
     // Compared against the table the DIFF tool carries, so the two cannot
     // disagree about what the fake claims. The commentary on each answer lives
@@ -81,7 +87,7 @@ describe("the fake host's answer sheet", () => {
     expect(d.differ).toEqual([]);
     expect(d.onlyReal).toEqual([]);
     expect(d.onlyFake).toEqual([]);
-    expect(d.agree.length).toBe(ALWAYS_ASKED_IDS.length);
+    expect(d.agree.length).toBe(Object.keys(FAKE_BASELINE).length);
   });
 
   it("reports a disagreement, and a question one side was never asked", () => {
@@ -159,7 +165,12 @@ describe("the fake host's answer sheet", () => {
     installHost([makeSlide("s1")]);
     applyWebProfile();
     const sheet = await runHostProbes("fake-web-profile", "test");
-    expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
+    // Every unconditional question is present. Not an exact COUNT: a follow-up
+    // fires whenever its trigger's answer matches, so the total is a property
+    // of what the host said, while "nothing was dropped" is the invariant this
+    // test is named for.
+    const ids = sheet.answers.map((a) => a.id);
+    for (const id of ALWAYS_ASKED_IDS) expect(ids, `${id} was dropped`).toContain(id);
     for (const a of sheet.answers) {
       expect(a.answer, `${a.id} gave no answer`).toBeTruthy();
       expect(a.question, `${a.id} lost its question`).toBeTruthy();
@@ -263,7 +274,7 @@ describe("the fake host's answer sheet", () => {
       // COMPLETENESS is the invariant, and it is the one this test is named for:
       // every question got put, on a host that takes the slide away between
       // them. Nothing here may come back in the never-asked vocabulary.
-      expect(Object.keys(answers).sort()).toEqual([...ALWAYS_ASKED_IDS].sort());
+      for (const id of ALWAYS_ASKED_IDS) expect(Object.keys(answers), `${id} was dropped`).toContain(id);
       for (const [id, answer] of Object.entries(answers))
         expect(NOT_ASKED_WORDS, `${id} was never put — the replacement path did not carry it`).not.toContain(answer);
       // This USED to assert `answers` equalled `FAKE_BASELINE` outright, and
@@ -1380,6 +1391,93 @@ describe("stabilityOf", () => {
  * file and a set of marks in another drift the moment either changes — which is
  * the failure mode this repo's own memory warns about by name.
  */
+/**
+ * The partner that decides whether `shape-add-held-slide-proxy` is a host state
+ * or a coin — and the bug in the mechanism it is built on.
+ *
+ * `record` returns the accumulated ROW, whose `answer` is deliberately the
+ * FIRST real answer so a sheet means today what it meant yesterday. The pass
+ * loop read that row for three things that all mean "this pass": the `answered`
+ * trace line, the follow-up's trigger condition, and the `asked because …`
+ * detail. The 2026-08-11 round is the proof — its samples say `threw, yes, yes`
+ * while its run log says `answered: threw` three times with an identical
+ * `ms: 637` on asks forty-five seconds apart.
+ *
+ * For the log that is a line asserting what it does not know, the same family
+ * as `batch committed`. For the follow-up it is worse: a partner conditioned on
+ * a later pass's answer could never fire on it, so the mechanism built to
+ * settle a question in ONE round would have needed the answer it was looking
+ * for to arrive on pass 1.
+ */
+describe("the partner question for the held-slide-proxy flip", () => {
+  it("asks the identical question again and records it as its own row", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    const trigger = sheet.answers.find((a) => a.id === "shape-add-held-slide-proxy");
+    const partner = sheet.answers.find((a) => a.id === "shape-add-held-slide-proxy-again");
+    expect(trigger, "the trigger question is gone").toBeTruthy();
+    expect(partner, "the partner never fired, so the pair cannot decide anything").toBeTruthy();
+    // Same vocabulary as its trigger, or the two rows cannot be compared — which
+    // is the entire question.
+    expect([trigger!.answer, partner!.answer].every((a) => a === "yes" || a === "threw")).toBe(true);
+    // The sheet says they are a pair, so a reader a week later sees one finding
+    // rather than two unrelated rows.
+    expect(partner!.detail).toContain("shape-add-held-slide-proxy");
+    expect(partner!.detail).toContain(`answered "${trigger!.answer}"`);
+  });
+
+  it("fires on whichever answer THIS pass produced, not the row's first", async () => {
+    // Against a host that FLIPS, which is the only host this matters on and the
+    // one no fake modelled until `faults.heldSlideProxyRelentsAfter`. Tuned to
+    // reproduce the real round exactly: threw, then yes, then yes.
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    faults.heldSlideProxyRelentsAfter = 2;
+    try {
+      const sheet = await runHostProbes("fake-relents", "test");
+      const trigger = sheet.answers.find((a) => a.id === "shape-add-held-slide-proxy")!;
+      const samples = (trigger.samples ?? []).map((x) => x.answer);
+      expect(samples, "the fake did not flip, so nothing about per-pass answers is tested").toEqual([
+        "threw",
+        "yes",
+        "yes",
+      ]);
+      // The row keeps the FIRST real answer — that contract is unchanged.
+      expect(trigger.answer).toBe("threw");
+      // And the partner is told what the host said THAT pass, not what the row
+      // remembers. On the unfixed code every firing reports "threw", so the
+      // mechanism built to catch a mid-run flip would be blind to the flip.
+      const was = traceLog()
+        .entries.filter((e) => e.message === "asking the partner question")
+        .map((e) => e.data?.was);
+      expect(was, "the partner was told the row's answer instead of this pass's").toEqual(["threw", "yes", "yes"]);
+    } finally {
+      faults.heldSlideProxyRelentsAfter = null;
+    }
+  });
+
+  it("records the per-pass answer in the run log", async () => {
+    // The bug, stated as the property. A follow-up exists to be asked in the
+    // light of a particular answer; gating it on the row meant gating it on
+    // whatever pass 1 happened to say, so a flip on pass 2 — the exact event
+    // this pair was built for — could never trigger it.
+    const seen: { was: unknown; pass: number }[] = [];
+    installHost([makeSlide("s1")]);
+    setTracing(true);
+    await runHostProbes("fake", "test");
+    for (const e of traceLog().entries) {
+      if (e.message === "asking the partner question") seen.push({ was: e.data?.was, pass: 0 });
+      if (e.message === "answered" && e.data?.id === "shape-add-held-slide-proxy") {
+        // The per-pass answer is on the line now, so a reader can see the flip.
+        expect(e.data, "the answered line does not say which pass it is reporting").toHaveProperty("pass");
+      }
+    }
+    expect(seen.length, "the partner was never asked, so nothing about triggering is tested").toBeGreaterThan(0);
+    // Every firing names the answer that caused it, and it is a real one.
+    for (const s of seen) expect(["yes", "threw"]).toContain(s.was);
+  });
+});
+
 describe("the resample shortlist matches the tables that define it", () => {
   it("marks every question this project does not yet trust", () => {
     const shouldResample = new Set([...Object.keys(UNSTABLE_ANSWERS), ...Object.keys(PENDING_QUESTIONS)]);
