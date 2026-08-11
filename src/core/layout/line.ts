@@ -78,6 +78,9 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
     return layoutLineHorizontal(cfg, style, decor);
   }
   const { data, bandLow, bandHigh } = splitBandRows(cfg.data);
+  // The config as the plot sees it: band rows are not drawn, so anything that
+  // indexes series positionally must index THIS list, not the raw one.
+  const drawn: ChartConfig = data === cfg.data ? cfg : { ...cfg, data };
   const n = data.categories.length;
   const area = cfg.kind === "area";
   const fs = style.fontSize;
@@ -351,7 +354,12 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   }
 
   nodes.push(baselineNode(frame, y0, style));
-  if (decor.seriesLabels) nodes.push(...seriesLabelNodes(cfg, style, frame, lastSegMid));
+  // The FILTERED series list, because `lastSegMid` is indexed by it. Handing
+  // over `cfg` paired the drawn line's end-y with `cfg.data.series[0].name`, so
+  // a chart whose `Band low` / `Band high` rows came first labelled its one
+  // drawn line "Band low" — a row the reference says is never drawn as a line
+  // at all.
+  if (decor.seriesLabels) nodes.push(...seriesLabelNodes(drawn, style, frame, lastSegMid));
 
   return {
     nodes,

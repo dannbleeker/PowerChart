@@ -818,7 +818,10 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     const ext = drawnExtent(cfg, errors, targets);
     if (ext) {
       const ticks = niceTicks(ext.min, ext.max, 5);
-      cfg = { ...cfg, scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: cfg.scale?.max ?? ticks[ticks.length - 1] } };
+      cfg = {
+        ...cfg,
+        scale: { ...cfg.scale, min: cfg.scale?.min ?? ticks[0], max: cfg.scale?.max ?? ticks[ticks.length - 1] },
+      };
     }
   }
 

@@ -171,3 +171,52 @@ describe("a sideways line/area chart legends its series once", () => {
     });
   }
 });
+
+/**
+ * `seriesLabelNodes` pushes overlapping labels DOWN, then — if the last one
+ * overflows the plot — shifts the whole stack up and re-propagates upward, with
+ * nothing clamping the top. Twelve series on a 240×160 chart put two labels at
+ * negative y; thirty on a 400×300 put the topmost at −123. `collide.ts` refuses
+ * to nudge a label off the top for the same reason, but it only moves labels
+ * UP, so it cannot rescue one already emitted above the canvas.
+ */
+describe("right-hand series labels stay on the canvas", () => {
+  const sized = (w: number, h: number, count: number): ChartConfig =>
+    ({
+      kind: "line",
+      width: w,
+      height: h,
+      decorations: { seriesLabels: true },
+      data: {
+        categories: ["Q1", "Q2"],
+        series: Array.from({ length: count }, (_, i) => ({ name: `S${i}`, values: [i + 1, i + 2] })),
+      },
+    }) as ChartConfig;
+
+  for (const [w, h, count] of [
+    [240, 160, 12],
+    [400, 300, 30],
+    [480, 300, 24],
+  ] as const) {
+    it(`fits ${count} labels on a ${w}×${h} chart`, () => {
+      const labels = buildChart(sized(w, h, count)).nodes.filter(
+        (n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"),
+      );
+      expect(labels.length, "no labels drawn, so this proves nothing").toBeGreaterThan(count / 2);
+      for (const l of labels) {
+        expect(l.y, "a label was drawn above the canvas").toBeGreaterThanOrEqual(-0.01);
+        expect(l.y + l.h, "a label was drawn below the canvas").toBeLessThanOrEqual(h + 0.01);
+      }
+    });
+  }
+
+  it("leaves a chart with room to spare exactly where it was", () => {
+    // The negative control: spreading unconditionally would move every label on
+    // every chart, and these three are nowhere near needing it.
+    const ys = buildChart(sized(480, 300, 3))
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"))
+      .map((n) => Math.round(n.y * 10) / 10);
+    expect(new Set(ys).size).toBe(3);
+    expect(Math.min(...ys)).toBeGreaterThan(0);
+  });
+});

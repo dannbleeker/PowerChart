@@ -3,7 +3,7 @@ import { DEFAULT_SIZE, buildChart, valueExtent } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import { alphaOf } from "../src/core/color";
 import { textWidth } from "../src/core/scene";
-import type { RectNode } from "../src/core/scene";
+import type { LineNode, RectNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /** Cross-kind value-extent / auto-scale / layout-indexing invariants. */
@@ -706,6 +706,58 @@ describe("valueExtent survives everything buildChart survives", () => {
       expect(Number.isFinite(ext!.max), label).toBe(true);
     });
   }
+});
+
+/**
+ * The block that widens the auto scale so error whiskers and target ticks stay
+ * inside the plot was entered only when `cfg.scale?.max == null` — while the
+ * block itself already honoured a pinned min. So the widening was asymmetric:
+ * pinning only `scale.min` still widened the max, and pinning only `scale.max`
+ * skipped the min widening entirely. `toY` then clipped the out-of-range mark
+ * to the plot edge (deliberate, for bars), so a Target below the auto minimum
+ * was drawn exactly on the zero baseline — a mark that asserts a value,
+ * printed at the wrong one, with nothing to say it was clipped.
+ */
+describe("pinning one end of the scale still widens the other", () => {
+  const withTarget = (scale?: { min?: number; max?: number }) =>
+    buildChart({
+      kind: "clustered",
+      ...DEFAULT_SIZE,
+      ...(scale ? { scale } : {}),
+      decorations: { valueAxis: true },
+      data: {
+        categories: ["A"],
+        series: [
+          { name: "V", values: [10] },
+          { name: "Target", values: [-30] },
+        ],
+      },
+    } as unknown as ChartConfig).nodes;
+
+  const marks = (scale?: { min?: number; max?: number }) => {
+    const nodes = withTarget(scale);
+    const line = (name: string) => nodes.find((n): n is LineNode => n.kind === "line" && n.name === name)!;
+    return { baseline: line("baseline").y1, target: line("target-0").y1 };
+  };
+
+  it("does not print a below-range Target on the zero baseline", () => {
+    const pinnedMax = marks({ max: 100 });
+    expect(Math.abs(pinnedMax.target - pinnedMax.baseline), "target clipped onto the baseline").toBeGreaterThan(1);
+    // Both ends already widen when nothing is pinned, and pinning only the min
+    // always worked — the controls that say the fix did not simply disable the
+    // pin.
+    const auto = marks();
+    expect(Math.abs(auto.target - auto.baseline)).toBeGreaterThan(1);
+    const pinnedMin = marks({ min: -40 });
+    expect(Math.abs(pinnedMin.target - pinnedMin.baseline)).toBeGreaterThan(1);
+  });
+
+  it("still honours a pin that the data does fit inside", () => {
+    // The negative control: the widen must not overwrite a usable pinned max.
+    const nodes = withTarget({ min: -40, max: 100 });
+    const axis = nodes.filter((n) => n.name === "value-axis").map((n) => (n as unknown as { text: string }).text);
+    expect(axis.some((t) => t.includes("100"))).toBe(true);
+  });
 });
 
 /**

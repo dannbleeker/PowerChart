@@ -571,3 +571,42 @@ describe("a sideways area chart steps when it is told to", () => {
     expect(slabWidths(cfg("before"))[0]).not.toBe(slabWidths(cfg("after"))[0]);
   });
 });
+
+/**
+ * `lastSegMid` is indexed by the FILTERED series list (band rows are not drawn
+ * as lines), and `seriesLabelNodes` was handed the raw config — so a chart
+ * whose `Band low` / `Band high` rows came first paired the drawn line's end-y
+ * with `cfg.data.series[0].name` and labelled it "Band low".
+ */
+describe("the right-hand series label names the line it points at", () => {
+  const labels = (series: { name: string; values: number[] }[]) =>
+    buildChart({
+      kind: "line",
+      ...DEFAULT_SIZE,
+      decorations: { seriesLabels: true },
+      data: { categories: ["a", "b"], series },
+    } as ChartConfig)
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("series-label"))
+      .map((n) => n.text);
+
+  const band = [
+    { name: "Band low", values: [1, 2] },
+    { name: "Band high", values: [3, 4] },
+  ];
+  const actual = { name: "Actual", values: [2, 3] };
+
+  it("labels the drawn line whichever end the band rows sit at", () => {
+    expect(labels([...band, actual])).toEqual(["Actual"]);
+    expect(labels([actual, ...band])).toEqual(["Actual"]);
+  });
+
+  it("still labels every drawn series when there are no band rows", () => {
+    // The negative control: filtering the wrong list would drop real labels.
+    expect(
+      labels([
+        { name: "A", values: [1, 2] },
+        { name: "B", values: [3, 4] },
+      ]).sort(),
+    ).toEqual(["A", "B"]);
+  });
+});

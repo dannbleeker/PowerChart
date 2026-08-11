@@ -1182,6 +1182,20 @@ export function seriesLabelNodes(
     for (let i = entries.length - 2; i >= 0; i--) {
       if (entries[i + 1].y - entries[i].y < lineH) entries[i].y = entries[i + 1].y - lineH;
     }
+    // Only the BOTTOM was clamped, so the upward propagation walked straight
+    // past the canvas top: twelve series on a 240×160 chart put two labels at
+    // negative y, and thirty on a 400×300 put the topmost at −123. `collide.ts`
+    // refuses to nudge a label off the top for the reason that applies here too
+    // — an overlapping label still reads, an off-canvas one is lost — but it
+    // only moves labels UP, so it cannot rescue one already emitted above the
+    // canvas. Spread evenly over the band when the gap cannot be honoured,
+    // which is what `layoutSlope.place()` does after the same discovery.
+    const top = lineH / 2;
+    if (entries[0].y < top) {
+      const bottom = Math.max(top, Math.min(frame.y + frame.h, cfg.height - lineH / 2));
+      const step = entries.length > 1 ? (bottom - top) / (entries.length - 1) : 0;
+      entries.forEach((e, i) => (e.y = top + i * step));
+    }
   }
   const x = frame.x + frame.w + 4;
   return entries.map((e, i) => ({
