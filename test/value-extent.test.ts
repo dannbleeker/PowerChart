@@ -820,19 +820,37 @@ describe("a manual scale narrower than the data", () => {
   });
 
   it("caps a chart dimension below the size pptxgenjs stops rounding", () => {
-    // pptxgenjs treats any number >= 100 as EMU already, so past 100 INCHES
-    // (7200pt) it writes the value through unrounded — and
+    // pptxgenjs treats any number >= 100 as EMU already, so AT 100 inches and
+    // past it the value is written through unrounded — and
     // `ST_PositiveCoordinate` is an xsd:long, so that part is schema-invalid and
-    // the user meets the repair dialog. 7200pt is fifteen times the widest
-    // slide, so the ceiling costs nothing real.
-    expect(
-      buildChart({
+    // the user meets the repair dialog. The ceiling is fifteen times the widest
+    // slide, so it costs nothing real.
+    //
+    // ASSERTED AS THE PROPERTY, not as the number, because the number was wrong
+    // and this test pinned it. 7200pt is EXACTLY 100 inches — `7200 / 72 === 100`
+    // with no float slack — so the old ceiling did not avoid pptxgenjs's
+    // threshold, it landed precisely on it, and `Math.min` meant every oversize
+    // request was clamped TO the one broken value. A chart at `width: 10000`
+    // shipped its title box as `<a:ext cx="100"/>`, a ten-thousandth of an inch,
+    // beside a sibling frame at `cx="91440000"`.
+    const capped = buildChart({
+      ...DEFAULT_SIZE,
+      width: 7300,
+      kind: "clustered",
+      data: { categories: ["A"], series: [] },
+    } as unknown as ChartConfig).width;
+    expect(capped / 72, "the cap lands ON pptxgenjs's >=100in threshold, not below it").toBeLessThan(100);
+    // And every oversize request lands there, so the boundary is the only value
+    // that matters — one point either side is the whole bug.
+    for (const w of [7200, 7300, 10000, 1e6]) {
+      const got = buildChart({
         ...DEFAULT_SIZE,
-        width: 7300,
+        width: w,
         kind: "clustered",
         data: { categories: ["A"], series: [] },
-      } as unknown as ChartConfig).width,
-    ).toBe(7200);
+      } as unknown as ChartConfig).width;
+      expect(got / 72, `width ${w} clamped onto the 100-inch threshold`).toBeLessThan(100);
+    }
     expect(
       buildChart({
         ...DEFAULT_SIZE,

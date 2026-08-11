@@ -65,8 +65,17 @@ export const ROTATABLE_KINDS: ReadonlySet<ChartKind> = new Set<ChartKind>([
  *
  * 7200pt is already fifteen times the widest slide, so the ceiling costs
  * nothing real and turns an unopenable deck into a very large chart.
+ *
+ * 7199, NOT 7200, and the single point matters: pptxgenjs treats any number
+ * `>= 100` as EMU already, and 7200pt is EXACTLY 100 inches — `7200 / 72 === 100`
+ * with no float slack at all. So the old ceiling did not avoid the trap, it
+ * landed precisely on it, and `Math.min` meant every oversize request was
+ * clamped TO the one broken value. A chart at `width: 10000` shipped its title
+ * box as `<a:ext cx="100"/>` — 100 EMU, a ten-thousandth of an inch — beside a
+ * sibling frame at `cx="91440000"`, with the CLI reporting success and
+ * `validate-ooxml` reporting schema-valid.
  */
-const MAX_DIM = 7200;
+const MAX_DIM = 7199;
 
 /** A positive, finite dimension within the ceiling, or the fallback. */
 function clampDim(v: number | undefined, fallback: number): number {

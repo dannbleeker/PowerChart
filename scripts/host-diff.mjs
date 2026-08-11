@@ -58,6 +58,18 @@ if (isMain(import.meta.url, process.argv[1])) {
     console.error("that file is not an answer sheet (expected kind: powerchart-host-answers)");
     process.exit(2);
   }
+  // The guard above cannot fire for any JSON OBJECT: `answersOf` deliberately
+  // returns a bare map verbatim, because `FAKE_BASELINE` is one. So
+  // `node scripts/host-diff.mjs package.json` was accepted as an answer sheet,
+  // its top-level keys became question ids, and the run exited 0 — a wrong path
+  // getting a green light from a gate.
+  //
+  // The honest test is not the shape of the file, it is whether it answered
+  // anything: a sheet with no answers in this vocabulary is not a sheet.
+  if (!Object.keys(real).length) {
+    console.error("that file answers no host questions — is it an answer sheet, or did the probe never run?");
+    process.exit(2);
+  }
 
   const { agree, differ, notAsked, onlyReal, onlyFake } = diffAnswers(real, fake);
   // The header comes off the SAME object the answers did. Reading it off the
@@ -102,5 +114,12 @@ if (isMain(import.meta.url, process.argv[1])) {
   // A question that was never put is not agreement, so it fails the gate too —
   // an incomplete sheet exiting 0 is exactly the false all-clear this tool
   // spent a round learning not to give.
-  process.exit(differ.length || notAsked.length ? 1 : 0);
+  //
+  // `onlyReal`/`onlyFake` count as well, and their absence from this expression
+  // contradicted the comment eight lines above ("a question one side was never
+  // asked is a hole in the comparison, and reporting it as agreement is how a
+  // diff stops meaning anything") and the file header ("exit 1 … when the real
+  // host never got as far as answering"). A sheet whose questions no longer
+  // match the build's is a hole of exactly that kind.
+  process.exit(differ.length || notAsked.length || onlyReal.length || onlyFake.length ? 1 : 0);
 }

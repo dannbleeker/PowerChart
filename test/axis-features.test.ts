@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { buildChart } from "../src/core/chart";
+import { sceneToSvg } from "../src/render/svg";
 import { valueScale } from "../src/core/layout/frame";
 import { formatDay, monthStarts, parseDateToken } from "../src/core/format";
 import { valueExtent } from "../src/core/chart";
@@ -212,5 +214,49 @@ describe("value-axis tick labels", () => {
       "2,000",
       "3,000",
     ]);
+  });
+});
+
+/**
+ * A day number JS cannot make a Date of.
+ *
+ * `formatDay` had no finite guard, so `MONTHS[NaN]` was `undefined` and
+ * `getUTCDate()` was `NaN`, and the result — the literal text
+ * `"NaN undefined"` — went straight into the scene. `finiteNodes` does not
+ * catch it: that net filters non-finite NUMBERS, and this is a string.
+ *
+ * The route is ordinary. A Gantt whose dates arrived as epoch SECONDS (or
+ * milliseconds) is what an export or an agent produces, and `data.dates` is a
+ * plain passthrough flag rather than something the engine derives — so the
+ * chart drew 18 of its 21 text nodes as "NaN undefined", into the SVG preview,
+ * the live add-in, and the .pptx the skill hands back with exit 0.
+ */
+describe("a date label that cannot be computed", () => {
+  it("is blank rather than the words NaN undefined", () => {
+    for (const bad of [1e12, -1e12, NaN, Infinity, -Infinity, 1e8 + 1]) {
+      expect(formatDay(bad), `formatDay(${bad})`).toBe("");
+      expect(formatDay(bad, true), `formatDay(${bad}, withYear)`).toBe("");
+    }
+    // Unchanged for a day number that is a real date.
+    expect(formatDay(20000)).toMatch(/[A-Z][a-z]{2}/);
+  });
+
+  it("keeps that text out of a chart built from seconds-since-epoch", () => {
+    // The end-to-end case, in the units the mistake actually arrives in.
+    const cfg = {
+      kind: "gantt",
+      title: "Q1 plan",
+      data: {
+        dates: true,
+        categories: ["Design", "Build"],
+        series: [
+          { name: "Start", values: [1767225600, 1767225660] },
+          { name: "End", values: [1767225660, 1767225700] },
+        ],
+      },
+    } as unknown as ChartConfig;
+    const svg = sceneToSvg(buildChart(cfg));
+    expect(svg, "a chart shipped the words NaN undefined as its labels").not.toContain("NaN undefined");
+    expect(svg).not.toContain("undefined");
   });
 });
