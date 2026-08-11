@@ -298,10 +298,10 @@ exports[`SVG snapshots > sample bubble 1`] = `
 <line x1="34" y1="46" x2="34" y2="284" stroke="#a5a49e" stroke-width="1" data-name="y-axis-line"/>
 <rect x="34" y="34" width="7" height="7" fill="#2a78d6" data-name="legend-chip-1"/>
 <text x="44" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-1">Group 1</text>
-<rect x="95.8" y="34" width="7" height="7" fill="#1baf7a" data-name="legend-chip-2"/>
-<text x="105.8" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-2">Group 2</text>
-<rect x="157.6" y="34" width="7" height="7" fill="#eda100" data-name="legend-chip-3"/>
-<text x="167.6" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-3">Group 3</text>
+<rect x="93.8" y="34" width="7" height="7" fill="#1baf7a" data-name="legend-chip-2"/>
+<text x="103.8" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-2">Group 2</text>
+<rect x="153.6" y="34" width="7" height="7" fill="#eda100" data-name="legend-chip-3"/>
+<text x="163.6" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-3">Group 3</text>
 <ellipse cx="445.42" cy="69.56" rx="22.58" ry="22.58" fill="none" stroke="#52514e" stroke-width="1" data-name="size-legend-0"/>
 <text x="445.42" y="43.48" font-size="8" fill="#52514e" text-anchor="middle" data-name="size-legend-label-0">100</text>
 <ellipse cx="398.88" cy="76.18" rx="15.97" ry="15.97" fill="none" stroke="#52514e" stroke-width="1" data-name="size-legend-1"/>
@@ -840,10 +840,10 @@ exports[`SVG snapshots > sample scatter 1`] = `
 <line x1="34" y1="46" x2="34" y2="284" stroke="#a5a49e" stroke-width="1" data-name="y-axis-line"/>
 <rect x="34" y="34" width="7" height="7" fill="#2a78d6" data-name="legend-chip-1"/>
 <text x="44" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-1">Group 1</text>
-<rect x="95.8" y="34" width="7" height="7" fill="#1baf7a" data-name="legend-chip-2"/>
-<text x="105.8" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-2">Group 2</text>
-<rect x="157.6" y="34" width="7" height="7" fill="#eda100" data-name="legend-chip-3"/>
-<text x="167.6" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-3">Group 3</text>
+<rect x="93.8" y="34" width="7" height="7" fill="#1baf7a" data-name="legend-chip-2"/>
+<text x="103.8" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-2">Group 2</text>
+<rect x="153.6" y="34" width="7" height="7" fill="#eda100" data-name="legend-chip-3"/>
+<text x="163.6" y="41.1" font-size="10" fill="#0b0b0b" text-anchor="start" data-name="legend-3">Group 3</text>
 <ellipse cx="99.7" cy="236.4" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-0"/>
 <ellipse cx="170.88" cy="117.4" rx="3" ry="3" fill="#2a78d6" stroke="#ffffff" stroke-width="1" data-name="point-1"/>
 <ellipse cx="253" cy="179.28" rx="3" ry="3" fill="#1baf7a" stroke="#ffffff" stroke-width="1" data-name="point-2"/>

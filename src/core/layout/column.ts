@@ -79,6 +79,31 @@ function markPaint(
 }
 
 /**
+ * The value a CLUSTERED category publishes to every decoration that reads one.
+ *
+ * This was `Math.max(0, ...values)`, and the zero seed is the bug: a category
+ * whose bars are all negative published 0. `columnValue` is what mean lines,
+ * difference arrows and the rest print, so a cash-flow chart of
+ * [-40, -20, -10, 60] drew its mean line ABOVE the baseline and labelled it
+ * "Ø 15" — the mean of [0, 0, 0, 60] — while the same data as `stacked`, `line`
+ * or `area` correctly said "Ø -2.5". A difference arrow between two all-negative
+ * categories came out zero-length and labelled "0", sitting beside the very
+ * totals that contradict it.
+ *
+ * Zero is right for the drawn column's TOP — a bar hanging below the baseline
+ * tops out at the baseline, and `columnTop` still clamps that way. It is wrong
+ * for the column's VALUE, which is what a reader is being told the category is
+ * worth. So: the extreme in the direction the column actually goes — the
+ * highest bar when anything rises, the lowest when nothing does.
+ */
+export function clusteredTopValue(values: number[]): number {
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (!finite.length) return 0;
+  const hi = Math.max(...finite);
+  return hi > 0 ? hi : Math.min(...finite);
+}
+
+/**
  * Stacked / clustered / 100% column charts — and, following think-cell's
  * "a bar chart is a rotated column chart" model, the same layouts in
  * horizontal orientation when cfg.horizontal is set.
@@ -439,7 +464,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         : 0
       : stacked
         ? Math.max(...ups)
-        : Math.max(0, ...data.series.map((s) => s.values[c] ?? 0));
+        : clusteredTopValue(data.series.map((s) => s.values[c] ?? 0));
     const topQ = qOf(Math.max(0, topV));
     columnTop.push(H ? frame.x + topQ : frame.y + frame.h - topQ);
     drawnTopValue.push(topV);

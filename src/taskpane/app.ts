@@ -200,7 +200,15 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
   const sheet = dataToSheet(data);
   if (cfg.kind === "waterfall") {
     // Show "e" tokens in the sheet where totals are computed.
-    for (const i of cfg.waterfall?.totalIndices ?? []) {
+    // Bounded as well as coerced. The write had no bound on `i`, so an
+    // out-of-range index wrote past the row's end and left `cells[1]` SPARSE —
+    // `mountDatasheet`'s `row.forEach` skips holes, so the grid rendered one
+    // stray cell under no column header while every other row was short. The
+    // index is also dropped in silence, which is the honest outcome for an
+    // index naming a category that is not there.
+    const cols = sheet.cells[0]?.length ?? 0;
+    for (const i of asArray<number>(cfg.waterfall?.totalIndices)) {
+      if (!Number.isInteger(i) || i < 0 || i + 1 >= cols) continue;
       if (sheet.cells[1]) sheet.cells[1][i + 1] = "e";
     }
   }
@@ -220,7 +228,7 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     decimals: cfg.numberFormat?.decimals != null ? String(cfg.numberFormat.decimals) : "auto",
     suffix: cfg.numberFormat?.suffix ?? "",
     locale: cfg.numberFormat?.locale ?? "en-US",
-    labelContent: cfg.decorations?.labelContent?.join(",") ?? "",
+    labelContent: asArray<string>(cfg.decorations?.labelContent).join(","),
     paletteName: paletteNameFor(cfg.style?.palette),
     style: cfg.style ? { ...cfg.style } : undefined,
     seriesColors: data.series.map((s) => s.color),
@@ -233,7 +241,9 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
     logScale: !!cfg.logScale,
     renderImage: cfg.render === "image",
     footnote: cfg.footnote ?? "",
-    pieExplode: (cfg.pie?.explode ?? []).map((i) => i + 1).join(","),
+    pieExplode: asArray<number>(cfg.pie?.explode)
+      .map((i) => i + 1)
+      .join(","),
     extras: {
       boxplot: cfg.boxplot,
       heatmap: cfg.heatmap,
@@ -304,12 +314,35 @@ function namedPalette(name: string): string[] {
 }
 
 /**
+ * Whatever arrived where an array belongs, as an array.
+ *
+ * `stateFromConfig` is the pane's ingest boundary and it trusted its own types.
+ * The engine does not — `test/chart-hostile-input.test.ts` pins that
+ * `{ palette: "red" }` renders fine everywhere — so a config that draws
+ * correctly in the preview, in the deck and in the skill's .pptx could not be
+ * OPENED in the pane that has to edit it. The JSON box reported the user's
+ * perfectly valid JSON as "Invalid JSON: palette.join is not a function",
+ * sending them to hunt a syntax error that is not there, and through the
+ * template picker and "Edit selected chart" the same throw is uncaught and
+ * silent — no message at all.
+ *
+ * The pane WRITES these configs, which is what makes it more than a hostile-
+ * input case: `style-import` accepts a colleague's style file with no shape
+ * check and persists it to localStorage, after which every export, every saved
+ * template and every POWERCHART_CONFIG shape tag carries it.
+ */
+function asArray<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+/**
  * The preset name for a palette, or "Default" when it matches none — including
  * a chart's own custom palette, which `state.style` carries instead.
  */
 function paletteNameFor(palette?: string[]): string {
-  if (!palette) return "Default";
-  return Object.entries(PALETTES).find(([, p]) => p.join() === palette.join())?.[0] ?? "Default";
+  const list = asArray<string>(palette);
+  if (!list.length) return "Default";
+  return Object.entries(PALETTES).find(([, p]) => p.join() === list.join())?.[0] ?? "Default";
 }
 
 function currentConfig(): ChartConfig {

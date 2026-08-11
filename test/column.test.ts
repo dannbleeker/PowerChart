@@ -390,3 +390,72 @@ describe("a difference arrow on a mixed-sign stack points where its number says"
     expect(line.y2).toBeLessThan(line.y1);
   });
 });
+
+/**
+ * A clustered category whose bars are ALL negative.
+ *
+ * `drawnTopValue` seeded its max with 0, so such a category published 0 —
+ * and `columnValue` is what every value-reading decoration prints. A cash-flow
+ * chart of [-40, -20, -10, 60] drew its mean line ABOVE the baseline and
+ * labelled it "Ø 15", the mean of [0, 0, 0, 60], while the same data as
+ * `stacked`, `line` or `area` correctly said "Ø -2.5". A difference arrow
+ * between two all-negative categories came out zero-length and labelled "0",
+ * sitting beside the very totals that contradict it.
+ *
+ * Zero is right for the drawn column's TOP — a bar below the baseline tops out
+ * at the baseline — and wrong for its VALUE, which is what the reader is told
+ * the category is worth.
+ */
+describe("a clustered column that only goes down", () => {
+  const meanLabel = (kind: string) =>
+    (
+      buildChart({
+        kind,
+        width: 520,
+        height: 320,
+        data: { categories: ["Q1", "Q2", "Q3", "Q4"], series: [{ name: "Net", values: [-40, -20, -10, 60] }] },
+        decorations: { categoryAxis: true, valueAxis: true, valueLines: [{ mode: "mean" }] },
+      } as unknown as ChartConfig).nodes.find((n) => n.name === "value-line-label-0") as { text?: string } | undefined
+    )?.text;
+
+  it("averages what the bars actually say, like every other kind does", () => {
+    // The true mean of [-40, -20, -10, 60] is -2.5.
+    expect(meanLabel("clustered"), "clustered disagreed with the data").toBe("Ø -2.5");
+    // The negative control: the kinds that were already right must stay right.
+    for (const k of ["stacked", "line", "area"]) expect(meanLabel(k), k).toBe("Ø -2.5");
+  });
+
+  it("draws a difference arrow with a length and a true label", () => {
+    const scene = buildChart({
+      kind: "clustered",
+      width: 520,
+      height: 320,
+      data: { categories: ["FY22", "FY23", "FY24"], series: [{ name: "Movement", values: [-120, -80, -30] }] },
+      decorations: { categoryAxis: true, valueAxis: true, totals: true, difference: { from: 0, to: 2 } },
+    } as unknown as ChartConfig);
+    const label = scene.nodes.find((n) => n.name === "diff-label") as { text?: string } | undefined;
+    const line = scene.nodes.find((n) => n.name === "diff-line") as { y1: number; y2: number } | undefined;
+    expect(label?.text, "the arrow labelled an all-negative movement as zero").not.toBe("0");
+    expect(line && Math.abs(line.y1 - line.y2), "the arrow had no length").toBeGreaterThan(1);
+  });
+
+  it("is unchanged for data that rises", () => {
+    // maxima 20, 30, 25 -> mean 25. The old code agreed here and must still.
+    const scene = buildChart({
+      kind: "clustered",
+      width: 520,
+      height: 320,
+      data: {
+        categories: ["A", "B", "C"],
+        series: [
+          { name: "S", values: [20, 30, 25] },
+          { name: "T", values: [18, 22, 24] },
+        ],
+      },
+      decorations: { categoryAxis: true, valueAxis: true, valueLines: [{ mode: "mean" }] },
+    } as unknown as ChartConfig);
+    expect((scene.nodes.find((n) => n.name === "value-line-label-0") as { text?: string } | undefined)?.text).toBe(
+      "Ø 25",
+    );
+  });
+});
