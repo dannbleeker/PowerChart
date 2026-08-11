@@ -100,8 +100,23 @@ export function wedgeFanChord(outerR: number, stepDeg: number): number {
  * Outline of an annular sector as scene-coordinate points, for a filled
  * PptxgenJS `custGeom` (OOXML's pie preset can't express an inner radius): the
  * outer arc forward from startAngle→endAngle, then the inner arc back, each arc
- * approximated by `max(2, ceil(span/6))` chord segments. The caller marks the
- * first point moveTo, maps to its box origin/unit scale, and appends the close.
+ * approximated by `clamp(2, 60, ceil(span/6))` chord segments. The caller marks
+ * the first point moveTo, maps to its box origin/unit scale, and appends the
+ * close.
+ *
+ * The 60 is a CEILING on an otherwise data-bound loop, and it is the same
+ * number `wedgeFanSteps` above already clamps to for the very same wedge. Only
+ * the floor was here: a span of 1e9 asks for 167 million steps, twice, each
+ * pushing an object — unbounded in time and in memory, which is the failure
+ * mode where the tab dies before the chart does. Nothing in the scene contract
+ * promises a span of 360 or less; that is a property every current layout
+ * happens to have, exactly as "every coordinate is finite" was before
+ * `finiteNodes`. And this runs on the two file-writing paths (the skill's
+ * headless render and the browser deck builder), so a wedge from a hand-built
+ * scene or a future layout reaches it.
+ *
+ * A real wedge is unaffected: at 360° `ceil(360/6)` is 60, so the cap binds
+ * only on spans that already exceed a full turn.
  */
 export function annularSectorPoints(
   cx: number,
@@ -112,7 +127,7 @@ export function annularSectorPoints(
   endAngle: number,
 ): { x: number; y: number }[] {
   const span = endAngle - startAngle;
-  const steps = Math.max(2, Math.ceil(span / 6));
+  const steps = Math.max(2, Math.min(60, Math.ceil(span / 6)));
   const pts: { x: number; y: number }[] = [];
   for (let i = 0; i <= steps; i++) {
     pts.push(polar(cx, cy, r, startAngle + (span * i) / steps));

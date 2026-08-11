@@ -311,7 +311,14 @@ const DATE_WORDS = new Set([
 export const GANTT_DATE_ROW = /^(?:start|end|milestone|today|holidays?|baseline\s*(?:start|end))$|^bracket\b/i;
 
 export function parseDateToken(raw: string): number | null {
-  const t = raw.trim();
+  // Coerced, like every other text boundary in this engine. `raw` is a CELL —
+  // it comes from a pasted block, a JSON config or the skill's caller — and
+  // `null`/`undefined` threw `Cannot read properties of null (reading 'trim')`
+  // while a number threw `raw.trim is not a function`. A number is the case
+  // that matters: this function's whole job is to decide whether a cell is a
+  // date, a bare number is explicitly NOT one (see the guard below), and it
+  // could not reach that answer without crashing first.
+  const t = String(raw ?? "").trim();
   if (!t) return null;
   const dmy = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (!dmy && /^[-+]?[\d,.]+$/.test(t)) return null; // plain numbers are not dates
