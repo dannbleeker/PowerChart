@@ -1,4 +1,5 @@
 import { polar, symbolPoints } from "../core/geometry";
+import { isNamedColor } from "../core/color";
 import type { Scene, SceneNode } from "../core/scene";
 
 /**
@@ -74,8 +75,27 @@ const PAINT_OK = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%/]+\)|hsla?\([\d.,\s%/]+\)|
  * there: the type says `string`, and TypeScript checks the code, not the file
  * someone pasted.
  */
+/**
+ * A BARE hex string, `#` omitted — OOXML's own spelling, which the pptx sink has
+ * always accepted and `toRgb` now does too.
+ *
+ * This sink needs more than permission to carry it: `AABBCC` is a run of letters,
+ * so the allow-list's named-colour arm passed it through UNCHANGED and the markup
+ * carried `fill="AABBCC"`, which is not a valid SVG paint — the attribute is
+ * ignored and the shape renders black. `4e79a7` has digits, failed every arm, and
+ * fell back to black explicitly. Two spellings of the same colour, both black,
+ * while the deck drew the real one.
+ *
+ * So it is normalised rather than allowed: the `#` is put back, and the value
+ * then goes through the same allow-list as everything else rather than around it.
+ */
+const BARE_HEX = /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const paintOr = (c: unknown, fallback: string): string => {
-  const t = typeof c === "string" ? c.trim() : "";
+  const raw = typeof c === "string" ? c.trim() : "";
+  // A named colour wins the string, as it does in `toRgb` — and as there, no CSS
+  // name is valid bare hex, so this decides nothing today. It is the ordering
+  // that keeps it true if the name table ever grows one.
+  const t = !isNamedColor(raw) && BARE_HEX.test(raw) ? `#${raw}` : raw;
   return t && PAINT_OK.test(t) ? t : fallback;
 };
 const paint = (c: unknown): string => paintOr(c, "#000000");

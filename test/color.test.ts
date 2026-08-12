@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { contrastInk } from "../src/core/scene";
 import { toRgb, toHex6, alphaOf, lerpColor } from "../src/core/color";
-import { hex as pptxHex, alphaOf as pptxAlphaOf } from "../skill/scripts/pptx-paint.mjs";
+import { hex as pptxHex, alphaOf as pptxAlphaOf, CSS_NAMES } from "../skill/scripts/pptx-paint.mjs";
 
 /** Colour parsing and normalisation — every paint form the config admits. */
 
@@ -216,6 +216,19 @@ describe("the preview sink and the pptx sink answer the same colour", () => {
     "hsl(210 60% 40%)",
     "hsl(210 60% 40% / 0.25)",
     "hsla(210 60% 40% / 25%)",
+    // A BARE hex string, `#` omitted — OOXML's own spelling. The pptx sink has
+    // always taken these and this one did not, so `AABBCC` as a series colour
+    // drew the real colour in the skill's deck and mid grey in the preview and
+    // in the live add-in: two of the three sinks disagreeing with the third
+    // about a perfectly ordinary paint, which is what this whole block exists
+    // to catch. Pasting a hex out of a brand guide without its `#` is the
+    // commonest way to produce one.
+    "AABBCC",
+    "aabbcc",
+    "4e79a7",
+    "abc",
+    "ABC",
+    "  4E79A7  ",
     // Named colours. This sink read every one of them as mid grey until the
     // table it shares with the pptx sink was carried here too — a gap that put
     // white ink on light fills and flipped `background: "white"` into
@@ -266,6 +279,16 @@ describe("the preview sink and the pptx sink answer the same colour", () => {
       expect(alphaOf(c), `core alphaOf(${JSON.stringify(c)})`).toBeCloseTo(want, 6);
       expect(pptxAlphaOf(c), `pptx alphaOf(${JSON.stringify(c)})`).toBeCloseTo(want, 6);
     }
+  });
+
+  it("cannot reinterpret a named colour as bare hex, whatever the table holds", () => {
+    // `toRgb` tries the name table BEFORE bare hex, so a collision would be
+    // resolved in the name's favour either way. This pins the stronger fact the
+    // comment there claims: there is no collision to resolve, so the ordering is
+    // a property of the code rather than of what happens to be in the table —
+    // and if somebody adds `"beef"` to CSS_NAMES one day, this says so.
+    const hexy = Object.keys(CSS_NAMES).filter((n) => /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(n));
+    expect(hexy, "a CSS colour name is also a valid bare hex string").toEqual([]);
   });
 
   it("differs on an UNREADABLE paint, and only there — grey here, black in the deck", () => {
