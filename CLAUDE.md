@@ -1759,9 +1759,24 @@ to itself`, and widening the band broke the degradation grid's fit. Two
   rather than an experiment worth deforming the battery for.
   `faults.stallDrawAfterSelect` is the fake being this host for it.
 
-  **It passed on `eaddbf4`, so the rate is four of the last SIX and the note is
-  an observation rather than a law.** Read a round where it passes as exactly
-  that — the same way `same scale` scoring 8 of 8 was one sample.
+  **MEASURED across every round on file, and the effect is RECENT — which the
+  first version of this note implied it was not.** This draw against `edit the
+chart the user selected`, which selects a shape, DROPS the selection, then
+  draws:
+
+      all 17 rounds        held 10 ok / 7 stalled    control 14 ok / 3 not ok
+      since `957aca0` (8)  held  2 ok / 6 stalled    control  8 ok / 0
+
+  Over the whole history they do not separate, and in the earliest rounds the
+  pattern ran the OTHER way — the control failing while the held draw passed.
+  Restricted to the last eight rounds they separate sharply.
+
+  So this is not "drawing while selected stalls this host", which is what a
+  four-of-five rate looked like. Something changed around `957aca0`, and two
+  readings fit: the host is different, or the slide-spreading landed in that
+  build and moved which slide this scenario works on. It takes `found[0]` and
+  not `leastLoadedChart`, so it did not change directly — but what the other
+  scenarios leave on which slide did. Do not build on either reading.
 
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not
