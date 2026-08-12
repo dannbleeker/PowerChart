@@ -173,6 +173,17 @@ export const KNOWN_ISSUES = {
     "Slide.exportAsBase64 omits modern comments and ppt/authors.xml from the exported deck. NO EXPOSURE: the add-in calls it " +
     "through `slideImageBase64` to get a PICTURE of a slide for the round's deck evidence, and a round has no comments in it " +
     "and no interest in them if it did. Kept in the table rather than dropped so the next sweep does not re-raise it.",
+  6498:
+    "Shapes inserted on PowerPoint WEB do not reflect instantly: changes may not appear without a page refresh, and — the part " +
+    "that matters here — they may appear IN THE SLIDE PREVIEW BUT NOT IN THE MAIN VIEW. Open, no Microsoft response, no " +
+    "workaround offered. Triaged 2026-08-12 as a LIMIT ON WHAT ONE GATE PROVES rather than a bug to fix: `chartIsVisible` is " +
+    "this project's only mechanical evidence that a chart it drew can be SEEN, and it works by rasterising the slide with " +
+    "`getImageAsBase64` and diffing the bytes — which renders the preview, precisely the surface this issue says can disagree " +
+    'with the canvas. So a pass there means "the chart is in PowerPoint\'s own render of the slide", which is strictly weaker ' +
+    'than "a human looking at the slide would see it", and the verdict says so now instead of claiming the stronger thing. ' +
+    "There is no read of the main view available to an add-in, so this cannot be closed by measuring harder — only by a human " +
+    "looking, which is why the battery leaves its slides in the deck. The reporter's case is slide MASTERS and ours is slides, " +
+    "so the match is on the mechanism rather than on the repro.",
   5022: "context.sync() runs indefinitely when shapes are re-read after an image insert. Asked by the `picture-then-shape-read` probe; drawDemoItem does exactly that sequence.",
   5101: "A placeholder keeps type: Placeholder when reused. NO EXPOSURE — this repo never reads a shape's type. Checked, not assumed.",
   5264: "A part of the object model Office.js cannot reach. Recorded as a limitation.",

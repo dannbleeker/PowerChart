@@ -45,6 +45,12 @@ export const FAKE_BASELINE = {
   "slide-layout-readable": "yes",
   "layouts-readable": "yes",
   "untrack-available": "no",
+  // The fake models `untrack` on a SHAPE and not on a null-object slide, which
+  // is why this pair is worth asking as a pair: the fake already behaves the
+  // way the confound predicts, and only the real host can say whether it does
+  // too. Written from what the fake actually answers, after a guess at `no` was
+  // corrected by the gate.
+  "untrack-available-on-shape": "yes",
   "scratch-slides-returned": "all",
 };
 
@@ -258,6 +264,18 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "untrack-available-on-shape":
+    "Added 2026-08-12, and it is `untrack-available` getting the partner its own comment asked for. That question answers `no` on " +
+    "this host — but it asks a NULL-OBJECT slide proxy, and a null object is the one kind most likely to lack the method, so the " +
+    "answer may be about the probe rather than about the host. The rule this repo already states is to ask the variant that " +
+    "separates them rather than to reason, and nobody had. " +
+    "It is worth separating because Microsoft's own performance guidance names untracking as the remedy for our exact symptom: " +
+    '"large batch operations may generate a lot of proxy objects... Calling untrack() after your add-in is done with the object ' +
+    'should yield a noticeable performance benefit when using large numbers of proxy objects". `renderShapesChunked` makes one ' +
+    "proxy per shape and holds every one for the whole draw — hundreds a run — and untracks none; the deck-scan read paths untrack " +
+    "and the hot path does not. A real `yes` makes that an omission worth fixing on the slowest path in the add-in. A real `no` " +
+    "closes the idea on the right evidence instead of on a null object's. Asks a proxy `addGeometricShape` just returned, which is " +
+    "exactly the kind the draw loop holds, and needs no sync — the method either is on the object or it is not.",
   "grouped-child-by-id-from-slide":
     "Added 2026-08-11, and it decides whether the in-place update has a future on this host. `tryInPlaceUpdate` needs a " +
     "node-to-shape mapping and gets one from CHART_PARTS_TAG, which is written only for UNGROUPED charts — so the " +

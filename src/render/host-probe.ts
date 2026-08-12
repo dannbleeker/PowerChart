@@ -1734,6 +1734,45 @@ const PROBES: Probe[] = [
       const has = typeof (slide as unknown as { untrack?: unknown }).untrack === "function";
       return { answer: has ? "yes" : "no" };
     },
+    // …and the `no` above is exactly the shape of answer this project has a
+    // rule about: it could be a fact about the host, or a fact about the
+    // NULL-OBJECT proxy it was asked of, which the comment two lines up already
+    // suspects and which nobody had followed up. The partner separates them,
+    // and it asks the proxy type the answer would actually be spent on.
+    //
+    // What rests on it: Microsoft's own performance guidance names this as the
+    // remedy for our exact symptom — "large batch operations may generate a lot
+    // of proxy objects… Calling untrack() after your add-in is done with the
+    // object should yield a noticeable performance benefit when using large
+    // numbers of proxy objects". `renderShapesChunked` creates one proxy per
+    // shape and holds every one of them for the whole draw, hundreds per run,
+    // and untracks none of them; the read paths untrack and the hot path does
+    // not. A `yes` here makes that an omission worth fixing. A `no` closes it,
+    // and closes it on the right evidence rather than on a null object's.
+    follow: {
+      when: (answer) => answer === "no",
+      because: "a null-object proxy is the one kind most likely to lack the method, so the no may be about the probe",
+      probe: {
+        id: "untrack-available-on-shape",
+        question: "Does a SHAPE proxy — the kind a draw makes hundreds of — expose untrack()?",
+        ask: async (ctx) => {
+          // A REAL created proxy, which is what the draw loop holds — not a
+          // null object, which is the confound this partner exists to remove.
+          // Nothing syncs: `addGeometricShape` hands the proxy back before any
+          // round trip, and the question is whether that object carries a
+          // method. The queued add rides whatever sync comes next and lands on
+          // the scratch slide, which the run deletes.
+          const shape = probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
+            left: 10,
+            top: 10,
+            width: 20,
+            height: 20,
+          });
+          const has = typeof (shape as unknown as { untrack?: unknown }).untrack === "function";
+          return { answer: has ? "yes" : "no" };
+        },
+      },
+    },
   },
 ];
 
@@ -2492,6 +2531,19 @@ export const NO_SLIDE_NEEDED_IDS: readonly string[] = PROBES.flatMap(flatten)
  * A single count could not express either.
  */
 export const ALWAYS_ASKED_IDS: readonly string[] = [...PROBES.map((p) => p.id), SCRATCH_CLEANUP_ID];
+
+/**
+ * Ids that exist ONLY as a partner question.
+ *
+ * A follow-up is conditional by definition — it rides its trigger and is never
+ * scheduled on its own — so it is neither always asked nor a candidate for the
+ * scarce-slide shortlist, and the two invariants that read those lists have to
+ * know the difference. Derived rather than listed, for the same reason
+ * `RESAMPLE_IDS` is: a hand-kept copy is the one that will drift.
+ */
+export const FOLLOW_UP_IDS: readonly string[] = PROBES.flatMap((p) =>
+  p.follow ? flatten(p.follow.probe).map((f) => f.id) : [],
+);
 
 /**
  * What a probe run FOUND, in one line, on screen.

@@ -1095,6 +1095,14 @@ a slide that already has content` keyed `(visible)` while every other scenario
   the sentinel is shared, and taking its whole total would steal another draw's
   count.
 
+  **It landed and both halves worked on the real host** (2026-08-12,
+  `ee1741e`). The `(visible)` sentinel drops from every insert batch to TWO in
+  the whole round — the first batch of each unnamed draw, before the host has
+  answered the id — and the carry-over says so out loud twice: `moved this
+draw's shape count onto the slide the host finally named {from: "(visible)",
+to: "257#1897035307", shapes: 10}`. Ten shapes each time, which is the batch
+  size, which is exactly what the arithmetic predicted.
+
   **That carry-over is the interesting part of the change, because nothing in
   the fake could make it fail.** The fake answers `slide.id` from the first
   read, so the key never transitioned and the block was decoration — the exact
@@ -1535,8 +1543,25 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   read it starves `probeCharts`, the scenario skips for want of a chart, and the
   guard passes against the unfixed build.
 
-  **The next round (`393e6e4`) passed the scenario and is NOT evidence the fix
-  works.** `explode a degraded picture` came back `collapsed to a picture and
+  **CONFIRMED ON LIVE DATA the round after that (`ee1741e`, 2026-08-12):**
+  `the slide read back EMPTY right after the collapse — not believing it
+{slide: 261#2230304510, was: 1}`. The pathology recurred, the guard caught it,
+  and the scenario continued to the config round-trip instead of claiming data
+  loss. The round before had passed WITHOUT entering the branch, which is why
+  that pass proved nothing and this line does.
+
+  **And the same scenario then failed the same way one step later, which is the
+  more useful finding.** Its verdict read `the picture vanished while being
+exploded back to shapes`, and the deck inventory from the same run shows that
+  slide holding one shape named `PowerChart`. Nothing vanished: the update had
+  just logged three `InvalidParam passed to GetItem(id)`, so the host would not
+  name the picture and the redraw could not work on it. `updateLossNote` reads
+  the run's own `idRefusals` either side of the call and says which fact it
+  means. Still a failure — but "the add-in deleted a chart" and "the host would
+  not answer for it" send a maintainer to opposite ends of the codebase.
+
+  **The previous round (`393e6e4`) passed the scenario and was NOT evidence the
+  fix works.** `explode a degraded picture` came back `collapsed to a picture and
 exploded back, config intact` — and the trace carries no `the slide read back
 EMPTY right after the collapse` line at all, so the host answered the
   collection normally and the new branch was never entered. A green scenario on
@@ -1658,6 +1683,18 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
   had kept light. A thin delta is a crowded slide, and the flag is worth keeping
   for exactly that reason: it reports how much of the picture the chart is, on a
   gate whose whole subject is whether a human would see it.
+
+  **But it is a render, not a screen — office-js#6498, triaged 2026-08-12.**
+  On the web an inserted shape can appear in the slide PREVIEW and not in the
+  main view, and `getImageAsBase64` renders precisely that preview. So a pass
+  here means "the chart is in PowerPoint's own render of the slide", which is
+  strictly weaker than "a human looking at the slide would see it", and the
+  verdict says the weaker thing now instead of the stronger one. No add-in API
+  reads the canvas, so this cannot be closed by measuring harder — only by
+  somebody looking, which is one more reason the battery leaves its slides in
+  the deck. The report is about slide MASTERS and ours are slides, so the match
+  is on the mechanism rather than on the repro; that is why it bounds a claim
+  instead of predicting a failure.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.

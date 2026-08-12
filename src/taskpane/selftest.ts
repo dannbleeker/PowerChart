@@ -571,6 +571,36 @@ function barInk(scene: Scene): number {
  * way out of it. The claim it rests on — that a picture keeps its config and
  * can become shapes again — has never been checked anywhere but a fake.
  */
+/**
+ * What a null return from an update MEANS, in words a verdict may use.
+ *
+ * `updateChartInSlide` answers null for two facts that are nothing alike: the
+ * chart really is gone, or this host refused to name it. This scenario called
+ * both "vanished" — a claim that the add-in destroyed the user's content — and
+ * round `ee1741e` is the case that shows the cost. It reported `the picture
+ * vanished while being exploded back to shapes`, and the deck inventory taken
+ * at the end of the same run shows that slide holding one shape named
+ * `PowerChart`. Nothing vanished. The update had just logged three
+ * `InvalidParam passed to GetItem(id)` and an empty settle re-read, so the run
+ * knew; only the verdict did not.
+ *
+ * Same defect as the empty-read one a few lines above, one step later in the
+ * same scenario, and it wants the same treatment: decide from something outside
+ * the answer. The friction counters are that something — they are kept for the
+ * whole run anyway, so this costs a subtraction and no host call.
+ *
+ * Deliberately not a pass. Both outcomes are failures of the scenario; what
+ * changes is which one a maintainer goes and investigates, and "the add-in
+ * deleted a chart" and "the host would not answer for it" send them to
+ * opposite ends of the codebase.
+ */
+export function updateLossNote(what: string, refusalsDuring: number): string {
+  return refusalsDuring > 0
+    ? `the host would not name the ${what} afterwards (${refusalsDuring} id refusal(s) during the call), so it could not be ` +
+        `worked on again — it is still on the slide`
+    : `the ${what} vanished while being redrawn`;
+}
+
 const explodePicture: Scenario = async (prefix) => {
   if (!canInsertPicture()) return { ok: false, skipped: true, detail: "host has no picture fill (PowerPointApi 1.8)" };
   if (!rasterizer) return { ok: false, skipped: true, detail: "no rasteriser — cannot make a picture to explode" };
@@ -594,11 +624,13 @@ const explodePicture: Scenario = async (prefix) => {
   // Read the slide BEFORE the collapse, so what the collapse produced can be
   // told apart from what was already there. See below for what that cost.
   const before = await slideShapeList(chart.target.slideId);
+  const beforeCollapse = hostFrictionCounts().idRefusals;
   const pictured = await updateChartInSlide(buildChart(asPicture), chart.target, {
     tagData: JSON.stringify(asPicture),
     pictureBase64: png,
   });
-  if (!pictured) return { ok: false, detail: "the chart vanished while being collapsed to a picture" };
+  if (!pictured)
+    return { ok: false, detail: updateLossNote("chart", hostFrictionCounts().idRefusals - beforeCollapse) };
   // One shape is what a picture IS. More than one means the renderer drew
   // shapes instead and the rest of this scenario would prove nothing — the same
   // trap as the `undefined` png above, one step later, so it has to be a
@@ -669,8 +701,10 @@ const explodePicture: Scenario = async (prefix) => {
   const confirmed = delta !== undefined;
   if (!confirmed) trace("selftest", "the host would not confirm the picture is one shape", { slide: pictured.slideId });
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
+  const beforeExplode = hostFrictionCounts().idRefusals;
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
-  if (!exploded) return { ok: false, detail: "the picture vanished while being exploded back to shapes" };
+  if (!exploded)
+    return { ok: false, detail: updateLossNote("picture", hostFrictionCounts().idRefusals - beforeExplode) };
   // A blind READBACK is not a finding. Every scenario here guards its first
   // scan and then draws its loudest conclusion from a second one it never
   // checked — and on the web a short deck scan is routine, which is why
@@ -1205,7 +1239,15 @@ export function visibilityVerdict(
     return {
       ok: true,
       detail:
-        `drawing the chart changed what the slide looks like (${before.length} → ${after.length} bytes, ${
+        // "in PowerPoint's own render", not "on screen", and the distinction is
+        // office-js#6498: on the web an inserted shape can appear in the slide
+        // PREVIEW and not in the main view. `getImageAsBase64` renders exactly
+        // that preview, so this gate measures the surface the issue says can
+        // disagree with the canvas. It is still the only mechanical evidence
+        // this project has that a chart it drew can be seen — it just cannot be
+        // reported as "a human would see it", and no add-in API can close that
+        // gap. Which is one more reason the battery leaves its slides behind.
+        `drawing the chart changed PowerPoint's own render of the slide (${before.length} → ${after.length} bytes, ${
           delta >= 0 ? "+" : ""
         }${delta}, ${pct}%${where})${noise}` +
         (share < THIN_VISIBILITY_RATIO

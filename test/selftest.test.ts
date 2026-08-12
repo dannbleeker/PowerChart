@@ -46,6 +46,7 @@ import {
   renderDifference,
   rescaleFlipIndex,
   rescaleLossNote,
+  updateLossNote,
   rescaleShouldStop,
   visibilityVerdict,
   sideSlot,
@@ -2610,6 +2611,30 @@ describe("which chart a scenario picks to work with", () => {
  * It is also the third time this scenario has produced a false FAILURE from
  * counting a slide, and its own comments record the other two.
  */
+/**
+ * A null return from an update is not a report that the chart was destroyed.
+ *
+ * Round `ee1741e` failed this scenario with `the picture vanished while being
+ * exploded back to shapes`, and the deck inventory taken at the end of the same
+ * run shows that slide holding one shape named `PowerChart`. Nothing vanished:
+ * the host refused the shape id — three `InvalidParam passed to GetItem(id)` in
+ * the same second — so the update could not work on it again.
+ *
+ * The same defect as the empty-read one below, one step later in the same
+ * scenario, and it matters for the same reason: "the add-in deleted a chart"
+ * and "the host would not answer for it" send a maintainer to opposite ends of
+ * the codebase, and only one of them is true.
+ */
+describe("what a failed update is allowed to claim", () => {
+  it("does not report a refused id as the chart being destroyed", () => {
+    expect(updateLossNote("picture", 3)).toMatch(/still on the slide/);
+    expect(updateLossNote("picture", 3), "a refusal was reported as destruction").not.toMatch(/vanish/);
+    // …and with no refusal recorded there is nothing to blame the host for, so
+    // the blunt reading stands. Both are failures; they are different failures.
+    expect(updateLossNote("picture", 0)).toMatch(/vanished/);
+  });
+});
+
 describe("the collapse's readback when the host will not list a slide", () => {
   it("does not report data loss for a read that came back empty", async () => {
     const slide = makeSlide("s1");
