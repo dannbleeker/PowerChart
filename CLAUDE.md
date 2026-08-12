@@ -1927,13 +1927,26 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
 - Object lookups keyed by a config string must use
   `Object.prototype.hasOwnProperty.call` — a pattern/colour/marker named
   `__proto__` or `constructor` otherwise reaches `Object.prototype` and either
-  crashes the renderer or gets CALLED. Guarded in `svg.ts`, `pptx-paint.mjs`,
-  `geometry.ts`, `i18n.ts`; apply it to any new table. The saved-templates table
-  in `app.ts` was a fifth and was missed for months, so **check the write side
-  too**: `all[name] = value` where name is `__proto__` hits the inherited
-  setter and re-parents the object instead of storing, and the entry then
-  vanishes with nothing said. That one is guarded by a null prototype, which
-  fixes both directions at the root instead of at each call site.
+  crashes the renderer or gets CALLED. **Read the guard's current reach from
+  `grep -rl hasOwnProperty src/ skill/` rather than from a list here** — this
+  sentence named four files, then five, and was wrong by three within a week,
+  which is the same drift the backlog and `UNSTABLE_ANSWERS` paragraphs warn
+  about. Apply it to any new table.
+
+  Two things a grep cannot tell you, so they stay written down:
+
+  - **Check the write side too.** The saved-templates table in `app.ts` was
+    missed for months: `all[name] = value` where name is `__proto__` hits the
+    inherited setter and re-parents the object instead of storing, and the entry
+    then vanishes with nothing said. That one is guarded by a null prototype,
+    which fixes both directions at the root instead of at each call site.
+  - **A table does not have to be keyed by a CONFIG string to be reachable.**
+    `buildCheckbox`'s glyph and colour tables are keyed by a `CheckState` union
+    and were the seventh instance of this class — the pane feeds them from a
+    `<select>`, but `src/index.ts` exports the builder, so the value is whatever
+    a library caller passed. Every public export in `src/index.ts` is a boundary
+    of the same kind as the JSON box.
+
 - `Date.parse` is far looser than a date cell: `parseDateToken` therefore
   gates on shape (date punctuation + month/weekday words only) before parsing.
   Don't route new cell input around it.

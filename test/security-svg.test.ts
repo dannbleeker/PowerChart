@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { sceneToSvg } from "../src/render/svg";
 import { buildChart, describeChart } from "../src/core/chart";
-import type { Scene } from "../src/core/scene";
+import type { RectNode, Scene, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 import { sampleConfig } from "../src/core/samples";
 import { symbolPreset, SYMBOL_PRESET } from "../src/core/geometry";
+import { buildCheckbox, type CheckState } from "../src/core/elements";
 
 /**
  * SVG paint values come verbatim from ChartConfig (series color, custom palette,
@@ -313,5 +314,41 @@ describe("prototype keys in the tables a config can index", () => {
     }
     // …and a real one still resolves to itself.
     expect(symbolPreset("diamond")).toBe(SYMBOL_PRESET.diamond);
+  });
+});
+
+/**
+ * `buildCheckbox` keys two literal tables — glyph and colour — off its `state`
+ * argument. `CheckState` is a union in the types and the function is exported
+ * from `src/index.ts`, so the value is whatever a library caller passed. This is
+ * the same class as the tables above and was the seventh instance of it in the
+ * repo; the six CLAUDE.md listed did not include this file.
+ */
+describe("prototype keys in the checkbox element's tables", () => {
+  const glyphOf = (state: string) =>
+    (buildCheckbox(state as CheckState).nodes.find((n) => n.name === "check-glyph") as TextNode).text;
+  const strokeOf = (state: string) =>
+    (buildCheckbox(state as CheckState).nodes.find((n) => n.name === "check-box") as RectNode).stroke;
+
+  it.each(["__proto__", "constructor", "toString", "valueOf", "hasOwnProperty", "nonsense"])(
+    "falls back to the neutral mark for state %s",
+    (state) => {
+      // `__proto__` put Object.prototype into both the glyph and the stroke and
+      // `constructor` put a FUNCTION there, and both reached the markup: the
+      // glyph node's text became "[object Object]" / "function Object() { …" and
+      // the stroke became a non-colour the renderers hand straight to the host.
+      expect(glyphOf(state), `state "${state}" did not fall back`).toBe(glyphOf("partial"));
+      expect(strokeOf(state), `state "${state}" did not fall back`).toBe(strokeOf("partial"));
+      const svg = sceneToSvg(buildCheckbox(state as CheckState));
+      expect(svg).not.toMatch(/native code|\[object /);
+    },
+  );
+
+  it("still draws each real state's own glyph and colour", () => {
+    // The rule must not be satisfiable by rejecting everything: the three real
+    // states keep three distinct glyphs, and two of them three distinct strokes.
+    const glyphs = (["yes", "no", "partial"] as const).map(glyphOf);
+    expect(new Set(glyphs).size).toBe(3);
+    expect(new Set((["yes", "no", "partial"] as const).map(strokeOf)).size).toBe(3);
   });
 });

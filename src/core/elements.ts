@@ -66,6 +66,19 @@ export type CheckState = "yes" | "no" | "partial";
 export function buildCheckbox(state: CheckState, size = 20): Scene {
   const colors: Record<CheckState, string> = { yes: "#0ca30c", no: "#d03b3b", partial: "#898781" };
   const glyph: Record<CheckState, string> = { yes: "✓", no: "✗", partial: "–" };
+  // A state that is not a state must not reach `Object.prototype`.
+  //
+  // `CheckState` is a union in the types and this function is exported from
+  // `src/index.ts`, so the argument is whatever a caller passed —
+  // `buildCheckbox("__proto__")` put Object.prototype into BOTH the glyph and
+  // the stroke, and `"constructor"` put a FUNCTION there; both reached the
+  // markup. This is the seventh table in this repo to need the same guard, and
+  // CLAUDE.md's list of the first six did not have this file on it.
+  //
+  // Falls back to `partial`, the neutral mark, rather than throwing: an element
+  // builder that refuses is worse for a caller than one that draws the
+  // undecided glyph.
+  const known: CheckState = Object.prototype.hasOwnProperty.call(glyph, state) ? state : "partial";
   return {
     width: size,
     height: size,
@@ -77,7 +90,7 @@ export function buildCheckbox(state: CheckState, size = 20): Scene {
         w: size - 1,
         h: size - 1,
         fill: "#ffffff",
-        stroke: colors[state],
+        stroke: colors[known],
         strokeWidth: 1.5,
         name: "check-box",
       },
@@ -87,10 +100,10 @@ export function buildCheckbox(state: CheckState, size = 20): Scene {
         y: 0,
         w: size,
         h: size,
-        text: glyph[state],
+        text: glyph[known],
         fontSize: size * 0.62,
         bold: true,
-        color: colors[state],
+        color: colors[known],
         align: "center",
         valign: "middle",
         name: "check-glyph",
