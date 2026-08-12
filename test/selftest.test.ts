@@ -24,6 +24,7 @@ import {
   listChartsInDeck,
   timeShapeRounds,
   gridFootprint,
+  shapesDrawnOn,
 } from "../src/render/powerpoint";
 import { sampleConfig } from "../src/core/samples";
 import { buildChart } from "../src/core/chart";
@@ -41,6 +42,7 @@ import {
   _setClickWaitForTest,
   _setDegradeSizeForTest,
   wedgedSelection,
+  leastLoadedChart,
   renderDifference,
   rescaleFlipIndex,
   rescaleLossNote,
@@ -2521,4 +2523,71 @@ describe("the context a round records around every scenario", () => {
     const counts = batches.map((b) => b.data?.onSlide as number);
     expect(counts[counts.length - 1], "the count never grew, so it is not counting").toBeGreaterThan(counts[0]);
   }, 30_000);
+});
+
+/**
+ * The battery used to pile its whole run onto one slide.
+ *
+ * Every scenario needing "a chart to work with" took `found[0]` — the same
+ * chart on the same slide, every time. Drawing cost on this host grows with
+ * what is already on the target (about +0.44s per shape present, measured), so
+ * the battery made each of its own later draws slower than the last.
+ *
+ * Round `275a76a` put numbers on it: one slide went 20 → 68 → 92 → 116 → 140 →
+ * 144 → 165 shapes while nothing else in the deck passed 34, and the draw at
+ * 144 stalled — a NINE-shape chart, timed out at 45s, which ~63s of per-slide
+ * overhead entirely accounts for. A scenario ordered late was measurably harder
+ * to pass than the same scenario ordered early.
+ */
+describe("which chart a scenario picks to work with", () => {
+  const chart = (slideId: string, name: string) => ({ target: { slideId }, name });
+
+  it("takes the one on the slide this run has loaded least", () => {
+    const charts = [chart("busy", "a"), chart("quiet", "b")];
+    const load = (id: string) => (id === "busy" ? 144 : 0);
+    expect(leastLoadedChart(charts, load)?.name).toBe("b");
+  });
+
+  it("keeps the deck's order when nothing has been drawn yet", () => {
+    // The property that makes this safe to drop in: on a fresh run every load
+    // is zero, so it picks exactly what `found[0]` picked and every existing
+    // expectation about which chart a scenario takes still holds. It only
+    // diverges once this run has actually loaded a slide.
+    const charts = [chart("a", "first"), chart("b", "second"), chart("c", "third")];
+    expect(leastLoadedChart(charts, () => 0)?.name).toBe("first");
+    // And on a tie between two equally-loaded slides, still the earlier one.
+    expect(leastLoadedChart(charts, (id) => (id === "a" ? 5 : 5))?.name).toBe("first");
+  });
+
+  it("has nothing to offer from an empty deck", () => {
+    expect(leastLoadedChart([], () => 0)).toBeUndefined();
+  });
+
+  it("spreads the battery's draws across slides instead of onto one", async () => {
+    // End to end: the shape of the defect was a single slide taking almost
+    // every draw. Asserted as a share rather than a count, because the totals
+    // depend on which scenarios the fake lets run.
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    await runSelfTest("probe");
+    const scan = await listChartsInDeck();
+    const slides = [...new Set(scan.charts.map((c) => c.target.slideId))];
+    expect(slides.length, "the run produced only one slide, so there was nothing to spread over").toBeGreaterThan(1);
+    const loads = slides.map((id) => shapesDrawnOn(id));
+    const total = loads.reduce((a, b) => a + b, 0);
+    if (total === 0) return; // the fake drew nothing measurable; nothing to claim
+    const worst = Math.max(...loads);
+    // Measured, not invented. Against the fake, the same battery concentrates
+    // 0.619 of its draws on one slide with `found[0]` and 0.369 with this rule
+    // — 195 shapes on the worst slide versus 120, and the others rising off a
+    // flat 24. Half sits between the two with room on both sides.
+    //
+    // The fake spreads more than the real host does to begin with (its probe
+    // charts land one per slide, where a real deck had nine on one), so this
+    // understates the effect it is guarding rather than overstating it.
+    expect(
+      worst / total,
+      `one slide took ${worst} of ${total} shapes this run drew — the battery is concentrating again`,
+    ).toBeLessThan(0.5);
+  }, 60_000);
 });

@@ -976,7 +976,21 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
 
   The slide-sharing is deliberate and the reason is good: `chartIsVisible` must
   never rasterise a slide the run just added. Sharing a slide that is not the
-  BUSIEST one costs nothing and is not what the code does today.
+  BUSIEST one costs nothing, and `leastLoadedChart` is that: every scenario that
+  needs a chart now takes the one on the slide this run has loaded least,
+  counted from `shapesDrawnOn` — a number the renderer already kept, so no host
+  call is added.
+
+  **Ties keep the deck's order**, which is what makes it safe to drop in: on a
+  fresh run every load is zero, so it picks exactly what `found[0]` picked and
+  every existing expectation holds. It diverges only once this run has actually
+  loaded a slide.
+
+  Measured against the fake, the same battery concentrates **0.619** of its
+  draws on one slide with `found[0]` and **0.369** with the rule — 195 shapes
+  on the worst slide against 120. The fake spreads more than the real host does
+  to begin with (its probe charts land one per slide, where the real deck had
+  nine on one), so that understates the effect rather than overstating it.
 
 - **A field can be recorded on both populations and STILL be useless, if it is
   rarely populated.** `onSlide` — how many shapes this run had already put on
