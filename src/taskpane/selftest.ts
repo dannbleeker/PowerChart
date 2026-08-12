@@ -658,6 +658,28 @@ async function stillThere(target: { slideId: string; shapeId?: string }): Promis
 }
 
 export function updateLossNote(what: string, refusalsDuring: number, stillOnSlide?: boolean): string {
+  // AN ID REFUSAL ANYWHERE IN THIS SCENARIO MAKES EVERY ID IN IT SUSPECT, so a
+  // missing shape stops being evidence of a missing shape.
+  //
+  // Round `1789749` is why, and it is the fourth mechanism to produce a false
+  // destruction claim from this one scenario. The collapse's readback was
+  // refused (`reading back where the charts landed`, InvalidParam), so the
+  // target handed on carried an id the host never confirmed — the settle had to
+  // find that chart BY NAME, `withId: 0`, which is the tell. The picture then
+  // landed under an id nobody here holds, `some(s => s.id === target.shapeId)`
+  // answered false, and the verdict read `the picture is GONE from the slide`
+  // while the deck inventory from the same run shows that slide holding one
+  // shape named `PowerChart` — the picture, untouched.
+  //
+  // So "gone" now needs a clean scenario as well as a positive read. The
+  // refusal count is measured from the scenario's start rather than from just
+  // before the call for exactly this reason: the refusal that poisoned the id
+  // happened in the step BEFORE, and a per-call window could not see it.
+  if (stillOnSlide === false && refusalsDuring > 0)
+    return (
+      `the update would not work on the ${what} and this host refused ${refusalsDuring} id(s) in this scenario, so ` +
+      `the slide not naming it proves nothing either way`
+    );
   // Positive evidence first: the slide was asked, and it answered.
   if (stillOnSlide === true)
     return `the host would not work on the ${what} again, but it is STILL ON THE SLIDE — nothing was lost`;
@@ -703,7 +725,9 @@ const explodePicture: Scenario = async (prefix) => {
   // Read the slide BEFORE the collapse, so what the collapse produced can be
   // told apart from what was already there. See below for what that cost.
   const before = await slideShapeList(chart.target.slideId);
-  const beforeCollapse = hostFrictionCounts().idRefusals;
+  // From the SCENARIO's start. See `updateLossNote`: the refusal that makes an
+  // id untrustworthy is routinely in an earlier step than the call that fails.
+  const refusalsAtStart = hostFrictionCounts().idRefusals;
   const pictured = await updateChartInSlide(buildChart(asPicture), chart.target, {
     tagData: JSON.stringify(asPicture),
     pictureBase64: png,
@@ -711,7 +735,11 @@ const explodePicture: Scenario = async (prefix) => {
   if (!pictured)
     return {
       ok: false,
-      detail: updateLossNote("chart", hostFrictionCounts().idRefusals - beforeCollapse, await stillThere(chart.target)),
+      detail: updateLossNote(
+        "chart",
+        hostFrictionCounts().idRefusals - refusalsAtStart,
+        await stillThere(chart.target),
+      ),
     };
   // One shape is what a picture IS. More than one means the renderer drew
   // shapes instead and the rest of this scenario would prove nothing — the same
@@ -783,12 +811,11 @@ const explodePicture: Scenario = async (prefix) => {
   const confirmed = delta !== undefined;
   if (!confirmed) trace("selftest", "the host would not confirm the picture is one shape", { slide: pictured.slideId });
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
-  const beforeExplode = hostFrictionCounts().idRefusals;
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
   if (!exploded)
     return {
       ok: false,
-      detail: updateLossNote("picture", hostFrictionCounts().idRefusals - beforeExplode, await stillThere(pictured)),
+      detail: updateLossNote("picture", hostFrictionCounts().idRefusals - refusalsAtStart, await stillThere(pictured)),
     };
   // A blind READBACK is not a finding. Every scenario here guards its first
   // scan and then draws its loudest conclusion from a second one it never

@@ -310,6 +310,33 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
 - **Test files are named by topic, never by increment** (`test/README.md` has
   the map). No `batch-N` / `bug-hunt-N` / `coverage-*` grab-bags: a test
   belongs with the thing it tests, not with the reason it was written.
+- **This scenario has now produced FOUR false destruction claims, each by a
+  different mechanism, and the pattern is the lesson.** `explode a degraded
+picture` reports what became of a chart, and on this host every route to that
+  answer is defeated by the host refusing to name things:
+
+  1. `the slide went from 1 to 0` — an empty collection read believed as an
+     empty slide (both signals agreed at zero).
+  2. `the picture vanished while being exploded back` — a null update read as
+     destruction when the host had merely refused the id.
+  3. `the picture vanished while being redrawn` — the fix for (2) keyed on
+     THROWN id refusals, and this host also fails to resolve a target quietly.
+  4. `the picture is GONE from the slide` (round `1789749`) — the fix for (3)
+     asked the slide and compared ids, and the id it compared with was one the
+     host had refused a step earlier. The settle's `withId: 0` on that same
+     chart is the tell: it had to find it by NAME. The deck inventory shows the
+     slide holding one shape named `PowerChart` — the picture, untouched.
+
+  What survives all four: **an id refusal anywhere in a scenario makes every id
+  in it suspect**, so a shape the slide will not name is not a shape that is
+  gone. Destruction is claimed only from a positive read on a scenario where
+  this host refused nothing, and the refusal count is measured from the
+  scenario's START because the refusal that poisons an id is routinely in an
+  earlier step than the call that fails.
+
+  Do not add a fifth mechanism. If a future round claims destruction, check the
+  deck inventory before believing it — that is what caught all four.
+
 - **A chart cut and pasted on the WEB loses its config, permanently and
   silently — office-js#3784, triaged 2026-08-12.** Shape tags do not survive
   cut/paste on PowerPoint web (desktop keeps them), and every chart's config
@@ -1413,6 +1440,14 @@ chart on the visible slide` drew at 3.0s and 4.8s, passed, round-tripped its
   already on the slide" taken from this field on an UPDATE path is therefore
   inflated — including the +0.44s/shape slope, whose own source (the rasterise
   arms) happens to be an add-only path where the field is honest.
+
+  **VALIDATED against the deck on 2026-08-12 (`1789749`).** Three slides in
+  that round held ungrouped charts, and each one's last `batch issued` reads
+  `onSlide: 20` against a deck inventory of **24** — 20 being the count BEFORE
+  that slide's final four-shape batch. Exact, three for three. The grouped slide
+  reads 34 against 11 for the reason above: the inventory counts top-level
+  shapes and grouping collapses twenty-four into one. Compare these two numbers
+  only on a slide whose charts stayed ungrouped, and when you do, they agree.
 
   **The counter is net now, so the next round answers this.** Both places the
   run takes its own shapes off a slide give the count back — the redraw's
