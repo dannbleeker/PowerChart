@@ -263,7 +263,27 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   recording a coin-toss as a recording. Clearing the arithmetic makes a swap
   permitted, not obligatory.
 
-  **SWAPPED on 2026-08-12 to `957aca0`, the first sheet since these rules were
+  **SWAPPED AGAIN on 2026-08-12 to `1789749`, and this one the arithmetic did
+  NOT decide — it is the first swap made on a judgement the rule does not
+  cover.** The sheet answers 26 of 31 against the committed 26 of 30, so the
+  count clears, but it is a ONE-FOR-ONE TRADE: it loses
+  `binding-names-shape-later` and gains `untrack-available-on-shape`. Every
+  earlier refusal cited "it would turn an ANSWER into unknown", and by that test
+  alone this should have been refused too.
+
+  What changed the reading is that the trade is not symmetric in
+  REPRODUCIBILITY. `binding-names-shape-later` has been never-put for SEVEN
+  consecutive rounds — the fixture was holding an answer no current sheet can
+  re-earn — while `untrack-available-on-shape` answered in two consecutive
+  rounds and could not reach the fixture while the old one stayed. A recording
+  that cannot be reproduced still serves the gate, but it was blocking one that
+  can. Both findings survive in prose either way: the bindings reading is in
+  `KNOWN_DIVERGENCES` and is not lost by the swap.
+
+  Read this as the precedent for a TRADE, not as the count rule loosening. A
+  sheet that answers less is still refused, and it has been five times.
+
+  **Swapped on 2026-08-12 to `957aca0`, the first sheet since these rules were
   written that made it obligatory rather than merely permitted.** It answers
   more than the sheet it replaced, loses no ANSWER, and puts a question that
   twelve attempts across nine rounds had never reached
@@ -1676,6 +1696,15 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   read it starves `probeCharts`, the scenario skips for want of a chart, and the
   guard passes against the unfixed build.
 
+  **A consequence of that swap worth knowing: `picture-then-shape-read` came
+  OFF `KNOWN_DIVERGENCES`.** The new sheet's row for it is `yes`, which is what
+  the fake says, so the gate correctly reports no divergence — but the host gave
+  `unreadable` on the same round's other two passes. Nothing is lost, because
+  that entry's content (office-js#5022, and `drawDemoItem` performing exactly
+  that sequence) moved into `UNSTABLE_ANSWERS`, which is the right table for a
+  coin. Do not read the absence of a divergence there as the host having
+  settled.
+
   **CONFIRMED ON LIVE DATA the round after that (`ee1741e`, 2026-08-12):**
   `the slide read back EMPTY right after the collapse — not believing it
 {slide: 261#2230304510, was: 1}`. The pathology recurred, the guard caught it,
@@ -1730,9 +1759,24 @@ to itself`, and widening the band broke the degradation grid's fit. Two
   rather than an experiment worth deforming the battery for.
   `faults.stallDrawAfterSelect` is the fake being this host for it.
 
-  **It passed on `eaddbf4`, so the rate is four of the last SIX and the note is
-  an observation rather than a law.** Read a round where it passes as exactly
-  that — the same way `same scale` scoring 8 of 8 was one sample.
+  **MEASURED across every round on file, and the effect is RECENT — which the
+  first version of this note implied it was not.** This draw against `edit the
+chart the user selected`, which selects a shape, DROPS the selection, then
+  draws:
+
+      all 17 rounds        held 10 ok / 7 stalled    control 14 ok / 3 not ok
+      since `957aca0` (8)  held  2 ok / 6 stalled    control  8 ok / 0
+
+  Over the whole history they do not separate, and in the earliest rounds the
+  pattern ran the OTHER way — the control failing while the held draw passed.
+  Restricted to the last eight rounds they separate sharply.
+
+  So this is not "drawing while selected stalls this host", which is what a
+  four-of-five rate looked like. Something changed around `957aca0`, and two
+  readings fit: the host is different, or the slide-spreading landed in that
+  build and moved which slide this scenario works on. It takes `found[0]` and
+  not `leastLoadedChart`, so it did not change directly — but what the other
+  scenarios leave on which slide did. Do not build on either reading.
 
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not

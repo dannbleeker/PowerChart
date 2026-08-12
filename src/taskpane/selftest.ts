@@ -1986,11 +1986,25 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
   } catch (err) {
     // Named, rather than left to the runner's generic "the host got in the way".
     //
-    // This draw stalled its first batch in four of the last SIX rounds
-    // (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`; it passed on `393e6e4` and
-    // again on `eaddbf4`) after passing eight running
-    // before that, and every one of those rounds reported it the same
-    // anonymous way — so the battery has been carrying a repeating, specific
+    // This draw stalls FAR more than any other in the battery, but only
+    // RECENTLY — and an earlier version of this note implied a standing
+    // property of the host, which the full history does not support.
+    //
+    // Measured across all seventeen rounds on file, against `edit the chart the
+    // user selected` — which selects a shape, DROPS the selection, then draws:
+    //
+    //     all 17 rounds        held 10 ok / 7 stalled   control 14 ok / 3 not ok
+    //     since `957aca0` (8)  held  2 ok / 6 stalled   control  8 ok / 0
+    //
+    // Over the whole history they do not separate, and in the earliest rounds
+    // the pattern ran the OTHER way. Restricted to the last eight they separate
+    // sharply. So something changed around `957aca0`, and two readings fit: the
+    // host is different, or the slide-spreading landed in that build and moved
+    // which slide this scenario works on. It takes `found[0]` rather than
+    // `leastLoadedChart`, so it did not change directly — but what the other
+    // scenarios leave on which slide did.
+    //
+    // Every one of those rounds reported the stall the same anonymous way — so the battery has been carrying a repeating, specific
     // observation and saying nothing about it.
     //
     // What the note may claim is bounded by what the round files support. The
