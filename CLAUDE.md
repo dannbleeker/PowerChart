@@ -499,12 +499,30 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   measurably worse: it pins the plot to the foot of the frame and every label
   drawn beneath a mark spills out (14pt on a 120x90 bubble).
 
-  The same shape recurs one level out, in three places that reserve room for a
+  The same shape recurs one level out, in four places that reserve room for a
   ring or band of labels and then floor the radius past the reservation — radar,
-  sunburst, tilemap. There the answer is not a clamp: when the reservation
+  sunburst, tilemap, pie. There the answer is not a clamp: when the reservation
   cannot be met the labels are DROPPED, because a label drawn off the chart is
   not there anyway and a floor that ignores its own reservation is the thing
   putting it there.
+
+  **The pie is the one where the floor won, and it cost the whole chart.** Its
+  side margin is a flat `fs * 7` — 70pt of a 120pt-wide frame — so a pie under
+  ~140pt wide had nothing left and fell to its 1pt floor: a **2pt dot**, 0.1% of
+  a thumbnail in ink against 38% at 200x150, with four labels drawn around it as
+  though there were a chart there. Not an overflow, so no frame gate could see
+  it; it was found by measuring what share of its own frame each kind covers
+  across sizes, which is worth re-running after any layout change.
+
+  **Dropping a label inside a `forEach` is where this bites back.** The pie's
+  slice loop advances its running `angle` at the END of the callback, so the
+  `return` that skipped an outer label skipped the advance too and every slice
+  after the first started at zero — a doughnut showing the wrong data at every
+  small size, inside its frame, with the snapshots green because they are taken
+  at one size. `test/pie.test.ts` pins the invariant that no frame or ink check
+  can see: the slices TILE the circle, each starting where the last ended,
+  covering 360° exactly once. Check what follows a guard before writing it, and
+  prefer a condition on the block to an early return.
 
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
   its own box, over every kind × eight frame sizes. It measures INK, not boxes —

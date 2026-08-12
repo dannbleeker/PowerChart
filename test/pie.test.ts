@@ -289,3 +289,86 @@ describe("a slice label stays on the chart", () => {
     }
   });
 });
+
+/**
+ * The slices TILE the circle: each one starts where the last ended, and together
+ * they cover 360 degrees exactly once.
+ *
+ * This is the invariant a pie is FOR, and it is the one that no frame or ink
+ * check can see — every wedge stays inside the chart whether it is placed
+ * correctly or stacked on top of its neighbour. It broke here for real: an early
+ * `return` added to skip an outer label also skipped the `angle += span` at the
+ * end of the same callback, so every slice after the first started at zero. The
+ * frame sweep passed, the snapshots passed (they are taken at one size), and the
+ * doughnut simply showed the wrong data at every small size.
+ *
+ * Swept over the sizes rather than one, because the bug was reachable only where
+ * the label branch it hid in was.
+ */
+describe("a pie's slices tile the circle", () => {
+  const SIZES: [number, number][] = [
+    [120, 90],
+    [160, 120],
+    [200, 150],
+    [300, 60],
+    [480, 300],
+  ];
+  const data = {
+    categories: ["EMEA", "Americas", "APAC", "Other"],
+    series: [{ name: "Revenue", values: [29, 38, 24, 8] }],
+  };
+
+  /** A slice's radius, which is the same for every slice. */
+  const arcR = (kind: string, width: number, height: number) =>
+    buildChart({ kind, width, height, data, decorations: { segmentLabels: true } } as ChartConfig).nodes.find(
+      (n): n is WedgeNode => n.kind === "wedge",
+    )!.r;
+
+  it("gives up the outer label margin rather than collapse to a dot", () => {
+    // That margin is a flat `fs * 7` — 70pt either side of a 120pt-wide frame —
+    // so a pie under ~140pt wide had nothing left and fell to the 1pt floor: a
+    // 2pt dot, 0.1% of a thumbnail in ink, with four labels drawn around it as
+    // though there were a chart there. The margin yields and the outer labels
+    // come off, the way the radar's web and the sunburst's ring already do.
+    expect(arcR("pie", 120, 90)).toBeGreaterThan(20);
+    expect(arcR("doughnut", 120, 90)).toBeGreaterThan(20);
+    // Even where the frame is far too short for a label ring, which is a
+    // separate reservation and yields separately.
+    expect(arcR("pie", 300, 60)).toBeGreaterThan(20);
+  });
+
+  it("is unreachable once the margins fit, so no ordinary chart moves", () => {
+    // 200x150 is the smallest frame in this sweep where the side margin still
+    // leaves an arc, and it must be the margin — not the rescue — that sets the
+    // radius there and above.
+    expect(arcR("pie", 200, 150)).toBe(200 * 0.5 - 10 * 7);
+    // At 480x300 the HEIGHT term binds instead, and it is untouched either way.
+    expect(arcR("pie", 480, 300)).toBeLessThan(480 * 0.5 - 10 * 7);
+  });
+
+  for (const kind of ["pie", "doughnut"] as const) {
+    for (const [width, height] of SIZES) {
+      it(`${kind} at ${width}x${height}`, () => {
+        const wedges = buildChart({
+          kind,
+          width,
+          height,
+          data,
+          decorations: { segmentLabels: true },
+        } as ChartConfig).nodes.filter((n): n is WedgeNode => n.kind === "wedge");
+
+        expect(wedges).toHaveLength(4);
+        // Contiguous: each slice begins where its predecessor ended.
+        for (let i = 1; i < wedges.length; i++) {
+          expect(wedges[i].startAngle, `slice ${i} does not start where slice ${i - 1} ends`).toBeCloseTo(
+            wedges[i - 1].endAngle % 360,
+            5,
+          );
+        }
+        // And they cover the circle once, so no slice is drawn over another.
+        const swept = wedges.reduce((t, w) => t + (w.endAngle - w.startAngle), 0);
+        expect(swept, "the slices do not cover the circle exactly once").toBeCloseTo(360, 5);
+      });
+    }
+  }
+});
