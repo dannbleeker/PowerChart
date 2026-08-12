@@ -71,16 +71,19 @@ export const FAKE_BASELINE = {
  * is a to-do wearing a passing test's clothes.
  */
 export const KNOWN_DIVERGENCES = {
-  "scratch-slides-returned":
-    "The fake returns every scratch slide it is given, and models the host this add-in was written against — one where a " +
-    "slide you added is a slide you can delete. PowerPoint on the web is not that host, and 2026-08-11 (`756682e`) " +
-    "measured why rather than inferring it: `0 of 62 deleted; 62 left in the deck (the deletes reported 62 but the deck " +
-    "only shrank by 0); the deck still lists 0 of 62 of these ids`. Zero. The ids the probe holds are not ids the deck " +
-    "lists, so `deleteSlideByPosition`'s `indexOf(id) < 0` reads `already gone` for every one of them and delete-by-id " +
-    "is not failing, it is structurally impossible. Both id lists come from the SAME `slideIds()` projection minutes " +
-    "apart, which is what makes this a statement about the host rather than about two readers. " +
-    "This entry stays until the clean-up is fixed — it is a real defect with a visible cost (the owner's deck grows by " +
-    "~60 slides a round), not an approximation the fake is allowed to keep.",
+  "binding-names-shape-later":
+    "RETIRED AS AN IDEA, 2026-08-12 (`957aca0`), and the fake is left saying `yes` deliberately. The question was " +
+    "whether `settleAndTagChart` could be handed a shape handle that never goes through `ShapeCollection.getItem(id)` — " +
+    "every 5010 this host throws is at that call. A binding is made from the live Shape proxy inside the batch that " +
+    "created it, so it needs neither an id round trip nor a collection read. The host answers `commit-threw`: the batch " +
+    "carrying the binding is REJECTED (`ErrorPointer`), and it counts as an answer rather than as background noise " +
+    "because the probe's control arm committed the same batch WITHOUT a binding seconds earlier and it landed. Twelve " +
+    "attempts across nine rounds never reached the commit; this one did, twice in three passes. " +
+    "The fake keeps `yes` because there is NO CALLER to protect — nothing in this repo makes a binding, and modelling " +
+    "a batch-poisoning API would be " +
+    "fiction with no caller to protect. What the divergence is FOR is the direction it points: the fake is the " +
+    "optimistic one here, so anybody who reaches for bindings as the way out of the id refusals will find this entry " +
+    "before they find out from a deck.",
   "load-isnullobject-populates":
     "The fake models the host `queueNullCheck` was written for, where loading the flag by name populates nothing. PowerPoint on the web does populate it. Both hosts are real; the workaround is harmless on this one rather than necessary.",
   "shape-proxy-survives-one-sync":
@@ -266,16 +269,6 @@ export const PENDING_QUESTIONS = {
     "expected — and worth having as a measured no rather than an assumed one, because the whole feature turns on it.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
-  "binding-names-shape-later":
-    "ASKED FOUR TIMES IN ONE ROUND on 2026-08-11 (`3223293`) and answered none of them — `no-scratch-shape`, " +
-    "`no-scratch-slide`, `no-scratch-shape`, `no-scratch-shape`, at 4.6s, 43.7s, 83.5s and 101.2s. That is the " +
-    "three-pass sampling doing what whole extra ROUNDS could not: the question now gets several separated attempts per " +
-    "round, and it still never reaches its own commit. Nine rounds, twelve-odd attempts, no answer. Read the entry " +
-    "below as confirmed rather than pending-in-practice — it stays here because the probe should still fire the day a " +
-    "host resolves a scratch slide twice, and because its cost is now four cheap refusals rather than a round. " +
-    "Original note follows. " +
-    "UNANSWERABLE ON THIS HOST, and left in place deliberately — see `docs/BACKLOG.md` §2. Asked eight times across eight rounds and never once reached its own question. Six causes found, five fixed (#353/#356 second pass, #359 order, #360 the poisoned slot, #364 the unclaimable add and the ninety-second acquisition budget); the sixth is that a shape question needs the scratch slide resolved once per batch and this host gives about one resolution per slide, while an HONEST answer here needs a control batch as well. Control first starves the question; control second cannot run, because a failed sync poisons its own context. Both tried, both reverted. The probe stays so it answers the day a host resolves a scratch slide twice. Original note follows. " +
-    "Added 2026-08-09, after the round on `551ad42` failed `same scale across the deck` for the fifth time in the same shape: five charts of eight drew all 24 shapes and were then unreachable — `InvalidParam passed to GetItem(id)`, 5010, at `ShapeCollection.getItem`, three times each (ids, config tag, positions) — so each left 24 shapes on a slide that is no longer a chart, and the settle pass repaired none of them (`{charts:1, settled:0, lost:1}`). Both handles that pass has are already known-refused here: `shapes-items-count-honest` says the collection reads back empty and `shapes-items-via-positional-slide` says a positional parent reads no better. A PowerPointApi 1.8 binding is the only reference that goes through neither — made from the live proxy in the shape's CREATING batch, persisted by the document, asked for later by our own key. If it survives, the repair pass gets the handle it lacks and a lost config tag becomes repairable instead of a chart the user cannot edit; if it does not, that closes the last cheap idea and the answer is worth as much. Nothing in `src/` uses bindings today — this is a question, not a half-built feature. ASKED TWICE, ANSWERED NEITHER TIME: `no-scratch-slide` on `2a44f64` morning (the run never got a slide for it), then `no-scratch-shape` on `2a44f64` evening — that one reached its own commit and got `UnexpectedError` in 1.3 seconds, which is the first real signal and is written up in `WHAT_IT_MEANS`. The control arm added after that round is what will make the third attempt an answer either way.",
 };
 
 /**

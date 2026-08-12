@@ -872,7 +872,12 @@ const PROBES: Probe[] = [
   },
   {
     id: "binding-names-shape-later",
-    resample: true,
+    // No `resample` mark since 2026-08-12: the question is ANSWERED
+    // (`commit-threw`, with its control arm landing the same batch without a
+    // binding seconds earlier), so it no longer needs the scarce-slide
+    // shortlist — that slot goes to a question still without an answer. The
+    // reading is in `KNOWN_DIVERGENCES`; a round that contradicts it shows up
+    // as a changed answer at the next fixture swap.
     question: "Can a binding made in a shape's CREATING sync still name that shape afterwards?",
     // ASKED SIXTH ON PURPOSE, beside the questions its control arm duplicates.
     //

@@ -253,6 +253,18 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   recording a coin-toss as a recording. Clearing the arithmetic makes a swap
   permitted, not obligatory.
 
+  **SWAPPED on 2026-08-12 to `957aca0`, the first sheet since these rules were
+  written that made it obligatory rather than merely permitted.** It answers
+  more than the sheet it replaced, loses no ANSWER, and puts a question that
+  twelve attempts across nine rounds had never reached
+  (`binding-names-shape-later`). The three things it moved are each a retirement
+  rather than a coin: that question came off `PENDING_QUESTIONS` with a real
+  answer, `scratch-slides-returned` came off `KNOWN_DIVERGENCES` because the
+  clean-up it was waiting for now works, and `grouped-child-by-id-from-slide`
+  reported its own setup failure in a word the gate understands instead of
+  inventing one. Read the fixture's `build`, not this paragraph — the sentence
+  above says so and it has been wrong before.
+
 - **The office-js tracker is swept weekly** by
   `.github/workflows/office-js-watch.yml`, which reports only issues touching
   APIs this repo calls that are not yet in `KNOWN_ISSUES`
@@ -418,6 +430,15 @@ deckNow: 71}` then `swept: 68`. The round left the owner **8 slides, 2 of them
   `stillListed: 0 of 68` again, so the by-id finding reproduces and the sweep is
   not papering over an intermittent fault — it is the only mechanism that works
   here.
+
+  **Clean on 2026-08-12 (`957aca0`): `69 of 69 scratch slide(s) deleted … 69
+removed by a positional sweep after delete-by-id took none`, and the deck it
+  left holds SEVEN slides, none of them blank.** No leftovers at all this time,
+  where the round before left two — and the two were never a flaw in the clamp,
+  only the price of an add the run could not claim, which this round did not
+  have. `scratch-slides-returned` therefore answered `all` and came OFF
+  `KNOWN_DIVERGENCES`, exactly as that entry's own text said it should ("this
+  entry stays until the clean-up is fixed"). The clean-up is fixed.
 
 - **`getItemOrNullObject` is not the last word on whether a slide exists.**
   PowerPoint on the web resolved a freshly-added slide's id once and refused it
@@ -1639,6 +1660,21 @@ What is left needs the owner, not the agent:
   broke within a day of being written: it said "nine down to one" and a probe
   added on 2026-08-09 (`binding-names-shape-later`) made it two.
   _edit the chart YOU click_ came off this list on 2026-08-08 — it PASSED.
+
+  **Bindings are not the way out of the id refusals — asked and answered on
+  2026-08-12 (`957aca0`).** The idea was that a binding made from the live Shape
+  proxy inside the batch that created it needs neither an id round trip nor a
+  collection read, so `settleAndTagChart` would have a route that does not go
+  through the `ShapeCollection.getItem(id)` every 5010 comes from. The host
+  answers `commit-threw`: it REJECTS the batch carrying the binding
+  (`ErrorPointer`). It counts as an answer rather than as one more bad minute
+  because the probe's control arm committed the same batch WITHOUT a binding
+  seconds earlier and it landed — which is exactly what that arm was added for,
+  after an earlier round produced the same signal with nothing to compare it to.
+  The reading now lives in `KNOWN_DIVERGENCES`, where the fake is deliberately
+  left saying `yes`: nothing here makes a binding, so there is no caller to
+  protect, and the entry's job is to be what the next person reaching for
+  bindings finds first.
 
   **A never-asked answer is not an answer, and the gate used to think it was.**
   `no-scratch-slide` and `no-scratch-shape` mean the run could not put the
