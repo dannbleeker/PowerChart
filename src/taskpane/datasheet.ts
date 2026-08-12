@@ -24,6 +24,46 @@ function colLetters(index: number): string {
 }
 
 /**
+ * The grid's rows and columns must address the SAME number of cells, or a
+ * transpose cannot be total — a row with no column to become is a reference the
+ * sheet is unable to write down.
+ *
+ * They did not. Rows go to 999 (`[0-9]{1,3}` in every reference pattern) and
+ * columns stopped at ZZ (`[A-Za-z]{1,2}`, index 701), so `=SUM(B2:B999)` — the
+ * whole-column sum an Excel user types without thinking, and one this engine
+ * evaluates correctly — came back from Transpose as `=SUM(B2:ALK2)`, three
+ * letters, which no pattern here matches. The formula silently evaluated to
+ * nothing and the total column went BLANK. Exactly the failure transposeFormula
+ * was written to prevent, arriving from the other side: it is not enough for the
+ * reference to MOVE correctly, the destination has to be sayable.
+ *
+ * So columns read three letters, and are capped at the index a 3-digit row can
+ * become. Both spaces are now 0..998, which makes the swap total: every
+ * reference this parser accepts transposes to one it also accepts, and
+ * transposing twice is the identity.
+ */
+const LAST_INDEX = 998;
+/**
+ * One A1-style reference — two capture groups, shared by the evaluator's three
+ * patterns and by `transposeFormula`, so the two cannot drift apart. That they
+ * match the SAME set of references is what the totality above rests on.
+ *
+ * The trailing `(?![0-9])` makes it a whole token rather than a prefix of one.
+ * `A1000` used to match its first four characters: the evaluator read "A100",
+ * choked on the leftover "0" and answered null, while the transposer rewrote
+ * that prefix and left the digit behind — so `=A1000` came back as `=CV10`, a
+ * real cell holding a real number where there had been a blank. Wrong in the
+ * worse direction than blank.
+ */
+const REF = "([A-Za-z]{1,3})([0-9]{1,3})(?![0-9])";
+/** A reference's cell, or null when it is outside the address space above. */
+function refCell(letters: string, digits: string): { row: number; col: number } | null {
+  const col = colIndex(letters);
+  const row = Number(digits) - 1;
+  return col > LAST_INDEX || row > LAST_INDEX ? null : { row, col };
+}
+
+/**
  * A cell's number, accepting the US thousands grouping Excel copies ("1,234").
  * A comma ANYWHERE ELSE is not a separator we can read: stripping every comma
  * turned a European "1.234,5" into 1.2345 (a silent 1000× error) and "1,5" into
@@ -105,10 +145,15 @@ export function evaluateFormula(
   let i = 0;
 
   const ref = () => {
-    const m = /^([A-Za-z]{1,2})([0-9]{1,3})/.exec(s.slice(i));
+    const m = new RegExp(`^${REF}`).exec(s.slice(i));
     if (!m) return null;
+    // Not advanced past a reference outside the address space: `factor` then
+    // takes its unparseable-token branch, which is what such a token got when
+    // the pattern was two letters wide and could not match it at all.
+    const at = refCell(m[1], m[2]);
+    if (!at) return null;
     i += m[0].length;
-    return cellNumeric(cells, Number(m[2]) - 1, colIndex(m[1]), ctx);
+    return cellNumeric(cells, at.row, at.col, ctx);
   };
   // A blank cell in a range is `null`, not 0: Excel's MIN/MAX/AVG ignore empty
   // cells (only SUM treats them as 0, which it still does below). Distinguish a
@@ -169,7 +214,7 @@ export function evaluateFormula(
       i += fn[0].length;
       const args: (number | null)[] = [];
       while (i < s.length && s[i] !== ")") {
-        const range = /^([A-Za-z]{1,2})([0-9]{1,3}):([A-Za-z]{1,2})([0-9]{1,3})/.exec(s.slice(i));
+        const range = new RegExp(`^${REF}:${REF}`).exec(s.slice(i));
         if (range) {
           i += range[0].length;
           // Appended, never spread. `push(...values)` passes one argument per
@@ -181,11 +226,11 @@ export function evaluateFormula(
           // expr0()'s 0 — otherwise MIN/MAX/AVG over comma-separated args counted a
           // blank as a real 0 while the range form correctly ignores it, so
           // =MIN(B2,C2,D2) returned 0 where =MIN(B2:D2) returned 10.
-          const one = /^([A-Za-z]{1,2})([0-9]{1,3})\s*(?=[,)])/.exec(s.slice(i));
-          if (one) {
+          const one = new RegExp(`^${REF}\\s*(?=[,)])`).exec(s.slice(i));
+          const at = one && refCell(one[1], one[2]);
+          if (one && at) {
             i += one[0].length;
-            const rr = Number(one[2]) - 1;
-            const cc = colIndex(one[1]);
+            const { row: rr, col: cc } = at;
             args.push((cells[rr]?.[cc] ?? "").trim() === "" ? null : cellNumeric(cells, rr, cc, ctx));
           } else {
             args.push(expr0());
@@ -380,10 +425,14 @@ export function sheetToData(sheet: SheetModel, waterfallTotals?: Set<number>): C
  * set of cells, silently changing the very numbers the transpose preserves.
  */
 function transposeFormula(text: string): string {
-  return text.replace(/([A-Za-z]{1,2})([0-9]{1,3})/g, (_m, letters: string, digits: string) => {
-    const c = colIndex(letters);
-    const r = Number(digits) - 1;
-    return `${colLetters(r)}${c + 1}`;
+  return text.replace(new RegExp(`(?<![A-Za-z0-9])${REF}`, "g"), (m, letters: string, digits: string) => {
+    // Left verbatim when the reference is outside the shared address space (see
+    // LAST_INDEX): the parser does not accept it either, so moving it would turn
+    // one unreadable reference into a different unreadable reference. Inside the
+    // space the swap is total — a transposed reference always parses, and
+    // transposing twice gives the text back.
+    const at = refCell(letters, digits);
+    return at ? `${colLetters(at.row)}${at.col + 1}` : m;
   });
 }
 

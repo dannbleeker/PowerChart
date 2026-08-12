@@ -7,7 +7,7 @@ import { layoutButterfly } from "../src/core/layout/butterfly";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import type { ChartConfig } from "../src/core/types";
 import type { RectNode, TextNode } from "../src/core/scene";
-import { dataToSheet, sheetToData, transposeSheet } from "../src/taskpane/datasheet";
+import { dataToSheet, evaluateFormula, sheetToData, transposeSheet } from "../src/taskpane/datasheet";
 
 const rects = (nodes: { kind: string }[]) => nodes.filter((n): n is RectNode => n.kind === "rect");
 const byName = (nodes: { name?: string }[], prefix: string) => nodes.filter((n) => n.name?.startsWith(prefix));
@@ -225,6 +225,57 @@ describe("datasheet special rows and transpose", () => {
     ]);
     // Transposing back is the identity, formulas included.
     expect(transposeSheet(t).cells[3]).toEqual(["Total", "=SUM(B2:B3)", "=SUM(C2:C3)"]);
+  });
+
+  it("a whole-column sum keeps its number across a transpose", () => {
+    // `=SUM(B2:B999)` is what an Excel user types to total a column without
+    // counting its rows, and this engine evaluates it correctly (the range
+    // clamps to the grid). Transposing it produced `=SUM(B2:ALK2)` — a THREE
+    // letter column, which no pattern in the evaluator could match — so the
+    // formula silently evaluated to nothing and the Total column went blank.
+    //
+    // The cause was that the grid's two coordinate spaces were different sizes:
+    // rows ran to 999 and columns stopped at ZZ, so a row above 702 had no
+    // column to become. It is not enough for a reference to MOVE correctly; the
+    // destination has to be sayable.
+    const sheet = {
+      cells: [
+        ["", "Q1", "Q2", "Total"],
+        ["North", "10", "20", "=SUM(B2:B999)"],
+        ["South", "30", "40", "=SUM(B3:B999)"],
+      ],
+    };
+    // The whole B column: 10 + 30. Holds either side of the fix — it is the
+    // premise, not the guard.
+    expect(evaluateFormula(sheet.cells, "SUM(B2:B999)")).toBe(40);
+    const t = transposeSheet(sheet);
+    const moved = t.cells[3][1];
+    expect(moved).toBe("=SUM(B2:ALK2)");
+    // The guard: the same number, out of the moved formula.
+    expect(evaluateFormula(t.cells, moved.slice(1))).toBe(40);
+    // …and it still says the same thing after a round trip.
+    expect(transposeSheet(t).cells[1][3]).toBe("=SUM(B2:B999)");
+  });
+
+  it("leaves a reference it cannot express alone rather than moving part of it", () => {
+    // The reference pattern used to match a PREFIX of a longer token. `A1000`
+    // matched as "A100", which the evaluator choked on (leftover "0") and
+    // answered null for — while the transposer rewrote just that prefix and left
+    // the digit behind, so `=A1000` came back as `=CV10`: a real cell holding a
+    // real number where the user had a blank. Wrong in a worse direction than
+    // blank is.
+    const grid = [
+      ["", "a", "b"],
+      ["S", "7", "8"],
+      ["T", "9", "1"],
+    ];
+    for (const f of ["=A1000", "=ZZZ1", "=SUM(A1:ZZZ9)"]) {
+      expect(transposeSheet({ cells: [[f]] }).cells[0][0], `${f} was rewritten`).toBe(f);
+      expect(evaluateFormula(grid, f.slice(1)), `${f} became readable`).toBeNull();
+    }
+    // A reference INSIDE the address space still moves, so the guard above is
+    // not simply "never rewrite anything".
+    expect(transposeSheet({ cells: [["=B999"]] }).cells[0][0]).toBe("=ALK2");
   });
 });
 
