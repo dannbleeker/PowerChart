@@ -260,3 +260,38 @@ describe("a date label that cannot be computed", () => {
     expect(svg).not.toContain("undefined");
   });
 });
+
+/**
+ * A day that does not EXIST in its month is not a date.
+ *
+ * `Date.UTC` and `Date.parse` normalise rather than refuse, so `Feb 29 2023` —
+ * a plausible mistake about a leap year — came back as 1 March 2023, and
+ * `Apr 31` as 1 May. On a Gantt row that is a task silently starting a month
+ * late, with nothing in the chart or the log to say so.
+ *
+ * The parser was already inconsistent about it: `Jan 32 2024` was refused,
+ * because 32 is not a day number at all, while `Apr 31` was accepted and
+ * quietly moved.
+ */
+describe("a date that does not exist", () => {
+  it("is refused rather than rolled into the next month", () => {
+    expect(parseDateToken("Feb 29 2023"), "a non-leap 29 February became 1 March").toBeNull();
+    expect(parseDateToken("Apr 31 2024"), "31 April became 1 May").toBeNull();
+    expect(parseDateToken("2024-02-30"), "an ISO 30 February became 1 March").toBeNull();
+    expect(parseDateToken("30.02.2024"), "a dotted 30 February became 1 March").toBeNull();
+    expect(parseDateToken("Sep 31"), "31 September became 1 October").toBeNull();
+  });
+
+  it("still parses every real date, including the leap day", () => {
+    // The other half, or the rule above would be satisfied by refusing
+    // everything — and this parser's whole job is to say yes to a date cell.
+    expect(parseDateToken("Feb 29 2024"), "the leap day was refused").not.toBeNull();
+    expect(parseDateToken("29.02.2024"), "the dotted leap day was refused").not.toBeNull();
+    expect(parseDateToken("2024-02-29")).not.toBeNull();
+    expect(parseDateToken("Apr 30 2024")).not.toBeNull();
+    // Forms that name no unambiguous day, or none at all, are untouched.
+    expect(parseDateToken("Jan-24"), "the mmm-yy form stopped parsing").not.toBeNull();
+    expect(parseDateToken("2024-01-15T10:00:00Z"), "an ISO date-time stopped parsing").not.toBeNull();
+    expect(parseDateToken("15 Jan 2024")).toBe(parseDateToken("Jan 15 2024"));
+  });
+});

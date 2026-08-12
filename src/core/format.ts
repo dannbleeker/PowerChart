@@ -371,6 +371,34 @@ export function parseDateToken(raw: string): number | null {
       // still need the UTC anchor to avoid local-timezone drift.
       Date.parse(/^\d{4}-\d{2}(-\d{2})?([T ][\d:.]+([Zz]|[+-]\d{2}:?\d{2})?)?$/.test(t) ? t : `${t} UTC`);
   if (!Number.isFinite(ms)) return null;
+  // A day that does not EXIST in its month is not a date, and until now it
+  // silently became one in the next month.
+  //
+  // `Date.UTC` and `Date.parse` both normalise rather than refuse, so
+  // `Feb 29 2023` — a plausible mistake about a leap year — came back as
+  // 1 March 2023, and `Apr 31` as 1 May. On a Gantt row that is a task
+  // silently starting a month late, with nothing to say so. The parser was
+  // already inconsistent about it: `Jan 32 2024` is refused, because 32 is not
+  // a day number at all, while `Apr 31` was accepted and moved.
+  //
+  // Checked only where the token names a day UNAMBIGUOUSLY — the ISO and
+  // dotted forms, and a month-word form carrying exactly one one-or-two-digit
+  // number. Anything looser is left alone rather than guessed at, which is the
+  // same rule the shape gates above follow.
+  const asked = dmy
+    ? Number(dmy[1])
+    : (/^\d{4}-\d{2}-(\d{2})(?:[T ]|$)/.exec(t)?.[1] ??
+      // Only a token that NAMES its month in words can have its single
+      // one-or-two-digit number read as a day. Without that condition
+      // `2025-12` — a year-month category label, which the line chart spaces
+      // proportionally — had its `12` taken for a day, compared against the
+      // 1st that `Date.parse` returns for it, and was refused as a date; the
+      // chart then fell back to even spacing. Caught by `line.test.ts`, which
+      // is why the whole suite runs before anything is believed.
+      (/[A-Za-z]/.test(t)
+        ? ((m) => (m && m.length === 1 ? m[0] : undefined))(t.match(/(?<!\d)\d{1,2}(?!\d)/g))
+        : undefined));
+  if (asked != null && new Date(ms).getUTCDate() !== Number(asked)) return null;
   // Floor, not round: a token carrying a time of day at/after 12:00 would round UP
   // to the next calendar day. Bare dates are exact midnights, so this is a no-op
   // for them.
