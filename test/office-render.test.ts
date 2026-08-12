@@ -33,6 +33,8 @@ import {
   updateChartsInSlides,
   withSlideDeselected,
   slideHoldsOnlyChart,
+  shapesDrawnOn,
+  replacedShapeCount,
   getSlideShapeBounds,
   _setSelectionTimeoutForTest,
   replaceSlideWithDeck,
@@ -865,9 +867,87 @@ describe("looking away while a chart redraws", () => {
 
   it("still allows the swap on a slide it CAN corroborate as empty", async () => {
     // The gate has to stay usable, or the fallback it guards is dead code. A
-    // bare slide, honestly read, is still a yes.
+    // bare slide this run never drew on, honestly read, is still a yes.
     installHost([makeSlide("s1")]);
     expect(await slideHoldsOnlyChart("s1")).toBe(true);
+  });
+
+  /**
+   * The case the corroboration above cannot see: both signals agreeing at ZERO.
+   *
+   * The test before this one arms `hollowNameReads`, where the collection reads
+   * empty and `getCount()` still says two — a disagreement, which
+   * `slideShapeNames` catches. Round `957aca0` produced the other shape: the
+   * collection AND the count both answered zero for a slide holding a shape
+   * named `PowerChart`. Nothing in the answer distinguishes that from a bare
+   * slide, so the gate has to decide on something that is not the answer.
+   *
+   * `shapesDrawnOn` is that something, and it splits along the pathology's own
+   * line — this host does not list the shapes a run just added. A slide this
+   * run drew on cannot credibly read empty, and this gate deletes the slide it
+   * says yes to.
+   */
+  it("refuses the swap when a slide reads empty AFTER this run drew on it", async () => {
+    // A slide id nothing else in this file uses: `shapesDrawnOnSlide` is a
+    // per-RUN total and is not reset between tests, so a shared `s1` would
+    // carry every earlier draw into this one. Same reason as the counter tests
+    // at the bottom of this file.
+    installHost([makeSlide("swap-drawn-on")]);
+    // Draw a chart onto the slide, so the run's own bookkeeping says shapes
+    // went there — via the ordinary insert path, not by reaching into the
+    // counter, or the test would be asserting against its own fixture.
+    const scene = buildChart(sampleConfig("clustered"));
+    await insertSceneIntoSlide(scene, { slideId: "swap-drawn-on" });
+    expect(
+      shapesDrawnOn("swap-drawn-on"),
+      "the insert drew nothing, so the premise of this test is missing",
+    ).toBeGreaterThan(0);
+    // Now the host stops listing that slide — both signals, both zero.
+    faults.slideReadsEmpty = "now";
+    try {
+      expect(
+        await slideHoldsOnlyChart("swap-drawn-on"),
+        "believed an empty read on a slide this run had drawn on, and offered to delete it",
+      ).toBe(false);
+    } finally {
+      faults.slideReadsEmpty = null;
+    }
+  });
+
+  /**
+   * …and the swap comes BACK once the run has taken its shapes off again.
+   *
+   * The refusal above must not cost the case the empty branch exists for: a
+   * redraw that stalled, whose litter the caller sweeps immediately before
+   * asking this question, on a slide that held nothing but the chart. That run
+   * has a net contribution of zero, there are no run-added shapes for the host
+   * to be blind about, and its empty read is an answer again.
+   *
+   * Both halves come from one subtraction — `deleteShapesById` gives the count
+   * back what it sweeps — so this is the guard that would catch the decrement
+   * being dropped, which the test above cannot see.
+   */
+  it("allows the swap again once the run has swept the shapes it drew", async () => {
+    const slide = makeSlide("swap-swept");
+    installHost([slide]);
+    const scene = buildChart(sampleConfig("clustered"));
+    const target = await insertSceneIntoSlide(scene, { slideId: "swap-swept" });
+    const ids = slide.created.filter((s) => !s.deleted).map((s) => s.id);
+    expect(target, "the insert produced no target").toBeTruthy();
+    expect(ids.length, "nothing was drawn, so the sweep below would prove nothing").toBeGreaterThan(0);
+    const swept = await deleteShapesById("swap-swept", ids);
+    expect(swept, "the sweep removed nothing").toBe(ids.length);
+    expect(shapesDrawnOn("swap-swept"), "the sweep did not give the slide's count back").toBe(0);
+    // The host is still refusing to list the slide — and now that is the truth.
+    faults.slideReadsEmpty = "now";
+    try {
+      expect(
+        await slideHoldsOnlyChart("swap-swept"),
+        "refused a swept slide, which is the case the fallback is for",
+      ).toBe(true);
+    } finally {
+      faults.slideReadsEmpty = null;
+    }
   });
 
   /**
@@ -4143,6 +4223,63 @@ describe("what the per-slide shape counter counts", () => {
     } finally {
       setTracing(false);
     }
+  });
+
+  /**
+   * A redraw is not an addition, and for a round this counter said it was.
+   *
+   * The field answers "how much has this run already put here" and feeds two
+   * readers that both take it as the slide's size: `leastLoadedChart`, which
+   * spreads the battery's draws, and every hand reading of the per-slide cost
+   * curve. A chart redrawn in place deletes twenty-four shapes and adds
+   * twenty-four — the slide does not change size — and the counter went up by
+   * twenty-four each time.
+   *
+   * Round `957aca0` is the measurement. Slide 257's counter reached **92**
+   * across three redraws of the deck-wide rescale, while the deck inventory
+   * taken at the end of that run shows the slide holding **3** shapes. The
+   * numbers looked perfectly healthy, which is the same way `onSlideKey`'s
+   * pooling bug looked healthy, and they were describing no slide in the deck.
+   */
+  /**
+   * The decision behind that, checked on both branches without a PowerPoint.
+   *
+   * The behavioural test above only ever exercises the second one: the fake
+   * groups, so its redraw makes a single `delete()` call and the parts list is
+   * empty. An ungrouped chart — the case this host actually produces — takes
+   * the first branch, and nothing else here would notice it inverting.
+   */
+  it("reads a redraw's delete calls as shapes only when they enumerate the chart", () => {
+    // The parts tag listed the chart: 24 calls went out, 24 shapes came off.
+    expect(replacedShapeCount(24, 24), "an enumerated delete was not believed").toBe(24);
+    expect(replacedShapeCount(24, 9), "an enumerated delete was overridden by the redraw's size").toBe(24);
+    // One call: a group went, and its children are not knowable from here. The
+    // chart going back is the best estimate of the chart that left.
+    expect(replacedShapeCount(1, 24), "a group's children were counted as one shape").toBe(24);
+    // …and one call for a chart that really was one shape still nets to zero
+    // against a same-size redraw, which is the point.
+    expect(replacedShapeCount(1, 1)).toBe(1);
+  });
+
+  it("does not count a redraw as if it had added the shapes again", async () => {
+    installHost([makeSlide("counter-redraw")]);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg), slideId: "counter-redraw" });
+    const afterInsert = shapesDrawnOn("counter-redraw");
+    expect(afterInsert, "the insert drew nothing").toBeGreaterThan(0);
+
+    const found = (await listChartsInDeck()).charts;
+    expect(found.length, "the chart did not land").toBe(1);
+    await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: JSON.stringify(cfg) } }]);
+
+    // The slide holds one chart before and one chart after, so the run's net
+    // contribution has not moved. Exact, not "less than double": a decrement
+    // that gave back the wrong number would still beat a doubling.
+    expect(
+      shapesDrawnOn("counter-redraw"),
+      `a redraw of the same chart moved the slide's count from ${afterInsert}, so it is counting deleted shapes`,
+    ).toBe(afterInsert);
   });
 });
 

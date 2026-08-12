@@ -71,13 +71,22 @@ describe("the fake, against the real host it stands for", () => {
 
   it("gives a reason for each one, not a placeholder", () => {
     // "We have not looked into it" is not a reason; an entry like that is a
-    // to-do wearing a passing test's clothes. Two shapes are allowed, and both
-    // say something a reader can act on: a different host on purpose, or an
-    // answer known to be about the probe and re-asked.
+    // to-do wearing a passing test's clothes. Three shapes are allowed, and all
+    // three say something a reader can act on: a different host on purpose, an
+    // answer known to be about the probe and re-asked, or NO CALLER — the fake
+    // is knowingly the optimistic side and nothing in the repo depends on it.
+    //
+    // The third was added for `binding-names-shape-later`, where the host
+    // rejects the batch that carries a binding and the fake says it works.
+    // Teaching the fake to poison a batch would be fiction with nothing to
+    // protect, since no code here makes a binding — but the divergence still
+    // has to be declared, because the fake being the optimistic one is the
+    // direction that misleads, and the entry is what a future reader reaching
+    // for bindings finds first.
     for (const [id, why] of Object.entries(KNOWN_DIVERGENCES) as [string, string][]) {
       expect(why.length, `${id} is declared with no reason`).toBeGreaterThan(40);
       expect(
-        /WITHDRAWN|models a DIFFERENT host|models the host|happy path/i.test(why),
+        /WITHDRAWN|models a DIFFERENT host|models the host|happy path|no caller/i.test(why),
         `${id}'s reason does not say WHY the divergence is allowed to stand`,
       ).toBe(true);
     }

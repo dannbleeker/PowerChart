@@ -619,7 +619,32 @@ const explodePicture: Scenario = async (prefix) => {
   // The id delta has neither problem. It is one shape when a picture lands
   // beside anything at all, and it is N when the renderer falls through to
   // native shapes.
-  const after = await slideShapeList(pictured.slideId);
+  const afterRead = await slideShapeList(pictured.slideId);
+  // An EMPTY read of a slide this run has just drawn on is the host refusing,
+  // not the slide being empty — and the difference is a verdict claiming data
+  // loss that did not happen.
+  //
+  // Round `957aca0` is the case. This scenario reported `the collapse added 0
+  // shapes (none) — the slide went from 1 to 0`, and the deck inventory taken
+  // at the end of the same run shows that slide holding one shape named
+  // `PowerChart`. The chart never moved. `slideShapeList` is careful — it
+  // corroborates `items` against `getCount()` and answers null when they
+  // disagree — but here BOTH said zero, so nothing downstream could tell.
+  // That is a hole in the corroboration rather than in this scenario: the two
+  // signals can agree at zero and both be wrong.
+  //
+  // The floor argument is what makes this safe. `pictured` is non-null, so the
+  // update handed back a target naming a shape it believes exists; a slide
+  // cannot hold nothing while an operation that just reported success says
+  // otherwise. Routed into the SAME path the scenario already has for "the
+  // host would not say", which continues to the config round-trip below rather
+  // than claiming anything about a picture.
+  const after = afterRead && afterRead.length === 0 && before && before.length > 0 ? null : afterRead;
+  if (afterRead && after === null)
+    trace("selftest", "the slide read back EMPTY right after the collapse — not believing it", {
+      slide: pictured.slideId,
+      was: before?.length,
+    });
   const delta =
     before && after
       ? {

@@ -253,6 +253,18 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   recording a coin-toss as a recording. Clearing the arithmetic makes a swap
   permitted, not obligatory.
 
+  **SWAPPED on 2026-08-12 to `957aca0`, the first sheet since these rules were
+  written that made it obligatory rather than merely permitted.** It answers
+  more than the sheet it replaced, loses no ANSWER, and puts a question that
+  twelve attempts across nine rounds had never reached
+  (`binding-names-shape-later`). The three things it moved are each a retirement
+  rather than a coin: that question came off `PENDING_QUESTIONS` with a real
+  answer, `scratch-slides-returned` came off `KNOWN_DIVERGENCES` because the
+  clean-up it was waiting for now works, and `grouped-child-by-id-from-slide`
+  reported its own setup failure in a word the gate understands instead of
+  inventing one. Read the fixture's `build`, not this paragraph — the sentence
+  above says so and it has been wrong before.
+
 - **The office-js tracker is swept weekly** by
   `.github/workflows/office-js-watch.yml`, which reports only issues touching
   APIs this repo calls that are not yet in `KNOWN_ISSUES`
@@ -418,6 +430,15 @@ deckNow: 71}` then `swept: 68`. The round left the owner **8 slides, 2 of them
   `stillListed: 0 of 68` again, so the by-id finding reproduces and the sweep is
   not papering over an intermittent fault — it is the only mechanism that works
   here.
+
+  **Clean on 2026-08-12 (`957aca0`): `69 of 69 scratch slide(s) deleted … 69
+removed by a positional sweep after delete-by-id took none`, and the deck it
+  left holds SEVEN slides, none of them blank.** No leftovers at all this time,
+  where the round before left two — and the two were never a flaw in the clamp,
+  only the price of an add the run could not claim, which this round did not
+  have. `scratch-slides-returned` therefore answered `all` and came OFF
+  `KNOWN_DIVERGENCES`, exactly as that entry's own text said it should ("this
+  entry stays until the clean-up is fixed"). The clean-up is fixed.
 
 - **`getItemOrNullObject` is not the last word on whether a slide exists.**
   PowerPoint on the web resolved a freshly-added slide's id once and refused it
@@ -974,6 +995,14 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   ordered late is measurably harder to pass than the same scenario ordered
   early, and no round before this one could see that.
 
+  **Read those counts as an upper bound, not as the slide's contents.**
+  `onSlide` counts what this run DREW and is never decremented, so a chart
+  redrawn in place adds its whole node count again while the slide stays the
+  same size — 92 on the counter against 3 in the deck inventory, in round
+  `957aca0`. The battery's climb above is mostly genuine (its scenarios insert
+  rather than redraw) but the deck-wide rescale's is not, and the
+  `FAST IS THE BROKEN MODE` gotcha carries the case that turns on it.
+
   The slide-sharing is deliberate and the reason is good: `chartIsVisible` must
   never rasterise a slide the run just added. Sharing a slide that is not the
   BUSIEST one costs nothing, and `leastLoadedChart` is that: every scenario that
@@ -991,6 +1020,13 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   on the worst slide against 120. The fake spreads more than the real host does
   to begin with (its probe charts land one per slide, where the real deck had
   nine on one), so that understates the effect rather than overstating it.
+
+  **It landed and it worked on the real host** (2026-08-12, `957aca0`). The
+  round's loads read **96, 45, 44, 24, 20, 20** across six slides, against 165
+  on one slide the round before — and the round went from two draw stalls to
+  one. At ~+0.44s per shape present, taking the worst slide from 165 to 96 is
+  about thirty seconds of overhead off the busiest draw, which is the difference
+  between sitting inside `BATCH_TIMEOUT_MS` and not.
 
 - **A field can be recorded on both populations and STILL be useless, if it is
   rarely populated.** `onSlide` — how many shapes this run had already put on
@@ -1187,6 +1223,47 @@ chart on the visible slide` drew at 3.0s and 4.8s, passed, round-tripped its
   quiet a chart later. Do not read a fast batch as broken; read a flip as
   broken.
 
+  **Round `957aca0` (2026-08-12) put a second candidate under the flip, and it
+  cannot yet be chosen between — do not reason about it, and do not build on
+  either.** The rescale's batch lines finally carry `chart`, `onSlideKey` and
+  `prevBatchMs` together, and they say:
+
+      chart 1/8   slide 257   17714 18726 ms   SLOW
+      chart 2/8   slide 257   17840 17250 ms   SLOW
+      chart 3/8   slide 257   21097 16643 ms   SLOW
+      chart 4/8   slide 258    4674  5506 ms   fast
+      chart 5/8   slide 259    3783  5263 ms   fast
+      chart 6/8   slide 260    3300  5163 ms   fast
+
+  The flip at chart 3/4 is exactly the point where the charts stop sharing one
+  slide and start having one each. It is also, in the same round, the point
+  where grouping stops surviving — so **the slide and the collection's health
+  change together**, and one round cannot say which the clock is following.
+
+  What it DOES kill is elapsed time, again and from a new direction: the fast
+  charts run at 395-434s and the slow ones at 242-381s, so the LATER draws are
+  the quick ones inside a single scenario.
+
+  **The measurement that would separate them is not available yet, because
+  `onSlide` is not what its readers think it is.** It counts what this run has
+  DRAWN on a slide and is never decremented, so a chart redrawn in place adds
+  24 to it every time while the slide's real contents do not move: slide 257's
+  counter reached **92** in this round, and the deck inventory at the end of the
+  same run shows that slide holding **3** shapes. Every reading of "shapes
+  already on the slide" taken from this field on an UPDATE path is therefore
+  inflated — including the +0.44s/shape slope, whose own source (the rasterise
+  arms) happens to be an add-only path where the field is honest.
+
+  **The counter is net now, so the next round answers this.** Both places the
+  run takes its own shapes off a slide give the count back — the redraw's
+  delete and `deleteShapesById`'s stray sweep — and `replacedShapeCount` is the
+  part that is not arithmetic: deleting a GROUP removes its children in one
+  call, and a grouped chart's parts tag does not list them, so the call count
+  says 1 for a chart that occupied twenty-four. It uses the calls when they
+  enumerate the chart and the size of the chart going back when they do not, so
+  a same-size redraw nets to zero. Read the next round's `onSlide` on the
+  rescale against the deck inventory; if they agree, the flip is answerable.
+
   **The friction is astonishingly local.** That round logged 15 errors in 818
   seconds and **14 of them belong to `same scale across the deck`** (14
   idRefusals, 4 emptyReReads); one to `stop a run part-way`; every other
@@ -1331,6 +1408,33 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   same minute. The count is right and the list is empty. That is why every
   collection read in this repo has to be corroborated against the slide's own
   count (`slideShapeNames`) rather than believed.
+
+  **And the corroboration has a hole, found on 2026-08-12 (`957aca0`): both
+  signals can agree AT ZERO, and both be wrong.** `explode a degraded picture`
+  read the slide it had just drawn on and reported `the collapse added 0 shapes
+(none) — the slide went from 1 to 0`, while the deck inventory taken at the end
+  of the same run shows that slide holding one shape named `PowerChart`. The
+  chart never moved. `slideShapeList` did exactly what this paragraph asks —
+  loaded `items/id,items/name`, called `getCount()`, compared them — and got
+  zero from both, so its return value could not carry the doubt.
+
+  The consequence is that **an empty read is not evidence of an empty slide**,
+  and every caller has to decide that for itself from something outside the
+  collection. Two do now. The scenario has a floor argument: an update that
+  just handed back a target cannot have drawn onto a slide holding nothing.
+  `slideHoldsOnlyChart` — the gate that authorises DELETING the user's slide —
+  uses `shapesDrawnOn`, which splits along this pathology's own line: the host
+  does not list the shapes a run just ADDED, so a zero on a slide this run drew
+  on is the refusal, and a zero on a slide it never touched is an answer. That
+  keeps the bare-slide case the swap fallback exists for while refusing the case
+  that would replace a logo, a title and the speaker notes with a generated
+  slide carrying none of them.
+
+  `faults.slideReadsEmpty` is the fake being this host, with two arming times.
+  The later one (`"after-a-picture"`) is not decoration: armed from the first
+  read it starves `probeCharts`, the scenario skips for want of a chart, and the
+  guard passes against the unfixed build.
+
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not
   take other scenarios' verdicts — and it still cost every round, because the
@@ -1428,6 +1532,22 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
   chart is visible" verdict on record is worth nothing; if the control comes
   back clean, this gate finally means what it has been claiming for six rounds.
   One extra call on a slide the run has already rasterised safely.
+
+  **The control ran on 2026-08-12 (`957aca0`) and came back CLEAN, so the gate
+  means what it says.** No `proves NOTHING` caveat in the verdict: two renders
+  of the unchanged slide were identical, this rasteriser is deterministic, and
+  the difference a drawn chart produces is the chart. Six rounds of verdicts are
+  retrospectively worth what they claimed.
+
+  **And the same round explains the thin deltas without any of the mechanisms
+  this paragraph guessed at.** It reported `9052 → 10864 bytes, +1812, 20%` —
+  twenty percent, against the 0.7-0.8% of the three `+108` rounds — and the
+  variable is the SLIDE, not the rasteriser and not the encoder. The `+108`
+  rounds drew onto the battery's overloaded slide, where a chart is a small
+  addition to a crowded picture; this round drew onto a slide the spreading fix
+  had kept light. A thin delta is a crowded slide, and the flag is worth keeping
+  for exactly that reason: it reports how much of the picture the chart is, on a
+  gate whose whole subject is whether a human would see it.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
@@ -1540,6 +1660,21 @@ What is left needs the owner, not the agent:
   broke within a day of being written: it said "nine down to one" and a probe
   added on 2026-08-09 (`binding-names-shape-later`) made it two.
   _edit the chart YOU click_ came off this list on 2026-08-08 — it PASSED.
+
+  **Bindings are not the way out of the id refusals — asked and answered on
+  2026-08-12 (`957aca0`).** The idea was that a binding made from the live Shape
+  proxy inside the batch that created it needs neither an id round trip nor a
+  collection read, so `settleAndTagChart` would have a route that does not go
+  through the `ShapeCollection.getItem(id)` every 5010 comes from. The host
+  answers `commit-threw`: it REJECTS the batch carrying the binding
+  (`ErrorPointer`). It counts as an answer rather than as one more bad minute
+  because the probe's control arm committed the same batch WITHOUT a binding
+  seconds earlier and it landed — which is exactly what that arm was added for,
+  after an earlier round produced the same signal with nothing to compare it to.
+  The reading now lives in `KNOWN_DIVERGENCES`, where the fake is deliberately
+  left saying `yes`: nothing here makes a binding, so there is no caller to
+  protect, and the entry's job is to be what the next person reaching for
+  bindings finds first.
 
   **A never-asked answer is not an answer, and the gate used to think it was.**
   `no-scratch-slide` and `no-scratch-shape` mean the run could not put the
