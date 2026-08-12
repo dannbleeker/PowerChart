@@ -934,6 +934,14 @@ actually visible` and `what makes a long run slow down` each spent four rounds
   costs a whole round; this arrives every time the battery runs. If the curve is
   ever in doubt again, read these three numbers before scheduling anything.
 
+  **The SLOPE reproduces and the INTERCEPT does not.** Round `393e6e4`
+  (2026-08-12) puts `onSlide 24 → 9.7s, 31 → 11.5s, 38 → 16.5s` — +0.49s per
+  shape, within a tenth of the figure above, on less than half the absolute
+  cost. So "+0.44s per shape" travels between rounds and "a seven-shape draw
+  costs 23s" does not; quote the slope, never the level. These arms are an
+  add-only path, which is the one place `onSlide` was honest even before the
+  counter was made net, so the two measurements are comparable.
+
   **Round 15 (`756682e`, 2026-08-11) said POSITION, and that is the design
   earning its keep — and contradicting round 14.** Round 14 reported `every draw
 after a RASTERISE failed and every one after a cheap read landed, interleaved
@@ -966,6 +974,15 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
 
   Same predecessor, both populations, 200 seconds apart in one round. Every
   candidate stays dead.
+
+  **Rounds `957aca0` and `393e6e4` (2026-08-12) are the fourth and fifth "no
+  pattern", so STOP READING THIS CONTROL as an open question.** Twenty arms
+  across five counterbalanced rounds; the only rounds that ever said otherwise
+  are 14 and 15, which said opposite things. The control stays because it is
+  four cheap draws that double as cost-curve points, not because the question is
+  live. `393e6e4` also supplied yet another distinct stall predecessor —
+  `writing the chart's origin tag` — which is simply one more name on a list
+  that has never predicted anything.
 
   **The one genuinely new number is that `idleMs=14108`, and it does not bring
   the gap back.** It is seven times the largest gap ever recorded on a surviving
@@ -1058,6 +1075,36 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   diagnostic starts reporting the shape you expected, check what it is keyed on
   before believing it.
 
+  **The INSERT path was still on the sentinel a round later, and by then the
+  counter had a safety job.** Round `393e6e4` shows every batch of `insert onto
+a slide that already has content` keyed `(visible)` while every other scenario
+  named its slide — the last caller that never filled `slideId` in, and the
+  commonest path in the add-in, since the pane's Insert button names no slide.
+  That is not untidy any more: `slideHoldsOnlyChart` reads this counter to
+  decide whether an empty read of a slide is believable, and it authorises
+  DELETING the user's slide. A chart inserted the ordinary way banked its
+  twenty-four shapes under the sentinel, so `shapesDrawnOn(realId)` answered
+  ZERO for a slide the run had just filled and the guard would have believed the
+  host on exactly the slide it exists to refuse.
+
+  `slideKeyFor` reads the slide's OWN id when the caller named none. It is free
+  — `insertSceneIntoSlide` already queues `slide.load("id")` before the first
+  batch — but only from the SECOND batch, because the first batch's line is
+  written before the sync that answers it. So the first batch's shapes are moved
+  across the moment a real key appears, and only this draw's own shapes move:
+  the sentinel is shared, and taking its whole total would steal another draw's
+  count.
+
+  **That carry-over is the interesting part of the change, because nothing in
+  the fake could make it fail.** The fake answers `slide.id` from the first
+  read, so the key never transitioned and the block was decoration — the exact
+  thing this file has a rule about. `faults.slideIdUnreadableBeforeFirstSync`
+  is the fake being a real host for one window: the id throws
+  `PropertyNotLoaded` until the run's first sync. With it armed the guard fails
+  `expected 14 to be 24` — a ten-shape first batch stranded on the sentinel —
+  and passes with the carry-over in place. Coarser than the real per-property
+  load rule, and enough for the only window that matters.
+
 - **A value recorded only on FAILURES cannot be compared against anything, and
   this project keeps building them.** Four in one session: `idleMs` and
   `afterAnswering` were written on stalls but not on the draws that survived;
@@ -1128,6 +1175,13 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   `partial` on the success line is an INVARIANT now rather than an outcome, and
   is kept for that: it should read 0 forever, and it is the line that will say
   so if a future change puts a short match back.
+
+  **It fired on live data and held on 2026-08-12 (`393e6e4`).** Chart 3 of 7 in
+  the rescale read back `the re-read matched only some of the chart's shapes
+drew=24 matched=10` and refused, leaving the chart whole and ungrouped — and
+  that chart KEPT its config, so the refusal cost nothing that mattered. Every
+  successful group in the round reports `partial: 0`, which is the invariant
+  above saying so out loud for the first time on a real host.
 
 - **A trace may not be NAMED for an outcome it is written before knowing.** The
   per-batch draw line was called `batch committed` and is emitted one statement
@@ -1264,6 +1318,40 @@ chart on the visible slide` drew at 3.0s and 4.8s, passed, round-tripped its
   a same-size redraw nets to zero. Read the next round's `onSlide` on the
   rescale against the deck inventory; if they agree, the flip is answerable.
 
+  **ANSWERED on the next round (`393e6e4`, 2026-08-12), and the answer is
+  GROUPING, not the slide — the paragraph above backed the wrong horse.** The
+  counter fix did what it was for: every chart in the rescale now starts its
+  redraw at `onSlide: 0`, because a redraw replaces a chart and nets to zero.
+  With that variable held flat, the flip is still there:
+
+      chart 1/7   slide 257   onSlide 0   18088 21688 ms   SLOW   GROUPED
+      chart 2/7   slide 257   onSlide 0   19650 19442 ms   SLOW   GROUPED
+      chart 3/7   slide 258   onSlide 0    5323  7507 ms   fast   not grouped
+      chart 4/7   slide 259   onSlide 0    6479  8381 ms   fast   not grouped
+      chart 5/7   slide 260   onSlide 0    6845  9579 ms   fast   not grouped
+      chart 6/7   slide 261   onSlide 0    5072  9665 ms   fast   not grouped
+      chart 7/7   slide 262   onSlide 0    6015 10175 ms   fast   not grouped
+
+  Identical counter, 3.5× spread, and the boundary sits exactly on
+  `grouped the chart's shapes` giving way to `the re-read before grouping came
+back empty`. So the flip follows the COLLECTION, which is what the heading
+  said before the previous round muddied it.
+
+  **The slide reading is not merely unsupported now, it is contradicted.** That
+  round's deck ends with slide 257 — the slow one — holding **3** shapes, and
+  slides 258 and 259 — fast — holding **25** and **52**. The fewest-shapes
+  slide is the slow one, which is the opposite of the crowding account. Round
+  `957aca0` made the two look joined only because its deck happened to put the
+  shared slide and the surviving groups on the same charts; this round's deck
+  separates them and they come apart cleanly.
+
+  **The counter itself checks out where the comparison is fair.** `onSlide`
+  against the deck inventory: slide 258 reads 24 against 25, slide 259 reads 45
+  against 52 (the rasterise arms drew 7 more after the last reading). Slide 257
+  reads 34 against 3 and is NOT a discrepancy — the inventory counts top-level
+  shapes, and grouping collapses twenty-four into one. Only compare these two
+  numbers on a slide whose charts stayed ungrouped.
+
   **The friction is astonishingly local.** That round logged 15 errors in 818
   seconds and **14 of them belong to `same scale across the deck`** (14
   idRefusals, 4 emptyReReads); one to `stop a run part-way`; every other
@@ -1378,6 +1466,18 @@ settled=1 lost=0`. Every previous observation was `settled: 0, lost: 1`, and
   the first. Read the speed flip as the stable one; the losses are a coin the
   settle gets to toss each time, and this round it won six of seven.
 
+  **The index is NOT stable, and 2026-08-12 (`393e6e4`) is the counter-example:
+  the speed flip landed after chart 2.** Five rounds had put it after chart 3,
+  which was enough to write "four rounds, four times" above; the sixth moved it.
+  What did not move is the thing it tracks — grouping — and that round is the
+  one where the two can finally be told apart (see `FAST IS THE BROKEN MODE`).
+  So read the flip as following the collection, and read its INDEX as wherever
+  the collection happened to give way that round. Nothing should key on 3.
+
+  Same round scored **5 of 7** with two settle rescues, both `withId: 1`, which
+  is the most this pass has ever repaired in one round. The stop fired at chart
+  6 of 7 after two consecutive losses, as designed.
+
   **The verdict's wording was wrong on its first outing and is fixed.** One lost
   chart printed `the host flipped at chart 5 of 8` — the word three earlier
   rounds use for a host that degraded and never came back, on the best round on
@@ -1434,6 +1534,16 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   The later one (`"after-a-picture"`) is not decoration: armed from the first
   read it starves `probeCharts`, the scenario skips for want of a chart, and the
   guard passes against the unfixed build.
+
+  **The next round (`393e6e4`) passed the scenario and is NOT evidence the fix
+  works.** `explode a degraded picture` came back `collapsed to a picture and
+exploded back, config intact` — and the trace carries no `the slide read back
+EMPTY right after the collapse` line at all, so the host answered the
+  collection normally and the new branch was never entered. A green scenario on
+  a host having a good minute says nothing about a guard for its bad ones; what
+  says the fix works is the test that goes red without it. Worth stating because
+  the temptation to read the next round as vindication is exactly how this
+  project has misread a round before.
 
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not

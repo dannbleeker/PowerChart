@@ -868,8 +868,15 @@ describe("looking away while a chart redraws", () => {
   it("still allows the swap on a slide it CAN corroborate as empty", async () => {
     // The gate has to stay usable, or the fallback it guards is dead code. A
     // bare slide this run never drew on, honestly read, is still a yes.
-    installHost([makeSlide("s1")]);
-    expect(await slideHoldsOnlyChart("s1")).toBe(true);
+    //
+    // A slide id nothing else in this file uses, for the reason the counter
+    // tests at the bottom give: `shapesDrawnOnSlide` is a per-RUN total and is
+    // not reset between tests, so a shared `s1` carries every earlier draw into
+    // this one — and this gate now reads that counter. It passed under `s1`
+    // only while unnamed draws banked under the `(visible)` sentinel, which is
+    // the bug `slideKeyFor` fixes.
+    installHost([makeSlide("swap-bare")]);
+    expect(await slideHoldsOnlyChart("swap-bare")).toBe(true);
   });
 
   /**
@@ -4241,6 +4248,72 @@ describe("what the per-slide shape counter counts", () => {
    * numbers looked perfectly healthy, which is the same way `onSlideKey`'s
    * pooling bug looked healthy, and they were describing no slide in the deck.
    */
+  /**
+   * An UNNAMED draw must still land on the slide it drew on.
+   *
+   * `opts.slideId` is absent on the ordinary insert — the pane's Insert button
+   * names no slide — so every chart a user adds banked its shapes under the
+   * `(visible)` sentinel and `shapesDrawnOn(realId)` answered zero for a slide
+   * this run had just filled. That is not merely untidy: `slideHoldsOnlyChart`
+   * reads this counter to decide whether an empty read of a slide is
+   * believable, and it authorises DELETING the user's slide. The guard was
+   * defeated on the commonest path in the add-in.
+   *
+   * Round `393e6e4` is where it showed: every batch of `insert onto a slide
+   * that already has content` keyed on `(visible)` while every other scenario
+   * named its slide.
+   */
+  it("counts an unnamed insert against the slide it actually drew on", async () => {
+    installHost([makeSlide("counter-unnamed")]);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    // No slideId — exactly what the pane's Insert button passes.
+    await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg) });
+    expect(
+      shapesDrawnOn("counter-unnamed"),
+      "an unnamed insert did not count against the slide it drew on",
+    ).toBeGreaterThan(0);
+    // And the first batch is not stranded under the sentinel: the whole chart
+    // is accounted for on the real slide, not just the batches after the host
+    // answered the id.
+    expect(shapesDrawnOn("counter-unnamed"), "some of the chart is still banked under the sentinel").toBe(
+      estimateOfficeShapes(scene),
+    );
+    expect(shapesDrawnOn("(visible)"), "shapes were left behind on the sentinel").toBe(0);
+  });
+
+  /**
+   * The half of that which the fake could not otherwise reach.
+   *
+   * On a real host `slide.load("id")` populates nothing until a sync runs, and
+   * the first batch's key is chosen BEFORE that sync — so an unnamed draw's
+   * first ten shapes are banked under `(visible)` and only the rest can name
+   * the slide. `renderShapesChunked` moves them across the moment the host
+   * answers; without that, `onSlide` under-reports by a batch forever and the
+   * sentinel keeps a growing total that describes no slide.
+   *
+   * The fake answers `slide.id` from the first read, so nothing here could
+   * exercise it until `slideIdUnreadableBeforeFirstSync` existed. That is the
+   * point of the fault: a carry-over nothing can make fail is decoration, and
+   * this repo has shipped that before.
+   */
+  it("moves the first batch's shapes across once the host names the slide", async () => {
+    installHost([makeSlide("counter-late-id")]);
+    const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+    const scene = buildChart(cfg);
+    faults.slideIdUnreadableBeforeFirstSync = true;
+    try {
+      await insertSceneIntoSlide(scene, { tagData: JSON.stringify(cfg) });
+    } finally {
+      faults.slideIdUnreadableBeforeFirstSync = false;
+    }
+    expect(
+      shapesDrawnOn("counter-late-id"),
+      "the batches drawn before the host named the slide were left on the sentinel",
+    ).toBe(estimateOfficeShapes(scene));
+    expect(shapesDrawnOn("(visible)"), "the sentinel kept a total that describes no slide").toBe(0);
+  });
+
   /**
    * The decision behind that, checked on both branches without a PowerPoint.
    *

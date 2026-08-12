@@ -183,6 +183,25 @@ export const faults = {
    */
   slideReadsEmpty: null as null | "now" | "after-a-picture",
   /**
+   * A slide whose `id` is not readable until this run's first sync has
+   * answered — which is what a real host does, and what the fake does not.
+   *
+   * `slide.load("id")` populates nothing until a `context.sync()` runs, so code
+   * that resolves a slide and reads its id in the same breath gets
+   * `PropertyNotLoaded` on the web and a plain string here. The fake's slide
+   * object doubles as the fixture tests assert against (`deck.map(s => s.id)`),
+   * so this cannot be the default for the same reason `strictShapeReads`
+   * cannot: it would fail hundreds of tests on their own reads rather than on
+   * the code under test.
+   *
+   * Keyed on the run's first sync rather than on per-property load tracking.
+   * That is coarser than the real rule and enough for the thing it exists to
+   * prove: the window where a draw has begun and the host has not yet named its
+   * slide, which is where `renderShapesChunked`'s first batch lives and where
+   * its shape count would otherwise be stranded on the `(visible)` sentinel.
+   */
+  slideIdUnreadableBeforeFirstSync: false,
+  /**
    * The same short answer, on an `items/name` load.
    *
    * A real host does not care which properties were asked for — a collection
@@ -1105,6 +1124,8 @@ function nullObjectProxy<T extends object>(found: T | undefined) {
 }
 
 export function makeSlide(id: string) {
+  // Reassignable: the `id` accessor installed at the end of this function reads
+  // and writes it, so the property keeps behaving like the plain field it was.
   const created: FakeShape[] = [];
   // Shapes queued since the last successful sync. On success the pending list
   // is cleared (they're committed). On a failed sync the fake removes them
@@ -1115,6 +1136,10 @@ export function makeSlide(id: string) {
   const pending: FakeShape[] = [];
   const slideTagStore = new Map<string, string>();
   const slide = {
+    // Plain data by default; a throwing getter only when a test arms
+    // `slideIdUnreadableBeforeFirstSync`. Defined below with
+    // `Object.defineProperty` so the default stays an own enumerable value and
+    // nothing about spreading or JSON-ing a slide changes.
     id,
     created,
     pending,
@@ -1453,6 +1478,25 @@ export function makeSlide(id: string) {
       },
     },
   };
+  // See `faults.slideIdUnreadableBeforeFirstSync`. Installed unconditionally
+  // and gated inside, so a test can arm the fault after the deck is built; the
+  // getter is a plain read-through in every other case.
+  Object.defineProperty(slide, "id", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      if (faults.slideIdUnreadableBeforeFirstSync && syncsInContext === 0)
+        throw new Error(
+          "The property 'id' is not available. Before reading the property's value, call the load " +
+            'method on the containing object and call "context.sync()" on the associated request context. ' +
+            "| code=PropertyNotLoaded | errorLocation=Slide.id",
+        );
+      return id;
+    },
+    set(v: string) {
+      id = v;
+    },
+  });
   return slide;
 }
 
@@ -2227,6 +2271,7 @@ export function installHost(
   faults.hollowReadsAfter = null;
   faults.readsMissing = 0;
   faults.slideReadsEmpty = null;
+  faults.slideIdUnreadableBeforeFirstSync = false;
   pictureLanded = false;
   faults.selectedSlideIdAs = null;
   faults.hollowNameReads = 0;

@@ -553,6 +553,26 @@ export function replacedShapeCount(deleteCalls: number, redrawnShapes: number): 
 }
 
 /**
+ * Which slide a draw's shapes should be counted against.
+ *
+ * `opts.slideId` when the caller named one. Otherwise the slide's OWN id, if
+ * the host has answered it — `insertSceneIntoSlide` queues `slide.load("id")`
+ * before the first batch, so every batch after the first can have it for free.
+ * `(visible)` only when neither is available, which is the first batch of an
+ * unnamed draw and any caller that never queued the load.
+ *
+ * Read through `loadedValue` because an unloaded property THROWS
+ * `PropertyNotLoaded` on access rather than answering undefined, and a counter
+ * must never be able to take a draw down with it. An empty-string id is
+ * rejected for the same reason a null one is: it is not a slide.
+ */
+export function slideKeyFor(opts: InsertOptions, getSlide: SlideThunk): string {
+  if (opts.slideId) return opts.slideId;
+  const id = loadedValue(() => (getSlide() as unknown as { id?: string }).id);
+  return typeof id === "string" && id ? id : "(visible)";
+}
+
+/**
  * How many shapes THIS RUN has already drawn on a slide.
  *
  * Exported so a caller can avoid the slide it has been filling. Drawing cost on
@@ -6867,6 +6887,13 @@ async function renderShapesChunked(
   let batchNo = 0;
   /** The previous batch's sync duration — the number differencing could not give. */
   let prevBatchMs: number | undefined;
+  /**
+   * How much THIS call has banked, and where — so the sentinel's first-batch
+   * shapes can be moved onto the real slide key once the host names it, without
+   * moving another draw's shapes that happen to sit under the same sentinel.
+   */
+  let bankedHere = 0;
+  let bankedUnder: string | undefined;
   while (s < steps.length) {
     // The stop check, and the only place it can honestly go: batches already
     // committed are on the slide and a sync in flight cannot be recalled, so
@@ -6983,7 +7010,38 @@ async function renderShapesChunked(
     // line, which is the only reason it was caught rather than plotted; the
     // update path names the slide now (`it.target.slideId`), so the counter is
     // per-slide there as it always claimed to be.
-    const slideKey = opts.slideId ?? "(visible)";
+    //
+    // …and the INSERT path was still on the sentinel, which is worse than
+    // untidy. `slideHoldsOnlyChart` reads this counter to decide whether an
+    // empty read of a slide is believable, and it authorises deleting the
+    // user's slide. A chart inserted the ordinary way — the pane's Insert
+    // button, no id — banked its twenty-four shapes under `(visible)`, so
+    // `shapesDrawnOn(realId)` answered ZERO for a slide this run had just
+    // filled, and the guard would have believed the host's empty read on
+    // exactly the slide it was written to refuse. Round `393e6e4` is where that
+    // showed: every batch of `insert onto a slide that already has content`
+    // keyed on the sentinel while every other scenario named its slide.
+    //
+    // The id is free. `insertSceneIntoSlide` already queues `slide.load("id")`
+    // before the first batch, so from the second batch on the host has answered
+    // it — `slideKeyFor` reads it through `loadedValue`, because a caller that
+    // did not queue the load throws `PropertyNotLoaded` on the property access
+    // rather than returning undefined. The first batch is retagged rather than
+    // lost: its shapes are moved onto the real key the moment one is known, so
+    // the total is right even though the first line is written before the host
+    // could say.
+    const slideKey = slideKeyFor(opts, getSlide);
+    if (bankedUnder !== undefined && bankedUnder !== slideKey && bankedHere > 0) {
+      // Only this call's own shapes move. The sentinel is shared, so taking its
+      // whole total would steal another draw's count.
+      forgetShapesDrawnOn(bankedUnder, bankedHere);
+      shapesDrawnOnSlide.set(slideKey, (shapesDrawnOnSlide.get(slideKey) ?? 0) + bankedHere);
+      trace("draw", "moved this draw's shape count onto the slide the host finally named", {
+        from: bankedUnder,
+        to: slideKey,
+        shapes: bankedHere,
+      });
+    }
     trace("draw", "batch issued", {
       upTo,
       total,
@@ -7008,6 +7066,8 @@ async function renderShapesChunked(
     );
     prevBatchMs = Date.now() - batchStarted;
     shapesDrawnOnSlide.set(slideKey, (shapesDrawnOnSlide.get(slideKey) ?? 0) + (created.length - before));
+    bankedHere += created.length - before;
+    bankedUnder = slideKey;
   }
   return created;
 }
