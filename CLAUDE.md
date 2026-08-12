@@ -514,6 +514,19 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   it; it was found by measuring what share of its own frame each kind covers
   across sizes, which is worth re-running after any layout change.
 
+  **That measurement is the one to reach for, because this failure is invisible
+  to every other gate.** Nothing goes negative, nothing leaves the frame, the
+  snapshots are green — the chrome simply eats the chart. It found three more
+  the same day: a funnel whose gaps took 59 of a 120x90 chart's 64 points of
+  plot, leaving five HAIRLINE bands at the 1pt floor (the split was "a point per
+  band, gaps take the rest", which is backwards — the bands are the chart and the
+  gaps are chrome for a label); and a butterfly whose two value strips and centre
+  gutter took 84 of 120 points, leaving both sets of bars 36 between them. Both
+  now scale the chrome into a budget the way `layoutGantt` already scales its
+  three text gutters, and the butterfly's category names shrink WITH the gutter —
+  they are centred in it, so a name wider than it is drawn across the bars it
+  names.
+
   **Dropping a label inside a `forEach` is where this bites back.** The pie's
   slice loop advances its running `angle` at the END of the callback, so the
   `return` that skipped an outer label skipped the advance too and every slice

@@ -250,3 +250,40 @@ describe("a funnel's row labels stay on the chart at any font", () => {
     expect(conv.fontSize).toBeLessThan(name.fontSize);
   });
 });
+
+/**
+ * A small frame keeps the BANDS, not the gaps between them.
+ *
+ * The gap holds the conversion label and is priced at `fs * 1.5` whatever the
+ * plot is. The split used to be "reserve a point per band, then give the rest to
+ * the gaps", which on a 120x90 frame put four gaps in 59 of 64 points of plot
+ * and left five HAIRLINE bands at the 1pt floor — a degenerate geometry rather
+ * than a small chart, and one no frame or overflow check can see because it is
+ * comfortably inside its box.
+ */
+describe("a funnel too short for its gaps", () => {
+  const bands = (width: number, height: number) =>
+    buildChart({ ...sampleConfig("funnel"), width, height } as ChartConfig).nodes.filter(
+      (n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("stage-") && !n.name.startsWith("stage-value"),
+    );
+
+  it("does not shrink every band to the hairline floor", () => {
+    const small = bands(120, 90);
+    expect(small.length).toBeGreaterThan(1);
+    for (const b of small) {
+      expect(b.h, `a band fell to the floor: ${b.name}`).toBeGreaterThan(3);
+    }
+    // And they still fit: the whole point of the clamp this replaced was that a
+    // fixed gap drove the last bands off the bottom of the plot.
+    const last = small[small.length - 1];
+    expect(last.y + last.h).toBeLessThanOrEqual(90);
+  });
+
+  it("leaves a frame that can afford its gaps alone", () => {
+    // At 300x200 the fixed `fs * 1.5` still fits inside half the plot, so it
+    // wins and the geometry is what it always was.
+    const roomy = bands(300, 200);
+    const pitch = roomy[1].y - roomy[0].y;
+    expect(pitch - roomy[0].h).toBeCloseTo(10 * 1.5, 5);
+  });
+});

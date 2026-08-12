@@ -31,13 +31,19 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     w: cfg.width - catW - 4,
     h: cfg.height - titleH - 2 - footnoteH(cfg, style, decor) - 4,
   });
-  // Room for the conversion label between bands — but never more than the plot
-  // can pay for while still giving every band ≥1pt. A fixed gap on a short frame
-  // with many stages drove the cumulative pitch (bandH + gap per stage) past the
-  // bottom of the plot, so the last bands rendered OFF-frame; flooring bandH alone
-  // did not help because the gap was the overspend. Reserve 1pt per band, then
-  // split the remainder as gaps.
-  const gap = Math.max(0, Math.min(fs * 1.5, (plot.h - n) / Math.max(1, n - 1)));
+  // Room for the conversion label between bands — but the BANDS are the chart
+  // and the gaps are chrome for a label, so the split is not "a point per band,
+  // gaps take the rest". That is what this was, and on a 120x90 frame four gaps
+  // took 59 of 64 points: five HAIRLINE bands at the 1pt floor, which is a
+  // degenerate geometry rather than a small chart.
+  //
+  // The gaps get at most HALF the plot between them. Below that the fixed
+  // `fs * 1.5` still wins, so nothing at an ordinary size moves — and either
+  // way the cumulative pitch stays inside the plot, which is what the clamp was
+  // originally for: a fixed gap on a short frame with many stages drove
+  // `bandH + gap` per stage past the bottom and the last bands rendered
+  // off-frame.
+  const gap = Math.max(0, Math.min(fs * 1.5, (plot.h * 0.5) / Math.max(1, n - 1)));
   const bandH = Math.max(1, (plot.h - gap * (n - 1)) / Math.max(1, n));
   const cx = plot.x + plot.w / 2;
 
