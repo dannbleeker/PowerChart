@@ -41,16 +41,38 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const footH = footnoteH(cfg, style, decor);
   const cx = hasBreakout ? cfg.width * 0.3 : cfg.width / 2;
   const cy = titleH + (cfg.height - titleH - footH) / 2;
-  // Floor at a positive radius: on a very narrow/short frame the width or height
-  // term can go negative, which would mirror wedges through the centre and hand
-  // the doughnut hole negative radii. Every sibling round chart (gauge, sunburst,
-  // radar) clamps the same way.
-  const r = Math.max(
-    1,
-    hasBreakout
-      ? Math.min(cfg.width * 0.24, (cfg.height - titleH - footH) / 2 - fs * 2.2)
-      : Math.min(cfg.width * 0.5 - fs * 7, (cfg.height - titleH - footH) / 2 - fs * 2.2),
-  );
+  const availH = cfg.height - titleH - footH;
+  /** The smallest arc that still reads as a pie and not as a dot. */
+  const MIN_ARC_R = 12;
+  // What the arc gets when the OUTSIDE labels are given the margins they want:
+  // `fs * 7` either side for the text (the breakout path reserves its side
+  // differently, through `cx`, and measures its own labels 180 lines below), and
+  // `fs * 2.2` above and below for the ring.
+  const wantX = hasBreakout ? cfg.width * 0.24 : cfg.width * 0.5 - fs * 7;
+  const wantY = availH / 2 - fs * 2.2;
+  // Those margins are a flat guess, and on a small frame they are most of it: a
+  // pie under ~140pt wide had nothing left and fell to the 1pt floor below, so a
+  // 120x90 thumbnail was a 2pt dot — 0.1% of the frame in ink against 38% at
+  // 200x150 — with four labels drawn around it as though there were a chart
+  // there.
+  //
+  // When a reservation cannot be met the thing reserved for is DROPPED, which is
+  // the answer the radar's web and the sunburst's ring already give: a label
+  // ring squeezed onto the arc it is labelling is not readable either, and the
+  // arc it displaced was the chart. So the outer labels come off and the arc
+  // takes the whole frame. Unreachable at 200x150 and above, where the margins
+  // already leave an arc — so nothing of an ordinary size moves.
+  //
+  // The pie's INSIDE labels are unaffected: they are bounded by the slice they
+  // sit in, which is exactly what just got bigger.
+  const outerLabelsFit = Math.min(wantX, wantY) >= MIN_ARC_R;
+  const rWidth = outerLabelsFit || hasBreakout ? wantX : cfg.width * 0.5 - fs * 0.5;
+  const rHeight = outerLabelsFit ? wantY : availH / 2 - fs * 0.5;
+  // Floor at a positive radius: on a very narrow/short frame the terms above go
+  // negative, which would mirror wedges through the centre and hand the doughnut
+  // hole negative radii. Every sibling round chart (gauge, sunburst, radar)
+  // clamps the same way.
+  const r = Math.max(1, Math.min(rWidth, rHeight));
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
@@ -97,7 +119,11 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       name: other ? "slice-other" : `slice-${c}`,
     });
 
-    if (decor.segmentLabels) {
+    // NB: `angle` is advanced at the END of this callback, so nothing in here may
+    // `return` — an early exit skips the advance and every later slice starts at
+    // the same place. It is written as a condition on the block for that reason.
+    const inside = span >= 30 && !doughnut && !varR;
+    if (decor.segmentLabels && (inside || outerLabelsFit)) {
       const mid = angle + span / 2;
       const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
         value: v,
@@ -106,7 +132,6 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         category: other ? (cfg.labels?.other ?? "Other") : data.categories[c as number],
         fmt,
       });
-      const inside = span >= 30 && !doughnut && !varR;
       const p = polar(ecx, ecy, inside ? rr * 0.62 : rr + fs * 0.8, mid);
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
       // An OUTSIDE label runs away from the slice edge with nothing to stop it.
