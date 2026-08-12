@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { chromeNodes, computeFrame, computeFrameHorizontal, titleHeight } from "./frame";
@@ -155,10 +156,26 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     ),
   );
   if (decor.categoryAxis) {
+    const catLabels = data.categories.map((cat, c) =>
+      units ? cat : `${cat} (${formatPercent(extents[c] / grand, 0, false, cfg.numberFormat?.locale)})`,
+    );
+    // A Mekko's category label sits under its own COLUMN and is as wide as it
+    // needs to be, so a label wider than its column overflows the box
+    // symmetrically — into the neighbouring label, and off the left edge of the
+    // chart for the first one. At an 22pt font the three-category sample had two
+    // overlapping pairs and `category-0` starting at x = -2, which reads as one
+    // run-on string: "EMEA (32%)Americas (42%)APAC (27%)".
+    //
+    // Shrunk together until the widest fits its own column, then clipped —
+    // together, because category labels that differ in size read as a hierarchy
+    // that is not there. Same two-step the agenda and the process flow already
+    // use, and `catFs` stays at `fs` whenever they fit, so an ordinary chart is
+    // untouched.
+    let catFs = fs;
+    const overflows = (f: number) => !H && catLabels.some((l, c) => textWidth(l, f) > widths[c] + 8);
+    while (catFs > 6 && overflows(catFs)) catFs -= 0.5;
     for (let c = 0; c < n; c++) {
-      const label = units
-        ? data.categories[c]
-        : `${data.categories[c]} (${formatPercent(extents[c] / grand, 0, false, cfg.numberFormat?.locale)})`;
+      const label = catLabels[c];
       if (H) {
         nodes.push({
           kind: "text",
@@ -179,9 +196,9 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           x: centers[c] - widths[c] / 2 - 4,
           y: frame.y + frame.h + 3,
           w: widths[c] + 8,
-          h: fs * 1.4,
-          text: label,
-          fontSize: fs,
+          h: catFs * 1.4,
+          text: clipToWidth(label, catFs, widths[c] + 8),
+          fontSize: catFs,
           color: style.text,
           align: "center",
           valign: "top",

@@ -7,6 +7,7 @@ import { layoutButterfly } from "../src/core/layout/butterfly";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import type { ChartConfig } from "../src/core/types";
 import type { RectNode, TextNode } from "../src/core/scene";
+import { textWidth } from "../src/core/scene";
 import { dataToSheet, evaluateFormula, sheetToData, transposeSheet } from "../src/taskpane/datasheet";
 
 const rects = (nodes: { kind: string }[]) => nodes.filter((n): n is RectNode => n.kind === "rect");
@@ -94,6 +95,56 @@ describe("100%= row", () => {
     expect(seg.h).toBeCloseTo(anchors.plot.h / 2, 1);
     const label = byName(nodes, "label-")[0] as TextNode;
     expect(label.text).toBe("50%");
+  });
+});
+
+describe("mekko category labels do not run into each other", () => {
+  /**
+   * A Mekko's category label sits under its own COLUMN and is as wide as it
+   * needs to be, so a label wider than its column overflows the box
+   * symmetrically — into its neighbour, and off the left edge of the chart for
+   * the first one. At a 22pt font the three-category sample had two overlapping
+   * pairs and `category-0` starting at x = -2, which reads on screen as one
+   * run-on string: "EMEA (32%)Americas (42%)APAC (27%)". Rendered and looked at.
+   */
+  const inkSpan = (t: TextNode) => {
+    const w = Math.min(t.w, textWidth(t.text, t.fontSize, t.bold));
+    const x = t.align === "right" ? t.x + t.w - w : t.align === "center" ? t.x + (t.w - w) / 2 : t.x;
+    return { x0: x, x1: x + w };
+  };
+  const cats = (fontSize: number) => {
+    const scene = buildChart({ ...sampleConfig("mekko"), style: { fontSize } } as ChartConfig);
+    const found = scene.nodes
+      .filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("category-"))
+      .map((t) => ({ node: t, ...inkSpan(t) }))
+      .sort((a, b) => a.x0 - b.x0);
+    return { scene, found };
+  };
+
+  it("keeps them apart and on the chart at any font size", () => {
+    for (const fs of [10, 16, 22, 30]) {
+      const { scene, found } = cats(fs);
+      expect(found.length, `fs=${fs} drew no category labels`).toBe(3);
+      for (let i = 1; i < found.length; i++)
+        expect(found[i].x0, `fs=${fs} ${found[i].node.name} overlaps ${found[i - 1].node.name}`).toBeGreaterThanOrEqual(
+          found[i - 1].x1 - 0.5,
+        );
+      for (const f of found) {
+        expect(f.x0, `fs=${fs} ${f.node.name} started left of the chart`).toBeGreaterThanOrEqual(-0.5);
+        expect(f.x1, `fs=${fs} ${f.node.name} ran past the right edge`).toBeLessThanOrEqual(scene.width + 0.5);
+      }
+    }
+  });
+
+  it("leaves an ordinary chart's labels at the chart's own font size", () => {
+    // The shrink must be a last resort, not a permanent tax: at the default font
+    // the labels fit, so nothing moves.
+    for (const t of cats(10).found) expect(t.node.fontSize).toBe(10);
+    // …and they stay whole rather than being ellipsized to fit.
+    for (const t of cats(22).found) expect(t.node.text.endsWith("…")).toBe(false);
+    // One size for all of them — labels that differ in size read as a hierarchy
+    // that is not there.
+    expect(new Set(cats(22).found.map((t) => t.node.fontSize)).size).toBe(1);
   });
 });
 
