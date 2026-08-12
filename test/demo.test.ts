@@ -8,7 +8,8 @@ import {
 } from "../src/core/demo";
 import { CHART_KINDS } from "../src/core/samples";
 import { sceneToSvg } from "../src/render/svg";
-import { estimateOfficeShapes } from "../src/core/scene";
+import { estimateOfficeShapes, shiftNodeX } from "../src/core/scene";
+import type { SceneNode } from "../src/core/scene";
 
 describe("demo deck", () => {
   const items = demoItems();
@@ -190,5 +191,57 @@ describe("results slide", () => {
       .nodes.filter((n) => n.kind === "text")
       .map((n) => n.text);
     expect(noRetries.some((t) => /recovered/.test(t))).toBe(false);
+  });
+});
+
+/**
+ * Moving a node horizontally, including the one coordinate that is not a scalar.
+ *
+ * `shiftNodeX` began as a duck-typed loop over four scalar names inside the
+ * demo gallery — a shape that can never fail to COMPILE when a node kind gains
+ * a coordinate — and `points` was already missing from it, so a polygon would
+ * have stayed where it was while everything around it moved.
+ *
+ * Latent rather than live: `combineRow` composes only Harvey balls and
+ * checkboxes, and `elements.ts` emits no polygon. It was also unprovable where
+ * it lived, because `src/demo/demo.ts` touches the DOM at import time — which
+ * is why it now sits in `scene.ts`, next to the node contract it has to keep up
+ * with, and can be checked here.
+ */
+describe("shifting a scene node horizontally", () => {
+  it("moves a polygon's points, not just the scalar coordinates", () => {
+    const poly = {
+      kind: "polygon",
+      name: "p",
+      points: [
+        { x: 1, y: 5 },
+        { x: 3, y: 7 },
+      ],
+      fill: "#000",
+    } as unknown as SceneNode;
+    shiftNodeX(poly, 10);
+    const pts = (poly as unknown as { points: { x: number; y: number }[] }).points;
+    expect(
+      pts.map((p) => p.x),
+      "a polygon did not move with the scene it belongs to",
+    ).toEqual([11, 13]);
+    expect(
+      pts.map((p) => p.y),
+      "a horizontal shift moved a polygon vertically",
+    ).toEqual([5, 7]);
+  });
+
+  it("moves every scalar horizontal coordinate a node can carry", () => {
+    // The other half, or the rule above could be satisfied by handling polygons
+    // alone. One node per horizontal field named in `scene.ts`.
+    const rect = { kind: "rect", x: 1, y: 2, w: 3, h: 4 } as unknown as SceneNode;
+    const line = { kind: "line", x1: 1, y1: 2, x2: 5, y2: 6 } as unknown as SceneNode;
+    const ell = { kind: "ellipse", cx: 4, cy: 2, rx: 1, ry: 1 } as unknown as SceneNode;
+    for (const n of [rect, line, ell]) shiftNodeX(n, 10);
+    expect((rect as unknown as { x: number }).x).toBe(11);
+    expect([(line as unknown as { x1: number }).x1, (line as unknown as { x2: number }).x2]).toEqual([11, 15]);
+    expect((ell as unknown as { cx: number }).cx).toBe(14);
+    // …and leaves the vertical ones alone.
+    expect((rect as unknown as { y: number }).y).toBe(2);
   });
 });
