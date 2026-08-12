@@ -118,7 +118,9 @@ the toggle does nothing at all, and leaves the chart exactly as it was.
   `+ - * /`, and `SUM`/`AVG`/`MIN`/`MAX` over ranges (`=SUM(B2:E2)`). A
   reference reads a cell exactly as the chart does, so a percent-formatted
   cell (`35%`) counts as 35 and a date cell counts as its day — `=B3-B2`
-  over two dates is a duration in days.
+  over two dates is a duration in days. A range may run past the end of the
+  sheet (`=SUM(B2:B999)` totals the whole column), and **⇄ Transpose rewrites
+  every reference** so formula cells keep the numbers they had.
 - **Blank rows split stacks**: in a stacked chart, series separated by a
   blank row form side-by-side sub-stacks (clustered-stacked).
 - **Dates**: ISO (`2026-01-15`), `15.01.2026`, and `Jan 2026` parse as
