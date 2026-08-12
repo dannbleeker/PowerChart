@@ -974,6 +974,14 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   ordered late is measurably harder to pass than the same scenario ordered
   early, and no round before this one could see that.
 
+  **Read those counts as an upper bound, not as the slide's contents.**
+  `onSlide` counts what this run DREW and is never decremented, so a chart
+  redrawn in place adds its whole node count again while the slide stays the
+  same size — 92 on the counter against 3 in the deck inventory, in round
+  `957aca0`. The battery's climb above is mostly genuine (its scenarios insert
+  rather than redraw) but the deck-wide rescale's is not, and the
+  `FAST IS THE BROKEN MODE` gotcha carries the case that turns on it.
+
   The slide-sharing is deliberate and the reason is good: `chartIsVisible` must
   never rasterise a slide the run just added. Sharing a slide that is not the
   BUSIEST one costs nothing, and `leastLoadedChart` is that: every scenario that
@@ -1193,6 +1201,38 @@ chart on the visible slide` drew at 3.0s and 4.8s, passed, round-tripped its
   scenario that was drawing slowly, which arrives with the collection going
   quiet a chart later. Do not read a fast batch as broken; read a flip as
   broken.
+
+  **Round `957aca0` (2026-08-12) put a second candidate under the flip, and it
+  cannot yet be chosen between — do not reason about it, and do not build on
+  either.** The rescale's batch lines finally carry `chart`, `onSlideKey` and
+  `prevBatchMs` together, and they say:
+
+      chart 1/8   slide 257   17714 18726 ms   SLOW
+      chart 2/8   slide 257   17840 17250 ms   SLOW
+      chart 3/8   slide 257   21097 16643 ms   SLOW
+      chart 4/8   slide 258    4674  5506 ms   fast
+      chart 5/8   slide 259    3783  5263 ms   fast
+      chart 6/8   slide 260    3300  5163 ms   fast
+
+  The flip at chart 3/4 is exactly the point where the charts stop sharing one
+  slide and start having one each. It is also, in the same round, the point
+  where grouping stops surviving — so **the slide and the collection's health
+  change together**, and one round cannot say which the clock is following.
+
+  What it DOES kill is elapsed time, again and from a new direction: the fast
+  charts run at 395-434s and the slow ones at 242-381s, so the LATER draws are
+  the quick ones inside a single scenario.
+
+  **The measurement that would separate them is not available yet, because
+  `onSlide` is not what its readers think it is.** It counts what this run has
+  DRAWN on a slide and is never decremented, so a chart redrawn in place adds
+  24 to it every time while the slide's real contents do not move: slide 257's
+  counter reached **92** in this round, and the deck inventory at the end of the
+  same run shows that slide holding **3** shapes. Every reading of "shapes
+  already on the slide" taken from this field on an UPDATE path is therefore
+  inflated — including the +0.44s/shape slope, whose own source (the rasterise
+  arms) happens to be an add-only path where the field is honest. Fix the
+  counter first; the flip question is downstream of it.
 
   **The friction is astonishingly local.** That round logged 15 errors in 818
   seconds and **14 of them belong to `same scale across the deck`** (14
