@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, polar, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat, segmentLabel } from "../format";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
@@ -107,8 +108,22 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       });
       const inside = span >= 30 && !doughnut && !varR;
       const p = polar(ecx, ecy, inside ? rr * 0.62 : rr + fs * 0.8, mid);
-      const w = textWidth(label, fs) + 4;
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
+      // An OUTSIDE label runs away from the slice edge with nothing to stop it.
+      // The radius reserves a FIXED `fs * 7` for labels — a guess, where the
+      // breakout path 180 lines below measures the widest label it actually has
+      // — so any category name wider than that guess put ink off the chart.
+      // "A very long category label indeed" on a 480pt frame reached x = 548:
+      // 68pt past the right edge, and neither PowerPoint renderer wraps or clips
+      // a text box, so in a deck that is a label lying across whatever sits
+      // beside the chart on the slide.
+      //
+      // Clipped to what is actually there, which is what `clipToWidth` is for
+      // and what the agenda already does with its chapter titles. An inside
+      // label is untouched: it is bounded by the slice it sits in.
+      const room = Math.max(fs, (rightHalf ? cfg.width - p.x : p.x) - 4);
+      const shown = inside ? label : clipToWidth(label, fs, room);
+      const w = textWidth(shown, fs) + 4;
       if (!inside) {
         // Leader line from the arc edge toward the label.
         const a = polar(ecx, ecy, rr + 1, mid);
@@ -130,7 +145,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         y: p.y - fs * 0.75,
         w,
         h: fs * 1.5,
-        text: label,
+        text: shown,
         fontSize: fs,
         // Inside a slice the ink must contrast with THAT slice: a pale fill (the
         // default palette's #eda100, or any custom/per-point colour) printed white
