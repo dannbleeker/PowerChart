@@ -172,6 +172,108 @@ describe("task pane — loading a chart config", () => {
     expect(out.labelOffsets).toEqual({ "S1@0": { dx: 4, dy: -2 } });
   });
 
+  /**
+   * The same question asked of EVERY key, from the interface rather than from a
+   * list somebody remembered to extend.
+   *
+   * CLAUDE.md states this seam and its failure mode: "new decoration keys
+   * round-trip automatically; new top-level config keys need a state field or
+   * the `state.extras` passthrough". Miss that and the key is dropped on import
+   * and destroyed on the next re-save — silently, in a pane that otherwise looks
+   * like it loaded the chart fine. The case above pins five keys and was written
+   * the day five keys were found missing; it cannot say anything about the
+   * sixth.
+   *
+   * `TOP_LEVEL` is parsed out of `ChartConfig` for the reason `DECOR_KEYS` in
+   * `chart-hostile-input.test.ts` is: a hand-written list of names is a list
+   * that goes stale the first time somebody adds a field and does not think of
+   * this file.
+   */
+  const TOP_LEVEL = (() => {
+    const src = readFileSync("src/core/types.ts", "utf8");
+    const body = /export interface ChartConfig \{(.*?)\n\}/s.exec(src)?.[1] ?? "";
+    return [...body.matchAll(/^ {2}([a-zA-Z_$][\w$]*)\??\s*:/gm)].map((m) => m[1]);
+  })();
+
+  /**
+   * A plausible non-default value per key. Written out rather than generated,
+   * because "survives the round trip" is only meaningful for a value the pane
+   * would actually accept — a generated one would prove the key is echoed, not
+   * that it is understood.
+   *
+   * `kind`, `data` and `style` are excluded and NAMED: they are what the pane's
+   * own controls are made of, they are asserted all over this file already, and
+   * a generic round-trip on them would be asserting that a select and a grid
+   * echo themselves.
+   */
+  const OWNED_BY_CONTROLS = ["kind", "data", "style"];
+  const SAMPLES: Record<string, unknown> = {
+    horizontal: true,
+    scale: { min: -5, max: 55 },
+    segmentOrder: "descending",
+    categorySort: "descending",
+    secondaryAxis: true,
+    axisBreak: { from: 10, to: 20 },
+    valueAxisTitle: "EUR m",
+    labelOffsets: { "S1@0": { dx: 4, dy: -2 } },
+    logScale: true,
+    gapWidth: 0.42,
+    overlap: 0.25,
+    footnote: "Source: invented",
+    pie: { donut: 0.4 },
+    pareto: { cumulative: true },
+    multiples: { columns: 3 },
+    boxplot: { whiskers: "minmax" },
+    map: { region: "world" },
+    heatmap: { scheme: "blues" },
+    otherBucket: { max: 3 },
+    tilemap: { shape: "hex" },
+    butterfly: { gap: 40 },
+    scatter: { markers: ["diamond"] },
+    gantt: { today: 5 },
+    radar: { perSpoke: true },
+    combo: { types: ["column", "line"] },
+    width: 720,
+    height: 400,
+    title: "A title",
+    decorations: { totals: true },
+    waterfall: { totalIndices: [1] },
+    numberFormat: { decimals: 2, suffix: "m" },
+    labels: { series: ["X"] },
+    render: "image",
+  };
+
+  it("every key in ChartConfig has a sample here — a new one is not silently skipped", () => {
+    // The half that makes the sweep below exhaustive rather than merely long.
+    const unsampled = TOP_LEVEL.filter((k) => !OWNED_BY_CONTROLS.includes(k) && !(k in SAMPLES));
+    expect(
+      unsampled,
+      "a ChartConfig key has no sample, so nothing checks whether the pane keeps it — add one to SAMPLES, " +
+        "or to OWNED_BY_CONTROLS if a pane control owns it outright",
+    ).toEqual([]);
+    expect(TOP_LEVEL.length, "no ChartConfig keys parsed — the sweep would test nothing").toBeGreaterThan(30);
+  });
+
+  it("carries every top-level key through import → export", () => {
+    const lost: string[] = [];
+    const changed: string[] = [];
+    for (const key of TOP_LEVEL) {
+      if (OWNED_BY_CONTROLS.includes(key)) continue;
+      const value = SAMPLES[key];
+      // `waterfall` is meaningful only on a waterfall — its total columns are
+      // rebuilt from the sheet, so asking a clustered chart to keep them is
+      // asking the wrong question.
+      const kind = key === "waterfall" ? "waterfall" : "clustered";
+      importConfig({ kind, data: baseData, [key]: value } as Partial<ChartConfig>);
+      const got = (exportConfig() as unknown as Record<string, unknown>)[key];
+      if (got === undefined) lost.push(key);
+      else if (JSON.stringify(got) !== JSON.stringify(value))
+        changed.push(`${key}: sent ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
+    }
+    expect(lost, "dropped on import — the next re-save destroys them").toEqual([]);
+    expect(changed, "altered on the way through").toEqual([]);
+  });
+
   it('preserves render: "image" through import → export and the shape-tag re-save', () => {
     // `render` selects the OUTPUT format (native shapes vs one raster picture).
     // It began life in state.extras (no control) and now has #render-image, but

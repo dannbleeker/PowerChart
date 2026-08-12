@@ -1930,7 +1930,13 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
   commit the regenerated deck with the code that changed it.
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys
   round-trip automatically; new **top-level** config keys need a state field
-  or the `state.extras` passthrough in `src/taskpane/app.ts`.
+  or the `state.extras` passthrough in `src/taskpane/app.ts`. **Forgetting is a
+  CI failure now, not a silent one** — `test/pane-state.test.ts` reads the key
+  list out of the `ChartConfig` interface and carries every one of them through
+  import → export, so a new field fails there until it is either given a sample
+  or declared as owned by a pane control. Miss it and the key was dropped on
+  import and destroyed on the next re-save, in a pane that looked like it had
+  loaded the chart fine.
 - All sample/showcase data is invented dummy data (`src/core/samples.ts`,
   `scripts/build-showcase.mjs`) — keep it that way; the repo will go public.
 - GitHub MCP `actions_list` and `list_pull_requests` responses exceed the token
