@@ -727,6 +727,14 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
     `drawing shapes 1-10 of 24`, never batch 2 or 3.** If the host were simply
     fatigued, stalls would land anywhere in a chart's three batches. They land
     on the first sync after some other operation and nowhere else.
+
+    **OVERTURNED on 2026-08-12 (`275a76a`), by the first counter-example in
+    nine rounds:** `drawing shapes 11-20 of 24` stalled — batch TWO — and its
+    predecessor is the tell. Batch one of the same chart had just answered in
+    **25.8 seconds**, near the top of the surviving range, so that draw was
+    already crawling before it died. Read the eight-for-eight as a pattern that
+    held while the host was healthy, not as a law.
+
   - **Elapsed time cannot be the variable on its own**, because in every one of
     those rounds the scenario immediately AFTER the stalled one — older tab,
     more elapsed time — drew its full twenty-four shapes and passed. r6 is the
@@ -948,6 +956,28 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   seconds while survivors stay under three, that is a real signal. One is an
   anecdote, and this file has a paragraph about exactly that mistake.
 
+- **The self-test piles almost everything onto ONE slide, and the per-slide cost
+  curve then charges it for that.** The `onSlideKey` fix landed and paid on its
+  first round (`275a76a`): slide `257#3695341871` is the target of EIGHT of the
+  ten scenarios, and this run's own shape count on it climbs 20 → 68 → 92 → 116
+  → 140 → 144 → 165 as the battery proceeds. Nothing else in the deck goes past 34.
+
+  That number is the input to the quadratic cost this file measured at about
+  **+0.44s per shape already on the slide**. At `onSlide: 144` the overhead
+  alone is ~63 seconds, which is more than `BATCH_TIMEOUT_MS` — so a draw there
+  is expected to stall, and one did: `the chart is actually visible` gave up on
+  `drawing shapes 1-9 of 9`, a NINE-shape chart, at exactly that count.
+
+  So some of what has been read as "this host stalls intermittently" is the
+  battery's own arithmetic arriving. Not all of it — the round's other stall was
+  at `onSlide: 34`, and the rasterise control drew fine at 165 — but a scenario
+  ordered late is measurably harder to pass than the same scenario ordered
+  early, and no round before this one could see that.
+
+  The slide-sharing is deliberate and the reason is good: `chartIsVisible` must
+  never rasterise a slide the run just added. Sharing a slide that is not the
+  BUSIEST one costs nothing and is not what the code does today.
+
 - **A field can be recorded on both populations and STILL be useless, if it is
   rarely populated.** `onSlide` — how many shapes this run had already put on
   the slide, the input to the quadratic cost curve — was added on every batch,
@@ -1077,6 +1107,12 @@ issued` now, which is what the line actually knows, and there is no commit line
   that DID answer the slowest took **29.2s**, against a 45-second budget, so
   nothing has ever landed between 29s and 45s. A batch answers within ~29s or
   never.
+
+  **The 29.2s figure is stale as of 2026-08-12** (`275a76a`), the slowest round
+  on record: three surviving batches over it, at 29.3s, 30.8s and **31.1s**. The
+  empty band is therefore 31s-45s rather than 29s-45s. The argument it supports
+  is unchanged — a batch answers well inside the budget or never — but do not
+  re-quote 29.2 as the maximum.
 
   Two things follow. Raising the budget buys nothing, and lowering it to ~35s
   would save ten seconds a round for a 1.2× margin instead of 1.5× — not worth
