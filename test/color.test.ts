@@ -53,6 +53,43 @@ describe("toRgb parses every allow-listed colour form", () => {
   });
 });
 
+/**
+ * A hex of the wrong LENGTH is a typo, not a colour.
+ *
+ * CSS hex is 3, 4, 6 or 8 digits. `toRgb` accepted any length and let
+ * `parseInt` read whatever was there, so the result looked perfectly valid:
+ * `#12345` — a six-digit colour with a digit dropped, which is the mistake a
+ * person actually makes — came back `#012345`, and `#1` came back `#000001`.
+ *
+ * That is worse than a visible fallback twice over. The user sees a plausible
+ * wrong colour instead of the grey that would show them the typo, and the pptx
+ * sink answers BLACK for the same string (its exit check demands exactly six
+ * digits), so one config rendered two different ways depending on which
+ * renderer you looked at.
+ */
+describe("a hex colour of an impossible length", () => {
+  /** What `toRgb` answers for a paint it cannot read — mid grey, deliberately visible. */
+  const UNREADABLE = "#808080";
+
+  it("falls back instead of inventing a colour from the digits that are there", () => {
+    // The exact shapes a dropped or doubled keystroke produces.
+    expect(toHex6("#12345"), "a five-digit hex was read as a colour").toBe(UNREADABLE);
+    expect(toHex6("#1"), "a one-digit hex was read as a colour").toBe(UNREADABLE);
+    expect(toHex6("#12"), "a two-digit hex was read as a colour").toBe(UNREADABLE);
+    expect(toHex6("#1234567"), "a seven-digit hex was read as a colour").toBe(UNREADABLE);
+    expect(toHex6("#123456789"), "a nine-digit hex was read as a colour").toBe(UNREADABLE);
+  });
+
+  it("still parses every length CSS actually defines", () => {
+    // The other half, or the rule above could be satisfied by rejecting
+    // everything. 4 and 8 drop their alpha byte here; `alphaOf` reads it.
+    expect(toHex6("#123")).toBe("#112233");
+    expect(toHex6("#1234")).toBe("#112233");
+    expect(toHex6("#123456")).toBe("#123456");
+    expect(toHex6("#12345678")).toBe("#123456");
+  });
+});
+
 describe("a colour string that is not a number where a number was expected", () => {
   /**
    * `parseFloat` is looser than the regex that feeds it. `[\d.]+` matches a
