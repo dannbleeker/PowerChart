@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, resolveFormat } from "../format";
 import { lerpColor } from "../color";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 import { PALETTE } from "../style";
 
@@ -94,7 +94,7 @@ export function layoutTreemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
 
   const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
-  const plot: Rect = { x: 2, y: titleH + 2, w: cfg.width - 4, h: cfg.height - titleH - footH - 4 };
+  const plot: Rect = fitPlot(cfg, { x: 2, y: titleH + 2, w: cfg.width - 4, h: cfg.height - titleH - footH - 4 });
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);

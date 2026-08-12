@@ -6,7 +6,7 @@ import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
 import { lerpColor, sequentialScale, zoneFill } from "../color";
-import { footnoteH, titleHeight, titleNode, legendRowCount, legendWrapWalk } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode, legendRowCount, legendWrapWalk } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -263,12 +263,20 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const MIN_PLOT = 60;
   const mTop = wantMx && bodyH - GUT >= MIN_PLOT ? GUT : 0;
   const mRight = wantMy && bodyW - GUT >= MIN_PLOT ? GUT : 0;
-  const plot = {
+  const plot = fitPlot(cfg, {
     x: axisW,
     y: chromeTop + mTop,
     w: bodyW - mRight,
     h: bodyH - mTop,
-  };
+  });
+  /**
+   * Where the legends hang from. They sit ABOVE the plot's top edge, so they
+   * have to follow the FITTED plot: `chromeTop` is the position the layout asked
+   * for, and on a frame too short to pay for its own chrome `fitPlot` moves the
+   * plot up while the legend, anchored to the request, stays behind — 9pt past
+   * the bottom of a 70pt chart. Identical to `chromeTop` whenever the plot fits.
+   */
+  const legendTop = plot.y - mTop;
 
   // Data-driven axis domain (no forced zero baseline) shared with spreadCap;
   // folds in partition lines, a quadrant crossing and x/y bands so those
@@ -613,7 +621,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // The min/max labels hang BELOW the gradient bar, so with a top gutter the
     // legend has to sit a little higher or they land on the marginal bars.
     // Only when the gutter exists, so no existing output moves.
-    const by = chromeTop - fs * (mTop > 0 ? 1.75 : 1.35);
+    const by = legendTop - fs * (mTop > 0 ? 1.75 : 1.35);
     for (let i = 0; i < steps; i++) {
       const t = (i + 0.5) / steps;
       nodes.push({
@@ -687,13 +695,18 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       lx,
       plot.x + plot.w,
     );
+    // Rows stack upward from the plot: the LAST row sits where the single row
+    // always did, so a one-row legend is byte-identical to before.
+    const rows = slots[slots.length - 1].row + 1;
+    // ...and stacking upward is how the top row leaves the chart when the plot
+    // has been pulled up to fit a short frame: 13pt above an 80x60 scatter with
+    // two legend rows. Hold the block down far enough for its own top row, which
+    // on any chart with room above the plot is no constraint at all.
+    const legendY = Math.max(legendTop, (rows - 1) * fs * 1.8 + fs * 1.55);
     groupIds.forEach((g, gi) => {
       const chip = fs * 0.7;
       const label = `Group ${g}`;
       lx = slots[gi].x;
-      // Rows stack upward from the plot: the LAST row sits where the single row
-      // always did, so a one-row legend is byte-identical to before.
-      const rows = slots[slots.length - 1].row + 1;
       const dy = -(rows - 1 - slots[gi].row) * fs * 1.8;
       // Under a color scale the chip's color would be a lie (color means the
       // Color row there), so the shape carries the legend in neutral ink.
@@ -708,7 +721,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           ? markerNode(
               markerFor(g),
               lx + drawn / 2,
-              chromeTop + dy - fs * 1.2 + chip / 2,
+              legendY + dy - fs * 1.2 + chip / 2,
               chip / 2,
               chipFill,
               style.background,
@@ -718,7 +731,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           : {
               kind: "rect",
               x: lx,
-              y: chromeTop + dy - fs * 1.2,
+              y: legendY + dy - fs * 1.2,
               w: chip,
               h: chip,
               fill: chipFill,
@@ -727,7 +740,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         {
           kind: "text",
           x: lx + drawn + 3,
-          y: chromeTop + dy - fs * 1.55,
+          y: legendY + dy - fs * 1.55,
           w: textWidth(label, fs) + 6,
           h: fs * 1.4,
           text: label,

@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { footnoteH, legendRowCount, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, legendRowCount, titleHeight, titleNode } from "./frame";
 import { legendRow, type LayoutResult, type LegendEntry } from "./column";
 import { columnPositiveTotal } from "./totals";
 import { maxOf } from "../agg";
@@ -49,11 +49,31 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         )
       : 0;
   const legendH = legendRows * fs * 1.6;
-  const cx = cfg.width / 2;
-  const cy = titleH + legendH + (cfg.height - titleH - legendH - footH) / 2;
+  // Fitted so the web's CENTRE and RADIUS are both derived from a positive box:
+  // on a frame too short for title + legend + footnote the raw height goes
+  // negative, which put the centre below the bottom of the chart and the
+  // perimeter label ring past it.
+  const box = fitPlot(cfg, { x: 0, y: titleH + legendH, w: cfg.width, h: cfg.height - titleH - legendH - footH });
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
   // Perimeter labels need a margin around the web.
   const labelW = Math.max(0, ...data.categories.map((c) => textWidth(c, fs)));
-  const r = Math.max(10, Math.min(cfg.width / 2 - labelW - fs, (cfg.height - titleH - legendH - footH) / 2 - fs * 1.9));
+  // The vertical term already reserves `fs * 1.9` for the perimeter label ring,
+  // so the web fits its frame — unless the 10pt floor overrides it, which on a
+  // small frame is exactly when it does: at 120x90 the fit asks for ~8 and the
+  // floor insists on 10, putting the bottom category label through the frame.
+  // The floor yields to the frame, like the tilemap's tile floor: a small web is
+  // still a web, one drawn past the edge is a label nobody can read. Unreachable
+  // on any chart big enough to want it, so nothing of an ordinary size moves.
+  const rWant = Math.min(box.w / 2 - labelW - fs, box.h / 2 - fs * 1.9);
+  const r = Math.max(1, rWant);
+  // The perimeter label ring is what `rWant` reserves room for on both axes. When
+  // the floor has to override it the reservation is gone, so the ring no longer
+  // has anywhere to be drawn — the bottom label sat 12pt past a 70pt frame. Drop
+  // the ring rather than draw it off the chart: a web this small is a dot, and a
+  // label nobody can read is worse than no label. Unreachable at any size that
+  // wants a radar.
+  const ringFits = rWant >= 1;
 
   const spokeSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
@@ -155,6 +175,7 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       name: `spoke-${c}`,
     });
     // Perimeter category label, anchored by which side of the web it sits on.
+    if (!ringFits) return;
     const p = polar(cx, cy, r + fs * 0.6, angle(c));
     const a = angle(c) % 360;
     const align = a < 10 || a > 350 || Math.abs(a - 180) < 10 ? "center" : a < 180 ? "left" : "right";
@@ -323,10 +344,30 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
         )
       : 0;
   const legendH = legendRows * fs * 1.6;
-  const cx = cfg.width / 2;
-  const cy = titleH + legendH + (cfg.height - titleH - legendH - footH) / 2;
+  // Fitted so the web's CENTRE and RADIUS are both derived from a positive box:
+  // on a frame too short for title + legend + footnote the raw height goes
+  // negative, which put the centre below the bottom of the chart and the
+  // perimeter label ring past it.
+  const box = fitPlot(cfg, { x: 0, y: titleH + legendH, w: cfg.width, h: cfg.height - titleH - legendH - footH });
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
   const labelW = Math.max(0, ...data.categories.map((c) => textWidth(c, fs)));
-  const r = Math.max(10, Math.min(cfg.width / 2 - labelW - fs, (cfg.height - titleH - legendH - footH) / 2 - fs * 1.9));
+  // The vertical term already reserves `fs * 1.9` for the perimeter label ring,
+  // so the web fits its frame — unless the 10pt floor overrides it, which on a
+  // small frame is exactly when it does: at 120x90 the fit asks for ~8 and the
+  // floor insists on 10, putting the bottom category label through the frame.
+  // The floor yields to the frame, like the tilemap's tile floor: a small web is
+  // still a web, one drawn past the edge is a label nobody can read. Unreachable
+  // on any chart big enough to want it, so nothing of an ordinary size moves.
+  const rWant = Math.min(box.w / 2 - labelW - fs, box.h / 2 - fs * 1.9);
+  const r = Math.max(1, rWant);
+  // The perimeter label ring is what `rWant` reserves room for on both axes. When
+  // the floor has to override it the reservation is gone, so the ring no longer
+  // has anywhere to be drawn — the bottom label sat 12pt past a 70pt frame. Drop
+  // the ring rather than draw it off the chart: a web this small is a dot, and a
+  // label nobody can read is worse than no label. Unreachable at any size that
+  // wants a radar.
+  const ringFits = rWant >= 1;
   const innerR = r * 0.18;
 
   // Scale reaches the per-category stack sums (a single series is its own sum).
@@ -404,6 +445,7 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       });
     });
     // Perimeter category label.
+    if (!ringFits) return;
     const mid = angle(c) + sector / 2;
     const p = polar(cx, cy, r + fs * 0.6, mid);
     const am = ((mid % 360) + 360) % 360;

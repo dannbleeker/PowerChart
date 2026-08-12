@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors, Series } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, niceTicks, resolveFormat, segmentLabel, axisTickLabel } from "../format";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
@@ -882,7 +883,14 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const q = lineToY(t);
       nodes.push({
         kind: "text",
-        x: H ? Math.max(0, Math.min(q - fs * 1.7, cfg.width - fs * 3.4)) : plot.x + plot.w + 2,
+        // Clamped on BOTH orientations for the same reason: no gutter is reserved
+        // for this strip, so on a column chart whose plot runs to the canvas edge
+        // it started 2pt from it and every tick label was drawn off the chart —
+        // where the frame-clip then removed it and the axis had no labels at all.
+        // Overlapping the plot's last few points is the cheaper failure.
+        x: H
+          ? Math.max(0, Math.min(q - fs * 1.7, cfg.width - fs * 3.4))
+          : Math.max(0, Math.min(plot.x + plot.w + 2, cfg.width - fs * 3.4)),
         y: H ? Math.max(0, plot.y - fs * 1.5) : q - fs * 0.7,
         w: fs * 3.4,
         h: fs * 1.4,
@@ -988,14 +996,28 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
     if (decor.seriesLabels && last != null) {
       const end: { x: number; y: number } = last;
+      // The combo line's own series label, with the gutter fit `seriesLabelNodes`
+      // now does for the column one — this is the same node under a different
+      // name, and it overflowed the same way.
+      // Same missing gutter as the secondary axis above: a plot that reaches the
+      // canvas edge left this strip ONE POINT wide, so the fit below shrank the
+      // name to nothing. Take a readable strip at the edge instead — it names a
+      // line whose end point is right there, so a little overlap costs less than
+      // the name does.
+      const lw = H ? 80 : Math.max(fs * 3.4, cfg.width - (anchors.plot.x + anchors.plot.w) - 4);
+      const lx = H
+        ? Math.max(0, Math.min(end.x - 40, cfg.width - 80))
+        : Math.max(0, Math.min(anchors.plot.x + anchors.plot.w + 4, cfg.width - lw));
+      let lf = fs;
+      while (lf > 5 && textWidth(s.name, lf) > lw) lf -= 0.5;
       nodes.push({
         kind: "text",
-        x: H ? Math.max(0, Math.min(end.x - 40, cfg.width - 80)) : anchors.plot.x + anchors.plot.w + 4,
+        x: lx,
         y: H ? Math.max(0, end.y + fs * 0.9) : end.y - fs * 1.6,
-        w: H ? 80 : cfg.width - (anchors.plot.x + anchors.plot.w) - 4,
+        w: lw,
         h: fs * 1.4,
-        text: s.name,
-        fontSize: fs,
+        text: clipToWidth(s.name, lf, lw),
+        fontSize: lf,
         color: style.text,
         align: H ? "center" : "left",
         valign: "middle",
@@ -1235,14 +1257,28 @@ export function seriesLabelNodes(
     }
   }
   const x = frame.x + frame.w + 4;
+  // The gutter these sit in is reserved from the series names, but the
+  // reservation is capped — so on a chart too narrow to pay for it the names
+  // ran off the RIGHT edge, by 20pt on a 120pt-wide stacked column. This
+  // function already shrinks for vertical crowding a few lines up; it never
+  // asked whether a name FITS the gutter it is being put in.
+  //
+  // Shrunk together and then clipped, for the reason the vertical case gives
+  // and one more: labels that differ in size read as a hierarchy that is not
+  // there. Taken as a minimum with the crowding font so neither fix can undo
+  // the other, and last-resort in both directions, so a chart whose names
+  // already fit is untouched.
+  const room = Math.max(1, cfg.width - x);
+  let nameFs = labelFs;
+  while (nameFs > 5 && entries.some((e) => textWidth(e.name, nameFs) > room)) nameFs -= 0.5;
   return entries.map((e, i) => ({
     kind: "text" as const,
     x,
     y: e.y - lineH / 2,
-    w: cfg.width - x,
+    w: room,
     h: lineH,
-    text: e.name,
-    fontSize: labelFs,
+    text: clipToWidth(e.name, nameFs, room),
+    fontSize: nameFs,
     color: style.text,
     align: "left" as const,
     valign: "middle" as const,

@@ -1,8 +1,9 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, polar, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat } from "../format";
 import { lerpColor } from "../color";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import { PALETTE } from "../style";
 import type { LayoutResult } from "./column";
 
@@ -30,8 +31,12 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
 
   const titleH = titleHeight(cfg, style);
   const footH = footnoteH(cfg, style, decor);
-  const cx = cfg.width / 2;
-  const cy = titleH + (cfg.height - titleH - footH) / 2;
+  // Fitted so the ring's CENTRE and RADIUS both come off a positive box: on a
+  // frame too short for its title and footnote the raw height goes negative,
+  // which puts the centre below the bottom of the chart.
+  const box = fitPlot(cfg, { x: 0, y: titleH, w: cfg.width, h: cfg.height - titleH - footH });
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
   // Reserve what the OUTER labels actually occupy, not a fixed guess. They sit
   // at radius r + fs*0.7 in a box fs*1.4 tall and as wide as their text, so the
   // old fs*0.5 vertical / fs*4 horizontal margins were always short: the stock
@@ -43,7 +48,18 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
   // is centred on the label anchor.
   const marginY = outerLabels.length ? fs * 1.4 : fs * 0.5;
   const marginX = outerLabels.length ? labelW + fs * 0.9 : fs * 4;
-  const r = Math.max(20, Math.min(cfg.width / 2 - marginX, (cfg.height - titleH - footH) / 2 - marginY));
+  const rWant = Math.min(box.w / 2 - marginX, box.h / 2 - marginY);
+  // The 20pt floor keeps a ring visible on an ordinary chart, and like the
+  // tilemap's tile floor and the radar's web it yields to the frame: honouring
+  // it where `rWant` is smaller spends the margins reserved just above, and the
+  // outer labels then run past the edge — 13pt below a 300x60 chart. A small
+  // ring is still a ring; a label drawn off the chart is not there at all.
+  const r = Math.max(1, rWant);
+  // Those margins are the whole of what an OUTSIDE label has to sit in. When the
+  // floor has to override the fit there is no margin left, so the outer ring of
+  // labels is dropped rather than drawn off the frame. Inside labels are bounded
+  // by the wedge they sit on and are unaffected.
+  const outerLabelsFit = rWant >= 1;
   const rInner = r * 0.32;
   const rMid = grouped ? r * 0.6 : rInner;
 
@@ -54,17 +70,25 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
   const norm = (a: number) => ((a % 360) + 360) % 360;
   const label = (rr: number, midAngle: number, text: string, color: string, name: string, outside: boolean) => {
     if (!decor.segmentLabels) return;
+    if (outside && !outerLabelsFit) return;
     const p = polar(cx, cy, rr, midAngle);
-    const w = textWidth(text, fs * 0.85) + 4;
     const rightHalf = norm(midAngle) < 180;
+    // An OUTSIDE label runs away from the ring edge with nothing to stop it —
+    // the same defect the pie's slice labels had, in the same shape. Clipped to
+    // the room actually there between the ring and the frame; an inside label
+    // is bounded by the wedge it sits on and is untouched.
+    const lf = fs * 0.85;
+    const room = Math.max(lf, (rightHalf ? cfg.width - p.x : p.x) - 2);
+    const shown = outside ? clipToWidth(text, lf, room) : text;
+    const w = textWidth(shown, lf) + 4;
     nodes.push({
       kind: "text",
       x: outside ? (rightHalf ? p.x : p.x - w) : p.x - w / 2,
       y: p.y - fs * 0.7,
       w,
       h: fs * 1.4,
-      text,
-      fontSize: fs * 0.85,
+      text: shown,
+      fontSize: lf,
       color,
       align: outside ? (rightHalf ? "left" : "right") : "center",
       valign: "middle",

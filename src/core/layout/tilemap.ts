@@ -5,8 +5,21 @@ import { maxOf, minOf } from "../agg";
 import { lerpColor, noDataFill, sequentialScale } from "../color";
 import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
+
+/**
+ * What the legend below the grid actually occupies, in font sizes — not a round
+ * number close to it. It starts `fs * 0.5` under the grid, the swatch strip is
+ * `fs * 0.9`, and the min/max labels sit at `fs * 0.95` below the strip's top in
+ * a box `fs * 1.2` tall, so the last ink is `fs * 2.65` under the grid.
+ *
+ * Both the reservation above the legend and the clamp that keeps it inside the
+ * frame are stated in terms of this, so they cannot drift apart: the reservation
+ * carries an extra gutter of slack, and a clamp written against the reservation
+ * would spend that slack and move every ordinary tilemap by half a point.
+ */
+const LEGEND_INK = 2.65;
 
 /**
  * Tile-grid cartogram ("map chart"): every region is a uniform square, so
@@ -35,7 +48,10 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       columnTop: data.categories.map(() => titleH),
       columnValue: data.categories.map((_, c) => data.series[0]?.values[c] ?? 0),
       baselineY: cfg.height,
-      plot: { x: 0, y: titleH, w: cfg.width, h: cfg.height - titleH },
+      // Fitted because the decorations read this rect: a frame shorter than its
+      // own title would otherwise hand them a negative height to map bands
+      // through.
+      plot: fitPlot(cfg, { x: 0, y: titleH, w: cfg.width, h: cfg.height - titleH }),
     },
   };
   if (!layout) {
@@ -97,31 +113,43 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const cols = Math.max(...Object.values(layout).map(([c]) => c)) + 1;
   const rows = Math.max(...Object.values(layout).map(([, r]) => r)) + 1;
   const gutter = 2.5;
-  // What the legend below the grid actually occupies, rather than a round number
-  // close to it. It starts `fs * 0.5` under the grid, the swatch strip is
-  // `fs * 0.9`, and the min/max labels sit at `fs * 0.95` below the strip's top
-  // in a box `fs * 1.2` tall — so the last ink is `fs * 2.65` under the grid,
-  // against `fs * 2.4` reserved.
-  //
-  // A quarter of a font is not much, and it was enough: the min and max labels
-  // had their descenders cut by the frame on EVERY tilemap at EVERY size, 1.3pt
-  // at a 10pt font and 1.9 at 18. The other 0.5pt came from `rowsBottom`, which
-  // adds a gutter per row where the height budget below pays for the gaps
-  // BETWEEN rows — one gutter more than it is given. The two together predict
-  // `fs * 0.0785 + 0.5` of overflow, which is 1.29 and 1.91 at those two fonts:
-  // the measurement, to the tenth.
-  const legendH = vals.length ? fs * 2.65 + gutter : fs * 0.5;
+  // The reservation is the legend's own ink (see LEGEND_INK) plus one gutter of
+  // slack, because `rowsBottom` adds a gutter per row where the height budget
+  // pays for the gaps BETWEEN rows — one gutter more than it is given. Those two
+  // together used to predict `fs * 0.0785 + 0.5` of overflow, and did: the min
+  // and max labels had their descenders cut by the frame on EVERY tilemap at
+  // EVERY size, 1.3pt at a 10pt font and 1.9 at 18, the measurement to the tenth.
+  const legendH = vals.length ? LEGEND_INK * fs + gutter : fs * 0.5;
   const availW = cfg.width - 4;
   const availH = cfg.height - titleH - legendH - footnoteH(cfg, style, decor) - 4;
   // Hex tiles nest: rows step ~0.87·tile and odd rows shift half a column, so
   // the footprint needs an extra half column of width and less height.
-  const tile = hex
-    ? Math.max(6, Math.min((availW - (cols - 1) * gutter) / (cols + 0.5), availH / ((rows - 1) * 0.87 + 1)))
-    : Math.max(6, Math.min((availW - (cols - 1) * gutter) / cols, (availH - (rows - 1) * gutter) / rows));
+  // The 6pt floor keeps a tile visible on an ordinary chart, and it is the last
+  // place in this engine that refused to yield to its frame: on a frame too
+  // small to pay for it, honouring the floor made the grid taller than the space
+  // budgeted for it and pushed the legend under it off the bottom — 27pt on a
+  // 120x90 thumbnail. A small tile is still legible as a SHAPE, which is what a
+  // cartogram is read for; a tile drawn outside the frame is not there at all.
+  //
+  // So the floor applies only when the frame can pay for it. It is unreachable
+  // on any chart big enough to want it, so nothing of an ordinary size moves.
+  const want = hex
+    ? Math.min((availW - (cols - 1) * gutter) / (cols + 0.5), availH / ((rows - 1) * 0.87 + 1))
+    : Math.min((availW - (cols - 1) * gutter) / cols, (availH - (rows - 1) * gutter) / rows);
+  const tile = Math.max(1, want);
   const gridW = (hex ? cols + 0.5 : cols) * tile + (cols - 1) * gutter;
   const x0 = (cfg.width - gridW) / 2;
   const y0 = titleH + 2;
   const rowsBottom = hex ? y0 + (rows - 1) * tile * 0.87 + tile : y0 + rows * (tile + gutter);
+  /**
+   * Where the legend hangs from. Normally the bottom of the grid — but the tile
+   * floor above is explicitly allowed to overrun `availH`, and when it does the
+   * grid drags the legend off the frame with it: 17pt below a 300x60 chart. So
+   * the legend takes the grid's bottom or the last position its own reserved
+   * band still fits at, whichever is higher. On any chart whose grid fits its
+   * budget the first is always the smaller, so nothing of an ordinary size moves.
+   */
+  const legendTop = Math.max(0, Math.min(rowsBottom, cfg.height - LEGEND_INK * fs - footnoteH(cfg, style, decor)));
 
   const hexPts = (cx: number, cy: number, R: number) =>
     [90, 150, 210, 270, 330, 30].map((a) => ({
@@ -240,7 +268,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         {
           kind: "rect",
           x: lx,
-          y: rowsBottom + fs * 0.6,
+          y: legendTop + fs * 0.6,
           w: chip,
           h: chip,
           fill: seriesColor(style, si, s.color),
@@ -249,7 +277,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         {
           kind: "text",
           x: lx + chip + 3,
-          y: rowsBottom + fs * 0.3,
+          y: legendTop + fs * 0.3,
           w: textWidth(s.name, fs) + 6,
           h: fs * 1.4,
           text: s.name,
@@ -265,7 +293,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   }
   // Gradient legend + "no data" swatch.
   if (!glyph && vals.length && min !== max) {
-    const ly = rowsBottom + fs * 0.5;
+    const ly = legendTop + fs * 0.5;
     const lw = Math.min(gridW * 0.5, fs * 12);
     const steps = 24;
     for (let i = 0; i < steps; i++) {

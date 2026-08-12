@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { niceTicks, axisTickLabel } from "../format";
 
 export interface Frame {
@@ -8,6 +9,48 @@ export interface Frame {
   y: number;
   w: number;
   h: number;
+}
+
+/**
+ * The smallest plot a layout may be handed, in points. It exists to keep the
+ * plot POSITIVE, not to make it readable — a chart this small is not readable
+ * on any arithmetic.
+ */
+const MIN_PLOT_SIDE = 8;
+
+/**
+ * Clamp a plot rectangle into the chart frame.
+ *
+ * Every layout computes its plot by subtracting its chrome — title, legend,
+ * axis, footnote — from the frame, and each of those is a fixed number of
+ * points. On a frame too small to pay for them the subtraction goes NEGATIVE,
+ * and a negative height is not merely a small one: `toY` maps the value domain
+ * through it, so the axis INVERTS and the plot's own bottom edge lands below the
+ * frame. Scatter at 120x90 — a thumbnail — computed `h: -8`, which put its y
+ * tick labels 5pt past the bottom of the chart and mapped larger values
+ * downward.
+ *
+ * The floor is what stops the inversion. Where the recovered height comes from
+ * is the other half: the plot grows UP from the bottom edge the layout gave it,
+ * never down. That edge is the category axis and the value baseline — moving it
+ * moves what the chart claims — while everything above it is chrome, and chrome
+ * is exactly what a frame this small cannot pay for. Anchoring the other way
+ * round was tried and is worse: it pins the plot to the bottom of the frame and
+ * every label drawn beneath a mark spills out of it (14pt on a 120x90 bubble).
+ *
+ * The plot then overlaps its own title, which is ugly and honest — the
+ * alternative is a chart drawn upside down and spilling onto the slide.
+ *
+ * A plot that already fits is returned with every field bit-identical, so this
+ * is unreachable for any chart at a sane size.
+ */
+export function fitPlot<T extends Frame>(cfg: ChartConfig, plot: T): T {
+  const w = Math.max(MIN_PLOT_SIDE, Math.min(plot.w, cfg.width));
+  const h = Math.max(MIN_PLOT_SIDE, Math.min(plot.h, cfg.height));
+  const x = Math.max(0, Math.min(plot.x + plot.w - w, cfg.width - w));
+  const y = Math.max(0, Math.min(plot.y + plot.h - h, cfg.height - h));
+  if (x === plot.x && y === plot.y && w === plot.w && h === plot.h) return plot;
+  return { ...plot, x, y, w, h };
 }
 
 export interface CategorySlots {
@@ -239,19 +282,71 @@ export function titleHeight(cfg: ChartConfig, style: ChartStyle): number {
 export function titleNode(cfg: ChartConfig, style: ChartStyle): SceneNode | null {
   if (!cfg.title) return null;
   const fs = style.fontSize;
+  // The title box spans the whole frame and the title was drawn at `fs * 1.2`
+  // whatever the frame could hold, so a title longer than its chart ran off the
+  // right-hand edge. Because this node is shared, that was ONE defect wearing
+  // seventeen faces: at a 120x90 thumbnail the title is the worst-overflowing
+  // node in thirteen of the seventeen kinds that overflow at all, by as much as
+  // 124pt on a 120pt-wide chart — a title four times wider than its own chart,
+  // lying across whatever sits beside it on the slide.
+  //
+  // Shrink to fit, then clip: the same two-step the agenda, the process flow,
+  // the mekko axis and the funnel's rows all use. Last-resort, so a title that
+  // already fits keeps `fs * 1.2` exactly and no ordinary chart moves.
+  //
+  // `titleHeight` keeps reserving the full `fs * 1.6` and is deliberately not
+  // shrunk with this. Reserving MORE room than the title now needs cannot push
+  // anything off the frame, where reserving less could, and leaving it alone
+  // means the plot below starts where it always did.
+  const text = String(cfg.title ?? "");
+  let tf = fs * 1.2;
+  while (tf > 6 && textWidth(text, tf, true) > cfg.width) tf -= 0.5;
   return {
     kind: "text",
     x: 0,
     y: 0,
     w: cfg.width,
     h: fs * 1.6,
-    text: cfg.title,
-    fontSize: fs * 1.2,
+    text: clipToWidth(text, tf, cfg.width, true),
+    fontSize: tf,
     bold: true,
     color: style.text,
     align: "left",
     valign: "top",
     name: "title",
+  };
+}
+
+/**
+ * The footnote line, or null when there is nothing to print on it.
+ *
+ * Extracted for the reason `titleNode` above was: both call sites emitted this
+ * exact node inline, byte for byte apart from the text, so a fix to one was a
+ * fix to one. It also had the title's defect — the box spans the frame and the
+ * text was drawn at `fs * 0.85` whatever the frame could hold, so a long source
+ * note ran off the right-hand edge (43pt on a 120pt-wide cascade).
+ *
+ * Shrink to fit, then clip, last-resort: a footnote that already fits keeps its
+ * size and position exactly.
+ */
+export function footnoteNode(cfg: ChartConfig, style: ChartStyle, text: string): SceneNode | null {
+  if (!text) return null;
+  const fs = style.fontSize;
+  const room = Math.max(1, cfg.width - 4);
+  let ff = fs * 0.85;
+  while (ff > 5 && textWidth(text, ff) > room) ff -= 0.5;
+  return {
+    kind: "text",
+    x: 2,
+    y: cfg.height - fs * 1.15,
+    w: room,
+    h: fs * 1.1,
+    text: clipToWidth(text, ff, room),
+    fontSize: ff,
+    color: style.mutedText,
+    align: "left",
+    valign: "bottom",
+    name: "footnote",
   };
 }
 
@@ -331,12 +426,12 @@ export function computeFrame(
   // Extra headroom when a difference arrow is drawn past the last column.
   const diffW = decor.difference ? 26 : 0;
   const varianceH = varianceBandHeight(cfg, decor, style);
-  const frame: Frame = {
+  const frame: Frame = fitPlot(cfg, {
     x: valueAxisW,
     y: titleH + totalsH,
     w: cfg.width - valueAxisW - Math.max(seriesLabelsW, diffW + 2) - 2,
     h: cfg.height - titleH - totalsH - varianceH - categoryAxisH - footnoteH(cfg, style, decor),
-  };
+  });
   return { frame, res: { titleH, totalsH, categoryAxisH, valueAxisW, seriesLabelsW, varianceH } };
 }
 
@@ -362,12 +457,12 @@ export function computeFrameHorizontal(cfg: ChartConfig, style: ChartStyle, deco
   const legendH = legendRows > 0 ? legendRows * (fs * 1.6) + 4 : fs * 0.6;
   const valueAxisH = decor.valueAxis ? fs * 1.6 : 4;
   const totalsW = decor.totals ? fs * 4 : fs * 0.8;
-  return {
+  return fitPlot(cfg, {
     x: catW,
     y: titleH + legendH,
     w: cfg.width - catW - totalsW - 2,
     h: cfg.height - titleH - legendH - valueAxisH - footnoteH(cfg, style, decor),
-  };
+  });
 }
 
 /** Title, category labels, value axis, gridlines — shared chrome for all cartesian charts. */

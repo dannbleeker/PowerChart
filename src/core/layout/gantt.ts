@@ -3,7 +3,7 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import { lerpColor, zoneFill } from "../color";
 
 /**
@@ -148,7 +148,16 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const ownerW = ownerW0 * gutterScale;
   const remarkW = remarkW0 * gutterScale;
   const bottomH = (today != null ? fs * 1.6 : 6) + footnoteH(cfg, style, decor);
-  const plotH = cfg.height - titleH - bracketH - headerH - bottomH;
+  // Fitted before the row geometry is derived from it: `slotH` and `barH` read
+  // plotH, so a frame too short for the chrome would give every row a negative
+  // height and hang the bars above the plot rather than merely squashing them.
+  const plotBox = fitPlot(cfg, {
+    x: 0,
+    y: titleH + bracketH + headerH,
+    w: cfg.width,
+    h: cfg.height - titleH - bracketH - headerH - bottomH,
+  });
+  const plotH = plotBox.h;
   // Row geometry is derived here rather than after the plot because the RIGHT
   // MARGIN depends on it (see `msR`). It reads `plotH` and the row count only —
   // neither depends on the plot's width — so hoisting it changes no value.
@@ -166,14 +175,14 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // when the data HAS a milestone, so a gantt without one keeps the geometry it
   // always had.
   const msR = milestones.some((v) => v != null) ? barH * 0.45 : 0;
-  const plot = {
+  const plot = fitPlot(cfg, {
     x: catW + colsW,
-    y: titleH + bracketH + headerH,
+    y: plotBox.y,
     // Math.max: at an absurdly small cfg.width even zero gutters overrun the 6pt
     // right margin, and a negative width would invert the timeline again.
     w: Math.max(0, cfg.width - catW - colsW - ownerW - remarkW - 6 - msR),
     h: plotH,
-  };
+  });
 
   const dates = !!data.dates;
   const all = [

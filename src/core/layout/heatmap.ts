@@ -3,7 +3,7 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { divergingScale, lerpColor, noDataFill, sequentialScale, zoneFill } from "../color";
 import { maxOf, minOf } from "../agg";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -113,12 +113,12 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const totalsW = wantRowTotals ? fs * 4 : 0;
   const totalsH = wantColTotals ? fs * 1.9 : 0;
   const dendroW = clusterOn ? fs * 4 : 0; // left gutter for the row dendrogram
-  const plot = {
+  const plot = fitPlot(cfg, {
     x: dendroW + rowLabelW,
     y: titleH + headerH,
     w: cfg.width - dendroW - rowLabelW - 2 - totalsW,
     h: cfg.height - titleH - headerH - legendH - totalsH - footnoteH(cfg, style, decor),
-  };
+  });
   const cw = plot.w / Math.max(1, nCols);
   const ch = plot.h / Math.max(1, nRows);
 
