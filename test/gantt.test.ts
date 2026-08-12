@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import { layoutGantt } from "../src/core/layout/gantt";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
+import { textWidth } from "../src/core/scene";
 import type { EllipseNode, LineNode, RectNode, TextNode } from "../src/core/scene";
 import type { ChartConfig, ChartStyle } from "../src/core/types";
 
@@ -481,5 +482,85 @@ describe("gantt edge cases", () => {
   it("draws a dependency elbow for a valid predecessor", () => {
     const s = buildChart(gantt([{ name: "After", values: [null, 1] }]));
     expect(s.nodes.some((n) => n.name?.startsWith("dep"))).toBe(true);
+  });
+});
+
+describe("the end of the timeline stays on the chart", () => {
+  /**
+   * Two separate defects at the right edge, and the first was hiding the second.
+   *
+   * A MILESTONE marker is a circle centred on its date, so half of it sits to
+   * the right of the last position the timeline can reach — and the plot's right
+   * margin was a flat 6pt whatever the marker's size. A milestone on the last
+   * date had its right half cut off by the frame from a 12pt font up (+1.6pt at
+   * 12, +4.1 at 16, +4.8 at 22). It is a data-bearing marker: its centre IS the
+   * date, so it cannot be nudged left the way a label can, and the timeline has
+   * to end far enough from the edge to hold it.
+   *
+   * A TICK LABEL is centred on its tick, so the last one puts half its width
+   * past the end of the timeline. Reserving the marker radius moved that tick
+   * left far enough to mask this — so a gantt with no Milestone row still lost
+   * the right-hand end of its axis, +8.6pt at a 30pt font. Both are checked, and
+   * the milestone-free case is checked precisely because the fix for one hid
+   * the other.
+   */
+  const rightOf = (n: { kind: string; name?: string } & Record<string, unknown>): number | null => {
+    const a = n as unknown as Record<string, number>;
+    if (n.kind === "text") {
+      const t = n as unknown as TextNode;
+      const w = Math.min(t.w, textWidth(t.text, t.fontSize, t.bold));
+      const x = t.align === "right" ? t.x + t.w - w : t.align === "center" ? t.x + (t.w - w) / 2 : t.x;
+      return x + w;
+    }
+    if (n.kind === "rect") return a.x + a.w;
+    if (n.kind === "ellipse") return a.cx + a.rx;
+    if (n.kind === "line") return Math.max(a.x1, a.x2);
+    return null;
+  };
+
+  const rows = [
+    { name: "Start", values: [1, 3, 5, 10, 13] },
+    { name: "End", values: [3, 6, 11, 13, 15] },
+  ];
+  const chart = (fontSize: number, withMilestones: boolean): ChartConfig =>
+    ({
+      kind: "gantt",
+      ...DEFAULT_SIZE,
+      style: { fontSize },
+      data: {
+        categories: ["Scoping", "Design", "Build", "Test", "Rollout"],
+        series: withMilestones ? [...rows, { name: "Milestone", values: [null, 6, null, 13, 15] }] : rows,
+      },
+    }) as ChartConfig;
+
+  it("keeps every node inside the frame, with milestones and without", () => {
+    for (const withMilestones of [true, false]) {
+      for (const fs of [10, 12, 14, 16, 22, 30]) {
+        const scene = buildChart(chart(fs, withMilestones));
+        const over = scene.nodes
+          .map((n) => ({ name: n.name ?? n.kind, over: (rightOf(n as never) ?? -Infinity) - scene.width }))
+          .filter((o) => o.over > 0.5);
+        expect(
+          over.map((o) => `${o.name}(+${o.over.toFixed(1)})`),
+          `fs=${fs} ${withMilestones ? "with" : "without"} milestones`,
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it("only pays for the margin when there is a milestone to fit", () => {
+    // The reservation is not a permanent tax on every gantt: with no Milestone
+    // row the timeline reaches exactly as far as it always did.
+    const lastTick = (cfg: ChartConfig) => {
+      const ticks = buildChart(cfg).nodes.filter((n): n is LineNode => n.kind === "line" && n.name === "gridline");
+      return Math.max(...ticks.map((t) => t.x1));
+    };
+    expect(lastTick(chart(10, false))).toBeGreaterThan(lastTick(chart(10, true)));
+    // …and the marker that costs the margin is genuinely there and inside it.
+    const dots = buildChart(chart(10, true)).nodes.filter(
+      (n): n is EllipseNode => n.kind === "ellipse" && !!n.name?.startsWith("milestone-"),
+    );
+    expect(dots.length).toBeGreaterThan(0);
+    for (const d of dots) expect(d.cx + d.rx).toBeLessThanOrEqual(DEFAULT_SIZE.width);
   });
 });
