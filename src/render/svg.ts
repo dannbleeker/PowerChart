@@ -47,7 +47,21 @@ const esc = (s: string) =>
  * Every colour the engine actually produces (hex, and internally-built url(#…))
  * passes unchanged, so valid charts render byte-identically.
  */
-const PAINT_OK = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%]+\)|url\(#[\w.-]+\)|[a-zA-Z]{1,24})$/;
+/**
+ * The `/` is CSS Color 4's alpha separator — `rgb(70 130 180 / 0.5)`, the form
+ * MDN now documents first and the one an agent writing a config is most likely
+ * to produce. Without it that colour failed this test and fell back to BLACK in
+ * the preview, while both PowerPoint renderers parsed it and drew steel blue:
+ * one colour, two pictures, and only the wrong one on screen.
+ *
+ * It widens the allow-list by one character and cannot widen what escapes.
+ * Everything inside the parentheses is still limited to digits, `.`, `,`,
+ * whitespace, `%` and now `/` — no quote to close the attribute, no `<` or `>`
+ * to open a tag, no `&` to start an entity, and no `*`, so it cannot even open
+ * a CSS comment. The alternation is anchored, so a slash outside the function
+ * form still fails.
+ */
+const PAINT_OK = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%/]+\)|hsla?\([\d.,\s%/]+\)|url\(#[\w.-]+\)|[a-zA-Z]{1,24})$/;
 /**
  * A paint the markup can carry, or black.
  *

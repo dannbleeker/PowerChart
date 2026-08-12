@@ -185,11 +185,23 @@ export const alphaOf = (c) => {
   const h = raw.replace("#", "");
   if (/^[0-9a-fA-F]{8}$/.test(h)) return parseInt(h.slice(6), 16) / 255;
   if (/^[0-9a-fA-F]{4}$/.test(h)) return parseInt(h[3] + h[3], 16) / 255;
-  const m = /^(?:rgba|hsla)\(([^)]*)\)$/i.exec(raw);
+  // `rgb`/`hsl` as well as `rgba`/`hsla` — CSS Color 4 made them aliases, and
+  // `readHex` above already reads the short spelling's channels.
+  const m = /^(?:rgba?|hsla?)\(([^)]*)\)$/i.exec(raw);
   if (m) {
-    const parts = m[1].split(/[,/]/).map((s) => s.trim());
-    if (parts.length >= 4) {
-      const a = parts[3].endsWith("%") ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
+    // The SLASH decides which syntax this is. Splitting on `[,/]` and taking the
+    // fourth part reads the legacy comma form and quietly fails the modern one:
+    // `rgb(70 130 180 / 0.5)` splits into two parts, not four, so the alpha was
+    // dropped and a translucent colour reached the deck solid — while `readHex`
+    // parsed its channels perfectly. Kept in step with `alphaOf` in
+    // `src/core/color.ts`, which is the same rule for the live add-in; the two
+    // are separate code on purpose and have now had the same defect twice.
+    const body = m[1];
+    const slash = body.indexOf("/");
+    const rawAlpha = slash >= 0 ? body.slice(slash + 1) : body.split(",")[3];
+    const t = rawAlpha === undefined ? "" : rawAlpha.trim();
+    if (t !== "") {
+      const a = t.endsWith("%") ? parseFloat(t) / 100 : parseFloat(t);
       return Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 1;
     }
   }
