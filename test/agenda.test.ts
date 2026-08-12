@@ -43,4 +43,36 @@ describe("agenda slides", () => {
     // Titles that already fit keep the full-size row font.
     expect(item(buildAgendaScene(chapters)).fontSize).toBe(18);
   });
+
+  it("a slide size that is not a number does not reach the nodes", () => {
+    // `{kind: "agenda", width: "wide"}` is one line of the skill's caller JSON,
+    // and `render-pptx.mjs` passes width/height straight through. `??` catches
+    // only null and undefined, so a string, a NaN or an Infinity went into every
+    // piece of arithmetic here — and this was the one scene builder in the repo
+    // that did not end with `finiteNodes`, so all seven nodes were emitted with
+    // NaN coordinates. In the SVG that is a visibly broken slide; in the pptx
+    // path `x="Infinity"` is not an Int64 and Microsoft's validator rejects the
+    // whole deck, which is the failure `finiteNodes` was written for.
+    for (const size of [{ width: "wide" }, { width: NaN }, { height: Infinity }, { width: -5 }, { height: 0 }]) {
+      const scene = buildAgendaScene(chapters, { highlight: 0, ...(size as { width?: number; height?: number }) });
+      const label = JSON.stringify(size);
+      expect(Number.isFinite(scene.width), `${label} left the frame width non-finite`).toBe(true);
+      expect(Number.isFinite(scene.height), `${label} left the frame height non-finite`).toBe(true);
+      // The slide still has its whole agenda on it — the fix is a usable size,
+      // not an empty scene, which dropping the nodes would also have achieved.
+      expect(
+        scene.nodes.filter((n) => n.name?.startsWith("agenda-item-")),
+        label,
+      ).toHaveLength(chapters.length);
+      for (const n of scene.nodes)
+        for (const [k, v] of Object.entries(n))
+          if (typeof v === "number") expect(Number.isFinite(v), `${label} left ${n.name}.${k} = ${v}`).toBe(true);
+    }
+  });
+
+  it("still honours a slide size that is usable", () => {
+    // …so the rule above cannot be satisfied by ignoring the caller entirely.
+    const scene = buildAgendaScene(chapters, { width: 720, height: 405 });
+    expect([scene.width, scene.height]).toEqual([720, 405]);
+  });
 });
