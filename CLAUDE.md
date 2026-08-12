@@ -191,6 +191,16 @@ will not resolve` several times mid-run, replacement scratch slides taken, and
   came back. The host's ability to resolve a freshly added slide's id comes and
   goes within a single run.
 
+  **A partner can be the coin while its trigger holds — 2026-08-12
+  (`89675b6`).** `shape-add-held-slide-proxy-again` came off
+  `PENDING_QUESTIONS` on `756682e` as stable across three passes, and this round
+  flipped it inside ONE round (`threw` healthy, then `yes` in slide-trouble)
+  while the TRIGGER answered `threw` both times and reported stable. This file
+  names the trigger as the sharpest flipper on record; the pair has now been
+  seen the other way round. It is in `UNSTABLE_ANSWERS` now — which a follow-up
+  could not be until the shortlist invariant learned that a partner rides its
+  trigger instead of carrying its own mark.
+
   **`UNSTABLE_ANSWERS` in `scripts/host-baseline.mjs` is the authoritative list,
   with every observation on every entry — do not restate its counts here.** A
   tally in this file and a list in that one drift the moment either changes, and

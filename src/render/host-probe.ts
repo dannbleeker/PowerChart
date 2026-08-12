@@ -839,10 +839,17 @@ const PROBES: Probe[] = [
         // No `resample` mark, and it does not need one: a follow-up is never
         // scheduled on its own, it rides its trigger, and the trigger carries
         // the mark — which is how this pair got three paired samples in one
-        // round. It carried the mark while it sat in `PENDING_QUESTIONS`; it
-        // has been answered now (2026-08-11, `756682e`, stable across three
-        // passes) and the shortlist invariant would fail on a mark neither
-        // table asks for.
+        // round. It carried the mark while it sat in `PENDING_QUESTIONS`, and
+        // came off it on 2026-08-11 (`756682e`) as stable across three passes.
+        //
+        // THAT STABILITY CLAIM IS DEAD. Round `89675b6` (2026-08-12) flipped it
+        // inside a single round — `threw` on pass 1 while the host was healthy,
+        // `yes` on pass 2 in slide-trouble — with its TRIGGER answering `threw`
+        // both times. So the pair has now been seen the other way round from
+        // the way this file describes it: the partner is the coin and the
+        // trigger held. It is in `UNSTABLE_ANSWERS` for that, which a follow-up
+        // could not be until the shortlist invariant learned that a partner
+        // rides its trigger rather than carrying its own mark.
         // Same damage as its trigger — it writes through a proxy this host has
         // stopped honouring — so it gives up its slide too rather than handing
         // the wreckage to whatever runs next. See `Probe.burnsTheSlide`.

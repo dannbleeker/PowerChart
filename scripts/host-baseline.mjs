@@ -143,6 +143,13 @@ export const KNOWN_DIVERGENCES = {
  * several runs agreeing, not one.
  */
 export const UNSTABLE_ANSWERS = {
+  "shape-add-held-slide-proxy-again":
+    "RETIRED FROM STABLE ON 2026-08-12 (`89675b6`), by the mechanism it exists to be. It came off `PENDING_QUESTIONS` on " +
+    "`756682e` as stable across three passes; this round flipped it inside ONE round — `threw` on pass 1 with the host " +
+    "healthy, `yes` on pass 2 in slide-trouble — while its TRIGGER answered `threw` both times and reported stable. So the " +
+    "pair has been seen the other way round from the way this project describes it: the partner is the coin here and the " +
+    "trigger held. Do not build on either value. Worth keeping as a pair rather than collapsing: a round where the two " +
+    "disagree is exactly the evidence that this host's refusal of a held proxy is a state it moves through, not a rule.",
   "shapes-items-count-honest":
     "MEASURED AGAIN 2026-08-10: `unreadable` on the last SEVEN consecutive rounds (1fa0509 through 3d17165), not the three this " +
     "entry claimed. `short-0` has not appeared since 619d24b. The ANSWER never moved — this host will not tell a caller what is on " +
