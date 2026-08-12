@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
+import { textWidth } from "../src/core/scene";
 import type { RectNode, SceneNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
@@ -133,5 +134,54 @@ describe("funnel bands fit a short frame", () => {
     const stages = scene.nodes.filter((n) => /^stage-\d+$/.test(n.name ?? "")); // the bands, not stage-value-*
     expect(stages.length).toBe(6);
     for (const s of stages as any[]) expect(s.y + s.h).toBeLessThanOrEqual(60 + 1);
+  });
+});
+
+describe("a stage value is never drawn off the chart", () => {
+  /**
+   * "Outside" means to the RIGHT of the band, and the widest band already
+   * reaches the edge of the plot — so at a large font there is no room out there
+   * and the label was drawn past the frame. `stage-value-0` landed at x = 480.0
+   * on a 480pt frame: the TOP stage showed no value at all while every stage
+   * below it did, because the one band big enough to matter is the one with
+   * nothing to its right. Rendered and looked at, which is how it was seen: the
+   * funnel had four numbers on five bars.
+   *
+   * The band that cannot fit a label beside it is the WIDEST one, which is
+   * exactly the band with the most room inside it — so it goes inside, in
+   * contrast ink. A cramped label on the bar beats a missing number.
+   */
+  const inkSpan = (t: TextNode) => {
+    const w = Math.min(t.w, textWidth(t.text, t.fontSize, t.bold));
+    const x = t.align === "right" ? t.x + t.w - w : t.align === "center" ? t.x + (t.w - w) / 2 : t.x;
+    return { x0: x, x1: x + w };
+  };
+  const values = (fontSize: number) =>
+    buildChart({ ...sampleConfig("funnel"), style: { fontSize } } as ChartConfig).nodes.filter(
+      (n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("stage-value-"),
+    );
+
+  it("keeps every stage's value inside the frame, at every font size", () => {
+    for (const fs of [10, 16, 22, 28, 36]) {
+      const found = values(fs);
+      // Every stage still HAS a value — the rule is not satisfied by dropping
+      // the label that would not fit.
+      expect(found.length, `fs=${fs} lost a stage value`).toBe(5);
+      for (const t of found) {
+        const { x0, x1 } = inkSpan(t);
+        expect(x1, `fs=${fs} ${t.name} ran past the right edge`).toBeLessThanOrEqual(DEFAULT_SIZE.width);
+        expect(x0, `fs=${fs} ${t.name} started left of the frame`).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("still puts the value beside the band when there is room for it", () => {
+    // The fix must not collapse into "always inside": at a small font the narrow
+    // lower stages carry their value outside the bar, which is what makes them
+    // readable at all.
+    const outside = values(10).filter((t) => t.align === "left");
+    const inside = values(10).filter((t) => t.align === "center");
+    expect(inside.length, "no value sits inside its band").toBeGreaterThan(0);
+    expect(outside.length + inside.length).toBe(5);
   });
 });
