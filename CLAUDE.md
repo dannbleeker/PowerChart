@@ -438,11 +438,19 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   `manifest-prod.xml` that was not in the release at all — twelve days, with
   `release.yml` sitting correct and un-run. Then v0.3.0 (2026-07-31) shipped
   `<Version>0.1.0</Version>`, the version Microsoft's validator rejects outright;
-  #289 fixed the repo on 2026-08-06 and, with no release cut since, **the fix has
-  reached nobody.** The weekly check now compares what is published against what
-  is committed and says "cut a release" when they part. **After a fix that
-  changes a manifest, ask the owner for a release** — merging it is not shipping
-  it.
+  #289 fixed the repo on 2026-08-06.
+
+  **That one is SHIPPED — v0.3.1 went out on 2026-08-10 carrying it** (the bump
+  commit says so in its subject). This paragraph said "the fix has reached
+  nobody" for two days after it stopped being true, which is the failure the
+  bullet is about happening to the bullet: a claim about the RELEASE, written
+  from the working tree, and never re-checked. Read `list_releases` before
+  repeating any sentence here about what has or has not shipped.
+
+  The weekly check compares what is published against what is committed and says
+  "cut a release" when they part. **After a fix that changes a manifest, ask the
+  owner for a release** — merging it is not shipping it.
+
 - **When moving tests between files, pin the total first and check it after.**
   A reorg once silently deleted 43 tests — the suite still went green because
   the count was never compared. `npx vitest run | grep "Tests "` before and

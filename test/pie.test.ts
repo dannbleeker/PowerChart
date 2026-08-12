@@ -3,6 +3,7 @@ import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import { layoutPie } from "../src/core/layout/pie";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import { sceneToSvg } from "../src/render/svg";
+import { textWidth } from "../src/core/scene";
 import type { EllipseNode, LineNode, RectNode, TextNode, WedgeNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
@@ -222,5 +223,69 @@ describe("pie fallbacks", () => {
       decorations: { segmentLabels: true },
     } as ChartConfig);
     expect(s.nodes.some((n) => n.kind === "wedge")).toBe(true);
+  });
+});
+
+describe("a slice label stays on the chart", () => {
+  /**
+   * The outside label ran away from the slice edge with nothing to stop it. The
+   * radius reserves a FIXED `fs * 7` for labels — a guess, where the breakout
+   * path in the same file MEASURES the widest label it actually has — so any
+   * category name wider than that guess put ink off the chart.
+   *
+   * Measured before the fix: `label-0` reached x = 548 on a 480pt frame, 68pt
+   * past the right edge. Neither PowerPoint renderer wraps or clips a text box,
+   * so in a deck that is a label lying across whatever sits beside the chart on
+   * the slide — and off a picture-mode render entirely.
+   */
+  const inkRight = (t: TextNode) => {
+    const w = Math.min(t.w, textWidth(t.text, t.fontSize, t.bold));
+    const x = t.align === "right" ? t.x + t.w - w : t.align === "center" ? t.x + (t.w - w) / 2 : t.x;
+    return x + w;
+  };
+  const labels = (cfg: ChartConfig) =>
+    buildChart(cfg).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("label-"));
+
+  const longCfg = (kind: "pie" | "doughnut"): ChartConfig =>
+    ({
+      kind,
+      ...DEFAULT_SIZE,
+      data: {
+        categories: ["A very long category label indeed", "B", "Another rather long one here", "D"],
+        series: [{ name: "S", values: [4, 3, 2, 1] }],
+      },
+      decorations: { segmentLabels: true },
+    }) as ChartConfig;
+
+  it("keeps a long category label inside the frame", () => {
+    for (const kind of ["pie", "doughnut"] as const) {
+      const cfg = longCfg(kind);
+      const found = labels(cfg);
+      expect(found.length, `${kind} drew no slice labels`).toBeGreaterThan(0);
+      for (const t of found) {
+        expect(inkRight(t), `${kind} ${t.name} ran past the right edge`).toBeLessThanOrEqual(DEFAULT_SIZE.width);
+        expect(t.x, `${kind} ${t.name} started left of the frame`).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("still shows as much of the label as fits, and a short one whole", () => {
+    // The rule must not be satisfiable by drawing nothing, or by ellipsizing
+    // every label regardless of the room available.
+    const long = labels(longCfg("doughnut"));
+    expect(
+      long.some((t) => t.text.length > 8),
+      "every label was clipped to nothing",
+    ).toBe(true);
+
+    const shortCfg = {
+      kind: "doughnut",
+      ...DEFAULT_SIZE,
+      data: { categories: ["A", "B"], series: [{ name: "S", values: [1, 1] }] },
+      decorations: { segmentLabels: true },
+    } as ChartConfig;
+    for (const t of labels(shortCfg)) {
+      expect(t.text.endsWith("…"), `a short label was clipped: ${JSON.stringify(t.text)}`).toBe(false);
+    }
   });
 });
