@@ -173,6 +173,17 @@ export const KNOWN_ISSUES = {
     "Slide.exportAsBase64 omits modern comments and ppt/authors.xml from the exported deck. NO EXPOSURE: the add-in calls it " +
     "through `slideImageBase64` to get a PICTURE of a slide for the round's deck evidence, and a round has no comments in it " +
     "and no interest in them if it did. Kept in the table rather than dropped so the next sweep does not re-raise it.",
+  3784:
+    "Shape TAGS are lost when a shape is cut and pasted on PowerPoint WEB; desktop keeps them. Open, awaiting Microsoft, no " +
+    "workaround offered. Triaged 2026-08-12 and it is the most direct user-facing exposure in this table: every chart's " +
+    "config lives in a `POWERCHART_CONFIG` shape tag, so on the web a user who cuts a chart and pastes it back has a chart " +
+    "that is no longer re-editable — silently, with nothing in any log, because the tag ANSWERED and said there is no " +
+    "config. `tagsUnread` does not cover it; that counts tags the host would not answer either way. " +
+    "NOT DETECTED ON PURPOSE. A count of shapes named `PowerChart` carrying no config would find these, and on this host it " +
+    "would be dominated by the tag writes the host itself refuses every round (`tagging failed` appears in most rounds), so " +
+    "the number would say 'this host is unwell' rather than 'your paste broke a chart'. `same scale across the deck` already " +
+    "reports how many charts in a deck are re-editable, which is the same fact without the false precision. Recorded as a " +
+    "limitation so the next person to meet an un-editable pasted chart does not go looking for it in our tag writer.",
   6498:
     "Shapes inserted on PowerPoint WEB do not reflect instantly: changes may not appear without a page refresh, and — the part " +
     "that matters here — they may appear IN THE SLIDE PREVIEW BUT NOT IN THE MAIN VIEW. Open, no Microsoft response, no " +

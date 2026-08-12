@@ -2735,11 +2735,39 @@ describe("whose fault a red scenario was", () => {
 
 describe("what a failed update is allowed to claim", () => {
   it("does not report a refused id as the chart being destroyed", () => {
-    expect(updateLossNote("picture", 3)).toMatch(/still on the slide/);
-    expect(updateLossNote("picture", 3), "a refusal was reported as destruction").not.toMatch(/vanish/);
-    // …and with no refusal recorded there is nothing to blame the host for, so
-    // the blunt reading stands. Both are failures; they are different failures.
-    expect(updateLossNote("picture", 0)).toMatch(/vanished/);
+    expect(updateLossNote("picture", 3)).toMatch(/would not name the picture/);
+    expect(updateLossNote("picture", 3), "a refusal was reported as destruction").not.toMatch(/GONE|destroyed/);
+  });
+
+  /**
+   * The case that survived the first fix, found on round `eaddbf4`.
+   *
+   * The explode's update returned null having logged nothing and refused
+   * nothing INSIDE that call, so keying on thrown id refusals alone printed
+   * `the picture vanished while being redrawn` — while the deck inventory from
+   * the same run showed a chart on every slide. This host can fail to resolve a
+   * target quietly, with no throw to count, and a count of throws cannot see it.
+   *
+   * So destruction is now claimed only on positive evidence: the slide was
+   * asked and said the shape is not there.
+   */
+  it("never claims destruction without asking the slide", () => {
+    // Nothing refused, nothing known — the honest answer, and NOT a loss claim.
+    const blind = updateLossNote("picture", 0);
+    expect(blind, "an unexplained null was reported as destruction").not.toMatch(/GONE|destroyed|vanish/);
+    expect(blind).toMatch(/would not say what became of it/);
+  });
+
+  it("says so plainly when the slide confirms the shape is still there", () => {
+    expect(updateLossNote("picture", 3, true)).toMatch(/STILL ON THE SLIDE/);
+    expect(updateLossNote("picture", 0, true)).toMatch(/nothing was lost/);
+  });
+
+  it("reports a real destruction when the slide says the shape is gone", () => {
+    // The one case that earns the loud wording — and it has to stay reachable,
+    // or the guard above would be satisfied by never claiming anything.
+    expect(updateLossNote("picture", 0, false)).toMatch(/GONE from the slide/);
+    expect(updateLossNote("picture", 3, false)).toMatch(/destroyed/);
   });
 });
 

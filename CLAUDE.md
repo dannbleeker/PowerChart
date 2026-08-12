@@ -310,6 +310,22 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
 - **Test files are named by topic, never by increment** (`test/README.md` has
   the map). No `batch-N` / `bug-hunt-N` / `coverage-*` grab-bags: a test
   belongs with the thing it tests, not with the reason it was written.
+- **A chart cut and pasted on the WEB loses its config, permanently and
+  silently — office-js#3784, triaged 2026-08-12.** Shape tags do not survive
+  cut/paste on PowerPoint web (desktop keeps them), and every chart's config
+  lives in a `POWERCHART_CONFIG` shape tag. So a user who cuts a chart and
+  pastes it back has a chart that is no longer re-editable, with nothing in any
+  log — the tag ANSWERED and said there is no config, which `tagsUnread` does
+  not cover because that counts tags the host would not answer either way.
+
+  **Deliberately not detected.** A count of shapes named `PowerChart` carrying
+  no config would find them, and on this host it would be swamped by the tag
+  writes the host itself refuses every round — the number would report "this
+  host is unwell" rather than "your paste broke a chart". `same scale across the
+deck` already says how many charts in a deck are re-editable, which is the
+  same fact without the false precision. Recorded so the next person to meet an
+  un-editable pasted chart does not go hunting in our tag writer.
+
 - **The self-test headline counts OUR defects, not red scenarios.** Those are
   different numbers on this host, and conflating them made the summary useless
   for the only question worth asking of a series of rounds: is the add-in
@@ -1678,6 +1694,10 @@ to itself`, and widening the band broke the degradation grid's fit. Two
   drops the selection before drawing. So it is an observation, stated once,
   rather than an experiment worth deforming the battery for.
   `faults.stallDrawAfterSelect` is the fake being this host for it.
+
+  **It passed on `eaddbf4`, so the rate is four of the last SIX and the note is
+  an observation rather than a law.** Read a round where it passes as exactly
+  that — the same way `same scale` scoring 8 of 8 was one sample.
 
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not

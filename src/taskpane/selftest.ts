@@ -638,11 +638,46 @@ function barInk(scene: Scene): number {
  * deleted a chart" and "the host would not answer for it" send them to
  * opposite ends of the codebase.
  */
-export function updateLossNote(what: string, refusalsDuring: number): string {
-  return refusalsDuring > 0
-    ? `the host would not name the ${what} afterwards (${refusalsDuring} id refusal(s) during the call), so it could not be ` +
-        `worked on again — it is still on the slide`
-    : `the ${what} vanished while being redrawn`;
+/**
+ * Is that shape still on its slide? Three answers, and the third is the point.
+ *
+ * `true` and `false` are what they look like. `undefined` is "the slide would
+ * not say", which must never be reported as destruction — this host refuses
+ * collection reads routinely, and an empty read of a slide the run has drawn on
+ * is the refusal rather than an empty slide (see the collapse readback above,
+ * and `slideHoldsOnlyChart`).
+ */
+async function stillThere(target: { slideId: string; shapeId?: string }): Promise<boolean | undefined> {
+  if (!target.shapeId) return undefined;
+  const shapes = await slideShapeList(target.slideId);
+  if (!shapes) return undefined;
+  // An empty read of a slide this run drew on is not an empty slide. Same
+  // reasoning, and the same evidence, as the collapse readback.
+  if (shapes.length === 0 && shapesDrawnOn(target.slideId) > 0) return undefined;
+  return shapes.some((s) => s.id === target.shapeId);
+}
+
+export function updateLossNote(what: string, refusalsDuring: number, stillOnSlide?: boolean): string {
+  // Positive evidence first: the slide was asked, and it answered.
+  if (stillOnSlide === true)
+    return `the host would not work on the ${what} again, but it is STILL ON THE SLIDE — nothing was lost`;
+  if (stillOnSlide === false) return `the ${what} is GONE from the slide — it was destroyed while being redrawn`;
+  // No answer from the slide. A refusal during the call still explains it…
+  if (refusalsDuring > 0)
+    return (
+      `the host would not name the ${what} afterwards (${refusalsDuring} id refusal(s) during the call), so it ` +
+      `could not be worked on again`
+    );
+  // …and with neither, the honest answer is that we do not know. It must NOT
+  // read as destruction. Round `eaddbf4` is why: the explode's update returned
+  // null having logged nothing at all and refused nothing inside that call, so
+  // the old wording printed `the picture vanished while being redrawn` while
+  // the deck inventory from the same run showed a chart on every slide. That is
+  // the third false destruction claim this scenario has produced, and the first
+  // that survived a fix aimed at the previous two — because the fix keyed on
+  // thrown id refusals and this host can also fail to resolve a target quietly,
+  // with no throw to count.
+  return `the update would not work on the ${what} and the slide would not say what became of it`;
 }
 
 const explodePicture: Scenario = async (prefix) => {
@@ -674,7 +709,10 @@ const explodePicture: Scenario = async (prefix) => {
     pictureBase64: png,
   });
   if (!pictured)
-    return { ok: false, detail: updateLossNote("chart", hostFrictionCounts().idRefusals - beforeCollapse) };
+    return {
+      ok: false,
+      detail: updateLossNote("chart", hostFrictionCounts().idRefusals - beforeCollapse, await stillThere(chart.target)),
+    };
   // One shape is what a picture IS. More than one means the renderer drew
   // shapes instead and the rest of this scenario would prove nothing — the same
   // trap as the `undefined` png above, one step later, so it has to be a
@@ -748,7 +786,10 @@ const explodePicture: Scenario = async (prefix) => {
   const beforeExplode = hostFrictionCounts().idRefusals;
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
   if (!exploded)
-    return { ok: false, detail: updateLossNote("picture", hostFrictionCounts().idRefusals - beforeExplode) };
+    return {
+      ok: false,
+      detail: updateLossNote("picture", hostFrictionCounts().idRefusals - beforeExplode, await stillThere(pictured)),
+    };
   // A blind READBACK is not a finding. Every scenario here guards its first
   // scan and then draws its loudest conclusion from a second one it never
   // checked — and on the web a short deck scan is routine, which is why
@@ -1918,8 +1959,9 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
   } catch (err) {
     // Named, rather than left to the runner's generic "the host got in the way".
     //
-    // This draw stalled its first batch in four of the last five rounds
-    // (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`) after passing eight running
+    // This draw stalled its first batch in four of the last SIX rounds
+    // (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`; it passed on `393e6e4` and
+    // again on `eaddbf4`) after passing eight running
     // before that, and every one of those rounds reported it the same
     // anonymous way — so the battery has been carrying a repeating, specific
     // observation and saying nothing about it.
