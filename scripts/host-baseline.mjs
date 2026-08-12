@@ -275,7 +275,13 @@ export const PENDING_QUESTIONS = {
     "proxy per shape and holds every one for the whole draw — hundreds a run — and untracks none; the deck-scan read paths untrack " +
     "and the hot path does not. A real `yes` makes that an omission worth fixing on the slowest path in the add-in. A real `no` " +
     "closes the idea on the right evidence instead of on a null object's. Asks a proxy `addGeometricShape` just returned, which is " +
-    "exactly the kind the draw loop holds, and needs no sync — the method either is on the object or it is not.",
+    "exactly the kind the draw loop holds, and needs no sync — the method either is on the object or it is not. " +
+    "ANSWERED on its first outing (2026-08-12, `89675b6`): `no`, on a real created shape proxy. So the confound is removed and " +
+    "the `no` is about the HOST, not about the null object — this platform does not expose `untrack()` at all, and Microsoft's " +
+    "documented remedy for large proxy counts is simply unavailable here. The draw path is not getting untracking, and that is " +
+    "now a decision on evidence rather than an omission. Stays listed because the committed sheet has no row for it: the round " +
+    "that answered it put 23 of 30 against the fixture's 26, so the swap arithmetic refuses it and the gate still counts this " +
+    "question as unknown. It retires when a swappable sheet carries it.",
   "grouped-child-by-id-from-slide":
     "Added 2026-08-11, and it decides whether the in-place update has a future on this host. `tryInPlaceUpdate` needs a " +
     "node-to-shape mapping and gets one from CHART_PARTS_TAG, which is written only for UNGROUPED charts — so the " +

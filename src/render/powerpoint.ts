@@ -7942,6 +7942,24 @@ async function tryInPlaceUpdate(
     return false;
   };
   if (!it.opts?.tagData) return no("this update carries no config to write");
+  // A picture is not in the scene, so the scene cannot decide this update.
+  //
+  // `render: "image"` on the config does NOT produce a picture — the renderer
+  // takes that path only when handed `pictureBase64` — so collapsing a chart to
+  // a picture builds the SAME scene it already has. The differ compared 24
+  // nodes to 24 identical nodes, answered "nothing changed", wrote nothing, and
+  // reported success. Round `89675b6` is the case: `updated only the shapes
+  // that changed {changed: 0, of: 24}` on the collapse, and the slide still
+  // held its 24 native shapes afterwards.
+  //
+  // Costly beyond the self-test, because the auto-picture fallback is what the
+  // add-in reaches for when this host has ALREADY failed to draw shapes — so
+  // the one path that exists to rescue a struggling host was the one being
+  // skipped, silently, with a success reported to the user.
+  //
+  // Refused rather than taught to handle it: the fast path writes a closed set
+  // of `rect` and `text` properties, and a picture fill is neither.
+  if (it.opts.pictureBase64) return no("this update draws a picture, which is not in the scene the differ compares");
   if (!tags.config) return no("the chart carries no stored config to diff against");
   // Grouped charts land here: their shapes are inside the group and the parts
   // tag does not list them, so there is nothing to write to. Named separately
