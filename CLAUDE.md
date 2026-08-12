@@ -2021,6 +2021,17 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
 - True geographic maps and 3D surface charts (no freeform paths; the deck this
   project follows argues against 3D anyway). Built instead: tile-grid
   cartograms (`tilemap`) and heatmaps.
+- **Guessing at an ambiguous slash date.** `03/01/2026` is 3 January in Europe
+  and 1 March in the US, and nothing in a cell says which; `parseDateToken`
+  refuses it rather than picking one, and refuses only when both numbers could
+  be a month (`01/15/2026` and `03/03/2026` still parse). Decided by the owner
+  on 2026-08-12 with the cost on the table — a US author who writes
+  `03/01/2026` for 1 March gets an empty cell — because the alternative is a
+  Gantt that draws perfectly and is two months wrong, which is what it used to
+  do. Reading them day-first, or from `style.locale`, were both offered and
+  declined: they pick a winner where the data does not. This is the same rule
+  `numericValue` applies to a European "1,5" against an American "1,500", and
+  it is settled, not a default awaiting a better idea.
 
 ## Backlog
 

@@ -347,6 +347,14 @@ export function parseDateToken(raw: string): number | null {
   // wrong number. An unambiguous slash date is untouched, so `01/15/2026` still
   // reads as 15 January (no other reading exists) and `03/03/2026` still reads
   // as 3 March (both readings agree).
+  //
+  // CONFIRMED BY THE OWNER (2026-08-12) with the cost stated: a US author who
+  // writes `03/01/2026` for 1 March gets an empty cell rather than a chart.
+  // That is the trade, and it was taken deliberately — this is not a default
+  // waiting to be tuned. The two alternatives were offered and declined: read
+  // slash dates day-first to match the dotted form, or disambiguate from
+  // `style.locale` when a config declares one. Both pick a winner where the
+  // data does not. Don't reopen it without him.
   const slash = /^(\d{1,2})\/(\d{1,2})\/\d{2,4}$/.exec(t);
   if (slash && Number(slash[1]) <= 12 && Number(slash[2]) <= 12 && slash[1] !== slash[2]) return null;
   // Everything below reaches `Date.parse`, which is far more lenient than a date
