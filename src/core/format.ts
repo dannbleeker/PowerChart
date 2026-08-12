@@ -329,6 +329,26 @@ export function parseDateToken(raw: string): number | null {
   // Numeric ranges ("3-5", "10–20") are category labels, not dates — Date.parse
   // would otherwise misread them as partial ISO dates.
   if (/^\d{1,3}\s*[-–]\s*\d{1,3}$/.test(t)) return null;
+  // A slash date whose first two numbers could BOTH be a month is two different
+  // dates and this parser cannot know which. `Date.parse` picks the American
+  // one silently, and the dotted form ten lines up picks the European one — so
+  // the same digits, in one datasheet, meant dates two months apart:
+  //
+  //     03/01/2026  ->  1 March        (Date.parse, month first)
+  //     03.01.2026  ->  3 January      (the `dmy` form above, day first)
+  //
+  // On a Gantt that is not a cosmetic difference. A European programme plan of
+  // `01/02, 05/02, 10/03` came back as 2 January, 2 May and 3 October: three
+  // months spread over ten, with nothing said.
+  //
+  // Refused rather than guessed, which is the rule `numericValue` in the
+  // datasheet already applies to the mirror-image case — a European "1,5"
+  // against an American "1,500" — in the same words: a visible gap beats a
+  // wrong number. An unambiguous slash date is untouched, so `01/15/2026` still
+  // reads as 15 January (no other reading exists) and `03/03/2026` still reads
+  // as 3 March (both readings agree).
+  const slash = /^(\d{1,2})\/(\d{1,2})\/\d{2,4}$/.exec(t);
+  if (slash && Number(slash[1]) <= 12 && Number(slash[2]) <= 12 && slash[1] !== slash[2]) return null;
   // Everything below reaches `Date.parse`, which is far more lenient than a date
   // cell has any right to be: "#DIV/0! UTC" comes back as 2000-01-01, "Store 5"
   // as 2001-05-01, "<0.1" as 2000-01-01. So an Excel error cell, a shop name or
