@@ -489,12 +489,68 @@ let lastAnsweredMs = 0;
  * since has had to guess at n. It is free: the draw loop already knows how many
  * shapes it queued and onto which slide.
  *
- * Counts only what this run drew, which is the honest limit and is stated on
- * the trace line: a slide that arrived with fifty shapes reads as zero here.
- * Keyed by slide id, so a chart redrawn in place accumulates exactly as the
- * host sees it.
+ * Counts this run's NET contribution to a slide, which is the honest limit and
+ * is stated on the trace line: a slide that arrived with fifty shapes reads as
+ * zero here.
+ *
+ * Net, not cumulative, and that took a round to notice. The line used to say
+ * "a chart redrawn in place accumulates exactly as the host sees it", which is
+ * the opposite of true — a redraw deletes twenty-four shapes and adds
+ * twenty-four, the slide does not change size, and the counter went up by
+ * twenty-four anyway. Round `957aca0` drove slide 257's counter to **92** while
+ * the deck inventory taken at the end of the same run shows that slide holding
+ * **3** shapes, so every reading of "shapes already on the slide" taken from an
+ * update path was inflated — including the flip in `same scale across the
+ * deck`, which is the one measurement that turns on it.
+ *
+ * `forgetShapesDrawnOn` is the other half. Flooring at zero is what makes the
+ * arithmetic right in both directions: a chart this run drew nets out to what
+ * it drew, and a chart that predates the run nets out to zero rather than
+ * going negative, which is the correct answer for a slide whose size the run
+ * has not changed.
  */
 const shapesDrawnOnSlide = new Map<string, number>();
+
+/**
+ * Take shapes back off a slide's count when the run deletes them.
+ *
+ * Floored at zero: the deleted shapes are not necessarily ones this run drew,
+ * and a count that can go negative is worse than one that under-reports.
+ */
+function forgetShapesDrawnOn(slideId: string | undefined, n: number): void {
+  if (n <= 0) return;
+  const key = slideId ?? "(visible)";
+  shapesDrawnOnSlide.set(key, Math.max(0, (shapesDrawnOnSlide.get(key) ?? 0) - n));
+}
+
+/**
+ * How many shapes a redraw's delete took off the slide — which is NOT the
+ * number of `delete()` calls it made.
+ *
+ * Deleting a GROUP takes its children with it in a single call, and a grouped
+ * chart's parts tag does not list those children (that is the same absence
+ * `tryInPlaceUpdate` refuses on), so the call count says 1 for a chart that
+ * occupied twenty-four shapes. Left at 1 the counter keeps 23 shapes that are
+ * no longer there, which is the inflation round `957aca0` recorded — slide
+ * 257's counter at 92 against 3 shapes in the deck.
+ *
+ * Two ways of knowing, and the caller cannot pick between them:
+ *
+ * - **More than one delete went out.** The parts tag enumerated the chart, so
+ *   the calls ARE the shapes and the count is exact.
+ * - **Exactly one did.** Either a group went (children unknown) or the chart
+ *   really was one shape. Both are a chart being replaced by a chart, so the
+ *   least-wrong answer is the size of the one going back — a same-size redraw
+ *   then nets to zero, which is the truth about the slide, and a chart that
+ *   grew nets the growth.
+ *
+ * `forgetShapesDrawnOn` floors at zero, so the second case cannot drive the
+ * count negative when it overshoots (a one-shape picture exploded into
+ * twenty-four is the case that does).
+ */
+export function replacedShapeCount(deleteCalls: number, redrawnShapes: number): number {
+  return deleteCalls > 1 ? deleteCalls : redrawnShapes;
+}
 
 /**
  * How many shapes THIS RUN has already drawn on a slide.
@@ -1254,6 +1310,10 @@ export async function deleteShapesById(slideId: string, ids: string[]): Promise<
         gone++;
       }
       await context.sync();
+      // The strays were drawn by this run by construction, so the slide's count
+      // owes back every one the sweep committed — and this is the sweep that
+      // runs before `slideHoldsOnlyChart`, which now reads that count.
+      forgetShapesDrawnOn(slideId, gone);
       // Say what was left. Both callers use this sweep as the precondition for
       // what they do next — the picture fallback draws over whatever is still
       // there, `slideHoldsOnlyChart` gates the slide swap on the slide being
@@ -1505,8 +1565,15 @@ export async function updateChartsInSlides(
         // answer for is left alone: deleting a shape we cannot see risks
         // taking something that is not ours, and the redraw covering a stray
         // is a visible, fixable outcome where a wrong delete is neither.
-        for (const p of parts) if (isLive(p)) p.delete();
+        let removed = 1;
+        for (const p of parts)
+          if (isLive(p)) {
+            p.delete();
+            removed++;
+          }
         await step("deleting the chart being replaced", () => context.sync());
+        // Committed gone, so the slide's count owes them back.
+        forgetShapesDrawnOn(it.target.slideId, replacedShapeCount(removed, estimateOfficeShapes(it.scene)));
         // From here the old chart is committed GONE. Anything that throws below
         // leaves a hole, and the caller has to be told which chart it is.
         deleted = true;
@@ -6425,6 +6492,15 @@ export async function slideShapeNames(slideId: string): Promise<string[] | null>
  * leaves nothing drawn and nothing on the slide.
  *
  * Costs no host call — the count is bookkeeping this run already keeps.
+ *
+ * The count being NET is what keeps the fallback alive rather than merely
+ * safe. `deleteShapesById` gives the slide's count back what it sweeps, and the
+ * caller sweeps the stalled redraw's litter immediately before asking this
+ * question — so a run that put shapes on the slide and took all of them off
+ * again reads zero here and its empty read is believed, which is exactly the
+ * "failed redraw, litter swept" case the empty branch was added for. A run
+ * whose shapes are still sitting there unlisted reads non-zero and is refused.
+ * Both halves come from the same subtraction.
  */
 export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
   const names = await slideShapeNames(slideId);

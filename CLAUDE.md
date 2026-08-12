@@ -1231,8 +1231,17 @@ chart on the visible slide` drew at 3.0s and 4.8s, passed, round-tripped its
   same run shows that slide holding **3** shapes. Every reading of "shapes
   already on the slide" taken from this field on an UPDATE path is therefore
   inflated — including the +0.44s/shape slope, whose own source (the rasterise
-  arms) happens to be an add-only path where the field is honest. Fix the
-  counter first; the flip question is downstream of it.
+  arms) happens to be an add-only path where the field is honest.
+
+  **The counter is net now, so the next round answers this.** Both places the
+  run takes its own shapes off a slide give the count back — the redraw's
+  delete and `deleteShapesById`'s stray sweep — and `replacedShapeCount` is the
+  part that is not arithmetic: deleting a GROUP removes its children in one
+  call, and a grouped chart's parts tag does not list them, so the call count
+  says 1 for a chart that occupied twenty-four. It uses the calls when they
+  enumerate the chart and the size of the chart going back when they do not, so
+  a same-size redraw nets to zero. Read the next round's `onSlide` on the
+  rescale against the deck inventory; if they agree, the flip is answerable.
 
   **The friction is astonishingly local.** That round logged 15 errors in 818
   seconds and **14 of them belong to `same scale across the deck`** (14
