@@ -191,6 +191,16 @@ will not resolve` several times mid-run, replacement scratch slides taken, and
   came back. The host's ability to resolve a freshly added slide's id comes and
   goes within a single run.
 
+  **A partner can be the coin while its trigger holds — 2026-08-12
+  (`89675b6`).** `shape-add-held-slide-proxy-again` came off
+  `PENDING_QUESTIONS` on `756682e` as stable across three passes, and this round
+  flipped it inside ONE round (`threw` healthy, then `yes` in slide-trouble)
+  while the TRIGGER answered `threw` both times and reported stable. This file
+  names the trigger as the sharpest flipper on record; the pair has now been
+  seen the other way round. It is in `UNSTABLE_ANSWERS` now — which a follow-up
+  could not be until the shortlist invariant learned that a partner rides its
+  trigger instead of carrying its own mark.
+
   **`UNSTABLE_ANSWERS` in `scripts/host-baseline.mjs` is the authoritative list,
   with every observation on every entry — do not restate its counts here.** A
   tally in this file and a list in that one drift the moment either changes, and
@@ -540,6 +550,31 @@ cannot be mapped to shapes`.** Not one other reason in the round — no
   good day — an edit stops costing fifty seconds. What it is a reason for is
   not counting on it in any reasoning about THIS host's numbers.
 
+  **A PICTURE is not in the scene, so the scene may not decide the update —
+  found 2026-08-12 (`89675b6`), and it is a regression this fast path
+  introduced.** `render: "image"` on a config does not produce a picture; the
+  renderer takes that path only when handed `pictureBase64`. So collapsing a
+  chart to a picture builds the SAME scene the chart already has: the differ
+  compared 24 nodes to 24 identical ones, answered "nothing changed", wrote
+  nothing, and reported success — `updated only the shapes that changed
+{changed: 0, of: 24}`, with the slide still holding its 24 native shapes.
+
+  The self-test is what caught it (`the collapse added 0 shapes — the slide went
+from 24 to 24`), but the cost is not the self-test's. The auto-picture fallback
+  is what the add-in reaches for when this host has ALREADY failed to draw
+  shapes, so the one path that exists to rescue a struggling host was the path
+  being skipped, silently, with success reported to the user.
+  `tryInPlaceUpdate` refuses a picture update outright rather than learning to
+  handle one: it writes a closed set of `rect` and `text` properties, and a
+  picture fill is neither.
+
+  **The guard had to move before it meant anything.** Written against the fake's
+  ordinary insert it passed with the fix removed — the fake groups, so the fast
+  path was already refusing a step earlier for want of a parts list, and the new
+  refusal was never reached. It lives with the other fast-path tests now, on the
+  `drawLoose` harness that produces the ungrouped chart this path accepts. Third
+  time this session that a guard needed its setup fixed before it could fail.
+
 - **A chart the drawing context could not tag is not finished.** On the web the
   tag write goes through a shape proxy several syncs old and the host refuses it
   (`InvalidParam passed to GetItem(id)`, 46 times in one 38-item run), leaving a
@@ -683,6 +718,23 @@ config.extendedErrorLogging to see full statements."]`, so all a reader got was
   rather than whether the chart is re-editable), and it only surfaced because
   the fake's `hollowReads` keys on the projection string. Guarded by a source
   scan in `web-host.test.ts`.
+- **`untrack()` is not available on this host, and that is now measured rather
+  than assumed.** Microsoft's performance guidance names untracking as the
+  remedy for our exact symptom — "large batch operations may generate a lot of
+  proxy objects… Calling untrack() after your add-in is done with the object
+  should yield a noticeable performance benefit when using large numbers of
+  proxy objects" — and `renderShapesChunked` holds one proxy per shape for a
+  whole draw, hundreds a run, untracking none.
+
+  `untrack-available` had answered `no` for months, but it asks a NULL-OBJECT
+  slide proxy, which is the one kind most likely to lack the method; the probe's
+  own comment suspected exactly that and nobody had put the partner. On
+  2026-08-12 (`89675b6`) `untrack-available-on-shape` asked a proxy
+  `addGeometricShape` had just returned — the kind the draw loop actually holds
+  — and it answers `no` too. So the confound is gone and the `no` is about the
+  host. The draw path is not getting untracking, and that is a decision on
+  evidence rather than an omission. Do not re-propose it.
+
 - **Drawing cost grows with the shapes ALREADY on the slide — and the request
   context has nothing to do with it.** `what makes a long run slow down` finally
   measured something on 2026-08-09, after two outings that died in setup. Eight
@@ -1094,6 +1146,10 @@ a slide that already has content` keyed `(visible)` while every other scenario
   across the moment a real key appears, and only this draw's own shapes move:
   the sentinel is shared, and taking its whole total would steal another draw's
   count.
+
+  **Reproduced exactly on `89675b6`**: the sentinel again appears on exactly
+  two batches in the round and the carry-over again reports ten shapes twice.
+  Two rounds, same numbers, so this is settled rather than a good minute.
 
   **It landed and both halves worked on the real host** (2026-08-12,
   `ee1741e`). The `(visible)` sentinel drops from every insert batch to TWO in

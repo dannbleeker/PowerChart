@@ -4388,6 +4388,46 @@ describe("updating only what changed", () => {
     setTracing(false);
   });
 
+  /**
+   * A picture is not in the scene, so the scene may not decide the update.
+   *
+   * `render: "image"` on a config does NOT make a picture — the renderer takes
+   * that path only when handed `pictureBase64` — so collapsing a chart to a
+   * picture builds the SAME scene the chart already has. The differ compared 24
+   * nodes to 24 identical ones, said nothing changed, wrote nothing, and
+   * reported success; the slide kept its native shapes and the caller was told
+   * the update landed.
+   *
+   * Round `89675b6` caught it: `updated only the shapes that changed {changed:
+   * 0, of: 24}` on the collapse, and `explode a degraded picture` then reported
+   * `the collapse added 0 shapes — the slide went from 24 to 24`.
+   *
+   * It matters well beyond the self-test. The auto-picture fallback is what the
+   * add-in reaches for when this host has ALREADY failed to draw shapes, so the
+   * one path that exists to rescue a struggling host was the path being
+   * skipped.
+   */
+  it("does not take the fast path for an update that draws a picture", async () => {
+    const cfg = clustered();
+    const slide = await drawLoose(cfg);
+    const before = liveIds(slide).length;
+    const target = (await listChartsInDeck()).charts[0].target;
+    setTracing(true);
+    // The same config and therefore the SAME scene — only `pictureBase64`
+    // differs, which is exactly the input the differ cannot see.
+    await updateChartInSlide(buildChart(cfg), target, {
+      tagData: JSON.stringify(cfg),
+      pictureBase64: "data:image/png;base64,UE5H",
+    });
+    const said = traceLog().entries.filter((e) => e.message === "updated only the shapes that changed");
+    expect(said, "the differ decided a picture update, which it cannot see").toEqual([]);
+    // …and the picture actually landed: a picture is ONE shape where the chart
+    // was many, so the slide's live shape count must have collapsed.
+    expect(liveIds(slide).length, `the slide still holds ${before} shapes, so no picture was drawn`).toBeLessThan(
+      before,
+    );
+  });
+
   it("writes one shape for a retitle and leaves the other 23 alone", async () => {
     const cfg = clustered();
     const slide = await drawLoose(cfg);
