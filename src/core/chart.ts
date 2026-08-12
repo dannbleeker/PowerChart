@@ -21,12 +21,12 @@ import { layoutTreemap } from "./layout/treemap";
 import { layoutSunburst } from "./layout/sunburst";
 import { layoutViolin } from "./layout/violin";
 import { layoutCandlestick } from "./layout/candlestick";
-import { titleHeight, titleNode } from "./layout/frame";
+import { footnoteNode, titleHeight, titleNode } from "./layout/frame";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions } from "./collide";
 import { formatNumber, niceTicks, parseDateToken, resolveFormat, GANTT_DATE_ROW } from "./format";
 import type { SceneNode } from "./scene";
-import { finiteNodes } from "./scene";
+import { clipTextToFrame, finiteNodes } from "./scene";
 import type { LayoutResult } from "./layout/column";
 
 export const DEFAULT_SIZE = { width: 480, height: 300 };
@@ -770,22 +770,9 @@ function buildMultiples(rawCfg: ChartConfig): Scene | null {
     const dy = titleH + Math.floor(si / cols) * (panelH + gap);
     nodes.push(...translateNodes(panel.nodes, dx, dy, `p${si}-`));
   });
-  if (cfg.footnote) {
-    nodes.push({
-      kind: "text",
-      x: 2,
-      y: cfg.height - fs * 1.15,
-      w: cfg.width - 4,
-      h: fs * 1.1,
-      text: cfg.footnote,
-      fontSize: fs * 0.85,
-      color: style.mutedText,
-      align: "left",
-      valign: "bottom",
-      name: "footnote",
-    });
-  }
-  return { width: cfg.width, height: cfg.height, nodes };
+  const foot = footnoteNode(cfg, style, String(cfg.footnote ?? ""));
+  if (foot) nodes.push(foot);
+  return { width: cfg.width, height: cfg.height, nodes: clipTextToFrame(nodes, cfg.width) };
 }
 
 /** Human-readable chart-kind names for the accessible description. */
@@ -1092,20 +1079,8 @@ export function buildChart(rawCfg: ChartConfig): Scene {
     );
   }
   if (footParts.length) {
-    const fs = style.fontSize;
-    nodes.push({
-      kind: "text",
-      x: 2,
-      y: cfg.height - fs * 1.15,
-      w: cfg.width - 4,
-      h: fs * 1.1,
-      text: footParts.join("   ·   "),
-      fontSize: fs * 0.85,
-      color: style.mutedText,
-      align: "left",
-      valign: "bottom",
-      name: "footnote",
-    } satisfies SceneNode);
+    const foot = footnoteNode(cfg, style, footParts.join("   ·   "));
+    if (foot) nodes.push(foot);
   }
 
   // Global de-collision for outside labels (vertical cartesian charts).
@@ -1124,7 +1099,7 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // Last gate before the scene leaves the engine — see `finiteNodes`. The
   // PowerPoint renderers write a file, and a NaN coordinate makes it one
   // PowerPoint may refuse to open.
-  return { width: cfg.width, height: cfg.height, nodes: finiteNodes(nodes), ...a11y };
+  return { width: cfg.width, height: cfg.height, nodes: clipTextToFrame(finiteNodes(nodes), cfg.width), ...a11y };
 }
 
 /**

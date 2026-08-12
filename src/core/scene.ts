@@ -217,6 +217,60 @@ export function finiteNodes(nodes: SceneNode[]): SceneNode[] {
 }
 
 /**
+ * Text clipped to what the chart can actually hold — the backstop under every
+ * layout's own fitting.
+ *
+ * A label is drawn at whatever size its layout chose, in a box that layout sized
+ * from the frame, and neither PowerPoint renderer wraps or clips a text box. So
+ * any label wider than the room in front of it draws straight off the chart:
+ * invisible in a picture-mode render, and lying across whatever sits beside the
+ * chart on a slide.
+ *
+ * At a thumbnail frame that was not a corner case but the normal outcome — 18 of
+ * the 25 kinds put ink outside their own frame at 120x90, by as much as 124pt on
+ * a 120pt-wide chart. Most of it came from a handful of SHARED nodes (the title,
+ * the footnote, the series labels) and each is now fitted where it is built,
+ * which is better than clipping because shrinking keeps the whole word. This
+ * catches what those did not, once, instead of in twenty-five layouts — the
+ * per-site fixes stop being a list somebody has to finish.
+ *
+ * Only the horizontal axis: a label too TALL for its frame cannot be rescued by
+ * shortening it, and the layouts that had that problem now reserve for it.
+ *
+ * Clipped from the anchor the node was placed by, so alignment is preserved: a
+ * left-aligned label keeps its left edge, a right-aligned one its right, a
+ * centred one its centre. A label already inside the frame is returned
+ * untouched and byte-identical, which is why no snapshot moves.
+ */
+export function clipTextToFrame<T extends SceneNode>(nodes: T[], width: number): T[] {
+  for (const n of nodes) {
+    if (n.kind !== "text") continue;
+    const t = n as unknown as TextNode;
+    const ink = textWidth(t.text, t.fontSize, t.bold);
+    const x = t.align === "right" ? t.x + t.w - ink : t.align === "center" ? t.x + (t.w - ink) / 2 : t.x;
+    if (x >= -0.5 && x + ink <= width + 0.5) continue;
+    // The room in front of the anchor this node was positioned by. A centred
+    // label may only grow to twice its distance from the nearer edge before one
+    // side leaves the frame.
+    const centre = t.x + t.w / 2;
+    const room =
+      t.align === "right" ? t.x + t.w : t.align === "center" ? 2 * Math.min(centre, width - centre) : width - t.x;
+    // The same ellipsis walk as `clipToWidth` in `elements.ts`, inlined rather
+    // than imported: that module imports `textWidth` and `finiteNodes` from
+    // here, so reaching back for it would put this file in an import cycle with
+    // it for four lines of loop.
+    if (room <= 0) {
+      t.text = "";
+      continue;
+    }
+    let cut = t.text;
+    while (cut.length > 0 && textWidth(`${cut}…`, t.fontSize, t.bold) > room) cut = cut.slice(0, -1);
+    t.text = cut ? `${cut}…` : "";
+  }
+  return nodes;
+}
+
+/**
  * A polygon with nothing to draw — and the hole this gate had.
  *
  * `allNumbersFinite` asks whether every number in a node is finite, and an

@@ -1,7 +1,8 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -32,12 +33,12 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const titleH = titleHeight(cfg, style);
   const hasGroups = groups.some(Boolean);
   const groupH = hasGroups ? fs * 1.7 : 0;
-  const plot = {
+  const plot = fitPlot(cfg, {
     x: 2,
     y: titleH + groupH + (hasGroups ? 4 : 0),
     w: cfg.width - 4,
     h: cfg.height - titleH - groupH - (hasGroups ? 4 : 0) - footnoteH(cfg, style, decor) - 4,
-  };
+  });
   const slotW = plot.w / Math.max(1, n);
   const barW = slotW * 0.91;
   const toH = (v: number) => (v / v0) * plot.h;
@@ -62,7 +63,11 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
               y: titleH,
               w: x2 - x1,
               h: fs * 1.5,
-              text: groups[start],
+              // Centred in its band, so a header wider than the stages it spans
+              // spilled out of both ends of the chart — 50pt on a 120pt-wide
+              // cascade. Clipped to the band it names; a header that fits is
+              // untouched.
+              text: clipToWidth(groups[start], fs, x2 - x1, true),
               fontSize: fs,
               bold: true,
               color: contrastInk(style.neutral),
@@ -113,7 +118,10 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
         y: line.y,
         w: barW - 4,
         h: fs * 1.4,
-        text: line.text,
+        // Centred in the bar, so a stage name wider than its own bar spills out
+        // of both sides — off the left of the chart for the first stage, 21pt on
+        // a 120pt-wide cascade. Clipped to the bar it labels.
+        text: clipToWidth(line.text, line.size, barW - 4, line.bold),
         fontSize: line.size,
         bold: line.bold,
         color: ink,
@@ -154,19 +162,33 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
         });
         // Labels adapt to the segment — never the other way around.
         const fitsOneLine = textWidth(oneLine, fs * 0.9) <= barW - 6;
-        const outside = (text: string, name: string): SceneNode => ({
-          kind: "text",
-          x: x - slotW * 0.045,
-          y: segY + segH + 1,
-          w: barW + slotW * 0.09,
-          h: fs * 1.2,
-          text,
-          fontSize: fs * 0.85,
-          color: style.text,
-          align: "center",
-          valign: "top",
-          name,
-        });
+        // A label under the block, centred on it — so a caption wider than the
+        // block spills equally both ways, off the LEFT of the chart for the
+        // first column and off the right for the last (21pt and 62pt on a
+        // 120pt-wide cascade). Clipped to what the chart can hold, then the
+        // centre nudged by exactly the overflow, which is the same pair of
+        // moves the gantt's last tick label uses: a caption that already fits
+        // is centred on its block as before.
+        const outside = (text: string, name: string): SceneNode => {
+          const boxW = barW + slotW * 0.09;
+          const lf = fs * 0.85;
+          const shown = clipToWidth(text, lf, Math.min(boxW, cfg.width));
+          const half = textWidth(shown, lf) / 2;
+          const mid = Math.min(Math.max(x + barW / 2, half), Math.max(half, cfg.width - half));
+          return {
+            kind: "text",
+            x: mid - boxW / 2,
+            y: segY + segH + 1,
+            w: boxW,
+            h: fs * 1.2,
+            text: shown,
+            fontSize: lf,
+            color: style.text,
+            align: "center",
+            valign: "top",
+            name,
+          };
+        };
         if (segH >= fs * 2.9 && !fitsOneLine) {
           // Tall enough for two lines: caption over numbers, inside.
           nodes.push(
@@ -176,7 +198,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
               y: segY + segH / 2 - fs * 1.35,
               w: barW - 4,
               h: fs * 1.4,
-              text: caption,
+              text: clipToWidth(caption, fs * 0.9, barW - 4),
               fontSize: fs * 0.9,
               color: ink,
               align: "center",
@@ -189,7 +211,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
               y: segY + segH / 2,
               w: barW - 4,
               h: fs * 1.4,
-              text: numbers,
+              text: clipToWidth(numbers, fs * 0.9, barW - 4),
               fontSize: fs * 0.9,
               color: ink,
               align: "center",
@@ -205,7 +227,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
             y: segY,
             w: barW - 4,
             h: segH,
-            text: oneLine,
+            text: clipToWidth(oneLine, fs * 0.9, barW - 4),
             fontSize: fs * 0.9,
             color: ink,
             align: "center",
@@ -222,7 +244,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
               y: segY,
               w: barW - 4,
               h: segH,
-              text: numbers,
+              text: clipToWidth(numbers, fs * 0.9, barW - 4),
               fontSize: fs * 0.9,
               color: ink,
               align: "center",

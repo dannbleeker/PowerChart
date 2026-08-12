@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -25,12 +25,12 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const catW = decor.categoryAxis
     ? Math.min(cfg.width * 0.28, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 10)
     : 2;
-  const plot = {
+  const plot = fitPlot(cfg, {
     x: catW,
     y: titleH + 2,
     w: cfg.width - catW - 4,
     h: cfg.height - titleH - 2 - footnoteH(cfg, style, decor) - 4,
-  };
+  });
   // Room for the conversion label between bands — but never more than the plot
   // can pay for while still giving every band ≥1pt. A fixed gap on a short frame
   // with many stages drove the cumulative pitch (bandH + gap per stage) past the

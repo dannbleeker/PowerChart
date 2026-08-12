@@ -30,14 +30,22 @@ export function decorationNodes(
     const vFrom = sVals ? (sVals[from] ?? 0) : a.columnValue[from];
     const vTo = sVals ? (sVals[to] ?? 0) : a.columnValue[to];
     const rate = cagr(vFrom, vTo, to - from);
-    // Clear the column totals row and difference arrows when shown.
-    const lift = fs * 1.6 + (decor.totals ? fs * 1.5 : 0) + (decor.difference ? fs * 1.2 : 0);
     // Anchored on the value it PRINTS, for the reason spelled out on the
     // difference arrow below — this block carries the identical mismatch, and
     // when `decor.cagr.series` names a series it is worse: the rate is that
     // series' and the arrow sat on the drawn top of whichever series happened
     // to be highest.
     const cagrY = (c: number, v: number) => (a.valueToY ? a.valueToY(sVals ? v : a.columnValue[c]) : a.columnTop[c]);
+    /** How far the arrowhead reaches back from its tip — see the SVG renderer. */
+    const ARROW = 5;
+    // Clear the column totals row and difference arrows when shown — but never
+    // by more than the chart above the columns can pay for. The lift is
+    // legibility, not data: what the arrow claims is its two category anchors and
+    // the DIFFERENCE between its ends, and shortening the lift moves both ends by
+    // the same amount, so the slope and the anchors both survive. Letting it
+    // stand put the arrowhead 4pt above the top of a 60pt-tall stacked column.
+    const wantLift = fs * 1.6 + (decor.totals ? fs * 1.5 : 0) + (decor.difference ? fs * 1.2 : 0);
+    const lift = Math.max(0, Math.min(wantLift, Math.min(cagrY(from, vFrom), cagrY(to, vTo)) - ARROW * 1.8));
     const x1 = a.categoryX[from];
     const y1 = cagrY(from, vFrom) - lift;
     const x2 = a.categoryX[to];
@@ -45,11 +53,16 @@ export function decorationNodes(
     const angle = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
     nodes.push(
       { kind: "line", x1, y1, x2, y2, stroke: style.text, strokeWidth: 1.25, name: "cagr-line" },
-      { kind: "arrowhead", x: x2, y: y2, angle, size: 5, fill: style.text, name: "cagr-head" },
+      { kind: "arrowhead", x: x2, y: y2, angle, size: ARROW, fill: style.text, name: "cagr-head" },
       {
         kind: "text",
         x: (x1 + x2) / 2 - 45,
-        y: Math.min(y1, y2) - fs * 1.6,
+        // The arrow is lifted clear of the column tops and the label sits above
+        // the arrow, so on a frame with no headroom the label leaves the top of
+        // the chart — 7.5pt on a 60pt-tall stacked column. Its y is decorative
+        // (it is a caption for the arrow, not an anchored value the way the
+        // arrow's endpoints are), so it may be clamped where they may not.
+        y: Math.max(0, Math.min(y1, y2) - fs * 1.6),
         w: 90,
         h: fs * 1.4,
         text: rate == null ? "CAGR n/a" : `${formatPercent(rate, 1, true, cfg.numberFormat?.locale)} p.a.`,
@@ -122,11 +135,20 @@ export function decorationNodes(
       usePct && vFrom !== 0
         ? formatPercent(vTo / vFrom - 1, 0, true, cfg.numberFormat?.locale)
         : formatNumber(vTo - vFrom, { ...cfg.numberFormat, forceSign: true });
+    // The label reads to the RIGHT of the arrow, in a margin `computeFrame`
+    // reserves for it — but only the cartesian frame reserves one. A line chart
+    // puts its last category hard against the plot edge, so on an ordinary
+    // 400x300 two-point line the label started 8pt past the chart and the
+    // frame-clip at the end of `buildChart` cut "+100%" down to "+…". Flip it to
+    // the other side of the arrow when the right has no room: the ARROW is what
+    // anchors the claim, and the caption says the same thing from either side.
+    const labelW = textWidth(label, fs, true) + 2;
+    const flip = x + 3 + labelW > cfg.width;
     nodes.push({
       kind: "text",
-      x: x + 3,
+      x: flip ? Math.max(0, x - 3 - labelW) : x + 3,
       y: (yFrom + yTo) / 2 - fs * 0.75,
-      w: Math.max(30, cfg.width - x - 3),
+      w: flip ? labelW : Math.max(30, cfg.width - x - 3),
       h: fs * 1.5,
       text: label,
       fontSize: fs,

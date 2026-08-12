@@ -57,7 +57,21 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
       ? 0
       : Math.max(...legendEntries.map((e) => textWidth(`${e.name}  ${e.pct}`, fs))) + fs * 2.2;
 
-  const availH = cfg.height - titleH - footnoteH(cfg, style, decor) - 8;
+  const footH = footnoteH(cfg, style, decor);
+  const availH = cfg.height - titleH - footH - 8;
+  /**
+   * Hold a legend block of height `blockH` beside the grid: centred on the
+   * grid's middle where the frame can pay for it, otherwise as close to that as
+   * the frame allows.
+   *
+   * The grid has a 20pt floor and the legend does not scale with it, so on a
+   * short frame the block is TALLER than the square it is centred on and hangs
+   * out of the chart — 3.2pt below a 60pt-tall waffle. Sliding it is safe in a
+   * way clipping is not: these labels are beside the grid, not anchored to any
+   * cell in it.
+   */
+  const legendBandY = (blockH: number) =>
+    Math.max(0, Math.min(gy + gridSize / 2 - blockH / 2, cfg.height - footH - blockH));
   const availW = cfg.width - legendW - 8;
   const gridSize = Math.max(20, Math.min(availW, availH));
   const step = gridSize / 10;
@@ -94,10 +108,13 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   if (legendW > 0) {
     const lx = gx + gridSize + fs;
     if (single) {
+      // The big-number block spans fs*2.4 either side of the grid's middle: the
+      // percentage's box starts there and the name's box ends fs*2.4 past it.
+      const bigY = legendBandY(fs * 4.8);
       nodes.push({
         kind: "text",
         x: lx,
-        y: gy + gridSize / 2 - fs * 2.4,
+        y: bigY,
         w: cfg.width - lx - 2,
         h: fs * 3.2,
         text: legendEntries[0].pct,
@@ -111,7 +128,7 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
       nodes.push({
         kind: "text",
         x: lx,
-        y: gy + gridSize / 2 + fs * 0.9,
+        y: bigY + fs * 3.3,
         w: cfg.width - lx - 2,
         h: fs * 1.5,
         text: legendEntries[0].name,
@@ -123,7 +140,7 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
       });
     } else {
       const rowH = fs * 1.7;
-      const ly = gy + gridSize / 2 - (legendEntries.length * rowH) / 2;
+      const ly = legendBandY(legendEntries.length * rowH);
       legendEntries.forEach((e, c) => {
         const y = ly + c * rowH;
         nodes.push({

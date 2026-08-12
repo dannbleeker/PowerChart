@@ -4,7 +4,7 @@ import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { niceTicks } from "../format";
 import { legendRow, type LayoutResult, type LegendEntry } from "./column";
-import { legendRowCount, titleHeight, titleNode } from "./frame";
+import { fitPlot, legendRowCount, titleHeight, titleNode } from "./frame";
 
 /**
  * Butterfly (tornado) chart: think-cell models this as two bar charts placed
@@ -52,7 +52,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const gutterW = Math.min(cfg.width * 0.3, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12);
   // A value axis reserves a strip at the bottom for tick labels on both flanks.
   const axisH = decor.valueAxis ? fs * 1.5 : 0;
-  const plot = {
+  const plot = fitPlot(cfg, {
     x: valueW,
     y: titleH + headerH + 2,
     w: Math.max(0, cfg.width - valueW * 2),
@@ -60,7 +60,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
     // for its title/header/axis chrome would otherwise give every bar rect a
     // NEGATIVE height, which SVG drops and PowerPoint clamps to a sliver.
     h: Math.max(0, cfg.height - titleH - headerH - 6 - axisH),
-  };
+  });
   // Floor at 0: a very narrow frame can drive plot.w below the gutter, which
   // would give the header texts and bar rects negative widths.
   const halfW = Math.max(0, (plot.w - gutterW) / 2);

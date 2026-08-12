@@ -482,6 +482,36 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
 - Office.js has **no freeform paths**: pies are triangle fans, radar/polygon
   fills degrade to outlines in the live add-in (the skill's pptx output gets
   real filled `custGeom` polygons), pattern fills are SVG-only (solid in PPT).
+- **A chart's chrome is a fixed number of points, and a small frame cannot pay
+  for it — so the plot goes NEGATIVE rather than small.** Every layout computes
+  its plot by subtracting title, legend, axis and footnote from the frame, and
+  each of those is priced in font sizes regardless of how much frame there is.
+  Scatter at 120x90 — a thumbnail — computed `h: -8`. A negative height is not a
+  squashed plot: `toY` maps the value domain through it, so the axis INVERTS
+  (larger values plot downward) and the plot's own bottom edge lands below the
+  chart. `fitPlot` (`src/core/layout/frame.ts`) is the floor, and every layout
+  that builds its own plot rect goes through it.
+
+  **Which way it grows is the load-bearing part.** It grows UP from the bottom
+  edge the layout gave it, because that edge is the category axis and the value
+  baseline — moving it moves what the chart claims — while everything above it
+  is chrome. Anchoring to the frame's bottom instead was tried first and is
+  measurably worse: it pins the plot to the foot of the frame and every label
+  drawn beneath a mark spills out (14pt on a 120x90 bubble).
+
+  The same shape recurs one level out, in three places that reserve room for a
+  ring or band of labels and then floor the radius past the reservation — radar,
+  sunburst, tilemap. There the answer is not a clamp: when the reservation
+  cannot be met the labels are DROPPED, because a label drawn off the chart is
+  not there anyway and a floor that ignores its own reservation is the thing
+  putting it there.
+
+  `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
+  its own box, over every kind × eight frame sizes. It measures INK, not boxes —
+  a first version measured boxes and produced four false positives and one false
+  negative in one run, because a label's box is routinely wider than its text
+  and is anchored by `align`.
+
 - **A shape the user selected must be let go of before anything is drawn.** On
   the web, `addTextBox` DELETES the selected shape (office-js#2775) and a picture
   cannot be inserted while one is selected (#3698) — and the insert path reads

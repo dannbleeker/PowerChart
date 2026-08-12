@@ -26,7 +26,12 @@ belongs with the thing it tests, not with the reason it was written.)
   `palette`, `data-sorting`, `legend-layout`, `decor-guards` /
   `decoration-layout` (decoration clipping & anchoring), `value-extent`
   (cross-kind extent/auto-scale invariants), `geometry`, `color` (paint parsing
-  & contrast ink), `collide` (label collision resolution), `good-chart*`.
+  & contrast ink), `collide` (label collision resolution), `good-chart*`,
+  `frame-fit` (nothing a chart draws leaves the box the chart is, swept over
+  every kind × eight frame sizes — the property, because every fix in this area
+  had been found by looking at one chart at one size while the same defect sat
+  in four other layouts; `elements-fit` is the same question for the non-chart
+  elements).
 - **Hostile input** — `chart-hostile-input`, now four sweeps rather than one:
   every value a **cell** can hold (huge, subnormal, NaN, infinite, empty,
   degenerate sizes), every **style** field with the wrong type, every
