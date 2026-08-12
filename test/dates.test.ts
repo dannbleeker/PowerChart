@@ -16,6 +16,44 @@ describe("parseDateToken numeric ranges", () => {
 });
 
 /**
+ * A slash date whose first two numbers could both be a month is TWO dates, and
+ * nothing in a cell says which. `Date.parse` picked the American one silently
+ * while the dotted form — the one `docs/MANUAL.md` documents — picks the
+ * European one, so the same digits in one datasheet meant dates two months
+ * apart.
+ */
+describe("parseDateToken refuses a slash date that means two things", () => {
+  const iso = (d: number | null) => (d == null ? null : new Date(d * 86400000).toISOString().slice(0, 10));
+
+  it("refuses the ambiguous ones rather than guessing a month", () => {
+    // Each of these is a different date read American-first or European-first.
+    for (const t of ["03/01/2026", "01/03/2026", "12/11/2026", "05/06/2026", "06/07/2026"]) {
+      expect(parseDateToken(t), `${t} was guessed at instead of refused`).toBeNull();
+    }
+    // The mirror image, so the size of the mistake is on record: the SAME digits
+    // with a dot are the documented European form and still parse that way.
+    expect(iso(parseDateToken("03.01.2026"))).toBe("2026-01-03");
+    expect(iso(parseDateToken("01.03.2026"))).toBe("2026-03-01");
+  });
+
+  it("leaves every unambiguous date alone", () => {
+    // Only one reading exists (15 is not a month), so nothing is being guessed.
+    expect(iso(parseDateToken("01/15/2026"))).toBe("2026-01-15");
+    // Both readings agree.
+    expect(iso(parseDateToken("03/03/2026"))).toBe("2026-03-03");
+    expect(iso(parseDateToken("1/1/2026"))).toBe("2026-01-01");
+    expect(iso(parseDateToken("12/12/2026"))).toBe("2026-12-12");
+    // A four-digit year first is Y/M/D and never ambiguous — the rule must not
+    // reach it.
+    expect(iso(parseDateToken("2026/01/15"))).toBe("2026-01-15");
+    // …nor any of the forms that do not use slashes at all.
+    expect(iso(parseDateToken("2026-01-15"))).toBe("2026-01-15");
+    expect(iso(parseDateToken("15.01.2026"))).toBe("2026-01-15");
+    expect(iso(parseDateToken("15 Jan 2026"))).toBe("2026-01-15");
+  });
+});
+
+/**
  * `Date.parse` is far more lenient than a date cell has any right to be. Excel's
  * `#DIV/0!` came back as 2000-01-01 — so an error cell became epoch day 10957
  * AND flipped the whole ChartData into date mode — and so did a threshold

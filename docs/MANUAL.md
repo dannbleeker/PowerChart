@@ -124,7 +124,11 @@ the toggle does nothing at all, and leaves the chart exactly as it was.
 - **Blank rows split stacks**: in a stacked chart, series separated by a
   blank row form side-by-side sub-stacks (clustered-stacked).
 - **Dates**: ISO (`2026-01-15`), `15.01.2026`, and `Jan 2026` parse as
-  calendar dates for Gantt timelines.
+  calendar dates for Gantt timelines. A **slash** date that could be read either
+  way round — `03/01/2026` is 3 January in Europe and 1 March in the US — is
+  refused rather than guessed at, and the cell reads as empty. Write it as
+  `2026-01-03` or `03.01.2026` to say which you meant. Slash dates with only one
+  possible reading (`01/15/2026`, `2026/01/15`) are fine.
 
 ### Special rows (magic series names)
 
