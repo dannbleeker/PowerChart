@@ -77,6 +77,16 @@ export const FAKE_BASELINE = {
  * is a to-do wearing a passing test's clothes.
  */
 export const KNOWN_DIVERGENCES = {
+  "untrack-available-on-shape":
+    "The fake models the host `untrack()` was designed for — one where a shape proxy carries the method — and PowerPoint on the " +
+    "web is not that host. ANSWERED 2026-08-12 (`89675b6`, reproduced on `1789749`): `no`, asked of a proxy " +
+    "`addGeometricShape` had just returned, which is the kind `renderShapesChunked` holds hundreds of. That removes the " +
+    "confound its trigger carried — `untrack-available` asks a NULL-OBJECT slide proxy, the one kind most likely to lack any " +
+    "method — so the `no` is about the platform rather than about the probe. " +
+    "Microsoft's performance guidance names untracking as the remedy for our exact symptom (\"large batch operations may " +
+    'generate a lot of proxy objects... a noticeable performance benefit when using large numbers of proxy objects"), so this ' +
+    "closes that idea on evidence rather than leaving it as an omission in the draw path. Do not re-propose it. The fake keeps " +
+    "the method because `untrack` is best-effort everywhere this repo calls it and a host that has it is a real host.",
   "binding-names-shape-later":
     "RETIRED AS AN IDEA, 2026-08-12 (`957aca0`), and the fake is left saying `yes` deliberately. The question was " +
     "whether `settleAndTagChart` could be handed a shape handle that never goes through `ShapeCollection.getItem(id)` — " +
@@ -108,8 +118,6 @@ export const KNOWN_DIVERGENCES = {
     "The fake's happy path counts a group's children; the web host's refusal lives in a named fault rather than the default. ANSWERED 2026-08-08: `unreadable`. Read with `group-reports-its-children` above — both ways into a group's children are refused on this host. Also carried in UNSTABLE_ANSWERS, because it has been asked once and once is a sample.",
   "group-of-existing-shape-readable":
     "The fake's happy path names a group it has just made, so the later-batch question can be put at all. This host would not: `no-group-id`. That is an answer and not a setup failure — a host that will not name a fresh group cannot be asked about resolving one from the deck afterwards, and the fact belongs in the sheet. It also means `countGroupChildrenPage`, which swallows failures per shape, produces no error and no measurement here.",
-  "picture-then-shape-read":
-    "The fake's happy path re-reads a shape collection after an image insert. office-js#5022 (open, Microsoft-assigned) reports `context.sync()` running indefinitely on exactly that sequence, and this host answered `unreadable` on 2026-08-08. `drawDemoItem` does this shape whenever a chart degrades to a picture, since `needsRefresh` is true for any item carrying `pictureBase64`.",
   "shape-add-fresh-getitem-slide":
     "The fake models the host `getTargetSlide` was written for, where `slides.getItem(id)` resolves any slide. On the web it answered `threw` (GeneralException) for a slide added moments earlier — and its follow-up partner `getitem-durable-slide` answered `yes` in the same run. So the two readings are separated: it is not the by-id form that fails, it is the by-id form applied to a NEW slide. A pre-existing slide's id round-trips fine, which is why editing a chart in place has always worked.",
   "shapes-items-via-positional-slide":
@@ -279,24 +287,6 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
-  "untrack-available-on-shape":
-    "Added 2026-08-12, and it is `untrack-available` getting the partner its own comment asked for. That question answers `no` on " +
-    "this host — but it asks a NULL-OBJECT slide proxy, and a null object is the one kind most likely to lack the method, so the " +
-    "answer may be about the probe rather than about the host. The rule this repo already states is to ask the variant that " +
-    "separates them rather than to reason, and nobody had. " +
-    "It is worth separating because Microsoft's own performance guidance names untracking as the remedy for our exact symptom: " +
-    '"large batch operations may generate a lot of proxy objects... Calling untrack() after your add-in is done with the object ' +
-    'should yield a noticeable performance benefit when using large numbers of proxy objects". `renderShapesChunked` makes one ' +
-    "proxy per shape and holds every one for the whole draw — hundreds a run — and untracks none; the deck-scan read paths untrack " +
-    "and the hot path does not. A real `yes` makes that an omission worth fixing on the slowest path in the add-in. A real `no` " +
-    "closes the idea on the right evidence instead of on a null object's. Asks a proxy `addGeometricShape` just returned, which is " +
-    "exactly the kind the draw loop holds, and needs no sync — the method either is on the object or it is not. " +
-    "ANSWERED on its first outing (2026-08-12, `89675b6`): `no`, on a real created shape proxy. So the confound is removed and " +
-    "the `no` is about the HOST, not about the null object — this platform does not expose `untrack()` at all, and Microsoft's " +
-    "documented remedy for large proxy counts is simply unavailable here. The draw path is not getting untracking, and that is " +
-    "now a decision on evidence rather than an omission. Stays listed because the committed sheet has no row for it: the round " +
-    "that answered it put 23 of 30 against the fixture's 26, so the swap arithmetic refuses it and the gate still counts this " +
-    "question as unknown. It retires when a swappable sheet carries it.",
   "grouped-child-by-id-from-slide":
     "Added 2026-08-11, and it decides whether the in-place update has a future on this host. `tryInPlaceUpdate` needs a " +
     "node-to-shape mapping and gets one from CHART_PARTS_TAG, which is written only for UNGROUPED charts — so the " +
