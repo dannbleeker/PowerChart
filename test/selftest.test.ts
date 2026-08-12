@@ -2765,9 +2765,30 @@ describe("what a failed update is allowed to claim", () => {
 
   it("reports a real destruction when the slide says the shape is gone", () => {
     // The one case that earns the loud wording — and it has to stay reachable,
-    // or the guard above would be satisfied by never claiming anything.
+    // or the guards would be satisfied by never claiming anything. Needs a
+    // CLEAN scenario: no id refusal anywhere in it.
     expect(updateLossNote("picture", 0, false)).toMatch(/GONE from the slide/);
-    expect(updateLossNote("picture", 3, false)).toMatch(/destroyed/);
+  });
+
+  /**
+   * The fourth mechanism, from round `1789749`.
+   *
+   * The collapse's readback was refused, so the target handed on carried an id
+   * the host never confirmed — the settle had to find that chart BY NAME
+   * (`withId: 0`), which is the tell. The picture then landed under an id
+   * nobody held, the id comparison answered "not there", and the verdict read
+   * `the picture is GONE from the slide` while the deck inventory from the same
+   * run shows that slide holding one shape named `PowerChart`.
+   *
+   * So a missing shape is only evidence of a missing shape on a scenario where
+   * this host refused no ids at all. The count is measured from the scenario's
+   * start, because the refusal that poisons an id is routinely in an earlier
+   * step than the call that fails.
+   */
+  it("will not call a shape destroyed when an id was refused in the same scenario", () => {
+    const v = updateLossNote("picture", 3, false);
+    expect(v, "a refused id made a shape look destroyed").not.toMatch(/GONE|destroyed/);
+    expect(v).toMatch(/proves nothing either way/);
   });
 });
 
