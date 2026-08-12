@@ -1441,6 +1441,14 @@ chart on the visible slide` drew at 3.0s and 4.8s, passed, round-tripped its
   inflated — including the +0.44s/shape slope, whose own source (the rasterise
   arms) happens to be an add-only path where the field is honest.
 
+  **VALIDATED against the deck on 2026-08-12 (`1789749`).** Three slides in
+  that round held ungrouped charts, and each one's last `batch issued` reads
+  `onSlide: 20` against a deck inventory of **24** — 20 being the count BEFORE
+  that slide's final four-shape batch. Exact, three for three. The grouped slide
+  reads 34 against 11 for the reason above: the inventory counts top-level
+  shapes and grouping collapses twenty-four into one. Compare these two numbers
+  only on a slide whose charts stayed ungrouped, and when you do, they agree.
+
   **The counter is net now, so the next round answers this.** Both places the
   run takes its own shapes off a slide give the count back — the redraw's
   delete and `deleteShapesById`'s stray sweep — and `replacedShapeCount` is the

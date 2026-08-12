@@ -143,6 +143,14 @@ export const KNOWN_DIVERGENCES = {
  * several runs agreeing, not one.
  */
 export const UNSTABLE_ANSWERS = {
+  "picture-then-shape-read":
+    "office-js#5022's question — can a shape collection be read after a picture insert — and a COIN, seen flipping inside one " +
+    "round on 2026-08-12 (`1789749`): `yes` on pass 1 while the host was in slide-trouble, then `unreadable` on passes 2 and 3 " +
+    "once the collection was refusing. The committed fixture carries `unreadable`. " +
+    'It is in this table because of what the other value would licence: a `yes` reads as "#5022 does not affect this host", ' +
+    "and `drawDemoItem` performs exactly that sequence — insert a picture, then read shapes — so somebody would reasonably " +
+    "stop guarding it. One pass in three is not permission. Note the regimes: both readings came from the same round minutes " +
+    "apart, so this is the host moving rather than two builds disagreeing.",
   "shape-add-held-slide-proxy-again":
     "RETIRED FROM STABLE ON 2026-08-12 (`89675b6`), by the mechanism it exists to be. It came off `PENDING_QUESTIONS` on " +
     "`756682e` as stable across three passes; this round flipped it inside ONE round — `threw` on pass 1 with the host " +

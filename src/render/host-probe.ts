@@ -1563,6 +1563,11 @@ const PROBES: Probe[] = [
   },
   {
     id: "picture-then-shape-read",
+    // Resampled because it is a COIN: `yes` then `unreadable` twice inside one
+    // round on 2026-08-12 (`1789749`), the host moving rather than two builds
+    // disagreeing. See `UNSTABLE_ANSWERS` for why the other value is the
+    // dangerous one to be handed.
+    resample: true,
     question: "After a picture is added, does re-reading the slide's shapes still answer?",
     // office-js#5022, open and assigned: get shapes, insert an image, delete the
     // old shapes, sync — and `context.sync()` "can run indefinitely" when the
