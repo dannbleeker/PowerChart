@@ -14,6 +14,7 @@ import {
   xmlText,
   lineOf,
 } from "../skill/scripts/pptx-paint.mjs";
+import type { SceneNode } from "../src/core/scene";
 
 /** Records the PptxgenJS calls a node mapping makes, so the mapping is assertable. */
 function recorder() {
@@ -349,6 +350,65 @@ describe("addNode — maps each scene node kind to PptxgenJS", () => {
     const r = recorder();
     expect(() => addNode(r, { kind: "mystery" } as unknown as { kind: string }, 0, 0)).not.toThrow();
     expect(r.shapes).toHaveLength(0);
+  });
+
+  /**
+   * The seam, made loud — this is the third of the three CLAUDE.md lists as
+   * silent when a `SceneNode` kind is added.
+   *
+   * Every OTHER renderer fails to build: `nodeToSvg` and `powerpoint.ts`'s
+   * `addNode` are exhaustive switches TypeScript checks, and `translateNodes`
+   * carries an explicit `never`. This mapping is neither — it lives outside
+   * `tsconfig.include`, so nothing typechecks it, and its switch has no default
+   * (deliberately: the test above pins that an unknown kind is ignored rather
+   * than thrown on). A new kind therefore renders as NOTHING in the skill's
+   * .pptx, in a file that opens cleanly and is reported as a success. Missing
+   * shapes are the one failure the headless path cannot surface on its own.
+   *
+   * `Record<SceneNode["kind"], SceneNode>` closes it: the union cannot grow
+   * without this map going red, and the assertion below then says whether the
+   * mapping actually learned the kind or merely compiles.
+   */
+  it("draws something for every node kind in the scene contract", () => {
+    const EACH: Record<SceneNode["kind"], SceneNode> = {
+      rect: { kind: "rect", x: 1, y: 2, w: 3, h: 4, fill: "#123456" },
+      line: { kind: "line", x1: 1, y1: 2, x2: 5, y2: 6, stroke: "#123456" },
+      text: {
+        kind: "text",
+        x: 1,
+        y: 2,
+        w: 30,
+        h: 12,
+        text: "t",
+        fontSize: 10,
+        color: "#123456",
+        align: "left",
+        valign: "top",
+      },
+      ellipse: { kind: "ellipse", cx: 10, cy: 10, rx: 5, ry: 5, fill: "#123456" },
+      wedge: { kind: "wedge", cx: 10, cy: 10, r: 5, innerR: 2, startAngle: 0, endAngle: 90, fill: "#123456" },
+      chevron: { kind: "chevron", x: 1, y: 2, w: 30, h: 12, fill: "#123456" },
+      arrowhead: { kind: "arrowhead", x: 5, y: 5, angle: 90, size: 3, fill: "#123456" },
+      symbol: { kind: "symbol", shape: "diamond", cx: 10, cy: 10, size: 3, fill: "#123456" },
+      polygon: {
+        kind: "polygon",
+        points: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+          { x: 5, y: 5 },
+        ],
+        fill: "#123456",
+      },
+    };
+
+    for (const [kind, node] of Object.entries(EACH)) {
+      const r = recorder();
+      addNode(r, node, 0, 0);
+      expect(
+        r.shapes.length + r.texts.length,
+        `a "${kind}" node drew nothing — the skill's .pptx would be missing it, silently`,
+      ).toBeGreaterThan(0);
+    }
   });
 });
 

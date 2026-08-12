@@ -30,26 +30,40 @@ renderers: SVG (`src/render/svg.ts`, preview + tests), Office.js
 | `skill/scripts/`                | `render-pptx.mjs` + `pptx-paint.mjs`, the headless renderer. **Outside `tsconfig.include` (`["src", "test"]`), so never typechecked**                                                                                                                                                                                                  |
 | `scripts/`                      | `triage.mjs`, `verify-deck.mjs`, `validate-ooxml.mjs`, `host-baseline.mjs`, `visible-charts.mjs`, `office-js-watch.mjs`, and the `build-*` set                                                                                                                                                                                         |
 
-**Adding a `SceneNode` kind: four seams fail loudly, three do not.** Loud, as
-compile errors — `nodeToSvg` (`src/render/svg.ts`), `addNode`
+**Adding a `SceneNode` kind: six seams fail loudly, one does not.** Four fail
+at the SOURCE, as compile errors — `nodeToSvg` (`src/render/svg.ts`), `addNode`
 (`src/render/powerpoint.ts`), the coordinate chain in `test/fuzz.test.ts`, and
 `translateNodes` in `src/core/chart.ts`, which carries an explicit `never`
-guard for exactly this. Silent:
+guard for exactly this.
 
-- `shiftNodeX` in `src/core/scene.ts` — a duck-typed `Record<string, number>`
-  cast over a fixed key list, so it can never fail to compile; a new coordinate
-  field is simply left unshifted. It lived in `src/demo/demo.ts` and was moved
-  next to the node contract it has to keep up with, because there it also could
-  not be tested — that file touches the DOM at import time. `points` was already
-  missing from the list when it moved, so a polygon stayed put while the scene
-  around it shifted. `test/demo.test.ts` now pins every field a node currently
-  carries; the seam is still silent for a field no node has yet.
+Two more fail in CI rather than at the source, each through a
+`Record<SceneNode["kind"], …>` in a test that cannot be filled in without
+answering the question the seam poses. **This is a weaker guarantee and worth
+knowing as one**: the build still succeeds, and a `--exclude` on the wrong file
+takes the guard with it.
+
+- `shiftNodeX` (`src/core/scene.ts`) — a duck-typed `Record<string, number>`
+  cast over a fixed key list, so a new coordinate field is simply left
+  unshifted. `points` was already missing when this moved out of
+  `src/demo/demo.ts`, so a polygon stayed put while the scene around it shifted.
+  `test/demo.test.ts` maps every kind to the coordinates a shift must move; each
+  key is proven load-bearing by removing it.
+- `makeAddNode` (`skill/scripts/pptx-paint.mjs`) — the headless pptx mapping,
+  outside `tsconfig.include` and typechecked by nothing, with no `default` case
+  (an unknown kind is deliberately ignored, not thrown on). A new kind therefore
+  renders as NOTHING in the skill's .pptx, in a file that opens cleanly and is
+  reported as a success. `test/pptx-paint.test.ts` asserts every kind draws
+  something. **Not `render-pptx.mjs`**, which this list used to name and which
+  holds no node mapping at all: somebody adding a kind would open it, find no
+  `switch`, and conclude the seam did not exist.
+
+Genuinely silent, one:
+
 - `src/core/collide.ts` — text-only, matched by `MOVABLE` name prefixes, so a
-  new label-like node is invisible to the de-collision pass.
-- `skill/scripts/pptx-paint.mjs` — `makeAddNode`, the headless pptx mapping, and
-  not typechecked at all (see the table). **Not `render-pptx.mjs`**, which this
-  line used to name and which holds no node mapping: somebody adding a kind
-  would open it, find no `switch`, and conclude the seam did not exist.
+  new label-like node is invisible to the de-collision pass. Not closed the same
+  way on purpose: the match is on a runtime NAME, not on a kind, so there is no
+  union to be exhaustive over — and which labels should move is a design
+  decision per node, not something a map can answer.
 
 ## The lockstep rule (CI-enforced — do not skip)
 
