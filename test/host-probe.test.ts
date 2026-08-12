@@ -5,6 +5,7 @@ import {
   runHostProbes,
   PROBE_IDS,
   ALWAYS_ASKED_IDS,
+  FOLLOW_UP_IDS,
   SCRATCH_CLEANUP_ID,
   NO_SLIDE_NEEDED_IDS,
   describeHostSheet,
@@ -460,7 +461,20 @@ describe("the fake host's answer sheet", () => {
     faults.newSlideResolvesTimes = 1; // one lookup each: addScratchSlide verifies, the probe context fails
     try {
       const sheet = await runHostProbes("fake-loses-slides", "test");
-      expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
+      // Every always-asked question has a row, and anything EXTRA is a partner
+      // that fired. Length alone said the same thing until a follow-up existed
+      // whose trigger answers on a slideless host — then the count grew for a
+      // reason this property does not care about, and the assertion failed on
+      // an unrelated probe being added.
+      const ids = sheet.answers.map((a) => a.id);
+      expect(
+        ALWAYS_ASKED_IDS.filter((id) => !ids.includes(id)),
+        "a question the run always puts has no row at all",
+      ).toEqual([]);
+      expect(
+        ids.filter((id) => !ALWAYS_ASKED_IDS.includes(id) && !FOLLOW_UP_IDS.includes(id)),
+        "the sheet carries a row for something that is neither always asked nor a partner",
+      ).toEqual([]);
       // Every question that NEEDS a slide. Two rows are not those:
       //
       // - the cleanup row, which reports what became of the slides the run
@@ -727,7 +741,8 @@ describe("the fake host's answer sheet", () => {
     faults.newSlideRefusedForFirst = 500;
     try {
       const sheet = await runHostProbes("fake-never-recovers", "test");
-      expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
+      const missing = ALWAYS_ASKED_IDS.filter((id) => !sheet.answers.some((a) => a.id === id));
+      expect(missing, "the sheet came back short — a question the run always puts has no row").toEqual([]);
       expect(sheet.answers.filter((a) => a.detail?.includes("second pass"))).toEqual([]);
       const cleanup = sheet.answers.find((a) => a.id === SCRATCH_CLEANUP_ID);
       expect(cleanup, "a run that asked nothing still owes an account of the slides it borrowed").toBeTruthy();
@@ -880,7 +895,8 @@ describe("a probe run that has lost its scratch slide", () => {
     faults.newSlideResolvesTimes = 1;
     try {
       const sheet = await runHostProbes("fake-loses-every-slide", "test");
-      expect(sheet.answers).toHaveLength(ALWAYS_ASKED_IDS.length);
+      const missing = ALWAYS_ASKED_IDS.filter((id) => !sheet.answers.some((a) => a.id === id));
+      expect(missing, "the sheet came back short — a question the run always puts has no row").toEqual([]);
       // The cleanup row and the slideless question aside — see the sibling case
       // above for both. One is not a question; the other does not need what
       // this fault withholds.
@@ -1454,7 +1470,9 @@ describe("the partner question for the held-slide-proxy flip", () => {
       // remembers. On the unfixed code every firing reports "threw", so the
       // mechanism built to catch a mid-run flip would be blind to the flip.
       const was = traceLog()
-        .entries.filter((e) => e.message === "asking the partner question")
+        .entries.filter(
+          (e) => e.message === "asking the partner question" && e.data?.after === "shape-add-held-slide-proxy",
+        )
         .map((e) => e.data?.was);
       expect(was, "the partner was told the row's answer instead of this pass's").toEqual(["threw", "yes", "yes"]);
     } finally {
@@ -1472,7 +1490,12 @@ describe("the partner question for the held-slide-proxy flip", () => {
     setTracing(true);
     await runHostProbes("fake", "test");
     for (const e of traceLog().entries) {
-      if (e.message === "asking the partner question") seen.push({ was: e.data?.was, pass: 0 });
+      // Scoped to the pair this test is about. Asserting over EVERY partner in
+      // the run made it a gate on the whole probe list: adding
+      // `untrack-available-on-shape`, which legitimately fires on `no`, broke a
+      // test that has nothing to do with it.
+      if (e.message === "asking the partner question" && e.data?.after === "shape-add-held-slide-proxy")
+        seen.push({ was: e.data?.was, pass: 0 });
       if (e.message === "answered" && e.data?.id === "shape-add-held-slide-proxy") {
         // The per-pass answer is on the line now, so a reader can see the flip.
         expect(e.data, "the answered line does not say which pass it is reporting").toHaveProperty("pass");
@@ -1486,7 +1509,18 @@ describe("the partner question for the held-slide-proxy flip", () => {
 
 describe("the resample shortlist matches the tables that define it", () => {
   it("marks every question this project does not yet trust", () => {
-    const shouldResample = new Set([...Object.keys(UNSTABLE_ANSWERS), ...Object.keys(PENDING_QUESTIONS)]);
+    // A follow-up is exempt from the mark, and not as a loophole: it is never
+    // scheduled on its own — it rides its trigger — so marking it would put an
+    // id in the scarce-slide shortlist that the shortlist can never ask. The
+    // way to keep a partner asked under pressure is to mark its TRIGGER. The
+    // codebase already said this in prose on `shape-add-held-slide-proxy-again`
+    // and the invariant did not know it, so `untrack-available-on-shape` could
+    // not be added to `PENDING_QUESTIONS` without either failing this test or
+    // carrying a mark that does nothing.
+    const rides = new Set(FOLLOW_UP_IDS);
+    const shouldResample = new Set(
+      [...Object.keys(UNSTABLE_ANSWERS), ...Object.keys(PENDING_QUESTIONS)].filter((id) => !rides.has(id)),
+    );
     const marked = new Set(RESAMPLE_IDS);
     for (const id of shouldResample) {
       expect(marked.has(id), `${id} is in UNSTABLE_ANSWERS/PENDING_QUESTIONS but is not marked resample`).toBe(true);
