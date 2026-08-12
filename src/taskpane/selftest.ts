@@ -88,6 +88,7 @@ import {
   lastLateSync,
   lastLateSyncSeq,
   waitForLateSync,
+  shapesDrawnOn,
 } from "../render/powerpoint";
 import { trace, traceAbout, traceElapsed } from "../core/trace";
 
@@ -292,6 +293,49 @@ const duplicateSlot: Scenario = async (prefix) => {
 };
 
 /**
+ * Of the probe charts on offer, the one on the slide this run has loaded least.
+ *
+ * Every scenario that needs "a chart to work with" took `found[0]`, which is
+ * the same chart on the same slide every time — so the battery piled its whole
+ * run onto one slide and then paid the per-slide cost curve for it. Round
+ * `275a76a` measured that slide going 20 → 68 → 92 → 116 → 140 → 144 → 165
+ * shapes while nothing else in the deck passed 34, and the draw at 144 stalled:
+ * a NINE-shape chart, timed out at 45 seconds, which ~63 seconds of per-slide
+ * overhead at the measured +0.44s per shape entirely accounts for.
+ *
+ * So a scenario ordered late was measurably harder to pass than the same
+ * scenario ordered early, and several rounds of "this host stalls
+ * intermittently" have some of that in them.
+ *
+ * STABLE, not merely least: ties break on the deck's own order, so a run where
+ * nothing has been drawn yet picks exactly what `found[0]` picked and every
+ * existing expectation about which chart a scenario takes still holds. It only
+ * diverges once this run has actually loaded a slide, which is the case it
+ * exists for.
+ *
+ * Pure, and takes the count as a function, so the rule can be checked without a
+ * PowerPoint — the same reason `placeChart` and `chooseGroupMembers` are their
+ * own functions.
+ */
+export function leastLoadedChart<T extends { target: { slideId: string } }>(
+  charts: T[],
+  drawnOn: (slideId: string) => number,
+): T | undefined {
+  let best: T | undefined;
+  let bestLoad = Infinity;
+  for (const c of charts) {
+    const load = drawnOn(c.target.slideId);
+    // Strictly less: the first chart at a given load wins, so ties keep the
+    // deck's order.
+    if (load < bestLoad) {
+      best = c;
+      bestLoad = load;
+    }
+  }
+  return best;
+}
+
+/**
  * Redrawing a chart the user is looking at.
  *
  * The add-in's worst case: every shape replaced, on the one slide guaranteed
@@ -301,7 +345,7 @@ const duplicateSlot: Scenario = async (prefix) => {
  */
 const editOnVisibleSlide: Scenario = async (prefix) => {
   const { found, blind, gap } = await probeCharts(prefix);
-  const [chart] = found;
+  const chart = leastLoadedChart(found, shapesDrawnOn);
   if (!chart)
     return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to edit" };
   const shown = await showSlide(chart.target.slideId);
@@ -531,7 +575,7 @@ const explodePicture: Scenario = async (prefix) => {
   if (!canInsertPicture()) return { ok: false, skipped: true, detail: "host has no picture fill (PowerPointApi 1.8)" };
   if (!rasterizer) return { ok: false, skipped: true, detail: "no rasteriser — cannot make a picture to explode" };
   const { found, blind, gap } = await probeCharts(prefix);
-  const [chart] = found;
+  const chart = leastLoadedChart(found, shapesDrawnOn);
   if (!chart)
     return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to explode" };
   // Collapse it to a picture first, the way a struggling host would, then ask
@@ -793,7 +837,7 @@ const editViaSelection: Scenario = async (prefix) => {
     return { ok: false, skipped: true, detail: `not attempted — the ladder just found this host ${selectionWedged}` };
   }
   const { found, blind, gap } = await probeCharts(prefix);
-  const [chart] = found;
+  const chart = leastLoadedChart(found, shapesDrawnOn);
   if (!chart)
     return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
   if (!(await selectShape(chart.target.slideId, chart.target.shapeId, selectionBudgetMs()))) {
@@ -1210,7 +1254,7 @@ const chartIsVisible: Scenario = async (prefix) => {
   // delete, and the delete is separately implicated: one earlier round died on
   // it rather than on the rasterise.
   const { found, blind, gap } = await probeCharts(prefix);
-  const host = found[0];
+  const host = leastLoadedChart(found, shapesDrawnOn);
   if (!host)
     return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no slide from this run to draw a chart on" };
   const slideId = host.target.slideId;
@@ -1341,7 +1385,7 @@ const chartIsVisible: Scenario = async (prefix) => {
 const rasteriseThenDraw: Scenario = async (prefix) => {
   const attempt = stepsOf("rasterise-draw step");
   const { found, blind, gap } = await probeCharts(prefix);
-  const host = found[0];
+  const host = leastLoadedChart(found, shapesDrawnOn);
   if (!host) return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart to draw beside" };
   const slideId = host.target.slideId;
   const slide = await slideSize();
@@ -1673,7 +1717,7 @@ let selectionWedged: string | null = null;
 const whichSelectionCallWedges: Scenario = async (prefix) => {
   if (!canSelectShapes()) return { ok: false, skipped: true, detail: "host cannot select shapes (PowerPointApi 1.5)" };
   const { found, blind, gap } = await probeCharts(prefix);
-  const [chart] = found;
+  const chart = leastLoadedChart(found, shapesDrawnOn);
   if (!chart)
     return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to select" };
   const rungs = await selectionLadder(chart.target.slideId, chart.target.shapeId, selectionBudgetMs());

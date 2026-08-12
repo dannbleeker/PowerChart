@@ -497,6 +497,29 @@ let lastAnsweredMs = 0;
 const shapesDrawnOnSlide = new Map<string, number>();
 
 /**
+ * How many shapes THIS RUN has already drawn on a slide.
+ *
+ * Exported so a caller can avoid the slide it has been filling. Drawing cost on
+ * this host grows with what is already on the target — about +0.44s per shape
+ * present, measured — so a long run that keeps picking the same slide makes
+ * each of its own later draws slower than the last, quadratically.
+ *
+ * The self-test was doing exactly that: eight of its ten scenarios take the
+ * FIRST chart the deck scan returns, which is the same chart on the same slide
+ * every time. Round `275a76a` recorded that slide going 20 → 68 → 92 → 116 →
+ * 140 → 144 → 165 shapes while nothing else in the deck passed 34, and the
+ * draw at 144 stalled — a nine-shape chart, timed out at 45 seconds, which
+ * ~63 seconds of per-slide overhead entirely accounts for.
+ *
+ * A count this run kept itself, with no host call to make. It cannot see what
+ * the user's deck already held, which is the honest limit: it steers away from
+ * slides this run has loaded, not from slides that were busy to begin with.
+ */
+export function shapesDrawnOn(slideId: string | undefined): number {
+  return shapesDrawnOnSlide.get(slideId ?? "(visible)") ?? 0;
+}
+
+/**
  * Running counts of the ways this host refuses, since the run began.
  *
  * The self-test's scenarios are the things that actually fail, and they carry
