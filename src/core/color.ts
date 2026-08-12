@@ -226,15 +226,39 @@ export function alphaOf(color: string): number {
     const aa = h.length === 4 ? h[3] + h[3] : h.slice(6, 8);
     return parseInt(aa, 16) / 255;
   }
-  const fn = /^(?:rgba|hsla)\(([^)]*)\)$/i.exec(c);
+  // `rgb`/`hsl` as well as `rgba`/`hsla`: CSS Color 4 made them aliases, and the
+  // channel readers in all three sinks already accept the short spelling, so
+  // rejecting it here dropped the alpha of a colour they were otherwise reading
+  // correctly.
+  const fn = /^(?:rgba?|hsla?)\(([^)]*)\)$/i.exec(c);
   if (fn) {
-    const parts = fn[1].split(/[,/]/).map((s) => s.trim());
-    if (parts.length >= 4) {
-      const a = parts[3].endsWith("%") ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
-      return Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 1;
-    }
+    const a = alphaArg(fn[1]);
+    if (a !== undefined) return Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 1;
   }
   return 1;
+}
+
+/**
+ * The alpha argument of an `rgb()`/`hsl()` body, in either CSS syntax.
+ *
+ * The old rule split on `[,/]` and took the FOURTH part, which reads the legacy
+ * comma form and quietly fails the modern one: `rgb(70 130 180 / 0.5)` splits
+ * into two parts, not four, so the alpha was dropped and the colour drawn
+ * opaque. Both PowerPoint renderers already parsed that form's CHANNELS
+ * correctly, so a translucent steel blue arrived in the deck as a solid one —
+ * with the preview drawing it BLACK, because the SVG allow-list did not admit
+ * the slash at all. One colour, three different results.
+ *
+ * The slash decides: CSS Color 4 puts the alpha after it and separates channels
+ * with spaces, while the legacy form has no slash and four commas.
+ */
+function alphaArg(body: string): number | undefined {
+  const slash = body.indexOf("/");
+  const raw = slash >= 0 ? body.slice(slash + 1) : body.split(",")[3];
+  if (raw === undefined) return undefined;
+  const t = raw.trim();
+  if (t === "") return undefined;
+  return t.endsWith("%") ? parseFloat(t) / 100 : parseFloat(t);
 }
 
 /**

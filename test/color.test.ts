@@ -202,6 +202,20 @@ describe("the preview sink and the pptx sink answer the same colour", () => {
     "hsl(400, 50%, 50%)",
     "rgb(300,-20,50)",
     "rgb(", // a truncated function is not a function to either sink: black both sides
+    // CSS Color 4's space-separated channels with a SLASH alpha — the form MDN
+    // documents first, and the one an agent writing a config is most likely to
+    // produce. Both sinks parsed the CHANNELS of these correctly and dropped
+    // the alpha: the split took the fourth comma-part, which does not exist
+    // here, so a translucent colour reached the deck solid. `rgb`/`hsl` without
+    // the trailing `a` is the same syntax by CSS Color 4 and was rejected
+    // outright by the alpha readers while both channel readers accepted it.
+    "rgb(78 121 167)",
+    "rgb(78 121 167 / 0.5)",
+    "rgba(78 121 167 / 0.5)",
+    "rgba(78 121 167 / 50%)",
+    "hsl(210 60% 40%)",
+    "hsl(210 60% 40% / 0.25)",
+    "hsla(210 60% 40% / 25%)",
     // Named colours. This sink read every one of them as mid grey until the
     // table it shares with the pptx sink was carried here too — a gap that put
     // white ink on light fills and flipped `background: "white"` into
@@ -229,6 +243,28 @@ describe("the preview sink and the pptx sink answer the same colour", () => {
   it("reads the same opacity from every form", () => {
     for (const c of [...FORMS, ...UNREADABLE_FORMS, "transparent", "TRANSPARENT"]) {
       expect(alphaOf(c), `alphaOf vs pptx alphaOf for ${JSON.stringify(c)}`).toBeCloseTo(pptxAlphaOf(c), 6);
+    }
+  });
+
+  it("reads the opacity the author actually wrote, in either CSS syntax", () => {
+    // Agreeing is not enough — both sinks agreed on 1 for every slash form,
+    // which is what made the bug invisible to the check above. This pins the
+    // VALUE, so "they agree" cannot be satisfied by both being wrong together.
+    for (const [c, want] of [
+      ["rgb(78 121 167 / 0.5)", 0.5],
+      ["rgba(78 121 167 / 0.5)", 0.5],
+      ["rgba(78 121 167 / 50%)", 0.5],
+      ["hsl(210 60% 40% / 0.25)", 0.25],
+      ["hsla(210 60% 40% / 25%)", 0.25],
+      ["rgba(78,121,167,0.5)", 0.5],
+      // …and a form with no alpha stays opaque, so the rule is not "find any
+      // number and call it the alpha".
+      ["rgb(78 121 167)", 1],
+      ["hsl(210 60% 40%)", 1],
+      ["rgb(78,121,167)", 1],
+    ] as [string, number][]) {
+      expect(alphaOf(c), `core alphaOf(${JSON.stringify(c)})`).toBeCloseTo(want, 6);
+      expect(pptxAlphaOf(c), `pptx alphaOf(${JSON.stringify(c)})`).toBeCloseTo(want, 6);
     }
   });
 

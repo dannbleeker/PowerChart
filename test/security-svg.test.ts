@@ -69,6 +69,45 @@ describe("svg renderer neutralizes injected colours", () => {
     expect(svg).not.toContain("<image");
   });
 
+  it("draws a CSS Color 4 slash-alpha colour rather than falling back to black", () => {
+    // `rgb(70 130 180 / 0.5)` is the form MDN documents first, and the allow-list
+    // had no `/` — so this paint failed the test and the preview drew BLACK,
+    // while both PowerPoint renderers parsed it and drew steel blue. One colour,
+    // two pictures, and only the wrong one on screen.
+    const fill = (c: string) =>
+      /fill="([^"]*)"/.exec(
+        sceneToSvg({ width: 10, height: 10, nodes: [{ kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: c }] }),
+      )?.[1];
+    for (const c of ["rgb(70 130 180 / 0.5)", "rgba(70 130 180 / 50%)", "hsl(207 44% 49% / 0.5)"]) {
+      expect(fill(c), `${JSON.stringify(c)} fell back instead of being drawn`).toBe(c);
+    }
+  });
+
+  it("still refuses every breakout, with the slash allowed", () => {
+    // The widened class is one character, and the check that it cannot widen
+    // what ESCAPES: everything inside the parentheses is still digits, `.`,
+    // `,`, whitespace, `%` and `/` — no quote, no `<`/`>`, no `&`, and no `*`,
+    // so not even a CSS comment can be opened.
+    const fill = (c: string) =>
+      /fill="([^"]*)"/.exec(
+        sceneToSvg({ width: 10, height: 10, nodes: [{ kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: c }] }),
+      )?.[1];
+    for (const attack of [
+      'rgb(1,2,3)"><script>alert(1)</script><rect fill="rgb(1,2,3',
+      'rgb(1,2,3)" onload="alert(1)',
+      "rgba(1/*)*/,2,3)",
+      "rgb(1,2,3)/**/",
+      "url(javascript:alert(1))",
+      "url(//evil.example/x)",
+      "rgb(1 2 3 / 0.5)</rect><script>alert(1)</script>",
+      "rgb(1,2,3);behavior:url(#x)",
+      "/",
+      "//",
+    ]) {
+      expect(fill(attack), `${JSON.stringify(attack)} survived the allow-list`).toBe("#000000");
+    }
+  });
+
   it("passes legitimate colour forms through unchanged (no valid-chart regression)", () => {
     const scene: Scene = {
       width: 100,
