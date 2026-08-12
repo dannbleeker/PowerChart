@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
+import { textWidth } from "../src/core/scene";
 import type { RectNode, SceneNode, TextNode } from "../src/core/scene";
 import type { ChartConfig, Series } from "../src/core/types";
 
@@ -160,5 +161,57 @@ describe("butterfly", () => {
       return (b.w != null && b.w < 0) || (b.h != null && b.h < 0);
     });
     expect(bad).toHaveLength(0);
+  });
+});
+
+/**
+ * A small frame keeps the BARS, not the chrome around them.
+ *
+ * A value strip on each flank and the category gutter down the middle are priced
+ * in font sizes and label widths, so on a thumbnail they took 84 of 120 points
+ * and left both sets of bars 36 between them — the longest bar 18pt, the
+ * shortest 3. Inside the frame the whole way, so no overflow check sees it.
+ */
+describe("a butterfly too narrow for its chrome", () => {
+  const at = (width: number, height: number) =>
+    buildChart({
+      kind: "butterfly",
+      width,
+      height,
+      data: {
+        categories: ["<30", "30–39", "40–49", "50–59", "60+"],
+        series: [
+          { name: "Women", values: [420, 610, 540, 320, 120] },
+          { name: "Men", values: [380, 650, 600, 410, 160] },
+        ],
+      },
+    } as ChartConfig).nodes;
+
+  const longestBar = (nodes: SceneNode[]) =>
+    Math.max(...nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("seg-")).map((n) => n.w));
+
+  it("scales the chrome so the bars stay a chart", () => {
+    // Half the width is split between the two flanks, so the longest bar can
+    // reach a quarter of the frame; it used to reach a seventh.
+    expect(longestBar(at(120, 90))).toBeGreaterThan(120 * 0.15);
+  });
+
+  it("brings the category names down with the gutter", () => {
+    // They are CENTRED in the gutter, so a name wider than it overhangs both
+    // flanks and is drawn across the bars it names.
+    const names = at(120, 90).filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("category-"));
+    expect(names.length).toBeGreaterThan(1);
+    for (const t of names) {
+      expect(textWidth(t.text, t.fontSize, t.bold), `"${t.text}" is wider than its gutter`).toBeLessThanOrEqual(
+        t.w + 1,
+      );
+    }
+  });
+
+  it("leaves a frame that can afford its chrome alone", () => {
+    // At 480x300 the chrome is well inside half the width, so the scale is 1.
+    const wide = at(480, 300);
+    const cat = wide.find((n): n is TextNode => n.kind === "text" && n.name === "category-0")!;
+    expect(cat.fontSize).toBe(10);
   });
 });

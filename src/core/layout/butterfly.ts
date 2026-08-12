@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { niceTicks } from "../format";
@@ -27,7 +28,22 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const signedSum = (series: typeof withIdx, c: number) => series.reduce((a, { s }) => a + (s.values[c] ?? 0), 0);
 
   const titleH = titleHeight(cfg, style);
-  const valueW = fs * 3.4; // room for outside value labels on each flank
+  // Room for outside value labels on each flank. Scaled down below, with the
+  // category gutter, when the two together would leave the BARS nothing.
+  const valueW0 = fs * 3.4;
+  const gutterW0 = Math.min(cfg.width * 0.3, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12);
+  // The chrome — a value strip on each flank and the category gutter down the
+  // middle — is priced in font sizes and label widths, so on a small frame it
+  // takes the chart: 84 of 120 points at a thumbnail, leaving both sets of bars
+  // 36 between them and the longest one 18pt. The bars are what a butterfly is
+  // read by, so the chrome is scaled to fit inside HALF the width, the same way
+  // the gantt scales its three text gutters into a budget. At any size where it
+  // already fits, the scale is 1 and nothing moves.
+  const chromeBudget = cfg.width * 0.5;
+  const chrome = valueW0 * 2 + gutterW0;
+  const chromeScale = chrome > chromeBudget ? chromeBudget / chrome : 1;
+  const valueW = valueW0 * chromeScale;
+  const gutterW = gutterW0 * chromeScale;
   // Stacked flanks legend the whole series set across the top; it wraps (shared
   // walk), so the header band has to be as tall as the rows it will occupy.
   const legendEntries: LegendEntry[] = stacked
@@ -49,7 +65,6 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
         cfg.width - 4,
       ),
     );
-  const gutterW = Math.min(cfg.width * 0.3, Math.max(0, ...data.categories.map((c) => textWidth(c, fs))) + 12);
   // A value axis reserves a strip at the bottom for tick labels on both flanks.
   const axisH = decor.valueAxis ? fs * 1.5 : 0;
   const plot = fitPlot(cfg, {
@@ -129,6 +144,18 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
     }
   }
 
+  // The gutter holds the category names, and it may have been scaled down above
+  // to keep the bars a chart — so the names have to come with it or they spill
+  // onto the bars they are naming (they are CENTRED in the gutter, so a name
+  // wider than it overhangs both flanks). Shrunk together so every row reads at
+  // one size, then clipped; at any size where the names already fit, this is
+  // `fs` and nothing moves.
+  const catFs = (() => {
+    let f = fs;
+    while (f > 5 && data.categories.some((c) => textWidth(c, f) > gutterW)) f -= 0.5;
+    return f;
+  })();
+
   const columnTop: number[] = [];
   for (let c = 0; c < n; c++) {
     const cy = plot.y + slotH * (c + 0.5);
@@ -140,8 +167,8 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       y: cy - fs * 0.75,
       w: gutterW,
       h: fs * 1.5,
-      text: data.categories[c],
-      fontSize: fs,
+      text: clipToWidth(data.categories[c], catFs, gutterW),
+      fontSize: catFs,
       color: style.text,
       align: "center",
       valign: "middle",
