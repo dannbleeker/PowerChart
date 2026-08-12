@@ -1652,6 +1652,33 @@ EMPTY right after the collapse` line at all, so the host answered the
   the temptation to read the next round as vindication is exactly how this
   project has misread a round before.
 
+- **The battery's one recurring stall now says what it is.** `a selected shape
+survives an insert` stalled its first draw batch in four of the last five
+  rounds (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`) after passing eight
+  running before that, and every round reported it with the runner's generic
+  "the host got in the way" — a specific, repeating observation thrown away each
+  time.
+
+  What the note may claim is bounded by the round files, and the tempting answer
+  is dead: every one of those stalls reads `afterAnswering: "selecting a shape",
+idleMs: 2-3`, and `selecting a shape` sits in the SURVIVING population in all
+  four of the same rounds, because `edit the chart the user selected` draws
+  after it and lands. So the preceding call is not the variable — the same way
+  it was not for any earlier candidate. What is left, and all the note says, is
+  the one way this draw differs from every other in the battery: it is the only
+  one made with a selection STANDING, which is #2775's repro and exactly what
+  `dropShapeSelection` exists to avoid.
+
+  **A control arm was built for it and then removed, which is the more useful
+  half.** Matching this draw needs a same-size chart on the same slide; every
+  slot is allocated; sharing one broke `every chart the battery draws has a slot
+to itself`, and widening the band broke the degradation grid's fit. Two
+  invariants pushing back is the codebase saying the change is wrong-shaped —
+  and the product does not turn on the answer anyway, since the add-in already
+  drops the selection before drawing. So it is an observation, stated once,
+  rather than an experiment worth deforming the battery for.
+  `faults.stallDrawAfterSelect` is the fake being this host for it.
+
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not
   take other scenarios' verdicts — and it still cost every round, because the

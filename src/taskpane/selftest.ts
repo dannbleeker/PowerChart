@@ -1915,6 +1915,40 @@ const selectionSurvivesInsert: Scenario = async (prefix) => {
     const { left, top, ...box } = sideSlot(3, await slideSize(), boxOf(victim));
     const extra: ChartConfig = { ...cfg(`${prefix} drawn while selected`), ...box };
     await insertSceneIntoSlide(buildChart(extra), { slideId, tagData: JSON.stringify(extra), left, top });
+  } catch (err) {
+    // Named, rather than left to the runner's generic "the host got in the way".
+    //
+    // This draw stalled its first batch in four of the last five rounds
+    // (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`) after passing eight running
+    // before that, and every one of those rounds reported it the same
+    // anonymous way — so the battery has been carrying a repeating, specific
+    // observation and saying nothing about it.
+    //
+    // What the note may claim is bounded by what the round files support. The
+    // preceding call is NOT it: every one of those stalls reads
+    // `afterAnswering: "selecting a shape"`, and `selecting a shape` sits in
+    // the SURVIVING population in all four of the same rounds, because `edit
+    // the chart the user selected` draws after it and lands. What is left, and
+    // all this says, is the one way this draw differs from every other draw in
+    // the battery — it is the only one made with a selection still standing,
+    // which is #2775's repro and what `dropShapeSelection` exists to avoid.
+    //
+    // A control arm was built to settle it and then removed: matching this draw
+    // needs a same-size chart on the same slide, every slot is allocated, and
+    // widening the band broke both the no-overlap invariant and the degradation
+    // grid's fit. The product does not turn on the answer either — the add-in
+    // already drops the selection — so this stays an observation, stated, not
+    // an experiment worth deforming the battery for.
+    if (!isTimeout(err)) throw err;
+    return {
+      ok: false,
+      skipped: true,
+      blind: true,
+      detail:
+        `the host did not finish a draw made while a shape was SELECTED — the only draw in this battery made ` +
+        `with a selection standing, and what dropShapeSelection exists to avoid: ${errorText(err)}`,
+      ms: 0,
+    };
   } finally {
     // Never leave a chart selected: on the web a picture cannot be inserted
     // while one is (office-js#3698), so the scenario after this would fail

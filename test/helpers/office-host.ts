@@ -283,6 +283,20 @@ export const faults = {
    */
   syncCostMs: null as null | ((load: { syncsInContext: number; syncsTotal: number }) => number),
   /**
+   * A sync that does not come back while a shape is SELECTED.
+   *
+   * What the real host does to `a selected shape survives an insert`: that
+   * scenario's draw stalled its first batch in four of the last five rounds
+   * (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`) while every other draw in the
+   * same rounds landed — including draws that also follow `selecting a shape`,
+   * which is why the preceding call is not the variable.
+   *
+   * Modelled as a delay rather than a hang so a test cannot wedge: pair it with
+   * a short `_setBatchTimeoutForTest` and the draw gives up exactly as it does
+   * on the web, while the fake's own promise still settles.
+   */
+  stallDrawAfterSelect: false,
+  /**
    * Tag loads the host takes and never answers — the next N `load()`s on a tag
    * proxy leave it unreadable after their sync.
    *
@@ -1198,6 +1212,9 @@ export function makeSlide(id: string) {
       // Taken, and poisonous. The select itself still happens below — the web
       // host does perform it — and only what comes AFTER stops answering.
       if (faults.selectionWedgesHost && ids.length) selectionWedged = true;
+      // Tracked for `stallDrawAfterSelect`: a selection is STANDING until it is
+      // cleared, which is the window the real host refuses a draw in.
+      selectionStanding = ids.length > 0;
       if (!ids.length) {
         // Cleared on desktop, IGNORED on PowerPoint on the web
         // (office-js#3083). Modelled as the web does it when the fault is
@@ -1718,6 +1735,9 @@ const stallSyncDelayMs = 40;
  */
 let pictureLanded = false;
 
+/** Whether a shape selection is standing — see `faults.stallDrawAfterSelect`. */
+let selectionStanding = false;
+
 /** Whether `faults.slideReadsEmpty` is armed AND its moment has arrived. */
 function slideReadsEmptyNow(): boolean {
   if (faults.slideReadsEmpty === "now") return true;
@@ -2087,6 +2107,9 @@ export function installHost(
       // the cost lands on every sync including the ones that go on to fail.
       // A host that only slows down when it succeeds is not a host anyone has
       // seen.
+      // Longer than any batch budget a test sets, so the draw gives up — see
+      // `faults.stallDrawAfterSelect`.
+      if (faults.stallDrawAfterSelect && selectionStanding) await new Promise((r) => setTimeout(r, 200));
       if (faults.syncCostMs) {
         const ms = faults.syncCostMs({ syncsInContext, syncsTotal: trips.syncs });
         if (ms > 0) await new Promise((r) => setTimeout(r, ms));
@@ -2272,6 +2295,8 @@ export function installHost(
   faults.readsMissing = 0;
   faults.slideReadsEmpty = null;
   faults.slideIdUnreadableBeforeFirstSync = false;
+  faults.stallDrawAfterSelect = false;
+  selectionStanding = false;
   pictureLanded = false;
   faults.selectedSlideIdAs = null;
   faults.hollowNameReads = 0;

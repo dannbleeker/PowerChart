@@ -21,6 +21,7 @@ import {
   resetStop,
   isStopRequested,
   _setReadbackTimeoutForTest,
+  _setBatchTimeoutForTest,
   listChartsInDeck,
   timeShapeRounds,
   gridFootprint,
@@ -2641,6 +2642,41 @@ describe("which chart a scenario picks to work with", () => {
  * `same scale across the deck` failed with six id refusals and four empty
  * re-reads. Those are the two real cases, and they have to come out opposite.
  */
+/**
+ * The one recurring stall the battery had been reporting anonymously.
+ *
+ * `a selected shape survives an insert` stalled its first draw batch in four of
+ * the last five rounds (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`) after
+ * passing eight running before that — and every round reported it with the
+ * runner's generic "the host got in the way", so a specific repeating
+ * observation was being thrown away each time.
+ *
+ * The note it carries now is bounded by what the round files support. It does
+ * NOT blame the preceding call: `selecting a shape` precedes both this stall
+ * and surviving draws in all four of those rounds. It says only the one way
+ * this draw differs from every other in the battery — it is made with a
+ * selection standing.
+ */
+describe("the draw made while a shape is selected", () => {
+  it("says what stalled instead of reporting an anonymous host failure", async () => {
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    // Let the selection succeed and the draw time out, which is the shape the
+    // real host produces: `drawing shapes 1-10 of 24`, first batch, gone.
+    faults.stallDrawAfterSelect = true;
+    _setBatchTimeoutForTest(10);
+    try {
+      const r = byName(await runSelfTest("probe"))["a selected shape survives an insert"];
+      expect(r.detail, `the stall was reported anonymously: ${r.detail}`).toMatch(/while a shape was SELECTED/);
+      expect(r.detail, "the note does not say what protects against it").toMatch(/dropShapeSelection/);
+      expect(r.blind, "a stalled draw was reported as evidence about the product").toBe(true);
+    } finally {
+      faults.stallDrawAfterSelect = false;
+      _setBatchTimeoutForTest(45_000);
+    }
+  }, 60_000);
+});
+
 describe("whose fault a red scenario was", () => {
   const res = (over: Partial<ScenarioResult>): ScenarioResult => ({
     name: "s",
