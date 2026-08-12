@@ -260,6 +260,25 @@ export const xmlFontName = (s) => xmlText(s).replace(/[<>&"']/g, "");
 export const visible = (paint) => !!paint && alphaOf(paint) > 0;
 
 /**
+ * A point size OOXML will accept, enforced where it is WRITTEN.
+ *
+ * pptxgenjs emits `sz="${fontSize * 100}"` with no checking, and
+ * `ST_TextFontSize` is 100..400000 — 1pt to 4000pt. A scene node carrying
+ * 0.0001 wrote `sz="0"` and one carrying 1e6 wrote `sz="120000000"`, neither of
+ * which is in the type, so PowerPoint offers to repair the deck while the CLI
+ * reports a success. Same failure shape as the `x="Infinity"` that `finiteNodes`
+ * exists to prevent.
+ *
+ * The engine clamps `style.fontSize` on the way in now, which closes the config
+ * route. This is the other one: `makeAddNode` is a pure exported function that
+ * takes a scene node, and this file sits outside `tsconfig.include` and is
+ * checked by NOTHING — the same reason the polygon case below refuses to assume
+ * `finiteNodes` ran. A guarantee about the bytes belongs at the point that
+ * writes them, which is the stance `hex` already takes about its six digits.
+ */
+const fontPt = (v) => Math.min(4000, Math.max(1, typeof v === "number" && Number.isFinite(v) ? v : 12));
+
+/**
  * Bind the four engine helpers a node mapping needs (dashKind, annularSectorPoints,
  * symbolPreset, arrowheadBox) and return `addNode(slide, n, dx, dy)` — a pure
  * function that maps one scene node to PptxgenJS calls at a slide offset (inches).
@@ -307,7 +326,7 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           y: dy + n.y * IN,
           w: Math.max(0.05, n.w * IN),
           h: Math.max(0.05, n.h * IN),
-          fontSize: n.fontSize,
+          fontSize: fontPt(n.fontSize),
           color: hex(n.color),
           bold: !!n.bold,
           align: n.align,

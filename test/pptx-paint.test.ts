@@ -177,6 +177,33 @@ describe("addNode — maps each scene node kind to PptxgenJS", () => {
     expect(r.texts[0].opts.bold).toBe(true);
   });
 
+  it("text: writes a font size OOXML can carry, whatever the node says", () => {
+    // pptxgenjs emits `sz="${fontSize * 100}"` unchecked, and ST_TextFontSize is
+    // 100..400000 — 1pt to 4000pt. A node carrying 0.0001 wrote sz="0" and one
+    // carrying 1e6 wrote sz="120000000"; both are decks PowerPoint offers to
+    // repair, produced by a CLI reporting success. Same shape as the
+    // `x="Infinity"` that `finiteNodes` exists to prevent.
+    //
+    // Asserted HERE and not only on the engine, because `makeAddNode` is a pure
+    // exported function taking a scene node — this route never passes through
+    // `normalizeConfig` at all, and this file sits outside `tsconfig.include`
+    // where nothing checks it.
+    const size = (fontSize: unknown) => {
+      const r = recorder();
+      addNode(r, { kind: "text", x: 0, y: 0, w: 100, h: 20, text: "Hi", fontSize } as never, 0, 0);
+      return r.texts[0].opts.fontSize as number;
+    };
+    for (const bad of [0.0001, 1e-30, 0, -12, 1e6, Infinity, NaN, undefined, "12pt"]) {
+      const got = size(bad);
+      expect(got, `fontSize ${String(bad)} wrote ${got}pt, outside OOXML's 1..4000`).toBeGreaterThanOrEqual(1);
+      expect(got, `fontSize ${String(bad)} wrote ${got}pt, outside OOXML's 1..4000`).toBeLessThanOrEqual(4000);
+    }
+    // An ordinary size is passed through untouched, so the bound is a clamp and
+    // not a replacement.
+    expect(size(12)).toBe(12);
+    expect(size(4000)).toBe(4000);
+  });
+
   it("ellipse: stroke-only ring when fill is none", () => {
     const r = recorder();
     addNode(

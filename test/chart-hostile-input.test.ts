@@ -147,6 +147,37 @@ describe("no non-finite geometry leaves the chart engine", () => {
     const clean = buildChart(sampleConfig("clustered"));
     expect(poisoned.nodes.length).toBe(clean.nodes.length);
   });
+
+  it("keeps a font size inside the range a .pptx can carry", () => {
+    // The guard above refused a fontSize that was not a positive finite number
+    // and stopped there — no ceiling, no floor — where `clampDim` has MAX_DIM
+    // for exactly this reason. OOXML's ST_TextFontSize is 1pt..4000pt, written
+    // as `sz` in hundredths, and pptxgenjs passes the number straight through:
+    // `fontSize: 1e6` wrote sz="120000000" and `fontSize: 0.0001` wrote sz="0".
+    // Both are decks PowerPoint offers to repair, from a CLI reporting success.
+    //
+    // Checked on the NODES, because the layout scales the authored size before
+    // any renderer sees it (×1.2 for a title, ×0.85 for a small label), so a
+    // bound on the config that ignored the multipliers would not be a bound on
+    // what gets written.
+    for (const fontSize of [1e6, 5000, 0.0001, 1e-30, 1]) {
+      const scene = buildChart({ ...sampleConfig("clustered"), style: { fontSize } } as unknown as ChartConfig);
+      const sizes = scene.nodes
+        .filter((n) => n.kind === "text")
+        .map((n) => (n as unknown as { fontSize: number }).fontSize);
+      expect(sizes.length, `fontSize ${fontSize} drew no text`).toBeGreaterThan(0);
+      for (const s of sizes) {
+        expect(s, `fontSize ${fontSize} produced a ${s}pt node, below what OOXML can carry`).toBeGreaterThanOrEqual(1);
+        expect(s, `fontSize ${fontSize} produced a ${s}pt node, above OOXML's 4000pt`).toBeLessThanOrEqual(4000);
+      }
+    }
+    // A size inside the range is still honoured exactly — the clamp is a bound,
+    // not a normalisation to the default.
+    const kept = buildChart({ ...sampleConfig("clustered"), style: { fontSize: 30 } } as unknown as ChartConfig);
+    expect(kept.nodes.some((n) => n.kind === "text" && (n as unknown as { fontSize: number }).fontSize === 30)).toBe(
+      true,
+    );
+  });
 });
 
 /**
