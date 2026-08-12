@@ -33,6 +33,7 @@ import {
   updateChartsInSlides,
   withSlideDeselected,
   slideHoldsOnlyChart,
+  shapesDrawnOn,
   getSlideShapeBounds,
   _setSelectionTimeoutForTest,
   replaceSlideWithDeck,
@@ -865,9 +866,45 @@ describe("looking away while a chart redraws", () => {
 
   it("still allows the swap on a slide it CAN corroborate as empty", async () => {
     // The gate has to stay usable, or the fallback it guards is dead code. A
-    // bare slide, honestly read, is still a yes.
+    // bare slide this run never drew on, honestly read, is still a yes.
     installHost([makeSlide("s1")]);
     expect(await slideHoldsOnlyChart("s1")).toBe(true);
+  });
+
+  /**
+   * The case the corroboration above cannot see: both signals agreeing at ZERO.
+   *
+   * The test before this one arms `hollowNameReads`, where the collection reads
+   * empty and `getCount()` still says two — a disagreement, which
+   * `slideShapeNames` catches. Round `957aca0` produced the other shape: the
+   * collection AND the count both answered zero for a slide holding a shape
+   * named `PowerChart`. Nothing in the answer distinguishes that from a bare
+   * slide, so the gate has to decide on something that is not the answer.
+   *
+   * `shapesDrawnOn` is that something, and it splits along the pathology's own
+   * line — this host does not list the shapes a run just added. A slide this
+   * run drew on cannot credibly read empty, and this gate deletes the slide it
+   * says yes to.
+   */
+  it("refuses the swap when a slide reads empty AFTER this run drew on it", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    // Draw a chart onto the slide, so the run's own bookkeeping says shapes
+    // went there — via the ordinary insert path, not by reaching into the
+    // counter, or the test would be asserting against its own fixture.
+    const scene = buildChart(sampleConfig("clustered"));
+    await insertSceneIntoSlide(scene, { slideId: "s1" });
+    expect(shapesDrawnOn("s1"), "the insert drew nothing, so the premise of this test is missing").toBeGreaterThan(0);
+    // Now the host stops listing that slide — both signals, both zero.
+    faults.slideReadsEmpty = "now";
+    try {
+      expect(
+        await slideHoldsOnlyChart("s1"),
+        "believed an empty read on a slide this run had drawn on, and offered to delete it",
+      ).toBe(false);
+    } finally {
+      faults.slideReadsEmpty = null;
+    }
   });
 
   /**

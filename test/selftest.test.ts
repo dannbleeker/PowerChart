@@ -1178,7 +1178,7 @@ describe("scenarios that must not be able to pass without proving anything", () 
     // evidence. With no rasteriser the honest answer is "did not check".
     setSelfTestRasterizer(undefined as unknown as (s: unknown) => Promise<string | undefined>);
     installHost([makeSlide("s1")]);
-    const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
+    const explode = byName(await runSelfTest("probe"))["explode a degraded picture"];
     expect(explode.skipped, explode.detail).toBe(true);
     expect(explode.detail).toMatch(/rasteris/i);
   });
@@ -1215,7 +1215,7 @@ describe("scenarios that must not be able to pass without proving anything", () 
     setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
     faults.refusePictureFill = true;
     try {
-      const explode = named(await runSelfTest("probe"))["explode a degraded picture"];
+      const explode = byName(await runSelfTest("probe"))["explode a degraded picture"];
       expect(explode.skipped, explode.detail).toBeFalsy();
       expect(explode.ok, explode.detail).toBe(false);
       expect(explode.detail).toMatch(/a picture is one/);
@@ -2589,5 +2589,51 @@ describe("which chart a scenario picks to work with", () => {
       worst / total,
       `one slide took ${worst} of ${total} shapes this run drew — the battery is concentrating again`,
     ).toBeLessThan(0.5);
+  }, 60_000);
+});
+
+/**
+ * A slide that reads back EMPTY right after a draw has not lost its shapes.
+ *
+ * Round `957aca0` failed `explode a degraded picture` with `the collapse added
+ * 0 shapes (none) — the slide went from 1 to 0`, and the deck inventory taken
+ * at the end of the same run shows that slide holding one shape named
+ * `PowerChart`. The chart never moved: the host refused a collection read on a
+ * slide the run had just drawn on, and the scenario reported the refusal as
+ * data loss.
+ *
+ * `slideShapeList` is careful — it corroborates `items` against `getCount()`
+ * and answers null when they disagree — so this is a hole in that strategy
+ * rather than in the scenario: both signals can agree at ZERO and both be
+ * wrong. Nothing downstream can tell from the return value alone.
+ *
+ * It is also the third time this scenario has produced a false FAILURE from
+ * counting a slide, and its own comments record the other two.
+ */
+describe("the collapse's readback when the host will not list a slide", () => {
+  it("does not report data loss for a read that came back empty", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    // The collection AND its count both answer zero, which is what the real
+    // host did on the slide it had just drawn onto — and the only shape of it
+    // that defeats `slideShapeList`'s corroboration.
+    //
+    // Armed by the picture landing rather than from the first read, because a
+    // host that is blind from the start starves `probeCharts`, the scenario
+    // skips for want of a chart, and this guard passes against the unfixed
+    // build. That was the first version of it.
+    faults.slideReadsEmpty = "after-a-picture";
+    try {
+      const explode = byName(await runSelfTest("probe"))["explode a degraded picture"];
+      // Not `ok`, which the scenario may still fail for its own reasons on a
+      // host this hostile: the defect is the SENTENCE, a claim that shapes
+      // disappeared, and that is what must not be reachable from a refusal.
+      expect(explode.detail, `an empty readback was reported as data loss: ${explode.detail}`).not.toMatch(
+        /went from \d+ to 0/,
+      );
+    } finally {
+      faults.slideReadsEmpty = null;
+    }
   }, 60_000);
 });

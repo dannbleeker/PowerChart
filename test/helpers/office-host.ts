@@ -156,6 +156,33 @@ export const faults = {
    */
   selectedSlideIdAs: null as string | null,
   /**
+   * A slide whose shape collection AND its count both answer zero once a
+   * picture has landed, while the slide really holds shapes.
+   *
+   * `slideShapeList` corroborates `items` against `getCount()` and answers null
+   * when they disagree — which is why `hollowReads` and `hollowNameReads` are
+   * both caught. This is the case that defeats it: the two signals agree, at
+   * zero, and are both wrong.
+   *
+   * Observed on 2026-08-12 (`957aca0`). `explode a degraded picture` read the
+   * slide it had just drawn on, was told it held nothing, and reported `the
+   * slide went from 1 to 0` — while the deck inventory taken at the end of the
+   * same run shows that slide holding one shape named `PowerChart`. A verdict
+   * claiming data loss the add-in did not cause, which is the third time this
+   * scenario has produced one by counting a slide.
+   *
+   * Two arming times, because WHEN it starts decides whether a test proves
+   * anything. `"now"` is for a unit test that calls the read directly.
+   * `"after-a-picture"` is for anything that goes through the battery: a fault
+   * that is on from the first read starves `probeCharts`, the scenario skips
+   * for want of a chart, and the guard then passes against the unfixed build —
+   * which is the shape of a test that proves nothing, and was the first version
+   * of one here. `fill.setImage` is the turn because that is where the real
+   * host turned: the reads before the collapse answered, the read after it did
+   * not.
+   */
+  slideReadsEmpty: null as null | "now" | "after-a-picture",
+  /**
    * The same short answer, on an `items/name` load.
    *
    * A real host does not care which properties were asked for — a collection
@@ -857,6 +884,8 @@ export function makeShape(
         if (faults.refusePictureFill) throw new Error("setImage is not available on this host");
         shape.imageBase64 = b64;
         shape.fillType = "PictureAndTexture";
+        // The moment `slideReadsEmpty: "after-a-picture"` is waiting for.
+        pictureLanded = true;
       },
       clear() {
         shape.fillCleared = true;
@@ -1245,6 +1274,7 @@ export function makeSlide(id: string) {
           if (faults.hollowReadsAfter > 0) faults.hollowReadsAfter--;
           else return [];
         }
+        if (slideReadsEmptyNow()) return [];
         if (faults.hollowReads > 0 && lastShapeLoad.startsWith("items/id")) {
           faults.hollowReads--;
           return [];
@@ -1415,6 +1445,10 @@ export function makeSlide(id: string) {
       // Top-level shape count the host reports on readback — non-deleted shapes.
       getCount: () => {
         if (faults.faultShapeGetCount) throw new Error("readback getCount faulted");
+        // Agrees with the empty `items` above — see `slideReadsEmpty`. Both
+        // signals saying zero is the whole point: one of them telling the truth
+        // is the case `slideShapeList` already survives.
+        if (slideReadsEmptyNow()) return { value: 0 };
         return { value: created.filter((s) => !s.deleted).length };
       },
     },
@@ -1630,6 +1664,21 @@ const stallSyncDelayMs = 40;
 /** Make the next N addGroup calls THROW — a host that declines to group even
  * though the API is there. Decremented per call, so refusing 1 leaves a chart
  * rendered-but-ungrouped and still lets the fresh-context rescue group it. */
+
+/**
+ * True once any shape on this host has taken a picture fill.
+ *
+ * The later arming time for `faults.slideReadsEmpty`, kept as state rather than
+ * as a count because the interesting thing about the real host's refusal is
+ * WHEN it started, not how many reads it swallowed.
+ */
+let pictureLanded = false;
+
+/** Whether `faults.slideReadsEmpty` is armed AND its moment has arrived. */
+function slideReadsEmptyNow(): boolean {
+  if (faults.slideReadsEmpty === "now") return true;
+  return faults.slideReadsEmpty === "after-a-picture" && pictureLanded;
+}
 
 /** Shape-collection reads that come back EMPTY without throwing — see `items`. */
 let lastShapeLoad = "";
@@ -2177,6 +2226,8 @@ export function installHost(
   faults.hollowReads = 0;
   faults.hollowReadsAfter = null;
   faults.readsMissing = 0;
+  faults.slideReadsEmpty = null;
+  pictureLanded = false;
   faults.selectedSlideIdAs = null;
   faults.hollowNameReads = 0;
   lastShapeLoad = "";

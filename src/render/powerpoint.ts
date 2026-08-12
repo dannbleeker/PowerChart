@@ -6399,17 +6399,48 @@ export async function slideShapeNames(slideId: string): Promise<string[] | null>
  * cannot be undone by anything but Ctrl-Z, so "I could not check" is not a
  * licence.
  *
- * An EMPTY slide counts. The question is "would replacing this slide lose
- * anything the user put here", and for a bare slide the answer is no — but it
- * used to insist on seeing exactly one chart group, so the moment a failed
- * redraw had deleted that group (and its litter had been swept) the swap
- * disqualified itself on the evidence of its own damage. That left the one case
- * this fallback exists for as the one case it refused.
+ * An EMPTY slide counts — but only on a slide THIS RUN has not drawn on. The
+ * question is "would replacing this slide lose anything the user put here", and
+ * for a bare slide the answer is no; the gate used to insist on seeing exactly
+ * one chart group, so the moment a failed redraw had deleted that group (and
+ * its litter had been swept) the swap disqualified itself on the evidence of
+ * its own damage, which left the one case this fallback exists for as the one
+ * case it refused.
+ *
+ * The qualification is round `957aca0`, which broke the premise the empty case
+ * rested on. `slideShapeNames` corroborates the collection against
+ * `getCount()`, and that is what catches a hollow read — but on that round BOTH
+ * answered zero for a slide holding a shape named `PowerChart`, so an empty
+ * answer and an empty slide were byte-for-byte the same answer. The fake can
+ * now produce it (`faults.slideReadsEmptyAfterPicture`) and no amount of
+ * reading tells them apart.
+ *
+ * `shapesDrawnOn` is the one signal outside the collection, and it separates
+ * them along the pathology's own documented line: this host does not list the
+ * shapes A RUN JUST ADDED. So a zero on a slide this run has added shapes to is
+ * not credible — it is the refusal, and believing it deletes the user's logo,
+ * title and speaker notes for a slide that still holds them. A zero on a slide
+ * this run never touched is credible, and that is exactly the case the empty
+ * branch was added for: a chart whose delete landed and whose adds did not
+ * leaves nothing drawn and nothing on the slide.
+ *
+ * Costs no host call — the count is bookkeeping this run already keeps.
  */
 export async function slideHoldsOnlyChart(slideId: string): Promise<boolean> {
   const names = await slideShapeNames(slideId);
   if (!names) return false;
-  return names.length === 0 || (names.length === 1 && names[0] === GROUP_NAME);
+  if (names.length === 0) {
+    const drew = shapesDrawnOn(slideId);
+    if (drew > 0) {
+      trace("insert", "not offering the slide swap: the slide read EMPTY after this run drew on it", {
+        slideId,
+        drew,
+      });
+      return false;
+    }
+    return true;
+  }
+  return names.length === 1 && names[0] === GROUP_NAME;
 }
 
 /**

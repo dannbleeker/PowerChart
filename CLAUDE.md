@@ -992,6 +992,13 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   to begin with (its probe charts land one per slide, where the real deck had
   nine on one), so that understates the effect rather than overstating it.
 
+  **It landed and it worked on the real host** (2026-08-12, `957aca0`). The
+  round's loads read **96, 45, 44, 24, 20, 20** across six slides, against 165
+  on one slide the round before — and the round went from two draw stalls to
+  one. At ~+0.44s per shape present, taking the worst slide from 165 to 96 is
+  about thirty seconds of overhead off the busiest draw, which is the difference
+  between sitting inside `BATCH_TIMEOUT_MS` and not.
+
 - **A field can be recorded on both populations and STILL be useless, if it is
   rarely populated.** `onSlide` — how many shapes this run had already put on
   the slide, the input to the quadratic cost curve — was added on every batch,
@@ -1331,6 +1338,33 @@ deck`: nothing to group with, no fresh tag target, so the tag goes through a
   same minute. The count is right and the list is empty. That is why every
   collection read in this repo has to be corroborated against the slide's own
   count (`slideShapeNames`) rather than believed.
+
+  **And the corroboration has a hole, found on 2026-08-12 (`957aca0`): both
+  signals can agree AT ZERO, and both be wrong.** `explode a degraded picture`
+  read the slide it had just drawn on and reported `the collapse added 0 shapes
+(none) — the slide went from 1 to 0`, while the deck inventory taken at the end
+  of the same run shows that slide holding one shape named `PowerChart`. The
+  chart never moved. `slideShapeList` did exactly what this paragraph asks —
+  loaded `items/id,items/name`, called `getCount()`, compared them — and got
+  zero from both, so its return value could not carry the doubt.
+
+  The consequence is that **an empty read is not evidence of an empty slide**,
+  and every caller has to decide that for itself from something outside the
+  collection. Two do now. The scenario has a floor argument: an update that
+  just handed back a target cannot have drawn onto a slide holding nothing.
+  `slideHoldsOnlyChart` — the gate that authorises DELETING the user's slide —
+  uses `shapesDrawnOn`, which splits along this pathology's own line: the host
+  does not list the shapes a run just ADDED, so a zero on a slide this run drew
+  on is the refusal, and a zero on a slide it never touched is an answer. That
+  keeps the bare-slide case the swap fallback exists for while refusing the case
+  that would replace a logo, a title and the speaker notes with a generated
+  slide carrying none of them.
+
+  `faults.slideReadsEmpty` is the fake being this host, with two arming times.
+  The later one (`"after-a-picture"`) is not decoration: armed from the first
+  read it starves `probeCharts`, the scenario skips for want of a chart, and the
+  guard passes against the unfixed build.
+
 - **A self-test scenario that ends the run costs the whole report, even last.**
   `the chart is actually visible` ran dead last precisely so its crash could not
   take other scenarios' verdicts — and it still cost every round, because the
@@ -1428,6 +1462,22 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
   chart is visible" verdict on record is worth nothing; if the control comes
   back clean, this gate finally means what it has been claiming for six rounds.
   One extra call on a slide the run has already rasterised safely.
+
+  **The control ran on 2026-08-12 (`957aca0`) and came back CLEAN, so the gate
+  means what it says.** No `proves NOTHING` caveat in the verdict: two renders
+  of the unchanged slide were identical, this rasteriser is deterministic, and
+  the difference a drawn chart produces is the chart. Six rounds of verdicts are
+  retrospectively worth what they claimed.
+
+  **And the same round explains the thin deltas without any of the mechanisms
+  this paragraph guessed at.** It reported `9052 → 10864 bytes, +1812, 20%` —
+  twenty percent, against the 0.7-0.8% of the three `+108` rounds — and the
+  variable is the SLIDE, not the rasteriser and not the encoder. The `+108`
+  rounds drew onto the battery's overloaded slide, where a chart is a small
+  addition to a crowded picture; this round drew onto a slide the spreading fix
+  had kept light. A thin delta is a crowded slide, and the flag is worth keeping
+  for exactly that reason: it reports how much of the picture the chart is, on a
+  gate whose whole subject is whether a human would see it.
 
 - The showcase build is **byte-deterministic**; CI diffs slide XML, so always
   commit the regenerated deck with the code that changed it.
