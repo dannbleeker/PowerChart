@@ -1075,6 +1075,36 @@ or elapsed time, not the rasterise`. Same battery, same counterbalancing, two
   diagnostic starts reporting the shape you expected, check what it is keyed on
   before believing it.
 
+  **The INSERT path was still on the sentinel a round later, and by then the
+  counter had a safety job.** Round `393e6e4` shows every batch of `insert onto
+a slide that already has content` keyed `(visible)` while every other scenario
+  named its slide — the last caller that never filled `slideId` in, and the
+  commonest path in the add-in, since the pane's Insert button names no slide.
+  That is not untidy any more: `slideHoldsOnlyChart` reads this counter to
+  decide whether an empty read of a slide is believable, and it authorises
+  DELETING the user's slide. A chart inserted the ordinary way banked its
+  twenty-four shapes under the sentinel, so `shapesDrawnOn(realId)` answered
+  ZERO for a slide the run had just filled and the guard would have believed the
+  host on exactly the slide it exists to refuse.
+
+  `slideKeyFor` reads the slide's OWN id when the caller named none. It is free
+  — `insertSceneIntoSlide` already queues `slide.load("id")` before the first
+  batch — but only from the SECOND batch, because the first batch's line is
+  written before the sync that answers it. So the first batch's shapes are moved
+  across the moment a real key appears, and only this draw's own shapes move:
+  the sentinel is shared, and taking its whole total would steal another draw's
+  count.
+
+  **That carry-over is the interesting part of the change, because nothing in
+  the fake could make it fail.** The fake answers `slide.id` from the first
+  read, so the key never transitioned and the block was decoration — the exact
+  thing this file has a rule about. `faults.slideIdUnreadableBeforeFirstSync`
+  is the fake being a real host for one window: the id throws
+  `PropertyNotLoaded` until the run's first sync. With it armed the guard fails
+  `expected 14 to be 24` — a ten-shape first batch stranded on the sentinel —
+  and passes with the carry-over in place. Coarser than the real per-property
+  load rule, and enough for the only window that matters.
+
 - **A value recorded only on FAILURES cannot be compared against anything, and
   this project keeps building them.** Four in one session: `idleMs` and
   `afterAnswering` were written on stalls but not on the draws that survived;
