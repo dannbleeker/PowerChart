@@ -46,7 +46,12 @@ belongs with the thing it tests, not with the reason it was written.)
 - **Renderers & app** — `office-render` (Office.js against the fake host),
   `web-host` (the same renderer against that host at its WORST — every
   misbehaviour a real PowerPoint on the web has shown us, on at once), `pptx-paint`
-  (headless pptx node mapping), `svg-render` (SVG node emission — paths,
+  (headless pptx node mapping), `ooxml-ranges` (the sweep beside it: every number
+  that mapping writes, checked against the SCHEMA RANGE of the attribute it lands
+  in, over every kind × a hostile config matrix — `finiteNodes` covers
+  `x="Infinity"`, and this covers the rest, because an out-of-range attribute is
+  equally a deck PowerPoint offers to repair and equally reported as a success),
+  `svg-render` (SVG node emission — paths,
   polygons, options), `pane-state` / `pane-host-actions` / `pane-widgets` /
   `dom-pane` (task pane), `crashlog` (the record that outlives a run that
   never ends), `templates` (saving and re-picking a chart setup — a whole
