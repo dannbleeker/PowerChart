@@ -4276,10 +4276,9 @@ describe("what the per-slide shape counter counts", () => {
     // And the first batch is not stranded under the sentinel: the whole chart
     // is accounted for on the real slide, not just the batches after the host
     // answered the id.
-    expect(
-      shapesDrawnOn("counter-unnamed"),
-      "some of the chart is still banked under the sentinel",
-    ).toBe(estimateOfficeShapes(scene));
+    expect(shapesDrawnOn("counter-unnamed"), "some of the chart is still banked under the sentinel").toBe(
+      estimateOfficeShapes(scene),
+    );
     expect(shapesDrawnOn("(visible)"), "shapes were left behind on the sentinel").toBe(0);
   });
 
