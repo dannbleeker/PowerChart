@@ -983,127 +983,127 @@ exports[`SVG snapshots > sample tilemap 1`] = `
 <title>Revenue by market (€m)</title>
 <desc>tile-grid map. 1 data series: Revenue. 11 categories: DK, SE, NO, FI and 7 more.</desc>
 <text x="0" y="12" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600" data-name="title">Revenue by market (€m)</text>
-<rect x="83.44" y="24" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-IS"/>
-<text x="97.97" y="42.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IS">IS</text>
-<rect x="209.69" y="24" width="29.06" height="29.06" fill="#e4e9f7" data-name="tile-NO"/>
-<text x="224.22" y="36.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-NO">NO</text>
-<text x="224.22" y="46.53" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-NO">45</text>
-<rect x="241.25" y="24" width="29.06" height="29.06" fill="#d3dcf2" data-name="tile-SE"/>
-<text x="255.78" y="36.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SE">SE</text>
-<text x="255.78" y="46.53" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-SE">61</text>
-<rect x="272.81" y="24" width="29.06" height="29.06" fill="#f1f4fb" data-name="tile-FI"/>
-<text x="287.34" y="36.09" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-FI">FI</text>
-<text x="287.34" y="46.53" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-FI">32</text>
-<rect x="304.38" y="55.56" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-EE"/>
-<text x="318.91" y="73.65" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-EE">EE</text>
-<rect x="83.44" y="87.13" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-IE"/>
-<text x="97.97" y="105.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IE">IE</text>
-<rect x="115" y="87.13" width="29.06" height="29.06" fill="#88a4e0" data-name="tile-GB"/>
-<text x="129.53" y="99.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-GB">GB</text>
-<text x="129.53" y="109.66" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-GB">112</text>
-<rect x="178.13" y="87.13" width="29.06" height="29.06" fill="#cdd7f0" data-name="tile-NL"/>
-<text x="192.66" y="99.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-NL">NL</text>
-<text x="192.66" y="109.66" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-NL">66</text>
-<rect x="209.69" y="87.13" width="29.06" height="29.06" fill="#b6c5ea" data-name="tile-DK"/>
-<text x="224.22" y="99.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-DK">DK</text>
-<text x="224.22" y="109.66" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-DK">84</text>
-<rect x="304.38" y="87.13" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-LV"/>
-<text x="318.91" y="105.21" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LV">LV</text>
-<rect x="178.13" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BE"/>
-<text x="192.66" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BE">BE</text>
-<rect x="209.69" y="118.69" width="29.06" height="29.06" fill="#2a78d6" data-name="tile-DE"/>
-<text x="224.22" y="130.78" font-size="9.881250000000001" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="tile-code-DE">DE</text>
-<text x="224.22" y="141.22" font-size="8" fill="#ffffff" text-anchor="middle" data-name="tile-value-DE">140</text>
-<rect x="241.25" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-CZ"/>
-<text x="255.78" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CZ">CZ</text>
-<rect x="272.81" y="118.69" width="29.06" height="29.06" fill="#ebeff9" data-name="tile-PL"/>
-<text x="287.34" y="130.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-PL">PL</text>
-<text x="287.34" y="141.22" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-PL">38</text>
-<rect x="304.38" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-LT"/>
-<text x="318.91" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LT">LT</text>
-<rect x="335.94" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BY"/>
-<text x="350.47" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BY">BY</text>
-<rect x="367.5" y="118.69" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-RU"/>
-<text x="382.03" y="136.78" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RU">RU</text>
-<rect x="146.56" y="150.25" width="29.06" height="29.06" fill="#a1b6e5" data-name="tile-FR"/>
-<text x="161.09" y="162.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-FR">FR</text>
-<text x="161.09" y="172.78" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-FR">98</text>
-<rect x="178.13" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-LU"/>
-<text x="192.66" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LU">LU</text>
-<rect x="209.69" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-AT"/>
-<text x="224.22" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-AT">AT</text>
-<rect x="241.25" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-SK"/>
-<text x="255.78" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SK">SK</text>
-<rect x="272.81" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-RS"/>
-<text x="287.34" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RS">RS</text>
-<rect x="304.38" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-RO"/>
-<text x="318.91" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RO">RO</text>
-<rect x="335.94" y="150.25" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-UA"/>
-<text x="350.47" y="168.34" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-UA">UA</text>
-<rect x="83.44" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-PT"/>
-<text x="97.97" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-PT">PT</text>
-<rect x="115" y="181.81" width="29.06" height="29.06" fill="#dbe2f4" data-name="tile-ES"/>
-<text x="129.53" y="193.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-ES">ES</text>
-<text x="129.53" y="204.34" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-ES">54</text>
-<rect x="178.13" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-CH"/>
-<text x="192.66" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CH">CH</text>
-<rect x="209.69" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-SI"/>
-<text x="224.22" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SI">SI</text>
-<rect x="241.25" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-HU"/>
-<text x="255.78" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-HU">HU</text>
-<rect x="272.81" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BA"/>
-<text x="287.34" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BA">BA</text>
-<rect x="304.38" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-BG"/>
-<text x="318.91" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BG">BG</text>
-<rect x="335.94" y="181.81" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-MD"/>
-<text x="350.47" y="199.9" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MD">MD</text>
-<rect x="178.13" y="213.38" width="29.06" height="29.06" fill="#c6d1ee" data-name="tile-IT"/>
-<text x="192.66" y="225.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IT">IT</text>
-<text x="192.66" y="235.91" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-IT">72</text>
-<rect x="241.25" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-HR"/>
-<text x="255.78" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-HR">HR</text>
-<rect x="272.81" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-ME"/>
-<text x="287.34" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-ME">ME</text>
-<rect x="304.38" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-MK"/>
-<text x="318.91" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MK">MK</text>
-<rect x="335.94" y="213.38" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-TR"/>
-<text x="350.47" y="231.46" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-TR">TR</text>
-<rect x="146.56" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-MT"/>
-<text x="161.09" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MT">MT</text>
-<rect x="272.81" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-AL"/>
-<text x="287.34" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-AL">AL</text>
-<rect x="304.38" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-GR"/>
-<text x="318.91" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-GR">GR</text>
-<rect x="367.5" y="244.94" width="29.06" height="29.06" fill="#e6e6e6" data-name="tile-CY"/>
-<text x="382.03" y="263.03" font-size="9.881250000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CY">CY</text>
-<rect x="83.44" y="281.5" width="5.5" height="9" fill="#f1f4fb" data-name="legend-step-0"/>
-<rect x="88.44" y="281.5" width="5.5" height="9" fill="#ecf0fa" data-name="legend-step-1"/>
-<rect x="93.44" y="281.5" width="5.5" height="9" fill="#e8ecf8" data-name="legend-step-2"/>
-<rect x="98.44" y="281.5" width="5.5" height="9" fill="#e3e9f7" data-name="legend-step-3"/>
-<rect x="103.44" y="281.5" width="5.5" height="9" fill="#dee5f5" data-name="legend-step-4"/>
-<rect x="108.44" y="281.5" width="5.5" height="9" fill="#d9e0f4" data-name="legend-step-5"/>
-<rect x="113.44" y="281.5" width="5.5" height="9" fill="#d4dcf2" data-name="legend-step-6"/>
-<rect x="118.44" y="281.5" width="5.5" height="9" fill="#ced8f1" data-name="legend-step-7"/>
-<rect x="123.44" y="281.5" width="5.5" height="9" fill="#c9d4ef" data-name="legend-step-8"/>
-<rect x="128.44" y="281.5" width="5.5" height="9" fill="#c3cfed" data-name="legend-step-9"/>
-<rect x="133.44" y="281.5" width="5.5" height="9" fill="#bdcaec" data-name="legend-step-10"/>
-<rect x="138.44" y="281.5" width="5.5" height="9" fill="#b6c6ea" data-name="legend-step-11"/>
-<rect x="143.44" y="281.5" width="5.5" height="9" fill="#b0c1e9" data-name="legend-step-12"/>
-<rect x="148.44" y="281.5" width="5.5" height="9" fill="#a9bbe7" data-name="legend-step-13"/>
-<rect x="153.44" y="281.5" width="5.5" height="9" fill="#a1b6e5" data-name="legend-step-14"/>
-<rect x="158.44" y="281.5" width="5.5" height="9" fill="#9ab1e4" data-name="legend-step-15"/>
-<rect x="163.44" y="281.5" width="5.5" height="9" fill="#91abe2" data-name="legend-step-16"/>
-<rect x="168.44" y="281.5" width="5.5" height="9" fill="#88a5e0" data-name="legend-step-17"/>
-<rect x="173.44" y="281.5" width="5.5" height="9" fill="#7e9edf" data-name="legend-step-18"/>
-<rect x="178.44" y="281.5" width="5.5" height="9" fill="#7398dd" data-name="legend-step-19"/>
-<rect x="183.44" y="281.5" width="5.5" height="9" fill="#6791db" data-name="legend-step-20"/>
-<rect x="188.44" y="281.5" width="5.5" height="9" fill="#5889da" data-name="legend-step-21"/>
-<rect x="193.44" y="281.5" width="5.5" height="9" fill="#4681d8" data-name="legend-step-22"/>
-<rect x="198.44" y="281.5" width="5.5" height="9" fill="#2a78d6" data-name="legend-step-23"/>
-<text x="83.44" y="299.5" font-size="8.5" fill="#52514e" text-anchor="start" data-name="legend-min">32</text>
-<text x="203.44" y="299.5" font-size="8.5" fill="#52514e" text-anchor="end" data-name="legend-max">140</text>
-<rect x="213.44" y="281.5" width="9" height="9" fill="#e6e6e6" data-name="legend-nodata"/>
-<text x="224.44" y="289.06" font-size="8.5" fill="#52514e" text-anchor="start" data-name="legend-nodata-label">no data</text>
+<rect x="86.56" y="24" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-IS"/>
+<text x="100.78" y="41.7" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IS">IS</text>
+<rect x="210.31" y="24" width="28.44" height="28.44" fill="#e4e9f7" data-name="tile-NO"/>
+<text x="224.53" y="35.7" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-NO">NO</text>
+<text x="224.53" y="46.22" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-NO">45</text>
+<rect x="241.25" y="24" width="28.44" height="28.44" fill="#d3dcf2" data-name="tile-SE"/>
+<text x="255.47" y="35.7" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SE">SE</text>
+<text x="255.47" y="46.22" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-SE">61</text>
+<rect x="272.19" y="24" width="28.44" height="28.44" fill="#f1f4fb" data-name="tile-FI"/>
+<text x="286.41" y="35.7" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-FI">FI</text>
+<text x="286.41" y="46.22" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-FI">32</text>
+<rect x="303.13" y="54.94" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-EE"/>
+<text x="317.34" y="72.64" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-EE">EE</text>
+<rect x="86.56" y="85.88" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-IE"/>
+<text x="100.78" y="103.57" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IE">IE</text>
+<rect x="117.5" y="85.88" width="28.44" height="28.44" fill="#88a4e0" data-name="tile-GB"/>
+<text x="131.72" y="97.57" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-GB">GB</text>
+<text x="131.72" y="108.09" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-GB">112</text>
+<rect x="179.38" y="85.88" width="28.44" height="28.44" fill="#cdd7f0" data-name="tile-NL"/>
+<text x="193.59" y="97.57" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-NL">NL</text>
+<text x="193.59" y="108.09" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-NL">66</text>
+<rect x="210.31" y="85.88" width="28.44" height="28.44" fill="#b6c5ea" data-name="tile-DK"/>
+<text x="224.53" y="97.57" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-DK">DK</text>
+<text x="224.53" y="108.09" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-DK">84</text>
+<rect x="303.13" y="85.88" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-LV"/>
+<text x="317.34" y="103.57" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LV">LV</text>
+<rect x="179.38" y="116.81" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-BE"/>
+<text x="193.59" y="134.51" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BE">BE</text>
+<rect x="210.31" y="116.81" width="28.44" height="28.44" fill="#2a78d6" data-name="tile-DE"/>
+<text x="224.53" y="128.51" font-size="9.668750000000001" fill="#ffffff" text-anchor="middle" font-weight="600" data-name="tile-code-DE">DE</text>
+<text x="224.53" y="139.03" font-size="8" fill="#ffffff" text-anchor="middle" data-name="tile-value-DE">140</text>
+<rect x="241.25" y="116.81" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-CZ"/>
+<text x="255.47" y="134.51" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CZ">CZ</text>
+<rect x="272.19" y="116.81" width="28.44" height="28.44" fill="#ebeff9" data-name="tile-PL"/>
+<text x="286.41" y="128.51" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-PL">PL</text>
+<text x="286.41" y="139.03" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-PL">38</text>
+<rect x="303.13" y="116.81" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-LT"/>
+<text x="317.34" y="134.51" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LT">LT</text>
+<rect x="334.06" y="116.81" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-BY"/>
+<text x="348.28" y="134.51" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BY">BY</text>
+<rect x="365" y="116.81" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-RU"/>
+<text x="379.22" y="134.51" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RU">RU</text>
+<rect x="148.44" y="147.75" width="28.44" height="28.44" fill="#a1b6e5" data-name="tile-FR"/>
+<text x="162.66" y="159.45" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-FR">FR</text>
+<text x="162.66" y="169.97" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-FR">98</text>
+<rect x="179.38" y="147.75" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-LU"/>
+<text x="193.59" y="165.45" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-LU">LU</text>
+<rect x="210.31" y="147.75" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-AT"/>
+<text x="224.53" y="165.45" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-AT">AT</text>
+<rect x="241.25" y="147.75" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-SK"/>
+<text x="255.47" y="165.45" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SK">SK</text>
+<rect x="272.19" y="147.75" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-RS"/>
+<text x="286.41" y="165.45" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RS">RS</text>
+<rect x="303.13" y="147.75" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-RO"/>
+<text x="317.34" y="165.45" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-RO">RO</text>
+<rect x="334.06" y="147.75" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-UA"/>
+<text x="348.28" y="165.45" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-UA">UA</text>
+<rect x="86.56" y="178.69" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-PT"/>
+<text x="100.78" y="196.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-PT">PT</text>
+<rect x="117.5" y="178.69" width="28.44" height="28.44" fill="#dbe2f4" data-name="tile-ES"/>
+<text x="131.72" y="190.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-ES">ES</text>
+<text x="131.72" y="200.91" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-ES">54</text>
+<rect x="179.38" y="178.69" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-CH"/>
+<text x="193.59" y="196.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CH">CH</text>
+<rect x="210.31" y="178.69" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-SI"/>
+<text x="224.53" y="196.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-SI">SI</text>
+<rect x="241.25" y="178.69" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-HU"/>
+<text x="255.47" y="196.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-HU">HU</text>
+<rect x="272.19" y="178.69" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-BA"/>
+<text x="286.41" y="196.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BA">BA</text>
+<rect x="303.13" y="178.69" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-BG"/>
+<text x="317.34" y="196.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-BG">BG</text>
+<rect x="334.06" y="178.69" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-MD"/>
+<text x="348.28" y="196.39" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MD">MD</text>
+<rect x="179.38" y="209.63" width="28.44" height="28.44" fill="#c6d1ee" data-name="tile-IT"/>
+<text x="193.59" y="221.32" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-IT">IT</text>
+<text x="193.59" y="231.84" font-size="8" fill="#0b0b0b" text-anchor="middle" data-name="tile-value-IT">72</text>
+<rect x="241.25" y="209.63" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-HR"/>
+<text x="255.47" y="227.32" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-HR">HR</text>
+<rect x="272.19" y="209.63" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-ME"/>
+<text x="286.41" y="227.32" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-ME">ME</text>
+<rect x="303.13" y="209.63" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-MK"/>
+<text x="317.34" y="227.32" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MK">MK</text>
+<rect x="334.06" y="209.63" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-TR"/>
+<text x="348.28" y="227.32" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-TR">TR</text>
+<rect x="148.44" y="240.56" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-MT"/>
+<text x="162.66" y="258.26" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-MT">MT</text>
+<rect x="272.19" y="240.56" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-AL"/>
+<text x="286.41" y="258.26" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-AL">AL</text>
+<rect x="303.13" y="240.56" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-GR"/>
+<text x="317.34" y="258.26" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-GR">GR</text>
+<rect x="365" y="240.56" width="28.44" height="28.44" fill="#e6e6e6" data-name="tile-CY"/>
+<text x="379.22" y="258.26" font-size="9.668750000000001" fill="#0b0b0b" text-anchor="middle" font-weight="600" data-name="tile-code-CY">CY</text>
+<rect x="86.56" y="276.5" width="5.5" height="9" fill="#f1f4fb" data-name="legend-step-0"/>
+<rect x="91.56" y="276.5" width="5.5" height="9" fill="#ecf0fa" data-name="legend-step-1"/>
+<rect x="96.56" y="276.5" width="5.5" height="9" fill="#e8ecf8" data-name="legend-step-2"/>
+<rect x="101.56" y="276.5" width="5.5" height="9" fill="#e3e9f7" data-name="legend-step-3"/>
+<rect x="106.56" y="276.5" width="5.5" height="9" fill="#dee5f5" data-name="legend-step-4"/>
+<rect x="111.56" y="276.5" width="5.5" height="9" fill="#d9e0f4" data-name="legend-step-5"/>
+<rect x="116.56" y="276.5" width="5.5" height="9" fill="#d4dcf2" data-name="legend-step-6"/>
+<rect x="121.56" y="276.5" width="5.5" height="9" fill="#ced8f1" data-name="legend-step-7"/>
+<rect x="126.56" y="276.5" width="5.5" height="9" fill="#c9d4ef" data-name="legend-step-8"/>
+<rect x="131.56" y="276.5" width="5.5" height="9" fill="#c3cfed" data-name="legend-step-9"/>
+<rect x="136.56" y="276.5" width="5.5" height="9" fill="#bdcaec" data-name="legend-step-10"/>
+<rect x="141.56" y="276.5" width="5.5" height="9" fill="#b6c6ea" data-name="legend-step-11"/>
+<rect x="146.56" y="276.5" width="5.5" height="9" fill="#b0c1e9" data-name="legend-step-12"/>
+<rect x="151.56" y="276.5" width="5.5" height="9" fill="#a9bbe7" data-name="legend-step-13"/>
+<rect x="156.56" y="276.5" width="5.5" height="9" fill="#a1b6e5" data-name="legend-step-14"/>
+<rect x="161.56" y="276.5" width="5.5" height="9" fill="#9ab1e4" data-name="legend-step-15"/>
+<rect x="166.56" y="276.5" width="5.5" height="9" fill="#91abe2" data-name="legend-step-16"/>
+<rect x="171.56" y="276.5" width="5.5" height="9" fill="#88a5e0" data-name="legend-step-17"/>
+<rect x="176.56" y="276.5" width="5.5" height="9" fill="#7e9edf" data-name="legend-step-18"/>
+<rect x="181.56" y="276.5" width="5.5" height="9" fill="#7398dd" data-name="legend-step-19"/>
+<rect x="186.56" y="276.5" width="5.5" height="9" fill="#6791db" data-name="legend-step-20"/>
+<rect x="191.56" y="276.5" width="5.5" height="9" fill="#5889da" data-name="legend-step-21"/>
+<rect x="196.56" y="276.5" width="5.5" height="9" fill="#4681d8" data-name="legend-step-22"/>
+<rect x="201.56" y="276.5" width="5.5" height="9" fill="#2a78d6" data-name="legend-step-23"/>
+<text x="86.56" y="294.5" font-size="8.5" fill="#52514e" text-anchor="start" data-name="legend-min">32</text>
+<text x="206.56" y="294.5" font-size="8.5" fill="#52514e" text-anchor="end" data-name="legend-max">140</text>
+<rect x="216.56" y="276.5" width="9" height="9" fill="#e6e6e6" data-name="legend-nodata"/>
+<text x="227.56" y="284.06" font-size="8.5" fill="#52514e" text-anchor="start" data-name="legend-nodata-label">no data</text>
 </svg>"
 `;
 

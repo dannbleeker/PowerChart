@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
@@ -40,6 +41,31 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const bandH = Math.max(1, (plot.h - gap * (n - 1)) / Math.max(1, n));
   const cx = plot.x + plot.w / 2;
 
+  // The BANDS are solved for the plot above, so they always fit. Their LABELS
+  // were not, and each escaped the frame a different way once the font outgrew
+  // the chart:
+  //
+  //   - a label is centred in its band and its ink is about `f` tall, so once
+  //     the font passed the band height the bottom row's label hung below the
+  //     plot — 4.4pt at a 28pt font, 15.1 at 36;
+  //   - a category name sits right-aligned in a gutter capped at 28% of the
+  //     width, and a name wider than that cap runs off the LEFT edge of the
+  //     chart: "Negotiation" by 35.9pt at 28, and 83.4pt at 36.
+  //
+  // Both are the same answer the agenda and the process flow already use, and
+  // the one this file's value labels now use for the horizontal case: shrink
+  // until it fits, then clip the remainder. Shrunk TOGETHER so a row's name and
+  // its number stay the same size, and last-resort — at any font that already
+  // fits, `labelFs` is `fs` and nothing moves.
+  const labelFs = (() => {
+    const gutter = catW - 4;
+    const tooTall = (f: number) => f * 1.15 > bandH;
+    const tooWide = (f: number) => decor.categoryAxis && data.categories.some((c) => textWidth(c, f) > gutter);
+    let f = fs;
+    while (f > 6 && (tooTall(f) || tooWide(f))) f -= 0.5;
+    return f;
+  })();
+
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
   if (titleN) nodes.push(titleN);
@@ -56,11 +82,11 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
       nodes.push({
         kind: "text",
         x: 0,
-        y: y + bandH / 2 - fs * 0.75,
+        y: y + bandH / 2 - labelFs * 0.75,
         w: catW - 4,
-        h: fs * 1.5,
-        text: data.categories[c],
-        fontSize: fs,
+        h: labelFs * 1.5,
+        text: clipToWidth(data.categories[c], labelFs, catW - 4),
+        fontSize: labelFs,
         color: style.text,
         align: "right",
         valign: "middle",
@@ -69,7 +95,7 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     }
     if (decor.segmentLabels) {
       const label = formatNumber(v, fmt);
-      const labelW = textWidth(label, fs) + 6;
+      const labelW = textWidth(label, labelFs) + 6;
       // Outside means to the RIGHT of the band, and the widest band already
       // reaches the edge of the plot — so on a large font there is no room out
       // there and the label was drawn past the frame. `stage-value-0` landed at
@@ -82,16 +108,16 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
       // it is the WIDEST one, which is exactly the band with the most room in
       // it. A cramped label on the bar beats a missing number.
       const roomOutside = cx + w / 2 + 4 + labelW <= cfg.width;
-      const fitsInside = w >= textWidth(label, fs) + 8 && bandH >= fs * 1.3;
+      const fitsInside = w >= textWidth(label, labelFs) + 8 && bandH >= labelFs * 1.3;
       const inside = fitsInside || !roomOutside;
       nodes.push({
         kind: "text",
         x: inside ? cx - w / 2 : cx + w / 2 + 4,
-        y: y + bandH / 2 - fs * 0.75,
+        y: y + bandH / 2 - labelFs * 0.75,
         w: inside ? w : labelW,
-        h: fs * 1.5,
+        h: labelFs * 1.5,
         text: label,
-        fontSize: fs,
+        fontSize: labelFs,
         bold: true,
         color: inside ? contrastInk(fill) : style.text,
         align: inside ? "center" : "left",
@@ -111,7 +137,13 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
         w: 80,
         h: gap,
         text: `${marker}${formatPercent(v / values[c - 1], 1, false, cfg.numberFormat?.locale)}`,
-        fontSize: fs * 0.85,
+        // Off the row font, not the chart font: the conversion rate is muted
+        // secondary text and must stay SMALLER than the stage names beside it.
+        // Shrinking only the names inverted that — at a 28pt font the names
+        // came down to 14 and these stayed at 23.8, so the percentages became
+        // the loudest thing on the chart. At any font that fits, labelFs is fs
+        // and this is the value it always had.
+        fontSize: labelFs * 0.85,
         color: style.mutedText,
         align: "center",
         valign: "middle",

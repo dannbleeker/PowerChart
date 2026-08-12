@@ -185,3 +185,68 @@ describe("a stage value is never drawn off the chart", () => {
     expect(outside.length + inside.length).toBe(5);
   });
 });
+
+describe("a funnel's row labels stay on the chart at any font", () => {
+  /**
+   * The bands are solved for the plot, so they always fit. Their LABELS were
+   * not, and each escaped a different way once the font outgrew the chart:
+   *
+   *   - a label is centred in its band and its ink is about `f` tall, so past
+   *     the band height the bottom row's label hung BELOW the plot — 4.4pt at a
+   *     28pt font, 15.1 at 36;
+   *   - a category name is right-aligned in a gutter capped at 28% of the
+   *     width, so a name wider than the cap ran off the LEFT edge —
+   *     "Negotiation" by 35.9pt at 28, 83.4 at 36.
+   *
+   * Neither PowerPoint renderer wraps or clips a text box, so the ink measured
+   * here is not bounded by the box it sits in — which is why a check that
+   * clamped to the box saw the vertical half of this and missed the horizontal.
+   */
+  const inkOf = (t: TextNode) => {
+    const w = textWidth(t.text, t.fontSize, t.bold);
+    const x = t.align === "right" ? t.x + t.w - w : t.align === "center" ? t.x + (t.w - w) / 2 : t.x;
+    const base =
+      t.valign === "top"
+        ? t.y + t.fontSize
+        : t.valign === "bottom"
+          ? t.y + t.h - t.fontSize * 0.25
+          : t.y + t.h / 2 + t.fontSize * 0.36;
+    return { x0: x, x1: x + w, y1: base + t.fontSize * 0.21 };
+  };
+  const rowText = (fontSize: number) => {
+    const scene = buildChart({ ...sampleConfig("funnel"), style: { fontSize } } as ChartConfig);
+    return {
+      scene,
+      nodes: scene.nodes.filter(
+        (n): n is TextNode =>
+          n.kind === "text" && (!!n.name?.startsWith("category-") || !!n.name?.startsWith("stage-value-")),
+      ),
+    };
+  };
+
+  it("keeps every stage name and value inside the frame", () => {
+    for (const fs of [10, 16, 22, 28, 36]) {
+      const { nodes } = rowText(fs);
+      expect(nodes.length, `fs=${fs} lost row labels`).toBeGreaterThan(5);
+      for (const t of nodes) {
+        const ink = inkOf(t);
+        expect(ink.x0, `fs=${fs} ${t.name} ran off the left edge`).toBeGreaterThanOrEqual(-0.5);
+        expect(ink.x1, `fs=${fs} ${t.name} ran off the right edge`).toBeLessThanOrEqual(DEFAULT_SIZE.width + 0.5);
+        expect(ink.y1, `fs=${fs} ${t.name} hung below the frame`).toBeLessThanOrEqual(DEFAULT_SIZE.height + 0.5);
+      }
+    }
+  });
+
+  it("shrinks only as a last resort, and keeps the conversion rate subordinate", () => {
+    // At a font that fits, nothing moves at all.
+    for (const t of rowText(10).nodes) expect(t.fontSize).toBe(10);
+    // One size for the whole row, so a name and its number match.
+    expect(new Set(rowText(28).nodes.map((t) => t.fontSize)).size).toBe(1);
+    // The conversion rate is muted secondary text and must stay SMALLER than the
+    // stage names beside it — shrinking only the names inverted that.
+    const scene = buildChart({ ...sampleConfig("funnel"), style: { fontSize: 28 } } as ChartConfig);
+    const conv = scene.nodes.find((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("conversion-"))!;
+    const name = scene.nodes.find((n): n is TextNode => n.kind === "text" && n.name === "category-0")!;
+    expect(conv.fontSize).toBeLessThan(name.fontSize);
+  });
+});

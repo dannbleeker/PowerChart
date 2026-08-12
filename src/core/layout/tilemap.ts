@@ -96,10 +96,23 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // Fit uniform square tiles into the plot area.
   const cols = Math.max(...Object.values(layout).map(([c]) => c)) + 1;
   const rows = Math.max(...Object.values(layout).map(([, r]) => r)) + 1;
-  const legendH = vals.length ? fs * 2.4 : fs * 0.5;
+  const gutter = 2.5;
+  // What the legend below the grid actually occupies, rather than a round number
+  // close to it. It starts `fs * 0.5` under the grid, the swatch strip is
+  // `fs * 0.9`, and the min/max labels sit at `fs * 0.95` below the strip's top
+  // in a box `fs * 1.2` tall — so the last ink is `fs * 2.65` under the grid,
+  // against `fs * 2.4` reserved.
+  //
+  // A quarter of a font is not much, and it was enough: the min and max labels
+  // had their descenders cut by the frame on EVERY tilemap at EVERY size, 1.3pt
+  // at a 10pt font and 1.9 at 18. The other 0.5pt came from `rowsBottom`, which
+  // adds a gutter per row where the height budget below pays for the gaps
+  // BETWEEN rows — one gutter more than it is given. The two together predict
+  // `fs * 0.0785 + 0.5` of overflow, which is 1.29 and 1.91 at those two fonts:
+  // the measurement, to the tenth.
+  const legendH = vals.length ? fs * 2.65 + gutter : fs * 0.5;
   const availW = cfg.width - 4;
   const availH = cfg.height - titleH - legendH - footnoteH(cfg, style, decor) - 4;
-  const gutter = 2.5;
   // Hex tiles nest: rows step ~0.87·tile and odd rows shift half a column, so
   // the footprint needs an extra half column of width and less height.
   const tile = hex
