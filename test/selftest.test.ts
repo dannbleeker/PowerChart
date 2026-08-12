@@ -21,6 +21,7 @@ import {
   resetStop,
   isStopRequested,
   _setReadbackTimeoutForTest,
+  _setBatchTimeoutForTest,
   listChartsInDeck,
   timeShapeRounds,
   gridFootprint,
@@ -33,6 +34,7 @@ import { setTracing, traceLog } from "../src/core/trace";
 import {
   runSelfTest,
   describeSelfTest,
+  scenarioBlame,
   selfTestNeedsAttention,
   setSelfTestRasterizer,
   SCENARIO_NAMES,
@@ -2625,6 +2627,112 @@ describe("which chart a scenario picks to work with", () => {
  * and "the host would not answer for it" send a maintainer to opposite ends of
  * the codebase, and only one of them is true.
  */
+/**
+ * Telling our defects from this host's weather.
+ *
+ * The headline counted every red scenario together, which made it useless for
+ * the only question worth asking of a series of rounds: is the add-in getting
+ * better? On this host most red is the shape collection dying part-way through
+ * — `same scale across the deck` is largely a measurement of WHEN that happens
+ * — so the number moved with the host's mood and never with our work.
+ *
+ * The rule is checked here against a round whose answer was known before the
+ * rule existed. On `89675b6`, `explode a degraded picture` failed with zero
+ * friction (the picture regression: a pure logic bug, no host involvement) and
+ * `same scale across the deck` failed with six id refusals and four empty
+ * re-reads. Those are the two real cases, and they have to come out opposite.
+ */
+/**
+ * The one recurring stall the battery had been reporting anonymously.
+ *
+ * `a selected shape survives an insert` stalled its first draw batch in four of
+ * the last five rounds (`957aca0`, `ee1741e`, `89675b6`, `47a80c8`) after
+ * passing eight running before that — and every round reported it with the
+ * runner's generic "the host got in the way", so a specific repeating
+ * observation was being thrown away each time.
+ *
+ * The note it carries now is bounded by what the round files support. It does
+ * NOT blame the preceding call: `selecting a shape` precedes both this stall
+ * and surviving draws in all four of those rounds. It says only the one way
+ * this draw differs from every other in the battery — it is made with a
+ * selection standing.
+ */
+describe("the draw made while a shape is selected", () => {
+  it("says what stalled instead of reporting an anonymous host failure", async () => {
+    installHost([makeSlide("s1")]);
+    setSelfTestRasterizer(async () => "data:image/png;base64,UE5H");
+    // Let the selection succeed and the draw time out, which is the shape the
+    // real host produces: `drawing shapes 1-10 of 24`, first batch, gone.
+    faults.stallDrawAfterSelect = true;
+    _setBatchTimeoutForTest(10);
+    try {
+      const r = byName(await runSelfTest("probe"))["a selected shape survives an insert"];
+      expect(r.detail, `the stall was reported anonymously: ${r.detail}`).toMatch(/while a shape was SELECTED/);
+      expect(r.detail, "the note does not say what protects against it").toMatch(/dropShapeSelection/);
+      expect(r.blind, "a stalled draw was reported as evidence about the product").toBe(true);
+    } finally {
+      faults.stallDrawAfterSelect = false;
+      _setBatchTimeoutForTest(45_000);
+    }
+  }, 60_000);
+});
+
+describe("whose fault a red scenario was", () => {
+  const res = (over: Partial<ScenarioResult>): ScenarioResult => ({
+    name: "s",
+    ok: false,
+    detail: "",
+    ms: 1,
+    ...over,
+  });
+  const clean = { errors: 0, idRefusals: 0, generalExceptions: 0, emptyReReads: 0 };
+
+  it("blames US for a failure the host did not interfere with", () => {
+    // Round `89675b6`, `explode a degraded picture` — the picture regression.
+    expect(scenarioBlame(res({ friction: clean }))).toBe("ours");
+  });
+
+  it("blames the HOST when it refused something inside the scenario", () => {
+    // Round `89675b6`, `same scale across the deck`.
+    expect(scenarioBlame(res({ friction: { ...clean, errors: 6, idRefusals: 6, emptyReReads: 4 } }))).toBe("host");
+    expect(scenarioBlame(res({ friction: { ...clean, emptyReReads: 1 } }))).toBe("host");
+    expect(scenarioBlame(res({ friction: { ...clean, generalExceptions: 1 } }))).toBe("host");
+  });
+
+  it("defaults to US when there is no evidence either way", () => {
+    // The direction matters more than the split: getting it backwards turns
+    // this into a way to make failures disappear. Unproven lands on us.
+    expect(scenarioBlame(res({}))).toBe("ours");
+    // `errors` alone is not a refusal — a stall raises it, and a stall is
+    // already reported as `blind`/not-run rather than as a failure.
+    expect(scenarioBlame(res({ friction: { ...clean, errors: 3 } }))).toBe("ours");
+  });
+
+  it("keeps passes and unrun scenarios out of the blame counts", () => {
+    expect(scenarioBlame(res({ ok: true, friction: clean }))).toBe("passed");
+    expect(scenarioBlame(res({ skipped: true, friction: clean }))).toBe("not-run");
+  });
+
+  it("leads the summary with our defects, and never hides the host's", () => {
+    const line = describeSelfTest([
+      res({ name: "explode a degraded picture", friction: clean }),
+      res({ name: "same scale across the deck", friction: { ...clean, idRefusals: 6, emptyReReads: 4 } }),
+      res({ name: "insert on top of an earlier run", ok: true, friction: clean }),
+    ]);
+    expect(line, "our defect is not the headline").toMatch(/^Self-test — 1 defect\(s\) of ours: explode/);
+    expect(line, "a host-degraded failure was hidden rather than named").toContain("same scale across the deck");
+    expect(line).toMatch(/failed while the host was refusing/);
+  });
+
+  it("says so plainly when nothing was our fault", () => {
+    const line = describeSelfTest([
+      res({ name: "same scale across the deck", friction: { ...clean, idRefusals: 6 } }),
+      res({ name: "edit a chart on the visible slide", ok: true, friction: clean }),
+    ]);
+    expect(line).toMatch(/^Self-test — no defects of ours/);
+  });
+});
+
 describe("what a failed update is allowed to claim", () => {
   it("does not report a refused id as the chart being destroyed", () => {
     expect(updateLossNote("picture", 3)).toMatch(/still on the slide/);
