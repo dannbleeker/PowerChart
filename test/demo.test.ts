@@ -244,4 +244,92 @@ describe("shifting a scene node horizontally", () => {
     // …and leaves the vertical ones alone.
     expect((rect as unknown as { y: number }).y).toBe(2);
   });
+
+  /**
+   * The seam, made loud.
+   *
+   * `shiftNodeX` is a duck-typed loop over a fixed list of key names, so a node
+   * kind that arrives with a coordinate the list does not know is left where it
+   * was, silently and without a compile error — which is exactly what happened
+   * to `points`. CLAUDE.md lists this among the seams that "do not fail loudly"
+   * when a `SceneNode` kind is added.
+   *
+   * `Record<SceneNode["kind"], …>` is what makes it fail loudly: a new kind
+   * cannot be added to the union without this map going red, and filling the
+   * entry in means naming that kind's horizontal coordinates — at which point
+   * whether `shiftNodeX` handles them is a question the author has to answer
+   * rather than one they can walk past.
+   */
+  it("moves every horizontal coordinate of every node kind, and nothing else", () => {
+    /** One node of each kind, with the names of the coordinates a shift must move. */
+    const EACH: Record<SceneNode["kind"], { node: SceneNode; horizontal: string[] }> = {
+      rect: { node: { kind: "rect", x: 1, y: 2, w: 3, h: 4, fill: "#000" }, horizontal: ["x"] },
+      line: { node: { kind: "line", x1: 1, y1: 2, x2: 5, y2: 6, stroke: "#000" }, horizontal: ["x1", "x2"] },
+      text: {
+        node: {
+          kind: "text",
+          x: 1,
+          y: 2,
+          w: 3,
+          h: 4,
+          text: "t",
+          fontSize: 10,
+          color: "#000",
+          align: "left",
+          valign: "top",
+        },
+        horizontal: ["x"],
+      },
+      ellipse: { node: { kind: "ellipse", cx: 1, cy: 2, rx: 3, ry: 4, fill: "#000" }, horizontal: ["cx"] },
+      wedge: {
+        node: { kind: "wedge", cx: 1, cy: 2, r: 3, innerR: 1, startAngle: 0, endAngle: 90, fill: "#000" },
+        horizontal: ["cx"],
+      },
+      chevron: { node: { kind: "chevron", x: 1, y: 2, w: 3, h: 4, fill: "#000" }, horizontal: ["x"] },
+      arrowhead: { node: { kind: "arrowhead", x: 1, y: 2, angle: 90, size: 3, fill: "#000" }, horizontal: ["x"] },
+      symbol: {
+        node: { kind: "symbol", shape: "diamond", cx: 1, cy: 2, size: 3, fill: "#000" },
+        horizontal: ["cx"],
+      },
+      polygon: {
+        node: {
+          kind: "polygon",
+          points: [
+            { x: 1, y: 5 },
+            { x: 3, y: 7 },
+          ],
+          fill: "#000",
+        },
+        horizontal: ["points"],
+      },
+    };
+
+    const DX = 10;
+    for (const [kind, { node, horizontal }] of Object.entries(EACH)) {
+      const before = structuredClone(node) as unknown as Record<string, unknown>;
+      shiftNodeX(node, DX);
+      const after = node as unknown as Record<string, unknown>;
+      for (const [key, was] of Object.entries(before)) {
+        const now = after[key];
+        const shouldMove = horizontal.includes(key);
+        if (key === "points") {
+          const a = was as { x: number; y: number }[];
+          const b = now as { x: number; y: number }[];
+          expect(
+            b.map((p) => p.x),
+            `${kind}.points did not move with the scene`,
+          ).toEqual(a.map((p) => p.x + DX));
+          expect(
+            b.map((p) => p.y),
+            `${kind}.points moved vertically`,
+          ).toEqual(a.map((p) => p.y));
+          continue;
+        }
+        if (typeof was !== "number") continue;
+        expect(now, `${kind}.${key} ${shouldMove ? "did not move" : "moved and should not have"}`).toBe(
+          shouldMove ? was + DX : was,
+        );
+      }
+    }
+  });
 });
