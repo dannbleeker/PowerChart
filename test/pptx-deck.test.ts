@@ -93,6 +93,24 @@ describe("ooxml: grouping a slide's shapes", () => {
   it("refuses a tree it does not recognise instead of writing a broken slide", () => {
     expect(() => groupSlideShapes("<p:sld/>")).toThrow(/no <p:spTree>/);
   });
+
+  it("takes the bounding box of a slide too big to spread", () => {
+    // The box came from `Math.min(...frames.map(…))`, which passes one ARGUMENT
+    // per shape — so the bound came from the data and a big enough slide threw
+    // "Maximum call stack size exceeded" rather than returning a wrong answer.
+    // Same class the datasheet's formula engine carries two comments about.
+    //
+    // The trigger is synthetic: it takes ~150k top-level shapes, and no chart
+    // this engine lays out comes near that. It is guarded because the loop
+    // costs the same and had no bound at all, and this module is handed decks
+    // by a library caller.
+    const n = 150_000;
+    const body = Array.from({ length: n }, (_, i) => sp(i + 2, i * 100, 0, 100, 100)).join("");
+    const xml = groupSlideShapes(slideXml(body));
+    expect(xml).not.toBe(slideXml(body));
+    // …and the box it took is right: x from 0 to the last shape's right edge.
+    expect(xml).toContain(`<a:off x="0" y="0"/><a:ext cx="${(n - 1) * 100 + 100}" cy="100"/>`);
+  });
 });
 
 describe("ooxml: tags and deck size", () => {
@@ -128,6 +146,44 @@ describe("ooxml: tags and deck size", () => {
       cy: 6858000,
     });
     expect(out).toContain(`<p:sldSz cx="9144000" cy="6858000"/>`);
+  });
+
+  it("will not WRITE a slide size it would refuse to READ", () => {
+    // The two sides of this file disagreed and only one of them was checking.
+    // `parseSlideSizeEmu` rejects a zero, negative, non-finite or non-integral
+    // dimension — "a zero or non-finite dimension is not a slide" — while
+    // `canonicalSlideSize` wrote whatever it was handed straight into the
+    // attribute. None of these is a `ST_PositiveCoordinate`, so PowerPoint
+    // offers to repair the deck, and `injectGroupsAndTags` is exported as
+    // library API where this module's own comment says a contract must not be
+    // kept by luck.
+    //
+    // 12192000.7 is the quiet one: a finite positive number that looks right in
+    // a diff, and exactly what `points * EMU_PER_POINT` yields for a
+    // non-integral point size.
+    const pres = `<p:presentation><p:sldSz cx="12191695" cy="6858000"/></p:presentation>`;
+    for (const emu of [
+      { cx: NaN, cy: 6858000 },
+      { cx: 0, cy: 0 },
+      { cx: -12192000, cy: 6858000 },
+      { cx: Infinity, cy: 6858000 },
+      { cx: "wide", cy: 6858000 },
+    ] as unknown as { cx: number; cy: number }[]) {
+      const out = canonicalSlideSize(pres, emu);
+      const label = JSON.stringify(emu);
+      // The written size reads back as a slide, and the fallback is the
+      // documented default rather than a throw that would fail an insert.
+      expect(parseSlideSizeEmu(out), `${label} wrote a size that is not a slide`).toEqual({
+        cx: 12192000,
+        cy: 6858000,
+      });
+    }
+    // A fractional EMU is rounded to the integer the schema wants, not discarded
+    // — the caller's intent is legible and a rescale of half an EMU is nothing.
+    expect(parseSlideSizeEmu(canonicalSlideSize(pres, { cx: 9144000.7, cy: 6858000.2 }))).toEqual({
+      cx: 9144001,
+      cy: 6858000,
+    });
   });
 });
 

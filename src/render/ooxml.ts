@@ -222,10 +222,20 @@ export function groupSlideShapes(slideXml: string, groupTagRid?: string): string
 
   const frames = children.map(frameOf).filter((f): f is NonNullable<typeof f> => !!f);
   if (!frames.length) return slideXml;
-  const x = Math.min(...frames.map((f) => f.x));
-  const y = Math.min(...frames.map((f) => f.y));
-  const cx = Math.max(...frames.map((f) => f.x + f.cx)) - x;
-  const cy = Math.max(...frames.map((f) => f.y + f.cy)) - y;
+  // Reduced, not spread, for the reason the datasheet's formula engine already
+  // carries twice: `Math.min(...arr)` passes one ARGUMENT per element, so the
+  // bound comes from the data and a big enough slide overflows the stack rather
+  // than returning a wrong answer. The trigger here is synthetic — it takes
+  // ~150k top-level shapes on one slide, and this module is handed decks by a
+  // library caller — but the loop costs the same and has no bound at all.
+  const least = (pick: (f: (typeof frames)[number]) => number) =>
+    frames.reduce((a, f) => Math.min(a, pick(f)), Infinity);
+  const most = (pick: (f: (typeof frames)[number]) => number) =>
+    frames.reduce((a, f) => Math.max(a, pick(f)), -Infinity);
+  const x = least((f) => f.x);
+  const y = least((f) => f.y);
+  const cx = most((f) => f.x + f.cx) - x;
+  const cy = most((f) => f.y + f.cy) - y;
 
   const id = maxShapeId(slideXml) + 1;
   const nvPr = groupTagRid
@@ -332,12 +342,43 @@ function addContentTypeOverride(typesXml: string, partName: string, contentType:
  * So the size is now an argument. `slideSize()` reads the destination's real
  * dimensions; passing them makes the generated deck agree with the deck it is
  * going into, which is the condition under which no rescaling happens at all.
+ *
+ * A size this function will not write falls back to the canonical 16:9, which
+ * is what happens when no size is passed at all — the documented default,
+ * rather than a throw that would take down an insert over a layout hint. That
+ * is the same trade `slideSize()` makes when its own ladder runs out.
  */
 export function canonicalSlideSize(
   presentationXml: string,
   emu: { cx: number; cy: number } = CANONICAL_SLIDE_EMU,
 ): string {
-  return presentationXml.replace(/<p:sldSz[^>]*\/>/, `<p:sldSz cx="${emu.cx}" cy="${emu.cy}"/>`);
+  const size = usableSlideEmu(emu) ?? CANONICAL_SLIDE_EMU;
+  return presentationXml.replace(/<p:sldSz[^>]*\/>/, `<p:sldSz cx="${size.cx}" cy="${size.cy}"/>`);
+}
+
+/**
+ * A slide size this file is willing to WRITE — the same rule `parseSlideSizeEmu`
+ * uses to decide what it is willing to READ.
+ *
+ * The two disagreed, and only one of them was checking. Every value that
+ * function rejects went straight into `<p:sldSz>` verbatim: `cx="NaN"`,
+ * `cx="0"`, `cx="-12192000"`, `cx="Infinity"`, `cx="wide"`. None is a
+ * `ST_PositiveCoordinate`, so PowerPoint offers to repair the deck — and
+ * `injectGroupsAndTags` is exported as library API, where this module's own
+ * comment already sets the standard: no promise about what it is handed, and
+ * silently producing an un-openable file is not a contract worth keeping by
+ * luck.
+ *
+ * Rounded because the type is an INTEGER count of EMU. A caller computing
+ * `points * EMU_PER_POINT` gets a fraction for any non-integral point size, and
+ * `cx="12192000.7"` fails the schema exactly as the others do — quietly, since
+ * it is a perfectly finite positive number and looks right in a diff.
+ */
+function usableSlideEmu(emu: { cx: number; cy: number }): { cx: number; cy: number } | null {
+  const cx = Math.round(emu?.cx as number);
+  const cy = Math.round(emu?.cy as number);
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || cx <= 0 || cy <= 0) return null;
+  return { cx, cy };
 }
 
 /**
