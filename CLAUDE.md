@@ -36,12 +36,20 @@ compile errors — `nodeToSvg` (`src/render/svg.ts`), `addNode`
 `translateNodes` in `src/core/chart.ts`, which carries an explicit `never`
 guard for exactly this. Silent:
 
-- `shiftNode` in `src/demo/demo.ts` — a duck-typed `Record<string, number>`
+- `shiftNodeX` in `src/core/scene.ts` — a duck-typed `Record<string, number>`
   cast over a fixed key list, so it can never fail to compile; a new coordinate
-  field is simply left unshifted.
+  field is simply left unshifted. It lived in `src/demo/demo.ts` and was moved
+  next to the node contract it has to keep up with, because there it also could
+  not be tested — that file touches the DOM at import time. `points` was already
+  missing from the list when it moved, so a polygon stayed put while the scene
+  around it shifted. `test/demo.test.ts` now pins every field a node currently
+  carries; the seam is still silent for a field no node has yet.
 - `src/core/collide.ts` — text-only, matched by `MOVABLE` name prefixes, so a
   new label-like node is invisible to the de-collision pass.
-- `skill/scripts/render-pptx.mjs` — not typechecked at all (see the table).
+- `skill/scripts/pptx-paint.mjs` — `makeAddNode`, the headless pptx mapping, and
+  not typechecked at all (see the table). **Not `render-pptx.mjs`**, which this
+  line used to name and which holds no node mapping: somebody adding a kind
+  would open it, find no `switch`, and conclude the seam did not exist.
 
 ## The lockstep rule (CI-enforced — do not skip)
 
