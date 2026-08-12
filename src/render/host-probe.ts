@@ -1440,12 +1440,35 @@ const PROBES: Probe[] = [
         ctx,
         [0, 1].map((i) => ({ left: 420 + i * 25, top: 200, width: 20, height: 20 })),
       );
+      // Only when the members were named BEFORE grouping. `groupMembers` falls
+      // back to `same-batch` proxies on a host that will not read a fresh
+      // shape's id back, and this question is about looking a child up by id —
+      // with no id there is nothing to look up, and the run has learned nothing
+      // about groups.
+      //
+      // Reported in the NEVER_ASKED vocabulary, which is the whole point. The
+      // first version answered `no-child-id`, a word no gate knows: the
+      // contract diff would have counted a setup failure as a fact about the
+      // host, `history` would have started a streak on it, and the question
+      // would have looked answered while never once being put. That is the
+      // exact mistake this repo already paid for when `no-scratch-slide`
+      // counted as agreement — and it reached a real round before being caught,
+      // answering `no-child-id` three times out of three.
+      if (via !== "ids")
+        return {
+          answer: "no-scratch-shape",
+          detail: "the host would not name the members before grouping, so there was no child id to look up",
+        };
       try {
         const first = members[0] as unknown as { load(p: string): void; id: string };
         first.load("id");
         await ctx.sync();
         const childId = readShapeId(first);
-        if (!childId) return { answer: "no-child-id", detail: `members via ${via}` };
+        if (!childId)
+          return {
+            answer: "no-scratch-shape",
+            detail: `the member's id would not read back; members via ${via}`,
+          };
         (probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): unknown }).addGroup(members);
         await ctx.sync();
         // A FRESH handle, the way an update asks a run later.
