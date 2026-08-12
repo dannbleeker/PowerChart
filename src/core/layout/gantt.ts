@@ -148,13 +148,31 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const ownerW = ownerW0 * gutterScale;
   const remarkW = remarkW0 * gutterScale;
   const bottomH = (today != null ? fs * 1.6 : 6) + footnoteH(cfg, style, decor);
+  const plotH = cfg.height - titleH - bracketH - headerH - bottomH;
+  // Row geometry is derived here rather than after the plot because the RIGHT
+  // MARGIN depends on it (see `msR`). It reads `plotH` and the row count only —
+  // neither depends on the plot's width — so hoisting it changes no value.
+  const slotH = plotH / Math.max(1, data.categories.length);
+  const barH = Math.min(slotH * 0.55, fs * 1.4);
+  // A milestone marker is a circle CENTRED on its date, so half of it sits to
+  // the RIGHT of the last position the timeline can reach — and the right margin
+  // was a flat 6pt regardless of how big that circle is. A milestone on the last
+  // date therefore had its right half cut off by the frame, from a 12pt font up:
+  // +1.6pt at 12, +4.1 at 16, +4.8 at 22.
+  //
+  // That is a data-bearing marker, not a label. Its centre IS the date, so it
+  // cannot be nudged left to fit the way a label can — the timeline has to end
+  // far enough from the edge for the whole marker to sit inside. Reserved only
+  // when the data HAS a milestone, so a gantt without one keeps the geometry it
+  // always had.
+  const msR = milestones.some((v) => v != null) ? barH * 0.45 : 0;
   const plot = {
     x: catW + colsW,
     y: titleH + bracketH + headerH,
     // Math.max: at an absurdly small cfg.width even zero gutters overrun the 6pt
     // right margin, and a negative width would invert the timeline again.
-    w: Math.max(0, cfg.width - catW - colsW - ownerW - remarkW - 6),
-    h: cfg.height - titleH - bracketH - headerH - bottomH,
+    w: Math.max(0, cfg.width - catW - colsW - ownerW - remarkW - 6 - msR),
+    h: plotH,
   };
 
   const dates = !!data.dates;
@@ -330,13 +348,26 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     });
     // Thin out header labels when months are dense.
     if (x - lastLabelX >= minLabelGap) {
+      // A tick label is CENTRED on its tick, so the last one puts half its width
+      // past the end of the timeline and off the chart — from a 14pt font, and
+      // separately from the milestone above: reserving the marker radius moved
+      // the last tick left far enough to hide this, so a gantt with no
+      // Milestone row still lost the right-hand end of its axis (+8.6pt at 30).
+      //
+      // Nudged by exactly the overflow rather than bounded by the 48pt box: the
+      // ink is what leaves the chart, the box is wider than the ink here, and a
+      // tick label that has moved further than it had to no longer reads as
+      // belonging to its tick. Every label that already fits is untouched.
+      const text = tickLabel(t, i);
+      const half = textWidth(text, fs * 0.9) / 2;
+      const at = Math.min(Math.max(x, half), Math.max(half, cfg.width - half));
       nodes.push({
         kind: "text",
-        x: x - 24,
+        x: at - 24,
         y: plot.y - headerH,
         w: 48,
         h: headerH,
-        text: tickLabel(t, i),
+        text,
         fontSize: fs * 0.9,
         color: style.mutedText,
         align: "center",
@@ -347,8 +378,6 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     }
   });
 
-  const slotH = plot.h / Math.max(1, data.categories.length);
-  const barH = Math.min(slotH * 0.55, fs * 1.4);
   const columnTop: number[] = [];
 
   data.categories.forEach((_, c) => {
