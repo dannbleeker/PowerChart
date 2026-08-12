@@ -113,7 +113,22 @@ export function toRgb(color: string): [number, number, number] {
   const c = paintText(color);
   if (c.startsWith("#")) {
     const h = c.slice(1);
-    // 4/8-digit forms carry an alpha byte the colour math has no use for.
+    // CSS hex is 3, 4, 6 or 8 digits and nothing else. Any other length is a
+    // TYPO, and the length check is what stops it becoming a colour.
+    //
+    // Without it `parseInt` happily reads whatever is there and the result
+    // looks perfectly valid: `#12345` — a six-digit colour with a digit dropped
+    // — came back `#012345`, and `#1` came back `#000001`. So the one input a
+    // user is most likely to produce by accident rendered as a plausible wrong
+    // colour rather than as the grey that makes a mistake visible. The pptx
+    // sink answers black for the same string (its exit check demands exactly
+    // six digits), so a single config rendered two different ways depending on
+    // which renderer you looked at — the three-sink divergence this file's
+    // siblings keep being fixed for.
+    //
+    // 4 and 8 carry an alpha byte the colour maths has no use for; `alphaOf`
+    // reads it separately.
+    if (h.length !== 3 && h.length !== 4 && h.length !== 6 && h.length !== 8) return UNREADABLE;
     const rgb = h.length === 3 || h.length === 4 ? h.slice(0, 3).replace(/./g, "$&$&") : h.slice(0, 6);
     const n = parseInt(rgb, 16);
     return Number.isNaN(n) ? UNREADABLE : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
