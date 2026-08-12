@@ -98,6 +98,34 @@ export function clampDim(v: number | undefined, fallback: number): number {
   return Math.min(v, MAX_DIM);
 }
 
+/**
+ * The point size a chart's text may be AUTHORED at.
+ *
+ * This is `clampDim`'s missing twin. The guard below it refused a fontSize that
+ * was not a positive finite number and stopped there — no ceiling, no floor —
+ * where the dimension rule has `MAX_DIM` and says why. So `fontSize: 1e6` and
+ * `fontSize: 0.0001` sailed through, and the pptx renderer wrote them into
+ * OOXML: `sz="120000000"` and `sz="0"`, against a `ST_TextFontSize` of
+ * 100..400000 (1pt..4000pt in hundredths). Both are files PowerPoint offers to
+ * repair, produced by a CLI that reported success.
+ *
+ * The authored bound has to sit inside the schema's, because the layout scales
+ * it before the renderer writes it — by at most 1.2 (a title) and at least 0.85
+ * (a small label), measured across every kind. 2..2000 becomes 1.7..2400 by the
+ * time it is written, comfortably inside 1..4000, and it is two orders of
+ * magnitude either side of the 10-12pt a real chart uses.
+ *
+ * Clamped rather than replaced with the default, unlike the unreadable case: a
+ * caller asking for 5000pt has said something about intent, and the largest
+ * size the format can carry honours it better than 12 does.
+ */
+const MIN_FONT = 2;
+const MAX_FONT = 2000;
+export function clampFontSize(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return DEFAULT_STYLE.fontSize;
+  return Math.min(MAX_FONT, Math.max(MIN_FONT, v));
+}
+
 /** Coerce a data block to trustworthy arrays: every series padded to the
  *  category count, non-finite cells nulled, per-category arrays aligned. */
 // Hard ceilings on grid size. buildChart is fed arbitrary authored JSON (the
@@ -309,9 +337,8 @@ export function normalizeConfig(cfg: ChartConfig): ChartConfig {
   // where it belonged. Repaired here, once, on the way in, exactly as the
   // dimensions and the manual scale already are.
   const style =
-    cfg.style &&
-    !(typeof cfg.style.fontSize === "number" && Number.isFinite(cfg.style.fontSize) && cfg.style.fontSize > 0)
-      ? { ...cfg.style, fontSize: DEFAULT_STYLE.fontSize }
+    cfg.style && clampFontSize(cfg.style.fontSize) !== cfg.style.fontSize
+      ? { ...cfg.style, fontSize: clampFontSize(cfg.style.fontSize) }
       : cfg.style;
 
   return {
