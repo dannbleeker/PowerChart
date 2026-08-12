@@ -20,6 +20,7 @@ import {
   positionalSweepPlan,
   type HostAnswerSheet,
 } from "../src/render/host-probe";
+import { readFileSync } from "node:fs";
 // @ts-expect-error — a plain .mjs tool with no types. Imported so the shortlist
 // and the tables that define it are pinned to each other by a test.
 import { UNSTABLE_ANSWERS, PENDING_QUESTIONS } from "../scripts/host-baseline.mjs";
@@ -1747,5 +1748,54 @@ describe("what the clean-up's report may say about a disagreement", () => {
       left: 45,
       shrankBy: 0,
     });
+  });
+});
+
+/**
+ * A probe that could not set itself up must say so in a word the gates know.
+ *
+ * `NEVER_ASKED` is the vocabulary meaning "the run never put this question",
+ * and both readers of a sheet depend on it: `compareSheets` counts anything
+ * else as a fact about the host, and `history` starts a streak on it. A probe
+ * that invents its own word for a setup failure turns "we could not ask" into
+ * "the host said so" — the mistake this repo already paid for when
+ * `no-scratch-slide` counted as agreement.
+ *
+ * It reached a real round. `grouped-child-by-id-from-slide` — the question that
+ * decides whether the in-place update has a future on this host — answered
+ * `no-child-id` three times out of three on `275a76a`. That is its own early
+ * return for "the host would not name the members before grouping", and no gate
+ * knows the word: the contract diff would have called it a host divergence and
+ * `history` would have reported a three-round streak on it.
+ *
+ * Asserted through the fake rather than by reading names. `no-binding-api`,
+ * `no-group-id` and `no-durable-slide` are genuine ANSWERS about a host that
+ * lacks an API or will not name a group, and no naming rule tells those apart
+ * from a setup failure — only driving the failure does.
+ */
+describe("what a probe says when it could not set itself up", () => {
+  it("uses the gates' vocabulary when the host will not name a shape", async () => {
+    installHost([makeSlide("s1")]);
+    // The state the real round was in: shapes are added, and their ids will not
+    // read back — so there is no child id to look up and the question about
+    // groups was never put.
+    faults.refuseShapeIdLoads = 9999;
+    try {
+      const sheet = await runHostProbes("fake-refuses-ids", "test");
+      const row = sheet.answers.find((a) => a.id === "grouped-child-by-id-from-slide");
+      expect(row, "the question vanished from the sheet").toBeTruthy();
+      expect(
+        NEVER_ASKED.has(String(row!.answer)),
+        `answered "${row!.answer}", which no gate reads as "never asked" — a setup failure would count as a fact about the host`,
+      ).toBe(true);
+    } finally {
+      faults.refuseShapeIdLoads = 0;
+    }
+  }, 30_000);
+
+  it("keeps NEVER_ASKED and the probe's own vocabulary in step", () => {
+    const src = readFileSync("src/render/host-probe.ts", "utf8");
+    for (const word of NEVER_ASKED)
+      expect(src, `the probe never emits "${word}", so the gate's vocabulary has drifted`).toContain(`"${word}"`);
   });
 });
