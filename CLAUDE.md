@@ -2067,6 +2067,39 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
   hex digits that path's own security note requires. Both are now enforced at
   the root — `rgbToHex` for the preview, an exit check in `hex()` for pptx —
   rather than per branch, and `officeHex` inherits the first.
+
+  **Done deliberately a second time on 2026-08-12, and the useful part is what
+  it found: a DISAGREEMENT, not a crash.** Running 48 paint strings through the
+  preview sink and the pptx sink and diffing the answers turned up exactly two
+  real divergences, both the same fact — a BARE hex string, `#` omitted. The
+  pptx sink has always taken those (it is OOXML's own spelling,
+  `<a:srgbClr val="AABBCC"/>`); the other two did not. So `AABBCC` as a series
+  colour drew the real colour in the skill's deck and mid grey in the preview
+  and the live add-in, and pasting a hex out of a brand guide without its `#` is
+  the commonest way to reach it.
+
+  The SVG sink needed more than permission. `AABBCC` is a run of LETTERS, so the
+  allow-list's named-colour arm passed it through unchanged and the markup
+  carried `fill="AABBCC"` — not a valid SVG paint, so the attribute is ignored
+  and the shape renders black — while `4e79a7` has digits, matched no arm, and
+  fell back to black explicitly. Two spellings of one colour, both black. It is
+  normalised now (the `#` is put back) rather than allowed, so the value still
+  goes through the allow-list instead of around it.
+
+  Two things worth keeping from how this was decided. **The other 16
+  disagreements were not defects** — the grey-vs-black fallback for an
+  UNREADABLE paint is deliberate on both sides and `hexOr` exists for the
+  background case; reading that comment before "fixing" it is what stopped a
+  regression. And **the ordering claim is checked rather than argued**: bare hex
+  is tried after the name table, and `test/color.test.ts` asserts that no CSS
+  colour name is a valid bare hex string, so the ordering is a property of the
+  code rather than of what happens to be in the table.
+
+  The comparison itself is the reusable part — `toHex6` against `hex` over a
+  corpus of paint strings, with the answers diffed rather than merely checked
+  for throwing. `test/color.test.ts` holds that corpus and both sinks read from
+  it, so a form added for one is checked against the other.
+
 - **A `string` in the types is not a string in the file someone pasted.** A
   config arrives from the JSON box, a saved template, a shape tag written in
   another deck, and the skill's caller. `categories: [2023, 2024]` and

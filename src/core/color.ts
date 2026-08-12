@@ -173,6 +173,28 @@ export function toRgb(color: string): [number, number, number] {
     const n = parseInt(named, 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
+  // A BARE hex string, `#` omitted. The pptx sink has always taken these — it is
+  // OOXML's own spelling, `<a:srgbClr val="AABBCC"/>` — and this sink and the
+  // Office one did not, so `AABBCC` as a series colour drew mid grey in the
+  // preview and in the live add-in and the real colour in the skill's deck. The
+  // preview lying about the deck is the divergence class this file's siblings
+  // keep being fixed for, and a user pasting a hex out of a brand guide without
+  // its `#` is the commonest way to reach it.
+  //
+  // Last, so a NAMED colour always wins the string. Nothing is actually taken
+  // from the name table by this — no CSS colour name is a valid bare hex string,
+  // which is checked rather than assumed (`test/color.test.ts`) — but the order
+  // is what makes that a property of the code and not of the table's contents.
+  //
+  // 3 and 6 digits only. The 4- and 8-digit alpha forms are deliberately left to
+  // the `#` spelling: without the prefix, `aabbcc80` is as likely to be an id or
+  // a truncated token as a colour, and the strictness above is there because the
+  // input most worth catching is a TYPO.
+  if (/^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c)) {
+    const rgb = c.length === 3 ? c.replace(/./g, "$&$&") : c;
+    const n = parseInt(rgb, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
   return UNREADABLE;
 }
 

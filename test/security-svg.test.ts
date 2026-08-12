@@ -171,6 +171,51 @@ describe("svg renderer neutralizes injected colours", () => {
  * from an untrusted source (a `#c=` share link, an imported JSON, a
  * POWERCHART_CONFIG shape tag authored in another deck) can put a STRING there.
  */
+/**
+ * A BARE hex colour — `#` omitted, which is OOXML's own spelling and what a user
+ * pasting from a brand guide most often produces.
+ *
+ * This is the third sink of the three CLAUDE.md names, and it was the last to
+ * take one. Worse, it had TWO ways of getting it wrong: `AABBCC` is a run of
+ * letters, so the allow-list's named-colour arm passed it straight through and
+ * the markup carried `fill="AABBCC"` — not a valid SVG paint, so the attribute
+ * is ignored and the shape renders black — while `4e79a7` has digits, matched no
+ * arm at all, and fell back to black explicitly. Two spellings of one colour,
+ * both black, while the skill's deck drew the real one.
+ */
+describe("a bare hex colour reaches the markup as a colour", () => {
+  const fillOf = (color: string) => {
+    const scene: Scene = {
+      width: 100,
+      height: 100,
+      nodes: [{ kind: "rect", x: 0, y: 0, w: 10, h: 10, fill: color, name: "cell" }],
+    };
+    return /<rect[^>]*fill="([^"]*)"[^>]*data-name="cell"/.exec(sceneToSvg(scene))?.[1];
+  };
+
+  it("puts the # back rather than emitting an invalid paint", () => {
+    expect(fillOf("AABBCC")).toBe("#AABBCC");
+    expect(fillOf("4e79a7")).toBe("#4e79a7");
+    expect(fillOf("abc")).toBe("#abc");
+    expect(fillOf("  4E79A7  ")).toBe("#4E79A7");
+  });
+
+  it("still lets a named colour and a #-spelled one through untouched", () => {
+    expect(fillOf("rebeccapurple")).toBe("rebeccapurple");
+    expect(fillOf("#4e79a7")).toBe("#4e79a7");
+  });
+
+  it("admits nothing else — the normalisation is 3 or 6 hex digits, anchored", () => {
+    // Every one of these is a run the bare-hex arm must NOT rewrite, because a
+    // `#` in front of it would be a paint the allow-list then accepts.
+    for (const c of ["aabbccdd", "12345", "gg", "aabbcc extra", "aa bb cc", "#aabbcc"]) {
+      expect(fillOf(c), `${JSON.stringify(c)} was rewritten`).not.toBe(`#${c}`);
+    }
+    // And a breakout attempt is still black, prefix or no prefix.
+    expect(fillOf('aabbcc" onload="x')).toBe("#000000");
+  });
+});
+
 describe("svg renderer neutralizes injected numerics", () => {
   const BREAKOUT = '10"><image href=x onerror=alert(1) /><text x="';
 
