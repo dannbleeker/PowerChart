@@ -331,3 +331,30 @@ export function contrastInk(fill: string): string {
   const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return lum > 0.35 ? "#0b0b0b" : "#ffffff";
 }
+
+/**
+ * Move a node horizontally by `dx`.
+ *
+ * Every horizontal coordinate a `SceneNode` can carry, which is four scalars
+ * (`x`, `x1`, `x2`, `cx`) and one array — `points`, the polygon's own geometry.
+ * The array is the whole reason this lives here rather than beside its caller.
+ *
+ * It began as a duck-typed loop over the four scalar names in the demo
+ * gallery, a shape that can never fail to COMPILE when a node kind gains a
+ * coordinate, and `points` was already missing from it: a polygon stayed where
+ * it was while everything around it moved. That was latent — the gallery only
+ * composes Harvey balls and checkboxes, and `src/core/elements.ts` emits no
+ * polygon — but the helper's contract is "shift this node" and it quietly did
+ * not, for one kind, with nothing to say so.
+ *
+ * Here it sits next to the node contract it has to keep up with, and it is
+ * reachable by a test, which the gallery module is not: that file touches the
+ * DOM at import time.
+ */
+export function shiftNodeX<T extends SceneNode>(n: T, dx: number): T {
+  const node = n as unknown as Record<string, number>;
+  for (const k of ["x", "x1", "x2", "cx"]) if (typeof node[k] === "number") node[k] += dx;
+  const pts = (n as unknown as { points?: { x: number; y: number }[] }).points;
+  if (Array.isArray(pts)) for (const p of pts) p.x += dx;
+  return n;
+}

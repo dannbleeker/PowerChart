@@ -1,3 +1,4 @@
+import { shiftNodeX } from "../core/scene";
 import { buildChart } from "../core/chart";
 import { sceneToSvg } from "../render/svg";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
@@ -260,16 +261,11 @@ for (const [caption, scene] of elementScenes) {
 function combineRow(scenes: ReturnType<typeof buildHarveyBall>[], gap: number) {
   let x = 0;
   const nodes = scenes.flatMap((s) => {
-    const shifted = s.nodes.map((n) => shiftNode(structuredClone(n), x));
+    const shifted = s.nodes.map((n) => shiftNodeX(structuredClone(n), x));
     x += s.width + gap;
     return shifted;
   });
   return { width: x - gap, height: Math.max(...scenes.map((s) => s.height)), nodes };
-}
-function shiftNode<T extends { kind: string }>(n: T, dx: number): T {
-  const node = n as unknown as Record<string, number>;
-  for (const k of ["x", "x1", "x2", "cx"]) if (k in node) node[k] += dx;
-  return n;
 }
 
 function addFigure(caption: string, cfg: ChartConfig) {
