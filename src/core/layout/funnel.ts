@@ -69,12 +69,26 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     }
     if (decor.segmentLabels) {
       const label = formatNumber(v, fmt);
-      const inside = w >= textWidth(label, fs) + 8 && bandH >= fs * 1.3;
+      const labelW = textWidth(label, fs) + 6;
+      // Outside means to the RIGHT of the band, and the widest band already
+      // reaches the edge of the plot — so on a large font there is no room out
+      // there and the label was drawn past the frame. `stage-value-0` landed at
+      // x = 480.0 on a 480pt frame: the top stage of the funnel showed no value
+      // at all while every stage below it did, because the one band big enough
+      // to matter is the one with nothing to its right.
+      //
+      // So "outside" has to be a placement the frame can hold. When it is not,
+      // the label goes inside after all: the band that cannot fit a label beside
+      // it is the WIDEST one, which is exactly the band with the most room in
+      // it. A cramped label on the bar beats a missing number.
+      const roomOutside = cx + w / 2 + 4 + labelW <= cfg.width;
+      const fitsInside = w >= textWidth(label, fs) + 8 && bandH >= fs * 1.3;
+      const inside = fitsInside || !roomOutside;
       nodes.push({
         kind: "text",
         x: inside ? cx - w / 2 : cx + w / 2 + 4,
         y: y + bandH / 2 - fs * 0.75,
-        w: inside ? w : textWidth(label, fs) + 6,
+        w: inside ? w : labelW,
         h: fs * 1.5,
         text: label,
         fontSize: fs,
