@@ -310,6 +310,32 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
 - **Test files are named by topic, never by increment** (`test/README.md` has
   the map). No `batch-N` / `bug-hunt-N` / `coverage-*` grab-bags: a test
   belongs with the thing it tests, not with the reason it was written.
+- **The self-test headline counts OUR defects, not red scenarios.** Those are
+  different numbers on this host, and conflating them made the summary useless
+  for the only question worth asking of a series of rounds: is the add-in
+  getting better? Most red here is the shape collection dying part-way through
+  — `same scale across the deck` is largely a measurement of WHEN that happens
+  — so a single "N of M passed" moved with the host's mood and never with the
+  work. Across four rounds it read 10/11, 8/10, 9/11 while the defects that
+  were actually ours were 0, 0, 0 and 1.
+
+  `scenarioBlame` is the split, and it is evidence rather than judgement: a
+  failure is host-degraded only when the run recorded the host refusing
+  something INSIDE that scenario (an id it would not resolve, an empty
+  collection read, a GeneralException). Everything else is ours.
+
+  **The default direction matters more than the split.** Unproven lands on US,
+  because getting it backwards turns this into a way to make failures disappear,
+  which is worse than not splitting at all — and there is a guard that fails if
+  someone inverts it. Host-degraded failures are still NAMED in the line; they
+  are not hidden, they are just not evidence about the product.
+
+  Validated against a round whose answer was known before the rule existed. On
+  `89675b6` the picture regression failed with `errors: 0, idRefusals: 0,
+emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
+  six id refusals and four empty re-reads. Ours and the host's, separated
+  correctly, from data recorded before anyone was looking for it.
+
 - **Four sweeps run on a schedule, none of them gating a PR** — the office-js
   tracker (above), plus three in `.github/workflows/quality-sweep.yml`: a
   **flake hunt** (the suite three times under CPU load, reporting any test that

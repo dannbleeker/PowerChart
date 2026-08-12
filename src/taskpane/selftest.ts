@@ -125,6 +125,50 @@ export interface ScenarioResult {
   /** What was actually observed — the sentence a diagnosis starts from. */
   detail: string;
   ms: number;
+  /**
+   * How much this host misbehaved DURING this scenario.
+   *
+   * Recorded on the trace line since it existed; carried on the result now
+   * because the summary has to read it. `describeSelfTest` used to report every
+   * red scenario the same way, so a round in which the host's shape collection
+   * died read exactly like a round in which the add-in had a bug — and this
+   * project has spent whole sessions on the difference. See `scenarioBlame`.
+   */
+  friction?: { errors: number; idRefusals: number; generalExceptions: number; emptyReReads: number };
+}
+
+/**
+ * Whose fault a scenario's outcome was, on the evidence the run already has.
+ *
+ * The headline counted every red scenario together, which made it useless for
+ * the only question worth asking of a series of rounds: is the add-in getting
+ * better? On this host most red is weather — `same scale across the deck` is
+ * largely a measurement of when the shape collection stops answering — so the
+ * number moved with the host's mood and never with our work.
+ *
+ * The split is evidence-based, never a judgement, and it defaults to OURS.
+ * A failure counts as host-degraded only when the run recorded the host
+ * actually refusing something inside that scenario: an id it would not resolve,
+ * a collection that came back empty, a GeneralException. A scenario that failed
+ * while the host answered everything is ours, and says so.
+ *
+ * That direction matters more than the split. Getting it backwards would turn
+ * this into a way to make failures disappear, which is worse than no split at
+ * all — so anything unproven lands on us.
+ *
+ * Checked against a round where the answer was known before the rule existed.
+ * On `89675b6`, `explode a degraded picture` failed with `errors: 0,
+ * idRefusals: 0, emptyReReads: 0` — the picture regression, a pure logic bug
+ * with no host involvement — and `same scale across the deck` failed with
+ * `idRefusals: 6, emptyReReads: 4`. Ours and the host's, separated correctly,
+ * on data recorded before anyone was looking for it.
+ */
+export function scenarioBlame(r: ScenarioResult): "passed" | "not-run" | "ours" | "host" {
+  if (r.skipped) return "not-run";
+  if (r.ok) return "passed";
+  const f = r.friction;
+  const refused = !!f && (f.idRefusals > 0 || f.emptyReReads > 0 || f.generalExceptions > 0);
+  return refused ? "host" : "ours";
 }
 
 /**
@@ -2537,6 +2581,15 @@ export async function runSelfTest(
     // failures cannot be compared against anything.
     const f0 = frictionBefore;
     const f1 = hostFrictionCounts();
+    // On the RESULT as well as the trace line, because `describeSelfTest` has
+    // to tell our defects from this host's weather and the trace is not
+    // available to it. Same numbers, one source.
+    result.friction = {
+      errors: f1.errors - f0.errors,
+      idRefusals: f1.idRefusals - f0.idRefusals,
+      generalExceptions: f1.generalExceptions - f0.generalExceptions,
+      emptyReReads: f1.emptyReReads - f0.emptyReReads,
+    };
     const deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
     trace("selftest", result.skipped ? "scenario skipped" : result.ok ? "scenario passed" : "scenario FAILED", {
       name,
@@ -2544,12 +2597,7 @@ export async function runSelfTest(
       ms: result.ms,
       deckSlides: deckAfter ?? "unreadable",
       ...(deckBefore !== undefined && deckAfter !== undefined ? { deckGrew: deckAfter - deckBefore } : {}),
-      friction: {
-        errors: f1.errors - f0.errors,
-        idRefusals: f1.idRefusals - f0.idRefusals,
-        generalExceptions: f1.generalExceptions - f0.generalExceptions,
-        emptyReReads: f1.emptyReReads - f0.emptyReReads,
-      },
+      friction: result.friction,
     });
     const timedOut = deadlinesFired > deadlinesBefore;
     if (timedOut) trace("selftest", "the host missed a deadline in this scenario", { name, sick: sick + 1 });
@@ -2570,8 +2618,22 @@ export function describeSelfTest(results: ScenarioResult[]): string {
   const failed = ran.filter((r) => !r.ok);
   const blind = results.filter((r) => r.skipped && r.blind);
   const skipped = results.length - ran.length - blind.length;
-  const parts = [`${ran.length - failed.length} of ${ran.length} scenarios passed`];
-  if (failed.length) parts.push(`failed: ${failed.map((f) => f.name).join(", ")}`);
+  // OUR defects lead, and they are the only number that can show whether the
+  // add-in is improving. A red scenario on this host is usually the shape
+  // collection dying part-way through, which moves with the host's mood and
+  // never with our work — so a single "N of M passed" mixed the two and could
+  // not answer the question anyone actually asks of a series of rounds.
+  const ours = failed.filter((r) => scenarioBlame(r) === "ours");
+  const host = failed.filter((r) => scenarioBlame(r) === "host");
+  const parts = [
+    ours.length ? `${ours.length} defect(s) of ours: ${ours.map((f) => f.name).join(", ")}` : "no defects of ours",
+  ];
+  parts.push(`${ran.length - failed.length} of ${ran.length} scenarios passed`);
+  // Named, never hidden. The split exists to make the first number meaningful,
+  // not to make failures go away — these still have to be read, they just are
+  // not evidence about the product.
+  if (host.length)
+    parts.push(`${host.length} failed while the host was refusing: ${host.map((f) => f.name).join(", ")}`);
   if (skipped) parts.push(`${skipped} skipped (host cannot run them)`);
   // Counted apart, and never folded into the line above. These are not a
   // capability gap: the host got in the way, which is a finding, and the one
