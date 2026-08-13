@@ -5,7 +5,7 @@ import { maxOf, minOf } from "../agg";
 import { lerpColor, noDataFill, sequentialScale } from "../color";
 import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
-import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, MIN_LABEL_FS, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -316,34 +316,53 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         name: `legend-step-${i}`,
       });
     }
-    nodes.push(
-      {
-        kind: "text",
-        x: x0,
-        y: ly + fs * 0.95,
-        w: lw / 2,
-        h: fs * 1.2,
-        text: formatNumber(min, fmt),
-        fontSize: fs * 0.85,
-        color: style.mutedText,
-        align: "left",
-        valign: "top",
-        name: "legend-min",
-      },
-      {
-        kind: "text",
-        x: x0 + lw / 2,
-        y: ly + fs * 0.95,
-        w: lw / 2,
-        h: fs * 1.2,
-        text: formatNumber(max, fmt),
-        fontSize: fs * 0.85,
-        color: style.mutedText,
-        align: "right",
-        valign: "top",
-        name: "legend-max",
-      },
-    );
+    // The two ends of the scale each own HALF the bar and are anchored to its
+    // outer edges, so their ink meets in the middle the moment a number is
+    // wider than `lw / 2`. The bar is `min(gridW * 0.5, fs * 12)`, so on a
+    // small frame it is a few points wide and the two numbers are drawn on top
+    // of each other — inside the frame, so no overflow gate could see it.
+    //
+    // Same answer the rest of this engine gives: shrink both together to the
+    // room they actually have, and drop the PAIR when that would be illegible.
+    // Both, never one: a gradient bar labelled at one end says the wrong thing,
+    // where an unlabelled bar just says less.
+    const endText = [formatNumber(min, fmt), formatNumber(max, fmt)];
+    const endFs = (() => {
+      const base = fs * 0.85;
+      const widest = Math.max(...endText.map((t) => textWidth(t, base)));
+      if (!(widest > 0)) return base;
+      const f = Math.min(base, base * (lw / 2 / widest));
+      return f >= MIN_LABEL_FS ? f : 0;
+    })();
+    if (endFs > 0)
+      nodes.push(
+        {
+          kind: "text",
+          x: x0,
+          y: ly + fs * 0.95,
+          w: lw / 2,
+          h: fs * 1.2,
+          text: endText[0],
+          fontSize: endFs,
+          color: style.mutedText,
+          align: "left",
+          valign: "top",
+          name: "legend-min",
+        },
+        {
+          kind: "text",
+          x: x0 + lw / 2,
+          y: ly + fs * 0.95,
+          w: lw / 2,
+          h: fs * 1.2,
+          text: endText[1],
+          fontSize: endFs,
+          color: style.mutedText,
+          align: "right",
+          valign: "top",
+          name: "legend-max",
+        },
+      );
     if (values.size < Object.keys(layout).length) {
       nodes.push(
         {

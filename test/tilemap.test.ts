@@ -127,3 +127,41 @@ describe("the legend's numbers are not cut off by the frame", () => {
     expect(Math.min(...tiles.map((t) => t.h))).toBeGreaterThan(6);
   });
 });
+
+describe("the gradient legend's two ends on a small frame", () => {
+  /**
+   * `legend-min` and `legend-max` each own HALF the colour bar and are anchored
+   * to its outer edges, so their ink meets in the middle as soon as a number is
+   * wider than `lw / 2` — and the bar is `min(gridW * 0.5, fs * 12)`, a few
+   * points wide on a thumbnail.
+   *
+   * Pinned here rather than in `frame-fit`'s overlap sweep because that gate
+   * covers 160x120 upward and this shows at 120x90. Nothing overflows, so no
+   * frame gate could ever have seen it: the two numbers are simply drawn on top
+   * of each other, inside the chart.
+   */
+  const ink = (t: TextNode) => {
+    // The label is anchored to an edge of its half, so its ink is what collides,
+    // not its box. `w` is the half-bar; the text is as wide as the text.
+    const est = t.text.length * t.fontSize * 0.55;
+    const x = t.align === "right" ? t.x + t.w - est : t.x;
+    return { x0: x, x1: x + est };
+  };
+
+  it("never draws the two scale ends on top of each other", () => {
+    for (const [w, h] of [
+      [120, 90],
+      [160, 120],
+      [200, 150],
+    ] as [number, number][]) {
+      const nodes = buildChart({ ...sampleConfig("tilemap"), width: w, height: h } as ChartConfig).nodes;
+      const lo = nodes.find((n): n is TextNode => n.kind === "text" && n.name === "legend-min");
+      const hi = nodes.find((n): n is TextNode => n.kind === "text" && n.name === "legend-max");
+      // Dropping the pair is a legitimate outcome — a scale whose ends cannot be
+      // read is not a scale — but they go together or not at all.
+      expect(!!lo, `only one end drawn at ${w}x${h}`).toBe(!!hi);
+      if (!lo || !hi) continue;
+      expect(ink(lo).x1, `the scale ends overlap at ${w}x${h}`).toBeLessThanOrEqual(ink(hi).x0 + 0.5);
+    }
+  });
+});

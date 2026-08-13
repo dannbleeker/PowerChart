@@ -34,6 +34,9 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   let frame = H
     ? computeFrameHorizontal(cfg, style, { ...decorFull, totals: true })
     : computeFrame(cfg, style, decorFull, decor.seriesLabels ? data.series.map((s) => s.name) : []).frame;
+  // The x the legend reservation was computed for, captured before the gutter
+  // widening below moves `frame.x`. See the legend push for why.
+  const legendX = frame.x;
   if (H && !units && decor.categoryAxis) {
     // Row labels carry a share suffix ("EMEA (32%)") the generic frame
     // reservation doesn't know about — widen the left gutter for it.
@@ -47,6 +50,20 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const extra = textWidth(" (00%)", fs);
     frame = fitPlot(cfg, { ...frame, x: frame.x + extra, w: frame.w - extra });
   }
+  // The legend is drawn at the x the RESERVATION was computed for, not at the
+  // widened frame.
+  //
+  // `computeFrameHorizontal` counts legend rows by walking the labels from the
+  // legend's own x0 and says so — "this reservation and legendRow agree on the
+  // row count". The widening above moves `frame.x` right AFTER that count, so
+  // drawing at the new x gives the walk less room, wraps it onto more rows than
+  // were reserved, and the extra rows come down on the bars' own labels. Inside
+  // the frame, so no overflow gate sees it; at 160x120 it put the legend across
+  // the row labels and the totals.
+  //
+  // Kept as the pre-widening x rather than by re-reserving, because the gutter
+  // exists for the share suffix on the ROW labels and the legend does not carry
+  // one — it has always been free to start where the reservation assumed.
   const grand = extents.reduce((a, b) => a + b, 0) || 1;
   const gap = 2;
 
@@ -258,7 +275,7 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       name: "baseline",
     });
     if (decor.seriesLabels && data.series.length > 1) {
-      nodes.push(...legendRow(cfg, style, frame.x, titleHeight(cfg, style) + 2, { maxX: cfg.width - 4 }));
+      nodes.push(...legendRow(cfg, style, legendX, titleHeight(cfg, style) + 2, { maxX: cfg.width - 4 }));
     }
   } else {
     nodes.push({

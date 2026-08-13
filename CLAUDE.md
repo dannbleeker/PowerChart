@@ -823,9 +823,42 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   measurement this file keeps warning about, caught only by asking what it
   matched.
 
+  **The overlap half of that gate was checking TWO of the eight frames, and its
+  name did not say so.** The overflow sweep runs 80x60 through 960x540; the
+  overlap sweep ran 200x150 and 480x300, and asserted "no chart overlaps its own
+  text at the default font". Sweeping the other six found **146 overlapping pairs
+  at the DEFAULT font** — 54 at 80x60, 36 at 60x300, 29 at 300x60, 27 across
+  120x90 and 160x120, none at 960x540. A gate whose name is wider than its
+  coverage is the `batch committed` mistake in a test.
+
+  Fifty of those are the scatter/bubble trade this file already records as
+  measured and refused twice, and it is DECLARED in the gate now
+  (`acceptedTrade`) rather than avoided by not looking: a point label may touch
+  an axis TICK, only those two kinds, only against a numbered point label. Every
+  other pair fails. Stating an exception and dodging the frames that would reveal
+  it are not the same thing.
+
+  Three of the remaining shapes are fixed and the gate now covers 160x120:
+  the tilemap's two scale ends (each owns half a colour bar a few points wide and
+  their ink met in the middle), the mekko's legend (drawn at the widened
+  `frame.x` while `computeFrameHorizontal` had counted its rows for the
+  pre-widening x — the reservation and `legendRow` disagreed, which that
+  function's own comment says they must not, so it wrapped onto rows nobody had
+  reserved and landed on the bars), and the clustered in-bar labels (fitted with
+  `textWidth <= across + 2`, so ink stood a point proud of the mark on each side
+  while the neighbouring bar's label did the same — the mekko's `width + 8`
+  lesson, unlearned one layout over).
+
+  What is left at 120x90 is the sunburst's adjacent OUTSIDE labels. They already
+  carry the arc fit; separating them needs vertical de-confliction between
+  neighbours, which is `collide.ts` work rather than another bound. Not attempted
+  — recorded so the next reader knows the frame list stops at 160x120 for a
+  reason and not by accident.
+
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
   its own box, over every kind × eight frame sizes × seven fonts, plus no chart
-  overlapping its own text at the default font in EITHER orientation. It measures
+  overlapping its own text at the default font in EITHER orientation, at
+  160x120 and up. It measures
   INK, not boxes — a first version measured boxes and produced four false
   positives and one false negative in one run, because a label's box is routinely
   wider than its text and is anchored by `align`.

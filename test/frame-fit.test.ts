@@ -187,6 +187,31 @@ describe("no chart draws outside its own frame at any font", () => {
  * listed in the PR that added this.
  */
 describe("labels are not drawn on top of each other", () => {
+  /**
+   * The ONE overlap this gate allows, and it is a decision rather than an
+   * oversight.
+   *
+   * A scatter or bubble point label may touch an axis TICK label. Both fixes for
+   * it have been tried and measured: giving the point placer the axis labels as
+   * obstacles, and confining its band to the plot. Each removes the overlaps by
+   * DROPPING point labels — 56 of 301 on charts as roomy as 480x300 — because
+   * the y axis owns the left margin. A point's label is data and a tick label is
+   * chrome, so the trade is refused, and the reason is at the call site in
+   * `layout/scatter.ts`.
+   *
+   * Narrow on purpose: only these two kinds, only a tick against a NUMBERED
+   * point label. Anything else, in either direction, still fails. Written as an
+   * exception the gate STATES rather than a frame the gate avoids — the previous
+   * arrangement was the second, and it left 146 real overlapping pairs outside
+   * the two frames it happened to check.
+   */
+  const acceptedTrade = (kind: string, a?: string, b?: string): boolean => {
+    if (kind !== "scatter" && kind !== "bubble") return false;
+    const tick = (x?: string) => x === "x-axis" || x === "y-axis";
+    const point = (x?: string) => !!x && /^label-\d+$/.test(x);
+    return (tick(a) && point(b)) || (tick(b) && point(a));
+  };
+
   /** The ink of a text node, as the frame sweep measures it. */
   const inkOf = (t: TextNode) => inkBox(t)!;
   const overlap = (a: ReturnType<typeof inkOf>, b: ReturnType<typeof inkOf>) => {
@@ -226,6 +251,10 @@ describe("labels are not drawn on top of each other", () => {
     // count here — do not widen this to those fonts without fixing them.
     const bad: string[] = [];
     for (const [w, h] of [
+      // 160x120 was added after a sweep found this gate was checking TWO of the
+      // eight frames the overflow sweep uses, while its name claims the default
+      // font generally. See the block comment above.
+      [160, 120],
       [200, 150],
       [480, 300],
     ] as [number, number][]) {
@@ -236,7 +265,7 @@ describe("labels are not drawn on top of each other", () => {
         const boxes = ts.map((t) => inkBox(t)!);
         for (let i = 0; i < boxes.length; i++) {
           for (let j = i + 1; j < boxes.length; j++) {
-            if (overlap(boxes[i], boxes[j]) > 1) {
+            if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name)) {
               bad.push(`${kind} at ${w}x${h}: ${ts[i].name} over ${ts[j].name}`);
             }
           }
@@ -323,6 +352,10 @@ describe("labels are not drawn on top of each other", () => {
   it("no horizontal chart overlaps its own text at the default font", () => {
     const bad: string[] = [];
     for (const [w, h] of [
+      // 160x120 was added after a sweep found this gate was checking TWO of the
+      // eight frames the overflow sweep uses, while its name claims the default
+      // font generally. See the block comment above.
+      [160, 120],
       [200, 150],
       [480, 300],
     ] as [number, number][]) {
@@ -336,7 +369,8 @@ describe("labels are not drawn on top of each other", () => {
         const boxes = ts.map((t) => inkBox(t)!);
         for (let i = 0; i < boxes.length; i++) {
           for (let j = i + 1; j < boxes.length; j++) {
-            if (overlap(boxes[i], boxes[j]) > 1) bad.push(`${kind} at ${w}x${h}: ${ts[i].name} over ${ts[j].name}`);
+            if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name))
+              bad.push(`${kind} at ${w}x${h}: ${ts[i].name} over ${ts[j].name}`);
           }
         }
       }
