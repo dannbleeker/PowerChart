@@ -305,17 +305,26 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   Read this as the precedent for a TRADE, not as the count rule loosening. A
   sheet that answers less is still refused, and it has been five times.
 
-  **Swapped on 2026-08-12 to `957aca0`, the first sheet since these rules were
-  written that made it obligatory rather than merely permitted.** It answers
-  more than the sheet it replaced, loses no ANSWER, and puts a question that
-  twelve attempts across nine rounds had never reached
-  (`binding-names-shape-later`). The three things it moved are each a retirement
-  rather than a coin: that question came off `PENDING_QUESTIONS` with a real
-  answer, `scratch-slides-returned` came off `KNOWN_DIVERGENCES` because the
-  clean-up it was waiting for now works, and `grouped-child-by-id-from-slide`
-  reported its own setup failure in a word the gate understands instead of
-  inventing one. Read the fixture's `build`, not this paragraph — the sentence
-  above says so and it has been wrong before.
+  **A swap to `957aca0` was WRITTEN UP HERE AND NEVER LANDED, and this paragraph
+  claimed for a day that it had.** It was argued as the first sheet since these
+  rules were written to make a swap obligatory rather than merely permitted —
+  answering more than the sheet it replaced, losing no ANSWER, and finally
+  putting `binding-names-shape-later`, which twelve attempts across nine rounds
+  had never reached. The reasoning may well have been right. The commit is not
+  there: the last change to the fixture is #419 (`3d984d9`), and nothing since
+  has touched it.
+
+  So the committed sheet is **`1789749`, answering 26 of 31**, and the five it
+  never put are `binding-names-shape-later`, `grouped-child-by-id-from-slide`,
+  `shape-resolve-held-slide-proxy`, `tag-on-group-survives` and
+  `tags-add-same-key-twice` — including the very question the swap was supposed
+  to bank. Count the fixture yourself before quoting either number; the round
+  that would let this be redone is gone, so the arithmetic is all that is left.
+
+  This is the failure mode the whole section warns about, committed by the
+  section itself, one paragraph after telling the reader not to trust it: **read
+  the fixture's own `build` and count its answers, never a sentence written
+  here.** A swap is a commit, not a note.
 
 - **The office-js tracker is swept weekly** by
   `.github/workflows/office-js-watch.yml`, which reports only issues touching
