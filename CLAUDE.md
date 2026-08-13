@@ -397,6 +397,67 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   open question is no longer "is it a coin" — it is "what is the state", with
   one candidate eliminated.
 
+  **Two more candidates died on round 17's own numbers, before anything was
+  built.** `threw` at 16.3s, `yes` at 33.9s, `threw` at 55.6s is non-monotonic,
+  so neither ELAPSED TIME nor the PASS NUMBER is the variable — the "pass 1
+  threw, later passes yes" split that R12 and R13 supported is broken by pass 3
+  reverting. Read those three numbers before proposing either again.
+
+  **The candidate left is the SCRATCH SLIDE, and every sample carries it now**
+  (`ScratchState` in `src/render/host-probe.ts`): `first-slide`, `fresh-slide`,
+  `reused-slide`, `no-slide`. `UNSTABLE_ANSWERS` already fingers it — this
+  question WRECKS its own scratch slide every time it is asked, so pass 1 meets
+  a deck with no scratch history and later passes do not. `host-regimes.mjs`
+  reads it beside the regime and prints both, so a round where one says `coin`
+  and the other `explained` is the answer arriving.
+
+  **The stamp was tested RETROSPECTIVELY against round 17 before it ever ran,
+  and it would have been blind there.** That question replaces its scratch slide
+  0.2-0.5s before every ask (`replaced the scratch slide` at 16.1s, 33.7s and
+  55.1s against samples at 16.3s, 33.9s and 55.6s), so all three samples are
+  `fresh-slide` and the answers still disagree. Do not expect this field to
+  answer on its own; expect it to be one of several.
+
+  That retrospective is also what found a real defect in the READER. A stamp
+  that never moves for a question produced `coin` — one bucket holding two
+  answers — which is indistinguishable in the data from a genuine coin and means
+  the opposite thing: `coin` is a fact about the HOST, `blind` is a fact about
+  the STAMP. There is a fifth verdict now, and it fires on exactly this case.
+
+  **And a saturation check, because this is the sixth time.**
+  `stampSpread` reports what share of a round's samples carry a stamp's
+  commonest value, and says so out loud past `SATURATED_AT`. On its first run it
+  found `regime` at **88% `collection-refused`** in round 17 — worse than the 85%
+  sticky flag `regimeFrom` was written to replace, and past the failure
+  criterion that function's own docstring sets. A saturated field produces
+  `untested` and `blind`, and both read as caution rather than as a broken
+  instrument.
+
+  **That is now fixed, and the fix is the one the docstring always claimed.**
+  `regimeFrom` promised "the most RECENT thing this run watched it do" and
+  implemented priority order, so one refusal painted every sample for twenty
+  seconds however well the collection answered in between — and in round 17 the
+  collection ANSWERED 14 of the 28 times it was asked, interleaved throughout. A
+  later COLLECTION answer clears an earlier refusal now, which takes that round
+  from 88% to 72% in simulation. Only a collection answer: `lastGoodAt` is set
+  by almost every question, so recency across all three signals would saturate
+  on `healthy` instead — the same defect mirrored, and there is a test holding
+  that direction too.
+
+  It does NOT explain the flip. Under the fix the pair reads `healthy`,
+  `slide-trouble`, `slide-trouble` against `threw`, `yes`, `threw` — still a
+  coin. The instrument got better; the question is still open.
+
+  Three properties of the stamp are worth knowing, because each is a mistake
+  this file has recorded before. It is CATEGORICAL — an age or a counter gives
+  every sample its own value, and "every value maps to one answer" is then true
+  for any data at all, which is the `untested` shape. It is on EVERY sample, not
+  only the odd ones. And every one of the five places that takes a scratch slide
+  goes through `takeScratch`, held by a SOURCE SCAN in `test/host-probe.test.ts`
+  — bypassing one leaves the counter stale and stamps `reused-slide` on a
+  brand-new slide, and the behavioural test cannot see it, because `fresh-slide`
+  still arrives from another path. Proven by doing it.
+
 - **Dependabot's banner gets read, and the reading gets written down** in
   `docs/DEPENDENCY-ALERTS.md`. Same rule as the table above: an entry says what
   was decided, "no exposure" included. It sat at 9 alerts for weeks with nobody

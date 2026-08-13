@@ -120,6 +120,12 @@ export interface ProbeSample {
    * has now made four times with four different fields.
    */
   regime: HostRegime;
+  /**
+   * The scratch slide this question ran on. See `ScratchState` for why it is
+   * four words rather than an age or a count, and for the round that made it
+   * the live candidate once `regime` was eliminated.
+   */
+  scratch: ScratchState;
 }
 
 /**
@@ -132,6 +138,33 @@ export interface ProbeSample {
  * run watched happen.
  */
 export type HostRegime = "healthy" | "slide-trouble" | "collection-refused" | "unknown";
+
+/**
+ * Which scratch slide a question was asked on — the state `regime` is not.
+ *
+ * Round 17 (`cd3b60c`) established that `shape-add-held-slide-proxy` and its
+ * partner agree perfectly at every instant (seven pairs, seven agreements) and
+ * yet answer both ways inside ONE regime. So there is a definite state, it
+ * changes during a run, and the regime stamp does not name it. That round also
+ * killed the two easy candidates from its own numbers — `threw` at 16.3s, `yes`
+ * at 33.9s, `threw` at 55.6s is non-monotonic, so neither elapsed time nor the
+ * pass number is the variable.
+ *
+ * The candidate left is the one `UNSTABLE_ANSWERS` already fingers: this
+ * question WRECKS its own scratch slide every time it is asked, so pass 1 meets
+ * a deck with no scratch history and later passes do not.
+ *
+ * CATEGORICAL on purpose. A duration or a counter would give every sample its
+ * own value, and "every value maps to one answer" is then true for any data at
+ * all — the unfalsifiable shape `host-regimes.mjs` reports as `untested`. Four
+ * closed values can actually disagree with themselves.
+ *
+ * Derived from what the run has already watched itself do — no extra host call,
+ * so asking cannot disturb the thing being measured — and recorded on EVERY
+ * sample, not only the odd ones, which is the mistake this project has now made
+ * four times with four different fields.
+ */
+export type ScratchState = "first-slide" | "fresh-slide" | "reused-slide" | "no-slide";
 
 /**
  * How long an observation still describes the host.
@@ -162,11 +195,40 @@ export const REGIME_WINDOW_MS = 20_000;
  * claimed on the strength of something that actually worked.
  */
 export function regimeFrom(
-  o: { at: number; lastRefusalAt?: number; lastSlideTroubleAt?: number; lastGoodAt?: number },
+  o: {
+    at: number;
+    lastRefusalAt?: number;
+    lastSlideTroubleAt?: number;
+    lastGoodAt?: number;
+    /**
+     * The last time a question that ASKS THE SHAPE COLLECTION got a real answer
+     * out of it — not merely the last time any question answered, which is what
+     * `lastGoodAt` is and which nearly every question sets.
+     */
+    lastCollectionGoodAt?: number;
+  },
   windowMs = REGIME_WINDOW_MS,
 ): HostRegime {
   const recent = (t?: number) => t !== undefined && o.at - t <= windowMs;
-  if (recent(o.lastRefusalAt)) return "collection-refused";
+  // A refusal inside the window used to win outright, and the docstring above
+  // says the opposite — "from the most RECENT thing this run watched it do".
+  // The code was priority-ordered, so one refusal painted every sample for the
+  // next twenty seconds however well the collection answered in between.
+  //
+  // Round 17 is what that costs: the collection ANSWERED 14 of the 28 times it
+  // was asked, interleaved with the refusals throughout, and 88% of that
+  // round's samples still read `collection-refused` — worse than the 85% sticky
+  // flag this function was written to replace, and past the failure criterion
+  // its own docstring sets. Simulated over that round, clearing the refusal
+  // when the collection has answered SINCE takes it to 72%.
+  //
+  // Deliberately NOT most-recent-wins across all three: `lastGoodAt` is set by
+  // almost every question, so recency alone would saturate on `healthy` instead
+  // and this comment would be describing the same bug in the other direction.
+  // Only a later COLLECTION answer clears a collection refusal.
+  const answeredSince =
+    o.lastCollectionGoodAt !== undefined && o.lastRefusalAt !== undefined && o.lastCollectionGoodAt > o.lastRefusalAt;
+  if (recent(o.lastRefusalAt) && !answeredSince) return "collection-refused";
   if (recent(o.lastSlideTroubleAt)) return "slide-trouble";
   if (recent(o.lastGoodAt)) return "healthy";
   return "unknown";
@@ -1832,6 +1894,29 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   const noteScratch = (id: string): void => {
     if (!scratchIds.includes(id)) scratchIds.push(id);
   };
+  /**
+   * The scratch slide's own history, for `ScratchState`.
+   *
+   * `generation` counts the slides this run has taken; `used` says whether a
+   * question has already been recorded against the current one. Both are
+   * bookkeeping over things the run does anyway — nothing here calls the host.
+   *
+   * `takeScratch` is the ONE place either moves, and every assignment to
+   * `scratchId` goes through it. Four sites take a slide (the first one, the
+   * recovery at the top of the loop, the replacement after a never-asked, and
+   * the replacement for a partner question) and a fifth drops it; a stamp that
+   * silently missed one of them would report `reused-slide` for a slide that
+   * was in fact brand new, which is the answer this question turns on.
+   */
+  let scratchGeneration = 0;
+  let scratchUsed = false;
+  const takeScratch = (id: string | null): string | null => {
+    if (id) {
+      scratchGeneration++;
+      scratchUsed = false;
+    }
+    return id;
+  };
   // Read BEFORE the first scratch slide is added, so it cannot pick one up.
   // Follow-up questions use it as the control for "was that about the call, or
   // about the slide being new" — the one distinction this project has paid for
@@ -1851,7 +1936,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   // sweep may never reach past. Read here rather than in the clean-up because
   // by then the run's own slides are already in the count.
   const deckAtStart = (await deckSlideIds().catch(() => undefined))?.length;
-  let scratchId = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
+  let scratchId = takeScratch(await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch));
   if (scratchId) scratchIds.push(scratchId);
   /**
    * Consecutive questions that could not get an answer out of the host at all.
@@ -1884,7 +1969,10 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   let lastRefusalAt: number | undefined;
   let lastSlideTroubleAt: number | undefined;
   let lastGoodAt: number | undefined;
-  const regimeNow = (at: number): HostRegime => regimeFrom({ at, lastRefusalAt, lastSlideTroubleAt, lastGoodAt });
+  /** Only the shape collection answering — see `regimeFrom` for why it is separate. */
+  let lastCollectionGoodAt: number | undefined;
+  const regimeNow = (at: number): HostRegime =>
+    regimeFrom({ at, lastRefusalAt, lastSlideTroubleAt, lastGoodAt, lastCollectionGoodAt });
   /** Answers that mean the shape collection has stopped answering. */
   const REFUSAL = new Set(["unreadable", "short-0", "not-listed"]);
   /**
@@ -1903,10 +1991,26 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     // that is refusing now from one that refused a minute ago.
     const aboutTheCollection = /^shapes?-/.test(row.id);
     if (aboutTheCollection && REFUSAL.has(row.answer)) lastRefusalAt = atMs;
-    else if (aboutTheCollection && !NOT_ASKED.has(row.answer)) lastGoodAt = atMs;
+    else if (aboutTheCollection && !NOT_ASKED.has(row.answer)) {
+      lastGoodAt = atMs;
+      lastCollectionGoodAt = atMs;
+    }
     if (row.answer === "no-scratch-slide") lastSlideTroubleAt = atMs;
     else if (!NOT_ASKED.has(row.answer)) lastGoodAt = atMs;
-    const sample: ProbeSample = { answer: row.answer, pass, atMs, regime: regimeNow(atMs) };
+    // Read BEFORE `scratchUsed` is set below, so this sample describes the
+    // slide as it was when this question ran, not as the next one will find it.
+    const scratch: ScratchState = !scratchId
+      ? "no-slide"
+      : scratchUsed
+        ? "reused-slide"
+        : scratchGeneration <= 1
+          ? "first-slide"
+          : "fresh-slide";
+    const sample: ProbeSample = { answer: row.answer, pass, atMs, regime: regimeNow(atMs), scratch };
+    // Marked here rather than at the ask, because `record` is the one path every
+    // question's outcome goes through — a retry, a partner and a second-pass
+    // rescue all land here, and each of them genuinely has used the slide.
+    if (scratchId) scratchUsed = true;
     const seen = rows.get(row.id);
     if (!seen) {
       const created: HostAnswer = { ...row, samples: [sample] };
@@ -1991,7 +2095,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
           if (recovered) {
             noteScratch(recovered);
-            scratchId = recovered;
+            scratchId = takeScratch(recovered);
             trace("probe", "took another scratch slide after giving up on the last", { id: probe.id });
           }
         }
@@ -2022,7 +2126,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
             const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
             if (replacement) {
               noteScratch(replacement);
-              scratchId = replacement;
+              scratchId = takeScratch(replacement);
               trace("probe", "replaced the scratch slide", {
                 id: probe.id,
                 scratchId: replacement,
@@ -2103,7 +2207,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
             const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
             if (replacement) {
               noteScratch(replacement);
-              scratchId = replacement;
+              scratchId = takeScratch(replacement);
               trace("probe", "replaced the scratch slide for a partner question", {
                 id: follow.probe.id,
                 scratchId: replacement,
@@ -2196,7 +2300,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         }
         noSlide = 0;
         noteScratch(replacement);
-        scratchId = replacement;
+        scratchId = takeScratch(replacement);
         const deadlinesBefore = deadlinesFired;
         const started = Date.now();
         const retry = await ask(probe, replacement, durableSlideId);
@@ -2211,7 +2315,18 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         const retriedAt = stampNow();
         entry.samples = [
           ...(entry.samples ?? []),
-          { answer: retry.answer, pass: PROBE_PASSES + 1, atMs: retriedAt, regime: regimeNow(retriedAt) },
+          {
+            answer: retry.answer,
+            pass: PROBE_PASSES + 1,
+            atMs: retriedAt,
+            regime: regimeNow(retriedAt),
+            // The second pass takes a REPLACEMENT slide for every question it
+            // retries, so this sample is by construction on a slide nothing
+            // else has used — the one place the stamp is known rather than
+            // derived. `scratchGeneration` is past 1 by now in any run that
+            // reached here, so `fresh-slide` rather than `first-slide`.
+            scratch: "fresh-slide",
+          },
         ];
         if (!NOT_ASKED.has(retry.answer)) {
           entry.answer = retry.answer;
