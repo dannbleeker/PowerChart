@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { sceneToSvg } from "../src/render/svg";
-import type { SymbolNode } from "../src/core/scene";
+import type { SceneNode, SymbolNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /**
@@ -135,5 +135,46 @@ describe("what the reference renderer does with an imperfect paint", () => {
     expect(sceneToSvg(buildChart(chart()), { background: "#1b1b1b" })).toContain(
       '<rect width="100%" height="100%" fill="#1b1b1b"/>',
     );
+  });
+});
+
+describe("what the reference renderer does with an out-of-range font", () => {
+  /**
+   * A scene node reaches all three renderers, and each guards its own bytes —
+   * `pptx-paint.mjs` has `fontPt`, `powerpoint.ts` has `officeFontPt`. This one
+   * substituted for a NON-FINITE size and nothing else, so zero and negative
+   * went into the markup verbatim.
+   *
+   * Neither is a small label. `font-size="0"` renders nothing; `font-size="-5"`
+   * is invalid, so the attribute is dropped and the text is drawn at whatever
+   * the document inherits — a preview lying about what the deck will contain.
+   */
+  const textNode = (fontSize: number): SceneNode => ({
+    kind: "text",
+    x: 0,
+    y: 0,
+    w: 50,
+    h: 12,
+    text: "42",
+    fontSize,
+    color: "#000000",
+    align: "center",
+    valign: "middle",
+    name: "total-0",
+  });
+  const render = (fontSize: number) =>
+    sceneToSvg({ width: 100, height: 50, nodes: [textNode(fontSize)], title: undefined });
+
+  it("never emits a zero or negative font-size", () => {
+    for (const bad of [0, -5, -0.001]) {
+      const m = render(bad).match(/font-size="(-?[\d.]+)"/);
+      expect(m, `no font-size emitted for ${bad}`).toBeTruthy();
+      expect(Number(m![1]), `font-size for ${bad}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("still substitutes for a non-finite size, and leaves an ordinary one alone", () => {
+    expect(render(Number.NaN)).toContain('font-size="12"');
+    expect(render(11.5)).toContain('font-size="11.5"');
   });
 });

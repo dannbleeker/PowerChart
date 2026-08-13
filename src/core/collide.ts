@@ -34,6 +34,35 @@ const MOVABLE = [
   /^combo-label-/,
 ];
 
+/**
+ * Labels that may be flipped BELOW their mark when there is no room above.
+ *
+ * The nudge only goes up, for a good reason — of two labels naming different
+ * things, pushing one down crosses the one beneath it and they end up naming
+ * each other's marks. That reason does not apply to a label anchored to a
+ * single POINT: below its point is as true as above it, which is where
+ * think-cell puts one when the room above is spent.
+ *
+ * Without the flip these labels had nowhere to go. On a 480x300 combo at a 26pt
+ * font a line's point label sat on the column total beneath it, was nudged 143
+ * points up over ten tries, and came to rest inside the TITLE — every nudge
+ * legal, the budget exhausted, and the collision merely relocated onto a worse
+ * partner. Restricted to this list rather than opened to every movable label,
+ * because a series label really can be reordered by moving down.
+ *
+ * The CAGR caption is here for the same reason and is worth its own note,
+ * because the OTHER way of getting it off the title was tried and reverted:
+ * flooring it at the title's bottom turned five `title x cagr-label` overlaps
+ * into eight against the column totals. That was an unconditional move, and
+ * this is not — the flip only takes a position already clear of everything
+ * settled, and the totals rank ahead of it and are settled first. So it cannot
+ * buy its way off the title by landing on a total; it stays put instead. Worth
+ * 13 of the sweep's overlapping pairs against the earlier attempt's −3.
+ */
+const FLIPPABLE = [/^combo-label-/, /^cagr-label$/];
+
+const canFlip = (name: string | undefined) => !!name && FLIPPABLE.some((re) => re.test(name));
+
 const movableRank = (name: string | undefined): number => {
   if (!name) return -1;
   return MOVABLE.findIndex((re) => re.test(name));
@@ -50,7 +79,7 @@ function tightBox(n: TextNode): Box {
 
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
-export function resolveLabelCollisions(nodes: SceneNode[]): void {
+export function resolveLabelCollisions(nodes: SceneNode[], canvasH?: number): void {
   const texts = nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text);
   const fixed: Box[] = [];
   const movable: { node: TextNode; rank: number }[] = [];
@@ -81,7 +110,8 @@ export function resolveLabelCollisions(nodes: SceneNode[]): void {
     const startY = node.y;
     let box = tightBox(node);
     let tries = 0;
-    while (settled.some(box, (s) => overlaps(box, s)) && tries < 10) {
+    let clear = !settled.some(box, (s) => overlaps(box, s));
+    while (!clear && tries < 10) {
       node.y -= node.fontSize * 0.55; // nudge upward
       box = tightBox(node);
       tries++;
@@ -94,6 +124,31 @@ export function resolveLabelCollisions(nodes: SceneNode[]): void {
         box = tightBox(node);
         break;
       }
+      clear = !settled.some(box, (s) => overlaps(box, s));
+    }
+    // Up was blocked or spent, so try BELOW the mark — from the label's own
+    // starting point, never from wherever the failed climb left it. Only for a
+    // label anchored to a single point (see FLIPPABLE), and only while the
+    // canvas height is known: without it there is no bottom edge to refuse at,
+    // and this would push labels off the foot of the chart the way the guard
+    // above stops it pushing them off the head.
+    if (!clear && canvasH != null && canFlip(node.name)) {
+      node.y = startY;
+      for (let down = 0; down < 10; down++) {
+        node.y += node.fontSize * 0.55;
+        const cand = tightBox(node);
+        if (cand.y + cand.h > canvasH) break;
+        if (!settled.some(cand, (s) => overlaps(cand, s))) {
+          box = cand;
+          clear = true;
+          break;
+        }
+      }
+      // Neither direction cleared: leave it where the layout put it. A label
+      // moved and still colliding is strictly worse than one that never moved —
+      // it collides somewhere its author did not choose.
+      if (!clear) node.y = startY;
+      box = tightBox(node);
     }
     settled.insert(box, box);
   }

@@ -3,7 +3,7 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { divergingScale, lerpColor, noDataFill, sequentialScale, zoneFill } from "../color";
 import { maxOf, minOf } from "../agg";
-import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -148,21 +148,22 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // names are drawn through each other. Twenty of the 237 overlapping text pairs
   // a sweep found were this one label. Bound by the row it names, like every
   // other row label in this engine; at any font that already fits, nothing moves.
-  const rowFs = Math.min(fs, ch / 1.15);
+  const rowFs = bandFontSize(fs, ch, 1.15);
   rows.forEach((s, ri) => {
-    nodes.push({
-      kind: "text",
-      x: dendroW,
-      y: plot.y + ri * ch,
-      w: rowLabelW - 4,
-      h: ch,
-      text: s.name,
-      fontSize: rowFs,
-      color: style.text,
-      align: "right",
-      valign: "middle",
-      name: `row-${ri}`,
-    });
+    if (rowFs > 0)
+      nodes.push({
+        kind: "text",
+        x: dendroW,
+        y: plot.y + ri * ch,
+        w: rowLabelW - 4,
+        h: ch,
+        text: s.name,
+        fontSize: rowFs,
+        color: style.text,
+        align: "right",
+        valign: "middle",
+        name: `row-${ri}`,
+      });
     data.categories.forEach((_, c) => {
       const v = s.values[c];
       const fill = v == null ? noDataFill(style.background) : colorOf(v);

@@ -5,7 +5,7 @@ import { maxOf, minOf } from "../agg";
 import { lerpColor, noDataFill, sequentialScale } from "../color";
 import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
-import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -210,38 +210,46 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           });
         });
       }
+      // A tile's code is bounded by the TILE, and a grid squeezed onto a sliver
+      // of a frame gives tiles of a point or two — so this answered fonts below
+      // anything readable, and below anything OOXML accepts. Dropped instead:
+      // the tile still carries the value through its fill.
+      const glyphCodeFs = bandFontSize(fs * 0.85, tile, 1 / 0.3);
+      if (glyphCodeFs > 0)
+        nodes.push({
+          kind: "text",
+          x,
+          y: y + tile * 0.06,
+          w: tile,
+          h: fs * 1.2,
+          text: code,
+          fontSize: glyphCodeFs,
+          bold: true,
+          color: ink,
+          align: "center",
+          valign: "middle",
+          name: `tile-code-${code}`,
+        });
+      continue;
+    }
+    const showValue =
+      v != null && decor.segmentLabels && tile >= fs * 2.6 && textWidth(formatNumber(v, fmt), fs * 0.8) <= tile - 2;
+    const codeFs = bandFontSize(fs, tile, 1 / 0.34);
+    if (codeFs > 0)
       nodes.push({
         kind: "text",
         x,
-        y: y + tile * 0.06,
+        y: showValue ? y + tile / 2 - fs * 1.25 : y,
         w: tile,
-        h: fs * 1.2,
+        h: showValue ? fs * 1.3 : tile,
         text: code,
-        fontSize: Math.min(fs * 0.85, tile * 0.3),
+        fontSize: codeFs,
         bold: true,
         color: ink,
         align: "center",
         valign: "middle",
         name: `tile-code-${code}`,
       });
-      continue;
-    }
-    const showValue =
-      v != null && decor.segmentLabels && tile >= fs * 2.6 && textWidth(formatNumber(v, fmt), fs * 0.8) <= tile - 2;
-    nodes.push({
-      kind: "text",
-      x,
-      y: showValue ? y + tile / 2 - fs * 1.25 : y,
-      w: tile,
-      h: showValue ? fs * 1.3 : tile,
-      text: code,
-      fontSize: Math.min(fs, tile * 0.34),
-      bold: true,
-      color: ink,
-      align: "center",
-      valign: "middle",
-      name: `tile-code-${code}`,
-    });
     if (showValue) {
       nodes.push({
         kind: "text",

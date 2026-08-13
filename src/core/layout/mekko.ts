@@ -3,7 +3,7 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { chromeNodes, computeFrame, computeFrameHorizontal, titleHeight } from "./frame";
+import { bandFontSize, chromeNodes, computeFrame, computeFrameHorizontal, fitPlot, titleHeight } from "./frame";
 import { legendRow, seriesLabelNodes, type LayoutResult } from "./column";
 import { columnPositiveTotal } from "./totals";
 
@@ -37,8 +37,15 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   if (H && !units && decor.categoryAxis) {
     // Row labels carry a share suffix ("EMEA (32%)") the generic frame
     // reservation doesn't know about — widen the left gutter for it.
+    //
+    // Back through `fitPlot`, because this widening happens AFTER the frame was
+    // floored and takes a fixed number of points however narrow the chart is:
+    // on a 14pt-wide mekko it left `w: -12.2`, and a negative-width segment is
+    // not a thin one — SVG drops it and PowerPoint clamps it to a sliver, so
+    // every row loses its bars while the totals beside them still print. Any
+    // frame that can afford the gutter is returned untouched.
     const extra = textWidth(" (00%)", fs);
-    frame = { ...frame, x: frame.x + extra, w: frame.w - extra };
+    frame = fitPlot(cfg, { ...frame, x: frame.x + extra, w: frame.w - extra });
   }
   const grand = extents.reduce((a, b) => a + b, 0) || 1;
   const gap = 2;
@@ -111,20 +118,31 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
 
     // Column total at the column's end — the Mekko signature.
     if (H) {
-      nodes.push({
-        kind: "text",
-        x: frame.x + colLen + 3,
-        y: centers[c] - fs * 0.75,
-        w: cfg.width - (frame.x + colLen) - 3,
-        h: fs * 1.5,
-        text: formatNumber(totals[c], fmt),
-        fontSize: fs,
-        bold: true,
-        color: style.text,
-        align: "left",
-        valign: "middle",
-        name: `total-${c}`,
-      });
+      // Bound by the row it ends, not by the chart's font: a Mekko's rows are
+      // proportional to their totals, so a small column gets a thin row, and a
+      // total centred in a box `fs * 1.5` tall then runs into its neighbours.
+      // Per-row rather than one size for the axis, because the rows genuinely
+      // differ in height here. Last resort: a row that can afford `fs` keeps it.
+      //
+      // A row can be ZERO here — the rows are shares of the total, so a chart
+      // whose data is all zeroes has no rows at all — and `Math.min` answered a
+      // font of zero, which OOXML rejects outright. `bandFontSize` is the floor.
+      const totalFs = bandFontSize(fs, ext, 1.5);
+      if (totalFs > 0)
+        nodes.push({
+          kind: "text",
+          x: frame.x + colLen + 3,
+          y: centers[c] - totalFs * 0.75,
+          w: cfg.width - (frame.x + colLen) - 3,
+          h: totalFs * 1.5,
+          text: formatNumber(totals[c], fmt),
+          fontSize: totalFs,
+          bold: true,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `total-${c}`,
+        });
     } else {
       nodes.push({
         kind: "text",
@@ -178,24 +196,39 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     // neighbour: "Americas (42%)" and "APAC (27%)" collided by 6pt on an
     // ordinary 200x150 mekko, at the default font.
     const catRoom = (c: number) => widths[c] + gap;
-    const overflows = (f: number) => !H && catLabels.some((l, c) => textWidth(l, f) > catRoom(c));
+    // Rotating the chart rotates which side of the label is crowded, and this
+    // predicate used to answer `false` outright when horizontal — so the whole
+    // fit above was skipped and the names were drawn at `fs`, unclipped, in a
+    // gutter `computeFrameHorizontal` caps at 30% of the width. Sideways the
+    // room is that gutter, and it is the same for every row, so the axis still
+    // shrinks together and still reads at one size.
+    const gutter = Math.max(1, frame.x - 4);
+    const overflows = (f: number) =>
+      H ? catLabels.some((l) => textWidth(l, f) > gutter) : catLabels.some((l, c) => textWidth(l, f) > catRoom(c));
     while (catFs > 6 && overflows(catFs)) catFs -= 0.5;
     for (let c = 0; c < n; c++) {
       const label = catLabels[c];
       if (H) {
-        nodes.push({
-          kind: "text",
-          x: 0,
-          y: centers[c] - fs * 0.75,
-          w: frame.x - 4,
-          h: fs * 1.5,
-          text: label,
-          fontSize: fs,
-          color: style.text,
-          align: "right",
-          valign: "middle",
-          name: `category-${c}`,
-        });
+        // Bounded by the gutter (width, shared) AND by the row it names
+        // (height, per-row — a Mekko's rows are proportional to their totals,
+        // so a small column gets a thin one). The smaller wins, the same way
+        // the butterfly's category names take the smaller of their gutter fit
+        // and their row fit.
+        const nameFs = bandFontSize(catFs, catRoom(c), 1.5);
+        if (nameFs > 0)
+          nodes.push({
+            kind: "text",
+            x: 0,
+            y: centers[c] - nameFs * 0.75,
+            w: gutter,
+            h: nameFs * 1.5,
+            text: clipToWidth(label, nameFs, gutter),
+            fontSize: nameFs,
+            color: style.text,
+            align: "right",
+            valign: "middle",
+            name: `category-${c}`,
+          });
       } else {
         nodes.push({
           kind: "text",

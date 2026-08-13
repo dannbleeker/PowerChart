@@ -3,7 +3,7 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
-import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode, MIN_LABEL_FS } from "./frame";
 import { lerpColor, zoneFill } from "../color";
 
 /**
@@ -168,7 +168,13 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // past a 200x150 frame at a 32pt font). Bound by the row they label, and
   // shrunk together so one row reads at one size. At any font that already fits
   // its row this is `fs` and nothing moves.
-  const rowFs = Math.min(fs, slotH / 1.5);
+  // Bound by the row, floored by legibility: a Gantt on a sliver of a frame
+  // gave every activity name a ONE-POINT font, which is ink rather than text and
+  // is below what OOXML will even accept. Zero means the row cannot carry a
+  // name, and the name is dropped — the bar still shows the span.
+  const rowFs = bandFontSize(fs, slotH, 1.5);
+  /** The in-bar span label is drawn at 0.9 of the row font, so it floors later. */
+  const barLabelFs = rowFs * 0.9 >= MIN_LABEL_FS ? rowFs * 0.9 : 0;
   const barH = Math.min(slotH * 0.55, fs * 1.4);
   // A milestone marker is a circle CENTRED on its date, so half of it sits to
   // the RIGHT of the last position the timeline can reach — and the right margin
@@ -401,17 +407,17 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     columnTop.push(cy - barH / 2);
     // Section header rows: bold label, light band, no bar.
     if (isHeader[c]) {
-      nodes.push(
-        {
-          kind: "rect",
-          x: 0,
-          y: cy - slotH / 2 + 1,
-          w: cfg.width,
-          h: slotH - 2,
-          fill: zoneFill(style.background, "#f0efec"),
-          name: `section-${c}`,
-        },
-        {
+      nodes.push({
+        kind: "rect",
+        x: 0,
+        y: cy - slotH / 2 + 1,
+        w: cfg.width,
+        h: slotH - 2,
+        fill: zoneFill(style.background, "#f0efec"),
+        name: `section-${c}`,
+      });
+      if (rowFs > 0)
+        nodes.push({
           kind: "text",
           x: 0,
           y: cy - rowFs * 0.75,
@@ -424,8 +430,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           align: "left",
           valign: "middle",
           name: `category-${c}`,
-        },
-      );
+        });
       // Auto-summary bar: span min(start)→max(end) of the child activities
       // (the rows below this header up to the next header), with end caps.
       if (decor.summaryBars) {
@@ -478,19 +483,20 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       }
       return;
     }
-    nodes.push({
-      kind: "text",
-      x: indents[c] * 10,
-      y: cy - rowFs * 0.75,
-      w: catW - 6 - indents[c] * 10,
-      h: rowFs * 1.5,
-      text: acts[c],
-      fontSize: rowFs,
-      color: style.text,
-      align: "left",
-      valign: "middle",
-      name: `category-${c}`,
-    });
+    if (rowFs > 0)
+      nodes.push({
+        kind: "text",
+        x: indents[c] * 10,
+        y: cy - rowFs * 0.75,
+        w: catW - 6 - indents[c] * 10,
+        h: rowFs * 1.5,
+        text: acts[c],
+        fontSize: rowFs,
+        color: style.text,
+        align: "left",
+        valign: "middle",
+        name: `category-${c}`,
+      });
     // Responsible + remark columns right of the timeline.
     if (hasOwners && owners[c]) {
       nodes.push({
@@ -598,7 +604,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       }
       if (decor.segmentLabels) {
         const label = spanLabel(s, e);
-        if (bw >= textWidth(label, fs * 0.9) + 4) {
+        if (bw >= textWidth(label, fs * 0.9) + 4 && barLabelFs > 0) {
           nodes.push({
             kind: "text",
             x: bx,
@@ -606,7 +612,7 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
             w: bw,
             h: rowFs * 1.4,
             text: label,
-            fontSize: rowFs * 0.9,
+            fontSize: barLabelFs,
             // Ink chosen for the bar it sits on, like every other in-shape
             // label: white vanished on a light palette colour.
             color: contrastInk(barFill),

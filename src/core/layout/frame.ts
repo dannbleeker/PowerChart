@@ -16,7 +16,41 @@ export interface Frame {
  * plot POSITIVE, not to make it readable — a chart this small is not readable
  * on any arithmetic.
  */
-const MIN_PLOT_SIDE = 8;
+export const MIN_PLOT_SIDE = 8;
+
+/**
+ * The smallest any label may be drawn; below it the label is dropped.
+ *
+ * Every fit in this engine shrinks a label to the room it has, and none of them
+ * had a floor — so a band squeezed to a few points answered with labels of one
+ * or two, which is ink rather than text. The house floor for a shrink loop is 5
+ * (`while (f > 5 …)` everywhere); this is the same number for the fits
+ * expressed as arithmetic rather than as a loop.
+ */
+export const MIN_LABEL_FS = 5;
+
+/**
+ * The size a label centred in a band of `band` points may be drawn at, in a box
+ * `band / boxRatio` tall — or ZERO, meaning there is no room and the caller
+ * must not draw it.
+ *
+ * `Math.min(fs, band / ratio)` is the whole of "fit the label to the mark it
+ * sits on", and written inline it has no floor: a band of zero returns a font
+ * of zero. That is not a small label, it is an INVALID one — OOXML's `sz` is
+ * hundredths of a point with a minimum of 100, so a chart whose data is all
+ * zeroes (a template nobody has filled in yet, the commonest thing there is)
+ * writes a deck PowerPoint offers to repair. Found by sweeping degenerate data
+ * for non-positive font sizes the day the inline form was introduced.
+ *
+ * Returning 0 rather than clamping to the floor is deliberate and is the answer
+ * the radar, sunburst, tilemap and pie reservations already give: a label too
+ * small to read is not there, so do not spend the band drawing it. Callers
+ * branch on it, which is also what stops the invalid size reaching a renderer.
+ */
+export function bandFontSize(fs: number, band: number, boxRatio: number): number {
+  const f = Math.min(fs, band / boxRatio);
+  return Number.isFinite(f) && f >= MIN_LABEL_FS ? f : 0;
+}
 
 /**
  * Clamp a plot rectangle into the chart frame.
@@ -517,12 +551,21 @@ export function chromeNodes(
      * Bound by that spacing, the way the radar's ring ticks are bound by their
      * ring gap. Last resort: on any chart whose ticks already clear each other
      * this is `fs * 0.9` and nothing moves.
+     *
+     * Dropped outright when the spacing cannot pay for a LEGIBLE label. A fit
+     * with no floor answers whatever the arithmetic says, and on a plot squeezed
+     * to a few points that is a stack of one-point labels — ink no reader can
+     * resolve, and a fit that reports success. Same answer the radar, sunburst,
+     * tilemap and pie reservations give when their band cannot be met: a label
+     * that cannot be read is not there. The datamarks and gridlines stay, since
+     * those still carry the scale.
      */
     const tickGap =
       ticks.length > 1
         ? Math.min(...ticks.slice(1).map((t, i) => Math.abs(scale.toY(t) - scale.toY(ticks[i]))))
         : frame.h;
     const tickScale = Math.min(1, tickGap / (fs * 1.4));
+    const tickLegible = fs * 0.9 * tickScale >= MIN_LABEL_FS;
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {
@@ -537,6 +580,7 @@ export function chromeNodes(
           name: "datamark",
         });
       }
+      if (!tickLegible) continue;
       nodes.push({
         kind: "text",
         x: 0,

@@ -1084,7 +1084,7 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   }
 
   // Global de-collision for outside labels (vertical cartesian charts).
-  if (!skipDecor) resolveLabelCollisions(nodes);
+  if (!skipDecor) resolveLabelCollisions(nodes, cfg.height);
 
   // Manual label nudges (think-cell's label dragging, config-driven).
   if (cfg.labelOffsets) {

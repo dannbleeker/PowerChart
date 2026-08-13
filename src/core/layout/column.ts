@@ -13,7 +13,10 @@ import {
   legendWrapWalk,
   seriesLegendLabels,
   logFloor,
+  titleHeight,
   valueScale,
+  bandFontSize,
+  MIN_LABEL_FS,
   type Frame,
   type ValueScale,
 } from "./frame";
@@ -284,6 +287,20 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const barW = stacked ? stackThick : colThick / (1 + (nBars - 1) * (1 - overlapFrac));
     const barStep = stacked ? stackThick : barW * (1 - overlapFrac);
     const barThick = barW;
+    /**
+     * A bar's drawn thickness, after the 1pt gap that separates it from its
+     * neighbour.
+     *
+     * That gap is chrome, and a bar too thin to pay for it went NEGATIVE:
+     * `barThick - 1` is -0.3 for a clustered chart 14 points wide, or one 12x9,
+     * and a negative-width rect is not a thin bar — SVG drops it and PowerPoint
+     * clamps it to a sliver, so the chart loses its bars entirely while every
+     * label around them still says what they are worth.
+     *
+     * The gap yields instead, down to half the bar. Identical for any bar 2pt or
+     * wider, which is every chart at a sane size.
+     */
+    const withGap = (t: number) => Math.max(t * 0.5, t - 1);
     // think-cell's Segment Order: stacking order within this column.
     const order = data.series.map((_, i) => i);
     if (cfg.segmentOrder === "reverse") order.reverse();
@@ -313,7 +330,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       if (raw != null && v !== 0) {
         if (stacked) {
           const catPos = nStacks > 1 ? centers[c] - colThick / 2 + (sp + 0.5) * stackThick : centers[c];
-          const thick = nStacks > 1 ? stackThick - 1 : colThick;
+          const thick = nStacks > 1 ? withGap(stackThick) : colThick;
           if (v >= 0) {
             r = segRect(catPos, thick, ups[sp], ups[sp] + v);
             ups[sp] += v;
@@ -328,7 +345,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           }
         } else {
           const pos = centers[c] - colThick / 2 + barW / 2 + position * barStep;
-          r = segRect(pos, barThick - 1, 0, v);
+          r = segRect(pos, withGap(barThick), 0, v);
         }
       }
       // Where THIS series' mark tops out, in value units — what a level-anchored
@@ -493,20 +510,27 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       });
     } else if (decor.totals && !pct) {
       if (H) {
-        nodes.push({
-          kind: "text",
-          x: frame.x + topQ + 3,
-          y: centers[c] - fs * 0.75,
-          w: cfg.width - (frame.x + topQ) - 3,
-          h: fs * 1.5,
-          text: formatNumber(signedTotals[c], fmt),
-          fontSize: fs,
-          bold: true,
-          color: style.text,
-          align: "left",
-          valign: "middle",
-          name: `total-${c}`,
-        });
+        // A total is centred on its row in a box `fs * 1.5` tall, so once the
+        // font outgrows the row pitch the totals overlap each OTHER down the
+        // end of the bars — the same defect the butterfly's value labels had,
+        // and it wants the same bound: the ROW the total belongs to. Last
+        // resort, so at any font that already fits its row this is `fs`.
+        const totalFs = bandFontSize(fs, slotLen, 1.5);
+        if (totalFs > 0)
+          nodes.push({
+            kind: "text",
+            x: frame.x + topQ + 3,
+            y: centers[c] - totalFs * 0.75,
+            w: cfg.width - (frame.x + topQ) - 3,
+            h: totalFs * 1.5,
+            text: formatNumber(signedTotals[c], fmt),
+            fontSize: totalFs,
+            bold: true,
+            color: style.text,
+            align: "left",
+            valign: "middle",
+            name: `total-${c}`,
+          });
       } else {
         nodes.push({
           kind: "text",
@@ -856,6 +880,20 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   if (!baseMap && !secondary && !independent) return result;
 
   const fs = style.fontSize;
+  /**
+   * The size a line's point labels are drawn at, when horizontal.
+   *
+   * Sideways the label is centred on its category's ROW, in a box `fs * 1.4`
+   * tall, and was bounded by nothing — so once the font outgrew the row pitch
+   * the labels of adjacent categories were drawn through each other, which was
+   * the largest single group of text collisions left in the engine. Bound by
+   * the row, the same way the totals and the category names beside them now
+   * are. Upright a point label sits ABOVE its point rather than on a row, so
+   * nothing there wants this and `fs` is returned unchanged.
+   */
+  const rowPitch =
+    anchors.categoryX.length > 1 ? Math.abs(anchors.categoryX[1] - anchors.categoryX[0]) : anchors.plot.h;
+  const pointFs = H ? bandFontSize(fs, rowPitch, 1.4) : fs;
   /** Value → coordinate along the value axis (x when horizontal, y when not). */
   let lineToY = baseMap ?? ((v: number) => (H ? anchors.plot.x + v : anchors.plot.y + anchors.plot.h - v));
   /** Point for a value at a category, in the base chart's orientation. */
@@ -958,7 +996,10 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         strokeWidth: 1,
         name: `combo-marker-${li}-${c}`,
       });
-      if (labelOn) {
+      // `pointFs` is 0 when the row is too thin to carry a legible label, which
+      // is the same "no room" answer the label placers give elsewhere — drawn
+      // anyway it would be a zero-size font, which OOXML rejects.
+      if (labelOn && pointFs > 0) {
         // Categories run down a bar chart, so a label ABOVE its point would sit
         // on the neighbouring category's row; put it beside the mark instead.
         nodes.push(
@@ -966,11 +1007,11 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
             ? {
                 kind: "text",
                 x: Math.min(pt.x + r + 2, cfg.width - 60),
-                y: pt.y - fs * 0.7,
+                y: pt.y - pointFs * 0.7,
                 w: 60,
-                h: fs * 1.4,
+                h: pointFs * 1.4,
                 text: formatNumber(v, fmt),
-                fontSize: fs,
+                fontSize: pointFs,
                 color: independent ? color : style.text,
                 align: "left",
                 valign: "middle",
@@ -1067,7 +1108,28 @@ export function horizontalChrome(
     // tick strip rotated, so it earns the same step-derived precision and the
     // same unitless share branch (see axisTickLabel).
     const axisLabel = axisTickLabel(scale.ticks, scale.percent, cfg.numberFormat);
-    for (const t of scale.ticks) {
+    // Rotating the axis rotates its crowding: the vertical strip's labels run
+    // into each other when the font outgrows the tick SPACING, and this one's
+    // when it outgrows the tick spacing measured the other way — as width. The
+    // box is a fixed 48pt regardless, so nothing here was ever bound by the gap
+    // it sits in. Bound by the gap, shrunk together so the axis reads at one
+    // size, then clipped. At any font whose labels already fit between two
+    // ticks this is `fs * 0.9` and nothing moves.
+    const tickGap =
+      scale.ticks.length > 1
+        ? Math.min(...scale.ticks.slice(1).map((t, i) => Math.abs(qOf(t) - qOf(scale.ticks[i]))))
+        : frame.w;
+    const room = Math.max(1, tickGap - 2);
+    const tickFs = (() => {
+      let f = fs * 0.9;
+      while (f > MIN_LABEL_FS && scale.ticks.some((t) => textWidth(axisLabel(t), f) > room)) f -= 0.5;
+      return f;
+    })();
+    // The loop floors rather than shrinking to nothing, so a gap this tight
+    // leaves labels that still overlap — and a label too small to read is not
+    // worth the collision. Dropped whole, gridlines kept, as on the other axes.
+    const tickFits = scale.ticks.every((t) => textWidth(axisLabel(t), tickFs) <= room);
+    for (const t of tickFits ? scale.ticks : []) {
       const x = frame.x + qOf(t);
       nodes.push({
         kind: "text",
@@ -1075,8 +1137,8 @@ export function horizontalChrome(
         y: frame.y + frame.h + 2,
         w: 48,
         h: fs * 1.4,
-        text: axisLabel(t),
-        fontSize: fs * 0.9,
+        text: clipToWidth(axisLabel(t), tickFs, room),
+        fontSize: tickFs,
         color: style.mutedText,
         align: "center",
         valign: "top",
@@ -1085,21 +1147,48 @@ export function horizontalChrome(
     }
   }
   if (decor.categoryAxis) {
-    cfg.data.categories.forEach((cat, i) => {
-      nodes.push({
-        kind: "text",
-        x: 0,
-        y: centers[i] - fs * 0.75,
-        w: frame.x - 4,
-        h: fs * 1.5,
-        text: cat,
-        fontSize: fs,
-        color: style.text,
-        align: "right",
-        valign: "middle",
-        name: `category-${i}`,
+    /**
+     * One size for the whole axis, bounded by BOTH the row it names and the
+     * gutter it sits in.
+     *
+     * The upright category axis was fitted to its slot width and this one — the
+     * same axis rotated — was fitted to nothing at all: drawn at `fs` in a box
+     * `fs * 1.5` tall, centred on its row. So once the font outgrew the row
+     * pitch every name overlapped its neighbours (nine horizontal kinds at 18pt
+     * on a 200x150 frame), and a name wider than the gutter ran back across the
+     * bars it was naming, since `computeFrameHorizontal` caps that gutter at
+     * 30% of the width however long the names are.
+     *
+     * Height first, then width, then clip — the two bounds are independent and
+     * the smaller wins. Last resort as everywhere else: at any size where the
+     * names already fit their row and their gutter this is `fs` and nothing
+     * moves.
+     */
+    const slotH = centers.length > 1 ? Math.abs(centers[1] - centers[0]) : frame.h;
+    const gutter = Math.max(1, frame.x - 4);
+    const catFs = (() => {
+      let f = bandFontSize(fs, slotH, 1.5);
+      while (f > MIN_LABEL_FS && cfg.data.categories.some((c) => textWidth(String(c ?? ""), f) > gutter)) f -= 0.5;
+      return f;
+    })();
+    // Zero means the rows cannot carry a legible name at any size, so the axis
+    // is dropped whole rather than drawn at a size OOXML will not accept.
+    if (catFs > 0)
+      cfg.data.categories.forEach((cat, i) => {
+        nodes.push({
+          kind: "text",
+          x: 0,
+          y: centers[i] - catFs * 0.75,
+          w: gutter,
+          h: catFs * 1.5,
+          text: clipToWidth(String(cat ?? ""), catFs, gutter),
+          fontSize: catFs,
+          color: style.text,
+          align: "right",
+          valign: "middle",
+          name: `category-${i}`,
+        });
       });
-    });
   }
   if (decor.seriesLabels && cfg.data.series.length > 1) {
     nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2, { maxX: cfg.width - 4 }));
@@ -1239,9 +1328,20 @@ export function seriesLabelNodes(
     // only moves labels UP, so it cannot rescue one already emitted above the
     // canvas. Spread evenly over the band when the gap cannot be honoured,
     // which is what `layoutSlope.place()` does after the same discovery.
-    const top = lineH / 2;
+    //
+    // The floor is the TITLE's bottom, not the canvas top. These labels sit in
+    // the right-hand gutter, so moving them down cannot land them on the plot —
+    // but the title is a FULL-WIDTH band, and on six kinds the upward
+    // propagation walked the topmost label into the middle of it, at a size
+    // where a reader sees the two texts crossed rather than one clamped. It is
+    // the same "cannot honour the gap" case the canvas-top branch already
+    // handles, so it takes the same answer: spread over the band that IS
+    // available, and shrink to it.
+    const bottom = Math.max(lineH / 2, Math.min(frame.y + frame.h, cfg.height - lineH / 2));
+    // Clamped at `bottom` so the band can never invert. With no title this is
+    // `lineH / 2` and both the test and the spread are exactly as before.
+    const top = Math.min(titleHeight(cfg, style) + lineH / 2, bottom);
     if (entries[0].y < top) {
-      const bottom = Math.max(top, Math.min(frame.y + frame.h, cfg.height - lineH / 2));
       const step = entries.length > 1 ? (bottom - top) / (entries.length - 1) : 0;
       entries.forEach((e, i) => (e.y = top + i * step));
       // Spread AND shrunk, because a spread alone trades one defect for a worse

@@ -222,7 +222,14 @@ function nodeToSvg(n: SceneNode): string {
             : n.y + n.h / 2 + n.fontSize * 0.36;
       const weight = n.bold ? ` font-weight="600"` : "";
       const family = n.fontFamily ? ` font-family="${esc(n.fontFamily)}"` : "";
-      return `<text x="${r(x)}" y="${r(y)}" font-size="${num(n.fontSize, 12)}" fill="${paint(n.color)}" text-anchor="${anchor}"${weight}${family}${name(n)}>${esc(n.text)}</text>`;
+      // `num` substitutes for a non-finite size and nothing else, so zero and
+      // negative reached the markup: `font-size="0"` renders nothing and
+      // `font-size="-5"` is invalid, so the attribute is dropped and the label
+      // is drawn at whatever the document inherits. Both are a label that
+      // silently is not what the scene asked for, which is the preview lying
+      // about what the deck will contain. The third sink's own floor, matching
+      // the clamps `pptx-paint.mjs` and `officeFontPt` already apply.
+      return `<text x="${r(x)}" y="${r(y)}" font-size="${Math.max(0.01, num(n.fontSize, 12))}" fill="${paint(n.color)}" text-anchor="${anchor}"${weight}${family}${name(n)}>${esc(n.text)}</text>`;
     }
     case "ellipse": {
       const stroke = n.stroke ? ` stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}"` : "";
