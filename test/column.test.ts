@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
+import { textWidth } from "../src/core/scene";
+import { sampleConfig } from "../src/core/samples";
 import type { EllipseNode, LineNode, RectNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
@@ -457,5 +459,43 @@ describe("a clustered column that only goes down", () => {
     expect((scene.nodes.find((n) => n.name === "value-line-label-0") as { text?: string } | undefined)?.text).toBe(
       "Ø 25",
     );
+  });
+});
+
+/**
+ * A column total is centred on its category SLOT and was drawn at the chart font
+ * however narrow that slot is — the one label family here that never scaled
+ * while the title, the category names and the series labels all did. `"113"` is
+ * 17.4pt at the default font in a 13pt slot at 80x60, so the last two totals
+ * were drawn through each other.
+ *
+ * The horizontal branch already bounds itself against its row pitch; this is the
+ * same bound for the upright chart, and the same two-step the clustered in-bar
+ * labels take: fit to the slot, drop past the floor.
+ */
+describe("upright column totals are fitted to their slot", () => {
+  const totals = (w: number, h: number) =>
+    buildChart({ ...sampleConfig("stacked"), width: w, height: h } as ChartConfig).nodes.filter(
+      (n): n is TextNode => n.kind === "text" && /^total-\d+$/.test(n.name ?? ""),
+    );
+
+  it("no two adjacent totals overlap on a thumbnail", () => {
+    const ts = totals(80, 60);
+    expect(ts.length, "no totals drawn — the check would be vacuous").toBeGreaterThan(1);
+    for (let i = 1; i < ts.length; i++) {
+      const a = ts[i - 1];
+      const b = ts[i];
+      const inkA = textWidth(a.text, a.fontSize, a.bold);
+      const inkB = textWidth(b.text, b.fontSize, b.bold);
+      const ax1 = a.x + (a.w + inkA) / 2;
+      const bx0 = b.x + (b.w - inkB) / 2;
+      expect(ax1, `${a.name} runs into ${b.name}`).toBeLessThanOrEqual(bx0 + 0.01);
+    }
+  });
+
+  it("leaves an ordinary chart's totals at the chart font", () => {
+    // Last resort: a total that already fits its slot keeps `fs` exactly, so no
+    // ordinary chart moves and the showcase deck does not shift.
+    for (const t of totals(480, 300)) expect(t.fontSize).toBeCloseTo(10, 5);
   });
 });

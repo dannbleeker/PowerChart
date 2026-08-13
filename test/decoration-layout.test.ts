@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
-import type { RectNode, TextNode } from "../src/core/scene";
+import { sampleConfig } from "../src/core/samples";
+import type { RectNode, SceneNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /** Decoration layout — bands stay clipped to the plot, anchors, variance tiers, corners. */
@@ -253,5 +254,82 @@ describe("difference arrow anchored to a value line", () => {
       }),
     );
     expect(s.nodes.some((n) => n.name?.startsWith("value-line"))).toBe(true);
+  });
+});
+
+/**
+ * The CAGR caption against the TITLE — the last overlapping text at the default
+ * font, and the one the de-collision pass could never solve.
+ *
+ * The arrow is lifted clear of the column tops and the caption sits above the
+ * arrow, so on a short frame the caption arrives in the title's band. Both
+ * labels are movable, so `collide.ts` had already looked and found nowhere.
+ *
+ * CLAMPING the caption to the title's bottom was tried, measured and refused —
+ * it turned five `title x cagr-label` overlaps into eight against the column
+ * totals, because a clamp moves a label whether or not the destination is free.
+ * What that measurement never tried is making the caption SMALLER: it was the
+ * last label in the engine still drawn at the full chart font, in a FIXED 90pt
+ * box that hung off the left edge of any chart narrower than that (x = -17 at
+ * 80x60, -24 at 60x300).
+ */
+describe("the CAGR caption yields to the title instead of crossing it", () => {
+  const stacked = (w: number, h: number) =>
+    buildChart({ ...sampleConfig("stacked"), width: w, height: h } as ChartConfig).nodes;
+  const cap = (ns: SceneNode[]) => ns.find((n) => n.name === "cagr-label") as TextNode | undefined;
+
+  it("keeps the caption at full size on an ordinary chart", () => {
+    // The guard against this becoming "the CAGR caption disappeared". 480x300 is
+    // the default frame and the one the showcase draws at.
+    const c = cap(stacked(480, 300));
+    expect(c, "no CAGR caption on a 480x300 chart").toBeDefined();
+    expect(c!.fontSize).toBeCloseTo(10, 5);
+  });
+
+  it("never draws the caption box off the left edge", () => {
+    // The fixed 90pt box did exactly this on every frame narrower than 90pt.
+    for (const [w, h] of [
+      [80, 60],
+      [120, 90],
+      [60, 300],
+      [200, 150],
+      [480, 300],
+    ] as [number, number][]) {
+      const c = cap(stacked(w, h));
+      if (!c) continue;
+      expect(c.x, `${w}x${h}: caption box starts at ${c.x}`).toBeGreaterThanOrEqual(0);
+      expect(c.x + c.w, `${w}x${h}: caption box ends past the frame`).toBeLessThanOrEqual(w + 0.01);
+    }
+  });
+
+  it("keeps the ARROW even on the frames where the caption is dropped", () => {
+    // The caption is a caption; the arrow carries the anchors and the slope. A
+    // rate drawn through the title is not readable, but losing the arrow would
+    // lose the decoration itself.
+    for (const [w, h] of [
+      [80, 60],
+      [120, 90],
+      [300, 60],
+    ] as [number, number][]) {
+      const ns = stacked(w, h);
+      expect(cap(ns), `${w}x${h}: caption survived where it cannot fit`).toBeUndefined();
+      expect(
+        ns.some((n) => n.name === "cagr-line"),
+        `${w}x${h}: lost the arrow`,
+      ).toBe(true);
+      expect(
+        ns.some((n) => n.name === "cagr-head"),
+        `${w}x${h}: lost the arrowhead`,
+      ).toBe(true);
+    }
+  });
+
+  it("shrinks rather than drops when shrinking is enough", () => {
+    // 160x120 has room for a smaller caption but not a full-size one — the step
+    // between "unchanged" and "gone" that a bare drop would have skipped.
+    const c = cap(stacked(160, 120));
+    expect(c, "160x120 dropped a caption that could have been shrunk").toBeDefined();
+    expect(c!.fontSize).toBeLessThan(10);
+    expect(c!.fontSize).toBeGreaterThanOrEqual(5);
   });
 });
