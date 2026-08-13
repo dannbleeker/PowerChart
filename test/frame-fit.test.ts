@@ -261,15 +261,20 @@ describe("labels are not drawn on top of each other", () => {
       // series names meeting in the middle, a combo point label pinned to x=0
       // over the category names, a bubble size legend spilling onto the y axis.
       //
-      // 300x60 is NOT here yet and that is a statement, not an omission. Five
-      // pairs survive on a 60pt-tall letterbox: a combo point label against the
-      // column totals, the stacked CAGR caption against the title, and two
-      // adjacent sunburst outside labels. The first two are de-collision work —
-      // `FLIPPABLE` has nowhere to send a label on a frame that is almost all
-      // title — and the third is the same sunburst neighbour problem 120x90
-      // already has. Adding the frame without fixing them would only park a
-      // known-red gate.
+      // 120x90 followed once the sunburst's adjacent OUTSIDE labels were fitted
+      // to the vertical gap between neighbours instead of to each wedge's own
+      // arc. That one pair was the only thing left on this frame upright — it is
+      // NOT in the rotated sweep below, which still has four (see there).
+      //
+      // 300x60 is NOT here yet and that is a statement, not an omission. Three
+      // pairs survive on a 60pt-tall letterbox, down from five: a combo point
+      // label against the column totals (x2) and the stacked CAGR caption
+      // against the title. Both are de-collision work — `FLIPPABLE` has nowhere
+      // to send a label on a frame that is almost all title. 80x60 carries nine,
+      // the same two shapes plus adjacent column totals. Adding either frame
+      // without fixing them would only park a known-red gate.
       [60, 300],
+      [120, 90],
       [160, 120],
       [200, 150],
       [480, 300],
@@ -378,14 +383,15 @@ describe("labels are not drawn on top of each other", () => {
       // series names meeting in the middle, a combo point label pinned to x=0
       // over the category names, a bubble size legend spilling onto the y axis.
       //
-      // 300x60 is NOT here yet and that is a statement, not an omission. Five
-      // pairs survive on a 60pt-tall letterbox: a combo point label against the
-      // column totals, the stacked CAGR caption against the title, and two
-      // adjacent sunburst outside labels. The first two are de-collision work —
-      // `FLIPPABLE` has nowhere to send a label on a frame that is almost all
-      // title — and the third is the same sunburst neighbour problem 120x90
-      // already has. Adding the frame without fixing them would only park a
-      // known-red gate.
+      // 120x90 is in the UPRIGHT sweep above and deliberately not here. Rotating
+      // the sample leaves four pairs on this frame, all one shape: a mekko's
+      // legend against its totals and its category names. Rotating a chart
+      // rotates which side of a label is crowded, and this gate has found that
+      // the fits were written for the upright chart before — so the asymmetry is
+      // recorded rather than smoothed over.
+      //
+      // 300x60 and 80x60 are absent for the reasons given in the upright sweep,
+      // plus the same mekko legend pair here.
       [60, 300],
       [160, 120],
       [200, 150],

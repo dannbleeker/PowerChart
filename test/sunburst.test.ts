@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
-import type { WedgeNode } from "../src/core/scene";
+import type { TextNode, WedgeNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
 /** Sunburst rings. */
@@ -97,5 +97,76 @@ describe("outer labels stay on the canvas (regression)", () => {
       decorations: { segmentLabels: true },
     } as unknown as ChartConfig);
     expect(overflowing(s), `overflowing: ${overflowing(s).join(" | ")}`).toEqual([]);
+  });
+});
+
+/**
+ * Adjacent OUTSIDE labels were the last overlapping text left at the default
+ * font once every other shape had been fixed — one pair at 120x90 and two at
+ * 300x60, grazing by 0.3 to 1.0pt.
+ *
+ * Each label was bounded by its own wedge's ARC, which says nothing about where
+ * the NEIGHBOUR's midpoint falls: a wide wedge beside a narrow one earns a tall
+ * label and still sits close to it. Every outside label is on one circle
+ * (`r + fs*0.7`), so the gap between two of them is a fact the layout can read
+ * once they are all placed — no `collide.ts` pass needed, which matters because
+ * these are named `label-N`, the same name scatter and bubble use for POINT
+ * labels, and moving those was measured as a worse trade twice.
+ */
+describe("sunburst — adjacent outside labels", () => {
+  const outside = (cfg: ChartConfig) =>
+    buildChart(cfg)
+      .nodes.filter((n): n is TextNode => n.kind === "text" && /^label-\d+$/.test(n.name ?? "") && !!n.text.trim())
+      // Only the ring's own labels: `align: "center"` is an INSIDE label, which
+      // is bounded by its chord and takes no part in this.
+      .filter((n) => n.align !== "center");
+
+  const inkY = (t: TextNode) => {
+    const base =
+      t.valign === "top"
+        ? t.y + t.fontSize
+        : t.valign === "bottom"
+          ? t.y + t.h - t.fontSize * 0.25
+          : t.y + t.h / 2 + t.fontSize * 0.36;
+    return { y0: base - t.fontSize * 0.8, y1: base + t.fontSize * 0.21 };
+  };
+
+  it.each([
+    [120, 90],
+    [300, 60],
+    [200, 150],
+    [480, 300],
+  ])("no two of them overlap at %ix%i", (w, h) => {
+    const ls = outside({ ...sampleConfig("sunburst"), width: w, height: h } as ChartConfig);
+    expect(ls.length, "no outside labels were drawn — the check would be vacuous").toBeGreaterThan(1);
+    const bad: string[] = [];
+    for (let i = 0; i < ls.length; i++) {
+      for (let j = i + 1; j < ls.length; j++) {
+        // Side matters: a left label and a right label never meet however close
+        // their y values are, so only same-side pairs are a collision.
+        if (ls[i].align !== ls[j].align) continue;
+        const a = inkY(ls[i]);
+        const b = inkY(ls[j]);
+        if (Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > 0.01) bad.push(`${ls[i].name} over ${ls[j].name}`);
+      }
+    }
+    expect(bad, bad.join(" | ")).toEqual([]);
+  });
+
+  it("leaves a roomy chart completely alone", () => {
+    // The fit must be a LAST RESORT. A shrink that fires where nothing needed
+    // shrinking moves showcase slides — the radar's ticks did exactly that once.
+    const ls = outside({ ...sampleConfig("sunburst"), width: 480, height: 300 } as ChartConfig);
+    for (const l of ls) expect(l.fontSize, `${l.name} was shrunk on a 480x300 chart`).toBeCloseTo(8.5, 5);
+  });
+
+  it("drops only ONE of a pair it cannot separate, not both", () => {
+    // Past the font floor shrinking cannot help, but dropping both loses a label
+    // the survivor's room could have carried. At 300x60 the narrow wedge's label
+    // goes and its neighbour stays.
+    const ls = outside({ ...sampleConfig("sunburst"), width: 300, height: 60 } as ChartConfig);
+    const names = ls.map((l) => l.name);
+    expect(names).toContain("label-5");
+    expect(names).not.toContain("label-6");
   });
 });

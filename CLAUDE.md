@@ -887,16 +887,43 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   while the neighbouring bar's label did the same — the mekko's `width + 8`
   lesson, unlearned one layout over).
 
-  What is left at 120x90 is the sunburst's adjacent OUTSIDE labels. They already
-  carry the arc fit; separating them needs vertical de-confliction between
-  neighbours, which is `collide.ts` work rather than another bound. Not attempted
-  — recorded so the next reader knows the frame list stops at 160x120 for a
-  reason and not by accident.
+  **120x90 is CLOSED, and the prediction in this paragraph was wrong about what
+  it would take.** It said the sunburst's adjacent outside labels needed
+  `collide.ts` vertical de-confliction rather than another bound. They did not,
+  and `collide.ts` was the one place the fix could NOT go: those labels are named
+  `label-N`, the same name scatter and bubble use for POINT labels, and moving
+  those is a trade this file already records as measured and refused twice. A
+  `MOVABLE` entry would have taken the refused trade by accident.
+
+  What it needed was the bound the arc fit is not. Each label was sized by its
+  OWN wedge's arc, which says nothing about where the NEIGHBOUR's midpoint falls
+  — a wide wedge beside a narrow one earns a tall label and still sits close to
+  it. Every outside label is on one circle (`r + fs*0.7`), so once they are all
+  placed the vertical gap between two of them is a fact the layout can simply
+  read. Sizing both to `gap / INK_RATIO` makes their two half-heights sum to
+  exactly the gap.
+
+  Two details worth keeping. **Past the floor it drops ONE of the pair, not
+  both** — dropping both loses a label the survivor's room could have carried,
+  and the smaller font is the narrower wedge, i.e. the smaller share of the data.
+  And **the sides are independent**: a left label and a right label never meet,
+  so pooling them would shrink labels with no neighbour near them.
+
+  The general lesson is the one the pie's inside labels already taught, one step
+  further out: **a label is fitted to the mark it sits on, and where marks are
+  adjacent, to the NEIGHBOUR as well.** The arc fit was necessary and not
+  sufficient.
+
+  **The rotated sweep at 120x90 is still open, and the asymmetry is deliberate.**
+  Four pairs survive there, all one shape — a mekko's legend against its totals
+  and its category names. So 120x90 is in the UPRIGHT frame list and not the
+  rotated one, which is the second time this gate has found that a fit was
+  written for the upright chart only.
 
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
   its own box, over every kind × eight frame sizes × seven fonts, plus no chart
   overlapping its own text at the default font in EITHER orientation, at
-  160x120, 200x150, 480x300 and 60x300. It measures
+  160x120, 200x150, 480x300 and 60x300 — and 120x90 upright. It measures
   INK, not boxes — a first version measured boxes and produced four false
   positives and one false negative in one run, because a label's box is routinely
   wider than its text and is anchored by `align`.
