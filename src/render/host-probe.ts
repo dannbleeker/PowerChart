@@ -809,12 +809,16 @@ const PROBES: Probe[] = [
   {
     id: "shape-add-fresh-slide-proxy",
     question: "Can a shape be added through a slide proxy resolved in THIS sync?",
-    // The three questions below exist because a real host refused eight others
-    // and the sheet could not say which of two things it meant: that this host
-    // will not take a shape on a freshly-added slide at all, or that it will
-    // not take one through a slide proxy it resolved a sync earlier. Both
-    // explain every failure in that sheet; they call for different code. So ask
-    // the three ways apart, and let the next sheet say which.
+    // `shape-add-held-slide-proxy`, `shape-resolve-held-slide-proxy` and
+    // `shape-add-fresh-getitem-slide` exist because a real host refused eight
+    // others and the sheet could not say which of two things it meant: that
+    // this host will not take a shape on a freshly-added slide at all, or that
+    // it will not take one through a slide proxy it resolved a sync earlier.
+    // Both explain every failure in that sheet; they call for different code.
+    // So ask the three ways apart, and let the next sheet say which. They are
+    // named here rather than called "the three below" because they have not
+    // been adjacent since `binding-names-shape-later` landed between them, and
+    // the two questions now above them moved for the reason recorded there.
     ask: async (ctx) => {
       try {
         probeShapes(ctx).addGeometricShape(PowerPoint.GeometricShapeType.rectangle, {
@@ -825,6 +829,144 @@ const PROBES: Probe[] = [
         });
         await ctx.sync();
         return { answer: "yes" };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "grouped-child-by-id-from-slide",
+    question: "Can a shape INSIDE a group still be resolved by id off the slide?",
+    // Sampled on every pass while it is pending: a question asked once has been
+    // sampled, not answered, and this one gates a feature.
+    resample: true,
+    // The question that decides whether the in-place update can ever work on
+    // this host, and it has never been asked.
+    //
+    // IT AND `tag-on-group-survives` SIT THIS EARLY ON PURPOSE, and moving
+    // either later undoes the only fix this file has for them. A question is
+    // answered or starved by two things — whether it needs a shape, and how
+    // late it runs — and this project measured the second: a shape-needing
+    // question answers 77% of the time from positions 1-8 and 47% from 9 on,
+    // because the host refuses scratch slides in windows and a late question
+    // is bidding against every earlier one. These two were positions 22 and
+    // 23. Both were asked twice and starved twice in round 23 (`0e22b31`),
+    // `no-scratch-slide` on both passes, while `binding-names-shape-later` —
+    // which BACKLOG §2 records as having no route to an answer at all — was
+    // spending scratch slides ahead of them. So the two questions that gate a
+    // feature now run before the one that cannot be answered.
+    //
+    // `tryInPlaceUpdate` writes to a chart's individual shapes, so it needs a
+    // node-to-shape mapping. It gets one from CHART_PARTS_TAG, which is only
+    // written for UNGROUPED charts — a grouped chart's shapes are inside the
+    // group and the tag does not list them. On this host that closes both
+    // doors: the `53ec985` round declined eleven times out of eleven with `the
+    // chart has no parts list`, because the charts that grouped have no tag and
+    // the ones that did not group had their id readback refused.
+    //
+    // But "the parts tag does not list them" is a fact about OUR code, not
+    // about the host. If the slide's own shape collection will still resolve a
+    // child by id, then a grouped chart can carry a parts list too, written
+    // from the ids the grouping pass already holds — and the fast path applies
+    // to the fourteen grouped charts a round produces instead of none of them.
+    //
+    // Asked one sync AFTER the group is made, which is how an update would ask:
+    // it resolves the id a previous run wrote down, off a slide handle taken
+    // now. office-js#3014 says grouped shapes come back from getItem as type
+    // `unknown` and sub-shapes cannot be reached, so a no here is expected and
+    // is worth recording as a measured no rather than an assumed one.
+    ask: async (ctx) => {
+      const { members, via } = await groupMembers(
+        ctx,
+        [0, 1].map((i) => ({ left: 420 + i * 25, top: 200, width: 20, height: 20 })),
+      );
+      // Only when the members were named BEFORE grouping. `groupMembers` falls
+      // back to `same-batch` proxies on a host that will not read a fresh
+      // shape's id back, and this question is about looking a child up by id —
+      // with no id there is nothing to look up, and the run has learned nothing
+      // about groups.
+      //
+      // Reported in the NEVER_ASKED vocabulary, which is the whole point. The
+      // first version answered `no-child-id`, a word no gate knows: the
+      // contract diff would have counted a setup failure as a fact about the
+      // host, `history` would have started a streak on it, and the question
+      // would have looked answered while never once being put. That is the
+      // exact mistake this repo already paid for when `no-scratch-slide`
+      // counted as agreement — and it reached a real round before being caught,
+      // answering `no-child-id` three times out of three.
+      if (via !== "ids")
+        return {
+          answer: "no-scratch-shape",
+          detail: "the host would not name the members before grouping, so there was no child id to look up",
+        };
+      try {
+        const first = members[0] as unknown as { load(p: string): void; id: string };
+        first.load("id");
+        await ctx.sync();
+        const childId = readShapeId(first);
+        if (!childId)
+          return {
+            answer: "no-scratch-shape",
+            detail: `the member's id would not read back; members via ${via}`,
+          };
+        (probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): unknown }).addGroup(members);
+        await ctx.sync();
+        // A FRESH handle, the way an update asks a run later.
+        const back = probeShapes(ctx).getItemOrNullObject(childId);
+        back.load("isNullObject,id");
+        await ctx.sync();
+        let gone: boolean | undefined;
+        try {
+          gone = (back as unknown as { isNullObject: boolean }).isNullObject;
+        } catch {
+          gone = undefined;
+        }
+        return {
+          answer: gone === false ? "yes" : gone === true ? "null-object" : "unreadable",
+          detail: `childId=${childId}; members via ${via}`,
+        };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
+    id: "tag-on-group-survives",
+    question: "Does a tag written on a GROUP read back?",
+    // Where a chart's config actually lives. Tags on a plain shape are covered
+    // above; if a group behaves differently, every chart in every deck is
+    // un-re-editable and nothing else in the probe would say so.
+    // The one whose old answer was frightening and wrong. It read back
+    // `undefined` — "no chart in any deck is re-editable" — because the tag was
+    // written through a group proxy a sync old. The group's id is what crosses
+    // the sync now, and every use resolves its own handle, exactly as
+    // `settleAndTagChart` does on the path that carries real charts.
+    ask: async (ctx) => {
+      const ids = idsOf(
+        await scratchShapes(
+          ctx,
+          [0, 1].map((i) => ({ left: 260 + i * 25, top: 60, width: 20, height: 20 })),
+          "id",
+        ),
+      );
+      try {
+        const group = (
+          probeShapes(ctx) as unknown as {
+            addGroup(shapes: unknown[]): { load(p: string): void; id: string };
+          }
+        ).addGroup(ids.map((id) => probeShape(ctx, id)));
+        group.load("id");
+        await ctx.sync();
+        const groupId = group.id;
+        if (typeof groupId !== "string" || !groupId)
+          return { answer: "unreadable", detail: "the host would not name the group it had just made" };
+        probeShape(ctx, groupId).tags.add("POWERCHART_PROBE_GROUP", "kept");
+        await ctx.sync();
+        const tag = probeShape(ctx, groupId).tags.getItemOrNullObject("POWERCHART_PROBE_GROUP");
+        tag.load("value");
+        await ctx.sync();
+        const v = (tag as unknown as { value: string }).value;
+        return { answer: v === "kept" ? "yes" : "no", detail: `value=${String(v)}` };
       } catch (err) {
         return threw(err);
       }
@@ -1476,131 +1618,6 @@ const PROBES: Probe[] = [
           answer: n === 2 ? "two" : typeof n === "number" ? `reports-${n}` : "unreadable",
           detail: `n=${n}; members via ${via}`,
         };
-      } catch (err) {
-        return threw(err);
-      }
-    },
-  },
-  {
-    id: "grouped-child-by-id-from-slide",
-    question: "Can a shape INSIDE a group still be resolved by id off the slide?",
-    // Sampled on every pass while it is pending: a question asked once has been
-    // sampled, not answered, and this one gates a feature.
-    resample: true,
-    // The question that decides whether the in-place update can ever work on
-    // this host, and it has never been asked.
-    //
-    // `tryInPlaceUpdate` writes to a chart's individual shapes, so it needs a
-    // node-to-shape mapping. It gets one from CHART_PARTS_TAG, which is only
-    // written for UNGROUPED charts — a grouped chart's shapes are inside the
-    // group and the tag does not list them. On this host that closes both
-    // doors: the `53ec985` round declined eleven times out of eleven with `the
-    // chart has no parts list`, because the charts that grouped have no tag and
-    // the ones that did not group had their id readback refused.
-    //
-    // But "the parts tag does not list them" is a fact about OUR code, not
-    // about the host. If the slide's own shape collection will still resolve a
-    // child by id, then a grouped chart can carry a parts list too, written
-    // from the ids the grouping pass already holds — and the fast path applies
-    // to the fourteen grouped charts a round produces instead of none of them.
-    //
-    // Asked one sync AFTER the group is made, which is how an update would ask:
-    // it resolves the id a previous run wrote down, off a slide handle taken
-    // now. office-js#3014 says grouped shapes come back from getItem as type
-    // `unknown` and sub-shapes cannot be reached, so a no here is expected and
-    // is worth recording as a measured no rather than an assumed one.
-    ask: async (ctx) => {
-      const { members, via } = await groupMembers(
-        ctx,
-        [0, 1].map((i) => ({ left: 420 + i * 25, top: 200, width: 20, height: 20 })),
-      );
-      // Only when the members were named BEFORE grouping. `groupMembers` falls
-      // back to `same-batch` proxies on a host that will not read a fresh
-      // shape's id back, and this question is about looking a child up by id —
-      // with no id there is nothing to look up, and the run has learned nothing
-      // about groups.
-      //
-      // Reported in the NEVER_ASKED vocabulary, which is the whole point. The
-      // first version answered `no-child-id`, a word no gate knows: the
-      // contract diff would have counted a setup failure as a fact about the
-      // host, `history` would have started a streak on it, and the question
-      // would have looked answered while never once being put. That is the
-      // exact mistake this repo already paid for when `no-scratch-slide`
-      // counted as agreement — and it reached a real round before being caught,
-      // answering `no-child-id` three times out of three.
-      if (via !== "ids")
-        return {
-          answer: "no-scratch-shape",
-          detail: "the host would not name the members before grouping, so there was no child id to look up",
-        };
-      try {
-        const first = members[0] as unknown as { load(p: string): void; id: string };
-        first.load("id");
-        await ctx.sync();
-        const childId = readShapeId(first);
-        if (!childId)
-          return {
-            answer: "no-scratch-shape",
-            detail: `the member's id would not read back; members via ${via}`,
-          };
-        (probeShapes(ctx) as unknown as { addGroup(shapes: unknown[]): unknown }).addGroup(members);
-        await ctx.sync();
-        // A FRESH handle, the way an update asks a run later.
-        const back = probeShapes(ctx).getItemOrNullObject(childId);
-        back.load("isNullObject,id");
-        await ctx.sync();
-        let gone: boolean | undefined;
-        try {
-          gone = (back as unknown as { isNullObject: boolean }).isNullObject;
-        } catch {
-          gone = undefined;
-        }
-        return {
-          answer: gone === false ? "yes" : gone === true ? "null-object" : "unreadable",
-          detail: `childId=${childId}; members via ${via}`,
-        };
-      } catch (err) {
-        return threw(err);
-      }
-    },
-  },
-  {
-    id: "tag-on-group-survives",
-    question: "Does a tag written on a GROUP read back?",
-    // Where a chart's config actually lives. Tags on a plain shape are covered
-    // above; if a group behaves differently, every chart in every deck is
-    // un-re-editable and nothing else in the probe would say so.
-    // The one whose old answer was frightening and wrong. It read back
-    // `undefined` — "no chart in any deck is re-editable" — because the tag was
-    // written through a group proxy a sync old. The group's id is what crosses
-    // the sync now, and every use resolves its own handle, exactly as
-    // `settleAndTagChart` does on the path that carries real charts.
-    ask: async (ctx) => {
-      const ids = idsOf(
-        await scratchShapes(
-          ctx,
-          [0, 1].map((i) => ({ left: 260 + i * 25, top: 60, width: 20, height: 20 })),
-          "id",
-        ),
-      );
-      try {
-        const group = (
-          probeShapes(ctx) as unknown as {
-            addGroup(shapes: unknown[]): { load(p: string): void; id: string };
-          }
-        ).addGroup(ids.map((id) => probeShape(ctx, id)));
-        group.load("id");
-        await ctx.sync();
-        const groupId = group.id;
-        if (typeof groupId !== "string" || !groupId)
-          return { answer: "unreadable", detail: "the host would not name the group it had just made" };
-        probeShape(ctx, groupId).tags.add("POWERCHART_PROBE_GROUP", "kept");
-        await ctx.sync();
-        const tag = probeShape(ctx, groupId).tags.getItemOrNullObject("POWERCHART_PROBE_GROUP");
-        tag.load("value");
-        await ctx.sync();
-        const v = (tag as unknown as { value: string }).value;
-        return { answer: v === "kept" ? "yes" : "no", detail: `value=${String(v)}` };
       } catch (err) {
         return threw(err);
       }
