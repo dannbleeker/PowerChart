@@ -474,6 +474,38 @@ export function computeFrame(
  * left, value axis at the bottom, totals to the right of the bar ends,
  * series legend row at the top.
  */
+/**
+ * Can this horizontal frame pay for its series legend?
+ *
+ * ONE predicate, read by the reservation in `computeFrameHorizontal` and by the
+ * draw in `horizontalChrome`, so the two cannot disagree. They have disagreed
+ * twice already — the mekko drew its legend at a widened `frame.x` the
+ * reservation had not counted for, and a scatter fix that gated the reservation
+ * alone left the legend drawn over a band reserved as zero, which measured
+ * strictly worse than drawing it with room. A shared function is the only
+ * version of "they agree" that cannot rot.
+ *
+ * On a frame with room the answer is always yes, so every ordinary chart is
+ * untouched: this fires when the legend's own rows plus the title, the value
+ * axis and the footnote leave less than a plot.
+ */
+export function horizontalLegendFits(cfg: ChartConfig, style: ChartStyle, decor: Decorations): boolean {
+  const fs = style.fontSize;
+  const labels = decor.seriesLabels ? seriesLegendLabels(cfg) : [];
+  if (!labels.length) return true;
+  const catW = decor.categoryAxis
+    ? Math.min(cfg.width * 0.3, Math.max(0, ...cfg.data.categories.map((c) => textWidth(c, fs))) + 8)
+    : 2;
+  const rows = legendRowCount(labels, fs, catW, cfg.width - 4);
+  const legendH = rows > 0 ? rows * (fs * 1.6) + 4 : fs * 0.6;
+  const left =
+    cfg.height - titleHeight(cfg, style) - legendH - (decor.valueAxis ? fs * 1.6 : 4) - footnoteH(cfg, style, decor);
+  // A plot thinner than a couple of rows of text is not a chart, and a legend
+  // that has eaten it is naming bars nobody can see. Same judgement the scatter
+  // legend and the cascade's group headers make.
+  return left >= fs * 2.5;
+}
+
 export function computeFrameHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decorations): Frame {
   const fs = style.fontSize;
   const titleH = titleHeight(cfg, style);
@@ -486,7 +518,7 @@ export function computeFrameHorizontal(cfg: ChartConfig, style: ChartStyle, deco
   // The walk runs at the legend's own x0 (frame.x === catW) and maxX
   // (cfg.width - 4), so this reservation and legendRow agree on the row count. A
   // one-row legend keeps the old fs*1.6+4 exactly, so snapshots stay identical.
-  const legendLabels = decor.seriesLabels ? seriesLegendLabels(cfg) : [];
+  const legendLabels = decor.seriesLabels && horizontalLegendFits(cfg, style, decor) ? seriesLegendLabels(cfg) : [];
   const legendRows = legendLabels.length ? legendRowCount(legendLabels, fs, catW, cfg.width - 4) : 0;
   const legendH = legendRows > 0 ? legendRows * (fs * 1.6) + 4 : fs * 0.6;
   const valueAxisH = decor.valueAxis ? fs * 1.6 : 4;

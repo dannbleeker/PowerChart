@@ -859,6 +859,16 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   than it drew and the legend wrapped into the x-axis strip. Flooring a WIDTH up
   reserves less, not more.
 
+  **The reservation and the draw share ONE predicate now, in the one place they
+  had disagreed twice.** `horizontalLegendFits` is read by
+  `computeFrameHorizontal` and by `horizontalChrome`, so the band that is
+  reserved and the legend that is drawn cannot come apart. They had: the mekko
+  drew at a widened `frame.x` the reservation never counted for, and a scatter
+  fix that gated only the reservation left the legend drawn over a band reserved
+  as zero — which MEASURED WORSE than not gating at all, 55 overlapping pairs to 63. Reserving nothing and drawing anyway is the worst of the three options,
+  and it is the one a half-fix produces. A shared function is the only version
+  of "these two agree" that cannot rot.
+
   **300x60 is still outstanding and the frame list says so.** Five pairs survive
   on a 60pt-tall letterbox: a combo point label against the column totals, the
   stacked CAGR caption against the title, and two adjacent sunburst outside

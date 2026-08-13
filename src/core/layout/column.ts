@@ -19,6 +19,7 @@ import {
   MIN_LABEL_FS,
   type Frame,
   type ValueScale,
+  horizontalLegendFits,
 } from "./frame";
 // Combo base kinds. These modules import back from column (LayoutResult /
 // horizontalChrome), but the calls happen at runtime so the ESM cycle resolves.
@@ -1218,7 +1219,9 @@ export function horizontalChrome(
         });
       });
   }
-  if (decor.seriesLabels && cfg.data.series.length > 1) {
+  // Gated by the SAME predicate the reservation uses — see `horizontalLegendFits`.
+  // Gating one without the other is the bug this repo has now written twice.
+  if (decor.seriesLabels && cfg.data.series.length > 1 && horizontalLegendFits(cfg, style, decor)) {
     nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2, { maxX: cfg.width - 4 }));
   }
   return nodes;
