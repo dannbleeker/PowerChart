@@ -514,6 +514,25 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   it; it was found by measuring what share of its own frame each kind covers
   across sizes, which is worth re-running after any layout change.
 
+  **The first fix for it was all-or-nothing, and that is its own bug: a chart
+  must not get SMALLER as its frame grows.** Taking the reservation in full the
+  moment the frame could afford it collapsed the arc at the threshold — growing
+  a pie from 160 to 170 points wide took its radius from 75 to 15, and a 280pt
+  pie was no bigger than a 160pt one. Nothing overflowed and every gate was
+  green; it is visible only in a SWEEP of one dimension, which is now
+  `never shrinks when the frame grows` in `test/pie.test.ts`.
+
+  The two axes do not admit the same answer, and that is the transferable part.
+  **Horizontally the labels are SOFT** — they are clipped to the room they get —
+  so the margin is simply capped at a share of the half-width and the arc grows
+  smoothly; above ~280pt the flat `fs * 7` fits inside the cap and nothing moves.
+  **Vertically they are HARD**: a label above the ring has nowhere to go and
+  clipping its text does not make it shorter. What does is drawing it SMALLER,
+  since the band is `outerFs * 2.2` — so the ring's own font size pays for the
+  band, and below a 5pt floor the ring is dropped outright. That leaves one
+  residual step of about 6 points on a frame ~66pt tall, which is inherent to
+  having a floor at all and replaces one of 60.
+
   **That measurement is the one to reach for, because this failure is invisible
   to every other gate.** Nothing goes negative, nothing leaves the frame, the
   snapshots are green — the chrome simply eats the chart. It found three more

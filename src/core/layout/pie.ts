@@ -42,32 +42,58 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   const cx = hasBreakout ? cfg.width * 0.3 : cfg.width / 2;
   const cy = titleH + (cfg.height - titleH - footH) / 2;
   const availH = cfg.height - titleH - footH;
-  /** The smallest arc that still reads as a pie and not as a dot. */
-  const MIN_ARC_R = 12;
-  // What the arc gets when the OUTSIDE labels are given the margins they want:
-  // `fs * 7` either side for the text (the breakout path reserves its side
-  // differently, through `cx`, and measures its own labels 180 lines below), and
-  // `fs * 2.2` above and below for the ring.
-  const wantX = hasBreakout ? cfg.width * 0.24 : cfg.width * 0.5 - fs * 7;
-  const wantY = availH / 2 - fs * 2.2;
-  // Those margins are a flat guess, and on a small frame they are most of it: a
-  // pie under ~140pt wide had nothing left and fell to the 1pt floor below, so a
-  // 120x90 thumbnail was a 2pt dot — 0.1% of the frame in ink against 38% at
-  // 200x150 — with four labels drawn around it as though there were a chart
-  // there.
-  //
-  // When a reservation cannot be met the thing reserved for is DROPPED, which is
-  // the answer the radar's web and the sunburst's ring already give: a label
-  // ring squeezed onto the arc it is labelling is not readable either, and the
-  // arc it displaced was the chart. So the outer labels come off and the arc
-  // takes the whole frame. Unreachable at 200x150 and above, where the margins
-  // already leave an arc — so nothing of an ordinary size moves.
-  //
-  // The pie's INSIDE labels are unaffected: they are bounded by the slice they
-  // sit in, which is exactly what just got bigger.
-  const outerLabelsFit = Math.min(wantX, wantY) >= MIN_ARC_R;
-  const rWidth = outerLabelsFit || hasBreakout ? wantX : cfg.width * 0.5 - fs * 0.5;
-  const rHeight = outerLabelsFit ? wantY : availH / 2 - fs * 0.5;
+  /**
+   * How much of a half-extent the outer labels may take from the arc.
+   *
+   * The margins they want are flat — `fs * 7` either side for the text and
+   * `fs * 2.2` above and below for the ring — so on a small frame they are most
+   * of it: a pie under ~140pt wide once had nothing left and fell to the 1pt
+   * floor below, a 2pt dot with four labels drawn around it.
+   *
+   * Paying that bill ALL AT ONCE is what this share replaces. The margins used
+   * to be taken in full the moment the frame could afford them, so the arc
+   * collapsed at the threshold: growing a chart from 160 to 170 points wide took
+   * its radius from 75 to 15, and a 280pt-wide pie was no bigger than a 160pt
+   * one. A chart that gets SMALLER as its frame grows is the kind of thing a
+   * user reads as a bug, because it is one.
+   */
+  const LABEL_SHARE = 0.5;
+  const halfH = availH / 2;
+  /**
+   * The horizontal margin is SOFT: an outer label is clipped to the room it
+   * actually gets (see `room` below), so the margin can be any size and the
+   * labels simply say less. Capping it is therefore all this axis needs — the
+   * arc grows monotonically with the frame, and above ~280pt the full `fs * 7`
+   * fits inside the share and nothing moves at all.
+   */
+  const marginX = Math.min(fs * 7, cfg.width * 0.5 * LABEL_SHARE);
+  /**
+   * The vertical one is HARD in a way the horizontal is not: a label above or
+   * below the ring has nowhere to go, and clipping its text does not make it any
+   * shorter. What DOES make the band shorter is drawing the labels smaller, and
+   * the band is `outerFs * 2.2` — so the size the ring is drawn at is what pays
+   * for it, and this axis becomes a slope rather than a step too.
+   *
+   * Shrink-then-drop, which is the same order the inside labels take (see
+   * `insideFs`) and the funnel's rows and the butterfly's names before them.
+   * Below the 5pt floor the ring is dropped outright and the arc takes the room,
+   * because a label nobody can read is not worth the chart it displaced — the
+   * answer the radar's web and the sunburst's ring give to the same question.
+   *
+   * `LABEL_SHARE` means the same thing on both axes — what the LABELS may take —
+   * which is worth stating because the two spend it differently and the senses
+   * are easy to invert. At 0.5 an inverted one is numerically identical, so the
+   * mistake would not show up until somebody tuned the constant and found the
+   * arc gaining width and losing height from the same edit.
+   *
+   * That leaves one residual step of about 6 points, where the floor is crossed
+   * at a frame roughly 66pt tall. It is inherent to having a floor at all, and
+   * it replaces a 17-point one; the horizontal step it sits beside was 60.
+   */
+  const outerFs = Math.min(fs, (halfH * LABEL_SHARE) / 2.2);
+  const outerLabelsFit = outerFs >= 5;
+  const rWidth = hasBreakout ? cfg.width * 0.24 : cfg.width * 0.5 - marginX;
+  const rHeight = halfH - (outerLabelsFit ? outerFs * 2.2 : fs * 0.5);
   // Floor at a positive radius: on a very narrow/short frame the terms above go
   // negative, which would mirror wedges through the centre and hand the doughnut
   // hole negative radii. Every sibling round chart (gauge, sunburst, radar)
@@ -171,7 +197,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     if (decor.segmentLabels && (inside || outerLabelsFit)) {
       const mid = angle + span / 2;
       const label = sliceLabelText(v, c);
-      const p = polar(ecx, ecy, inside ? rr * 0.62 : rr + fs * 0.8, mid);
+      const p = polar(ecx, ecy, inside ? rr * 0.62 : rr + outerFs * 0.8, mid);
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
       // An OUTSIDE label runs away from the slice edge with nothing to stop it.
       // The radius reserves a FIXED `fs * 7` for labels — a guess, where the
@@ -190,14 +216,14 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       // shrunk to. Shrink first and clip second, the same order as the funnel's
       // rows and the butterfly's category names: shrinking keeps the whole word,
       // and the clip is only there for the label no floor can fit.
-      const lf = inside ? insideFs : fs;
+      const lf = inside ? insideFs : outerFs;
       const room = inside ? insideChord(span) : Math.max(fs, (rightHalf ? cfg.width - p.x : p.x) - 4);
       const shown = clipToWidth(label, lf, room);
       const w = textWidth(shown, lf) + 4;
       if (!inside) {
         // Leader line from the arc edge toward the label.
         const a = polar(ecx, ecy, rr + 1, mid);
-        const b = polar(ecx, ecy, rr + fs * 0.65, mid);
+        const b = polar(ecx, ecy, rr + outerFs * 0.65, mid);
         nodes.push({
           kind: "line",
           x1: a.x,
