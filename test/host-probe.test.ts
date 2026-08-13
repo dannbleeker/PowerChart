@@ -1692,6 +1692,38 @@ describe("the summary reports a question that changed its answer mid-round", () 
  * `listChartsInDeck`.
  */
 describe("regimeFrom describes the host NOW, not the host at any point", () => {
+  /**
+   * A refusal used to win outright inside the window, so ONE refusal painted
+   * every sample `collection-refused` for the next twenty seconds however well
+   * the collection answered in between — priority order, where the docstring
+   * promised "the most RECENT thing this run watched it do".
+   *
+   * Round 17 measured the cost: the collection answered 14 of the 28 times it
+   * was asked, interleaved with the refusals, and 88% of that round's samples
+   * still read `collection-refused` — worse than the 85% sticky flag this
+   * function replaced, and past the failure criterion its own docstring sets
+   * ("a field that nearly every sample shares cannot separate anything").
+   * Simulated over the same round, this rule takes it to 72%.
+   */
+  it("lets a later COLLECTION answer clear an earlier refusal", () => {
+    // Refused at 900, answered at 950, asked at 1000: the collection is talking.
+    expect(regimeFrom({ at: 1000, lastRefusalAt: 900, lastCollectionGoodAt: 950, lastGoodAt: 950 })).not.toBe(
+      "collection-refused",
+    );
+    // The other order still reports the refusal — this clears a refusal, it does
+    // not suppress one.
+    expect(regimeFrom({ at: 1000, lastRefusalAt: 950, lastCollectionGoodAt: 900, lastGoodAt: 950 })).toBe(
+      "collection-refused",
+    );
+  });
+
+  it("is not cleared by an ordinary question answering", () => {
+    // `lastGoodAt` is set by almost every question, so recency across ALL three
+    // signals would saturate on `healthy` instead — the same defect mirrored.
+    // Only a later COLLECTION answer counts.
+    expect(regimeFrom({ at: 1000, lastRefusalAt: 900, lastGoodAt: 990 })).toBe("collection-refused");
+  });
+
   it("reports the most recent thing seen", () => {
     expect(regimeFrom({ at: 1000, lastRefusalAt: 900 })).toBe("collection-refused");
     expect(regimeFrom({ at: 1000, lastSlideTroubleAt: 900 })).toBe("slide-trouble");

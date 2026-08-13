@@ -195,11 +195,40 @@ export const REGIME_WINDOW_MS = 20_000;
  * claimed on the strength of something that actually worked.
  */
 export function regimeFrom(
-  o: { at: number; lastRefusalAt?: number; lastSlideTroubleAt?: number; lastGoodAt?: number },
+  o: {
+    at: number;
+    lastRefusalAt?: number;
+    lastSlideTroubleAt?: number;
+    lastGoodAt?: number;
+    /**
+     * The last time a question that ASKS THE SHAPE COLLECTION got a real answer
+     * out of it — not merely the last time any question answered, which is what
+     * `lastGoodAt` is and which nearly every question sets.
+     */
+    lastCollectionGoodAt?: number;
+  },
   windowMs = REGIME_WINDOW_MS,
 ): HostRegime {
   const recent = (t?: number) => t !== undefined && o.at - t <= windowMs;
-  if (recent(o.lastRefusalAt)) return "collection-refused";
+  // A refusal inside the window used to win outright, and the docstring above
+  // says the opposite — "from the most RECENT thing this run watched it do".
+  // The code was priority-ordered, so one refusal painted every sample for the
+  // next twenty seconds however well the collection answered in between.
+  //
+  // Round 17 is what that costs: the collection ANSWERED 14 of the 28 times it
+  // was asked, interleaved with the refusals throughout, and 88% of that
+  // round's samples still read `collection-refused` — worse than the 85% sticky
+  // flag this function was written to replace, and past the failure criterion
+  // its own docstring sets. Simulated over that round, clearing the refusal
+  // when the collection has answered SINCE takes it to 72%.
+  //
+  // Deliberately NOT most-recent-wins across all three: `lastGoodAt` is set by
+  // almost every question, so recency alone would saturate on `healthy` instead
+  // and this comment would be describing the same bug in the other direction.
+  // Only a later COLLECTION answer clears a collection refusal.
+  const answeredSince =
+    o.lastCollectionGoodAt !== undefined && o.lastRefusalAt !== undefined && o.lastCollectionGoodAt > o.lastRefusalAt;
+  if (recent(o.lastRefusalAt) && !answeredSince) return "collection-refused";
   if (recent(o.lastSlideTroubleAt)) return "slide-trouble";
   if (recent(o.lastGoodAt)) return "healthy";
   return "unknown";
@@ -1940,7 +1969,10 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   let lastRefusalAt: number | undefined;
   let lastSlideTroubleAt: number | undefined;
   let lastGoodAt: number | undefined;
-  const regimeNow = (at: number): HostRegime => regimeFrom({ at, lastRefusalAt, lastSlideTroubleAt, lastGoodAt });
+  /** Only the shape collection answering — see `regimeFrom` for why it is separate. */
+  let lastCollectionGoodAt: number | undefined;
+  const regimeNow = (at: number): HostRegime =>
+    regimeFrom({ at, lastRefusalAt, lastSlideTroubleAt, lastGoodAt, lastCollectionGoodAt });
   /** Answers that mean the shape collection has stopped answering. */
   const REFUSAL = new Set(["unreadable", "short-0", "not-listed"]);
   /**
@@ -1959,7 +1991,10 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     // that is refusing now from one that refused a minute ago.
     const aboutTheCollection = /^shapes?-/.test(row.id);
     if (aboutTheCollection && REFUSAL.has(row.answer)) lastRefusalAt = atMs;
-    else if (aboutTheCollection && !NOT_ASKED.has(row.answer)) lastGoodAt = atMs;
+    else if (aboutTheCollection && !NOT_ASKED.has(row.answer)) {
+      lastGoodAt = atMs;
+      lastCollectionGoodAt = atMs;
+    }
     if (row.answer === "no-scratch-slide") lastSlideTroubleAt = atMs;
     else if (!NOT_ASKED.has(row.answer)) lastGoodAt = atMs;
     // Read BEFORE `scratchUsed` is set below, so this sample describes the

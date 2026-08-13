@@ -80,6 +80,19 @@ export function explainBy(samples, field = "regime", neverAsked = NEVER_ASKED) {
   }));
   if (faces.length <= 1) return { verdict: "steady", faces, mapping, real: real.length };
 
+  // The stamp never moved for this question, so it cannot explain anything it
+  // did. Reported apart from `coin` because the two look identical in the data
+  // — one bucket holding two answers — and mean opposite things: `coin` is a
+  // fact about the HOST, `blind` is a fact about the STAMP. Conflating them is
+  // how a useless field gets read as evidence the host is random.
+  //
+  // Not hypothetical. Tested retrospectively against round 17, the scratch-slide
+  // stamp is `fresh-slide` on all three samples of the very question it was
+  // added for — that question replaces its slide 0.2-0.5s before every ask — so
+  // without this branch the tool would have answered `coin` and the stamp's own
+  // blindness would have been invisible.
+  if (mapping.length === 1) return { verdict: "blind", faces, mapping, real: real.length };
+
   const split = mapping.filter((m) => m.answers.length > 1);
   if (split.length) return { verdict: "coin", faces, mapping, real: real.length, split };
 
@@ -137,6 +150,40 @@ export function flippedTogether(aSamples, bSamples, neverAsked = NEVER_ASKED) {
 }
 
 /**
+ * How concentrated a stamp is across a whole round.
+ *
+ * "A field that nearly every sample shares cannot separate anything" is the
+ * criterion `regimeFrom`'s own docstring sets, having been written after a
+ * sticky flag put the same value on 55 of 65 samples. It is the mistake this
+ * project has now recorded against `idleMs`, `afterAnswering`, the settle's
+ * shared label, `listChartsInDeck` and `onSlide` — five fields, five times, and
+ * each was caught by a human reading a round rather than by anything automatic.
+ *
+ * So it is measured. A stamp whose commonest value covers `SATURATED_AT` or
+ * more of the samples is reported as saturated, whatever its verdicts say —
+ * because `untested` and `blind` are what a saturated field produces, and both
+ * read as caution rather than as "this field is not working".
+ */
+export const SATURATED_AT = 0.8;
+
+export function stampSpread(answers, field, neverAsked = NEVER_ASKED) {
+  const tally = new Map();
+  let total = 0;
+  for (const a of answers ?? []) {
+    for (const s of a.samples ?? []) {
+      if (!s || neverAsked.has(s.answer)) continue;
+      const v = s[field] ?? "unknown";
+      tally.set(v, (tally.get(v) ?? 0) + 1);
+      total++;
+    }
+  }
+  const byValue = [...tally.entries()].sort((x, y) => y[1] - x[1]);
+  const top = byValue[0];
+  const share = total ? (top?.[1] ?? 0) / total : 0;
+  return { field, total, byValue, share, saturated: total > 0 && share >= SATURATED_AT };
+}
+
+/**
  * Of the questions this round never put, what state was the host in when it
  * tried? Answers "was the low yield the host being unwell, or something else",
  * which a bare count of never-put questions cannot.
@@ -175,6 +222,8 @@ export function verdictLine(r) {
       return `EXPLAINED by regime — and it could have failed (${r.repeated.join(", ")} sampled more than once)`;
     case "untested":
       return `UNTESTED — the mapping fits, but no regime was sampled twice, so it could not have come out otherwise`;
+    case "blind":
+      return `BLIND — the stamp read "${r.mapping[0].regime}" on every sample, so it says nothing about this question either way`;
     default:
       return "steady";
   }
@@ -225,6 +274,22 @@ function main(argv) {
           console.log(`      ${t.verdict} (${t.shared} pass(es) both answered)\n`);
         }
       }
+    }
+
+    // Before any verdict is believed, say whether each stamp could have
+    // discriminated at all. A saturated field produces `untested` and `blind`,
+    // and both of those read as caution rather than as a broken instrument.
+    console.log(`  COULD THESE STAMPS SEPARATE ANYTHING?\n`);
+    for (const field of ["regime", "scratch"]) {
+      const sp = stampSpread(round.answers, field);
+      if (!sp.total) continue;
+      const dist = sp.byValue.map(([v, n]) => `${v} x${n}`).join("  ");
+      console.log(`    ${field.padEnd(8)} ${dist}`);
+      if (sp.saturated)
+        console.log(
+          `      SATURATED — "${sp.byValue[0][0]}" is ${Math.round(sp.share * 100)}% of samples; this stamp cannot separate much\n`,
+        );
+      else console.log(`      spread enough to discriminate (commonest ${Math.round(sp.share * 100)}%)\n`);
     }
 
     const np = neverPutByRegime(round.answers);

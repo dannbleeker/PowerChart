@@ -141,7 +141,10 @@ describe("rendering a verdict as prose", () => {
     [[s("yes", 1, "healthy"), s("yes", 2, "healthy")], "steady"],
     [[s("threw", 1, "healthy"), s("threw", 2, "healthy"), s("yes", 3, "collection-refused")], "EXPLAINED"],
     [[s("threw", 1, "healthy"), s("yes", 2, "slide-trouble")], "UNTESTED"],
-    [[s("threw", 1, "healthy"), s("yes", 2, "healthy")], "COIN"],
+    // A genuine coin needs TWO buckets with one of them split. Both answers in
+    // a single bucket is `blind`, which this list used to assert as COIN.
+    [[s("threw", 1, "healthy"), s("yes", 2, "healthy"), s("yes", 3, "collection-refused")], "COIN"],
+    [[s("threw", 1, "healthy"), s("yes", 2, "healthy")], "BLIND"],
   ] as const;
 
   it("renders every verdict without touching a field that verdict does not carry", () => {
@@ -181,13 +184,33 @@ describe("reading a stamp other than the regime", () => {
     expect(byScratch.repeated).toEqual(["first-slide"]);
   });
 
-  it("treats a stamp the round never recorded as unknown, not as an explanation", () => {
-    // Rounds saved before the stamp existed carry no `scratch` at all. Every
-    // sample then lands in one `unknown` bucket, which must read as a COIN —
-    // the honest answer — rather than inventing a mapping from a missing field.
+  it("says a stamp the round never recorded is BLIND, not a coin", () => {
+    // Rounds saved before the stamp existed carry no `scratch` at all, so every
+    // sample lands in one `unknown` bucket. That must NOT read as a coin: a coin
+    // is a claim about the host, and the only thing being observed here is that
+    // the field is missing.
     const older = samples.map(({ scratch: _drop, ...rest }) => rest);
-    expect(explainBy(older, "scratch").verdict).toBe("coin");
+    expect(explainBy(older, "scratch").verdict).toBe("blind");
     expect(explainBy(older, "scratch").mapping.map((m: { regime: string }) => m.regime)).toEqual(["unknown"]);
+  });
+
+  it("calls a stamp that never moved for this question BLIND, however many samples", () => {
+    // THE CASE THAT MADE THIS VERDICT EXIST. Tested retrospectively against
+    // round 17, `shape-add-held-slide-proxy` ran on a slide replaced 0.2-0.5s
+    // before every single ask, so the scratch stamp reads `fresh-slide` on all
+    // three samples — and the answers still disagree. Without `blind` the tool
+    // answers `coin`, which reads as a fact about the host when it is a fact
+    // about the stamp being constant here.
+    const constant = [
+      { answer: "threw", pass: 1, atMs: 16300, regime: "healthy", scratch: "fresh-slide" },
+      { answer: "yes", pass: 2, atMs: 33900, regime: "collection-refused", scratch: "fresh-slide" },
+      { answer: "threw", pass: 3, atMs: 55600, regime: "collection-refused", scratch: "fresh-slide" },
+    ];
+    expect(explainBy(constant, "scratch").verdict).toBe("blind");
+    // The same samples by REGIME are a real coin — two buckets, one split. So
+    // the two verdicts are genuinely different readings of one round, which is
+    // the whole reason both stamps are printed.
+    expect(explainByRegime(constant).verdict).toBe("coin");
   });
 
   it("still defaults to the regime when no field is named", () => {
