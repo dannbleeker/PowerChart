@@ -150,6 +150,99 @@ export function flippedTogether(aSamples, bSamples, neverAsked = NEVER_ASKED) {
 }
 
 /**
+ * Questions that actually ask the shape collection, and what it said.
+ *
+ * The probe's own test (`aboutTheCollection` in `src/render/host-probe.ts`) and
+ * its refusal vocabulary, duplicated here because a .mjs script cannot import
+ * from the TypeScript source — the same unavoidable duplication `NEVER_ASKED`
+ * already carries, and held in step the same way, by a source scan in
+ * `test/host-regimes.test.ts`.
+ */
+export const COLLECTION_QUESTION = /^shapes?-/;
+export const COLLECTION_REFUSALS = new Set(["unreadable", "short-0", "not-listed"]);
+
+/**
+ * What the shape collection did, in time order, across a whole round.
+ *
+ * This host's central defect is that it stops listing shapes a run just added,
+ * and every expensive failure downstream — no group, no tag target, a chart
+ * that is not re-editable — is that one thing. It has been reasoned about from
+ * batch timings ("FAST IS THE BROKEN MODE"), from grouping traces, and from the
+ * `regime` stamp. It had never simply been READ.
+ *
+ * Reading it is what found the stamp's own bug: in round 17 the collection
+ * ANSWERED 14 of the 28 times it was asked, interleaved with the refusals
+ * throughout, while 88% of that round's samples were stamped
+ * `collection-refused`. So the collection oscillates question by question, and
+ * the instrument was reporting a one-way slide.
+ *
+ * `recovered` is the fact worth having every round: a collection that answers
+ * again after refusing is a different host from one that goes quiet and stays
+ * quiet, and the two want different code.
+ */
+export function collectionTimeline(answers, neverAsked = NEVER_ASKED) {
+  const events = [];
+  for (const a of answers ?? []) {
+    if (!COLLECTION_QUESTION.test(a.id)) continue;
+    for (const s of a.samples ?? []) {
+      const verdict = neverAsked.has(s.answer)
+        ? "never-put"
+        : COLLECTION_REFUSALS.has(s.answer)
+          ? "refused"
+          : "answered";
+      events.push({ atMs: s.atMs, id: a.id, answer: s.answer, verdict });
+    }
+  }
+  events.sort((x, y) => x.atMs - y.atMs);
+  // A never-put pass says nothing about the collection — the run could not set
+  // the question up — so it is shown but never counted, the rule every other
+  // reader here applies.
+  const real = events.filter((e) => e.verdict !== "never-put");
+  const answered = real.filter((e) => e.verdict === "answered").length;
+  const refused = real.filter((e) => e.verdict === "refused").length;
+
+  // THE SPLIT THAT MATTERS, and the one a timeline alone invites you to miss.
+  //
+  // Read in time order, round 17 looks like a collection that refuses, comes
+  // back, refuses again — three clean bursts. Grouped by QUESTION it is nothing
+  // of the kind: seven of its eight collection questions gave the SAME verdict
+  // on every pass. `shapes-items-count-honest` refused all three times,
+  // `shape-add-fresh-slide-proxy` answered all three. The interleaving is the
+  // fixed question order cycling through the passes, not the host changing.
+  //
+  // So "the collection is refusing" is, for the most part, a fact about WHICH
+  // QUESTION was asked recently rather than about when. Only the questions that
+  // actually varied are evidence of time-dependence, and this reports them
+  // separately for that reason.
+  const byQuestion = new Map();
+  for (const e of real) {
+    if (!byQuestion.has(e.id)) byQuestion.set(e.id, new Set());
+    byQuestion.get(e.id).add(e.verdict);
+  }
+  const alwaysAnswered = [];
+  const alwaysRefused = [];
+  const varied = [];
+  for (const [id, verdicts] of byQuestion) {
+    if (verdicts.size > 1) varied.push(id);
+    else if (verdicts.has("refused")) alwaysRefused.push(id);
+    else alwaysAnswered.push(id);
+  }
+  return {
+    events,
+    answered,
+    refused,
+    firstRefusalAt: real.find((e) => e.verdict === "refused")?.atMs,
+    alwaysAnswered,
+    alwaysRefused,
+    varied,
+    // True only when some question gave BOTH verdicts across the round. A bare
+    // "an answer came after a refusal" is satisfied by question order alone and
+    // would report recovery on a host that never changed.
+    variesOverTime: varied.length > 0,
+  };
+}
+
+/**
  * How concentrated a stamp is across a whole round.
  *
  * "A field that nearly every sample shares cannot separate anything" is the
@@ -279,6 +372,27 @@ function main(argv) {
     // Before any verdict is believed, say whether each stamp could have
     // discriminated at all. A saturated field produces `untested` and `blind`,
     // and both of those read as caution rather than as a broken instrument.
+    const ct = collectionTimeline(round.answers);
+    if (ct.answered + ct.refused) {
+      console.log(`  WHAT THE SHAPE COLLECTION DID — the defect everything else hangs off\n`);
+      for (const e of ct.events) {
+        const mark = e.verdict === "answered" ? "ok      " : e.verdict === "refused" ? "REFUSED " : "never-put";
+        console.log(`    ${(e.atMs / 1000).toFixed(1).padStart(7)}s  ${mark} ${e.answer.padEnd(18)} ${e.id}`);
+      }
+      console.log(`\n    ${ct.answered} answered, ${ct.refused} refused across the round`);
+      console.log(
+        `    ${ct.alwaysAnswered.length} question(s) always answered, ${ct.alwaysRefused.length} always refused`,
+      );
+      if (!ct.variesOverTime) {
+        console.log(`\n    NOT A TIME EFFECT — every collection question gave the SAME verdict on every pass.`);
+        console.log(`    The split is by QUESTION, not by when it was asked, and a stamp that says`);
+        console.log(`    "the collection is refusing" is reporting which question ran recently.\n`);
+      } else {
+        console.log(`\n    varied across passes: ${ct.varied.join(", ")}`);
+        console.log(`    Only these are evidence the collection changed over time; the rest is question order.\n`);
+      }
+    }
+
     console.log(`  COULD THESE STAMPS SEPARATE ANYTHING?\n`);
     for (const field of ["regime", "scratch"]) {
       const sp = stampSpread(round.answers, field);

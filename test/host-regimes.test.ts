@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 // @ts-expect-error - .mjs script, deliberately outside tsconfig's typed surface
 import * as regimes from "../scripts/host-regimes.mjs";
 
@@ -6,7 +7,16 @@ import * as regimes from "../scripts/host-regimes.mjs";
 // single short line — prettier wraps a five-name named import, which pushes the
 // `@ts-expect-error` off the statement it is suppressing and it silently stops
 // applying.
-const { explainBy, explainByRegime, flippedTogether, neverPutByRegime, verdictLine } = regimes;
+const {
+  explainBy,
+  explainByRegime,
+  flippedTogether,
+  neverPutByRegime,
+  verdictLine,
+  collectionTimeline,
+  COLLECTION_REFUSALS,
+  stampSpread,
+} = regimes;
 
 /**
  * `scripts/host-regimes.mjs` — does the host's STATE account for a question that
@@ -215,5 +225,106 @@ describe("reading a stamp other than the regime", () => {
 
   it("still defaults to the regime when no field is named", () => {
     expect(explainBy(samples).verdict).toBe(explainByRegime(samples).verdict);
+  });
+});
+
+describe("what the shape collection did, and whether that is a time effect", () => {
+  /**
+   * The check that stopped a wrong conclusion being shipped.
+   *
+   * Read in time order, round 17 looks like a collection that refuses, comes
+   * back, and refuses again — three clean bursts. Grouped by QUESTION it is
+   * nothing of the kind: seven of its eight collection questions gave the same
+   * verdict on every pass, and the interleaving is the fixed question order
+   * cycling through three passes.
+   *
+   * A summary that only said "an answer came after a refusal" reports RECOVERY
+   * on a host that never changed, which is what the first version of this did.
+   */
+  const q = (id: string, verdicts: string[]) => ({
+    id,
+    answer: verdicts[0],
+    samples: verdicts.map((answer, i) => ({ answer, pass: i + 1, atMs: (i + 1) * 10_000, regime: "healthy" })),
+  });
+
+  it("does not call it a time effect when every question is constant", () => {
+    // Answers and refusals interleave in TIME — the refusing question is asked
+    // after the answering one on every pass — and nothing varied.
+    const ct = collectionTimeline([
+      q("shape-add-fresh-slide-proxy", ["yes", "yes", "yes"]),
+      q("shapes-items-count-honest", ["unreadable", "unreadable", "unreadable"]),
+    ]);
+    expect(ct.answered).toBe(3);
+    expect(ct.refused).toBe(3);
+    expect(ct.variesOverTime).toBe(false);
+    expect(ct.alwaysAnswered).toEqual(["shape-add-fresh-slide-proxy"]);
+    expect(ct.alwaysRefused).toEqual(["shapes-items-count-honest"]);
+  });
+
+  it("names only the questions that actually changed verdict", () => {
+    const ct = collectionTimeline([
+      q("shapes-items-count-honest", ["unreadable", "unreadable", "unreadable"]),
+      q("shape-add-positional-slide-proxy", ["not-listed", "yes", "yes"]),
+    ]);
+    expect(ct.variesOverTime).toBe(true);
+    expect(ct.varied).toEqual(["shape-add-positional-slide-proxy"]);
+  });
+
+  it("counts only questions that ask the collection, and never a never-put pass", () => {
+    const ct = collectionTimeline([
+      q("shapes-items-count-honest", ["unreadable", "no-scratch-slide"]),
+      // Not a collection question — must not appear at all.
+      q("tags-on-fresh-shape", ["yes", "yes"]),
+    ]);
+    expect(ct.events.filter((e: { verdict: string }) => e.verdict !== "never-put")).toHaveLength(1);
+    expect(ct.answered).toBe(0);
+    expect(ct.alwaysAnswered).toEqual([]);
+  });
+
+  it("keeps the refusal vocabulary in step with the probe's own", () => {
+    // Duplicated because a .mjs script cannot import from the TypeScript source
+    // — the same unavoidable copy `NEVER_ASKED` carries, held the same way.
+    const src = readFileSync("src/render/host-probe.ts", "utf8");
+    for (const word of COLLECTION_REFUSALS)
+      expect(src, `the probe never emits "${word}", so this vocabulary has drifted`).toContain(`"${word}"`);
+  });
+});
+
+describe("a stamp that cannot separate anything", () => {
+  it("reports saturation, and the share it is saturated at", () => {
+    // `regime` sat at 88% one value in round 17 — worse than the 85% sticky flag
+    // `regimeFrom` was written to replace. A saturated stamp emits `untested`
+    // and `blind`, both of which read as caution rather than a broken gauge.
+    const answers = [
+      {
+        id: "a",
+        answer: "yes",
+        samples: Array.from({ length: 9 }, (_, i) => ({
+          answer: "yes",
+          pass: 1,
+          atMs: i,
+          regime: "collection-refused",
+        })).concat([{ answer: "yes", pass: 1, atMs: 9, regime: "healthy" }]),
+      },
+    ];
+    const sp = stampSpread(answers, "regime");
+    expect(sp.total).toBe(10);
+    expect(sp.saturated).toBe(true);
+    expect(sp.byValue[0]).toEqual(["collection-refused", 9]);
+  });
+
+  it("does not cry saturation on a stamp that is spread", () => {
+    const answers = [
+      {
+        id: "a",
+        answer: "yes",
+        samples: [
+          { answer: "yes", pass: 1, atMs: 0, regime: "healthy" },
+          { answer: "yes", pass: 2, atMs: 1, regime: "collection-refused" },
+          { answer: "yes", pass: 3, atMs: 2, regime: "slide-trouble" },
+        ],
+      },
+    ];
+    expect(stampSpread(answers, "regime").saturated).toBe(false);
   });
 });
