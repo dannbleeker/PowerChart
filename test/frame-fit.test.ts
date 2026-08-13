@@ -137,6 +137,41 @@ describe("no chart draws outside its own frame", () => {
   }
 });
 
+/**
+ * The same property over the FONT, which the sweep above holds fixed.
+ *
+ * Every layout prices its chrome in font sizes, so the font is the other axis a
+ * chart can be squeezed along — and it was never swept. Seven overflows were
+ * sitting at 24 and 32pt, all of one shape: a label centred on a row, a ring or
+ * a legend line, in a box `fontSize * 1.2` to `* 1.5` tall. Once the font
+ * outgrew the spacing, the labels overlapped EACH OTHER at any frame size and
+ * the last one left the chart at a small one. `CLAUDE.md` records the funnel
+ * being fixed for exactly this; the butterfly, the gantt, the radar's ticks and
+ * the scatter's legend had never been.
+ *
+ * A big font on a small chart is not a corner case anyone should have to defend:
+ * `style.fontSize` is a number a caller types.
+ */
+describe("no chart draws outside its own frame at any font", () => {
+  const FONTS = [6, 8, 10, 14, 18, 24, 32];
+  for (const fontSize of FONTS) {
+    it(`every kind at ${fontSize}pt`, () => {
+      const bad: string[] = [];
+      for (const [w, h] of [
+        [200, 150],
+        [480, 300],
+        [960, 540],
+      ] as [number, number][]) {
+        for (const { kind } of CHART_KINDS) {
+          const o = worstOverflow({ ...sampleConfig(kind), width: w, height: h, style: { fontSize } } as ChartConfig);
+          if (o.pt > SLACK) bad.push(`${kind} at ${w}x${h}: ${o.node} ${o.pt.toFixed(1)}pt past the ${o.side}`);
+        }
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+});
+
 describe("fitPlot", () => {
   const cfg = { width: 200, height: 150 } as ChartConfig;
 

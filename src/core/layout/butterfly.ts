@@ -90,6 +90,13 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   const qOf = (v: number) => (Math.abs(v) / max) * halfW;
 
   const slotH = plot.h / Math.max(1, n);
+  // A value label is centred on its row in a box `fs * 1.5` tall, so once the
+  // font outgrows the row pitch the labels overlap each OTHER and the last one
+  // leaves the plot — 10.7pt past a 200x150 frame at a 32pt font, and colliding
+  // at any frame size once the font is big enough for the row count. Bound by
+  // the row it labels, which is the same thing that stops both. Last resort: at
+  // any font that already fits its row this is `fs` and nothing moves.
+  const rowFs = Math.min(fs, slotH / 1.5);
   const barH = slotH * (2 / 3);
 
   const nodes: SceneNode[] = [];
@@ -193,11 +200,11 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
             nodes.push({
               kind: "text",
               x: inside ? x : dir < 0 ? x - fs * 3.4 - 2 : x + len + 2,
-              y: cy - fs * 0.75,
+              y: cy - rowFs * 0.75,
               w: inside ? len : fs * 3.4,
-              h: fs * 1.5,
+              h: rowFs * 1.5,
               text: label,
-              fontSize: fs,
+              fontSize: rowFs,
               color: inside ? contrastInk(fill) : style.text,
               align: inside ? "center" : dir < 0 ? "right" : "left",
               valign: "middle",

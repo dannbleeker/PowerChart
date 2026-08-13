@@ -123,6 +123,27 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const rings = perSpoke
     ? [0.25, 0.5, 0.75, 1].map((f) => ({ rr: f * r, t: f }))
     : ticks.filter((t) => t > min).map((t) => ({ rr: toR(t), t }));
+  /**
+   * A ring's tick label is centred on that ring in a box `fs * 1.2` tall, so once
+   * the font outgrows the gap BETWEEN rings the labels sit on top of each other
+   * and the innermost one runs past the middle of the web and out of the chart —
+   * 11.1pt past a 200x150 frame at a 32pt font. Bound by the ring gap, which is
+   * the space each label actually has, and dropped below the same 5pt floor the
+   * perimeter ring uses: a label nobody can read is not worth the web it covers.
+   *
+   * Last resort, like every other shrink here: at any font that already fits its
+   * ring gap this is `fs * 0.85` and nothing moves.
+   */
+  const tickGap = r / Math.max(1, rings.length);
+  const tickFs = Math.min(fs * 0.85, tickGap / 1.2);
+  // The box is `fs * 1.2` for a font of `fs * 0.85` — deliberately taller than
+  // the text — so the two must shrink TOGETHER or the label moves even when
+  // nothing needed shrinking. Expressed as the ratio for that reason: it is
+  // exactly 1 whenever the tick font is untouched, which is every radar at an
+  // ordinary size, and the geometry is then byte-identical. Collapsing both onto
+  // `tickFs` instead shifted every tick by 0.9pt and moved three showcase
+  // slides, which is how this was caught.
+  const tickScale = tickFs / (fs * 0.85);
   for (const { rr, t } of rings) {
     if (gridShape === "circle") {
       nodes.push({
@@ -145,16 +166,16 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         name: `grid-${t}`,
       });
     }
-    if (!perSpoke) {
+    if (!perSpoke && tickFs >= 5) {
       // Tick label on the 12 o'clock spoke only.
       nodes.push({
         kind: "text",
         x: cx + 3,
-        y: cy - rr - fs * 0.6,
+        y: cy - rr - fs * 0.6 * tickScale,
         w: fs * 3.4,
-        h: fs * 1.2,
+        h: fs * 1.2 * tickScale,
         text: formatNumber(t, fmt),
-        fontSize: fs * 0.85,
+        fontSize: tickFs,
         color: style.mutedText,
         align: "left",
         valign: "middle",

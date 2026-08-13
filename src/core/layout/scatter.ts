@@ -689,25 +689,48 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     let lx = plot.x + (colorScale ? COLOR_BAR_W + 16 : 0);
     // The same shared walk the reservation used, so the drawer and the reserver
     // cannot disagree about how many rows this legend takes.
-    const slots = legendWrapWalk(
-      groupIds.map((g) => `Group ${g}`),
-      fs,
-      lx,
-      plot.x + plot.w,
-    );
+    const labels = groupIds.map((g) => `Group ${g}`);
+    const walk = (f: number) => legendWrapWalk(labels, f, lx, plot.x + plot.w);
+    /** What the whole block occupies, top row's ascent to bottom row's descent. */
+    const blockH = (f: number, rows: number) => (rows - 1) * f * 1.8 + f * 1.4;
+    /**
+     * One size for the whole legend, small enough that the block fits the chart.
+     *
+     * The rows are as tall as the font and there can be several of them, so a big
+     * font on a small frame asks for more legend than there is chart: three
+     * wrapped rows at a 32pt font want 173 points of a 150pt-tall scatter. No
+     * placement can fix that — the floor below holds the top row on, and the
+     * bottom row then leaves — so the size has to give first.
+     *
+     * Shrinking also un-wraps rows, which is why this re-walks rather than
+     * scaling a row count: a narrower label may need one row where it needed
+     * three. Last resort as everywhere else — at any font whose legend already
+     * fits, this is `fs` and nothing moves.
+     */
+    const legendFs = (() => {
+      let f = fs;
+      while (f > 5 && blockH(f, walk(f)[labels.length - 1].row + 1) > cfg.height) f -= 0.5;
+      return f;
+    })();
+    const slots = walk(legendFs);
     // Rows stack upward from the plot: the LAST row sits where the single row
     // always did, so a one-row legend is byte-identical to before.
     const rows = slots[slots.length - 1].row + 1;
     // ...and stacking upward is how the top row leaves the chart when the plot
     // has been pulled up to fit a short frame: 13pt above an 80x60 scatter with
     // two legend rows. Hold the block down far enough for its own top row, which
-    // on any chart with room above the plot is no constraint at all.
-    const legendY = Math.max(legendTop, (rows - 1) * fs * 1.8 + fs * 1.55);
+    // on any chart with room above the plot is no constraint at all — and no
+    // further down than its own BOTTOM row can afford, which is what the shrink
+    // above guarantees is reachable.
+    const legendY = Math.min(
+      Math.max(legendTop, (rows - 1) * legendFs * 1.8 + legendFs * 1.55),
+      cfg.height - legendFs * 1.4 + legendFs * 1.55,
+    );
     groupIds.forEach((g, gi) => {
-      const chip = fs * 0.7;
+      const chip = legendFs * 0.7;
       const label = `Group ${g}`;
       lx = slots[gi].x;
-      const dy = -(rows - 1 - slots[gi].row) * fs * 1.8;
+      const dy = -(rows - 1 - slots[gi].row) * legendFs * 1.8;
       // Under a color scale the chip's color would be a lie (color means the
       // Color row there), so the shape carries the legend in neutral ink.
       const chipFill = colorScale ? style.mutedText : paletteColor(cfg.style?.palette ?? PALETTE, g - 1);
@@ -721,7 +744,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           ? markerNode(
               markerFor(g),
               lx + drawn / 2,
-              legendY + dy - fs * 1.2 + chip / 2,
+              legendY + dy - legendFs * 1.2 + chip / 2,
               chip / 2,
               chipFill,
               style.background,
@@ -731,7 +754,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           : {
               kind: "rect",
               x: lx,
-              y: legendY + dy - fs * 1.2,
+              y: legendY + dy - legendFs * 1.2,
               w: chip,
               h: chip,
               fill: chipFill,
@@ -740,11 +763,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         {
           kind: "text",
           x: lx + drawn + 3,
-          y: legendY + dy - fs * 1.55,
-          w: textWidth(label, fs) + 6,
-          h: fs * 1.4,
+          y: legendY + dy - legendFs * 1.55,
+          w: textWidth(label, legendFs) + 6,
+          h: legendFs * 1.4,
           text: label,
-          fontSize: fs,
+          fontSize: legendFs,
           color: style.text,
           align: "left",
           valign: "middle",

@@ -568,8 +568,28 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   covering 360° exactly once. Check what follows a guard before writing it, and
   prefer a condition on the block to an early return.
 
+  **The FONT is the other axis a chart gets squeezed along, and the gate held it
+  fixed for a week.** Every layout prices its chrome in font sizes, so a big font
+  does what a small frame does. Seven overflows were sitting at 24 and 32pt, all
+  one shape: a label centred on a row, a ring or a legend line, in a box
+  `fontSize * 1.2` to `* 1.5` tall. Once the font outgrew the SPACING the labels
+  overlapped each other at any frame size, and the last one left the chart at a
+  small one. The funnel had been fixed for this; the butterfly, the gantt, the
+  radar's ticks and the scatter's legend never had. Each is bounded by the space
+  it actually has now — the row pitch, the ring gap, the frame — and the gate
+  sweeps fonts as well as frames.
+
+  **A shrink must move the box and the font TOGETHER, and the showcase caught me
+  getting that wrong.** The radar's tick box is `fs * 1.2` for a font of
+  `fs * 0.85`, deliberately taller than its text; collapsing both onto the new
+  bound shifted every tick by 0.9pt on charts where nothing needed to shrink, and
+  three showcase slides moved. Written as a RATIO instead — exactly 1 when the
+  font is untouched — the geometry is byte-identical. Any "last resort" that
+  changes an ordinary chart is not one, and the deck diff is what says so.
+
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
-  its own box, over every kind × eight frame sizes. It measures INK, not boxes —
+  its own box, over every kind × eight frame sizes × seven fonts. It measures
+  INK, not boxes —
   a first version measured boxes and produced four false positives and one false
   negative in one run, because a label's box is routinely wider than its text
   and is anchored by `align`.
