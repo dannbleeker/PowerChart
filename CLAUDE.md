@@ -1050,6 +1050,36 @@ from 24 to 24`), but the cost is not the self-test's. The auto-picture fallback
   `drawLoose` harness that produces the ungrouped chart this path accepts. Third
   time this session that a guard needed its setup fixed before it could fail.
 
+- **Two obvious ways round the id refusals are already closed, and both were
+  checked against Microsoft's own surface on 2026-08-13 rather than guessed at.**
+  Anyone meeting `InvalidParam passed to GetItem(id)` reaches for one of these
+  within a minute, so they are written down with what killed them.
+
+  - **Looking the shape up by NAME instead.** Not available. PowerPoint's
+    `ShapeCollection.getItem(key: string)` is documented in the office-js
+    typings as _"Gets a shape using its unique ID"_, `@param key The ID of the
+shape` — ID only, on both the slide's collection and `ShapeScopedCollection`.
+    The `docs/powerpoint/shapes.md` article shows `slide.shapes.getItem("StatusCard")`
+    and reads as a name lookup, which is what makes this worth a line: the
+    ARTICLE is the misleading source and the typings are the authority. Read
+    `node_modules/@types/office-js` before building on a docs example.
+  - **Reading the shapes back through the SELECTION** (`getSelectedShapes()`,
+    which returns a `ShapeScopedCollection` and is a different host path from
+    the slide's collection). Corroborated broken on the web by two open issues:
+    office-js#3083 (`setSelectedShapes([])` does not unselect on web, though it
+    does on desktop) and #3698 (after that call, `getSelectedShapes()` never
+    resolves its `context.sync()`). Both are already in `KNOWN_ISSUES`; what is
+    new is that they close this as an ALTERNATIVE rather than only as a hazard.
+    It would also mean selecting the user's shapes to read our own, which the
+    selection gotcha above already forbids.
+
+  And a third that this repo measured before anyone else published it:
+  office-js#5022's commenter works around a hung sync with _"a 1-2 second delay…
+  though this sometimes still fails"_. That is the same remedy office-js#2903
+  proposes for fresh slides, and the scratch-slide gotcha below records what it
+  cost here — 1 of 25 questions answered against 19 of 26. External agreement
+  that the delay is unreliable; local measurement that it is actively worse.
+
 - **A chart the drawing context could not tag is not finished.** On the web the
   tag write goes through a shape proxy several syncs old and the host refuses it
   (`InvalidParam passed to GetItem(id)`, 46 times in one 38-item run), leaving a
