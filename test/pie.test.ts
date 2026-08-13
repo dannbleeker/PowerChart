@@ -329,22 +329,62 @@ describe("a pie's slices tile the circle", () => {
     // That margin is a flat `fs * 7` — 70pt either side of a 120pt-wide frame —
     // so a pie under ~140pt wide had nothing left and fell to the 1pt floor: a
     // 2pt dot, 0.1% of a thumbnail in ink, with four labels drawn around it as
-    // though there were a chart there. The margin yields and the outer labels
-    // come off, the way the radar's web and the sunburst's ring already do.
+    // though there were a chart there. The margin yields, and on the axis where
+    // yielding is not enough the ring comes off, the way the radar's web and the
+    // sunburst's ring already do.
     expect(arcR("pie", 120, 90)).toBeGreaterThan(20);
     expect(arcR("doughnut", 120, 90)).toBeGreaterThan(20);
-    // Even where the frame is far too short for a label ring, which is a
-    // separate reservation and yields separately.
-    expect(arcR("pie", 300, 60)).toBeGreaterThan(20);
+    // A frame far too short for a label ring is a separate reservation and
+    // yields separately: the labels shrink until they hit their floor, so the
+    // arc here is smaller than a thumbnail's but is still an arc.
+    expect(arcR("pie", 300, 60)).toBeGreaterThan(12);
   });
 
-  it("is unreachable once the margins fit, so no ordinary chart moves", () => {
-    // 200x150 is the smallest frame in this sweep where the side margin still
-    // leaves an arc, and it must be the margin — not the rescue — that sets the
-    // radius there and above.
-    expect(arcR("pie", 200, 150)).toBe(200 * 0.5 - 10 * 7);
+  it("takes the FULL margin once the frame can pay for it", () => {
+    // Above about 280pt wide the flat `fs * 7` fits inside the share below, so
+    // it is the margin — not the share, and not the rescue — that sets the
+    // radius, exactly as it always did.
+    expect(arcR("pie", 300, 400)).toBe(300 * 0.5 - 10 * 7);
+    expect(arcR("pie", 400, 400)).toBe(400 * 0.5 - 10 * 7);
     // At 480x300 the HEIGHT term binds instead, and it is untouched either way.
     expect(arcR("pie", 480, 300)).toBeLessThan(480 * 0.5 - 10 * 7);
+  });
+
+  /**
+   * The arc never shrinks when the frame grows.
+   *
+   * This is the property the flat margins broke, and they broke it hard: taken
+   * in full the moment the frame could afford them, they collapsed the arc at
+   * the threshold. Growing a chart from 160 to 170 points wide took its radius
+   * from 75 to 15, and a 280pt-wide pie was no bigger than a 160pt one — a chart
+   * that gets SMALLER as its frame grows, which is a bug whatever the arithmetic
+   * says.
+   *
+   * A residual step of a few points survives where the outer labels hit their
+   * size floor and the ring is dropped outright; `TOLERATED` is that floor
+   * crossing and nothing else. It is checked rather than waved at: one step, of
+   * a handful of points, on a frame too small to read.
+   */
+  it("never shrinks when the frame grows", () => {
+    const TOLERATED = 6;
+    for (const [axis, fixed] of [
+      ["width", 300],
+      ["height", 480],
+    ] as const) {
+      const steps: string[] = [];
+      let prev = 0;
+      let worst = 0;
+      for (let v = 60; v <= 480; v += 5) {
+        const r = axis === "width" ? arcR("pie", v, fixed) : arcR("pie", fixed, v);
+        if (r < prev - 0.001) {
+          steps.push(`${axis}=${v}: ${prev.toFixed(1)} -> ${r.toFixed(1)}`);
+          worst = Math.max(worst, prev - r);
+        }
+        prev = r;
+      }
+      expect(steps.length, `${axis}: ${steps.join(", ")}`).toBeLessThanOrEqual(1);
+      expect(worst, `${axis}: worst drop`).toBeLessThanOrEqual(TOLERATED);
+    }
   });
 
   for (const kind of ["pie", "doughnut"] as const) {
