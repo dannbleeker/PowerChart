@@ -448,6 +448,36 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   `slide-trouble`, `slide-trouble` against `threw`, `yes`, `threw` — still a
   coin. The instrument got better; the question is still open.
 
+  **And the round after that, reading the collection DIRECTLY says the regime
+  model may be wrong at the root.** `collectionTimeline` prints every question
+  that asks the shape collection, in time order, with what it said — the single
+  most load-bearing fact about this host, reasoned about from batch timings and
+  grouping traces for months and never simply READ.
+
+  In time order round 17 looks exactly like the received story: the collection
+  answers, refuses, comes back, refuses again, in three clean bursts. Grouped by
+  QUESTION it is nothing of the kind. **Seven of its eight collection questions
+  gave the SAME verdict on every pass** — `shapes-items-count-honest` refused all
+  three times, `shapes-items-via-positional-slide` refused all three,
+  `shape-add-fresh-slide-proxy` answered all three — and only
+  `shape-add-positional-slide-proxy` ever varied. The interleaving is the fixed
+  question order cycling through the passes.
+
+  So on this round "the collection is refusing" is mostly a fact about WHICH
+  QUESTION was asked recently, not about when. That also explains the 88%
+  saturation without any appeal to host state: the always-refusing questions are
+  asked every pass, so the flag is nearly always set. **Reads that list items
+  fail; calls that add a shape answer** — which is a claim about two different
+  operations, not about a host degrading over time.
+
+  One round, and it should be confirmed on a second before anything is built on
+  it — but note which way the caution runs. The existing model is the one with
+  a round's evidence against it. `variesOverTime` is deliberately false unless
+  some question gave BOTH verdicts: a bare "an answer came after a refusal" is
+  satisfied by question order alone and reported recovery on a host that never
+  changed, which is what the first version of this did before the by-question
+  grouping caught it.
+
   Three properties of the stamp are worth knowing, because each is a mistake
   this file has recorded before. It is CATEGORICAL — an age or a counter gives
   every sample its own value, and "every value maps to one answer" is then true
