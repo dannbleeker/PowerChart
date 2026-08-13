@@ -172,7 +172,13 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     // use, and `catFs` stays at `fs` whenever they fit, so an ordinary chart is
     // untouched.
     let catFs = fs;
-    const overflows = (f: number) => !H && catLabels.some((l, c) => textWidth(l, f) > widths[c] + 8);
+    // The room is the column plus the gap it shares with its neighbours — half
+    // on each side, so adjacent boxes ABUT rather than overlap. It used to be
+    // `+ 8` against a 2pt gap, which let every label bleed 4pt into each
+    // neighbour: "Americas (42%)" and "APAC (27%)" collided by 6pt on an
+    // ordinary 200x150 mekko, at the default font.
+    const catRoom = (c: number) => widths[c] + gap;
+    const overflows = (f: number) => !H && catLabels.some((l, c) => textWidth(l, f) > catRoom(c));
     while (catFs > 6 && overflows(catFs)) catFs -= 0.5;
     for (let c = 0; c < n; c++) {
       const label = catLabels[c];
@@ -193,11 +199,11 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       } else {
         nodes.push({
           kind: "text",
-          x: centers[c] - widths[c] / 2 - 4,
+          x: centers[c] - catRoom(c) / 2,
           y: frame.y + frame.h + 3,
-          w: widths[c] + 8,
+          w: catRoom(c),
           h: catFs * 1.4,
-          text: clipToWidth(label, catFs, widths[c] + 8),
+          text: clipToWidth(label, catFs, catRoom(c)),
           fontSize: catFs,
           color: style.text,
           align: "center",

@@ -587,9 +587,28 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   font is untouched — the geometry is byte-identical. Any "last resort" that
   changes an ordinary chart is not one, and the deck diff is what says so.
 
+  **A label INSIDE the frame can still be unreadable, and no gate here could see
+  that** — the frame sweeps pass a chart whose every label is stacked on its
+  neighbour. Diffing the text ink boxes against EACH OTHER found 73
+  kind/font/frame combinations with overlapping text, and one shape was 30 of
+  them: adjacent CATEGORY AXIS labels, which is one defect rather than seven
+  because that axis is shared by every cartesian kind. Fitting it to its slot
+  took the total to 56, and four more fits (cascade, mekko, butterfly, radar)
+  to 46. Two of those were defects at the DEFAULT font and size, which is the
+  part worth remembering: the sweep is not only about extremes.
+
+  Two things it taught. **A box wider than the mark it labels bleeds into the
+  neighbour**: the mekko's was `width + 8` against a 2pt column gap, so every
+  label could run 4pt into each side; the room is the mark plus its own share of
+  the gap, so adjacent boxes ABUT. And **a label drawn below the plot must be
+  reserved for in the plot**: the cascade's drop caption was drawn 7.5pt into the
+  footnote's band at 480x300, and clamping it up instead stacks two captions at
+  the same y where two thin blocks end together — which is a worse collision than
+  the one it fixes.
+
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
-  its own box, over every kind × eight frame sizes × seven fonts. It measures
-  INK, not boxes —
+  its own box, over every kind × eight frame sizes × seven fonts, plus the two
+  overlap properties above. It measures INK, not boxes —
   a first version measured boxes and produced four false positives and one false
   negative in one run, because a label's box is routinely wider than its text
   and is anchored by `align`.

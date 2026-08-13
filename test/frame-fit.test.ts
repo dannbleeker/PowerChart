@@ -172,6 +172,69 @@ describe("no chart draws outside its own frame at any font", () => {
   }
 });
 
+/**
+ * Text that is drawn ON TOP of other text.
+ *
+ * A label inside the frame can still be unreadable, and nothing here could see
+ * that: the frame sweeps above pass a chart whose every label is stacked on its
+ * neighbour. A sweep of the ink boxes against each other found 73 kind/font/frame
+ * combinations with overlapping text, and one shape accounted for 30 of them —
+ * adjacent CATEGORY AXIS labels, which is one defect rather than seven because
+ * that axis is shared by every cartesian kind.
+ *
+ * This gate is deliberately narrow: it pins the two that were fixed rather than
+ * asserting no chart anywhere overlaps, which is not true yet. The rest are
+ * listed in the PR that added this.
+ */
+describe("labels are not drawn on top of each other", () => {
+  /** The ink of a text node, as the frame sweep measures it. */
+  const inkOf = (t: TextNode) => inkBox(t)!;
+  const overlap = (a: ReturnType<typeof inkOf>, b: ReturnType<typeof inkOf>) => {
+    const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+    const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+    return w > 0 && h > 0 ? w * h : 0;
+  };
+  const textsNamed = (cfg: ChartConfig, re: RegExp) =>
+    buildChart(cfg).nodes.filter(
+      (n): n is TextNode => n.kind === "text" && !!n.name && re.test(n.name) && !!n.text.trim(),
+    );
+
+  it("the shared category axis fits each name to its slot", () => {
+    // Every label is centred in a slot and none was fitted to it, so a name
+    // wider than its slot ran into its neighbours on both sides.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      for (const { kind } of CHART_KINDS) {
+        const cfg = { ...sampleConfig(kind), width: 200, height: 150, style: { fontSize } } as ChartConfig;
+        const cats = textsNamed(cfg, /^category-\d+$/);
+        for (let i = 1; i < cats.length; i++) {
+          if (overlap(inkOf(cats[i - 1]), inkOf(cats[i])) > 1) {
+            bad.push(`fs=${fontSize} ${kind}: ${cats[i - 1].name} over ${cats[i].name}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("a cascade's drop caption stays out of the footnote", () => {
+    // The caption of a block too thin for text inside it goes underneath, and
+    // the plot did not reserve for that — so at the DEFAULT size it was drawn
+    // 7.5pt into the footnote's band, dark text over dark text.
+    for (const [w, h] of [
+      [480, 300],
+      [200, 150],
+    ] as [number, number][]) {
+      const cfg = { ...sampleConfig("cascade"), width: w, height: h } as ChartConfig;
+      const foot = textsNamed(cfg, /^footnote$/)[0];
+      expect(foot, "the sample cascade must carry a footnote for this to mean anything").toBeTruthy();
+      for (const d of textsNamed(cfg, /^drop-label-\d+$/)) {
+        expect(overlap(inkOf(d), inkOf(foot)), `${d.name} over the footnote at ${w}x${h}`).toBe(0);
+      }
+    }
+  });
+});
+
 describe("fitPlot", () => {
   const cfg = { width: 200, height: 150 } as ChartConfig;
 

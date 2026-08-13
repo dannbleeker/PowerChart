@@ -74,6 +74,19 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // label nobody can read is worse than no label. Unreachable at any size that
   // wants a radar.
   const ringFits = rWant >= 1;
+  /**
+   * The size the perimeter labels are drawn at.
+   *
+   * They sit on a ring, one per spoke, so the room each has is the SEPARATION
+   * between adjacent spokes at the radius they sit on — and none was fitted to
+   * it, so on a web whose font is large relative to its size adjacent names were
+   * drawn over each other. Bound by that separation, the same way the ring ticks
+   * are bound by their ring gap.
+   *
+   * Last resort: on any web whose names already clear each other this is `fs`,
+   * which is every radar at an ordinary size.
+   */
+  const perimFs = Math.min(fs, (2 * (r + fs * 0.6) * Math.sin(Math.PI / Math.max(1, n))) / 1.4);
 
   const spokeSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
@@ -200,15 +213,15 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const p = polar(cx, cy, r + fs * 0.6, angle(c));
     const a = angle(c) % 360;
     const align = a < 10 || a > 350 || Math.abs(a - 180) < 10 ? "center" : a < 180 ? "left" : "right";
-    const w = textWidth(cat, fs) + 4;
+    const w = textWidth(cat, perimFs) + 4;
     nodes.push({
       kind: "text",
       x: align === "center" ? p.x - w / 2 : align === "left" ? p.x : p.x - w,
-      y: p.y - (a < 10 || a > 350 ? fs * 1.4 : Math.abs(a - 180) < 10 ? 0 : fs * 0.7),
+      y: p.y - (a < 10 || a > 350 ? perimFs * 1.4 : Math.abs(a - 180) < 10 ? 0 : perimFs * 0.7),
       w,
-      h: fs * 1.4,
+      h: perimFs * 1.4,
       text: cat,
-      fontSize: fs,
+      fontSize: perimFs,
       color: style.text,
       align,
       valign: "middle",

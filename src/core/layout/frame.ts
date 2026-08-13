@@ -552,15 +552,35 @@ export function chromeNodes(
     const slotW = centers.length > 1 ? centers[1] - centers[0] : frame.w;
     // Sit the category axis below the IBCS variance tier's reserved band (0 off).
     const catY = frame.y + frame.h + varianceBandHeight(cfg, decor, style) + 3;
+    /**
+     * One size for the whole axis, small enough that each name fits its slot.
+     *
+     * Every label is CENTRED in a slot `slotW` wide and none was ever fitted to
+     * it, so a name wider than its slot runs into its neighbours on both sides.
+     * That is the commonest text collision in this engine — 30 of the 73
+     * kind/font/frame combinations a sweep turned up — and it is one defect
+     * rather than seven because this axis is shared by every cartesian kind.
+     *
+     * Shrunk together, so the axis reads at one size rather than as a ransom
+     * note, then clipped for the name no floor can fit. Last resort as
+     * everywhere else: where the names already fit their slots this is `fs` and
+     * nothing moves.
+     */
+    const catFs = (() => {
+      const room = Math.max(1, slotW - 2);
+      let f = fs;
+      while (f > 5 && cfg.data.categories.some((c) => textWidth(String(c ?? ""), f) > room)) f -= 0.5;
+      return f;
+    })();
     cfg.data.categories.forEach((cat, i) => {
       nodes.push({
         kind: "text",
         x: centers[i] - slotW / 2,
         y: catY,
         w: slotW,
-        h: fs * 1.4,
-        text: cat,
-        fontSize: fs,
+        h: catFs * 1.4,
+        text: clipToWidth(String(cat ?? ""), catFs, Math.max(1, slotW - 2)),
+        fontSize: catFs,
         color: style.text,
         align: "center",
         valign: "top",
