@@ -375,6 +375,28 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   `COIN` is the strong direction — it survives however many regimes were
   sampled, because one regime already answered two ways.
 
+  **Both halves earned their keep on the first real round (`cd3b60c`,
+  2026-08-13), and one of them by being WRONG.** `shape-add-positional-slide-proxy`
+  read `explained` against the committed fixture and `coin` one round later, the
+  same regime having produced both faces. So the mapping was one round's shape,
+  and the rule that an `explained` verdict may not rewrite an entry is what
+  stopped a day-old finding being written down as a mechanism. A tool whose
+  caution is vindicated inside a day is worth the caution.
+
+  **The pairing half ANSWERED a question that had been open in prose.**
+  `shape-add-held-slide-proxy` and its partner `-again` came back LOCKSTEP —
+  same pass boundary, three pairs, three agreements — so they are one mechanism
+  sampled twice and a flip in either is a flip in both. That round also caught
+  the pair the entry said could only be caught, never scheduled: `yes`/`yes`
+  half a second apart on pass 2. Seven pairs on record now, seven agreements.
+
+  **And the two verdicts together say more than either alone.** The pair agrees
+  perfectly, so at any instant this host has a DEFINITE answer; and the same
+  question is a `coin` by regime, because `collection-refused` produced both
+  faces. There is a state, it changes during a run, and `regime` is not it. The
+  open question is no longer "is it a coin" — it is "what is the state", with
+  one candidate eliminated.
+
 - **Dependabot's banner gets read, and the reading gets written down** in
   `docs/DEPENDENCY-ALERTS.md`. Same rule as the table above: an entry says what
   was decided, "no exposure" included. It sat at 9 alerts for weeks with nobody
