@@ -14,7 +14,7 @@ import {
   legendRowCount,
   legendWrapWalk,
   MIN_PLOT_SIDE,
-  MIN_TICK_FS,
+  MIN_LABEL_FS,
 } from "./frame";
 import type { LayoutResult } from "./column";
 
@@ -433,7 +433,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const gapScale = (vals: number[], to: (v: number) => number, span: number) => {
     const gap = vals.length > 1 ? Math.min(...vals.slice(1).map((t, i) => Math.abs(to(t) - to(vals[i])))) : span;
     const scale = Math.min(1, gap / (fs * 1.4));
-    return fs * 0.9 * scale < MIN_TICK_FS ? 0 : scale;
+    return fs * 0.9 * scale < MIN_LABEL_FS ? 0 : scale;
   };
   const yTickScale = gapScale(yTicks, toY, plot.h);
   const xTickScale = gapScale(xTicks, toX, plot.w);

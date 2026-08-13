@@ -15,7 +15,8 @@ import {
   logFloor,
   titleHeight,
   valueScale,
-  MIN_TICK_FS,
+  bandFontSize,
+  MIN_LABEL_FS,
   type Frame,
   type ValueScale,
 } from "./frame";
@@ -286,6 +287,20 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     const barW = stacked ? stackThick : colThick / (1 + (nBars - 1) * (1 - overlapFrac));
     const barStep = stacked ? stackThick : barW * (1 - overlapFrac);
     const barThick = barW;
+    /**
+     * A bar's drawn thickness, after the 1pt gap that separates it from its
+     * neighbour.
+     *
+     * That gap is chrome, and a bar too thin to pay for it went NEGATIVE:
+     * `barThick - 1` is -0.3 for a clustered chart 14 points wide, or one 12x9,
+     * and a negative-width rect is not a thin bar — SVG drops it and PowerPoint
+     * clamps it to a sliver, so the chart loses its bars entirely while every
+     * label around them still says what they are worth.
+     *
+     * The gap yields instead, down to half the bar. Identical for any bar 2pt or
+     * wider, which is every chart at a sane size.
+     */
+    const withGap = (t: number) => Math.max(t * 0.5, t - 1);
     // think-cell's Segment Order: stacking order within this column.
     const order = data.series.map((_, i) => i);
     if (cfg.segmentOrder === "reverse") order.reverse();
@@ -315,7 +330,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
       if (raw != null && v !== 0) {
         if (stacked) {
           const catPos = nStacks > 1 ? centers[c] - colThick / 2 + (sp + 0.5) * stackThick : centers[c];
-          const thick = nStacks > 1 ? stackThick - 1 : colThick;
+          const thick = nStacks > 1 ? withGap(stackThick) : colThick;
           if (v >= 0) {
             r = segRect(catPos, thick, ups[sp], ups[sp] + v);
             ups[sp] += v;
@@ -330,7 +345,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           }
         } else {
           const pos = centers[c] - colThick / 2 + barW / 2 + position * barStep;
-          r = segRect(pos, barThick - 1, 0, v);
+          r = segRect(pos, withGap(barThick), 0, v);
         }
       }
       // Where THIS series' mark tops out, in value units — what a level-anchored
@@ -500,21 +515,22 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // end of the bars — the same defect the butterfly's value labels had,
         // and it wants the same bound: the ROW the total belongs to. Last
         // resort, so at any font that already fits its row this is `fs`.
-        const totalFs = Math.min(fs, slotLen / 1.5);
-        nodes.push({
-          kind: "text",
-          x: frame.x + topQ + 3,
-          y: centers[c] - totalFs * 0.75,
-          w: cfg.width - (frame.x + topQ) - 3,
-          h: totalFs * 1.5,
-          text: formatNumber(signedTotals[c], fmt),
-          fontSize: totalFs,
-          bold: true,
-          color: style.text,
-          align: "left",
-          valign: "middle",
-          name: `total-${c}`,
-        });
+        const totalFs = bandFontSize(fs, slotLen, 1.5);
+        if (totalFs > 0)
+          nodes.push({
+            kind: "text",
+            x: frame.x + topQ + 3,
+            y: centers[c] - totalFs * 0.75,
+            w: cfg.width - (frame.x + topQ) - 3,
+            h: totalFs * 1.5,
+            text: formatNumber(signedTotals[c], fmt),
+            fontSize: totalFs,
+            bold: true,
+            color: style.text,
+            align: "left",
+            valign: "middle",
+            name: `total-${c}`,
+          });
       } else {
         nodes.push({
           kind: "text",
@@ -877,7 +893,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
    */
   const rowPitch =
     anchors.categoryX.length > 1 ? Math.abs(anchors.categoryX[1] - anchors.categoryX[0]) : anchors.plot.h;
-  const pointFs = H ? Math.min(fs, rowPitch / 1.4) : fs;
+  const pointFs = H ? bandFontSize(fs, rowPitch, 1.4) : fs;
   /** Value → coordinate along the value axis (x when horizontal, y when not). */
   let lineToY = baseMap ?? ((v: number) => (H ? anchors.plot.x + v : anchors.plot.y + anchors.plot.h - v));
   /** Point for a value at a category, in the base chart's orientation. */
@@ -980,7 +996,10 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         strokeWidth: 1,
         name: `combo-marker-${li}-${c}`,
       });
-      if (labelOn) {
+      // `pointFs` is 0 when the row is too thin to carry a legible label, which
+      // is the same "no room" answer the label placers give elsewhere — drawn
+      // anyway it would be a zero-size font, which OOXML rejects.
+      if (labelOn && pointFs > 0) {
         // Categories run down a bar chart, so a label ABOVE its point would sit
         // on the neighbouring category's row; put it beside the mark instead.
         nodes.push(
@@ -1103,7 +1122,7 @@ export function horizontalChrome(
     const room = Math.max(1, tickGap - 2);
     const tickFs = (() => {
       let f = fs * 0.9;
-      while (f > MIN_TICK_FS && scale.ticks.some((t) => textWidth(axisLabel(t), f) > room)) f -= 0.5;
+      while (f > MIN_LABEL_FS && scale.ticks.some((t) => textWidth(axisLabel(t), f) > room)) f -= 0.5;
       return f;
     })();
     // The loop floors rather than shrinking to nothing, so a gap this tight
@@ -1148,25 +1167,28 @@ export function horizontalChrome(
     const slotH = centers.length > 1 ? Math.abs(centers[1] - centers[0]) : frame.h;
     const gutter = Math.max(1, frame.x - 4);
     const catFs = (() => {
-      let f = Math.min(fs, slotH / 1.5);
-      while (f > 5 && cfg.data.categories.some((c) => textWidth(String(c ?? ""), f) > gutter)) f -= 0.5;
+      let f = bandFontSize(fs, slotH, 1.5);
+      while (f > MIN_LABEL_FS && cfg.data.categories.some((c) => textWidth(String(c ?? ""), f) > gutter)) f -= 0.5;
       return f;
     })();
-    cfg.data.categories.forEach((cat, i) => {
-      nodes.push({
-        kind: "text",
-        x: 0,
-        y: centers[i] - catFs * 0.75,
-        w: gutter,
-        h: catFs * 1.5,
-        text: clipToWidth(String(cat ?? ""), catFs, gutter),
-        fontSize: catFs,
-        color: style.text,
-        align: "right",
-        valign: "middle",
-        name: `category-${i}`,
+    // Zero means the rows cannot carry a legible name at any size, so the axis
+    // is dropped whole rather than drawn at a size OOXML will not accept.
+    if (catFs > 0)
+      cfg.data.categories.forEach((cat, i) => {
+        nodes.push({
+          kind: "text",
+          x: 0,
+          y: centers[i] - catFs * 0.75,
+          w: gutter,
+          h: catFs * 1.5,
+          text: clipToWidth(String(cat ?? ""), catFs, gutter),
+          fontSize: catFs,
+          color: style.text,
+          align: "right",
+          valign: "middle",
+          name: `category-${i}`,
+        });
       });
-    });
   }
   if (decor.seriesLabels && cfg.data.series.length > 1) {
     nodes.push(...legendRow(cfg, style, frame.x, (cfg.title ? fs * 1.6 + 6 : 0) + 2, { maxX: cfg.width - 4 }));

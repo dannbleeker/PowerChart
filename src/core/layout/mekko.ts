@@ -3,7 +3,7 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { chromeNodes, computeFrame, computeFrameHorizontal, titleHeight } from "./frame";
+import { bandFontSize, chromeNodes, computeFrame, computeFrameHorizontal, fitPlot, titleHeight } from "./frame";
 import { legendRow, seriesLabelNodes, type LayoutResult } from "./column";
 import { columnPositiveTotal } from "./totals";
 
@@ -37,8 +37,15 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   if (H && !units && decor.categoryAxis) {
     // Row labels carry a share suffix ("EMEA (32%)") the generic frame
     // reservation doesn't know about — widen the left gutter for it.
+    //
+    // Back through `fitPlot`, because this widening happens AFTER the frame was
+    // floored and takes a fixed number of points however narrow the chart is:
+    // on a 14pt-wide mekko it left `w: -12.2`, and a negative-width segment is
+    // not a thin one — SVG drops it and PowerPoint clamps it to a sliver, so
+    // every row loses its bars while the totals beside them still print. Any
+    // frame that can afford the gutter is returned untouched.
     const extra = textWidth(" (00%)", fs);
-    frame = { ...frame, x: frame.x + extra, w: frame.w - extra };
+    frame = fitPlot(cfg, { ...frame, x: frame.x + extra, w: frame.w - extra });
   }
   const grand = extents.reduce((a, b) => a + b, 0) || 1;
   const gap = 2;
@@ -116,21 +123,26 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // total centred in a box `fs * 1.5` tall then runs into its neighbours.
       // Per-row rather than one size for the axis, because the rows genuinely
       // differ in height here. Last resort: a row that can afford `fs` keeps it.
-      const totalFs = Math.min(fs, ext / 1.5);
-      nodes.push({
-        kind: "text",
-        x: frame.x + colLen + 3,
-        y: centers[c] - totalFs * 0.75,
-        w: cfg.width - (frame.x + colLen) - 3,
-        h: totalFs * 1.5,
-        text: formatNumber(totals[c], fmt),
-        fontSize: totalFs,
-        bold: true,
-        color: style.text,
-        align: "left",
-        valign: "middle",
-        name: `total-${c}`,
-      });
+      //
+      // A row can be ZERO here — the rows are shares of the total, so a chart
+      // whose data is all zeroes has no rows at all — and `Math.min` answered a
+      // font of zero, which OOXML rejects outright. `bandFontSize` is the floor.
+      const totalFs = bandFontSize(fs, ext, 1.5);
+      if (totalFs > 0)
+        nodes.push({
+          kind: "text",
+          x: frame.x + colLen + 3,
+          y: centers[c] - totalFs * 0.75,
+          w: cfg.width - (frame.x + colLen) - 3,
+          h: totalFs * 1.5,
+          text: formatNumber(totals[c], fmt),
+          fontSize: totalFs,
+          bold: true,
+          color: style.text,
+          align: "left",
+          valign: "middle",
+          name: `total-${c}`,
+        });
     } else {
       nodes.push({
         kind: "text",
@@ -202,20 +214,21 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         // so a small column gets a thin one). The smaller wins, the same way
         // the butterfly's category names take the smaller of their gutter fit
         // and their row fit.
-        const nameFs = Math.min(catFs, catRoom(c) / 1.5);
-        nodes.push({
-          kind: "text",
-          x: 0,
-          y: centers[c] - nameFs * 0.75,
-          w: gutter,
-          h: nameFs * 1.5,
-          text: clipToWidth(label, nameFs, gutter),
-          fontSize: nameFs,
-          color: style.text,
-          align: "right",
-          valign: "middle",
-          name: `category-${c}`,
-        });
+        const nameFs = bandFontSize(catFs, catRoom(c), 1.5);
+        if (nameFs > 0)
+          nodes.push({
+            kind: "text",
+            x: 0,
+            y: centers[c] - nameFs * 0.75,
+            w: gutter,
+            h: nameFs * 1.5,
+            text: clipToWidth(label, nameFs, gutter),
+            fontSize: nameFs,
+            color: style.text,
+            align: "right",
+            valign: "middle",
+            name: `category-${c}`,
+          });
       } else {
         nodes.push({
           kind: "text",

@@ -5,7 +5,7 @@ import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { niceTicks } from "../format";
 import { legendRow, type LayoutResult, type LegendEntry } from "./column";
-import { fitPlot, legendRowCount, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, legendRowCount, titleHeight, titleNode } from "./frame";
 
 /**
  * Butterfly (tornado) chart: think-cell models this as two bar charts placed
@@ -96,7 +96,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   // at any frame size once the font is big enough for the row count. Bound by
   // the row it labels, which is the same thing that stops both. Last resort: at
   // any font that already fits its row this is `fs` and nothing moves.
-  const rowFs = Math.min(fs, slotH / 1.5);
+  const rowFs = bandFontSize(fs, slotH, 1.5);
   const barH = slotH * (2 / 3);
 
   const nodes: SceneNode[] = [];
@@ -167,26 +167,28 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
   // names: `catFs` is the width, `rowFs` the height. Fitting only the width left
   // the names overlapping each other vertically at a big font, which is the same
   // defect as the value labels beside them and wants the same bound.
-  const nameFs = Math.min(catFs, rowFs);
+  const nameFs = rowFs > 0 ? Math.min(catFs, rowFs) : 0;
 
   const columnTop: number[] = [];
   for (let c = 0; c < n; c++) {
     const cy = plot.y + slotH * (c + 0.5);
     columnTop.push(cy - barH / 2);
-    // Category label in the center gutter.
-    nodes.push({
-      kind: "text",
-      x: leftEdge,
-      y: cy - nameFs * 0.75,
-      w: gutterW,
-      h: nameFs * 1.5,
-      text: clipToWidth(data.categories[c], nameFs, gutterW),
-      fontSize: nameFs,
-      color: style.text,
-      align: "center",
-      valign: "middle",
-      name: `category-${c}`,
-    });
+    // Category label in the center gutter. Dropped when the row cannot carry a
+    // legible one, rather than drawn at a size OOXML will not accept.
+    if (nameFs > 0)
+      nodes.push({
+        kind: "text",
+        x: leftEdge,
+        y: cy - nameFs * 0.75,
+        w: gutterW,
+        h: nameFs * 1.5,
+        text: clipToWidth(data.categories[c], nameFs, gutterW),
+        fontSize: nameFs,
+        color: style.text,
+        align: "center",
+        valign: "middle",
+        name: `category-${c}`,
+      });
     const drawSide = (series: typeof withIdx, dir: -1 | 1, edge: number) => {
       let offset = 0;
       for (const { s, si } of series) {
@@ -202,7 +204,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
           const inside = len >= textWidth(label, fs) + 4 && barH >= fs * 1.25;
           // Stacked segments only label when the value fits inside; single
           // flanks fall back to an outside label (classic behaviour).
-          if (inside || single) {
+          if ((inside || single) && rowFs > 0) {
             nodes.push({
               kind: "text",
               x: inside ? x : dir < 0 ? x - fs * 3.4 - 2 : x + len + 2,

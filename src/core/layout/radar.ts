@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { polar, textWidth, type SceneNode } from "../scene";
 import { formatNumber, niceTicks, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { fitPlot, footnoteH, legendRowCount, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, legendRowCount, titleHeight, titleNode } from "./frame";
 import { legendRow, type LayoutResult, type LegendEntry } from "./column";
 import { columnPositiveTotal } from "./totals";
 import { maxOf } from "../agg";
@@ -86,7 +86,11 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
    * Last resort: on any web whose names already clear each other this is `fs`,
    * which is every radar at an ordinary size.
    */
-  const perimFs = Math.min(fs, (2 * (r + fs * 0.6) * Math.sin(Math.PI / Math.max(1, n))) / 1.4);
+  // The room a perimeter label has is the chord between two neighbouring spokes
+  // — but with a SINGLE category there is no neighbour, and `sin(PI / 1)` is
+  // zero, so the one formula that should have been unconstrained produced a
+  // font of zero. One spoke gets the chart font; two or more get the chord.
+  const perimFs = n <= 1 ? fs : bandFontSize(fs, 2 * (r + fs * 0.6) * Math.sin(Math.PI / Math.max(1, n)), 1.4);
 
   const spokeSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
@@ -209,7 +213,10 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       name: `spoke-${c}`,
     });
     // Perimeter category label, anchored by which side of the web it sits on.
-    if (!ringFits) return;
+    // Dropped when the ring will not fit, and equally when the chord between
+    // two spokes cannot carry a legible label — the same answer, from the same
+    // reasoning, for the two ways the room can run out.
+    if (!ringFits || perimFs <= 0) return;
     const p = polar(cx, cy, r + fs * 0.6, angle(c));
     const a = angle(c) % 360;
     const align = a < 10 || a > 350 || Math.abs(a - 180) < 10 ? "center" : a < 180 ? "left" : "right";

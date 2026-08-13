@@ -4,7 +4,15 @@ import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat } from "../format";
 import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
-import { baselineNode, breakMarkerNodes, chromeNodes, computeFrame, computeFrameHorizontal, valueScale } from "./frame";
+import {
+  bandFontSize,
+  baselineNode,
+  breakMarkerNodes,
+  chromeNodes,
+  computeFrame,
+  computeFrameHorizontal,
+  valueScale,
+} from "./frame";
 import { horizontalChrome, type LayoutResult } from "./column";
 
 /**
@@ -199,7 +207,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
    */
   const labelRoom = Math.max(1, slotLen - 2);
   const labelFs = (() => {
-    if (H) return Math.min(fs, slotLen / 1.5);
+    if (H) return bandFontSize(fs, slotLen, 1.5);
     const labels = bars.flatMap((b, c) => b.segs.map((seg) => labelFor(b.isTotal, c, seg.value)));
     let f = fs;
     while (f > 5 && labels.some((l) => textWidth(l, f) > labelRoom)) f -= 0.5;
@@ -232,7 +240,10 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
       const label = labelFor(b.isTotal, c, seg.value);
       const along = H ? r.w : r.h;
       const fits = H ? along >= textWidth(label, labelFs) + 2 : along >= labelFs * 1.25;
-      if (fits || !stacked || b.isTotal) {
+      // `labelFs` is 0 when the row is too thin for a legible label — the same
+      // "no room" answer the other fits give, and what keeps a zero-size font
+      // (which OOXML rejects) out of the scene.
+      if ((fits || !stacked || b.isTotal) && labelFs > 0) {
         // Upright, the box is centred on the bar and capped at the slot, so
         // adjacent boxes ABUT instead of overlapping. `r.x - 6` is exactly
         // `centers[c] - (r.w + 12) / 2`, so an uncapped slot is byte-identical.
