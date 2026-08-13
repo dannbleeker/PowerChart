@@ -9,10 +9,14 @@ import {
   symbolPoints,
   markerScale,
   dashKind,
+  symbolPreset,
   SYMBOL_PRESET,
   type MarkerSymbol,
   type SymbolShape,
 } from "../src/core/geometry";
+import { sceneToSvg } from "../src/render/svg";
+import { makeAddNode } from "../skill/scripts/pptx-paint.mjs";
+import type { SceneNode } from "../src/core/scene";
 
 /**
  * These reference implementations are byte-for-byte copies of the formulas that
@@ -314,9 +318,115 @@ describe("dashKind — map a stroke-dash array to the nearest native line style"
     expect(dashKind([6, 6])).toBe("dash");
   });
 
-  it("survives a malformed one-element or empty array without throwing", () => {
+  it("survives a malformed one-element array without throwing", () => {
     expect(dashKind([2])).toBe("dash"); // gap defaults to on → 2 > 1.5
     expect(dashKind([1])).toBe("dot"); // on 1 ≤ 1.5, gap defaults to 1
-    expect(dashKind([])).toBe("dot"); // on 0, gap 0 → dot (harmless default)
+  });
+
+  /**
+   * `[]` used to answer `dot`, and the assertion above it called that a "harmless
+   * default". It was not: both PowerPoint sinks guarded on `dash` being TRUTHY,
+   * and `[]` is truthy, so an empty dash array drew a SOLID line in the preview
+   * and a DOTTED one in both decks. Nothing in the layouts emits one — it falls
+   * out of caller code like `dash: lengths.filter(…)`, and `src/index.ts` exports
+   * both this and the renderers.
+   */
+  it("answers none for an array that specifies no dash", () => {
+    for (const d of [[], [0], [0, 0], [-5, -5], [NaN], [Infinity], [-1, 4]]) {
+      expect(dashKind(d), `dashKind(${JSON.stringify(d)})`).toBe("none");
+    }
+  });
+
+  it("answers none for a value that is not an array of lengths at all", () => {
+    // `dash` is `number[]` in the types, and a library caller reaches it with
+    // whatever their JSON held. `"3 2"` answered `dash` and `5` answered `dot`,
+    // both while SVG drew a solid line.
+    for (const d of [undefined, null, "3 2", "", 5, 0, true, {}, ["3", "2"]]) {
+      expect(dashKind(d), `dashKind(${JSON.stringify(d)})`).toBe("none");
+    }
+  });
+});
+
+/**
+ * The three-sink sweep, the same shape as the paint corpus in `color.test.ts`:
+ * run one corpus through every renderer and DIFF the answers, rather than
+ * checking each in isolation. It found 10 of 16 inputs in disagreement — the
+ * preview drawing a solid line where both decks drew a dotted one — all from the
+ * two PowerPoint sinks guarding on `dash` being truthy while SVG guarded on its
+ * content.
+ *
+ * Only the two offline sinks run here; the live Office.js sink needs the fake
+ * host and is swept in `office-render.test.ts` against the same corpus.
+ */
+describe("dash — the sinks agree on WHETHER a line is dashed", () => {
+  const CORPUS: unknown[] = [
+    undefined,
+    null,
+    [],
+    [3, 2],
+    [1.5, 1.5],
+    [0, 0],
+    [-5, -5],
+    [NaN],
+    [Infinity],
+    ["3", "2"],
+    "3 2",
+    5,
+    {},
+    true,
+    "",
+    0,
+    // The case that separates "some positive value" from what SVG actually does:
+    // a negative entry is an error there, so the attribute goes and the line is
+    // solid however positive its neighbours are.
+    [-1, 4],
+    // …and its partner, which must stay DASHED: SVG reads a non-finite entry as
+    // 0 via `num(d, 0)`, so `[NaN, 4]` emits "0 4" and dashes.
+    [NaN, 4],
+  ];
+
+  const svgDashed = (dash: unknown): boolean => {
+    const svg = sceneToSvg({
+      width: 100,
+      height: 100,
+      nodes: [{ kind: "line", x1: 0, y1: 0, x2: 100, y2: 100, stroke: "#000", dash } as SceneNode],
+    });
+    return svg.includes("stroke-dasharray");
+  };
+
+  const pptxDashed = (dash: unknown): boolean => {
+    const rec: { type: string; opts: Record<string, unknown> }[] = [];
+    const add = makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrowheadBox });
+    add(
+      {
+        addShape: (type: string, opts: Record<string, unknown>) => rec.push({ type, opts }),
+        addText: () => {},
+      },
+      { kind: "line", x1: 0, y1: 0, x2: 100, y2: 100, stroke: "#000", dash } as SceneNode,
+      0,
+      0,
+    );
+    return rec.some((s) => (s.opts.line as { dashType?: string } | undefined)?.dashType !== undefined);
+  };
+
+  it.each(CORPUS.map((d) => [JSON.stringify(d) ?? String(d), d] as const))(
+    "the preview and the pptx deck agree for %s",
+    (_label, dash) => {
+      expect(pptxDashed(dash), "pptx disagreed with the preview").toBe(svgDashed(dash));
+    },
+  );
+
+  it("still draws the patterns the layouts actually emit", () => {
+    // The guard above is satisfied by both sinks refusing everything, so pin the
+    // real patterns too — a fix that stopped dashing altogether would pass it.
+    for (const d of [
+      [3, 2],
+      [1.5, 1.5],
+      [2, 3],
+      [4, 3],
+    ]) {
+      expect(svgDashed(d), `svg dropped ${JSON.stringify(d)}`).toBe(true);
+      expect(pptxDashed(d), `pptx dropped ${JSON.stringify(d)}`).toBe(true);
+    }
   });
 });

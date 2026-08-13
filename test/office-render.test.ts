@@ -417,6 +417,33 @@ describe("scene node mapping", () => {
     expect(line.lineFormat.dashStyle).toBe("roundDot");
   });
 
+  /**
+   * The live sink's half of the three-sink dash sweep (the two offline sinks are
+   * swept against the same corpus in `geometry.test.ts`). This renderer guarded
+   * on `s.dash` being TRUTHY, and `[]` is truthy — so an empty dash array set
+   * `roundDot` here while the SVG preview drew a solid line. `dashKind` answers
+   * `none` for it now, and no dash style is written at all.
+   */
+  it("leaves a line undashed when its dash array specifies no dash", async () => {
+    const slide = await insert(
+      [[], [0, 0], [-5, -5], [NaN], [-1, 4]].map((dash, i) => ({
+        kind: "line" as const,
+        x1: 10,
+        y1: 20 + i * 10,
+        x2: 200,
+        y2: 20 + i * 10,
+        stroke: "#333",
+        strokeWidth: 1,
+        dash,
+        name: `undashed-${i}`,
+      })),
+    );
+    for (let i = 0; i < 5; i++) {
+      const l = slide.created.find((s) => s.name === `undashed-${i}`)!;
+      expect(l.lineFormat.dashStyle, `line ${i} was given a dash style`).toBeUndefined();
+    }
+  });
+
   it("draws polygon edges direction-correct, with no zero-thickness boxes", async () => {
     // A violin body: an up-right edge, a horizontal edge and a down-right edge.
     const slide = await insert([

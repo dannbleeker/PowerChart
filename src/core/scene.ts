@@ -20,6 +20,11 @@
  *  - Dash arrays (line.dash): SVG honours the exact array; the PowerPoint
  *    renderers expose enums, so they map to the nearest native style via
  *    `dashKind` (dotted → roundDot/sysDot, else dash) rather than the exact rhythm.
+ *    WHETHER a line is dashed at all is not approximate, and all three sinks must
+ *    answer it the same way — they ask `dashKind`, which returns `none` for an
+ *    array carrying no positive finite length. Do not re-guard on `dash` being
+ *    truthy at a call site: `[]` is truthy, and that divergence drew a solid line
+ *    in the preview and a dotted one in both decks.
  *  - Chevron point depth and arrowhead proportions: SVG draws its own geometry;
  *    the PowerPoint renderers name a native preset whose default proportions
  *    differ slightly (see the notes on those kinds). Reproducing the preset
@@ -68,6 +73,9 @@ export interface LineNode {
    * PowerPoint renderers have only an enum of named styles, so they collapse it
    * to the nearest one via `dashKind` (a dotted [1.5,1.5] stays dotted;
    * everything else is a dash). The rhythm is approximate in the deck by design.
+   *
+   * An array with no positive finite length (`[]`, `[0, 0]`, `[-5, -5]`, `[NaN]`)
+   * means NOT DASHED in every sink — ask `dashKind`, never `if (n.dash)`.
    */
   dash?: number[];
   name?: string;

@@ -52,10 +52,36 @@ export function arrowheadBox(
  * dashed one in the deck. This keeps the one distinction the enums can express:
  * a short on-segment roughly equal to its gap reads as dots, everything else as
  * dashes. `dot` maps to `roundDot`/`sysDot`, `dash` to `dash`, in each renderer.
+ *
+ * **`none` is the third answer, and it is the one all three sinks used to
+ * disagree about.** The two PowerPoint sinks guarded on TRUTHINESS (`if
+ * (!s.dash)`, `n.dash ? … : {}`) where SVG guards on CONTENT, so a dash array
+ * carrying no positive finite value — `[]`, `[0, 0]`, `[-5, -5]`, `[NaN]` — drew
+ * a SOLID line in the preview and a DOTTED one in both decks. `[]` is the sharp
+ * case: it is truthy, it falls out of ordinary code like `dash: xs.filter(…)`,
+ * and this function used to answer `dot` for it — a value its own test called a
+ * "harmless default". Sweeping all three sinks with one corpus put 10 of 16
+ * inputs in disagreement, every one of them this.
+ *
+ * Taking `unknown` is the other half. `dash` is `number[]` in the types, and
+ * `src/index.ts` exports both this and the renderers — so a library caller
+ * reaches it with whatever their JSON held, and `"3 2"` or `5` answered `dash`
+ * and `dot` respectively while SVG drew solid. A value that does not specify a
+ * dash is `none`, whatever its type.
  */
-export function dashKind(dash: number[]): "dot" | "dash" {
-  const on = dash[0] ?? 0;
-  const gap = dash[1] ?? on;
+export function dashKind(dash: unknown): "none" | "dot" | "dash" {
+  if (!Array.isArray(dash)) return "none";
+  // A string entry is not a length: SVG's own `num(d, 0)` reads `"3"` as 0, so
+  // treating the array as undashed is what keeps the three sinks in step.
+  const lens = dash.filter((d): d is number => typeof d === "number" && Number.isFinite(d));
+  // A NEGATIVE entry is an error in SVG, and the whole attribute is dropped — so
+  // `[-1, 4]` draws solid there however positive its other entries are. Requiring
+  // only "some positive value" left that case still disagreeing, which the
+  // corpus caught: it is the one input where the two rules come apart.
+  if (lens.some((d) => d < 0)) return "none";
+  if (!lens.some((d) => d > 0)) return "none";
+  const on = lens[0] ?? 0;
+  const gap = lens[1] ?? on;
   return on <= 1.5 && on <= gap ? "dot" : "dash";
 }
 
