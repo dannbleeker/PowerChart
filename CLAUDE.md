@@ -2500,8 +2500,31 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
   is on the mechanism rather than on the repro; that is why it bounds a claim
   instead of predicting a failure.
 
-- The showcase build is **byte-deterministic**; CI diffs slide XML, so always
-  commit the regenerated deck with the code that changed it.
+- **The showcase deck's SLIDE XML is deterministic; its BYTES are not.** Always
+  commit the regenerated deck with the code that changed it — but read a
+  modified `examples/showcase.pptx` in `git status` as no evidence at all that
+  the deck moved. Two builds of identical code differ at byte 11, because
+  `docProps/core.xml` carries a wall-clock build timestamp and the zip carries
+  entry timestamps. Every file under `ppt/` is byte-identical, which is why the
+  CI gate compares `ppt/slides/slide*` and says so at the step.
+
+  This line used to read "the showcase build is byte-deterministic", and that
+  cost time twice in one session: once nearly committing pure timestamp churn as
+  though it were a real diff, once treating a modified file as a regression to
+  hunt. To check whether a change actually moved the deck, extract both zips and
+  diff `ppt/` — the raw file comparison answers a different question and always
+  says yes.
+
+      git show HEAD:examples/showcase.pptx > /tmp/old.pptx
+      npm run build:lib && node scripts/build-showcase.mjs
+      mkdir -p /tmp/a /tmp/b
+      (cd /tmp/a && unzip -qo /tmp/old.pptx)
+      (cd /tmp/b && unzip -qo examples/showcase.pptx)
+      diff -r /tmp/a/ppt /tmp/b/ppt      # this is the answer
+
+  And diff `ppt/`, not the whole extraction: `docProps/core.xml` differs on every
+  build, so diffing the extraction root reports a change that is never real.
+
 - The pane rebuilds `ChartConfig` from UI state: new **decoration** keys
   round-trip automatically; new **top-level** config keys need a state field
   or the `state.extras` passthrough in `src/taskpane/app.ts`. **Forgetting is a
