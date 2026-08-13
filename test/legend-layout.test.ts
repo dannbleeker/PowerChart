@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
 import { legendRow } from "../src/core/layout/column";
 import { DEFAULT_STYLE } from "../src/core/style";
 import type { RectNode, TextNode } from "../src/core/scene";
@@ -296,5 +297,34 @@ describe("the scatter group legend wraps instead of marching off-canvas", () => 
     const chips = one.nodes.filter((n) => /^legend-chip-/.test(n.name ?? ""));
     expect(chips.length).toBe(2);
     expect(new Set(chips.map((c) => (c as { y: number }).y)).size, "a two-entry legend wrapped").toBe(1);
+  });
+});
+
+describe("a horizontal legend the frame cannot pay for", () => {
+  /**
+   * `computeFrameHorizontal` reserves a row per wrapped legend row, and
+   * `horizontalChrome` draws them. On an 80x60 frame the legend wraps to two
+   * rows — about 39pt of a 60pt chart — so with the title and the value axis
+   * there is no plot left, `fitPlot` floors it, and the legend's second row
+   * comes down on the value-axis labels.
+   *
+   * Both sides now read ONE predicate, `horizontalLegendFits`, which is the
+   * point of the test. Gating the reservation alone is measurably worse than
+   * not gating at all: doing exactly that to the scatter legend took an
+   * extreme-frame overlap count from 55 to 63, because the band is reserved as
+   * zero and the legend is drawn anyway.
+   */
+  const legendTexts = (w: number, h: number) =>
+    buildChart({ ...sampleConfig("line"), width: w, height: h, horizontal: true } as ChartConfig).nodes.filter(
+      (n): n is TextNode => n.kind === "text" && /^legend/.test(String(n.name)),
+    );
+
+  it("drops the legend rather than drawing it over the value axis", () => {
+    expect(legendTexts(80, 60)).toHaveLength(0);
+  });
+
+  it("still draws it on a frame with room", () => {
+    // The negative control: this must not become "drop the legend always".
+    expect(legendTexts(480, 300).length).toBeGreaterThan(0);
   });
 });
