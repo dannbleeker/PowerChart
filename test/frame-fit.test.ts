@@ -217,6 +217,94 @@ describe("labels are not drawn on top of each other", () => {
     expect(bad).toEqual([]);
   });
 
+  it("no chart overlaps its own text at the default font", () => {
+    // The strongest form this file can assert today. A sweep of the text ink
+    // boxes against each other found 237 overlapping pairs across the kinds and
+    // fonts; fitting each label to the space it actually has took that to 76,
+    // and to ZERO at the font every chart is drawn at unless someone changes it.
+    // The remainder are at 18pt and above and are listed in the PR that got the
+    // count here — do not widen this to those fonts without fixing them.
+    const bad: string[] = [];
+    for (const [w, h] of [
+      [200, 150],
+      [480, 300],
+    ] as [number, number][]) {
+      for (const { kind } of CHART_KINDS) {
+        const ts = buildChart({ ...sampleConfig(kind), width: w, height: h } as ChartConfig).nodes.filter(
+          (n): n is TextNode => n.kind === "text" && !!n.text.trim(),
+        );
+        const boxes = ts.map((t) => inkBox(t)!);
+        for (let i = 0; i < boxes.length; i++) {
+          for (let j = i + 1; j < boxes.length; j++) {
+            if (overlap(boxes[i], boxes[j]) > 1) {
+              bad.push(`${kind} at ${w}x${h}: ${ts[i].name} over ${ts[j].name}`);
+            }
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("axis tick labels are fitted to the spacing between ticks", () => {
+    // One label per tick, each centred on its own tick, and none was fitted to
+    // the gap — 71 of the 237 pairs were axis labels drawn through each other,
+    // the worst shape in the engine after the category axis.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      for (const kind of ["stacked", "line", "scatter", "bubble", "boxplot"] as const) {
+        const cfg = { ...sampleConfig(kind), width: 200, height: 150, style: { fontSize } } as ChartConfig;
+        for (const axis of [/^value-axis$/, /^y-axis$/, /^x-axis$/]) {
+          const ts = textsNamed(cfg, axis);
+          for (let i = 1; i < ts.length; i++) {
+            if (overlap(inkOf(ts[i - 1]), inkOf(ts[i])) > 1)
+              bad.push(`fs=${fontSize} ${kind}: ${ts[i].name} pair ${i}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("a heatmap's row labels are fitted to their row", () => {
+    // The label's BOX is the row so the boxes never overlap, but its INK is the
+    // font and is centred in that box — so once the font outgrew the row the
+    // names were drawn through each other. Twenty pairs, and invisible to a
+    // box-based check, which is why this file measures ink.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      const ts = textsNamed(
+        { ...sampleConfig("heatmap"), width: 200, height: 150, style: { fontSize } } as ChartConfig,
+        /^row-\d+$/,
+      );
+      for (let i = 1; i < ts.length; i++) {
+        if (overlap(inkOf(ts[i - 1]), inkOf(ts[i])) > 1)
+          bad.push(`fs=${fontSize}: ${ts[i - 1].name} over ${ts[i].name}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("a sunburst's inside labels are fitted to their wedge", () => {
+    // Drawn verbatim at the ring font and bounded by nothing, so a group name
+    // wider than its own arc ran into the next group's — the same defect the
+    // pie's inside labels had, in the same shape. The bound is the chord of the
+    // wedge at the label's radius.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      const ts = textsNamed(
+        { ...sampleConfig("sunburst"), width: 200, height: 150, style: { fontSize } } as ChartConfig,
+        /^group-label-\d+$/,
+      );
+      for (let i = 0; i < ts.length; i++) {
+        for (let j = i + 1; j < ts.length; j++) {
+          if (overlap(inkOf(ts[i]), inkOf(ts[j])) > 1) bad.push(`fs=${fontSize}: ${ts[i].name} over ${ts[j].name}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it("a cascade's drop caption stays out of the footnote", () => {
     // The caption of a block too thin for text inside it goes underneath, and
     // the plot did not reserve for that — so at the DEFAULT size it was drawn

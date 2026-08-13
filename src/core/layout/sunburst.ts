@@ -68,25 +68,50 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
   if (titleN) nodes.push(titleN);
 
   const norm = (a: number) => ((a % 360) + 360) % 360;
-  const label = (rr: number, midAngle: number, text: string, color: string, name: string, outside: boolean) => {
+  const label = (
+    rr: number,
+    midAngle: number,
+    text: string,
+    color: string,
+    name: string,
+    outside: boolean,
+    /** The wedge's angular span, which is the room this label actually has. */
+    spanDeg: number,
+  ) => {
     if (!decor.segmentLabels) return;
     if (outside && !outerLabelsFit) return;
     const p = polar(cx, cy, rr, midAngle);
     const rightHalf = norm(midAngle) < 180;
     // An OUTSIDE label runs away from the ring edge with nothing to stop it —
     // the same defect the pie's slice labels had, in the same shape. Clipped to
-    // the room actually there between the ring and the frame; an inside label
-    // is bounded by the wedge it sits on and is untouched.
-    const lf = fs * 0.85;
-    const room = Math.max(lf, (rightHalf ? cfg.width - p.x : p.x) - 2);
-    const shown = outside ? clipToWidth(text, lf, room) : text;
+    // the room actually there between the ring and the frame.
+    //
+    // Both kinds are also bounded by their own WEDGE, which neither was: an
+    // inside label was drawn verbatim at the ring font, so a group name wider
+    // than its arc ran into the next group's, and an outside label sat as tall
+    // as the font whatever the arc under it could carry. Twenty of the 237
+    // overlapping text pairs a sweep found were these two labels.
+    //
+    // Inside, the bound is the CHORD of the wedge at the label's radius, exactly
+    // as the pie's inside labels take. Outside, it is the ARC each label gets at
+    // its own radius, which is what separates it from its neighbours.
+    const arc = (2 * Math.PI * rr * Math.min(360, Math.max(0, spanDeg))) / 360;
+    const chord = 2 * rr * Math.sin((Math.min(spanDeg, 180) * Math.PI) / 360);
+    const lf = outside ? Math.min(fs * 0.85, arc / 1.4) : fs * 0.85;
+    const room = outside ? Math.max(lf, (rightHalf ? cfg.width - p.x : p.x) - 2) : Math.max(1, chord);
+    const lfScale = lf / (fs * 0.85);
+    const shown = clipToWidth(text, lf, room);
     const w = textWidth(shown, lf) + 4;
     nodes.push({
       kind: "text",
       x: outside ? (rightHalf ? p.x : p.x - w) : p.x - w / 2,
-      y: p.y - fs * 0.7,
+      // As a RATIO of the unshrunk size, so the box and the font move together
+      // and the geometry is byte-identical when nothing needed shrinking. The
+      // radar's ticks were written the other way once and moved three showcase
+      // slides on charts that needed no change at all.
+      y: p.y - fs * 0.7 * lfScale,
       w,
-      h: fs * 1.4,
+      h: fs * 1.4 * lfScale,
       text: shown,
       fontSize: lf,
       color,
@@ -127,7 +152,7 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
         name: `group-${gi}`,
       });
       if (span >= 16)
-        label((rInner + rMid) / 2, angle + span / 2, g.name, contrastInk(gColor), `group-label-${gi}`, false);
+        label((rInner + rMid) / 2, angle + span / 2, g.name, contrastInk(gColor), `group-label-${gi}`, false, span);
       let a2 = angle;
       g.members.forEach((m, mi) => {
         const mspan = (m.value / g.total) * span;
@@ -146,7 +171,7 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
           strokeWidth: 1,
           name: `slice-${m.i}`,
         });
-        if (mspan >= 12) label(r + fs * 0.7, a2 + mspan / 2, labelOf(m.label), style.text, `label-${m.i}`, true);
+        if (mspan >= 12) label(r + fs * 0.7, a2 + mspan / 2, labelOf(m.label), style.text, `label-${m.i}`, true, mspan);
         a2 += mspan;
       });
       angle += span;
@@ -177,6 +202,7 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
           style.text,
           `label-${m.i}`,
           true,
+          span,
         );
       angle += span;
     });

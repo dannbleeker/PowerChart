@@ -62,6 +62,14 @@ export function decorationNodes(
         // the chart — 7.5pt on a 60pt-tall stacked column. Its y is decorative
         // (it is a caption for the arrow, not an anchored value the way the
         // arrow's endpoints are), so it may be clamped where they may not.
+        //
+        // The floor stays at ZERO, over the title, and that was measured rather
+        // than assumed: flooring at the title's bottom instead turns five
+        // `title x cagr-label` overlaps into EIGHT against the column totals,
+        // because there is no headroom at that font either way. Both labels are
+        // already movable, so the de-collision pass has looked and found nowhere
+        // to put it. Swapping one overlap for more of another on a judgement
+        // about which matters more is not a fix.
         y: Math.max(0, Math.min(y1, y2) - fs * 1.6),
         w: 90,
         h: fs * 1.4,

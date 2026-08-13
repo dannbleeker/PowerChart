@@ -143,6 +143,12 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
   }
 
+  // A row label's BOX is the row, so the boxes never overlap — but its INK is
+  // `fs` tall and centred in that box, so once the font outgrows the row the
+  // names are drawn through each other. Twenty of the 237 overlapping text pairs
+  // a sweep found were this one label. Bound by the row it names, like every
+  // other row label in this engine; at any font that already fits, nothing moves.
+  const rowFs = Math.min(fs, ch / 1.15);
   rows.forEach((s, ri) => {
     nodes.push({
       kind: "text",
@@ -151,7 +157,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
       w: rowLabelW - 4,
       h: ch,
       text: s.name,
-      fontSize: fs,
+      fontSize: rowFs,
       color: style.text,
       align: "right",
       valign: "middle",
