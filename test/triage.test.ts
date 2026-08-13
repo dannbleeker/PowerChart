@@ -12,6 +12,13 @@ import { triage, runsIn, selfTestIn, knownBug, deckEvidence, poolRasteriseArms }
 // reflowed import moves this directive off the statement it is annotating.
 // @ts-expect-error — as above.
 import { describeFinding } from "../scripts/triage.mjs";
+// Also its own line, and for the reason the comment above gives: adding it to
+// the grouped import pushed that statement over the print width, prettier
+// reflowed it across lines, and `@ts-expect-error` covers only the NEXT line —
+// so the directive stopped reaching the `from` clause where the error is
+// reported. The suite stayed green and `tsc` went red.
+// @ts-expect-error — as above.
+import { batchPopulations } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -656,5 +663,68 @@ describe("triage reads the config the pane can actually reach", () => {
     // the tag was anchored, and the two agree wherever it does.
     const t = triage({ rows: [row({ config: true })] }, log);
     expect(t.slots[0].verdict).toBe("ok");
+  });
+});
+
+describe("the two populations a draw batch falls into", () => {
+  /**
+   * "FAST IS THE BROKEN MODE" rests on the batch times being bimodal with an
+   * empty band, and every number behind it was read off a round by hand — which
+   * is how the band's edge stayed quoted at 29.2s after a later round put
+   * surviving batches at 29.3, 30.8 and 31.1.
+   *
+   * The load-bearing case is the NEGATIVE one. A split taken at the largest gap
+   * always exists, so "bimodal" would be true of any data at all; it is only
+   * reported when the gap is bigger than the fast group's whole spread, which is
+   * what "an empty band" means. Same shape as `untested` in `host-regimes.mjs`:
+   * a verdict that cannot come out the other way is not a measurement.
+   */
+  const log = (ms: number[]) => ({
+    trace: { entries: ms.map((prevBatchMs) => ({ message: "batch issued", data: { prevBatchMs } })) },
+  });
+
+  it("finds the empty band in a genuinely bimodal round", () => {
+    // Round 17's own twenty-two timed batches, not invented ones. A first
+    // attempt at synthetic data put three slow points far apart, which moved
+    // the largest gap INSIDE the slow group and correctly answered `false` —
+    // the guard working, and a reminder that this shape needs a real
+    // distribution rather than a sketch of one.
+    const p = batchPopulations(
+      log([
+        3326, 3344, 3540, 3637, 3717, 5049, 5127, 5220, 5307, 5409, 11057, 13118, 18016, 18240, 18491, 18875, 18927,
+        19114, 20175, 21963, 25572, 26360,
+      ]),
+    )!;
+    expect(p.bimodal).toBe(true);
+    expect(p.fast[p.fast.length - 1]).toBe(5409);
+    expect(p.slow[0]).toBe(11057);
+    expect(p.gap).toBe(5648);
+    expect(p.max).toBe(26360);
+  });
+
+  it("refuses to call an evenly spread round bimodal", () => {
+    // Every set of numbers has a largest gap, so a split always exists. On
+    // uniform times the argmax picks the first, leaving a one-member fast group
+    // whose spread is zero — which any gap beats.
+    expect(batchPopulations(log([3000, 4000, 5000, 6000, 7000, 8000]))!.bimodal).toBe(false);
+  });
+
+  it("refuses a gap no wider than the cluster it is supposed to separate", () => {
+    // THE CASE THAT PINS THE SPREAD COMPARISON, and the test above does not:
+    // there the length check already answers, so dropping `gap > spread` left
+    // the suite green. Here both groups have two or more members and the gap is
+    // exactly the fast group's own spread — an interval, not an empty band.
+    const p = batchPopulations(log([1000, 2000, 3000, 4000, 5000, 9000, 10000]))!;
+    expect(p.fast.length).toBeGreaterThanOrEqual(2);
+    expect(p.slow.length).toBeGreaterThanOrEqual(2);
+    expect(p.bimodal).toBe(false);
+  });
+
+  it("says nothing at all on too few timed batches", () => {
+    // A round whose draws were mostly first batches carries no `prevBatchMs`,
+    // and three points cannot show a population.
+    expect(batchPopulations(log([3000, 9000, 20000]))).toBeNull();
+    expect(batchPopulations({ trace: { entries: [] } })).toBeNull();
+    expect(batchPopulations(undefined)).toBeNull();
   });
 });
