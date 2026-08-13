@@ -527,6 +527,18 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   they are centred in it, so a name wider than it is drawn across the bars it
   names.
 
+  **A label is fitted to the MARK it sits on, not to the frame.** The pie's
+  inside labels were the last ones fitted to nothing: drawn at the chart font in
+  the middle of their slice, so a name wider than its own wedge ran across the
+  neighbouring slices and, on a small frame, past the edge of the chart — where
+  the frame clip cut it to an ellipsis and both the preview and the deck showed
+  `mericas 38…`. The room a label in a wedge has is the CHORD of that wedge at
+  the radius the label sits on, and `insideChord` is the one arithmetic the
+  layout and its guard share, so the test cannot check a bound the layout never
+  promised. Same shrink-together-then-clip as the funnel's rows and the
+  butterfly's names; only slices big enough to get an inside label take part, so
+  a thin one cannot drag the rest down.
+
   **Dropping a label inside a `forEach` is where this bites back.** The pie's
   slice loop advances its running `angle` at the END of the callback, so the
   `return` that skipped an outer label skipped the advance too and every slice
