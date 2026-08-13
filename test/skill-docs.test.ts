@@ -98,6 +98,7 @@ describe("skill documentation coverage", () => {
       "scenario",
       "datamarks",
       "tickMode",
+      "tightLabelPriority",
       "gridShape",
       "fillOpacity",
       "whiskers",
