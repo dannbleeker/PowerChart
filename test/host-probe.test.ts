@@ -1339,7 +1339,72 @@ describe("a run samples each question more than once", () => {
       expect(s.pass).toBeGreaterThan(0);
       expect(typeof s.atMs).toBe("number");
       expect(["healthy", "slide-trouble", "collection-refused", "unknown"]).toContain(s.regime);
+      expect(["first-slide", "fresh-slide", "reused-slide", "no-slide"]).toContain(s.scratch);
     }
+  });
+
+  /**
+   * The scratch stamp has to VARY, or it is a constant wearing a field's name.
+   *
+   * Round 17 eliminated `regime` as the state behind the held-slide-proxy flip:
+   * the question agrees with its partner at every instant and still answers two
+   * ways inside one regime. `scratch` is the candidate that replaced it, and a
+   * candidate that reads the same word on every sample can never explain
+   * anything — it would make `explainBy` answer `untested` forever, which looks
+   * like caution and is actually a dead field.
+   *
+   * This is the check the four earlier failure-only fields needed and did not
+   * have. It asserts the stamp moves across a whole run on the FAKE, where the
+   * host is healthy and the probe still burns and replaces slides — so it is
+   * about the bookkeeping, not about a degraded host.
+   */
+  /**
+   * Every acquisition goes through `takeScratch` — held by a SOURCE SCAN,
+   * because the fake cannot tell the five sites apart.
+   *
+   * Five places take a scratch slide: the first one, the recovery after a
+   * question burned the last, the replacement after a never-asked, the
+   * replacement for a partner question, and the second pass at the end of the
+   * run. Bypassing any ONE of them leaves the generation counter and the `used`
+   * flag stale, so the next question is stamped `reused-slide` for a slide that
+   * is in fact brand new — the exact distinction the field was added to make.
+   *
+   * A behavioural test cannot hold this: mutating the recovery site to assign
+   * `scratchId` directly leaves the whole suite green, because `fresh-slide`
+   * still arrives from the replacement path and the run-level assertion is
+   * satisfied. Proven by doing it. So the invariant is stated over the source,
+   * the way `web-host.test.ts` pins its collection loads and
+   * `office-render.test.ts` pins the in-place property list.
+   */
+  it("routes every scratch-slide acquisition through takeScratch", () => {
+    // Repo-relative, the way every other source scan here reads its file:
+    // `import.meta.url` is not a file: URL under vitest.
+    const src = readFileSync("src/render/host-probe.ts", "utf8");
+    const assignments = [...src.matchAll(/scratchId = (.+?);/g)].map((m) => m[1].trim());
+    expect(assignments.length, "no assignments found — the scan matched nothing").toBeGreaterThan(3);
+    for (const rhs of assignments) {
+      // `= null` DROPS the slide and must not touch the counter; everything that
+      // takes one has to go through the bookkeeping.
+      if (rhs === "null") continue;
+      expect(rhs, `an acquisition bypasses takeScratch: scratchId = ${rhs}`).toMatch(/^takeScratch\(/);
+    }
+  });
+
+  it("stamps more than one scratch state across a run", async () => {
+    installHost([makeSlide("s1")]);
+    const sheet = await runHostProbes("fake", "test");
+    const stamps = new Set(sheet.answers.flatMap((a) => (a.samples ?? []).map((s) => s.scratch)));
+    // All three of the slide-bearing states, not merely "more than one". A run
+    // that only ever said `first-slide` then `reused-slide` would satisfy a
+    // size-greater-than-one check and would mean `takeScratch` had stopped
+    // resetting `used` — the stamp would be "has any question run yet", not
+    // "which slide is this". Measured against the fake before being asserted:
+    // 1 x first-slide, 3 x fresh-slide, 83 x reused-slide.
+    expect([...stamps].sort()).toEqual(["first-slide", "fresh-slide", "reused-slide"]);
+    // `first-slide` is the one the hypothesis turns on: pass 1 meets a deck with
+    // no scratch history. If the run never records it, the question that made
+    // this field exist cannot be asked of the data.
+    expect([...stamps]).toContain("first-slide");
   });
 
   /**
@@ -1388,7 +1453,13 @@ describe("a run samples each question more than once", () => {
 });
 
 describe("stabilityOf", () => {
-  const at = (answer: string) => ({ answer, pass: 1, atMs: 0, regime: "healthy" as const });
+  const at = (answer: string) => ({
+    answer,
+    pass: 1,
+    atMs: 0,
+    regime: "healthy" as const,
+    scratch: "first-slide" as const,
+  });
 
   it("needs two REAL samples before it will say anything", () => {
     expect(stabilityOf(undefined)).toBeUndefined();

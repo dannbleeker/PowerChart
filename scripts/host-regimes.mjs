@@ -64,12 +64,12 @@ export function readRoundSamples(path) {
  *   coin       — some regime carries two different answers, so host state does
  *                not account for the flip
  */
-export function explainByRegime(samples, neverAsked = NEVER_ASKED) {
+export function explainBy(samples, field = "regime", neverAsked = NEVER_ASKED) {
   const real = (samples ?? []).filter((s) => s && !neverAsked.has(s.answer));
   const faces = [...new Set(real.map((s) => s.answer))];
   const byRegime = new Map();
   for (const s of real) {
-    const regime = s.regime ?? "unknown";
+    const regime = s[field] ?? "unknown";
     if (!byRegime.has(regime)) byRegime.set(regime, []);
     byRegime.get(regime).push(s.answer);
   }
@@ -94,6 +94,9 @@ export function explainByRegime(samples, neverAsked = NEVER_ASKED) {
     repeated: repeated.map((m) => m.regime),
   };
 }
+
+/** The regime stamp, which is what this tool was written for. */
+export const explainByRegime = (samples, neverAsked = NEVER_ASKED) => explainBy(samples, "regime", neverAsked);
 
 /**
  * Two questions that both flipped: did they flip at the SAME pass boundary?
@@ -194,12 +197,21 @@ function main(argv) {
     console.log(`\n  ${round.build}   (${round.path})`);
 
     const flippers = round.answers
-      .map((a) => ({ id: a.id, r: explainByRegime(a.samples) }))
+      .map((a) => ({ id: a.id, r: explainByRegime(a.samples), scratch: explainBy(a.samples, "scratch") }))
       .filter((x) => x.r.verdict !== "steady");
 
     console.log(`\n  QUESTIONS THAT CHANGED ANSWER MID-ROUND — is host state the reason?\n`);
     if (!flippers.length) console.log("    none — every question held still within the round\n");
-    for (const f of flippers) console.log(describe(f.id, f.r));
+    for (const f of flippers) {
+      console.log(describe(f.id, f.r));
+      // Round 17 eliminated `regime` as the state that flips: a question can
+      // agree perfectly with its partner at every instant and still answer two
+      // ways inside one regime. `scratch` is the candidate that replaced it, so
+      // both stamps are read side by side — a round where one says COIN and the
+      // other EXPLAINED is the whole point of having added the second.
+      if (f.scratch.mapping.some((m) => m.regime !== "unknown"))
+        console.log(`      by scratch slide:  ${verdictLine(f.scratch)}\n`);
+    }
 
     // Any two flippers may be one mechanism sampled twice. Say so, rather than
     // leaving it to be reasoned about from two entries in a table.

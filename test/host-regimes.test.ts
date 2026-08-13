@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error - .mjs script, deliberately outside tsconfig's typed surface
-import { explainByRegime, flippedTogether, neverPutByRegime, verdictLine } from "../scripts/host-regimes.mjs";
+import * as regimes from "../scripts/host-regimes.mjs";
+
+// Destructured after the import so the directive above stays attached to a
+// single short line — prettier wraps a five-name named import, which pushes the
+// `@ts-expect-error` off the statement it is suppressing and it silently stops
+// applying.
+const { explainBy, explainByRegime, flippedTogether, neverPutByRegime, verdictLine } = regimes;
 
 /**
  * `scripts/host-regimes.mjs` — does the host's STATE account for a question that
@@ -144,5 +150,47 @@ describe("rendering a verdict as prose", () => {
       expect(() => verdictLine(r), `${expected} threw while rendering`).not.toThrow();
       expect(verdictLine(r)).toContain(expected);
     }
+  });
+});
+
+describe("reading a stamp other than the regime", () => {
+  /**
+   * Round 17 eliminated `regime` as the state behind the held-slide-proxy flip,
+   * and `scratch` is the candidate that replaced it. The decision is the same
+   * either way — group the samples by a stamp and ask whether the mapping could
+   * have failed — so the field is a parameter rather than a second copy.
+   *
+   * The case that matters is DISAGREEMENT between the two stamps: the same
+   * samples reading COIN by regime and EXPLAINED by scratch is precisely the
+   * result that would answer the open question, and the tool has to be able to
+   * express it.
+   */
+  const samples = [
+    { answer: "threw", pass: 1, atMs: 16300, regime: "healthy", scratch: "first-slide" },
+    { answer: "yes", pass: 2, atMs: 33900, regime: "collection-refused", scratch: "reused-slide" },
+    { answer: "threw", pass: 3, atMs: 55600, regime: "collection-refused", scratch: "first-slide" },
+  ];
+
+  it("reads the same samples two ways, and they can disagree", () => {
+    // Round 17's actual shape: one regime produced both faces, so by regime it
+    // is a coin. Grouped by scratch state each stamp maps to one answer, and
+    // `first-slide` was sampled twice and agreed — so it could have failed.
+    expect(explainByRegime(samples).verdict).toBe("coin");
+    const byScratch = explainBy(samples, "scratch");
+    expect(byScratch.verdict).toBe("explained");
+    expect(byScratch.repeated).toEqual(["first-slide"]);
+  });
+
+  it("treats a stamp the round never recorded as unknown, not as an explanation", () => {
+    // Rounds saved before the stamp existed carry no `scratch` at all. Every
+    // sample then lands in one `unknown` bucket, which must read as a COIN —
+    // the honest answer — rather than inventing a mapping from a missing field.
+    const older = samples.map(({ scratch: _drop, ...rest }) => rest);
+    expect(explainBy(older, "scratch").verdict).toBe("coin");
+    expect(explainBy(older, "scratch").mapping.map((m: { regime: string }) => m.regime)).toEqual(["unknown"]);
+  });
+
+  it("still defaults to the regime when no field is named", () => {
+    expect(explainBy(samples).verdict).toBe(explainByRegime(samples).verdict);
   });
 });

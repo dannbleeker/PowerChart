@@ -397,6 +397,30 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   open question is no longer "is it a coin" — it is "what is the state", with
   one candidate eliminated.
 
+  **Two more candidates died on round 17's own numbers, before anything was
+  built.** `threw` at 16.3s, `yes` at 33.9s, `threw` at 55.6s is non-monotonic,
+  so neither ELAPSED TIME nor the PASS NUMBER is the variable — the "pass 1
+  threw, later passes yes" split that R12 and R13 supported is broken by pass 3
+  reverting. Read those three numbers before proposing either again.
+
+  **The candidate left is the SCRATCH SLIDE, and every sample carries it now**
+  (`ScratchState` in `src/render/host-probe.ts`): `first-slide`, `fresh-slide`,
+  `reused-slide`, `no-slide`. `UNSTABLE_ANSWERS` already fingers it — this
+  question WRECKS its own scratch slide every time it is asked, so pass 1 meets
+  a deck with no scratch history and later passes do not. `host-regimes.mjs`
+  reads it beside the regime and prints both, so a round where one says `coin`
+  and the other `explained` is the answer arriving.
+
+  Three properties of the stamp are worth knowing, because each is a mistake
+  this file has recorded before. It is CATEGORICAL — an age or a counter gives
+  every sample its own value, and "every value maps to one answer" is then true
+  for any data at all, which is the `untested` shape. It is on EVERY sample, not
+  only the odd ones. And every one of the five places that takes a scratch slide
+  goes through `takeScratch`, held by a SOURCE SCAN in `test/host-probe.test.ts`
+  — bypassing one leaves the counter stale and stamps `reused-slide` on a
+  brand-new slide, and the behavioural test cannot see it, because `fresh-slide`
+  still arrives from another path. Proven by doing it.
+
 - **Dependabot's banner gets read, and the reading gets written down** in
   `docs/DEPENDENCY-ALERTS.md`. Same rule as the table above: an entry says what
   was decided, "no exposure" included. It sat at 9 alerts for weeks with nobody

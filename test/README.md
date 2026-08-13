@@ -71,7 +71,9 @@ belongs with the thing it tests, not with the reason it was written.)
   sample since #390 and nothing read those stamps mechanically. Its load-bearing
   case is `untested`: with three passes in three regimes "every regime maps to
   one answer" cannot fail, so it is not evidence, and reporting it as `explained`
-  would manufacture a finding every time a question flipped),
+  would manufacture a finding every time a question flipped. Its reader is
+  parameterised over the stamp, so the scratch-slide state added after round 17 is
+  read by the same code),
   `selftest` (the in-host
   battery's own logic — that every scenario reports, that a blind deck scan is
   never read as an empty deck, and that a wedged host is attributed to the host),
