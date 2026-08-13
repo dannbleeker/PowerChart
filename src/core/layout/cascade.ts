@@ -37,7 +37,17 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     x: 2,
     y: titleH + groupH + (hasGroups ? 4 : 0),
     w: cfg.width - 4,
-    h: cfg.height - titleH - groupH - (hasGroups ? 4 : 0) - footnoteH(cfg, style, decor) - 4,
+    // The last term is the OUTSIDE drop label. A block too thin for text inside
+    // it gets its caption underneath (see `outside` below), and the plot did not
+    // reserve for that — so on an ordinary 480x300 cascade the caption was drawn
+    // 7.5pt into the footnote's band, dark text over dark text.
+    //
+    // Reserved rather than clamped: clamping the label up to clear the footnote
+    // puts it on its own block, and where two thin blocks end together it stacks
+    // BOTH captions at the same y, which is a worse collision than the one it
+    // fixes. A decomposition ends in thin blocks by its nature, so this is a row
+    // the chart nearly always needs.
+    h: cfg.height - titleH - groupH - (hasGroups ? 4 : 0) - footnoteH(cfg, style, decor) - 4 - fs * 1.2,
   });
   const slotW = plot.w / Math.max(1, n);
   const barW = slotW * 0.91;

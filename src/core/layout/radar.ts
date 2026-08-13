@@ -74,6 +74,19 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // label nobody can read is worse than no label. Unreachable at any size that
   // wants a radar.
   const ringFits = rWant >= 1;
+  /**
+   * The size the perimeter labels are drawn at.
+   *
+   * They sit on a ring, one per spoke, so the room each has is the SEPARATION
+   * between adjacent spokes at the radius they sit on — and none was fitted to
+   * it, so on a web whose font is large relative to its size adjacent names were
+   * drawn over each other. Bound by that separation, the same way the ring ticks
+   * are bound by their ring gap.
+   *
+   * Last resort: on any web whose names already clear each other this is `fs`,
+   * which is every radar at an ordinary size.
+   */
+  const perimFs = Math.min(fs, (2 * (r + fs * 0.6) * Math.sin(Math.PI / Math.max(1, n))) / 1.4);
 
   const spokeSum = data.categories.map((_, c) => columnPositiveTotal(data.series, c));
   const all = data.series.flatMap((s) => s.values.filter((v): v is number => v != null));
@@ -123,6 +136,27 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const rings = perSpoke
     ? [0.25, 0.5, 0.75, 1].map((f) => ({ rr: f * r, t: f }))
     : ticks.filter((t) => t > min).map((t) => ({ rr: toR(t), t }));
+  /**
+   * A ring's tick label is centred on that ring in a box `fs * 1.2` tall, so once
+   * the font outgrows the gap BETWEEN rings the labels sit on top of each other
+   * and the innermost one runs past the middle of the web and out of the chart —
+   * 11.1pt past a 200x150 frame at a 32pt font. Bound by the ring gap, which is
+   * the space each label actually has, and dropped below the same 5pt floor the
+   * perimeter ring uses: a label nobody can read is not worth the web it covers.
+   *
+   * Last resort, like every other shrink here: at any font that already fits its
+   * ring gap this is `fs * 0.85` and nothing moves.
+   */
+  const tickGap = r / Math.max(1, rings.length);
+  const tickFs = Math.min(fs * 0.85, tickGap / 1.2);
+  // The box is `fs * 1.2` for a font of `fs * 0.85` — deliberately taller than
+  // the text — so the two must shrink TOGETHER or the label moves even when
+  // nothing needed shrinking. Expressed as the ratio for that reason: it is
+  // exactly 1 whenever the tick font is untouched, which is every radar at an
+  // ordinary size, and the geometry is then byte-identical. Collapsing both onto
+  // `tickFs` instead shifted every tick by 0.9pt and moved three showcase
+  // slides, which is how this was caught.
+  const tickScale = tickFs / (fs * 0.85);
   for (const { rr, t } of rings) {
     if (gridShape === "circle") {
       nodes.push({
@@ -145,16 +179,16 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         name: `grid-${t}`,
       });
     }
-    if (!perSpoke) {
+    if (!perSpoke && tickFs >= 5) {
       // Tick label on the 12 o'clock spoke only.
       nodes.push({
         kind: "text",
         x: cx + 3,
-        y: cy - rr - fs * 0.6,
+        y: cy - rr - fs * 0.6 * tickScale,
         w: fs * 3.4,
-        h: fs * 1.2,
+        h: fs * 1.2 * tickScale,
         text: formatNumber(t, fmt),
-        fontSize: fs * 0.85,
+        fontSize: tickFs,
         color: style.mutedText,
         align: "left",
         valign: "middle",
@@ -179,15 +213,15 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     const p = polar(cx, cy, r + fs * 0.6, angle(c));
     const a = angle(c) % 360;
     const align = a < 10 || a > 350 || Math.abs(a - 180) < 10 ? "center" : a < 180 ? "left" : "right";
-    const w = textWidth(cat, fs) + 4;
+    const w = textWidth(cat, perimFs) + 4;
     nodes.push({
       kind: "text",
       x: align === "center" ? p.x - w / 2 : align === "left" ? p.x : p.x - w,
-      y: p.y - (a < 10 || a > 350 ? fs * 1.4 : Math.abs(a - 180) < 10 ? 0 : fs * 0.7),
+      y: p.y - (a < 10 || a > 350 ? perimFs * 1.4 : Math.abs(a - 180) < 10 ? 0 : perimFs * 0.7),
       w,
-      h: fs * 1.4,
+      h: perimFs * 1.4,
       text: cat,
-      fontSize: fs,
+      fontSize: perimFs,
       color: style.text,
       align,
       valign: "middle",

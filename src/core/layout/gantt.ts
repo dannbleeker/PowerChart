@@ -162,6 +162,13 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // MARGIN depends on it (see `msR`). It reads `plotH` and the row count only —
   // neither depends on the plot's width — so hoisting it changes no value.
   const slotH = plotH / Math.max(1, data.categories.length);
+  // The three row texts — activity, owner, remark — are each centred on their
+  // row in a box `fs * 1.5` tall, so once the font outgrows the row pitch they
+  // overlap the rows above and below and the last one leaves the plot (8.7pt
+  // past a 200x150 frame at a 32pt font). Bound by the row they label, and
+  // shrunk together so one row reads at one size. At any font that already fits
+  // its row this is `fs` and nothing moves.
+  const rowFs = Math.min(fs, slotH / 1.5);
   const barH = Math.min(slotH * 0.55, fs * 1.4);
   // A milestone marker is a circle CENTRED on its date, so half of it sits to
   // the RIGHT of the last position the timeline can reach — and the right margin
@@ -407,11 +414,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         {
           kind: "text",
           x: 0,
-          y: cy - fs * 0.75,
+          y: cy - rowFs * 0.75,
           w: cfg.width,
-          h: fs * 1.5,
+          h: rowFs * 1.5,
           text: acts[c],
-          fontSize: fs,
+          fontSize: rowFs,
           bold: true,
           color: style.text,
           align: "left",
@@ -474,11 +481,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     nodes.push({
       kind: "text",
       x: indents[c] * 10,
-      y: cy - fs * 0.75,
+      y: cy - rowFs * 0.75,
       w: catW - 6 - indents[c] * 10,
-      h: fs * 1.5,
+      h: rowFs * 1.5,
       text: acts[c],
-      fontSize: fs,
+      fontSize: rowFs,
       color: style.text,
       align: "left",
       valign: "middle",
@@ -489,11 +496,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       nodes.push({
         kind: "text",
         x: plot.x + plot.w + 6,
-        y: cy - fs * 0.75,
+        y: cy - rowFs * 0.75,
         w: ownerW - 6,
-        h: fs * 1.5,
+        h: rowFs * 1.5,
         text: owners[c],
-        fontSize: fs,
+        fontSize: rowFs,
         color: style.mutedText,
         align: "left",
         valign: "middle",
@@ -504,11 +511,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       nodes.push({
         kind: "text",
         x: plot.x + plot.w + ownerW + 4,
-        y: cy - fs * 0.7,
+        y: cy - rowFs * 0.7,
         w: remarkW - 4,
-        h: fs * 1.4,
+        h: rowFs * 1.4,
         text: remarks[c],
-        fontSize: fs * 0.9,
+        fontSize: rowFs * 0.9,
         color: style.mutedText,
         align: "left",
         valign: "middle",
@@ -595,11 +602,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           nodes.push({
             kind: "text",
             x: bx,
-            y: cy - fs * 0.7,
+            y: cy - rowFs * 0.7,
             w: bw,
-            h: fs * 1.4,
+            h: rowFs * 1.4,
             text: label,
-            fontSize: fs * 0.9,
+            fontSize: rowFs * 0.9,
             // Ink chosen for the bar it sits on, like every other in-shape
             // label: white vanished on a light palette colour.
             color: contrastInk(barFill),
@@ -654,11 +661,11 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       nodes.push({
         kind: "text",
         x: cx,
-        y: cy - fs * 0.75,
+        y: cy - rowFs * 0.75,
         w: col.w - 6,
-        h: fs * 1.5,
+        h: rowFs * 1.5,
         text: col.cells[c],
-        fontSize: fs,
+        fontSize: rowFs,
         color: isHeader[c] ? style.text : style.mutedText,
         bold: isHeader[c],
         align: "right",
