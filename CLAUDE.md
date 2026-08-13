@@ -861,7 +861,17 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
 
   **The reservation and the draw share ONE predicate now, in the one place they
   had disagreed twice.** `horizontalLegendFits` is read by
-  `computeFrameHorizontal` and by `horizontalChrome`, so the band that is
+  `computeFrameHorizontal`, by `horizontalChrome` and — since 2026-08-13 — by
+  the horizontal MEKKO, which draws its own legend and was the one call site the
+  shared-predicate change missed. It gated on `seriesLabels && series.length > 1`
+  alone, so on a frame the predicate refuses it drew a three-row legend into a
+  reservation of ZERO rows: four overlapping pairs at 120x90 rotated, two at
+  80x60, one at 300x60, every one of them inside the frame where no overflow gate
+  could see it. **A shared predicate is only shared once every call site asks it**
+  — extracting one and wiring two of three leaves the third in the state this
+  paragraph already names as the worst of the three options. Gating it cleared
+  every rotated frame to zero, so 80x60, 120x90 and 300x60 all joined the rotated
+  sweep, which is now WIDER than the upright one. The band that is
   reserved and the legend that is drawn cannot come apart. They had: the mekko
   drew at a widened `frame.x` the reservation never counted for, and a scatter
   fix that gated only the reservation left the legend drawn over a band reserved
@@ -914,11 +924,15 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   adjacent, to the NEIGHBOUR as well.** The arc fit was necessary and not
   sufficient.
 
-  **The rotated sweep at 120x90 is still open, and the asymmetry is deliberate.**
-  Four pairs survive there, all one shape — a mekko's legend against its totals
-  and its category names. So 120x90 is in the UPRIGHT frame list and not the
-  rotated one, which is the second time this gate has found that a fit was
-  written for the upright chart only.
+  **The rotated sweep is now WIDER than the upright one.** It was four pairs at
+  120x90 rotated, all one shape — a mekko's legend against its totals and its
+  category names — which turned out not to be a fit written for the upright
+  chart at all, but the legend's shared predicate having a call site nobody
+  wired. Gating it took every rotated frame to zero, so the rotated list carries
+  80x60, 120x90 and 300x60 while the upright one stops at 120x90. Do not expect
+  the two lists to match: rotating a chart rotates which side of a label is
+  crowded, and what is left upright at those two frames is de-collision work on
+  the stacked and combo kinds.
 
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
   its own box, over every kind × eight frame sizes × seven fonts, plus no chart

@@ -383,16 +383,21 @@ describe("labels are not drawn on top of each other", () => {
       // series names meeting in the middle, a combo point label pinned to x=0
       // over the category names, a bubble size legend spilling onto the y axis.
       //
-      // 120x90 is in the UPRIGHT sweep above and deliberately not here. Rotating
-      // the sample leaves four pairs on this frame, all one shape: a mekko's
-      // legend against its totals and its category names. Rotating a chart
-      // rotates which side of a label is crowded, and this gate has found that
-      // the fits were written for the upright chart before — so the asymmetry is
-      // recorded rather than smoothed over.
+      // 120x90, 300x60 and 80x60 all joined once the horizontal mekko's legend
+      // was gated on `horizontalLegendFits` — the predicate `computeFrameHorizontal`
+      // and `horizontalChrome` already shared, which the mekko's own draw never
+      // asked. On a frame the predicate refuses, the reservation was zero rows
+      // and the legend was drawn into it anyway; that is the state this repo
+      // measured as worse than not gating either side.
       //
-      // 300x60 and 80x60 are absent for the reasons given in the upright sweep,
-      // plus the same mekko legend pair here.
+      // Note this list is now WIDER than the upright one, which stops at 120x90.
+      // Rotating a chart rotates which side of a label is crowded, so the two
+      // sweeps are not expected to cover the same frames — what is left upright
+      // at 300x60 and 80x60 is de-collision work on other kinds entirely.
       [60, 300],
+      [80, 60],
+      [120, 90],
+      [300, 60],
       [160, 120],
       [200, 150],
       [480, 300],

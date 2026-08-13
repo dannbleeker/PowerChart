@@ -3,7 +3,15 @@ import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
-import { bandFontSize, chromeNodes, computeFrame, computeFrameHorizontal, fitPlot, titleHeight } from "./frame";
+import {
+  bandFontSize,
+  chromeNodes,
+  computeFrame,
+  computeFrameHorizontal,
+  fitPlot,
+  horizontalLegendFits,
+  titleHeight,
+} from "./frame";
 import { legendRow, seriesLabelNodes, type LayoutResult } from "./column";
 import { columnPositiveTotal } from "./totals";
 
@@ -274,7 +282,16 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       strokeWidth: 1,
       name: "baseline",
     });
-    if (decor.seriesLabels && data.series.length > 1) {
+    // Gated by the SAME predicate the reservation uses. `computeFrameHorizontal`
+    // asks `horizontalLegendFits` before it counts any legend rows, and this
+    // draw did not ask at all — so on a frame the predicate refuses, the
+    // reservation was ZERO rows and the legend was drawn into it anyway. That is
+    // the worst of the three options and the one a half-fix produces: it
+    // measured worse for the scatter than not gating either side. At 120x90
+    // horizontal it put a three-row legend across the bars, their totals and
+    // the row labels — four overlapping pairs, all inside the frame, so no
+    // overflow gate could see it.
+    if (decor.seriesLabels && data.series.length > 1 && horizontalLegendFits(cfg, style, decorFull)) {
       nodes.push(...legendRow(cfg, style, legendX, titleHeight(cfg, style) + 2, { maxX: cfg.width - 4 }));
     }
   } else {
