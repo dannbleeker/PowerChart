@@ -49,6 +49,20 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // the chart nearly always needs.
     h: cfg.height - titleH - groupH - (hasGroups ? 4 : 0) - footnoteH(cfg, style, decor) - 4 - fs * 1.2,
   });
+  // The group band is chrome, and `fitPlot` is allowed to overrun it.
+  //
+  // The plot reserves `groupH` above itself, but `fitPlot` grows the plot UP
+  // from the bottom edge it was given — deliberately, because that edge is the
+  // baseline and moving it changes what the chart claims. On a frame too short
+  // to pay for its chrome the floored plot therefore rises back through the
+  // very band it reserved: at 300x60 the band occupies y 22-37 and the blocks'
+  // captions land at 29.5-32, inside it.
+  //
+  // So the headers are DROPPED when the reservation did not survive, which is
+  // the answer the radar, sunburst, tilemap and pie reservations already give.
+  // A header drawn across the bars it names is not a header, and keeping the
+  // bars is the right way round: they are the chart.
+  const groupsFit = !hasGroups || plot.y >= titleH + groupH;
   const slotW = plot.w / Math.max(1, n);
   const barW = slotW * 0.91;
   const toH = (v: number) => (v / v0) * plot.h;
@@ -58,7 +72,7 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (titleN) nodes.push(titleN);
 
   // Spanning group header bands over consecutive same-group stages.
-  if (hasGroups) {
+  if (groupsFit && hasGroups) {
     let start = 0;
     for (let c = 1; c <= n; c++) {
       if (c === n || groups[c] !== groups[start]) {

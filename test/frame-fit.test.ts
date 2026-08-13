@@ -254,6 +254,22 @@ describe("labels are not drawn on top of each other", () => {
       // 160x120 was added after a sweep found this gate was checking TWO of the
       // eight frames the overflow sweep uses, while its name claims the default
       // font generally. See the block comment above.
+      //
+      // 60x300 followed: a tall sidebar is an ordinary shape for a chart on a
+      // slide, and it carried 16 overlapping pairs at the default font — a
+      // heatmap's column headers drawn across each other, a butterfly's two
+      // series names meeting in the middle, a combo point label pinned to x=0
+      // over the category names, a bubble size legend spilling onto the y axis.
+      //
+      // 300x60 is NOT here yet and that is a statement, not an omission. Five
+      // pairs survive on a 60pt-tall letterbox: a combo point label against the
+      // column totals, the stacked CAGR caption against the title, and two
+      // adjacent sunburst outside labels. The first two are de-collision work —
+      // `FLIPPABLE` has nowhere to send a label on a frame that is almost all
+      // title — and the third is the same sunburst neighbour problem 120x90
+      // already has. Adding the frame without fixing them would only park a
+      // known-red gate.
+      [60, 300],
       [160, 120],
       [200, 150],
       [480, 300],
@@ -355,6 +371,22 @@ describe("labels are not drawn on top of each other", () => {
       // 160x120 was added after a sweep found this gate was checking TWO of the
       // eight frames the overflow sweep uses, while its name claims the default
       // font generally. See the block comment above.
+      //
+      // 60x300 followed: a tall sidebar is an ordinary shape for a chart on a
+      // slide, and it carried 16 overlapping pairs at the default font — a
+      // heatmap's column headers drawn across each other, a butterfly's two
+      // series names meeting in the middle, a combo point label pinned to x=0
+      // over the category names, a bubble size legend spilling onto the y axis.
+      //
+      // 300x60 is NOT here yet and that is a statement, not an omission. Five
+      // pairs survive on a 60pt-tall letterbox: a combo point label against the
+      // column totals, the stacked CAGR caption against the title, and two
+      // adjacent sunburst outside labels. The first two are de-collision work —
+      // `FLIPPABLE` has nowhere to send a label on a frame that is almost all
+      // title — and the third is the same sunburst neighbour problem 120x90
+      // already has. Adding the frame without fixing them would only park a
+      // known-red gate.
+      [60, 300],
       [160, 120],
       [200, 150],
       [480, 300],

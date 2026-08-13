@@ -838,6 +838,34 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   other pair fails. Stating an exception and dodging the frames that would reveal
   it are not the same thing.
 
+  **A second sweep took the gate to 60x300, and found the same defect class six
+  more times.** A tall sidebar carried 16 pairs and an 80x60 thumbnail 52. What
+  they share is a band drawn without being paid for: the funnel's conversion
+  rate at a fixed font in a gap that collapses, the heatmap's column headers and
+  the butterfly's series names at the chart font in boxes a few points wide, the
+  combo's horizontal point label in a fixed 60pt box clamped to `cfg.width - 60`
+  (x=0 on a 60pt chart, straight across the category names), and a bubble size
+  legend whose numbers are wider than the circles they label.
+
+  Two are worth knowing beyond their own layout. **`fitPlot` may overrun a band
+  the layout reserved above the plot** — it grows UP from the bottom edge, which
+  is the baseline and may not move, so on a frame that cannot pay for its chrome
+  the plot rises back through its own reservation. The cascade's group headers
+  ended up under the bars that way, and the answer is the one every reservation
+  here already gives: chrome that cannot be paid for is not drawn. **And a
+  conservative bound must stay conservative at the small end** — the scatter
+  legend reserved rows using `max(40, cfg.width - axisW - 8)`, and at 80pt wide
+  that floor made the bound WIDER than the walk gets, so it counted fewer rows
+  than it drew and the legend wrapped into the x-axis strip. Flooring a WIDTH up
+  reserves less, not more.
+
+  **300x60 is still outstanding and the frame list says so.** Five pairs survive
+  on a 60pt-tall letterbox: a combo point label against the column totals, the
+  stacked CAGR caption against the title, and two adjacent sunburst outside
+  labels. The first two are de-collision work — `FLIPPABLE` has nowhere to send a
+  label on a frame that is almost all title — and the third is the same sunburst
+  neighbour problem 120x90 has.
+
   Three of the remaining shapes are fixed and the gate now covers 160x120:
   the tilemap's two scale ends (each owns half a colour bar a few points wide and
   their ink met in the middle), the mekko's legend (drawn at the widened
@@ -858,7 +886,7 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
   its own box, over every kind × eight frame sizes × seven fonts, plus no chart
   overlapping its own text at the default font in EITHER orientation, at
-  160x120 and up. It measures
+  160x120, 200x150, 480x300 and 60x300. It measures
   INK, not boxes — a first version measured boxes and produced four false
   positives and one false negative in one run, because a label's box is routinely
   wider than its text and is anchored by `align`.

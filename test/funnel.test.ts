@@ -287,3 +287,51 @@ describe("a funnel too short for its gaps", () => {
     expect(pitch - roomy[0].h).toBeCloseTo(10 * 1.5, 5);
   });
 });
+
+describe("the conversion rate stays inside the gap it is written in", () => {
+  /**
+   * The conversion label sits in the gap BETWEEN two bands (`h: gap`), and its
+   * font was `labelFs * 0.85` whatever that gap turned out to be. `gap` is
+   * `min(fs * 1.5, half the plot shared between the bands)`, so on a short frame
+   * it collapses while the font does not — the ink then spills onto the bands
+   * either side and lands on their `stage-value`, the single commonest
+   * overlapping pair at small frames.
+   *
+   * Pinned here rather than in `frame-fit`'s overlap sweep: that gate covers
+   * 60x300 and up, and this shows at 80x60. Nothing leaves the frame either, so
+   * no overflow gate could ever have seen it.
+   *
+   * The first version of this test matched rects named `band-` — the funnel
+   * calls them `stage-` — found none, and `continue`d past every frame while
+   * reporting a pass. It counts what it checked now and fails if that is zero,
+   * because a guard that silently examines nothing is worse than no guard.
+   */
+  it("never draws a conversion label taller than its own gap", () => {
+    let checked = 0;
+    for (const [w, h] of [
+      [80, 60],
+      [120, 90],
+      [300, 60],
+      [480, 300],
+    ] as [number, number][]) {
+      const nodes = buildChart({ ...sampleConfig("funnel"), width: w, height: h } as ChartConfig).nodes;
+      const stages = nodes
+        .filter((n): n is RectNode => n.kind === "rect" && /^stage-\d+$/.test(String(n.name)))
+        .sort((a, b) => a.y - b.y);
+      const convs = nodes.filter((n): n is TextNode => n.kind === "text" && /^conversion-/.test(String(n.name)));
+      if (stages.length < 2) continue;
+      const gap = stages[1].y - (stages[0].y + stages[0].h);
+      // Dropping the labels entirely is a legitimate answer on a frame with no
+      // gap to write them in — what must never happen is one drawn bigger than
+      // the space it sits in.
+      for (const c of convs) {
+        checked++;
+        expect(
+          c.fontSize,
+          `a ${c.fontSize.toFixed(1)}pt conversion label in a ${gap.toFixed(1)}pt gap at ${w}x${h}`,
+        ).toBeLessThanOrEqual(Math.max(gap, 0) + 0.01);
+      }
+    }
+    expect(checked, "no conversion label was examined at any frame — the test matched nothing").toBeGreaterThan(0);
+  });
+});

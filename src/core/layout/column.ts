@@ -1012,16 +1012,31 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // `pointFs` is 0 when the row is too thin to carry a legible label, which
       // is the same "no room" answer the label placers give elsewhere — drawn
       // anyway it would be a zero-size font, which OOXML rejects.
-      if (labelOn && pointFs > 0) {
+      // The room a beside-the-mark label actually has, capped at the 60pt it
+      // always used, and measured to the PLOT's right edge rather than the
+      // canvas. Measuring to `cfg.width` merely moved the collision: the label
+      // came off the category names on the left and landed on the totals strip
+      // on the right, which `computeFrameHorizontal` reserves outside the plot.
+      // A clamp moves a label whether or not the destination is free — the
+      // lesson the CAGR caption already cost this repo — so the bound is the
+      // room inside the plot, and a label that cannot fit there is not drawn.
+      const comboLabelW = Math.max(0, Math.min(60, anchors.plot.x + anchors.plot.w - (pt.x + r + 2)));
+      if (labelOn && pointFs > 0 && (!H || comboLabelW >= textWidth(formatNumber(v, fmt), pointFs))) {
         // Categories run down a bar chart, so a label ABOVE its point would sit
         // on the neighbouring category's row; put it beside the mark instead.
         nodes.push(
           H
             ? {
                 kind: "text",
-                x: Math.min(pt.x + r + 2, cfg.width - 60),
+                // Bounded by the room to the RIGHT of the mark, not a fixed 60pt
+                // box clamped to `cfg.width - 60`. On a 60pt-wide chart that
+                // clamp evaluates to x=0 and the label spans the whole frame,
+                // landing on the category names down the left — the label placed
+                // beside its mark to avoid the neighbouring ROW, put on the
+                // neighbouring COLUMN instead.
+                x: Math.min(pt.x + r + 2, Math.max(0, cfg.width - comboLabelW)),
                 y: pt.y - pointFs * 0.7,
-                w: 60,
+                w: comboLabelW,
                 h: pointFs * 1.4,
                 text: formatNumber(v, fmt),
                 fontSize: pointFs,

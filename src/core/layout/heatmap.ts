@@ -1,9 +1,10 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, parseDateToken, resolveFormat } from "../format";
 import { divergingScale, lerpColor, noDataFill, sequentialScale, zoneFill } from "../color";
 import { maxOf, minOf } from "../agg";
-import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, MIN_LABEL_FS, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -126,21 +127,33 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const titleN = titleNode(cfg, style);
   if (titleN) nodes.push(titleN);
   if (decor.categoryAxis !== false) {
-    data.categories.forEach((cat, c) => {
-      nodes.push({
-        kind: "text",
-        x: plot.x + c * cw,
-        y: titleH,
-        w: cw,
-        h: headerH,
-        text: cat,
-        fontSize: fs,
-        color: style.text,
-        align: "center",
-        valign: "middle",
-        name: `col-${c}`,
+    // Fitted to the COLUMN, which nothing did: the box is `cw` and the name was
+    // drawn at the chart font whatever `cw` turned out to be. On a 60pt-wide
+    // heatmap a column is a few points across and every header ran across its
+    // neighbours — inside the frame, so no overflow gate saw it.
+    //
+    // Shrunk together so the row still reads as one header row, then clipped to
+    // the column, then dropped as a set below the legibility floor. All three
+    // are the answers this engine already gives elsewhere; what was missing was
+    // any of them.
+    const widest = Math.max(0, ...data.categories.map((cat) => textWidth(cat, fs)));
+    const headerFs = widest > cw - 2 && widest > 0 ? fs * ((cw - 2) / widest) : fs;
+    if (headerFs >= MIN_LABEL_FS)
+      data.categories.forEach((cat, c) => {
+        nodes.push({
+          kind: "text",
+          x: plot.x + c * cw,
+          y: titleH,
+          w: cw,
+          h: headerH,
+          text: clipToWidth(cat, headerFs, cw - 2),
+          fontSize: headerFs,
+          color: style.text,
+          align: "center",
+          valign: "middle",
+          name: `col-${c}`,
+        });
       });
-    });
   }
 
   // A row label's BOX is the row, so the boxes never overlap — but its INK is

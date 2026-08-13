@@ -243,16 +243,44 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // narrower than this. Reserving with the narrower bound can only over-reserve,
   // and an extra empty row costs a few points where an unreserved one overlaps
   // the plot.
+  //
+  // The `max(40, …)` floor this line used to carry INVERTED that on a narrow
+  // frame, which is the one case it mattered. At 80pt wide the estimate is 38
+  // and the floor raised it to 40 — a WIDER bound than the walk gets, so the
+  // count came out lower than the rows drawn, the legend wrapped past its band,
+  // and its third row landed in the x-axis strip. A conservative bound has to
+  // stay conservative at the small end; flooring a WIDTH up reserves less, not
+  // more.
   const groupLegendRows =
     multiGroup && !colorScale
       ? legendRowCount(
           [...new Set(pts.map((p) => p.group))].filter((g) => g !== undefined).map((g) => `Group ${g}`),
           fs,
           0,
-          Math.max(40, cfg.width - axisW - 8),
+          Math.max(1, cfg.width - axisW - 8),
         )
       : 0;
-  const legendH = colorScale ? fs * 1.8 : multiGroup ? fs * 1.8 * Math.max(1, groupLegendRows) : 0;
+  // A gutter costs real space. If what's left would stop being a chart, drop
+  // the marginals rather than the plot. Declared here rather than beside its
+  // first use below, because the legend decision needs the same floor: both are
+  // asking "would what remains still be a chart".
+  const MIN_PLOT = 60;
+  // A wrapped group legend can eat the whole chart, so it is DROPPED rather
+  // than drawn over what is left.
+  //
+  // `bodyH` below is what remains after this band, and on a small frame a
+  // three-row legend takes more than the frame has: at 80x60 the rows ran to
+  // y=44 on a 60pt chart and the third landed in the x-axis strip. `fitPlot`
+  // then floors the plot and the axis comes up to meet the legend, so following
+  // the fitted plot — which `legendTop` already does — cannot save it.
+  //
+  // The same answer the radar, sunburst, tilemap and pie reservations give, and
+  // the cascade's group headers: chrome that cannot be paid for is not drawn.
+  // The plot is the chart; a legend naming groups nobody can see is not.
+  const legendWant = colorScale ? fs * 1.8 : multiGroup ? fs * 1.8 * Math.max(1, groupLegendRows) : 0;
+  const roomForLegend = cfg.height - titleH - 6 - fs * 1.6 - footnoteH(cfg, style, decor) - MIN_PLOT;
+  const showGroupLegend = !colorScale && legendWant > 0 ? legendWant <= roomForLegend : true;
+  const legendH = showGroupLegend ? legendWant : 0;
   /** Where the plot starts before any marginal gutter — the legends' anchor. */
   const chromeTop = titleH + 6 + legendH;
   // Marginal gutters, in font-size units like the heatmap's already-shipped
@@ -267,9 +295,6 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // the deck's byte-identity gate would NOT catch the difference.
   const bodyW = cfg.width - axisW - 8;
   const bodyH = cfg.height - titleH - 6 - legendH - fs * 1.6 - footnoteH(cfg, style, decor);
-  // A gutter costs real space. If what's left would stop being a chart, drop
-  // the marginals rather than the plot.
-  const MIN_PLOT = 60;
   const mTop = wantMx && bodyH - GUT >= MIN_PLOT ? GUT : 0;
   const mRight = wantMy && bodyW - GUT >= MIN_PLOT ? GUT : 0;
   const plot = fitPlot(cfg, {
@@ -723,7 +748,12 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // the SHAPE channel, which the color legend says nothing about, so the legend
   // has to come back or the shapes stand unexplained.
   const groupIds = colorScale && !markers ? [] : [...new Set(pts.map((p) => p.group))].sort((a, b) => a - b);
-  if (groupIds.length > 1) {
+  // `showGroupLegend` gates the DRAW as well as the reservation. Gating only the
+  // reservation is the bug this file keeps finding in others — the band is
+  // reserved as zero and the legend is drawn anyway, which is strictly worse
+  // than drawing it with room. Measured: doing exactly that took the extreme-frame
+  // overlap count from 55 to 63.
+  if (groupIds.length > 1 && showGroupLegend) {
     // Clear the gradient bar when both legends are up — they share this row and
     // both anchor at plot.x, so without the offset the chips land on the ramp.
     let lx = plot.x + (colorScale ? COLOR_BAR_W + 16 : 0);
@@ -871,40 +901,53 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     );
     const refMax = niceTicks(0, maxSize, 3).pop()!;
     const refs = [refMax, refMax / 2];
+    // A size legend needs room for its widest NUMBER, not just its circles. The
+    // label box is `r * 2` centred on a reference circle, and a small circle
+    // carries a number far wider than itself — so on a narrow plot the text
+    // spills left out of the legend and across the y-axis ticks and the group
+    // legend beside it.
+    //
+    // Dropped whole rather than shrunk: this legend is a reference scale, and
+    // two circles whose values cannot be read explain nothing. Half the plot is
+    // the bound because the legend sits at the plot's right edge — a label
+    // reaching past the midpoint is into the chart, not beside it.
+    const widestRef = Math.max(...refs.map((v) => textWidth(formatNumber(v, sizeFmt), fs * 0.8)));
+    const sizeLegendFits = widestRef <= plot.w * 0.5;
     let lx = plot.x + plot.w - 4;
-    refs.forEach((v, i) => {
-      const r = Math.max(2.5, Math.sqrt(v / maxSize) * maxR);
-      const cx = lx - r;
-      const cy = plot.y + maxR * 1.1 + (Math.sqrt(refMax / maxSize) * maxR - r); // bottom-aligned circles
-      nodes.push(
-        {
-          kind: "ellipse",
-          cx,
-          cy,
-          rx: r,
-          ry: r,
-          fill: "none",
-          stroke: style.mutedText,
-          strokeWidth: 1,
-          name: `size-legend-${i}`,
-        },
-        {
-          kind: "text",
-          x: cx - r,
-          y: cy - Math.sqrt(refMax / maxSize) * maxR - fs * 1.35,
-          w: r * 2,
-          h: fs * 1.2,
-          text: formatNumber(v, sizeFmt),
-          fontSize: fs * 0.8,
-          color: style.mutedText,
-          align: "center",
-          valign: "bottom",
-          name: `size-legend-label-${i}`,
-        },
-      );
-      legendBoxes.push({ x: cx - r, y: cy - r - fs * 1.4, w: r * 2, h: r * 2 + fs * 1.4 });
-      lx = cx - r - fs * 0.8;
-    });
+    if (sizeLegendFits)
+      refs.forEach((v, i) => {
+        const r = Math.max(2.5, Math.sqrt(v / maxSize) * maxR);
+        const cx = lx - r;
+        const cy = plot.y + maxR * 1.1 + (Math.sqrt(refMax / maxSize) * maxR - r); // bottom-aligned circles
+        nodes.push(
+          {
+            kind: "ellipse",
+            cx,
+            cy,
+            rx: r,
+            ry: r,
+            fill: "none",
+            stroke: style.mutedText,
+            strokeWidth: 1,
+            name: `size-legend-${i}`,
+          },
+          {
+            kind: "text",
+            x: cx - r,
+            y: cy - Math.sqrt(refMax / maxSize) * maxR - fs * 1.35,
+            w: r * 2,
+            h: fs * 1.2,
+            text: formatNumber(v, sizeFmt),
+            fontSize: fs * 0.8,
+            color: style.mutedText,
+            align: "center",
+            valign: "bottom",
+            name: `size-legend-label-${i}`,
+          },
+        );
+        legendBoxes.push({ x: cx - r, y: cy - r - fs * 1.4, w: r * 2, h: r * 2 + fs * 1.4 });
+        lx = cx - r - fs * 0.8;
+      });
   }
 
   // Trajectory / trail: connect the points in datasheet (row) order with a

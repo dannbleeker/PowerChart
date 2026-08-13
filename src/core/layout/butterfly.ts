@@ -110,14 +110,25 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
         [rightSeries[0], rightEdge, plot.x + plot.w],
       ] as const
     ).forEach(([entry, x0, x1], i) => {
+      // Fitted to the HALF it names. The box is `x1 - x0` and the name was drawn
+      // at the chart font whatever that came to — so on a 60pt-wide butterfly
+      // each half is about twenty points and the two series names met in the
+      // middle. Shrunk to the room, floored at 5 the way this file's category
+      // gutter already is, and dropped below that rather than drawn across the
+      // other series' header.
+      const half = Math.max(0, x1 - x0);
+      const name = entry?.s.name ?? "";
+      let hf = fs;
+      while (hf > 5 && textWidth(name, hf) > half - 2) hf -= 0.5;
+      if (textWidth(name, hf) > half - 2) return;
       nodes.push({
         kind: "text",
         x: x0,
         y: titleH,
-        w: Math.max(0, x1 - x0),
+        w: half,
         h: headerH,
-        text: entry?.s.name ?? "",
-        fontSize: fs,
+        text: name,
+        fontSize: hf,
         bold: true,
         color: seriesColor(style, entry?.si ?? i, entry?.s.color),
         align: "center",
