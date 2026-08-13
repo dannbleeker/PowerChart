@@ -7813,6 +7813,25 @@ function addSegment(
  * knows the same ones; everything else — including a bare word that is not a
  * colour at all — normalises to `#RRGGBB`.
  */
+/**
+ * A point size PowerPoint will accept, enforced where it is WRITTEN.
+ *
+ * The third sink again, and the same argument the skill's `fontPt` already
+ * makes about its own bytes: `font.size` was assigned straight from the scene
+ * node here, unchecked, where the pptx sink clamps to OOXML's `ST_TextFontSize`
+ * (1pt to 4000pt) and the SVG sink at least substitutes for a non-finite value.
+ *
+ * It is the worst of the three places to be missing it. A rejected property
+ * THROWS, and a throw inside a draw batch takes the batch's other work with it
+ * — on this host that includes the config tag, so the user gets a chart that is
+ * not re-editable, or no chart at all. A clamped label is merely small.
+ *
+ * The engine clamps `style.fontSize` on the way in and its layouts now floor
+ * every fitted label, so nothing should arrive out of range. That is exactly
+ * what was true of the other two sinks when each of them was found to need one.
+ */
+const officeFontPt = (v: number): number => (Number.isFinite(v) ? Math.min(4000, Math.max(1, v)) : 12);
+
 const officeHex = (color: string): string => {
   // The THIRD colour sink, and the one that runs in a real PowerPoint. The
   // other two — `src/core/color.ts` and the skill's `pptx-paint.mjs` — each had
@@ -8101,7 +8120,7 @@ function applyNodeInPlace(shape: PowerPoint.Shape, n: SceneNode, dx: number, dy:
     /* margin/alignment properties unavailable on this host */
   }
   const font = tf.textRange.font;
-  font.size = n.fontSize;
+  font.size = officeFontPt(n.fontSize);
   font.color = officeHex(n.color);
   font.bold = !!n.bold;
   font.name = n.fontFamily ?? opts.fontFamily ?? DEFAULT_FONT;
@@ -8260,7 +8279,7 @@ function addText(
     /* margin/alignment properties unavailable on this host */
   }
   const font = tf.textRange.font;
-  font.size = n.fontSize;
+  font.size = officeFontPt(n.fontSize);
   font.color = officeHex(n.color);
   font.bold = !!n.bold;
   font.name = n.fontFamily ?? opts.fontFamily ?? DEFAULT_FONT;

@@ -229,6 +229,35 @@ describe("scene node mapping", () => {
     expect(b.lineFormat.visible).toBe(false);
   });
 
+  it("never hands Office a font size it rejects", async () => {
+    // The THIRD sink, and the worst place to be missing this guard. `font.size`
+    // was assigned straight from the scene node, where the skill's pptx sink
+    // clamps to OOXML's 1..4000pt and the SVG sink substitutes for a non-finite
+    // value. Office.js REJECTS an out-of-range size, and a rejected property
+    // throws — which on this host takes the rest of the batch with it, config
+    // tag included, so the user gets a chart that is not re-editable or no
+    // chart at all. A clamped label is merely small.
+    const slide = await insert([
+      { kind: "text", x: 0, y: 0, w: 50, h: 12, text: "zero", fontSize: 0, color: "#000", name: "a" },
+      { kind: "text", x: 0, y: 20, w: 50, h: 12, text: "negative", fontSize: -5, color: "#000", name: "b" },
+      { kind: "text", x: 0, y: 40, w: 50, h: 12, text: "enormous", fontSize: 1e6, color: "#000", name: "c" },
+      { kind: "text", x: 0, y: 60, w: 50, h: 12, text: "nan", fontSize: Number.NaN, color: "#000", name: "d" },
+      { kind: "text", x: 0, y: 80, w: 50, h: 12, text: "ordinary", fontSize: 11.5, color: "#000", name: "e" },
+    ]);
+    const sizes = slide.created
+      .filter((sh) => sh.textFrame?.textRange?.font?.size !== undefined)
+      .map((sh) => sh.textFrame.textRange.font.size as number);
+    expect(sizes).toHaveLength(5);
+    for (const size of sizes) {
+      expect(Number.isFinite(size)).toBe(true);
+      expect(size).toBeGreaterThanOrEqual(1);
+      expect(size).toBeLessThanOrEqual(4000);
+    }
+    // The negative control: a size Office accepts is passed through untouched,
+    // so this is a clamp and not a rewrite of every label in the deck.
+    expect(sizes).toContain(11.5);
+  });
+
   it("honours an 8-digit #RRGGBBAA fill: 6-digit hue + transparency, never mis-parsed", async () => {
     // #RRGGBBAA is a valid hand-authored colour that the SVG preview and the
     // skill's pptx render translucent. Office.js setSolidColor validates 6-digit
