@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat } from "../format";
 import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
@@ -175,6 +176,35 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
   // instead misread any mid-chain delta whose incoming running total happened
   // to be zero (…, -100, +50) as a base column and dropped its "+".
   const openingBar = bars.findIndex((b) => b.segs.length > 0);
+  /** The text a segment is labelled with — shared so the fit below sees it too. */
+  const labelFor = (isTotal: boolean, c: number, value: number) =>
+    formatNumber(value, {
+      ...fmt,
+      // Base columns (the opening column and explicit totals) get unsigned
+      // labels throughout; every other column is a delta and keeps its sign.
+      forceSign: !isTotal && c !== openingBar && (cfg.numberFormat?.forceSign ?? true),
+    });
+  /**
+   * One size for every value label, bounded by the slot its bar owns.
+   *
+   * Upright the labels sit side by side, so the bound is the slot's WIDTH — the
+   * box was `colThick + 12` regardless, which bleeds 6pt into each neighbour
+   * whenever the gap between bars is narrower than that. Horizontal they are
+   * centred on their row in a box `fs * 1.5` tall, so the bound is the row
+   * PITCH, the same one the totals beside them now take.
+   *
+   * Shrunk together so a row of labels reads at one size rather than as a
+   * ransom note, then clipped for the number no floor can fit. Last resort as
+   * everywhere else: a chart whose labels already fit their slot keeps `fs`.
+   */
+  const labelRoom = Math.max(1, slotLen - 2);
+  const labelFs = (() => {
+    if (H) return Math.min(fs, slotLen / 1.5);
+    const labels = bars.flatMap((b, c) => b.segs.map((seg) => labelFor(b.isTotal, c, seg.value)));
+    let f = fs;
+    while (f > 5 && labels.some((l) => textWidth(l, f) > labelRoom)) f -= 0.5;
+    return f;
+  })();
   const columnTop: number[] = [];
 
   bars.forEach((b, c) => {
@@ -199,24 +229,22 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
         name: `bar-${c}${stacked && !b.isTotal ? `-s${seg.series}` : ""}`,
       });
 
-      // Base columns (the opening column and explicit totals) get unsigned
-      // labels throughout; every other column is a delta and keeps its sign.
-      const floating = !b.isTotal && c !== openingBar;
-      const label = formatNumber(seg.value, {
-        ...fmt,
-        forceSign: floating && (cfg.numberFormat?.forceSign ?? true),
-      });
+      const label = labelFor(b.isTotal, c, seg.value);
       const along = H ? r.w : r.h;
-      const fits = H ? along >= textWidth(label, fs) + 2 : along >= fs * 1.25;
+      const fits = H ? along >= textWidth(label, labelFs) + 2 : along >= labelFs * 1.25;
       if (fits || !stacked || b.isTotal) {
+        // Upright, the box is centred on the bar and capped at the slot, so
+        // adjacent boxes ABUT instead of overlapping. `r.x - 6` is exactly
+        // `centers[c] - (r.w + 12) / 2`, so an uncapped slot is byte-identical.
+        const boxW = H ? (fits ? r.w + 12 : fs * 4) : Math.min(r.w + 12, slotLen);
         nodes.push({
           kind: "text",
-          x: fits ? r.x - 6 : H ? r.x + r.w + 2 : r.x - 6,
-          y: fits ? r.y + r.h / 2 - fs * 0.75 : H ? r.y + r.h / 2 - fs * 0.75 : r.y - fs * 1.45,
-          w: fits ? r.w + 12 : H ? fs * 4 : r.w + 12,
-          h: fs * 1.5,
-          text: label,
-          fontSize: fs,
+          x: H ? (fits ? r.x - 6 : r.x + r.w + 2) : centers[c] - boxW / 2,
+          y: fits || H ? r.y + r.h / 2 - labelFs * 0.75 : r.y - labelFs * 1.45,
+          w: boxW,
+          h: labelFs * 1.5,
+          text: clipToWidth(label, labelFs, Math.max(1, boxW - 2)),
+          fontSize: labelFs,
           color: fits ? contrastInk(fill) : style.text,
           bold: b.isTotal,
           align: fits ? "center" : H ? "left" : "center",

@@ -305,6 +305,157 @@ describe("labels are not drawn on top of each other", () => {
     expect(bad).toEqual([]);
   });
 
+  /**
+   * The same property, sideways — which for a year nothing checked.
+   *
+   * Every fit above was written for the upright chart and several of the
+   * horizontal twins had none at all: `horizontalChrome` drew its category names
+   * at the chart font in a box `fs * 1.5` tall centred on the row, the mekko's
+   * own fit answered `false` outright when horizontal, and the totals and the
+   * combo's point labels were bounded by nothing. Rotating a chart rotates which
+   * side of a label is crowded; it does not excuse the label from being fitted.
+   *
+   * Zero, the same as upright — which was not a foregone conclusion when this
+   * was written: a coarser estimate of text width put two scatter point labels
+   * in the x-axis strip, and the engine's own `textWidth` says they clear it.
+   * Measure with the metric the layouts measure with.
+   */
+  it("no horizontal chart overlaps its own text at the default font", () => {
+    const bad: string[] = [];
+    for (const [w, h] of [
+      [200, 150],
+      [480, 300],
+    ] as [number, number][]) {
+      for (const { kind } of CHART_KINDS) {
+        const ts = buildChart({
+          ...sampleConfig(kind),
+          width: w,
+          height: h,
+          horizontal: true,
+        } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text.trim());
+        const boxes = ts.map((t) => inkBox(t)!);
+        for (let i = 0; i < boxes.length; i++) {
+          for (let j = i + 1; j < boxes.length; j++) {
+            if (overlap(boxes[i], boxes[j]) > 1) bad.push(`${kind} at ${w}x${h}: ${ts[i].name} over ${ts[j].name}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("a horizontal chart's category names and totals fit the row they belong to", () => {
+    // Both are centred on their row in a box `fs * 1.5` tall and neither was
+    // bound by the row PITCH, so at 18pt on a 200x150 frame every name ran into
+    // its neighbours — nine kinds, one shape, because they share this chrome.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      for (const { kind } of CHART_KINDS) {
+        const cfg = {
+          ...sampleConfig(kind),
+          width: 200,
+          height: 150,
+          horizontal: true,
+          style: { fontSize },
+        } as ChartConfig;
+        for (const re of [/^category-\d+$/, /^total-\d+$/]) {
+          const ts = textsNamed(cfg, re);
+          for (let i = 1; i < ts.length; i++) {
+            if (overlap(inkOf(ts[i - 1]), inkOf(ts[i])) > 1)
+              bad.push(`fs=${fontSize} ${kind}: ${ts[i - 1].name} over ${ts[i].name}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("a waterfall's value labels fit the slot their bar owns", () => {
+    // Upright the box was `colThick + 12` however wide the slot was, so every
+    // label could bleed 6pt into each neighbour; sideways it was `fs * 1.5` tall
+    // on a row that may be thinner than that. Both orientations, one bound.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      for (const horizontal of [false, true]) {
+        const ts = textsNamed(
+          { ...sampleConfig("waterfall"), width: 200, height: 150, horizontal, style: { fontSize } } as ChartConfig,
+          /^label-\d+$/,
+        );
+        for (let i = 0; i < ts.length; i++) {
+          for (let j = i + 1; j < ts.length; j++) {
+            if (overlap(inkOf(ts[i]), inkOf(ts[j])) > 1)
+              bad.push(`fs=${fontSize} h=${horizontal}: ${ts[i].name} over ${ts[j].name}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("a combo line's point labels fit their row when the chart is horizontal", () => {
+    // Sideways a point label is centred on its category's row rather than
+    // floating above its point, and it was bounded by nothing — the largest
+    // single group of text collisions in the engine when this was measured.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      const ts = textsNamed(
+        { ...sampleConfig("combo"), width: 200, height: 150, horizontal: true, style: { fontSize } } as ChartConfig,
+        /^combo-label-\d+-\d+$/,
+      );
+      for (let i = 0; i < ts.length; i++) {
+        for (let j = i + 1; j < ts.length; j++) {
+          if (overlap(inkOf(ts[i]), inkOf(ts[j])) > 1) bad.push(`fs=${fontSize}: ${ts[i].name} over ${ts[j].name}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("no tick label is drawn too small to read — it is dropped instead", () => {
+    // Every axis fit shrinks a label to the room it has and none had a floor, so
+    // a plot squeezed to a few points answered with ONE-POINT labels: ink rather
+    // than text, stacked in the gutter, from a fit reporting success. Six y ticks
+    // 1.6pt apart on a 200x150 scatter at a 26pt font were the case that named
+    // it. Asserted over every kind, since the floor is shared chrome.
+    const bad: string[] = [];
+    for (const fontSize of [10, 18, 24, 32]) {
+      for (const { kind } of CHART_KINDS) {
+        for (const horizontal of [false, true]) {
+          const cfg = {
+            ...sampleConfig(kind),
+            width: 200,
+            height: 150,
+            horizontal,
+            style: { fontSize },
+          } as ChartConfig;
+          for (const t of textsNamed(cfg, /^(value-axis|x-axis|y-axis)$/)) {
+            if (t.fontSize < 5) bad.push(`fs=${fontSize} ${kind} h=${horizontal}: ${t.name} at ${t.fontSize}pt`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("keeps the series labels and the legend out of the title band", () => {
+    // Both settle into the gutter above or beside the plot, and both floored
+    // themselves at the CANVAS top — so when the gap they wanted could not be
+    // honoured, the topmost one came to rest inside the title. The title is a
+    // full-width band, so that is two texts crossed, not one label clamped.
+    const bad: string[] = [];
+    for (const fontSize of [18, 24, 32]) {
+      for (const kind of ["area", "clustered", "line", "mekko", "stacked", "stacked100", "scatter"] as const) {
+        const cfg = { ...sampleConfig(kind), width: 200, height: 150, style: { fontSize } } as ChartConfig;
+        const title = textsNamed(cfg, /^title$/)[0];
+        expect(title, `the ${kind} sample must carry a title for this to mean anything`).toBeTruthy();
+        for (const t of textsNamed(cfg, /^(series-label-\d+|legend-\d+)$/)) {
+          if (overlap(inkOf(t), inkOf(title)) > 1) bad.push(`fs=${fontSize} ${kind}: ${t.name} over the title`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it("a cascade's drop caption stays out of the footnote", () => {
     // The caption of a block too thin for text inside it goes underneath, and
     // the plot did not reserve for that — so at the DEFAULT size it was drawn

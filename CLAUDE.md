@@ -606,20 +606,62 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   the same y where two thin blocks end together — which is a worse collision than
   the one it fixes.
 
-  **The count is ZERO at the default font now, and 76 above it.** Fitting each
-  label to the space it actually has — tick labels to their tick spacing (the
-  worst shape left, 71 pairs across the shared value axis and the scatter's
-  own), heatmap rows to their row, sunburst labels to their wedge, and the
-  cascade's in-bar lines to the gap between them — took 237 to 76. What is left
-  is at 18pt and above.
+  **The count is ZERO at the default font, in BOTH orientations, and the rest is
+  at 18pt and above.** Fitting each label to the space it actually has — tick
+  labels to their tick spacing, heatmap rows to their row, sunburst labels to
+  their wedge, the cascade's in-bar lines to the gap between them — took the
+  upright count from 237 to 76.
 
-  **Three attempted fixes were REVERTED because the measurement said they made
-  things worse, and that is the useful part.** Flooring the CAGR caption at the
-  title's bottom instead of at zero turns five `title x cagr-label` overlaps into
-  EIGHT against the column totals. Giving the scatter's label placer the axis
-  labels as obstacles removes 35 pairs and makes it DROP point labels it can no
-  longer position — on a comfortable 480x300 chart, because the y axis owns the
-  left margin: a point's label is data and a tick label is chrome. And a fourth
+  **Then the same sweep was run SIDEWAYS and found the fits had only ever been
+  written for the upright chart.** `horizontalChrome` drew its category names at
+  the chart font in a box `fs * 1.5` tall centred on the row; the mekko's own fit
+  answered `false` outright when horizontal, so the whole thing was skipped; the
+  totals, the waterfall's value labels and the combo line's point labels were
+  bounded by nothing at all. One shared bound — the ROW PITCH — closed nine
+  kinds at once, and the combo's point labels alone were 222 of the pairs.
+  Rotating a chart rotates which side of a label is crowded; it does not excuse
+  the label from being fitted, and for a year nothing measured the rotated case.
+
+  Do not quote a total from this paragraph — measure it. The sweep is ink
+  boxes against each other over kinds x orientations x fonts x frames, and its
+  answer moves with the ranges you give it. What is stable is the SHAPE of what
+  is left: point labels against axis chrome in scatter and bubble (decided, see
+  below), and charts whose chrome simply exceeds the frame at 26pt and up.
+
+  **A fit needs a FLOOR as well as a bound, and none of them had one.** Every
+  axis fit shrinks a label to the room it has and answers whatever the
+  arithmetic says — six y ticks 1.6pt apart on a 200x150 scatter at a 26pt font
+  produced six ONE-POINT labels, ink no reader can resolve, from a fit that
+  reported success. Below `MIN_TICK_FS` the labels are dropped and the gridlines
+  kept, which is the answer the radar, sunburst, tilemap and pie reservations
+  already gave when their band could not be met.
+
+  **A CLAMP and a FLIP are not the same move, and the difference decided a case
+  this file had already recorded as closed.** Flooring the CAGR caption at the
+  title's bottom was tried and reverted: it turned five `title x cagr-label`
+  overlaps into EIGHT against the column totals, because a floor moves the label
+  whether or not the destination is free. The de-collision pass can now flip a
+  label BELOW its mark when the way up is blocked, and that is worth 13 pairs
+  with nothing traded — because a flip only takes a position already clear of
+  everything settled, and the totals rank ahead of the caption and settle first.
+  So it cannot buy its way off the title by landing on a total; it stays put.
+  Same idea, opposite result, and the revert was still right about the clamp.
+
+  Restricted to labels anchored to a single mark (`FLIPPABLE` in `collide.ts`).
+  A series label may NOT go down: moving it crosses the label beneath it and the
+  two then name each other's lines — every label on the canvas, each one wrong,
+  which is the failure the upward-only rule was written for in the first place.
+
+  **Two attempted fixes were REVERTED because the measurement said they made
+  things worse, and that is the useful part.** Giving the scatter's label placer
+  the axis labels as obstacles removes 35 pairs and makes it DROP point labels it
+  can no longer position — on a comfortable 480x300 chart, because the y axis
+  owns the left margin: a point's label is data and a tick label is chrome.
+  Confining that placer's band to the plot — which is the same trade by another
+  route, since the band deliberately overhangs into the tick strip — takes the
+  count for those two kinds from 889 to 599 and drops 56 of 301 point labels.
+  Same verdict, and the reason is recorded at the call site so the next person
+  to notice the overhang finds out it was measured. And a third
   nearly went the same way on a misread: the combo render LOOKED like a total had
   landed on a line marker, and a text-versus-mark sweep says it has not. That
   sweep found nothing at first because it matched no marker at all — a combo's
@@ -629,10 +671,18 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
 
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
   its own box, over every kind × eight frame sizes × seven fonts, plus no chart
-  overlapping its own text at the default font. It measures INK, not boxes —
-  a first version measured boxes and produced four false positives and one false
-  negative in one run, because a label's box is routinely wider than its text
-  and is anchored by `align`.
+  overlapping its own text at the default font in EITHER orientation. It measures
+  INK, not boxes — a first version measured boxes and produced four false
+  positives and one false negative in one run, because a label's box is routinely
+  wider than its text and is anchored by `align`.
+
+  **Measure with the metric the layouts measure with.** A scratch sweep using a
+  characters × font-size estimate reported two scatter point labels sitting in
+  the x-axis strip at the default font, and the gate written from it asserted
+  those two as known exceptions. The engine's own `textWidth` says they clear —
+  so the exceptions were fiction and the gate now asserts zero. An approximate
+  metric does not merely miss defects, it invents them, and an invented one gets
+  written into a test as a permanent allowance.
 
 - **A shape the user selected must be let go of before anything is drawn.** On
   the web, `addTextBox` DELETES the selected shape (office-js#2775) and a picture

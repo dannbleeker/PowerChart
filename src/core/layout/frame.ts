@@ -16,7 +16,18 @@ export interface Frame {
  * plot POSITIVE, not to make it readable — a chart this small is not readable
  * on any arithmetic.
  */
-const MIN_PLOT_SIDE = 8;
+export const MIN_PLOT_SIDE = 8;
+
+/**
+ * The smallest a tick label may be drawn; below it the label is dropped.
+ *
+ * Every axis fit in this engine shrinks a label to the room it has, and none of
+ * them had a floor — so a plot squeezed to a few points answered with labels of
+ * one or two points, which is ink rather than text. The house floor for a
+ * shrink loop is 5 (`while (f > 5 …)` everywhere); this is the same number for
+ * the fits expressed as a scale rather than a loop.
+ */
+export const MIN_TICK_FS = 5;
 
 /**
  * Clamp a plot rectangle into the chart frame.
@@ -517,12 +528,21 @@ export function chromeNodes(
      * Bound by that spacing, the way the radar's ring ticks are bound by their
      * ring gap. Last resort: on any chart whose ticks already clear each other
      * this is `fs * 0.9` and nothing moves.
+     *
+     * Dropped outright when the spacing cannot pay for a LEGIBLE label. A fit
+     * with no floor answers whatever the arithmetic says, and on a plot squeezed
+     * to a few points that is a stack of one-point labels — ink no reader can
+     * resolve, and a fit that reports success. Same answer the radar, sunburst,
+     * tilemap and pie reservations give when their band cannot be met: a label
+     * that cannot be read is not there. The datamarks and gridlines stay, since
+     * those still carry the scale.
      */
     const tickGap =
       ticks.length > 1
         ? Math.min(...ticks.slice(1).map((t, i) => Math.abs(scale.toY(t) - scale.toY(ticks[i]))))
         : frame.h;
     const tickScale = Math.min(1, tickGap / (fs * 1.4));
+    const tickLegible = fs * 0.9 * tickScale >= MIN_TICK_FS;
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {
@@ -537,6 +557,7 @@ export function chromeNodes(
           name: "datamark",
         });
       }
+      if (!tickLegible) continue;
       nodes.push({
         kind: "text",
         x: 0,

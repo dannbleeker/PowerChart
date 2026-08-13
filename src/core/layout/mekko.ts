@@ -111,14 +111,20 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
 
     // Column total at the column's end — the Mekko signature.
     if (H) {
+      // Bound by the row it ends, not by the chart's font: a Mekko's rows are
+      // proportional to their totals, so a small column gets a thin row, and a
+      // total centred in a box `fs * 1.5` tall then runs into its neighbours.
+      // Per-row rather than one size for the axis, because the rows genuinely
+      // differ in height here. Last resort: a row that can afford `fs` keeps it.
+      const totalFs = Math.min(fs, ext / 1.5);
       nodes.push({
         kind: "text",
         x: frame.x + colLen + 3,
-        y: centers[c] - fs * 0.75,
+        y: centers[c] - totalFs * 0.75,
         w: cfg.width - (frame.x + colLen) - 3,
-        h: fs * 1.5,
+        h: totalFs * 1.5,
         text: formatNumber(totals[c], fmt),
-        fontSize: fs,
+        fontSize: totalFs,
         bold: true,
         color: style.text,
         align: "left",
@@ -178,19 +184,33 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     // neighbour: "Americas (42%)" and "APAC (27%)" collided by 6pt on an
     // ordinary 200x150 mekko, at the default font.
     const catRoom = (c: number) => widths[c] + gap;
-    const overflows = (f: number) => !H && catLabels.some((l, c) => textWidth(l, f) > catRoom(c));
+    // Rotating the chart rotates which side of the label is crowded, and this
+    // predicate used to answer `false` outright when horizontal — so the whole
+    // fit above was skipped and the names were drawn at `fs`, unclipped, in a
+    // gutter `computeFrameHorizontal` caps at 30% of the width. Sideways the
+    // room is that gutter, and it is the same for every row, so the axis still
+    // shrinks together and still reads at one size.
+    const gutter = Math.max(1, frame.x - 4);
+    const overflows = (f: number) =>
+      H ? catLabels.some((l) => textWidth(l, f) > gutter) : catLabels.some((l, c) => textWidth(l, f) > catRoom(c));
     while (catFs > 6 && overflows(catFs)) catFs -= 0.5;
     for (let c = 0; c < n; c++) {
       const label = catLabels[c];
       if (H) {
+        // Bounded by the gutter (width, shared) AND by the row it names
+        // (height, per-row — a Mekko's rows are proportional to their totals,
+        // so a small column gets a thin one). The smaller wins, the same way
+        // the butterfly's category names take the smaller of their gutter fit
+        // and their row fit.
+        const nameFs = Math.min(catFs, catRoom(c) / 1.5);
         nodes.push({
           kind: "text",
           x: 0,
-          y: centers[c] - fs * 0.75,
-          w: frame.x - 4,
-          h: fs * 1.5,
-          text: label,
-          fontSize: fs,
+          y: centers[c] - nameFs * 0.75,
+          w: gutter,
+          h: nameFs * 1.5,
+          text: clipToWidth(label, nameFs, gutter),
+          fontSize: nameFs,
           color: style.text,
           align: "right",
           valign: "middle",

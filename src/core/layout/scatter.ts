@@ -6,7 +6,16 @@ import { placeLabels, type Box, type LabelRequest } from "../labels";
 import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
 import { lerpColor, sequentialScale, zoneFill } from "../color";
-import { fitPlot, footnoteH, titleHeight, titleNode, legendRowCount, legendWrapWalk } from "./frame";
+import {
+  fitPlot,
+  footnoteH,
+  titleHeight,
+  titleNode,
+  legendRowCount,
+  legendWrapWalk,
+  MIN_PLOT_SIDE,
+  MIN_TICK_FS,
+} from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -411,27 +420,37 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
    * Bound by that spacing, the same rule the shared value axis and the radar's
    * ring ticks now use. Last resort: where the ticks already clear each other
    * this is 1 and nothing moves.
+   *
+   * Zero when the spacing cannot pay for a LEGIBLE label, and the labels are
+   * then dropped rather than drawn. A fit with no floor answers whatever the
+   * arithmetic says: six y ticks 1.6pt apart on a 200x150 chart at a 26pt font
+   * produced six ONE-POINT labels — ink no reader can resolve, stacked in the
+   * axis gutter, from a fit that reported success. Same answer the radar,
+   * sunburst, tilemap and pie reservations give when their band cannot be met:
+   * a label that cannot be read is not there. The gridlines stay, since those
+   * still carry the scale.
    */
   const gapScale = (vals: number[], to: (v: number) => number, span: number) => {
     const gap = vals.length > 1 ? Math.min(...vals.slice(1).map((t, i) => Math.abs(to(t) - to(vals[i])))) : span;
-    return Math.min(1, gap / (fs * 1.4));
+    const scale = Math.min(1, gap / (fs * 1.4));
+    return fs * 0.9 * scale < MIN_TICK_FS ? 0 : scale;
   };
   const yTickScale = gapScale(yTicks, toY, plot.h);
   const xTickScale = gapScale(xTicks, toX, plot.w);
   for (const t of yTicks) {
     const y = toY(t);
-    nodes.push(
-      {
-        kind: "line",
-        x1: plot.x,
-        y1: y,
-        x2: plot.x + plot.w,
-        y2: y,
-        stroke: style.gridline,
-        strokeWidth: 0.75,
-        name: "gridline-y",
-      },
-      {
+    nodes.push({
+      kind: "line",
+      x1: plot.x,
+      y1: y,
+      x2: plot.x + plot.w,
+      y2: y,
+      stroke: style.gridline,
+      strokeWidth: 0.75,
+      name: "gridline-y",
+    });
+    if (yTickScale > 0) {
+      nodes.push({
         kind: "text",
         x: 0,
         y: y - fs * 0.7 * yTickScale,
@@ -443,24 +462,26 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         align: "right",
         valign: "middle",
         name: "y-axis",
-      },
-    );
+      });
+    }
   }
-  for (const t of xTicks) {
-    const x = toX(t);
-    nodes.push({
-      kind: "text",
-      x: x - 24,
-      y: plot.y + plot.h + 2,
-      w: 48,
-      h: fs * 1.4 * xTickScale,
-      text: formatNumber(t, xFmt),
-      fontSize: fs * 0.9 * xTickScale,
-      color: style.mutedText,
-      align: "center",
-      valign: "top",
-      name: "x-axis",
-    });
+  if (xTickScale > 0) {
+    for (const t of xTicks) {
+      const x = toX(t);
+      nodes.push({
+        kind: "text",
+        x: x - 24,
+        y: plot.y + plot.h + 2,
+        w: 48,
+        h: fs * 1.4 * xTickScale,
+        text: formatNumber(t, xFmt),
+        fontSize: fs * 0.9 * xTickScale,
+        color: style.mutedText,
+        align: "center",
+        valign: "top",
+        name: "x-axis",
+      });
+    }
   }
   const zeroSpineX = Math.max(plot.x, Math.min(plot.x + plot.w, toX(0)));
   nodes.push(
@@ -725,10 +746,17 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
      * scaling a row count: a narrower label may need one row where it needed
      * three. Last resort as everywhere else — at any font whose legend already
      * fits, this is `fs` and nothing moves.
+     *
+     * The budget is the canvas LESS the title band and a minimum plot, not the
+     * whole canvas. Measured against the canvas, three wrapped rows at a 26pt
+     * font were allowed to occupy 140 points of a 150-point chart — which fits,
+     * and leaves the title and the plot underneath the legend. A legend is
+     * chrome; it may not price itself as though it were the chart.
      */
+    const legendBudget = Math.max(fs, cfg.height - titleH - MIN_PLOT_SIDE);
     const legendFs = (() => {
       let f = fs;
-      while (f > 5 && blockH(f, walk(f)[labels.length - 1].row + 1) > cfg.height) f -= 0.5;
+      while (f > 5 && blockH(f, walk(f)[labels.length - 1].row + 1) > legendBudget) f -= 0.5;
       return f;
     })();
     const slots = walk(legendFs);
@@ -741,8 +769,13 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // on any chart with room above the plot is no constraint at all — and no
     // further down than its own BOTTOM row can afford, which is what the shrink
     // above guarantees is reachable.
+    //
+    // The floor is the TITLE's bottom, not the canvas top: the title is a
+    // full-width band, so a top row merely held on canvas was held straight
+    // onto the words. The budget above is what makes this reachable, rather
+    // than a clamp that trades one collision for another.
     const legendY = Math.min(
-      Math.max(legendTop, (rows - 1) * legendFs * 1.8 + legendFs * 1.55),
+      Math.max(legendTop, titleH + (rows - 1) * legendFs * 1.8 + legendFs * 1.55),
       cfg.height - legendFs * 1.4 + legendFs * 1.55,
     );
     groupIds.forEach((g, gi) => {
@@ -1036,6 +1069,14 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       w: textWidth(pointLabel(pts[i]), fs) + 2,
       h: fs * 1.3,
     }));
+    // The band is a line and a half TALLER than the plot on purpose, and that
+    // extra strip is where the x-axis tick labels live — so a point label at
+    // the foot of the plot can be drawn on one. Confining the band to the plot
+    // was tried and MEASURED: it takes the overlapping-text count for these two
+    // kinds from 889 to 599 and drops 56 of 301 point labels, on charts as
+    // comfortable as 480x300. Same verdict as giving this placer the axis
+    // labels as obstacles, and for the same reason — a point's label is DATA
+    // and a tick label is chrome, so the chrome yields.
     for (const placed of placeLabels(reqs, { x: 0, y: plot.y, w: cfg.width, h: plot.h + fs * 1.5 }, markerBoxes)) {
       const p = pts[order[placed.index]];
       nodes.push({
