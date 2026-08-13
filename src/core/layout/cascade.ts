@@ -120,8 +120,19 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
           ]
         : []),
     ];
+    // The bar-height guard below is a cheap pre-filter and is NOT the test that
+    // matters: the lines sit at FRACTIONS of the bar's height, so the gap between
+    // them shrinks with the bar while their ink does not. A bar could clear the
+    // height guard and still stack its own name on its own value — four such
+    // pairs at the DEFAULT font on a 200x150 cascade. So the real check is the
+    // gap each line leaves the last one, measured rather than inferred.
+    let lastCentre = -Infinity;
     for (const [i, line] of lines.entries()) {
       if (h < fs * (2.2 + i * 1.4)) break; // bar too short for more lines
+      // Both are centred in a `fs * 1.4` box, so their centres carry the spacing.
+      const centre = line.y + fs * 0.7;
+      if (centre - lastCentre < line.size * 1.05) break;
+      lastCentre = centre;
       nodes.push({
         kind: "text",
         x: x + 2,

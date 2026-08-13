@@ -504,6 +504,25 @@ export function chromeNodes(
     // tick step, not the tick magnitude — otherwise a narrow axis prints the same
     // label at several heights. See axisTickLabel for that and for the share case.
     const axisLabel = axisTickLabel(ticks, scale.percent, cfg.numberFormat);
+    /**
+     * The size the tick labels are drawn at.
+     *
+     * One label per tick, each centred on its own tick, so the room each has is
+     * the SPACING between adjacent ticks — and none was fitted to it. At a font
+     * large relative to the plot the labels were drawn over each other, which is
+     * the single commonest text collision left in this engine after the category
+     * axis: 71 of the 237 overlapping pairs a sweep found, here and in the
+     * scatter's own axes.
+     *
+     * Bound by that spacing, the way the radar's ring ticks are bound by their
+     * ring gap. Last resort: on any chart whose ticks already clear each other
+     * this is `fs * 0.9` and nothing moves.
+     */
+    const tickGap =
+      ticks.length > 1
+        ? Math.min(...ticks.slice(1).map((t, i) => Math.abs(scale.toY(t) - scale.toY(ticks[i]))))
+        : frame.h;
+    const tickScale = Math.min(1, tickGap / (fs * 1.4));
     for (const t of ticks) {
       const y = scale.toY(t);
       if (marks) {
@@ -521,11 +540,11 @@ export function chromeNodes(
       nodes.push({
         kind: "text",
         x: 0,
-        y: y - fs * 0.7,
+        y: y - fs * 0.7 * tickScale,
         w: marks ? frame.x - 6 : frame.x - 4,
-        h: fs * 1.4,
+        h: fs * 1.4 * tickScale,
         text: axisLabel(t),
-        fontSize: fs * 0.9,
+        fontSize: fs * 0.9 * tickScale,
         color: style.mutedText,
         align: "right",
         valign: "middle",

@@ -25,6 +25,13 @@ const MOVABLE = [
   /^combo-series-label-/,
   /^diff-label$/,
   /^cagr-label$/,
+  // The combo line's point labels, LAST so they are the ones that move: the
+  // column's value label is anchored to the bar it sits on, where the line's
+  // label is a floater above a point. They were absent, so on an ordinary
+  // 480x300 combo at the default font a line label and a column label were drawn
+  // through each other — this pass exists for exactly that and was simply never
+  // told about them.
+  /^combo-label-/,
 ];
 
 const movableRank = (name: string | undefined): number => {

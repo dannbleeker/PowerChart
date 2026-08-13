@@ -399,6 +399,25 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   });
 
   // Gridlines + axis labels on both axes.
+  /**
+   * The size each axis's tick labels are drawn at.
+   *
+   * One label per tick, each centred on its tick, so the room each has is the
+   * SPACING between adjacent ticks — and neither axis was fitted to it. On a
+   * plot small relative to the font the labels were drawn over each other:
+   * 60 of the 237 overlapping text pairs a sweep found were this axis alone,
+   * which made it the single worst offender in the engine.
+   *
+   * Bound by that spacing, the same rule the shared value axis and the radar's
+   * ring ticks now use. Last resort: where the ticks already clear each other
+   * this is 1 and nothing moves.
+   */
+  const gapScale = (vals: number[], to: (v: number) => number, span: number) => {
+    const gap = vals.length > 1 ? Math.min(...vals.slice(1).map((t, i) => Math.abs(to(t) - to(vals[i])))) : span;
+    return Math.min(1, gap / (fs * 1.4));
+  };
+  const yTickScale = gapScale(yTicks, toY, plot.h);
+  const xTickScale = gapScale(xTicks, toX, plot.w);
   for (const t of yTicks) {
     const y = toY(t);
     nodes.push(
@@ -415,11 +434,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       {
         kind: "text",
         x: 0,
-        y: y - fs * 0.7,
+        y: y - fs * 0.7 * yTickScale,
         w: plot.x - 4,
-        h: fs * 1.4,
+        h: fs * 1.4 * yTickScale,
         text: formatNumber(t, yFmt),
-        fontSize: fs * 0.9,
+        fontSize: fs * 0.9 * yTickScale,
         color: style.mutedText,
         align: "right",
         valign: "middle",
@@ -434,9 +453,9 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       x: x - 24,
       y: plot.y + plot.h + 2,
       w: 48,
-      h: fs * 1.4,
+      h: fs * 1.4 * xTickScale,
       text: formatNumber(t, xFmt),
-      fontSize: fs * 0.9,
+      fontSize: fs * 0.9 * xTickScale,
       color: style.mutedText,
       align: "center",
       valign: "top",
@@ -947,6 +966,15 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   }
 
   // Point labels treat the size legend as an obstacle.
+  //
+  // The AXIS labels are deliberately NOT obstacles, and that was measured rather
+  // than assumed. Adding them removes 35 overlapping pairs at large fonts — and
+  // makes the placer DROP point labels it can no longer position, including on a
+  // comfortable 480x300 chart where a point sits near the left edge and the y
+  // axis owns that margin. A point's label is data and a tick label is chrome;
+  // losing the first to protect the second is the wrong way round, and hiding is
+  // what this placer does when it runs out of room, so the cost lands exactly
+  // where it hurts most.
   const markerBoxes: Box[] = [...legendBoxes];
   // Paint back-to-front. Emitting in datasheet order lets a large bubble drawn
   // early bury a smaller one drawn later — completely, in all three renderers,

@@ -606,9 +606,30 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   the same y where two thin blocks end together — which is a worse collision than
   the one it fixes.
 
+  **The count is ZERO at the default font now, and 76 above it.** Fitting each
+  label to the space it actually has — tick labels to their tick spacing (the
+  worst shape left, 71 pairs across the shared value axis and the scatter's
+  own), heatmap rows to their row, sunburst labels to their wedge, and the
+  cascade's in-bar lines to the gap between them — took 237 to 76. What is left
+  is at 18pt and above.
+
+  **Three attempted fixes were REVERTED because the measurement said they made
+  things worse, and that is the useful part.** Flooring the CAGR caption at the
+  title's bottom instead of at zero turns five `title x cagr-label` overlaps into
+  EIGHT against the column totals. Giving the scatter's label placer the axis
+  labels as obstacles removes 35 pairs and makes it DROP point labels it can no
+  longer position — on a comfortable 480x300 chart, because the y axis owns the
+  left margin: a point's label is data and a tick label is chrome. And a fourth
+  nearly went the same way on a misread: the combo render LOOKED like a total had
+  landed on a line marker, and a text-versus-mark sweep says it has not. That
+  sweep found nothing at first because it matched no marker at all — a combo's
+  are `rect` nodes named `combo-marker`, not symbols — which is the vacuous
+  measurement this file keeps warning about, caught only by asking what it
+  matched.
+
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
-  its own box, over every kind × eight frame sizes × seven fonts, plus the two
-  overlap properties above. It measures INK, not boxes —
+  its own box, over every kind × eight frame sizes × seven fonts, plus no chart
+  overlapping its own text at the default font. It measures INK, not boxes —
   a first version measured boxes and produced four false positives and one false
   negative in one run, because a label's box is routinely wider than its text
   and is anchored by `align`.
