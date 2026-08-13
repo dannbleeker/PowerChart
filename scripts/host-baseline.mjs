@@ -191,7 +191,25 @@ export const UNSTABLE_ANSWERS = {
     "came back `no-scratch-slide` in it, having answered `yes, value=9` the round before. One sample from a host in that state is a " +
     "sample. Two consistent answers from two routes is a strong hint, not a finding.",
   "shape-add-held-slide-proxy":
-    "THE PARTNER HAS ANSWERED, AND IT IS NOT A COIN — 2026-08-11 (`756682e`). Three paired asks in one round, " +
+    "THE `yes` PAIR HAS BEEN CAUGHT, AND THE REGIME IS NOT THE STATE — 2026-08-13 (`cd3b60c`). The note below " +
+    "names its own honest limit: four agreeing pairs, all of them `threw` pairs, so what was shown was consistency " +
+    "in the `threw` state rather than consistency in general, and a pair taken while the host answers `yes` 'cannot " +
+    "be scheduled — it has to be caught'. This round caught it, and two more besides:\n" +
+    "  pass 1   trigger `threw` 16.3s / partner `threw` 17.0s   (healthy)\n" +
+    "  pass 2   trigger `yes`   33.9s / partner `yes`   34.4s   (collection-refused)   <- the missing one\n" +
+    "  pass 3   trigger `threw` 55.6s / partner `threw` 56.8s   (collection-refused)\n" +
+    "Seven pairs now, seven agreements, zero disagreements, and the `yes` state is paired half a second apart. A " +
+    "fifty-fifty coin agrees half the time, so seven for seven is p=0.0078 against one. The reading the entry " +
+    "already reached — at any instant this host has a DEFINITE answer, and the variation across a run is a state " +
+    "changing rather than a coin landing — is now supported in BOTH states rather than one. " +
+    "AND THE NEW HALF: `scripts/host-regimes.mjs` calls this question a COIN, correctly, because " +
+    "`collection-refused` produced BOTH `yes` (pass 2) and `threw` (pass 3). Those two facts are not in tension — " +
+    "together they say something neither says alone. There IS a definite state, it changes during a run, and the " +
+    "probe's `regime` stamp is NOT that state. So the next question is not 'is it a coin' (it is not) but 'what is " +
+    "the state', and `regime` has been eliminated as the answer. " +
+    "The pair is also LOCKSTEP by that tool's other reading — trigger and partner move at the same pass boundary — " +
+    "so they are one mechanism sampled twice, not two questions. Treat a flip in either as a flip in both. " +
+    "Original notes follow. THE PARTNER HAS ANSWERED, AND IT IS NOT A COIN — 2026-08-11 (`756682e`). Three paired asks in one round, " +
     "TWO of them on later passes, and all three agreed:\n" +
     "  pass 1   trigger `threw` 37.8s  / partner `threw` 39.2s\n" +
     "  pass 2   trigger `threw` 89.0s  / partner `threw` 90.1s\n" +
@@ -257,7 +275,16 @@ export const UNSTABLE_ANSWERS = {
     "five of six landings do not make the seventh a mechanism. " +
     "The fake keeps refusing held proxies, which is the safe direction: code that never holds one across a sync is correct whichever way the coin lands.",
   "shape-add-positional-slide-proxy":
-    "MEASURED AGAIN 2026-08-10 over ten rounds: `yes` on the last five consecutively, `not-listed` on three before that, and `threw` " +
+    "A REGIME MAPPING THAT DID NOT REPRODUCE — 2026-08-13 (`cd3b60c`), and the failure is the useful part. Run " +
+    "against the COMMITTED fixture (`1789749`), `scripts/host-regimes.mjs` read this question as EXPLAINED by " +
+    "regime: `yes` in `slide-trouble` twice and `not-listed` in `collection-refused`, a mapping with a way to come " +
+    "out wrong that did not. One round later it is a COIN — `collection-refused` produced BOTH `not-listed` " +
+    "(pass 1, 19.3s) and `yes` (pass 2, 38.7s) in the same regime.\n" +
+    "So the mapping was one round's shape, not a mechanism, which is exactly what that tool's footer warns and why " +
+    "an `explained` verdict is a reason to RE-READ an entry rather than to rewrite it. Had this entry been rewritten " +
+    "as 'a degradation you can test for' on the strength of the first run, it would have been wrong inside a day. " +
+    "Two rounds of `explained` is the bar; one is a reason to look again. " +
+    "Original notes follow. MEASURED AGAIN 2026-08-10 over ten rounds: `yes` on the last five consecutively, `not-listed` on three before that, and `threw` " +
     "NOT ONCE. So the face that made this dangerous — `threw`, the one that says the question was put and refused — has not appeared " +
     "in ten rounds, while `yes` is on its longest run. That does NOT retire the warning: `yes` is still exactly the answer that makes " +
     "a positional slide handle look like a way around the by-id refusals, and `shapes-items-via-positional-slide` (genuinely " +
