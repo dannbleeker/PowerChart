@@ -120,3 +120,39 @@ describe("cascade chart", () => {
     expect(bar.y + bar.h).toBeLessThan(fn.y);
   });
 });
+
+describe("group headers are not drawn over the bars they name", () => {
+  /**
+   * The plot reserves `groupH` above itself for the group band, but `fitPlot`
+   * grows the plot UP from the bottom edge it was given — deliberately, because
+   * that edge is the baseline and moving it changes what the chart claims. On a
+   * frame too short to pay for its chrome the floored plot rises back through
+   * the very band it reserved: at 300x60 the band occupied y 22-37 and the
+   * blocks' captions landed at 29.5-32, inside it.
+   *
+   * Not in `frame-fit`'s overlap sweep because that gate stops below 300x60 —
+   * see the frame list there for why that frame is still outstanding.
+   */
+  const headerBand = (w: number, h: number) => {
+    const nodes = buildChart({ ...sampleConfig("cascade"), width: w, height: h } as ChartConfig).nodes;
+    return {
+      band: nodes.find((n): n is RectNode => n.kind === "rect" && /^group-\d+$/.test(String(n.name))),
+      drops: nodes.filter((n): n is TextNode => n.kind === "text" && /^drop-label-/.test(String(n.name))),
+    };
+  };
+
+  it("drops the headers when the plot has overrun their band", () => {
+    const { band, drops } = headerBand(300, 60);
+    expect(drops.length, "no drop labels drawn — the test would prove nothing").toBeGreaterThan(0);
+    // Either the band is gone, or nothing is drawn inside it. On this frame it
+    // is the first: the chart keeps its bars and loses the headers.
+    if (band) for (const d of drops) expect(d.y, "a drop label inside the group band").toBeGreaterThan(band.y + band.h);
+    else expect(band).toBeUndefined();
+  });
+
+  it("still draws them on a frame that can pay for them", () => {
+    // The negative control: this must not become "drop the headers always".
+    const { band } = headerBand(480, 300);
+    expect(band, "the group band vanished on a comfortable frame").toBeTruthy();
+  });
+});

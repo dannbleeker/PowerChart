@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -136,6 +136,20 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     // ascending (pyramid) ordering this file recommends, printing "▾ 500.0%".
     if (c > 0 && values[c - 1] > 0) {
       const marker = v > values[c - 1] ? "▴ " : v < values[c - 1] ? "▾ " : "";
+      // Bounded by the GAP it sits in, which nothing did.
+      //
+      // The box is `h: gap` and the text was drawn at `labelFs * 0.85` whatever
+      // that gap turned out to be — and `gap` is `min(fs * 1.5, half the plot
+      // shared between the bands)`, so on a short frame it collapses while the
+      // font does not. The ink then spills out of the gap onto the bands either
+      // side and lands on their `stage-value`, which is the single commonest
+      // overlapping pair at small frames.
+      //
+      // Dropped rather than floored when the gap cannot carry a legible one: a
+      // conversion rate written across the number it is comparing is worse than
+      // no conversion rate, and it is the secondary text here by design.
+      const convFs = bandFontSize(labelFs * 0.85, gap, 1.2);
+      if (convFs <= 0) return;
       nodes.push({
         kind: "text",
         x: cx - 40,
@@ -149,7 +163,7 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
         // came down to 14 and these stayed at 23.8, so the percentages became
         // the loudest thing on the chart. At any font that fits, labelFs is fs
         // and this is the value it always had.
-        fontSize: labelFs * 0.85,
+        fontSize: convFs,
         color: style.mutedText,
         align: "center",
         valign: "middle",
