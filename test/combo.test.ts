@@ -578,3 +578,63 @@ describe("combo — tightLabelPriority", () => {
     expect(kept).toEqual(["combo-label-0-2", "combo-label-0-3"]);
   });
 });
+
+/**
+ * The combo line's series name shares the right-hand margin with the COLUMN
+ * series names, and it was taking a width floor (`fs * 3.4`) even where a
+ * perfectly good gutter existed. Fitted to that inflated width it stayed at the
+ * chart font while its neighbours correctly shrank, and was drawn straight
+ * across them and the last column's total at 80x60.
+ *
+ * The floor itself is load-bearing and stays: the showcase's combo slide has a
+ * plot that reaches the right edge, and removing the floor outright dropped
+ * "Margin %" from that deck. Measured on more than `sampleConfig("combo")` only
+ * after it did — the sample's gutter and the showcase's are not the same.
+ */
+describe("the combo line's series label uses the gutter it actually has", () => {
+  const label = (w: number, h: number) =>
+    buildChart({ ...sampleConfig("combo"), width: w, height: h } as ChartConfig).nodes.find(
+      (n): n is TextNode => n.kind === "text" && n.name === "combo-series-label-0",
+    );
+
+  it("is drawn at every frame, never dropped", () => {
+    // The floor exists so this name survives a plot that reaches the edge. It
+    // must not become collateral of the fit.
+    for (const [w, h] of [
+      [80, 60],
+      [120, 90],
+      [200, 150],
+      [300, 60],
+      [480, 300],
+      [60, 300],
+    ] as [number, number][]) {
+      expect(label(w, h), `${w}x${h}: lost the line's series name`).toBeDefined();
+    }
+  });
+
+  it("takes the real gutter as its box, not the wider floor", () => {
+    // This is the fix itself, and it has to be asserted on the BOX: the old
+    // floor also produced a smaller font here (7.5 against 10), so a test that
+    // only compared font sizes passed against the unfixed file and proved
+    // nothing. At 80x60 the true gutter is 22pt and the floor claimed 34.
+    const small = label(80, 60)!;
+    expect(small.w).toBeLessThanOrEqual(22.01);
+    // …and the font follows the box down to its neighbours' size.
+    expect(small.fontSize).toBeLessThanOrEqual(5.01);
+    const big = label(480, 300)!;
+    expect(big.fontSize).toBeCloseTo(10, 5);
+  });
+
+  it("stays inside the frame", () => {
+    for (const [w, h] of [
+      [80, 60],
+      [120, 90],
+      [60, 300],
+      [480, 300],
+    ] as [number, number][]) {
+      const l = label(w, h)!;
+      expect(l.x, `${w}x${h}`).toBeGreaterThanOrEqual(0);
+      expect(l.x + l.w, `${w}x${h}`).toBeLessThanOrEqual(w + 0.01);
+    }
+  });
+});

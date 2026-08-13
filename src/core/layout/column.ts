@@ -546,20 +546,38 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
             name: `total-${c}`,
           });
       } else {
-        nodes.push({
-          kind: "text",
-          x: centers[c] - slotLen / 2,
-          y: frame.y + frame.h - topQ - fs * 1.45,
-          w: slotLen,
-          h: fs * 1.4,
-          text: formatNumber(signedTotals[c], fmt),
-          fontSize: fs,
-          bold: true,
-          color: style.text,
-          align: "center",
-          valign: "bottom",
-          name: `total-${c}`,
-        });
+        // Upright, a total is centred on its column SLOT and was drawn at the
+        // chart font however narrow that slot is — so on a small frame a
+        // three-digit total ran into its neighbour's. `"113"` is 17.4pt at the
+        // default font in a 13pt slot at 80x60, and the totals are the one
+        // family here that never scaled while the title, the category names and
+        // the series labels all did.
+        //
+        // Fit to the slot, then drop past the floor: the same two-step the
+        // clustered in-bar labels take, and the horizontal branch above already
+        // takes against its row pitch. Last resort — a total that already fits
+        // keeps `fs` exactly, so no ordinary chart moves.
+        const text = formatNumber(signedTotals[c], fmt);
+        let tf = fs;
+        while (tf > MIN_LABEL_FS && textWidth(text, tf, true) > slotLen) tf -= 0.5;
+        // The box and the font move TOGETHER: `tf === fs` reproduces the old
+        // geometry byte for byte, and a smaller label needs less clearance over
+        // the bar it names.
+        if (textWidth(text, tf, true) <= slotLen)
+          nodes.push({
+            kind: "text",
+            x: centers[c] - slotLen / 2,
+            y: frame.y + frame.h - topQ - tf * 1.45,
+            w: slotLen,
+            h: tf * 1.4,
+            text,
+            fontSize: tf,
+            bold: true,
+            color: style.text,
+            align: "center",
+            valign: "bottom",
+            name: `total-${c}`,
+          });
       }
     }
   }
@@ -1074,7 +1092,19 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // name to nothing. Take a readable strip at the edge instead — it names a
       // line whose end point is right there, so a little overlap costs less than
       // the name does.
-      const lw = H ? 80 : Math.max(fs * 3.4, cfg.width - (anchors.plot.x + anchors.plot.w) - 4);
+      //
+      // The floor is LOAD-BEARING on real configs, not just on thumbnails: the
+      // showcase's combo slide has a plot that reaches the right edge, and
+      // removing it dropped "Margin %" from that deck outright. Measure this on
+      // more than `sampleConfig("combo")` before touching it.
+      const gutter = cfg.width - (anchors.plot.x + anchors.plot.w) - 4;
+      // Use the REAL gutter when it is wide enough to hold a readable name, and
+      // fall back to the overhanging strip only when it is not. The floor was
+      // being taken even where a perfectly good gutter existed, so this label
+      // stayed at the chart font and was drawn across the column series labels
+      // that share the same margin — two names for two different series, on top
+      // of each other.
+      const lw = H ? 80 : gutter >= MIN_LABEL_FS * 3 ? gutter : Math.max(fs * 3.4, gutter);
       const lx = H
         ? Math.max(0, Math.min(end.x - 40, cfg.width - 80))
         : Math.max(0, Math.min(anchors.plot.x + anchors.plot.w + 4, cfg.width - lw));

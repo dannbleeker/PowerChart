@@ -1,6 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "./types";
 import { textWidth, type SceneNode } from "./scene";
 import { cagr, formatNumber, formatPercent } from "./format";
+import { MIN_LABEL_FS, titleNode } from "./layout/frame";
 
 /**
  * think-cell's signature annotations, computed from layout anchors so they
@@ -54,34 +55,66 @@ export function decorationNodes(
     nodes.push(
       { kind: "line", x1, y1, x2, y2, stroke: style.text, strokeWidth: 1.25, name: "cagr-line" },
       { kind: "arrowhead", x: x2, y: y2, angle, size: ARROW, fill: style.text, name: "cagr-head" },
-      {
+    );
+    // The arrow is lifted clear of the column tops and the caption sits above the
+    // arrow, so on a frame with no headroom the caption meets the TITLE. Its y is
+    // decorative — it captions the arrow, where the arrow's endpoints are anchored
+    // data — so it may be shrunk and dropped where they may not.
+    //
+    // CLAMPING it to the title's bottom was tried and measured and is still
+    // refused: it turned five `title x cagr-label` overlaps into EIGHT against
+    // the column totals, because a clamp moves a label whether or not the
+    // destination is free. What that measurement did not try is making the
+    // caption SMALLER, and it was the last label in the engine still drawn at
+    // the full chart font in a FIXED 90pt box — wider than an 80pt chart.
+    //
+    // So: fit it to the gap between the title and the arrow, and past the floor
+    // drop the caption while KEEPING the arrow. The arrow still shows the growth
+    // and its two anchors; a rate drawn through the title is not readable
+    // anyway. Same answer the ring, radar, tilemap and pie reservations give.
+    const capText = rate == null ? "CAGR n/a" : `${formatPercent(rate, 1, true, cfg.numberFormat?.locale)} p.a.`;
+    // Measured against the title's INK, not against `titleHeight`. The reserved
+    // band is taller than the text in it, and the caption has always been free to
+    // sit inside that band — bounding by the reservation dropped the caption on
+    // 120x90 and 160x120 charts where nothing was overlapping at all.
+    const tNode = titleNode(cfg, style) as { fontSize: number; text: string } | null;
+    // A valign-top title's ink runs from its baseline (y + fontSize) down by the
+    // descender, so its bottom is `fontSize * 1.21`.
+    const titleInkBottom = tNode ? tNode.fontSize * 1.21 : 0;
+    const titleInkRight = tNode ? textWidth(tNode.text, tNode.fontSize, true) : 0;
+    // The caption is valign-bottom in a `cf * 1.4` box sitting `cf * 1.6` above
+    // the arrow, so its ink top is `min(y1, y2) - cf * 1.25`. Clearing the title
+    // means keeping that at or below the title's ink bottom.
+    const capFits = (f: number) => Math.min(y1, y2) - f * 1.25 >= titleInkBottom;
+    let cf = fs;
+    while (cf > MIN_LABEL_FS && !capFits(cf)) cf -= 0.5;
+    const capW0 = Math.min(90, cfg.width);
+    const capX0 = Math.max(0, Math.min((x1 + x2) / 2 - capW0 / 2, cfg.width - capW0));
+    // A caption sitting entirely to the RIGHT of the title's ink cannot collide
+    // with it however tall it is, so it keeps its full size.
+    const clearOfTitleX = capX0 + (capW0 - textWidth(capText, fs, true)) / 2 >= titleInkRight;
+    if (clearOfTitleX) cf = fs;
+    if (clearOfTitleX || capFits(cf)) {
+      // Bounded by the frame, not a fixed 90pt box, and re-centred on the arrow
+      // at whatever width it actually gets.
+      const capW = capW0;
+      nodes.push({
         kind: "text",
-        x: (x1 + x2) / 2 - 45,
-        // The arrow is lifted clear of the column tops and the label sits above
-        // the arrow, so on a frame with no headroom the label leaves the top of
-        // the chart — 7.5pt on a 60pt-tall stacked column. Its y is decorative
-        // (it is a caption for the arrow, not an anchored value the way the
-        // arrow's endpoints are), so it may be clamped where they may not.
-        //
-        // The floor stays at ZERO, over the title, and that was measured rather
-        // than assumed: flooring at the title's bottom instead turns five
-        // `title x cagr-label` overlaps into EIGHT against the column totals,
-        // because there is no headroom at that font either way. Both labels are
-        // already movable, so the de-collision pass has looked and found nowhere
-        // to put it. Swapping one overlap for more of another on a judgement
-        // about which matters more is not a fix.
-        y: Math.max(0, Math.min(y1, y2) - fs * 1.6),
-        w: 90,
-        h: fs * 1.4,
-        text: rate == null ? "CAGR n/a" : `${formatPercent(rate, 1, true, cfg.numberFormat?.locale)} p.a.`,
-        fontSize: fs,
+        x: capX0,
+        // The box and the font move together, so a caption that needed no
+        // shrinking lands exactly where it always did.
+        y: Math.max(0, Math.min(y1, y2) - cf * 1.6),
+        w: capW,
+        h: cf * 1.4,
+        text: capText,
+        fontSize: cf,
         bold: true,
         color: style.text,
         align: "center",
         valign: "bottom",
         name: "cagr-label",
-      },
-    );
+      });
+    }
   }
 
   // --- Difference arrow: dashed level line + vertical arrow ---

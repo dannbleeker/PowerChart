@@ -917,12 +917,40 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   and it is the one a half-fix produces. A shared function is the only version
   of "these two agree" that cannot rot.
 
-  **300x60 is still outstanding and the frame list says so.** Five pairs survive
-  on a 60pt-tall letterbox: a combo point label against the column totals, the
-  stacked CAGR caption against the title, and two adjacent sunburst outside
-  labels. The first two are de-collision work — `FLIPPABLE` has nowhere to send a
-  label on a frame that is almost all title — and the third is the same sunburst
-  neighbour problem 120x90 has.
+  **300x60 and 80x60 are CLOSED, and each needed a BOUND rather than the
+  de-collision work this paragraph predicted for two rounds.** The prediction was
+  wrong three times in a row — the sunburst, then these — and the pattern is
+  worth keeping: "the labels are already movable, so `collide.ts` has looked and
+  found nowhere" is a statement about POSITION, and the answer was always SIZE.
+
+  - Upright **column totals** were the one family never fitted to anything:
+    centred on their category slot at the full chart font, so `"113"` at 17.4pt
+    sat in a 13pt slot and ran into its neighbour. The horizontal branch had
+    bounded itself against its row pitch for a year; the upright one had not.
+  - The combo line's **series name** shares the right margin with the column
+    series names and was taking a width FLOOR (`fs * 3.4`) even where a real
+    gutter existed — fitted to that inflated width it held the chart font while
+    its neighbours shrank, and was drawn across them.
+  - The **CAGR caption** was the last label in the engine still drawn at the full
+    chart font, in a FIXED 90pt box that hung off the left edge of any narrower
+    chart (x = -17 at 80x60, -24 at 60x300). It is fitted to the gap between the
+    title's INK and the arrow now, and dropped past the floor — keeping the
+    ARROW, which carries the anchors and the slope where the caption is only a
+    caption.
+
+  **Clamping the CAGR caption to the title's bottom is still refused**, and this
+  did not overturn it: a clamp moves a label whether or not the destination is
+  free, which is how it turned five `title x cagr-label` overlaps into eight
+  against the totals. Shrink-then-drop is not a clamp.
+
+  **The floor on the combo's series name is LOAD-BEARING and removing it broke
+  the showcase.** The measurement that said it only ever bound at 80x60 was taken
+  on `sampleConfig("combo")` alone; the showcase's combo slide has a plot that
+  reaches the right edge — exactly the case the floor was written for — and
+  dropping the floor removed "Margin %" from the deck. It is taken only when the
+  real gutter cannot hold a readable name now. **Measure a layout claim on more
+  than the sample before acting on it**: the deck diff is what caught this, and
+  nothing else would have.
 
   Three of the remaining shapes are fixed and the gate now covers 160x120:
   the tilemap's two scale ends (each owns half a colour bar a few points wide and
@@ -974,8 +1002,10 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
 
   `test/frame-fit.test.ts` is the standing gate: nothing a chart draws leaves
   its own box, over every kind × eight frame sizes × seven fonts, plus no chart
-  overlapping its own text at the default font in EITHER orientation, at
-  160x120, 200x150, 480x300 and 60x300 — and 120x90 upright. It measures
+  overlapping its own text at the default font in EITHER orientation, at every
+  one of those frames — 60x300, 80x60, 120x90, 160x120, 200x150, 300x60 and
+  480x300. The overlap sweep and the overflow sweep finally cover the same list.
+  It measures
   INK, not boxes — a first version measured boxes and produced four false
   positives and one false negative in one run, because a label's box is routinely
   wider than its text and is anchored by `align`.

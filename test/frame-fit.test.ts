@@ -266,15 +266,20 @@ describe("labels are not drawn on top of each other", () => {
       // arc. That one pair was the only thing left on this frame upright — it is
       // NOT in the rotated sweep below, which still has four (see there).
       //
-      // 300x60 is NOT here yet and that is a statement, not an omission. Three
-      // pairs survive on a 60pt-tall letterbox, down from five: a combo point
-      // label against the column totals (x2) and the stacked CAGR caption
-      // against the title. Both are de-collision work — `FLIPPABLE` has nowhere
-      // to send a label on a frame that is almost all title. 80x60 carries nine,
-      // the same two shapes plus adjacent column totals. Adding either frame
-      // without fixing them would only park a known-red gate.
+      // 300x60 and 80x60 closed last, and each needed a different bound rather
+      // than the de-collision work this comment used to predict: the upright
+      // column totals fitted to their category slot, the combo line's series
+      // name fitted to the gutter it actually has instead of a width floor it
+      // does not, and the CAGR caption shrunk-then-dropped against the TITLE's
+      // ink (clamping it to the title's bottom was tried and measured and is
+      // still refused — it moves the overlap onto the totals).
+      //
+      // Every frame in the overflow sweep is now covered here, in both
+      // orientations.
       [60, 300],
+      [80, 60],
       [120, 90],
+      [300, 60],
       [160, 120],
       [200, 150],
       [480, 300],
