@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
 import { layoutPie } from "../src/core/layout/pie";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import { sceneToSvg } from "../src/render/svg";
@@ -371,4 +372,71 @@ describe("a pie's slices tile the circle", () => {
       });
     }
   }
+});
+
+/**
+ * An INSIDE label fits the slice it sits in.
+ *
+ * These were drawn at the chart font and fitted to nothing, so a name wider than
+ * its own wedge was drawn across the neighbouring slices — and on a small frame
+ * past the edge of the chart, where the frame clip cut it to an ellipsis. Both
+ * the preview and the deck showed "mericas 38…" on a 200x150 pie.
+ *
+ * An OUTSIDE label is bounded by the frame instead and has its own rule, so it
+ * is identified here by the leader line it carries and skipped.
+ */
+describe("a pie label drawn inside its slice", () => {
+  /**
+   * The room the label has: the chord of its slice at the radius the label sits
+   * on. Deliberately the same arithmetic the layout uses — the point is that the
+   * label is fitted to its own wedge, and a second, subtly different chord here
+   * would be measuring something the layout never promised.
+   */
+  const chord = (spanDeg: number, r: number) => 2 * (r * 0.62) * Math.sin((Math.min(spanDeg, 180) * Math.PI) / 360);
+
+  const SIZES: [number, number][] = [
+    [120, 90],
+    [160, 120],
+    [200, 150],
+    [300, 60],
+    [300, 200],
+    [480, 300],
+  ];
+
+  for (const [width, height] of SIZES) {
+    it(`fits at ${width}x${height}`, () => {
+      const nodes = buildChart({ ...sampleConfig("pie"), width, height } as ChartConfig).nodes;
+      const wedges = nodes.filter((n): n is WedgeNode => n.kind === "wedge");
+      expect(wedges.length).toBeGreaterThan(1);
+
+      let checked = 0;
+      for (const w of wedges) {
+        const c = w.name?.replace("slice-", "");
+        const label = nodes.find((n): n is TextNode => n.kind === "text" && n.name === `label-${c}`);
+        // A slice too thin for an inside label is labelled outside, with a
+        // leader line: a different rule, checked by the frame sweep instead.
+        if (!label || nodes.some((n) => n.name === `leader-${c}`)) continue;
+        checked++;
+        const ink = textWidth(label.text, label.fontSize, label.bold);
+        expect(ink, `${JSON.stringify(label.text)} is wider than slice ${c}`).toBeLessThanOrEqual(
+          chord(w.endAngle - w.startAngle, w.r) + 0.5,
+        );
+      }
+      expect(checked, "no inside label was actually checked").toBeGreaterThan(0);
+    });
+  }
+
+  it("leaves a chart with room alone, at the chart's own font", () => {
+    // Last resort, like every other shrink in this engine: at a size where the
+    // labels already fit, nothing moves.
+    const nodes = buildChart({ ...sampleConfig("pie"), width: 480, height: 300 } as ChartConfig).nodes;
+    const inside = nodes.filter(
+      (n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("label-") && n.align === "center",
+    );
+    expect(inside.length).toBeGreaterThan(0);
+    for (const t of inside) {
+      expect(t.fontSize, `${JSON.stringify(t.text)} was shrunk on a chart with room`).toBe(10);
+      expect(t.text.endsWith("…"), `${JSON.stringify(t.text)} was clipped on a chart with room`).toBe(false);
+    }
+  });
 });

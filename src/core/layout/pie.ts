@@ -86,6 +86,51 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     ...values.map((v, c) => ({ v, c: c as number | "other" })).filter((s) => !breakout.includes(s.c as number)),
     ...(hasBreakout ? [{ v: otherSum, c: "other" as const }] : []),
   ];
+  /** The label a slice gets, so the fit below measures the text that is drawn. */
+  const sliceLabelText = (v: number, c: number | "other") =>
+    segmentLabel(decor.labelContent ?? ["category", "percent"], {
+      value: v,
+      fraction: v / denom,
+      series: data.series[0]?.name ?? "",
+      category: c === "other" ? (cfg.labels?.other ?? "Other") : data.categories[c as number],
+      fmt,
+    });
+
+  /**
+   * The room an INSIDE label has: the chord of its own slice at the radius the
+   * label sits on. A wedge is not a box, and this is the width of the one across
+   * the middle of the text — conservative for the corners, which is the right
+   * direction for a label that must not cross into the next slice.
+   */
+  const insideChord = (spanDeg: number) => 2 * (r * 0.62) * Math.sin((Math.min(spanDeg, 180) * Math.PI) / 360);
+
+  /**
+   * One size for every inside label, small enough that each fits its own slice.
+   *
+   * These were drawn at the chart font and fitted to nothing: a name wider than
+   * its own wedge ran across the neighbouring slices, and on a small frame past
+   * the edge of the chart, where the frame clip cut it to an ellipsis. Both the
+   * preview and the deck showed "mericas 38…" on a 200x150 pie.
+   *
+   * Shrunk TOGETHER, the way the funnel's rows and the butterfly's category names
+   * are: a pie whose labels are each at a different size reads as a mistake
+   * rather than as a fit. Only slices big enough to GET an inside label take
+   * part, which is what bounds it — a thin slice is labelled outside and cannot
+   * drag the rest down with it.
+   *
+   * Last resort, like its siblings: at any size where the labels already fit this
+   * is `fs` and nothing moves, which is every pie at 300x200 and above.
+   */
+  const insideFs = (() => {
+    if (doughnut || varR || !decor.segmentLabels) return fs;
+    const wants = slices
+      .map(({ v, c }) => ({ span: (v / denom) * 360, text: sliceLabelText(v, c) }))
+      .filter((w) => w.span >= 30);
+    let f = fs;
+    while (f > 5 && wants.some((w) => textWidth(w.text, f) > insideChord(w.span))) f -= 0.5;
+    return f;
+  })();
+
   let angle = hasBreakout ? 90 + ((otherSum / denom) * 360) / 2 : 0;
   let otherStart = 0;
   slices.forEach(({ v, c }) => {
@@ -125,13 +170,7 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     const inside = span >= 30 && !doughnut && !varR;
     if (decor.segmentLabels && (inside || outerLabelsFit)) {
       const mid = angle + span / 2;
-      const label = segmentLabel(decor.labelContent ?? ["category", "percent"], {
-        value: v,
-        fraction: v / denom,
-        series: data.series[0]?.name ?? "",
-        category: other ? (cfg.labels?.other ?? "Other") : data.categories[c as number],
-        fmt,
-      });
+      const label = sliceLabelText(v, c);
       const p = polar(ecx, ecy, inside ? rr * 0.62 : rr + fs * 0.8, mid);
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
       // An OUTSIDE label runs away from the slice edge with nothing to stop it.
@@ -144,11 +183,17 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       // beside the chart on the slide.
       //
       // Clipped to what is actually there, which is what `clipToWidth` is for
-      // and what the agenda already does with its chapter titles. An inside
-      // label is untouched: it is bounded by the slice it sits in.
-      const room = Math.max(fs, (rightHalf ? cfg.width - p.x : p.x) - 4);
-      const shown = inside ? label : clipToWidth(label, fs, room);
-      const w = textWidth(shown, fs) + 4;
+      // and what the agenda already does with its chapter titles.
+      //
+      // An inside label is bounded by its own SLICE rather than by the frame, so
+      // it takes the chord (see `insideChord`) and the size the whole set was
+      // shrunk to. Shrink first and clip second, the same order as the funnel's
+      // rows and the butterfly's category names: shrinking keeps the whole word,
+      // and the clip is only there for the label no floor can fit.
+      const lf = inside ? insideFs : fs;
+      const room = inside ? insideChord(span) : Math.max(fs, (rightHalf ? cfg.width - p.x : p.x) - 4);
+      const shown = clipToWidth(label, lf, room);
+      const w = textWidth(shown, lf) + 4;
       if (!inside) {
         // Leader line from the arc edge toward the label.
         const a = polar(ecx, ecy, rr + 1, mid);
@@ -167,11 +212,11 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       nodes.push({
         kind: "text",
         x: inside ? p.x - w / 2 : rightHalf ? p.x : p.x - w,
-        y: p.y - fs * 0.75,
+        y: p.y - lf * 0.75,
         w,
-        h: fs * 1.5,
+        h: lf * 1.5,
         text: shown,
-        fontSize: fs,
+        fontSize: lf,
         // Inside a slice the ink must contrast with THAT slice: a pale fill (the
         // default palette's #eda100, or any custom/per-point colour) printed white
         // on light — invisible. Outside, the label sits on the canvas.
