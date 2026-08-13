@@ -1,0 +1,12 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "channel": "chrome"
+    },
+    "contextOptions": {
+      "viewport": { "width": 512, "height": 900 },
+      "colorScheme": "dark"
+    }
+  }
+}

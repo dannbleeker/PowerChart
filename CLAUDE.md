@@ -128,6 +128,44 @@ because the broken form works perfectly on the ubuntu runner and a same-platform
 test could never have caught it. `visible-charts` also had no browser candidate
 on Windows; it takes installed Chrome or Edge now.
 
+### Looking at the task pane
+
+The pane is the one surface the suite cannot judge: `dom-pane.test.ts` pins its
+behaviour in jsdom, which has no layout and no colours, and the snapshot suite
+never renders it at all. Look at it with `playwright-cli`
+(`npm i -g @playwright/cli`), which drives the installed Chrome:
+
+```bash
+node ./node_modules/vite/bin/vite.js --port 3000 --strictPort &   # the pane's own dev server
+playwright-cli open http://localhost:3000/src/taskpane/taskpane.html
+playwright-cli click '.tabs .tab[data-tab="elements"]'
+playwright-cli screenshot --filename=/tmp/pane.png
+playwright-cli close-all
+```
+
+`.playwright/cli.config.json` sizes the window to **512×900**, which is the pane
+at its real width — a chart picker judged at 1280 wide is three columns the host
+will never show. `.playwright/dark.config.json` is the same window with
+`colorScheme: "dark"`, and it is the only way to see dark mode here: headless
+Chrome has no `prefers-color-scheme` switch, so the `@media` block never fires
+and the pane looks permanently light. Give it a session of its own so both can
+be open at once — `playwright-cli -s=dark open
+--config=.playwright/dark.config.json <url>`.
+
+Three things that will otherwise cost time. Config precedence is
+`~/.playwright/cli.config.json` → this repo's `.playwright/` → env → flags, so a
+personal global config is overridden here rather than fighting it. `--filename`
+is relative to the **cwd**, not to `.playwright-cli/`, so a bare
+`--filename=pane.png` drops a PNG in the repo root — write to a temp path. And
+two console messages are expected outside the host and mean nothing: Office.js
+warns it is `loaded outside of Office client`, and `/favicon.ico` 404s.
+
+Two limits carry over from the jsdom harness. The pane localizes on
+`Office.onReady`, which never fires in a browser, so `?lang=de` will not
+translate — i18n stays a unit test. And nothing here reaches Office.js, so a
+pane bug that only exists mid-`sync()` is still invisible; that is what the
+real-host round is for.
+
 **The whole suite runs there now — do not exclude anything.** This paragraph
 used to say `test/skill.test.ts` could not pass and to run with
 `--exclude '**/skill.test.ts'`, which was true and cost more than it looked: the
