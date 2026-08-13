@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
 import { legendRow } from "../src/core/layout/column";
-import { DEFAULT_STYLE } from "../src/core/style";
+import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
+import { horizontalLegendFits } from "../src/core/layout/frame";
 import type { RectNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
@@ -326,5 +327,63 @@ describe("a horizontal legend the frame cannot pay for", () => {
   it("still draws it on a frame with room", () => {
     // The negative control: this must not become "drop the legend always".
     expect(legendTexts(480, 300).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The horizontal mekko's legend, and the third call site of a predicate that
+ * only had two.
+ *
+ * `horizontalLegendFits` exists so a legend's RESERVATION and its DRAW cannot
+ * disagree — `computeFrameHorizontal` asks it before counting any rows, and
+ * `horizontalChrome` asks it before drawing any chips. The mekko draws its own
+ * legend and never asked, so on a frame the predicate refuses the reservation
+ * was ZERO rows and the legend was drawn into that zero anyway.
+ *
+ * That is not a smaller version of the bug — it is the worst of the three
+ * options, and the one a half-fix produces. This repo has measured it before:
+ * gating only the reservation took the scatter from 55 overlapping pairs to 63.
+ * Here it put a three-row legend across the bars, their totals and the row
+ * labels at 120x90 horizontal — four pairs, all inside the frame, so no
+ * overflow gate could see them.
+ */
+describe("the horizontal mekko legend asks the same predicate the reservation does", () => {
+  const mekko = (w: number, h: number) =>
+    buildChart({ ...sampleConfig("mekko"), width: w, height: h, horizontal: true } as ChartConfig).nodes.filter(
+      (n) => !!n.name?.startsWith("legend-"),
+    );
+
+  it("still draws the legend on a frame with room", () => {
+    // The guard that stops this becoming "the horizontal mekko lost its legend".
+    expect(mekko(480, 300).length, "no legend on a roomy horizontal mekko").toBeGreaterThan(0);
+  });
+
+  it.each([
+    [120, 90],
+    [300, 60],
+    [80, 60],
+  ])("draws no legend at %ix%i, where the frame reserved no rows for one", (w, h) => {
+    expect(mekko(w, h)).toEqual([]);
+  });
+
+  it("agrees with the reservation at every frame, in both directions", () => {
+    // The property rather than the three sizes: whatever the predicate says, the
+    // draw matches it. A future change that alters the predicate's threshold
+    // moves both sides together or fails here.
+    const cfg0 = sampleConfig("mekko") as ChartConfig;
+    for (const [w, h] of [
+      [80, 60],
+      [120, 90],
+      [160, 120],
+      [300, 60],
+      [200, 150],
+      [480, 300],
+      [960, 540],
+    ] as [number, number][]) {
+      const cfg = { ...cfg0, width: w, height: h, horizontal: true } as ChartConfig;
+      const fits = horizontalLegendFits(cfg, DEFAULT_STYLE, { ...DEFAULT_DECOR, ...cfg.decorations, totals: true });
+      const drawn = mekko(w, h).length > 0;
+      expect(drawn, `${w}x${h}: predicate says ${fits} but drawn=${drawn}`).toBe(fits);
+    }
   });
 });
