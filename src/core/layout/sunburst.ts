@@ -1,9 +1,9 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
-import { contrastInk, polar, textWidth, type SceneNode } from "../scene";
+import { contrastInk, polar, textWidth, type SceneNode, type TextNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat } from "../format";
 import { lerpColor } from "../color";
-import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { fitPlot, footnoteH, titleHeight, titleNode, MIN_LABEL_FS } from "./frame";
 import { PALETTE } from "../style";
 import type { LayoutResult } from "./column";
 
@@ -68,6 +68,17 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
   if (titleN) nodes.push(titleN);
 
   const norm = (a: number) => ((a % 360) + 360) % 360;
+  /** Every outside label, kept so each can be fitted to its neighbour after placement. */
+  const outsideLabels: {
+    node: TextNode;
+    text: string;
+    color: string;
+    rightHalf: boolean;
+    /** The ring point this label hangs off — its anchor, needed to re-place it. */
+    px: number;
+    cy: number;
+    room: number;
+  }[] = [];
   const label = (
     rr: number,
     midAngle: number,
@@ -102,7 +113,7 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
     const lfScale = lf / (fs * 0.85);
     const shown = clipToWidth(text, lf, room);
     const w = textWidth(shown, lf) + 4;
-    nodes.push({
+    const node: TextNode = {
       kind: "text",
       x: outside ? (rightHalf ? p.x : p.x - w) : p.x - w / 2,
       // As a RATIO of the unshrunk size, so the box and the font move together
@@ -118,7 +129,14 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
       align: outside ? (rightHalf ? "left" : "right") : "center",
       valign: "middle",
       name,
-    });
+    };
+    nodes.push(node);
+    // An outside label is fitted to its own wedge's ARC above, and that says
+    // nothing about where the NEIGHBOUR's midpoint falls: a wide wedge beside a
+    // narrow one earns a tall label and still sits close to it. Every outside
+    // label is on one circle, so the pass below can fit each to the vertical gap
+    // it actually has once they are all placed.
+    if (outside) outsideLabels.push({ node, text, color, rightHalf, px: p.x, cy: p.y, room });
   };
 
   if (grouped) {
@@ -208,8 +226,66 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
     });
   }
 
+  // Fit every outside label to the vertical gap it actually has.
+  //
+  // Each was already bounded by its OWN wedge's arc, which is blind to where the
+  // neighbour's midpoint falls — a wide wedge beside a narrow one earns a tall
+  // label and still sits close to it. That left adjacent labels grazing by 0.3
+  // to 1.0pt at 120x90 and 300x60: inside the frame, so no overflow gate could
+  // see it, and the only overlaps left at the default font once every other
+  // shape had been fixed.
+  //
+  // The gap between two neighbours has to carry HALF of each label's ink, so
+  // sizing both to `gap / INK_RATIO` makes the two half-heights sum to exactly
+  // the gap. `SNUG` takes it just inside that. Below the floor the label is
+  // dropped, which is the answer the ring, radar, tilemap and pie reservations
+  // already give when the room cannot be met — a label drawn through its
+  // neighbour is not readable anyway.
+  //
+  // Sides are independent: a left label and a right label never meet, and
+  // pooling them would shrink labels that have no neighbour near them.
+  const INK_RATIO = 1.01; // a text node's ink height as a multiple of its font size
+  const SNUG = 0.95;
+  const dropped = new Set<TextNode>();
+  for (const side of [true, false]) {
+    const mine = outsideLabels.filter((l) => l.rightHalf === side).sort((a, b) => a.cy - b.cy);
+    for (let i = 1; i < mine.length; i++) {
+      const prev = mine[i - 1];
+      const cur = mine[i];
+      const gap = cur.cy - prev.cy;
+      const need = (prev.node.fontSize + cur.node.fontSize) / 2;
+      if (need * INK_RATIO <= gap) continue;
+      const fit = (gap / INK_RATIO) * SNUG;
+      // Past the floor, shrinking cannot separate them, so one has to go — but
+      // only ONE. Dropping both loses a label the survivor's room could have
+      // carried, and the smaller font is the narrower wedge, i.e. the smaller
+      // share of the data. Its neighbour keeps its size: with this one gone
+      // there is nothing left for it to collide with.
+      if (fit < MIN_LABEL_FS) {
+        dropped.add((prev.node.fontSize <= cur.node.fontSize ? prev : cur).node);
+        continue;
+      }
+      for (const l of [prev, cur]) {
+        if (l.node.fontSize <= fit) continue;
+        // Re-clip at the new size: a smaller font fits more characters into the
+        // same horizontal room, so keeping the old string would drop text the
+        // label now has space for.
+        const scale = fit / (fs * 0.85);
+        l.node.fontSize = fit;
+        l.node.text = clipToWidth(l.text, fit, l.room);
+        l.node.w = textWidth(l.node.text, fit) + 4;
+        // Re-anchored from the ring point, not nudged from the old box: a
+        // right-aligned label's x is `px - w`, so a narrower box moves it.
+        l.node.x = l.rightHalf ? l.px : l.px - l.node.w;
+        l.node.y = l.cy - fs * 0.7 * scale;
+        l.node.h = fs * 1.4 * scale;
+      }
+    }
+  }
+  const out = dropped.size ? nodes.filter((n) => !dropped.has(n as TextNode)) : nodes;
+
   return {
-    nodes,
+    nodes: out,
     anchors: {
       categoryX: items.map(() => cx),
       categoryWidth: items.map(() => r),
