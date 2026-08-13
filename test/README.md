@@ -65,7 +65,14 @@ belongs with the thing it tests, not with the reason it was written.)
   host it stands for, so a real PowerPoint can be diffed against it),
   `host-contract` (the other half of that: `FAKE_BASELINE` diffed against a real
   PowerPoint's committed sheet, so a new divergence fails in CI in seconds
-  instead of waiting for somebody with the app open), `selftest` (the in-host
+  instead of waiting for somebody with the app open),
+  `host-regimes` (whether a question that changed its answer MID-round is a coin
+  or a function of the host's state — the probe has stamped a regime on every
+  sample since #390 and nothing read those stamps mechanically. Its load-bearing
+  case is `untested`: with three passes in three regimes "every regime maps to
+  one answer" cannot fail, so it is not evidence, and reporting it as `explained`
+  would manufacture a finding every time a question flipped),
+  `selftest` (the in-host
   battery's own logic — that every scenario reports, that a blind deck scan is
   never read as an empty deck, and that a wedged host is attributed to the host),
   `skill*`, `parity`, `snapshots`, `a11y-svg`, `security-*`, `dark-theme`,

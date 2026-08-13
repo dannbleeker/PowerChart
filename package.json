@@ -25,6 +25,7 @@
     "skill": "npm run build:lib && node scripts/build-skill.mjs",
     "showcase": "npm run build:lib && node scripts/build-showcase.mjs",
     "host-diff": "node scripts/host-diff.mjs",
+    "host-regimes": "node scripts/host-regimes.mjs",
     "check-published-install": "node scripts/check-published-install.mjs",
     "visible-charts": "npm run build:lib && node scripts/visible-charts.mjs",
     "flaky": "node scripts/flaky.mjs",

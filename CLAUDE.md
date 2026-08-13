@@ -343,6 +343,38 @@ threw`, `tags-on-fresh-shape: yes`, `untrack-available: no` among them — into
   stale by 2026-08-10 — one called a question "a coin" that had answered the
   same way ten rounds running, which tells the next reader they may not build on
   an answer that has in fact never moved.
+- **"Changed its answer mid-round" is not the same as "a coin", and until
+  2026-08-13 nothing could tell them apart.** The probe has stamped the host's
+  regime (`healthy` / `slide-trouble` / `collection-refused`) on every sample
+  since #390, and those stamps had only ever been read BY HAND, one entry at a
+  time, in prose — the same way `UNSTABLE_ANSWERS` went stale.
+  `scripts/host-regimes.mjs <round*.json>` reads them: for every question that
+  moved within a round it says whether host state accounts for it, whether two
+  flippers moved at the SAME pass boundary (one mechanism sampled twice, or
+  two), and which regime the never-put questions were attempted in.
+
+  **The verdict that matters is `untested`.** With three passes landing in three
+  different regimes, "every regime maps to one answer" is true by construction —
+  it cannot fail, so it is not evidence. A mapping is only reported as
+  `explained` when some regime was sampled MORE THAN ONCE and agreed with
+  itself. Without that split the tool would manufacture a finding every time a
+  question flipped, which is the rasterise control's fixed-arm-order bug and the
+  frame gate's invented exceptions for a third time.
+
+  On its first run — against the committed fixture, so anyone can reproduce it —
+  it reclassified two of that sheet's three flippers.
+  `shape-add-positional-slide-proxy` reads `yes` in `slide-trouble` (twice,
+  agreeing) and `not-listed` in `collection-refused`; `picture-then-shape-read`
+  the same shape. Neither is a coin: they are degradations a caller can test
+  for. `shapes-items-via-positional-slide` IS one — a single regime answered
+  both `short-0` and `not-listed`, which no amount of regime sampling explains.
+
+  **A verdict is about ONE round**, and the footer says so. `explained` is a
+  reason to re-read an `UNSTABLE_ANSWERS` entry, not on its own a reason to
+  rewrite it; the same verdict on a second round is what makes it a mechanism.
+  `COIN` is the strong direction — it survives however many regimes were
+  sampled, because one regime already answered two ways.
+
 - **Dependabot's banner gets read, and the reading gets written down** in
   `docs/DEPENDENCY-ALERTS.md`. Same rule as the table above: an entry says what
   was decided, "no exposure" included. It sat at 9 alerts for weeks with nobody
