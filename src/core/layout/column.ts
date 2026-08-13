@@ -452,9 +452,22 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         });
         const along = H ? r.w : r.h; // extent along the value axis
         const across = H ? r.h : r.w;
+        // The upright test has NO slack, and the two points it used to allow are
+        // the whole defect. The label is centred on the bar in a box `r.w + 8`
+        // wide, so `textWidth <= across + 2` lets its ink stand a point proud of
+        // the mark on each side — and in a CLUSTER the next bar's label is doing
+        // the same thing from the other direction. At 160x120 the bars in a
+        // cluster are a point or two apart and the two labels meet.
+        //
+        // Same shape as the mekko's `width + 8` against a 2pt column gap: a box
+        // wider than the mark it labels bleeds into the neighbour, and the room
+        // a label has is the mark itself. A label that no longer fits is dropped
+        // rather than drawn over its neighbour — one unreadable pair is worse
+        // than one missing number, which is the answer every other fit here
+        // gives.
         const fits = H
           ? along >= textWidth(label, fs) + 2 && across >= fs * LABEL_FIT
-          : along >= fs * LABEL_FIT && textWidth(label, fs) <= across + 2;
+          : along >= fs * LABEL_FIT && textWidth(label, fs) <= across;
         if (fits) {
           nodes.push({
             kind: "text",
