@@ -7764,19 +7764,26 @@ function addSegment(
     width: Math.max(w, 0.5),
     height: Math.max(h, 0.5),
   };
+  // `dashKind` answers `none` for an array that specifies no dash, which is what
+  // the preview has always drawn for one. Guarding on `s.dash` being TRUTHY put
+  // a dotted line in the deck where the preview drew it solid — `[]` is truthy.
+  const dashStyle = dashKind(s.dash);
   const setDash = (shape: PowerPoint.Shape) => {
-    if (!s.dash) return;
+    if (dashStyle === "none") return;
     try {
       // Map to the nearest native line style: a dotted array (e.g. waterfall
       // carry connectors) stays dotted instead of flattening to a generic dash.
       shape.lineFormat.dashStyle =
-        dashKind(s.dash) === "dot" ? PowerPoint.ShapeLineDashStyle.roundDot : PowerPoint.ShapeLineDashStyle.dash;
+        dashStyle === "dot" ? PowerPoint.ShapeLineDashStyle.roundDot : PowerPoint.ShapeLineDashStyle.dash;
     } catch {
       /* dash style unsupported on this host */
     }
   };
 
-  if (w < 0.5 || h < 0.5 || s.dash) {
+  // A rotated rectangle cannot carry a dash style, so a dashed line has to be a
+  // real line shape. Same question as `setDash` asks, for the same reason: `[]`
+  // is truthy and was forcing this branch for a line that is not dashed.
+  if (w < 0.5 || h < 0.5 || dashStyle !== "none") {
     const downRight = (x2 - x1) * (y2 - y1) > 0;
     const line =
       w < 0.5 || h < 0.5 || downRight

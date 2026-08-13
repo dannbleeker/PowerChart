@@ -34,7 +34,11 @@ function recorder() {
 
 /** A stand-in engine: the four helpers makeAddNode binds, with predictable output. */
 const engine = {
-  dashKind: (d: number[]): "dot" | "dash" => (d[0] < 2 ? "dot" : "dash"),
+  // Predictable, but it must still answer `none` the way the real one does —
+  // the mapping now asks it whether the line is dashed AT ALL, so a stub that
+  // can only say dot/dash would hide a call site that stopped honouring it.
+  dashKind: (d: unknown): "none" | "dot" | "dash" =>
+    !Array.isArray(d) || !d.some((v) => typeof v === "number" && v > 0) ? "none" : d[0] < 2 ? "dot" : "dash",
   // Outer points first (they carry moveTo), then inner — even length, half each.
   annularSectorPoints: (cx: number, cy: number, innerR: number, r: number) => [
     { x: cx + r, y: cy },

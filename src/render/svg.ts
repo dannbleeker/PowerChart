@@ -1,4 +1,4 @@
-import { polar, symbolPoints } from "../core/geometry";
+import { polar, symbolPoints, dashKind } from "../core/geometry";
 import { isNamedColor } from "../core/color";
 import type { Scene, SceneNode } from "../core/scene";
 
@@ -206,8 +206,11 @@ function nodeToSvg(n: SceneNode): string {
       return `<rect x="${r(n.x)}" y="${r(n.y)}" width="${r(n.w)}" height="${r(n.h)}" fill="${fill}"${stroke}${name(n)}/>`;
     }
     case "line": {
-      const dash =
-        Array.isArray(n.dash) && n.dash.length ? ` stroke-dasharray="${n.dash.map((d) => num(d, 0)).join(" ")}"` : "";
+      // `dashKind` decides, not `length`: an array with no positive finite value
+      // is not a dash, and emitting `stroke-dasharray="0 0"` / `"-5 -5"` for one
+      // is markup SVG ignores anyway. Asking the same question all three sinks
+      // ask is what keeps the preview and the two decks agreeing.
+      const dash = dashKind(n.dash) !== "none" ? ` stroke-dasharray="${n.dash!.map((d) => num(d, 0)).join(" ")}"` : "";
       return `<line x1="${r(n.x1)}" y1="${r(n.y1)}" x2="${r(n.x2)}" y2="${r(n.y2)}" stroke="${paint(n.stroke)}" stroke-width="${num(n.strokeWidth, 1)}"${dash}${name(n)}/>`;
     }
     case "text": {

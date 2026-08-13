@@ -2496,6 +2496,33 @@ about the chart` when the rasteriser is unstable. If that fires, every "the
   for throwing. `test/color.test.ts` holds that corpus and both sinks read from
   it, so a form added for one is checked against the other.
 
+  **Done a third time on 2026-08-13, for DASH ARRAYS, and it is the sharpest
+  result of the three: 10 of 16 inputs disagreed.** The cause is one line each
+  side. The two PowerPoint sinks guarded on `dash` being TRUTHY (`if (!s.dash)`,
+  `n.dash ? … : {}`) where SVG guarded on its CONTENT — so an array carrying no
+  positive length drew a SOLID line in the preview and a DOTTED one in both
+  decks. `[]` is the sharp case: truthy, produced by ordinary caller code like
+  `dash: xs.filter(…)`, and `dashKind` answered `dot` for it under a test that
+  called that "a harmless default". It was not.
+
+  **The fix is to make the SHARED FUNCTION total rather than to guard three call
+  sites** — `dashKind` returns `"none" | "dot" | "dash"` and takes `unknown`.
+  Every sink already imported it, so nothing had to be threaded and there is no
+  second predicate to drift. Same lesson as `horizontalLegendFits`: a shared
+  function is the only version of "these two agree" that cannot rot. Do not
+  re-guard on `n.dash` being truthy at a call site.
+
+  Two things worth keeping. **The corpus found a case reasoning would not**:
+  `[-1, 4]` HAS a positive length, so "some positive value" called it a dash —
+  but a negative entry is an ERROR in SVG and the whole attribute is dropped, so
+  the preview draws it solid. The rule had to match what SVG does, not what
+  sounded right, and only running both sinks over one corpus said so. And **the
+  first metric was wrong in the direction this file keeps warning about**: the
+  probe's "is it dashed" predicate tested `!s.includes("-")`, which matches
+  `stroke-dasharray` itself, so it reported the two CORRECT cases as
+  disagreements. An approximate metric invents defects as well as missing them —
+  it was fixed before anything was read off it.
+
 - **A `string` in the types is not a string in the file someone pasted.** A
   config arrives from the JSON box, a saved template, a shape tag written in
   another deck, and the skill's caller. `categories: [2023, 2024]` and

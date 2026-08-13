@@ -327,7 +327,12 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           line: {
             ...lineOf(n.stroke),
             width: n.strokeWidth ?? 1,
-            ...(n.dash ? { dashType: dashKind(n.dash) === "dot" ? "sysDot" : "dash" } : {}),
+            // `dashKind` answers `none` for an array specifying no dash. Guarding
+            // on `n.dash` being truthy put a dotted line in the deck where the
+            // preview drew it solid, because `[]` is truthy.
+            ...(dashKind(n.dash) === "none"
+              ? {}
+              : { dashType: dashKind(n.dash) === "dot" ? "sysDot" : "dash" }),
           },
         });
         break;

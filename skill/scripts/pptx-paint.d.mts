@@ -48,7 +48,7 @@ export const CSS_NAMES: Record<string, string>;
 
 /** The four engine helpers a node mapping binds. */
 export interface PptxEngine {
-  dashKind(dash: number[]): "dot" | "dash";
+  dashKind(dash: unknown): "none" | "dot" | "dash";
   annularSectorPoints(
     cx: number,
     cy: number,
