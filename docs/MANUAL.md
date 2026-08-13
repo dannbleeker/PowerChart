@@ -312,6 +312,14 @@ count of how many of its options are currently on.
   bridge or a Mekko as well as stacked / clustered / 100% columns.
 - **Combo independent line axes** (`combo.lineAxes: "independent"`): give each
   line series its own scale so unlike-unit KPIs share one chart.
+- **Combo label priority on a tight frame**
+  (`decorations.tightLabelPriority: "columns" | "line"`): a short chart can be
+  too small to carry both the column totals and the line's point labels — the
+  two collide when a column total and a line value fall at the same height, and
+  on a 60pt-tall frame neither has anywhere to move. `"columns"` (the default)
+  keeps the totals; `"line"` keeps the point labels. Only labels still
+  overlapping after the de-collision pass are dropped, so a chart with room
+  keeps both and nothing changes at ordinary sizes.
 - **Hex tile maps** (`tilemap.shape: "hex"`): draw the cartogram with
   hexagonal tiles instead of squares.
 - **Tilemap mini-glyphs** (`tilemap.glyph: "bars"`): a mini bar chart per

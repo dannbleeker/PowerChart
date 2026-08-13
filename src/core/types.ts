@@ -162,6 +162,28 @@ export interface Decorations {
     mode?: "absolute" | "percent";
     goodIsUp?: boolean;
   };
+  /**
+   * Combo charts only. Which set of value labels survives when the frame is too
+   * small to carry both — the column totals and the line's point labels.
+   *
+   * On a short frame these two genuinely have nowhere to go. The de-collision
+   * pass resolves every one of them if the canvas is unbounded, by flipping the
+   * point label BELOW its point; on a 60pt-tall chart that destination is off
+   * the bottom, so the label stays where it was and is drawn through the total.
+   * Neither shrinking nor nudging helps, because the two labels are centred at
+   * the same y whenever the column total and the line value coincide — which is
+   * a fact about the DATA, not about the layout.
+   *
+   * `"columns"` (default) keeps the totals and drops the point labels that
+   * collide, which is the ordering `MOVABLE` in `collide.ts` already encodes:
+   * the total is anchored to the bar it labels, the point label is a floater.
+   * `"line"` reverses it for charts whose subject is the line.
+   *
+   * Only labels that are ACTUALLY still colliding after de-collision are
+   * dropped, so a roomy chart — or a short one whose data happens to separate
+   * them — keeps both.
+   */
+  tightLabelPriority?: "columns" | "line";
   /** Category labels below the baseline. */
   categoryAxis: boolean;
   /**

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SIZE, buildChart } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
 import type { LineNode, RectNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
 
@@ -511,5 +512,69 @@ describe("horizontal combo overlay", () => {
       .filter((n) => n.x < -0.5 || n.y < -0.5 || n.x + (n.w ?? 0) > s.width + 0.5 || n.y + (n.h ?? 0) > s.height + 0.5)
       .map((n) => `${n.name}@${n.x.toFixed(1)},${n.y.toFixed(1)}`);
     expect(off, `off-canvas: ${off.join(", ")}`).toEqual([]);
+  });
+});
+
+/**
+ * `tightLabelPriority` — which value labels survive a frame too small for both.
+ *
+ * On a short frame a combo's column totals and its line's point labels can want
+ * the same band and neither can move. `resolveLabelCollisions` resolves every
+ * one of these against an unbounded canvas, by flipping the point label BELOW
+ * its point — measured landing at y 57-75 on a 60pt-tall chart, i.e. off the
+ * bottom, so the flip is correctly refused. Shrinking cannot help either: the
+ * two are centred at the same y whenever the column total and the line value
+ * coincide, which is a property of the DATA.
+ *
+ * So one set is dropped, and only where it is STILL colliding after every legal
+ * move — which is what makes a roomy chart keep both.
+ */
+describe("combo — tightLabelPriority", () => {
+  const named = (c: ChartConfig, re: RegExp) =>
+    buildChart(c)
+      .nodes.filter((n): n is TextNode => n.kind === "text" && re.test(n.name ?? "") && !!n.text.trim())
+      .map((n) => n.name!);
+
+  // The shipped sample, so this measures the chart the gate and the showcase
+  // actually draw rather than a hand-built one that happens to emit no point
+  // labels at all — the first version of this did exactly that and reported
+  // zero labels at 480x300, which reads identically to the drop firing.
+  const combo = (w: number, h: number, priority?: "columns" | "line"): ChartConfig => {
+    const s = sampleConfig("combo") as ChartConfig;
+    return {
+      ...s,
+      width: w,
+      height: h,
+      ...(priority ? { decorations: { ...s.decorations, tightLabelPriority: priority } } : {}),
+    } as ChartConfig;
+  };
+
+  it("keeps BOTH sets on a chart with room, which is the whole point of the rule", () => {
+    // The guard that stops this becoming "small charts lose their line labels".
+    for (const priority of [undefined, "columns", "line"] as const) {
+      const c = combo(480, 300, priority);
+      expect(named(c, /^total-/), `totals at 480x300 (${priority})`).toHaveLength(4);
+      expect(named(c, /^combo-label-/), `point labels at 480x300 (${priority})`).toHaveLength(4);
+    }
+  });
+
+  it("defaults to keeping the columns: the totals stay, the colliding point labels go", () => {
+    const c = combo(80, 60);
+    expect(named(c, /^total-/)).toHaveLength(4);
+    expect(named(c, /^combo-label-/)).toEqual([]);
+  });
+
+  it('"line" reverses it — the point labels stay and the colliding totals go', () => {
+    const c = combo(80, 60, "line");
+    expect(named(c, /^combo-label-/)).toHaveLength(4);
+    expect(named(c, /^total-/)).toEqual([]);
+  });
+
+  it("drops only the labels actually still colliding, not the whole family", () => {
+    // At 300x60 two of the four point labels sit high enough that de-collision
+    // already cleared them. Those must survive even though their siblings do not
+    // — a family-wide drop would take them too.
+    const kept = named(combo(300, 60), /^combo-label-/);
+    expect(kept).toEqual(["combo-label-0-2", "combo-label-0-3"]);
   });
 });

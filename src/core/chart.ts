@@ -23,7 +23,7 @@ import { layoutViolin } from "./layout/violin";
 import { layoutCandlestick } from "./layout/candlestick";
 import { footnoteNode, titleHeight, titleNode } from "./layout/frame";
 import { bandNodes, decorationNodes } from "./decor";
-import { resolveLabelCollisions } from "./collide";
+import { resolveLabelCollisions, unplaceableComboLabels } from "./collide";
 import { formatNumber, niceTicks, parseDateToken, resolveFormat, GANTT_DATE_ROW } from "./format";
 import type { SceneNode } from "./scene";
 import { clipTextToFrame, finiteNodes } from "./scene";
@@ -1085,6 +1085,18 @@ export function buildChart(rawCfg: ChartConfig): Scene {
 
   // Global de-collision for outside labels (vertical cartesian charts).
   if (!skipDecor) resolveLabelCollisions(nodes, cfg.height);
+
+  // A combo's totals and its line's point labels can both want one band on a
+  // short frame, where neither can move (the flip below the point lands off the
+  // bottom of the canvas). Whichever `tightLabelPriority` does not favour is
+  // dropped — but only where it is STILL colliding after every legal move above,
+  // so a roomy chart keeps both.
+  if (!skipDecor) {
+    const drop = unplaceableComboLabels(nodes, decor.tightLabelPriority ?? "columns");
+    // Spliced rather than reassigned: `nodes` is the scene array the whole
+    // builder has been appending to, and later passes hold the same reference.
+    if (drop.size) for (let i = nodes.length - 1; i >= 0; i--) if (drop.has(nodes[i])) nodes.splice(i, 1);
+  }
 
   // Manual label nudges (think-cell's label dragging, config-driven).
   if (cfg.labelOffsets) {

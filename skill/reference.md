@@ -51,6 +51,11 @@ Everything the PowerChart engine accepts. All lengths in points (1pt = 1/72").
     valueAxis?: boolean | "datamarks", gridlines?: boolean,  // default false;
                                       // "datamarks" = Tufte ticks-only axis, no line
     tickMode?: "nice" | "data",       // datamarks at round values or at data min/max
+    tightLabelPriority?: "columns" | "line",  // combo: on a frame too small for both rows of
+                                      // value labels, which survives. "columns" (default) keeps
+                                      // the totals, "line" keeps the point labels. Only labels
+                                      // still colliding after de-collision are dropped, so a
+                                      // chart with room keeps both.
     gridShape?: "polygon" | "circle", // radar grid web (default polygon)
     fillOpacity?: number,             // radar series fill (default 0.18)
     labelContent?: ("value"|"percent"|"series"|"category")[],

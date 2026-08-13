@@ -153,3 +153,45 @@ export function resolveLabelCollisions(nodes: SceneNode[], canvasH?: number): vo
     settled.insert(box, box);
   }
 }
+
+/**
+ * A combo chart's two families of value labels — the column totals and the
+ * line's point labels — can both want the same band on a short frame, and on a
+ * short frame neither can move.
+ *
+ * `resolveLabelCollisions` above resolves every one of these if the canvas is
+ * unbounded: the point label is FLIPPABLE, so it goes below its point, landing
+ * at y 57-75 on a 60pt-tall chart. That destination is off the bottom, so the
+ * flip is correctly refused and the label stays where the layout put it —
+ * drawn through the total. Shrinking does not help either, because the two are
+ * centred at the same y whenever the column total and the line value coincide,
+ * which is a property of the DATA.
+ *
+ * So one of them has to go, and `decor.tightLabelPriority` says which. This runs
+ * AFTER de-collision on purpose: only labels that are still colliding once every
+ * legal move has been tried are dropped, so a roomy chart keeps both and so does
+ * a short chart whose data happens to separate them.
+ *
+ * Returns the nodes to drop rather than mutating, so the caller owns the scene
+ * array and this stays a pure decision — the same split as `positionalSweepPlan`
+ * and `chooseGroupMembers`.
+ */
+export function unplaceableComboLabels(nodes: SceneNode[], priority: "columns" | "line" = "columns"): Set<SceneNode> {
+  // `!!n.text`, never `n.text.trim()`: `text` is `string` in the types and a
+  // number in a config someone pasted, so calling a string method on it throws.
+  // `resolveLabelCollisions` above tests truthiness for the same reason and
+  // `textWidth` coerces with `String(text ?? "")`. The hostile-input sweep
+  // caught this within one run of adding it.
+  const texts = nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text);
+  const totals = texts.filter((t) => /^total-/.test(t.name ?? ""));
+  const points = texts.filter((t) => /^combo-label-/.test(t.name ?? ""));
+  const drop = new Set<SceneNode>();
+  if (!totals.length || !points.length) return drop;
+  // The loser is dropped, the winner is left exactly as de-collision settled it.
+  const [losers, keepers] = priority === "line" ? [totals, points] : [points, totals];
+  for (const l of losers) {
+    const lb = tightBox(l);
+    if (keepers.some((k) => overlaps(lb, tightBox(k)))) drop.add(l);
+  }
+  return drop;
+}
