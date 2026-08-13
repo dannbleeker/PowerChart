@@ -9,6 +9,10 @@ coverage/
 # Written only when the visual gate finds a chart nobody could see.
 visible-charts/
 
+# playwright-cli's scratch output (snapshots, screenshots). The configs beside
+# it in .playwright/ are checked in on purpose.
+.playwright-cli/
+
 # Stryker copies the whole repo here while it runs.
 .stryker-tmp/
 reports/
