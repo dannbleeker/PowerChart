@@ -373,6 +373,56 @@ function reportTrace(trace) {
  * why it is not called that any more — but round files saved before 2026-08-11
  * still carry the old name, and this function reads neither, by design.
  */
+/**
+ * The two populations a draw batch falls into, computed rather than eyeballed.
+ *
+ * "FAST IS THE BROKEN MODE" rests on the batch times being BIMODAL with an
+ * empty band between them, and every number supporting it has been read off a
+ * round by hand. That is how the band's edge came to be quoted as 29.2s and
+ * stayed quoted after a later round put three surviving batches at 29.3, 30.8
+ * and 31.1 — a measurement drifting in the prose because nothing recomputed it.
+ *
+ * The split is taken at the LARGEST gap in the sorted times, which is what a
+ * reader does by eye and cannot then mis-remember. A round with no gap worth
+ * the name says so rather than inventing a boundary: `bimodal` is false unless
+ * the gap is bigger than the whole spread of the fast group, which is the
+ * property "an empty band" actually means.
+ *
+ * The other number this file re-derives by hand — the per-slide cost slope —
+ * is deliberately NOT computed here. `onSlide` is a NET counter that resets as
+ * each chart replaces itself, so one slide's points are a repeated ramp rather
+ * than a series: slide 257 of round 17 carries onSlide 58 and 68 four times
+ * each, non-monotonic. Fitting a line through that produced 0.29s per shape
+ * against the 0.44-0.49 the rasterise arms give, which is a number belonging to
+ * neither population. A slope needs an add-only path and this trace does not
+ * mark one; read the arms by hand until it does.
+ */
+export function batchPopulations(log) {
+  const entries = log?.trace?.entries;
+  if (!Array.isArray(entries)) return null;
+  const times = entries
+    .filter((e) => e.message === "batch issued" && typeof e.data?.prevBatchMs === "number")
+    .map((e) => e.data.prevBatchMs)
+    .sort((a, b) => a - b);
+  if (times.length < 4) return null;
+  let at = 0;
+  let gap = 0;
+  for (let i = 0; i < times.length - 1; i++)
+    if (times[i + 1] - times[i] > gap) {
+      gap = times[i + 1] - times[i];
+      at = i;
+    }
+  const fast = times.slice(0, at + 1);
+  const slow = times.slice(at + 1);
+  const spread = fast[fast.length - 1] - fast[0];
+  // Both groups need at least two members. On evenly spread times every gap is
+  // equal, the argmax picks the FIRST, and a one-member fast group has a spread
+  // of zero — which any gap beats, so the rule would answer "bimodal" for the
+  // most uniform data there is. Found by the negative test, not by reasoning.
+  const bimodal = fast.length >= 2 && slow.length >= 2 && gap > spread;
+  return { times, fast, slow, gap, bimodal, max: times[times.length - 1] };
+}
+
 export function poolRasteriseArms(logs) {
   const arms = { rasterise: { ok: 0, stall: 0 }, "cheap read": { ok: 0, stall: 0 } };
   let rounds = 0;
@@ -420,6 +470,21 @@ function reportPool(logs) {
       `    NOT an answer yet: ${n} draws in the smaller arm. Telling rates this close apart\n` +
         `    needs nearer 60-100 an arm, which is dozens more rounds at two an arm each.`,
     );
+}
+
+/** The batch-time split and the per-slide slope, printed when a round has them. */
+export function reportBatchCost(log) {
+  const pop = batchPopulations(log);
+  if (pop) {
+    console.log(`\n  DRAW BATCHES ${pop.times.length} timed, slowest ${(pop.max / 1000).toFixed(1)}s`);
+    if (pop.bimodal)
+      console.log(
+        `    two populations: ${pop.fast.length} fast (${(pop.fast[0] / 1000).toFixed(1)}-${(pop.fast[pop.fast.length - 1] / 1000).toFixed(1)}s) ` +
+          `and ${pop.slow.length} slow (${(pop.slow[0] / 1000).toFixed(1)}-${(pop.slow[pop.slow.length - 1] / 1000).toFixed(1)}s), ` +
+          `nothing in the ${(pop.gap / 1000).toFixed(1)}s between`,
+      );
+    else console.log(`    one population — no empty band worth the name (largest gap ${(pop.gap / 1000).toFixed(1)}s)`);
+  }
 }
 
 export function reportSelfTest(selftest) {
@@ -614,6 +679,7 @@ if (invokedDirectly) {
     );
     reportDeckEvidence(log.deck);
     reportTrace(log.trace);
+    reportBatchCost(log);
     const failed = reportSelfTest(selftest);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
@@ -652,6 +718,7 @@ if (invokedDirectly) {
     // trace and no self-test went further and reported "this log holds no runs
     // and no self-test" over 186 entries, then exited 0.
     reportTrace(log.trace);
+    reportBatchCost(log);
     reportSelfTest(selftest);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)
