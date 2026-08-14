@@ -1148,6 +1148,32 @@ const PROBES: Probe[] = [
     // sheet got right used a handle of its own. So ask, because the answer
     // decides whether those three sites are bugs or merely untidy.
     ask: async (ctx) => {
+      // REACHED FOR POSITIONALLY, BECAUSE THE ID ROUTE IS CLOSED ON THIS HOST.
+      //
+      // NO ROUTE FOUND, and the reason is worth more than a workaround.
+      //
+      // This needs an id, because what it exists to check needs an id: all three
+      // production sites — `deleteShapesById`, `setShapeSelection` and the
+      // selection path — reach through an aged slide handle for
+      // `shapes.getItemOrNullObject(<id>)`. And an id for a fresh shape is
+      // exactly what this host will not give. It will not name a shape in the
+      // batch that created it (why `scratchShapes` takes a second sync at all),
+      // and `shape-proxy-survives-one-sync` answers `unreadable` for reading the
+      // proxy back a sync later. Both doors, closed.
+      //
+      // Reaching by `shapes.getItemAt(0)` instead was tried and REVERTED: it
+      // makes the question answerable and worthless. `getItemAt` appears nowhere
+      // in `src/` — every production site is `getItemOrNullObject(id)` — so a
+      // `yes` from the index route would say nothing about the three call sites
+      // this probe is named after. An answerable question about the wrong thing
+      // is worse than an honest hole, and this file has paid for that lesson
+      // before.
+      //
+      // It becomes askable the moment anything on this host consents to name a
+      // shape: an id from a chart the self-test has already drawn and tagged
+      // would do, since those shapes demonstrably carry ids the host honours.
+      // That needs the probe run to see the self-test's output, which it
+      // currently cannot.
       const [id] = idsOf(await scratchShapes(ctx, [{ left: 10, top: 140, width: 20, height: 20 }], "id"));
       const held = ctx.scratch();
       held.load("id"); // a REAL property: this is the sync that resolves it
@@ -1397,12 +1423,29 @@ const PROBES: Probe[] = [
     // "other — value=undefined": not an opinion about tag keys at all, just
     // the stale handle refusing both writes.
     ask: async (ctx) => {
-      const [id] = idsOf(await scratchShapes(ctx, [{ left: 60, top: 10, width: 20, height: 20 }], "id"));
-      probeShape(ctx, id).tags.add("POWERCHART_PROBE", "first");
+      // ASKED ON THE SLIDE, NOT ON A SHAPE, AND THAT IS WHAT MAKES IT ASKABLE.
+      //
+      // It used to add a shape and tag that, which meant naming a shape it had
+      // just created — and this host will not do that by either route. It will
+      // not name a shape in the batch that made it (the reason `scratchShapes`
+      // takes a second sync at all), and it will not read a proxy back a sync
+      // later either (`shape-proxy-survives-one-sync` answers `unreadable`).
+      // Between the two there is no way to get an id for a fresh shape here, so
+      // this question went unasked for eleven rounds while being about tag
+      // semantics rather than about shapes at all.
+      //
+      // The scratch slide is a taggable thing whose id this host DOES honour —
+      // the whole probe context is built on resolving it fresh every batch — so
+      // asking there costs nothing and answers the same question. It is also
+      // closer to production than the old form: `Slide.tags` is a real
+      // dependency here, carrying `DEMO_SLOT_TAG` in `powerpoint.ts`.
+      //
+      // `ctx.scratch()` per batch, never a held handle: same rule as everywhere.
+      ctx.scratch().tags.add("POWERCHART_PROBE", "first");
       await ctx.sync();
-      probeShape(ctx, id).tags.add("POWERCHART_PROBE", "second");
+      ctx.scratch().tags.add("POWERCHART_PROBE", "second");
       await ctx.sync();
-      const tag = probeShape(ctx, id).tags.getItemOrNullObject("POWERCHART_PROBE");
+      const tag = ctx.scratch().tags.getItemOrNullObject("POWERCHART_PROBE");
       tag.load("value");
       await ctx.sync();
       try {
