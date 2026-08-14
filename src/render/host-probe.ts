@@ -174,6 +174,19 @@ export type ScratchState = "first-slide" | "fresh-slide" | "reused-slide" | "no-
  * minute ago is history, not a description of now. Twenty seconds is one such
  * window plus a little, and it is the number that turns this field from a latch
  * into a measurement.
+ *
+ * The fifteen is folklore that has never been measured, and the first attempt
+ * to measure it came out SHORTER. Grouping every probe attempt in rounds 23 and
+ * 26 into runs of consecutive starvation: 17 runs and 14 runs, longest 7.6s and
+ * 8.9s, most of them spanning 0s. Clustering is real but mild — 14 runs observed
+ * against ~17 expected if each attempt failed independently — so the twenty here
+ * is comfortably above anything yet seen, and is left alone.
+ *
+ * That measurement does NOT cover the whole claim: it counts starvation among
+ * probe attempts, not every host state, and the four slots that starve on every
+ * attempt in both rounds are burnt slots rather than windows (see
+ * `Probe.burnsTheSlide`) — removing them is what any honest window figure would
+ * have to do first. Treat the fifteen as unverified rather than wrong.
  */
 export const REGIME_WINDOW_MS = 20_000;
 
@@ -941,6 +954,15 @@ const PROBES: Probe[] = [
   },
   {
     id: "binding-names-shape-later",
+    // Burns the slide, found the same way the first two were — by the question
+    // BELOW it never being answered. `shape-resolve-held-slide-proxy` at the
+    // next slot starved on 4 of 4 attempts in round 23 and 4 of 4 in round 26,
+    // every one of them "the host says the scratch slide is gone", at elapsed
+    // times from 9s to 112s. A question that fails at every time in the round
+    // is not losing a race for slides; the slide it is handed is already dead.
+    // A binding is exactly the kind of thing this host does not forgive on the
+    // slide afterwards — the same shape as `shape-add-held-slide-proxy` above.
+    burnsTheSlide: true,
     // No `resample` mark since 2026-08-12: the question is ANSWERED
     // (`commit-threw`, with its control arm landing the same batch without a
     // binding seconds earlier), so it no longer needs the scarce-slide
@@ -958,9 +980,25 @@ const PROBES: Probe[] = [
     //   needs a shape, positions 1-8  23/30  77%
     //   needs a shape, positions 9+   36/77  47%
     //
-    // Two effects and both are large: needing a shape costs you, and needing one
-    // LATE costs you again. This question needed a shape at position 20, which
-    // is the worst quadrant there is.
+    // **THE POSITION HALF OF THAT DOES NOT REPRODUCE, AND SHOULD NOT BE PLANNED
+    // AROUND.** Recomputed per-attempt over two later rounds it is flat, and in
+    // one of them it inverts:
+    //
+    //   round 23   positions 1-8  20/25  80%   positions 9+  48/69  70%
+    //   round 26   positions 1-8  11/20  55%   positions 9+  33/53  62%
+    //
+    // Round 26 answered #31 — the LAST question on the sheet — while #8, #16,
+    // #22 and #23 all starved. A run does not exhaust its slides late; the
+    // slots that starve are the same slots every time. Needing a SHAPE still
+    // costs you, and that half stands. What the 77-vs-47 split was really
+    // measuring is the burnt slots, which cluster after the shape-heavy
+    // questions and therefore later in the list — position was the correlate,
+    // never the cause.
+    //
+    // A branch was built on the position reading (moving two questions from
+    // 22 and 23 to 5 and 6) and reverted once the per-attempt data came in.
+    // Read `Probe.burnsTheSlide` instead: five slots are now known burnt, and
+    // three of those five were identified from exactly this recomputation.
     //
     // Position alone was not the whole story, and the round after this moved
     // found out why in the sharpest possible way: it landed in the one slot on
@@ -1249,6 +1287,18 @@ const PROBES: Probe[] = [
   },
   {
     id: "shapes-items-via-positional-slide",
+    // Burns the slide. `tags-add-same-key-twice` two slots below starved on 4
+    // of 4 attempts in round 23 and 3 of 3 in round 26, always "the host says
+    // the scratch slide is gone", from 27s to 113s.
+    //
+    // TWO slots below, not one, and that is the trap: the question directly
+    // after this is `getcount-populates-same-sync`, which is `noSlideNeeded`
+    // and therefore cannot be the burner and cannot be starved by one either.
+    // A slide-free question is transparent to this failure, so the blame for a
+    // dead slide has to be traced back to the last question that actually TOOK
+    // one. Reading the neighbour is not enough; read the neighbour that used a
+    // slide.
+    burnsTheSlide: true,
     resample: true,
     question: "Same collection read, but through slides.getItemAt(index) — any different?",
     // The one contaminated answer that could NOT be cleaned up by re-resolving,
@@ -1447,6 +1497,24 @@ const PROBES: Probe[] = [
   },
   {
     id: "group-reports-its-children",
+    // Burns the slide, and this is the one that matters most. The two questions
+    // below it — `grouped-child-by-id-from-slide` and `tag-on-group-survives` —
+    // have starved on EVERY attempt in both rounds measured: 4/4 and 4/4 in
+    // round 23, 4/4 and 3/3 in round 26, from 41s to 117s, always "the host
+    // says the scratch slide is gone". Eleven rounds and neither has ever been
+    // put.
+    //
+    // `grouped-child-by-id-from-slide` is the question that decides whether the
+    // in-place update can ever work on this host, so the cost of the dead slide
+    // above it is 9 x `the chart has no parts list` in every round's triage.
+    //
+    // A whole branch was once built on the theory that these two starve because
+    // they sit at positions 22 and 23 and the run runs out of slides late. The
+    // data refutes it: round 26 answered #31, the LAST question in the list,
+    // while #8, #16, #22 and #23 all starved, and its own positional split came
+    // out 55% for questions 1-8 against 62% for 9-and-later. Starvation here is
+    // a property of the SLOT, not of how late the slot is.
+    burnsTheSlide: true,
     question: "After grouping two shapes, does the group report two children?",
     // The single most load-bearing answer here. A chart IS a group, and the
     // readback measures whether a chart survived by counting what is inside
