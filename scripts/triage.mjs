@@ -26,7 +26,8 @@
  * Exit code 0 when the two agree, 1 when they do not, 2 when a file cannot be
  * read — so it can gate as well as inform.
  */
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
+import { join } from "path";
 import { readDeck, faultsIn } from "./verify-deck.mjs";
 
 /**
@@ -688,7 +689,26 @@ if (invokedDirectly) {
   const flags = args.filter((a) => a.startsWith("--"));
   const paths = args.filter((a) => !a.startsWith("--"));
   const deckPath = paths.find((p) => p.endsWith(".pptx"));
-  const logPaths = paths.filter((p) => p.endsWith(".json"));
+  // A DIRECTORY expands to the rounds inside it, which is how `npm run rounds`
+  // stays correct as the archive grows. The obvious alternative — listing the
+  // files in package.json, or `rounds/*.json` — fails twice over: the list has
+  // to be edited for every round anyone adds, and npm scripts run through
+  // cmd.exe on Windows, which does not expand a glob at all. Both failures are
+  // silent, and both end with the pooled view quietly reading fewer rounds than
+  // the archive holds, which is the exact state this archive exists to end.
+  const logPaths = paths.flatMap((p) => {
+    if (p.endsWith(".json")) return [p];
+    let entries;
+    try {
+      entries = readdirSync(p);
+    } catch {
+      return [];
+    }
+    return entries
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .map((f) => join(p, f));
+  });
   const logPath = logPaths[0];
   if (!logPath) {
     console.error("usage: node scripts/triage.mjs <deck.pptx> <run-log.json> [--all] [--json]");

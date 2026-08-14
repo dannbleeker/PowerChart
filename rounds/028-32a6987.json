@@ -1,0 +1,6627 @@
+{
+  "build": "32a6987 · 2026-08-14 08:03Z",
+  "host": "PowerPoint · OfficeOnline · 0.0.0.0",
+  "runs": [],
+  "hostAnswers": {
+    "kind": "powerchart-host-answers",
+    "source": "PowerPoint · OfficeOnline · 0.0.0.0",
+    "build": "32a6987 · 2026-08-14 08:03Z",
+    "requirementSets": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"],
+    "answers": [
+      {
+        "id": "load-isnullobject-populates",
+        "question": "Does load('isNullObject') make isNullObject readable after a sync?",
+        "ms": 33,
+        "answer": "yes",
+        "detail": "read false",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 50985,
+            "regime": "healthy",
+            "scratch": "first-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 78416,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 111240,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "load-id-populates-isnullobject",
+        "question": "Does loading a REAL property make isNullObject readable?",
+        "ms": 32,
+        "answer": "yes",
+        "detail": "read false",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 51017,
+            "regime": "healthy",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 78489,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 111350,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "getitemornullobject-missing",
+        "question": "What does getItemOrNullObject give for an id that does not exist?",
+        "ms": 16,
+        "answer": "null-object",
+        "samples": [
+          {
+            "answer": "null-object",
+            "pass": 1,
+            "atMs": 51033,
+            "regime": "healthy",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "null-object",
+            "pass": 2,
+            "atMs": 78508,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "null-object",
+            "pass": 3,
+            "atMs": 111400,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "shape-add-fresh-slide-proxy",
+        "question": "Can a shape be added through a slide proxy resolved in THIS sync?",
+        "ms": 535,
+        "answer": "yes",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 51568,
+            "regime": "healthy",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 79191,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 111830,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "shape-add-held-slide-proxy",
+        "question": "Can a shape be added through a slide proxy resolved a sync ago?",
+        "ms": 1473,
+        "answer": "threw",
+        "detail": "GeneralException",
+        "samples": [
+          {
+            "answer": "threw",
+            "pass": 1,
+            "atMs": 53041,
+            "regime": "healthy",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 2,
+            "atMs": 80256,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 3,
+            "atMs": 113369,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "shape-add-held-slide-proxy-again",
+        "question": "Asked a second time moments later on another fresh slide, does it answer the same way?",
+        "ms": 1550,
+        "answer": "threw",
+        "detail": "asked because shape-add-held-slide-proxy answered \"threw\" — asking the identical question a second time at the same instant is what tells a host state from a coin; GeneralException",
+        "samples": [
+          {
+            "answer": "threw",
+            "pass": 1,
+            "atMs": 54591,
+            "regime": "healthy",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 2,
+            "atMs": 81287,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 3,
+            "atMs": 114809,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "binding-names-shape-later",
+        "question": "Can a binding made in a shape's CREATING sync still name that shape afterwards?",
+        "ms": 1014,
+        "answer": "no-scratch-slide",
+        "detail": "the host says the scratch slide is gone",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 55605,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 82282,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 116269,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 4,
+            "atMs": 151241,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-resolve-held-slide-proxy",
+        "question": "Can a shape be RESOLVED (not added) through a slide proxy resolved a sync ago?",
+        "ms": 2950,
+        "answer": "no-scratch-shape",
+        "detail": "the probe never got as far as its question: the host would not read back the shapes' ids",
+        "samples": [
+          {
+            "answer": "no-scratch-shape",
+            "pass": 1,
+            "atMs": 58555,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 2,
+            "atMs": 84441,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 3,
+            "atMs": 118968,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 4,
+            "atMs": 153090,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ]
+      },
+      {
+        "id": "shape-add-fresh-getitem-slide",
+        "question": "Can a shape be added through slides.getItem(id) on a freshly-added slide?",
+        "ms": 920,
+        "answer": "threw",
+        "detail": "GeneralException",
+        "samples": [
+          {
+            "answer": "threw",
+            "pass": 1,
+            "atMs": 59475,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 2,
+            "atMs": 85604,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 3,
+            "atMs": 120228,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "getitem-durable-slide",
+        "question": "Does slides.getItem(id) resolve a slide that was in the deck before this run?",
+        "ms": 560,
+        "answer": "yes",
+        "detail": "asked because shape-add-fresh-getitem-slide answered \"threw\" — getItem refused a freshly-added slide, which could be about getItem or about the slide's newness",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 60035,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 86403,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 121113,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "shape-add-positional-slide-proxy",
+        "question": "Can a shape be added through slides.getItemAt(index) rather than by id?",
+        "ms": 374,
+        "answer": "yes",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 60409,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 86914,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 121796,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "shape-proxy-survives-one-sync",
+        "question": "Is a shape proxy still usable one sync after it was created?",
+        "ms": 486,
+        "answer": "unreadable",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 60895,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 2,
+            "atMs": 88022,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 3,
+            "atMs": 123137,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "shapes-items-count-honest",
+        "question": "After adding 5 shapes, how many does the collection report?",
+        "ms": 1404,
+        "answer": "unreadable",
+        "detail": "Cannot read properties of undefined (reading 'length')",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 62299,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 2,
+            "atMs": 89151,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "short-0",
+            "pass": 3,
+            "atMs": 125838,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": false
+      },
+      {
+        "id": "shapes-items-via-positional-slide",
+        "question": "Same collection read, but through slides.getItemAt(index) — any different?",
+        "ms": 1236,
+        "answer": "not-listed",
+        "samples": [
+          {
+            "answer": "not-listed",
+            "pass": 1,
+            "atMs": 63536,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "short-0",
+            "pass": 2,
+            "atMs": 90311,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "not-listed",
+            "pass": 3,
+            "atMs": 126501,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": false
+      },
+      {
+        "id": "getcount-populates-same-sync",
+        "question": "Does getCount()'s value arrive on the sync that queued it?",
+        "ms": 560,
+        "answer": "yes",
+        "detail": "value=12",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 64096,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 90967,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 127504,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "tags-add-same-key-twice",
+        "question": "Does writing the same tag key twice overwrite, or duplicate?",
+        "ms": 411,
+        "answer": "other",
+        "detail": "value=undefined",
+        "samples": [
+          {
+            "answer": "other",
+            "pass": 1,
+            "atMs": 64508,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "other",
+            "pass": 2,
+            "atMs": 91431,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "other",
+            "pass": 3,
+            "atMs": 128118,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "tags-on-fresh-shape",
+        "question": "Does a shape added THIS sync already have a .tags collection?",
+        "ms": 1233,
+        "answer": "yes",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 65741,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 92799,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 129871,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "delete-then-lookup",
+        "question": "Right after delete()+sync, does getItemOrNullObject report it gone?",
+        "ms": 1220,
+        "answer": "reports-gone",
+        "samples": [
+          {
+            "answer": "reports-gone",
+            "pass": 1,
+            "atMs": 66961,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "reports-gone",
+            "pass": 2,
+            "atMs": 94266,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "reports-gone",
+            "pass": 3,
+            "atMs": 131486,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "addgroup-returns-usable",
+        "question": "Is a group proxy usable in the same sync that created it?",
+        "ms": 1257,
+        "answer": "unreadable",
+        "detail": "members via same-batch",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 68218,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 2,
+            "atMs": 95726,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 3,
+            "atMs": 133261,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "group-children-via-getcount",
+        "question": "Does a group report its child COUNT, where it will not list them?",
+        "ms": 1029,
+        "answer": "unreadable",
+        "detail": "members via same-batch",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 69247,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 2,
+            "atMs": 97301,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 3,
+            "atMs": 134759,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "group-reports-its-children",
+        "question": "After grouping two shapes, does the group report two children?",
+        "ms": 1525,
+        "answer": "threw",
+        "detail": "The property 'items' is not available. Before reading the property's value, call the load method on the containing object and call \"context.",
+        "samples": [
+          {
+            "answer": "threw",
+            "pass": 1,
+            "atMs": 70772,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 2,
+            "atMs": 98686,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 3,
+            "atMs": 138233,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "grouped-child-by-id-from-slide",
+        "question": "Can a shape INSIDE a group still be resolved by id off the slide?",
+        "ms": 2410,
+        "answer": "no-scratch-shape",
+        "detail": "the host would not name the members before grouping, so there was no child id to look up",
+        "samples": [
+          {
+            "answer": "no-scratch-shape",
+            "pass": 1,
+            "atMs": 73182,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 2,
+            "atMs": 101935,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 3,
+            "atMs": 141470,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 4,
+            "atMs": 154919,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ]
+      },
+      {
+        "id": "tag-on-group-survives",
+        "question": "Does a tag written on a GROUP read back?",
+        "ms": 1127,
+        "answer": "no-scratch-slide",
+        "detail": "the host says the scratch slide is gone",
+        "samples": [
+          {
+            "answer": "no-scratch-slide",
+            "pass": 1,
+            "atMs": 74309,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 2,
+            "atMs": 103419,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-slide",
+            "pass": 3,
+            "atMs": 143327,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-scratch-shape",
+            "pass": 4,
+            "atMs": 156348,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ]
+      },
+      {
+        "id": "getitemat-past-end",
+        "question": "What does slides.getItemAt() past the end of the deck do?",
+        "ms": 33,
+        "answer": "threw",
+        "detail": "InvalidParam passed to GetItemAt(index)",
+        "samples": [
+          {
+            "answer": "threw",
+            "pass": 1,
+            "atMs": 74342,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 2,
+            "atMs": 103454,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "threw",
+            "pass": 3,
+            "atMs": 143382,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "picture-then-shape-read",
+        "question": "After a picture is added, does re-reading the slide's shapes still answer?",
+        "ms": 469,
+        "answer": "unreadable",
+        "samples": [
+          {
+            "answer": "unreadable",
+            "pass": 1,
+            "atMs": 74812,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 2,
+            "atMs": 104854,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "unreadable",
+            "pass": 3,
+            "atMs": 144849,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "group-of-existing-shape-readable",
+        "question": "Can a group found in a later batch report its children?",
+        "ms": 1050,
+        "answer": "no-group-id",
+        "detail": "the host would not name the group it just made",
+        "samples": [
+          {
+            "answer": "no-group-id",
+            "pass": 1,
+            "atMs": 75862,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-group-id",
+            "pass": 2,
+            "atMs": 107339,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no-group-id",
+            "pass": 3,
+            "atMs": 147105,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "slide-layout-readable",
+        "question": "Can a slide's layout shapes be read?",
+        "ms": 416,
+        "answer": "yes",
+        "detail": "5 layout shape(s)",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 76278,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 107868,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 147536,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "layouts-readable",
+        "question": "Can the deck's slide masters and their layouts be read?",
+        "ms": 514,
+        "answer": "yes",
+        "detail": "1 master(s), 11 layout(s)",
+        "samples": [
+          {
+            "answer": "yes",
+            "pass": 1,
+            "atMs": 76792,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 2,
+            "atMs": 108426,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "yes",
+            "pass": 3,
+            "atMs": 148143,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "untrack-available",
+        "question": "Do proxies expose untrack()?",
+        "ms": 6,
+        "answer": "no",
+        "samples": [
+          {
+            "answer": "no",
+            "pass": 1,
+            "atMs": 76798,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "no",
+            "pass": 2,
+            "atMs": 108448,
+            "regime": "collection-refused",
+            "scratch": "reused-slide"
+          },
+          {
+            "answer": "no",
+            "pass": 3,
+            "atMs": 148207,
+            "regime": "slide-trouble",
+            "scratch": "reused-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "untrack-available-on-shape",
+        "question": "Does a SHAPE proxy — the kind a draw makes hundreds of — expose untrack()?",
+        "ms": 937,
+        "answer": "no",
+        "detail": "asked because untrack-available answered \"no\" — a null-object proxy is the one kind most likely to lack the method, so the no may be about the probe",
+        "samples": [
+          {
+            "answer": "no",
+            "pass": 1,
+            "atMs": 77735,
+            "regime": "collection-refused",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no",
+            "pass": 2,
+            "atMs": 110319,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          },
+          {
+            "answer": "no",
+            "pass": 3,
+            "atMs": 149641,
+            "regime": "slide-trouble",
+            "scratch": "fresh-slide"
+          }
+        ],
+        "stable": true
+      },
+      {
+        "id": "scratch-slides-returned",
+        "question": "Does the host give back the scratch slides this probe added?",
+        "answer": "all",
+        "ms": 12110,
+        "detail": "70 of 70 scratch slide(s) deleted; the deck still lists 0 of 70 of these ids; 70 removed by a positional sweep after delete-by-id took none"
+      }
+    ]
+  },
+  "selftest": [
+    {
+      "name": "insert on top of an earlier run",
+      "ok": true,
+      "detail": "deck grew by 4 (want 4); 4 of 4 charts re-editable",
+      "ms": 4799,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "two slides claiming one slot",
+      "ok": true,
+      "detail": "4 slides inserted, 2 kept, 2 of 2 still re-editable; 2 queued as duplicates",
+      "ms": 7104,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "edit a chart on the visible slide",
+      "ok": true,
+      "detail": "redrawn on the visible slide and the config round-tripped",
+      "ms": 31138,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "insert onto a slide that already has content",
+      "ok": true,
+      "detail": "2 charts drawn onto the visible slide, all re-editable, the one already there untouched",
+      "ms": 77246,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "same scale across the deck",
+      "ok": false,
+      "detail": "5 of 8 charts carry the shared scale (max=105, bars redraw at 76% of their height); 6 still re-editable; the update reported 2×no-config; the host flipped at chart 6 of 8, so the last 1 were not attempted",
+      "ms": 240559,
+      "friction": {
+        "errors": 8,
+        "idRefusals": 8,
+        "generalExceptions": 0,
+        "emptyReReads": 2
+      }
+    },
+    {
+      "name": "explode a degraded picture",
+      "ok": false,
+      "detail": "the update would not work on the picture and this host refused 3 id(s) in this scenario, so the slide not naming it proves nothing either way",
+      "ms": 4960,
+      "friction": {
+        "errors": 3,
+        "idRefusals": 3,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "which selection call wedges the host",
+      "ok": true,
+      "detail": "the host answered all 7 rung(s) — nothing wedged",
+      "ms": 7345,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "a selected shape survives an insert",
+      "ok": true,
+      "detail": "all 3 shape(s) already on the slide survived an insert made while one was selected",
+      "ms": 59943,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "edit the chart the user selected",
+      "ok": true,
+      "detail": "selected, read back, edited through the selection's own target, still re-editable",
+      "ms": 61637,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "stop a run part-way",
+      "ok": true,
+      "detail": "stopped at a batch boundary, nothing added, nothing left claiming to be a chart",
+      "ms": 1956,
+      "friction": {
+        "errors": 1,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "the chart is actually visible",
+      "ok": false,
+      "skipped": true,
+      "blind": true,
+      "detail": "the host stopped answering during this scenario, so nothing was checked — PowerPoint did not respond while drawing shapes 1-9 of 9 (45s) | at=drawing the chart's shapes; the abandoned call had still not answered 3s later; the last thing the host answered was \"rasterising a slide\", 0s earlier",
+      "ms": 52077,
+      "friction": {
+        "errors": 1,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    },
+    {
+      "name": "does a rasterise poison the next draw",
+      "ok": true,
+      "detail": "all four draws landed — a draw straight after a rasterise is no worse than one after a cheap read",
+      "ms": 112155,
+      "friction": {
+        "errors": 0,
+        "idRefusals": 0,
+        "generalExceptions": 0,
+        "emptyReReads": 0
+      }
+    }
+  ],
+  "deck": {
+    "inventory": [
+      {
+        "slideId": "256#109857222",
+        "index": 0,
+        "shapes": [
+          {
+            "id": "2",
+            "name": "Title 1",
+            "left": 120,
+            "top": 88.3750393700787
+          },
+          {
+            "id": "3",
+            "name": "Subtitle 2",
+            "left": 120,
+            "top": 283.625039370079
+          }
+        ],
+        "count": 2
+      },
+      {
+        "slideId": "257#1969267518",
+        "index": 1,
+        "shapes": [
+          {
+            "id": "110",
+            "name": "PowerChart",
+            "left": 240,
+            "top": 120
+          },
+          {
+            "id": "127",
+            "name": "PowerChart",
+            "left": 20,
+            "top": 440
+          },
+          {
+            "id": "144",
+            "name": "PowerChart",
+            "left": 208,
+            "top": 440
+          },
+          {
+            "id": "161",
+            "name": "PowerChart",
+            "left": 584,
+            "top": 440
+          }
+        ],
+        "count": 4
+      },
+      {
+        "slideId": "258#3410008808",
+        "index": 2,
+        "shapes": [
+          {
+            "id": "28",
+            "name": "category-0",
+            "left": 242,
+            "top": 405
+          },
+          {
+            "id": "29",
+            "name": "category-1",
+            "left": 352.1,
+            "top": 405
+          },
+          {
+            "id": "30",
+            "name": "category-2",
+            "left": 462.2,
+            "top": 405
+          },
+          {
+            "id": "31",
+            "name": "category-3",
+            "left": 572.299921259843,
+            "top": 405
+          },
+          {
+            "id": "32",
+            "name": "seg-0-0",
+            "left": 260.85,
+            "top": 301.2
+          },
+          {
+            "id": "33",
+            "name": "label-0-0",
+            "left": 256.85,
+            "top": 344.1
+          },
+          {
+            "id": "34",
+            "name": "seg-1-0",
+            "left": 297.55,
+            "top": 279.6
+          },
+          {
+            "id": "35",
+            "name": "label-1-0",
+            "left": 293.55,
+            "top": 333.3
+          },
+          {
+            "id": "36",
+            "name": "seg-0-1",
+            "left": 370.95,
+            "top": 286.8
+          },
+          {
+            "id": "37",
+            "name": "label-0-1",
+            "left": 366.95,
+            "top": 336.9
+          },
+          {
+            "id": "38",
+            "name": "seg-1-1",
+            "left": 407.65,
+            "top": 270
+          },
+          {
+            "id": "39",
+            "name": "label-1-1",
+            "left": 403.65,
+            "top": 328.5
+          },
+          {
+            "id": "40",
+            "name": "seg-0-2",
+            "left": 481.05,
+            "top": 294
+          },
+          {
+            "id": "41",
+            "name": "label-0-2",
+            "left": 477.05,
+            "top": 340.5
+          },
+          {
+            "id": "42",
+            "name": "seg-1-2",
+            "left": 517.75,
+            "top": 262.799921259843
+          },
+          {
+            "id": "43",
+            "name": "label-1-2",
+            "left": 513.75,
+            "top": 324.899921259843
+          },
+          {
+            "id": "44",
+            "name": "seg-0-3",
+            "left": 591.15,
+            "top": 255.6
+          },
+          {
+            "id": "45",
+            "name": "label-0-3",
+            "left": 587.15,
+            "top": 321.3
+          },
+          {
+            "id": "46",
+            "name": "seg-1-3",
+            "left": 627.849921259843,
+            "top": 234
+          },
+          {
+            "id": "47",
+            "name": "label-1-3",
+            "left": 623.849921259843,
+            "top": 310.5
+          },
+          {
+            "id": "48",
+            "name": "baseline",
+            "left": 242,
+            "top": 402
+          },
+          {
+            "id": "49",
+            "name": "series-label-0",
+            "left": 686.4,
+            "top": 311.25
+          },
+          {
+            "id": "50",
+            "name": "series-label-1",
+            "left": 686.4,
+            "top": 324.75
+          },
+          {
+            "id": "75",
+            "name": "PowerChart",
+            "left": 240,
+            "top": 120
+          },
+          {
+            "id": "9",
+            "name": "PowerChart",
+            "left": 772,
+            "top": 440
+          },
+          {
+            "id": "17",
+            "name": "PowerChart",
+            "left": 814,
+            "top": 440
+          },
+          {
+            "id": "25",
+            "name": "PowerChart",
+            "left": 856,
+            "top": 440
+          },
+          {
+            "id": "81",
+            "name": "PowerChart",
+            "left": 898,
+            "top": 440
+          }
+        ],
+        "count": 28
+      },
+      {
+        "slideId": "259#1511113511",
+        "index": 3,
+        "shapes": [
+          {
+            "id": "27",
+            "name": "title",
+            "left": 240,
+            "top": 120
+          },
+          {
+            "id": "28",
+            "name": "category-0",
+            "left": 242,
+            "top": 405
+          },
+          {
+            "id": "29",
+            "name": "category-1",
+            "left": 352.1,
+            "top": 405
+          },
+          {
+            "id": "30",
+            "name": "category-2",
+            "left": 462.2,
+            "top": 405
+          },
+          {
+            "id": "31",
+            "name": "category-3",
+            "left": 572.299921259843,
+            "top": 405
+          },
+          {
+            "id": "32",
+            "name": "seg-0-0",
+            "left": 260.85,
+            "top": 301.2
+          },
+          {
+            "id": "33",
+            "name": "label-0-0",
+            "left": 256.85,
+            "top": 344.1
+          },
+          {
+            "id": "34",
+            "name": "seg-1-0",
+            "left": 297.55,
+            "top": 279.6
+          },
+          {
+            "id": "35",
+            "name": "label-1-0",
+            "left": 293.55,
+            "top": 333.3
+          },
+          {
+            "id": "36",
+            "name": "seg-0-1",
+            "left": 370.95,
+            "top": 286.8
+          },
+          {
+            "id": "37",
+            "name": "label-0-1",
+            "left": 366.95,
+            "top": 336.9
+          },
+          {
+            "id": "38",
+            "name": "seg-1-1",
+            "left": 407.65,
+            "top": 270
+          },
+          {
+            "id": "39",
+            "name": "label-1-1",
+            "left": 403.65,
+            "top": 328.5
+          },
+          {
+            "id": "40",
+            "name": "seg-0-2",
+            "left": 481.05,
+            "top": 294
+          },
+          {
+            "id": "41",
+            "name": "label-0-2",
+            "left": 477.05,
+            "top": 340.5
+          },
+          {
+            "id": "42",
+            "name": "seg-1-2",
+            "left": 517.75,
+            "top": 262.799921259843
+          },
+          {
+            "id": "43",
+            "name": "label-1-2",
+            "left": 513.75,
+            "top": 324.899921259843
+          },
+          {
+            "id": "44",
+            "name": "seg-0-3",
+            "left": 591.15,
+            "top": 255.6
+          },
+          {
+            "id": "45",
+            "name": "label-0-3",
+            "left": 587.15,
+            "top": 321.3
+          },
+          {
+            "id": "46",
+            "name": "seg-1-3",
+            "left": 627.849921259843,
+            "top": 234
+          },
+          {
+            "id": "47",
+            "name": "label-1-3",
+            "left": 623.849921259843,
+            "top": 310.5
+          },
+          {
+            "id": "48",
+            "name": "baseline",
+            "left": 242,
+            "top": 402
+          },
+          {
+            "id": "49",
+            "name": "series-label-0",
+            "left": 686.4,
+            "top": 311.25
+          },
+          {
+            "id": "50",
+            "name": "series-label-1",
+            "left": 686.4,
+            "top": 324.75
+          }
+        ],
+        "count": 24
+      },
+      {
+        "slideId": "260#3502243336",
+        "index": 4,
+        "shapes": [
+          {
+            "id": "27",
+            "name": "title",
+            "left": 240,
+            "top": 120
+          },
+          {
+            "id": "28",
+            "name": "category-0",
+            "left": 242,
+            "top": 405
+          },
+          {
+            "id": "29",
+            "name": "category-1",
+            "left": 352.1,
+            "top": 405
+          },
+          {
+            "id": "30",
+            "name": "category-2",
+            "left": 462.2,
+            "top": 405
+          },
+          {
+            "id": "31",
+            "name": "category-3",
+            "left": 572.299921259843,
+            "top": 405
+          },
+          {
+            "id": "32",
+            "name": "seg-0-0",
+            "left": 260.85,
+            "top": 301.2
+          },
+          {
+            "id": "33",
+            "name": "label-0-0",
+            "left": 256.85,
+            "top": 344.1
+          },
+          {
+            "id": "34",
+            "name": "seg-1-0",
+            "left": 297.55,
+            "top": 279.6
+          },
+          {
+            "id": "35",
+            "name": "label-1-0",
+            "left": 293.55,
+            "top": 333.3
+          },
+          {
+            "id": "36",
+            "name": "seg-0-1",
+            "left": 370.95,
+            "top": 286.8
+          },
+          {
+            "id": "37",
+            "name": "label-0-1",
+            "left": 366.95,
+            "top": 336.9
+          },
+          {
+            "id": "38",
+            "name": "seg-1-1",
+            "left": 407.65,
+            "top": 270
+          },
+          {
+            "id": "39",
+            "name": "label-1-1",
+            "left": 403.65,
+            "top": 328.5
+          },
+          {
+            "id": "40",
+            "name": "seg-0-2",
+            "left": 481.05,
+            "top": 294
+          },
+          {
+            "id": "41",
+            "name": "label-0-2",
+            "left": 477.05,
+            "top": 340.5
+          },
+          {
+            "id": "42",
+            "name": "seg-1-2",
+            "left": 517.75,
+            "top": 262.799921259843
+          },
+          {
+            "id": "43",
+            "name": "label-1-2",
+            "left": 513.75,
+            "top": 324.899921259843
+          },
+          {
+            "id": "44",
+            "name": "seg-0-3",
+            "left": 591.15,
+            "top": 255.6
+          },
+          {
+            "id": "45",
+            "name": "label-0-3",
+            "left": 587.15,
+            "top": 321.3
+          },
+          {
+            "id": "46",
+            "name": "seg-1-3",
+            "left": 627.849921259843,
+            "top": 234
+          },
+          {
+            "id": "47",
+            "name": "label-1-3",
+            "left": 623.849921259843,
+            "top": 310.5
+          },
+          {
+            "id": "48",
+            "name": "baseline",
+            "left": 242,
+            "top": 402
+          },
+          {
+            "id": "49",
+            "name": "series-label-0",
+            "left": 686.4,
+            "top": 311.25
+          },
+          {
+            "id": "50",
+            "name": "series-label-1",
+            "left": 686.4,
+            "top": 324.75
+          }
+        ],
+        "count": 24
+      },
+      {
+        "slideId": "261#3926101235",
+        "index": 5,
+        "shapes": [
+          {
+            "id": "27",
+            "name": "title",
+            "left": 240,
+            "top": 120
+          },
+          {
+            "id": "28",
+            "name": "category-0",
+            "left": 242,
+            "top": 405
+          },
+          {
+            "id": "29",
+            "name": "category-1",
+            "left": 352.1,
+            "top": 405
+          },
+          {
+            "id": "30",
+            "name": "category-2",
+            "left": 462.2,
+            "top": 405
+          },
+          {
+            "id": "31",
+            "name": "category-3",
+            "left": 572.299921259843,
+            "top": 405
+          },
+          {
+            "id": "32",
+            "name": "seg-0-0",
+            "left": 260.85,
+            "top": 301.2
+          },
+          {
+            "id": "33",
+            "name": "label-0-0",
+            "left": 256.85,
+            "top": 344.1
+          },
+          {
+            "id": "34",
+            "name": "seg-1-0",
+            "left": 297.55,
+            "top": 279.6
+          },
+          {
+            "id": "35",
+            "name": "label-1-0",
+            "left": 293.55,
+            "top": 333.3
+          },
+          {
+            "id": "36",
+            "name": "seg-0-1",
+            "left": 370.95,
+            "top": 286.8
+          },
+          {
+            "id": "37",
+            "name": "label-0-1",
+            "left": 366.95,
+            "top": 336.9
+          },
+          {
+            "id": "38",
+            "name": "seg-1-1",
+            "left": 407.65,
+            "top": 270
+          },
+          {
+            "id": "39",
+            "name": "label-1-1",
+            "left": 403.65,
+            "top": 328.5
+          },
+          {
+            "id": "40",
+            "name": "seg-0-2",
+            "left": 481.05,
+            "top": 294
+          },
+          {
+            "id": "41",
+            "name": "label-0-2",
+            "left": 477.05,
+            "top": 340.5
+          },
+          {
+            "id": "42",
+            "name": "seg-1-2",
+            "left": 517.75,
+            "top": 262.799921259843
+          },
+          {
+            "id": "43",
+            "name": "label-1-2",
+            "left": 513.75,
+            "top": 324.899921259843
+          },
+          {
+            "id": "44",
+            "name": "seg-0-3",
+            "left": 591.15,
+            "top": 255.6
+          },
+          {
+            "id": "45",
+            "name": "label-0-3",
+            "left": 587.15,
+            "top": 321.3
+          },
+          {
+            "id": "46",
+            "name": "seg-1-3",
+            "left": 627.849921259843,
+            "top": 234
+          },
+          {
+            "id": "47",
+            "name": "label-1-3",
+            "left": 623.849921259843,
+            "top": 310.5
+          },
+          {
+            "id": "48",
+            "name": "baseline",
+            "left": 242,
+            "top": 402
+          },
+          {
+            "id": "49",
+            "name": "series-label-0",
+            "left": 686.4,
+            "top": 311.25
+          },
+          {
+            "id": "50",
+            "name": "series-label-1",
+            "left": 686.4,
+            "top": 324.75
+          }
+        ],
+        "count": 24
+      },
+      {
+        "slideId": "262#3656466663",
+        "index": 6,
+        "shapes": [
+          {
+            "id": "27",
+            "name": "PowerChart",
+            "left": 240,
+            "top": 120
+          }
+        ],
+        "count": 1
+      }
+    ],
+    "newSlides": [
+      "257#1969267518",
+      "258#3410008808",
+      "259#1511113511",
+      "260#3502243336",
+      "261#3926101235",
+      "262#3656466663"
+    ],
+    "shots": [
+      {
+        "slideId": "257#1969267518",
+        "png": "<image stripped for the archive — see docs/ROUNDS.md>"
+      },
+      {
+        "slideId": "258#3410008808",
+        "png": "<image stripped for the archive — see docs/ROUNDS.md>"
+      },
+      {
+        "slideId": "259#1511113511",
+        "png": "<image stripped for the archive — see docs/ROUNDS.md>"
+      },
+      {
+        "slideId": "260#3502243336",
+        "png": "<image stripped for the archive — see docs/ROUNDS.md>"
+      },
+      {
+        "slideId": "261#3926101235",
+        "png": "<image stripped for the archive — see docs/ROUNDS.md>"
+      },
+      {
+        "slideId": "262#3656466663",
+        "png": "<image stripped for the archive — see docs/ROUNDS.md>"
+      }
+    ]
+  },
+  "trace": {
+    "summary": {
+      "steps": [
+        {
+          "scope": "probe",
+          "message": "asking",
+          "n": 81
+        },
+        {
+          "scope": "probe",
+          "message": "answered",
+          "n": 81
+        },
+        {
+          "scope": "probe",
+          "message": "replaced the scratch slide",
+          "n": 47
+        },
+        {
+          "scope": "draw",
+          "message": "batch issued",
+          "n": 36
+        },
+        {
+          "scope": "pane",
+          "message": "scanned the deck for charts",
+          "n": 20
+        },
+        {
+          "scope": "probe",
+          "message": "giving up the scratch slide this question wrecked",
+          "n": 12
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario starting",
+          "n": 12
+        },
+        {
+          "scope": "group",
+          "message": "grouped the chart's shapes",
+          "n": 12
+        },
+        {
+          "scope": "draw",
+          "message": "not updating in place — redrawing instead",
+          "n": 10
+        },
+        {
+          "scope": "probe",
+          "message": "asking the partner question",
+          "n": 9
+        },
+        {
+          "scope": "probe",
+          "message": "replaced the scratch slide for a partner question",
+          "n": 9
+        },
+        {
+          "scope": "probe",
+          "message": "partner answered",
+          "n": 9
+        },
+        {
+          "scope": "probe",
+          "message": "took another scratch slide after giving up on the last",
+          "n": 9
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario passed",
+          "n": 9
+        },
+        {
+          "scope": "selftest",
+          "message": "rasterise-draw step",
+          "n": 8
+        },
+        {
+          "scope": "selftest",
+          "message": "ladder rung",
+          "n": 7
+        },
+        {
+          "scope": "error",
+          "message": "reading back an ungrouped chart's shape ids",
+          "n": 5
+        },
+        {
+          "scope": "insert",
+          "message": "handed the host a generated deck",
+          "n": 4
+        },
+        {
+          "scope": "group",
+          "message": "not grouping: no member handle this host will accept",
+          "n": 4
+        },
+        {
+          "scope": "error",
+          "message": "writing the chart's config tag",
+          "n": 3
+        },
+        {
+          "scope": "group",
+          "message": "tagging failed — charts are not re-editable until repaired",
+          "n": 3
+        },
+        {
+          "scope": "error",
+          "message": "reading back where the charts landed",
+          "n": 3
+        },
+        {
+          "scope": "group",
+          "message": "the settle's re-read came back empty",
+          "n": 3
+        },
+        {
+          "scope": "group",
+          "message": "settle pass: could not repair any config tag the drawing context lost",
+          "n": 3
+        },
+        {
+          "scope": "selftest",
+          "message": "visibility step",
+          "n": 3
+        },
+        {
+          "scope": "probe",
+          "message": "starting another pass over the questions",
+          "n": 2
+        },
+        {
+          "scope": "repair",
+          "message": "applying delete",
+          "n": 2
+        },
+        {
+          "scope": "draw",
+          "message": "moved this draw's shape count onto the slide the host finally named",
+          "n": 2
+        },
+        {
+          "scope": "group",
+          "message": "the re-read matched only some of the chart's shapes",
+          "n": 2
+        },
+        {
+          "scope": "group",
+          "message": "the re-read before grouping came back empty",
+          "n": 2
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario FAILED",
+          "n": 2
+        },
+        {
+          "scope": "error",
+          "message": "drawing the chart's shapes",
+          "n": 2
+        },
+        {
+          "scope": "selftest",
+          "message": "round starting",
+          "n": 1
+        },
+        {
+          "scope": "host",
+          "message": "claimed the appended slide though the id list churned",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "second pass over the questions that were never put",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "second pass finished",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "sweeping the run's own slides by position",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "swept",
+          "n": 1
+        },
+        {
+          "scope": "probe",
+          "message": "gave the scratch slides back",
+          "n": 1
+        },
+        {
+          "scope": "repair",
+          "message": "tag pass over a page",
+          "n": 1
+        },
+        {
+          "scope": "repair",
+          "message": "read the deck back",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "stopping the rescale — the host has already flipped",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "the slide read back EMPTY right after the collapse — not believing it",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "the host would not confirm the picture is one shape",
+          "n": 1
+        },
+        {
+          "scope": "pane",
+          "message": "stop requested",
+          "n": 1
+        },
+        {
+          "scope": "host",
+          "message": "gave up waiting",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "scenario skipped",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "the host missed a deadline in this scenario",
+          "n": 1
+        },
+        {
+          "scope": "selftest",
+          "message": "rasterise-draw arms",
+          "n": 1
+        }
+      ],
+      "problems": [
+        {
+          "text": "the chart has no parts list, so its nodes cannot be mapped to shapes",
+          "n": 9
+        },
+        {
+          "text": "InvalidParam passed to GetItem(id) | at=writing the chart's config tag | code=5010 | debugInfo={\"code\":\"5010\",\"message\":",
+          "n": 6
+        },
+        {
+          "text": "InvalidParam passed to GetItem(id) | at=reading back an ungrouped chart's shape ids | code=5010 | debugInfo={\"code\":\"501",
+          "n": 5
+        },
+        {
+          "text": "InvalidParam passed to GetItem(id) | at=reading back where the charts landed | code=5010 | debugInfo={\"code\":\"5010\",\"mes",
+          "n": 3
+        },
+        {
+          "text": "full list",
+          "n": 2
+        },
+        {
+          "text": "delete-by-id left slides behind and this host does not list the ids they were added under",
+          "n": 1
+        },
+        {
+          "text": "duplicate of slide 7 (selftest mssnzott-pmz6xg dup B)",
+          "n": 1
+        },
+        {
+          "text": "duplicate of slide 6 (selftest mssnzott-pmz6xg dup A)",
+          "n": 1
+        },
+        {
+          "text": "this update draws a picture, which is not in the scene the differ compares",
+          "n": 1
+        },
+        {
+          "text": "Stopped. | at=drawing the chart's shapes",
+          "n": 1
+        },
+        {
+          "text": "PowerPoint did not respond while drawing shapes 1-9 of 9 (45s) | at=drawing the chart's shapes",
+          "n": 1
+        }
+      ]
+    },
+    "entries": [
+      {
+        "ms": 50569,
+        "scope": "selftest",
+        "message": "round starting",
+        "data": {
+          "deckSlides": 1,
+          "env": {
+            "requirementSets": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"],
+            "host": "PowerPoint",
+            "platform": "OfficeOnline",
+            "officeVersion": "0.0.0.0",
+            "tabAgeMs": 51291,
+            "heapUsedMb": 9,
+            "heapLimitMb": 4192,
+            "viewport": "318x1598"
+          }
+        }
+      },
+      {
+        "ms": 50952,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-isnullobject-populates"
+        }
+      },
+      {
+        "ms": 50985,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-isnullobject-populates",
+          "answer": "yes",
+          "ms": 33,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 50985,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-id-populates-isnullobject"
+        }
+      },
+      {
+        "ms": 51017,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-id-populates-isnullobject",
+          "answer": "yes",
+          "ms": 32,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 51017,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemornullobject-missing"
+        }
+      },
+      {
+        "ms": 51033,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemornullobject-missing",
+          "answer": "null-object",
+          "ms": 16,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 51033,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy"
+        }
+      },
+      {
+        "ms": 51568,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy",
+          "answer": "yes",
+          "ms": 535,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 51568,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 52373,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "scratchId": "4123571115#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 53041,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "answer": "threw",
+          "ms": 1473,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 53041,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "scratchId": "4123571115#123571113"
+        }
+      },
+      {
+        "ms": 53041,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "shape-add-held-slide-proxy",
+          "id": "shape-add-held-slide-proxy-again",
+          "was": "threw"
+        }
+      },
+      {
+        "ms": 54157,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "shape-add-held-slide-proxy-again",
+          "scratchId": "4123571116#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 54591,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy-again",
+          "answer": "threw"
+        }
+      },
+      {
+        "ms": 54591,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "binding-names-shape-later"
+        }
+      },
+      {
+        "ms": 55171,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "binding-names-shape-later",
+          "scratchId": "4123571117#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 55605,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "binding-names-shape-later",
+          "answer": "no-scratch-slide",
+          "ms": 1014,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 55605,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "binding-names-shape-later",
+          "scratchId": "4123571117#123571113"
+        }
+      },
+      {
+        "ms": 55605,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 56568,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 58116,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy",
+          "scratchId": "4123571119#123571113",
+          "after": "no-scratch-shape"
+        }
+      },
+      {
+        "ms": 58555,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy",
+          "answer": "no-scratch-shape",
+          "ms": 2950,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 58555,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide"
+        }
+      },
+      {
+        "ms": 59034,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide",
+          "scratchId": "4123571120#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 59475,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide",
+          "answer": "threw",
+          "ms": 920,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 59475,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "shape-add-fresh-getitem-slide",
+          "id": "getitem-durable-slide",
+          "was": "threw"
+        }
+      },
+      {
+        "ms": 59984,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "getitem-durable-slide",
+          "scratchId": "4123571121#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 60035,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "getitem-durable-slide",
+          "answer": "yes"
+        }
+      },
+      {
+        "ms": 60035,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-positional-slide-proxy"
+        }
+      },
+      {
+        "ms": 60409,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-positional-slide-proxy",
+          "answer": "yes",
+          "ms": 374,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 60409,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-proxy-survives-one-sync"
+        }
+      },
+      {
+        "ms": 60895,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "answer": "unreadable",
+          "ms": 486,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 60895,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-count-honest"
+        }
+      },
+      {
+        "ms": 61525,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "scratchId": "4123571122#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 62299,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "answer": "unreadable",
+          "ms": 1404,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 62300,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-via-positional-slide"
+        }
+      },
+      {
+        "ms": 63040,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "scratchId": "4123571123#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 63536,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "answer": "not-listed",
+          "ms": 1236,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 63536,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "scratchId": "4123571123#123571113"
+        }
+      },
+      {
+        "ms": 63536,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getcount-populates-same-sync"
+        }
+      },
+      {
+        "ms": 64081,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "getcount-populates-same-sync"
+        }
+      },
+      {
+        "ms": 64097,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getcount-populates-same-sync",
+          "answer": "yes",
+          "ms": 560,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 64097,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-add-same-key-twice"
+        }
+      },
+      {
+        "ms": 64508,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-add-same-key-twice",
+          "answer": "other",
+          "ms": 411,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 64508,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-on-fresh-shape"
+        }
+      },
+      {
+        "ms": 65059,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "tags-on-fresh-shape",
+          "scratchId": "4123571125#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 65741,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-on-fresh-shape",
+          "answer": "yes",
+          "ms": 1233,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 65741,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "delete-then-lookup"
+        }
+      },
+      {
+        "ms": 66340,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "delete-then-lookup",
+          "scratchId": "4123571126#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 66961,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "delete-then-lookup",
+          "answer": "reports-gone",
+          "ms": 1220,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 66961,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "addgroup-returns-usable"
+        }
+      },
+      {
+        "ms": 67585,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "addgroup-returns-usable",
+          "scratchId": "4123571127#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 68218,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "addgroup-returns-usable",
+          "answer": "unreadable",
+          "ms": 1257,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 68218,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-children-via-getcount"
+        }
+      },
+      {
+        "ms": 68688,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-children-via-getcount",
+          "scratchId": "4123571128#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 69247,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-children-via-getcount",
+          "answer": "unreadable",
+          "ms": 1029,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 69247,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-reports-its-children"
+        }
+      },
+      {
+        "ms": 69848,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-reports-its-children",
+          "scratchId": "4123571129#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 70772,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-reports-its-children",
+          "answer": "threw",
+          "ms": 1525,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 70772,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "group-reports-its-children",
+          "scratchId": "4123571129#123571113"
+        }
+      },
+      {
+        "ms": 70772,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "grouped-child-by-id-from-slide"
+        }
+      },
+      {
+        "ms": 71289,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "grouped-child-by-id-from-slide"
+        }
+      },
+      {
+        "ms": 72282,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "grouped-child-by-id-from-slide",
+          "scratchId": "4123571131#123571113",
+          "after": "no-scratch-shape"
+        }
+      },
+      {
+        "ms": 73182,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "grouped-child-by-id-from-slide",
+          "answer": "no-scratch-shape",
+          "ms": 2410,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 73182,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tag-on-group-survives"
+        }
+      },
+      {
+        "ms": 73703,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "tag-on-group-survives",
+          "scratchId": "4123571132#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 74309,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tag-on-group-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1127,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 74309,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemat-past-end"
+        }
+      },
+      {
+        "ms": 74342,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemat-past-end",
+          "answer": "threw",
+          "ms": 33,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 74343,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "picture-then-shape-read"
+        }
+      },
+      {
+        "ms": 74812,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "picture-then-shape-read",
+          "answer": "unreadable",
+          "ms": 469,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 74812,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-of-existing-shape-readable"
+        }
+      },
+      {
+        "ms": 75334,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-of-existing-shape-readable",
+          "scratchId": "4123571133#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 75862,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-of-existing-shape-readable",
+          "answer": "no-group-id",
+          "ms": 1050,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 75862,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "slide-layout-readable"
+        }
+      },
+      {
+        "ms": 76278,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "slide-layout-readable",
+          "answer": "yes",
+          "ms": 416,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 76278,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "layouts-readable"
+        }
+      },
+      {
+        "ms": 76792,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "layouts-readable",
+          "answer": "yes",
+          "ms": 514,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 76792,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "untrack-available"
+        }
+      },
+      {
+        "ms": 76798,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "untrack-available",
+          "answer": "no",
+          "ms": 6,
+          "pass": 1
+        }
+      },
+      {
+        "ms": 76798,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "untrack-available",
+          "id": "untrack-available-on-shape",
+          "was": "no"
+        }
+      },
+      {
+        "ms": 77367,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "untrack-available-on-shape",
+          "scratchId": "4123571134#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 77735,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "untrack-available-on-shape",
+          "answer": "no"
+        }
+      },
+      {
+        "ms": 77737,
+        "scope": "probe",
+        "message": "starting another pass over the questions",
+        "data": {
+          "pass": 2,
+          "asking": 27,
+          "of": 27,
+          "why": "full list"
+        }
+      },
+      {
+        "ms": 77737,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-isnullobject-populates"
+        }
+      },
+      {
+        "ms": 78331,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "load-isnullobject-populates",
+          "scratchId": "4123571135#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 78416,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-isnullobject-populates",
+          "answer": "yes",
+          "ms": 679,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 78416,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-id-populates-isnullobject"
+        }
+      },
+      {
+        "ms": 78489,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-id-populates-isnullobject",
+          "answer": "yes",
+          "ms": 73,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 78489,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemornullobject-missing"
+        }
+      },
+      {
+        "ms": 78508,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemornullobject-missing",
+          "answer": "null-object",
+          "ms": 19,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 78508,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy"
+        }
+      },
+      {
+        "ms": 79191,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy",
+          "answer": "yes",
+          "ms": 683,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 79191,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 79757,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "scratchId": "4123571136#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 80256,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "answer": "threw",
+          "ms": 1065,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 80256,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "scratchId": "4123571136#123571113"
+        }
+      },
+      {
+        "ms": 80256,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "shape-add-held-slide-proxy",
+          "id": "shape-add-held-slide-proxy-again",
+          "was": "threw"
+        }
+      },
+      {
+        "ms": 80809,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "shape-add-held-slide-proxy-again",
+          "scratchId": "4123571137#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 81287,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy-again",
+          "answer": "threw"
+        }
+      },
+      {
+        "ms": 81287,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "binding-names-shape-later"
+        }
+      },
+      {
+        "ms": 81859,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "binding-names-shape-later",
+          "scratchId": "4123571138#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 82282,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "binding-names-shape-later",
+          "answer": "no-scratch-slide",
+          "ms": 995,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 82282,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "binding-names-shape-later",
+          "scratchId": "4123571138#123571113"
+        }
+      },
+      {
+        "ms": 82282,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 82879,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 84020,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy",
+          "scratchId": "4123571140#123571113",
+          "after": "no-scratch-shape"
+        }
+      },
+      {
+        "ms": 84441,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy",
+          "answer": "no-scratch-shape",
+          "ms": 2159,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 84441,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide"
+        }
+      },
+      {
+        "ms": 85044,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide",
+          "scratchId": "4123571141#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 85604,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide",
+          "answer": "threw",
+          "ms": 1163,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 85604,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "shape-add-fresh-getitem-slide",
+          "id": "getitem-durable-slide",
+          "was": "threw"
+        }
+      },
+      {
+        "ms": 86294,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "getitem-durable-slide",
+          "scratchId": "4123571142#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 86403,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "getitem-durable-slide",
+          "answer": "yes"
+        }
+      },
+      {
+        "ms": 86403,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-positional-slide-proxy"
+        }
+      },
+      {
+        "ms": 86914,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-positional-slide-proxy",
+          "answer": "yes",
+          "ms": 511,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 86914,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-proxy-survives-one-sync"
+        }
+      },
+      {
+        "ms": 87536,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "scratchId": "4123571143#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 88022,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "answer": "unreadable",
+          "ms": 1108,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 88022,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-count-honest"
+        }
+      },
+      {
+        "ms": 88700,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "scratchId": "4123571144#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 89151,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "answer": "unreadable",
+          "ms": 1129,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 89151,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-via-positional-slide"
+        }
+      },
+      {
+        "ms": 89846,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "scratchId": "4123571145#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 90311,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "answer": "short-0",
+          "ms": 1160,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 90311,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "scratchId": "4123571145#123571113"
+        }
+      },
+      {
+        "ms": 90311,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getcount-populates-same-sync"
+        }
+      },
+      {
+        "ms": 90869,
+        "scope": "host",
+        "message": "claimed the appended slide though the id list churned",
+        "data": {
+          "before": 33,
+          "after": 34,
+          "fresh": 2
+        }
+      },
+      {
+        "ms": 90904,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "getcount-populates-same-sync"
+        }
+      },
+      {
+        "ms": 90967,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getcount-populates-same-sync",
+          "answer": "yes",
+          "ms": 656,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 90967,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-add-same-key-twice"
+        }
+      },
+      {
+        "ms": 91431,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-add-same-key-twice",
+          "answer": "other",
+          "ms": 464,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 91431,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-on-fresh-shape"
+        }
+      },
+      {
+        "ms": 92141,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "tags-on-fresh-shape",
+          "scratchId": "4123571147#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 92799,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-on-fresh-shape",
+          "answer": "yes",
+          "ms": 1368,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 92799,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "delete-then-lookup"
+        }
+      },
+      {
+        "ms": 93550,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "delete-then-lookup",
+          "scratchId": "4123571148#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 94267,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "delete-then-lookup",
+          "answer": "reports-gone",
+          "ms": 1467,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 94267,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "addgroup-returns-usable"
+        }
+      },
+      {
+        "ms": 94998,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "addgroup-returns-usable",
+          "scratchId": "4123571149#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 95726,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "addgroup-returns-usable",
+          "answer": "unreadable",
+          "ms": 1459,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 95726,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-children-via-getcount"
+        }
+      },
+      {
+        "ms": 96384,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-children-via-getcount",
+          "scratchId": "4123571150#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 97301,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-children-via-getcount",
+          "answer": "unreadable",
+          "ms": 1575,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 97301,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-reports-its-children"
+        }
+      },
+      {
+        "ms": 97946,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-reports-its-children",
+          "scratchId": "4123571151#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 98686,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-reports-its-children",
+          "answer": "threw",
+          "ms": 1385,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 98686,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "group-reports-its-children",
+          "scratchId": "4123571151#123571113"
+        }
+      },
+      {
+        "ms": 98686,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "grouped-child-by-id-from-slide"
+        }
+      },
+      {
+        "ms": 99409,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "grouped-child-by-id-from-slide"
+        }
+      },
+      {
+        "ms": 101236,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "grouped-child-by-id-from-slide",
+          "scratchId": "4123571153#123571113",
+          "after": "no-scratch-shape"
+        }
+      },
+      {
+        "ms": 101935,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "grouped-child-by-id-from-slide",
+          "answer": "no-scratch-shape",
+          "ms": 3249,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 101935,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tag-on-group-survives"
+        }
+      },
+      {
+        "ms": 102592,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "tag-on-group-survives",
+          "scratchId": "4123571154#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 103419,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tag-on-group-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1484,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 103419,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemat-past-end"
+        }
+      },
+      {
+        "ms": 103454,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemat-past-end",
+          "answer": "threw",
+          "ms": 35,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 103454,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "picture-then-shape-read"
+        }
+      },
+      {
+        "ms": 104204,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "picture-then-shape-read",
+          "scratchId": "4123571155#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 104854,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "picture-then-shape-read",
+          "answer": "unreadable",
+          "ms": 1400,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 104854,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-of-existing-shape-readable"
+        }
+      },
+      {
+        "ms": 106327,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-of-existing-shape-readable",
+          "scratchId": "4123571156#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 107339,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-of-existing-shape-readable",
+          "answer": "no-group-id",
+          "ms": 2485,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 107339,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "slide-layout-readable"
+        }
+      },
+      {
+        "ms": 107868,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "slide-layout-readable",
+          "answer": "yes",
+          "ms": 529,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 107868,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "layouts-readable"
+        }
+      },
+      {
+        "ms": 108426,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "layouts-readable",
+          "answer": "yes",
+          "ms": 558,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 108426,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "untrack-available"
+        }
+      },
+      {
+        "ms": 108449,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "untrack-available",
+          "answer": "no",
+          "ms": 22,
+          "pass": 2
+        }
+      },
+      {
+        "ms": 108449,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "untrack-available",
+          "id": "untrack-available-on-shape",
+          "was": "no"
+        }
+      },
+      {
+        "ms": 109763,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "untrack-available-on-shape",
+          "scratchId": "4123571157#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 110319,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "untrack-available-on-shape",
+          "answer": "no"
+        }
+      },
+      {
+        "ms": 110319,
+        "scope": "probe",
+        "message": "starting another pass over the questions",
+        "data": {
+          "pass": 3,
+          "asking": 27,
+          "of": 27,
+          "why": "full list"
+        }
+      },
+      {
+        "ms": 110319,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-isnullobject-populates"
+        }
+      },
+      {
+        "ms": 111121,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "load-isnullobject-populates",
+          "scratchId": "4123571158#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 111240,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-isnullobject-populates",
+          "answer": "yes",
+          "ms": 921,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 111240,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "load-id-populates-isnullobject"
+        }
+      },
+      {
+        "ms": 111350,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "load-id-populates-isnullobject",
+          "answer": "yes",
+          "ms": 110,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 111350,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemornullobject-missing"
+        }
+      },
+      {
+        "ms": 111400,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemornullobject-missing",
+          "answer": "null-object",
+          "ms": 50,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 111400,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy"
+        }
+      },
+      {
+        "ms": 111830,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-slide-proxy",
+          "answer": "yes",
+          "ms": 430,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 111830,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 112695,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "scratchId": "4123571159#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 113369,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "answer": "threw",
+          "ms": 1539,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 113369,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "shape-add-held-slide-proxy",
+          "scratchId": "4123571159#123571113"
+        }
+      },
+      {
+        "ms": 113370,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "shape-add-held-slide-proxy",
+          "id": "shape-add-held-slide-proxy-again",
+          "was": "threw"
+        }
+      },
+      {
+        "ms": 114185,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "shape-add-held-slide-proxy-again",
+          "scratchId": "4123571160#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 114809,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "shape-add-held-slide-proxy-again",
+          "answer": "threw"
+        }
+      },
+      {
+        "ms": 114809,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "binding-names-shape-later"
+        }
+      },
+      {
+        "ms": 115629,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "binding-names-shape-later",
+          "scratchId": "4123571161#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 116269,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "binding-names-shape-later",
+          "answer": "no-scratch-slide",
+          "ms": 1460,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 116269,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "binding-names-shape-later",
+          "scratchId": "4123571161#123571113"
+        }
+      },
+      {
+        "ms": 116269,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 116932,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy"
+        }
+      },
+      {
+        "ms": 118776,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy",
+          "scratchId": "4123571163#123571113",
+          "after": "no-scratch-shape"
+        }
+      },
+      {
+        "ms": 118968,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-resolve-held-slide-proxy",
+          "answer": "no-scratch-shape",
+          "ms": 2699,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 118968,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide"
+        }
+      },
+      {
+        "ms": 119759,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide",
+          "scratchId": "4123571164#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 120228,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-fresh-getitem-slide",
+          "answer": "threw",
+          "ms": 1260,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 120228,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "shape-add-fresh-getitem-slide",
+          "id": "getitem-durable-slide",
+          "was": "threw"
+        }
+      },
+      {
+        "ms": 120996,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "getitem-durable-slide",
+          "scratchId": "4123571165#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 121113,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "getitem-durable-slide",
+          "answer": "yes"
+        }
+      },
+      {
+        "ms": 121113,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-add-positional-slide-proxy"
+        }
+      },
+      {
+        "ms": 121796,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-add-positional-slide-proxy",
+          "answer": "yes",
+          "ms": 683,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 121796,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shape-proxy-survives-one-sync"
+        }
+      },
+      {
+        "ms": 122476,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "scratchId": "4123571166#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 123137,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shape-proxy-survives-one-sync",
+          "answer": "unreadable",
+          "ms": 1341,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 123137,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-count-honest"
+        }
+      },
+      {
+        "ms": 124026,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "scratchId": "4123571167#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 125838,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-count-honest",
+          "answer": "short-0",
+          "ms": 2701,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 125838,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "shapes-items-via-positional-slide"
+        }
+      },
+      {
+        "ms": 126501,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "answer": "not-listed",
+          "ms": 663,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 126501,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "shapes-items-via-positional-slide",
+          "scratchId": "4123571167#123571113"
+        }
+      },
+      {
+        "ms": 126502,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getcount-populates-same-sync"
+        }
+      },
+      {
+        "ms": 127444,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "getcount-populates-same-sync"
+        }
+      },
+      {
+        "ms": 127504,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getcount-populates-same-sync",
+          "answer": "yes",
+          "ms": 1002,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 127504,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-add-same-key-twice"
+        }
+      },
+      {
+        "ms": 128118,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-add-same-key-twice",
+          "answer": "other",
+          "ms": 614,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 128119,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tags-on-fresh-shape"
+        }
+      },
+      {
+        "ms": 129213,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "tags-on-fresh-shape",
+          "scratchId": "4123571169#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 129871,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tags-on-fresh-shape",
+          "answer": "yes",
+          "ms": 1752,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 129871,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "delete-then-lookup"
+        }
+      },
+      {
+        "ms": 130720,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "delete-then-lookup",
+          "scratchId": "4123571170#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 131486,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "delete-then-lookup",
+          "answer": "reports-gone",
+          "ms": 1615,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 131486,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "addgroup-returns-usable"
+        }
+      },
+      {
+        "ms": 132417,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "addgroup-returns-usable",
+          "scratchId": "4123571171#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 133261,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "addgroup-returns-usable",
+          "answer": "unreadable",
+          "ms": 1775,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 133261,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-children-via-getcount"
+        }
+      },
+      {
+        "ms": 133972,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-children-via-getcount",
+          "scratchId": "4123571172#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 134759,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-children-via-getcount",
+          "answer": "unreadable",
+          "ms": 1498,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 134760,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-reports-its-children"
+        }
+      },
+      {
+        "ms": 135650,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-reports-its-children",
+          "scratchId": "4123571173#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 138233,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-reports-its-children",
+          "answer": "threw",
+          "ms": 3473,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 138233,
+        "scope": "probe",
+        "message": "giving up the scratch slide this question wrecked",
+        "data": {
+          "id": "group-reports-its-children",
+          "scratchId": "4123571173#123571113"
+        }
+      },
+      {
+        "ms": 138233,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "grouped-child-by-id-from-slide"
+        }
+      },
+      {
+        "ms": 139233,
+        "scope": "probe",
+        "message": "took another scratch slide after giving up on the last",
+        "data": {
+          "id": "grouped-child-by-id-from-slide"
+        }
+      },
+      {
+        "ms": 140658,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "grouped-child-by-id-from-slide",
+          "scratchId": "4123571175#123571113",
+          "after": "no-scratch-shape"
+        }
+      },
+      {
+        "ms": 141470,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "grouped-child-by-id-from-slide",
+          "answer": "no-scratch-shape",
+          "ms": 3237,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 141470,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "tag-on-group-survives"
+        }
+      },
+      {
+        "ms": 142530,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "tag-on-group-survives",
+          "scratchId": "4123571176#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 143327,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "tag-on-group-survives",
+          "answer": "no-scratch-slide",
+          "ms": 1857,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 143327,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "getitemat-past-end"
+        }
+      },
+      {
+        "ms": 143382,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "getitemat-past-end",
+          "answer": "threw",
+          "ms": 55,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 143382,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "picture-then-shape-read"
+        }
+      },
+      {
+        "ms": 144172,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "picture-then-shape-read",
+          "scratchId": "4123571177#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 144849,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "picture-then-shape-read",
+          "answer": "unreadable",
+          "ms": 1467,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 144850,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "group-of-existing-shape-readable"
+        }
+      },
+      {
+        "ms": 145943,
+        "scope": "probe",
+        "message": "replaced the scratch slide",
+        "data": {
+          "id": "group-of-existing-shape-readable",
+          "scratchId": "4123571178#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 147105,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "group-of-existing-shape-readable",
+          "answer": "no-group-id",
+          "ms": 2255,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 147105,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "slide-layout-readable"
+        }
+      },
+      {
+        "ms": 147536,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "slide-layout-readable",
+          "answer": "yes",
+          "ms": 431,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 147536,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "layouts-readable"
+        }
+      },
+      {
+        "ms": 148143,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "layouts-readable",
+          "answer": "yes",
+          "ms": 607,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 148143,
+        "scope": "probe",
+        "message": "asking",
+        "data": {
+          "id": "untrack-available"
+        }
+      },
+      {
+        "ms": 148207,
+        "scope": "probe",
+        "message": "answered",
+        "data": {
+          "id": "untrack-available",
+          "answer": "no",
+          "ms": 64,
+          "pass": 3
+        }
+      },
+      {
+        "ms": 148207,
+        "scope": "probe",
+        "message": "asking the partner question",
+        "data": {
+          "after": "untrack-available",
+          "id": "untrack-available-on-shape",
+          "was": "no"
+        }
+      },
+      {
+        "ms": 149010,
+        "scope": "probe",
+        "message": "replaced the scratch slide for a partner question",
+        "data": {
+          "id": "untrack-available-on-shape",
+          "scratchId": "4123571179#123571113",
+          "after": "no-scratch-slide"
+        }
+      },
+      {
+        "ms": 149641,
+        "scope": "probe",
+        "message": "partner answered",
+        "data": {
+          "id": "untrack-available-on-shape",
+          "answer": "no"
+        }
+      },
+      {
+        "ms": 149641,
+        "scope": "probe",
+        "message": "second pass over the questions that were never put",
+        "data": {
+          "count": 4
+        }
+      },
+      {
+        "ms": 156348,
+        "scope": "probe",
+        "message": "second pass finished",
+        "data": {
+          "of": 4,
+          "rescued": 0
+        }
+      },
+      {
+        "ms": 167597,
+        "scope": "probe",
+        "message": "sweeping the run's own slides by position",
+        "data": {
+          "from": 1,
+          "count": 70,
+          "deckAtStart": 1,
+          "deckNow": 71,
+          "why": "delete-by-id left slides behind and this host does not list the ids they were added under"
+        }
+      },
+      {
+        "ms": 168458,
+        "scope": "probe",
+        "message": "swept",
+        "data": {
+          "swept": 70,
+          "deckNow": 1
+        }
+      },
+      {
+        "ms": 168458,
+        "scope": "probe",
+        "message": "gave the scratch slides back",
+        "data": {
+          "returned": 0,
+          "swept": 70,
+          "left": 0,
+          "deckBefore": 71,
+          "deckAfter": 1,
+          "shrankBy": 70,
+          "stillListed": 0,
+          "heldIds": ["4123571114#123571113", "4123571115#123571113", "4123571116#123571113"],
+          "deckIds": ["256#109857222", "257#272252755", "258#1963982471"]
+        }
+      },
+      {
+        "ms": 168602,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "insert on top of an earlier run",
+          "deckSlides": 1,
+          "atMs": 168602
+        }
+      },
+      {
+        "ms": 170729,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": 2,
+          "base64Bytes": 112728,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 172122,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": 2,
+          "base64Bytes": 112728,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 173401,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1256,
+          "slides": 5,
+          "charts": 4,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 173407,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "insert on top of an earlier run",
+          "detail": "deck grew by 4 (want 4); 4 of 4 charts re-editable",
+          "ms": 4799,
+          "deckSlides": 5,
+          "deckGrew": 4,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 173436,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "two slides claiming one slot",
+          "deckSlides": 5,
+          "atMs": 173436
+        }
+      },
+      {
+        "ms": 174512,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": 2,
+          "base64Bytes": 112712,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 175750,
+        "scope": "insert",
+        "message": "handed the host a generated deck",
+        "data": {
+          "expectedSlides": 2,
+          "landed": 2,
+          "base64Bytes": 112712,
+          "formatting": "KeepSourceFormatting"
+        }
+      },
+      {
+        "ms": 176812,
+        "scope": "repair",
+        "message": "tag pass over a page",
+        "data": {
+          "attempt": 0,
+          "from": 5,
+          "to": 8,
+          "slides": 4,
+          "shapesExpected": 4,
+          "shapesSeen": 4,
+          "tagsFound": 4,
+          "undetermined": 0,
+          "withoutTag": []
+        }
+      },
+      {
+        "ms": 178083,
+        "scope": "repair",
+        "message": "read the deck back",
+        "data": {
+          "range": [5, 9],
+          "read": 4,
+          "unread": 0,
+          "withSlotTag": 4
+        }
+      },
+      {
+        "ms": 178084,
+        "scope": "repair",
+        "message": "applying delete",
+        "data": {
+          "index": 8,
+          "slot": 1,
+          "reason": "duplicate of slide 7 (selftest mssnzott-pmz6xg dup B)"
+        }
+      },
+      {
+        "ms": 178703,
+        "scope": "repair",
+        "message": "applying delete",
+        "data": {
+          "index": 7,
+          "slot": 0,
+          "reason": "duplicate of slide 6 (selftest mssnzott-pmz6xg dup A)"
+        }
+      },
+      {
+        "ms": 180540,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1168,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 180557,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "two slides claiming one slot",
+          "detail": "4 slides inserted, 2 kept, 2 of 2 still re-editable; 2 queued as duplicates",
+          "ms": 7104,
+          "deckSlides": 7,
+          "deckGrew": 2,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 180576,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "edit a chart on the visible slide",
+          "deckSlides": 7,
+          "atMs": 180576
+        }
+      },
+      {
+        "ms": 181879,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1303,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 182970,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 183008,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 10,
+          "total": 24,
+          "onSlide": 0,
+          "onSlideKey": "257#1969267518",
+          "idleMs": 607,
+          "afterAnswering": "moving the view to a slide",
+          "afterAnsweringMs": 522
+        }
+      },
+      {
+        "ms": 191860,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 20,
+          "total": 24,
+          "onSlide": 10,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 8851
+        }
+      },
+      {
+        "ms": 202052,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 24,
+          "total": 24,
+          "onSlide": 20,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 10191
+        }
+      },
+      {
+        "ms": 208841,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 211713,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1312,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 211794,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "edit a chart on the visible slide",
+          "detail": "redrawn on the visible slide and the config round-tripped",
+          "ms": 31138,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 211814,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "insert onto a slide that already has content",
+          "deckSlides": 7,
+          "atMs": 211814
+        }
+      },
+      {
+        "ms": 213137,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1323,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 213842,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 10,
+          "total": 16,
+          "onSlide": 0,
+          "onSlideKey": "(visible)",
+          "idleMs": 2,
+          "afterAnswering": "counting the deck's slides",
+          "afterAnsweringMs": 14
+        }
+      },
+      {
+        "ms": 232643,
+        "scope": "draw",
+        "message": "moved this draw's shape count onto the slide the host finally named",
+        "data": {
+          "from": "(visible)",
+          "to": "257#1969267518",
+          "shapes": 10
+        }
+      },
+      {
+        "ms": 232643,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 16,
+          "total": 16,
+          "onSlide": 34,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 18801
+        }
+      },
+      {
+        "ms": 243270,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 244646,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 10,
+          "total": 16,
+          "onSlide": 0,
+          "onSlideKey": "(visible)",
+          "idleMs": 1,
+          "afterAnswering": "writing the chart's origin tag",
+          "afterAnsweringMs": 643
+        }
+      },
+      {
+        "ms": 266907,
+        "scope": "draw",
+        "message": "moved this draw's shape count onto the slide the host finally named",
+        "data": {
+          "from": "(visible)",
+          "to": "257#1969267518",
+          "shapes": 10
+        }
+      },
+      {
+        "ms": 266907,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 16,
+          "total": 16,
+          "onSlide": 50,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 22260
+        }
+      },
+      {
+        "ms": 281272,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 286006,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 3101,
+          "slides": 7,
+          "charts": 8,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 289060,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 3054,
+          "slides": 7,
+          "charts": 8,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 289064,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "insert onto a slide that already has content",
+          "detail": "2 charts drawn onto the visible slide, all re-editable, the one already there untouched",
+          "ms": 77246,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 289103,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "same scale across the deck",
+          "deckSlides": 7,
+          "atMs": 289103
+        }
+      },
+      {
+        "ms": 290581,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1478,
+          "slides": 7,
+          "charts": 8,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 292210,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "chart": "1/8",
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 292255,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "1/8",
+          "upTo": 10,
+          "total": 24,
+          "onSlide": 32,
+          "onSlideKey": "257#1969267518",
+          "idleMs": 804,
+          "afterAnswering": "moving the view to a slide",
+          "afterAnsweringMs": 870
+        }
+      },
+      {
+        "ms": 313894,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "1/8",
+          "upTo": 20,
+          "total": 24,
+          "onSlide": 42,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 21639
+        }
+      },
+      {
+        "ms": 337651,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "1/8",
+          "upTo": 24,
+          "total": 24,
+          "onSlide": 52,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 23757
+        }
+      },
+      {
+        "ms": 351690,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "chart": "1/8",
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 354541,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "chart": "2/8",
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 354584,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "2/8",
+          "upTo": 10,
+          "total": 16,
+          "onSlide": 40,
+          "onSlideKey": "257#1969267518",
+          "idleMs": 942,
+          "afterAnswering": "writing the chart's origin tag",
+          "afterAnsweringMs": 937
+        }
+      },
+      {
+        "ms": 377952,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "2/8",
+          "upTo": 16,
+          "total": 16,
+          "onSlide": 50,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 23368
+        }
+      },
+      {
+        "ms": 391870,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "chart": "2/8",
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 395424,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "chart": "3/8",
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 395485,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "3/8",
+          "upTo": 10,
+          "total": 16,
+          "onSlide": 40,
+          "onSlideKey": "257#1969267518",
+          "idleMs": 2196,
+          "afterAnswering": "writing the chart's origin tag",
+          "afterAnsweringMs": 759
+        }
+      },
+      {
+        "ms": 416644,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "3/8",
+          "upTo": 16,
+          "total": 16,
+          "onSlide": 50,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 21159
+        }
+      },
+      {
+        "ms": 433263,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "chart": "3/8",
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 435749,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "chart": "4/8",
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 435784,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "4/8",
+          "upTo": 10,
+          "total": 24,
+          "onSlide": 0,
+          "onSlideKey": "258#3410008808",
+          "idleMs": 801,
+          "afterAnswering": "writing the chart's origin tag",
+          "afterAnsweringMs": 826
+        }
+      },
+      {
+        "ms": 441586,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "4/8",
+          "upTo": 20,
+          "total": 24,
+          "onSlide": 10,
+          "onSlideKey": "258#3410008808",
+          "prevBatchMs": 5802
+        }
+      },
+      {
+        "ms": 452116,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "4/8",
+          "upTo": 24,
+          "total": 24,
+          "onSlide": 20,
+          "onSlideKey": "258#3410008808",
+          "prevBatchMs": 10529
+        }
+      },
+      {
+        "ms": 458128,
+        "scope": "group",
+        "message": "the re-read matched only some of the chart's shapes",
+        "data": {
+          "chart": "4/8",
+          "index": 0,
+          "drew": 24,
+          "matched": 20
+        }
+      },
+      {
+        "ms": 458128,
+        "scope": "group",
+        "message": "not grouping: no member handle this host will accept",
+        "data": {
+          "chart": "4/8",
+          "index": 0,
+          "refreshed": 0
+        }
+      },
+      {
+        "ms": 458165,
+        "scope": "error",
+        "message": "reading back an ungrouped chart's shape ids",
+        "data": {
+          "chart": "4/8",
+          "error": "InvalidParam passed to GetItem(id) | at=reading back an ungrouped chart's shape ids | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape19 = shapes2.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"...\",\"shape17.load([\\\"id\\\"]);\",\"var shape18 = shapes1.getItem(...) /* originally addGeometricShape(...) */;\",\"shape18.load([\\\"id\\\"]);\",\"var slide2 = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes2 = slide2.shapes;\",\"// >>>>>\",\"var shape19 = shapes2.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"shape19.load([\\\"id\\\"]);\",\"var shape20 = shapes2.getItem(...) /* originally addLine(...) */;\",\"shape20.load([\\\"id\\\"]);\",\"var shape21 = shapes2.getItem(...) /* originally addTextBox(...) */;\",\"shape21.load([\\\"id\\\"]);\",\"...\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"258#3410008808\\\") /* originally getItemOrNullObject(\\\"258#3410008808\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"28\\\") /* originally addTextBox(\\\"Q1\\\", {\\\"left\\\":242,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape.load([\\\"id\\\"]);\",\"var shape1 = shapes.getItem(\\\"29\\\") /* originally addTextBox(\\\"Q2\\\", {\\\"left\\\":352.1,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape1.load([\\\"id\\\"]);\",\"var shape2 = shapes.getItem(\\\"30\\\") /* originally addTextBox(\\\"Q3\\\", {\\\"left\\\":462.20000000000005,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape2.load([\\\"id\\\"]);\",\"… 37 statement(s) dropped from the middle\",\"shape19.load([\\\"id\\\"]);\",\"var shape20 = shapes2.getItem(\\\"48\\\") /* originally addLine(\\\"Straight\\\", {\\\"left\\\":242,\\\"top\\\":402,\\\"width\\\":440.4,\\\"height\\\":0.5}) */;\",\"shape20.load([\\\"id\\\"]);\",\"var shape21 = shapes2.getItem(\\\"49\\\") /* originally addTextBox(\\\"2025\\\", {\\\"left\\\":686.4,\\\"top\\\":311.25,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape21.load([\\\"id\\\"]);\",\"var shape22 = shapes2.getItem(\\\"50\\\") /* originally addTextBox(\\\"2024\\\", {\\\"left\\\":686.4,\\\"top\\\":324.75,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape22.load([\\\"id\\\"]);\",\"var shape23 = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg twice B\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"shape23.altTextDescription = \\\"clustered column chart. 2 data series: 2024, 2025. 4 categories: Q1, Q2, Q3, Q4.\\\";\",\"shape23.altTextTitle = \\\"selftest mssnzott-pmz6xg twice B\\\";\"]}"
+        }
+      },
+      {
+        "ms": 460824,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "chart": "5/8",
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 460858,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "5/8",
+          "upTo": 10,
+          "total": 24,
+          "onSlide": 0,
+          "onSlideKey": "259#1511113511",
+          "idleMs": 920,
+          "afterAnswering": "writing the chart's origin tag",
+          "afterAnsweringMs": 976
+        }
+      },
+      {
+        "ms": 466827,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "5/8",
+          "upTo": 20,
+          "total": 24,
+          "onSlide": 10,
+          "onSlideKey": "259#1511113511",
+          "prevBatchMs": 5968
+        }
+      },
+      {
+        "ms": 477888,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "5/8",
+          "upTo": 24,
+          "total": 24,
+          "onSlide": 20,
+          "onSlideKey": "259#1511113511",
+          "prevBatchMs": 11060
+        }
+      },
+      {
+        "ms": 483560,
+        "scope": "group",
+        "message": "the re-read matched only some of the chart's shapes",
+        "data": {
+          "chart": "5/8",
+          "index": 0,
+          "drew": 24,
+          "matched": 10
+        }
+      },
+      {
+        "ms": 483560,
+        "scope": "group",
+        "message": "not grouping: no member handle this host will accept",
+        "data": {
+          "chart": "5/8",
+          "index": 0,
+          "refreshed": 0
+        }
+      },
+      {
+        "ms": 483579,
+        "scope": "error",
+        "message": "reading back an ungrouped chart's shape ids",
+        "data": {
+          "chart": "5/8",
+          "error": "InvalidParam passed to GetItem(id) | at=reading back an ungrouped chart's shape ids | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape9 = shapes1.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"...\",\"shape7.load([\\\"id\\\"]);\",\"var shape8 = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"shape8.load([\\\"id\\\"]);\",\"var slide1 = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes1 = slide1.shapes;\",\"// >>>>>\",\"var shape9 = shapes1.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"shape9.load([\\\"id\\\"]);\",\"var shape10 = shapes1.getItem(...) /* originally addGeometricShape(...) */;\",\"shape10.load([\\\"id\\\"]);\",\"var shape11 = shapes1.getItem(...) /* originally addTextBox(...) */;\",\"shape11.load([\\\"id\\\"]);\",\"...\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"259#1511113511\\\") /* originally getItemOrNullObject(\\\"259#1511113511\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"28\\\") /* originally addTextBox(\\\"Q1\\\", {\\\"left\\\":242,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape.load([\\\"id\\\"]);\",\"var shape1 = shapes.getItem(\\\"29\\\") /* originally addTextBox(\\\"Q2\\\", {\\\"left\\\":352.1,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape1.load([\\\"id\\\"]);\",\"var shape2 = shapes.getItem(\\\"30\\\") /* originally addTextBox(\\\"Q3\\\", {\\\"left\\\":462.20000000000005,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape2.load([\\\"id\\\"]);\",\"… 37 statement(s) dropped from the middle\",\"shape19.load([\\\"id\\\"]);\",\"var shape20 = shapes2.getItem(\\\"48\\\") /* originally addLine(\\\"Straight\\\", {\\\"left\\\":242,\\\"top\\\":402,\\\"width\\\":440.4,\\\"height\\\":0.5}) */;\",\"shape20.load([\\\"id\\\"]);\",\"var shape21 = shapes2.getItem(\\\"49\\\") /* originally addTextBox(\\\"2025\\\", {\\\"left\\\":686.4,\\\"top\\\":311.25,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape21.load([\\\"id\\\"]);\",\"var shape22 = shapes2.getItem(\\\"50\\\") /* originally addTextBox(\\\"2024\\\", {\\\"left\\\":686.4,\\\"top\\\":324.75,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape22.load([\\\"id\\\"]);\",\"var shape23 = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg twice A\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"shape23.altTextDescription = \\\"clustered column chart. 2 data series: 2024, 2025. 4 categories: Q1, Q2, Q3, Q4.\\\";\",\"shape23.altTextTitle = \\\"selftest mssnzott-pmz6xg twice A\\\";\"]}"
+        }
+      },
+      {
+        "ms": 485939,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "chart": "6/8",
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 486003,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "6/8",
+          "upTo": 10,
+          "total": 24,
+          "onSlide": 0,
+          "onSlideKey": "260#3502243336",
+          "idleMs": 917,
+          "afterAnswering": "writing the chart's origin tag",
+          "afterAnsweringMs": 795
+        }
+      },
+      {
+        "ms": 491418,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "6/8",
+          "upTo": 20,
+          "total": 24,
+          "onSlide": 10,
+          "onSlideKey": "260#3502243336",
+          "prevBatchMs": 5415
+        }
+      },
+      {
+        "ms": 500486,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "6/8",
+          "upTo": 24,
+          "total": 24,
+          "onSlide": 20,
+          "onSlideKey": "260#3502243336",
+          "prevBatchMs": 9068
+        }
+      },
+      {
+        "ms": 506168,
+        "scope": "group",
+        "message": "the re-read before grouping came back empty",
+        "data": {
+          "chart": "6/8",
+          "index": 0,
+          "drew": 24
+        }
+      },
+      {
+        "ms": 506168,
+        "scope": "group",
+        "message": "not grouping: no member handle this host will accept",
+        "data": {
+          "chart": "6/8",
+          "index": 0,
+          "refreshed": 0
+        }
+      },
+      {
+        "ms": 506178,
+        "scope": "error",
+        "message": "reading back an ungrouped chart's shape ids",
+        "data": {
+          "chart": "6/8",
+          "error": "InvalidParam passed to GetItem(id) | at=reading back an ungrouped chart's shape ids | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"shape.load([\\\"id\\\"]);\",\"var shape1 = shapes.getItem(...) /* originally addTextBox(...) */;\",\"shape1.load([\\\"id\\\"]);\",\"var shape2 = shapes.getItem(...) /* originally addTextBox(...) */;\",\"shape2.load([\\\"id\\\"]);\",\"...\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"260#3502243336\\\") /* originally getItemOrNullObject(\\\"260#3502243336\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"28\\\") /* originally addTextBox(\\\"Q1\\\", {\\\"left\\\":242,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape.load([\\\"id\\\"]);\",\"var shape1 = shapes.getItem(\\\"29\\\") /* originally addTextBox(\\\"Q2\\\", {\\\"left\\\":352.1,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape1.load([\\\"id\\\"]);\",\"var shape2 = shapes.getItem(\\\"30\\\") /* originally addTextBox(\\\"Q3\\\", {\\\"left\\\":462.20000000000005,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape2.load([\\\"id\\\"]);\",\"… 37 statement(s) dropped from the middle\",\"shape19.load([\\\"id\\\"]);\",\"var shape20 = shapes2.getItem(\\\"48\\\") /* originally addLine(\\\"Straight\\\", {\\\"left\\\":242,\\\"top\\\":402,\\\"width\\\":440.4,\\\"height\\\":0.5}) */;\",\"shape20.load([\\\"id\\\"]);\",\"var shape21 = shapes2.getItem(\\\"49\\\") /* originally addTextBox(\\\"2025\\\", {\\\"left\\\":686.4,\\\"top\\\":311.25,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape21.load([\\\"id\\\"]);\",\"var shape22 = shapes2.getItem(\\\"50\\\") /* originally addTextBox(\\\"2024\\\", {\\\"left\\\":686.4,\\\"top\\\":324.75,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape22.load([\\\"id\\\"]);\",\"var shape23 = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg twice B\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"shape23.altTextDescription = \\\"clustered column chart. 2 data series: 2024, 2025. 4 categories: Q1, Q2, Q3, Q4.\\\";\",\"shape23.altTextTitle = \\\"selftest mssnzott-pmz6xg twice B\\\";\"]}"
+        }
+      },
+      {
+        "ms": 506203,
+        "scope": "error",
+        "message": "writing the chart's config tag",
+        "data": {
+          "chart": "6/8",
+          "error": "InvalidParam passed to GetItem(id) | at=writing the chart's config tag | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"var tags = shape.tags;\",\"tags.add(...);\",\"tags.add(...);\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"260#3502243336\\\") /* originally getItemOrNullObject(\\\"260#3502243336\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg twice B\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"var tags = shape.tags;\",\"tags.add(\\\"POWERCHART_CONFIG\\\", \\\"{\\\\\\\"kind\\\\\\\":\\\\\\\"clustered\\\\\\\",\\\\\\\"width\\\\\\\":480,\\\\\\\"height\\\\\\\":300,\\\\\\\"title\\\\\\\":\\\\\\\"selftest mssnzott-pmz6xg twice B\\\\\\\",\\\\\\\"data\\\\\\\":{\\\\\\\"categories\\\\\\\":[\\\\\\\"Q1\\\\\\\",\\\\\\\"Q2\\\\\\\",\\\\\\\"Q3\\\\\\\",\\\\\\\"Q4\\\\\\\"],\\\\\\\"series\\\\\\\":[{\\\\\\\"name\\\\\\\":\\\\\\\"2024\\\\\\\",\\\\\\\"values\\\\\\\":[42,48,45,61]},{\\\\\\\"name\\\\\\\":\\\\\\\"2025\\\\\\\",\\\\\\\"values\\\\\\\":[51,55,58,70]}]},\\\\\\\"decorations\\\\\\\":{\\\\\\\"seriesLabels\\\\\\\":true},\\\\\\\"scale\\\\\\\":{\\\\\\\"max\\\\\\\":105}}\\\");\",\"tags.add(\\\"POWERCHART_SCENE\\\", \\\"7bp4zc\\\");\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 506203,
+        "scope": "group",
+        "message": "tagging failed — charts are not re-editable until repaired",
+        "data": {
+          "chart": "6/8",
+          "charts": 1,
+          "error": "InvalidParam passed to GetItem(id) | at=writing the chart's config tag | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"var tags = shape.tags;\",\"tags.add(...);\",\"tags.add(...);\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"260#3502243336\\\") /* originally getItemOrNullObject(\\\"260#3502243336\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg twice B\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"var tags = shape.tags;\",\"tags.add(\\\"POWERCHART_CONFIG\\\", \\\"{\\\\\\\"kind\\\\\\\":\\\\\\\"clustered\\\\\\\",\\\\\\\"width\\\\\\\":480,\\\\\\\"height\\\\\\\":300,\\\\\\\"title\\\\\\\":\\\\\\\"selftest mssnzott-pmz6xg twice B\\\\\\\",\\\\\\\"data\\\\\\\":{\\\\\\\"categories\\\\\\\":[\\\\\\\"Q1\\\\\\\",\\\\\\\"Q2\\\\\\\",\\\\\\\"Q3\\\\\\\",\\\\\\\"Q4\\\\\\\"],\\\\\\\"series\\\\\\\":[{\\\\\\\"name\\\\\\\":\\\\\\\"2024\\\\\\\",\\\\\\\"values\\\\\\\":[42,48,45,61]},{\\\\\\\"name\\\\\\\":\\\\\\\"2025\\\\\\\",\\\\\\\"values\\\\\\\":[51,55,58,70]}]},\\\\\\\"decorations\\\\\\\":{\\\\\\\"seriesLabels\\\\\\\":true},\\\\\\\"scale\\\\\\\":{\\\\\\\"max\\\\\\\":105}}\\\");\",\"tags.add(\\\"POWERCHART_SCENE\\\", \\\"7bp4zc\\\");\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 506240,
+        "scope": "error",
+        "message": "reading back where the charts landed",
+        "data": {
+          "chart": "6/8",
+          "error": "InvalidParam passed to GetItem(id) | at=reading back where the charts landed | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"260#3502243336\\\") /* originally getItemOrNullObject(\\\"260#3502243336\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg twice B\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 506250,
+        "scope": "group",
+        "message": "the settle's re-read came back empty",
+        "data": {
+          "chart": "6/8",
+          "slideId": "260#3502243336",
+          "askedById": false
+        }
+      },
+      {
+        "ms": 506251,
+        "scope": "group",
+        "message": "settle pass: could not repair any config tag the drawing context lost",
+        "data": {
+          "chart": "6/8",
+          "charts": 1,
+          "settled": 0,
+          "lost": 1,
+          "withId": 0
+        }
+      },
+      {
+        "ms": 506976,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "chart": "7/8",
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 507027,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "7/8",
+          "upTo": 10,
+          "total": 24,
+          "onSlide": 0,
+          "onSlideKey": "261#3926101235",
+          "idleMs": 777,
+          "afterAnswering": "re-reading a slide to tag the chart it would not tag",
+          "afterAnsweringMs": 9
+        }
+      },
+      {
+        "ms": 512844,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "7/8",
+          "upTo": 20,
+          "total": 24,
+          "onSlide": 10,
+          "onSlideKey": "261#3926101235",
+          "prevBatchMs": 5817
+        }
+      },
+      {
+        "ms": 521607,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "chart": "7/8",
+          "upTo": 24,
+          "total": 24,
+          "onSlide": 20,
+          "onSlideKey": "261#3926101235",
+          "prevBatchMs": 8761
+        }
+      },
+      {
+        "ms": 527847,
+        "scope": "group",
+        "message": "the re-read before grouping came back empty",
+        "data": {
+          "chart": "7/8",
+          "index": 0,
+          "drew": 24
+        }
+      },
+      {
+        "ms": 527848,
+        "scope": "group",
+        "message": "not grouping: no member handle this host will accept",
+        "data": {
+          "chart": "7/8",
+          "index": 0,
+          "refreshed": 0
+        }
+      },
+      {
+        "ms": 527869,
+        "scope": "error",
+        "message": "reading back an ungrouped chart's shape ids",
+        "data": {
+          "chart": "7/8",
+          "error": "InvalidParam passed to GetItem(id) | at=reading back an ungrouped chart's shape ids | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"shape.load([\\\"id\\\"]);\",\"var shape1 = shapes.getItem(...) /* originally addTextBox(...) */;\",\"shape1.load([\\\"id\\\"]);\",\"var shape2 = shapes.getItem(...) /* originally addTextBox(...) */;\",\"shape2.load([\\\"id\\\"]);\",\"...\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"261#3926101235\\\") /* originally getItemOrNullObject(\\\"261#3926101235\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"28\\\") /* originally addTextBox(\\\"Q1\\\", {\\\"left\\\":242,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape.load([\\\"id\\\"]);\",\"var shape1 = shapes.getItem(\\\"29\\\") /* originally addTextBox(\\\"Q2\\\", {\\\"left\\\":352.1,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape1.load([\\\"id\\\"]);\",\"var shape2 = shapes.getItem(\\\"30\\\") /* originally addTextBox(\\\"Q3\\\", {\\\"left\\\":462.20000000000005,\\\"top\\\":405,\\\"width\\\":110.09999999999998,\\\"height\\\":14}) */;\",\"shape2.load([\\\"id\\\"]);\",\"… 37 statement(s) dropped from the middle\",\"shape19.load([\\\"id\\\"]);\",\"var shape20 = shapes2.getItem(\\\"48\\\") /* originally addLine(\\\"Straight\\\", {\\\"left\\\":242,\\\"top\\\":402,\\\"width\\\":440.4,\\\"height\\\":0.5}) */;\",\"shape20.load([\\\"id\\\"]);\",\"var shape21 = shapes2.getItem(\\\"49\\\") /* originally addTextBox(\\\"2025\\\", {\\\"left\\\":686.4,\\\"top\\\":311.25,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape21.load([\\\"id\\\"]);\",\"var shape22 = shapes2.getItem(\\\"50\\\") /* originally addTextBox(\\\"2024\\\", {\\\"left\\\":686.4,\\\"top\\\":324.75,\\\"width\\\":33.60000000000002,\\\"height\\\":13.5}) */;\",\"shape22.load([\\\"id\\\"]);\",\"var shape23 = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg dup A\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"shape23.altTextDescription = \\\"clustered column chart. 2 data series: 2024, 2025. 4 categories: Q1, Q2, Q3, Q4.\\\";\",\"shape23.altTextTitle = \\\"selftest mssnzott-pmz6xg dup A\\\";\"]}"
+        }
+      },
+      {
+        "ms": 527892,
+        "scope": "error",
+        "message": "writing the chart's config tag",
+        "data": {
+          "chart": "7/8",
+          "error": "InvalidParam passed to GetItem(id) | at=writing the chart's config tag | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"var tags = shape.tags;\",\"tags.add(...);\",\"tags.add(...);\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"261#3926101235\\\") /* originally getItemOrNullObject(\\\"261#3926101235\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg dup A\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"var tags = shape.tags;\",\"tags.add(\\\"POWERCHART_CONFIG\\\", \\\"{\\\\\\\"kind\\\\\\\":\\\\\\\"clustered\\\\\\\",\\\\\\\"width\\\\\\\":480,\\\\\\\"height\\\\\\\":300,\\\\\\\"title\\\\\\\":\\\\\\\"selftest mssnzott-pmz6xg dup A\\\\\\\",\\\\\\\"data\\\\\\\":{\\\\\\\"categories\\\\\\\":[\\\\\\\"Q1\\\\\\\",\\\\\\\"Q2\\\\\\\",\\\\\\\"Q3\\\\\\\",\\\\\\\"Q4\\\\\\\"],\\\\\\\"series\\\\\\\":[{\\\\\\\"name\\\\\\\":\\\\\\\"2024\\\\\\\",\\\\\\\"values\\\\\\\":[42,48,45,61]},{\\\\\\\"name\\\\\\\":\\\\\\\"2025\\\\\\\",\\\\\\\"values\\\\\\\":[51,55,58,70]}]},\\\\\\\"decorations\\\\\\\":{\\\\\\\"seriesLabels\\\\\\\":true},\\\\\\\"scale\\\\\\\":{\\\\\\\"max\\\\\\\":105}}\\\");\",\"tags.add(\\\"POWERCHART_SCENE\\\", \\\"1c7g3w0\\\");\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 527892,
+        "scope": "group",
+        "message": "tagging failed — charts are not re-editable until repaired",
+        "data": {
+          "chart": "7/8",
+          "charts": 1,
+          "error": "InvalidParam passed to GetItem(id) | at=writing the chart's config tag | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"var tags = shape.tags;\",\"tags.add(...);\",\"tags.add(...);\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"261#3926101235\\\") /* originally getItemOrNullObject(\\\"261#3926101235\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg dup A\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"var tags = shape.tags;\",\"tags.add(\\\"POWERCHART_CONFIG\\\", \\\"{\\\\\\\"kind\\\\\\\":\\\\\\\"clustered\\\\\\\",\\\\\\\"width\\\\\\\":480,\\\\\\\"height\\\\\\\":300,\\\\\\\"title\\\\\\\":\\\\\\\"selftest mssnzott-pmz6xg dup A\\\\\\\",\\\\\\\"data\\\\\\\":{\\\\\\\"categories\\\\\\\":[\\\\\\\"Q1\\\\\\\",\\\\\\\"Q2\\\\\\\",\\\\\\\"Q3\\\\\\\",\\\\\\\"Q4\\\\\\\"],\\\\\\\"series\\\\\\\":[{\\\\\\\"name\\\\\\\":\\\\\\\"2024\\\\\\\",\\\\\\\"values\\\\\\\":[42,48,45,61]},{\\\\\\\"name\\\\\\\":\\\\\\\"2025\\\\\\\",\\\\\\\"values\\\\\\\":[51,55,58,70]}]},\\\\\\\"decorations\\\\\\\":{\\\\\\\"seriesLabels\\\\\\\":true},\\\\\\\"scale\\\\\\\":{\\\\\\\"max\\\\\\\":105}}\\\");\",\"tags.add(\\\"POWERCHART_SCENE\\\", \\\"1c7g3w0\\\");\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 527914,
+        "scope": "error",
+        "message": "reading back where the charts landed",
+        "data": {
+          "chart": "7/8",
+          "error": "InvalidParam passed to GetItem(id) | at=reading back where the charts landed | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addTextBox(...) */;\",\"// <<<<<\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"261#3926101235\\\") /* originally getItemOrNullObject(\\\"261#3926101235\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addTextBox(\\\"selftest mssnzott-pmz6xg dup A\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":16}) */;\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 527937,
+        "scope": "group",
+        "message": "the settle's re-read came back empty",
+        "data": {
+          "chart": "7/8",
+          "slideId": "261#3926101235",
+          "askedById": false
+        }
+      },
+      {
+        "ms": 527937,
+        "scope": "group",
+        "message": "settle pass: could not repair any config tag the drawing context lost",
+        "data": {
+          "chart": "7/8",
+          "charts": 1,
+          "settled": 0,
+          "lost": 1,
+          "withId": 0
+        }
+      },
+      {
+        "ms": 527937,
+        "scope": "selftest",
+        "message": "stopping the rescale — the host has already flipped",
+        "data": {
+          "done": 7,
+          "of": 8,
+          "flippedAt": 6
+        }
+      },
+      {
+        "ms": 529662,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1725,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 529669,
+        "scope": "selftest",
+        "message": "scenario FAILED",
+        "data": {
+          "name": "same scale across the deck",
+          "detail": "5 of 8 charts carry the shared scale (max=105, bars redraw at 76% of their height); 6 still re-editable; the update reported 2×no-config; the host flipped at chart 6 of 8, so the last 1 were not attempted",
+          "ms": 240559,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 8,
+            "idRefusals": 8,
+            "generalExceptions": 0,
+            "emptyReReads": 2
+          }
+        }
+      },
+      {
+        "ms": 529692,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "explode a degraded picture",
+          "deckSlides": 7,
+          "atMs": 529692
+        }
+      },
+      {
+        "ms": 531645,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1952,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 533381,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "why": "this update draws a picture, which is not in the scene the differ compares"
+        }
+      },
+      {
+        "ms": 534449,
+        "scope": "error",
+        "message": "reading back an ungrouped chart's shape ids",
+        "data": {
+          "error": "InvalidParam passed to GetItem(id) | at=reading back an ungrouped chart's shape ids | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"// <<<<<\",\"shape.altTextDescription = ...;\",\"shape.altTextTitle = ...;\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"262#3656466663\\\") /* originally getItemOrNullObject(\\\"262#3656466663\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addGeometricShape(\\\"Rectangle\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":300}) */;\",\"shape.altTextDescription = \\\"clustered column chart. 2 data series: 2024, 2025. 4 categories: Q1, Q2, Q3, Q4.\\\";\",\"shape.altTextTitle = \\\"selftest mssnzott-pmz6xg dup B\\\";\"]}"
+        }
+      },
+      {
+        "ms": 534488,
+        "scope": "error",
+        "message": "writing the chart's config tag",
+        "data": {
+          "error": "InvalidParam passed to GetItem(id) | at=writing the chart's config tag | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"// <<<<<\",\"var tags = shape.tags;\",\"tags.add(...);\",\"tags.add(...);\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"262#3656466663\\\") /* originally getItemOrNullObject(\\\"262#3656466663\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addGeometricShape(\\\"Rectangle\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":300}) */;\",\"var tags = shape.tags;\",\"tags.add(\\\"POWERCHART_CONFIG\\\", \\\"{\\\\\\\"kind\\\\\\\":\\\\\\\"clustered\\\\\\\",\\\\\\\"width\\\\\\\":480,\\\\\\\"height\\\\\\\":300,\\\\\\\"title\\\\\\\":\\\\\\\"selftest mssnzott-pmz6xg dup B\\\\\\\",\\\\\\\"data\\\\\\\":{\\\\\\\"categories\\\\\\\":[\\\\\\\"Q1\\\\\\\",\\\\\\\"Q2\\\\\\\",\\\\\\\"Q3\\\\\\\",\\\\\\\"Q4\\\\\\\"],\\\\\\\"series\\\\\\\":[{\\\\\\\"name\\\\\\\":\\\\\\\"2024\\\\\\\",\\\\\\\"values\\\\\\\":[42,48,45,61]},{\\\\\\\"name\\\\\\\":\\\\\\\"2025\\\\\\\",\\\\\\\"values\\\\\\\":[51,55,58,70]}]},\\\\\\\"decorations\\\\\\\":{\\\\\\\"seriesLabels\\\\\\\":true},\\\\\\\"render\\\\\\\":\\\\\\\"image\\\\\\\"}\\\");\",\"tags.add(\\\"POWERCHART_SCENE\\\", \\\"11trgpl\\\");\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 534488,
+        "scope": "group",
+        "message": "tagging failed — charts are not re-editable until repaired",
+        "data": {
+          "charts": 1,
+          "error": "InvalidParam passed to GetItem(id) | at=writing the chart's config tag | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"// <<<<<\",\"var tags = shape.tags;\",\"tags.add(...);\",\"tags.add(...);\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"262#3656466663\\\") /* originally getItemOrNullObject(\\\"262#3656466663\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addGeometricShape(\\\"Rectangle\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":300}) */;\",\"var tags = shape.tags;\",\"tags.add(\\\"POWERCHART_CONFIG\\\", \\\"{\\\\\\\"kind\\\\\\\":\\\\\\\"clustered\\\\\\\",\\\\\\\"width\\\\\\\":480,\\\\\\\"height\\\\\\\":300,\\\\\\\"title\\\\\\\":\\\\\\\"selftest mssnzott-pmz6xg dup B\\\\\\\",\\\\\\\"data\\\\\\\":{\\\\\\\"categories\\\\\\\":[\\\\\\\"Q1\\\\\\\",\\\\\\\"Q2\\\\\\\",\\\\\\\"Q3\\\\\\\",\\\\\\\"Q4\\\\\\\"],\\\\\\\"series\\\\\\\":[{\\\\\\\"name\\\\\\\":\\\\\\\"2024\\\\\\\",\\\\\\\"values\\\\\\\":[42,48,45,61]},{\\\\\\\"name\\\\\\\":\\\\\\\"2025\\\\\\\",\\\\\\\"values\\\\\\\":[51,55,58,70]}]},\\\\\\\"decorations\\\\\\\":{\\\\\\\"seriesLabels\\\\\\\":true},\\\\\\\"render\\\\\\\":\\\\\\\"image\\\\\\\"}\\\");\",\"tags.add(\\\"POWERCHART_SCENE\\\", \\\"11trgpl\\\");\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 534498,
+        "scope": "error",
+        "message": "reading back where the charts landed",
+        "data": {
+          "error": "InvalidParam passed to GetItem(id) | at=reading back where the charts landed | code=5010 | debugInfo={\"code\":\"5010\",\"message\":\"InvalidParam passed to GetItem(id)\",\"errorLocation\":\"ShapeCollection.getItem\",\"statement\":\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"surroundingStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(...) /* originally getItemOrNullObject(...) */;\",\"var shapes = slide.shapes;\",\"// >>>>>\",\"var shape = shapes.getItem(...) /* originally addGeometricShape(...) */;\",\"// <<<<<\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"],\"fullStatements\":[\"var root = context.root;\",\"var slides = root.slides;\",\"var slide = slides.getItem(\\\"262#3656466663\\\") /* originally getItemOrNullObject(\\\"262#3656466663\\\") */;\",\"var shapes = slide.shapes;\",\"var shape = shapes.getItem(\\\"27\\\") /* originally addGeometricShape(\\\"Rectangle\\\", {\\\"left\\\":240,\\\"top\\\":120,\\\"width\\\":480,\\\"height\\\":300}) */;\",\"shape.load([\\\"id\\\",\\\"left\\\",\\\"top\\\"]);\"]}"
+        }
+      },
+      {
+        "ms": 534521,
+        "scope": "group",
+        "message": "the settle's re-read came back empty",
+        "data": {
+          "slideId": "262#3656466663",
+          "askedById": false
+        }
+      },
+      {
+        "ms": 534521,
+        "scope": "group",
+        "message": "settle pass: could not repair any config tag the drawing context lost",
+        "data": {
+          "charts": 1,
+          "settled": 0,
+          "lost": 1,
+          "withId": 0
+        }
+      },
+      {
+        "ms": 534561,
+        "scope": "selftest",
+        "message": "the slide read back EMPTY right after the collapse — not believing it",
+        "data": {
+          "slide": "262#3656466663",
+          "was": 1
+        }
+      },
+      {
+        "ms": 534561,
+        "scope": "selftest",
+        "message": "the host would not confirm the picture is one shape",
+        "data": {
+          "slide": "262#3656466663"
+        }
+      },
+      {
+        "ms": 534661,
+        "scope": "selftest",
+        "message": "scenario FAILED",
+        "data": {
+          "name": "explode a degraded picture",
+          "detail": "the update would not work on the picture and this host refused 3 id(s) in this scenario, so the slide not naming it proves nothing either way",
+          "ms": 4960,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 3,
+            "idRefusals": 3,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 534680,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "which selection call wedges the host",
+          "deckSlides": 7,
+          "atMs": 534680
+        }
+      },
+      {
+        "ms": 536360,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1679,
+          "slides": 7,
+          "charts": 5,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 542025,
+        "scope": "selftest",
+        "message": "ladder rung",
+        "data": {
+          "step": "read the selection before anything touches it",
+          "outcome": "ok",
+          "ms": 923
+        }
+      },
+      {
+        "ms": 542025,
+        "scope": "selftest",
+        "message": "ladder rung",
+        "data": {
+          "step": "setSelectedSlides (the pane's own call)",
+          "outcome": "ok",
+          "ms": 895
+        }
+      },
+      {
+        "ms": 542025,
+        "scope": "selftest",
+        "message": "ladder rung",
+        "data": {
+          "step": "read the selection after selecting the slide",
+          "outcome": "ok",
+          "ms": 772
+        }
+      },
+      {
+        "ms": 542025,
+        "scope": "selftest",
+        "message": "ladder rung",
+        "data": {
+          "step": "setSelectedShapes([id])",
+          "outcome": "ok",
+          "ms": 659
+        }
+      },
+      {
+        "ms": 542026,
+        "scope": "selftest",
+        "message": "ladder rung",
+        "data": {
+          "step": "read the selection after selecting a shape",
+          "outcome": "ok",
+          "ms": 911
+        }
+      },
+      {
+        "ms": 542026,
+        "scope": "selftest",
+        "message": "ladder rung",
+        "data": {
+          "step": "setSelectedShapes([])",
+          "outcome": "ok",
+          "ms": 787
+        }
+      },
+      {
+        "ms": 542026,
+        "scope": "selftest",
+        "message": "ladder rung",
+        "data": {
+          "step": "read the selection after clearing the selection",
+          "outcome": "ok",
+          "ms": 718
+        }
+      },
+      {
+        "ms": 542037,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "which selection call wedges the host",
+          "detail": "the host answered all 7 rung(s) — nothing wedged",
+          "ms": 7345,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 542081,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "a selected shape survives an insert",
+          "deckSlides": 7,
+          "atMs": 542081
+        }
+      },
+      {
+        "ms": 543666,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1585,
+          "slides": 7,
+          "charts": 5,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 545303,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1637,
+          "slides": 7,
+          "charts": 5,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 546975,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 10,
+          "total": 16,
+          "onSlide": 56,
+          "onSlideKey": "257#1969267518",
+          "idleMs": 1,
+          "afterAnswering": "selecting a shape",
+          "afterAnsweringMs": 896
+        }
+      },
+      {
+        "ms": 578061,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 16,
+          "total": 16,
+          "onSlide": 66,
+          "onSlideKey": "257#1969267518",
+          "prevBatchMs": 31086
+        }
+      },
+      {
+        "ms": 596828,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 602023,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 2067,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 602027,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "a selected shape survives an insert",
+          "detail": "all 3 shape(s) already on the slide survived an insert made while one was selected",
+          "ms": 59943,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 602049,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "edit the chart the user selected",
+          "deckSlides": 7,
+          "atMs": 602049
+        }
+      },
+      {
+        "ms": 604175,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 2126,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 607536,
+        "scope": "draw",
+        "message": "not updating in place — redrawing instead",
+        "data": {
+          "why": "the chart has no parts list, so its nodes cannot be mapped to shapes"
+        }
+      },
+      {
+        "ms": 607557,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 10,
+          "total": 24,
+          "onSlide": 0,
+          "onSlideKey": "258#3410008808",
+          "idleMs": 485,
+          "afterAnswering": "reading the selected chart",
+          "afterAnsweringMs": 1250
+        }
+      },
+      {
+        "ms": 628743,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 20,
+          "total": 24,
+          "onSlide": 10,
+          "onSlideKey": "258#3410008808",
+          "prevBatchMs": 21185
+        }
+      },
+      {
+        "ms": 646538,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 24,
+          "total": 24,
+          "onSlide": 20,
+          "onSlideKey": "258#3410008808",
+          "prevBatchMs": 17794
+        }
+      },
+      {
+        "ms": 658714,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "ids"
+        }
+      },
+      {
+        "ms": 662749,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 2038,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 663699,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "edit the chart the user selected",
+          "detail": "selected, read back, edited through the selection's own target, still re-editable",
+          "ms": 61637,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 663726,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "stop a run part-way",
+          "deckSlides": 7,
+          "atMs": 663726
+        }
+      },
+      {
+        "ms": 663737,
+        "scope": "pane",
+        "message": "stop requested",
+        "data": {}
+      },
+      {
+        "ms": 663738,
+        "scope": "error",
+        "message": "drawing the chart's shapes",
+        "data": {
+          "error": "Stopped. | at=drawing the chart's shapes"
+        }
+      },
+      {
+        "ms": 665681,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1923,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 665778,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "stop a run part-way",
+          "detail": "stopped at a batch boundary, nothing added, nothing left claiming to be a chart",
+          "ms": 1956,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 1,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 665821,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "the chart is actually visible",
+          "deckSlides": 7,
+          "atMs": 665821
+        }
+      },
+      {
+        "ms": 667905,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 2083,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 667906,
+        "scope": "selftest",
+        "message": "visibility step",
+        "data": {
+          "what": "rasterising a slide that already existed"
+        }
+      },
+      {
+        "ms": 668659,
+        "scope": "selftest",
+        "message": "visibility step",
+        "data": {
+          "what": "rasterising the same slide a second time"
+        }
+      },
+      {
+        "ms": 669893,
+        "scope": "selftest",
+        "message": "visibility step",
+        "data": {
+          "what": "drawing the chart"
+        }
+      },
+      {
+        "ms": 669894,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 9,
+          "total": 9,
+          "onSlide": 24,
+          "onSlideKey": "258#3410008808",
+          "idleMs": 1,
+          "afterAnswering": "rasterising a slide",
+          "afterAnsweringMs": 1229
+        }
+      },
+      {
+        "ms": 714896,
+        "scope": "host",
+        "message": "gave up waiting",
+        "data": {
+          "what": "drawing shapes 1-9 of 9",
+          "afterMs": 45000,
+          "afterAnswering": "rasterising a slide",
+          "afterAnsweringMs": 1229,
+          "idleMs": 2
+        }
+      },
+      {
+        "ms": 714896,
+        "scope": "error",
+        "message": "drawing the chart's shapes",
+        "data": {
+          "error": "PowerPoint did not respond while drawing shapes 1-9 of 9 (45s) | at=drawing the chart's shapes"
+        }
+      },
+      {
+        "ms": 717929,
+        "scope": "selftest",
+        "message": "scenario skipped",
+        "data": {
+          "name": "the chart is actually visible",
+          "detail": "the host stopped answering during this scenario, so nothing was checked — PowerPoint did not respond while drawing shapes 1-9 of 9 (45s) | at=drawing the chart's shapes; the abandoned call had still not answered 3s later; the last thing the host answered was \"rasterising a slide\", 0s earlier",
+          "ms": 52077,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 1,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 717929,
+        "scope": "selftest",
+        "message": "the host missed a deadline in this scenario",
+        "data": {
+          "name": "the chart is actually visible",
+          "sick": 1
+        }
+      },
+      {
+        "ms": 718017,
+        "scope": "selftest",
+        "message": "scenario starting",
+        "data": {
+          "name": "does a rasterise poison the next draw",
+          "deckSlides": 7,
+          "atMs": 718017
+        }
+      },
+      {
+        "ms": 719743,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 1726,
+          "slides": 7,
+          "charts": 6,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      },
+      {
+        "ms": 719743,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a rasterise #0: the call before the draw"
+        }
+      },
+      {
+        "ms": 720827,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a rasterise #0: drawing"
+        }
+      },
+      {
+        "ms": 720828,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 7,
+          "total": 7,
+          "onSlide": 24,
+          "onSlideKey": "258#3410008808",
+          "idleMs": 1,
+          "afterAnswering": "rasterising a slide",
+          "afterAnsweringMs": 1066
+        }
+      },
+      {
+        "ms": 741627,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "created"
+        }
+      },
+      {
+        "ms": 743682,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a cheap read #1: the call before the draw"
+        }
+      },
+      {
+        "ms": 743720,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a cheap read #1: drawing"
+        }
+      },
+      {
+        "ms": 743722,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 7,
+          "total": 7,
+          "onSlide": 31,
+          "onSlideKey": "258#3410008808",
+          "idleMs": 2,
+          "afterAnswering": "counting the deck's slides",
+          "afterAnsweringMs": 38
+        }
+      },
+      {
+        "ms": 766520,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "created"
+        }
+      },
+      {
+        "ms": 769192,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a cheap read #2: the call before the draw"
+        }
+      },
+      {
+        "ms": 769238,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a cheap read #2: drawing"
+        }
+      },
+      {
+        "ms": 769240,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 7,
+          "total": 7,
+          "onSlide": 38,
+          "onSlideKey": "258#3410008808",
+          "idleMs": 2,
+          "afterAnswering": "counting the deck's slides",
+          "afterAnsweringMs": 45
+        }
+      },
+      {
+        "ms": 793812,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "created"
+        }
+      },
+      {
+        "ms": 795923,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a rasterise #3: the call before the draw"
+        }
+      },
+      {
+        "ms": 797175,
+        "scope": "selftest",
+        "message": "rasterise-draw step",
+        "data": {
+          "what": "after a rasterise #3: drawing"
+        }
+      },
+      {
+        "ms": 797176,
+        "scope": "draw",
+        "message": "batch issued",
+        "data": {
+          "upTo": 7,
+          "total": 7,
+          "onSlide": 45,
+          "onSlideKey": "258#3410008808",
+          "idleMs": 1,
+          "afterAnswering": "rasterising a slide",
+          "afterAnsweringMs": 1225
+        }
+      },
+      {
+        "ms": 827434,
+        "scope": "group",
+        "message": "grouped the chart's shapes",
+        "data": {
+          "charts": 1,
+          "partial": 0,
+          "by": "created"
+        }
+      },
+      {
+        "ms": 830172,
+        "scope": "selftest",
+        "message": "rasterise-draw arms",
+        "data": {
+          "rasterise": [true, true],
+          "cheap": [true, true],
+          "order": "raster, cheap, cheap, raster"
+        }
+      },
+      {
+        "ms": 830203,
+        "scope": "selftest",
+        "message": "scenario passed",
+        "data": {
+          "name": "does a rasterise poison the next draw",
+          "detail": "all four draws landed — a draw straight after a rasterise is no worse than one after a cheap read",
+          "ms": 112155,
+          "deckSlides": 7,
+          "deckGrew": 0,
+          "friction": {
+            "errors": 0,
+            "idRefusals": 0,
+            "generalExceptions": 0,
+            "emptyReReads": 0
+          }
+        }
+      },
+      {
+        "ms": 832519,
+        "scope": "pane",
+        "message": "scanned the deck for charts",
+        "data": {
+          "ms": 2316,
+          "slides": 7,
+          "charts": 10,
+          "unread": 0,
+          "short": 0,
+          "tagsUnread": 0,
+          "complete": true
+        }
+      }
+    ],
+    "dropped": 0
+  }
+}
