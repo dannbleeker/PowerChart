@@ -138,11 +138,31 @@ read straight out of the tab, names it exactly:
     GlobalErrorHandler:DisplayErrorDialog: 5341289
     ErrorDialog::ShowErrorDialog BSQMErrorCode: 5341289; ErrorName: errorLocalChangeLostSingleUser
 
-Both crashes on record show the same three lines, with `ActionName=ExecuteAddinBatchOperation` — an
+Every crash on record shows the same three lines, with `ActionName=ExecuteAddinBatchOperation` — an
 add-in `context.sync()` — as the action in flight and `MergeChanges` merging inbound revisions
 alongside it. PowerPoint held a local change whose target slide the server could not find, decided
 the change was lost, and gave up on the session. `errorLocalChangeLostSingleUser` is not documented
 anywhere public; the log is the only source.
+
+**The calls in flight are READS.** Three crashes logged the same `PptApi Call` sequence immediately
+before the failure, and there is no `addGeometricShape` anywhere in it:
+
+    PptApi Call - Presentation.GetSlides
+    PptApi Call - Slide.GetId  (×2)
+    PptApi Call - SlideCollection.GetItemOrNullObject
+    …the block repeats, then…
+    Failed to restore selection after load content.
+    ReplicateOutbound → FindCommentRequest → UpdateNextPopulatedContextDetails
+    OnServerFindSucceeded could not find target slide
+
+That is the probe RESOLVING its scratch slide, not writing to it. An earlier reading of this file
+blamed the round's first write, because that is where the trace stops; the host's own log says the
+write never happened. `Failed to restore selection after load content` appears in all three, which
+points at the slide the view sits on going away underneath it.
+
+Four rounds have now died at the same question, `shape-add-fresh-slide-proxy`. In three of them the
+recorded answer is `no-scratch-slide` after a 90s timeout — the probe never got as far as asking. The
+question is where the trace stops, not what stopped it.
 
 **Form 2 — the network moved under it.** No dialog, a document that looks perfectly normal in a
 screenshot, and a host that will not answer. The console carries `net::ERR_NETWORK_CHANGED` (five of
