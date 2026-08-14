@@ -32,6 +32,7 @@ export const FAKE_BASELINE = {
   "getcount-populates-same-sync": "yes",
   "tags-add-same-key-twice": "overwrites",
   "tags-on-fresh-shape": "yes",
+  "tag-through-refetched-shape": "yes",
   "delete-then-lookup": "reports-gone",
   "addgroup-returns-usable": "yes",
   "group-children-via-getcount": "two",
@@ -314,6 +315,14 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "tag-through-refetched-shape":
+    "Added 2026-08-14 after rounds 29 and 30 failed `same scale across the deck` identically: `InvalidParam passed to " +
+    "GetItem(id)` (5010) at `writing the chart's config tag`, charts left with no config, the scenario stopping on the " +
+    "second consecutive loss. That is the exact path `finishCharts` takes — write the tag through " +
+    "`shapes.getItemOrNullObject(id)` with an id read off a shape created a sync earlier. `tags-on-fresh-shape` already " +
+    "says the fresh shape's own `.tags` works, every round, so the id round trip is the untested half. A question rather " +
+    "than a rewrite ON PURPOSE: this path has a history of changes reverted on a theory. `threw` means stop re-fetching " +
+    "and tag the creation proxy; `yes` means the 5010 comes from somewhere else and a rewrite would have been wasted.",
   "grouped-child-by-id-from-slide":
     "Added 2026-08-11, and it decides whether the in-place update has a future on this host. `tryInPlaceUpdate` needs a " +
     "node-to-shape mapping and gets one from CHART_PARTS_TAG, which is written only for UNGROUPED charts — so the " +
@@ -359,6 +368,8 @@ const WHAT_IT_MEANS = {
     "Re-editing a chart rewrites POWERCHART_CONFIG on the same shape every time. If a host appends rather than overwrites, a chart edited ten times carries ten configs and the reader picks one arbitrarily. WITHDRAWN: the 2026-08-04 'other — value=undefined' was the probe holding one shape proxy across four syncs, not an opinion about tag keys. Every write now goes through a shape resolved in its own batch, so the next sheet's answer is the first real one.",
   "tags-on-fresh-shape":
     "`faults.tagsUndefinedOn` models `.tags` coming back undefined, where reading `.add` throws SYNCHRONOUSLY and escapes the tagging loop — losing the config for every chart after it in the batch, not just the one.",
+  "tag-through-refetched-shape":
+    "The production path `finishCharts` actually uses: write POWERCHART_CONFIG through `shapes.getItemOrNullObject(id)`, where the id was read off a shape created a sync earlier. Rounds 29 and 30 both failed `same scale across the deck` with `InvalidParam passed to GetItem(id)` (5010) at `writing the chart's config tag`. `tags-on-fresh-shape` says the fresh shape's `.tags` is usable; this asks whether the id round trip is what the host refuses. `threw` means stop re-fetching; `yes` means the 5010 is about something else.",
   "delete-then-lookup":
     "`deleteSlideById` re-checks from a FRESH context because the same-context answer was not trusted. If a host answers honestly here, that second round trip is removable.",
   "group-children-via-getcount":
