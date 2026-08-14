@@ -214,6 +214,10 @@ function cli(run, dir) {
     // NODE, on the CLI's own JavaScript. No shim, no shell.
     const r = run(process.execPath, [entry, "-s=ms", "--raw", ...args], { encoding: "utf8", cwd });
     if (r.error) state.unreachable = true;
+    // A failed CLI call and a page that answered with nothing are the same empty
+    // string, and the difference decides whether a round is alive. Recorded, not
+    // folded in — the same distinction `unreachable` exists to keep.
+    state.lastFailed = !r.error && r.status !== 0;
     return r.status === 0 ? String(r.stdout ?? "") : "";
   };
   sh.state = state;
@@ -275,6 +279,18 @@ export function sawCrashDialog(found) {
   // and it stays true whatever the next query says. Empty is the third answer:
   // the CLI was never reached, which `reachable` reports on its own.
   return text !== "" && !/No matches found/.test(text);
+}
+
+/**
+ * How many polls in a row the PAGE has answered with nothing.
+ *
+ * A CLI call that failed is not a page that said nothing, and only the second
+ * kind means the round is over. `failed` resets rather than counts: a tool that
+ * could not be run measured nothing, and treating it as evidence is the mistake
+ * `reachable` was written to stop, arriving here by a different door.
+ */
+export function quietStreak(prev, text, failed) {
+  return String(text ?? "").trim() || failed ? 0 : prev + 1;
 }
 
 /** `{ answered, ms }` from what `pingScript` returned, or null when unreadable. */
@@ -351,6 +367,13 @@ async function main(argv, deps = {}) {
   // has to be distinguishable from a slow one.
   const started = Date.now();
   const limit = 30 * 60 * 1000;
+  // An empty answer ENDS the round, so it has to be believed twice. The CLI
+  // serves one command at a time per session: anything else touching it while
+  // this polls — a second terminal, an agent looking at the trace — makes one
+  // poll exit non-zero, and folding that into "the pane is gone" killed a round
+  // that was running perfectly and went on to finish 10 of 12 scenarios. The
+  // report was worse than the loss: it named a crash that had not happened.
+  let quiet = 0;
   for (;;) {
     if (Date.now() - started > limit) {
       console.error("  the round has not finished in 30 minutes — the host is wedged; see docs/ROUNDS.md");
@@ -358,7 +381,8 @@ async function main(argv, deps = {}) {
     }
     const dl = sh("find", "Download run log");
     if (/button "Download run log"(?! \[disabled\])/.test(dl)) break;
-    if (!dl.trim()) {
+    quiet = quietStreak(quiet, dl, sh.state.lastFailed);
+    if (quiet >= 2) {
       console.error("  the pane stopped answering — PowerPoint has probably crashed; the trace is still in the DOM");
       return 1;
     }
@@ -389,7 +413,9 @@ export function archive(logPath, dir = "rounds", read = readFileSync, write = wr
   const build = buildOf(round.build);
   if (!build) throw new Error("that file carries no build stamp — it is not a round log");
   const name = `${nextRoundNumber(list(dir))}-${build}.json`;
-  write(`${dir}/${name}`, JSON.stringify(round, null, 1) + "\n");
+  // TWO spaces, because prettier checks this directory and every round archived
+  // at one space failed the gate until someone reformatted it by hand.
+  write(`${dir}/${name}`, JSON.stringify(round, null, 2) + "\n");
   return name;
 }
 
