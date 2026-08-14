@@ -16,6 +16,8 @@ import {
   PROBE_PASSES,
   RESAMPLE_IDS,
   stabilityOf,
+  supportOf,
+  thinSupport,
   regimeFrom,
   slidesActuallyReturned,
   positionalSweepPlan,
@@ -1454,6 +1456,56 @@ describe("a run samples each question more than once", () => {
       `${early.length} sample(s) are stamped before the probe's first trace line — the two are on different clocks`,
     ).toBe(0);
     expect(Math.min(...samples.map((s) => s.atMs))).toBeLessThanOrEqual(last);
+  });
+});
+
+describe("supportOf — how many attempts reached the question", () => {
+  const at = (answer: string) => ({ answer, pass: 1, atMs: 0, regime: "healthy", scratch: "fresh-slide" }) as never;
+
+  it("counts real answers apart from attempts that never got to ask", () => {
+    expect(supportOf([at("no-scratch-slide"), at("no-scratch-slide"), at("reports-gone")])).toEqual({
+      asked: 1,
+      of: 3,
+    });
+  });
+
+  it("says an answer every attempt reached is backed by every attempt", () => {
+    expect(supportOf([at("yes"), at("yes")])).toEqual({ asked: 2, of: 2 });
+  });
+
+  it("is the half `stabilityOf` cannot report", () => {
+    // `stable` needs TWO real samples to say anything, so it is `undefined` for
+    // "answered once, never repeated" AND for "never answered at all" — the two
+    // cases a reader most needs told apart. One of them is a fact about the
+    // host; the other is the absence of one.
+    const answeredOnce = [at("no-scratch-slide"), at("threw")];
+    const neverAnswered = [at("no-scratch-slide"), at("no-scratch-slide")];
+    expect(stabilityOf(answeredOnce)).toBeUndefined();
+    expect(stabilityOf(neverAnswered)).toBeUndefined();
+    expect(supportOf(answeredOnce)).toEqual({ asked: 1, of: 2 });
+    expect(supportOf(neverAnswered)).toEqual({ asked: 0, of: 2 });
+  });
+});
+
+describe("thinSupport — what gets recorded on the row", () => {
+  const at = (answer: string) => ({ answer, pass: 1, atMs: 0, regime: "healthy", scratch: "fresh-slide" }) as never;
+
+  it("records the shortfall when the answer rests on fewer attempts than were made", () => {
+    expect(thinSupport([at("no-scratch-slide"), at("threw")])).toEqual({ asked: 1, of: 2 });
+  });
+
+  it("says NOTHING when every attempt reached the question", () => {
+    // Stamping support on every row puts the interesting case back where it
+    // started: in a field nobody reads, because it is always there.
+    expect(thinSupport([at("yes"), at("yes")])).toBeUndefined();
+  });
+
+  it("says nothing when NO attempt reached it — `answer` already says so", () => {
+    expect(thinSupport([at("no-scratch-slide"), at("no-scratch-slide")])).toBeUndefined();
+  });
+
+  it("says nothing about a question asked only once", () => {
+    expect(thinSupport([at("yes")])).toBeUndefined();
   });
 });
 
