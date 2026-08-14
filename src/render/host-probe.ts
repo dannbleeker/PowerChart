@@ -1441,18 +1441,41 @@ const PROBES: Probe[] = [
       // dependency here, carrying `DEMO_SLOT_TAG` in `powerpoint.ts`.
       //
       // `ctx.scratch()` per batch, never a held handle: same rule as everywhere.
-      ctx.scratch().tags.add("POWERCHART_PROBE", "first");
+      // SAY WHICH SLIDE WAS WRITTEN AND WHICH WAS READ.
+      //
+      // Round 28 was the first time this question had ever been answered, and it
+      // came back `other`, `value=undefined`, stably on all three passes in
+      // 411-614ms. Two readings fit that and they are not close in consequence:
+      // either this host takes a tag write on a Slide and does not give it back
+      // — which would matter, because `powerpoint.ts` puts `DEMO_SLOT_TAG` on
+      // slides and reads it back — or the scratch slide was REPLACED between the
+      // write batch and the read batch, in which case the undefined is the
+      // probe reading a different slide and says nothing about the host.
+      //
+      // Nothing in the sheet could tell those apart, so the probe now carries
+      // the evidence: the slide's own id at each of the three batches. Same id
+      // throughout and the answer is about tags; a changed id and the answer is
+      // about slide replacement, and is not the host's fault.
+      const wrote = ctx.scratch();
+      wrote.load("id");
+      wrote.tags.add("POWERCHART_PROBE", "first");
       await ctx.sync();
-      ctx.scratch().tags.add("POWERCHART_PROBE", "second");
+      const again = ctx.scratch();
+      again.load("id");
+      again.tags.add("POWERCHART_PROBE", "second");
       await ctx.sync();
-      const tag = ctx.scratch().tags.getItemOrNullObject("POWERCHART_PROBE");
+      const readFrom = ctx.scratch();
+      readFrom.load("id");
+      const tag = readFrom.tags.getItemOrNullObject("POWERCHART_PROBE");
       tag.load("value");
       await ctx.sync();
       try {
         const v = (tag as unknown as { value: string }).value;
+        const ids = [wrote, again, readFrom].map((s) => readShapeId(s as unknown as { id?: string }) ?? "?");
+        const sameSlide = ids[0] === ids[1] && ids[1] === ids[2];
         return {
           answer: v === "second" ? "overwrites" : v === "first" ? "keeps-first" : "other",
-          detail: `value=${v}`,
+          detail: `value=${v}; slide ${sameSlide ? `stable (${ids[0]})` : `CHANGED under the probe: ${ids.join(" -> ")}`}`,
         };
       } catch (err) {
         return unreadable(err);
