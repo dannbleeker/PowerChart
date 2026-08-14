@@ -29,7 +29,9 @@
     "check-published-install": "node scripts/check-published-install.mjs",
     "visible-charts": "npm run build:lib && node scripts/visible-charts.mjs",
     "flaky": "node scripts/flaky.mjs",
-    "mutation": "stryker run"
+    "mutation": "stryker run",
+    "rounds": "node scripts/triage.mjs rounds",
+    "issue-status": "node scripts/issue-status.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1",
