@@ -120,6 +120,42 @@ still open:
 The `hollowReads` fault in `test/helpers/office-host.ts` is not a paranoid
 invention: it models a regression Microsoft has acknowledged and not yet fixed.
 
+### A shape is reachable only in the batch that created it
+
+Measured on the real host, round `032-360309f`. Four answers that only mean
+something read together:
+
+| question                        | answer       |
+| ------------------------------- | ------------ |
+| `tags-on-fresh-shape`           | `yes`        |
+| `tag-through-refetched-shape`   | `no-id`      |
+| `shape-proxy-survives-one-sync` | `unreadable` |
+| `shapes-items-count-honest`     | `unreadable` |
+
+A shape created in this batch has a working `.tags` — that has answered `yes` in
+every round on record. But its **id cannot be read back**, and its **handle does
+not survive a sync**. Both routes out of the creating batch are closed, so
+anything to be written on a shape has to be written while the shape is still
+being made.
+
+That is the whole of the `same scale across the deck` failure, which three
+consecutive rounds scored 4-5 of 8 on. `finishCharts` writes `POWERCHART_CONFIG`
+in a LATER batch than the one that drew the shapes, reaching back by id or by
+proxy, and this host has neither to offer. The 5010 it reports —
+`InvalidParam passed to GetItem(id)`,
+[office-js#2903](https://github.com/OfficeDev/office-js/issues/2903) — is the
+same story from the host's side: Office.js rewrites a resolved proxy's object
+path to `getItem(id)`, so even the fallback that never mentions an id has become
+an id lookup by the time the host sees it.
+
+It is not absolute. Half the charts do get their tag, and the probe records a
+`regime` beside each answer, so the host moves in and out of the state where
+collection reads work at all. Which is why no rewrite is here yet:
+`tag-through-refetched-shape` is marked `resample`, and its partner
+`tag-the-creation-proxy-a-sync-later` asks the half that `no-id` leaves untried.
+Two more rounds saying the same thing turns one measurement into a rule worth
+rewriting a critical path for.
+
 ### A hung sync says nothing about whether the work happened
 
 This is the most useful thing the tracker taught this project, and it changed

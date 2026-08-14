@@ -1612,6 +1612,35 @@ const PROBES: Probe[] = [
         return threw(err);
       }
     },
+    // `no-id` closes one door and leaves the other one untried. Production does
+    // not give up when the id is unreadable — `finishCharts` falls back to the
+    // creation proxy — so a round that stops at `no-id` has said nothing about
+    // the path the add-in actually takes in that case, which is the case this
+    // host produces. Ask the fallback too, in the same breath.
+    follow: {
+      when: (answer) => answer === "no-id",
+      because: "an unreadable id is what production falls back FROM, so the fallback is the half still unmeasured",
+      probe: {
+        id: "tag-the-creation-proxy-a-sync-later",
+        question: "With no id to be had, can the shape still be tagged through the handle that created it?",
+        ask: async (ctx) => {
+          const [shape] = await scratchShapes(ctx, [{ left: 180, top: 10, width: 20, height: 20 }]);
+          try {
+            // The sync that ages the handle. Without it this asks
+            // `tags-on-fresh-shape`, which already answers yes every round.
+            await ctx.sync();
+            (shape as unknown as { tags: { add(k: string, v: string): void } }).tags.add(
+              "POWERCHART_PROBE",
+              "through-the-creation-handle",
+            );
+            await ctx.sync();
+            return { answer: "yes" };
+          } catch (err) {
+            return threw(err);
+          }
+        },
+      },
+    },
   },
   {
     id: "delete-then-lookup",
