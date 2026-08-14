@@ -1,0 +1,46 @@
+[
+  {
+    "id": "burnt-slots-unblock-three-questions",
+    "madeIn": "#468",
+    "afterBuild": "162f80a",
+    "because": "Three more slots were found to be burning the scratch slide, by the same rule that found the first: the question below a burner is never answered. Flagging #7, #14 and #21 should hand the questions below them a live slide.",
+    "claim": {
+      "kind": "probe-answers",
+      "ids": ["shape-resolve-held-slide-proxy", "tags-add-same-key-twice", "grouped-child-by-id-from-slide"]
+    },
+    "outcome": "failed",
+    "judgedOn": "027-fef1c2a",
+    "what-happened": "All three still never-put. The flag did work — every flagged question moved from no-scratch-slide to no-scratch-shape while the unflagged control did not — but a second cause was underneath: this host will not name a freshly added shape on a fresh slide. Recorded in #469."
+  },
+  {
+    "id": "tag-question-asked-on-the-slide-answers",
+    "madeIn": "#470",
+    "afterBuild": "fef1c2a",
+    "because": "tags-add-same-key-twice asks about tag semantics and never needed a shape. Asked on the scratch slide instead, nothing it depends on is refused by this host.",
+    "claim": { "kind": "probe-answers", "ids": ["tags-add-same-key-twice"] },
+    "outcome": "held",
+    "judgedOn": "028-32a6987",
+    "what-happened": "Answered for the first time on record: `other`, value=undefined, stable across all three passes at 411-614ms. Which raised the next question — see the open prediction below."
+  },
+  {
+    "id": "the-other-two-stay-blocked",
+    "madeIn": "#470",
+    "afterBuild": "fef1c2a",
+    "because": "Nothing about them changed. Reaching by index was tried and reverted because getItemAt appears nowhere in src/, so a yes would say nothing about the three production sites the probe is named after.",
+    "claim": {
+      "kind": "probe-starves",
+      "ids": ["shape-resolve-held-slide-proxy", "grouped-child-by-id-from-slide"]
+    },
+    "outcome": "held",
+    "judgedOn": "028-32a6987",
+    "what-happened": "Both starved, as they should have. A prediction that the status quo holds is worth staking when a change is nearby: it is what says the change was scoped."
+  },
+  {
+    "id": "slide-identity-explains-the-undefined-tag",
+    "madeIn": "#472",
+    "afterBuild": "32a6987",
+    "because": "The first-ever answer to tags-add-same-key-twice was `value=undefined`, and two readings fit: this host does not give a Slide tag back, or the scratch slide was replaced between the write and the read. The probe now records the slide id at all three batches. THIS PREDICTION IS THE HONEST ONE — it is not known which way it goes, and that is why the instrument was built instead of an argument being made.",
+    "claim": { "kind": "probe-detail-matches", "id": "tags-add-same-key-twice", "pattern": "slide stable" },
+    "outcome": "open"
+  }
+]

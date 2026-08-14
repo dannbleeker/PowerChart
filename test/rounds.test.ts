@@ -21,7 +21,13 @@ import { poolRasteriseArms } from "../scripts/triage.mjs";
  */
 describe("the round archive", () => {
   const dir = new URL("../rounds/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
-  const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+  // `NNN-<build>.json` only, exactly as `triage.mjs` expands the directory.
+  // "Every .json in rounds/" is the obvious spelling and it is wrong, because
+  // `predictions.json` lives here too — it bit triage's directory expansion and
+  // then bit this test within the hour, both times by counting the ledger as a
+  // round. One shape, two places; if a third reader of this directory appears it
+  // needs the same filter.
+  const files = readdirSync(dir).filter((f) => /^\d{3}-.*\.json$/.test(f));
 
   it("has rounds in it", () => {
     expect(files.length, "the archive is empty — see rounds/README.md").toBeGreaterThan(0);

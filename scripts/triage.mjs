@@ -526,6 +526,169 @@ export function poolEveryDraw(logs) {
   return { rounds, after };
 }
 
+/**
+ * Judge a prediction against a round.
+ *
+ * A change made because of a round should say what the NEXT round will show, and
+ * then be judged by it in as many words. That discipline is worth having and it
+ * is worth nothing if nobody checks: #468 staked itself on three questions
+ * answering for the first time in eleven rounds, round 27 said no, and the only
+ * reason the failure was recorded rather than quietly forgotten is that someone
+ * remembered making the claim.
+ *
+ * Deliberately few claim kinds. A prediction that cannot be evaluated by a
+ * machine is a paragraph, and paragraphs are what this replaces — but the prose
+ * still travels with it, because "it failed" is the least interesting half and
+ * `because` is where the thinking is.
+ */
+export function judgePrediction(prediction, log) {
+  const NOT_ASKED = new Set(["no-scratch-slide", "no-scratch-shape", "not-asked"]);
+  const answers = log?.hostAnswers?.answers;
+  const byId = new Map((Array.isArray(answers) ? answers : []).map((a) => [a.id, a]));
+  const c = prediction.claim ?? {};
+  const seen = (id) => byId.get(id);
+
+  if (c.kind === "probe-answers" || c.kind === "probe-starves") {
+    const want = c.kind === "probe-answers";
+    const missing = (c.ids ?? []).filter((id) => !seen(id));
+    if (missing.length) return { verdict: "undetermined", why: `not on this sheet: ${missing.join(", ")}` };
+    const wrong = (c.ids ?? []).filter((id) => NOT_ASKED.has(seen(id).answer) === want);
+    return wrong.length
+      ? { verdict: "FAILED", why: `${wrong.map((id) => `${id}=${seen(id).answer}`).join(", ")}` }
+      : { verdict: "held", why: (c.ids ?? []).map((id) => `${id}=${seen(id).answer}`).join(", ") };
+  }
+  if (c.kind === "scenario-passes") {
+    const st = log?.selftest ?? {};
+    const all = Object.keys(st).map((k) => st[k]);
+    const wrong = (c.names ?? []).filter((n) => {
+      const s = all.find((x) => x?.name === n);
+      return !s || !s.ok;
+    });
+    return wrong.length ? { verdict: "FAILED", why: wrong.join(", ") } : { verdict: "held", why: "" };
+  }
+  if (c.kind === "probe-detail-matches") {
+    const a = seen(c.id);
+    if (!a) return { verdict: "undetermined", why: `${c.id} not on this sheet` };
+    // A never-put question has no detail worth matching, and calling that a
+    // failure would blame the prediction for the host refusing the question.
+    if (NOT_ASKED.has(a.answer)) return { verdict: "undetermined", why: `${c.id} was never put (${a.answer})` };
+    const hit = new RegExp(c.pattern, "i").test(String(a.detail ?? ""));
+    return { verdict: hit ? "held" : "FAILED", why: String(a.detail ?? "").slice(0, 90) };
+  }
+  return { verdict: "undetermined", why: `unknown claim kind ${String(c.kind)}` };
+}
+
+/** Open predictions, judged against the newest round given. */
+function reportPredictions(logs, load = readFileSync) {
+  let ledger;
+  try {
+    ledger = JSON.parse(load("rounds/predictions.json", "utf8"));
+  } catch {
+    return; // no ledger, nothing to say
+  }
+  const open = ledger.filter((p) => p.outcome === "open");
+  if (!open.length || !logs.length) return;
+  const buildOf = (log) => String(log?.build ?? "").split(" ")[0];
+  console.log(`\n  OPEN PREDICTIONS`);
+  for (const p of open) {
+    // NEVER judged against the round that prompted it. A prediction is made
+    // BECAUSE of a round, and the change it predicts about is not in that
+    // round's build — so judging there fails every prediction the moment it is
+    // written. #472's came out "FAILED / value=undefined" against round 28,
+    // which is the round that raised the question and could not carry the
+    // instrument that answers it.
+    // By POSITION in the archive, not by "any build that is not this one".
+    // Filtering on inequality picked the newest round that merely differed,
+    // which for a prediction made on the newest round meant judging it against
+    // an OLDER one — round 27 standing in for a round 29 that does not exist
+    // yet. Rounds are ordered oldest-first, so anything at or before the
+    // prompting round cannot test the change.
+    const madeAt = logs.findIndex((l) => buildOf(l) === p.afterBuild);
+    const since = madeAt === -1 ? logs : logs.slice(madeAt + 1);
+    const judged = since[since.length - 1];
+    if (!judged) {
+      console.log(`    no round yet   ${p.id}  (${p.madeIn}, made on ${p.afterBuild})`);
+      continue;
+    }
+    const { verdict, why } = judgePrediction(p, judged);
+    console.log(`    ${verdict.padEnd(13)} ${p.id}  (${p.madeIn}) — judged on ${buildOf(judged)}`);
+    if (why) console.log(`                  ${why}`);
+  }
+  console.log(
+    `    A prediction that came out is only half of it — record what happened in\n` +
+      `    rounds/predictions.json and say so in the change that acts on it.`,
+  );
+}
+
+/**
+ * What each self-test scenario has said, round by round.
+ *
+ * A single round's verdict is not a fact about the code — it is a fact about the
+ * code AND the host's mood that afternoon, and the two are not separable from
+ * one round. `explode a degraded picture` FAILED in round 23, PASSED in 26,
+ * FAILED in 27 and 28, with no change to it in between. Read one of those as a
+ * regression and you go looking for a bug that is not there; read the next as a
+ * fix and you close a question that is still open. Both happened here before
+ * this existed, and the only reason it was caught is that someone laid four
+ * rounds side by side by hand.
+ *
+ * A SKIP IS NOT A FLIP, and keeping the distinction is the point. `the chart is
+ * actually visible` reads `pass pass pass skip` — it has never once disagreed
+ * with itself; the host simply stopped answering during the fourth. A scenario
+ * that has only ever passed-or-skipped is sometimes-unmeasured, which is a
+ * completely different thing from one that has genuinely said both pass and fail
+ * about the same code.
+ */
+export function scenarioHistory(logs) {
+  const hist = new Map();
+  for (const log of logs) {
+    const st = log?.selftest;
+    if (!st) continue;
+    for (const key of Object.keys(st)) {
+      const s = st[key];
+      if (!s?.name) continue;
+      if (!hist.has(s.name)) hist.set(s.name, []);
+      hist.get(s.name).push(s.skipped ? "skip" : s.ok ? "pass" : "FAIL");
+    }
+  }
+  return [...hist.entries()].map(([name, verdicts]) => {
+    const measured = verdicts.filter((v) => v !== "skip");
+    return {
+      name,
+      verdicts,
+      skips: verdicts.length - measured.length,
+      // Disagreement about the same code, which is the thing worth flagging.
+      // Computed over MEASURED rounds only, so a skip can never manufacture one.
+      flips: new Set(measured).size > 1,
+    };
+  });
+}
+
+/** Scenario verdicts across rounds, so one round is not mistaken for a trend. */
+function reportStability(logs) {
+  if (logs.length < 2) return;
+  const hist = scenarioHistory(logs);
+  if (!hist.length) return;
+  const flipping = hist.filter((h) => h.flips);
+  const skipped = hist.filter((h) => !h.flips && h.skips);
+  console.log(`\n  SCENARIO VERDICTS ACROSS ${logs.length} ROUNDS`);
+  for (const h of hist) {
+    const mark = h.flips ? "FLIPS" : h.skips ? "skips" : "     ";
+    console.log(`    ${mark} ${h.name.padEnd(46)} ${h.verdicts.join(" ")}`);
+  }
+  if (flipping.length)
+    console.log(
+      `\n    ${flipping.length} scenario(s) have said BOTH pass and fail about code that did not\n` +
+        `    change between them. Do not read a single round's verdict on those as a\n` +
+        `    regression or as a fix — they are reporting the host's mood.`,
+    );
+  if (skipped.length)
+    console.log(
+      `    ${skipped.length} more were SKIPPED in some rounds: never a disagreement, just\n` +
+        `    rounds where the host stopped answering before the question was put.`,
+    );
+}
+
 /** The pooled arms, printed — or nothing when no round carried the scenario. */
 function reportPool(logs) {
   const { rounds, arms } = poolRasteriseArms(logs);
@@ -704,8 +867,15 @@ if (invokedDirectly) {
     } catch {
       return [];
     }
+    // ROUNDS ONLY — `NNN-<build>.json`, the naming `test/rounds.test.ts`
+    // enforces. Taking every `.json` in the directory looked obviously right and
+    // was wrong within the hour: `rounds/predictions.json` lives beside them, so
+    // the ledger was counted as a round. The stability header said 5 rounds
+    // while the pooling underneath said 4, and the open prediction was judged
+    // against the ledger rather than against the newest round — reporting
+    // "not on this sheet" for a question that was answered.
     return entries
-      .filter((f) => f.endsWith(".json"))
+      .filter((f) => /^\d{3}-.*\.json$/.test(f))
       .sort()
       .map((f) => join(p, f));
   });
@@ -795,6 +965,8 @@ if (invokedDirectly) {
     reportTrace(log.trace);
     reportBatchCost(log);
     const failed = reportSelfTest(selftest);
+    reportStability(pooled);
+    reportPredictions(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
   }
@@ -834,6 +1006,8 @@ if (invokedDirectly) {
     reportTrace(log.trace);
     reportBatchCost(log);
     reportSelfTest(selftest);
+    reportStability(pooled);
+    reportPredictions(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)
       console.log("\n  this log holds no runs and no self-test\n");
