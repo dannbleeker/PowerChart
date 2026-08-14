@@ -426,6 +426,8 @@ describe("the fake host's answer sheet", () => {
         // that a question needs a shape when it no longer does, and would fail
         // the moment the question started working.
         "tags-on-fresh-shape",
+        // Needs a shape to create, read an id off, and then re-fetch by that id.
+        "tag-through-refetched-shape",
         "delete-then-lookup",
         "addgroup-returns-usable",
         "group-reports-its-children",

@@ -1566,6 +1566,54 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "tag-through-refetched-shape",
+    // On the shortlist because it is new and untrusted — every question in
+    // PENDING_QUESTIONS is asked on every pass until it has said the same thing
+    // enough times to mean it.
+    resample: true,
+    question: "Can a fresh shape be tagged through a handle re-fetched by its own id?",
+    // THE PRODUCTION PATH, asked directly. `finishCharts` writes the config tag
+    // through `slide.shapes.getItemOrNullObject(id)`, where the id was read off
+    // a shape the run created a sync earlier — the rule that only an id crosses
+    // a sync, never a handle. Rounds 29 and 30 then failed `same scale across
+    // the deck` in the same way: `InvalidParam passed to GetItem(id)` (5010) at
+    // `writing the chart's config tag`, charts left with no config, the scenario
+    // stopping after the second consecutive loss.
+    //
+    // `tags-on-fresh-shape` above already says a shape created THIS sync has a
+    // usable `.tags`, and it answers yes every round. The id round trip is the
+    // untested half of that path, and it is the half production uses.
+    //
+    // Deliberately a question and not a fix. The tagging path has a history of
+    // changes reverted on a theory, and every investigation that reasoned about
+    // this host instead of asking it has been wrong. `threw` here means stop
+    // re-fetching; `yes` means the 5010 is about something else and a rewrite
+    // would have been wasted work.
+    ask: async (ctx) => {
+      const [shape] = await scratchShapes(ctx, [{ left: 150, top: 10, width: 20, height: 20 }], "id");
+      const id = (shape as unknown as { id: string }).id;
+      if (typeof id !== "string" || !id) return { answer: "no-id", detail: "the fresh shape would not report an id" };
+      const refetched = probeShapes(ctx).getItemOrNullObject(id);
+      try {
+        refetched.tags.add("POWERCHART_PROBE", "through-a-refetched-handle");
+        await ctx.sync();
+      } catch (err) {
+        return threw(err);
+      }
+      const back = probeShapes(ctx).getItemOrNullObject(id).tags.getItemOrNullObject("POWERCHART_PROBE");
+      back.load("value");
+      await ctx.sync();
+      try {
+        const value = (back as unknown as { value?: string }).value;
+        return {
+          answer: value === "through-a-refetched-handle" ? "yes" : value === undefined ? "unreadable" : "other",
+        };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
     id: "delete-then-lookup",
     question: "Right after delete()+sync, does getItemOrNullObject report it gone?",
     // `deleteSlideById` verifies from a FRESH context because of this. If a
