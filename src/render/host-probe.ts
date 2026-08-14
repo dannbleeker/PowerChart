@@ -1643,9 +1643,15 @@ const PROBES: Probe[] = [
     //
     // Asked one sync AFTER the group is made, which is how an update would ask:
     // it resolves the id a previous run wrote down, off a slide handle taken
-    // now. office-js#3014 says grouped shapes come back from getItem as type
-    // `unknown` and sub-shapes cannot be reached, so a no here is expected and
-    // is worth recording as a measured no rather than an assumed one.
+    // now. office-js#3014 said grouped shapes come back from getItem as type
+    // `unknown` and sub-shapes cannot be reached, and this comment used to call
+    // a no here "expected" on that basis.
+    //
+    // **#3014 was CLOSED AS COMPLETED on 2025-03-03** — read off the GitHub API
+    // on 2026-08-14, not off a stale note. The expectation is no longer safe in
+    // either direction: a yes would mean the upstream fix reached this host, a
+    // no that it did not. That is a better question than the one this comment
+    // used to describe, and it is why the answer has to be MEASURED.
     ask: async (ctx) => {
       const { members, via } = await groupMembers(
         ctx,
@@ -1768,7 +1774,10 @@ const PROBES: Probe[] = [
     // dangerous one to be handed.
     resample: true,
     question: "After a picture is added, does re-reading the slide's shapes still answer?",
-    // office-js#5022, open and assigned: get shapes, insert an image, delete the
+    // office-js#5022, CLOSED AS COMPLETED on 2024-11-18 — checked against the
+    // GitHub API on 2026-08-14, not read off a stale note. It is kept and still
+    // asked, because a fix upstream is a claim about the service and this probe
+    // is the only thing here that can check it: get shapes, insert an image, delete the
     // old shapes, sync — and `context.sync()` "can run indefinitely" when the
     // shapes are read back to rename the new image. The reporter's only
     // workaround is a 1-2 second pause, and it still recurs.
