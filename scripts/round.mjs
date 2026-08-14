@@ -381,6 +381,22 @@ async function main(argv, deps = {}) {
     }
     const dl = sh("find", "Download run log");
     if (/button "Download run log"(?! \[disabled\])/.test(dl)) break;
+    // WATCH FOR THE CRASH, do not wait it out. Rounds 30 and 31 each died about
+    // three minutes in and then held this loop for the full thirty, because the
+    // only thing it knew how to notice was the finish. Twenty-seven wasted
+    // minutes twice over is most of an hour of a night's throughput.
+    //
+    // A DOM read, deliberately, not a ping: the pane is mid-round and an
+    // Office.js call from here would interleave with the round's own batches and
+    // change what it measures. The dialog is in the document frame and costs
+    // nothing to look at.
+    if (sawCrashDialog(sh("find", "Sorry, we ran into a problem"))) {
+      console.error(
+        `  PowerPoint crashed ${Math.round((Date.now() - started) / 1000)}s in — its dialog is up and nothing ` +
+          'behind it will answer. Clear it and start again; see docs/ROUNDS.md, "The wedge".',
+      );
+      return 1;
+    }
     quiet = quietStreak(quiet, dl, sh.state.lastFailed);
     if (quiet >= 2) {
       console.error("  the pane stopped answering — PowerPoint has probably crashed; the trace is still in the DOM");
