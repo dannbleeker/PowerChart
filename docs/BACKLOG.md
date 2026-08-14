@@ -243,22 +243,47 @@ deletes a fixed index instead turns it red.
 The run's bookkeeping is not at fault either: on clean main the ids it records
 match the deck's growth exactly, 13 for 13.
 
-So both things the last four attempts blamed are sound. What is actually
-unexplained is narrower: with the handback wired in at a pass boundary, each
-delete reported success and the deck at clean-up time was nonetheless the same
-size as if nothing had gone back — `taken 10, early 5, deckAtStart 2,
-deckBefore 12`. Something re-adds, or the deletes land somewhere the count does
-not see. That is the question, and it is about the interleaving of adds and
-deletes inside a run rather than about any primitive.
+So both things the last four attempts blamed are sound.
+
+**The pass boundary was then instrumented — deck length either side of every
+handback, and again at the next one — and the deletes are innocent too:**
+
+    boundary 1   deck 7 -> 3   reported 4   actual shrink 4   MATCH
+    boundary 2   deck 8 -> 7   reported 1   actual shrink 1   MATCH
+
+Every slide the handback claimed to remove did leave, immediately, verified by a
+count either side. The leak is in the SEGMENTS BETWEEN, and it is an ADD problem
+rather than a delete problem:
+
+    segment 1 -> 2         deck 3 -> 8  (+5)   run noted +4
+    segment 2 -> clean-up  deck 7 -> 12 (+5)   run noted +2
+
+The deck grows faster than the run records, and only while the handback is
+active. Four candidates for the un-noted adds have been read and eliminated:
+`addScratchSlide` reports a slide it could not remove (`onAdded` fires on exactly
+that branch), `deleteSlideById` verifies with `slideIsGone` before returning
+true, `deleteSlideByPosition` re-reads the deck and returns false rather than
+guessing when the id is absent, and on clean main the run's own count matches the
+deck's growth exactly.
+
+So the question is now precise and small: **which call adds a slide between one
+pass boundary and the next without the run recording it, and why only once slides
+have been handed back?** Everything upstream and downstream of it has been
+measured and is sound.
+
+The next attempt logs the deck length either side of every single
+`addScratchSlide` in one run — not the probe's behaviour, not the accounting,
+just which add fails to conserve the count. That is one number and it ends this.
 
 The ledger from the clean-up rewrite stays: it is right, it is tested, and it
 removes a genuine assumption. It simply was not the blocker.
 
-Four implementations have been reverted here, and each was abandoned on a theory
-that the next experiment disproved. The next attempt should start by instrumenting
-ONE pass boundary in a run — deck length immediately before and after the
-handback, and again at the next boundary — and go no further until those three
-numbers agree with each other. Everything else has been guessed at enough.
+Four implementations have been reverted here, and every theory each was abandoned
+on has since been disproved by a one-line experiment: the primitive works, the
+bookkeeping is accurate, the deletes land where aimed. The pattern is worth more
+than any of them — reasoning from a full probe run was wrong every time, and
+asking a single component directly gave a clean answer in under a minute, every
+time.
 
 ## 2. Rejected or already covered (do not re-propose)
 
