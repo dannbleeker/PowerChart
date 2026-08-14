@@ -19,6 +19,8 @@ const {
   refFor,
   sawCrashDialog,
   quietStreak,
+  shouldRetry,
+  recover,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -219,6 +221,55 @@ describe("asking the host whether it is awake", () => {
     // Genuinely silent, twice, is the real thing — and it has to reach two.
     expect(quietStreak(0, "", false)).toBe(1);
     expect(quietStreak(1, "   ", false)).toBe(2);
+  });
+
+  it("retries a crash and nothing else", () => {
+    // A crash is the one state the driver can put right on its own, and on the
+    // night of 2026-08-14 it had to, six times. Everything else — a stale pane, a
+    // dirty deck, a missing run button — is a state someone has to look at, and
+    // retrying it would just repeat the same refusal until the night was gone.
+    expect(shouldRetry("crashed", 0, 3)).toBe(true);
+    expect(shouldRetry("crashed", 3, 3), "the budget is a budget").toBe(false);
+    expect(shouldRetry("not-ready", 0, 3)).toBe(false);
+    expect(shouldRetry("timeout", 0, 3)).toBe(false);
+    expect(shouldRetry("finished", 0, 3)).toBe(false);
+  });
+
+  it("recovers in the order the host needs, not the order that reads well", async () => {
+    // The sequence is load-bearing: Refresh reloads the document and closes the
+    // pane, so the pane must be reopened AFTER it, the Automation tab must be
+    // showing before the run button exists, and the deck has to be cleaned last
+    // because cleaning needs the pane's frame to evaluate in.
+    const calls: string[] = [];
+    const sh = ((...args: string[]) => {
+      calls.push(args[0] + (args[1] ? ` ${args[1].slice(0, 22)}` : ""));
+      if (args[0] === "find" && args[1] === "Sorry, we ran into a problem") return "- dialog [ref=f1]:";
+      if (args[0] === "find") return `button "${args[1]}" [ref=f2]\ntab "${args[1]}" [ref=f2]`;
+      return "ok";
+    }) as unknown as Parameters<typeof recover>[0];
+
+    await recover(sh, async () => {});
+
+    expect(calls.filter((c) => c.startsWith("eval")).length, "clicked and cleaned").toBeGreaterThan(2);
+    const order = calls.join(" | ");
+    expect(order.indexOf("find Insert chart"), "the pane is reopened after the reload").toBeGreaterThan(
+      order.indexOf("find Sorry"),
+    );
+    expect(order.indexOf("find Automation")).toBeGreaterThan(order.indexOf("find Insert chart"));
+  });
+
+  it("reloads when there is no dialog to clear", async () => {
+    // The quiet form of the wedge — no modal, session severed by the network. A
+    // recovery that only knew how to click Refresh would do nothing at all here.
+    const calls: string[] = [];
+    const sh = ((...args: string[]) => {
+      calls.push(args[0]);
+      if (args[0] === "find" && args[1] === "Sorry, we ran into a problem") return 'No matches found for "…".';
+      return `button "x" [ref=f2]`;
+    }) as unknown as Parameters<typeof recover>[0];
+
+    await recover(sh, async () => {});
+    expect(calls).toContain("reload");
   });
 
   it("refuses a round when the host will not answer the cheapest call there is", () => {
