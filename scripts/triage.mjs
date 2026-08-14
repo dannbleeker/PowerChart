@@ -245,8 +245,14 @@ const KNOWN_HOST_BUGS = [
   ["did not respond while clearing the shape selection", SELECTION_WEDGE],
   ["InvalidParam passed to GetItem", "office-js#2903 (closed: not planned) — stale shape proxy on web"],
   ["not available", "office-js#6363 (open: regression) — loaded property missing after sync"],
-  ["did not respond", "office-js#5022 (open) — sync hangs after add/delete/re-read"],
-  ["Timed out", "office-js#5022 (open) — sync hangs after add/delete/re-read"],
+  [
+    "did not respond",
+    "office-js#5022 (closed: completed 2024-11-18, unverified on this host) — sync hangs after add/delete/re-read",
+  ],
+  [
+    "Timed out",
+    "office-js#5022 (closed: completed 2024-11-18, unverified on this host) — sync hangs after add/delete/re-read",
+  ],
 ];
 
 /** The known-bug note for a problem string, if there is one. */

@@ -321,8 +321,10 @@ export const PENDING_QUESTIONS = {
     "tag and the ungrouped ones having had their id readback refused. But 'the parts tag does not list them' is a fact " +
     "about our code, not about the host. If the slide's own collection still resolves a child by id, a grouped chart can " +
     "carry a parts list written from ids the grouping pass already holds, and the fast path applies to the fourteen " +
-    "grouped charts a round produces instead of none. office-js#3014 says sub-shapes cannot be reached, so a no is " +
-    "expected — and worth having as a measured no rather than an assumed one, because the whole feature turns on it.",
+    "grouped charts a round produces instead of none. office-js#3014 SAID sub-shapes cannot be reached, and a no used to " +
+    "be called expected on that basis — but #3014 was closed as COMPLETED on 2025-03-03 (GitHub API, checked 2026-08-14), " +
+    "so neither answer is expected any more: a yes means the upstream fix reached this host, a no that it did not. Which " +
+    "is why it has to be a measured answer rather than an assumed one, because the whole feature turns on it.",
   "shape-resolve-held-slide-proxy":
     "Added after the fixture's build. It decides whether `deleteShapesById`, `setShapeSelection` and the selection path are bugs or merely untidy: all three resolve a slide, sync, then reach through that same handle for a shape. The write form of this is known to fail; the read form has never been asked, and the fake's windowed handle does not gate it either way.",
 };
