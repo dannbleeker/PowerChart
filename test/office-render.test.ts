@@ -124,6 +124,46 @@ describe("insertSceneIntoSlide", () => {
     expect(group.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
   });
 
+  it("keeps the config tag when the host refuses to say where the chart landed", async () => {
+    // The failure five real rounds reported and none could reproduce. `same
+    // scale across the deck` scores 4 of 8 every time, and every loss is the
+    // same 5010 — with the host naming the culprit itself:
+    //
+    //   errorLocation: ShapeCollection.getItem
+    //   statement: var shape = shapes.getItem(...) /* originally addTextBox(...) */;
+    //
+    // "originally addTextBox" — Office.js rewrote the CREATION proxy's object
+    // path into `getItem(id)`, and this host will not resolve that for a shape
+    // it has just made. What forces the rewrite is the `load("id,left,top")`
+    // asking where the chart ended up, and that load sits in the same batch as
+    // the tag writes. One refused positional read therefore takes the config
+    // tag with it, and the chart is left drawn, nameless and not re-editable.
+    //
+    // BEHAVIOUR, NOT A GUARD — and said out loud because this test was written
+    // expecting to fail. The theory was that the positional load and the tag
+    // writes share a batch, so one refusal costs both; the insert path turns out
+    // to already survive it, and the test passed the moment it was written. It
+    // is kept because it pins something real that CI could not reach before, and
+    // because the next person to have this idea should find it already answered.
+    //
+    // Where the loss actually happens is the UPDATE path, and the round says so
+    // in one field: every settle-pass failure reports `withId: 0`. The repair
+    // that exists to rescue a lost config tag is id-based, and this host never
+    // yields an id — so the second chance is unavailable by construction rather
+    // than failing. See `docs/BACKLOG.md`.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.refuseIdLeftTopLoads = 1;
+    try {
+      await insertSceneIntoSlide(buildChart(config), { left: 100, top: 50, tagData: JSON.stringify(config) });
+    } finally {
+      faults.refuseIdLeftTopLoads = 0;
+    }
+    const tagged = slide.created.find((s) => s.tagStore.get(CHART_TAG));
+    expect(tagged, "drawn but carrying no config — the user cannot edit it again").toBeTruthy();
+    expect(tagged!.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
+  });
+
   it("describes the chart group with accessible alt text", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
