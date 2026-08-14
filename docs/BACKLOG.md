@@ -191,11 +191,34 @@ Two fixes were built and both reverted on 2026-08-14:
   does not merely tidy the deck — it changes what the probe measures.
 
 So this is not a tidy-up, it is a change to the instrument, and it needs its own
-round with a control rather than a green suite. The variant not yet tried, and
-the one worth trying first: sweep the accumulated slides at a PASS BOUNDARY,
-where no question is in flight and the next pass re-resolves everything anyway.
-That bounds growth to one pass instead of a whole round without touching
-in-flight state.
+round with a control rather than a green suite.
+
+**The pass-boundary variant was then tried too, and it is blocked by something
+else — the accounting, not the timing.** Sweeping between passes does leave the
+questions alone, exactly as predicted: none of the four guards that killed the
+per-replacement attempts fired. What fires instead is `leaves the deck exactly as
+it found it`, and it keeps firing through every reconciliation:
+
+- the end-of-run clean-up derives what it owes from `scratchIds.length` and from
+  the deck's growth since the run began (`positionalSweepPlan`), and BOTH are
+  invalidated by a slide going back early;
+- scoping the clean-up to what is still outstanding fixes the double-count and
+  then under-sweeps, because the positional plan is capped by `deckNow -
+  deckAtStart`, which the early handbacks have already shrunk;
+- feeding the handbacks back into the plan as `alreadyDeleted` changes nothing —
+  the deck still ends with slides the run cannot account for.
+
+Three spellings, one cause: **the clean-up assumes every scratch slide is still
+there when it runs.** That assumption is load-bearing in `slidesActuallyReturned`,
+`positionalSweepPlan` and the `scratch-slides-returned` answer, and no amount of
+arithmetic at the call sites removes it.
+
+So the order of work is settled, and it is the opposite of the obvious one:
+**rewrite the clean-up first**, as its own change, so it accounts for slides
+returned at any point in the run rather than only at the end — with its own tests
+and no change in observable behaviour. Only then is a mid-run return, at a pass
+boundary, a small change. Attempting it in the other order has now cost three
+implementations.
 
 ## 2. Rejected or already covered (do not re-propose)
 
