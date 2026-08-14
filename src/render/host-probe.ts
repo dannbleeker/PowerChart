@@ -260,6 +260,21 @@ export function regimeFrom(
 /** A complete sheet, plus what produced it. */
 export interface HostAnswerSheet {
   kind: "powerchart-host-answers";
+  /**
+   * The host's answer to the cheapest possible call, before any question.
+   *
+   * Rounds 24, 25 and 29 wedged, and each was read as the probe walking into
+   * trouble around question six. Round 29 disproved that: the question that has
+   * answered `yes` in every round on record went SILENT at question four, so the
+   * host was already unwell before the run asked it anything. Nothing in the
+   * sheet could say so, which is why every hypothesis about the wedge — time of
+   * day, deck size, build, session age — was fitted to the wrong moment.
+   *
+   * A number, deliberately, not a verdict: three healthy rounds and three wedged
+   * ones are not enough to set a threshold, and a guessed one would be quoted as
+   * fact by the next reader.
+   */
+  opened?: { ms: number; answered: boolean };
   /** Which host answered — a real PowerPoint, or the fake in CI. */
   source: string;
   build: string;
@@ -2179,7 +2194,32 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   // The deck's size before this run added anything — the floor the positional
   // sweep may never reach past. Read here rather than in the clean-up because
   // by then the run's own slides are already in the count.
-  const deckAtStart = (await deckSlideIds().catch(() => undefined))?.length;
+  // IS THE HOST AWAKE, BEFORE A SINGLE QUESTION IS PUT?
+  //
+  // Three rounds have wedged — 24, 25 and 29 — and each was read as the probe
+  // walking into trouble somewhere around question six. Round 29 showed that is
+  // not what happens: `shape-add-fresh-slide-proxy`, which has answered `yes` in
+  // every round on record, came back SILENT at question four. The host was
+  // already not answering before the run had asked it anything worth asking, and
+  // nothing in the sheet could say so.
+  //
+  // The cheapest call there is, timed, before anything else touches the host.
+  // `deckSlideIds` is what the run was about to do anyway, so this costs one
+  // extra round trip and turns "it wedged" into "it was already slow when we
+  // opened", which are different facts and want different responses: a bad host
+  // is worth waiting out, a provoked one is worth investigating.
+  //
+  // The number, not a verdict. A threshold here would be a guess with no rounds
+  // behind it; three healthy rounds and three wedged ones are what will set one,
+  // and until then the sheet carries the milliseconds and the reader decides.
+  const openedAt = Date.now();
+  const opened = await deckSlideIds().catch(() => undefined);
+  const openedMs = Date.now() - openedAt;
+  trace("host", opened ? "answered before the first question" : "did not answer before the first question", {
+    ms: openedMs,
+    slides: opened?.length,
+  });
+  const deckAtStart = opened?.length;
   let scratchId = takeScratch(await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch, noteUnnamed));
   if (scratchId) scratchIds.push(scratchId);
   /**
@@ -2726,7 +2766,15 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     const support = thinSupport(row.samples);
     if (support) row.support = support;
   }
-  return { kind: "powerchart-host-answers", source, build, requirementSets: requirementSets(), answers };
+  return {
+    kind: "powerchart-host-answers",
+    source,
+    build,
+    requirementSets: requirementSets(),
+    // How the host was BEFORE the first question — see the call that measures it.
+    opened: { ms: openedMs, answered: opened !== undefined },
+    answers,
+  };
 }
 
 /**

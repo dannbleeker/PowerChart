@@ -63,7 +63,7 @@ export function buildOf(text) {
  * not: it means the site has not finished publishing the commit under test, so
  * the pane will serve the previous build and the round will quietly measure it.
  */
-export function readiness({ head, deployed, stamp, slides, verbose, pictures, reachable = true }) {
+export function readiness({ head, deployed, stamp, slides, verbose, pictures, reachable = true, ping = null }) {
   const stop = [];
   // First, and on its own: everything below reads as "the browser said nothing"
   // when the truth is that nobody asked it. See `cli`.
@@ -75,6 +75,14 @@ export function readiness({ head, deployed, stamp, slides, verbose, pictures, re
           "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point.",
       ],
     };
+  // Before anything about builds or decks: is the host answering? A stale pane
+  // and a dirty deck are both worth fixing, and neither matters if the host will
+  // not talk — that is the state three rounds have burned an hour each on.
+  if (ping && !ping.answered)
+    stop.push(
+      `the host did not answer the cheapest possible call in ${ping.ms}ms — it is not going to answer a round. ` +
+        "This survives a tab reload and has lasted hours; wait it out rather than starting.",
+    );
   if (!deployed) stop.push("the site did not answer with a build — is Pages up?");
   else if (head && deployed !== head)
     stop.push(`the site is serving ${deployed} but HEAD is ${head} — wait for Deploy Pages to finish`);
@@ -184,10 +192,46 @@ function cli(run, dir) {
 }
 
 /** A `ref_N` for the first element matching `pattern` in a `find` result. */
-function refFor(sh, query, pattern) {
+export function refFor(sh, query, pattern) {
   const out = sh("find", query);
   const line = out.split("\n").find((l) => pattern.test(l));
+  // The ref on the MATCHING LINE, never the first ref in the output. `find`
+  // prints the whole frame hierarchy above the hit, so the first ref belongs to
+  // the outer iframe — evaluating against it lands in the OneDrive document
+  // rather than in the pane, where `Office` and `PowerPoint` are both undefined
+  // and a host ping silently reports a healthy host as dead.
   return line ? (/ref=([a-z0-9]+)/.exec(line)?.[1] ?? null) : null;
+}
+
+/**
+ * Is the host answering AT ALL, before a round is offered?
+ *
+ * Rounds 24, 25 and 29 each cost most of an hour to discover that it was not
+ * going to. Round 29 showed the host was already unwell before the probe's
+ * fourth question, and a ping run afterwards showed the state persists: at
+ * 17:54, nearly two hours after that round wedged and after a full tab reload,
+ * `slides.getCount()` — the cheapest call Office.js has — did not come back
+ * inside eight seconds.
+ *
+ * Detectable in seconds, and it survives a reload. Asking here turns a
+ * sixty-six-minute wedge into a two-second refusal.
+ *
+ * Runs inside the PANE's frame, which is why the caller passes a ref belonging
+ * to the pane: `PowerPoint` does not exist in the document frame around it.
+ */
+export function pingScript(budgetMs) {
+  return (
+    "async () => { const t = Date.now(); try { await Promise.race([ " +
+    "PowerPoint.run(async (c) => { c.presentation.slides.getCount(); await c.sync(); }), " +
+    `new Promise((_, rej) => setTimeout(() => rej(new Error("budget")), ${budgetMs})) ]); ` +
+    'return "ok:" + (Date.now() - t); } catch (e) { return "no:" + (Date.now() - t); } }'
+  );
+}
+
+/** `{ answered, ms }` from what `pingScript` returned, or null when unreadable. */
+export function readPing(out) {
+  const m = /"?(ok|no):(\d+)"?/.exec(String(out ?? ""));
+  return m ? { answered: m[1] === "ok", ms: Number(m[2]) } : null;
 }
 
 /** Click through the element's own handler — a plain click does not reach the pane. */
@@ -213,18 +257,24 @@ async function main(argv, deps = {}) {
   const listRef = refFor(sh, "Slide List", /listbox "Slide List"/);
   const slides = listRef ? (sh("snapshot", listRef).match(/option "Slide"/g) ?? []).length : null;
 
+  const paneRef = refFor(sh, "Verbose trace", /checkbox "Verbose trace"/);
+  const ping = paneRef ? readPing(sh("eval", pingScript(8000), paneRef)) : null;
+
   const toggles = sh("find", "Verbose trace");
   const verbose = /checkbox "Verbose trace"/.test(toggles) ? /Verbose trace" \[checked\]/.test(toggles) : null;
   const pictures = /checkbox "Picture every slide"/.test(toggles)
     ? /Picture every slide" \[checked\]/.test(toggles)
     : null;
 
-  const state = { head, deployed, stamp, slides, verbose, pictures, reachable: !sh.state.unreachable };
+  const state = { head, deployed, stamp, slides, verbose, pictures, reachable: !sh.state.unreachable, ping };
   const { ok, stop } = readiness(state);
   console.log(
     `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)`,
   );
   console.log(`  verbose trace ${verbose ?? "?"} · picture every slide ${pictures ?? "?"}`);
+  console.log(
+    `  host ${ping ? (ping.answered ? `answered in ${ping.ms}ms` : `SILENT for ${ping.ms}ms`) : "not asked"}`,
+  );
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
     for (const s of stop) console.error(`    - ${s}`);

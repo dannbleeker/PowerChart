@@ -113,3 +113,27 @@ plain click does nothing, refs go stale on every DOM change).
 
 Before starting, check the pane's build stamp is the commit you mean to test. PowerPoint caches the
 pane HTML for ten minutes and a whole round can otherwise test code the host never fetched.
+
+    npm run round -- --check    # preconditions only, nothing driven
+    npm run round               # check, run, poll, archive, triage
+
+`--check` refuses on a stale pane, an unpublished build, a dirty deck, either toggle off — and, first
+of all, on a host that is not answering.
+
+**Ask the host whether it is awake before spending an hour finding out.** Rounds 24, 25 and 29 each
+wedged at the same place (`listing the deck's slides`, 90s timeout) and each cost most of an hour to
+discover. Round 29 showed the host was already unwell *before* the probe's fourth question:
+`shape-add-fresh-slide-proxy`, which answers `yes` in every round on record, came back silent. Round
+30 reproduced the signature in three minutes, 27 minutes later and after a full tab reload — so the
+condition PERSISTS across runs and reloads, and a ping run at 17:54 found `slides.getCount()` still
+unanswered after eight seconds. That is a two-second question standing in for a sixty-six-minute one.
+
+Deck size at start, build, browser-session age and time of day were all checked against the healthy
+and wedged rounds and none of them separates the two. Nothing yet says what starts it or what ends
+it; the ping only says, cheaply, that it is happening. When it refuses, wait rather than reload —
+reloading has never cleared it.
+
+The probe asks the same question from the inside: `opened: { ms, answered }` on the sheet times the
+cheapest possible call before question 1. It is a NUMBER, not a verdict, deliberately — three healthy
+and three wedged rounds are not enough to set a threshold, and a made-up one would turn a real
+measurement into a guess wearing a verdict's clothes.
