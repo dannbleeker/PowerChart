@@ -120,23 +120,36 @@ still open:
 The `hollowReads` fault in `test/helpers/office-host.ts` is not a paranoid
 invention: it models a regression Microsoft has acknowledged and not yet fixed.
 
-### A shape is reachable only in the batch that created it
+### A shape can be WRITTEN through its creation handle, but never read back
 
-Measured on the real host, round `032-360309f`. Four answers that only mean
-something read together:
+Measured on the real host, rounds `032-360309f` and `033-86eaf65`. Answers that
+only mean something read together:
 
-| question                        | answer       |
-| ------------------------------- | ------------ |
-| `tags-on-fresh-shape`           | `yes`        |
-| `tag-through-refetched-shape`   | `no-id`      |
-| `shape-proxy-survives-one-sync` | `unreadable` |
-| `shapes-items-count-honest`     | `unreadable` |
+| question                              | 032          | 033          |
+| ------------------------------------- | ------------ | ------------ |
+| `tags-on-fresh-shape`                 | `yes`        | `yes`        |
+| `tag-through-refetched-shape`         | `no-id`      | `no-id`      |
+| `tag-the-creation-proxy-a-sync-later` | —            | **`yes`**    |
+| `shape-proxy-survives-one-sync`       | `unreadable` | `unreadable` |
+| `shapes-items-count-honest`           | `unreadable` | `unreadable` |
 
-A shape created in this batch has a working `.tags` — that has answered `yes` in
-every round on record. But its **id cannot be read back**, and its **handle does
-not survive a sync**. Both routes out of the creating batch are closed, so
-anything to be written on a shape has to be written while the shape is still
-being made.
+**Writing through an aged creation handle works. Reading through one does not,
+and there is no id to re-fetch by.**
+
+This section first said both routes out of the creating batch were closed, which
+was wrong and lasted about an hour. Round 032 answered `no-id` and `unreadable`
+and that was read as "the shape is unreachable once its batch is over". Round
+033 asked the half `no-id` had left untried — tag through the handle that made
+the shape, one sync later — and the write went through. Recorded because the
+overstatement would have sent the fix at the wrong half of the path.
+
+So the rule is narrower and more useful than "tag it while you are making it":
+
+- `shape.tags.add(...)` through the handle that CREATED the shape works, in that
+  batch or a later one.
+- `shape.load(...)` through that same aged handle comes back unreadable.
+- `shapes.getItemOrNullObject(id)` is not available at all, because the id never
+  reads back.
 
 That is the whole of the `same scale across the deck` failure, which three
 consecutive rounds scored 4-5 of 8 on. `finishCharts` writes `POWERCHART_CONFIG`
