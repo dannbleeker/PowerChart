@@ -89,6 +89,16 @@ export interface HostAnswer {
    * the sheet itself instead of by a human comparing rounds.
    */
   stable?: boolean;
+  /**
+   * How many attempts reached the question, when some did not.
+   *
+   * Present ONLY when `asked < of`, so its presence is the finding: this answer
+   * came from fewer attempts than were made, and the rest never got to ask.
+   * `{ asked: 1, of: 4 }` is a fact the host said once and refused three times —
+   * still the best answer available, and not the same thing as one four attempts
+   * agreed on. See `supportOf`.
+   */
+  support?: { asked: number; of: number };
 }
 
 /** One ask of one question, and the state the host was in when it answered. */
@@ -466,6 +476,51 @@ export const PROBE_PASSES = 3;
 export function stabilityOf(samples: ProbeSample[] | undefined): boolean | undefined {
   const real = (samples ?? []).map((x) => x.answer).filter((a) => !NOT_ASKED.has(a));
   return real.length >= 2 ? new Set(real).size === 1 : undefined;
+}
+
+/**
+ * How many attempts actually reached the question, out of how many were made.
+ *
+ * `record` promotes the first REAL answer over a never-asked, which is right —
+ * two passes that could not ask and a third that did should report what the
+ * third found. But the row it produces is then indistinguishable from one every
+ * pass agreed on: `answer` says `threw` whether four attempts said it or one
+ * did, and `stable` is `undefined` for BOTH "answered once, never repeated" and
+ * "never answered at all", because it needs two real samples to say anything.
+ *
+ * So a single sample becomes an unqualified fact about the host. That matters
+ * here more than it would elsewhere, because a `threw` is exactly what a
+ * misclassified SETUP failure looks like — the probe never reached its
+ * question, the error surfaced anyway, and the never-asked vocabulary that
+ * exists to catch that gets overwritten by the one attempt that got it wrong.
+ * `KNOWN_DIVERGENCES`, the CI fixture and `host-diff` all read `answer` and none
+ * of them can tell the two apart.
+ *
+ * This does not fix the misclassification — that is a separate and harder
+ * problem, and guessing at it has already cost this project a reverted branch.
+ * It makes the weight of an answer visible, so a one-of-four does not get
+ * quoted as though it were a four-of-four.
+ */
+export function supportOf(samples: ProbeSample[] | undefined): { asked: number; of: number } {
+  const all = samples ?? [];
+  return { asked: all.filter((x) => !NOT_ASKED.has(x.answer)).length, of: all.length };
+}
+
+/**
+ * The support worth RECORDING, or nothing when there is nothing to say.
+ *
+ * Only when the answer rests on fewer attempts than were made. A row every
+ * attempt reached needs no qualifier, and stamping one on all of them puts the
+ * interesting case back where it started — in a field nobody reads because it is
+ * always present. A row NO attempt reached already says `no-scratch-slide` in
+ * `answer`, and `0 of 3` beside it adds nothing.
+ *
+ * Split out of the loop that used it because a condition written inline there is
+ * a condition no test can reach: deleting it left the entire suite green.
+ */
+export function thinSupport(samples: ProbeSample[] | undefined): { asked: number; of: number } | undefined {
+  const { asked, of } = supportOf(samples);
+  return of > 1 && asked > 0 && asked < of ? { asked, of } : undefined;
 }
 
 /**
@@ -2640,6 +2695,8 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   for (const row of answers) {
     const verdict = stabilityOf(row.samples);
     if (verdict !== undefined) row.stable = verdict;
+    const support = thinSupport(row.samples);
+    if (support) row.support = support;
   }
   return { kind: "powerchart-host-answers", source, build, requirementSets: requirementSets(), answers };
 }
@@ -2868,6 +2925,18 @@ export function summariseHostSheet(sheet: HostAnswerSheet): {
    * looks.
    */
   unstable: string[];
+  /**
+   * Answers the host gave FEWER times than it was asked.
+   *
+   * `unstable` catches a question that disagreed with itself, which needs two
+   * real samples. This catches the other half: a question answered once and
+   * refused the rest, where there is no disagreement to find because there is
+   * only one answer. Round 26 carried `group-reports-its-children threw (1/2)`
+   * and `shape-add-fresh-getitem-slide threw (1/2)` — a `threw` is what a
+   * misclassified SETUP failure looks like, and one attempt is exactly how many
+   * it takes for that to become the row's answer.
+   */
+  thin: string[];
 } {
   const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
   const neverPut = sheet.answers.filter((a) => NOT_ASKED.has(a.answer)).map((a) => a.id);
@@ -2883,7 +2952,8 @@ export function summariseHostSheet(sheet: HostAnswerSheet): {
   const known = differ.filter((d) => declared(d.id)).map((d) => d.id);
   const fresh = differ.filter((d) => !declared(d.id)).map((d) => d.id);
   const unstable = sheet.answers.filter((a) => a.stable === false).map((a) => a.id);
-  return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh, unstable };
+  const thin = sheet.answers.filter((a) => a.support && a.support.asked === 1).map((a) => a.id);
+  return { asked: sheet.answers.length - neverPut.length, neverPut, known, fresh, unstable, thin };
 }
 
 /** Whether a probe run is worth sending on — anything unexplained in it. */
