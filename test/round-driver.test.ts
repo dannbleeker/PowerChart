@@ -100,6 +100,15 @@ describe("archive housekeeping", () => {
     expect(buildOf("no build here")).toBe(null);
   });
 
+  it("does not mistake a playwright ref for a build", () => {
+    // `f14e735` is an element ref, and the accessibility dump this reads is full
+    // of them. Taking a bare 7-hex token reported the pane as showing a build
+    // the site had never served and refused to start a round on a pane that was
+    // showing exactly the right commit.
+    expect(buildOf('button "Insert chart" [ref=f14e735]')).toBe(null);
+    expect(buildOf("generic [ref=f9e12]: 2601703 · 2026-08-14 13:58Z")).toBe("2601703");
+  });
+
   it("numbers the next round above the highest already kept", () => {
     expect(nextRoundNumber(["023-0e22b31.json", "028-32a6987.json", "README.md"])).toBe("029");
     expect(nextRoundNumber([])).toBe("001");
