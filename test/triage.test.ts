@@ -8,6 +8,12 @@ import { join } from "path";
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
 import { triage, runsIn, selfTestIn, knownBug, deckEvidence, poolRasteriseArms } from "../scripts/triage.mjs";
+// Its own line, for the reason spelled out below: adding it to the grouped
+// import above reflowed that statement across lines, and `@ts-expect-error`
+// covers only the NEXT line — so the directive stopped reaching the `from`
+// clause. Suite stayed green, `tsc` went red, exactly as predicted here.
+// @ts-expect-error — as above.
+import { poolEveryDraw } from "../scripts/triage.mjs";
 // Its own line: adding it above pushes that import over the print width, and a
 // reflowed import moves this directive off the statement it is annotating.
 // @ts-expect-error — as above.
@@ -428,6 +434,71 @@ describe("triage — logs that are not inserts", () => {
 
   it("says nothing about a log that never ran the scenario", () => {
     expect(poolRasteriseArms([{ trace: { entries: [committed(1)] } }, {}]).arms.rasterise).toEqual({ ok: 0, stall: 0 });
+  });
+
+  it("counts the draws the scenario's four arms never see", () => {
+    // Round 28 in miniature, and the reason `poolEveryDraw` exists. The
+    // visibility scenario rasterises and then draws; that draw stalls. It
+    // carries no arm tag, so the arms report a clean round while the round
+    // contains the very thing they are looking for.
+    const rasterised = {
+      ms: 500,
+      scope: "selftest",
+      message: "visibility step",
+      data: { what: "rasterising a slide" },
+    };
+    // `batch issued`, NOT the `committed` helper above: that one still emits the
+    // pre-2026-08-11 name `batch committed`, which this file's own comment says
+    // is read by nothing here, by design. Using it made the population come back
+    // empty and looked like a classifier bug.
+    const issued = (ms: number) => ({ ms, scope: "draw", message: "batch issued", data: {} });
+    const log = {
+      trace: {
+        entries: [
+          // The scenario's own arms: both land, so the arms see nothing.
+          drawStep(10, "rasterise", 0),
+          committed(11),
+          drawStep(70, "cheap read", 1),
+          committed(71),
+          // An untagged draw, straight after a rasterise, that stalls.
+          rasterised,
+          issued(501),
+          gaveUp(560),
+          // An untagged draw with no rasterise before it, that lands.
+          issued(900),
+        ],
+      },
+    };
+    expect(poolRasteriseArms([log]).arms.rasterise, "the arms should still see a clean round").toEqual({
+      ok: 1,
+      stall: 0,
+    });
+    const { after } = poolEveryDraw([log]);
+    expect(after.rasterise, "the untagged stall after a rasterise was not counted").toEqual({ ok: 0, stall: 1 });
+    expect(after["anything else"].ok).toBeGreaterThanOrEqual(2);
+    expect(after["anything else"].stall).toBe(0);
+  });
+
+  it("blames the rasterise nearest the draw, not one from earlier in the round", () => {
+    // Without resetting at each draw, one rasterise early on would tar every
+    // draw after it and the population would be meaningless.
+    const issued = (ms: number) => ({ ms, scope: "draw", message: "batch issued", data: {} });
+    const log = {
+      trace: {
+        entries: [
+          { ms: 10, scope: "selftest", message: "visibility step", data: { what: "rasterising a slide" } },
+          issued(20), // after the rasterise
+          issued(30), // NOT after it — a draw intervened
+          gaveUp(40),
+        ],
+      },
+    };
+    const { after } = poolEveryDraw([log]);
+    expect(after.rasterise, "the first draw follows the rasterise and landed").toEqual({ ok: 1, stall: 0 });
+    expect(after["anything else"], "the second draw does not follow a rasterise, and stalled").toEqual({
+      ok: 0,
+      stall: 1,
+    });
   });
 
   it("has nothing to say about a log that carries no deck evidence", () => {
