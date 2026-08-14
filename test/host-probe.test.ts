@@ -416,7 +416,12 @@ describe("the fake host's answer sheet", () => {
         "shape-resolve-held-slide-proxy",
         "shapes-items-count-honest",
         "shapes-items-via-positional-slide",
-        "tags-add-same-key-twice",
+        // `tags-add-same-key-twice` is deliberately NOT here any more. It asks
+        // about tag semantics, not about shapes, and it now asks on the scratch
+        // SLIDE — so a host that refuses every shape add still answers it, which
+        // is the whole point of the change. Leaving it in this list would assert
+        // that a question needs a shape when it no longer does, and would fail
+        // the moment the question started working.
         "tags-on-fresh-shape",
         "delete-then-lookup",
         "addgroup-returns-usable",
