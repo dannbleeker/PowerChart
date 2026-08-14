@@ -232,23 +232,33 @@ slide is a **contiguous trailing block** — a positional RANGE needs no slide t
 be identified individually. During a run that block does not exist, because the
 live scratch slide sits at the end of it.
 
-That is the real prerequisite, and it is about the host rather than our
-arithmetic: **there is no way to delete one known slide mid-run on this host.**
-The ledger stays (it is right, and it is tested), but it unblocks nothing on its
-own.
+That looked like the real prerequisite — "there is no way to delete one known
+slide mid-run on this host" — and **it is wrong.** Asked directly rather than
+inferred from a misbehaving run, the answer is yes: `deleteTrailingSlides(i, 1)`
+removes exactly the slide at index `i`, confirmed by id either side, and it keeps
+doing so under `renumbersOnAdd` — the very behaviour that makes delete-by-id
+useless here. `test/delete-one-slide.test.ts` pins it, and a mutation that
+deletes a fixed index instead turns it red.
 
-Two routes left, neither attempted:
+The run's bookkeeping is not at fault either: on clean main the ids it records
+match the deck's growth exactly, 13 for 13.
 
-- Keep the live scratch slide FIRST among the run's own slides rather than last,
-  so everything finished with is a contiguous trailing block at any moment and a
-  positional range works mid-run exactly as it does at the end.
-- Sweep only when the finished slides happen to be trailing — after the live one
-  has been replaced, before the new one is used — which is a narrower window than
-  a pass boundary and may not exist reliably.
+So both things the last four attempts blamed are sound. What is actually
+unexplained is narrower: with the handback wired in at a pass boundary, each
+delete reported success and the deck at clean-up time was nonetheless the same
+size as if nothing had gone back — `taken 10, early 5, deckAtStart 2,
+deckBefore 12`. Something re-adds, or the deletes land somewhere the count does
+not see. That is the question, and it is about the interleaving of adds and
+deletes inside a run rather than about any primitive.
 
-Four implementations have now been reverted here. The next attempt should start
-by proving a single known slide CAN be removed mid-run, and stop there if it
-cannot.
+The ledger from the clean-up rewrite stays: it is right, it is tested, and it
+removes a genuine assumption. It simply was not the blocker.
+
+Four implementations have been reverted here, and each was abandoned on a theory
+that the next experiment disproved. The next attempt should start by instrumenting
+ONE pass boundary in a run — deck length immediately before and after the
+handback, and again at the next boundary — and go no further until those three
+numbers agree with each other. Everything else has been guessed at enough.
 
 ## 2. Rejected or already covered (do not re-propose)
 
