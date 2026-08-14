@@ -71,16 +71,38 @@ with the session.
 
 ## Predictions
 
-A change made because of a round should say what the NEXT round will show, and the next round should
-be judged against it in as many words. #468 predicted that three questions would answer for the
-first time in eleven rounds; round 27 said no; #469 recorded the failure rather than leaving a claim
-the data contradicts. A prediction that cannot fail is not worth staking.
+A change made because of a round should say what the NEXT round will show, and the next round
+should judge it. #468 predicted three questions would answer for the first time in eleven rounds;
+round 27 said no; #469 recorded the failure rather than leaving a claim the data contradicts.
+**A prediction that cannot fail is not worth staking.**
+
+`rounds/predictions.json` is the ledger and `npm run rounds` judges the open ones. An entry names
+the build it was made on, the claim in a form a machine can check, and — the half worth keeping —
+`because`, the reasoning. Four claim kinds: `probe-answers`, `probe-starves`,
+`scenario-passes`, `probe-detail-matches`.
+
+Two rules the judge enforces, both learned by getting them wrong:
+
+- **A prediction is never judged against the round that prompted it.** The change it predicts about
+  is not in that round's build, so judging there fails every prediction the moment it is written.
+  Rounds are ordered oldest-first and only rounds AFTER the prompting one count.
+- **Never-put is `undetermined`, not `FAILED`.** A question the host declined to be asked has not
+  refuted anything, and blaming the prediction for the refusal is the same class of error as
+  reading `no-scratch-slide` as an answer.
+
+Predicting that something will NOT change is worth staking too: it is what shows a change was
+scoped, and #470's "the other two stay blocked" is the reason its result reads as a controlled
+one rather than a coincidence.
 
 ## Verdicts that oscillate are noise, not regressions
 
-`explode a degraded picture` failed in round 23, passed in 26, failed in 27. Nothing computes that
-yet, so check by hand before reading a single round's verdict as a change. A scenario that has
-flipped across rounds is telling you about the host's mood.
+`npm run rounds` prints every scenario's verdict per round and flags the ones that have said both
+pass and fail about code that did not change between them. `explode a degraded picture` reads
+`FAIL pass FAIL FAIL` — read one of those as a regression and you hunt a bug that is not there.
+
+**A skip is not a flip.** `the chart is actually visible` reads `pass pass pass skip`: it has never
+disagreed with itself, the host simply stopped answering during the fourth. Sometimes-unmeasured
+and genuinely-contradictory are different facts and the report keeps them apart.
 
 ## Driving a round
 
