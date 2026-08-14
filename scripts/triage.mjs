@@ -457,6 +457,74 @@ export function poolRasteriseArms(logs) {
   return { rounds, arms };
 }
 
+/**
+ * Every draw in the round, not just the scenario's four.
+ *
+ * Round 28 is why this exists. `does a rasterise poison the next draw` PASSED,
+ * and the same round skipped `the chart is actually visible` on "PowerPoint did
+ * not respond while drawing shapes 1-9 of 9 (45s)" with the trace adding "the
+ * last thing the host answered was 'rasterising a slide', 0s earlier". A draw
+ * stalling straight after a rasterise, in the round whose rasterise scenario had
+ * just reported no effect — because the scenario counts only the four draws it
+ * makes itself and that one was not one of them. The evidence was being thrown
+ * away by the thing built to collect it.
+ *
+ * A round issues about forty draws. Counting all of them is a tenfold bigger
+ * sample per round, which turns "30-50 more rounds" into a handful:
+ *
+ *   rounds 23, 26, 27, 28 — 157 draws, against 16 the arms would have counted
+ *   after a rasterise      1 stalled /  36
+ *   after anything else    0 stalled / 121
+ *
+ * REPORTED SEPARATELY FROM THE ARMS, AND WEAKER THAN THEM, WHICH IS THE WHOLE
+ * POINT OF KEEPING BOTH. The arms are counterbalanced — interleaved so position
+ * cannot account for a difference — and that is what makes four draws worth
+ * anything. This population is observational: draws that follow a rasterise
+ * follow it because of which scenario they belong to, and those scenarios differ
+ * in shape count and in what they ask of the host. So it can raise a suspicion
+ * and it cannot settle one. Two populations, honestly labelled, beat one
+ * population quietly mixing the two kinds of evidence.
+ */
+export function poolEveryDraw(logs) {
+  const isDraw = (e) =>
+    (e.scope === "draw" && e.message === "batch issued") ||
+    /^after a (?:rasterise|cheap read) #\d+: drawing$/.test(String(e.data?.what ?? ""));
+  // A rasterise EVENT is never itself a draw. The scenario's own arm markers say
+  // "after a rasterise #0: drawing" — that is a draw which FOLLOWS a rasterise,
+  // and reading it as one would tar the next draw with a rasterise that had
+  // already been accounted for. Caught by the test below rather than by reading:
+  // the untagged-draw case came out one short and the miscount was this.
+  const isRasterise = (e) => !isDraw(e) && /rasteris/i.test(`${String(e.data?.what ?? "")} ${String(e.message ?? "")}`);
+  const isStall = (e) =>
+    e.scope === "host" && e.message === "gave up waiting" && /drawing shapes/.test(String(e.data?.what ?? ""));
+
+  const after = { rasterise: { ok: 0, stall: 0 }, "anything else": { ok: 0, stall: 0 } };
+  let rounds = 0;
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    rounds++;
+    const es = [...entries].sort((a, b) => (a.ms ?? 0) - (b.ms ?? 0));
+    const at = [];
+    es.forEach((e, i) => {
+      if (isDraw(e)) at.push(i);
+    });
+    let prev = 0;
+    at.forEach((i, k) => {
+      // A rasterise anywhere since the PREVIOUS draw, so the classification is
+      // about what the host did immediately before this draw and nothing older.
+      let rasterised = false;
+      for (let z = prev; z < i; z++) if (isRasterise(es[z])) rasterised = true;
+      const end = k + 1 < at.length ? at[k + 1] : es.length;
+      let stalled = false;
+      for (let z = i + 1; z < end; z++) if (isStall(es[z])) stalled = true;
+      after[rasterised ? "rasterise" : "anything else"][stalled ? "stall" : "ok"]++;
+      prev = i;
+    });
+  }
+  return { rounds, after };
+}
+
 /** The pooled arms, printed — or nothing when no round carried the scenario. */
 function reportPool(logs) {
   const { rounds, arms } = poolRasteriseArms(logs);
@@ -476,6 +544,26 @@ function reportPool(logs) {
       `    NOT an answer yet: ${n} draws in the smaller arm. Telling rates this close apart\n` +
         `    needs nearer 60-100 an arm, which is dozens more rounds at two an arm each.`,
     );
+
+  // The same question asked of every draw the round made, which is ~10x the
+  // sample and weaker evidence. See `poolEveryDraw`.
+  const every = poolEveryDraw(logs);
+  const seen = Object.values(every.after).reduce((t, a) => t + a.ok + a.stall, 0);
+  if (!seen) return;
+  console.log(`\n  EVERY DRAW IN THE ROUND — observational, not counterbalanced`);
+  for (const [name, a] of Object.entries(every.after)) {
+    const m = a.ok + a.stall;
+    const rate = m ? `${((100 * a.stall) / m).toFixed(1)}%` : "—";
+    const label = name === "rasterise" ? "after a rasterise" : "after anything else";
+    console.log(
+      `    ${label.padEnd(20)} ${String(a.stall).padStart(3)} stalled / ${String(m).padStart(3)} drawn = ${rate}`,
+    );
+  }
+  console.log(
+    `    Draws follow a rasterise because of WHICH SCENARIO they belong to, and those\n` +
+      `    differ in shape count and in what they ask of the host. Suspicion, not verdict —\n` +
+      `    the arms above are the controlled measurement, this is the one with the numbers.`,
+  );
 }
 
 /** The batch-time split and the per-slide slope, printed when a round has them. */
