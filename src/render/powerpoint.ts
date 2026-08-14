@@ -5936,6 +5936,16 @@ export async function addScratchSlide(
    * question the sweep is asking.
    */
   onAdded?: (id: string) => void,
+  /**
+   * Called for a slide that LANDED and could not be named.
+   *
+   * Separate from `onAdded` because there is no id to give — that is the whole
+   * condition. The clean-up needs the COUNT regardless: its positional sweep
+   * clamps at "no more than this run added", and a slide nobody counted is one
+   * the clamp will refuse to remove. See the `!id` branch for the measurement
+   * that found this.
+   */
+  onLeftBehindUnnamed?: () => void,
 ): Promise<string | null> {
   try {
     const before = await slideIds();
@@ -6007,7 +6017,31 @@ export async function addScratchSlide(
       }
     }
     if (!id) {
-      trace("host", "scratch slide did not land", { before: before.length, after: after.length, fresh: fresh.length });
+      // GREW BUT UNNAMEABLE IS NOT "DID NOT LAND", AND THE DIFFERENCE IS A LEAK.
+      //
+      // This branch is reached when the id diff cannot pick out which slide
+      // arrived, and that happens for two completely different reasons while
+      // reporting one of them for both: the add genuinely failed, or the add
+      // worked and this host will not say which slide it was — the same
+      // renumbering that makes delete-by-id useless here.
+      //
+      // In the second case a slide sits in the deck that the run has no record
+      // of, because `onAdded` fires only on the branch below. The clean-up's
+      // sweep clamps at "no more than this run added", so a slide it was never
+      // told about is one it will not remove.
+      //
+      // Measured rather than reasoned: logging the deck either side of every
+      // call in one run showed two of fifteen adds grow the deck by one, return
+      // null, and report nothing. It is very likely also the already-recorded
+      // "the deck grew by 70 while the run could account for 68" — the clamp was
+      // right, and the count it clamped was two short.
+      const landed = after.length > before.length;
+      trace("host", landed ? "scratch slide landed but could not be named" : "scratch slide did not land", {
+        before: before.length,
+        after: after.length,
+        fresh: fresh.length,
+      });
+      if (landed) onLeftBehindUnnamed?.();
       return null;
     }
     // NO settle here, and the reason is measured rather than argued.

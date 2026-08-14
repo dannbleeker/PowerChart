@@ -2128,6 +2128,17 @@ export async function runHostProbes(source: string, build: string): Promise<Host
    */
   const returnedEarly = new Set<string>();
   /**
+   * Slides that landed and could not be named, so they have no id to record.
+   *
+   * They are still in the deck and still this run's. The sweep clamps at "no
+   * more than this run added", so leaving them out of that total is the clamp
+   * refusing to remove slides the run put there — measured at two per run.
+   */
+  let unnamedLeftBehind = 0;
+  const noteUnnamed = (): void => {
+    unnamedLeftBehind++;
+  };
+  /**
    * The scratch slide's own history, for `ScratchState`.
    *
    * `generation` counts the slides this run has taken; `used` says whether a
@@ -2169,7 +2180,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
   // sweep may never reach past. Read here rather than in the clean-up because
   // by then the run's own slides are already in the count.
   const deckAtStart = (await deckSlideIds().catch(() => undefined))?.length;
-  let scratchId = takeScratch(await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch));
+  let scratchId = takeScratch(await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch, noteUnnamed));
   if (scratchId) scratchIds.push(scratchId);
   /**
    * Consecutive questions that could not get an answer out of the host at all.
@@ -2325,7 +2336,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         // A host that genuinely will not keep a slide pays one `addScratchSlide`
         // per question for the honest answer, which is what the budget is for.
         if (!scratchId) {
-          const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
+          const recovered = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch, noteUnnamed);
           if (recovered) {
             noteScratch(recovered);
             scratchId = takeScratch(recovered);
@@ -2356,7 +2367,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           // cost is one add and one question, and the alternative is a sheet
           // that gives up on eight questions because one slide went bad.
           if (NOT_ASKED.has(result.answer)) {
-            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
+            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch, noteUnnamed);
             if (replacement) {
               noteScratch(replacement);
               scratchId = takeScratch(replacement);
@@ -2437,7 +2448,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           // replaced seventeen in one run — that is not an edge case, it is the
           // normal path.
           if (NOT_ASKED.has(r.answer)) {
-            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
+            const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch, noteUnnamed);
             if (replacement) {
               noteScratch(replacement);
               scratchId = takeScratch(replacement);
@@ -2507,7 +2518,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
           trace("probe", "stopping the second pass — the host is not answering", { at: entry.id });
           break;
         }
-        const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch);
+        const replacement = await addScratchSlide(SCRATCH_ADD_BUDGET_MS, noteScratch, noteUnnamed);
         // One refused slide is not a dead host, and treating it as one made
         // this whole pass theatre.
         //
@@ -2630,7 +2641,10 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       const plan = positionalSweepPlan({
         deckAtStart,
         deckNow: deckAfter,
-        added: outstanding.length,
+        // The unnamed ones have no id to delete by, so they are not in
+        // `outstanding` — but they ARE in the deck, and the clamp is what
+        // decides whether the sweep may reach them.
+        added: outstanding.length + unnamedLeftBehind,
         alreadyDeleted: byId.actually,
       });
       if (plan) {
