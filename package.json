@@ -31,7 +31,8 @@
     "flaky": "node scripts/flaky.mjs",
     "mutation": "stryker run",
     "rounds": "node scripts/triage.mjs rounds",
-    "issue-status": "node scripts/issue-status.mjs"
+    "issue-status": "node scripts/issue-status.mjs",
+    "round": "node scripts/round.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1",
