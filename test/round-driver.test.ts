@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs tool, no types.
-import { readiness, buildOf, nextRoundNumber, stripImages, cliEntry, sessionDir } from "../scripts/round.mjs";
+import * as driver from "../scripts/round.mjs";
+// A NAMESPACE import, and destructured below, because the directive only covers
+// the line that carries `from`. A named-import list this long is wrapped by
+// prettier onto ten lines, which moves `from` five lines down, silently uncovers
+// the import and turns the directive itself into an "unused directive" error.
+// This is the grouped-import trap in `triage.test.ts` reached from the other
+// side: there the directive covered too much, here formatting moved it off.
+const { readiness, buildOf, nextRoundNumber, stripImages, cliEntry, sessionDir, pingScript, readPing, refFor } = driver;
+
+const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
 
 /**
  * The driver's whole value is refusing to start a round that cannot prove
@@ -9,7 +18,7 @@ import { readiness, buildOf, nextRoundNumber, stripImages, cliEntry, sessionDir 
  * evidence and is not, and nothing downstream can tell.
  */
 describe("deciding whether a round is worth running", () => {
-  const ready = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
+  const ready = READY;
 
   it("runs when the site, the pane and HEAD all agree and the deck is clean", () => {
     expect(readiness(ready).ok).toBe(true);
@@ -91,6 +100,86 @@ describe("talking to the browser at all", () => {
         throw new Error("ENOENT");
       }),
     ).toBe("/nope");
+  });
+});
+
+describe("asking the host whether it is awake", () => {
+  /**
+   * The ping is a STRING sent to another JavaScript engine, so nothing the
+   * compiler knows reaches it. These run the generated source against a stub
+   * `PowerPoint` — the only way to find out whether what the driver sends is
+   * the thing it means to send.
+   */
+  const runPing = (budgetMs: number, host: unknown) =>
+    new Function("PowerPoint", `return (${pingScript(budgetMs)})()`)(host) as Promise<string>;
+
+  it("comes back ok when the host answers", async () => {
+    const ctx = { presentation: { slides: { getCount: () => {} } }, sync: async () => {} };
+    expect(await runPing(2000, { run: async (cb: (c: unknown) => unknown) => cb(ctx) })).toMatch(/^ok:\d+$/);
+  });
+
+  it("comes back, not hangs, when the host never answers", async () => {
+    // The whole point. A host that will not answer `getCount()` is exactly the
+    // state rounds 24, 25 and 29 each spent most of an hour inside, and an
+    // unraced `PowerPoint.run` would sit here as long as it sat there.
+    //
+    // Verdict only, never the number: Windows' clock quantises to ~15.6ms, so
+    // asserting elapsed milliseconds would flake for reasons unrelated to this.
+    const out = await runPing(20, { run: () => new Promise(() => {}) });
+    expect(out).toMatch(/^no:\d+$/);
+  });
+
+  it("comes back when the host throws instead of hanging", async () => {
+    // A 5010 or a torn-down proxy is a NO, not a crash in the driver.
+    expect(
+      await runPing(2000, {
+        run: async () => {
+          throw new Error("GeneralException");
+        },
+      }),
+    ).toMatch(/^no:\d+$/);
+  });
+
+  it("takes the ref off the matching line, not the first one in the frame tree", () => {
+    // What made the first live ping lie. `find` prints the frame hierarchy above
+    // the hit, so the first ref in its output belongs to the OUTER iframe — the
+    // OneDrive document, where `Office` and `PowerPoint` are both undefined.
+    // Evaluating there returns "no" for every host, healthy or not, which is the
+    // worst possible failure for a precondition: it refuses correct work and
+    // teaches the reader to ignore it.
+    const found = [
+      "iframe [ref=f1a2b3c]",
+      "  iframe [ref=f4d5e6f]",
+      '    checkbox "Verbose trace" [checked] [ref=f7a8b9c]',
+    ].join("\n");
+    const sh = (() => found) as unknown as Parameters<typeof refFor>[0];
+    expect(refFor(sh, "Verbose trace", /checkbox "Verbose trace"/)).toBe("f7a8b9c");
+  });
+
+  it("has no ref when nothing matched", () => {
+    const sh = (() => "iframe [ref=f1a2b3c]") as unknown as Parameters<typeof refFor>[0];
+    expect(refFor(sh, "Verbose trace", /checkbox "Verbose trace"/)).toBe(null);
+  });
+
+  it("reads a verdict back out of the CLI's quoting, and nothing out of noise", () => {
+    expect(readPing('"ok:37"')).toEqual({ answered: true, ms: 37 });
+    expect(readPing("no:8001")).toEqual({ answered: false, ms: 8001 });
+    expect(readPing(""), "an empty result is not a dead host — see `cli`").toBe(null);
+    expect(readPing("undefined")).toBe(null);
+  });
+
+  it("refuses a round when the host will not answer the cheapest call there is", () => {
+    const r = readiness({ ...READY, ping: { answered: false, ms: 8001 } });
+    expect(r.ok).toBe(false);
+    expect(r.stop.join(" ")).toContain("8001ms");
+  });
+
+  it("runs when the host answers, and when nobody asked it", () => {
+    // Not asked is not unwell. The pane can be closed at check time for reasons
+    // the driver already reports separately, and a second hard stop built on a
+    // reading that was never taken would just be noise.
+    expect(readiness({ ...READY, ping: { answered: true, ms: 120 } }).ok).toBe(true);
+    expect(readiness({ ...READY, ping: null }).ok).toBe(true);
   });
 });
 
