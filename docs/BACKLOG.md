@@ -160,6 +160,43 @@ wedge is in PowerPoint rather than in how it is called. A Playwright click on
 the **canvas** is a real click and might dodge it entirely — the one thing worth
 trying first if this is ever built.
 
+### Stop the probe carrying seventy scratch slides through a round
+
+MEASURED, AND THE OBVIOUS FIX IS WRONG. Read this before writing it again.
+
+Every round takes a fresh scratch slide each time one goes bad and leaves the old
+one in the deck until the finish. Round 23 grew a one-slide deck to 72 and swept
+71 at the end; round 26 to 67, sweeping 66. Under the fake, with a fault that
+kills every scratch slide, the deck **peaks at 98 slides mid-run**.
+
+Nothing is lost — the end-of-run positional sweep works, and the deck is back to
+one by the time anyone looks, which is why this went unnoticed. The cost is paid
+DURING the round: `listing the deck's slides` is O(deck), and it is precisely the
+call that timed out at 90s three times in each of rounds 24 and 25 before the
+host gave up and PowerPoint crashed. The probe makes the host's slowest operation
+seventy times more expensive and then dies on it.
+
+Two fixes were built and both reverted on 2026-08-14:
+
+- **Delete the abandoned slide, then add its replacement.** Safe-looking, because
+  the abandoned slide is the deck's last at that moment so a positional delete
+  can take it. It leaves the run with NO slide when the add then fails, and
+  `asks every question even when the host keeps losing the scratch slide` caught
+  it — `shape-add-fresh-slide-proxy` stopped being put at all.
+- **Add the replacement, then delete the old one by its index.**
+  `deleteTrailingSlides` deletes any range despite its name, so this works
+  mechanically. It broke four guards, including
+  `left its replacement slides in the deck` (11 where 2 was expected) and
+  `shape-resolve-held-slide-proxy` changing its answer. Deleting mid-question
+  does not merely tidy the deck — it changes what the probe measures.
+
+So this is not a tidy-up, it is a change to the instrument, and it needs its own
+round with a control rather than a green suite. The variant not yet tried, and
+the one worth trying first: sweep the accumulated slides at a PASS BOUNDARY,
+where no question is in flight and the next pass re-resolves everything anyway.
+That bounds growth to one pass instead of a whole round without touching
+in-flight state.
+
 ## 2. Rejected or already covered (do not re-propose)
 
 - **A PowerPointApi 1.8 binding as a durable handle to a drawn chart** — the
