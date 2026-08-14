@@ -160,6 +160,42 @@ wedge is in PowerPoint rather than in how it is called. A Playwright click on
 the **canvas** is a real click and might dodge it entirely — the one thing worth
 trying first if this is ever built.
 
+### The settle pass cannot repair what this host loses
+
+MEASURED, 2026-08-15, rounds 029-034. `same scale across the deck` has failed six
+rounds running at 4-5 of 8, and every loss ends the same way:
+
+    settle pass: could not repair any config tag the drawing context lost
+      charts=1  settled=0  lost=1  withId=0
+
+`withId: 0`, every time. The settle pass is the second chance that exists to put
+a config tag back on a chart the drawing context could not tag — and it works by
+resolving the shape by id. This host does not give ids back for shapes it has
+just made (`tag-through-refetched-shape: no-id`, three rounds, nine samples), so
+the repair has nothing to try. It is not failing; it is unreachable.
+
+The host's own error names the same wall from the other side:
+
+    errorLocation: ShapeCollection.getItem
+    statement: var shape = shapes.getItem(...) /* originally addTextBox(...) */;
+
+Office.js rewrites the CREATION proxy's object path into `getItem(id)`, so even
+the code path that never mentions an id has become an id lookup by the time the
+host sees it.
+
+What makes this actionable rather than another dead end: round 033 and 034 both
+answered `tag-the-creation-proxy-a-sync-later: yes`. **A write through the
+creating handle goes through on this host, a sync later, when neither the id nor
+a read does.** So the settle pass has a route it is not using.
+
+NOT attempted yet, deliberately. Two things have to be true first and only one of
+them is: the write-through-the-handle answer needs a third round, and the update
+path needs the same treatment `insertSceneIntoSlide` already has — a test in
+`test/office-render.test.ts` shows the INSERT path survives a refused
+`load("id,left,top")` unharmed, so whatever costs the tag in the update path is
+not the shared batch, and guessing which line it is has already produced one
+wrong theory tonight.
+
 ### Stop the probe carrying seventy scratch slides through a round
 
 **MOSTLY WRONG — THE DECK NEVER GREW. Corrected 2026-08-14 from round 29.**
