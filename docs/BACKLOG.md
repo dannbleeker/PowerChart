@@ -213,12 +213,42 @@ there when it runs.** That assumption is load-bearing in `slidesActuallyReturned
 `positionalSweepPlan` and the `scratch-slides-returned` answer, and no amount of
 arithmetic at the call sites removes it.
 
-So the order of work is settled, and it is the opposite of the obvious one:
-**rewrite the clean-up first**, as its own change, so it accounts for slides
-returned at any point in the run rather than only at the end — with its own tests
-and no change in observable behaviour. Only then is a mid-run return, at a pass
-boundary, a small change. Attempting it in the other order has now cost three
-implementations.
+The clean-up rewrite was then done — `outstandingScratch`, the ledger, tests that
+exercise an early return — and **the pass-boundary sweep still fails, so the
+accounting was not the blocker after all.** The instrumented numbers say why, and
+they are worth more than the three theories that preceded them:
+
+    taken 10 · handed back early 5 · deckAtStart 2 · deckBefore 12
+
+`deckBefore` is read when the clean-up starts, after the handbacks. 2 + 10 = 12.
+**The deck at clean-up time is as if nothing went back at all** — even though
+`deleteTrailingSlides` reported five successful deletions and the deck visibly
+shrank at the moment each ran.
+
+So the handback deletes A slide and not necessarily THE slide it named. Which
+makes sense of everything else: this host does not honour delete-by-id, and the
+only reason the end-of-run sweep works is that by then every remaining scratch
+slide is a **contiguous trailing block** — a positional RANGE needs no slide to
+be identified individually. During a run that block does not exist, because the
+live scratch slide sits at the end of it.
+
+That is the real prerequisite, and it is about the host rather than our
+arithmetic: **there is no way to delete one known slide mid-run on this host.**
+The ledger stays (it is right, and it is tested), but it unblocks nothing on its
+own.
+
+Two routes left, neither attempted:
+
+- Keep the live scratch slide FIRST among the run's own slides rather than last,
+  so everything finished with is a contiguous trailing block at any moment and a
+  positional range works mid-run exactly as it does at the end.
+- Sweep only when the finished slides happen to be trailing — after the live one
+  has been replaced, before the new one is used — which is a narrower window than
+  a pass boundary and may not exist reliably.
+
+Four implementations have now been reverted here. The next attempt should start
+by proving a single known slide CAN be removed mid-run, and stop there if it
+cannot.
 
 ## 2. Rejected or already covered (do not re-propose)
 
