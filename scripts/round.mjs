@@ -308,11 +308,9 @@ function clickRef(sh, ref) {
   return sh("eval", "el => { el.click(); return 'ok'; }", ref);
 }
 
-async function main(argv, deps = {}) {
+async function attempt(argv, deps, sh) {
   const run = deps.run ?? spawnSync;
   const fetchBuild = deps.fetchBuild ?? defaultFetchBuild;
-  const dirArg = argv.indexOf("--dir");
-  const sh = cli(run, dirArg === -1 ? process.cwd() : argv[dirArg + 1]);
   const checkOnly = argv.includes("--check");
 
   const head = String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null;
@@ -350,15 +348,15 @@ async function main(argv, deps = {}) {
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
     for (const s of stop) console.error(`    - ${s}`);
-    return 1;
+    return { code: 1, reason: crashed ? "crashed" : "not-ready" };
   }
   console.log("  ready");
-  if (checkOnly) return 0;
+  if (checkOnly) return { code: 0, reason: "checked" };
 
   const runBtn = refFor(sh, "Probe, then self-test", /button "Probe, then self-test"/);
   if (!runBtn) {
     console.error("  could not find the run button — is the Automation tab open?");
-    return 1;
+    return { code: 1, reason: "no-run-button" };
   }
   console.log("  running — this takes about ten minutes");
   clickRef(sh, runBtn);
@@ -377,7 +375,7 @@ async function main(argv, deps = {}) {
   for (;;) {
     if (Date.now() - started > limit) {
       console.error("  the round has not finished in 30 minutes — the host is wedged; see docs/ROUNDS.md");
-      return 1;
+      return { code: 1, reason: "timeout" };
     }
     const dl = sh("find", "Download run log");
     if (/button "Download run log"(?! \[disabled\])/.test(dl)) break;
@@ -393,19 +391,102 @@ async function main(argv, deps = {}) {
     if (sawCrashDialog(sh("find", "Sorry, we ran into a problem"))) {
       console.error(
         `  PowerPoint crashed ${Math.round((Date.now() - started) / 1000)}s in — its dialog is up and nothing ` +
-          'behind it will answer. Clear it and start again; see docs/ROUNDS.md, "The wedge".',
+          'behind it will answer. See docs/ROUNDS.md, "The wedge".',
       );
-      return 1;
+      return { code: 1, reason: "crashed" };
     }
     quiet = quietStreak(quiet, dl, sh.state.lastFailed);
     if (quiet >= 2) {
       console.error("  the pane stopped answering — PowerPoint has probably crashed; the trace is still in the DOM");
-      return 1;
+      return { code: 1, reason: "silent" };
     }
     await new Promise((r) => setTimeout(r, 20000));
   }
   console.log("  finished");
-  return 0;
+  return { code: 0, reason: "finished" };
+}
+
+/**
+ * Is another attempt worth making?
+ *
+ * Only after a crash. A stale pane, a dirty deck or a missing run button are all
+ * states a person has to look at, and retrying them just repeats the same
+ * refusal until the night is gone.
+ */
+export function shouldRetry(reason, attempt, max) {
+  return reason === "crashed" && attempt < max;
+}
+
+/** Delete every slide but the first, so the next round starts where the last one did. */
+export function cleanDeckScript(budgetMs) {
+  return (
+    "async () => { const budget = (p, ms) => Promise.race([p, new Promise((_, r) => " +
+    `setTimeout(() => r(new Error("TIMEOUT")), ms))]); try { const n = await budget(PowerPoint.run(async (c) => { ` +
+    'const s = c.presentation.slides; s.load("items/id"); await c.sync(); const count = s.items.length; ' +
+    "for (let i = count - 1; i >= 1; i--) c.presentation.slides.getItemAt(i).delete(); await c.sync(); " +
+    `s.load("items/id"); await c.sync(); return s.items.length; }), ${budgetMs}); return "deck:" + n; } ` +
+    'catch (e) { return "deck-failed"; } }'
+  );
+}
+
+/**
+ * Put PowerPoint back on its feet — the recovery done by hand six times tonight.
+ *
+ * Every step was learned the expensive way and none is optional:
+ *
+ *   - The dialog's Refresh button is matched BY TEXT. Its accessible name is
+ *     sometimes absent, the label sitting in a child `generic` instead, so
+ *     `button "Refresh"` finds it on one crash and not on the next.
+ *   - Refreshing reloads the document, which closes the pane. It comes back from
+ *     Home ▸ Add-ins ▸ **Insert chart** — that is the `ShowTaskpane` control,
+ *     despite the name.
+ *   - The Automation tab has to be showing or the run button is not in the DOM.
+ *   - The deck has to go back to one slide, or the next round is not comparable
+ *     with one that started clean.
+ *
+ * The waits are generous on purpose: a document reload takes tens of seconds and
+ * a step taken early lands on nothing and fails silently.
+ */
+export async function recover(sh, sleep) {
+  const dialog = /dialog \[ref=([a-z0-9]+)\]/.exec(sh("find", "Sorry, we ran into a problem"))?.[1];
+  if (dialog)
+    sh(
+      "eval",
+      'el => { const b = [...el.querySelectorAll("button")].find(n => /^\\s*Refresh\\s*$/.test(n.textContent || "")); ' +
+        'if (!b) return "no refresh"; b.click(); return "clicked"; }',
+      dialog,
+    );
+  else sh("reload");
+  await sleep(55000);
+
+  const pane = refFor(sh, "Insert chart", /button "Insert chart"/);
+  if (pane) clickRef(sh, pane);
+  await sleep(20000);
+
+  const automation = refFor(sh, "Automation", /tab "Automation"/);
+  if (automation) clickRef(sh, automation);
+  await sleep(5000);
+
+  const anchor = refFor(sh, "Chart", /tab "Chart"/);
+  if (anchor) sh("eval", cleanDeckScript(90000), anchor);
+  return Boolean(pane);
+}
+
+async function main(argv, deps = {}) {
+  const run = deps.run ?? spawnSync;
+  const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const dirArg = argv.indexOf("--dir");
+  const sh = cli(run, dirArg === -1 ? process.cwd() : argv[dirArg + 1]);
+  const retryArg = argv.indexOf("--retry");
+  const max = retryArg === -1 ? 0 : Number(argv[retryArg + 1]) || 0;
+
+  for (let n = 0; ; n++) {
+    if (n) console.log(`\n  attempt ${n + 1} of ${max + 1}`);
+    const { code, reason } = await attempt(argv, deps, sh);
+    if (!shouldRetry(reason, n, max)) return code;
+    console.log('  clearing the crash and starting again — see docs/ROUNDS.md, "The wedge"');
+    await recover(sh, sleep);
+  }
 }
 
 async function defaultFetchBuild() {
