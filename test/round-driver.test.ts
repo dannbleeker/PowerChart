@@ -7,7 +7,18 @@ import * as driver from "../scripts/round.mjs";
 // the import and turns the directive itself into an "unused directive" error.
 // This is the grouped-import trap in `triage.test.ts` reached from the other
 // side: there the directive covered too much, here formatting moved it off.
-const { readiness, buildOf, nextRoundNumber, stripImages, cliEntry, sessionDir, pingScript, readPing, refFor } = driver;
+const {
+  readiness,
+  buildOf,
+  nextRoundNumber,
+  stripImages,
+  cliEntry,
+  sessionDir,
+  pingScript,
+  readPing,
+  refFor,
+  sawCrashDialog,
+} = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
 
@@ -166,6 +177,34 @@ describe("asking the host whether it is awake", () => {
     expect(readPing("no:8001")).toEqual({ answered: false, ms: 8001 });
     expect(readPing(""), "an empty result is not a dead host — see `cli`").toBe(null);
     expect(readPing("undefined")).toBe(null);
+  });
+
+  it("names the crash when PowerPoint's own dialog is up", () => {
+    // The wedge, finally identified. Four rounds died against it and the report
+    // they got was a 90-second timeout on whatever call came next; what had
+    // actually happened is that PowerPoint crashed and put up a modal, behind
+    // which every Office.js call — including an empty sync — hangs forever
+    // without throwing. Saying so is the difference between a refusal the reader
+    // can act on and one they wait out.
+    const r = readiness({ ...READY, crashed: true, ping: { answered: false, ms: 8002 } });
+    expect(r.ok).toBe(false);
+    expect(r.stop[0], "the crash outranks the silence it causes").toContain("Refresh");
+    expect(r.stop.join(" ")).toContain("Add-ins");
+  });
+
+  it("does not see a dialog in find's own echo of the query", () => {
+    // `find` answers a miss with `No matches found for "<query>"` — the query
+    // included. A detector that tested for the phrase it searched for would
+    // report a crash on every healthy host forever. Same shape as the ref
+    // `buildOf` used to read out of its own haystack; that one cost a round.
+    expect(sawCrashDialog('No matches found for "Sorry, we ran into a problem".')).toBe(false);
+    // The echo with the word `dialog` INSIDE the query, which is what a
+    // contains-the-word check gets wrong. The first version of this test used a
+    // query without it, so it passed against a detector that had no guard at
+    // all — green, and proving nothing.
+    expect(sawCrashDialog('No matches found for "crash dialog".')).toBe(false);
+    expect(sawCrashDialog(""), "unreachable CLI is not a crash — see `reachable`").toBe(false);
+    expect(sawCrashDialog('- dialog [ref=f21e737]:\n  - button "Refresh" [ref=f21e750]')).toBe(true);
   });
 
   it("refuses a round when the host will not answer the cheapest call there is", () => {

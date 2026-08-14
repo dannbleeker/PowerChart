@@ -647,7 +647,7 @@ function startElapsed() {
     if (!saidSilent && silentMs >= SILENT_RUN_MS) {
       saidSilent = true;
       note(
-        "PowerPoint has not answered for {secs}s. If it has stopped responding, reload the pane — the run's steps are saved and *Download the crashed run* will offer them.",
+        "PowerPoint has not answered for {secs}s. Look at the slide area: if PowerPoint is showing *Sorry, we ran into a problem*, click Refresh there — nothing behind that dialog can answer. The run's steps are saved either way and *Download the crashed run* will offer them.",
         "busy",
         { secs: Math.round(silentMs / 1000) },
       );

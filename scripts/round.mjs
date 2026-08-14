@@ -63,7 +63,17 @@ export function buildOf(text) {
  * not: it means the site has not finished publishing the commit under test, so
  * the pane will serve the previous build and the round will quietly measure it.
  */
-export function readiness({ head, deployed, stamp, slides, verbose, pictures, reachable = true, ping = null }) {
+export function readiness({
+  head,
+  deployed,
+  stamp,
+  slides,
+  verbose,
+  pictures,
+  reachable = true,
+  ping = null,
+  crashed = false,
+}) {
   const stop = [];
   // First, and on its own: everything below reads as "the browser said nothing"
   // when the truth is that nobody asked it. See `cli`.
@@ -75,13 +85,32 @@ export function readiness({ head, deployed, stamp, slides, verbose, pictures, re
           "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point.",
       ],
     };
+  // THE WEDGE, by its real name. Rounds 24, 25, 29 and 30 each spent most of an
+  // hour on this and none of them said what it was: the host's editing session
+  // dies, and every Office.js call after that hangs forever without ever throwing
+  // — even an empty `context.sync()`. `PowerPoint.run` still ENTERS its callback,
+  // which is why it reads as the host thinking rather than the host being gone.
+  //
+  // This branch is the loud form, where PowerPoint has raised its own error and
+  // put a modal over the document; the deck reading back as `?` in the same
+  // breath is the UI frozen behind it. The quiet form has no dialog and only the
+  // ping catches it. Neither is something to wait out — a reload clears both in
+  // seconds. See `docs/ROUNDS.md`, "The wedge".
+  if (crashed)
+    stop.push(
+      'PowerPoint has crashed — its own "Sorry, we ran into a problem" dialog is up, and every Office.js ' +
+        "call behind it hangs forever. Click Refresh in that dialog; the host answers again within the minute. " +
+        "The pane closes with it — reopen from Home ▸ Add-ins ▸ Insert chart.",
+    );
   // Before anything about builds or decks: is the host answering? A stale pane
   // and a dirty deck are both worth fixing, and neither matters if the host will
-  // not talk — that is the state three rounds have burned an hour each on.
+  // not talk — that is the state four rounds have burned an hour each on.
   if (ping && !ping.answered)
     stop.push(
       `the host did not answer the cheapest possible call in ${ping.ms}ms — it is not going to answer a round. ` +
-        "This survives a tab reload and has lasted hours; wait it out rather than starting.",
+        "Its editing session is gone, usually because the network moved (look for net::ERR_NETWORK_CHANGED in " +
+        "`playwright-cli console`). Reload the PowerPoint tab and reopen the pane: measured 8011ms silent before, " +
+        "7ms after.",
     );
   if (!deployed) stop.push("the site did not answer with a build — is Pages up?");
   else if (head && deployed !== head)
@@ -228,6 +257,26 @@ export function pingScript(budgetMs) {
   );
 }
 
+/**
+ * Did `find` actually FIND it, or is it echoing the query back?
+ *
+ * `playwright-cli find` answers a miss with `No matches found for "<query>"` —
+ * which contains the query. Testing the output for the phrase searched for is
+ * therefore always true, and a crash detector built that way would report a
+ * crash on a perfectly healthy host, every time. Same family as the ref that
+ * `buildOf` used to read out of its own haystack.
+ */
+export function sawCrashDialog(found) {
+  const text = String(found ?? "").trim();
+  // Deliberately NOT "does the output contain the word dialog". That version
+  // passed its own test while proving nothing — the phrase searched for happens
+  // not to contain the word, so the echo could never have tripped it and the
+  // guard was decoration. Whether `find` matched at all is the real question,
+  // and it stays true whatever the next query says. Empty is the third answer:
+  // the CLI was never reached, which `reachable` reports on its own.
+  return text !== "" && !/No matches found/.test(text);
+}
+
 /** `{ answered, ms }` from what `pingScript` returned, or null when unreadable. */
 export function readPing(out) {
   const m = /"?(ok|no):(\d+)"?/.exec(String(out ?? ""));
@@ -257,7 +306,13 @@ async function main(argv, deps = {}) {
   const listRef = refFor(sh, "Slide List", /listbox "Slide List"/);
   const slides = listRef ? (sh("snapshot", listRef).match(/option "Slide"/g) ?? []).length : null;
 
-  const paneRef = refFor(sh, "Verbose trace", /checkbox "Verbose trace"/);
+  const crashed = sawCrashDialog(sh("find", "Sorry, we ran into a problem"));
+
+  // A tab, not the Verbose trace checkbox. The checkbox only exists while the
+  // pane is ON the Automation tab, so anchoring the ping there skipped it
+  // silently on a pane sitting anywhere else — and a skipped ping reads as
+  // `ready`, which is the one answer this must never give without asking.
+  const paneRef = refFor(sh, "Chart", /tab "Chart"/);
   const ping = paneRef ? readPing(sh("eval", pingScript(8000), paneRef)) : null;
 
   const toggles = sh("find", "Verbose trace");
@@ -266,14 +321,15 @@ async function main(argv, deps = {}) {
     ? /Picture every slide" \[checked\]/.test(toggles)
     : null;
 
-  const state = { head, deployed, stamp, slides, verbose, pictures, reachable: !sh.state.unreachable, ping };
+  const state = { head, deployed, stamp, slides, verbose, pictures, reachable: !sh.state.unreachable, ping, crashed };
   const { ok, stop } = readiness(state);
   console.log(
     `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)`,
   );
   console.log(`  verbose trace ${verbose ?? "?"} · picture every slide ${pictures ?? "?"}`);
   console.log(
-    `  host ${ping ? (ping.answered ? `answered in ${ping.ms}ms` : `SILENT for ${ping.ms}ms`) : "not asked"}`,
+    `  host ${ping ? (ping.answered ? `answered in ${ping.ms}ms` : `SILENT for ${ping.ms}ms`) : "not asked — the pane is closed"}` +
+      (crashed ? " · PowerPoint's crash dialog is up" : ""),
   );
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
@@ -313,8 +369,18 @@ async function main(argv, deps = {}) {
 }
 
 async function defaultFetchBuild() {
-  const r = await fetch(`https://powerchart.struktureretsundfornuft.dk/build.json?cb=${Date.now()}`);
-  return await r.text();
+  // A network blip is a reading this tool could not take, not a reason to die
+  // with a stack trace. Unguarded, one `getaddrinfo ENOTFOUND` took the whole
+  // check down mid-investigation and printed nothing about the host, the pane or
+  // the deck — every one of which had already been measured by then. `buildOf`
+  // turns the empty string into `null` and `readiness` already says what a
+  // missing build means.
+  try {
+    const r = await fetch(`https://powerchart.struktureretsundfornuft.dk/build.json?cb=${Date.now()}`);
+    return await r.text();
+  } catch {
+    return "";
+  }
 }
 
 /** Archive a downloaded round under the next number. See `rounds/README.md`. */
