@@ -36,9 +36,22 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync } fr
 import { join, dirname } from "path";
 import { isMain } from "./is-main.mjs";
 
-/** The pane's build stamp, e.g. `32a6987 · 2026-08-14 08:03Z` → `32a6987`. */
+/**
+ * The pane's build stamp, e.g. `32a6987 · 2026-08-14 08:03Z` → `32a6987`.
+ *
+ * THE SEPARATOR IS REQUIRED, and leaving it out cost a good round. Seven hex
+ * characters is not a rare shape: `playwright-cli` names every element `f14e735`
+ * and friends, and the accessibility dump this function reads is full of them.
+ * Matching a bare 7-hex token picked up a REF id, reported the pane as showing a
+ * build the site had never served, and refused to start — on a pane that was
+ * showing exactly the right commit.
+ *
+ * A precondition that blocks correct work is worse than no precondition at all,
+ * because the fix it suggests (hard-reload the tab) makes the reader doubt a
+ * machine that was right.
+ */
 export function buildOf(text) {
-  const m = /\b([0-9a-f]{7})\b/.exec(String(text ?? ""));
+  const m = /\b([0-9a-f]{7})\s+·/.exec(String(text ?? ""));
   return m ? m[1] : null;
 }
 
