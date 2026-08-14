@@ -188,6 +188,23 @@ answered `tag-the-creation-proxy-a-sync-later: yes`. **A write through the
 creating handle goes through on this host, a sync later, when neither the id nor
 a read does.** So the settle pass has a route it is not using.
 
+**The settle pass cannot be where this is fixed.** It opens a FRESH
+`PowerPoint.run`, so the creation handle — the one thing this host still accepts
+writes through — does not exist by the time it runs. Its two routes are an id and
+a collection read, and this host refuses both (`no-id`; `shapes-items-count-honest:
+unreadable`). `withId: 0` is that fact showing up as a number.
+
+So the retry belongs in the DRAWING context, before the handle is thrown away:
+when the tag write is refused there, write it again through the proxy that
+created the shape rather than handing the chart to a repair pass that has nothing
+to work with.
+
+This is the same goal `binding-names-shape-later` was written for — "whether the
+repair pass can be given a handle that does not go through
+`ShapeCollection.getItem(id)`" — and that question answers `unreadable` on this
+host, four rounds running. `tag-the-creation-proxy-a-sync-later` is a second
+route to it that does answer `yes`, and it needs no 1.8 surface.
+
 NOT attempted yet, deliberately. Two things have to be true first and only one of
 them is: the write-through-the-handle answer needs a third round, and the update
 path needs the same treatment `insertSceneIntoSlide` already has — a test in
