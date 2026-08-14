@@ -18,6 +18,7 @@ const {
   readPing,
   refFor,
   sawCrashDialog,
+  quietStreak,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -205,6 +206,19 @@ describe("asking the host whether it is awake", () => {
     expect(sawCrashDialog('No matches found for "crash dialog".')).toBe(false);
     expect(sawCrashDialog(""), "unreachable CLI is not a crash — see `reachable`").toBe(false);
     expect(sawCrashDialog('- dialog [ref=f21e737]:\n  - button "Refresh" [ref=f21e750]')).toBe(true);
+  });
+
+  it("does not end a running round because the CLI lost a race", () => {
+    // What killed round 29's first archive-worthy run: the CLI serves one
+    // command per session, an agent read the trace while the driver polled, one
+    // poll exited non-zero, and the empty string that came back was reported as
+    // "PowerPoint has probably crashed". The round was fine — it went on to pass
+    // 10 of 12 scenarios. A failed call is not a silent page.
+    expect(quietStreak(1, "", true), "a failed call measured nothing").toBe(0);
+    expect(quietStreak(1, '- button "Download run log" [disabled]', false)).toBe(0);
+    // Genuinely silent, twice, is the real thing — and it has to reach two.
+    expect(quietStreak(0, "", false)).toBe(1);
+    expect(quietStreak(1, "   ", false)).toBe(2);
   });
 
   it("refuses a round when the host will not answer the cheapest call there is", () => {

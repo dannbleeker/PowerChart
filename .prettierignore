@@ -17,3 +17,6 @@ docs/
 skill/reference.md
 skill/SKILL.md
 CHANGELOG.md
+# Machine-written round evidence — reformatting a 250KB trace is churn, and
+# every archived round failed the gate until this line existed.
+rounds/*.json

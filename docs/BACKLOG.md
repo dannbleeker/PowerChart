@@ -162,19 +162,37 @@ trying first if this is ever built.
 
 ### Stop the probe carrying seventy scratch slides through a round
 
-MEASURED, AND THE OBVIOUS FIX IS WRONG. Read this before writing it again.
+**MOSTLY WRONG — THE DECK NEVER GREW. Corrected 2026-08-14 from round 29.**
 
-Every round takes a fresh scratch slide each time one goes bad and leaves the old
-one in the deck until the finish. Round 23 grew a one-slide deck to 72 and swept
-71 at the end; round 26 to 67, sweeping 66. Under the fake, with a fault that
-kills every scratch slide, the deck **peaks at 98 slides mid-run**.
+The premise below was that the deck fills with abandoned scratch slides and that
+this is what makes `listing the deck's slides` slow enough to time out. Round 29
+measured it directly and says otherwise:
 
-Nothing is lost — the end-of-run positional sweep works, and the deck is back to
-one by the time anyone looks, which is why this went unnoticed. The cost is paid
-DURING the round: `listing the deck's slides` is O(deck), and it is precisely the
-call that timed out at 90s three times in each of rounds 24 and 25 before the
-host gave up and PowerPoint crashed. The probe makes the host's slowest operation
-seventy times more expensive and then dies on it.
+    gave the scratch slides back  returned=0 swept=0 left=73
+      deckBefore=1 deckAfter=1 shrankBy=0 stillListed=0
+      heldIds=["4123571114#123571113", …]  deckIds=["287#62081387"]
+
+Seventy-three slides taken, and the deck is **one slide before and one after**.
+None of the held ids is in the deck; `stillListed` is zero. The deck evidence in
+the same round agrees — 7 slides scanned, 6 added, all by the self-test. The
+scratch slides never landed at all.
+
+Look at the two id namespaces. The scratch slides come back as
+`4123571114#123571113` and the deck lists `287#62081387` — that is the
+`getItemAt` → `getItem(id)` rewrite from `RESEARCH.md` seen from the other end: a
+freshly added slide reports an id the deck will not answer to, so the probe can
+neither find nor delete it, and its counter climbs while the deck stands still.
+
+So the cost is NOT paid in an O(deck) slide listing, because the deck stays at
+one; and the wedge these numbers were used to explain has since been identified
+as the host's editing session dying (`docs/ROUNDS.md`, "The wedge"), which the
+probe does not cause. **The counter is the bug, not the deck.** What is worth
+building is not a cheaper clean-up but an honest count: `left=73` should say
+`never landed=73`, and the round after that can ask why the host accepts an add
+whose slide never appears.
+
+The rest of this entry is kept because the two reverted fixes below are still
+reverted for the reasons given, and both would still break the same guards.
 
 Two fixes were built and both reverted on 2026-08-14:
 
