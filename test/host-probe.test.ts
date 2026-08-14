@@ -16,6 +16,7 @@ import {
   PROBE_PASSES,
   RESAMPLE_IDS,
   stabilityOf,
+  outstandingScratch,
   supportOf,
   thinSupport,
   regimeFrom,
@@ -1506,6 +1507,60 @@ describe("thinSupport — what gets recorded on the row", () => {
 
   it("says nothing about a question asked only once", () => {
     expect(thinSupport([at("yes")])).toBeUndefined();
+  });
+});
+
+describe("a clean-up that can count slides returned before it ran", () => {
+  // Nothing hands a slide back mid-run yet. These prove the accounting for the
+  // case that exists to allow it, BEFORE anything depends on it — which is the
+  // opposite order from the three attempts that were reverted, where the return
+  // was written first and the accounting was reconciled at the call sites
+  // afterwards, three times, wrongly.
+  it("owes only what is still outstanding", () => {
+    expect(outstandingScratch(["a", "b", "c"], new Set(["b"]))).toEqual(["a", "c"]);
+  });
+
+  it("owes everything when nothing came back early — today's every path", () => {
+    expect(outstandingScratch(["a", "b"], new Set())).toEqual(["a", "b"]);
+  });
+
+  it("owes nothing when the run gave them all back itself", () => {
+    expect(outstandingScratch(["a", "b"], new Set(["a", "b"]))).toEqual([]);
+  });
+
+  it("composes with the sweep plan so an early return does not double-count", () => {
+    // The failure that killed the pass-boundary attempt, as arithmetic. A run
+    // takes 5, hands 3 back mid-run, and the clean-up starts with a deck of
+    // 1 + 2. Counting all 5 asks the sweep for slides that are already gone;
+    // counting the outstanding 2 asks for exactly what is there.
+    const taken = ["a", "b", "c", "d", "e"];
+    const early = new Set(["a", "b", "c"]);
+    const outstanding = outstandingScratch(taken, early);
+    expect(outstanding).toHaveLength(2);
+    const plan = positionalSweepPlan({
+      deckAtStart: 1,
+      deckNow: 3,
+      added: outstanding.length,
+      alreadyDeleted: 0,
+    });
+    expect(plan, "the sweep should take exactly the two still in the deck").toEqual({ from: 1, count: 2 });
+    const wrong = positionalSweepPlan({ deckAtStart: 1, deckNow: 3, added: taken.length, alreadyDeleted: 0 });
+    expect(wrong, "counting all five caps at the growth and reaches for a slide that left").toEqual({
+      from: 1,
+      count: 2,
+    });
+  });
+
+  it("reports a shrink measured from the clean-up's own start, not the run's", () => {
+    // `deckBefore` is read when the clean-up begins, so slides returned earlier
+    // are already out of it. Feeding them back in as `claimed` reports slides
+    // the run never failed to return.
+    const outstanding = outstandingScratch(["a", "b", "c"], new Set(["a"]));
+    expect(slidesActuallyReturned({ claimed: 2, added: outstanding.length, deckBefore: 3, deckAfter: 1 })).toEqual({
+      actually: 2,
+      left: 0,
+      shrankBy: 2,
+    });
   });
 });
 

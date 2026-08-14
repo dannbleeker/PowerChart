@@ -2119,6 +2119,15 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     if (!scratchIds.includes(id)) scratchIds.push(id);
   };
   /**
+   * Scratch slides already handed back, before the clean-up runs.
+   *
+   * EMPTY ON EVERY PATH TODAY — this is the seam a mid-run return needs, and
+   * putting it in first is what makes that change small. See
+   * `outstandingScratch` for why the clean-up cannot simply count `scratchIds`
+   * once anything returns a slide early.
+   */
+  const returnedEarly = new Set<string>();
+  /**
    * The scratch slide's own history, for `ScratchState`.
    *
    * `generation` counts the slides this run has taken; `used` says whether a
@@ -2601,13 +2610,14 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     // through `314#195537992`, and both come from the SAME `slideIds()`
     // projection minutes apart. Reasoning cannot choose between "the host
     // renumbers" and "two readers disagree"; one count can.
-    const stillListed = idsBefore ? scratchIds.filter((id) => idsBefore.includes(id)).length : undefined;
+    const outstanding = outstandingScratch(scratchIds, returnedEarly);
+    const stillListed = idsBefore ? outstanding.filter((id) => idsBefore.includes(id)).length : undefined;
     let returned = 0;
-    for (const id of scratchIds) if (await deleteSlideById(id).catch(() => false)) returned++;
+    for (const id of outstanding) if (await deleteSlideById(id).catch(() => false)) returned++;
     let deckAfter = (await deckSlideIds().catch(() => undefined))?.length;
     const byId = slidesActuallyReturned({
       claimed: returned,
-      added: scratchIds.length,
+      added: outstanding.length,
       deckBefore,
       deckAfter,
     });
@@ -2620,7 +2630,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       const plan = positionalSweepPlan({
         deckAtStart,
         deckNow: deckAfter,
-        added: scratchIds.length,
+        added: outstanding.length,
         alreadyDeleted: byId.actually,
       });
       if (plan) {
@@ -2637,7 +2647,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         trace("probe", "no positional sweep — the deck does not support one safely", {
           deckAtStart,
           deckNow: deckAfter,
-          added: scratchIds.length,
+          added: outstanding.length,
         });
       }
     }
@@ -2645,7 +2655,7 @@ export async function runHostProbes(source: string, build: string): Promise<Host
     // the deck lost overall rather than what either mechanism claimed.
     const { actually, left, shrankBy } = slidesActuallyReturned({
       claimed: returned + swept,
-      added: scratchIds.length,
+      added: outstanding.length,
       deckBefore,
       deckAfter,
     });
@@ -2655,7 +2665,11 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       answer: !scratchIds.length ? "none-added" : !left ? "all" : actually ? "some" : "none",
       ms: Date.now() - cleanupStarted,
       detail:
-        `${actually} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}` +
+        `${actually + returnedEarly.size} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}` +
+        // Only when some came back before the clean-up ran. Silent otherwise, so
+        // the sentence a reader has seen a hundred times does not change shape
+        // for a number that is zero.
+        (returnedEarly.size ? `; ${returnedEarly.size} of them handed back during the run` : "") +
         // Only when the deck lost LESS than the deletes claimed. That clause was
         // written when the by-id path was the only one, where any disagreement
         // meant an over-claim — and the sweep made it read backwards on its
@@ -2666,8 +2680,8 @@ export async function runHostProbes(source: string, build: string): Promise<Host
         (shrankBy !== undefined && shrankBy < returned
           ? ` (the deletes reported ${returned} but the deck only shrank by ${shrankBy})`
           : "") +
-        (stillListed !== undefined && stillListed < scratchIds.length
-          ? `; the deck still lists ${stillListed} of ${scratchIds.length} of these ids`
+        (stillListed !== undefined && stillListed < outstanding.length
+          ? `; the deck still lists ${stillListed} of ${outstanding.length} of these ids`
           : "") +
         (swept ? `; ${swept} removed by a positional sweep after delete-by-id took none` : ""),
     });
@@ -2835,6 +2849,31 @@ export function positionalSweepPlan(o: {
  * When the deck will not give a count at all the claim is all there is and
  * stands — with `shrankBy` undefined, so nothing pretends otherwise.
  */
+/**
+ * Of the slides this run took, which is the clean-up still responsible for?
+ *
+ * Every number in the clean-up used to derive from "how many scratch slides did
+ * this run take", which equals "how many are still in the deck" only because
+ * nothing ever gave one back early. That assumption is load-bearing in three
+ * places — `slidesActuallyReturned`, `positionalSweepPlan` and the
+ * `scratch-slides-returned` answer — and it is exactly what blocked the
+ * pass-boundary sweep: three reconciliations at the call sites produced three
+ * different wrong totals, because the assumption sits upstream of all of them.
+ *
+ * `deckBefore` is read when the clean-up starts, so a slide returned before that
+ * is already gone from the deck's own count. Counting it again makes the run
+ * report slides it never failed to return; leaving it in the total makes the
+ * clean-up owe a slide that is not there. Both were observed.
+ *
+ * NOTHING RETURNS A SLIDE EARLY YET. `returnedEarly` is empty on every path
+ * today, which is what makes this a pure refactor. The tests exercise it
+ * non-empty, so the accounting is proven for the case it exists to allow before
+ * anything depends on it.
+ */
+export function outstandingScratch(taken: readonly string[], returnedEarly: ReadonlySet<string>): string[] {
+  return taken.filter((id) => !returnedEarly.has(id));
+}
+
 export function slidesActuallyReturned(o: {
   claimed: number;
   added: number;
