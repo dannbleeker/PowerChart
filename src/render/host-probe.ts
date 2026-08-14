@@ -358,6 +358,32 @@ type Probe = {
    * It ANSWERS, so none of the not-asked machinery notices — the replacement
    * paths all trigger on a question that failed, and this one succeeds and
    * poisons the well on its way out.
+   *
+   * WHAT THE FLAG BUYS, MEASURED — AND THE PREDICTION IT FAILED. Round 27 was
+   * run to judge the three carriers added for #8, #16 and #22, against a stated
+   * prediction that all three would answer for the first time in eleven rounds.
+   * **They did not.** All three came back never-put again. The round is still a
+   * clean control for what the flag DOES do:
+   *
+   *   flagged   shape-resolve-held-slide-proxy   no-scratch-slide -> no-scratch-shape
+   *   flagged   tags-add-same-key-twice          no-scratch-slide -> no-scratch-shape
+   *   flagged   grouped-child-by-id-from-slide   no-scratch-slide -> no-scratch-shape
+   *   UNflagged tag-on-group-survives            no-scratch-slide -> no-scratch-slide
+   *
+   * Every flagged question changed failure mode; the unflagged control did not;
+   * and the trace shows the flag firing 11 times on exactly its four carriers.
+   * The slide half is fixed — these questions now GET a live slide. They fail
+   * one layer down, and the detail names it: "the host would not read back the
+   * shapes' ids", and for the grouped one "the host would not name the members
+   * before grouping, so there was no child id to look up".
+   *
+   * That is not a starvation problem and no amount of slide management moves it.
+   * It is a fact this sheet ALREADY records twice — `shape-proxy-survives-one-sync`
+   * and `shapes-items-count-honest` both answer `unreadable` — so a question that
+   * must name a freshly added shape on a fresh slide is unanswerable AS WRITTEN
+   * on this host. Fixing these three means taking this file's own long-standing
+   * advice and not reading ids back off their own setup shapes: a child id has to
+   * come from a shape this host has already consented to name.
    */
   burnsTheSlide?: true;
   /**
