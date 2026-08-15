@@ -356,7 +356,13 @@ export const PENDING_QUESTIONS = {
     "returning nothing at all and so saying nothing about which end. Asked by POSITION rather than by id, because " +
     "every question here that needs an id off a scratch shape spends its life answering no-scratch-shape. " +
     "`keeps-head` makes the trade real and worth mitigating; `keeps-tail` makes it free; `none` says it does not " +
-    "arise on this host and the fake is the only place it bites.",
+    "arise on this host and the fake is the only place it bites. " +
+    "ROUNDS 043 AND 044 BOTH ANSWERED `unreadable` — 'the collection would not list its items' — and that is very " +
+    "probably the permanent answer rather than a miss: `shapes-items-count-honest` answers `unreadable` on the same " +
+    "sheet, with `items` undefined rather than short. THE TRADE IS THEREFORE MOOT ON THIS HOST, and that is the " +
+    "finding: a read that returns NO list cannot drop one end rather than the other, so where the anchor sits in the " +
+    "collection cannot decide whether a scan sees it. The question stays because a host that lists items would answer " +
+    "it in one round and the cost is one scratch slide, but nothing should wait on it.",
   "collection-read-poisons-the-creation-handle":
     "Added 2026-08-15, and it is the question the ordering fix is now blocked on — the fix was BUILT that day and the " +
     "Office.js fake refused it. `survives-8` says a creation handle keeps taking tag writes for at least eight syncs, and " +

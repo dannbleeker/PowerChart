@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "fs";
+import { spawnSync } from "child_process";
 // @ts-expect-error — plain .mjs tool, no types.
 import { poolEveryDraw } from "../scripts/triage.mjs";
 // Its own line: the grouped-import + `@ts-expect-error` trap is documented at
@@ -66,6 +67,31 @@ describe("the round archive", () => {
     expect(arms.rounds, "pooling read fewer rounds than the archive holds").toBe(files.length);
     expect(armDraws, "the counterbalanced arms pooled no further than one round").toBeGreaterThan(4);
     expect(allDraws, "every-draw pooling saw no more than a single round").toBeGreaterThan(40);
+  });
+
+  it("reports on the NEWEST round when handed the directory", () => {
+    // `npm run rounds` is the one command a loop glances at between rounds, and
+    // it expanded the directory sorted then read `[0]` — the OLDEST round. So
+    // the deck evidence and self-test at the top came from two days before the
+    // grid underneath, with nothing saying so. Nineteen rounds went by without
+    // it being noticed, because the grid was right.
+    //
+    // Asserted through the CLI rather than a unit, because the defect lived in
+    // argument handling and a unit test of the reporter would have passed
+    // throughout.
+    const sorted = [...files].sort();
+    const newestBuild = /^\d{3}-(.*)\.json$/.exec(sorted[sorted.length - 1])![1];
+    const out = spawnSync(process.execPath, ["scripts/triage.mjs", "rounds"], { encoding: "utf8" }).stdout ?? "";
+    const header = out.split("\n").find((l) => l.trimStart().startsWith("build ")) ?? "";
+    expect(header, "reported some round other than the newest").toContain(newestBuild);
+    // An explicitly named file still means THAT file: two rounds named on the
+    // command line means the first of them, and only the directory case flips.
+    const firstBuild = /^\d{3}-(.*)\.json$/.exec(sorted[0])![1];
+    const named =
+      spawnSync(process.execPath, ["scripts/triage.mjs", dir + sorted[0], dir + sorted[sorted.length - 1]], {
+        encoding: "utf8",
+      }).stdout ?? "";
+    expect(named.split("\n").find((l) => l.trimStart().startsWith("build ")) ?? "").toContain(firstBuild);
   });
 
   it("does not carry the slide images, which are half the bytes", () => {

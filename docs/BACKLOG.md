@@ -419,12 +419,16 @@ than the presence of one.
   behaviour and, in the next line, that an unblinded scan finds the chart — so it
   is a visibility cost, not a lost tag. Taken deliberately: the write failed
   CERTAINLY, on every chart big enough to span batches, four rounds running,
-  while this scan fails intermittently. Whether a real host truncates from the
-  tail at all is unknown — `shapes-items-count-honest` answers `short-0`, which
-  returns nothing and so says nothing about which end — so
-  `which-end-a-short-read-drops` asks it by POSITION rather than by id.
-  `keeps-head` makes the cost real and worth mitigating, `keeps-tail` makes it
-  free, `none` says it does not arise here.
+  while this scan fails intermittently.
+
+  **AND THE COST IS MOOT ON THIS HOST — rounds 043 and 044.**
+  `which-end-a-short-read-drops` answers `unreadable` both times: *the collection
+  would not list its items*. `shapes-items-count-honest` says the same on the
+  same sheet, with `items` undefined rather than short. **A read that returns NO
+  list cannot drop one end rather than the other**, so where the anchor sits in
+  the collection cannot decide whether a scan sees it. The trade was real to
+  take and turns out to cost nothing here. The question stays for a host that
+  lists items — it costs one scratch slide — but nothing should wait on it.
 
 **And the trace now says which handle was used**, which is what the six rounds
 before it could not. `tagging failed` carries `from: created×N, refreshed×N`, one
