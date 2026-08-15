@@ -7446,13 +7446,35 @@ async function groupAndTagAll(
           // same four, and neither round could say why until the success path
           // learned to speak.
           //
-          // Grouping nothing keeps the chart WHOLE. It is still tagged, still
-          // re-editable, and still deleted correctly on the next update — the
-          // parts tag, not the group, is what carries a chart's membership.
-          // Ugly beats silently destructible: the same reasoning this file
-          // already applies to a chart that loses its group but keeps its
-          // config, and the same conclusion `chooseGroupMembers` reaches when
-          // one member cannot be named at all.
+          // Grouping nothing keeps the chart WHOLE. It is still deleted
+          // correctly on the next update — the parts tag, not the group, is what
+          // carries a chart's membership. Ugly beats silently destructible: the
+          // same reasoning this file already applies to a chart that loses its
+          // group but keeps its config, and the same conclusion
+          // `chooseGroupMembers` reaches when one member cannot be named at all.
+          //
+          // "IT IS STILL TAGGED, STILL RE-EDITABLE" USED TO BE THE NEXT WORDS,
+          // and on this host they are false. Measured 2026-08-15 over the whole
+          // round archive, joining each chart's grouping outcome to its tag:
+          //
+          //     grouped      64 chart(s),  1 lost the tag =  2%
+          //     NOT grouped  62 chart(s), 41 lost the tag = 66%
+          //
+          // A group is a handle made in the grouping batch and never resolved,
+          // so the config lands on it. Without one the tag falls back to a
+          // `created` handle and this host refuses it two times in three. So
+          // declining to group is not the free, conservative choice it reads as
+          // here — it is the choice that costs the chart its config most of the
+          // time.
+          //
+          // The branch is LEFT AS IT IS for now, deliberately: the alternative
+          // (group the subset) strands the unmatched shapes, which is the
+          // destructible failure this rule was written to prevent, and choosing
+          // between two harms is not a call to make from a trace. What the
+          // measurement changes is where to look — chart 4 of 8 matches 20 of
+          // its 24 shapes in EVERY round, which is a re-read problem with a
+          // fixed shape, not a coin toss. Fix the re-read and neither harm has
+          // to be chosen. See `docs/BACKLOG.md`.
           //
           // Deliberately NOT falling through to the positional rule below. That
           // branch is safe only when NOTHING matched by id, because a slide
