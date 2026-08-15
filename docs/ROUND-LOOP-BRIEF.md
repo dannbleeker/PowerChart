@@ -41,31 +41,52 @@ before believing any difference.
 is polling.** The CLI serves one command per session; a concurrent call makes the
 poll exit non-zero. That killed a healthy round that went on to pass 10 of 12.
 
-## The queue, in priority order
+## Where this stands — read before adding a round
 
-1. **`does-a-failed-group-poison-the-tag`** — decides whether the whole ordering
-   effort was aimed one level too low. Round 044 answered `no-refusal` (the host
-   grouped two same-batch shapes happily), so the question now ages its handles
-   two syncs first. **Read it beside `tag-the-creation-proxy-a-sync-later`**,
-   which answers `yes` and is what excludes age as the cause; alone,
-   `refused-after-group` is ambiguous.
-2. **Validate or refute the tag anchor** (`tagAnchorIndex`). It is merged and
-   unproven: three builds scored identically, one of them without it. This needs
-   the same-build-twice discipline above, and the honest readings are a count
-   that does NOT move and `origin tag lost` appearing where it never did.
-3. **The 2s-crash experiment.** `slide 1 resolved` on the `--check` line, three
-   clean first attempts in a row now. Record the word every round; four rounds
-   crashed 2s in before it existed.
-4. **The rasterise arms** — 30 draws per arm, need 60-100. Accumulates free, two
-   per arm per round. Nothing to do but keep running.
-5. **`same scale across the deck`** — 17 of 17 failures, deterministic, only the
-   degree varies. Do not re-litigate; it moves when the tag path moves.
+**The mechanism is settled.** A chart drawn onto a slide this run has just added
+gets a short or empty pre-grouping re-read, so it is not grouped; an ungrouped
+chart's tag falls back to a `created` handle and is refused about seven times in
+ten. Pooled over 32 rounds:
 
-**SPENT — do not re-ask as though open:** `how-many-syncs-a-creation-handle-survives`
-(`survives-8`), `tag-through-refetched-shape` (`no-id`),
-`collection-read-poisons-the-creation-handle` (`yes`),
-`which-end-a-short-read-drops` (`unreadable`, twice — and the trade it priced is
-moot: a read returning NO list cannot drop one end rather than the other).
+    slide already had shapes   97 chart(s), 96 grouped = 99%
+    freshly added, empty       84 chart(s),  1 grouped =  1%
+
+`npm run rounds` prints it. `same scale across the deck` fails for this reason,
+the same charts in the same order, every round — it is deterministic, and after
+twelve rounds of watching it, **more rounds do not add to it.**
+
+**What is left is two decisions, both the owner's, neither measurable by another
+round:**
+
+1. **Teach the matcher that a short re-read on a slide THIS RUN added blank is a
+   host lie, not an instruction.** The code already knows the rule — "the
+   positional rule is still right for a slide this run added blank" — but that
+   branch is reachable only when NOTHING matched, so a chart matching 20 of 24
+   falls past it and declines to group. Contained to the matcher; still the
+   grouping path, which carries three shipped-broken fixes on record.
+2. **Revert `tagAnchorIndex`?** No measured effect across five rounds and four
+   builds. Harmless where it sits, so it can wait.
+
+**ANSWERED — do not re-ask, and do not spend a round on any of them:**
+
+- `how-many-syncs-a-creation-handle-survives` — `survives-8`
+- `tag-through-refetched-shape` — `no-id`
+- `collection-read-poisons-the-creation-handle` — `yes`
+- `which-end-a-short-read-drops` — `unreadable`, and the trade it priced is moot
+- `does-a-failed-group-poison-the-tag` — `no-refusal` twice; the charts that lose
+  their tag never attempt a group, so the premise is gone
+- `how-many-collection-reads-a-context-survives` — `unreadable-at-1`; collection
+  questions cannot be asked from a probe on this host at all
+- **does a rasterise poison the next draw** — **NO**, closed at 60 draws per arm,
+  0 stalls in both
+- **context wear** — `contextSyncs=1` on the failing re-reads; the context is
+  fresh, so chunking `updateChartsInSlides` would change nothing
+- **the `NNN#0` slide ids** — `256#0` carries the three best-behaved charts every
+  round; the id shape predicts nothing
+
+**What a further round is still worth:** holding the noise floor for a build that
+changes something, and catching anything the host does that is not on this list.
+That is a real reason to keep going and a poor reason to hurry.
 
 ## After every round — the five-part protocol, as a GATE
 
