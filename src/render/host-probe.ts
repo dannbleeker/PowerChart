@@ -1801,16 +1801,38 @@ const PROBES: Probe[] = [
       ]);
       const tagsOf = (s: unknown) => (s as { tags?: { add(k: string, v: string): void } }).tags;
       let grouped = false;
+      // AGED FIRST, and the first version of this question did not do it — so
+      // the host grouped happily three times and the real question was never
+      // put (`no-refusal`, round 044). Production never groups shapes this
+      // young: the renderer chunks a chart across batches, and by the time
+      // `addGroup` is called the members and the slide handle behind them are
+      // several syncs old. That is the state this host refuses — five 5010s at
+      // `grouping the chart's shapes` in round 043 — and two empty syncs are
+      // what it costs to reach it here.
+      //
+      // The slide handle is taken ONCE, before the ageing, and the members are
+      // reached through it afterwards. A real host named the parent as the thing
+      // it refused, not the members, so re-taking it would age the wrong half.
+      const aged = ctx.scratch().shapes as unknown as { addGroup(items: unknown[]): unknown };
+      await ctx.sync();
+      await ctx.sync();
       try {
-        // The refusal this question is about, provoked the way production
-        // provokes it rather than in some safer form.
-        (ctx.scratch().shapes as unknown as { addGroup(items: unknown[]): unknown }).addGroup(shapes);
+        aged.addGroup(shapes);
         await ctx.sync();
         grouped = true;
       } catch {
         /* expected on this host — the refusal IS the setup */
       }
-      if (grouped) return { answer: "no-refusal", detail: "the host grouped, so the question was never put" };
+      if (grouped)
+        return {
+          answer: "no-refusal",
+          // Worth saying at length, because this answer changed meaning once. It
+          // used to mean "the shapes were too fresh to be refused"; with the
+          // ageing above it means the host grouped handles as old as production's
+          // and refused production's anyway — which would make the difference
+          // something other than age, and that is a finding rather than a miss.
+          detail: "the host grouped through a slide handle two syncs old, so the refusal was never provoked",
+        };
       try {
         // SAME context, deliberately. A fresh one answers a different question
         // and is the fix this may end up recommending, not the test of it.
