@@ -1710,6 +1710,68 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "how-many-collection-reads-a-context-survives",
+    resample: true,
+    question: "How many times can one context re-read a slide's shapes before the answer goes short?",
+    // THE STRONGEST LEAD THIS PROJECT HAS, asked instead of acted on.
+    //
+    // `same scale across the deck` has failed seventeen rounds running, and its
+    // per-chart trace is a decay curve rather than a coin — identical in rounds
+    // 043 through 046:
+    //
+    //     charts 1-3   re-read matches all 24     grouped, config kept
+    //     chart 4      re-read matches 20 of 24   partial, thrown away, lost
+    //     chart 5      re-read returns NOTHING    lost
+    //     charts 6-8   never attempted
+    //
+    // And grouping is what saves a config (64 grouped, 1 lost; 62 ungrouped, 41
+    // lost), so the re-read going short IS the failure, one level above the tag
+    // handle everything has been aimed at.
+    //
+    // The suspect is our own perf work. `updateChartsInSlides` was deliberately
+    // made ONE context, four syncs, flat in N — the right shape for a host that
+    // can hold a context, and this one appears to degrade as a context is used.
+    // `#112` already made the opposite call for the demo deck (one
+    // `PowerPoint.run` per slide) for exactly this reason.
+    //
+    // Asked rather than fixed because the fix is a 390-line restructure of the
+    // live update path, and this project has three shipped-broken fixes on
+    // record from changing that path on a theory. A number here decides it: if
+    // the reads go short at a small fixed count, chunk the update at that
+    // boundary; if a context survives twenty, the context is not the limit and
+    // the re-read fails for a reason a fresh one would not fix.
+    ask: async (ctx) => {
+      const want = 3;
+      await scratchShapes(ctx, [
+        { left: 330, top: 10, width: 20, height: 20 },
+        { left: 360, top: 10, width: 20, height: 20 },
+        { left: 390, top: 10, width: 20, height: 20 },
+      ]);
+      // Re-read the SAME collection, in the SAME context, the way the update
+      // path does once per chart. A fresh slide handle each time, because that
+      // is what the update takes per chart — the question is about the context,
+      // not about holding a stale handle.
+      for (let read = 1; read <= 12; read++) {
+        try {
+          const shapes = ctx.scratch().shapes;
+          shapes.load("items/id");
+          await ctx.sync();
+          const items = (shapes as unknown as { items?: unknown[] }).items;
+          if (!Array.isArray(items))
+            return { answer: `unreadable-at-${read}`, detail: `read ${read} would not list its items` };
+          if (items.length < want)
+            return {
+              answer: `short-at-${read}`,
+              detail: `read ${read} listed ${items.length} of ${want} — the context degraded`,
+            };
+        } catch (err) {
+          return { answer: `threw-at-${read}`, detail: short(err) };
+        }
+      }
+      return { answer: "survives-12" };
+    },
+  },
+  {
     id: "collection-read-poisons-the-creation-handle",
     resample: true,
     question: "After re-reading the slide's shapes, does the handle that CREATED a shape still take a tag?",

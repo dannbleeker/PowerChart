@@ -742,3 +742,53 @@ is the owner's — it is merged renderer code.
 **Cost of the pair:** one wedge, one dead browser, seventy-one slides of litter
 to clean. All four fixes above came out of it, which is the trade this loop
 exists to make.
+
+### Pair 2 — 5856d1d × 2 — archived as 047 and 048
+
+**The `NNN#0` slide lead is dead, and it died from the archive rather than from
+the instrument built for it.** The draw trace already carried `chart` and
+`onSlideKey`, so the join was available on rounds already filed:
+
+    1/8  slide 256#0            GROUPED   config kept    <- a #0 slide
+    2/8  slide 256#0            GROUPED   config kept    <- a #0 slide
+    3/8  slide 256#0            GROUPED   config kept    <- a #0 slide
+    4/8  slide 257#0            no group  CONFIG LOST    <- a #0 slide
+    5/8  slide 288#1168146411   no group  CONFIG LOST    <- an ordinary id
+
+Identical in 043-047. A `#0` slide carries the three best-behaved charts AND a
+failure; an ordinary slide fails too. **The id shape predicts nothing**, and the
+instrument shipped this build confirmed it independently: every failure line in
+047 named `291#567483212` and `288#230020768`, both ordinary.
+
+**What does predict it is POSITION IN THE DECK-WIDE UPDATE**, and six rounds now
+show the same decay curve rather than a coin:
+
+    charts 1-3   re-read matches all 24     grouped, config kept
+    chart 4      re-read matches 20 of 24   partial, thrown away, config lost
+    chart 5      re-read returns NOTHING    config lost
+    charts 6-8   never attempted
+
+`same scale across the deck` says it itself — "the host flipped at chart 4 of 8"
+— seventeen rounds running.
+
+1. **Mine.** Grouping-saves-the-config strengthened with the pair: **73 grouped,
+   1 lost (1%); 68 ungrouped, 47 lost (69%)**.
+2. **Research.** None owed.
+3. **Instrument.** `how-many-collection-reads-a-context-survives` — how many
+   times one context can re-read a slide's shapes before the answer goes short.
+   That is the mechanism the decay curve implies, asked directly.
+4. **Fix.** A comment, and it was asserting something false: the partial-match
+   branch claimed an ungrouped chart "is still tagged, still re-editable". The
+   69% above refutes it. **The branch itself is deliberately left alone** — the
+   alternative strands shapes, and choosing between two harms is not a call to
+   make from a trace.
+5. **Doctrine.** `docs/BACKLOG.md` carries the refuted lead, the decay curve, and
+   the experiment with its prediction.
+
+**The suspect is our own perf work.** `updateChartsInSlides` was deliberately made
+ONE context, four syncs, flat in N — the right shape for a host that can hold a
+context, and this one appears to degrade as a context is used. `#112` already made
+the opposite call for the demo deck. **Not acted on**: the fix is a 390-line
+restructure of the live update path, and this project has three shipped-broken
+fixes on record from changing that path on a theory. The probe decides it for the
+price of one round.

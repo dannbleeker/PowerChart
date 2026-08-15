@@ -224,7 +224,72 @@ pre-grouping re-read returned anything**. That is one level up from where this
 work has been aimed, and it is where the next attempt belongs — the re-read, not
 the tag.
 
-Two leads on the re-read, both cheap and neither yet followed:
+**AND THE RE-READ FAILS THE SAME TWO WAYS EVERY ROUND.** Per-chart, identical in
+rounds 042 through 046 without exception:
+
+    1/8, 2/8, 3/8   GROUPED by=ids                          config kept
+    4/8             re-read PARTIAL, matched 20 of 24       no group → config lost
+    5/8             re-read EMPTY, drew 24                  no group → config lost
+
+Two different faults wearing one outcome, and both are deterministic rather than
+moody — the same chart, the same numbers, five rounds running.
+
+- **Chart 4 matches 20 of 24, every time.** A partial match is thrown away on
+  purpose (grouping a subset strands the rest), so this chart is ungrouped by our
+  own rule and then loses its config to the fallback. Twenty of twenty-four is
+  not noise; four specific shapes are not being named. Find those four and the
+  chart groups.
+- **Chart 5's re-read comes back EMPTY** with 24 drawn — the host listing nothing
+  for a slide it has just been drawn on.
+
+**The comment in the partial branch has been corrected** (`powerpoint.ts`): it
+claimed an ungrouped chart "is still tagged, still re-editable", which the 66%
+above refutes. The branch itself is left alone deliberately — the alternative
+strands shapes, and choosing between two harms is not a call to make from a
+trace. **Fix the re-read and neither harm has to be chosen.**
+
+**THE `NNN#0` SLIDE LEAD IS DEAD — refuted 2026-08-15 from the archive, before
+the instrument built for it had even deployed.** The draw trace already carried
+both `chart` and `onSlideKey`, so the join could be done on rounds already
+archived:
+
+    1/8  slide 256#0            GROUPED   config kept    <- a #0 slide
+    2/8  slide 256#0            GROUPED   config kept    <- a #0 slide
+    3/8  slide 256#0            GROUPED   config kept    <- a #0 slide
+    4/8  slide 257#0            no group  CONFIG LOST    <- a #0 slide
+    5/8  slide 288#1168146411   no group  CONFIG LOST    <- an ordinary id
+
+Identical in rounds 043-046. A `#0` slide carries the three best-behaved charts
+AND one failure, and an ordinary slide fails too. **The id shape predicts
+nothing.**
+
+**WHAT DOES PREDICT IT: POSITION IN THE DECK-WIDE UPDATE.** Those five charts are
+`same scale across the deck`, and its own summary says `the host flipped at chart
+4 of 8, so the last 3 were not attempted` — every round, for seventeen rounds.
+Read the re-read outcomes in order and it is a decay curve, not a coin:
+
+    charts 1-3   re-read matches all 24     grouped, config kept
+    chart 4      re-read matches 20 of 24   partial, thrown away, config lost
+    chart 5      re-read returns NOTHING    config lost
+    charts 6-8   never attempted
+
+**The hypothesis, and it points at our own perf work.** `updateChartsInSlides`
+was deliberately made **one context, four syncs, flat in N** — the fix for
+`doSameScale` spending 80 syncs across 20 contexts. That is the right shape for a
+host that can hold a context, and this one degrades as a context is used: the
+re-read is the first casualty, at chart four, every time. `#112` already made the
+opposite call for the demo deck, one `PowerPoint.run` per slide, because a
+context that has done too much stops answering.
+
+**The experiment: chunk the deck-wide update into a fresh context every ~3
+charts** — not per chart, which is what the perf work correctly removed, but at
+the boundary the data actually shows. Cost is two extra contexts for an 8-chart
+deck against 20 for the old shape. **Prediction: `same scale` moves off 17-of-17
+failures, and charts 4-8 start keeping their configs.** If it does not move, the
+context is not the limit and the re-read fails for a reason that survives a fresh
+one — which is worth knowing for the price of one round.
+
+Two further leads on the re-read, both cheap and neither yet followed:
 
 - **The `NNN#0` slide ids.** Two of every round's added slides come back with an
   id whose second half is `0` — not the shape this host gives a slide it has

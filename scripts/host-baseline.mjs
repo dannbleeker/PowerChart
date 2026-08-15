@@ -39,6 +39,8 @@ export const FAKE_BASELINE = {
   // handles onto it. Production's does, which is the whole question; see
   // PENDING_QUESTIONS.
   "collection-read-poisons-the-creation-handle": "yes",
+  // The healthy fake answers every read, so nothing degrades and it says so.
+  "how-many-collection-reads-a-context-survives": "survives-12",
   // The fake's collection read drops from the TAIL (`faults.readsMissing`), but
   // unarmed it drops nothing, so a healthy fake keeps every shape.
   "which-end-a-short-read-drops": "all",
@@ -329,6 +331,17 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "how-many-collection-reads-a-context-survives":
+    "Added 2026-08-15, and it decides the strongest lead this project has. `same scale across the deck` has failed " +
+    "seventeen rounds running and its per-chart trace is a decay curve, identical in rounds 043-046: charts 1-3 " +
+    "re-read all 24 shapes and group, chart 4 matches 20 of 24 and is thrown away, chart 5 gets NOTHING back, charts " +
+    "6-8 are never attempted. Grouping is what saves a config (64 grouped 1 lost; 62 ungrouped 41 lost), so the " +
+    "re-read going short IS the failure — one level above the tag handle four rounds and a renderer change went into. " +
+    "The suspect is our own perf work: updateChartsInSlides was deliberately made ONE context, four syncs, flat in N, " +
+    "and this host appears to degrade as a context is used; #112 already made the opposite call for the demo deck. " +
+    "ASKED RATHER THAN FIXED because the fix is a 390-line restructure of the live update path and this project has " +
+    "three shipped-broken fixes on record from changing that path on a theory. A small fixed number says chunk the " +
+    "update at that boundary; `survives-12` says the context is not the limit and a fresh one would not help.",
   "does-a-failed-group-poison-the-tag":
     "Added 2026-08-15 from round 043, and it may retire the whole ordering effort. The tag anchor was moved onto a " +
     "handle nothing resolves, and 043 then scored exactly what 042 scored — cfg-tag-5010 six times, `origin tag lost` " +
