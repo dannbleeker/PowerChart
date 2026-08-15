@@ -25,6 +25,7 @@ const {
   recover,
   cli,
   isOverflow,
+  recoveryFor,
   slideResolveScript,
   readSlideResolve,
 } = driver;
@@ -373,6 +374,25 @@ describe("asking the host whether it is awake", () => {
     expect(shouldRetry("not-ready", 0, 3, []), "an empty list is not a reason to retry").toBe(false);
     expect(shouldRetry("not-ready", 0, 3), "and neither is no list at all").toBe(false);
     expect(shouldRetry("not-ready", 3, 3, ["deck-dirty"]), "the budget still binds").toBe(false);
+  });
+
+  it("names what it is recovering from, rather than announcing a crash that did not happen", () => {
+    // ROUND 047 refused on a dirty deck alone and was told "clearing the crash
+    // and starting again". The line was written when a crash was the only thing
+    // retried; the moment the retry covered more, it began inventing one. A
+    // recovery line is read while someone is debugging.
+    expect(recoveryFor("crashed", ["crashed"])).toContain("clearing the crash");
+    expect(recoveryFor("silent", undefined)).toContain("went quiet");
+    expect(recoveryFor("not-ready", ["deck-dirty"]), "the round-047 line").toBe(
+      "recovering from a dirty deck, then starting again",
+    );
+    expect(recoveryFor("not-ready", ["host-silent", "pane-stale", "deck-dirty"])).toBe(
+      "recovering from a silent host and a stale pane and a dirty deck, then starting again",
+    );
+    // An unrecoverable code never reaches this line (shouldRetry stops first),
+    // so it must not be named as something being recovered from.
+    expect(recoveryFor("not-ready", ["site-behind"])).toBe("recovering and starting again");
+    expect(recoveryFor("not-ready", [])).toBe("recovering and starting again");
   });
 
   it("gives every refusal a code, and every code a meaning", () => {

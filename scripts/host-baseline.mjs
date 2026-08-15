@@ -42,6 +42,9 @@ export const FAKE_BASELINE = {
   // The fake's collection read drops from the TAIL (`faults.readsMissing`), but
   // unarmed it drops nothing, so a healthy fake keeps every shape.
   "which-end-a-short-read-drops": "all",
+  // The healthy fake groups, so the refusal this question needs never happens
+  // and it reports that rather than inventing an answer.
+  "does-a-failed-group-poison-the-tag": "no-refusal",
   "delete-then-lookup": "reports-gone",
   "addgroup-returns-usable": "yes",
   "group-children-via-getcount": "two",
@@ -324,6 +327,17 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "does-a-failed-group-poison-the-tag":
+    "Added 2026-08-15 from round 043, and it may retire the whole ordering effort. The tag anchor was moved onto a " +
+    "handle nothing resolves, and 043 then scored exactly what 042 scored — cfg-tag-5010 six times, `origin tag lost` " +
+    "zero times. If the handle were the lever, both numbers should have moved. What sits between the draw and the tag " +
+    "in production is a grouping attempt, refused 5010 five times in that same round; a failed sync poisons its own " +
+    "context, which this project already works around elsewhere, and `no chart's tag could be queued` firing five " +
+    "times is a CONTEXT-level symptom — the queue refused before any handle was exercised. " +
+    "`tag-the-creation-proxy-a-sync-later: yes` is the control: same handle, same age, no grouping attempt between. " +
+    "`refused-after-group` means the context is the lever and the anchor move was aimed one level too low; `yes` " +
+    "means the tag failure needs another explanation; `no-refusal` means the host grouped and the question was never " +
+    "put.",
   "which-end-a-short-read-drops":
     "Added 2026-08-15, and it prices a trade already taken. The chart's config tag now lands on the LAST shape drawn, " +
     "because that is the one handle no load() resolves and so the only one this host accepts a tag through " +

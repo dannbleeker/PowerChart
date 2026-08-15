@@ -8,6 +8,12 @@ import { join } from "path";
 import { readDeckBytes } from "../scripts/verify-deck.mjs";
 // @ts-expect-error — as above.
 import { triage, runsIn, selfTestIn, knownBug, deckEvidence, poolRasteriseArms } from "../scripts/triage.mjs";
+// Its own line, and this file has now predicted its own bug three times: adding
+// a name to the grouped import above pushes it over the print width, prettier
+// reflows it across lines, and `@ts-expect-error` covers only the NEXT line — so
+// the directive stops reaching the `from` clause. Suite green, `tsc` red.
+// @ts-expect-error — as above.
+import { poolTagFaults } from "../scripts/triage.mjs";
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -367,6 +373,43 @@ describe("triage — logs that are not inserts", () => {
     // blank, so the two observations are one event rather than two.
     expect(e.oddAndBlank).toBe(1);
     expect(e.confirmed).toBe(1);
+  });
+
+  it("pools tag faults per build, so two rounds of one build can be compared with themselves", () => {
+    // WHY THIS EXISTS: on 2026-08-15 a tag-anchor fix was nearly reported as
+    // working because the round carrying it looked like the round before. It
+    // did — and so did two rounds with NO renderer change between them, where
+    // `tags-undefined` went 1 → 5. Grouping by build is what lets the same build
+    // run twice pool instead of compete, and that pair is the only noise
+    // measurement that owes nothing to an argument.
+    const round = (build: string, faults: { undef?: number; grouped?: number }) => ({
+      build,
+      trace: {
+        entries: [
+          ...Array.from({ length: faults.undef ?? 0 }, () => ({
+            message: "tagging failed — charts are not re-editable",
+            data: { error: "Cannot read properties of undefined (reading 'add')" },
+          })),
+          ...Array.from({ length: faults.grouped ?? 0 }, () => ({
+            message: "grouping refused",
+            data: { error: "at=grouping the chart's shapes | code=5010" },
+          })),
+        ],
+      },
+    });
+    const byBuild = poolTagFaults([
+      round("aaaaaaa · 2026-08-15", { undef: 1 }),
+      round("aaaaaaa · 2026-08-15", { undef: 5 }),
+      round("bbbbbbb · 2026-08-15", { undef: 5, grouped: 2 }),
+    ]);
+    expect([...byBuild.keys()], "the timestamp is not part of the build").toEqual(["aaaaaaa", "bbbbbbb"]);
+    // Two rounds of one build pooled, not averaged away — the SPREAD is the point.
+    expect(byBuild.get("aaaaaaa")!.map((r: Record<string, number>) => r["tags-undefined"])).toEqual([1, 5]);
+    expect(byBuild.get("aaaaaaa")!.map((r: Record<string, number>) => r["tagging-failed"])).toEqual([1, 5]);
+    expect(byBuild.get("bbbbbbb")![0]["group-5010"]).toBe(2);
+    // A fault line that is not a tagging failure must not inflate the count that
+    // a fix would be judged on.
+    expect(byBuild.get("bbbbbbb")![0]["tagging-failed"]).toBe(5);
   });
 
   it("says nothing about ids when every one of them finished", () => {

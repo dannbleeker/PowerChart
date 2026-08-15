@@ -58,9 +58,25 @@ slides behind`. Join `deck.inventory` to `deck.newSlides` in `triage` and it
 answers itself.
 
 **SPENT — do not re-ask as though open:** `how-many-syncs-a-creation-handle-
-survives` (`survives-8`, eight samples over three builds) and
-`tag-through-refetched-shape` (`no-id`). Between them the ordering fix in
-`docs/BACKLOG.md` is the only route left and has all the headroom it needs.
+survives` (`survives-8`, eight samples over three builds),
+`tag-through-refetched-shape` (`no-id`), and
+`collection-read-poisons-the-creation-handle` (`yes`).
+
+**THE QUESTION THE NEXT ROUND IS FOR: `does-a-failed-group-poison-the-tag`.**
+The tag anchor moved onto an unresolved handle and round 043 scored EXACTLY what
+042 scored — `cfg-tag-5010` six times, `origin tag lost` zero times. If the handle
+were the lever both would have moved. What sits between the draw and the tag is a
+grouping attempt this host refuses, a failed sync poisons its own context, and
+`no chart's tag could be queued` firing five times is a context-level symptom.
+`refused-after-group` means the whole ordering effort was aimed one level too low
+and the fix is to tag in a context that has not just tried to group.
+
+**AND READ THE TAG-FAULT TABLE BEFORE BELIEVING ANY OF IT.** `npm run rounds`
+now prints fault counts per build with the noise floor measured from the one
+build that has been run twice: `cabb357` scored 1 and 5 for `tags-undefined` with
+nothing changed between them. A difference smaller than that is the host's mood.
+Judge a change on a count that did NOT move, or on a trace line that appears
+where none did before — those are the two readings that survived round 043.
 
 ## Constants — ALL DURABLE NOW, nothing in /tmp
 

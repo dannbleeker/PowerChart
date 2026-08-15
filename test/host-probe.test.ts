@@ -467,6 +467,8 @@ describe("the fake host's answer sheet", () => {
         "tag-on-group-survives",
         // Needs six shapes to see which of them a short read keeps.
         "which-end-a-short-read-drops",
+        // Needs two shapes to offer addGroup something to refuse.
+        "does-a-failed-group-poison-the-tag",
         // The binding question needs a shape to bind, so a host that refuses
         // every add has told it nothing. Its first version answered `add-threw`
         // here — a statement about `bindings.add` from a run in which
