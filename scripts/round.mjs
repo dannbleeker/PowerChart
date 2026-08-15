@@ -72,6 +72,7 @@ export function readiness({
   verbose,
   pictures,
   reachable = true,
+  unreachableAt = null,
   ping = null,
   crashed = false,
   loggedOut = false,
@@ -84,7 +85,12 @@ export function readiness({
       ok: false,
       stop: [
         "playwright-cli could not be run — nothing below was actually measured. " +
-          "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point.",
+          "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point." +
+          // The call and the errno, when there is one. Without them this message
+          // points at the install every time, and the install is almost never it.
+          (unreachableAt
+            ? `\n      the call that could not be spawned: \`${unreachableAt.args}\` — ${unreachableAt.error}`
+            : ""),
       ],
     };
   // THE WEDGE, by its real name. Rounds 24, 25, 29 and 30 each spent most of an
@@ -215,9 +221,25 @@ export function sessionDir(dir, real = realpathSync.native) {
   }
 }
 
-function cli(run, dir) {
+/**
+ * Did this call RUN and say too much, rather than fail to run at all?
+ *
+ * `spawnSync` reports both as `error`, and the driver treated both as "the tool
+ * could not be run". They are opposite facts: an overflow means the browser
+ * answered, and every other spawn error means nobody asked. Round 044 spent two
+ * attempts and two empty crash reports on the difference.
+ *
+ * Matched on the CODE, with the message as a fallback, because Node stamps
+ * `err.code = "ENOBUFS"` on the overflow path while the message it prints names
+ * the executable rather than the reason.
+ */
+export function isOverflow(err) {
+  if (!err) return false;
+  return err.code === "ENOBUFS" || /ENOBUFS/.test(String(err.message ?? err));
+}
+
+export function cli(run, dir, entry = cliEntry()) {
   const state = { unreachable: false };
-  const entry = cliEntry();
   const cwd = sessionDir(dir);
   const sh = (...args) => {
     if (!entry) {
@@ -225,8 +247,32 @@ function cli(run, dir) {
       return "";
     }
     // NODE, on the CLI's own JavaScript. No shim, no shell.
-    const r = run(process.execPath, [entry, "-s=ms", "--raw", ...args], { encoding: "utf8", cwd });
-    if (r.error) state.unreachable = true;
+    //
+    // `maxBuffer` because the default is 1 MiB and `requests` on a live
+    // PowerPoint tab is bigger than that — the document channel alone runs to
+    // hundreds of POSTs with query strings on them. Over the line, `spawnSync`
+    // returns ENOBUFS and throws the output away, which is how round 044 lost
+    // two crash reports and then the round itself.
+    const r = run(process.execPath, [entry, "-s=ms", "--raw", ...args], { encoding: "utf8", cwd, maxBuffer: 64e6 });
+    // A CALL THAT RAN AND SAID TOO MUCH IS NOT A TOOL THAT COULD NOT BE RUN, and
+    // conflating them is what sent two rounds' debugging at a healthy install.
+    // ENOBUFS means the browser answered and the answer did not fit; every other
+    // spawn error means nothing was measured. Only the second is `unreachable`.
+    // Per CALL, beside the two latches, so a reader one layer out can tell
+    // whether the empty string it just got was an answer or a failure. The crash
+    // report is that reader, and without this it wrote "(nothing)" over a read
+    // that never happened — twice, on the only two crashes of round 044.
+    state.lastError = isOverflow(r.error) ? "overflow" : r.error ? "spawn" : null;
+    if (isOverflow(r.error)) {
+      state.overflowed = args[0];
+    } else if (r.error) {
+      state.unreachable = true;
+      // WHICH call, and what the OS said. "playwright-cli could not be run" sent
+      // two rounds' worth of debugging at an install that was fine, because the
+      // message named the tool and the tool was never the problem. A spawn
+      // failure has a subcommand and an errno and both were being thrown away.
+      state.unreachableAt ??= { args: args.join(" ").slice(0, 80), error: String(r.error?.message ?? r.error) };
+    }
     // A failed CLI call and a page that answered with nothing are the same empty
     // string, and the difference decides whether a round is alive. Recorded, not
     // folded in — the same distinction `unreachable` exists to keep.
@@ -234,6 +280,30 @@ function cli(run, dir) {
     return r.status === 0 ? String(r.stdout ?? "") : "";
   };
   sh.state = state;
+  /**
+   * Start a fresh sweep, forgetting a spawn failure the last one saw.
+   *
+   * `unreachable` is deliberately sticky WITHIN a sweep: a call that never ran
+   * and a page that answered with nothing are the same empty string, so once one
+   * spawn has failed nothing that sweep read can be trusted. Across sweeps it is
+   * a lie, and round 044 is what that costs.
+   *
+   * `--retry` survived the crash, `recover` reloaded the tab and reopened the
+   * pane, and one of its ~8 spawns lost a race. The next attempt then measured a
+   * perfectly healthy setup — `host answered in 4ms`, printed one line above —
+   * and refused it with "playwright-cli could not be run — nothing below was
+   * actually measured", which was false of every value on screen. A latch that
+   * outlives its evidence turns a recoverable round into a stop, and this one
+   * exited 0 while doing it.
+   *
+   * The same mistake as the poll that once ended a round on a single failed CLI
+   * call (round 29), one call site further out. Fixed the same way: scope the
+   * doubt to the thing it was actually about.
+   */
+  sh.startSweep = () => {
+    state.unreachable = false;
+    state.unreachableAt = undefined;
+  };
   return sh;
 }
 
@@ -343,6 +413,8 @@ async function attempt(argv, deps, sh) {
   const run = deps.run ?? spawnSync;
   const fetchBuild = deps.fetchBuild ?? defaultFetchBuild;
   const checkOnly = argv.includes("--check");
+  // This sweep's reachability is about THIS sweep. See `sh.startSweep`.
+  sh.startSweep?.();
 
   const head = String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null;
   const deployed = buildOf(await fetchBuild());
@@ -375,6 +447,7 @@ async function attempt(argv, deps, sh) {
     verbose,
     pictures,
     reachable: !sh.state.unreachable,
+    unreachableAt: sh.state.unreachableAt ?? null,
     ping,
     crashed,
     loggedOut,

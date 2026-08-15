@@ -94,34 +94,60 @@ export function fatalWindow(body, before = 30, after = 3) {
  */
 export async function collectCrashEvidence(sh, { at = "unknown", limit = 40 } = {}) {
   const parts = [`# PowerPoint crash — ${at}`, ""];
+  /**
+   * A read that FAILED, named as one, rather than reported as an empty host.
+   *
+   * `sh` returns "" both when the browser had nothing to say and when the call
+   * never produced anything, and the report used to write "(nothing)" over
+   * either. Round 044's two crashes are what that costs: `requests` overflowed
+   * the spawn buffer, so the document channel read "(nothing)" and the ULS read
+   * "no fatal entry in the last 0 telemetry batches" — a sentence that describes
+   * the quiet form of the wedge, printed because nothing was measured at all.
+   * Two reports that looked like evidence and were not.
+   */
+  const ask = (...args) => {
+    const out = sh(...args);
+    return { out, failed: sh.state?.lastError ?? null };
+  };
   const safe = (label, fn) => {
     try {
-      const out = fn();
-      parts.push(`## ${label}`, "", String(out ?? "").trim() || "(nothing)", "");
+      const { out, failed } = fn();
+      const body = failed
+        ? `(could not read — the \`${label}\` call ${failed === "overflow" ? "answered with more than the buffer holds" : "could not be run"})`
+        : String(out ?? "").trim() || "(nothing)";
+      parts.push(`## ${label}`, "", body, "");
     } catch (err) {
       parts.push(`## ${label}`, "", `(could not read: ${err?.message ?? err})`, "");
     }
   };
 
-  safe("Console errors", () =>
-    String(sh("console", "error") ?? "")
-      .split("\n")
-      .filter((l) => /ERROR|net::/.test(l))
-      .slice(-12)
-      .map(scrub)
-      .join("\n"),
-  );
+  safe("Console errors", () => {
+    const { out, failed } = ask("console", "error");
+    return {
+      failed,
+      out: String(out ?? "")
+        .split("\n")
+        .filter((l) => /ERROR|net::/.test(l))
+        .slice(-12)
+        .map(scrub)
+        .join("\n"),
+    };
+  });
 
   // The document's data channel, and where it stopped. `GetPopWacUpdates` going
   // quiet is the tell that separates a crashed session from a slow one.
-  safe("Document channel, last 12", () =>
-    String(sh("requests") ?? "")
-      .split("\n")
-      .filter((l) => /edit\.svc|podedit|RemoteSessionTermination/.test(l))
-      .slice(-12)
-      .map(scrub)
-      .join("\n"),
-  );
+  safe("Document channel, last 12", () => {
+    const { out, failed } = ask("requests");
+    return {
+      failed,
+      out: String(out ?? "")
+        .split("\n")
+        .filter((l) => /edit\.svc|podedit|RemoteSessionTermination/.test(l))
+        .slice(-12)
+        .map(scrub)
+        .join("\n"),
+    };
+  });
 
   // Guarded like everything else, and this one caught itself: the scan sat
   // outside the `safe` wrapper at first and threw the whole pass away on a host
@@ -131,7 +157,20 @@ export async function collectCrashEvidence(sh, { at = "unknown", limit = 40 } = 
   // because the catch below returns early.
   let scanned;
   try {
-    const indices = telemetryIndices(sh("requests"), limit);
+    const { out, failed } = ask("requests");
+    // A scan of nothing is not a scan. Saying "no fatal entry in the last 0
+    // batches" about a read that failed is the same lie the sections above used
+    // to tell, and this is the one that reads as a diagnosis.
+    if (failed) {
+      parts.push(
+        "## PowerPoint's own error log (ULS)",
+        "",
+        `(not scanned — the request list ${failed === "overflow" ? "answered with more than the buffer holds" : "could not be read"})`,
+        "",
+      );
+      return parts.join("\n");
+    }
+    const indices = telemetryIndices(out, limit);
     scanned = indices.length;
     for (const i of indices) {
       const window = fatalWindow(sh("request-body", String(i)));

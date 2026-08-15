@@ -26,11 +26,18 @@ keeps the session, so a dead browser is not a lost sign-in.**
 6. `node scripts/round.mjs --check --dir .pw-session` — should say `ready`.
 7. `node scripts/round.mjs --dir .pw-session --retry 6`, in the background.
 
-**FIRST THING TO READ in the next round:** `shape-add-held-slide-proxy`'s
-pass-1-vs-later split. `how-many-syncs-a-creation-handle-survives` is SPENT — it
-answered `survives-8`, five samples over two builds, so the ordering fix has all
-the headroom it needs and the constraint is `load()`, not age. See
-`docs/BACKLOG.md`.
+**FIRST THING TO DO in the next round:** test the 2s-crash theory. PowerPoint has
+crashed 2s into the FIRST attempt four rounds running and never into one that
+followed a recovery, and its own log says `OnServerFindSucceeded could not find
+target slide` after `Failed to restore selection after load content`. Resolve the
+current slide once in the pre-flight: either it absorbs the crash where it is
+cheap, or it refutes the theory. Each round pays this as a wasted attempt plus
+80s of recovery.
+
+**SPENT — do not re-ask as though open:** `how-many-syncs-a-creation-handle-
+survives` (`survives-8`, eight samples over three builds) and
+`tag-through-refetched-shape` (`no-id`). Between them the ordering fix in
+`docs/BACKLOG.md` is the only route left and has all the headroom it needs.
 
 ## Constants — ALL DURABLE NOW, nothing in /tmp
 
