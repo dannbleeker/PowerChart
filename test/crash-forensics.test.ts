@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs tool, no types.
 import * as forensics from "../scripts/crash-forensics.mjs";
-const { telemetryIndices, fatalWindow, collectCrashEvidence } = forensics;
+const { telemetryIndices, fatalWindow, collectCrashEvidence, scrub } = forensics;
 
 /**
  * The evidence this collects exists for a few minutes and then is gone: it
@@ -11,6 +11,24 @@ const { telemetryIndices, fatalWindow, collectCrashEvidence } = forensics;
  */
 describe("pulling PowerPoint's own account of a crash", () => {
   const uls = (messages: string[]) => JSON.stringify({ T: 1, L: messages.map((M, i) => ({ T: i, M })) });
+
+  it("keeps live session tokens out of the report", () => {
+    // THIS REPO IS PUBLIC. A wedged PowerPoint logs from URLs carrying usid,
+    // hid, postmessagetoken and the user's filename — live session tokens and a
+    // personal document name. The report is scrubbed on the way IN as well as
+    // gitignored, because it also gets pasted into issues and chat by hand, and
+    // only one of those two defences travels with the text.
+    const line =
+      "[ERROR] Failed to load resource @ https://powerpoint.officeapps.live.com/pods/ppt.aspx?usid=abc-123&hid=def-456&postmessagetoken=ghi&filename=Presentation63.pptx";
+    const clean = scrub(line);
+    expect(clean, "the log message itself is the evidence and must survive").toContain("Failed to load resource");
+    for (const secret of ["usid", "hid=", "postmessagetoken", "Presentation63"]) {
+      expect(clean, `leaked ${secret}`).not.toContain(secret);
+    }
+    // A bare URL inside a message keeps its origin — which is diagnostic — and
+    // loses the query, which is where the tokens live.
+    expect(scrub("POST https://x.live.com/edit.svc/Foo?usid=abc-123")).toBe("POST https://x.live.com/edit.svc/Foo?…");
+  });
 
   it("reads the fatal window out of a telemetry batch", () => {
     const body = uls([

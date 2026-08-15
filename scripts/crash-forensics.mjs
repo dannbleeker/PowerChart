@@ -28,6 +28,23 @@
  * recovery, on a tab that is about to be thrown away.
  */
 
+/**
+ * Drop the URL a console line was logged from, and any query string.
+ *
+ * THIS REPO IS PUBLIC, and a wedged PowerPoint logs from URLs like
+ * `…/ppt.aspx?…&usid=<guid>&hid=<guid>&postmessagetoken=<guid>&filename=<the
+ * user's file>`. Those are live session tokens and a personal document name. A
+ * crash report is a dump from an authenticated session, so it gets scrubbed on
+ * the way in as well as kept out of git — neither alone is enough, because the
+ * report is also pasted into issues and chat by hand.
+ */
+export function scrub(line) {
+  return String(line ?? "")
+    .replace(/\s@\s+https?:\/\/\S+/g, "")
+    .replace(/(https?:\/\/[^\s?]+)\?\S*/g, "$1?…")
+    .trim();
+}
+
 /** Office's telemetry lines that mean the host gave up, in the host's words. */
 const FATAL = /ErrorName:\s*(\w+)|could not find target slide|DisplayErrorDialog:\s*(\d+)/;
 
@@ -63,7 +80,7 @@ export function fatalWindow(body, before = 30, after = 3) {
   if (at < 0) return null;
   return entries
     .slice(Math.max(0, at - before), at + after)
-    .map((e) => `${e?.T ?? "?"} | ${String(e?.M ?? "").slice(0, 200)}`)
+    .map((e) => `${e?.T ?? "?"} | ${scrub(String(e?.M ?? "")).slice(0, 200)}`)
     .join("\n");
 }
 
@@ -91,6 +108,7 @@ export async function collectCrashEvidence(sh, { at = "unknown", limit = 40 } = 
       .split("\n")
       .filter((l) => /ERROR|net::/.test(l))
       .slice(-12)
+      .map(scrub)
       .join("\n"),
   );
 
@@ -101,7 +119,7 @@ export async function collectCrashEvidence(sh, { at = "unknown", limit = 40 } = 
       .split("\n")
       .filter((l) => /edit\.svc|podedit|RemoteSessionTermination/.test(l))
       .slice(-12)
-      .map((l) => l.replace(/\?[^\s]*/, "").trim())
+      .map(scrub)
       .join("\n"),
   );
 
