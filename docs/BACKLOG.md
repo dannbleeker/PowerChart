@@ -215,7 +215,8 @@ tendency:**
 3. An ungrouped chart's tag falls back to a `created` handle, which this host
    refuses about seven times in ten.
 4. So it loses its config, and `same scale across the deck` fails — as it has for
-   seventeen rounds.
+   every round it has run — 34 of 34 as of 2026-08-16, and `npm run rounds`
+   carries the current count rather than a number that rots here.
 
 **This is not a new problem. It is THE problem, and this repo has been circling
 it since #108.** `shape-add-held-slide-proxy` answers `threw`, a web-new-slide id
@@ -311,7 +312,8 @@ nothing.**
 
 **WHAT DOES PREDICT IT: POSITION IN THE DECK-WIDE UPDATE.** Those five charts are
 `same scale across the deck`, and its own summary says `the host flipped at chart
-4 of 8, so the last 3 were not attempted` — every round, for seventeen rounds.
+4 of 8, so the last 3 were not attempted` — in every round it has run (34 of 34
+on 2026-08-16; `npm run rounds` has the live count).
 Read the re-read outcomes in order and it is a decay curve, not a coin:
 
     charts 1-3   re-read matches all 24     grouped, config kept
