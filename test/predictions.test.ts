@@ -88,7 +88,14 @@ describe("judging a prediction against a round", () => {
       expect(p.because, `${p.id} states no reasoning — the prose is the half worth keeping`).toBeTruthy();
       expect(p.afterBuild, `${p.id} does not say which build it was made on`).toMatch(/^[0-9a-f]{7}$/);
       expect(kinds.has(p.claim?.kind), `${p.id} has an unjudgeable claim kind`).toBe(true);
-      expect(["open", "held", "failed"], `${p.id} has an odd outcome`).toContain(p.outcome);
+      // `undetermined` is a real outcome and the judge has always been able to
+      // reach it — `judgePrediction` returns it for a question that was never
+      // put. The stored ledger could not say it, so a prediction the round
+      // could not settle had to be filed as open forever or, worse, as held.
+      // `slide-identity-explains-the-undefined-tag` was the case that showed
+      // it: seven rounds of `slide stable (?)`, which is three unreadable ids
+      // agreeing with each other, and it read as a pass.
+      expect(["open", "held", "failed", "undetermined"], `${p.id} has an odd outcome`).toContain(p.outcome);
       if (p.outcome !== "open")
         expect(p.judgedOn, `${p.id} is settled but does not say which round settled it`).toBeTruthy();
     }
