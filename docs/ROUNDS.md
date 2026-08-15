@@ -222,6 +222,31 @@ the dialog, `playwright-cli console` named the failing request, and `request-bod
 own ULS log — which says, in Microsoft's words, what went wrong. That log ships from the tab on every
 round; it had been there the whole time.
 
+### The evidence keeps itself now
+
+`scripts/crash-forensics.mjs` runs the moment the driver sees a wedge — all three
+exits, the dialog, the silent pane and the thirty-minute timeout — and writes
+`crashes/<timestamp>.md` before recovery reloads the tab.
+
+That ordering is the whole point. The console log, the request list and the ULS
+batches live in the tab, and reloading it is the first thing recovery does, so
+until now the only copies of PowerPoint's own account of a crash were three
+hand-typed passes in a chat log. Each cost about a quarter of an hour to reach
+the same three lines.
+
+The report holds the console errors, where the document's data channel stopped
+(`GetPopWacUpdates` going quiet is what separates a dead session from a slow
+one), and the thirty ULS lines before the fatal entry — which is where the
+`PptApi Call` sequence in flight shows up.
+
+Every read is guarded and named in the report rather than thrown: it runs on a
+host that has just died, half the reads are expected to fail, and a forensics
+pass that took the driver down with it would be worse than none. An absent fatal
+entry is itself a finding — that is what the quiet form looks like.
+
+`crashes/` is deliberately not `rounds/`. Everything downstream pools that
+directory, and a crash report is not a round.
+
 ### Asking cheaply
 
 `--check` pings `slides.getCount()` against an 8s budget before anything else, and looks for the

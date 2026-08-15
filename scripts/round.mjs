@@ -35,6 +35,7 @@ import { spawnSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync } from "fs";
 import { join, dirname } from "path";
 import { isMain } from "./is-main.mjs";
+import { collectCrashEvidence } from "./crash-forensics.mjs";
 
 /**
  * The pane's build stamp, e.g. `32a6987 · 2026-08-14 08:03Z` → `32a6987`.
@@ -375,6 +376,7 @@ async function attempt(argv, deps, sh) {
   for (;;) {
     if (Date.now() - started > limit) {
       console.error("  the round has not finished in 30 minutes — the host is wedged; see docs/ROUNDS.md");
+      await keepCrashEvidence(sh, "30 minutes with no finish");
       return { code: 1, reason: "timeout" };
     }
     const dl = sh("find", "Download run log");
@@ -389,15 +391,21 @@ async function attempt(argv, deps, sh) {
     // change what it measures. The dialog is in the document frame and costs
     // nothing to look at.
     if (sawCrashDialog(sh("find", "Sorry, we ran into a problem"))) {
+      const secs = Math.round((Date.now() - started) / 1000);
       console.error(
-        `  PowerPoint crashed ${Math.round((Date.now() - started) / 1000)}s in — its dialog is up and nothing ` +
-          'behind it will answer. See docs/ROUNDS.md, "The wedge".',
+        `  PowerPoint crashed ${secs}s in — its dialog is up and nothing behind it will answer. ` +
+          'See docs/ROUNDS.md, "The wedge".',
       );
+      // NOW, before recovery reloads the tab and takes the request log with it.
+      // This is the only window in which the host's own account of the crash
+      // exists, and three separate hand passes were spent reaching it.
+      await keepCrashEvidence(sh, `${secs}s into a round`);
       return { code: 1, reason: "crashed" };
     }
     quiet = quietStreak(quiet, dl, sh.state.lastFailed);
     if (quiet >= 2) {
       console.error("  the pane stopped answering — PowerPoint has probably crashed; the trace is still in the DOM");
+      await keepCrashEvidence(sh, `${Math.round((Date.now() - started) / 1000)}s into a round, pane silent`);
       return { code: 1, reason: "silent" };
     }
     await new Promise((r) => setTimeout(r, 20000));
@@ -486,6 +494,25 @@ async function main(argv, deps = {}) {
     if (!shouldRetry(reason, n, max)) return code;
     console.log('  clearing the crash and starting again — see docs/ROUNDS.md, "The wedge"');
     await recover(sh, sleep);
+  }
+}
+
+/**
+ * Write the crash report beside the rounds, and never let it cost the driver.
+ *
+ * Named for what it is: the evidence outlives the tab only if something keeps
+ * it. `crashes/` rather than `rounds/` on purpose — these are not rounds, and
+ * everything downstream pools that directory.
+ */
+async function keepCrashEvidence(sh, at, write = writeFileSync) {
+  try {
+    const report = await collectCrashEvidence(sh, { at });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const path = `crashes/${stamp}.md`;
+    write(path, report);
+    console.error(`  the host's own account of it is in ${path}`);
+  } catch (err) {
+    console.error(`  (could not keep the crash evidence: ${err?.message ?? err})`);
   }
 }
 
