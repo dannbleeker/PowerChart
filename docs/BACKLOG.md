@@ -160,6 +160,42 @@ wedge is in PowerPoint rather than in how it is called. A Playwright click on
 the **canvas** is a real click and might dodge it entirely — the one thing worth
 trying first if this is ever built.
 
+### Take more than two draws per arm
+
+The rasterise question cannot be answered at the rate it is being sampled.
+`does a rasterise poison the next draw` collects FOUR draws a round — two per
+arm — and the report is explicit about what that buys:
+
+    after a rasterise     0 stalled /  24 drawn = 0.0%
+    after a cheap read    0 stalled /  24 drawn = 0.0%
+    NOT an answer yet: 24 draws in the smaller arm. Telling rates this close
+    apart needs nearer 60-100 an arm.
+
+Twelve rounds produced 24. Sixty needs thirty rounds, and each round costs about
+twelve minutes of a real PowerPoint plus a recovery when it wedges. At the rate
+of 2026-08-14/15 — six landed rounds in a night — that is a week of nights for
+one question.
+
+Six draws an arm would get there in ten rounds instead of thirty, and costs
+about a minute of extra host time per round against the twelve it already takes.
+
+WHAT MAKES IT DELICATE, and why it is written down rather than done at the end of
+a long session: `rasteriseArmVerdict` is a pure function whose FIRST version
+manufactured a finding. With the cheap arm first and the rasterise arm second the
+rasterise arm always ran later, and round 11 reported "the draw after a RASTERISE
+did not land" for a difference that position explains just as well. The fix was
+counterbalancing — each call type once early and once late — and the verdict
+reads position out of the pairing by INDEX: `raster[0]` against `raster[1]`,
+`[raster[0], cheap[0]]` as the early pair.
+
+So raising the count is not a constant. The function has to keep the
+early/late reading with N per arm — interleave the order, split each arm at the
+midpoint, and decide "both late arms failed" from halves rather than from a pair.
+The existing verdicts must keep their exact wording for N=2, because twelve
+rounds of history are read through them.
+
+Worth doing, and worth doing with the same care the counterbalancing got.
+
 ### The settle pass cannot repair what this host loses
 
 MEASURED, 2026-08-15, rounds 029-034. `same scale across the deck` has failed six
