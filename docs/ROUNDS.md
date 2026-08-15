@@ -142,7 +142,16 @@ pane HTML for ten minutes and a whole round can otherwise test code the host nev
     npm run round               # check, run, poll, archive, triage
 
 `--check` refuses on a stale pane, an unpublished build, a dirty deck, either toggle off, a host that
-is not answering — and, ahead of all of them, on a PowerPoint that has crashed.
+is not answering, a host that answers but will not resolve slide 1 — and, ahead of all of them, on a
+PowerPoint that has crashed or on there being no browser at all.
+
+**Most of that list is now the driver's to fix rather than yours.** With `--retry N` it recovers a
+crash, a silent host, a refused slide, a closed or stale pane, a dirty deck, a round that wedged
+mid-flight, and a browser process that died — reopening the last from the persistent profile, which
+still holds the sign-in. What it will NOT retry is a stop a reload cannot clear: a build Pages has
+not published yet, or a pane toggle someone deliberately turned off. Every refusal carries a code,
+and `RECOVERABLE_STOPS` in `scripts/round.mjs` is the list — derived from what `recover` actually
+does, not from a judgement about which refusals feel transient.
 
 ## The wedge
 

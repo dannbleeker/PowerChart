@@ -967,3 +967,28 @@ Fourteen rounds and the ratio has not moved. Nothing new from the host.
 rounds do not add to it. What is left is two decisions, both the owner's. A loop
 that keeps running past the point where measurement helps is manufacturing
 activity, and saying so is worth more than another pair.
+
+### Pair 8 — 85277f5 × 2 — archived as 059 and 060
+
+    slide already had shapes  109 chart(s), 108 grouped = 99%
+    freshly added, empty       92 chart(s),   1 grouped =  1%
+
+Sixteen rounds, unmoved. Both rounds clean, no wedge, nothing new from the host.
+
+**Doc drift caused by this run's own fixes, found and corrected:**
+
+- **Three rotting counts.** `docs/BACKLOG.md` (twice) and `host-probe.ts` asserted
+  `same scale` had failed "seventeen rounds running". It is 34 of 34 now, and
+  would be wrong again tomorrow — so they say "every round it has run" and point
+  at `npm run rounds` for the number. A count frozen in prose is a comment with a
+  half-life.
+- **`ROUNDS.md` described a driver that no longer exists.** Its `--check` list was
+  missing the slide-resolve and no-browser refusals, and said nothing about the
+  eight states `--retry` now recovers on its own — including two it deliberately
+  does not, which is the more useful half. Rewritten against
+  `RECOVERABLE_STOPS`, which is derived from what `recover` actually does.
+
+**The audit is out-yielding the rounds, and that is the honest read of where this
+is.** Two refuted premises and four stale statements in three pairs, against
+sixteen rounds that agree with each other. The host has said what it has to say
+about this mechanism; the documents had not caught up.

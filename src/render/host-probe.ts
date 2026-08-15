@@ -1715,7 +1715,7 @@ const PROBES: Probe[] = [
     question: "How many times can one context re-read a slide's shapes before the answer goes short?",
     // THE STRONGEST LEAD THIS PROJECT HAS, asked instead of acted on.
     //
-    // `same scale across the deck` has failed seventeen rounds running, and its
+    // `same scale across the deck` has failed in every round it has run, and its
     // per-chart trace is a decay curve rather than a coin — identical in rounds
     // 043 through 046:
     //
