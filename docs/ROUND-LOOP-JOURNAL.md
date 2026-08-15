@@ -906,3 +906,33 @@ run log and the archive are what matter, and both were intact — but the recove
 was luck rather than design. A waiter that watches for the process to exit
 restored the signal without touching playwright-cli. Launch a round the same way
 every time.
+
+### Pair 6 — 61f431b × 2 — archived as 055 and 056
+
+Accumulation, and the two things worth writing down are both about what has
+STOPPED happening.
+
+**The 2s crash has not recurred since the pre-flight shipped.** Four crash
+reports say "2s into a round" and all four are from a forty-five-minute window
+before `slideResolveScript` existed. In the twelve rounds since, `slide 1
+resolved` has printed on every check and not one round has crashed 2s in:
+
+    before the pre-flight   4 first attempts, 4 crashed
+    after                  12 rounds,        0 crashed
+
+**Observational, not counterbalanced**, and it must be read that way: the
+pre-flight resolves a slide, which may settle the host rather than merely
+measure it, and the host's mood is not controlled. But four-in-four against
+zero-in-twelve is the strongest thing this experiment can say without an arm that
+deliberately skips the touch — and skipping it would cost a round to learn
+something the loop already gets for free.
+
+**The root cause is unmoved by more data**, which is what a real effect does:
+
+    slide already had shapes   97 chart(s), 96 grouped = 99%
+    freshly added, empty       84 chart(s),  1 grouped =  1%
+
+Nothing else new. `same scale` failed the same way, the same charts, in the same
+order — which after twelve rounds is itself the finding: this host is
+deterministic here, and the remaining work is a decision rather than a
+measurement.
