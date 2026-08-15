@@ -797,6 +797,30 @@ export function makeShape(
   let ownTop = box.top;
   /** Whether an answered `load()` has made this shape's properties readable. */
   let loadedProps = false;
+  /**
+   * Whether THIS handle — the one `addGeometricShape` returned — has been
+   * resolved by a load of its own.
+   *
+   * Split from `loadedProps` on 2026-08-15, and the host is what split it.
+   * `refuseTagWritesOnResolvedProxy` models "this host refuses a handle Office
+   * has rewritten into `shapes.getItem(id)`", which is a fact about a HANDLE;
+   * it was reading `loadedProps`, which is a fact about the SHAPE. So a
+   * collection re-read — `shapes.load("items/id")`, which hands back fresh
+   * handles onto the same shapes — marked the creation handle resolved too, and
+   * the drawing context's tag write was refused however carefully its own load
+   * was held back.
+   *
+   * That mattered because it refused a real fix. The question went to the host
+   * rather than being argued: `collection-read-poisons-the-creation-handle`
+   * answers **`yes`** — three passes, stable, every one taken while the host was
+   * refusing collection reads. The creation handle still takes a tag after the
+   * re-read. The fake was modelling handle state as shape state, exactly as
+   * `freshHandle` already suspected by giving each handle its own `syncCreated`.
+   *
+   * Data readability stays SHARED, because that is genuinely shape state: once
+   * any handle has loaded `id`, the value is on the object.
+   */
+  let handleResolved = false;
   const needLoaded = (prop: string) => {
     if (!faults.strictShapeReads || loadedProps) return;
     throw new Error(
@@ -867,6 +891,10 @@ export function makeShape(
       // "loaded" from "asked for".
       pendingShapeLoads.push(() => {
         loadedProps = true;
+        // Through the shape's OWN handle, so this one is resolved. A load
+        // arriving through a fresh collection handle takes `loadDataOnly`
+        // instead and leaves this alone — see `handleResolved`.
+        if (!(this as unknown as { viaFreshHandle?: boolean } | undefined)?.viaFreshHandle) handleResolved = true;
       });
     },
     get id() {
@@ -913,7 +941,7 @@ export function makeShape(
           throw new Error("InvalidParam passed to GetItem(id) | code=5010");
         }
         // See `faults.refuseTagWritesOnResolvedProxy`. Resolution, not age.
-        if (faults.refuseTagWritesOnResolvedProxy && loadedProps) {
+        if (faults.refuseTagWritesOnResolvedProxy && handleResolved) {
           throw new Error(
             "InvalidParam passed to GetItem(id) | code=5010 | errorLocation=ShapeCollection.getItem | " +
               "statement=var shape = shapes.getItem(...) /* originally addTextBox(...) */",
@@ -1065,6 +1093,13 @@ function freshHandle(shape: FakeShape): FakeShape {
   return new Proxy(shape, {
     get(target, prop, recv) {
       if (prop === "syncCreated") return own;
+      // A LOAD THROUGH THIS HANDLE RESOLVES THIS HANDLE, and not the one that
+      // drew the shape. `load` reads the flag off `this`, and `this` is the
+      // proxy — the same trick `syncCreated` above already relies on. Without
+      // it, `shapes.load("items/id")` marked the creation handle resolved and a
+      // tag written through it was refused, which is the fake refusing a fix the
+      // host allows (`collection-read-poisons-the-creation-handle: yes`).
+      if (prop === "viaFreshHandle") return true;
       // `tags` has to be rebound too. The shape's own tags object closes over
       // the shape's age, so a fresh handle reaching for `.tags` would get a
       // writer that still consults the STALE number and refuses — the handle
@@ -1379,7 +1414,16 @@ export function makeSlide(id: string) {
         // Office.js rather than equal to it, and `strictShapeReads` would fail
         // correct code, which is the mirror image of the sin it exists to
         // prevent.
-        if (p?.includes("items/")) for (const s of created) s.load();
+        // THROUGH A FRESH HANDLE, which is what this read actually hands back
+        // (see the `items` getter below, and `freshHandle`). Calling the shape's
+        // own `load` marked the CREATION handle resolved as a side effect, so a
+        // tag written through it was refused under
+        // `refuseTagWritesOnResolvedProxy` — the fake refusing a fix this host
+        // allows. `collection-read-poisons-the-creation-handle` answers `yes`,
+        // three passes, stable: after this read the creating handle still takes
+        // a tag. Data readability is shared, because that is shape state; the
+        // resolution is not, because that is handle state.
+        if (p?.includes("items/")) for (const s of created) freshHandle(s).load();
       },
       addGeometricShape(geo: string, box: FakeShape["box"]) {
         const s = makeShape("geometric", geo, box);

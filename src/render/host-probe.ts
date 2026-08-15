@@ -1763,6 +1763,64 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "which-end-a-short-read-drops",
+    resample: true,
+    question: "When a shape collection reads short, which end of it survives?",
+    // THE COST OF THE ORDERING FIX, asked rather than assumed.
+    //
+    // The chart's config tag moved onto the LAST shape drawn, because that is
+    // the one handle no `load()` resolves and therefore the one this host will
+    // accept a tag through (`tagAnchorIndex`). It fixed a loss that happened on
+    // every chart big enough to span batches, four rounds running.
+    //
+    // What it costs is this: a deck scan that reads the collection SHORT may not
+    // reach the last shape, and the chart it cannot see is a chart Same Scale
+    // cannot rescale. The old anchor — the first shape drawn — was accidentally
+    // safe from that, and only if a short read drops from the tail.
+    //
+    // Nobody knows whether it does. The fake truncates the tail, which is a
+    // modelling choice and not evidence, and this host's own
+    // `shapes-items-count-honest` answers `short-0` — it returns NOTHING, so it
+    // says nothing about which end. A `head` answer makes the trade real and
+    // worth mitigating; `tail` makes it free; `none` says the question does not
+    // arise on this host and the fake is the only place it bites.
+    //
+    // ASKED BY POSITION, not by id, and that is deliberate. Every probe here
+    // that needs an id off a scratch shape spends its life answering
+    // `no-scratch-shape` on this host. `left` is set by us at creation and comes
+    // back in the same collection read, so this question survives a host that
+    // will not name a shape.
+    ask: async (ctx) => {
+      const lefts = [10, 40, 70, 100, 130, 160];
+      await scratchShapes(
+        ctx,
+        lefts.map((left) => ({ left, top: 40, width: 20, height: 20 })),
+      );
+      try {
+        const shapes = ctx.scratch().shapes;
+        shapes.load("items/left");
+        await ctx.sync();
+        const items = (shapes as unknown as { items?: { left?: number }[] }).items;
+        if (!Array.isArray(items)) return { answer: "unreadable", detail: "the collection would not list its items" };
+        const seen = items.map((s) => s.left).filter((l) => typeof l === "number");
+        const mine = seen.filter((l) => lefts.includes(l));
+        if (!mine.length) return { answer: "none", detail: `${seen.length} shape(s) listed, none of them ours` };
+        if (mine.length === lefts.length) return { answer: "all", detail: "nothing was dropped — not a short read" };
+        // Which of OUR shapes came back, in the order we drew them.
+        const kept = lefts.filter((l) => mine.includes(l));
+        const head = lefts.slice(0, kept.length);
+        const tail = lefts.slice(lefts.length - kept.length);
+        const same = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+        const detail = `kept ${kept.length} of ${lefts.length}: ${kept.join(",")}`;
+        if (same(kept, head)) return { answer: "keeps-head", detail };
+        if (same(kept, tail)) return { answer: "keeps-tail", detail };
+        return { answer: "scattered", detail };
+      } catch (err) {
+        return threw(err);
+      }
+    },
+  },
+  {
     id: "delete-then-lookup",
     question: "Right after delete()+sync, does getItemOrNullObject report it gone?",
     // `deleteSlideById` verifies from a FRESH context because of this. If a

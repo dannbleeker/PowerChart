@@ -465,6 +465,8 @@ describe("the fake host's answer sheet", () => {
         "grouped-child-by-id-from-slide",
         "picture-then-shape-read",
         "tag-on-group-survives",
+        // Needs six shapes to see which of them a short read keeps.
+        "which-end-a-short-read-drops",
         // The binding question needs a shape to bind, so a host that refuses
         // every add has told it nothing. Its first version answered `add-threw`
         // here — a statement about `bindings.add` from a run in which

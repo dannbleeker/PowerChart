@@ -390,8 +390,41 @@ state modelled as shape state, or it is the one place the fake is right.
 - `refused` → no arrangement of loads saves the drawing context's write while
   grouping needs a re-read, and the second-key route is the only one left.
 
-Until then this stays open, and the reason it stays open is written down rather
-than rediscovered.
+### ROUND 042 SAID `yes`, AND THE FIX IS IN — 2026-08-15
+
+Three passes, `stable: true`, every one taken while the host was refusing
+collection reads. The pre-grouping re-read does not touch the creation handle.
+The fake was modelling handle state as shape state — `loadedProps` shared across
+every handle onto a shape, while `freshHandle` had always given each handle its
+own `syncCreated` and its own tag writer. Split, and the collection read now
+loads through a fresh handle, which is what it hands back anyway.
+
+Shipped exactly as described above: `tagAnchorIndex` (the last shape drawn), the
+draw loop's `load("id")` one shape behind, the parts list taking everything but
+the anchor, and the matcher deducing the one deliberately-unmatchable shape as
+the contiguous neighbour of the last matched sibling. The reproduction under
+`refuseTagWritesOnResolvedProxy` now shows the drawing context's own write
+landing with no repair, and asserts the absence of a `tagging failed` line rather
+than the presence of one.
+
+**Two things it changed that were not planned, both kept:**
+
+- **`origin tag lost` is its own trace line.** The config tag commits one sync
+  before the origin tag, so the good case on this host is config-lands-origin-
+  fails, and the old shared catch called that "charts are not re-editable until
+  repaired" — false, and about to be the common case.
+- **A short deck scan can no longer see a tail-anchored tag, and that is the
+  price.** `faults.readsMissing` drops from the tail, so a scan blinded that way
+  misses the shape carrying the config; `web-host.test.ts` asserts the new
+  behaviour and, in the next line, that an unblinded scan finds the chart — so it
+  is a visibility cost, not a lost tag. Taken deliberately: the write failed
+  CERTAINLY, on every chart big enough to span batches, four rounds running,
+  while this scan fails intermittently. Whether a real host truncates from the
+  tail at all is unknown — `shapes-items-count-honest` answers `short-0`, which
+  returns nothing and so says nothing about which end — so
+  `which-end-a-short-read-drops` asks it by POSITION rather than by id.
+  `keeps-head` makes the cost real and worth mitigating, `keeps-tail` makes it
+  free, `none` says it does not arise here.
 
 **And the trace now says which handle was used**, which is what the six rounds
 before it could not. `tagging failed` carries `from: created×N, refreshed×N`, one

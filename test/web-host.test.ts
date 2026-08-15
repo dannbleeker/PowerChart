@@ -1344,11 +1344,34 @@ describe("what a group that SUCCEEDS leaves behind", () => {
         "the chart was split into a group plus a loose remainder",
       ).toBe(false);
 
-      // Whole, and still re-editable — which is the trade. An ugly chart the
-      // user can still open beats a tidy one that comes apart when dragged.
+      // Whole — which is the trade. An ugly chart the user can still open beats
+      // a tidy one that comes apart when dragged.
       expect(live.length, "the chart lost shapes as well as its group").toBeGreaterThan(4);
+
+      // AND NOT FOUND BY A DECK SCAN THAT READS THIS SHORT, which is a cost this
+      // test asserted the opposite of until 2026-08-15. Recorded rather than
+      // hidden, because it is the price of the tag write landing at all.
+      //
+      // The tag anchor is the LAST shape drawn now (`tagAnchorIndex`), which is
+      // what lets the write go through an unresolved handle — the fix for a loss
+      // that happened on EVERY chart big enough to span batches, four rounds
+      // running, `from: created×1`. `faults.readsMissing` drops shapes off the
+      // TAIL, so a scan blinded this way now misses the very shape carrying the
+      // config. The chart is on the slide, whole, and tagged; a short scan just
+      // cannot see it, and the next honest scan can.
+      //
+      // The trade was taken deliberately: the write failed certainly and this
+      // scan fails intermittently. What is NOT known is whether a real host
+      // truncates from the tail at all — the fake does, and this host's own
+      // answer is `shapes-items-count-honest: short-0`, which reads nothing and
+      // so says nothing about which end. `which-end-a-short-read-drops` asks it.
       const found = (await listChartsInDeck()).charts;
-      expect(found.length, "an ungrouped chart stopped being re-editable").toBe(1);
+      expect(found.length, "a scan blinded from the tail cannot see a tail-anchored tag").toBe(0);
+      // And the moment the scan is not blinded, the chart is there — so this is
+      // a visibility cost and not a lost tag.
+      faults.readsMissing = 0;
+      const seen = (await listChartsInDeck()).charts;
+      expect(seen.length, "the tag itself was never lost — only unread").toBe(1);
     } finally {
       faults.readsMissing = 0;
       setTracing(false);
