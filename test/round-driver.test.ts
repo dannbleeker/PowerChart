@@ -19,6 +19,7 @@ const {
   refFor,
   sawCrashDialog,
   quietStreak,
+  archive,
   shouldRetry,
   recover,
 } = driver;
@@ -288,6 +289,38 @@ describe("asking the host whether it is awake", () => {
 });
 
 describe("archive housekeeping", () => {
+  it("refuses to file the same log twice under a new number", async () => {
+    // Round 042 wedged, `Download run log` was disabled so the click did
+    // nothing, and the PREVIOUS round's file was still sitting at the same path.
+    // It was archived as 039 and was byte-identical to 038 — a whole round of
+    // evidence that never happened, caught by a checksum and nothing else.
+    //
+    // A fabricated round is the worst thing that directory can hold. Everything
+    // downstream pools these files — verdict histories, the rasterise arms, the
+    // scenario flip detector — so one duplicate silently doubles the weight of
+    // whatever the real round happened to say.
+    const round = { build: "abc1234 · 2026-08-15 05:00Z", trace: { entries: [] } };
+    const body = `${JSON.stringify(round, null, 2)}\n`;
+    const read = () => body;
+    expect(() =>
+      archive("log.json", "rounds", read as never, (() => {}) as never, (() => ["038-abc1234.json"]) as never),
+    ).toThrow(/byte-identical to 038-abc1234\.json/);
+  });
+
+  it("files a log that differs from everything already kept", () => {
+    const round = { build: "abc1234 · 2026-08-15 05:00Z", trace: { entries: [] } };
+    const written: string[] = [];
+    const name = archive(
+      "log.json",
+      "rounds",
+      ((p: string) => (String(p) === "log.json" ? JSON.stringify(round) : "{}")) as never,
+      ((p: string) => written.push(String(p))) as never,
+      (() => ["038-abc1234.json"]) as never,
+    );
+    expect(name).toBe("039-abc1234.json");
+    expect(written).toHaveLength(1);
+  });
+
   it("reads a build out of a stamp, and nothing out of prose", () => {
     expect(buildOf("32a6987 · 2026-08-14 08:03Z")).toBe("32a6987");
     expect(buildOf("no build here")).toBe(null);

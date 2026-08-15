@@ -509,6 +509,27 @@ export function archive(logPath, dir = "rounds", read = readFileSync, write = wr
   const round = stripImages(JSON.parse(read(logPath, "utf8")));
   const build = buildOf(round.build);
   if (!build) throw new Error("that file carries no build stamp — it is not a round log");
+  // THE DOWNLOAD IS A FILE ON DISK THAT IS ONLY SOMETIMES REPLACED. `Download
+  // run log` is disabled while a round is running, so clicking it after a round
+  // that WEDGED does nothing at all — and the previous round's log is still
+  // sitting at the same path, waiting to be archived a second time under a new
+  // number. That happened: round 039 was filed as byte-identical to 038, a
+  // whole extra round of evidence that never took place, and only a checksum
+  // caught it.
+  //
+  // A fabricated round is the worst thing this directory can hold. Everything
+  // downstream pools these files — verdict histories, the rasterise arms, the
+  // scenario flip detector — so one duplicate quietly doubles the weight of
+  // whatever the real round happened to say.
+  const body = `${JSON.stringify(round, null, 2)}\n`;
+  const twin = list(dir)
+    .filter((f) => /^\d{3}-.*\.json$/.test(f))
+    .find((f) => read(`${dir}/${f}`, "utf8") === body);
+  if (twin)
+    throw new Error(
+      `that log is byte-identical to ${twin} — the pane never wrote a new one, ` +
+        "which is what happens when the round did not finish. Nothing archived.",
+    );
   const name = `${nextRoundNumber(list(dir))}-${build}.json`;
   // TWO spaces, because prettier checks this directory and every round archived
   // at one space failed the gate until someone reformatted it by hand.
