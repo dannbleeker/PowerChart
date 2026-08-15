@@ -1541,11 +1541,28 @@ const PROBES: Probe[] = [
       await ctx.sync();
       try {
         const v = (tag as unknown as { value: string }).value;
-        const ids = [wrote, again, readFrom].map((s) => readShapeId(s as unknown as { id?: string }) ?? "?");
-        const sameSlide = ids[0] === ids[1] && ids[1] === ids[2];
+        const ids = [wrote, again, readFrom].map((s) => readShapeId(s as unknown as { id?: string }));
+        // THREE UNKNOWNS COMPARE EQUAL, and for seven rounds this said so out
+        // loud: `slide stable (?)`, on a host that had refused every one of the
+        // three id reads. The instrument was built (#472) to settle whether the
+        // undefined tag value came from the slide being replaced mid-question,
+        // and it answered `stable` from no evidence at all — the shape of
+        // mistake this project calls a floor read as a count.
+        //
+        // So the ids have to be READ before they can agree. Unknown is its own
+        // word, and the prediction that rests on this is undetermined rather
+        // than held while it shows.
+        const readable = ids.every((id) => typeof id === "string" && id);
+        const sameSlide = readable && ids[0] === ids[1] && ids[1] === ids[2];
         return {
           answer: v === "second" ? "overwrites" : v === "first" ? "keeps-first" : "other",
-          detail: `value=${v}; slide ${sameSlide ? `stable (${ids[0]})` : `CHANGED under the probe: ${ids.join(" -> ")}`}`,
+          detail:
+            `value=${v}; slide ` +
+            (!readable
+              ? `unreadable — this host would not name it, so whether it changed is UNKNOWN (${ids.map((id) => id ?? "?").join(", ")})`
+              : sameSlide
+                ? `stable (${ids[0]})`
+                : `CHANGED under the probe: ${ids.join(" -> ")}`),
         };
       } catch (err) {
         return unreadable(err);
