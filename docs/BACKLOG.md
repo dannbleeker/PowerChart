@@ -348,8 +348,50 @@ to be a shape created in the LAST draw batch and never loaded — then it is
 unresolved (1), every OTHER created shape keeps its id for the re-read (2), and
 nothing is tagged until the chart is finished (3). That means the anchor stops
 being `created[0]`, which `ungroupedFallback`'s "everything after index 0 is a
-part" and `CHART_ORIGIN_TAG`'s frame both assume. That is the session's worth of
-work, and it is now a well-posed one rather than "restructure the pass".
+part" and `CHART_ORIGIN_TAG`'s frame both assume.
+
+### It was BUILT, and the fake refused it — 2026-08-15
+
+Written in full and reverted the same hour, because the thing that refuses it is
+worth more than the change was.
+
+What was built: `tagAnchorIndex` moving the anchor to the last shape drawn, the
+draw loop's `load("id")` running one shape behind so that shape is never
+resolved, `ungroupedFallback`'s parts list taking everything but the anchor, and
+the pre-grouping matcher learning that exactly one shape is deliberately
+unmatchable — deducing it as the contiguous neighbour of the last matched
+sibling, and falling through to today's don't-group behaviour when that does not
+land cleanly. `CHART_ORIGIN_TAG` needs no change: it records the TAGGED shape's
+own corner and shifts by how far that shape has moved, so it is self-consistent
+whichever shape carries it. 211 office-render tests green, including the eleven
+grouping ones.
+
+**Then the reproduction still failed, and the trace said why.** The config tag
+write was refused, `from: created`, in the drawing context — with the anchor's
+own `load` held back. Instrumenting the fake's `load()` with a stack per call
+found the resolver: not the draw loop, but `groupAndTagAll`'s
+`shapes.load("items/id")`, the pre-grouping re-read. It resolved eight shapes;
+the draw loop had loaded seven.
+
+**The fake makes that read poison every handle onto the shape, and that is the
+open question.** `freshHandle` is a `Proxy` over the same object: it deliberately
+gives the fresh handle its own `syncCreated` and its own tag writer, and shares
+everything else "because it is one shape". `loadedProps` is on the shared side —
+so resolving a collection item resolves the creation handle too. Office.js gives
+each proxy its own object path, which says they should be independent; the fake's
+own treatment of `syncCreated` says the same. Either `loadedProps` is handle
+state modelled as shape state, or it is the one place the fake is right.
+
+**No round can be argued into answering it, so it is now asked directly:**
+`collection-read-poisons-the-creation-handle` ships with this note.
+
+- `yes` → the read is innocent, the fake is wrong, and the fix above works as
+  written. Rebuild it from this description; it is not large.
+- `refused` → no arrangement of loads saves the drawing context's write while
+  grouping needs a re-read, and the second-key route is the only one left.
+
+Until then this stays open, and the reason it stays open is written down rather
+than rediscovered.
 
 **And the trace now says which handle was used**, which is what the six rounds
 before it could not. `tagging failed` carries `from: created×N, refreshed×N`, one
