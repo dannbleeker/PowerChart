@@ -1660,6 +1660,56 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "how-many-syncs-a-creation-handle-survives",
+    resample: true,
+    question: "How many syncs can a creation handle be carried before .tags goes?",
+    // THE BUDGET THE FIX NEEDS. `tag-the-creation-proxy-a-sync-later` says a
+    // creation handle takes a write ONE sync later, four rounds running. Round
+    // 037 then showed production failing through that same handle — every tag
+    // failure in the round reported `from: created`, not one `refreshed` — and
+    // four of them failed a different way again:
+    //
+    //   Cannot read properties of undefined (reading 'add')
+    //
+    // `.tags` GONE, not refused. `tags-on-fresh-shape` answers `yes` every round
+    // and asks in the creating batch; the partner asks one sync later and also
+    // answers `yes`. Production's handles are older than that — the renderer
+    // chunks a chart across batches, so `created[0]` is several syncs old by the
+    // time the tag is written.
+    //
+    // So the question is not whether a creation handle survives but HOW LONG,
+    // and the answer is a number the fix can be built against: keep the write
+    // inside that many syncs of the draw, or restructure so it never has to be
+    // carried further. Guessing the budget is what makes an ordering change a
+    // gamble.
+    //
+    // COVERAGE, stated rather than implied: the `refused-after-N` branch is
+    // proven by the `strictTags` sheet, which asserts this question answers
+    // `refused-after-1` where the healthy fake answers `survives-8`. The
+    // `tags-gone-after-N` branch is real-host only — `faults.tagsUndefinedOn`
+    // models a shape whose `.tags` is missing from birth, not one that loses it
+    // partway through a run, and only round 037 has shown the latter.
+    ask: async (ctx) => {
+      const [shape] = await scratchShapes(ctx, [{ left: 210, top: 10, width: 20, height: 20 }]);
+      const tagsOf = (s: unknown) => (s as { tags?: { add(k: string, v: string): void } }).tags;
+      // Eight is past anything production does to one chart and cheap to ask:
+      // each turn is one empty sync, which this host answers in single-digit ms
+      // when it is answering at all.
+      for (let aged = 1; aged <= 8; aged++) {
+        try {
+          await ctx.sync();
+          if (!tagsOf(shape))
+            return { answer: `tags-gone-after-${aged}`, detail: `.tags was undefined at sync ${aged}` };
+          tagsOf(shape)!.add("POWERCHART_PROBE", `aged-${aged}`);
+          await ctx.sync();
+        } catch (err) {
+          return { answer: `refused-after-${aged}`, detail: short(err) };
+        }
+      }
+      return { answer: "survives-8" };
+    },
+  },
+  {
     id: "delete-then-lookup",
     question: "Right after delete()+sync, does getItemOrNullObject report it gone?",
     // `deleteSlideById` verifies from a FRESH context because of this. If a

@@ -33,6 +33,7 @@ export const FAKE_BASELINE = {
   "tags-add-same-key-twice": "overwrites",
   "tags-on-fresh-shape": "yes",
   "tag-through-refetched-shape": "yes",
+  "how-many-syncs-a-creation-handle-survives": "survives-8",
   "delete-then-lookup": "reports-gone",
   "addgroup-returns-usable": "yes",
   "group-children-via-getcount": "two",
@@ -315,6 +316,16 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "how-many-syncs-a-creation-handle-survives":
+    "Added 2026-08-15 after round 037 carried the new `from` field and answered the question it was built for: EVERY tag " +
+    "failure in that round went through a `created` handle — seven batch-level and four per-chart, not one `refreshed` " +
+    "or `by-id`. So swapping the tag target changes nothing and the ordering is what has to change. Four of those " +
+    "failures were also a different fault from the 5010: `Cannot read properties of undefined (reading 'add')`, i.e. " +
+    "`.tags` GONE rather than refused. `tags-on-fresh-shape` asks in the creating batch and answers yes every round; " +
+    "`tag-the-creation-proxy-a-sync-later` asks one sync later and also answers yes. Production's handles are older " +
+    "than either — the renderer chunks a chart across batches — so this asks HOW LONG one lasts. The answer is the " +
+    "budget an ordering fix gets built against, and guessing it is what would make that change a gamble. The fake " +
+    "answers `survives-8` because nothing in it ages a handle this way; a real number below 8 is the finding.",
   "tag-through-refetched-shape":
     "Added 2026-08-14 after rounds 29 and 30 failed `same scale across the deck` identically: `InvalidParam passed to " +
     "GetItem(id)` (5010) at `writing the chart's config tag`, charts left with no config, the scenario stopping on the " +

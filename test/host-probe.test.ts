@@ -218,7 +218,19 @@ describe("the fake host's answer sheet", () => {
     try {
       const sheet = await runHostProbes("fake-strict-proxies", "test");
       const answers = Object.fromEntries(sheet.answers.map((a) => [a.id, a.answer]));
-      expect(answers).toEqual(FAKE_BASELINE);
+      // One question is SUPPOSED to move here, and it is the one whose whole
+      // job is to measure how long a handle lasts: under `strictTags` a proxy
+      // is refused the moment it is more than one sync old, so
+      // `how-many-syncs-a-creation-handle-survives` answers `refused-after-1`
+      // where the healthy fake answers `survives-8`. Folding it into the
+      // baseline would assert that the age fault changes nothing, which is the
+      // opposite of what the fault is for.
+      expect(answers["how-many-syncs-a-creation-handle-survives"], "the age fault did not reach the age question").toBe(
+        "refused-after-1",
+      );
+      const { "how-many-syncs-a-creation-handle-survives": _aged, ...rest } = answers;
+      const { "how-many-syncs-a-creation-handle-survives": _baseline, ...baselineRest } = FAKE_BASELINE;
+      expect(rest).toEqual(baselineRest);
     } finally {
       faults.strictTags = false;
       faults.strictGroup = false;
@@ -428,6 +440,8 @@ describe("the fake host's answer sheet", () => {
         "tags-on-fresh-shape",
         // Needs a shape to create, read an id off, and then re-fetch by that id.
         "tag-through-refetched-shape",
+        // Needs a shape to age.
+        "how-many-syncs-a-creation-handle-survives",
         "delete-then-lookup",
         "addgroup-returns-usable",
         "group-reports-its-children",
