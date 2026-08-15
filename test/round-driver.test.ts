@@ -23,6 +23,10 @@ const {
   signedOut,
   shouldRetry,
   recover,
+  cli,
+  isOverflow,
+  slideResolveScript,
+  readSlideResolve,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -38,6 +42,32 @@ describe("deciding whether a round is worth running", () => {
 
   it("runs when the site, the pane and HEAD all agree and the deck is clean", () => {
     expect(readiness(ready).ok).toBe(true);
+    expect(readiness({ ...ready, slideOk: true }).ok, "a resolved slide changes nothing").toBe(true);
+  });
+
+  it("refuses a host that answers the cheap call but will not resolve a slide", () => {
+    // THE 2s CRASH, moved to where it is cheap. Four rounds running, PowerPoint
+    // crashed two seconds into the FIRST attempt and never into one that followed
+    // a recovery, and its own log named the call: `OnServerFindSucceeded could
+    // not find target slide`. The ping cannot see that state — `getCount` is a
+    // count, and this host answers it in single-digit ms while in it.
+    const r = readiness({ ...ready, ping: { answered: true, ms: 3 }, slideOk: false });
+    expect(r.ok).toBe(false);
+    expect(r.stop.join(" ")).toContain("would not resolve slide 1");
+    // And it must not fire on the state the ping already covers, or the two
+    // messages contradict each other on the same sheet.
+    expect(readiness({ ...ready, ping: { answered: false, ms: 8011 }, slideOk: null }).stop).toHaveLength(1);
+  });
+
+  it("asks for a slide by position, inside a budget", () => {
+    const script = slideResolveScript(20000);
+    expect(script, "the call the host dies on, not a count").toContain("getItemAt(0)");
+    expect(script, "no budget means a wedged host hangs the check forever").toContain("20000");
+    expect(readSlideResolve("slide:287#62081387")).toBe(true);
+    expect(readSlideResolve("slide-failed:GeneralException")).toBe(false);
+    // Silence is not a refusal: an empty answer means the eval never landed, and
+    // calling that a refused slide would refuse rounds on a healthy host.
+    expect(readSlideResolve("")).toBe(null);
   });
 
   it("refuses when the site has not published HEAD yet", () => {
@@ -116,6 +146,89 @@ describe("talking to the browser at all", () => {
         throw new Error("ENOENT");
       }),
     ).toBe("/nope");
+  });
+
+  it("keeps a failed spawn's doubt inside the sweep that saw it", () => {
+    // ROUND 044. `--retry` cleared the host's crash, `recover` reloaded the tab
+    // and reopened the pane, and one of its spawns lost a race. The latch was
+    // set for the rest of the PROCESS, so the next attempt read a healthy setup
+    // — the host answered in 4ms, on the line above — and refused it with
+    // "nothing below was actually measured", which was false of every value it
+    // had just printed. One flaky spawn cost the whole round.
+    let fail = true;
+    const run = () => {
+      if (fail) return { error: new Error("EAGAIN") };
+      return { status: 0, stdout: "ok" };
+    };
+    // THE ENTRY IS INJECTED, and leaving it to the default is what turned this
+    // test green here and red on CI. `cliEntry()` finds the real playwright-cli
+    // on the machine that runs rounds and finds nothing on a CI runner, where
+    // every call then takes the no-entry path and latches whatever the fake
+    // `run` was going to do. A test about spawn results must not depend on
+    // whether a tool is installed.
+    const sh = cli(run, ".", "C:/fake/playwright-cli.js");
+    // Sticky WITHIN a sweep is deliberate and stays: a call that never ran and a
+    // page that answered nothing are the same empty string.
+    sh("find", "x");
+    expect(sh.state.unreachable).toBe(true);
+    fail = false;
+    sh("find", "x");
+    expect(sh.state.unreachable, "a later success does not retro-clear this sweep").toBe(true);
+    // A new sweep is a new question.
+    sh.startSweep();
+    expect(sh.state.unreachable).toBe(false);
+    sh("find", "x");
+    expect(sh.state.unreachable, "a sweep whose calls all ran is reachable").toBe(false);
+  });
+
+  it("still reports unreachable in every sweep when the tool is not installed at all", () => {
+    // The permanent case the latch was written for. With no entry no spawn is
+    // attempted at all, and `startSweep` must not paper over it.
+    const sh = cli(
+      () => {
+        throw new Error("should never spawn");
+      },
+      ".",
+      null,
+    );
+    sh.startSweep();
+    sh("find", "x");
+    expect(sh.state.unreachable).toBe(true);
+  });
+
+  it("does not call an answer too big to hold a tool that could not be run", () => {
+    // ROUND 044's ROOT CAUSE. `requests` on a live PowerPoint tab is bigger than
+    // spawnSync's 1 MiB default, so it came back ENOBUFS — an error, on a call
+    // that ran perfectly. Read as "playwright-cli could not be run", it emptied
+    // two crash reports and then refused the retry on a healthy host.
+    const enobufs = Object.assign(new Error("spawnSync C:/node.exe ENOBUFS"), { code: "ENOBUFS" });
+    expect(isOverflow(enobufs), "the code").toBe(true);
+    expect(isOverflow(new Error("spawnSync C:/node.exe ENOBUFS")), "the message, when there is no code").toBe(true);
+    expect(isOverflow(new Error("spawn ENOENT")), "a tool that is not there").toBe(false);
+    expect(isOverflow(undefined)).toBe(false);
+
+    const sh = cli(() => ({ error: enobufs }), ".", "C:/fake/playwright-cli.js");
+    sh("requests");
+    expect(sh.state.unreachable, "an overflow is not an unreachable tool").toBe(false);
+    expect(sh.state.overflowed).toBe("requests");
+    expect(sh.state.lastError).toBe("overflow");
+  });
+
+  it("asks for a buffer big enough to hold a live tab's request log", () => {
+    // The fix for the cause rather than the symptom. Pinned because the default
+    // is invisible: nothing about `spawnSync(...)` says 1 MiB, and the failure it
+    // produces names the executable rather than the size.
+    let opts: { maxBuffer?: number } = {};
+    const sh = cli(
+      (_file: string, _args: string[], o: { maxBuffer?: number }) => {
+        opts = o;
+        return { status: 0, stdout: "" };
+      },
+      ".",
+      "C:/fake/playwright-cli.js",
+    );
+    sh("requests");
+    expect(opts.maxBuffer).toBeGreaterThanOrEqual(64e6);
   });
 });
 

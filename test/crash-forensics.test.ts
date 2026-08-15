@@ -85,6 +85,32 @@ describe("pulling PowerPoint's own account of a crash", () => {
     expect(opened, "kept opening bodies after it had the answer").toEqual(["9"]);
   });
 
+  it("never writes an empty host over a read that failed", async () => {
+    // BOTH of round 044's crash reports said "(nothing)" for the document
+    // channel and "no fatal entry in the last 0 telemetry batches" for the ULS.
+    // Neither was true: `requests` had overflowed the spawn buffer, so nothing
+    // was read at all — and "no fatal entry" is the sentence that DESCRIBES the
+    // quiet form of the wedge. A failed read that reads as a diagnosis is worse
+    // than a missing section.
+    const state = { lastError: null as string | null };
+    // The real `cli` records the failure on the state and still returns "" — the
+    // empty string is exactly what made the two indistinguishable.
+    const sh = Object.assign(
+      (cmd: string) => {
+        state.lastError = cmd === "requests" ? "overflow" : null;
+        return cmd === "console" ? "[ERROR] something real" : "";
+      },
+      { state },
+    );
+    const report = await collectCrashEvidence(sh as never, { at: "round 044" });
+    expect(report, "the console read worked and must still be there").toContain("something real");
+    expect(report, "an overflowed read is named as one").toContain("more than the buffer holds");
+    expect(report).not.toContain("(nothing)");
+    expect(report, "0 batches scanned must never read as 0 failures found").not.toContain(
+      "no fatal entry in the last 0",
+    );
+  });
+
   it("still produces a report when every read fails", async () => {
     // It runs on a host that has just died, so half of these are expected to
     // come back empty or throw. A forensics pass that took the driver down with

@@ -72,7 +72,9 @@ export function readiness({
   verbose,
   pictures,
   reachable = true,
+  unreachableAt = null,
   ping = null,
+  slideOk = null,
   crashed = false,
   loggedOut = false,
 }) {
@@ -84,7 +86,12 @@ export function readiness({
       ok: false,
       stop: [
         "playwright-cli could not be run — nothing below was actually measured. " +
-          "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point.",
+          "Install it (`npm i -g @playwright/cli`), or set PLAYWRIGHT_CLI_JS to its entry point." +
+          // The call and the errno, when there is one. Without them this message
+          // points at the install every time, and the install is almost never it.
+          (unreachableAt
+            ? `\n      the call that could not be spawned: \`${unreachableAt.args}\` — ${unreachableAt.error}`
+            : ""),
       ],
     };
   // THE WEDGE, by its real name. Rounds 24, 25, 29 and 30 each spent most of an
@@ -124,6 +131,16 @@ export function readiness({
         "Its editing session is gone, usually because the network moved (look for net::ERR_NETWORK_CHANGED in " +
         "`playwright-cli console`). Reload the PowerPoint tab and reopen the pane: measured 8011ms silent before, " +
         "7ms after.",
+    );
+  // AFTER the ping, because a host that answered `getCount` and then refused a
+  // slide is a different state from one that answered nothing, and the fix is
+  // the same only by coincidence. See `slideResolveScript`: this is the call the
+  // 2s crash dies on, moved to where it costs two seconds instead of a round.
+  if (slideOk === false)
+    stop.push(
+      "the host answered the cheap call but would not resolve slide 1 — this is the state the 2s crash " +
+        "starts from (`OnServerFindSucceeded could not find target slide` in its own log). Reload the " +
+        "PowerPoint tab and reopen the pane; an attempt that follows a recovery has never crashed.",
     );
   if (!deployed) stop.push("the site did not answer with a build — is Pages up?");
   else if (head && deployed !== head)
@@ -215,9 +232,25 @@ export function sessionDir(dir, real = realpathSync.native) {
   }
 }
 
-function cli(run, dir) {
+/**
+ * Did this call RUN and say too much, rather than fail to run at all?
+ *
+ * `spawnSync` reports both as `error`, and the driver treated both as "the tool
+ * could not be run". They are opposite facts: an overflow means the browser
+ * answered, and every other spawn error means nobody asked. Round 044 spent two
+ * attempts and two empty crash reports on the difference.
+ *
+ * Matched on the CODE, with the message as a fallback, because Node stamps
+ * `err.code = "ENOBUFS"` on the overflow path while the message it prints names
+ * the executable rather than the reason.
+ */
+export function isOverflow(err) {
+  if (!err) return false;
+  return err.code === "ENOBUFS" || /ENOBUFS/.test(String(err.message ?? err));
+}
+
+export function cli(run, dir, entry = cliEntry()) {
   const state = { unreachable: false };
-  const entry = cliEntry();
   const cwd = sessionDir(dir);
   const sh = (...args) => {
     if (!entry) {
@@ -225,8 +258,32 @@ function cli(run, dir) {
       return "";
     }
     // NODE, on the CLI's own JavaScript. No shim, no shell.
-    const r = run(process.execPath, [entry, "-s=ms", "--raw", ...args], { encoding: "utf8", cwd });
-    if (r.error) state.unreachable = true;
+    //
+    // `maxBuffer` because the default is 1 MiB and `requests` on a live
+    // PowerPoint tab is bigger than that — the document channel alone runs to
+    // hundreds of POSTs with query strings on them. Over the line, `spawnSync`
+    // returns ENOBUFS and throws the output away, which is how round 044 lost
+    // two crash reports and then the round itself.
+    const r = run(process.execPath, [entry, "-s=ms", "--raw", ...args], { encoding: "utf8", cwd, maxBuffer: 64e6 });
+    // A CALL THAT RAN AND SAID TOO MUCH IS NOT A TOOL THAT COULD NOT BE RUN, and
+    // conflating them is what sent two rounds' debugging at a healthy install.
+    // ENOBUFS means the browser answered and the answer did not fit; every other
+    // spawn error means nothing was measured. Only the second is `unreachable`.
+    // Per CALL, beside the two latches, so a reader one layer out can tell
+    // whether the empty string it just got was an answer or a failure. The crash
+    // report is that reader, and without this it wrote "(nothing)" over a read
+    // that never happened — twice, on the only two crashes of round 044.
+    state.lastError = isOverflow(r.error) ? "overflow" : r.error ? "spawn" : null;
+    if (isOverflow(r.error)) {
+      state.overflowed = args[0];
+    } else if (r.error) {
+      state.unreachable = true;
+      // WHICH call, and what the OS said. "playwright-cli could not be run" sent
+      // two rounds' worth of debugging at an install that was fine, because the
+      // message named the tool and the tool was never the problem. A spawn
+      // failure has a subcommand and an errno and both were being thrown away.
+      state.unreachableAt ??= { args: args.join(" ").slice(0, 80), error: String(r.error?.message ?? r.error) };
+    }
     // A failed CLI call and a page that answered with nothing are the same empty
     // string, and the difference decides whether a round is alive. Recorded, not
     // folded in — the same distinction `unreachable` exists to keep.
@@ -234,6 +291,30 @@ function cli(run, dir) {
     return r.status === 0 ? String(r.stdout ?? "") : "";
   };
   sh.state = state;
+  /**
+   * Start a fresh sweep, forgetting a spawn failure the last one saw.
+   *
+   * `unreachable` is deliberately sticky WITHIN a sweep: a call that never ran
+   * and a page that answered with nothing are the same empty string, so once one
+   * spawn has failed nothing that sweep read can be trusted. Across sweeps it is
+   * a lie, and round 044 is what that costs.
+   *
+   * `--retry` survived the crash, `recover` reloaded the tab and reopened the
+   * pane, and one of its ~8 spawns lost a race. The next attempt then measured a
+   * perfectly healthy setup — `host answered in 4ms`, printed one line above —
+   * and refused it with "playwright-cli could not be run — nothing below was
+   * actually measured", which was false of every value on screen. A latch that
+   * outlives its evidence turns a recoverable round into a stop, and this one
+   * exited 0 while doing it.
+   *
+   * The same mistake as the poll that once ended a round on a single failed CLI
+   * call (round 29), one call site further out. Fixed the same way: scope the
+   * doubt to the thing it was actually about.
+   */
+  sh.startSweep = () => {
+    state.unreachable = false;
+    state.unreachableAt = undefined;
+  };
   return sh;
 }
 
@@ -272,6 +353,52 @@ export function pingScript(budgetMs) {
     `new Promise((_, rej) => setTimeout(() => rej(new Error("budget")), ${budgetMs})) ]); ` +
     'return "ok:" + (Date.now() - t); } catch (e) { return "no:" + (Date.now() - t); } }'
   );
+}
+
+/**
+ * Touch a SLIDE before the round does, because the ping does not.
+ *
+ * THE EXPERIMENT, stated so a later reader can tell whether it worked.
+ * PowerPoint crashed 2s into the FIRST attempt of rounds 043 and 044 — four for
+ * four — and never into an attempt that followed a recovery, the difference
+ * being about eighty seconds of reload and settling. Its own log says what it
+ * was doing:
+ *
+ *     In OnDisconnect(), setting SlideViewNode.srcSlide to null
+ *     Failed to restore selection after load content.
+ *     OnServerFindSucceeded could not find target slide, time elapsed: 430 ms
+ *     GlobalErrorHandler:DisplayErrorDialog: 5341289
+ *
+ * A document still settling when the round's first Office.js call lands. The
+ * ping cannot see it: `slides.getCount()` is a COUNT, and this host answers it
+ * in single-digit milliseconds while it is in exactly that state. Resolving a
+ * slide is the cheapest call that goes down the path the host died on.
+ *
+ * The point is NOT to prevent the crash — it is to move it. If the theory holds,
+ * this trips it here, where the check is two seconds and `--retry` recovers
+ * before any round has been spent; today it costs a whole attempt plus the
+ * recovery. If the theory is wrong this answers `ok` and the round crashes
+ * anyway, which refutes it for the price of one extra call.
+ *
+ * `getItemAt(0)` and not the selection: a round starts on a one-slide deck, and
+ * the selection API is itself one of the calls this host has wedged on
+ * (`which selection call wedges the host`).
+ */
+export function slideResolveScript(budgetMs) {
+  return (
+    "async () => { try { return await Promise.race([ " +
+    "PowerPoint.run(async (c) => { const s = c.presentation.slides.getItemAt(0); " +
+    's.load("id"); await c.sync(); return "slide:" + (s.id || "?"); }), ' +
+    `new Promise((_, rej) => setTimeout(() => rej(new Error("budget")), ${budgetMs})) ]); ` +
+    '} catch (e) { return "slide-failed:" + (e && e.message ? String(e.message).slice(0, 80) : "?"); } }'
+  );
+}
+
+/** `"slide:287#62081387"` → true; a failure or a silence → false. */
+export function readSlideResolve(out) {
+  const s = String(out ?? "");
+  if (/slide-failed/.test(s)) return false;
+  return /slide:/.test(s) ? true : null;
 }
 
 /**
@@ -343,6 +470,8 @@ async function attempt(argv, deps, sh) {
   const run = deps.run ?? spawnSync;
   const fetchBuild = deps.fetchBuild ?? defaultFetchBuild;
   const checkOnly = argv.includes("--check");
+  // This sweep's reachability is about THIS sweep. See `sh.startSweep`.
+  sh.startSweep?.();
 
   const head = String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null;
   const deployed = buildOf(await fetchBuild());
@@ -360,6 +489,14 @@ async function attempt(argv, deps, sh) {
   // `ready`, which is the one answer this must never give without asking.
   const paneRef = refFor(sh, "Chart", /tab "Chart"/);
   const ping = paneRef ? readPing(sh("eval", pingScript(8000), paneRef)) : null;
+  // Only when the host is already answering: a slide resolve on a host that did
+  // not survive `getCount` tells us nothing the ping has not, and costs 20s.
+  const slideOk = paneRef && ping?.answered ? readSlideResolve(sh("eval", slideResolveScript(20000), paneRef)) : null;
+  // RE-READ, after the slide touch rather than only before it. If the touch is
+  // what trips the host, the dialog appears in the seconds that follow — and
+  // reading the dialog only at the top of the sweep is how a crash the check
+  // itself provoked would be carried into the round as `ready`.
+  const crashedAfter = slideOk === false ? sawCrashDialog(sh("find", "Sorry, we ran into a problem")) : false;
 
   const toggles = sh("find", "Verbose trace");
   const verbose = /checkbox "Verbose trace"/.test(toggles) ? /Verbose trace" \[checked\]/.test(toggles) : null;
@@ -375,8 +512,10 @@ async function attempt(argv, deps, sh) {
     verbose,
     pictures,
     reachable: !sh.state.unreachable,
+    unreachableAt: sh.state.unreachableAt ?? null,
     ping,
-    crashed,
+    slideOk,
+    crashed: crashed || crashedAfter,
     loggedOut,
   };
   const { ok, stop } = readiness(state);
@@ -386,12 +525,15 @@ async function attempt(argv, deps, sh) {
   console.log(`  verbose trace ${verbose ?? "?"} · picture every slide ${pictures ?? "?"}`);
   console.log(
     `  host ${ping ? (ping.answered ? `answered in ${ping.ms}ms` : `SILENT for ${ping.ms}ms`) : "not asked — the pane is closed"}` +
-      (crashed ? " · PowerPoint's crash dialog is up" : ""),
+      // Printed every round, pass or fail, because the experiment needs the
+      // rounds where it says `resolved` as much as the ones where it does not.
+      (slideOk === null ? "" : slideOk ? " · slide 1 resolved" : " · slide 1 REFUSED") +
+      (state.crashed ? " · PowerPoint's crash dialog is up" : ""),
   );
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
     for (const s of stop) console.error(`    - ${s}`);
-    return { code: 1, reason: crashed ? "crashed" : "not-ready" };
+    return { code: 1, reason: state.crashed ? "crashed" : "not-ready" };
   }
   console.log("  ready");
   if (checkOnly) return { code: 0, reason: "checked" };

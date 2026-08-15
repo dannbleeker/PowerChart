@@ -283,6 +283,19 @@ host dump shows the consequence with the ids in it: `shapes.getItem("27")
 `parts()` slices index 0 off deliberately, and the anchor is never in its
 `load("id")` list.
 
+**AND THE LAST ALTERNATIVE IS CLOSED (round 040, 2026-08-15).**
+`tag-through-refetched-shape` — "can a fresh shape be tagged through a handle
+re-fetched by its own id?" — answers **`no-id`**, stable over three passes: *the
+fresh shape would not report an id*. Not "the id is refused"; there is no id to
+re-fetch it by. Route by route on this host:
+
+    created    works, and does not age out (survives-8) — the pass throws it away
+    refreshed  resolved by a load, rewritten to getItem(id), refused
+    by-id      cannot be constructed at all — no id
+    group      never loaded, but only exists where grouping worked, and here it does not
+
+So the ordering change is not the best remaining option, it is the only one.
+
 One caveat the probe cannot cover, stated so the fix is not built on it: it asks
 through `ctx.scratch()`, a slide resolved in the same batch, while production's
 parent is a slide handle Office has rewritten to `slides.getItem(id)`. A refusal

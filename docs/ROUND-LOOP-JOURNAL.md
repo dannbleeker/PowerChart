@@ -353,3 +353,124 @@ of the 60-100 an arm it needs.
 Recovered round-42 log kept at `.pw-session/crashed-5a2522e.json` — not filed
 under `rounds/`, since a wedged partial has no self-test and would read as a
 16th round in the ledger.
+
+### Round 044 — b6582c7 — two attempts lost to the DRIVER, not the host
+
+Both attempts died identically, and the message was false:
+
+    PowerPoint crashed 2s in — its dialog is up …
+    clearing the crash and starting again
+
+    attempt 2 of 7
+    HEAD b6582c7 · site b6582c7 · pane b6582c7 · deck 1 slide(s)
+    host answered in 6ms
+    NOT READY — playwright-cli could not be run — nothing below was actually measured.
+
+Every value on that sheet was measured, by the tool it says could not be run,
+one line above the refusal. Exit code 0 while doing it.
+
+**Root cause, reproduced away from the round rather than guessed at.** Running
+`collectCrashEvidence` directly against the live browser printed it in one pass:
+
+    spawn errors: 2
+      - requests => spawnSync …\node.exe ENOBUFS
+
+`sh("requests")` on a live PowerPoint tab is bigger than `spawnSync`'s 1 MiB
+default `maxBuffer`. Over the line Node throws the output away and returns an
+`error`, and `cli` read any `error` as "the tool could not be run".
+
+Three defects, all fixed here, each with a mutation-proven guard:
+
+1. **The buffer.** `maxBuffer: 64e6`. The default is invisible — nothing about
+   the call says 1 MiB, and the failure names the executable rather than the size.
+2. **An overflow is not an unreachable tool.** They are opposite facts: one means
+   the browser answered and the answer did not fit, the other means nobody asked.
+   `isOverflow` splits them.
+3. **The doubt outlived its sweep.** `unreachable` is deliberately sticky within
+   one readiness sweep and was sticky for the whole PROCESS, so a failure during
+   attempt 1's crash handling refused attempt 2 forever. `sh.startSweep()` at the
+   top of each attempt. This is the round-29 poll bug — "do not end a round on one
+   failed CLI call" — one call site further out, unswept.
+
+**And the damage was worse than two lost attempts: it emptied both crash
+reports.** They read
+
+    ## Document channel, last 12
+    (nothing)
+    ## PowerPoint's own error log (ULS)
+    (no fatal entry in the last 0 telemetry batches — the quiet form of the wedge
+    looks like this)
+
+Nothing was measured, and the second sentence names a diagnosis. Round 043's
+report from the same crash carried twelve real channel entries and a ULS window.
+`collectCrashEvidence` now reports a failed read AS a failed read; verified
+against the real browser, the report went 1834 → 3167 characters.
+
+**Why 043 survived this and 044 could not**, which is the part worth carrying:
+the overflow is a function of TAB AGE. Round 043's crash was collected at request
+768 of a freshly opened tab and fitted; 044's third attempt crashed at request
+**16748** of a tab that had been alive for two hours. So the bug only bites a
+long-lived tab — which is to say, only during a round LOOP, which is the only
+thing this driver is for. A defect that cannot reproduce on the first run of the
+day is worth naming as such.
+
+### Round 044, third attempt — b6582c7 — archived as 040 — 10/12
+
+Attempt 1 crashed 2s in as usual; attempt 2 reached `ready` and ran, which is the
+driver fix above doing its job on its first outing.
+
+1. **Mine.** Two things, and the second is the one that closes an argument.
+
+   **`survives-8` replicated a third time** — three passes here, `stable: true`,
+   all in the `collection-refused` regime, on a third build. Eight samples across
+   three builds now say a creation handle nobody resolved does not age out.
+
+   **`tag-through-refetched-shape` is NEW and answers `no-id`, stable ×3** —
+   "the fresh shape would not report an id". Taken with the above, the last
+   alternative to the ordering change is gone: you cannot re-fetch the tag target
+   by id, because on this host a fresh shape has no id to re-fetch it BY. Not
+   "the id is refused" — there is no id. Route by route: `refreshed` is resolved
+   and refused, `by-id` cannot be built, `created` works and is the one the pass
+   throws away. The ordering change is not the best option left, it is the only
+   one.
+
+   Otherwise identical to 039: 10 of 12, the same two failures, `same scale` 4 of
+   8 with the host flipping at chart 5, 37 draws and ZERO stalls, slowest batch
+   18.4s, scratch handback 82 of 83 never landed.
+
+2. **Research.** None needed; the one unexplained thing this round is the 2s
+   crash, and the host now explains it itself — see below.
+
+3. **Instrument.** The crash report is the instrument, and it worked the moment
+   it was fixed. From `crashes/2026-08-15T12-49-04.md`, PowerPoint's own log:
+
+       319 | In OnDisconnect(), setting SlideViewNode.srcSlide to null
+       321 | Failed to restore selection after load content.
+       389 | OnServerFindSucceeded could not find target slide, time elapsed: 430 ms
+       390 | GlobalErrorHandler:DisplayErrorDialog: 5341289
+
+   **PowerPoint has now crashed 2s into the FIRST attempt four times running**
+   (043, and all three 044 attempts) and never into an attempt that followed a
+   recovery. The difference between them is ~80 seconds of reload and settling.
+   The host's own account is that it could not find the target slide after
+   restoring content — a document still settling when the round's first Office.js
+   call lands. That is a theory with four samples and no test.
+
+   **Built, and it is an experiment rather than a fix.** `--check` pinged the
+   host but the ping touches no slide — `getCount` is a count, and this host
+   answers it in single-digit ms while in exactly the state it then dies from.
+   The pre-flight now resolves slide 1 and the check line carries `slide 1
+   resolved` or `slide 1 REFUSED` every round, pass or fail, because the rounds
+   where it says `resolved` are what make the others mean anything. The point is
+   to MOVE the crash, not prevent it: trip it in a two-second check that
+   `--retry` recovers from, instead of an attempt plus 80s. If it answers
+   `resolved` and the round crashes anyway, the theory is refuted for the price
+   of one call — which is the outcome worth having either way.
+
+   The crash dialog is now re-read AFTER the slide touch as well as before it. A
+   crash the check itself provoked would otherwise be carried into the round as
+   `ready`.
+
+4. **Fix.** The three driver defects above.
+
+5. **Doctrine.** `docs/BACKLOG.md` ordering item records the closed route.
