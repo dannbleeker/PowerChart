@@ -528,3 +528,47 @@ reason. Three or four more clean starts make it an effect; one does not.
 5. **Doctrine.** The brief's "first thing to read" now points at the experiment's
    own word, and this entry records what a single clean start does and does not
    license.
+
+### Round 046 — a54401c — archived as 042 — 10/12, and it settled the ordering fix
+
+`slide 1 resolved`, clean first attempt again — two in a row now, still not an
+effect.
+
+Getting there needed a hand recovery worth recording: `pwclean` answered
+`deck-failed` and `--check` said why — the QUIET wedge, host silent for 8016ms
+with no dialog, plus a pane still on `ca866e3` and an eight-slide deck. One
+reload cleared all three. That is `recover`'s own sequence, done by hand, because
+the driver would not do it — see the fix below.
+
+1. **Mine. `collection-read-poisons-the-creation-handle` answers `yes`** — three
+   passes, `stable: true`, every one taken while the host was refusing collection
+   reads. **The pre-grouping re-read does NOT poison the creation handle.** The
+   fake was wrong, the ordering fix is viable, and it was rebuilt the same hour.
+
+   Otherwise the fifth consecutive repeat: `survives-8`, `tag-through-refetched-shape:
+   no-id`, every tag failure `from: created×1`, `same scale` 4 of 8 flipping at
+   chart 5, 30 draws with zero stalls. One added slide blank again, and the same
+   two `#0` ids as round 041 — `256#0` and `257#0`, identical strings across two
+   rounds, so they are not per-round noise.
+
+2. **Research.** None owed; the one open question was put to the host and
+   answered.
+
+3. **Instrument.** `triage` now names added slides whose id ends `#0` and joins
+   them to the confirmed blanks, because round 041's finding took a hand query
+   and nearly went unseen. **It earned itself immediately, in the negative
+   direction: 0 of the odd-id slides are the blank one, in both rounds.** The
+   coincidence is dead and nobody spends a round on it.
+
+4. **Fix.** Two, neither of them the renderer:
+   - The driver stopped on states it knows how to fix. `shouldRetry` retried a
+     crash and nothing else, so the quiet wedge (`silent`) ended a round and a
+     `not-ready` was never retried at all — which is why the recovery above was
+     done by hand. Every readiness stop now carries a CODE, and a check is
+     retried when recovery addresses all of them and refused when even one stop
+     it cannot touch is present (`site-behind`, `verbose-off`).
+   - `origin tag lost` is its own trace line. Losing it costs drag tracking, not
+     re-editability, and reporting it as "charts are not re-editable until
+     repaired" was about to become the common case.
+
+5. **Doctrine.** `docs/BACKLOG.md` records the answer and what it licenses.

@@ -346,6 +346,36 @@ describe("triage — logs that are not inserts", () => {
     expect(e.unseen).toBe(1);
   });
 
+  it("names the added slides whose id never finished, and joins them to the blanks", () => {
+    // ROUND 041 put both halves of this in the log and nothing put them side by
+    // side: seven slides added, two of them named `256#0` and `257#0` against
+    // `288#3603562595` for the rest, one added slide blank, and a
+    // `delete-by-id left slides behind` line in the same round. It took a hand
+    // query to see, which is how a finding nearly went unnoticed.
+    const e = deckEvidence(
+      evidenceDeck(
+        [
+          { id: "288#3603562595", count: 24 },
+          { id: "256#0", count: 0, png: 300 },
+          { id: "257#0", count: 12 },
+        ],
+        ["288#3603562595", "256#0", "257#0"],
+      ),
+    );
+    expect(e.oddIds, "an id ending #0 is not the shape a finished slide has").toEqual(["256#0", "257#0"]);
+    // THE JOIN, which is the whole point: one of the two odd ids is also the
+    // blank, so the two observations are one event rather than two.
+    expect(e.oddAndBlank).toBe(1);
+    expect(e.confirmed).toBe(1);
+  });
+
+  it("says nothing about ids when every one of them finished", () => {
+    // A field that reports on a healthy round is a field a reader learns to skip.
+    const e = deckEvidence(evidenceDeck([{ id: "288#3603562595", count: 24 }], ["288#3603562595"]));
+    expect(e.oddIds).toEqual([]);
+    expect(e.oddAndBlank).toBe(0);
+  });
+
   it("reads a slide the scan could only partly list as carrying shapes", () => {
     // `count` is the host's own number, `shapes` is what the scan managed to
     // list. Taking the smaller would call a partial listing empty — the exact
