@@ -829,3 +829,55 @@ instead, replacing an answer with prose and inventing a
 `…-ORIGINAL` key for the value it displaced. `host-contract.test.ts` failed on a
 baseline entry for a question that does not exist — which is precisely the check
 that exists so a table cannot quietly drift from the probes it describes.
+
+### Pair 4 — 1a1e05f × 2 — archived as 051 and 052 — THE ROOT
+
+**`contextSyncs` answered on its first outing, and it refuted the hypothesis it
+was built for.** Both failing charts show `contextSyncs=1`: the re-read that goes
+short is the FIRST sync of its context, not the thirtieth. The context is fresh.
+**Chunking `updateChartsInSlides` would change nothing**, and that 390-line
+restructure is ruled out before anyone started it — which is exactly what the
+instrument was for.
+
+**Then the same trace said what DOES separate them**, and it is a switch:
+
+    chart 1/8  slide 256#0           32 shapes already on it  -> re-read OK, GROUPED
+    chart 2/8  slide 256#0           40 shapes already on it  -> re-read OK, GROUPED
+    chart 3/8  slide 256#0           40 shapes already on it  -> re-read OK, GROUPED
+    chart 4/8  slide 257#0            0 shapes already on it  -> re-read SHORT 20/24
+    chart 5/8  slide 288#807648421    0 shapes already on it  -> re-read EMPTY
+
+Pooled over the whole archive:
+
+    slide already had shapes   82 chart(s), 81 grouped = 99%
+    freshly added, empty       74 chart(s),  1 grouped =  1%
+
+**A chart drawn onto a slide this run has just added does not get grouped, and a
+chart that is not grouped loses its config.** That is the root, and everything
+this project has done to the tag path for four rounds sits one level above it.
+
+It is also not new. `shape-add-held-slide-proxy` answers `threw`, a web-new-slide
+id does not round-trip, and the #108-#111 saga was four attempts at drawing on a
+freshly added slide. The evidence has been in every round since; nobody had
+joined `onSlide` to the grouping outcome.
+
+1. **Mine.** As above. `256#0` — the id flagged as malformed two pairs ago — is
+   the slide that WORKS, because it is the established one.
+2. **Research.** None owed; the archive answered it.
+3. **Instrument.** `npm run rounds` prints **WHICH SLIDE THE CHART LANDED ON**
+   every round now.
+4. **Fix.** None shipped, deliberately. The matcher already knows the honest rule
+   — "the positional rule is still right for a slide this run added blank" — but
+   that branch is reachable only when NOTHING matched, so a chart matching 20 of
+   24 falls past it. On a slide this run added blank we KNOW our shapes are the
+   only ones there, so a short read is a host lie we can detect rather than obey.
+   Contained, but still surgery on the grouping path, which carries three
+   shipped-broken fixes on record. It wants a person awake.
+5. **Doctrine.** `docs/BACKLOG.md` now leads with the root and lists what was
+   ruled out: context wear, the `#0` ids, and the poisoned-context theory.
+
+**Two of tonight's driver fixes proved themselves in this pair.** Round B wedged
+at thirty minutes and the driver recovered and finished on attempt 3 — before
+tonight that was a dead stop. And the crash report from that wedge reads "(could
+not read — the call could not be run)" three times rather than "(nothing)",
+which is the `lastFailed` fix refusing to report an empty host as evidence.

@@ -17,6 +17,9 @@ import { poolTagFaults } from "../scripts/triage.mjs";
 // Its own line, same reason as every other single import in this file.
 // @ts-expect-error — as above.
 import { poolGroupVsTag } from "../scripts/triage.mjs";
+// Its own line, same reason as every other single import in this file.
+// @ts-expect-error — as above.
+import { poolFreshVsEstablished } from "../scripts/triage.mjs";
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -413,6 +416,34 @@ describe("triage — logs that are not inserts", () => {
     // A fault line that is not a tagging failure must not inflate the count that
     // a fix would be judged on.
     expect(byBuild.get("bbbbbbb")![0]["tagging-failed"]).toBe(5);
+  });
+
+  it("separates a chart on a fresh slide from one on a slide that already had shapes", () => {
+    // THE ROOT, and the cleanest separation this project has: 82 charts on a
+    // slide that already had shapes, 81 grouped; 74 on a freshly added empty
+    // slide, 1 grouped. A chart that is not grouped loses its config, so the
+    // slide's newness decides the config — one level below everything the tag
+    // work was aimed at.
+    const chart = (name, onSlide, msgs) =>
+      msgs.map((m, i) => ({ message: m, data: i === 0 ? { chart: name, onSlide } : { chart: name } }));
+    const f = poolFreshVsEstablished([
+      {
+        trace: {
+          entries: [
+            ...chart("1/4", 32, ["batch issued", "grouped the chart's shapes"]),
+            ...chart("2/4", 0, ["batch issued", "not grouping: no member handle this host will accept"]),
+            ...chart("3/4", 0, ["batch issued", "grouped the chart's shapes"]),
+            // Never decided — the round did not reach it, so it belongs to
+            // neither column rather than being counted as a failure.
+            ...chart("4/4", 0, ["batch issued"]),
+          ],
+        },
+      },
+    ]);
+    expect(f.established).toBe(1);
+    expect(f.establishedGrouped).toBe(1);
+    expect(f.fresh, "a chart the round never decided must not be counted").toBe(2);
+    expect(f.freshGrouped, "a fresh slide CAN group — the claim is a rate, not a law").toBe(1);
   });
 
   it("separates the charts that got grouped from the ones that did not", () => {

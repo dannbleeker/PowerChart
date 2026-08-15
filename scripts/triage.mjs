@@ -788,6 +788,83 @@ export function poolGroupVsTag(logs) {
   return out;
 }
 
+/**
+ * Did the chart land on a slide that already had shapes, or on a fresh one?
+ *
+ * THE ROOT, found 2026-08-15, and the cleanest separation this project has:
+ *
+ *     slide already had shapes  82 chart(s), 81 grouped = 99%
+ *     freshly added, empty      74 chart(s),  1 grouped =  1%
+ *
+ * Not a tendency — a switch. And it completes the chain: a chart on a freshly
+ * added slide gets a short or empty pre-grouping re-read, so it is not grouped,
+ * so its tag falls back to a `created` handle, which this host refuses about
+ * seven times in ten. Charts on an established slide group and keep their config.
+ *
+ * It is not a new problem either. It is THE problem, one level below everything
+ * the tag work was aimed at, and this repo already knew a freshly-added slide is
+ * special: `shape-add-held-slide-proxy` answers `threw`, its id does not
+ * round-trip, and the #108-#111 saga was four attempts at drawing on one.
+ *
+ * `onSlide` is the shape count the DRAW recorded for the slide before it began,
+ * which is why this pools over rounds that were archived long before anyone
+ * thought to ask.
+ */
+export function poolFreshVsEstablished(logs) {
+  const out = { established: 0, establishedGrouped: 0, fresh: 0, freshGrouped: 0 };
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    const onSlide = new Map();
+    const grouped = new Set();
+    const decided = new Set();
+    for (const e of entries) {
+      const d = e.data ?? {};
+      if (!d.chart) continue;
+      // The FIRST batch's reading: what was on the slide before this chart.
+      if (typeof d.onSlide === "number" && !onSlide.has(d.chart)) onSlide.set(d.chart, d.onSlide);
+      if (/^grouped the chart/.test(String(e.message))) {
+        grouped.add(d.chart);
+        decided.add(d.chart);
+      }
+      if (/^not grouping/.test(String(e.message))) decided.add(d.chart);
+    }
+    for (const [chart, n] of onSlide) {
+      // Only charts whose grouping was DECIDED. A chart the round never reached
+      // has no outcome to attribute to its slide.
+      if (!decided.has(chart)) continue;
+      if (n > 0) {
+        out.established++;
+        if (grouped.has(chart)) out.establishedGrouped++;
+      } else {
+        out.fresh++;
+        if (grouped.has(chart)) out.freshGrouped++;
+      }
+    }
+  }
+  return out;
+}
+
+/** Fresh slide versus established — where a config is really decided. */
+function reportFreshVsEstablished(logs) {
+  const f = poolFreshVsEstablished(logs);
+  if (!f.established && !f.fresh) return;
+  const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "—");
+  console.log(`\n  WHICH SLIDE THE CHART LANDED ON — pooled over ${logs.length} round(s)`);
+  console.log(
+    `    slide already had shapes  ${String(f.established).padStart(3)} chart(s), ${String(f.establishedGrouped).padStart(3)} grouped = ${pct(f.establishedGrouped, f.established)}`,
+  );
+  console.log(
+    `    freshly added, empty      ${String(f.fresh).padStart(3)} chart(s), ${String(f.freshGrouped).padStart(3)} grouped = ${pct(f.freshGrouped, f.fresh)}`,
+  );
+  if (f.established && f.fresh)
+    console.log(
+      `    A chart on a freshly added slide does not get grouped, and a chart that is not\n` +
+        `    grouped loses its config. The re-read comes back short or empty on a slide this\n` +
+        `    run has just added — see the #108-#111 saga and shape-add-held-slide-proxy.`,
+    );
+}
+
 /** Grouped versus ungrouped, and what it costs a chart's config. */
 function reportGroupVsTag(logs) {
   const g = poolGroupVsTag(logs);
@@ -1183,6 +1260,7 @@ if (invokedDirectly) {
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
     reportPredictions(pooled);
+    reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
@@ -1226,6 +1304,7 @@ if (invokedDirectly) {
     reportSelfTest(selftest);
     reportStability(pooled);
     reportPredictions(pooled);
+    reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
