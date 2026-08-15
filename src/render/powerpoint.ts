@@ -7274,8 +7274,17 @@ function targetRef(shape: PowerPoint.Shape | undefined): TargetRef | undefined {
  * Where they cannot, the answer is to group NOTHING — because handing a refused
  * handle to `addGroup` does not merely fail to group, it throws, and the throw
  * takes the batch's tagging with it. Five charts in one run lost their group
- * AND their config that way, which is strictly worse than an ungrouped chart
- * that is still re-editable.
+ * AND their config that way, where grouping nothing loses at most one chart's.
+ *
+ * THAT COMPARISON USED TO END "…than an ungrouped chart that is still
+ * re-editable", and the archive refutes the second half: an ungrouped chart
+ * keeps its config about one time in three, not as a rule (97 charts on an
+ * established slide, 96 grouped; 84 on a freshly added one, 1 grouped —
+ * `npm run rounds`). Grouping nothing is still the better of the two, because a
+ * throw costs every chart in the batch rather than one, but it is a choice
+ * between two losses and not a safe fallback. The way out is upstream: the
+ * members cannot be named because the slide was added by this run, and that is
+ * where a fix belongs. See `docs/BACKLOG.md`.
  *
  * The one case that may still use `created`: a chart that never asked for a
  * refresh. Nothing has been re-resolved behind it, so `created` is the only

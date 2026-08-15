@@ -936,3 +936,34 @@ Nothing else new. `same scale` failed the same way, the same charts, in the same
 order — which after twelve rounds is itself the finding: this host is
 deterministic here, and the remaining work is a decision rather than a
 measurement.
+
+### Pair 7 — 2a11873 × 2 — archived as 057 and 058
+
+Round B wedged at thirty minutes and the driver recovered and finished on attempt
+3 — the second time tonight that fix has saved a round which, this morning, would
+have been a dead stop.
+
+    slide already had shapes  103 chart(s), 102 grouped = 99%
+    freshly added, empty       88 chart(s),   1 grouped =  1%
+
+Fourteen rounds and the ratio has not moved. Nothing new from the host.
+
+**The work this pair actually bought was in the documents, not the rounds.**
+
+- **`chooseGroupMembers`'s contract carried the same refuted premise** the
+  partial-match branch did — "strictly worse than an ungrouped chart that is
+  still re-editable". The conclusion survives (a throw costs every chart in the
+  batch, grouping nothing costs one) but the premise does not, so it now says
+  plainly that this is a choice between two losses and that the way out is
+  upstream. Two other candidates in `PUBLISHING.md` were checked and are sound —
+  both describe charts the rescue actually grouped.
+- **The brief's queue was stale in all five items**, every one answered during
+  this run, and item 5 said something now false: "it moves when the tag path
+  moves". It moves when the fresh-slide re-read is fixed. Rewritten around what
+  is settled, with nine questions listed as answered and their results, so the
+  next session cannot spend a round re-deriving any of them.
+
+**And the honest note at the top of it:** the mechanism is settled and more
+rounds do not add to it. What is left is two decisions, both the owner's. A loop
+that keeps running past the point where measurement helps is manufacturing
+activity, and saying so is worth more than another pair.
