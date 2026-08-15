@@ -164,6 +164,57 @@ describe("insertSceneIntoSlide", () => {
     expect(tagged!.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
   });
 
+  it("survives a refused resolved handle here, the way the real host does not", async () => {
+    // Six real rounds, one failure, and the host naming its own cause:
+    //
+    //   errorLocation: ShapeCollection.getItem
+    //   statement: var shape = shapes.getItem(...) /* originally addTextBox(...) */
+    //
+    // `same scale across the deck` loses half the deck's config tags to that,
+    // and the settle pass cannot repair them because it resolves by id and this
+    // host yields none (`withId: 0`, on every failure).
+    //
+    // The rule is RESOLUTION, not age. `tag-the-creation-proxy-a-sync-later`
+    // answers `yes` four rounds running, so the handle that made a shape keeps
+    // working however old it gets; a `load()` is what makes Office.js rewrite it
+    // into `shapes.getItem(id)`, which this host refuses for a shape it has just
+    // created.
+    //
+    // `finishCharts` re-reads shapes before grouping and then tags through the
+    // re-read handle. The re-read is needed FOR GROUPING. Tagging through it is
+    // what costs the user their chart.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.refuseTagWritesOnResolvedProxy = true;
+    try {
+      // `shapesPerSync: 1` is what makes this the real case: a chart that spans
+      // sync batches sets `refreshShapes`, which is the only thing that triggers
+      // the pre-grouping re-read — and the re-read handle is the poisoned one.
+      // Every chart in a real round spans batches; none of the small fixtures
+      // here did, which is why CI has never seen this.
+      await insertSceneIntoSlide(buildChart(config), {
+        tagData: JSON.stringify(config),
+        group: false,
+        shapesPerSync: 1,
+      });
+    } finally {
+      faults.refuseTagWritesOnResolvedProxy = false;
+    }
+    // The tag SURVIVES here, and the gap between this and the real host is the
+    // point. The drawing context's write is refused exactly as it is in a real
+    // round; the settle pass then repairs it, because the fake can resolve a
+    // shape by id. The real host cannot — `withId: 0` on every failure across
+    // six rounds — so there the chart stays nameless.
+    //
+    // So this pins the first half of the reproduction and names the second.
+    // Arming `refuseShapeIdLoads` alongside was tried and models something
+    // harsher than the host: it makes the insert throw outright, where a real
+    // round carries on and merely loses the tag.
+    const tagged = slide.created.find((s) => s.tagStore.get(CHART_TAG));
+    expect(tagged, "the settle pass should have repaired what the drawing context lost").toBeTruthy();
+    expect(tagged!.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
+  });
+
   it("describes the chart group with accessible alt text", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);

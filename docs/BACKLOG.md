@@ -205,8 +205,37 @@ repair pass can be given a handle that does not go through
 host, four rounds running. `tag-the-creation-proxy-a-sync-later` is a second
 route to it that does answer `yes`, and it needs no 1.8 surface.
 
-NOT attempted yet, deliberately. Two things have to be true first and only one of
-them is: the write-through-the-handle answer needs a third round, and the update
+**ATTEMPTED 2026-08-15, and the one-line version does not work.** Worth recording
+so nobody spends the hour again.
+
+The rule was measured first: it is RESOLUTION, not age. `faults.strictTags`
+models "refuse anything older than one sync", and this host does not do that —
+`tag-the-creation-proxy-a-sync-later` answers `yes` four rounds running, so a
+handle that made a shape keeps taking writes however old it is. What it refuses
+is a handle a `load()` has resolved, which Office.js rewrites into
+`shapes.getItem(id)`. `faults.refuseTagWritesOnResolvedProxy` now models exactly
+that, and it is the first thing in the fake that can.
+
+The obvious fix follows and is wrong: `finishCharts` replaces the tag target with
+the pre-grouping re-read handle (`tagTargets[i] = fresh[0]`), so keep the
+creation handle instead. Tried, and the reproduction still failed — because the
+pass loads the CREATED shapes too before the tag is written, to read their ids
+for the parts tag. By the time the write happens there is no unresolved handle
+left to use.
+
+So the fix is not a swap, it is an ordering change: one handle has to stay
+unresolved all the way to the tag write. That is a change to the shape of the
+whole pass and wants a session of its own.
+
+Also measured while trying: arming `refuseShapeIdLoads` alongside — to starve
+the settle the way the real host does — models something HARSHER than the host.
+It makes the insert throw outright, where a real round carries on and merely
+loses the tag. The reproduction in `test/office-render.test.ts` therefore pins
+the first half (the drawing context's write is refused) and names the second (the
+settle repairs it here and cannot there).
+
+NOT attempted further, deliberately. Two things have to be true first and only
+one of them is: the write-through-the-handle answer needs a third round, and the update
 path needs the same treatment `insertSceneIntoSlide` already has — a test in
 `test/office-render.test.ts` shows the INSERT path survives a refused
 `load("id,left,top")` unharmed, so whatever costs the tag in the update path is

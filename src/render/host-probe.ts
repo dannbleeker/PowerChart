@@ -2796,7 +2796,31 @@ export async function runHostProbes(source: string, build: string): Promise<Host
       answer: !scratchIds.length ? "none-added" : !left ? "all" : actually ? "some" : "none",
       ms: Date.now() - cleanupStarted,
       detail:
-        `${actually + returnedEarly.size} of ${scratchIds.length} scratch slide(s) deleted${left ? `; ${left} left in the deck` : ""}` +
+        `${actually + returnedEarly.size} of ${scratchIds.length} scratch slide(s) deleted` +
+        // "left in the deck" is a claim about the deck, and round 029 caught it
+        // being false: `left=73` beside `deckBefore=1 deckAfter=1
+        // stillListed=0`. Seventy-three slides were counted as abandoned while
+        // the deck stood at one the whole time and listed none of their ids —
+        // they never landed at all. Five attempts were reverted trying to stop a
+        // leak that was this sentence.
+        //
+        // So the deck decides which sentence gets used. `stillListed === 0` with
+        // a deck no bigger than it started is the host having accepted an add
+        // whose slide never appeared, which is a different bug from a clean-up
+        // that missed something, and wants a different fix.
+        //
+        // NOT COVERED BY THE SUITE, and said out loud rather than left to be
+        // assumed. `left in the deck` has a test (`reports the scratch slides it
+        // could NOT give back`, via `refuseSlideDelete`) and this branch does
+        // not: reaching it needs a host that ACCEPTS an add and then never lists
+        // the slide, and `swallowAdds` does not get there — a test written
+        // against it asserted nothing and was deleted rather than kept as
+        // decoration. The evidence for this branch is round 029 itself.
+        (left
+          ? stillListed === 0 && deckAfter !== undefined && deckBefore !== undefined && deckAfter <= deckBefore
+            ? `; ${left} never landed — the host took the add and the deck never listed them`
+            : `; ${left} left in the deck`
+          : "") +
         // Only when some came back before the clean-up ran. Silent otherwise, so
         // the sentence a reader has seen a hundred times does not change shape
         // for a number that is zero.
