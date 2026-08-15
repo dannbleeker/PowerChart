@@ -227,6 +227,22 @@ So the fix is not a swap, it is an ordering change: one handle has to stay
 unresolved all the way to the tag write. That is a change to the shape of the
 whole pass and wants a session of its own.
 
+**And the trace now says which handle was used**, which is what the six rounds
+before it could not. `tagging failed` carries `from: created×N, refreshed×N`, one
+of four routes:
+
+    created    the proxy that drew the shape, never loaded — writes go through
+    refreshed  the pre-grouping re-read, RESOLVED by a load and therefore
+               rewritten to shapes.getItem(id)
+    group      the group made in the grouping batch, also never loaded
+    by-id      an explicit getItemOrNullObject(id)
+
+The field earned itself on its first run. The suspect going in was `refreshed`;
+the trace answered `created×1` — the target WAS the drawing handle and the write
+was refused anyway, because the pass loads the created shapes before it writes.
+That is the evidence for "ordering, not swap", and it took one test run rather
+than a round to get.
+
 Also measured while trying: arming `refuseShapeIdLoads` alongside — to starve
 the settle the way the real host does — models something HARSHER than the host.
 It makes the insert throw outright, where a real round carries on and merely
