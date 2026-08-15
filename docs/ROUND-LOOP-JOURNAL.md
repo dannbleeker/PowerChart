@@ -992,3 +992,22 @@ Sixteen rounds, unmoved. Both rounds clean, no wedge, nothing new from the host.
 is.** Two refuted premises and four stale statements in three pairs, against
 sixteen rounds that agree with each other. The host has said what it has to say
 about this mechanism; the documents had not caught up.
+
+### Pair 9 — 9dc3bc8 × 2 — archived as 061 and 062
+
+    slide already had shapes  115 chart(s), 114 grouped = 99%
+    freshly added, empty       96 chart(s),   1 grouped =  1%
+
+Eighteen rounds. Both clean, no wedge, nothing new.
+
+**`CLAUDE.md` was the last document pointing at the wrong problem.** It said the
+red here is "the shape collection dying part-way through", which sends a reader
+looking at POSITION — and position is what the archive refuted. It now carries
+the split above and names the freshly-added slide, with the note that four rounds
+of tag-path work aimed one level above it before anyone joined `onSlide` to the
+grouping outcome. That matters more than another round: `CLAUDE.md` is what a
+fresh session and the parallel stream read first.
+
+Four documents now agree with the measurement — `CLAUDE.md`, `docs/BACKLOG.md`,
+this brief and `docs/ROUNDS.md` — where at the start of the night three of them
+described the tag writer as the problem.
