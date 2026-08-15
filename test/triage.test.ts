@@ -424,7 +424,7 @@ describe("triage — logs that are not inserts", () => {
     // slide, 1 grouped. A chart that is not grouped loses its config, so the
     // slide's newness decides the config — one level below everything the tag
     // work was aimed at.
-    const chart = (name, onSlide, msgs) =>
+    const chart = (name: string, onSlide: number, msgs: string[]) =>
       msgs.map((m, i) => ({ message: m, data: i === 0 ? { chart: name, onSlide } : { chart: name } }));
     const f = poolFreshVsEstablished([
       {
