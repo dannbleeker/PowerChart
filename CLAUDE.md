@@ -596,6 +596,21 @@ deck` already says how many charts in a deck are re-editable, which is the
   work. Across four rounds it read 10/11, 8/10, 9/11 while the defects that
   were actually ours were 0, 0, 0 and 1.
 
+  **"Part-way through" is measured now, and it is not about position — it is
+  about the SLIDE.** Pooled over 36 rounds (`npm run rounds`, _WHICH SLIDE THE
+  CHART LANDED ON_):
+
+      slide already had shapes  109 chart(s), 108 grouped = 99%
+      freshly added, empty       92 chart(s),   1 grouped =  1%
+
+  A chart drawn onto a slide this run has just added gets a short or empty
+  pre-grouping re-read, so it is not grouped; an ungrouped chart's config tag
+  then falls back to a `created` handle, which this host refuses about seven
+  times in ten. That is the whole of `same scale`'s failure, and it is the
+  freshly-added slide this repo has known about since #108 — not the tag writer,
+  which four rounds of work aimed at before anyone joined `onSlide` to the
+  grouping outcome. See `docs/BACKLOG.md`.
+
   `scenarioBlame` is the split, and it is evidence rather than judgement: a
   failure is host-degraded only when the run recorded the host refusing
   something INSIDE that scenario (an id it would not resolve, an empty
