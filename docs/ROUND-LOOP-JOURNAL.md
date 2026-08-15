@@ -249,7 +249,13 @@ conclusion now rests on. #502.
 ### Round 42 — 5a2522e — WEDGED, then the browser died
 
 Wedged in the QUIET form — no crash dialog, so the 30-minute timeout caught it
-rather than the crash watch. The lifetime question was never answered.
+rather than the crash watch. ~~The lifetime question was never answered.~~
+**Wrong, corrected 2026-08-15 14:10 — it was answered twice and the answer sat
+in the pane's storage for six hours.** See round 43 below: the pane still had
+the run on offer, `Download the crashed run` handed over all 270 steps, and
+`how-many-syncs-a-creation-handle-survives` had answered `survives-8` at 50.5s
+and again at 67.2s before the wedge. A wedged round is not an empty one, and
+what it reached is worth downloading before the next run buries it.
 
 Then the archive step INVENTED A ROUND. `Download run log` is disabled while a
 round runs, so the click did nothing and the previous round's file was still at
@@ -268,3 +274,82 @@ state.
 
 Open question still unanswered: `how-many-syncs-a-creation-handle-survives`. It
 is merged and will be asked by the first round that runs.
+
+## Resumed 2026-08-15 14:00 — the sign-in was never gone
+
+### Round 43 — 04510e2 — archived as 039 — 10/12
+
+**The lifetime question is answered: `survives-8`, and it is not the
+constraint.**
+
+Setup, because the blocker recorded above was not the one that existed: the
+browser process was dead, but `--persistent --profile=C:/devtools/pw-profile`
+still carried the OneDrive session, so no password was needed. The deck opened
+into a THIRD tab and the CLI stays on the tab it opened — `pw tab-list` then
+`tab-select 2` is the step that was missing, and without it `--check` reads a
+healthy setup as a closed pane. First attempt crashed 2s in; `--retry` cleared
+it and attempt 2 landed clean.
+
+1. **Mine.** `how-many-syncs-a-creation-handle-survives` answered `survives-8`
+   on all three passes, `stable: true`, and all three were sampled in the
+   `collection-refused` regime — the handle took a tag write at every one of
+   eight successive syncs while the host was refusing collection reads. Five
+   samples now exist across two builds (three here, two recovered from round
+   42). **The budget is not the constraint: an UNRESOLVED creation handle does
+   not age out.**
+
+   Production failed anyway, and the same way as 037 and 038: every
+   `tagging failed` carried `from: created×1` — no `refreshed`, no `group`, no
+   `by-id`, three rounds running. The host's own statement dump names the
+   mechanism with the ids in it:
+
+       var slide  = slides.getItem("288#2569279682") /* originally getItemOrNullObject(...) */;
+       var shapes = slide.shapes;
+       var shape  = shapes.getItem("27") /* originally addTextBox(...) */;   ← 5010
+       var tags   = shape.tags;
+
+   `27` is the title box, drawn in the first batch and written to in the last —
+   the same id the comment at `powerpoint.ts:6956` already quotes from the
+   2026-08-07 log. That line is the resolver: `created[k].load("id")` on each
+   batch's own sync resolves EVERY created shape including the anchor, so by the
+   time the tag is written there is no unresolved handle left. `ungroupedFallback`
+   is not the culprit — it slices the anchor off deliberately.
+
+   Rest of the sheet: `tags-add-same-key-twice` still `other` with the honest
+   `slide unreadable … UNKNOWN (?, ?, ?)`; `scratch-slides-returned: some` —
+   1 of 84 deleted, **83 never landed**, deck 7 slides with 6 added and 0 blank,
+   so the counter bug reading holds; 37 draws, ZERO stalls, slowest batch 17.1s,
+   one population.
+
+2. **Research.** Nothing new to look up. The 5010 is office-js#2903 (closed, not
+   planned) and triage names it inline; no unexplained host behaviour this round.
+
+3. **Instrument.** The three overnight fields all delivered again, and the one
+   gap this round exposes is in the probe rather than the pane: the lifetime
+   question asks through `ctx.scratch()`, a slide resolved in the batch, while
+   production's parent is a slide handle Office has rewritten from
+   `getItemOrNullObject(id)` to `getItem(id)`. The probe therefore cannot see a
+   refusal that comes from the PARENT path. A partner question that varies only
+   the parent would settle it. Not built here — see below.
+
+4. **Fix.** Nothing shipped in the renderer. The ordering change this evidence
+   supports is the open BACKLOG item, and the repo's own note on it says it
+   "wants a session of its own"; starting it inside a round-mining pass is how a
+   wrong theory gets shipped. What the round buys it is the headroom: keep one
+   handle unresolved and there are at least eight syncs to spend.
+
+5. **Doctrine.** Round 42's "never answered" corrected above. `docs/BACKLOG.md`
+   ordering item now carries the measured budget. This brief's FIRST THING TO
+   READ is spent and replaced.
+
+Verdict grid is now 15 rounds: `same scale across the deck` FAIL 15 of 15 —
+deterministic, only the degree varies (4 of 8 charts carried the shared scale
+here, host flipped at chart 5 of 8). `explode a degraded picture` is the one
+scenario that has ever flipped, and its single pass is still 1 in 15.
+
+Rasterise arms: 30 draws per arm pooled over 15 rounds, both 0.0%. Still short
+of the 60-100 an arm it needs.
+
+Recovered round-42 log kept at `.pw-session/crashed-5a2522e.json` — not filed
+under `rounds/`, since a wedged partial has no self-test and would read as a
+16th round in the ledger.

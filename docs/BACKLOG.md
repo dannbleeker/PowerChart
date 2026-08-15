@@ -263,6 +263,33 @@ So the fix is not a swap, it is an ordering change: one handle has to stay
 unresolved all the way to the tag write. That is a change to the shape of the
 whole pass and wants a session of its own.
 
+**THE BUDGET IS MEASURED NOW, and it is not a constraint (round 039, 2026-08-15,
+replicated from the recovered round-42 log).**
+`how-many-syncs-a-creation-handle-survives` answers **`survives-8`** — five
+samples across two builds, `stable: true`, and every sample taken while the host
+was in the `collection-refused` regime. An unresolved creation handle accepted a
+tag write at each of eight successive syncs.
+
+That removes the gamble the probe was written to remove. The ordering change does
+not have to move the tag write EARLIER in time; it only has to keep one handle
+unresolved. Eight syncs is past anything a chart does, so the constraint is
+purely `load()` — and the resolver has a name and a line number:
+`powerpoint.ts:6956`, `created[k].load("id")` on each batch's own sync, which
+resolves every created shape including `created[0]`, the tag target. Round 039's
+host dump shows the consequence with the ids in it: `shapes.getItem("27")
+/* originally addTextBox(...) */`, where 27 is the first batch's title box.
+
+`ungroupedFallback` is NOT that resolver, so swapping it changes nothing:
+`parts()` slices index 0 off deliberately, and the anchor is never in its
+`load("id")` list.
+
+One caveat the probe cannot cover, stated so the fix is not built on it: it asks
+through `ctx.scratch()`, a slide resolved in the same batch, while production's
+parent is a slide handle Office has rewritten to `slides.getItem(id)`. A refusal
+originating in the PARENT path would be invisible to this question. The host's
+`errorLocation` is `ShapeCollection.getItem` rather than the slide, which is
+evidence against that reading but not proof.
+
 **And the trace now says which handle was used**, which is what the six rounds
 before it could not. `tagging failed` carries `from: created×N, refreshed×N`, one
 of four routes:

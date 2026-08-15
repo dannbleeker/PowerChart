@@ -1,22 +1,36 @@
-# PowerChart round loop — brief (PAUSED, waiting on sign-in)
+# PowerChart round loop — brief
 
 Run one round per wake-up, mine it, fix what it exposes, journal it. Repeat.
-Stopped 2026-08-15 ~09:00: the browser process died and took the OneDrive
-session with it. Everything else is ready — main and the site both on the same
-build, deck clean, tooling merged and green.
+Last round: 043, archived as `rounds/039-04510e2.json`, 10 of 12, 2026-08-15.
 
-## To resume
+## Starting a round from a dead browser
 
-1. Sign in to OneDrive, open Presentation63.pptx, sideload PowerChart
-   (Home ▸ Add-ins). `--check` now names this state explicitly if it is still
-   the blocker; it is the one thing here that needs a password.
-2. `node scripts/round.mjs --check --dir .pw-session` — should say `ready`.
-3. `node scripts/round.mjs --dir .pw-session --retry 6` and carry on below.
+The 2026-08-15 pause recorded "the browser died and took the sign-in with it".
+Half of that was wrong and cost the loop five hours: **the persistent profile
+keeps the session, so a dead browser is not a lost sign-in.**
 
-**FIRST THING TO READ in the next round:**
-`how-many-syncs-a-creation-handle-survives`. It is merged and has never been
-asked — round 042 wedged before reaching it. Its answer is the budget the
-ordering fix in `docs/BACKLOG.md` gets built against.
+1. `. scripts/pw.sh`
+2. `pw open --persistent --profile=C:/devtools/pw-profile --headed "https://onedrive.live.com/"`
+   — if the title comes back `Home - OneDrive` you are signed in already. Only a
+   redirect to `login.live.com` needs the owner, and only then.
+3. Click the deck. **It opens in a NEW TAB and the CLI stays on the old one** —
+   `pw tab-list`, then `pw tab-select <n>`. Skip this and `--check` reports a
+   perfectly healthy setup as a closed pane.
+4. Open the pane from Home ▸ Add-ins ▸ **Insert chart**, then click the
+   **Automation** tab with `pw eval "el => el.click()" <ref>` — a plain click is
+   swallowed two iframes deep.
+5. If the pane offers **Download the crashed run**, take it BEFORE running:
+   starting a round retires that record, and a wedged round is not an empty one.
+   Round 42 answered the lifetime question twice before it wedged and the file
+   was still on offer six hours later.
+6. `node scripts/round.mjs --check --dir .pw-session` — should say `ready`.
+7. `node scripts/round.mjs --dir .pw-session --retry 6`, in the background.
+
+**FIRST THING TO READ in the next round:** `shape-add-held-slide-proxy`'s
+pass-1-vs-later split. `how-many-syncs-a-creation-handle-survives` is SPENT — it
+answered `survives-8`, five samples over two builds, so the ordering fix has all
+the headroom it needs and the constraint is `load()`, not age. See
+`docs/BACKLOG.md`.
 
 ## Constants — ALL DURABLE NOW, nothing in /tmp
 
@@ -98,14 +112,17 @@ anything else:
 - The scratch "leak" is a counter bug — the deck never grows (`docs/BACKLOG.md`).
 - Dominant real problem: 5010 `InvalidParam passed to GetItem(id)`, office-js#2903.
 - Open questions worth rounds: the rasterise arms need 60-100 draws per arm
-  (24 now, and the observational cut shows the only stall in 456 draws came
+  (30 now, and the observational cut shows the only stall in 570 draws came
   after a rasterise); `shape-add-held-slide-proxy` pass-1-vs-later split;
-  `same scale across the deck` has now failed 12 of 12 — deterministic, only
+  `same scale across the deck` has now failed 15 of 15 — deterministic, only
   the degree varies.
-- `explode a degraded picture` passed ONCE in twelve, so its id refusals are not
+- `explode a degraded picture` passed ONCE in fifteen, so its id refusals are not
   guaranteed.
+- ANSWERED, do not re-ask as though it were open: the creation handle's lifetime
+  (`survives-8`). What refuses it is `load()`, not age.
 
 ## Wake the user for
 
-Sign-in expiry, sideload lost, browser or CLI daemon dead, or the wedge surviving
-a reload. Otherwise stay silent and keep going.
+Sideload lost, the CLI daemon dead, the wedge surviving a reload, or an
+`onedrive.live.com` → `login.live.com` redirect (only THAT is a sign-in
+expiry — a dead browser process is not). Otherwise stay silent and keep going.
