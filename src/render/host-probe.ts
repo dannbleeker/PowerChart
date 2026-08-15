@@ -1763,6 +1763,67 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "does-a-failed-group-poison-the-tag",
+    resample: true,
+    question: "After addGroup is refused, can a tag still be written in that same context?",
+    // THE HYPOTHESIS ROUND 043 PRODUCED, and it may retire the whole ordering
+    // effort — which is why it is asked before another line of that effort is
+    // written.
+    //
+    // The tag anchor was moved onto a handle nothing resolves, and round 043
+    // then scored EXACTLY what the round before it scored: `cfg-tag-5010` six
+    // times, `origin tag lost` zero times. If the handle were the lever, both
+    // numbers should have moved.
+    //
+    // What sits between the draw and the tag in production is a grouping
+    // attempt, and on this host it is refused — 5010, five times in that same
+    // round. A failed sync poisons its own context; this project already knows
+    // that and rebuilds a fresh context elsewhere for exactly that reason. And
+    // `no chart's tag could be queued` fired five times, which is a CONTEXT-level
+    // symptom: the queue refused before any handle was exercised.
+    //
+    // So the question is not which handle the write goes through but whether the
+    // context it goes through is already dead. `tag-the-creation-proxy-a-sync-later`
+    // answers `yes` four rounds running and is the control: same handle, same
+    // age, no grouping attempt in between.
+    //
+    //   refused-after-group  the context is the lever, not the handle. Tag in a
+    //                        context that has not tried to group, and the anchor
+    //                        move was aimed one level too low.
+    //   yes                  the context survives a refused group, and the tag
+    //                        failure needs another explanation.
+    //   no-refusal           the host grouped today, so the question was never
+    //                        put. Not an answer.
+    ask: async (ctx) => {
+      const shapes = await scratchShapes(ctx, [
+        { left: 270, top: 10, width: 20, height: 20 },
+        { left: 300, top: 10, width: 20, height: 20 },
+      ]);
+      const tagsOf = (s: unknown) => (s as { tags?: { add(k: string, v: string): void } }).tags;
+      let grouped = false;
+      try {
+        // The refusal this question is about, provoked the way production
+        // provokes it rather than in some safer form.
+        (ctx.scratch().shapes as unknown as { addGroup(items: unknown[]): unknown }).addGroup(shapes);
+        await ctx.sync();
+        grouped = true;
+      } catch {
+        /* expected on this host — the refusal IS the setup */
+      }
+      if (grouped) return { answer: "no-refusal", detail: "the host grouped, so the question was never put" };
+      try {
+        // SAME context, deliberately. A fresh one answers a different question
+        // and is the fix this may end up recommending, not the test of it.
+        if (!tagsOf(shapes[0])) return { answer: "tags-gone", detail: ".tags was undefined after the refused group" };
+        tagsOf(shapes[0])!.add("POWERCHART_PROBE", "after-a-refused-group");
+        await ctx.sync();
+        return { answer: "yes" };
+      } catch (err) {
+        return { answer: "refused-after-group", detail: short(err) };
+      }
+    },
+  },
+  {
     id: "which-end-a-short-read-drops",
     resample: true,
     question: "When a shape collection reads short, which end of it survives?",

@@ -667,6 +667,30 @@ export const RECOVERABLE_STOPS = new Set([
  * `codes` is optional so the two reasons that carry none (`crashed`, `silent`)
  * read the same as they always did.
  */
+/**
+ * What the recovery about to run is actually recovering FROM.
+ *
+ * One line, and it is read at the worst moment — mid-loop, by someone deciding
+ * whether the round is worth watching. Saying "clearing the crash" when the deck
+ * was merely dirty is how a debugging session starts by hunting a crash that
+ * never happened.
+ */
+export function recoveryFor(reason, codes) {
+  if (reason === "crashed") return "clearing the crash and starting again";
+  if (reason === "silent") return "the host went quiet — reloading and starting again";
+  const named = (codes ?? []).filter((c) => RECOVERABLE_STOPS.has(c));
+  if (!named.length) return "recovering and starting again";
+  const say = {
+    crashed: "a crash dialog",
+    "host-silent": "a silent host",
+    "slide-refused": "a host that would not resolve slide 1",
+    "pane-closed": "a closed pane",
+    "pane-stale": "a stale pane",
+    "deck-dirty": "a dirty deck",
+  };
+  return `recovering from ${named.map((c) => say[c] ?? c).join(" and ")}, then starting again`;
+}
+
 export function shouldRetry(reason, attempt, max, codes) {
   if (attempt >= max) return false;
   if (reason === "crashed" || reason === "silent") return true;
@@ -743,7 +767,12 @@ async function main(argv, deps = {}) {
     if (n) console.log(`\n  attempt ${n + 1} of ${max + 1}`);
     const { code, reason, codes } = await attempt(argv, deps, sh);
     if (!shouldRetry(reason, n, max, codes)) return code;
-    console.log('  clearing the crash and starting again — see docs/ROUNDS.md, "The wedge"');
+    // NAMED FOR WHAT ACTUALLY HAPPENED. This said "clearing the crash" whatever
+    // the reason was, and the moment the retry covered more than crashes it
+    // started lying: round 047 refused on a dirty deck alone and was told a
+    // crash was being cleared. A recovery line is read while someone is
+    // debugging, and one that invents a crash sends them looking for it.
+    console.log(`  ${recoveryFor(reason, codes)} — see docs/ROUNDS.md, "The wedge"`);
     await recover(sh, sleep);
   }
 }

@@ -689,6 +689,98 @@ function reportStability(logs) {
     );
 }
 
+/**
+ * The tag-failure faults, per BUILD, across every round.
+ *
+ * WHY THIS EXISTS, and it is the only reason: on 2026-08-15 a fix to the tag
+ * anchor was nearly reported as working because round 043 (with it) looked like
+ * round 042 (without it). It did — and so did rounds 041 and 042, which have NO
+ * renderer change between them at all:
+ *
+ *     041  ca866e3   tags-undefined 1   group-5010 1   no-queue 1   tagging-failed 4
+ *     042  a54401c   tags-undefined 5   group-5010 5   no-queue 5   tagging-failed 8
+ *
+ * A five-fold swing across a merge of a probe and some documentation. These
+ * counts track the host's REGIME, not the code, so comparing two rounds by eye
+ * is measuring mood — the same trap the rasterise arms exist to avoid, in a
+ * place nobody had noticed it.
+ *
+ * Grouped by build rather than by round so repeat rounds on one build pool
+ * instead of competing, and the spread WITHIN a build is printed, because that
+ * spread is the noise floor any claim about a fix has to clear.
+ */
+export function poolTagFaults(logs) {
+  const KINDS = [
+    [/Cannot read properties of undefined \(reading 'add'\)/, "tags-undefined"],
+    [/at=writing the chart's config tag/, "cfg-tag-5010"],
+    [/at=grouping the chart's shapes/, "group-5010"],
+    [/no chart's tag could be queued/, "no-queue"],
+  ];
+  const byBuild = new Map();
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    const build = String(log.build ?? "?").split(" ")[0];
+    const counts = Object.fromEntries(KINDS.map(([, name]) => [name, 0]));
+    counts["tagging-failed"] = 0;
+    for (const e of entries) {
+      if (/^tagging failed/.test(String(e.message ?? ""))) counts["tagging-failed"]++;
+      const blob = JSON.stringify(e.data ?? {});
+      for (const [re, name] of KINDS) if (re.test(blob)) counts[name]++;
+    }
+    if (!byBuild.has(build)) byBuild.set(build, []);
+    byBuild.get(build).push(counts);
+  }
+  return byBuild;
+}
+
+/** The tag-fault table, and the noise floor it implies. */
+function reportTagFaults(logs) {
+  const byBuild = poolTagFaults(logs);
+  if (byBuild.size < 2) return;
+  const kinds = ["tags-undefined", "cfg-tag-5010", "group-5010", "no-queue", "tagging-failed"];
+  console.log(`\n  TAG FAULTS PER BUILD — pooled over ${logs.length} round(s)`);
+  console.log(`    ${"build".padEnd(9)}${"n".padEnd(4)}${kinds.map((k) => k.padStart(16)).join("")}`);
+  const spread = {};
+  for (const [build, rounds] of byBuild) {
+    const cell = (k) => {
+      const vs = rounds.map((r) => r[k]);
+      const lo = Math.min(...vs);
+      const hi = Math.max(...vs);
+      (spread[k] ??= []).push(lo, hi);
+      return (lo === hi ? String(lo) : `${lo}-${hi}`).padStart(16);
+    };
+    console.log(`    ${build.padEnd(9)}${String(rounds.length).padEnd(4)}${kinds.map(cell).join("")}`);
+  }
+  // THE NOISE FLOOR, measured WITHIN one build wherever a build has been run
+  // twice — which is the only measurement that owes nothing to an argument. A
+  // spread across builds can always be answered with "but the code changed";
+  // the same build twice cannot.
+  const within = [];
+  for (const [build, rounds] of byBuild) {
+    if (rounds.length < 2) continue;
+    for (const k of kinds) {
+      const vs = rounds.map((r) => r[k]);
+      const lo = Math.min(...vs);
+      const hi = Math.max(...vs);
+      if (hi > lo) within.push({ build, k, lo, hi });
+    }
+  }
+  const worst = within.sort((a, b) => b.hi - b.lo - (a.hi - a.lo))[0];
+  if (worst)
+    console.log(
+      `    NOISE FLOOR, from one build run ${byBuild.get(worst.build).length}× : ${worst.build} scored ` +
+        `${worst.lo} and ${worst.hi} for ${worst.k}\n` +
+        `    with NOTHING changed between them. A difference smaller than that is the host's mood.\n` +
+        `    Judge a change on a count that did NOT move, or on a trace line that appears where none did.`,
+    );
+  else
+    console.log(
+      `    No build has been run twice, so there is no measured noise floor and no difference\n` +
+        `    in this table can be attributed to a change. Run one build twice before believing it.`,
+    );
+}
+
 /** The pooled arms, printed — or nothing when no round carried the scenario. */
 function reportPool(logs) {
   const { rounds, arms } = poolRasteriseArms(logs);
@@ -1002,6 +1094,7 @@ if (invokedDirectly) {
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
     reportPredictions(pooled);
+    reportTagFaults(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
   }
@@ -1043,6 +1136,7 @@ if (invokedDirectly) {
     reportSelfTest(selftest);
     reportStability(pooled);
     reportPredictions(pooled);
+    reportTagFaults(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)
       console.log("\n  this log holds no runs and no self-test\n");
