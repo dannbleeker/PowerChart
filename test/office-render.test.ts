@@ -211,6 +211,14 @@ describe("insertSceneIntoSlide", () => {
       // the ordering has to change, and it took one run to see instead of a
       // round. See `docs/BACKLOG.md`.
       expect(String(failed!.data!.from)).toMatch(/^(created|refreshed|group|by-id)×\d+/);
+      // AND WHICH SLIDE, which a lead in the archive cannot be tested without.
+      // Rounds 043-045 each lost a chart's config, and the one line that names a
+      // slide named `257#0` every time — an id whose second half is `0`, which
+      // is not the shape this host gives a slide it has finished adding. Two
+      // such ids turn up among every round's added slides. With the slide on
+      // this line, "are the charts that lose their tag the ones sitting on those
+      // slides" becomes a join instead of an inference off a settle-pass line.
+      expect(failed!.data!.slides, "the failure names no slide, so the #0 lead stays untestable").toBeTruthy();
     } finally {
       faults.refuseTagWrites = 0;
       setTracing(false);

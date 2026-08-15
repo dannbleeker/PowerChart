@@ -7530,6 +7530,20 @@ async function groupAndTagAll(
           trace("group", "not grouping: no member handle this host will accept", {
             index: i,
             refreshed: refreshed?.length ?? 0,
+            // WHICH SLIDE, because a lead is sitting in the archive that cannot
+            // be tested without it. Rounds 043-045 each lost a chart's config,
+            // and the one line that names a slide named `257#0` every time — an
+            // id whose second half is `0`, which is not the shape this host
+            // gives a slide it has finished adding. Two such ids appear among
+            // every round's added slides.
+            //
+            // So the question is whether the charts that lose their tag are the
+            // ones sitting on those slides, and today it can only be inferred
+            // from a single settle-pass line. Putting the slide on the three
+            // lines that decide a chart's fate — no group, tag refused, tag
+            // never queued — makes it a join instead of a guess, and costs a
+            // string already in hand.
+            slide: slideKeyFor(it.opts, it.getSlide),
           });
           continue;
         }
@@ -7642,6 +7656,9 @@ async function groupAndTagAll(
           trace("group", "a chart's tag could not even be queued", {
             index: i,
             from: targetFrom[i],
+            // See the `not grouping` line: the slide is what turns a lead about
+            // `NNN#0` ids into a join.
+            slide: slideKeyFor(it.opts, it.getSlide),
             error: errorText(err),
           });
         }
@@ -7710,6 +7727,13 @@ async function groupAndTagAll(
         // which of four handles it went through, and the two resolved ones are
         // the whole question.
         from: countBy((queued.length ? queued : taggable).map((t) => targetFrom[t.i])),
+        // The slides this batch was writing to, deduplicated — the batch covers
+        // several charts, so one id would be a guess about which. Same purpose
+        // as on the `not grouping` line above: it turns the `NNN#0` lead into a
+        // join rather than an inference off a single settle-pass line.
+        slides: [
+          ...new Set((queued.length ? queued : taggable).map((t) => slideKeyFor(t.it.opts, t.it.getSlide))),
+        ].join(","),
         error: errorText(err),
       });
     }

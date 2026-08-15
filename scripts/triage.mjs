@@ -734,6 +734,82 @@ export function poolTagFaults(logs) {
   return byBuild;
 }
 
+/**
+ * Does a chart that GETS GROUPED keep its config?
+ *
+ * THE QUESTION NOBODY ASKED FOR ELEVEN ROUNDS, and the archive had the answer
+ * the whole time. Pooled over every round on 2026-08-15:
+ *
+ *     grouped      64 charts, 1 lost its tag    (1.6%)
+ *     NOT grouped  62 charts, 41 lost their tag (66%)
+ *
+ * Per round it is almost mechanical — three grouped and none lost, two or three
+ * ungrouped and two lost, round after round.
+ *
+ * It reframes the whole tag effort. When grouping succeeds the tag goes onto the
+ * GROUP, a handle made in that batch and never resolved, and it lands. When
+ * grouping is skipped the tag falls back to a `created` handle and is refused
+ * two times in three. Which handle the fallback uses — the question four rounds
+ * and a renderer change went into — is a question about the losing path.
+ * `not grouping: no member handle this host will accept` carries `refreshed: 0`,
+ * so what decides a chart's config is whether the pre-grouping RE-READ returned
+ * anything.
+ *
+ * Reported every round from now on, because the cost of not reporting it was
+ * eleven rounds of looking one level too low.
+ */
+export function poolGroupVsTag(logs) {
+  const out = { grouped: 0, groupedLost: 0, ungrouped: 0, ungroupedLost: 0 };
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    const per = new Map();
+    for (const e of entries) {
+      const chart = (e.data ?? {}).chart;
+      if (!chart) continue;
+      if (!per.has(chart)) per.set(chart, []);
+      per.get(chart).push(String(e.message ?? ""));
+    }
+    for (const msgs of per.values()) {
+      const lost = msgs.some((m) => m.startsWith("tagging failed"));
+      // A chart can only be counted once, and `grouped` wins: the two messages
+      // are mutually exclusive per chart by construction, but a future retry
+      // that produced both would otherwise be counted in both columns and quietly
+      // flatten the very difference this exists to show.
+      if (msgs.some((m) => m.startsWith("grouped the chart"))) {
+        out.grouped++;
+        if (lost) out.groupedLost++;
+      } else if (msgs.some((m) => m.startsWith("not grouping"))) {
+        out.ungrouped++;
+        if (lost) out.ungroupedLost++;
+      }
+    }
+  }
+  return out;
+}
+
+/** Grouped versus ungrouped, and what it costs a chart's config. */
+function reportGroupVsTag(logs) {
+  const g = poolGroupVsTag(logs);
+  if (!g.grouped && !g.ungrouped) return;
+  const pct = (n, d) => (d ? `${((100 * n) / d).toFixed(0)}%` : "—");
+  console.log(`\n  DOES GROUPING SAVE THE CONFIG — pooled over ${logs.length} round(s)`);
+  console.log(
+    `    grouped      ${String(g.grouped).padStart(3)} chart(s), ${String(g.groupedLost).padStart(3)} lost the tag = ${pct(g.groupedLost, g.grouped)}`,
+  );
+  console.log(
+    `    NOT grouped  ${String(g.ungrouped).padStart(3)} chart(s), ${String(g.ungroupedLost).padStart(3)} lost the tag = ${pct(g.ungroupedLost, g.ungrouped)}`,
+  );
+  // Said out loud, because the number's whole value is what it implies about
+  // where to work, and that was missed for eleven rounds while it sat here.
+  if (g.grouped && g.ungrouped && g.ungroupedLost / g.ungrouped > 2 * (g.groupedLost / g.grouped || 0.001))
+    console.log(
+      `    A chart that groups keeps its config; one that cannot loses it. The tag HANDLE is a\n` +
+        `    question about the losing path — what decides a config is whether the pre-grouping\n` +
+        `    re-read returned anything (\`not grouping … refreshed: 0\`).`,
+    );
+}
+
 /** The tag-fault table, and the noise floor it implies. */
 function reportTagFaults(logs) {
   const byBuild = poolTagFaults(logs);
@@ -1107,6 +1183,7 @@ if (invokedDirectly) {
     const failed = reportSelfTest(selftest);
     reportStability(pooled);
     reportPredictions(pooled);
+    reportGroupVsTag(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
@@ -1149,6 +1226,7 @@ if (invokedDirectly) {
     reportSelfTest(selftest);
     reportStability(pooled);
     reportPredictions(pooled);
+    reportGroupVsTag(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)

@@ -26,6 +26,7 @@ const {
   cli,
   isOverflow,
   recoveryFor,
+  noBrowser,
   slideResolveScript,
   readSlideResolve,
 } = driver;
@@ -127,6 +128,27 @@ describe("talking to the browser at all", () => {
     expect(r.ok).toBe(false);
     expect(r.stop).toHaveLength(1);
     expect(r.stop[0]).toContain("nothing below was actually measured");
+  });
+
+  it("tells a dead browser from a closed pane", () => {
+    // SEVEN ATTEMPTS, 2026-08-15. A round wedged and the browser process died
+    // with it; `recover` then reloaded and reopened a pane inside a window that
+    // did not exist, seven times, while the check said "could not read the pane's
+    // build stamp — is the add-in open?" The add-in was fine. There was nothing
+    // to open it in.
+    expect(noBrowser("  (no browsers)")).toBe(true);
+    expect(noBrowser("### Browsers\n- ms:\n  - status: open")).toBe(false);
+    expect(noBrowser("")).toBe(false);
+
+    const r = readiness({ ...READY, browserGone: true, stamp: null, slides: null });
+    expect(r.ok).toBe(false);
+    expect(r.stop).toHaveLength(1);
+    expect(r.stop[0], "sent the reader to the add-in again").not.toContain("is the add-in open?");
+    expect(r.stop[0]).toContain("no browser");
+    // Recoverable WITHOUT a password, because the profile keeps the sign-in —
+    // so the loop reopens it rather than waiting for a person.
+    expect(r.codes).toEqual(["browser-gone"]);
+    expect(shouldRetry("not-ready", 0, 3, r.codes), "a dead browser is the loop's to fix").toBe(true);
   });
 
   it("finds the CLI entry beside node, or says it cannot", () => {
@@ -348,7 +370,13 @@ describe("asking the host whether it is awake", () => {
     expect(shouldRetry("crashed", 0, 3)).toBe(true);
     expect(shouldRetry("crashed", 3, 3), "the budget is a budget").toBe(false);
     expect(shouldRetry("silent", 0, 3), "the quiet wedge is a wedge").toBe(true);
-    expect(shouldRetry("timeout", 0, 3)).toBe(false);
+    // A WEDGE MID-ROUND, which stopped an unattended run dead in its first hour
+    // on 2026-08-15: the round timed out at thirty minutes, `recover` could have
+    // cleared it in eighty seconds, and `timeout` was not on the list. The cost
+    // of retrying is bounded by the `--retry` the caller chose; the cost of not
+    // retrying was nine idle hours.
+    expect(shouldRetry("timeout", 0, 3), "a wedged round is recoverable").toBe(true);
+    expect(shouldRetry("timeout", 3, 3), "and still bounded by the budget").toBe(false);
     expect(shouldRetry("finished", 0, 3)).toBe(false);
   });
 
@@ -383,6 +411,7 @@ describe("asking the host whether it is awake", () => {
     // recovery line is read while someone is debugging.
     expect(recoveryFor("crashed", ["crashed"])).toContain("clearing the crash");
     expect(recoveryFor("silent", undefined)).toContain("went quiet");
+    expect(recoveryFor("timeout", undefined)).toContain("wedged");
     expect(recoveryFor("not-ready", ["deck-dirty"]), "the round-047 line").toBe(
       "recovering from a dirty deck, then starting again",
     );

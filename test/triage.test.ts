@@ -14,6 +14,9 @@ import { triage, runsIn, selfTestIn, knownBug, deckEvidence, poolRasteriseArms }
 // the directive stops reaching the `from` clause. Suite green, `tsc` red.
 // @ts-expect-error — as above.
 import { poolTagFaults } from "../scripts/triage.mjs";
+// Its own line, same reason as every other single import in this file.
+// @ts-expect-error — as above.
+import { poolGroupVsTag } from "../scripts/triage.mjs";
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -410,6 +413,37 @@ describe("triage — logs that are not inserts", () => {
     // A fault line that is not a tagging failure must not inflate the count that
     // a fix would be judged on.
     expect(byBuild.get("bbbbbbb")![0]["tagging-failed"]).toBe(5);
+  });
+
+  it("separates the charts that got grouped from the ones that did not", () => {
+    // THE QUESTION NOBODY ASKED FOR ELEVEN ROUNDS, and the archive held the
+    // answer throughout: pooled over every round, 64 grouped charts lost 1 tag
+    // and 62 ungrouped charts lost 41. A chart that groups keeps its config; one
+    // that cannot loses it two times in three.
+    //
+    // It reframes the tag work. Grouping puts the tag on the GROUP — a handle
+    // made in that batch and never resolved — and it lands. No group means the
+    // tag falls back to a `created` handle, which is the path four rounds and a
+    // renderer change went into. That is a question about the losing side.
+    const chart = (name: string, msgs: string[]) => msgs.map((m) => ({ message: m, data: { chart: name } }));
+    const g = poolGroupVsTag([
+      {
+        trace: {
+          entries: [
+            ...chart("1/3", ["grouped the chart's shapes"]),
+            ...chart("2/3", ["grouped the chart's shapes", "tagging failed — charts are not re-editable"]),
+            ...chart("3/3", ["not grouping: no member handle this host will accept", "tagging failed — nope"]),
+            // No chart key at all: batch-level noise that must not be counted as
+            // a chart in either column.
+            { message: "tagging failed — charts are not re-editable", data: {} },
+          ],
+        },
+      },
+    ]);
+    expect(g.grouped).toBe(2);
+    expect(g.groupedLost, "a grouped chart CAN still lose its tag — the claim is a rate, not a law").toBe(1);
+    expect(g.ungrouped).toBe(1);
+    expect(g.ungroupedLost).toBe(1);
   });
 
   it("says nothing about ids when every one of them finished", () => {
