@@ -164,6 +164,42 @@ describe("insertSceneIntoSlide", () => {
     expect(tagged!.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
   });
 
+  it("says WHICH handle the failed tag write went through", async () => {
+    // The instrument the last six rounds needed and did not have. Every one of
+    // them recorded `tagging failed` with a count and an error and nothing about
+    // the handle, and there are four routes to a tag target — two of which this
+    // host resolves and refuses (`refreshed`, `by-id`) and two of which it
+    // accepts (`created`, `group`). Without this field the trace says a write
+    // failed; with it, the trace says it failed THROUGH A RESOLVED HANDLE, which
+    // is the difference between a fix and another round.
+    setTracing(true);
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.refuseTagWritesOnResolvedProxy = true;
+    try {
+      await insertSceneIntoSlide(buildChart(config), {
+        tagData: JSON.stringify(config),
+        group: false,
+        shapesPerSync: 1,
+      });
+      const failed = traceLog().entries.find((e) => e.message.startsWith("tagging failed"));
+      expect(failed, "the write was refused and the trace did not say so").toBeDefined();
+      expect(failed!.data!.from, "named no handle — the whole point of the field").toBeTruthy();
+      // `created×1`, and that answer is the field earning its place on its first
+      // outing. The guess going in was `refreshed` — the pre-grouping re-read
+      // being the obvious suspect — and the trace says otherwise: the target was
+      // the handle that DREW the shape, and the write was still refused, because
+      // the pass loads the created shapes too before it writes (the parts tag
+      // reads their ids). That is why swapping the target does not fix this and
+      // the ordering has to change, and it took one run to see instead of a
+      // round. See `docs/BACKLOG.md`.
+      expect(String(failed!.data!.from)).toMatch(/^(created|refreshed|group|by-id)×\d+/);
+    } finally {
+      faults.refuseTagWritesOnResolvedProxy = false;
+      setTracing(false);
+    }
+  });
+
   it("survives a refused resolved handle here, the way the real host does not", async () => {
     // Six real rounds, one failure, and the host naming its own cause:
     //

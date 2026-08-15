@@ -7232,6 +7232,34 @@ async function groupAndTagAll(
   items: Grouping[],
 ): Promise<{ target?: TargetRef; partIds?: string[]; grouped?: boolean; tagged?: boolean }[]> {
   const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
+  /**
+   * WHERE each tag target came from, which is the one thing the failure trace
+   * could never say.
+   *
+   * Six rounds lost half a deck of config tags to `InvalidParam passed to
+   * GetItem(id)` here, and every one of them recorded the error and the count
+   * and nothing about the handle it was written through. That is the difference
+   * between the four routes below, and it decides the fix:
+   *
+   *   created    the proxy that drew the shape, never loaded — the host takes
+   *              writes through this one however old it is
+   *              (`tag-the-creation-proxy-a-sync-later: yes`, four rounds)
+   *   refreshed  the pre-grouping re-read, which a `load()` has RESOLVED, and
+   *              which Office.js has therefore rewritten to `shapes.getItem(id)`
+   *   group      the group made in the grouping batch, also never loaded
+   *   by-id      an explicit `getItemOrNullObject(id)` lookup
+   *
+   * `refreshed` and `by-id` are the resolved pair and are what this host
+   * refuses; `created` and `group` are not. A round that says which was used
+   * turns "the tag write failed" into "the tag write failed THROUGH A RESOLVED
+   * HANDLE", which is a fix rather than another investigation.
+   */
+  const targetFrom = items.map(() => "created");
+  /** `["created","refreshed","created"]` → `"created×2, refreshed×1"`. */
+  const countBy = (xs: string[]) =>
+    [...xs.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map<string, number>())]
+      .map(([k, n]) => `${k}×${n}`)
+      .join(", ");
   // Which charts actually ended up as one shape. The rest hang everything the
   // group would have carried off their first shape instead — see below.
   const grouped = new Set<number>();
@@ -7378,7 +7406,11 @@ async function groupAndTagAll(
   }
   // A refreshed single shape is the tag target from here — the whole point of
   // refreshing it. Grouped items get their target replaced by the group below.
-  for (const [i, fresh] of freshMembers) if (fresh.length === 1) tagTargets[i] = fresh[0];
+  for (const [i, fresh] of freshMembers)
+    if (fresh.length === 1) {
+      tagTargets[i] = fresh[0];
+      targetFrom[i] = "refreshed";
+    }
   if (groupable.length && supports("1.8")) {
     const took: { index: number; drew: number; took: number; by: string }[] = [];
     try {
@@ -7429,6 +7461,7 @@ async function groupAndTagAll(
         // a screen reader announces the chart — the description the engine built.
         applyAltText(group, it.opts);
         tagTargets[i] = group;
+        targetFrom[i] = "group";
         grouped.add(i);
         took.push({ index: i, drew: it.created.length, took: members.length, by: choice.use });
       }
@@ -7480,10 +7513,11 @@ async function groupAndTagAll(
       for (const { i } of groupable) {
         const fresh = freshMembers.get(i)?.[0];
         const id = fresh ? loadedValue(() => fresh.id) : undefined;
-        tagTargets[i] =
-          typeof id === "string" && id
-            ? (items[i].getSlide().shapes.getItemOrNullObject(id) as PowerPoint.Shape)
-            : (fresh ?? items[i].created[0]);
+        const byId = typeof id === "string" && id;
+        tagTargets[i] = byId
+          ? (items[i].getSlide().shapes.getItemOrNullObject(id) as PowerPoint.Shape)
+          : (fresh ?? items[i].created[0]);
+        targetFrom[i] = byId ? "by-id" : fresh ? "refreshed" : "created";
       }
       grouped.clear();
     }
@@ -7523,7 +7557,11 @@ async function groupAndTagAll(
           target!.load("id,left,top");
           queued.push(t);
         } catch (err) {
-          trace("group", "a chart's tag could not even be queued", { index: i, error: errorText(err) });
+          trace("group", "a chart's tag could not even be queued", {
+            index: i,
+            from: targetFrom[i],
+            error: errorText(err),
+          });
         }
       }
       if (!queued.length) throw new Error("no chart's tag could be queued");
@@ -7562,6 +7600,10 @@ async function groupAndTagAll(
       // the same job done with evidence.
       trace("group", "tagging failed — charts are not re-editable until repaired", {
         charts: queued.length || taggable.length,
+        // See `targetFrom`. Without this the trace says a write failed and not
+        // which of four handles it went through, and the two resolved ones are
+        // the whole question.
+        from: countBy((queued.length ? queued : taggable).map((t) => targetFrom[t.i])),
         error: errorText(err),
       });
     }
