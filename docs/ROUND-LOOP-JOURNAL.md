@@ -474,3 +474,57 @@ driver fix above doing its job on its first outing.
 4. **Fix.** The three driver defects above.
 
 5. **Doctrine.** `docs/BACKLOG.md` ordering item records the closed route.
+
+### Round 045 — ca866e3 — archived as 041 — 10/12, and the first clean start in five
+
+    host answered in 4ms · slide 1 resolved
+    ready
+    running — this takes about ten minutes
+    finished
+
+**No crash, on the first attempt.** Rounds 043 and 044 crashed 2s into every
+first attempt — four for four — and this is the first that did not.
+
+**What that is worth, stated before it gets quoted as more.** n=1, and the
+experiment is confounded BY DESIGN: the check resolves a slide, so a clean run is
+equally consistent with "the touch settled the host" and with "the host was fine
+today". The reading that would have been decisive is the other one — `resolved`
+followed by a crash anyway would have refuted the theory outright — and it did
+not happen. So this is one point of weak support for a theory that still has no
+test, and the brief already says to record the word every round for exactly this
+reason. Three or four more clean starts make it an effect; one does not.
+
+1. **Mine.** Everything else is the fourth consecutive repeat, which is itself
+   the finding — this host is now boringly reproducible:
+   - `survives-8`, stable, on a fourth build. Eleven samples.
+   - `tag-through-refetched-shape: no-id`, stable, replicated.
+   - Every tag failure `from: created×1`. Four rounds, not one `refreshed`,
+     `group` or `by-id`.
+   - `same scale` 4 of 8, host flips at chart 5 of 8. 16 of 16 failures.
+   - 37 draws, ZERO stalls, slowest batch 16.9s, one population.
+
+   **Two things that are NOT repeats, both in the deck rather than the trace:**
+   - **One added slide came back blank and the rasterise agrees** (7 added, 6
+     carry shapes). Rounds 039 and 040 both had zero. One witness plus its
+     picture is the standard this repo set for calling a slide empty, and this
+     one meets it.
+   - **Two of the seven new slide ids are `256#0` and `257#0`** against
+     `288#3603562595` and friends for the rest. An id whose second half is `0` is
+     not the shape this host gives a slide it has finished adding, and the round
+     also reports `delete-by-id left slides behind and this host does not list the
+     ids they were added under`. Those two facts are probably the same fact.
+
+2. **Research.** Nothing unexplained beyond the `#0` ids, which are worth a
+   search of the office-js tracker next round rather than a guess now.
+
+3. **Instrument.** The next question is already framed: does a slide whose id
+   reads `NNN#0` correspond to the blank one? The round log carries both halves —
+   `deck.inventory` and `deck.newSlides` — but nothing joins them, so it took a
+   hand query to notice. Joining them in `triage` is the cheap next instrument.
+
+4. **Fix.** None. Nothing this round exposed is fixable without first knowing
+   whether the `#0` id and the blank slide are the same event.
+
+5. **Doctrine.** The brief's "first thing to read" now points at the experiment's
+   own word, and this entry records what a single clean start does and does not
+   license.

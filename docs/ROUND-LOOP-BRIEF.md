@@ -45,6 +45,18 @@ Three outcomes, and all three are worth having:
 - `resolved` and no crash → says nothing on its own. Needs the rounds where it
   said `REFUSED` to mean anything, so record the word every time.
 
+**First outing (round 045): `resolved`, and the first attempt ran clean — the
+first in five rounds.** One point of weak support, not an effect: a clean run is
+equally consistent with the touch having settled the host and with the host
+having been fine. Three or four more make it real. The decisive reading is still
+the other one.
+
+**Also open, from the same round:** one added slide came back blank with the
+rasterise agreeing, and two of seven new slide ids read `256#0` / `257#0` rather
+than the usual `288#3603562595`. Probably the same event as `delete-by-id left
+slides behind`. Join `deck.inventory` to `deck.newSlides` in `triage` and it
+answers itself.
+
 **SPENT — do not re-ask as though open:** `how-many-syncs-a-creation-handle-
 survives` (`survives-8`, eight samples over three builds) and
 `tag-through-refetched-shape` (`no-id`). Between them the ordering fix in
