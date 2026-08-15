@@ -1710,6 +1710,59 @@ const PROBES: Probe[] = [
     },
   },
   {
+    id: "collection-read-poisons-the-creation-handle",
+    resample: true,
+    question: "After re-reading the slide's shapes, does the handle that CREATED a shape still take a tag?",
+    // THE QUESTION THAT DECIDES THE ORDERING FIX, and the reason that fix is not
+    // in this commit.
+    //
+    // `survives-8` says a creation handle keeps taking writes for at least eight
+    // syncs. `tag-through-refetched-shape: no-id` says there is no id to re-fetch
+    // one by. Between them the fix looked settled: make the tag target a shape
+    // the draw loop never `load()`s, and the write goes through.
+    //
+    // It was built on 2026-08-15 and the Office.js fake refused it. Production
+    // does one thing the two probes above do not: `groupAndTagAll` re-reads the
+    // whole slide's shape collection before grouping (`shapes.load("items/id")`),
+    // because grouping needs fresh handles. In the fake that read marks the
+    // shape resolved for EVERY handle onto it, the creation handle included, so
+    // holding the anchor's own load back changes nothing and the write is refused
+    // anyway.
+    //
+    // Whether that is true of the real host is exactly what nobody knows.
+    // Office.js gives each proxy its own object path, so a collection item and a
+    // creation handle should be independent — and the fake itself takes that
+    // view everywhere else, giving a fresh handle its own `syncCreated` and its
+    // own tag writer while sharing only the shape's state. `loadedProps` is
+    // handle state modelled as shape state, which is either a bug in the fake or
+    // the one place it is right and the rest is wrong.
+    //
+    // A round settles it, and nothing else can:
+    //   `yes`      the collection read is innocent, the fake is wrong, and the
+    //              ordering fix works — build it.
+    //   `refused`  the fake is right, and no arrangement of loads saves the
+    //              drawing context's write while grouping needs a re-read. The
+    //              fix then has to be a second tag key or nothing.
+    ask: async (ctx) => {
+      const [shape] = await scratchShapes(ctx, [{ left: 240, top: 10, width: 20, height: 20 }]);
+      const tagsOf = (s: unknown) => (s as { tags?: { add(k: string, v: string): void } }).tags;
+      try {
+        // The re-read production does, on the slide this shape is on — the whole
+        // point of the question. Its RESULT is deliberately unused: what is being
+        // asked is what the read did to the handle we already hold.
+        const shapes = ctx.scratch().shapes;
+        shapes.load("items/id");
+        await ctx.sync();
+        if (!tagsOf(shape)) return { answer: "tags-gone", detail: ".tags was undefined after the collection read" };
+        tagsOf(shape)!.add("POWERCHART_PROBE", "after-a-collection-read");
+        await ctx.sync();
+        return { answer: "yes" };
+      } catch (err) {
+        return { answer: "refused", detail: short(err) };
+      }
+    },
+  },
+  {
     id: "delete-then-lookup",
     question: "Right after delete()+sync, does getItemOrNullObject report it gone?",
     // `deleteSlideById` verifies from a FRESH context because of this. If a

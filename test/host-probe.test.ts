@@ -228,9 +228,21 @@ describe("the fake host's answer sheet", () => {
       expect(answers["how-many-syncs-a-creation-handle-survives"], "the age fault did not reach the age question").toBe(
         "refused-after-1",
       );
-      const { "how-many-syncs-a-creation-handle-survives": _aged, ...rest } = answers;
-      const { "how-many-syncs-a-creation-handle-survives": _baseline, ...baselineRest } = FAKE_BASELINE;
-      expect(rest).toEqual(baselineRest);
+      // TWO questions move, for one reason. `collection-read-poisons-the-creation-handle`
+      // spends a sync on the collection read it exists to make, so under
+      // `strictTags` its handle is more than one sync old by the time it writes
+      // and the write is refused — by the AGE rule, not by the read. Asserting
+      // the move keeps that visible; folding it into the baseline would claim
+      // the age fault leaves it alone, which is false and would hide the day
+      // this probe stops spending that sync.
+      expect(
+        answers["collection-read-poisons-the-creation-handle"],
+        "the age fault did not reach the question that spends a sync",
+      ).toBe("refused");
+      const moves = ["how-many-syncs-a-creation-handle-survives", "collection-read-poisons-the-creation-handle"];
+      const without = (o: Record<string, unknown>) =>
+        Object.fromEntries(Object.entries(o).filter(([k]) => !moves.includes(k)));
+      expect(without(answers)).toEqual(without(FAKE_BASELINE));
     } finally {
       faults.strictTags = false;
       faults.strictGroup = false;
@@ -442,6 +454,8 @@ describe("the fake host's answer sheet", () => {
         "tag-through-refetched-shape",
         // Needs a shape to age.
         "how-many-syncs-a-creation-handle-survives",
+        // Needs a shape to hold a handle onto across the collection read.
+        "collection-read-poisons-the-creation-handle",
         "delete-then-lookup",
         "addgroup-returns-usable",
         "group-reports-its-children",

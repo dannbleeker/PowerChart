@@ -34,6 +34,11 @@ export const FAKE_BASELINE = {
   "tags-on-fresh-shape": "yes",
   "tag-through-refetched-shape": "yes",
   "how-many-syncs-a-creation-handle-survives": "survives-8",
+  // `yes` here is the fake saying its collection read did NOT poison the
+  // creation handle — on the scratch slide, where the shape has no other
+  // handles onto it. Production's does, which is the whole question; see
+  // PENDING_QUESTIONS.
+  "collection-read-poisons-the-creation-handle": "yes",
   "delete-then-lookup": "reports-gone",
   "addgroup-returns-usable": "yes",
   "group-children-via-getcount": "two",
@@ -316,6 +321,20 @@ export const UNSTABLE_ANSWERS = {
  * Every entry here is a reason to ask the owner for a probe run.
  */
 export const PENDING_QUESTIONS = {
+  "collection-read-poisons-the-creation-handle":
+    "Added 2026-08-15, and it is the question the ordering fix is now blocked on — the fix was BUILT that day and the " +
+    "Office.js fake refused it. `survives-8` says a creation handle keeps taking tag writes for at least eight syncs, and " +
+    "`tag-through-refetched-shape: no-id` says there is no id to re-fetch one by, so the fix looked settled: make the tag " +
+    "anchor a shape the draw loop never `load()`s and the write goes through. Production does one thing neither probe " +
+    "does — `groupAndTagAll` re-reads the whole slide's shape collection before grouping, because grouping needs fresh " +
+    "handles — and in the fake that read marks the shape resolved for EVERY handle onto it, creation handle included, so " +
+    "holding the anchor's own load back changes nothing and the write is refused anyway. Whether the real host works " +
+    "that way is unknown. Office.js gives each proxy its own object path, and the fake itself takes that view everywhere " +
+    "else: a fresh handle gets its own `syncCreated` and its own tag writer, sharing only the shape's state. " +
+    "`loadedProps` is handle state modelled as shape state, which is either a bug in the fake or the one place it is " +
+    "right. `yes` means the collection read is innocent, the fake is wrong, and the ordering fix works — build it. " +
+    "`refused` means no arrangement of loads saves the drawing context's write while grouping needs a re-read, and the " +
+    "fix has to be a second tag key or nothing.",
   "how-many-syncs-a-creation-handle-survives":
     "Added 2026-08-15 after round 037 carried the new `from` field and answered the question it was built for: EVERY tag " +
     "failure in that round went through a `created` handle — seven batch-level and four per-chart, not one `refreshed` " +
