@@ -303,6 +303,54 @@ originating in the PARENT path would be invisible to this question. The host's
 `errorLocation` is `ShapeCollection.getItem` rather than the slide, which is
 evidence against that reading but not proof.
 
+### Why it is a redesign and not a reordering — the three-way knot
+
+Attempted properly on 2026-08-15 and stopped at a constraint rather than at
+effort. Recorded because every route below LOOKS like the fix for about twenty
+minutes, and the thing that kills it is somewhere else in the file.
+
+Three requirements, each independently non-negotiable, and no two-line change
+satisfies all three:
+
+1. **The tag target must be unresolved when the tag is written.** Measured:
+   `survives-8` and `tag-through-refetched-shape: no-id`. A `load()` is what
+   makes Office rewrite the handle into `shapes.getItem(id)`, which this host
+   refuses.
+2. **The pre-grouping re-read needs every created id.** `powerpoint.ts:7347`
+   matches created shapes to the re-read BY ID, and a PARTIAL match is thrown
+   away on purpose — the comment above it is explicit that keeping one strands
+   shapes inside the chart's box, with `grouped … partial=1 left=0:4` from a real
+   slide as the evidence. Skip loading the anchor and every chart becomes an N-1
+   of N partial match, so **grouping stops working everywhere, desktop included**.
+   The positional fallback is not available either: it is deliberately reachable
+   only when NOTHING matched, because a slide holding the user's own shapes can
+   satisfy `items.length >= created.length` and "the last N" would then group the
+   user's content in, to be deleted with the chart on the next update.
+3. **The tag must not land before the chart is complete.** Tagging `created[0]`
+   in the first draw batch is the obvious way to get requirement 1, and it makes
+   a stalled or stopped draw leave a tagged partial chart behind. The self-test
+   scenario `stop a run part-way` asserts the opposite in as many words —
+   "nothing left claiming to be a chart" — and it passes today.
+
+The two routes the earlier note proposed both die on requirement 3 or on cost:
+
+- **Tag early, drop the anchor's tag once the group's lands.** `TagCollection.delete(key)`
+  does exist, so the mechanism is real, and on this host grouping never succeeds
+  so the delete would never need to run. It still leaves requirement 3 broken.
+- **A second key only the recovery path reads.** For the chart to be re-editable
+  the READERS have to accept that key, and `chartTagsOf` does not read the scene
+  tag today — so deduping "the group and its anchor are one chart" costs another
+  per-shape tag lookup deck-wide, on a host already observed reading collections
+  short. That is a real cost against the scan that Same Scale depends on.
+
+**The shape of the actual fix, now that the knot is stated:** the tag target has
+to be a shape created in the LAST draw batch and never loaded — then it is
+unresolved (1), every OTHER created shape keeps its id for the re-read (2), and
+nothing is tagged until the chart is finished (3). That means the anchor stops
+being `created[0]`, which `ungroupedFallback`'s "everything after index 0 is a
+part" and `CHART_ORIGIN_TAG`'s frame both assume. That is the session's worth of
+work, and it is now a well-posed one rather than "restructure the pass".
+
 **And the trace now says which handle was used**, which is what the six rounds
 before it could not. `tagging failed` carries `from: created×N, refreshed×N`, one
 of four routes:
