@@ -16,3 +16,12 @@ visible-charts/
 # Stryker copies the whole repo here while it runs.
 .stryker-tmp/
 reports/
+
+# The browser session the round driver drives (see scripts/pw.sh).
+.pw-session/
+
+# Crash reports are forensic dumps from a LIVE, AUTHENTICATED session — request
+# URLs, session ids, the document name. This repo is public. The README stays;
+# the reports never leave the machine.
+crashes/*.md
+!crashes/README.md

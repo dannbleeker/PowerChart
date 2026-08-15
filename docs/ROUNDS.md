@@ -104,6 +104,30 @@ pass and fail about code that did not change between them. `explode a degraded p
 disagreed with itself, the host simply stopped answering during the fourth. Sometimes-unmeasured
 and genuinely-contradictory are different facts and the report keeps them apart.
 
+## Starting from nothing
+
+    . scripts/pw.sh                                   # pw / paneref / pwclean
+    pw open "https://onedrive.live.com/"              # sign in, open the deck,
+                                                      # sideload from Home > Add-ins
+    node scripts/round.mjs --check --dir .pw-session
+    node scripts/round.mjs --dir .pw-session --retry 6
+
+`scripts/pw.sh` exists because those helpers lived in `/tmp` for a day and a
+half, rebuilt by hand every session, carrying paths keyed to whichever agent
+session created them. Archive that session and the browser, its profile and every
+helper went with it.
+
+**The session directory has to be stable, and that is not a detail.** The CLI
+daemon keys a browser by the working-directory STRING, so a browser is only
+findable from the exact path that opened it. Parking it in an agent scratchpad
+meant the next session looked in a new directory, got `(no browsers)`, and could
+not reach a browser sitting on screen. `.pw-session/` in the repo root,
+gitignored, is reachable from any shell on the machine — and it is what `--dir`
+should be given.
+
+Sign-in is the owner's, always: `--check` names that state on its own and says
+so.
+
 ## Driving a round
 
 The owner drives PowerPoint and the agent fixes fallout — but a round CAN be driven end to end from
