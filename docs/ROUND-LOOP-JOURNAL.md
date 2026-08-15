@@ -881,3 +881,28 @@ at thirty minutes and the driver recovered and finished on attempt 3 — before
 tonight that was a dead stop. And the crash report from that wedge reads "(could
 not read — the call could not be run)" three times rather than "(nothing)",
 which is the `lastFailed` fix refusing to report an empty host as evidence.
+
+### Pair 5 — a004711 × 2 — archived as 053 and 054 — a question CLOSES
+
+**`does a rasterise poison the next draw` is answered: NO.**
+
+    after a rasterise     0 stalled /  60 drawn = 0.0%
+    after a cheap read    0 stalled /  60 drawn = 0.0%
+
+Sixty draws per arm is the bar the tool itself set, and the "NOT an answer yet"
+line is gone. Open since round 33, counterbalanced the whole way, and it closes
+in the negative — a rasterise is not what makes a draw stall. Nothing to fix,
+which is the point: the suspicion is retired rather than carried.
+
+The root cause holds and sharpens with two more rounds:
+
+    slide already had shapes   91 chart(s), 90 grouped = 99%
+    freshly added, empty       80 chart(s),  1 grouped =  1%
+
+**A slip of mine worth recording.** Round B was launched with a shell `&`
+instead of the harness's background mechanism, so its console output was lost and
+no completion signal existed. The process survived and the round completed — the
+run log and the archive are what matter, and both were intact — but the recovery
+was luck rather than design. A waiter that watches for the process to exit
+restored the signal without touching playwright-cli. Launch a round the same way
+every time.
