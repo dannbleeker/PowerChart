@@ -95,6 +95,18 @@ import {
   type FakeSlide,
 } from "./helpers/office-host";
 
+/**
+ * The shape a chart's tags actually landed on — asked, never assumed.
+ *
+ * These assertions used to read `slide.created[0]`, which was true only while
+ * the anchor was the FIRST shape drawn. It is the last one now
+ * (`tagAnchorIndex`) so that it can reach the tag write unresolved, and a
+ * hardcoded index would have had to be edited in six places and would go stale
+ * again on the next change. Asking which shape carries the tag is what every one
+ * of these tests meant in the first place.
+ */
+const taggedShape = (slide: FakeSlide, key = CHART_TAG) => slide.created.find((s) => s.tagStore.get(key));
+
 const config: ChartConfig = {
   kind: "stacked",
   ...DEFAULT_SIZE,
@@ -175,7 +187,12 @@ describe("insertSceneIntoSlide", () => {
     setTracing(true);
     const slide = makeSlide("s1");
     installHost([slide]);
-    faults.refuseTagWritesOnResolvedProxy = true;
+    // A fault that still REFUSES the write, which since 2026-08-15 is no longer
+    // `refuseTagWritesOnResolvedProxy`: the tag anchor is an unresolved handle
+    // now (`tagAnchorIndex`), so that fault has nothing to refuse and this test
+    // would assert against a failure that never happens. The field under test is
+    // `from`, not the fault that provokes it — so provoke it with one that bites.
+    faults.refuseTagWrites = 99;
     try {
       await insertSceneIntoSlide(buildChart(config), {
         tagData: JSON.stringify(config),
@@ -195,7 +212,7 @@ describe("insertSceneIntoSlide", () => {
       // round. See `docs/BACKLOG.md`.
       expect(String(failed!.data!.from)).toMatch(/^(created|refreshed|group|by-id)×\d+/);
     } finally {
-      faults.refuseTagWritesOnResolvedProxy = false;
+      faults.refuseTagWrites = 0;
       setTracing(false);
     }
   });
@@ -222,6 +239,9 @@ describe("insertSceneIntoSlide", () => {
     const slide = makeSlide("s1");
     installHost([slide]);
     faults.refuseTagWritesOnResolvedProxy = true;
+    // ON, or the `tagging failed` assertion below is vacuous — an empty trace
+    // holds no failure line for the same reason it holds nothing at all.
+    setTracing(true);
     try {
       // `shapesPerSync: 1` is what makes this the real case: a chart that spans
       // sync batches sets `refreshShapes`, which is the only thing that triggers
@@ -235,20 +255,30 @@ describe("insertSceneIntoSlide", () => {
       });
     } finally {
       faults.refuseTagWritesOnResolvedProxy = false;
+      setTracing(false);
     }
-    // The tag SURVIVES here, and the gap between this and the real host is the
-    // point. The drawing context's write is refused exactly as it is in a real
-    // round; the settle pass then repairs it, because the fake can resolve a
-    // shape by id. The real host cannot — `withId: 0` on every failure across
-    // six rounds — so there the chart stays nameless.
+    // THE WRITE ITSELF GOES THROUGH NOW, and that is the whole fix.
     //
-    // So this pins the first half of the reproduction and names the second.
-    // Arming `refuseShapeIdLoads` alongside was tried and models something
-    // harsher than the host: it makes the insert throw outright, where a real
-    // round carries on and merely loses the tag.
+    // This asserted something weaker until 2026-08-15 and said so: the drawing
+    // context's write was refused exactly as in a real round, and the SETTLE
+    // pass repaired it because the fake can resolve a shape by id. The real host
+    // cannot — `withId: 0` on every failure across six rounds — so there the
+    // chart stayed nameless. The test pinned the first half of the reproduction
+    // and named the second as out of reach.
+    //
+    // It is in reach now. The tag anchor is the last shape drawn and its id is
+    // never loaded (`tagAnchorIndex`), so the handle the write goes through was
+    // never resolved and `refuseTagWritesOnResolvedProxy` has nothing to refuse.
+    expect(traceLog().entries.length, "tracing was off, so the assertion below proves nothing").toBeGreaterThan(0);
     const tagged = slide.created.find((s) => s.tagStore.get(CHART_TAG));
-    expect(tagged, "the settle pass should have repaired what the drawing context lost").toBeTruthy();
+    expect(tagged, "the drawing context's own write should have landed").toBeTruthy();
     expect(tagged!.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
+    // Landed first time, not repaired after the fact. A repair leaves the
+    // failure in the trace, and on the real host there is no repair to be had.
+    expect(
+      traceLog().entries.some((e) => e.message.startsWith("tagging failed")),
+      "the write was refused and only the fake's by-id repair saved it — the real host has no such repair",
+    ).toBe(false);
   });
 
   it("describes the chart group with accessible alt text", async () => {
@@ -274,7 +304,7 @@ describe("insertSceneIntoSlide", () => {
     const scene = buildChart(config);
     await insertSceneIntoSlide(scene, { tagData: "cfg", group: false });
     expect(slide.created.some((s) => s.type === "group")).toBe(false);
-    const anchor = slide.created[0] as FakeShape & { altTextDescription?: string; altTextTitle?: string };
+    const anchor = taggedShape(slide) as FakeShape & { altTextDescription?: string; altTextTitle?: string };
     expect(anchor.altTextDescription).toBe(scene.desc);
     expect(anchor.tagStore.get(CHART_TAG)).toBe("cfg");
   });
@@ -659,8 +689,8 @@ describe("scene node mapping", () => {
       { group: false, tagData: "cfg" },
     );
     expect(slide.created.some((s) => s.type === "group")).toBe(false);
-    // The tag falls back onto the first created shape.
-    expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
+    // The tag falls back onto a plain shape rather than a group.
+    expect(taggedShape(slide)!.tagStore.get(CHART_TAG)).toBe("cfg");
   });
 
   // Shape.rotation is PowerPointApi 1.10 and the manifests admit hosts from 1.4.
@@ -727,7 +757,7 @@ describe("scene node mapping", () => {
     await insertSceneIntoSlide(scene as never, { tagData: "cfg" });
     // No group, no fan triangles survive — but the rect is inserted and tagged.
     expect(slide.created.some((s) => s.type === "group")).toBe(false);
-    expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
+    expect(taggedShape(slide)!.tagStore.get(CHART_TAG)).toBe("cfg");
   });
 
   it("still inserts (ungrouped) when the host lacks grouping — the web case", async () => {
@@ -738,8 +768,8 @@ describe("scene node mapping", () => {
     // The shapes are committed and no grouping was attempted…
     expect(slide.created.some((s) => s.type === "group")).toBe(false);
     expect(slide.created.filter((s) => s.geo === "rectangle").length).toBeGreaterThanOrEqual(4);
-    // …and the config tag lands on the first shape, so the chart is re-editable.
-    expect(slide.created[0].tagStore.get(CHART_TAG)).toBe("cfg");
+    // …and the config tag lands on one of them, so the chart is re-editable.
+    expect(taggedShape(slide)!.tagStore.get(CHART_TAG)).toBe("cfg");
   });
 
   it("skips tagging when the host lacks tags", async () => {
@@ -747,7 +777,7 @@ describe("scene node mapping", () => {
     installHost([slide], [], slide, () => false); // nothing supported
     await insertSceneIntoSlide(buildChart(config), { tagData: "cfg" });
     expect(slide.created.some((s) => s.type === "group")).toBe(false);
-    expect(slide.created[0].tagStore.get(CHART_TAG)).toBeUndefined();
+    expect(taggedShape(slide), "a host without tags must leave every shape untagged").toBeUndefined();
     expect(slide.created.length).toBeGreaterThan(0);
   });
 
@@ -1263,7 +1293,7 @@ describe("updateChartInSlide", () => {
     const drawn = slide.created.length;
     expect(drawn).toBeGreaterThan(1);
     // The tagged shape carries the rest of the chart with it.
-    expect(JSON.parse(slide.created[0].tagStore.get(CHART_PARTS_TAG)!)).toHaveLength(drawn - 1);
+    expect(JSON.parse(taggedShape(slide)!.tagStore.get(CHART_PARTS_TAG)!)).toHaveLength(drawn - 1);
 
     const live = () => slide.created.filter((s) => !s.deleted);
     for (const edit of [1, 2]) {
