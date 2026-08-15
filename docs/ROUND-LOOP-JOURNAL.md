@@ -572,3 +572,56 @@ the driver would not do it — see the fix below.
      repaired" was about to become the common case.
 
 5. **Doctrine.** `docs/BACKLOG.md` records the answer and what it licenses.
+
+### Round 047 — d2ca1c9 — archived as 043 — 10/12, and it does NOT validate the fix
+
+The first round carrying the tag-anchor change, and the honest answer is that one
+round cannot tell. Recorded before anything else because the temptation to read
+it as a win was real.
+
+**The driver fix worked, visibly.** Attempt 1 refused on `deck-dirty` alone,
+retried, `recover` cleaned the deck 8 → 1, attempt 2 ran and finished. Under the
+old rule that was a dead stop, and the two rounds before it were hand-recovered.
+(Wart: it still prints "clearing the crash and starting again" when nothing
+crashed. The message predates the change.)
+
+**The renderer fix changed nothing measurable, and here is why that is not a
+verdict.** Fault counts, three consecutive rounds:
+
+    round  build     tags-undefined  cfg-tag-5010  group-5010  no-queue  tagging-failed
+    041    ca866e3        1               6            1          1           4
+    042    a54401c        5               6            5          5           8
+    043    d2ca1c9        5               6            5          5           8
+
+**042 and 043 are identical, and 041 → 042 is a five-fold jump with NO renderer
+change between them** — a54401c added a probe and documentation and nothing else.
+So the counts are dominated by the host's regime, they swing by 5× on their own,
+and a single round comparing two builds is measuring mood. `same scale` moving
+from 4-of-8 to 3-of-8 sits inside that same noise.
+
+What IS informative: the config write still fails six times, exactly as before.
+If the anchor were reaching the write unresolved, that number should have moved.
+And `origin tag lost` — the line that exists for the case where the config lands
+and only the origin fails — fired ZERO times, which says the same thing from the
+other side.
+
+**So the fix is unvalidated, not refuted, and the next hypothesis is better than
+the last one.** `addGroup` fails 5× with 5010 in the same pass, and a failed sync
+poisons its own context — this project already knows that and works around it
+elsewhere. `no chart's tag could be queued` firing 5× is a context-level symptom,
+not a handle-level one: the QUEUE is refusing, before any handle is exercised. If
+the grouping attempt poisons the context the tag write sits in, then no choice of
+handle can help and the whole ordering effort has been aimed one level too low.
+
+That is testable and cheap: tag in a context that has not just tried to group.
+
+**Instrument owed, and it is the lesson of this entry:** the rasterise arms are
+pooled across rounds because one round could never answer them, and the tag
+failure counts need exactly the same treatment. Comparing two builds by eye in a
+regime that swings 5× is how a fix gets declared good. `npm run rounds` should
+pool tag failures per build the way it already pools draws per arm.
+
+Probes: `which-end-a-short-read-drops` answered `unreadable` — "the collection
+would not list its items", which is this host's usual answer to anything asking a
+collection to enumerate itself. The trade it prices stays unpriced; the question
+is right and the host is not answering it yet.
