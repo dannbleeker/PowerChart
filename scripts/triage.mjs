@@ -811,7 +811,31 @@ export function deckEvidence(deck) {
   const BLANK_PNG_CEILING = 2048;
   const bytes = (png) => Math.round((png.length * 3) / 4);
   const added = new Set(deck.newSlides ?? []);
-  const out = { scanned: deck.inventory.length, added: added.size, withShapes: 0, confirmed: 0, unseen: 0, lying: 0 };
+  /**
+   * An id whose second half is `0`, e.g. `256#0` against `288#3603562595`.
+   *
+   * Round 041 added seven slides and two came back shaped like that, in the same
+   * round that reported `delete-by-id left slides behind and this host does not
+   * list the ids they were added under` and left one added slide blank. Those
+   * may be one fact or three; what is certain is that nobody saw it, because
+   * both halves were in the log and nothing put them side by side. It took a
+   * hand query to notice, which is the definition of a thing this tool should
+   * have said.
+   *
+   * Reported as a SHAPE, not a diagnosis. What `#0` means to this host is not
+   * known — only that it is not what a slide it has finished adding looks like.
+   */
+  const unfinishedId = (id) => /#0$/.test(String(id ?? ""));
+  const out = {
+    scanned: deck.inventory.length,
+    added: added.size,
+    withShapes: 0,
+    confirmed: 0,
+    unseen: 0,
+    lying: 0,
+    oddIds: [...added].filter(unfinishedId),
+    oddAndBlank: 0,
+  };
   for (const s of deck.inventory) {
     if (!added.has(s.slideId)) continue;
     // `count` is the host's own number and `shapes.length` is what the scan
@@ -824,7 +848,13 @@ export function deckEvidence(deck) {
     }
     const png = shots.get(s.slideId);
     if (!png) out.unseen++;
-    else if (bytes(png) <= BLANK_PNG_CEILING) out.confirmed++;
+    else if (bytes(png) <= BLANK_PNG_CEILING) {
+      out.confirmed++;
+      // The join that had to be done by hand. If the blank slides ARE the
+      // oddly-named ones, that is one finding rather than two — and if they are
+      // not, the coincidence is dead and nobody spends a round on it.
+      if (unfinishedId(s.slideId)) out.oddAndBlank++;
+    }
     // A picture that is not blank and not obviously a chart cannot be called
     // either way — and calling it blank is the expensive mistake, because that
     // is the reading that alleges data loss.
@@ -841,7 +871,12 @@ function reportDeckEvidence(deck) {
       `\n    ${e.withShapes} carry shapes` +
       `\n    ${e.confirmed} read back empty AND rasterise blank` +
       `\n    ${e.unseen} read back empty, no picture taken (the rasterise pass is capped — not evidence)` +
-      (e.lying ? `\n    ${e.lying} read back empty but rasterise with CONTENT — the readback is lying` : ""),
+      (e.lying ? `\n    ${e.lying} read back empty but rasterise with CONTENT — the readback is lying` : "") +
+      (e.oddIds.length
+        ? `\n    ${e.oddIds.length} added with an id ending #0 (${e.oddIds.slice(0, 4).join(", ")}` +
+          `${e.oddIds.length > 4 ? ", …" : ""}) — not the shape this host gives a slide it has finished adding` +
+          `\n      of which ${e.oddAndBlank} also read back empty AND rasterised blank`
+        : ""),
   );
   if (deck.gap) console.log(`    scan gap: ${deck.gap}`);
 }

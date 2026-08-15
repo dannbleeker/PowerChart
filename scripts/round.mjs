@@ -79,6 +79,24 @@ export function readiness({
   loggedOut = false,
 }) {
   const stop = [];
+  /**
+   * A CODE beside every message, because retrying has to be decided on what a
+   * stop IS rather than on how it is worded.
+   *
+   * `shouldRetry` used to retry a crash and nothing else, so the driver stopped
+   * dead on three states it already knows how to fix — and on 2026-08-15 a
+   * person fixed exactly those three by hand, in the order `recover` does them:
+   * the host was silent (the quiet wedge), the pane was a build behind, the deck
+   * held eight slides. One reload and reopen cleared all three.
+   *
+   * Matching on the messages instead would tie the retry loop to prose that is
+   * edited whenever a message is improved. See `RECOVERABLE_STOPS`.
+   */
+  const codes = [];
+  const refuse = (code, message) => {
+    codes.push(code);
+    stop.push(message);
+  };
   // First, and on its own: everything below reads as "the browser said nothing"
   // when the truth is that nobody asked it. See `cli`.
   if (!reachable)
@@ -117,7 +135,8 @@ export function readiness({
       ],
     };
   if (crashed)
-    stop.push(
+    refuse(
+      "crashed",
       'PowerPoint has crashed — its own "Sorry, we ran into a problem" dialog is up, and every Office.js ' +
         "call behind it hangs forever. Click Refresh in that dialog; the host answers again within the minute. " +
         "The pane closes with it — reopen from Home ▸ Add-ins ▸ Insert chart.",
@@ -126,7 +145,8 @@ export function readiness({
   // and a dirty deck are both worth fixing, and neither matters if the host will
   // not talk — that is the state four rounds have burned an hour each on.
   if (ping && !ping.answered)
-    stop.push(
+    refuse(
+      "host-silent",
       `the host did not answer the cheapest possible call in ${ping.ms}ms — it is not going to answer a round. ` +
         "Its editing session is gone, usually because the network moved (look for net::ERR_NETWORK_CHANGED in " +
         "`playwright-cli console`). Reload the PowerPoint tab and reopen the pane: measured 8011ms silent before, " +
@@ -137,28 +157,31 @@ export function readiness({
   // the same only by coincidence. See `slideResolveScript`: this is the call the
   // 2s crash dies on, moved to where it costs two seconds instead of a round.
   if (slideOk === false)
-    stop.push(
+    refuse(
+      "slide-refused",
       "the host answered the cheap call but would not resolve slide 1 — this is the state the 2s crash " +
         "starts from (`OnServerFindSucceeded could not find target slide` in its own log). Reload the " +
         "PowerPoint tab and reopen the pane; an attempt that follows a recovery has never crashed.",
     );
-  if (!deployed) stop.push("the site did not answer with a build — is Pages up?");
+  if (!deployed) refuse("no-build", "the site did not answer with a build — is Pages up?");
   else if (head && deployed !== head)
-    stop.push(`the site is serving ${deployed} but HEAD is ${head} — wait for Deploy Pages to finish`);
-  if (!stamp) stop.push("could not read the pane's build stamp — is the add-in open?");
+    refuse("site-behind", `the site is serving ${deployed} but HEAD is ${head} — wait for Deploy Pages to finish`);
+  if (!stamp) refuse("pane-closed", "could not read the pane's build stamp — is the add-in open?");
   else if (deployed && stamp !== deployed)
-    stop.push(
+    refuse(
+      "pane-stale",
       `the pane is showing ${stamp} while the site serves ${deployed} — hard-reload the whole ` +
         `PowerPoint tab (the pane HTML is cached for ten minutes; reopening the pane alone does not clear it)`,
     );
   if (slides !== null && slides > 1)
-    stop.push(
+    refuse(
+      "deck-dirty",
       `the deck holds ${slides} slides — clean it, or this round is not comparable with one that started clean`,
     );
-  if (verbose === false) stop.push("Verbose trace is off — the round's trace will be too thin to mine");
+  if (verbose === false) refuse("verbose-off", "Verbose trace is off — the round's trace will be too thin to mine");
   if (pictures === false)
-    stop.push("Picture every slide is off — a slide that reads back empty cannot be confirmed empty");
-  return { ok: stop.length === 0, stop };
+    refuse("pictures-off", "Picture every slide is off — a slide that reads back empty cannot be confirmed empty");
+  return { ok: stop.length === 0, stop, codes };
 }
 
 /** The next round number, from the archive. */
@@ -518,7 +541,7 @@ async function attempt(argv, deps, sh) {
     crashed: crashed || crashedAfter,
     loggedOut,
   };
-  const { ok, stop } = readiness(state);
+  const { ok, stop, codes } = readiness(state);
   console.log(
     `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)`,
   );
@@ -533,7 +556,7 @@ async function attempt(argv, deps, sh) {
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
     for (const s of stop) console.error(`    - ${s}`);
-    return { code: 1, reason: state.crashed ? "crashed" : "not-ready" };
+    return { code: 1, reason: state.crashed ? "crashed" : "not-ready", codes };
   }
   console.log("  ready");
   if (checkOnly) return { code: 0, reason: "checked" };
@@ -599,14 +622,58 @@ async function attempt(argv, deps, sh) {
 }
 
 /**
+ * The stops a reload-and-reopen actually clears — which is to say, the stops
+ * `recover` was written for.
+ *
+ * Derived from that function rather than from a judgement about which refusals
+ * feel transient: `recover` clicks Refresh or reloads, waits out the reload,
+ * reopens the pane from the ribbon, clicks the Automation tab, and cleans the
+ * deck. Every code here is undone by one of those five steps, and every code
+ * NOT here survives all of them.
+ *
+ * Deliberately absent, and each for its own reason: `site-behind` and `no-build`
+ * are waiting for Pages and a reload does not make it deploy faster;
+ * `verbose-off` and `pictures-off` are choices a person made in the pane and
+ * silently re-making them would change what the round measures; the sign-in and
+ * unreachable-CLI states never get here because they return before the codes do.
+ */
+export const RECOVERABLE_STOPS = new Set([
+  "crashed",
+  "host-silent",
+  "slide-refused",
+  "pane-closed",
+  "pane-stale",
+  "deck-dirty",
+]);
+
+/**
  * Is another attempt worth making?
  *
- * Only after a crash. A stale pane, a dirty deck or a missing run button are all
- * states a person has to look at, and retrying them just repeats the same
- * refusal until the night is gone.
+ * IT USED TO BE A CRASH AND NOTHING ELSE, and the cost of that showed up on
+ * 2026-08-15 in two places on one afternoon. Mid-round, the QUIET form of the
+ * wedge exits as `silent` — the host stops answering with no dialog — and the
+ * driver went home, though `docs/ROUNDS.md` says in as many words that a reload
+ * clears both forms and `recover` already does exactly that. At check time, a
+ * person then hand-fixed a silent host, a pane one build behind and an
+ * eight-slide deck, in the same order `recover` does them, because a `not-ready`
+ * was never retried either.
+ *
+ * So the question is no longer "was it a crash" but "does recovery address
+ * everything that refused". A `not-ready` whose codes are all recoverable is
+ * worth another attempt; one carrying a single stop recovery cannot touch is
+ * not, and stopping on it is the behaviour the old comment was right about — a
+ * round that retries a stale build until the night is gone measures nothing.
+ *
+ * `codes` is optional so the two reasons that carry none (`crashed`, `silent`)
+ * read the same as they always did.
  */
-export function shouldRetry(reason, attempt, max) {
-  return reason === "crashed" && attempt < max;
+export function shouldRetry(reason, attempt, max, codes) {
+  if (attempt >= max) return false;
+  if (reason === "crashed" || reason === "silent") return true;
+  if (reason !== "not-ready") return false;
+  // An EMPTY list is not a licence. It means nothing was recorded about why the
+  // check refused, and retrying on no evidence is how a loop spins.
+  return Array.isArray(codes) && codes.length > 0 && codes.every((c) => RECOVERABLE_STOPS.has(c));
 }
 
 /** Delete every slide but the first, so the next round starts where the last one did. */
@@ -674,8 +741,8 @@ async function main(argv, deps = {}) {
 
   for (let n = 0; ; n++) {
     if (n) console.log(`\n  attempt ${n + 1} of ${max + 1}`);
-    const { code, reason } = await attempt(argv, deps, sh);
-    if (!shouldRetry(reason, n, max)) return code;
+    const { code, reason, codes } = await attempt(argv, deps, sh);
+    if (!shouldRetry(reason, n, max, codes)) return code;
     console.log('  clearing the crash and starting again — see docs/ROUNDS.md, "The wedge"');
     await recover(sh, sleep);
   }

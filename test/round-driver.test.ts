@@ -338,16 +338,57 @@ describe("asking the host whether it is awake", () => {
     expect(quietStreak(1, "   ", false)).toBe(2);
   });
 
-  it("retries a crash and nothing else", () => {
-    // A crash is the one state the driver can put right on its own, and on the
-    // night of 2026-08-14 it had to, six times. Everything else — a stale pane, a
-    // dirty deck, a missing run button — is a state someone has to look at, and
-    // retrying it would just repeat the same refusal until the night was gone.
+  it("retries what recovery can actually put right", () => {
+    // A crash is the state the driver has always put right on its own, six times
+    // in one night. The rest of this is 2026-08-15, when retrying ONLY a crash
+    // cost two rounds: mid-round the quiet wedge exits as `silent` and the driver
+    // went home, though `docs/ROUNDS.md` says a reload clears both forms of the
+    // wedge and `recover` already does exactly that.
     expect(shouldRetry("crashed", 0, 3)).toBe(true);
     expect(shouldRetry("crashed", 3, 3), "the budget is a budget").toBe(false);
-    expect(shouldRetry("not-ready", 0, 3)).toBe(false);
+    expect(shouldRetry("silent", 0, 3), "the quiet wedge is a wedge").toBe(true);
     expect(shouldRetry("timeout", 0, 3)).toBe(false);
     expect(shouldRetry("finished", 0, 3)).toBe(false);
+  });
+
+  it("retries a check whose every refusal a reload would clear, and no other", () => {
+    // The hand-recovery of 2026-08-15, encoded. `--check` refused with a silent
+    // host, a pane one build behind and an eight-slide deck; a person then did
+    // the five steps `recover` does and every one of them went green. The driver
+    // had the same five steps and would not take them.
+    expect(shouldRetry("not-ready", 0, 3, ["host-silent", "pane-stale", "deck-dirty"])).toBe(true);
+    expect(shouldRetry("not-ready", 0, 3, ["crashed"])).toBe(true);
+    expect(shouldRetry("not-ready", 0, 3, ["slide-refused"])).toBe(true);
+
+    // And the refusals a reload does NOT touch, which is what the old comment
+    // was right about: retrying a stale build just repeats itself until the
+    // night is gone. ONE unrecoverable code is enough to stop, even beside three
+    // recoverable ones.
+    expect(shouldRetry("not-ready", 0, 3, ["site-behind"]), "waiting on Pages is not a reload").toBe(false);
+    expect(shouldRetry("not-ready", 0, 3, ["verbose-off"]), "a pane toggle is a person's choice").toBe(false);
+    expect(shouldRetry("not-ready", 0, 3, ["host-silent", "deck-dirty", "site-behind"])).toBe(false);
+
+    // No codes is not a licence: it means nothing was recorded about why the
+    // check refused, and retrying on no evidence is how a loop spins.
+    expect(shouldRetry("not-ready", 0, 3, []), "an empty list is not a reason to retry").toBe(false);
+    expect(shouldRetry("not-ready", 0, 3), "and neither is no list at all").toBe(false);
+    expect(shouldRetry("not-ready", 3, 3, ["deck-dirty"]), "the budget still binds").toBe(false);
+  });
+
+  it("gives every refusal a code, and every code a meaning", () => {
+    // The codes are what the retry decision reads, so a stop that forgets one is
+    // a stop the driver will treat as no reason at all. Asserted against the
+    // real function rather than a list, because a hand-kept list is the thing
+    // that goes stale.
+    const wedged = readiness({ ...READY, ping: { answered: false, ms: 8011 }, slides: 8, stamp: "old1234" });
+    expect(wedged.ok).toBe(false);
+    expect(wedged.codes).toEqual(["host-silent", "pane-stale", "deck-dirty"]);
+    expect(wedged.codes.length, "a message without a code is invisible to the retry").toBe(wedged.stop.length);
+    expect(shouldRetry("not-ready", 0, 3, wedged.codes), "the state a person fixed by hand").toBe(true);
+
+    const stale = readiness({ ...READY, head: "abc1234", deployed: "def5678", stamp: "def5678" });
+    expect(stale.codes).toEqual(["site-behind"]);
+    expect(shouldRetry("not-ready", 0, 3, stale.codes)).toBe(false);
   });
 
   it("recovers in the order the host needs, not the order that reads well", async () => {
