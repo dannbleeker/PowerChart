@@ -63,6 +63,28 @@ export const faults = {
    */
   refuseTagWrites: 0,
   /**
+   * Refuse a tag write on a proxy a `load()` has RESOLVED, and only then.
+   *
+   * `strictTags` models an AGE rule — refuse anything older than one sync — and
+   * four real rounds say that is not this host's rule. It answers
+   * `tag-the-creation-proxy-a-sync-later: yes`: a shape created, synced, and
+   * then tagged through the handle that made it takes the write, however old the
+   * handle is. What it refuses is a handle Office.js has RESOLVED, and the host
+   * says so in the statement it echoes back:
+   *
+   *   errorLocation: ShapeCollection.getItem
+   *   statement: var shape = shapes.getItem(...) 'originally addTextBox(...)'
+   *
+   * "originally addTextBox" is the tell. A `load()` makes Office.js rewrite the
+   * creation proxy's object path into `shapes.getItem(id)`, and this host will
+   * not resolve that for a shape it has just made — so the write fails for a
+   * reason that has nothing to do with when it was queued.
+   *
+   * The distinction is the whole fix: `finishCharts` may keep re-read handles
+   * for GROUPING, where they are needed, and must not tag through them.
+   */
+  refuseTagWritesOnResolvedProxy: false,
+  /**
    * Refuse this many `shape.load("id,left,top")` calls outright.
    *
    * The one load that asks WHERE a chart landed. See the shape's `load` for
@@ -889,6 +911,13 @@ export function makeShape(
         // crosses a sync boundary just like grouping does.
         if (faults.strictTags && trips.syncs > shape.syncCreated + 1) {
           throw new Error("InvalidParam passed to GetItem(id) | code=5010");
+        }
+        // See `faults.refuseTagWritesOnResolvedProxy`. Resolution, not age.
+        if (faults.refuseTagWritesOnResolvedProxy && loadedProps) {
+          throw new Error(
+            "InvalidParam passed to GetItem(id) | code=5010 | errorLocation=ShapeCollection.getItem | " +
+              "statement=var shape = shapes.getItem(...) /* originally addTextBox(...) */",
+          );
         }
         if (faults.refuseTagWrites > 0) {
           faults.refuseTagWrites--;
@@ -2283,6 +2312,7 @@ export function installHost(
   stallSyncOn.clear();
   faults.strictGroup = false;
   faults.strictTags = false;
+  faults.refuseTagWritesOnResolvedProxy = false;
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;
   faults.refuseShapeById = false;
