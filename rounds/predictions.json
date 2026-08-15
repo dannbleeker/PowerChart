@@ -60,5 +60,17 @@
     "outcome": "undetermined",
     "judgedOn": "030-cabb357 … 036-cfbf434",
     "what-happened": "UNDETERMINED, and the instrument was the reason. Seven consecutive rounds answered `other`, `value=undefined; slide stable (?)` — and that `(?)` is the tell: all three slide-id reads were refused, and three unknowns compare equal, so `sameSlide` reported stability from no evidence. The prediction looked HELD in every one of those rounds and was not judged, which is the only reason the false verdict was caught. The probe now requires the ids to be readable before it will call the slide stable and says `unreadable — whether it changed is UNKNOWN` otherwise. The original question is still open and cannot be settled on this host until it names a slide it has just added."
+  },
+  {
+    "id": "the-refused-group-is-what-kills-the-tag",
+    "madeIn": "#520",
+    "afterBuild": "355a37c",
+    "because": "Round 043 moved the tag anchor onto a handle nothing resolves and scored EXACTLY what 042 scored — cfg-tag-5010 six times, `origin tag lost` zero times. If the handle were the lever both should have moved. What sits between the draw and the tag in production is a grouping attempt this host refuses 5010, a failed sync poisons its own context, and `no chart's tag could be queued` firing five times is a context-level symptom: the queue refused before any handle was exercised. Round 044's first attempt at the question never provoked a refusal at all — the host groups two same-batch shapes happily — so it now ages its handles two syncs first. STAKED BEFORE THE ROUND THAT TESTS IT, and against my own recent work: if this holds, the tag-anchor change I merged today was aimed one level too low and the fix is a fresh context, not a different handle. The control is `tag-the-creation-proxy-a-sync-later: yes`, which is what excludes age as the cause and leaves the group implicated.",
+    "claim": {
+      "kind": "probe-detail-matches",
+      "id": "does-a-failed-group-poison-the-tag",
+      "pattern": "InvalidParam|5010|GeneralException"
+    },
+    "outcome": "open"
   }
 ]

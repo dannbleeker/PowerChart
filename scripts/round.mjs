@@ -73,6 +73,7 @@ export function readiness({
   pictures,
   reachable = true,
   unreachableAt = null,
+  browserGone = false,
   ping = null,
   slideOk = null,
   crashed = false,
@@ -110,6 +111,20 @@ export function readiness({
           (unreachableAt
             ? `\n      the call that could not be spawned: \`${unreachableAt.args}\` — ${unreachableAt.error}`
             : ""),
+      ],
+    };
+  // Before the sign-in check and everything under it: a browser that is not
+  // there answers every read with nothing, and "is the add-in open?" is the
+  // wrong question to send anyone to. See `noBrowser`.
+  if (browserGone)
+    return {
+      ok: false,
+      codes: ["browser-gone"],
+      stop: [
+        "there is no browser — the process died, taking the tab with it. The persistent profile still " +
+          "holds the sign-in, so this is recoverable without a password: " +
+          "`pw open --persistent --profile=C:/devtools/pw-profile --headed https://onedrive.live.com/`, " +
+          "then open the deck, select its tab, and reopen the pane from Home ▸ Add-ins ▸ Insert chart.",
       ],
     };
   // THE WEDGE, by its real name. Rounds 24, 25, 29 and 30 each spent most of an
@@ -443,6 +458,37 @@ export function signedOut(tabList) {
 }
 
 /**
+ * Is there a BROWSER at all?
+ *
+ * The third thing that answers every pane read with nothing, after "the CLI
+ * could not be run" and "the browser is signed out" — and the one that had no
+ * name until it cost seven attempts on 2026-08-15. A round wedged, the browser
+ * process died with it, and `recover` then reloaded and reopened a pane in a
+ * window that did not exist, seven times, while the check reported "could not
+ * read the pane's build stamp — is the add-in open?" The add-in was fine. There
+ * was nothing to open it in.
+ *
+ * Worth its own precondition because the fix is specific and the loop can do it
+ * unattended: reopen from the persistent profile, which still holds the
+ * sign-in — **a dead browser is not a lost sign-in**, and believing otherwise
+ * has now cost this project two separate stretches of hours.
+ *
+ * `pw list` answers `(no browsers)` in exactly this state, and that string is
+ * what the daemon prints when it has no session for the working directory.
+ */
+/**
+ * Where the browser that survives a session lives.
+ *
+ * `scripts/pw.sh` parks the SESSION in the repo and the PROFILE here, and the
+ * profile is the half that holds the OneDrive sign-in across a browser death.
+ */
+export const PROFILE_DIR = process.env.PW_PROFILE_DIR ?? "C:/devtools/pw-profile";
+
+export function noBrowser(listOutput) {
+  return /\(no browsers\)/i.test(String(listOutput ?? ""));
+}
+
+/**
  * Did `find` actually FIND it, or is it echoing the query back?
  *
  * `playwright-cli find` answers a miss with `No matches found for "<query>"` —
@@ -503,6 +549,7 @@ async function attempt(argv, deps, sh) {
   const listRef = refFor(sh, "Slide List", /listbox "Slide List"/);
   const slides = listRef ? (sh("snapshot", listRef).match(/option "Slide"/g) ?? []).length : null;
 
+  const browserGone = noBrowser(sh("list"));
   const loggedOut = signedOut(sh("tab-list"));
   const crashed = sawCrashDialog(sh("find", "Sorry, we ran into a problem"));
 
@@ -536,6 +583,7 @@ async function attempt(argv, deps, sh) {
     pictures,
     reachable: !sh.state.unreachable,
     unreachableAt: sh.state.unreachableAt ?? null,
+    browserGone,
     ping,
     slideOk,
     crashed: crashed || crashedAfter,
@@ -638,6 +686,7 @@ async function attempt(argv, deps, sh) {
  * unreachable-CLI states never get here because they return before the codes do.
  */
 export const RECOVERABLE_STOPS = new Set([
+  "browser-gone",
   "crashed",
   "host-silent",
   "slide-refused",
@@ -678,6 +727,7 @@ export const RECOVERABLE_STOPS = new Set([
 export function recoveryFor(reason, codes) {
   if (reason === "crashed") return "clearing the crash and starting again";
   if (reason === "silent") return "the host went quiet — reloading and starting again";
+  if (reason === "timeout") return "the round wedged and did not finish — reloading and starting again";
   const named = (codes ?? []).filter((c) => RECOVERABLE_STOPS.has(c));
   if (!named.length) return "recovering and starting again";
   const say = {
@@ -693,7 +743,15 @@ export function recoveryFor(reason, codes) {
 
 export function shouldRetry(reason, attempt, max, codes) {
   if (attempt >= max) return false;
-  if (reason === "crashed" || reason === "silent") return true;
+  // A WEDGE MID-ROUND IS RECOVERABLE, and leaving `timeout` out of this stopped
+  // an unattended run dead in its first hour. The quiet wedge that produces it is
+  // the same state `silent` names — `docs/ROUNDS.md` says a reload clears both
+  // forms — and `recover` already does exactly that. The argument for excluding
+  // it was cost: a wedge has already burned thirty minutes and another may burn
+  // thirty more. But that cost is bounded by `--retry N`, which the caller chose,
+  // and the alternative is a ten-hour run that ends at hour one with the host
+  // sitting idle and recoverable.
+  if (reason === "crashed" || reason === "silent" || reason === "timeout") return true;
   if (reason !== "not-ready") return false;
   // An EMPTY list is not a licence. It means nothing was recorded about why the
   // check refused, and retrying on no evidence is how a loop spins.
@@ -730,7 +788,32 @@ export function cleanDeckScript(budgetMs) {
  * The waits are generous on purpose: a document reload takes tens of seconds and
  * a step taken early lands on nothing and fails silently.
  */
-export async function recover(sh, sleep) {
+export async function recover(sh, sleep, profile = PROFILE_DIR) {
+  // NO BROWSER AT ALL comes first, because everything below reloads and clicks
+  // inside a window that is not there. Not hypothetical: on 2026-08-15 a round
+  // wedged, the browser process died with it, and this function then reloaded
+  // nothing and reopened nothing seven times while the check reported "could not
+  // read the pane's build stamp — is the add-in open?"
+  //
+  // Reopening is the loop's to do, not the owner's. The persistent profile still
+  // holds the sign-in — a dead browser is not a lost sign-in — so it needs no
+  // password, and the alternative is a ten-hour run ending in its first hour.
+  if (noBrowser(sh("list"))) {
+    sh("open", "--persistent", `--profile=${profile}`, "--headed", "https://onedrive.live.com/");
+    await sleep(15000);
+    // The deck, and then ITS tab. Clicking the file opens a NEW tab while the
+    // CLI stays on the old one, and skipping that is how a healthy setup reads
+    // as a closed pane.
+    const deck = refFor(sh, "Presentation63", /link "Presentation63"/);
+    if (deck) clickRef(sh, deck);
+    await sleep(25000);
+    const line = sh("tab-list")
+      .split("\n")
+      .find((l) => /Presentation63/.test(l));
+    const n = line ? /(\d+):/.exec(line)?.[1] : null;
+    if (n) sh("tab-select", n);
+    await sleep(20000);
+  }
   const dialog = /dialog \[ref=([a-z0-9]+)\]/.exec(sh("find", "Sorry, we ran into a problem"))?.[1];
   if (dialog)
     sh(

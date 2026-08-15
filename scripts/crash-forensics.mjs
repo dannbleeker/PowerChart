@@ -107,7 +107,15 @@ export async function collectCrashEvidence(sh, { at = "unknown", limit = 40 } = 
    */
   const ask = (...args) => {
     const out = sh(...args);
-    return { out, failed: sh.state?.lastError ?? null };
+    // BOTH KINDS OF FAILURE, and reading only the first was this fix's own miss.
+    // `lastError` covers a call that could not be SPAWNED or overflowed its
+    // buffer; `lastFailed` covers one that ran and exited non-zero — which is
+    // what a wedged tab does to `console` and `requests`, because the page will
+    // not answer. The 18:06 wedge on 2026-08-15 was collected hours after the
+    // overflow fix and still read "(nothing)" three times, for exactly this
+    // reason: the reads had failed in the OTHER way and nothing was checking.
+    const state = sh.state ?? {};
+    return { out, failed: state.lastError ?? (state.lastFailed ? "failed" : null) };
   };
   const safe = (label, fn) => {
     try {

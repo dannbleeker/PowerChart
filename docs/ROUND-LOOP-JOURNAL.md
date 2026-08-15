@@ -667,3 +667,78 @@ the recovery line naming all three rather than announcing a crash.
 
 5. **Doctrine.** `PENDING_QUESTIONS` carries the miss, the reason for the ageing,
    and the read-it-with-the-control rule.
+
+## The long run — 2026-08-15 evening
+
+### Pair 1 — 56eb477 × 2 — archived as 045 and 046
+
+**THE FIRST SAME-BUILD PAIR, and it settles the tag-anchor question.** Both
+rounds scored `tags-undefined 5 · cfg-tag-5010 6 · group-5010 5 · no-queue 5 ·
+tagging-failed 8` — **identical, zero spread.** Four consecutive builds now score
+the same, and one of them predates `tagAnchorIndex`:
+
+    a54401c  5 6 5 5 8   ← before the anchor change
+    d2ca1c9  5 6 5 5 8   ← anchor change lands
+    355a37c  5 6 5 5 8
+    56eb477  5 6 5 5 8   (twice, no spread)
+
+Five rounds, four builds, no within-build variance on the current one. **The
+anchor change did nothing.** That is not the ambiguous single-round reading of
+043; it is a measurement with its own noise floor attached. Whether to revert it
+is the owner's — it is merged renderer code.
+
+1. **Mine — and the finding did not need a round at all.** Joining each chart's
+   grouping outcome to its tag outcome, across the whole archive:
+
+       grouped      64 chart(s),  1 lost the tag =  2%
+       NOT grouped  62 chart(s), 41 lost the tag = 66%
+
+   Per round it is nearly mechanical: three grouped and none lost, two or three
+   ungrouped and two lost, eleven rounds running. **A chart that gets grouped
+   keeps its config; one that cannot loses it two times in three.** When grouping
+   succeeds the tag goes onto the GROUP — a handle made in that batch, never
+   resolved — and it lands. When grouping is skipped the tag falls back to a
+   `created` handle and is refused.
+
+   So the entire handle question — four rounds, a merged renderer change, a fake
+   corrected, three probes — has been about the LOSING path. It was aimed one
+   level too low, and the evidence had been in the archive for eleven rounds
+   unqueried. `npm run rounds` prints it every round now.
+
+   `not grouping: no member handle this host will accept` carries `refreshed: 0`
+   every time, so what decides a chart's config is whether the PRE-GROUPING
+   RE-READ returned anything. That is where the next attempt belongs.
+
+2. **Research.** None owed; the archive answered it.
+
+3. **Instrument.** The three lines that decide a chart's fate now carry the
+   slide (`not grouping`, `a chart's tag could not even be queued`, `tagging
+   failed`). Rounds 043-045 each lost a chart's config and the one line that
+   names a slide named `257#0` every time — an id whose second half is `0`, which
+   is not the shape this host gives a slide it has finished adding. Next round
+   says outright whether the charts that lose their config are the ones on those
+   slides. If they are, this is one SLIDE fault rather than three tag faults.
+
+4. **Fix — four, and the run exposed every one of them.**
+   - **A mid-round wedge was not retryable.** Round B timed out at thirty
+     minutes and the driver stopped; in an unattended run that is nine idle
+     hours. `timeout` now recovers like a crash, bounded by `--retry`.
+   - **Crash reports were STILL empty**, hours after the overflow fix, and this
+     one was mine: `ask()` honoured `lastError` (spawn, overflow) but not
+     `lastFailed` (ran, exited non-zero) — which is exactly how a wedged tab
+     fails. Three sections read "(nothing)" over three failed reads.
+   - **A dead browser read as a closed pane.** The wedge killed the browser
+     process; `recover` then reloaded and reopened a pane inside a window that
+     did not exist, SEVEN times, while the check asked "is the add-in open?"
+     `noBrowser` names it, and recovery now reopens from the persistent profile
+     — no password, because a dead browser is not a lost sign-in.
+   - **`npm run rounds` reported the oldest round** in the archive rather than
+     the newest.
+
+5. **Doctrine.** `docs/BACKLOG.md` now LEADS with grouping-saves-the-config, and
+   says in as many words that the three sections under it are about the losing
+   path.
+
+**Cost of the pair:** one wedge, one dead browser, seventy-one slides of litter
+to clean. All four fixes above came out of it, which is the trade this loop
+exists to make.

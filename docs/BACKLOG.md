@@ -196,6 +196,50 @@ rounds of history are read through them.
 
 Worth doing, and worth doing with the same care the counterbalancing got.
 
+### READ THIS FIRST: grouping is what saves a config, not the tag handle
+
+**Measured 2026-08-15 over the whole archive, and it had been sitting there for
+eleven rounds unqueried:**
+
+    grouped      64 chart(s),  1 lost the tag =  2%
+    NOT grouped  62 chart(s), 41 lost the tag = 66%
+
+Per round it is almost mechanical — three grouped and none lost, two or three
+ungrouped and two lost, round after round after round. `npm run rounds` prints it
+now, under **DOES GROUPING SAVE THE CONFIG**.
+
+**Why it is that stark.** When grouping succeeds the tag target is the GROUP —
+a handle made in the grouping batch, never loaded, never resolved — and the write
+lands. When grouping is skipped the target falls back to a `created` handle, and
+that is the path that loses two charts in three.
+
+**What it means for everything below.** The three sections that follow are about
+WHICH handle the fallback should use, and four rounds plus a merged renderer
+change (`tagAnchorIndex`) went into them. They are a question about the losing
+path. A chart that never has to take that path does not care what the answer is.
+
+`not grouping: no member handle this host will accept` carries `refreshed: 0`
+every time, so what actually decides a chart's config is **whether the
+pre-grouping re-read returned anything**. That is one level up from where this
+work has been aimed, and it is where the next attempt belongs — the re-read, not
+the tag.
+
+Two leads on the re-read, both cheap and neither yet followed:
+
+- **The `NNN#0` slide ids.** Two of every round's added slides come back with an
+  id whose second half is `0` — not the shape this host gives a slide it has
+  finished adding — and the one line that names a slide in a tag failure named
+  `257#0` in rounds 043, 044 and 045. The failure lines now carry the slide
+  (`not grouping`, `a chart's tag could not even be queued`, `tagging failed`),
+  so the next round says outright whether the charts that lose their config are
+  the ones sitting on those slides. If they are, this is one fault and not
+  three, and it is a SLIDE fault.
+- **The re-read comes back empty rather than short.** `the re-read before
+  grouping came back empty` appears beside the losses, and
+  `shapes-items-count-honest` answers `unreadable` with `items` undefined. A
+  slide whose shape collection will not enumerate cannot be grouped and cannot
+  be tagged; both symptoms may be the same slide problem.
+
 ### The settle pass cannot repair what this host loses
 
 MEASURED, 2026-08-15, rounds 029-034. `same scale across the deck` has failed six
