@@ -332,6 +332,14 @@ export const UNSTABLE_ANSWERS = {
  */
 export const PENDING_QUESTIONS = {
   "how-many-collection-reads-a-context-survives":
+    "ANSWERED AND UNANSWERABLE, round 049: `unreadable-at-1`, three samples, stable — the scratch slide would not " +
+    "enumerate its collection even ONCE, so there was never a baseline to degrade from. It is the THIRD question to " +
+    "die on the same harness limit, after `shapes-items-count-honest` and `which-end-a-short-read-drops`, and " +
+    "together they are a finding about the HARNESS rather than the host: the scratch slide is strictly worse at " +
+    "collection reads than a real one, whose collection enumerates fine for the first three charts of a deck update. " +
+    "COLLECTION QUESTIONS CANNOT BE ASKED FROM A PROBE ON THIS HOST — they have to be instrumented in the production " +
+    "path, which is what `contextSyncs` on the re-read traces now does. Keep the question for a host that lists " +
+    "scratch shapes; expect nothing from it here. Original rationale follows. " +
     "Added 2026-08-15, and it decides the strongest lead this project has. `same scale across the deck` has failed " +
     "seventeen rounds running and its per-chart trace is a decay curve, identical in rounds 043-046: charts 1-3 " +
     "re-read all 24 shapes and group, chart 4 matches 20 of 24 and is thrown away, chart 5 gets NOTHING back, charts " +

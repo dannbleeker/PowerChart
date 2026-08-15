@@ -792,3 +792,40 @@ the opposite call for the demo deck. **Not acted on**: the fix is a 390-line
 restructure of the live update path, and this project has three shipped-broken
 fixes on record from changing that path on a theory. The probe decides it for the
 price of one round.
+
+### Pair 3 — 3f04df2 × 2 — archived as 049 and 050
+
+**`how-many-collection-reads-a-context-survives` answered `unreadable-at-1`**,
+three samples, stable: the scratch slide would not enumerate its collection even
+ONCE, so there was never a baseline to degrade from. The question was built to
+decide the strongest lead this project has, and it could not be put.
+
+**That is the third question to die on the same harness limit** —
+`shapes-items-count-honest` and `which-end-a-short-read-drops` are the other two,
+both `unreadable` — and three is a pattern rather than three misses.
+**The finding is about the harness, not the host: this scratch slide is strictly
+worse at collection reads than a real one**, whose collection enumerates fine for
+the first three charts of a deck update, every round. Collection questions cannot
+be asked from a probe here. They have to be instrumented in production.
+
+1. **Mine.** Grouping-saves-the-config, pooled over 26 rounds: **79 grouped, 1
+   lost (1%); 72 ungrouped, 51 lost (71%)**. Six rounds tonight and the effect
+   has only sharpened.
+2. **Research.** None owed.
+3. **Instrument — moved from the probe into the production path.** `boundedSync`
+   now counts syncs per context (a WeakMap, so the count dies with the context),
+   and the two re-read failure lines carry `contextSyncs`. The deck-wide update
+   runs every chart through ONE context and the re-read decays chart by chart, so
+   this is the x-axis the decay curve has never had. Next round says at which
+   sync of a context the re-read starts going short — which is exactly what the
+   probe could not ask.
+4. **Fix.** None owed; the renderer is where it was, deliberately.
+5. **Doctrine.** `PENDING_QUESTIONS` records the harness limit and tells the next
+   reader not to wait on that question.
+
+**A repair worth recording, because it was mine and the tables caught it.** The
+patch that wrote the finding into `PENDING_QUESTIONS` hit `FAKE_BASELINE`
+instead, replacing an answer with prose and inventing a
+`…-ORIGINAL` key for the value it displaced. `host-contract.test.ts` failed on a
+baseline entry for a question that does not exist — which is precisely the check
+that exists so a table cannot quietly drift from the probes it describes.

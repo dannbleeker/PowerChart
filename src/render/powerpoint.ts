@@ -975,7 +975,38 @@ export function _setSelectionTimeoutForTest(ms: number): void {
  * between them was the whole post-draw phase — grouping, tagging, the readback
  * — which had a label on every sync and a deadline on none.
  */
+/**
+ * How many syncs each context has been through — the x-axis the decay curve
+ * needs, and the one thing the archive cannot supply.
+ *
+ * `same scale across the deck` degrades chart by chart inside a single context:
+ * charts 1-3 re-read all 24 of their shapes and group, chart 4 matches 20 of 24,
+ * chart 5 gets nothing back, and 6-8 are never attempted — identical in six
+ * rounds. That is the shape of a context wearing out, and `updateChartsInSlides`
+ * was deliberately made ONE context flat in N, so this project's own perf work
+ * is the suspect.
+ *
+ * IT CANNOT BE ASKED FROM A PROBE. Three questions have died on one harness
+ * limit — `shapes-items-count-honest`, `which-end-a-short-read-drops` and
+ * `how-many-collection-reads-a-context-survives` all answer `unreadable`, the
+ * last at its FIRST read — because the scratch slide will not enumerate a
+ * collection at all on this host, while a real slide's enumerates fine for the
+ * first three charts. The harness is strictly worse than production here, so the
+ * measurement has to be taken in production.
+ *
+ * A WeakMap keyed by the context, so the count dies with it and never leaks
+ * across calls. Every sync in this file goes through `boundedSync`, which is
+ * what makes one counter enough.
+ */
+const syncsPerContext = new WeakMap<PowerPoint.RequestContext, number>();
+
+/** How many syncs this context has completed. See `syncsPerContext`. */
+export function syncsOf(context: PowerPoint.RequestContext): number {
+  return syncsPerContext.get(context) ?? 0;
+}
+
 function boundedSync(context: PowerPoint.RequestContext, what: string, budgetMs = BATCH_TIMEOUT_MS): Promise<void> {
+  syncsPerContext.set(context, syncsOf(context) + 1);
   return step(what, () => withTimeout(context.sync(), budgetMs, what));
 }
 
@@ -7377,7 +7408,15 @@ async function groupAndTagAll(
         // fixes, and from a run log they are indistinguishable.
         if (!items?.length && it.created.length) {
           hostFriction.emptyReReads += 1;
-          trace("group", "the re-read before grouping came back empty", { index: i, drew: it.created.length });
+          trace("group", "the re-read before grouping came back empty", {
+            index: i,
+            drew: it.created.length,
+            // WHICH SYNC OF THIS CONTEXT. See `syncsPerContext`: the deck-wide
+            // update runs every chart through one context and the re-read decays
+            // chart by chart, so the count is the x-axis that says whether the
+            // context is what wears out.
+            contextSyncs: syncsOf(context),
+          });
           return;
         }
         // By ID, which is exact and works on any slide. The old rule was "the
@@ -7486,6 +7525,9 @@ async function groupAndTagAll(
             index: i,
             drew: it.created.length,
             matched: matched.length,
+            // See the empty-re-read line above: the sync count is what turns a
+            // decay curve into a measurement.
+            contextSyncs: syncsOf(context),
           });
         } else if (items.length >= it.created.length) {
           // No ids to match on at all — a host that would not read them back.
