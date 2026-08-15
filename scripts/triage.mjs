@@ -1006,7 +1006,20 @@ if (invokedDirectly) {
       .sort()
       .map((f) => join(p, f));
   });
-  const logPath = logPaths[0];
+  /**
+   * The round REPORTED ON is the newest; every round is still pooled.
+   *
+   * A directory expands sorted, and this read `[0]` — the OLDEST round in the
+   * archive. So `npm run rounds`, the one command a loop glances at between
+   * rounds, printed two-day-old deck evidence and a two-day-old self-test above
+   * a current grid, with nothing saying they came from different days. Nobody
+   * noticed for nineteen rounds because the grid underneath was right.
+   *
+   * An explicit list of files keeps its order — someone naming two rounds means
+   * the first one — so only the directory case flips.
+   */
+  const namedDirectly = paths.some((p) => p.endsWith(".json"));
+  const logPath = namedDirectly ? logPaths[0] : logPaths[logPaths.length - 1];
   if (!logPath) {
     console.error("usage: node scripts/triage.mjs <deck.pptx> <run-log.json> [--all] [--json]");
     console.error("       node scripts/triage.mjs <crashed-run.json>            (no deck needed)");
