@@ -20,6 +20,7 @@ const {
   sawCrashDialog,
   quietStreak,
   archive,
+  signedOut,
   shouldRetry,
   recover,
 } = driver;
@@ -271,6 +272,31 @@ describe("asking the host whether it is awake", () => {
 
     await recover(sh, async () => {});
     expect(calls).toContain("reload");
+  });
+
+  it("says SIGNED OUT rather than blaming a pane that was never there", async () => {
+    // The state the owner walks back into after the browser dies. A signed-out
+    // browser answers every pane read with nothing, which looks exactly like an
+    // add-in nobody opened — and the check duly said "is the add-in open?" while
+    // the tab was showing login.live.com, sending the reader to hunt for a pane
+    // in a window with no document in it.
+    //
+    // It also short-circuits, for the same reason `reachable` does: if this is
+    // true then nothing below it was measured and every other line is noise.
+    const r = readiness({ ...READY, stamp: null, slides: null, loggedOut: true });
+    expect(r.ok).toBe(false);
+    expect(r.stop, "said more than the one thing that is true").toHaveLength(1);
+    expect(r.stop[0]).toContain("sign-in page");
+    expect(r.stop[0], "the reader has to know this one is theirs").toContain("needs a password");
+  });
+
+  it("knows a sign-in page from a document", () => {
+    expect(signedOut("- 0: (current) [Sign in](https://login.live.com/login.srf?wa=wsignin1)")).toBe(true);
+    expect(signedOut("- 0: (current) [x](https://login.microsoftonline.com/common/oauth2)")).toBe(true);
+    expect(signedOut("- 0: (current) [Presentation63.pptx](https://onedrive.live.com/personal/x/doc.aspx)")).toBe(
+      false,
+    );
+    expect(signedOut(""), "no tabs is not a sign-in page").toBe(false);
   });
 
   it("refuses a round when the host will not answer the cheapest call there is", () => {

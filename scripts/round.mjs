@@ -74,6 +74,7 @@ export function readiness({
   reachable = true,
   ping = null,
   crashed = false,
+  loggedOut = false,
 }) {
   const stop = [];
   // First, and on its own: everything below reads as "the browser said nothing"
@@ -97,6 +98,17 @@ export function readiness({
   // breath is the UI frozen behind it. The quiet form has no dialog and only the
   // ping catches it. Neither is something to wait out — a reload clears both in
   // seconds. See `docs/ROUNDS.md`, "The wedge".
+  // Before everything the browser could tell us, because if this is true then
+  // nothing else was measurable and every message below is noise.
+  if (loggedOut)
+    return {
+      ok: false,
+      stop: [
+        "the browser is on a Microsoft sign-in page — there is no document to run a round in. " +
+          "Sign in, open the deck, sideload the add-in from Home ▸ Add-ins, then check again. " +
+          "None of that is the agent's to do: it needs a password.",
+      ],
+    };
   if (crashed)
     stop.push(
       'PowerPoint has crashed — its own "Sorry, we ran into a problem" dialog is up, and every Office.js ' +
@@ -263,6 +275,24 @@ export function pingScript(budgetMs) {
 }
 
 /**
+ * Is the browser sitting on a Microsoft sign-in page?
+ *
+ * Told apart from "the pane is closed" because the fix is completely different
+ * and only one of them is the agent's to do. A signed-out browser answers every
+ * pane read with nothing, which reads exactly like an add-in nobody opened —
+ * and the check duly said "is the add-in open?" while the tab showed
+ * `login.live.com`, sending the reader to look for a pane in a window that has
+ * no document in it.
+ *
+ * Same distinction `reachable` exists for, a layer further out: there is a
+ * difference between a question that was answered with nothing and a question
+ * there was nobody to ask.
+ */
+export function signedOut(tabList) {
+  return /login\.live\.com|login\.microsoftonline\.com|login\.windows\.net/.test(String(tabList ?? ""));
+}
+
+/**
  * Did `find` actually FIND it, or is it echoing the query back?
  *
  * `playwright-cli find` answers a miss with `No matches found for "<query>"` —
@@ -321,6 +351,7 @@ async function attempt(argv, deps, sh) {
   const listRef = refFor(sh, "Slide List", /listbox "Slide List"/);
   const slides = listRef ? (sh("snapshot", listRef).match(/option "Slide"/g) ?? []).length : null;
 
+  const loggedOut = signedOut(sh("tab-list"));
   const crashed = sawCrashDialog(sh("find", "Sorry, we ran into a problem"));
 
   // A tab, not the Verbose trace checkbox. The checkbox only exists while the
@@ -336,7 +367,18 @@ async function attempt(argv, deps, sh) {
     ? /Picture every slide" \[checked\]/.test(toggles)
     : null;
 
-  const state = { head, deployed, stamp, slides, verbose, pictures, reachable: !sh.state.unreachable, ping, crashed };
+  const state = {
+    head,
+    deployed,
+    stamp,
+    slides,
+    verbose,
+    pictures,
+    reachable: !sh.state.unreachable,
+    ping,
+    crashed,
+    loggedOut,
+  };
   const { ok, stop } = readiness(state);
   console.log(
     `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)`,
