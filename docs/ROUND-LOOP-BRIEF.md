@@ -26,13 +26,24 @@ keeps the session, so a dead browser is not a lost sign-in.**
 6. `node scripts/round.mjs --check --dir .pw-session` — should say `ready`.
 7. `node scripts/round.mjs --dir .pw-session --retry 6`, in the background.
 
-**FIRST THING TO DO in the next round:** test the 2s-crash theory. PowerPoint has
-crashed 2s into the FIRST attempt four rounds running and never into one that
-followed a recovery, and its own log says `OnServerFindSucceeded could not find
-target slide` after `Failed to restore selection after load content`. Resolve the
-current slide once in the pre-flight: either it absorbs the crash where it is
-cheap, or it refutes the theory. Each round pays this as a wasted attempt plus
-80s of recovery.
+**FIRST THING TO READ in the next round:** the `slide 1 resolved` / `slide 1
+REFUSED` word on the `--check` line. It is the 2s-crash experiment, built and
+waiting for its first outing. PowerPoint has crashed 2s into the FIRST attempt
+four rounds running and never into one that followed a recovery, and its own log
+says `OnServerFindSucceeded could not find target slide` after `Failed to restore
+selection after load content`. The pre-flight now resolves slide 1 — a call the
+ping never makes, because `getCount` is a count and this host answers it in
+single-digit ms while in that state.
+
+Three outcomes, and all three are worth having:
+
+- `REFUSED` and the round then runs clean → the theory holds and the crash now
+  costs two seconds instead of an attempt plus 80s of recovery.
+- `resolved` and the round crashes 2s in anyway → refuted, for the price of one
+  extra call, and the next suspect is whatever the round does that a slide
+  resolve does not.
+- `resolved` and no crash → says nothing on its own. Needs the rounds where it
+  said `REFUSED` to mean anything, so record the word every time.
 
 **SPENT — do not re-ask as though open:** `how-many-syncs-a-creation-handle-
 survives` (`survives-8`, eight samples over three builds) and

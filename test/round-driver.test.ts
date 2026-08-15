@@ -25,6 +25,8 @@ const {
   recover,
   cli,
   isOverflow,
+  slideResolveScript,
+  readSlideResolve,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -40,6 +42,32 @@ describe("deciding whether a round is worth running", () => {
 
   it("runs when the site, the pane and HEAD all agree and the deck is clean", () => {
     expect(readiness(ready).ok).toBe(true);
+    expect(readiness({ ...ready, slideOk: true }).ok, "a resolved slide changes nothing").toBe(true);
+  });
+
+  it("refuses a host that answers the cheap call but will not resolve a slide", () => {
+    // THE 2s CRASH, moved to where it is cheap. Four rounds running, PowerPoint
+    // crashed two seconds into the FIRST attempt and never into one that followed
+    // a recovery, and its own log named the call: `OnServerFindSucceeded could
+    // not find target slide`. The ping cannot see that state — `getCount` is a
+    // count, and this host answers it in single-digit ms while in it.
+    const r = readiness({ ...ready, ping: { answered: true, ms: 3 }, slideOk: false });
+    expect(r.ok).toBe(false);
+    expect(r.stop.join(" ")).toContain("would not resolve slide 1");
+    // And it must not fire on the state the ping already covers, or the two
+    // messages contradict each other on the same sheet.
+    expect(readiness({ ...ready, ping: { answered: false, ms: 8011 }, slideOk: null }).stop).toHaveLength(1);
+  });
+
+  it("asks for a slide by position, inside a budget", () => {
+    const script = slideResolveScript(20000);
+    expect(script, "the call the host dies on, not a count").toContain("getItemAt(0)");
+    expect(script, "no budget means a wedged host hangs the check forever").toContain("20000");
+    expect(readSlideResolve("slide:287#62081387")).toBe(true);
+    expect(readSlideResolve("slide-failed:GeneralException")).toBe(false);
+    // Silence is not a refusal: an empty answer means the eval never landed, and
+    // calling that a refused slide would refuse rounds on a healthy host.
+    expect(readSlideResolve("")).toBe(null);
   });
 
   it("refuses when the site has not published HEAD yet", () => {
@@ -132,7 +160,13 @@ describe("talking to the browser at all", () => {
       if (fail) return { error: new Error("EAGAIN") };
       return { status: 0, stdout: "ok" };
     };
-    const sh = cli(run, ".");
+    // THE ENTRY IS INJECTED, and leaving it to the default is what turned this
+    // test green here and red on CI. `cliEntry()` finds the real playwright-cli
+    // on the machine that runs rounds and finds nothing on a CI runner, where
+    // every call then takes the no-entry path and latches whatever the fake
+    // `run` was going to do. A test about spawn results must not depend on
+    // whether a tool is installed.
+    const sh = cli(run, ".", "C:/fake/playwright-cli.js");
     // Sticky WITHIN a sweep is deliberate and stays: a call that never ran and a
     // page that answered nothing are the same empty string.
     sh("find", "x");

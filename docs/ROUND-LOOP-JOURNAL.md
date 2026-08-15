@@ -456,11 +456,20 @@ driver fix above doing its job on its first outing.
    restoring content — a document still settling when the round's first Office.js
    call lands. That is a theory with four samples and no test.
 
-   The cheap experiment, for the next round rather than blind now: `--check`
-   pings the host but the ping touches no slide. Resolve the current slide once
-   in the pre-flight and either it absorbs the crash where it is expected and
-   cheap, or it refutes the theory. Every round currently pays this as an
-   80-second tax plus a wasted attempt.
+   **Built, and it is an experiment rather than a fix.** `--check` pinged the
+   host but the ping touches no slide — `getCount` is a count, and this host
+   answers it in single-digit ms while in exactly the state it then dies from.
+   The pre-flight now resolves slide 1 and the check line carries `slide 1
+   resolved` or `slide 1 REFUSED` every round, pass or fail, because the rounds
+   where it says `resolved` are what make the others mean anything. The point is
+   to MOVE the crash, not prevent it: trip it in a two-second check that
+   `--retry` recovers from, instead of an attempt plus 80s. If it answers
+   `resolved` and the round crashes anyway, the theory is refuted for the price
+   of one call — which is the outcome worth having either way.
+
+   The crash dialog is now re-read AFTER the slide touch as well as before it. A
+   crash the check itself provoked would otherwise be carried into the round as
+   `ready`.
 
 4. **Fix.** The three driver defects above.
 

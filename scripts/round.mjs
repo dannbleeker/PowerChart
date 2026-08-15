@@ -74,6 +74,7 @@ export function readiness({
   reachable = true,
   unreachableAt = null,
   ping = null,
+  slideOk = null,
   crashed = false,
   loggedOut = false,
 }) {
@@ -130,6 +131,16 @@ export function readiness({
         "Its editing session is gone, usually because the network moved (look for net::ERR_NETWORK_CHANGED in " +
         "`playwright-cli console`). Reload the PowerPoint tab and reopen the pane: measured 8011ms silent before, " +
         "7ms after.",
+    );
+  // AFTER the ping, because a host that answered `getCount` and then refused a
+  // slide is a different state from one that answered nothing, and the fix is
+  // the same only by coincidence. See `slideResolveScript`: this is the call the
+  // 2s crash dies on, moved to where it costs two seconds instead of a round.
+  if (slideOk === false)
+    stop.push(
+      "the host answered the cheap call but would not resolve slide 1 — this is the state the 2s crash " +
+        "starts from (`OnServerFindSucceeded could not find target slide` in its own log). Reload the " +
+        "PowerPoint tab and reopen the pane; an attempt that follows a recovery has never crashed.",
     );
   if (!deployed) stop.push("the site did not answer with a build — is Pages up?");
   else if (head && deployed !== head)
@@ -345,6 +356,52 @@ export function pingScript(budgetMs) {
 }
 
 /**
+ * Touch a SLIDE before the round does, because the ping does not.
+ *
+ * THE EXPERIMENT, stated so a later reader can tell whether it worked.
+ * PowerPoint crashed 2s into the FIRST attempt of rounds 043 and 044 — four for
+ * four — and never into an attempt that followed a recovery, the difference
+ * being about eighty seconds of reload and settling. Its own log says what it
+ * was doing:
+ *
+ *     In OnDisconnect(), setting SlideViewNode.srcSlide to null
+ *     Failed to restore selection after load content.
+ *     OnServerFindSucceeded could not find target slide, time elapsed: 430 ms
+ *     GlobalErrorHandler:DisplayErrorDialog: 5341289
+ *
+ * A document still settling when the round's first Office.js call lands. The
+ * ping cannot see it: `slides.getCount()` is a COUNT, and this host answers it
+ * in single-digit milliseconds while it is in exactly that state. Resolving a
+ * slide is the cheapest call that goes down the path the host died on.
+ *
+ * The point is NOT to prevent the crash — it is to move it. If the theory holds,
+ * this trips it here, where the check is two seconds and `--retry` recovers
+ * before any round has been spent; today it costs a whole attempt plus the
+ * recovery. If the theory is wrong this answers `ok` and the round crashes
+ * anyway, which refutes it for the price of one extra call.
+ *
+ * `getItemAt(0)` and not the selection: a round starts on a one-slide deck, and
+ * the selection API is itself one of the calls this host has wedged on
+ * (`which selection call wedges the host`).
+ */
+export function slideResolveScript(budgetMs) {
+  return (
+    "async () => { try { return await Promise.race([ " +
+    "PowerPoint.run(async (c) => { const s = c.presentation.slides.getItemAt(0); " +
+    's.load("id"); await c.sync(); return "slide:" + (s.id || "?"); }), ' +
+    `new Promise((_, rej) => setTimeout(() => rej(new Error("budget")), ${budgetMs})) ]); ` +
+    '} catch (e) { return "slide-failed:" + (e && e.message ? String(e.message).slice(0, 80) : "?"); } }'
+  );
+}
+
+/** `"slide:287#62081387"` → true; a failure or a silence → false. */
+export function readSlideResolve(out) {
+  const s = String(out ?? "");
+  if (/slide-failed/.test(s)) return false;
+  return /slide:/.test(s) ? true : null;
+}
+
+/**
  * Is the browser sitting on a Microsoft sign-in page?
  *
  * Told apart from "the pane is closed" because the fix is completely different
@@ -432,6 +489,14 @@ async function attempt(argv, deps, sh) {
   // `ready`, which is the one answer this must never give without asking.
   const paneRef = refFor(sh, "Chart", /tab "Chart"/);
   const ping = paneRef ? readPing(sh("eval", pingScript(8000), paneRef)) : null;
+  // Only when the host is already answering: a slide resolve on a host that did
+  // not survive `getCount` tells us nothing the ping has not, and costs 20s.
+  const slideOk = paneRef && ping?.answered ? readSlideResolve(sh("eval", slideResolveScript(20000), paneRef)) : null;
+  // RE-READ, after the slide touch rather than only before it. If the touch is
+  // what trips the host, the dialog appears in the seconds that follow — and
+  // reading the dialog only at the top of the sweep is how a crash the check
+  // itself provoked would be carried into the round as `ready`.
+  const crashedAfter = slideOk === false ? sawCrashDialog(sh("find", "Sorry, we ran into a problem")) : false;
 
   const toggles = sh("find", "Verbose trace");
   const verbose = /checkbox "Verbose trace"/.test(toggles) ? /Verbose trace" \[checked\]/.test(toggles) : null;
@@ -449,7 +514,8 @@ async function attempt(argv, deps, sh) {
     reachable: !sh.state.unreachable,
     unreachableAt: sh.state.unreachableAt ?? null,
     ping,
-    crashed,
+    slideOk,
+    crashed: crashed || crashedAfter,
     loggedOut,
   };
   const { ok, stop } = readiness(state);
@@ -459,12 +525,15 @@ async function attempt(argv, deps, sh) {
   console.log(`  verbose trace ${verbose ?? "?"} · picture every slide ${pictures ?? "?"}`);
   console.log(
     `  host ${ping ? (ping.answered ? `answered in ${ping.ms}ms` : `SILENT for ${ping.ms}ms`) : "not asked — the pane is closed"}` +
-      (crashed ? " · PowerPoint's crash dialog is up" : ""),
+      // Printed every round, pass or fail, because the experiment needs the
+      // rounds where it says `resolved` as much as the ones where it does not.
+      (slideOk === null ? "" : slideOk ? " · slide 1 resolved" : " · slide 1 REFUSED") +
+      (state.crashed ? " · PowerPoint's crash dialog is up" : ""),
   );
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
     for (const s of stop) console.error(`    - ${s}`);
-    return { code: 1, reason: crashed ? "crashed" : "not-ready" };
+    return { code: 1, reason: state.crashed ? "crashed" : "not-ready" };
   }
   console.log("  ready");
   if (checkOnly) return { code: 0, reason: "checked" };
