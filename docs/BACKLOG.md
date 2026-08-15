@@ -196,7 +196,53 @@ rounds of history are read through them.
 
 Worth doing, and worth doing with the same care the counterbalancing got.
 
-### READ THIS FIRST: grouping is what saves a config, not the tag handle
+### READ THIS FIRST: a chart on a FRESHLY ADDED SLIDE cannot be grouped, and that is why it loses its config
+
+**Measured 2026-08-15 over the whole archive, and it is a switch rather than a
+tendency:**
+
+    slide already had shapes   82 chart(s), 81 grouped = 99%
+    freshly added, empty       74 chart(s),  1 grouped =  1%
+
+`npm run rounds` prints it under **WHICH SLIDE THE CHART LANDED ON**.
+
+**The chain, each link measured:**
+
+1. A chart drawn onto a slide this run has just added gets a pre-grouping re-read
+   that comes back **short or empty** — 20 of 24, or nothing at all.
+2. A short match is thrown away and an empty one has nothing to match, so the
+   chart is **not grouped**.
+3. An ungrouped chart's tag falls back to a `created` handle, which this host
+   refuses about seven times in ten.
+4. So it loses its config, and `same scale across the deck` fails — as it has for
+   seventeen rounds.
+
+**This is not a new problem. It is THE problem, and this repo has been circling
+it since #108.** `shape-add-held-slide-proxy` answers `threw`, a web-new-slide id
+does not round-trip, and the #108-#111 saga was four attempts at drawing on a
+freshly added slide. The tag work of the last four rounds — which handle, which
+anchor, which context — was aimed one level above this.
+
+**Ruled OUT along the way, each cheaply:**
+
+- **Context wear.** `contextSyncs` says the failing re-read is the FIRST sync of
+  its context, not the thirtieth. Chunking `updateChartsInSlides` would change
+  nothing, and that 390-line restructure is ruled out before anyone starts it.
+- **The `NNN#0` slide ids.** `256#0` carries the three best-behaved charts in
+  every round; the id shape predicts nothing.
+- **A failed `addGroup` poisoning the context.** The charts that lose their tag
+  never attempt a group.
+
+**Where a fix would go, and why it is not in this commit.** The code already
+knows the honest rule — *"the positional rule is still right for a slide this run
+added blank"* — but that branch is reachable only when NOTHING matched, so a
+chart matching 20 of 24 falls past it and declines to group. On a slide this run
+added blank we KNOW our shapes are the only ones there, so a short read is a host
+lie we can detect rather than obey. That is a contained change to the matcher
+rather than a restructure — but it is still surgery on the grouping path, which
+carries three shipped-broken fixes on record, and it wants a person awake.
+
+### Grouping is what saves a config, not the tag handle
 
 **Measured 2026-08-15 over the whole archive, and it had been sitting there for
 eleven rounds unqueried:**
