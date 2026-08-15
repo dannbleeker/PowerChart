@@ -239,7 +239,24 @@ describe("the fake host's answer sheet", () => {
         answers["collection-read-poisons-the-creation-handle"],
         "the age fault did not reach the question that spends a sync",
       ).toBe("refused");
-      const moves = ["how-many-syncs-a-creation-handle-survives", "collection-read-poisons-the-creation-handle"];
+      // THREE, and this one is a warning about how its answer reads. Under
+      // `strictTags` `does-a-failed-group-poison-the-tag` says
+      // `refused-after-group` — and the group had nothing to do with it: the
+      // question ages its handles two syncs on purpose, so the age rule refuses
+      // the write on its own. On a real host the same words could mean either
+      // thing, and what separates them is the CONTROL:
+      // `tag-the-creation-proxy-a-sync-later` answers `yes` there, so an aged
+      // creation handle demonstrably takes a write and age is excluded. Read
+      // them together or not at all.
+      expect(
+        answers["does-a-failed-group-poison-the-tag"],
+        "the age fault did not reach the question that ages its own handles",
+      ).toBe("refused-after-group");
+      const moves = [
+        "how-many-syncs-a-creation-handle-survives",
+        "collection-read-poisons-the-creation-handle",
+        "does-a-failed-group-poison-the-tag",
+      ];
       const without = (o: Record<string, unknown>) =>
         Object.fromEntries(Object.entries(o).filter(([k]) => !moves.includes(k)));
       expect(without(answers)).toEqual(without(FAKE_BASELINE));

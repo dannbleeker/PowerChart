@@ -42,9 +42,11 @@ export const FAKE_BASELINE = {
   // The fake's collection read drops from the TAIL (`faults.readsMissing`), but
   // unarmed it drops nothing, so a healthy fake keeps every shape.
   "which-end-a-short-read-drops": "all",
-  // The healthy fake groups, so the refusal this question needs never happens
-  // and it reports that rather than inventing an answer.
-  "does-a-failed-group-poison-the-tag": "no-refusal",
+  // The fake DOES refuse a group through a slide handle two syncs old — that is
+  // `parentWindowOk`, modelled from a real host naming the parent — and the tag
+  // written afterwards still lands. So the fake's answer is "the context
+  // survives a refused group", and the real host is what this question is for.
+  "does-a-failed-group-poison-the-tag": "yes",
   "delete-then-lookup": "reports-gone",
   "addgroup-returns-usable": "yes",
   "group-children-via-getcount": "two",
@@ -337,7 +339,12 @@ export const PENDING_QUESTIONS = {
     "`tag-the-creation-proxy-a-sync-later: yes` is the control: same handle, same age, no grouping attempt between. " +
     "`refused-after-group` means the context is the lever and the anchor move was aimed one level too low; `yes` " +
     "means the tag failure needs another explanation; `no-refusal` means the host grouped and the question was never " +
-    "put.",
+    "put. ROUND 044 ANSWERED `no-refusal` and that is why the question ages its handles now: the first version " +
+    "grouped two shapes from the same batch, which this host is perfectly happy to do — it refuses PRODUCTION's " +
+    "groups, whose members and slide handle are several syncs old by the time addGroup is called. " +
+    "READ IT WITH THE CONTROL OR NOT AT ALL: ageing the handles means `refused-after-group` could equally be the age " +
+    "rule refusing the write, which is exactly what it means under the `strictTags` fake. " +
+    "`tag-the-creation-proxy-a-sync-later: yes` on the real host is what excludes age and leaves the group implicated.",
   "which-end-a-short-read-drops":
     "Added 2026-08-15, and it prices a trade already taken. The chart's config tag now lands on the LAST shape drawn, " +
     "because that is the one handle no load() resolves and so the only one this host accepts a tag through " +

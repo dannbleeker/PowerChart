@@ -625,3 +625,45 @@ Probes: `which-end-a-short-read-drops` answered `unreadable` — "the collection
 would not list its items", which is this host's usual answer to anything asking a
 collection to enumerate itself. The trade it prices stays unpriced; the question
 is right and the host is not answering it yet.
+
+### Round 048 — 355a37c — archived as 044 — 10/12, and the question missed
+
+**The driver recovered the whole three-stop state on its own**, which is what
+this morning cost three hand-recoveries:
+
+    NOT READY — a silent host, a pane on d2ca1c9 while the site served 355a37c,
+                and a seven-slide deck
+    recovering from a silent host and a stale pane and a dirty deck, then starting again
+    attempt 2 of 7 — ready
+
+Both fixes from the last two commits doing their job on their first outing, and
+the recovery line naming all three rather than announcing a crash.
+
+1. **Mine. `does-a-failed-group-poison-the-tag` answered `no-refusal`, three
+   times** — "the host grouped, so the question was never put". The probe was
+   honest about missing rather than inventing an answer, and the miss is itself
+   the finding: **this host groups two fresh shapes from one batch perfectly
+   well.** What it refuses is PRODUCTION's grouping, whose members and slide
+   handle are several syncs old by the time `addGroup` is called. Grouping is not
+   refused as such; it is refused for aged handles.
+
+   The rest is the sixth consecutive repeat, and the new table says so at a
+   glance — `355a37c` scores 5/6/5/5/8, identical to `a54401c` and `d2ca1c9`.
+   Three builds, one of them carrying the tag-anchor change, all indistinguishable
+   against a noise floor of 1-vs-5 measured within a single build.
+
+2. **Research.** None owed.
+
+3. **Instrument.** The question now ages its handles two syncs before grouping,
+   which is what it should have done first time. **And it comes with a warning
+   that the fake found:** under `strictTags` the aged version answers
+   `refused-after-group` for a reason that has nothing to do with grouping — the
+   age rule refuses the write on its own. On a real host the same word could mean
+   either thing, so it must be read beside `tag-the-creation-proxy-a-sync-later`,
+   which answers `yes` here and excludes age. A question that can be right for
+   the wrong reason is worth shipping only with the control named next to it.
+
+4. **Fix.** None owed; the renderer is where it was.
+
+5. **Doctrine.** `PENDING_QUESTIONS` carries the miss, the reason for the ageing,
+   and the read-it-with-the-control rule.
