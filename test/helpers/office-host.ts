@@ -2158,8 +2158,28 @@ export function installHost(
             store.set(id, shape);
             return { id };
           },
-          getItemOrNullObject: (id: string) => ({ getShape: () => store.get(id) ?? noShape() }),
-          getItem: (id: string) => ({ getShape: () => store.get(id) ?? noShape() }),
+          // THROUGH A FRESH HANDLE, which is what "deliberately NOT wired into
+          // the stale-proxy faults" above requires and what the store alone did
+          // not deliver. The stored object is the shape's ORIGINAL handle, and
+          // its `tags` writer closes over that handle's age — so handing it back
+          // put every binding write straight into `strictTags` and answered the
+          // open question `no` by accident, which is precisely the finding this
+          // fake is not allowed to invent.
+          //
+          // Found on 2026-08-16, the first time `src/` used bindings at all —
+          // the comment above says not to build on this until it did.
+          getItemOrNullObject: (id: string) => ({
+            getShape: () => {
+              const sh = store.get(id);
+              return sh ? freshHandle(sh) : noShape();
+            },
+          }),
+          getItem: (id: string) => ({
+            getShape: () => {
+              const sh = store.get(id);
+              return sh ? freshHandle(sh) : noShape();
+            },
+          }),
           getCount: () => ({ value: store.size }),
           load() {},
           get items() {
