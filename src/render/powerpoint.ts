@@ -3098,6 +3098,52 @@ async function settleByBinding(bindingId: string, tagData: string): Promise<bool
   }
 }
 
+/**
+ * Move a shape by a delta — the self-test's stand-in for a user's drag.
+ *
+ * WHY THIS EXISTS. `CHART_ORIGIN_TAG` records where a chart was first drawn so a
+ * later update can shift the redraw by how far the user has since dragged it.
+ * `docs/PUBLISHING.md` says that round trip "needs a real drag and so cannot be
+ * scripted at all", and it has therefore never been checked by anything — which
+ * became the problem worth solving when rounds 070-072 moved every remaining
+ * failure onto exactly that tag: `writing the chart's origin tag` 5010s three to
+ * seven times a round while the config tag stopped failing entirely.
+ *
+ * **A drag is only a shape whose `left`/`top` changed.** Setting them here
+ * produces the same document state a mouse would, so the update path cannot tell
+ * the difference — which is the whole point. It does NOT prove a mouse drag, and
+ * the manual test that does is still owed; it proves the ARITHMETIC, which is
+ * what is failing.
+ *
+ * Deliberately no selection call. `setSelectedShapes` wedges this host's whole
+ * selection subsystem (`docs/RESEARCH.md`), and a check that risked that to
+ * simulate a drag would cost more than it measures.
+ */
+export async function moveShapeBy(slideId: string, shapeId: string, dx: number, dy: number): Promise<boolean> {
+  if (!supports("1.3")) return false;
+  try {
+    return await PowerPoint.run(async (context) => {
+      const shape = context.presentation.slides.getItemOrNullObject(slideId).shapes.getItemOrNullObject(shapeId);
+      shape.load("left,top");
+      await boundedSync(context, "reading a shape's position before moving it");
+      const left = loadedValue(() => shape.left);
+      const top = loadedValue(() => shape.top);
+      if (typeof left !== "number" || typeof top !== "number") return false;
+      shape.left = left + dx;
+      shape.top = top + dy;
+      await boundedSync(context, "moving a shape, the way a drag would");
+      return true;
+    });
+  } catch (err) {
+    trace("selftest", "the shape could not be moved, so the drag round trip cannot be checked", {
+      slideId,
+      shapeId,
+      error: errorText(err),
+    });
+    return false;
+  }
+}
+
 async function settleAndTagChart(
   slideId: string,
   tagData: string,

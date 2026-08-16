@@ -17,9 +17,15 @@ import { poolTagFaults } from "../scripts/triage.mjs";
 // Its own line, same reason as every other single import in this file.
 // @ts-expect-error — as above.
 import { poolGroupVsTag } from "../scripts/triage.mjs";
-// Its own line, same reason as every other single import in this file.
+// A NAMESPACE import, destructured below, and the fourth time this trap has been
+// paid for. `@ts-expect-error` covers exactly one LINE — the one carrying `from`
+// — so a named list long enough for prettier to wrap moves `from` four lines
+// down, uncovers the import, and turns the directive itself into an "unused
+// directive" error. Adding `scenarioRegressions` to the list did precisely that.
+// A namespace import is one line whatever is destructured off it.
 // @ts-expect-error — as above.
-import { poolFreshVsEstablished, poolStarvedQuestions, poolBatchSpanVsGroup } from "../scripts/triage.mjs";
+import * as pools from "../scripts/triage.mjs";
+const { poolFreshVsEstablished, poolStarvedQuestions, poolBatchSpanVsGroup, scenarioRegressions } = pools;
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -416,6 +422,62 @@ describe("triage — logs that are not inserts", () => {
     // A fault line that is not a tagging failure must not inflate the count that
     // a fix would be judged on.
     expect(byBuild.get("bbbbbbb")![0]["tagging-failed"]).toBe(5);
+  });
+
+  it("flags a scenario that WAS passing and has stopped, and stays quiet about the host's mood", () => {
+    // THE ONLY AUTOMATIC CHECK ON A ROUND'S OWN RESULT. Rounds 070-072 took
+    // `same scale across the deck` from 35 consecutive failures to three
+    // consecutive passes, and nothing guarded that: every other number a round
+    // produces is read by a person and filed, so a later build could take it
+    // back and no gate would fail.
+    const round = (pairs: [string, boolean][]) => ({ selftest: pairs.map(([name, ok]) => ({ name, ok })) });
+    const passing: [string, boolean][] = [
+      ["same scale", true],
+      ["visible", true],
+    ];
+
+    // Established (three straight passes) and now failing — the case it is for.
+    const gone = scenarioRegressions([
+      round(passing),
+      round(passing),
+      round(passing),
+      round([
+        ["same scale", false],
+        ["visible", true],
+      ]),
+    ]);
+    expect(
+      (gone as { name: string }[]).map((g) => g.name),
+      "a scenario that had passed three rounds running failed unnoticed",
+    ).toEqual(["same scale"]);
+
+    // MOOD IS NOT A REGRESSION, and this is what keeps the gate usable. This
+    // host swings 4-of-5 to 1-of-5 on the same build with nothing changed; a
+    // scenario that fails half the time was never established, so its next
+    // failure is not news. A gate that cries wolf gets switched off.
+    const flaky = scenarioRegressions([
+      round([["same scale", true]]),
+      round([["same scale", false]]),
+      round([["same scale", true]]),
+      round([["same scale", false]]),
+    ]);
+    expect(flaky, "reported a chronically flaky scenario as a regression").toEqual([]);
+
+    // A NEW scenario cannot have been established, so its first bad round is not
+    // a fault — otherwise every scenario added would arrive pre-broken.
+    const fresh = scenarioRegressions([
+      round([["same scale", true]]),
+      round([["same scale", true]]),
+      round([["same scale", true]]),
+      round([
+        ["same scale", true],
+        ["brand new", false],
+      ]),
+    ]);
+    expect(fresh, "a scenario on its first outing was called a regression").toEqual([]);
+
+    // And too little history is no history: it must not judge from two rounds.
+    expect(scenarioRegressions([round(passing), round([["same scale", false]])])).toEqual([]);
   });
 
   it("splits grouping by whether the chart spanned batches, and counts a draw once", () => {

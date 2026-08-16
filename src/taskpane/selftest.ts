@@ -80,6 +80,7 @@ import {
   slideShapeList,
   timeShapeRounds,
   updateChartInSlide,
+  moveShapeBy,
   errorText,
   // A live binding, read fresh on every access — the whole point is to diff it
   // around a scenario.
@@ -748,6 +749,90 @@ export function updateLossNote(what: string, refusalsDuring: number, stillOnSlid
   // with no throw to count.
   return `the update would not work on the ${what} and the slide would not say what became of it`;
 }
+
+/**
+ * The drag round trip, without a drag.
+ *
+ * `CHART_ORIGIN_TAG` records where a chart was first drawn so a later update can
+ * shift the redraw by however far the user has since moved it. `docs/PUBLISHING.md`
+ * says that round trip "needs a real drag and so cannot be scripted at all", and
+ * so nothing has ever checked it — which stopped being acceptable when rounds
+ * 070-072 moved every remaining failure onto exactly that tag: `writing the
+ * chart's origin tag` 5010s three to seven times a round, while the config tag
+ * stopped failing altogether.
+ *
+ * **A drag is only a shape whose `left`/`top` changed**, so this moves one
+ * programmatically and then updates the chart. The document state is what a
+ * mouse would have produced, so the update path cannot tell the difference.
+ *
+ * WHAT IT DOES AND DOES NOT PROVE. It proves the ARITHMETIC — that an update
+ * redraws at the moved position rather than snapping back to where the chart was
+ * first inserted, which is the visible symptom of a lost origin tag. It does not
+ * prove a mouse drag, and the manual check that does is still owed; test 4 of the
+ * standing run stays.
+ *
+ * No selection call anywhere in it. `setSelectedShapes` wedges this host's whole
+ * selection subsystem, and risking that to simulate a drag would cost more than
+ * the check is worth.
+ */
+const dragThenUpdate: Scenario = async (prefix) => {
+  const { found, blind, gap } = await probeCharts(prefix);
+  const chart = leastLoadedChart(found, shapesDrawnOn);
+  if (!chart)
+    return blind ? blindSkip(gap) : { ok: false, skipped: true, detail: "no probe chart in the deck to move" };
+  const before = { left: chart.target.left, top: chart.target.top };
+  if (typeof before.left !== "number" || typeof before.top !== "number")
+    return {
+      ok: false,
+      skipped: true,
+      detail: "the host would not say where the chart is, so a move cannot be judged",
+    };
+  // Far enough that a rounding difference cannot be mistaken for a move, and
+  // small enough to stay on the slide.
+  const DX = 60;
+  const DY = 40;
+  if (!(await moveShapeBy(chart.target.slideId, chart.target.shapeId, DX, DY)))
+    return {
+      ok: false,
+      skipped: true,
+      detail: "the host would not move the shape, so the drag round trip is untested",
+    };
+
+  // The move has to be CONFIRMED before the update, or a failed move and a
+  // failed redraw are indistinguishable — the trap `withId: 0` taught this
+  // project about routes that never ran.
+  const { found: moved, blind: movedBlind, gap: movedGap } = await probeCharts(prefix);
+  if (movedBlind) return blindSkip(movedGap);
+  const atMoved = moved.find((c) => c.cfg.title === chart.cfg.title);
+  if (!atMoved || typeof atMoved.target.left !== "number")
+    return { ok: false, detail: "the chart could not be found after moving it" };
+  const shifted = Math.round(atMoved.target.left - before.left);
+  if (Math.abs(shifted - DX) > 2)
+    return { ok: false, skipped: true, detail: `the move did not land (x moved ${shifted}pt, wanted ${DX}pt)` };
+
+  const next = { ...atMoved.cfg, title: `${atMoved.cfg.title} (moved)` };
+  const target = await updateChartInSlide(buildChart(next), atMoved.target, { tagData: JSON.stringify(next) });
+  if (!target) return { ok: false, detail: "the chart was gone from the slide after the update" };
+  const { found: after, blind: afterBlind, gap: afterGap } = await probeCharts(prefix);
+  if (afterBlind) return blindSkip(afterGap);
+  const redrawn = after.find((c) => c.cfg.title === next.title);
+  if (!redrawn || typeof redrawn.target.left !== "number")
+    return { ok: false, detail: "the moved chart is no longer re-editable — its config did not survive the redraw" };
+
+  // THE ASSERTION. A chart that kept its origin redraws where the user left it;
+  // one that lost it snaps back to where it was first inserted, which is the
+  // symptom a user would report as "it jumped".
+  const drift = Math.round(redrawn.target.left - atMoved.target.left);
+  const snappedBack = Math.abs(redrawn.target.left - before.left) < Math.abs(drift);
+  return {
+    ok: Math.abs(drift) <= 2,
+    detail: snappedBack
+      ? `the update SNAPPED THE CHART BACK to where it was first inserted (${Math.round(before.left)}pt), losing the ${DX}pt move — the origin tag did not survive`
+      : Math.abs(drift) <= 2
+        ? `moved ${DX}x${DY}pt and the update redrew it there, so the origin round trip held`
+        : `the update redrew it ${drift}pt from where it was moved to`,
+  };
+};
 
 const explodePicture: Scenario = async (prefix) => {
   if (!canInsertPicture()) return { ok: false, skipped: true, detail: "host has no picture fill (PowerPointApi 1.8)" };
@@ -2407,6 +2492,9 @@ const SCENARIOS: {
   { name: "edit a chart on the visible slide", run: editOnVisibleSlide },
   { name: "insert onto a slide that already has content", run: insertOntoUsedSlide },
   { name: "same scale across the deck", run: sameScaleAcrossDeck },
+  // AFTER the scenarios that insert, because it needs a chart to move, and
+  // BEFORE the selection ladder, because it must not run against a wedged host.
+  { name: "an update follows a moved chart", run: dragThenUpdate },
   { name: "explode a degraded picture", run: explodePicture },
   // The ladder, and the position is the whole argument.
   //

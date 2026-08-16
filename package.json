@@ -31,6 +31,7 @@
     "flaky": "node scripts/flaky.mjs",
     "mutation": "stryker run",
     "rounds": "node scripts/triage.mjs rounds",
+    "rounds:gate": "node scripts/rounds-gate.mjs",
     "issue-status": "node scripts/issue-status.mjs",
     "round": "node scripts/round.mjs"
   },
