@@ -1354,3 +1354,61 @@ on current builds and must stay that way.
 **Owner-gated on cost, not on doubt**: bindings are PowerPointApi 1.8 against a
 manifest pinned at 1.4, so it needs a `supports("1.8")` gate like grouping
 already has, and it must degrade to today's behaviour on an older host.
+
+### `same scale` PASSES — and the next work is where the failures moved to
+
+**Rounds 070/071/072 on `01f3607`: 12 of 12 scenarios, `same scale` 8 of 8, three
+times.** After 35 rounds of failing. Full numbers in the journal.
+
+**The cause is not the code that was written for it.** The binding was added to
+give the SETTLE a durable handle; the settle route has never executed (`bind 0/0`
+in all three). What it did instead was upstream: `bindings.add` on the live proxy
+in the drawing batch stabilises the shape's identity, so the pre-grouping re-read
+stops listing shapes under ids we cannot match, and the config tag write lands.
+`cfg5010` is 0 in all three rounds against 8 before.
+
+**Reframe the item accordingly.** This is not "the settle got a handle", it is
+**"binding a shape makes its identity resolvable"** — and if that is the real
+mechanism, the settle-by-binding route is dead weight riding along with a
+one-line side effect. Worth deciding deliberately rather than leaving both.
+
+#### 1. THE ORIGIN TAG IS NOW THE TOP FAILURE, and nothing can check it
+
+`writing the chart's origin tag` 5010s 3-7 times a round. `POWERCHART_ORIGIN` is
+the drag-delta round trip, and `docs/PUBLISHING.md` says it "needs a real drag
+and so cannot be scripted at all". **The failures have migrated to exactly the
+feature no automated round reaches**, which is the worst place for them to be.
+
+**A drag is only a shape whose `left`/`top` changed.** A scenario can move a
+shape PROGRAMMATICALLY, then update it and assert the redraw follows the delta.
+That needs no selection call, so it carries none of the `setSelectedShapes` wedge
+risk. It does not prove a mouse drag; it proves the origin ARITHMETIC, which is
+what is failing. **Plan:** defect — origin tag refused, unverifiable; seam — the
+self-test scenario list plus `CHART_ORIGIN_TAG`'s read; proves it — a new
+scenario that moves and re-updates; must not touch — the selection scenarios or
+the existing origin write.
+
+#### 2. NOTHING ENFORCES A ROUND RESULT
+
+If a future build takes `same scale` from 8 of 8 back to 3 of 8, no gate fails —
+a person has to read it. Three rounds of evidence just bought a result that
+nothing protects. `rounds/predictions.json` exists but scenario SCORES are not
+checked against the archive. **A regression gate over the archived rounds** would
+make today's result stick, and it is the cheapest item here.
+
+#### 3. THE LOOP STILL NEEDS SIX MANUAL BROWSER STEPS A ROUND
+
+Download the log, clean the deck, reopen the pane after a reload, verify the
+toggles. This is throughput, but it is also correctness: hand-driven cleanup is
+what took a deck to **0 slides** on 2026-08-16 and produced `slide 1 REFUSED`.
+`cleanDeckScript` already exists — readiness REFUSES on a dirty deck instead of
+using it.
+
+#### 4. OWNER-ONLY, and neither has ever happened
+
+- **Desktop PowerPoint.** Every round in this archive is the web host.
+  `PUBLISHING.md` asks for desktop at least once.
+- **A 4:3 deck**, same.
+- **A real mouse drag.** The native-editability premise the product rests on has
+  never been exercised by a human hand — and it is the thing item 1 can only
+  partially substitute for.

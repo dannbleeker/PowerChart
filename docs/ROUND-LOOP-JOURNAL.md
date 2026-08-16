@@ -1289,3 +1289,61 @@ that route as *unanswerable from the probe* (`binding-names-shape-later` asked
 eight times, never once reached its own question). That was a fact about the
 PROBE. The retry proved the other route: measure it in production, where the
 question can actually be asked.
+
+## Rounds 070 + 071 + 072 (`01f3607`, 2026-08-16) — `same scale` passes, and not for the reason it was built
+
+**THE SCENARIO THAT HAD FAILED 35 ROUNDS OUT OF 35 NOW PASSES, THREE TIMES:**
+
+    070   12 of 12 scenarios   same scale 8 of 8, all 8 re-editable
+    071   12 of 12 scenarios   same scale 8 of 8, all 8 re-editable
+    072   12 of 12 scenarios   same scale 8 of 8, all 8 re-editable
+
+`explode a degraded picture` passes in all three as well, and `the chart is
+actually visible` has lost its "the host would not name the chart afterwards"
+caveat. Twelve of twelve is the first clean sheet this project has recorded.
+
+**THE FIX WORKED FOR A REASON IT WAS NOT DESIGNED FOR, and that is worth more
+than the win.** The binding was added to give the SETTLE a durable handle. The
+settle route has never once executed:
+
+    round   grouped  notG  tagFail  cfg5010  origin5010  bind ok/fail  retries  unmatched
+    069        11      4       8       8         0          0 / 0         7         5
+    070        18      1       0       0         7          0 / 0        10         0
+    071        19      0       0       0         7          0 / 0        10         0
+    072        14      4       1       0         3          0 / 0        10         3
+
+`bind 0/0` in every round: nothing fails, so the settle has nothing to rescue.
+What changed is upstream of it. **The zero-match re-read is gone** — the defect
+rounds 068/069 named exactly (`withOwnId` 7 of 7 with zero matches, the host
+listing shapes under ids it never gave us). Calling `bindings.add` on the live
+proxy in the drawing batch appears to **stabilise the shape's identity**, so the
+re-read afterwards reports ids that match ours and the config tag write lands.
+
+Attribution is clean: the only difference between `2c7dcd8` and `01f3607` is
+that one commit.
+
+**THE HOST IS STILL MOODY UNDERNEATH, and that is the honest reading of the
+third round.** 072 grouped 14 where 071 grouped 19, declined 4 where 071 declined
+0, and had 3 unmatched re-reads where 070 and 071 had none. Retries fired 10
+times in all three. So the wobble did not go away — **the OUTCOME became robust
+to it.** `same scale` is 8 of 8 whether the internals wobble or not, which is a
+better result than a quieter host would have been.
+
+`cfg5010` is **0 in all three** post-change rounds against 8 before. That is the
+cleanest single signal in the set.
+
+**What is now the top failure, and it is the one nothing here can check.**
+`writing the chart's origin tag` 5010s 3-7 times a round. The origin tag is the
+drag-delta round trip, and `docs/PUBLISHING.md` says it "needs a real drag and so
+cannot be scripted at all". The failures have migrated to precisely the feature
+no automated round reaches — see the backlog for the proposal to make the origin
+ARITHMETIC scriptable even though a mouse drag is not.
+
+### A driver gap this run exposed and closed
+
+A browser that died UNDER a running round was invisible for 24 minutes.
+`quietStreak` resets to zero on a failed CLI call — deliberately, so contention
+cannot end a healthy round — but a dead browser makes every call fail forever, so
+the counter never reaches its threshold and the loop polls a corpse to the
+thirty-minute limit. `browserDiedMidRound` now needs a STREAK of failures AND an
+affirmative `(no browsers)`; either alone re-makes a bug the other prevents.
