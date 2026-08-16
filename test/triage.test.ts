@@ -1307,7 +1307,7 @@ describe("what an update left on the slide, pooled", () => {
   const slide = (over: Record<string, number>) => ({
     scope: "update",
     message: "shapes left on the slide after an in-place update",
-    data: { shortfall: 0, unexplained: 0, charts: 1, withParts: 1, ...over },
+    data: { growth: 0, charts: 1, withParts: 1, ...over },
   });
   const round = (...entries: ReturnType<typeof slide>[]) => ({ trace: { entries } });
 
@@ -1317,11 +1317,11 @@ describe("what an update left on the slide, pooled", () => {
     // the stranding. Pooled together they are indistinguishable and the reading
     // says nothing.
     const o = poolUpdateShortfalls([
-      round(slide({ shortfall: 12, charts: 1, withParts: 0 }), slide({ shortfall: 4, charts: 1, withParts: 1 })),
+      round(slide({ growth: 12, charts: 1, withParts: 0 }), slide({ growth: 4, charts: 1, withParts: 1 })),
     ]);
     expect(o.blind).toBe(1);
-    expect(o.blindShortfall).toBe(12);
-    expect(o.sightedShortfall).toBe(4);
+    expect(o.blindGrowth).toBe(12);
+    expect(o.sightedGrowth).toBe(4);
     expect(o.worst).toBe(12);
     expect(o.updates).toBe(2);
     expect(o.rounds).toBe(1);
@@ -1331,18 +1331,26 @@ describe("what an update left on the slide, pooled", () => {
     // A slide where some charts had a list and some did not cannot say which of
     // them stranded anything, and guessing would inflate the one number the
     // whole question turns on.
-    const o = poolUpdateShortfalls([round(slide({ shortfall: 9, charts: 3, withParts: 1 }))]);
+    const o = poolUpdateShortfalls([round(slide({ growth: 9, charts: 3, withParts: 1 }))]);
     expect(o.blind).toBe(0);
-    expect(o.blindShortfall).toBe(0);
-    expect(o.sightedShortfall).toBe(9);
+    expect(o.blindGrowth).toBe(0);
+    expect(o.sightedGrowth).toBe(9);
   });
 
-  it("counts a host that did not do what it was told separately", () => {
-    // `unexplained` is not about our arithmetic — it is the slide failing to
-    // move by what the update did to it, which is a different fault entirely.
-    const o = poolUpdateShortfalls([round(slide({ shortfall: 0, unexplained: 5, withParts: 0, charts: 1 }))]);
-    expect(o.unexplained).toBe(5);
-    expect(o.blindShortfall).toBe(0);
+  it("will not pool a reading from the build whose units did not match", () => {
+    // Round 082 and earlier carry `shortfall`/`unexplained` — a subtraction
+    // across three units that summed to zero on every line. Counted apart, never
+    // mixed in, or the artifact this pool was rewritten to stop reporting comes
+    // straight back.
+    const old = {
+      scope: "update",
+      message: "shapes left on the slide after an in-place update",
+      data: { shortfall: 23, unexplained: -23, charts: 1, withParts: 0 },
+    };
+    const o = poolUpdateShortfalls([{ trace: { entries: [old] } }]);
+    expect(o.unitMismatch).toBe(1);
+    expect(o.blind).toBe(0);
+    expect(o.blindGrowth).toBe(0);
   });
 
   it("says nothing at all about rounds that never measured it", () => {

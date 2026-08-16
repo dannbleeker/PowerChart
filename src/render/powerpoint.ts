@@ -1301,8 +1301,19 @@ async function slideShapeCounts(slideIds: string[]): Promise<Map<string, number>
  * CHART_PARTS_TAG — the list naming its other shapes. That list is built by
  * `reading back an ungrouped chart's shape ids`, which is the ONE `GetItem(id)`
  * refusal site still firing: 56 of 57 archived rounds carry it, round 081
- * included, and the six newest rounds each report 9 to 12 charts left with no
- * parts list at all.
+ * included.
+ *
+ * THE EXPOSURE IS NARROWER THAN THE HEADLINE SUGGESTS, and this comment said
+ * otherwise for a day. Every round reports 9 to 12 charts with "no parts list",
+ * which reads like 9 to 12 charts that lost one — but the tag is only ever
+ * written for UNGROUPED charts, because a grouped chart's shapes live inside the
+ * group and are deleted with it. Most of that count is grouped charts correctly
+ * having nothing to list. The rounds agree: `not grouping` runs 0 to 4 per round
+ * while "no parts list" sits at 9 to 12, moving independently of it.
+ *
+ * So the population at risk is the UNGROUPED charts whose id read-back was
+ * refused, which some rounds do not contain at all — round 082 grouped 20 of 20
+ * and could not have answered this question either way.
  *
  * The consequence is written down beside that read — "the chart grows by a
  * whole chart on every edit", because the update deletes the one shape it can
@@ -1310,34 +1321,38 @@ async function slideShapeCounts(slideIds: string[]): Promise<Map<string, number>
  * that would notice passes 57 of 57, and no round records whether one of those
  * 9-to-12 charts was ever the one an update touched.
  *
- * TWO READINGS, and they must not be confused — the first draft of this had
- * only one and it was worthless.
+ * ONE READING, AND IT IS `growth`. The slide's own top-level shape count before
+ * the update against the same count after it, both taken from the host in their
+ * own contexts. If an update strands the rest of a chart, the slide ends with
+ * more shapes on it than it started with. If it does not, the count comes back.
  *
- * **`shortfall = drew - removed`** is the stranding. A faithful replacement
- * takes out what it puts back, so an unchanged chart gives zero; a chart whose
- * parts list was refused can name only its anchor, so it removes 1, draws all
- * of them, and the shortfall is the rest of the chart still sitting on the
- * slide. It compares two independent measurements — what the host confirmed it
- * deleted, and what this call drew.
+ * THE SECOND DRAFT REPORTED `drew - removed` AND CALLED IT THE STRANDING, and
+ * round 082 refuted it in its own first line: every entry read `before: 3,
+ * after: 3` — nothing left behind at all — beside a `shortfall` of 23. Three
+ * different units were being subtracted from each other. `drew` counts the
+ * shapes INSIDE a chart, `removed` counts delete CALLS, and `before`/`after`
+ * count TOP-LEVEL shapes on the slide. A grouped chart is one top-level shape
+ * however many it contains, so deleting it is one call and redrawing it is one
+ * shape — and 24 minus 1 is 23 of nothing.
  *
- * **`unexplained = (after - before) - (drew - removed)`** is a different
- * question: did the host DO what it said? A slide obeys
- * `after = before - removed + drew`, so this is zero whenever the host is
- * honest, and non-zero when a delete was silently dropped or something else
- * moved the slide underneath the update.
+ * The tell was there without the host: `shortfall` and `unexplained` summed to
+ * zero on every line, so the pair carried one bit between them. That is the same
+ * flaw as the FIRST draft, which reported an identity and read zero on the sick
+ * case and the healthy one alike. Two drafts, two arrangements of numbers that
+ * could only come out one way.
  *
- * The first draft reported only the second and called it "orphans". It is an
- * identity — a rearrangement of numbers already known — so it read zero on the
- * sick case and zero on the healthy one, and its control test passed vacuously.
- * A reading that cannot come out any other way is not a measurement.
+ * `removed` and `drew` are still recorded, as context and in their own names,
+ * because knowing an update deleted one thing and drew twenty-four is worth
+ * having when reading a growth of zero. They are not subtracted from anything.
  *
- * `shortfall` is not proof on its own: a chart legitimately redrawn larger has
- * one too. `withParts` is what separates them, which is why it is beside it.
+ * `withParts` stays beside it: growth on a chart that HAD its parts list is an
+ * ordinary change of size, and growth on one that did not is the stranding this
+ * exists to catch.
  */
 function reportOrphanedShapes(
   before: Map<string, number>,
   after: Map<string, number>,
-  churn: Map<string, { removed: number; drew: number; charts: number; withParts: number }>,
+  churn: Map<string, { removed: number; drew: number; charts: number; withParts: number; atRisk: number }>,
 ): void {
   for (const [slideId, c] of churn) {
     const b = before.get(slideId);
@@ -1349,20 +1364,23 @@ function reportOrphanedShapes(
       slideId,
       before: b,
       after: a,
-      // The stranding: what this update drew, less what it could actually name
-      // and delete. Zero for a faithful replacement of an unchanged chart.
-      shortfall: c.drew - c.removed,
-      // The host-honesty check. Zero whenever the slide moved by exactly what
-      // this call did to it; anything else means a delete was dropped or the
-      // slide changed under us.
-      unexplained: a - b - (c.drew - c.removed),
+      // THE READING. Top-level shapes the slide gained across the update, host-
+      // measured at both ends. Zero means the update replaced what it removed.
+      growth: a - b,
       charts: c.charts,
-      // The discriminator. An orphan count that rises only where charts had no
-      // parts list is the refusal doing it; one that rises regardless is
-      // something else, and the fix would be somewhere else too.
+      // The discriminator. Growth on charts that HAD a parts list is an ordinary
+      // change of size; growth on charts without one is the stranding.
       withParts: c.withParts,
-      removed: c.removed,
-      drew: c.drew,
+      // UNGROUPED AND UNLISTED — the only charts that can strand anything. A
+      // reading of zero growth over zero at-risk charts is not an all-clear.
+      atRisk: c.atRisk,
+      // CONTEXT, IN THEIR OWN UNITS, and never subtracted from anything above.
+      // `removed` counts delete CALLS — one for a group however many shapes it
+      // holds — and `drew` counts the shapes a chart contains. Neither is
+      // comparable with a top-level slide count, and treating them as though
+      // they were is what the second draft of this got wrong.
+      removedCalls: c.removed,
+      drewInner: c.drew,
     });
   }
 }
@@ -1718,7 +1736,7 @@ export async function updateChartsInSlides(
   const countsBefore = watching
     ? await slideShapeCounts(items.map((i) => i.target.slideId))
     : new Map<string, number>();
-  const churn = new Map<string, { removed: number; drew: number; charts: number; withParts: number }>();
+  const churn = new Map<string, { removed: number; drew: number; charts: number; withParts: number; atRisk: number }>();
   /**
    * Each returned target's own `tagData`, in the SAME index space as `updated`.
    *
@@ -1758,7 +1776,14 @@ export async function updateChartsInSlides(
       // it reports no movement for a chart that has since been dragged, and the
       // update puts it back where it was. Only the host knows where the shape is
       // now.
-      old.load("left,top");
+      // `type` rides along with the position, on a load this sync already
+      // carries. It is the discriminator the orphan instrument could not
+      // otherwise get: stranding is only possible for an UNGROUPED chart,
+      // because a group is deleted whole — and `partIds` cannot tell the two
+      // apart, since a grouped chart has none either. Without this the reading
+      // says "no growth" over a population that may have contained nothing at
+      // risk, which is not an all-clear and would be read as one.
+      old.load("left,top,type");
       // The config this chart was drawn from, and the fingerprint of the scene
       // it produced — both read in the sync that was already resolving the
       // shape, so the fast path below costs no extra round trip when it does
@@ -2007,11 +2032,26 @@ export async function updateChartsInSlides(
         // point. A chart with no parts list removes exactly one shape however
         // many it has, and that gap is what the reading is looking for.
         if (watching) {
-          const c = churn.get(it.target.slideId) ?? { removed: 0, drew: 0, charts: 0, withParts: 0 };
+          const c = churn.get(it.target.slideId) ?? { removed: 0, drew: 0, charts: 0, withParts: 0, atRisk: 0 };
           c.removed += removed;
           c.drew += estimateOfficeShapes(it.scene);
           c.charts += 1;
           if (it.target.partIds?.length) c.withParts += 1;
+          // THE POPULATION THE QUESTION IS ABOUT. Ungrouped, and with no parts
+          // list to delete by — so this update could name only its anchor and
+          // the rest of the chart is what might be left behind. A group is not
+          // at risk however many shapes it holds, and `partIds` alone cannot
+          // say which is which because a grouped chart has none either.
+          //
+          // Read from the host's own `type`, defaulting to NOT-at-risk when it
+          // could not be read: inventing risk from an unread property would
+          // make the instrument cry wolf on a host that simply went quiet.
+          // CASE-FOLDED, because `PowerPoint.ShapeType` spells it `group` and a
+          // capitalised comparison counts every grouped chart as exposure —
+          // which would have made the reading say the whole deck was at risk on
+          // a round where nothing was.
+          const kind = String(loadedValue(() => (old as unknown as { type?: string }).type) ?? "").toLowerCase();
+          if (kind && kind !== "group" && !it.target.partIds?.length) c.atRisk += 1;
           churn.set(it.target.slideId, c);
         }
         // From here the old chart is committed GONE. Anything that throws below

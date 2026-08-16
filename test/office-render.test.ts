@@ -1406,10 +1406,12 @@ describe("updateChartInSlide", () => {
         await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
         const line = orphanLine();
         expect(line, "the instrument did not run").toBeTruthy();
-        const d = line?.data as { shortfall: number; unexplained: number; withParts: number };
+        const d = line?.data as { growth: number; withParts: number; atRisk: number };
         expect(d.withParts).toBe(1);
-        expect(d.shortfall, "a faithful replacement takes out what it puts back").toBe(0);
-        expect(d.unexplained, "the slide moved by exactly what this update did to it").toBe(0);
+        expect(d.growth, "a faithful replacement leaves the slide the size it found it").toBe(0);
+        // Ungrouped, but its parts list is intact, so the update can name every
+        // shape it owns — not exposure either.
+        expect(d.atRisk, "a chart that can name its own parts is not at risk").toBe(0);
       } finally {
         setTracing(false);
       }
@@ -1431,16 +1433,57 @@ describe("updateChartInSlide", () => {
       setTracing(true);
       try {
         await updateChartsInSlides([{ scene, target: blind, opts: { tagData: "cfg" } }]);
-        const d = orphanLine()?.data as { shortfall: number; unexplained: number; withParts: number; removed: number };
+        const d = orphanLine()?.data as { growth: number; withParts: number; removedCalls: number; atRisk: number };
         expect(d, "the instrument did not run").toBeTruthy();
         expect(d.withParts, "no chart in this update had a parts list").toBe(0);
-        expect(d.removed, "only the anchor could be named").toBe(1);
+        expect(d.removedCalls, "only the anchor could be named").toBe(1);
         // The number is the finding: every shape but the anchor is still there,
         // underneath a full redraw.
-        expect(d.shortfall, "the growth this instrument exists to measure").toBe(drawn - 1);
-        expect(d.unexplained, "the host did exactly what it was asked — the fault is what we asked").toBe(0);
+        expect(d.growth, "the growth this instrument exists to measure").toBe(drawn - 1);
+        // Ungrouped AND with no parts list — the one population that can strand.
+        expect(d.atRisk, "this is exactly the chart the question is about").toBe(1);
         // And it is real, not just arithmetic — the slide really did grow.
         expect(slide.created.filter((s) => !s.deleted).length).toBe(drawn - 1 + drawn);
+      } finally {
+        setTracing(false);
+      }
+    });
+
+    it("reports no growth for a GROUPED chart, whatever it holds inside", async () => {
+      // THE CASE THAT LET A UNIT BUG THROUGH TWO DRAFTS AND A REAL ROUND. Every
+      // other test here uses the ungrouped host, where each of a chart's shapes
+      // is top-level and "shapes inside the chart" happens to equal "shapes on
+      // the slide" — so subtracting one from the other looked right.
+      //
+      // A group is ONE top-level shape however many it contains. Deleting it is
+      // one call, redrawing it is one shape, and the slide never changes size.
+      // Round 082 reported `shortfall: 23` on exactly this, beside its own
+      // `before: 3, after: 3`.
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      const scene = buildChart(config);
+      await insertSceneIntoSlide(scene, { tagData: "cfg" });
+      expect(
+        slide.created.some((s) => s.type === "group"),
+        "this test needs a GROUPED chart",
+      ).toBe(true);
+      const found = (await listChartsInDeck()).charts;
+      setTracing(true);
+      try {
+        await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
+        const d = orphanLine()?.data as { growth: number; removedCalls: number; drewInner: number; atRisk: number };
+        expect(d, "the instrument did not run").toBeTruthy();
+        expect(d.growth, "a group replaced by a group leaves the slide exactly as it was").toBe(0);
+        // AND IT WAS NEVER AT RISK. A group is deleted whole, so it cannot
+        // strand anything — which is why zero growth here proves nothing about
+        // the question. `partIds` alone cannot say this: a grouped chart has
+        // none either, so it looks identical to the dangerous case without the
+        // host's own `type`.
+        expect(d.atRisk, "a group can strand nothing and must not be counted as exposure").toBe(0);
+        // The two numbers whose difference used to be reported as stranding.
+        // Kept as context, in their own units, and never subtracted.
+        expect(d.drewInner, "a chart holds more than one shape").toBeGreaterThan(1);
+        expect(d.removedCalls, "a group goes in one delete").toBe(1);
       } finally {
         setTracing(false);
       }

@@ -935,19 +935,46 @@ function reportUpdateShortfalls(logs) {
 ` +
       `    shape ids\` leaves behind.`,
   );
-  console.log(
-    `    stranded on those    ${String(o.blindShortfall).padStart(5)} shape(s), worst single update ${o.worst}`,
-  );
-  console.log(`    on charts that HAD a list ${String(o.sightedShortfall).padStart(4)} — an ordinary change of size`);
-  if (o.blindShortfall === 0)
+  const usable = o.updates - o.unitMismatch;
+  if (usable > 0) {
+    console.log(`    the slide GREW by ${String(o.blindGrowth).padStart(5)} shape(s), worst single update ${o.worst}`);
+    console.log(`    on charts that HAD a list ${String(o.sightedGrowth).padStart(4)} — an ordinary change of size`);
+    // ONLY WITH SOMETHING TO CONCLUDE FROM. This fired on a pool whose every
+    // reading had just been excluded as unit-mismatched, announcing that the
+    // growth "is not happening" on the strength of no measurements at all —
+    // which is a report lying in a new direction rather than the old one.
+    // GATED ON THE POPULATION THE QUESTION IS ABOUT, which is charts that were
+    // ungrouped AND had no parts list — the only ones that can strand anything,
+    // counted per update from the host's own `type`. The round-wide
+    // `not grouping` count is a poor stand-in: it says a round contained such a
+    // chart, not that an UPDATE ever touched one.
+    if (o.blindGrowth === 0) {
+      if (o.atRisk === 0)
+        console.log(
+          `    NOT AN ALL-CLEAR: no update here touched a chart that could strand anything
+` +
+            `    (0 at risk — every one was grouped, or had its parts list). A group is deleted
+` +
+            `    whole, so zero growth over zero at-risk charts is the question never being put.
+` +
+            `    The round held ${o.ungroupedCharts} ungrouped chart(s); wait for one an update actually edits.`,
+        );
+      else
+        console.log(
+          `    ZERO, over ${o.atRisk} chart(s) that COULD have stranded: "the chart grows by a whole
+` + `    chart on every edit" is a danger the code describes, not something happening.`,
+        );
+    }
+  } else {
+    console.log(`    no usable reading yet — every measurement here predates the instrument's fix.`);
+  }
+  if (o.unitMismatch)
     console.log(
-      `    ZERO is the interesting answer here: "the chart grows by a whole chart on every
-` + `    edit" is then a danger the code describes and not something happening.`,
-    );
-  if (o.unexplained)
-    console.log(
-      `    ${o.unexplained} shape(s) UNEXPLAINED — the slide did not move by what the update did to it,
-` + `    which is a different fault from stranding and wants its own look.`,
+      `    ${o.unitMismatch} update(s) came from a build whose instrument subtracted mismatched
+` +
+        `    units (inner shapes minus delete calls) and are NOT counted above. Round 082 read
+` +
+        `    "23 stranded" beside before:3 after:3 — nothing was left behind at all.`,
     );
 }
 
@@ -1630,28 +1657,53 @@ function reportDeckEvidence(deck) {
  * non-zero total there means something moved slides underneath an update.
  */
 export function poolUpdateShortfalls(logs) {
-  const out = { rounds: 0, updates: 0, blind: 0, blindShortfall: 0, sightedShortfall: 0, unexplained: 0, worst: 0 };
+  const out = {
+    rounds: 0,
+    updates: 0,
+    blind: 0,
+    blindGrowth: 0,
+    sightedGrowth: 0,
+    worst: 0,
+    unitMismatch: 0,
+    ungroupedCharts: 0,
+    atRisk: 0,
+  };
   for (const log of logs) {
     const entries = log?.trace?.entries;
     if (!Array.isArray(entries)) continue;
+    // WHETHER THE QUESTION COULD BE PUT AT ALL. Stranding is only possible for
+    // an UNGROUPED chart — a group is deleted whole, so there is nothing left
+    // behind. A round that grouped everything cannot answer this either way, and
+    // round 082 was exactly that: 20 grouped, 0 not. Without this the report
+    // would read "no growth" from such a round and sound like an all-clear.
+    out.ungroupedCharts += entries.filter((e) => /^not grouping/.test(String(e.message))).length;
     let seen = false;
     for (const e of entries) {
       if (!/^shapes left on the slide/.test(String(e.message))) continue;
       const d = e.data ?? {};
-      const short = Number(d.shortfall) || 0;
       const charts = Number(d.charts) || 0;
       const withParts = Number(d.withParts) || 0;
       seen = true;
       out.updates++;
-      out.unexplained += Number(d.unexplained) || 0;
+      // ROUND 082 AND EARLIER SPOKE A DIFFERENT LANGUAGE. Those entries carry
+      // `shortfall`/`unexplained` — a subtraction across three different units
+      // that summed to zero on every line and measured nothing. Counted, never
+      // mixed in: pooling them with a real growth would resurrect the artifact
+      // this pool was rewritten to stop reporting.
+      if (d.growth === undefined) {
+        out.unitMismatch++;
+        continue;
+      }
+      out.atRisk += Number(d.atRisk) || 0;
+      const growth = Number(d.growth) || 0;
       // A slide where NO chart in the update carried a parts list. Mixed slides
-      // are counted as sighted: their shortfall cannot be attributed and
+      // count as sighted: their growth cannot be attributed to either kind, and
       // claiming it would be the over-count this split exists to avoid.
       if (charts > 0 && withParts === 0) {
         out.blind++;
-        out.blindShortfall += short;
-        out.worst = Math.max(out.worst, short);
-      } else out.sightedShortfall += short;
+        out.blindGrowth += growth;
+        out.worst = Math.max(out.worst, growth);
+      } else out.sightedGrowth += growth;
     }
     if (seen) out.rounds++;
   }
