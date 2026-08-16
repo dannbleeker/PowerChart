@@ -28,6 +28,8 @@ const {
   isOverflow,
   recoveryFor,
   noBrowser,
+  browserDiedMidRound,
+  DEAD_BROWSER_POLLS,
   slideResolveScript,
   readSlideResolve,
 } = driver;
@@ -150,6 +152,43 @@ describe("talking to the browser at all", () => {
     // so the loop reopens it rather than waiting for a person.
     expect(r.codes).toEqual(["browser-gone"]);
     expect(shouldRetry("not-ready", 0, 3, r.codes), "a dead browser is the loop's to fix").toBe(true);
+  });
+
+  it("notices a browser that dies UNDER a running round, which the quiet counter cannot", async () => {
+    // 24 MINUTES ON 2026-08-16, and the cause is a good guard with a hole in it.
+    //
+    // `quietStreak` resets to zero whenever a CLI call FAILED — deliberately,
+    // because one failed call means nothing was measured, and folding that into
+    // "the pane is gone" once killed a healthy round that went on to pass 10 of
+    // 12. But a dead browser makes EVERY call fail, permanently: the quiet
+    // counter can never reach its threshold, the crash dialog cannot be read
+    // either, and the loop polls a corpse until the thirty-minute limit. `pw
+    // list` said `(no browsers)` outright while the driver sat there.
+    expect(browserDiedMidRound(DEAD_BROWSER_POLLS, "  (no browsers)"), "a dead browser went unnoticed").toBe(true);
+
+    // BOTH CONDITIONS ARE LOAD-BEARING, and each guards against re-making the
+    // other's mistake.
+    //
+    // A streak without the list check would end a round on the absence of
+    // evidence — exactly the contention bug above.
+    expect(browserDiedMidRound(DEAD_BROWSER_POLLS, "### Browsers\n- ms:\n  - status: open")).toBe(false);
+    expect(browserDiedMidRound(DEAD_BROWSER_POLLS, ""), "an unreadable list is not a dead browser").toBe(false);
+    // And the list check without a streak would fire on a single blip, which is
+    // what a second terminal touching the CLI looks like.
+    expect(browserDiedMidRound(1, "  (no browsers)"), "one failed poll is contention, not a death").toBe(false);
+    expect(browserDiedMidRound(0, "  (no browsers)")).toBe(false);
+  });
+
+  it("retries a browser that died mid-round, because reopening needs no password", () => {
+    // The profile keeps the sign-in — a dead browser is not a lost sign-in — so
+    // `recover` reopens it unattended. This is also the CHEAPEST of the
+    // retryable reasons: it costs the minute already spent, where a wedge costs
+    // the full thirty before anyone knows.
+    expect(shouldRetry("browser-gone", 0, 3, undefined), "an unattended run stopped dead on a recoverable state").toBe(
+      true,
+    );
+    // Still bounded by the caller's --retry N, like every other reason.
+    expect(shouldRetry("browser-gone", 3, 3, undefined)).toBe(false);
   });
 
   it("finds the CLI entry beside node, or says it cannot", () => {
