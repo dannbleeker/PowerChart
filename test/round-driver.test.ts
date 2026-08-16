@@ -37,6 +37,7 @@ const {
   slideSizeScript,
   outcomeReceipt,
   RECOVERABLE_STOPS,
+  selectDeck,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -137,6 +138,44 @@ describe("talking to the browser at all", () => {
     // Generous, or it kills the slow calls that are legitimate: an `eval`
     // carries a 20s page-side budget and `requests` can return tens of MB.
     expect(seen[0].timeout).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it("fronts the deck a round was told to run against, and refuses when it is not open", () => {
+    // `PW_DECK` used to reach only `recover`, in the branch that reopens a dead
+    // browser — so a cycle setting it per leg chose which deck a RECOVERY would
+    // hunt for and nothing else. The ordinary path never selected a tab, so the
+    // nightly cycle's 4:3 leg measured whichever document leg two left open and
+    // refused with `wrong-size` every single night.
+    const calls: string[][] = [];
+    const shWith = (tabs: string) => {
+      const sh = ((...args: string[]) => {
+        calls.push(args);
+        return args[0] === "tab-list" ? tabs : "";
+      }) as never as { (...a: string[]): string; state: unknown };
+      return sh;
+    };
+    const open = shWith('0: https://x/ "Presentation64"\n1: https://x/ "Presentation66"');
+    expect(selectDeck(open, "Presentation66")).toBe(true);
+    expect(
+      calls.some((c) => c[0] === "tab-select" && c[1] === "1"),
+      "did not front the deck it was given",
+    ).toBe(true);
+    // Not open at all: say so rather than measure the wrong document.
+    expect(selectDeck(shWith('0: https://x/ "Presentation64"'), "Presentation66")).toBe(false);
+    // No deck asked for is the behaviour this has always had.
+    expect(selectDeck(shWith(""), null)).toBe(true);
+  });
+
+  it("names the missing DECK rather than blaming its slide size", () => {
+    // The message matters as much as the refusal. "the deck is 16:9 and this
+    // round was asked for 4:3" sends the owner to Design ▸ Slide Size for a
+    // deck that was simply never opened.
+    const r = readiness({ ...READY, wantDeck: "Presentation66", deckFronted: false });
+    expect(r.ok).toBe(false);
+    expect(r.codes).toContain("deck-missing");
+    expect(r.stop.join(" ")).toContain("Presentation66");
+    // And it must not fire when no deck was asked for.
+    expect(readiness({ ...READY }).ok).toBe(true);
   });
 
   it("treats a timed-out call as nothing measured, not as an answer", () => {
@@ -890,15 +929,81 @@ describe("the account the driver leaves of how a round ended", () => {
     expect(src, "readdirSync as the default is what filed 064 twice").not.toMatch(/list\s*=\s*readdirSync/);
   });
 
+  it("files a round even when the archive names one that git has and the disk does not", () => {
+    // THE TWIN CHECK OPENS EVERY NAME THE LISTER RETURNS, and since
+    // `everyRoundEverFiled` became the default that list deliberately includes
+    // rounds committed on a branch nobody has checked out. Unguarded it threw
+    // ENOENT on exactly the HEALTHY path — `.find` reaches a git-only name only
+    // when nothing matched, which is the case of a genuinely new round — and
+    // `collectRound` swallowed it, so the driver exited 0 claiming a finished
+    // round with nothing written and the next leg overwrote the evidence.
+    const onDisk = '{\n  "build": "aaa1111 · x"\n}\n';
+    const read = ((p: string) => {
+      if (p.endsWith("log.json")) return JSON.stringify({ build: "ccc3333 · a fresh round" });
+      if (p.endsWith("063-aaa1111.json")) return onDisk;
+      // The git-only name: on nobody's disk, so opening it throws exactly as
+      // `readFileSync` does.
+      throw Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" });
+    }) as never;
+    const written: string[] = [];
+    const write = ((p: string) => written.push(p)) as never;
+    const list = (() => ["063-aaa1111.json", "064-bbb2222.json"]) as never;
+    const name = archive("log.json", "rounds", read, write, list);
+    // Numbered past the round git knows about, which is the whole reason the
+    // union lister is the default.
+    expect(name).toBe("065-ccc3333.json");
+    expect(written).toHaveLength(1);
+  });
+
+  it("still refuses a byte-identical twin that IS on disk", () => {
+    // The guard the fix must not cost: a log the pane never rewrote means the
+    // round did not finish, and filing it would double the weight of whatever
+    // the real round said.
+    const body = '{\n  "build": "aaa1111 · x"\n}\n';
+    const read = ((p: string) => {
+      if (p.endsWith("log.json")) return '{"build":"aaa1111 · x"}';
+      if (p.endsWith("063-aaa1111.json")) return body;
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    }) as never;
+    expect(() =>
+      archive(
+        "log.json",
+        "rounds",
+        read,
+        (() => {}) as never,
+        (() => ["063-aaa1111.json", "064-bbb2222.json"]) as never,
+      ),
+    ).toThrow(/byte-identical to 063-aaa1111\.json/);
+  });
+
   it("names a round that threw where nothing expected it to", () => {
     // An unexpected exception used to kill the process outright: no receipt, no
     // retry, and a night that ended on its first surprise.
     const r = outcomeReceipt({ reason: "threw", codes: [], threw: "Cannot read properties of undefined" });
     expect(r.reason).toBe("threw");
     expect(r.threw).toMatch(/Cannot read properties/);
-    // NOT recoverable: `--retry` gives it another go inside the driver, but once
-    // those are spent an unknown crash wants a person, not another cycle leg.
-    expect(r.recoverable).toBe(false);
+    // RECOVERY DOES ADDRESS IT, and the receipt has to say so. `recoverable`
+    // answers one question — did the driver retry this — and the cycle reads it
+    // only to choose its wording; it stops either way. So the honest answer is
+    // the one `shouldRetry` gives.
+    //
+    // This asserted `false` while `recoverable` looked at the CODES alone, and
+    // most stops carry none: a crash, a wedge, a dead browser and a throw are
+    // all retried on their reason. A night that recovered from a crash six times
+    // ended by printing "crashed is not something recovery addresses — it needs
+    // a person", directly under six lines saying "clearing the crash and
+    // starting again".
+    expect(r.recoverable).toBe(true);
+  });
+
+  it("agrees with shouldRetry about what recovery addresses", () => {
+    // One question, one implementation. Two of these carry no codes at all, so a
+    // receipt reading only `codes` gets every one of them wrong.
+    for (const reason of ["crashed", "silent", "timeout", "browser-gone", "threw"])
+      expect(outcomeReceipt({ reason, codes: [] }).recoverable, `${reason} is retried by the driver`).toBe(true);
+    // And a stop recovery genuinely cannot touch still reads false.
+    expect(outcomeReceipt({ reason: "not-ready", codes: ["wrong-size"] }).recoverable).toBe(false);
+    expect(outcomeReceipt({ reason: "finished", codes: [] }).recoverable).toBe(false);
   });
 
   it("leaves `threw` off a round that did not throw", () => {

@@ -121,6 +121,7 @@ const host = vi.hoisted(() => ({
    * is what every blind deck scan in this project's history looked like.
    */
   deckSlideIds: undefined as undefined | string[],
+  deckSlideIdsBeforeFails: false,
   /** Whether the host will draw a slide — PowerPointApi 1.8, absent on plenty of hosts. */
   canRaster: true,
   /**
@@ -304,6 +305,12 @@ vi.mock("../src/render/powerpoint", () => ({
   // diff empty and every assertion about it vacuous.
   deckSlideIds: vi.fn(async () => {
     const first = host.deckSlideIdCalls++ === 0;
+    // ONLY THE BEFORE-READ FAILS, which is the state that matters and the one a
+    // double answering `undefined` to BOTH calls cannot express. With both
+    // unreadable the old code and the fixed code agree on an empty list, so a
+    // test built that way passes with the fix deleted — it did, before this
+    // existed.
+    if (host.deckSlideIdsBeforeFails && first) return undefined;
     if (!host.deckSlideIds) return undefined;
     return first ? host.deckSlideIds : [...host.deckSlideIds, ...host.roundAddsSlides];
   }),
@@ -452,6 +459,7 @@ async function bootHostPane() {
   host.deletedSlides = [];
   host.selectionDropped = [];
   host.deckSlideIdCalls = 0;
+  host.deckSlideIdsBeforeFails = false;
   host.roundAddsSlides = ["probe-a", "probe-b"];
   host.refuseSlideDelete = [];
   host.selectionCharts = [];
@@ -1971,6 +1979,29 @@ describe("demo-insert one-shot deck insert", () => {
     await settle();
     const before = await dl.lastJson();
     expect(before.deck?.newSlides, "photographed a slide that was there before the round").not.toContain("s1");
+    dl.restore();
+  });
+
+  it("does not claim it added the whole deck when the before-list could not be read", async () => {
+    // THE FALLBACK WAS `idsAfter`, which says every slide the deck holds was
+    // added by this round. A round that added four slides to the owner's
+    // forty-slide deck reported forty — and `describeLitter` then told them it
+    // had left forty behind, some of which "read back empty". Those were their
+    // own blank slides. `triage.mjs` builds its added-set from this field too.
+    //
+    // Unknown is its own answer, the same lesson as reading a host's silence as
+    // a "no": `newSlides` stays empty and `beforeUnknown` says why.
+    host.deckSlideIds = ["s1", "s2", "s3"];
+    host.deckSlideIdsBeforeFails = true;
+    const dl = captureDownloads();
+    $("demo-round").click();
+    await settle();
+    const bundle = await dl.lastJson();
+    expect(bundle.deck?.newSlides, "claimed the user's own slides as this round's litter").toEqual([]);
+    expect(
+      bundle.deck?.beforeUnknown,
+      "an empty list that cannot say why is indistinguishable from adding nothing",
+    ).toBe(true);
     dl.restore();
   });
 

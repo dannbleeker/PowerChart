@@ -2596,6 +2596,11 @@ interface RunLogFile {
     /** What the scan could not see — the same honesty every other scan reader owes. */
     gap?: string;
     newSlides: string[];
+    /**
+     * The before-list could not be read, so `newSlides` is empty for want of an
+     * answer rather than because nothing was added. Present only in that case.
+     */
+    beforeUnknown?: boolean;
     shots: SlideShot[];
   };
 }
@@ -3112,7 +3117,20 @@ async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<Run
     // stronger question about a deck than any handle, which is why the diff is
     // taken from ids rather than from counts.
     const known = new Set(idsBefore ?? []);
-    const newSlides = idsBefore && idsAfter ? idsAfter.filter((id) => !known.has(id)) : (idsAfter ?? []);
+    // AN UNREADABLE BEFORE-LIST IS NOT AN EMPTY DECK. This fell back to
+    // `idsAfter`, which says every slide the deck holds was added by this round
+    // — so a round that added four slides to the owner's forty-slide deck
+    // reported forty, and `describeLitter` told them it had left forty behind,
+    // twelve of which "read back empty". The twelve were their own blank slides.
+    // Everything downstream inherits it: `triage.mjs` builds its added-set from
+    // this field.
+    //
+    // The same mistake as reading a host's silence as a "no", which this repo
+    // has now paid for in three separate places. Unknown is its own answer:
+    // `newSlides` stays empty and `beforeUnknown` says why, so a reader can tell
+    // "this round added nothing" from "nobody knows what it added".
+    const beforeUnknown = !idsBefore || !idsAfter;
+    const newSlides = beforeUnknown ? [] : idsAfter.filter((id) => !known.has(id));
     // Read at collection time, not at boot: the box is ticked for the round
     // about to be read, and a value captured when the pane loaded would be the
     // one from before the owner ticked it.
@@ -3122,6 +3140,10 @@ async function collectDeckEvidence(idsBefore: string[] | undefined): Promise<Run
       inventory: scan.inventory ?? [],
       ...(scanIsComplete(scan) ? {} : { gap: scanGap(scan) }),
       newSlides,
+      // Carried so a reader can tell an empty `newSlides` that MEANS nothing was
+      // added from one that means the question could not be asked. Omitted on
+      // the ordinary path, so an existing round file reads exactly as it did.
+      ...(beforeUnknown ? { beforeUnknown: true } : {}),
       shots,
     };
   } catch (err) {

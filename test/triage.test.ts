@@ -36,6 +36,7 @@ const {
   traceNovelty,
   traceSignature,
   poolUpdateShortfalls,
+  poolGroupVsTagCoverage,
 } = pools;
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
@@ -1266,6 +1267,36 @@ describe("the two populations a draw batch falls into", () => {
     expect(batchPopulations(log([3000, 9000, 20000]))).toBeNull();
     expect(batchPopulations({ trace: { entries: [] } })).toBeNull();
     expect(batchPopulations(undefined)).toBeNull();
+  });
+});
+
+describe("how much of a round the grouping comparison can see", () => {
+  const e = (message: string, chart?: string) => ({ scope: "group", message, data: chart ? { chart } : {} });
+
+  it("counts the events its own join key cannot reach", () => {
+    // `poolGroupVsTag` joins a chart's messages by `data.chart`, and only the
+    // deck-wide rescale in selftest.ts writes that field. Everything else in a
+    // round is invisible to it — and the blindness is UNEVEN, which is what
+    // turns a partial number into a biased one. Archive-wide it sees 229 of 638
+    // grouped events and 109 of 127 ungrouped.
+    const round = {
+      trace: {
+        entries: [
+          e("grouped the chart's shapes", "1/2"),
+          e("grouped the chart's shapes"),
+          e("grouped the chart's shapes"),
+          e("not grouping — the host refused", "2/2"),
+        ],
+      },
+    };
+    const c = poolGroupVsTagCoverage([round]);
+    expect(c.groupedSeen).toBe(1);
+    expect(c.groupedTotal).toBe(3);
+    expect(c.ungroupedSeen).toBe(1);
+    expect(c.ungroupedTotal).toBe(1);
+    // The point of printing it: the two columns are sampled at different rates,
+    // so the RATIO between them is biased and not merely small.
+    expect(c.groupedSeen / c.groupedTotal).toBeLessThan(c.ungroupedSeen / c.ungroupedTotal);
   });
 });
 

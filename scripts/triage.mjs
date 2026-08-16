@@ -758,6 +758,44 @@ export function poolTagFaults(logs) {
  * Reported every round from now on, because the cost of not reporting it was
  * eleven rounds of looking one level too low.
  */
+/**
+ * How much of the round's grouping this pool can actually SEE.
+ *
+ * `poolGroupVsTag` joins a chart's messages by `data.chart`, and that field is
+ * written in exactly one place: the `traceAbout({ chart })` inside the deck-wide
+ * rescale in `src/taskpane/selftest.ts`. Every other grouping in a round — the
+ * ordinary inserts, the probe, anything a single-chart batch does — carries no
+ * such key and is invisible here.
+ *
+ * MEASURED ARCHIVE-WIDE, the blindness is uneven and that is what makes it
+ * dangerous rather than merely partial: across 57 rounds the pool sees 229 of
+ * 638 `grouped the chart` events (36%) but 109 of 127 `not grouping` events
+ * (86%). The two columns of a comparison are sampled at wildly different rates,
+ * so the RATIO between them is biased, not just small.
+ *
+ * This is the shape of the 333/333 incident, in which a pooled figure was
+ * reported as 100% because the window collecting it silently dropped every
+ * declining case. The remedy is the same: print the denominator the reader would
+ * otherwise assume.
+ */
+export function poolGroupVsTagCoverage(logs) {
+  const out = { groupedSeen: 0, groupedTotal: 0, ungroupedSeen: 0, ungroupedTotal: 0 };
+  for (const log of logs) {
+    for (const e of log?.trace?.entries ?? []) {
+      const m = String(e.message ?? "");
+      const keyed = (e.data ?? {}).chart !== undefined;
+      if (m.startsWith("grouped the chart")) {
+        out.groupedTotal++;
+        if (keyed) out.groupedSeen++;
+      } else if (m.startsWith("not grouping")) {
+        out.ungroupedTotal++;
+        if (keyed) out.ungroupedSeen++;
+      }
+    }
+  }
+  return out;
+}
+
 export function poolGroupVsTag(logs) {
   const out = { grouped: 0, groupedLost: 0, ungrouped: 0, ungroupedLost: 0 };
   for (const log of logs) {
@@ -1301,7 +1339,17 @@ function reportGroupVsTag(logs) {
   const g = poolGroupVsTag(logs);
   if (!g.grouped && !g.ungrouped) return;
   const pct = (n, d) => (d ? `${((100 * n) / d).toFixed(0)}%` : "—");
-  console.log(`\n  DOES GROUPING SAVE THE CONFIG — pooled over ${logs.length} round(s)`);
+  const cov = poolGroupVsTagCoverage(logs);
+  console.log(`\n  DOES GROUPING SAVE THE CONFIG — over the charts of the DECK-WIDE RESCALE, ${logs.length} round(s)`);
+  // THE DENOMINATOR THE READER WOULD OTHERWISE ASSUME. These two columns are
+  // joined by `data.chart`, which only the rescale scenario writes, so this is
+  // one scenario's charts and not the round's. Printed because the blindness is
+  // UNEVEN — it drops far more of the grouped column than the ungrouped one —
+  // and an uneven filter biases the ratio rather than merely shrinking it.
+  console.log(
+    `    scope: ${cov.groupedSeen}/${cov.groupedTotal} grouped and ${cov.ungroupedSeen}/${cov.ungroupedTotal} ungrouped` +
+      ` events carry a chart key; the rest of the round is not in these numbers.`,
+  );
   console.log(
     `    grouped      ${String(g.grouped).padStart(3)} chart(s), ${String(g.groupedLost).padStart(3)} lost the tag = ${pct(g.groupedLost, g.grouped)}`,
   );
