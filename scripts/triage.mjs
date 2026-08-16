@@ -846,6 +846,67 @@ export function poolFreshVsEstablished(logs) {
 }
 
 /**
+ * Charts that cannot follow a drag — the failure a passing scenario was hiding.
+ *
+ * WHY IT NEEDED ITS OWN NUMBER. `an update follows a moved chart` passes, and it
+ * tests ONE chart. Rounds 073 and 074 lost the origin tag on **9 of 19 and 8 of
+ * 17** charts in the same rounds — roughly half the population, every one of
+ * which would fail to follow a user's drag, while the scenario reported the
+ * round trip holding.
+ *
+ * That is the shape of thing this project keeps finding: a green verdict over a
+ * sample, with the population telling a different story. `does a rasterise
+ * poison the next draw` counted only its own four draws; the fresh-slide split
+ * sat unqueried for eleven rounds. A scenario samples; a pooled count does not.
+ *
+ * NOT A RATE, deliberately. Only the FAILURES are traced — a successful origin
+ * write says nothing — so there is no honest denominator here, and inventing one
+ * by guessing at the chart count would be the kind of number this file has
+ * already had to correct once. A count that climbed from 0 to 8-9 a round is the
+ * signal; anyone wanting the ratio should read `grouped the chart's shapes`
+ * beside it and say so out loud.
+ */
+export function poolOriginTagLosses(logs) {
+  const out = { rounds: 0, charts: 0, worst: 0 };
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    let here = 0;
+    for (const e of entries) {
+      if (!/^origin tag lost/.test(String(e.message))) continue;
+      here += Number(e.data?.charts) || 0;
+    }
+    if (!here) continue;
+    out.rounds++;
+    out.charts += here;
+    out.worst = Math.max(out.worst, here);
+  }
+  return out;
+}
+
+/** Charts that would not follow a drag, which no scenario counts. */
+function reportOriginTagLosses(logs) {
+  const o = poolOriginTagLosses(logs);
+  if (!o.charts) return;
+  console.log(`
+  CHARTS THAT CANNOT FOLLOW A DRAG — pooled over ${logs.length} round(s)`);
+  console.log(
+    `    origin tag lost  ${String(o.charts).padStart(4)} chart(s) across ${o.rounds} round(s), worst round ${o.worst}`,
+  );
+  console.log(
+    `    The chart is re-editable and its config is intact — what it loses is the ability to
+` +
+      `    redraw where the USER left it, so an update snaps it back to where it was inserted.
+` +
+      `    \`an update follows a moved chart\` passes while this climbs, because a scenario tests
+` +
+      `    ONE chart and this counts them all. Rounds 073/074 lost 9 of 19 and 8 of 17.
+` +
+      `    No rate is printed: only failures are traced, so there is no honest denominator.`,
+  );
+}
+
+/**
  * Scenarios that were passing and have stopped — the only automatic check this
  * project has on a round's own result.
  *
@@ -1500,6 +1561,7 @@ if (invokedDirectly) {
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
     reportBatchSpanVsGroup(pooled);
+    reportOriginTagLosses(pooled);
     reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
@@ -1546,6 +1608,7 @@ if (invokedDirectly) {
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
     reportBatchSpanVsGroup(pooled);
+    reportOriginTagLosses(pooled);
     reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);

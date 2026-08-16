@@ -1412,3 +1412,42 @@ using it.
 - **A real mouse drag.** The native-editability premise the product rests on has
   never been exercised by a human hand — and it is the thing item 1 can only
   partially substitute for.
+
+### HALF THE CHARTS CANNOT FOLLOW A DRAG, and a passing scenario was hiding it
+
+`npm run rounds` prints it now, under **CHARTS THAT CANNOT FOLLOW A DRAG**.
+
+    rounds 073/074:  origin tag lost on 9 of 19 and 8 of 17 charts
+    the scenario:    `an update follows a moved chart` PASSED in both
+
+The scenario tests ONE chart and picks the least loaded. Roughly half the
+population loses its origin tag in the same round, and every one of those would
+snap back to where it was inserted rather than following the user's drag.
+
+**The same shape this project keeps finding.** `does a rasterise poison the next
+draw` counted only its own four draws while the round held 195; the fresh-slide
+split sat unqueried for eleven rounds. **A scenario samples; a pooled count does
+not**, and a green verdict over a sample is the most expensive kind of quiet.
+
+**What it costs the user, stated precisely.** The chart is re-editable and its
+config is intact — `cfg5010` is 0 across every post-binding round. What is lost
+is only the drag delta. So this is a real defect and NOT a data-loss one, which
+is why it can sit behind an item that is.
+
+**Where the failure came from.** It moved here. Before the binding change the
+config tag took the 5010s (8 in round 069) and the origin tag none; now the
+config tag takes none and the origin tag takes 8-9 a round. The second write is
+the one that fails, and it fails on the handle the first write just succeeded
+through — which is worth a probe question of its own, since nothing currently
+asks whether a shape accepts a SECOND tag in a later sync.
+
+**No upstream twin.** Searched 2026-08-16: no office-js issue reports a second
+`tags.add` on the same shape failing where the first succeeded. Two adjacent
+ones are worth knowing and neither bites us — #6079 (tags forced uppercase, and
+case-sensitive on web only; every tag here is already uppercase) and #3784
+(shape tags lost on cut/paste on web). Recorded so the absence is not
+rediscovered.
+
+**No rate is printed, deliberately.** Only failures are traced — a successful
+origin write says nothing — so there is no honest denominator, and inventing one
+would be the kind of number this file has already had to correct once.
