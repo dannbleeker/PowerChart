@@ -81,6 +81,8 @@ export function readiness({
   authPopup = false,
   size = null,
   expectSize = null,
+  wantDeck = null,
+  deckFronted = true,
 }) {
   const stop = [];
   /**
@@ -201,6 +203,18 @@ export function readiness({
       "deck-dirty",
       `the deck holds ${slides} slides — clean it, or this round is not comparable with one that started clean`,
     );
+  // BEFORE the size check, because it explains a wrong size rather than
+  // repeating it. A cycle names the deck each leg should run against, and until
+  // the driver actually fronted that tab the third leg measured whichever
+  // document leg two left open — refusing with `wrong-size`, which reads as
+  // "the owner set the slide size wrong" when nothing had asked for the right
+  // deck at all. Naming the deck is a far better message than naming its size.
+  if (wantDeck && !deckFronted)
+    refuse(
+      "deck-missing",
+      `no open tab is the deck \`${wantDeck}\` — this round was told to run against it and cannot. ` +
+        "Open it, or unset PW_DECK to run against whichever document is in front.",
+    );
   // THE SIZE THE DECK ACTUALLY IS, when a profile was asked for. Only when both
   // are known: a host that would not answer has said nothing, and refusing on no
   // evidence is what `reachable` exists to prevent.
@@ -303,6 +317,35 @@ export function sessionDir(dir, real = realpathSync.native) {
 export function isOverflow(err) {
   if (!err) return false;
   return err.code === "ENOBUFS" || /ENOBUFS/.test(String(err.message ?? err));
+}
+
+/**
+ * Bring the named deck's tab to the front, and say whether it is there at all.
+ *
+ * `PW_DECK` used to reach only `recover`, in the branch that reopens a browser
+ * that died — so a cycle setting it per leg was choosing which deck a RECOVERY
+ * would look for and nothing else. The ordinary path never selected a tab; it
+ * ran against whatever happened to be fronted. The nightly cycle's third leg
+ * therefore asked for a 4:3 deck, got the 16:9 one still open from leg two, and
+ * refused with `wrong-size` every time — a stop no recovery addresses, so the
+ * night ended there, reading as an operator's mistake when the runner had simply
+ * never asked for the deck.
+ *
+ * Returns `true` when that deck is now fronted, `false` when no tab carries the
+ * name. Never throws: a `tab-list` that could not be read is a reading not
+ * taken, and `readiness` has its own, better-worded refusals for a browser that
+ * is not answering.
+ */
+export function selectDeck(sh, deckName) {
+  if (!deckName) return true;
+  const line = sh("tab-list")
+    .split("\n")
+    .find((l) => l.includes(deckName));
+  if (!line) return false;
+  const n = /(\d+):/.exec(line)?.[1];
+  if (!n) return false;
+  sh("tab-select", n);
+  return true;
 }
 
 /**
@@ -687,6 +730,12 @@ async function attempt(argv, deps, sh, healed = false) {
   // This sweep's reachability is about THIS sweep. See `sh.startSweep`.
   sh.startSweep?.();
 
+  // BEFORE ANYTHING IS MEASURED, because every reading below is about whichever
+  // tab is fronted. Only when a deck was actually asked for: with no `PW_DECK`
+  // this is the behaviour it has always had, running against the open document.
+  const wantDeck = process.env.PW_DECK || null;
+  const deckFronted = wantDeck ? selectDeck(sh, wantDeck) : true;
+
   const head = String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null;
   const deployed = buildOf(await fetchBuild());
   const stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
@@ -746,6 +795,8 @@ async function attempt(argv, deps, sh, healed = false) {
     authPopup,
     size,
     expectSize,
+    wantDeck,
+    deckFronted,
   };
   const { ok, stop, codes } = readiness(state);
   console.log(
@@ -811,6 +862,20 @@ async function attempt(argv, deps, sh, healed = false) {
       return { code: 1, reason: "timeout" };
     }
     const dl = sh("find", "Download run log");
+    // CAPTURED HERE, against the call that produced `dl`. `sh.state.lastFailed`
+    // belongs to the MOST RECENT call, and the crash-dialog read below overwrites
+    // it before either counter is updated — so both were judging this read's
+    // emptiness against a different call's success.
+    //
+    // That re-opened the exact regression the comment above this loop describes.
+    // The `failed` argument exists because one poll exiting non-zero means
+    // NOTHING was measured, and folding that into "the pane is gone" once killed
+    // a round that went on to finish 10 of 12 scenarios. With the flag taken from
+    // the crash-dialog read instead, a failed `dl` read paired with a successful
+    // crash read counts as a genuine silence: two of those in a row and the
+    // driver kills a healthy round, files a crash report for a crash that never
+    // happened, and lets recovery reload the tab out from under it.
+    const dlFailed = sh.state.lastFailed;
     if (/button "Download run log"(?! \[disabled\])/.test(dl)) break;
     // WATCH FOR THE CRASH, do not wait it out. Rounds 30 and 31 each died about
     // three minutes in and then held this loop for the full thirty, because the
@@ -835,7 +900,7 @@ async function attempt(argv, deps, sh, healed = false) {
     }
     // THE BROWSER, not just the pane. Checked before the quiet counter because
     // the counter cannot see this state at all — see `browserDiedMidRound`.
-    failedPolls = sh.state.lastFailed ? failedPolls + 1 : 0;
+    failedPolls = dlFailed ? failedPolls + 1 : 0;
     if (failedPolls >= DEAD_BROWSER_POLLS && browserDiedMidRound(failedPolls, sh("list"))) {
       const secs = Math.round((Date.now() - started) / 1000);
       console.error(
@@ -844,7 +909,7 @@ async function attempt(argv, deps, sh, healed = false) {
       );
       return { code: 1, reason: "browser-gone" };
     }
-    quiet = quietStreak(quiet, dl, sh.state.lastFailed);
+    quiet = quietStreak(quiet, dl, dlFailed);
     if (quiet >= 2) {
       console.error("  the pane stopped answering — PowerPoint has probably crashed; the trace is still in the DOM");
       await keepCrashEvidence(sh, `${Math.round((Date.now() - started) / 1000)}s into a round, pane silent`);
@@ -1209,7 +1274,14 @@ export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, a
     ...(threw ? { threw } : {}),
     // Whether the reason is one recovery ADDRESSES, decided here by the same set
     // the driver retries on — never re-derived downstream.
-    recoverable: Array.isArray(codes) && codes.length > 0 && codes.every((c) => RECOVERABLE_STOPS.has(c)),
+    // THE SAME QUESTION `shouldRetry` ANSWERS, asked the same way. This read
+    // only the codes, and most stops carry none: a crash, a silent host, a
+    // wedge, a dead browser and an unexpected throw are all retried on their
+    // REASON alone. So a night that recovered from a crash six times ended by
+    // printing "crashed is not something recovery addresses — it needs a
+    // person", directly under six lines saying "clearing the crash and starting
+    // again". The receipt contradicted the console in the same output.
+    recoverable: shouldRetry(reason, 0, 1, codes),
     at: at ?? new Date().toISOString(),
   };
 }
@@ -1359,7 +1431,29 @@ export function archive(
   const body = `${JSON.stringify(round, null, 2)}\n`;
   const twin = list(dir)
     .filter((f) => /^\d{3}-.*\.json$/.test(f))
-    .find((f) => read(`${dir}/${f}`, "utf8") === body);
+    .find((f) => {
+      // A NAME THIS LISTER RETURNS NEED NOT BE A FILE. `list` defaults to
+      // `everyRoundEverFiled`, whose entire purpose is to name rounds that are
+      // NOT in the working tree — committed on a branch nobody has checked out —
+      // so that `nextRoundNumber` below cannot hand their number out twice. That
+      // function only ever inspects the NAMES. This check opens them, and it
+      // inherited the new lister as collateral when the default changed.
+      //
+      // Unguarded, that threw ENOENT on the healthy path and only there: `.find`
+      // walks the on-disk names first and reaches a git-only name only when
+      // nothing matched, which is exactly the case of a genuinely new round. The
+      // guard was perfectly inverted — a duplicate was caught, a real round
+      // crashed — and `collectRound` swallowed the throw, so the driver exited 0
+      // reporting a finished round with nothing written to rounds/ and the next
+      // leg's download then overwrote the evidence.
+      //
+      // A file that cannot be opened is not a twin of anything.
+      try {
+        return read(`${dir}/${f}`, "utf8") === body;
+      } catch {
+        return false;
+      }
+    });
   if (twin)
     throw new Error(
       `that log is byte-identical to ${twin} — the pane never wrote a new one, ` +
