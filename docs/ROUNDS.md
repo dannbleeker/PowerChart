@@ -45,7 +45,31 @@ deliverable**.
 one was named twice before it was built. Either build it, or write down the specific question that
 would make it buildable and why that question does not exist yet.
 
+**And it does not need a blocked question to justify it.** If an instrument would let future rounds
+say something they cannot say today, build it — the standing reason is enough, and this is the half
+that gets skipped because nothing is visibly broken. Two built that way have paid for themselves
+repeatedly: `crash-forensics.mjs`, which writes the report before recovery reloads the tab and the
+evidence away, and `repaired N` on the `same scale` verdict line, which settled the re-read retry
+from four verdict lines with no log joining at all. Neither existed because a finding demanded it.
+
 ### 4. Fix what is fixable, this session
+
+**Plan the fix before writing it.** Four things, short enough to be wrong on paper rather than
+across four builds: what the defect is, which seam it lives on, what will prove the fix worked, and
+what it must not touch. A plan that names no proof is a guess wearing a fix's clothes.
+
+Worked example, and it is why this is written down. `tagAnchorIndex` moved the tag onto a different
+handle, merged, and produced **no measured effect across five rounds and four builds** before it was
+reverted. The prediction staked alongside it says why in its own words — the change was *"aimed one
+level too low"*. What sits between the draw and the tag is a grouping attempt this host refuses, and
+no choice of handle addresses that. Naming the seam would have caught it on paper; five rounds
+caught it instead.
+
+**A defect the current evidence cannot reach is NOT deferred, and does not get a speculative fix
+either — it becomes an instrument.** That is its fix for this session: build the output that would
+let the NEXT round decide it, and write in the journal which reading settles it which way. Guessing
+at a fix nothing can judge is how a change survives four builds without anyone being able to say it
+did nothing. See §3 — for a blocked item the instrument is the *whole* deliverable.
 
 ### 5. Correct the DOCTRINE, not just the code
 
