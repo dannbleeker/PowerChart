@@ -1229,7 +1229,22 @@ function nullObjectProxy<T extends object>(found: T | undefined) {
             unansweredNullChecks.delete(ownId);
             return;
           }
-          loaded = true;
+          // ON THE SYNC, not on the call — the same queue every other load in
+          // this fake goes through. This assignment used to be immediate, which
+          // made `isNullObject` readable the instant someone ASKED for it, and
+          // that is a state Office.js never produces: a load is a request, and
+          // only the sync answers it.
+          //
+          // The fiction hid a live production defect. A batch that PowerPoint
+          // refuses populates nothing, so the real host leaves this unreadable
+          // and the caller cannot tell a refused lookup from a deleted shape;
+          // the fake answered `isNullObject = false` on a proxy whose sync had
+          // just thrown, so the update sailed on and the recovery for it could
+          // not be tested at all. `discard()` clears this queue on exactly the
+          // paths where the host would have answered nothing.
+          pendingShapeLoads.push(() => {
+            loaded = true;
+          });
         };
       if (prop === "isNullObject") {
         if (!loaded)
@@ -2374,6 +2389,16 @@ export function installHost(
       // from this reads `errorLocation` nowhere and a future reader will.
       if (refuseThisSync) {
         refuseThisSync = false;
+        // DISCARD, like every other rejecting path above. This one did not, and
+        // the omission made a live production defect untestable: the fake
+        // populated the loads the refused batch carried, so `isNullObject` read
+        // back cleanly on a proxy the host had just refused to resolve, and the
+        // update sailed on as though nothing had happened. A test written
+        // against the real failure passed with the fix for it deleted.
+        //
+        // "A sync that rejects populates nothing" is stated three branches above
+        // as the rule. It is the rule here too.
+        discard();
         throw Object.assign(new Error("InvalidParam passed to GetItem(id)"), {
           code: "5010",
           debugInfo: {
