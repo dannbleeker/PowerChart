@@ -1398,3 +1398,58 @@ config tag stopped failing. It is now a fallback that has never fired, kept
 deliberately: it costs nothing at rest and it is the only route left if the
 config tag ever starts failing again. Recorded so nobody mistakes it for tested
 code.
+
+## Round 077 (`357632b`, 2026-08-16) — the first 4:3 round, and it is CONFOUNDED
+
+**The first round in 53 not run at 16:9.** It scored **10 of 13** against 13 of
+13 twice on the same build, and the failure is a class this project has never
+seen:
+
+    round   scenarios  UnexpectedError  tagging-failed  cfg5010  orig5010
+    076        13/13          0               0            0        0
+    077        10/13         52              18            0        0
+
+    36 × UnexpectedError  at=writing the chart's config tag
+    16 × UnexpectedError  at=settling the config tag through its binding
+
+**The 5010s stayed fixed.** `cfg5010`, `orig5010` and `origLost` are all zero —
+everything landed this week held. What appeared instead is `UnexpectedError`,
+mostly on a write through the GROUP handle (`from: group×1`, 17 of 18).
+
+**AND IT EXERCISED CODE THAT HAD NEVER RUN.** `settledByBinding` was 0 across
+seven rounds because the settle only fires when the config tag fails and the
+config tag had stopped failing. Here it fired sixteen times — and the binding
+route was refused too, with the same `UnexpectedError`. So the fallback is no
+longer untested; its first test says it does not save this case.
+
+### WHY THIS IS NOT YET A FINDING ABOUT 4:3
+
+**Two variables changed at once**, which is the exact mistake `docs/ROUNDS.md`
+records about rounds 24 and 25 — "differed only in this, and were compared as
+though they did not".
+
+1. **The aspect ratio**, which is the thing under test.
+2. **The deck.** Round 077 ran on `Presentation65`, not the `Presentation64` that
+   carries all 52 previous rounds. That deck was created during a browser crash
+   earlier the same day, and its whole ribbon — Present, Share, Slide Layout,
+   Slide Size — was greyed out until a reload. A document whose session was
+   already damaged is not a clean instrument.
+
+`UnexpectedError` is also a different SHAPE of error from everything in this
+archive: it is Office.js's generic failure, not the specific
+`InvalidParam / 5010` that names a refused handle. That is as consistent with a
+sick document as with an aspect ratio.
+
+### THE CONTROL THAT SEPARATES THEM, and it costs one round
+
+**Switch `Presentation65` back to 16:9 and run it again.**
+
+    back to 13/13   the deck is fine and 4:3 is the cause
+    still ~10/13    the DECK is the cause and 4:3 is exonerated
+
+One variable moves, and it is the cheap one. The alternative — switching the
+proven `Presentation64` to 4:3 — tests the same question but risks the deck
+carrying 52 comparable rounds, which is not a trade worth making while a
+cheaper control exists.
+
+**Nothing about 4:3 support should be written down until that control has run.**

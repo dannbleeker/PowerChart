@@ -1487,7 +1487,29 @@ PROBE, and the third time production has answered something the probe could not.
 - **A real mouse drag is still owed.** `an update follows a moved chart` proves
   the ARITHMETIC by moving a shape programmatically; test 4 of the standing run
   is what proves a mouse. Nothing here substitutes for it.
-- **Desktop and 4:3 remain untested against a host.** Every one of the 52
-  archived rounds is PowerPoint on the web at 16:9. The capability exists — slide
-  size is read at runtime and unit-tested at 720x540, and `PW_DECK` points a
-  round at any deck — so this needs a decision about which deck, not new code.
+- **4:3 HAS NOW BEEN RUN ONCE, and the result is confounded.** Round 077 scored
+  10 of 13 against 13 of 13 twice on the same build, with a failure class this
+  archive has never held: **52 `UnexpectedError`**, 36 on the config tag write
+  and 16 on the settle's binding route, mostly through the GROUP handle. Every
+  5010 stayed fixed — `cfg5010`, `orig5010` and `origLost` are all zero.
+
+  **It also exercised the settle-by-binding route for the first time in eight
+  rounds**, and that route was refused too. The fallback is no longer untested;
+  its first test says it does not save this case.
+
+  **But TWO variables moved**: the aspect ratio, and the DECK. Round 077 ran on
+  `Presentation65`, not the `Presentation64` carrying all 52 previous rounds —
+  and that deck was created during a browser crash the same day, with its whole
+  ribbon greyed out until a reload. `UnexpectedError` is Office.js's generic
+  failure rather than the specific `InvalidParam / 5010` that names a refused
+  handle, which fits a sick document as well as it fits an aspect ratio.
+
+  **THE CONTROL, one round:** switch `Presentation65` back to 16:9 and run it
+  again. Back to 13/13 means the deck is fine and 4:3 is the cause; still ~10/13
+  means the deck is the cause and 4:3 is exonerated. Switching the proven
+  `Presentation64` to 4:3 answers the same question but risks the deck carrying
+  52 comparable rounds, which is not worth it while a cheaper control exists.
+
+  **Write nothing down about 4:3 support until that control has run.**
+- **Desktop remains untested against a host.** Every archived round is
+  PowerPoint on the web.
