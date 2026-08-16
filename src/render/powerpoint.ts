@@ -643,7 +643,28 @@ export function shapesDrawnOn(slideId: string | undefined): number {
  * which makes the number comparable between a scenario that passed and one that
  * did not — the property four fields in this project have been built without.
  */
-const hostFriction = { errors: 0, idRefusals: 0, generalExceptions: 0, emptyReReads: 0 };
+const hostFriction = {
+  errors: 0,
+  idRefusals: 0,
+  generalExceptions: 0,
+  emptyReReads: 0,
+  /**
+   * Re-reads that named SOME of a chart's shapes and not all, after the settled
+   * retry had its go. The sibling of `emptyReReads`: the two are the only ways
+   * the pre-grouping re-read fails, they drive different branches, and a round
+   * that reports one total cannot say which it hit.
+   */
+  shortReReads: 0,
+  /**
+   * Charts whose re-read was short or empty FIRST and complete after a pause.
+   *
+   * The number that says whether `REREAD_RETRY_MS` is buying anything on the
+   * real host — measured in production, on every round, rather than argued from
+   * the fake. A round where this stays 0 while the two above climb is the round
+   * that says the settling-slide theory is wrong.
+   */
+  reReadsRepaired: 0,
+};
 
 /** A snapshot a caller can difference against a later one. */
 export function hostFrictionCounts(): Readonly<typeof hostFriction> {
@@ -7614,6 +7635,7 @@ async function groupAndTagAll(
             // created.length` while the chart itself read short — and "the last
             // N" would then reach past the chart into the user's content and
             // group it in, to be deleted with the chart on the next update.
+            hostFriction.shortReReads += 1;
             trace("group", "the re-read matched only some of the chart's shapes", {
               index: i,
               drew: it.created.length,
@@ -7631,6 +7653,13 @@ async function groupAndTagAll(
             freshMembers.set(i, items.slice(items.length - it.created.length));
           }
         });
+        // WHAT THE PAUSE BOUGHT, counted in production. Everything that came
+        // into this attempt and is not going round again resolved on it — so on
+        // a retry attempt that is exactly the set of charts a settled re-read
+        // repaired. It is the only number that can say whether the tracker's
+        // settling-slide theory holds on the real host; the fake can only say
+        // that the code does what it was written to do.
+        if (attempt > 0) hostFriction.reReadsRepaired += pending.length - retry.length;
         pending = retry;
       }
     } catch (err) {

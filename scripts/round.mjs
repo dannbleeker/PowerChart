@@ -78,6 +78,7 @@ export function readiness({
   slideOk = null,
   crashed = false,
   loggedOut = false,
+  authPopup = false,
 }) {
   const stop = [];
   /**
@@ -144,9 +145,14 @@ export function readiness({
     return {
       ok: false,
       stop: [
-        "the browser is on a Microsoft sign-in page — there is no document to run a round in. " +
-          "Sign in, open the deck, sideload the add-in from Home ▸ Add-ins, then check again. " +
-          "None of that is the agent's to do: it needs a password.",
+        authPopup
+          ? "Office has opened a sign-in prompt beside the deck — the deck tab is still there, but the host is " +
+            "asking for credentials and nothing measured past this point can be trusted. " +
+            "Sign in on the prompt, check the add-in pane is still open, then check again. " +
+            "None of that is the agent's to do: it needs a password."
+          : "the browser is on a Microsoft sign-in page — there is no document to run a round in. " +
+            "Sign in, open the deck, sideload the add-in from Home ▸ Add-ins, then check again. " +
+            "None of that is the agent's to do: it needs a password.",
       ],
     };
   if (crashed)
@@ -454,7 +460,41 @@ export function readSlideResolve(out) {
  * there was nobody to ask.
  */
 export function signedOut(tabList) {
-  return /login\.live\.com|login\.microsoftonline\.com|login\.windows\.net/.test(String(tabList ?? ""));
+  return AUTH_TAB.test(String(tabList ?? ""));
+}
+
+const AUTH_TAB = /login\.live\.com|login\.microsoftonline\.com|login\.windows\.net/;
+
+/**
+ * Is that sign-in tab a POPUP beside a live deck, rather than the whole browser
+ * sitting on a login page?
+ *
+ * `signedOut` is right to stop the round either way — if Office is asking for
+ * credentials, nothing measured after it can be trusted — but the two look
+ * completely different to the person who walks up to the screen, and until
+ * 2026-08-16 they read the same sentence. What ended the overnight run of
+ * 2026-08-15/16 was an auth popup that opened BESIDE a deck tab that was still
+ * open, and the driver reported "the browser is on a Microsoft sign-in page".
+ * The reader looked at a screen showing PowerPoint and a small dialog, and had
+ * to work out for themselves that the driver was describing the dialog.
+ *
+ * A message that does not match what is on the screen is worse than a vague one:
+ * it makes a reader doubt the whole report, which on an overnight run is the only
+ * account of what happened.
+ *
+ * The signal is that some OTHER tab is still a document. Deliberately loose about
+ * which — the driver's own recovery looks for `Presentation63` by name, and
+ * hard-coding one deck's name into a diagnostic is how it would go quietly wrong
+ * for the next deck.
+ */
+export function signInIsPopup(tabList) {
+  const lines = String(tabList ?? "")
+    .split("\n")
+    .filter((l) => l.trim());
+  return (
+    lines.some((l) => AUTH_TAB.test(l)) &&
+    lines.some((l) => !AUTH_TAB.test(l) && /officeapps\.live\.com|onedrive\.live\.com|sharepoint\.com|\.pptx/i.test(l))
+  );
 }
 
 /**
@@ -550,7 +590,11 @@ async function attempt(argv, deps, sh) {
   const slides = listRef ? (sh("snapshot", listRef).match(/option "Slide"/g) ?? []).length : null;
 
   const browserGone = noBrowser(sh("list"));
-  const loggedOut = signedOut(sh("tab-list"));
+  // Read ONCE. Two `tab-list` calls could straddle the popup opening or closing
+  // and produce a message describing neither state.
+  const tabs = sh("tab-list");
+  const loggedOut = signedOut(tabs);
+  const authPopup = loggedOut && signInIsPopup(tabs);
   const crashed = sawCrashDialog(sh("find", "Sorry, we ran into a problem"));
 
   // A tab, not the Verbose trace checkbox. The checkbox only exists while the
@@ -588,6 +632,7 @@ async function attempt(argv, deps, sh) {
     slideOk,
     crashed: crashed || crashedAfter,
     loggedOut,
+    authPopup,
   };
   const { ok, stop, codes } = readiness(state);
   console.log(

@@ -480,6 +480,16 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
   // was happening.
   const lost: Record<string, number> = {};
   const outcomes: (string | undefined)[] = [];
+  // WHY, not just how many. This scenario has reported "3 of 8 charts carry the
+  // shared scale … the host flipped at chart 4 of 8" in all 34 rounds it has run,
+  // and the reason each chart was lost existed only in the trace — so reading a
+  // round meant opening the log and joining it by hand, every time.
+  //
+  // The mechanism is known now (`docs/BACKLOG.md`): the pre-grouping re-read
+  // comes back short or empty on a slide this run just added, so the chart is
+  // not grouped, so its tag falls back to a handle this host refuses. The deltas
+  // below put that on the verdict line itself.
+  const frictionBeforeRescale = hostFrictionCounts();
   for (const [n, c] of charts.entries()) {
     const next: ChartConfig = { ...c.cfg, scale: { max } };
     // Which chart of how many, on every line these calls write — the draw
@@ -522,9 +532,46 @@ const sameScaleAcrossDeck: Scenario = async (prefix) => {
     detail:
       `${scaled} of ${charts.length} charts carry the shared scale (max=${max}${shrunk}); ` +
       `${after.length} still re-editable${why ? `; the update reported ${why}` : ""}` +
-      rescaleLossNote(outcomes, charts.length),
+      rescaleLossNote(outcomes, charts.length) +
+      reReadNote(frictionBeforeRescale, hostFrictionCounts()),
   };
 };
+
+/**
+ * The clause that makes a round read itself: WHY the charts were lost, and
+ * whether the settled retry saved any.
+ *
+ * The verdict has named a count and a flip index since this scenario existed,
+ * and never a cause — so every round was read by opening the trace and joining
+ * it back to the summary by hand. The mechanism is settled now, so the summary
+ * can carry it.
+ *
+ * Silent when nothing happened, which is the point: it must add words only to a
+ * round that has something to say. And it reports the RETRY's own number
+ * (`reReadsRepaired`) whether or not the scenario passed, because a round where
+ * the retry repaired charts and the scenario still failed and a round where it
+ * repaired none are two very different results that would otherwise read the
+ * same.
+ */
+export function reReadNote(before: ReReadCounts, after: ReReadCounts): string {
+  const empty = after.emptyReReads - before.emptyReReads;
+  const short = after.shortReReads - before.shortReReads;
+  const saved = after.reReadsRepaired - before.reReadsRepaired;
+  if (!empty && !short && !saved) return "";
+  const why = [
+    short ? `${short} read short` : "",
+    empty ? `${empty} read empty` : "",
+    // Named even at zero once the other two are non-zero: "the pause repaired
+    // none" is the finding that refutes the settling-slide theory, and a clause
+    // that simply vanishes would leave the reader unable to tell it from a round
+    // where the retry never ran.
+    `the settled retry repaired ${saved}`,
+  ].filter(Boolean);
+  return `; of the re-reads before grouping, ${why.join(", ")}`;
+}
+
+/** Just the fields `reReadNote` differences — so a caller cannot pass halves of two snapshots. */
+type ReReadCounts = Pick<ReturnType<typeof hostFrictionCounts>, "emptyReReads" | "shortReReads" | "reReadsRepaired">;
 
 /**
  * Consecutive charts that must lose their config before the rescale gives up.
