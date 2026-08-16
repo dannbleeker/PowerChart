@@ -27,6 +27,7 @@ import {
   _setBatchTimeoutForTest,
   _setReadbackTimeoutForTest,
   _setReReadRetryDelayForTest,
+  needsPreGroupRefresh,
   addScratchSlide,
   chooseGroupMembers,
   deckIdForSelectedSlide,
@@ -1330,6 +1331,67 @@ describe("what a group that SUCCEEDS leaves behind", () => {
    * wrong reason — with no group formed and no complaint — so both assert the
    * GROUP, which is the thing that actually saves a config.
    */
+  it("re-reads before grouping for a SMALL chart too, not just one that spanned batches", async () => {
+    // THE SHARPEST SEPARATION IN THE ARCHIVE, and it was ours. 41 rounds:
+    //
+    //     spanned batches   333 draw(s),  333 grouped = 100%
+    //     one batch only    204 draw(s),   49 grouped =  24%
+    //
+    // `refreshShapes` was set from `spansBatches()`, so a chart small enough to
+    // draw in one batch never re-read the slide and handed `addGroup` the raw
+    // creation proxies. This host refuses those — 5010 — and the failed group
+    // then took the tag with it: `target.tags` undefined, 155 times out of 155
+    // across the archive, every one immediately after a 5010 group.
+    //
+    // The assertion is on WHICH HANDLES the group was made from, because that is
+    // the actual change. A test that only checked "it grouped" would pass on the
+    // old code too — the fake groups creation proxies quite happily, which is
+    // exactly why CI never saw this.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      // No `shapesPerSync` override: an ordinary small chart, which is the case
+      // that was silently losing its group on the real host.
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const grouped = traceLog(mark).entries.filter((e) => e.message === "grouped the chart's shapes");
+      expect(grouped.length, "the chart was not grouped at all").toBe(1);
+      expect(
+        String(grouped[0].data?.by),
+        "grouped through the creation proxies — the handles this host refuses",
+      ).toContain("ids");
+    } finally {
+      setTracing(false);
+    }
+  });
+
+  it("still does not re-read for a chart that will not be grouped", () => {
+    // The other half of the gate, and why it stays a predicate rather than
+    // becoming `true`. A re-read costs a round trip on the live insert path and
+    // this host answers it short or empty often enough to matter, so it is spent
+    // only where it buys something: a chart that will be grouped needs fresh
+    // handles to be grouped WITH, and one that will not does not.
+    const shapes = (n: number) => Array.from({ length: n }, () => ({}) as never);
+    expect(needsPreGroupRefresh(shapes(2), {} as never), "a small groupable chart must refresh").toBe(true);
+    expect(needsPreGroupRefresh(shapes(24), {} as never)).toBe(true);
+    expect(needsPreGroupRefresh(shapes(1), {} as never), "a lone shape has nothing to group").toBe(false);
+    expect(needsPreGroupRefresh(shapes(9), { group: false } as never), "grouping is off — nothing to refresh for").toBe(
+      false,
+    );
+    // But a chart that crossed a sync boundary refreshes even when ungrouped,
+    // because the stale-proxy trap belongs to the SYNC and tagging crosses it
+    // too. That is the case `spansBatches` was written for, and it survives.
+    expect(
+      needsPreGroupRefresh(shapes(24), { group: false, shapesPerSync: 10 } as never),
+      "an ungrouped chart that spanned batches still has stale proxies to tag through",
+    ).toBe(true);
+    // A degraded picture is a single shape and still needs the refresh to be
+    // tagged at all.
+    expect(needsPreGroupRefresh(shapes(1), { group: false } as never, true)).toBe(true);
+  });
+
   it("asks a settling slide again when the re-read comes back EMPTY, and the chart groups", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
@@ -1683,7 +1745,7 @@ describe("insertAgendaSlides when the host drops a slide add", () => {
  * its group, and with it the shape id the settle needs to write the config
  * through.
  */
-describe("an off-screen chart that fitted in one batch is not sent to re-read the slide", () => {
+describe("an off-screen chart that fitted in one batch IS sent to re-read the slide now", () => {
   const midSizedScene = () => ({
     width: 480,
     height: 300,
@@ -1698,7 +1760,7 @@ describe("an off-screen chart that fitted in one batch is not sent to re-read th
     })),
   });
 
-  it("groups it even on a host that will not list a slide's shapes", async () => {
+  it("cannot group it on a host that will not list a slide's shapes, and that is the trade", async () => {
     const slides = [makeSlide("s1")];
     installHost(slides);
     applyWebProfile();
@@ -1707,6 +1769,17 @@ describe("an off-screen chart that fitted in one batch is not sent to re-read th
     // which is a different failure and would mask the one under test.
     faults.hollowReads = 99;
     faults.refuseGroups = 0;
+    // OFF, and the archive is why. `strictTags` models "refuse any proxy older
+    // than one sync", and this host demonstrably does not do that:
+    // `tag-the-creation-proxy-a-sync-later` answers `yes`, four rounds running.
+    // What it refuses is a RESOLVED proxy, which is a different rule and has its
+    // own fault (`refuseTagWritesOnResolvedProxy`).
+    //
+    // It matters here because the re-read costs a sync, so with `strictTags` on
+    // this test would assert that widening the refresh also costs the config —
+    // baking a known-harsher-than-the-host model in as expected behaviour, and
+    // the tag is the half of the trade that has to survive.
+    faults.strictTags = false;
     try {
       await insertDemoDeck([{ scene: midSizedScene(), tagData: '{"kind":"stacked"}' }]);
       const drawn = slides[slides.length - 1];
@@ -1715,14 +1788,33 @@ describe("an off-screen chart that fitted in one batch is not sent to re-read th
         drawn.created.length,
         "24 shapes must fit one off-screen batch, or this tests something else",
       ).toBeLessThan(OFFSCREEN_BATCH);
-      // The chart survived as a chart: grouped, and carrying its config.
+      // NO GROUP, and this test asserted the opposite until 2026-08-16. The
+      // behaviour really did change and the reason is worth more than the old
+      // assertion was.
+      //
+      // A single-batch chart used to skip the re-read entirely and group through
+      // its creation proxies, which is what let it group on a host that lists
+      // nothing. The archive says that path barely works: 49 of 204 single-batch
+      // draws grouped, against 333 of 333 that spanned batches and therefore
+      // re-read. So the old behaviour this defended was a 24% path, and the
+      // change trades it for one that is 100% whenever the host answers the
+      // re-read at all.
+      //
+      // `hollowReads = 99` is a host that answers NOTHING, for good — the retry
+      // after a settle delay gets nothing either. That host cannot group a small
+      // chart now. It is the honest cost, and it is bounded: the chart is still
+      // whole, still on the slide, and still gets its config tag written through
+      // the creation handle, which is the thing the user actually needs.
       expect(
         drawn.created.some((s) => s.type === "group"),
-        "the chart was left loose",
-      ).toBe(true);
+        "grouped through proxies the re-read had already aged past this host's limit",
+      ).toBe(false);
+      // THE CONFIG STILL LANDS, which is what makes the trade acceptable. A
+      // chart that is ugly but re-editable beats a tidy one the pane cannot
+      // re-open, and this is the same reasoning the partial-match branch uses.
       expect(
         drawn.created.some((s) => s.tagStore.get(CHART_TAG) === '{"kind":"stacked"}'),
-        "the chart lost its config tag",
+        "the chart lost its config tag as well as its group, which is not an acceptable trade",
       ).toBe(true);
     } finally {
       faults.hollowReads = 0;

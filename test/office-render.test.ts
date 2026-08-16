@@ -1855,7 +1855,13 @@ describe("Office round-trips do not scale with the chart count", () => {
     // plus its render batches, then GROUP. The delete is per chart because a
     // shared one commits every chart's removal before any redraw runs — see
     // updateChartsInSlides.
-    faults.failSyncOn = 2 + 3 /* charts */ * (1 + batches) + 1;
+    // ...plus the PRE-GROUPING RE-READ, which is new since 2026-08-16: every
+    // groupable chart asks for one now, not just those that span batches
+    // (`needsPreGroupRefresh`), and all of them refresh in a single shared sync.
+    // Missing it here does not fail loudly — it fails the WRONG sync and the
+    // test quietly stops exercising the refused group, which is the trap the
+    // comment above is about.
+    faults.failSyncOn = 2 + 3 /* charts */ * (1 + batches) + 1 /* the re-read */ + 1; /* the group */
     try {
       const items = targetsOn(slide, 3);
       // One refreshed target per chart — the caller needs them to stay live.
