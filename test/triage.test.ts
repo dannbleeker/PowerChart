@@ -419,8 +419,8 @@ describe("triage — logs that are not inserts", () => {
   });
 
   it("splits grouping by whether the chart spanned batches, and counts a draw once", () => {
-    // THE SHARPEST SEPARATION IN THE ARCHIVE: 333 of 333 multi-batch draws
-    // grouped, against 49 of 204 single-batch. It is OURS — `refreshShapes` is
+    // THE SHARPEST SEPARATION IN THE ARCHIVE: 353 of 452 multi-batch draws
+    // grouped, against 49 of 214 single-batch. It is OURS — `refreshShapes` is
     // set from `spansBatches()`, so only a multi-batch chart gets the
     // pre-grouping re-read that resolves its shapes by id; a single-batch chart
     // hands addGroup the raw created proxies and this host refuses them.

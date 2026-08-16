@@ -1247,10 +1247,15 @@ handling, every one of which changed what the probe measured.
 `npm run rounds` prints it under **DID THE CHART SPAN BATCHES**. Pooled over 41
 rounds and 537 draws:
 
-    spanned batches   333 draw(s),  333 grouped = 100%
-    one batch only    204 draw(s),   49 grouped =  24%
+    spanned batches   452 draw(s),  353 grouped = 78%
+    one batch only    214 draw(s),   49 grouped = 23%
 
-**333 of 333 against 49 of 204.** The sharpest separation in the archive, and
+**353 of 452 against 49 of 214.** (First reported here as 333 of 333 — 100% —
+which was a bug in the pooling function and not a fact: it searched a fixed few
+entries for the verdict and did not count `not grouping` at all, so every honest
+decline was dropped from both arms. The separation survived the correction; the
+absolutes did not. On builds carrying the settled retry the multi arm really is
+10 of 10.) The sharpest separation in the archive, and
 unlike the fresh-slide split it is not a fact about the host — it is a
 consequence of one line of ours.
 

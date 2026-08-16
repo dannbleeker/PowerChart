@@ -1334,8 +1334,8 @@ describe("what a group that SUCCEEDS leaves behind", () => {
   it("re-reads before grouping for a SMALL chart too, not just one that spanned batches", async () => {
     // THE SHARPEST SEPARATION IN THE ARCHIVE, and it was ours. 41 rounds:
     //
-    //     spanned batches   333 draw(s),  333 grouped = 100%
-    //     one batch only    204 draw(s),   49 grouped =  24%
+    //     spanned batches   452 draw(s),  353 grouped = 78%
+    //     one batch only    214 draw(s),   49 grouped = 23%
     //
     // `refreshShapes` was set from `spansBatches()`, so a chart small enough to
     // draw in one batch never re-read the slide and handed `addGroup` the raw
@@ -1795,8 +1795,8 @@ describe("an off-screen chart that fitted in one batch IS sent to re-read the sl
       // A single-batch chart used to skip the re-read entirely and group through
       // its creation proxies, which is what let it group on a host that lists
       // nothing. The archive says that path barely works: 49 of 204 single-batch
-      // draws grouped, against 333 of 333 that spanned batches and therefore
-      // re-read. So the old behaviour this defended was a 24% path, and the
+      // draws grouped, against 353 of 452 that spanned batches and therefore
+      // re-read. So the old behaviour this defended was a 23% path, and the
       // change trades it for one that is 100% whenever the host answers the
       // re-read at all.
       //

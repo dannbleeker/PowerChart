@@ -1167,3 +1167,55 @@ for this was "refuse to overwrite an existing file", and its test would not go
 red. That is what proved the overwrite theory wrong — `nextRoundNumber` cannot
 produce a colliding name. A guard that cannot fail is evidence about the
 diagnosis, not a spare safety net.
+
+## Rounds 066 + 067 (`d8ba7df`, 2026-08-16) — the prediction failed, and the instrument was wrong too
+
+**The staked prediction was: single-batch grouping moves off 24% toward the
+multi-batch 100%, and `tags-undefined` falls with it. Half of that happened, and
+the half that did not is the more useful half.**
+
+The pair is identical on every number, which is what makes it worth reading:
+
+    round   1-batch draws  grouped  not-grouping  group-5010  tags-undefined  cfg-tag-5010
+    065           5           0          0            5             5              3
+    066           5           0          5            0             0              8
+    067           5           0          5            0             0              8
+
+**Grouping did not improve. It was already zero.** Widening `refreshShapes` did
+not turn single-batch charts into grouped charts; it turned a doomed `addGroup`
+into an honest decline. Ten spurious errors a round — five 5010s and five
+`tags-undefined` — became five `not grouping` lines. `cfg-tag-5010` rose from 3
+to 8 because those five charts now reach the tag write and are refused there
+instead of failing before it. **For the user the outcome is unchanged; for anyone
+reading a round it is much clearer.**
+
+**Why it did not work, which is the next thread.** The single-batch charts show
+**no settle-delay line**. Their re-read did not come back empty — it came back
+with items that matched none of our ids, and the retry only fires on an empty or
+partial read. A zero-match falls straight through to `use: "none"`.
+
+A single-batch chart loads its shape ids in the same sync that creates them and
+re-reads on the very next one, so the ids are plausibly not resolvable yet —
+which is the same settling story that DID work for charts 4 and 5. **Retrying on
+a zero-match is the obvious next experiment**, and it is small.
+
+### THE 100% WAS MINE, AND IT WAS WRONG
+
+`poolBatchSpanVsGroup` reported `333 of 333 = 100%` for the multi-batch arm. That
+number is a bug in the pooling function, not a fact about the host. It looked for
+the grouping verdict within a fixed few trace entries and did not count
+`not grouping` among the outcomes — so **every honest decline was dropped from
+both arms**, and only draws that either grouped or threw were counted at all.
+
+Corrected, the archive says **353 of 452 (78%) against 49 of 214 (23%)**. The
+separation is real and still the sharpest thing here; the absolutes were not.
+
+Two things made it worse than an ordinary slip. It was quoted into a commit
+message, a PR body, `docs/BACKLOG.md`, a code comment and two tests before anyone
+checked it. And the re-read this very change added pushed the verdict further
+from the draw, so the report showed **zero single-batch draws** in round 066 — the
+instrument went blind in exactly the place it was being used to measure.
+
+It was caught because the number was implausible, not because anything failed.
+That is the same lesson as the starved-questions sweep, from the other side:
+**pool your instrument's own behaviour, and distrust a clean 100%.**
