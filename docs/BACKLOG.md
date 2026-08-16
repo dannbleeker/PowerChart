@@ -369,7 +369,15 @@ of one round.
 overnight): charts 4 and 5 of `same scale across the deck` group, and the
 scenario stops failing at 34 of 34.
 
-### ROUND 064 ANSWERED IT — half right, and the half that failed is the useful half
+### ROUNDS 064 + 065 ANSWERED IT — half right, and the half that failed is the useful half
+
+**Run as a PAIR on `bcd5773`, no merge between them, and the two are structurally
+identical chart for chart.** `the settled retry repaired 2` in both; charts 4 and
+5 take the retry, group, and are refused through `from: group×1` in both; the
+slide ids differ between rounds, so what repeats is the position and the
+freshness rather than an id. The noise floor is about counts and none of this is
+a count — no third round is needed. What DID move is the downstream score, 4 of 8
+then 3 of 8, which was always the noisy half.
 
 **Charts 4 and 5 grouped**, both after the retry, both for the first time in five
 rounds of failing identically. `the settled retry repaired 2`. No chart in the

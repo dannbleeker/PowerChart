@@ -571,6 +571,41 @@ describe("archive housekeeping", () => {
     ).toThrow(/byte-identical to 038-abc1234\.json/);
   });
 
+  it("does not hand out a number a round committed elsewhere already has", () => {
+    // WHAT ACTUALLY WENT WRONG on 2026-08-16, and it is not an overwrite. Round
+    // 064 was archived on `main` and its findings committed to a branch;
+    // `git checkout main` then removed the file from the working tree, because
+    // it is tracked only on that branch. The next round was archived from
+    // `main`, where the directory ends at 063, and was numbered 064 as well.
+    //
+    // Nothing was destroyed — `nextRoundNumber` is max+1, so it never lands on a
+    // file it can SEE. The damage is two different rounds both called 064 in two
+    // git contexts: a merge collision, and a pooled report that reads one of
+    // them twice or not at all. Every downstream number here is a pool over this
+    // directory.
+    //
+    // The fix is what the lister is given, so that is what this pins.
+    const round = { build: "abc1234 · 2026-08-16 05:00Z", trace: { entries: [] } };
+    // Distinct bodies, or the byte-identical twin guard fires first and this
+    // passes without ever reaching the numbering under test.
+    const read = ((p: string) =>
+      p === "log.json"
+        ? `${JSON.stringify(round, null, 2)}\n`
+        : `${JSON.stringify({ ...round, trace: { entries: [{ message: p }] } }, null, 2)}\n`) as never;
+    const written: string[] = [];
+    const write = ((p: string) => written.push(p)) as never;
+
+    // The working tree alone — the bug. It cannot see 064 and reissues it.
+    archive("log.json", "rounds", read as never, write, (() => ["063-9dc3bc8.json"]) as never);
+    expect(written[0], "the working tree alone reissued a number git already holds").toBe("rounds/064-abc1234.json");
+
+    // The union of disk and git — the fix. 064 is committed on a branch, so the
+    // next round is 065 even though the file is nowhere on disk.
+    written.length = 0;
+    archive("log.json", "rounds", read as never, write, (() => ["063-9dc3bc8.json", "064-bcd5773.json"]) as never);
+    expect(written[0], "a round committed on another branch was numbered over").toBe("rounds/065-abc1234.json");
+  });
+
   it("files a log that differs from everything already kept", () => {
     const round = { build: "abc1234 · 2026-08-15 05:00Z", trace: { entries: [] } };
     const written: string[] = [];
