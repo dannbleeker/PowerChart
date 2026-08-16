@@ -1347,3 +1347,54 @@ cannot end a healthy round — but a dead browser makes every call fail forever,
 the counter never reaches its threshold and the loop polls a corpse to the
 thirty-minute limit. `browserDiedMidRound` now needs a STREAK of failures AND an
 affirmative `(no browsers)`; either alone re-makes a bug the other prevents.
+
+## Rounds 075 + 076 (`aeefb93`, 2026-08-16) — the origin tag is fixed, and the binding is proven
+
+**The prediction was staked before the pair and it held in both rounds:**
+
+    round   scenarios  origin5010  charts that cannot follow a drag  cfg5010  grouped
+    074        12/13        8                    8                     0       17
+    075        13/13        0                    0                     0       19
+    076        13/13        0                    0                     0       16
+
+**Thirteen of thirteen, twice** — the first perfect sheets this project has
+recorded, and the first with the drag check in the list at all.
+
+**What was wrong.** The origin tag is the one write that cannot dodge a resolved
+handle. The config tag is queued BEFORE `load("id,left,top")` and lands; the
+origin tag needs that loaded position, so it went out after the load had
+resolved the target into `shapes.getItem(id)` — the handle this host refuses.
+Before the binding change the CONFIG tag took the 5010s and the origin tag none;
+after it the config tag took none and the origin tag took eight or nine a round.
+**The refusal never went away. It moved to the only write still going through a
+resolved proxy**, and stayed invisible because a scenario samples one chart while
+half the population was failing.
+
+**And this refutes the alternative I staked against it.** `binding.getShape()` is
+NOT `shapes.getItem(id)` under another name. A write through the binding lands
+where the identical write through a resolved proxy was refused eight or nine
+times a round. That closes the question the probe could never reach —
+`binding-names-shape-later` asked eight times across eight rounds and never once
+got to its own question, which was a fact about the probe.
+
+**The host is still moody underneath and the outcome no longer cares.** Grouping
+was 19 in one round and 16 in the other on the same build. Every scenario passed
+in both. That is the same shape as the settled retry: the wobble did not go away,
+the result became robust to it.
+
+### What this leaves
+
+`same scale across the deck` has now passed on **070, 071, 072, 073, 074, 075
+and 076** — seven rounds across four builds, after failing 35 straight. It is no
+longer a claim that needs a pair.
+
+**The pooled `CHARTS THAT CANNOT FOLLOW A DRAG` count is now history rather than
+news**: 34 charts across 5 rounds, all of them 072-074. It will not climb again
+unless something regresses, which is exactly what it is there to notice.
+
+**The settle-by-binding route has still never executed.** `settledByBinding` is 0
+across seven rounds — the settle only runs when the config tag fails, and the
+config tag stopped failing. It is now a fallback that has never fired, kept
+deliberately: it costs nothing at rest and it is the only route left if the
+config tag ever starts failing again. Recorded so nobody mistakes it for tested
+code.
