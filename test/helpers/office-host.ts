@@ -168,6 +168,25 @@ export const faults = {
    */
   readsMissing: 0,
   /**
+   * Leave this many shapes out of the NEXT `items/id` read only, then answer
+   * honestly — a slide that is still settling rather than a host that is short
+   * for good.
+   *
+   * `readsMissing` above is permanent and `hollowReads` heals but only from
+   * EMPTY. Neither can express the case the office-js tracker describes and the
+   * round archive shows: PowerPoint Online does not populate a freshly
+   * materialised slide's shape collection straight away, so the first answer is
+   * partial and a later one is complete. That is the case `REREAD_RETRY_MS`
+   * exists for, and without this it could not be reproduced — a suite that can
+   * only model permanent shortness would show the retry costing a delay and
+   * never show it saving anything.
+   *
+   * The VALUE is how many shapes to drop, and it applies to the next
+   * `items/id` read only — so `4` means "the first answer is four short, every
+   * one after it is right".
+   */
+  readsMissingFirst: 0,
+  /**
    * The id a SELECTION reports for its slide, when that is not the deck's id.
    *
    * office-js#2474: a `SlideRange`'s id lacks the `#XYZ` suffix the same slide
@@ -1388,6 +1407,14 @@ export function makeSlide(id: string) {
         // Short, not empty — the case `hollowReads` describes and does not do.
         if (faults.readsMissing > 0 && lastShapeLoad.startsWith("items/id")) {
           return live.slice(0, Math.max(0, live.length - faults.readsMissing));
+        }
+        // Short ONCE, then honest — a slide still settling. See
+        // `readsMissingFirst`; checked after `readsMissing` so a test arming
+        // both gets the permanent answer, which is the stricter one.
+        if (faults.readsMissingFirst > 0 && lastShapeLoad.startsWith("items/id")) {
+          const drop = faults.readsMissingFirst;
+          faults.readsMissingFirst = 0;
+          return live.slice(0, Math.max(0, live.length - drop));
         }
         // Any projection that asks for names, not the exact string `items/name`.
         // `slideShapeList` asks for `items/id,items/name` — it needs ids to tell
