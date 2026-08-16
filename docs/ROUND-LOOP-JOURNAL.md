@@ -1453,3 +1453,34 @@ carrying 52 comparable rounds, which is not a trade worth making while a
 cheaper control exists.
 
 **Nothing about 4:3 support should be written down until that control has run.**
+
+## Round 078 (`8e9227c`, 2026-08-16) — the control, and 4:3 is EXONERATED
+
+**Same deck, same build, 16:9 instead of 4:3. One variable moved.**
+
+    round   deck             size   scenarios  UnexpectedError  tagFail
+    076     Presentation64   16:9      13/13          0            0
+    077     Presentation65   4:3       10/13         52           18
+    078     Presentation65   16:9      10/13         52           18
+
+**077 and 078 are identical on every number.** The failure follows the DECK, not
+the aspect ratio. `Presentation65` was created during a browser crash, has gone
+into an unusable greyed ribbon state twice, and turned up at the start of this
+round holding **100 slides**. It is a damaged document, and every one of those 52
+`UnexpectedError`s belongs to it.
+
+**Had the control not been run**, "4:3 breaks the config tag write" would have
+gone into the docs on the strength of a single round, and every subsequent 4:3
+result would have been read through it.
+
+**Two things it also proved in passing.** The driver swept a 100-slide deck
+rather than refusing — the heal added earlier the same day, on a deck far past
+anything it was designed against. And `settledByBinding` fired sixteen times
+after seven rounds of never running: the fallback is no longer untested, and its
+first test says it does not save this case.
+
+### What the 4:3 question still needs
+
+**Nothing has yet been learned about 4:3.** Round 077 measured a sick deck. The
+question needs a CLEAN 4:3 deck, which is now the first item of the nightly work
+below.

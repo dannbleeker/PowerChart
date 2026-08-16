@@ -907,6 +907,86 @@ function reportOriginTagLosses(logs) {
 }
 
 /**
+ * Which slide size a round ran at — its PROFILE, as a comparable string.
+ *
+ * `16:9` for everything filed before 2026-08-16, and that default is a fact
+ * rather than a guess: all 53 rounds archived before the field existed were run
+ * on a widescreen deck, which `docs/ROUNDS.md` states once so no reader has to
+ * infer it per file.
+ *
+ * The profile exists because a 4:3 round and a 16:9 round are DIFFERENT
+ * EXPERIMENTS, and pooling them is the rounds 24-and-25 mistake — "differed only
+ * in this, and were compared as though they did not". Round 077 scored 10 of 13
+ * where 16:9 scored 13 of 13 twice, so the difference is large enough to swamp
+ * anything a pooled number would say.
+ */
+export function roundProfile(log) {
+  const s = log?.slideSize;
+  if (!s || typeof s.width !== "number" || typeof s.height !== "number") return "16:9";
+  // Named ratios for the two PowerPoint offers, and the raw size for anything
+  // else — a custom deck should be visibly its own profile, not silently folded
+  // into whichever named one it is nearest.
+  const r = s.width / s.height;
+  if (Math.abs(r - 16 / 9) < 0.01) return "16:9";
+  if (Math.abs(r - 4 / 3) < 0.01) return "4:3";
+  return `${Math.round(s.width)}x${Math.round(s.height)}`;
+}
+
+/**
+ * Scenarios that PASS at one slide size and FAIL at another, in the same cycle.
+ *
+ * A different question from the regression gate, and it needs its own answer.
+ * The gate asks "did this fall against its own history"; this asks "did this
+ * profile fail what another profile passed tonight". Round 077 was exactly the
+ * second — 10 of 13 at 4:3 against 13 of 13 at 16:9 — and nothing would have
+ * said so automatically.
+ *
+ * BUILD-SCOPED, because that is the only way the comparison is fair. Two rounds
+ * on different builds differ for reasons that have nothing to do with slide
+ * size, and this must never report those.
+ *
+ * A scenario failing in BOTH profiles is not divergence — it is an ordinary bug,
+ * already visible everywhere else, and reporting it here would bury the one
+ * signal this exists for.
+ */
+export function profileDivergence(logs) {
+  const byBuild = new Map();
+  for (const log of logs) {
+    const build = String(log?.build ?? "").split(" ")[0];
+    if (!build) continue;
+    const prof = roundProfile(log);
+    if (!byBuild.has(build)) byBuild.set(build, new Map());
+    const profs = byBuild.get(build);
+    if (!profs.has(prof)) profs.set(prof, new Map());
+    const seen = profs.get(prof);
+    for (const sc of log?.selftest ?? []) {
+      if (!sc?.name) continue;
+      // A scenario that DID NOT MEASURE says nothing about its profile — the
+      // same rule the regression gate follows, for the same reason.
+      if (sc.skipped) continue;
+      // Worst outcome wins within a profile: one failure in a paired profile is
+      // still a failure that profile produced.
+      seen.set(sc.name, (seen.get(sc.name) ?? true) && !!sc.ok);
+    }
+  }
+  const out = [];
+  for (const [build, profs] of byBuild) {
+    if (profs.size < 2) continue;
+    const names = new Set([...profs.values()].flatMap((m) => [...m.keys()]));
+    for (const name of names) {
+      const passedIn = [];
+      const failedIn = [];
+      for (const [prof, m] of profs) {
+        if (!m.has(name)) continue;
+        (m.get(name) ? passedIn : failedIn).push(prof);
+      }
+      if (passedIn.length && failedIn.length) out.push({ build, name, passedIn, failedIn });
+    }
+  }
+  return out.sort((a, b) => a.build.localeCompare(b.build) || a.name.localeCompare(b.name));
+}
+
+/**
  * Scenarios that were passing and have stopped — the only automatic check this
  * project has on a round's own result.
  *
@@ -929,6 +1009,15 @@ function reportOriginTagLosses(logs) {
  */
 export function scenarioRegressions(rounds, window = 3) {
   if (!Array.isArray(rounds) || rounds.length < window + 1) return [];
+  // WITHIN ONE PROFILE ONLY. A nightly cycle runs 16:9 twice and 4:3 once, so a
+  // 4:3 round judged against three 16:9 rounds would be flagged for scoring
+  // differently — which it does, by design. The gate would fire every night,
+  // and a gate that cries wolf gets switched off; this file has already watched
+  // that happen twice. See `roundProfile`.
+  const profile = roundProfile(rounds[rounds.length - 1]);
+  const sameProfile = rounds.filter((r) => roundProfile(r) === profile);
+  if (sameProfile.length < window + 1) return [];
+  rounds = sameProfile;
   // `true` passed, `false` failed, `null` DID NOT MEASURE. The third value is
   // what the gate got wrong on its first live outing: round 073 flagged `explode
   // a degraded picture` as having stopped passing, for a result whose own words

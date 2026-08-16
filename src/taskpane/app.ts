@@ -2533,6 +2533,14 @@ const CROWDED_DECK_SLIDES = 10;
 interface RunLogFile {
   build: string;
   host: string;
+  /**
+   * The slide size this round ran at.
+   *
+   * Optional because 53 archived rounds predate it, and every one of those was
+   * 16:9 — anything reading this must default to that rather than guess, and
+   * `docs/ROUNDS.md` states it once so no reader has to infer it.
+   */
+  slideSize?: { width: number; height: number; source: string };
   runs: RunLog[];
   /**
    * The host self-test's verdicts, when that is what produced this log.
@@ -3749,6 +3757,18 @@ function wireInsert() {
         lastRunLog = {
           build: buildStamp,
           host,
+          // WHICH SLIDE SIZE THIS ROUND RAN AT, and it is load-bearing rather
+          // than decorative. Until 2026-08-16 every round in the archive was
+          // 16:9 and nothing said so — then the first 4:3 round was filed into
+          // the same directory, where `npm run rounds` pools it with the rest.
+          // Averaging two aspect ratios into one number is the rounds 24-and-25
+          // mistake ("differed only in this, and were compared as though they
+          // did not"), and a nightly 4:3 round would repeat it every night.
+          //
+          // Read through `slideSize()`, which resolves it from the host with
+          // three fallback rungs, so this records what the ROUND actually ran
+          // at rather than what anyone believed it would.
+          slideSize: await slideSize(),
           runs: [],
           hostAnswers: sheet,
           selftest: results,

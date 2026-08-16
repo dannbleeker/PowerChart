@@ -343,3 +343,43 @@ dialog directly, so a crashed host is named rather than waited on. The probe ask
 too: `opened: { ms, answered }` on the sheet times the same call before question 1. It is a NUMBER,
 not a verdict, deliberately — three healthy and three wedged rounds are not enough to set a
 threshold, and a made-up one would turn a real measurement into a guess wearing a verdict's clothes.
+
+## The nightly cycle: 16:9 twice, 4:3 once
+
+**Two 16:9 rounds on one build, then one 4:3 round.** The pair is the
+measurement — this project's noise floor is 1-versus-5 for the same fault with
+nothing changed, so a claim needs two rounds that agree. **4:3 is validation, not
+measurement**: one round, asking only whether anything behaves differently at a
+slide size nothing else covers.
+
+    PW_EXPECT_SIZE=16:9 node scripts/round.mjs --dir .pw-session --retry 6   # ×2, same build
+    PW_DECK=<4:3 deck> PW_EXPECT_SIZE=4:3 node scripts/round.mjs --dir .pw-session --retry 6
+
+**`PW_EXPECT_SIZE` is not optional in a cycle.** Without it the round does not
+check the deck's size, and a deck can be the wrong one silently: setting
+Widescreen on 2026-08-16 was accepted while the document was loading and did
+nothing at all, caught only by reopening the menu. A round filed under the wrong
+profile is worse than a round not run.
+
+### When 4:3 disagrees
+
+`npm run rounds:gate` reports two different things and they must not be confused:
+
+- **A REGRESSION** — a scenario fell against its OWN profile's history. Fatal,
+  exit 1. Judged only against rounds at the same slide size, because a 4:3 round
+  measured against three 16:9 rounds would be flagged for scoring differently,
+  which it does by design.
+- **A DIVERGENCE** — a scenario passed at one slide size and failed at another,
+  on the same build. **Reported, never fatal.** The response is to run 4:3
+  again, or as a pair, before treating the difference as a property of the slide
+  size at all.
+
+That escalation is the whole point of 4:3 being a single round: it is cheap
+enough to run every night, and a disagreement buys a second round rather than a
+conclusion.
+
+### Every round before 2026-08-16 was 16:9
+
+Fifty-three of them, and none carries a slide size because the field did not
+exist. **Anything reading a round must default to 16:9 rather than guess**;
+`roundProfile` does, and this sentence is why it is allowed to.

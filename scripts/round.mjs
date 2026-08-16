@@ -79,6 +79,8 @@ export function readiness({
   crashed = false,
   loggedOut = false,
   authPopup = false,
+  size = null,
+  expectSize = null,
 }) {
   const stop = [];
   /**
@@ -198,6 +200,16 @@ export function readiness({
     refuse(
       "deck-dirty",
       `the deck holds ${slides} slides — clean it, or this round is not comparable with one that started clean`,
+    );
+  // THE SIZE THE DECK ACTUALLY IS, when a profile was asked for. Only when both
+  // are known: a host that would not answer has said nothing, and refusing on no
+  // evidence is what `reachable` exists to prevent.
+  if (expectSize && size && size !== expectSize)
+    refuse(
+      "wrong-size",
+      `the deck is ${size} and this round was asked for ${expectSize} — set it in Design ▸ Slide Size and ` +
+        "CHECK IT TOOK, because a click made while the document is loading is accepted and does nothing. " +
+        "Filing a round under the wrong profile is worse than not running it.",
     );
   if (verbose === false) refuse("verbose-off", "Verbose trace is off — the round's trace will be too thin to mine");
   if (pictures === false)
@@ -443,6 +455,51 @@ export function slideResolveScript(budgetMs) {
   );
 }
 
+/**
+ * Ask the deck its slide size, so a round cannot lie about which one it ran.
+ *
+ * WHY THIS IS A PRECONDITION AND NOT A NICETY. Setting a deck to Widescreen
+ * during the 2026-08-16 control run SILENTLY DID NOT TAKE — the click landed
+ * while the document was in its greyed "Loading" state, the menu accepted it,
+ * and nothing changed. It was caught only by reopening the menu and reading
+ * which box was ticked.
+ *
+ * A round that believes it is 4:3 and is not proves exactly nothing, which is
+ * the same harm as a round on a stale pane — and that is already a hard stop.
+ * With a nightly cycle running 16:9 twice and 4:3 once, an unverified size means
+ * filing a round under the wrong profile, which is worse than not running it.
+ *
+ * Points, via `pageSetup`, because that is what the add-in itself reads.
+ */
+export function slideSizeScript(budgetMs) {
+  return (
+    "async () => { try { return await Promise.race([ " +
+    "PowerPoint.run(async (c) => { const p = c.presentation.pageSetup; " +
+    'p.load("slideWidth,slideHeight"); await c.sync(); ' +
+    'return "size:" + Math.round(p.slideWidth) + "x" + Math.round(p.slideHeight); }), ' +
+    `new Promise((_, rej) => setTimeout(() => rej(new Error("budget")), ${budgetMs})) ]); ` +
+    '} catch (e) { return "size-failed:" + (e && e.message ? String(e.message).slice(0, 60) : "?"); } }'
+  );
+}
+
+/**
+ * `"size:960x540"` → `"16:9"`; a failure or a silence → null.
+ *
+ * Null is NOT a mismatch. A host that would not answer has told us nothing, and
+ * refusing a round on no evidence is the mistake `reachable` exists to prevent.
+ */
+export function readSlideSize(out) {
+  const m = /size:(\d+)x(\d+)/.exec(String(out ?? ""));
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!w || !h) return null;
+  const r = w / h;
+  if (Math.abs(r - 16 / 9) < 0.01) return "16:9";
+  if (Math.abs(r - 4 / 3) < 0.01) return "4:3";
+  return `${w}x${h}`;
+}
+
 /** `"slide:287#62081387"` → true; a failure or a silence → false. */
 export function readSlideResolve(out) {
   const s = String(out ?? "");
@@ -627,6 +684,12 @@ async function attempt(argv, deps, sh, healed = false) {
   // Only when the host is already answering: a slide resolve on a host that did
   // not survive `getCount` tells us nothing the ping has not, and costs 20s.
   const slideOk = paneRef && ping?.answered ? readSlideResolve(sh("eval", slideResolveScript(20000), paneRef)) : null;
+  // Only when a profile was asked for — an unasked question costs a round trip
+  // and answers nothing. `PW_EXPECT_SIZE=4:3` is how a nightly cycle says which
+  // arm this round belongs to.
+  const expectSize = process.env.PW_EXPECT_SIZE || null;
+  const size =
+    expectSize && paneRef && ping?.answered ? readSlideSize(sh("eval", slideSizeScript(15000), paneRef)) : null;
   // RE-READ, after the slide touch rather than only before it. If the touch is
   // what trips the host, the dialog appears in the seconds that follow — and
   // reading the dialog only at the top of the sweep is how a crash the check
@@ -654,12 +717,19 @@ async function attempt(argv, deps, sh, healed = false) {
     crashed: crashed || crashedAfter,
     loggedOut,
     authPopup,
+    size,
+    expectSize,
   };
   const { ok, stop, codes } = readiness(state);
   console.log(
     `  HEAD ${head ?? "?"} · site ${deployed ?? "?"} · pane ${stamp ?? "?"} · deck ${slides ?? "?"} slide(s)`,
   );
-  console.log(`  verbose trace ${verbose ?? "?"} · picture every slide ${pictures ?? "?"}`);
+  console.log(
+    `  verbose trace ${verbose ?? "?"} · picture every slide ${pictures ?? "?"}` +
+      // Printed only when asked for, so an ordinary 16:9 round reads exactly as
+      // it always has.
+      (expectSize ? ` · slide size ${size ?? "?"} (want ${expectSize})` : ""),
+  );
   console.log(
     `  host ${ping ? (ping.answered ? `answered in ${ping.ms}ms` : `SILENT for ${ping.ms}ms`) : "not asked — the pane is closed"}` +
       // Printed every round, pass or fail, because the experiment needs the
@@ -810,6 +880,12 @@ async function collectRound(sh, stamp, sleep) {
  * reopens the pane from the ribbon, clicks the Automation tab, and cleans the
  * deck. Every code here is undone by one of those five steps, and every code
  * NOT here survives all of them.
+ *
+ * `wrong-size` is deliberately absent and must stay that way. `recover` could
+ * set a deck's slide size — it is two clicks — and doing so would CHANGE WHAT
+ * THE ROUND MEASURES rather than restore it, which is the one thing recovery is
+ * not allowed to do. A deck in the wrong profile is a setup error for a person,
+ * not a transient state to clear.
  *
  * Deliberately absent, and each for its own reason: `site-behind` and `no-build`
  * are waiting for Pages and a reload does not make it deploy faster;
