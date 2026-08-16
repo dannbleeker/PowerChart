@@ -524,6 +524,21 @@ export function signInIsPopup(tabList) {
  */
 export const PROFILE_DIR = process.env.PW_PROFILE_DIR ?? "C:/devtools/pw-profile";
 
+/**
+ * The deck a recovery reopens, when the browser has died and taken its tab.
+ *
+ * A DEFAULT rather than a constant, and overridable with `PW_DECK`, because the
+ * deck's name changes and the old hard-coded `Presentation63` was already stale
+ * on 2026-08-16 — the deck in use had become `Presentation64`. A sideload on
+ * PowerPoint for the web is **per-document**, so a fresh deck is a fresh
+ * sideload and a fresh name, and this will drift again.
+ *
+ * It fails in the worst possible way when wrong: `recover` reopens OneDrive,
+ * finds no matching link, clicks nothing, and reports a closed pane — in exactly
+ * the situation the function exists to rescue.
+ */
+export const DECK_NAME = process.env.PW_DECK ?? "Presentation64";
+
 export function noBrowser(listOutput) {
   return /\(no browsers\)/i.test(String(listOutput ?? ""));
 }
@@ -849,12 +864,20 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
     // The deck, and then ITS tab. Clicking the file opens a NEW tab while the
     // CLI stays on the old one, and skipping that is how a healthy setup reads
     // as a closed pane.
-    const deck = refFor(sh, "Presentation63", /link "Presentation63"/);
+    // THE DECK'S NAME IS NOT A CONSTANT, and hard-coding it here was a trap that
+    // fired the day it was written about. This said `Presentation63` while the
+    // deck in use had become `Presentation64` — a new document, because a web
+    // sideload is per-document — so a browser death would have reopened OneDrive
+    // and then failed to find anything, silently, in exactly the situation this
+    // function exists for. `PW_DECK` overrides it for a deck named anything else.
+    const deckName = process.env.PW_DECK ?? DECK_NAME;
+    const deckPattern = new RegExp(`link "${deckName}`);
+    const deck = refFor(sh, deckName, deckPattern);
     if (deck) clickRef(sh, deck);
     await sleep(25000);
     const line = sh("tab-list")
       .split("\n")
-      .find((l) => /Presentation63/.test(l));
+      .find((l) => l.includes(deckName));
     const n = line ? /(\d+):/.exec(line)?.[1] : null;
     if (n) sh("tab-select", n);
     await sleep(20000);

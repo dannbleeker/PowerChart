@@ -881,9 +881,13 @@ function reportGroupVsTag(logs) {
   // where to work, and that was missed for eleven rounds while it sat here.
   if (g.grouped && g.ungrouped && g.ungroupedLost / g.ungrouped > 2 * (g.groupedLost / g.grouped || 0.001))
     console.log(
-      `    A chart that groups keeps its config; one that cannot loses it. The tag HANDLE is a\n` +
-        `    question about the losing path — what decides a config is whether the pre-grouping\n` +
-        `    re-read returned anything (\`not grouping … refreshed: 0\`).`,
+      `    A chart that groups usually keeps its config; one that cannot usually loses it.\n` +
+        `    READ THE SPLIT ABOVE BEFORE QUOTING THIS. Until round 064 a freshly-added slide's\n` +
+        `    chart COULD NOT GROUP, so it could never appear in the grouped column — this ratio\n` +
+        `    was measured on a population that excluded the hard case by construction. Round 064\n` +
+        `    made those charts group and they lost their tag anyway (from: group, 5010, on the\n` +
+        `    slide the run had just added). The rule is closer to "a slide that was already\n` +
+        `    there saves the config", with grouping standing in for it.`,
     );
 }
 

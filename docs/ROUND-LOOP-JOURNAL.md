@@ -1046,3 +1046,63 @@ nothing tested them at all:
 Both guarded and mutation-proven now. That is the third class of defect this run
 produced, after round findings and doc drift: **fixes of mine, unguarded.** Worth
 checking for deliberately, because the suite was green before I looked.
+
+## Round 064 (`bcd5773`, 2026-08-16) — the retry works, and it exposed the next link
+
+**The prediction was staked before the round and it held.** Charts 4 and 5 of
+`same scale across the deck` — the two that had failed identically for five
+rounds running, one on a short re-read and one on an empty one — **both grouped
+for the first time.** The trace is causal rather than statistical, which is why
+one round is enough to believe this much of it:
+
+    4/8   re-reading the slide's shapes again after a settle delay  waitedMs=1500
+    4/8   grouped the chart's shapes                                by=ids
+    5/8   re-reading the slide's shapes again after a settle delay  waitedMs=1500
+    5/8   grouped the chart's shapes                                by=ids
+
+`the settled retry repaired 2`, on the scenario's own verdict line. **No chart in
+the round went ungrouped** — `NOT grouped 0`, against a pooled 98 charts at 79%
+tag loss. Freshly-added slides went 2 of 2 grouped where the archive had 1 of 98.
+
+**AND THE SCENARIO STILL FAILED**, 4 of 8. The chain did not break; it moved one
+link along, and the new link could never have been seen before, because these
+charts had never once got as far as having a group:
+
+    4/8   tagging failed   from: group×1   slide 258#4111159134   5010
+    5/8   tagging failed   from: group×1   slide 259#3844610554   5010
+
+**THE DOCTRINE THIS CORRECTS — read it before quoting the 2% again.** This file
+and `docs/BACKLOG.md` have said "grouping is what saves a config" on the strength
+of:
+
+    grouped      123 chart(s),   3 lost the tag = 2%
+    NOT grouped   98 chart(s),  77 lost the tag = 79%
+
+That number was measured on a population that **excluded freshly-added slides by
+construction** — a fresh-slide chart could not group, so it could never appear in
+the grouped column. The moment one does, it loses its tag anyway: this round's
+own split is `grouped 5, 2 lost = 40%`. The rule was never "a group saves the
+config"; it was "a slide that was already there saves the config", and grouping
+was standing in for it.
+
+**Why the group handle is refused too, and it is already written down from the
+other side.** A shape proxy carries its PARENT's object path. The group is made
+in the grouping batch, but its slide handle is by then rewritten to
+`slides.getItem(id)` — and a freshly-added slide's id does not round-trip on this
+host (`shape-add-held-slide-proxy: threw`, the #108-#111 saga). The round says so
+in as many words: *the host grouped through a slide handle two syncs old, so the
+refusal was never provoked.* The members were never too old. The PARENT was.
+
+**So the next question is the slide handle, not the shape handle** — and unlike
+every previous "next question" here, it is not a guess: the failure names the
+slide, both times, and both are freshly added.
+
+Two other tag failures in the round, neither new and neither on this path:
+`from: created×1` on slide `260#1686107471` beside an empty settle re-read, and
+five × `Cannot read properties of undefined (reading 'add')` on `262#3659873566`
+— the documented `target.tags` guard.
+
+**Not yet a pair.** The causal lines (retry → group, same chart) are strong
+enough to stand alone; the counts are not, and `40%` in particular is five
+charts. A same-build second round is what makes the tag-loss number mean
+anything.
