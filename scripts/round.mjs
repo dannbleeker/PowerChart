@@ -305,6 +305,15 @@ export function isOverflow(err) {
   return err.code === "ENOBUFS" || /ENOBUFS/.test(String(err.message ?? err));
 }
 
+/**
+ * How long a single CLI call may take before it counts as a wedge.
+ *
+ * Env-overridable because the one thing that would make this wrong is a host
+ * slower than any yet seen, and nobody debugging that at 2am should have to
+ * edit a script to get past it.
+ */
+export const CLI_TIMEOUT_MS = Number(process.env.PW_CLI_TIMEOUT_MS) || 180_000;
+
 export function cli(run, dir, entry = cliEntry()) {
   const state = { unreachable: false };
   const cwd = sessionDir(dir);
@@ -320,7 +329,25 @@ export function cli(run, dir, entry = cliEntry()) {
     // hundreds of POSTs with query strings on them. Over the line, `spawnSync`
     // returns ENOBUFS and throws the output away, which is how round 044 lost
     // two crash reports and then the round itself.
-    const r = run(process.execPath, [entry, "-s=ms", "--raw", ...args], { encoding: "utf8", cwd, maxBuffer: 64e6 });
+    // BOUNDED, because the round's own deadline cannot bound this. The poll
+    // loop checks a 30-minute limit at the TOP of each pass, which only ever
+    // runs if the call below returned — so a CLI that wedges (a browser that
+    // stopped answering CDP, a tab mid-crash) hangs the driver with the
+    // deadline sitting there unreachable and nothing on screen. That is the
+    // exact shape of an overnight run that is found dead in the morning having
+    // printed nothing since hour one.
+    //
+    // Generous on purpose: the slowest legitimate call is an `eval` carrying a
+    // 20s page-side budget, and `requests` on a live tab can return tens of
+    // megabytes. Three minutes is far above both and far below a night. A
+    // timeout arrives as `r.error`, which the existing branch below already
+    // reads as "nothing was measured" — which is exactly what it is.
+    const r = run(process.execPath, [entry, "-s=ms", "--raw", ...args], {
+      encoding: "utf8",
+      cwd,
+      maxBuffer: 64e6,
+      timeout: CLI_TIMEOUT_MS,
+    });
     // A CALL THAT RAN AND SAID TOO MUCH IS NOT A TOOL THAT COULD NOT BE RUN, and
     // conflating them is what sent two rounds' debugging at a healthy install.
     // ENOBUFS means the browser answered and the answer did not fit; every other
@@ -1013,7 +1040,18 @@ export function shouldRetry(reason, attempt, max, codes) {
   // `browser-gone` joins them: the profile keeps the sign-in, so reopening needs
   // no password and `recover` already does it. A round that ends this way has
   // burned a minute, not thirty — it is the cheapest of these to retry.
-  if (reason === "crashed" || reason === "silent" || reason === "timeout" || reason === "browser-gone") return true;
+  // `threw` joins them: an unexpected exception used to kill the process
+  // outright, so `--retry` never saw it. Retrying is bounded by `max` — a
+  // deterministic bug fails that many times and stops — and the alternative is
+  // a night that ends on its first surprise with recovery never attempted.
+  if (
+    reason === "crashed" ||
+    reason === "silent" ||
+    reason === "timeout" ||
+    reason === "browser-gone" ||
+    reason === "threw"
+  )
+    return true;
   if (reason !== "not-ready") return false;
   // An EMPTY list is not a licence. It means nothing was recorded about why the
   // check refused, and retrying on no evidence is how a loop spins.
@@ -1149,7 +1187,7 @@ export const RECEIPT_PATH = ".round-outcome.json";
  * Pure, and separate from the writing, so the shape can be tested without a
  * filesystem.
  */
-export function outcomeReceipt({ reason, codes, roundFile, build, size, at }) {
+export function outcomeReceipt({ reason, codes, roundFile, build, size, threw, at }) {
   return {
     reason: reason ?? null,
     // Always an array. A reader doing `codes.includes(...)` on a `finished`
@@ -1157,7 +1195,18 @@ export function outcomeReceipt({ reason, codes, roundFile, build, size, at }) {
     codes: Array.isArray(codes) ? codes : [],
     roundFile: roundFile ?? null,
     build: build ?? null,
-    size: size ? { width: size.width, height: size.height } : null,
+    // THE PROFILE STRING, which is what `readSlideSize` actually returns —
+    // "16:9", "4:3", or "960x540" for anything else. This was written as
+    // `{ width: size.width, height: size.height }` against a shape the driver
+    // has never produced, so every cycle leg recorded `"size": {}` and the
+    // field that says WHICH ARM a round belonged to said nothing at all. It
+    // read as correct because its test passed an object in, which tested the
+    // assumption rather than the driver.
+    size: size ?? null,
+    // Only on the path that has one — see the catch in `main`. Present means
+    // the round failed in a way nothing anticipated, which is a different
+    // thing from every named refusal and should not have to be inferred.
+    ...(threw ? { threw } : {}),
     // Whether the reason is one recovery ADDRESSES, decided here by the same set
     // the driver retries on — never re-derived downstream.
     recoverable: Array.isArray(codes) && codes.length > 0 && codes.every((c) => RECOVERABLE_STOPS.has(c)),
@@ -1177,7 +1226,25 @@ async function main(argv, deps = {}) {
 
   for (let n = 0; ; n++) {
     if (n) console.log(`\n  attempt ${n + 1} of ${max + 1}`);
-    const { code, reason, codes, roundFile, build, size } = await attempt(argv, deps, sh);
+    // THE UNKNOWN FAILURE IS A FAILURE TOO. `attempt` is ~200 lines with one
+    // try/catch in it, and everything it does not anticipate arrived here as an
+    // unhandled rejection: the process died with a stack trace, `--retry`
+    // covered none of it, and no receipt was written — so a night that had six
+    // attempts left ended on the first one, and whatever ran it could not even
+    // say why.
+    //
+    // Retried like any other reason, and bounded by the same `--retry` the
+    // caller chose. A deterministic bug will simply fail `max` times and stop;
+    // a transient one — the kind `recover` exists for — gets the same second
+    // chance a crash dialog does.
+    let outcome;
+    try {
+      outcome = await attempt(argv, deps, sh);
+    } catch (err) {
+      console.error(`  the round threw where nothing expected it to: ${err?.message ?? err}`);
+      outcome = { code: 1, reason: "threw", codes: [], threw: String(err?.message ?? err) };
+    }
+    const { code, reason, codes, roundFile, build, size, threw } = outcome;
     if (!shouldRetry(reason, n, max, codes)) {
       // ONLY THE OUTCOME THAT STANDS. Writing a receipt per attempt would leave
       // a caller reading the state of a round that recovery went on to fix,
@@ -1187,7 +1254,7 @@ async function main(argv, deps = {}) {
       // a failed write, and turning one into a non-zero exit would make the
       // paperwork more important than the evidence.
       try {
-        write(RECEIPT_PATH, JSON.stringify(outcomeReceipt({ reason, codes, roundFile, build, size }), null, 2));
+        write(RECEIPT_PATH, JSON.stringify(outcomeReceipt({ reason, codes, roundFile, build, size, threw }), null, 2));
       } catch (err) {
         console.error(`  (could not write ${RECEIPT_PATH}: ${err?.message ?? err})`);
       }
