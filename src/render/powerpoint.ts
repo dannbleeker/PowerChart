@@ -3070,6 +3070,30 @@ function bindTagTarget(context: PowerPoint.RequestContext, target: PowerPoint.Sh
 }
 
 /**
+ * The shape a binding names, inside THIS context — or undefined if unavailable.
+ *
+ * Separate from `settleByBinding` because the two want different things: that
+ * one opens its own `PowerPoint.run` for the repair pass, this one has to join
+ * the batch already in flight so the write lands in the same sync as everything
+ * around it.
+ */
+function bindingShape(context: PowerPoint.RequestContext, bindingId: string): PowerPoint.Shape | undefined {
+  if (!supports("1.8")) return undefined;
+  try {
+    const bindings = (
+      context.presentation as unknown as {
+        bindings?: { getItem(id: string): { getShape(): PowerPoint.Shape } };
+      }
+    ).bindings;
+    return bindings?.getItem ? bindings.getItem(bindingId).getShape() : undefined;
+  } catch {
+    // Best effort, like the binding itself. A host that will not resolve it
+    // leaves the caller on the handle it already had.
+    return undefined;
+  }
+}
+
+/**
  * Resolve a chart through its binding and write the config tag.
  *
  * Tried BEFORE the by-id route in `settleAndTagChart`, because the id route is
@@ -8203,10 +8227,39 @@ async function groupAndTagAll(
       // Arrived alongside the `tagAnchorIndex` experiment, which has since been
       // reverted for want of any measured effect. This did not go with it: it
       // describes the order of two writes, which the anchor never touched.
+      //
+      // THROUGH THE BINDING WHERE THERE IS ONE, because this write is the one
+      // that cannot avoid a resolved handle. The config tag is queued BEFORE the
+      // `load("id,left,top")` and lands; the origin tag needs the loaded
+      // position, so it is written after that load has resolved `target` into
+      // `shapes.getItem(id)` — which is exactly the handle this host refuses.
+      //
+      // That is not a theory about the mechanism, it is where the failures went.
+      // Before the binding change the CONFIG tag took the 5010s and the origin
+      // tag none; after it the config tag takes none and the origin tag takes
+      // eight or nine a round, on roughly half the charts drawn (rounds 073/074:
+      // 9 of 19 and 8 of 17). The refusal did not go away, it moved to the only
+      // write still going through a resolved proxy.
+      //
+      // A binding is taken from the LIVE proxy in the batch that drew the shape
+      // and resolved by a key we chose, so it goes through neither an id nor a
+      // collection read. `bindTagTarget` already takes one on every chart and
+      // nothing has used it — `settledByBinding` is 0 across five rounds,
+      // because the settle only runs when the config tag fails and it stopped
+      // failing. This is the write that needs it.
+      //
+      // Falls back to `target` when there is no binding (below 1.8, or the host
+      // refused it), which is exactly today's behaviour — so the worst case is
+      // what is already happening.
       try {
-        for (const { it, target } of queued) {
-          target!.tags.add(
+        for (const { it, target, i } of queued) {
+          const bid = bindingIds[i];
+          const via = bid ? bindingShape(context, bid) : undefined;
+          (via ?? target)!.tags.add(
             CHART_ORIGIN_TAG,
+            // The POSITION still comes from the loaded target — it is the one
+            // thing only the host can say, and reading it is not what the host
+            // refuses. Only the WRITE moves to the unresolved handle.
             JSON.stringify([it.opts.left ?? 60, it.opts.top ?? 90, target!.left, target!.top]),
           );
         }
