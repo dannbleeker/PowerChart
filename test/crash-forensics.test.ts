@@ -111,6 +111,34 @@ describe("pulling PowerPoint's own account of a crash", () => {
     );
   });
 
+  it("names a read that RAN and exited non-zero, not just one that could not be spawned", async () => {
+    // THE SECOND HALF OF THAT FIX, and it shipped without a guard. `ask()`
+    // honoured `lastError` — could not spawn, or overflowed — but not
+    // `lastFailed`, which is a call that ran and came back non-zero. That is
+    // exactly how a wedged tab answers `console` and `requests`, so the 18:06
+    // wedge on 2026-08-15 produced a report reading "(nothing)" three times
+    // over three failed reads, HOURS after the overflow half was fixed.
+    //
+    // Verified in production at the time and never pinned, which is how a fix
+    // becomes a regression nobody notices. The distinction matters because
+    // "(nothing)" is a claim about the HOST and this is a fact about the read.
+    const state = { lastError: null as string | null, lastFailed: false };
+    const sh = Object.assign(
+      (cmd: string) => {
+        // Ran, exited non-zero, returned the same empty string a healthy quiet
+        // host would have.
+        state.lastFailed = cmd !== "console";
+        return cmd === "console" ? "[ERROR] something real" : "";
+      },
+      { state },
+    );
+    const report = await collectCrashEvidence(sh as never, { at: "a 30-minute wedge" });
+    expect(report, "the console read worked and must survive").toContain("something real");
+    expect(report, "a failed read must be named as one").toContain("could not be run");
+    expect(report, "an empty host is a different claim from an unread one").not.toContain("(nothing)");
+    expect(report, "and a scan of nothing must not read as a clean scan").not.toContain("no fatal entry in the last 0");
+  });
+
   it("still produces a report when every read fails", async () => {
     // It runs on a host that has just died, so half of these are expected to
     // come back empty or throw. A forensics pass that took the driver down with
