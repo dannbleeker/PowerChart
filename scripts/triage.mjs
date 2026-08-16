@@ -928,10 +928,14 @@ function reportBatchSpanVsGroup(logs) {
     `    one batch only   ${String(b.single).padStart(4)} draw(s), ${String(b.singleGrouped).padStart(4)} grouped = ${pct(b.singleGrouped, b.single)}`,
   );
   console.log(
-    `    OURS, not the host's. refreshShapes is set from spansBatches(), so only a multi-batch\n` +
-      `    chart gets the pre-grouping re-read that resolves its shapes by id. A single-batch\n` +
-      `    chart hands addGroup the raw created proxies, which this host refuses with 5010 —\n` +
-      `    and the failed group takes the tag with it (target.tags undefined, 155 of 155).\n` +
+    `    OURS, not the host's. refreshShapes USED to be set from spansBatches(), so only a\n` +
+      `    multi-batch chart got the pre-grouping re-read that resolves its shapes by id; a\n` +
+      `    single-batch chart handed addGroup the raw created proxies, which this host refuses\n` +
+      `    with 5010, and the failed group took the tag with it (target.tags undefined, 155 of\n` +
+      `    155). Every groupable chart asks for the refresh since 2026-08-16. That removed the\n` +
+      `    doomed attempt but did NOT make those charts group — rounds 066 and 067 both show\n` +
+      `    5 of 5 declining with 'not grouping'. Their re-read comes back non-empty but\n` +
+      `    matching none of our ids, and the settle retry only fires on empty or partial.\n` +
       `    A rasterise beforehand looked like the cause and is not: 22% vs 27% once the arms\n` +
       `    are split by batch count. The scenarios that rasterise just draw small charts.`,
   );
