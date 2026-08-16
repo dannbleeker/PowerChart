@@ -665,6 +665,34 @@ describe("archive housekeeping", () => {
     expect(written[0], "a round committed on another branch was numbered over").toBe("rounds/065-abc1234.json");
   });
 
+  it("refuses to archive the PREVIOUS round's log when a wedge left the download doing nothing", () => {
+    // THE FAILURE THE TWIN CHECK CANNOT SEE. `Download run log` is DISABLED
+    // while a round is running, so clicking it after one that wedged does
+    // nothing at all — and the previous round's file is still sitting at the
+    // same path, waiting to be filed under a new number. Round 039 was archived
+    // byte-identical to 038 that way: a whole round of evidence that never took
+    // place, caught by a checksum and nothing else.
+    //
+    // The twin check only catches it when the two logs are IDENTICAL. A stale
+    // log that merely DIFFERS — an older round, an earlier build — sails past
+    // it. The pane's build stamp is what closes that, and it costs nothing: the
+    // driver already read it to decide the round was worth running.
+    const round = { build: "aaaaaaa · 2026-08-16 05:00Z", trace: { entries: [] } };
+    const read = () => `${JSON.stringify(round, null, 2)}
+`;
+    const written: string[] = [];
+    const write = ((p: string) => written.push(p)) as never;
+    expect(
+      () => archive("log.json", "rounds", read as never, write, (() => []) as never, "bbbbbbb"),
+      "filed a log from a different build as this round",
+    ).toThrow(/is the PREVIOUS round's file/);
+    expect(written, "it refused and wrote anyway").toEqual([]);
+
+    // And the matching case still files, or the guard would block every round.
+    archive("log.json", "rounds", read as never, write, (() => []) as never, "aaaaaaa");
+    expect(written[0]).toBe("rounds/001-aaaaaaa.json");
+  });
+
   it("files a log that differs from everything already kept", () => {
     const round = { build: "abc1234 · 2026-08-15 05:00Z", trace: { entries: [] } };
     const written: string[] = [];

@@ -335,6 +335,11 @@ export function cli(run, dir, entry = cliEntry()) {
     return r.status === 0 ? String(r.stdout ?? "") : "";
   };
   sh.state = state;
+  // The session directory the CLI is rooted at, so callers can find what it
+  // downloads without re-deriving it — `collectRound` needs the run log, and a
+  // second `sessionDir()` call beside this one is a second place to get the 8.3
+  // short-name normalisation wrong.
+  sh.dir = cwd;
   /**
    * Start a fresh sweep, forgetting a spawn failure the last one saw.
    *
@@ -751,7 +756,49 @@ async function attempt(argv, deps, sh, healed = false) {
     await new Promise((r) => setTimeout(r, 20000));
   }
   console.log("  finished");
+  // FINISH THE JOB, rather than hand back a round somebody has to collect. The
+  // three steps below were done by hand after every one of the 48 archived
+  // rounds, and two of them are where the mistakes were: a stale log filed as a
+  // fresh round (039 was byte-identical to 038), and a deck cleared by hand down
+  // to zero slides.
+  //
+  // Each is best-effort and none can fail the round. The round is DONE by this
+  // point — its evidence is in the pane either way, and a driver that turned a
+  // good round into a non-zero exit over housekeeping would be worse than the
+  // housekeeping.
+  await collectRound(sh, stamp, sleep);
   return { code: 0, reason: "finished" };
+}
+
+/**
+ * Download the run log, archive it, and leave the deck ready for the next round.
+ *
+ * `stamp` is the build the PANE was serving, checked against the log's own build
+ * before anything is filed — see `archive`. That is what stops the previous
+ * round's file being archived as a new one when a wedge left the download button
+ * disabled and the click did nothing.
+ */
+async function collectRound(sh, stamp, sleep) {
+  try {
+    const dl = refFor(sh, "Download run log", /button "Download run log"/);
+    if (!dl) return;
+    clickRef(sh, dl);
+    await sleep(12000);
+    const logPath = `${sh.dir ?? "."}/.playwright-cli/powerchart-run-log.json`;
+    if (!existsSync(logPath)) {
+      console.error("  the run log did not arrive — archive it by hand once it does");
+      return;
+    }
+    console.log(`  archived as rounds/${archive(logPath, "rounds", readFileSync, writeFileSync, readdirSync, stamp)}`);
+  } catch (err) {
+    // Named, never swallowed. A round whose log was not filed is a round that
+    // will be filed by hand, and the person doing it needs to know why.
+    console.error(`  could not archive this round: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // The deck last, so a failed archive still leaves it ready — the two are
+  // independent and coupling them would cost the next round for the sake of
+  // this one's paperwork.
+  if (sweepDeck(sh)) console.log("  deck swept — the next round starts clean");
 }
 
 /**
@@ -1048,10 +1095,34 @@ async function defaultFetchBuild() {
 }
 
 /** Archive a downloaded round under the next number. See `rounds/README.md`. */
-export function archive(logPath, dir = "rounds", read = readFileSync, write = writeFileSync, list = readdirSync) {
+export function archive(
+  logPath,
+  dir = "rounds",
+  read = readFileSync,
+  write = writeFileSync,
+  list = readdirSync,
+  expectBuild = null,
+) {
   const round = stripImages(JSON.parse(read(logPath, "utf8")));
   const build = buildOf(round.build);
   if (!build) throw new Error("that file carries no build stamp — it is not a round log");
+  // THE LOG MUST BE THE ROUND THAT JUST RAN, and this is the guard the twin
+  // check cannot be. `Download run log` is DISABLED while a round is running, so
+  // clicking it after one that wedged does nothing at all — and the previous
+  // round's file is still sitting at the same path, waiting to be filed under a
+  // new number. That happened: round 039 was archived byte-identical to 038, a
+  // whole round of evidence that never took place.
+  //
+  // The twin check below catches that case only when the two logs are IDENTICAL.
+  // A stale log that merely differs — an older round, a different build — sails
+  // past it. Comparing the log's own build stamp to the pane's is what closes
+  // it, and it costs nothing: the driver already read the stamp to decide the
+  // round was worth running.
+  if (expectBuild && build !== expectBuild)
+    throw new Error(
+      `that log is build ${build} and the pane is serving ${expectBuild} — it is the PREVIOUS round's file, ` +
+        "which is what sits at that path when a round wedges and the download button does nothing. Nothing archived.",
+    );
   // THE DOWNLOAD IS A FILE ON DISK THAT IS ONLY SOMETIMES REPLACED. `Download
   // run log` is disabled while a round is running, so clicking it after a round
   // that WEDGED does nothing at all — and the previous round's log is still
