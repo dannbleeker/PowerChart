@@ -33,7 +33,8 @@
     "rounds": "node scripts/triage.mjs rounds",
     "rounds:gate": "node scripts/rounds-gate.mjs",
     "issue-status": "node scripts/issue-status.mjs",
-    "round": "node scripts/round.mjs"
+    "round": "node scripts/round.mjs",
+    "cycle": "node scripts/cycle.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1",

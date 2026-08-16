@@ -1533,6 +1533,121 @@ function reportDeckEvidence(deck) {
   if (deck.gap) console.log(`    scan gap: ${deck.gap}`);
 }
 
+/**
+ * One trace entry reduced to the SHAPE of the thing it says.
+ *
+ * Numbers and ids are the noise here: `repaired 3 tags on slide 7f2a91c4` and
+ * `repaired 5 tags on slide 0b41ee02` are one event happening twice, and a
+ * signature that keeps their digits counts them as two things that each
+ * happened once. So digits collapse to `N` and hex runs to `#`.
+ *
+ * THE ERROR CLASS IS PART OF THE SHAPE, and leaving it out cost a real reading.
+ * A first cut hashed `scope` and `message` alone, and round 077's 52
+ * `UnexpectedError`s — the single loudest fact in that round — did not appear in
+ * its report at all, because they live in `data.error` and every one of them
+ * shared a message with its healthy counterpart. Folding the class in costs
+ * almost nothing: the archive's whole vocabulary grew from 74 signatures to 81
+ * across 58 rounds.
+ *
+ * The class only, never the full text — error strings carry ids and offsets, and
+ * hashing those would give every failure its own signature and report a
+ * vocabulary that grows forever.
+ */
+export function traceSignature(entry) {
+  const norm = (s) =>
+    String(s ?? "")
+      .replace(/[0-9a-f]{8,}/gi, "#")
+      .replace(/\d+/g, "N");
+  const err = entry?.data?.error;
+  const cls = err ? "!" + (norm(err).match(/[A-Za-z][A-Za-z0-9_]+/)?.[0] ?? "err") : "";
+  return `${entry?.scope ?? "?"}|${norm(entry?.message).slice(0, 60)}${cls}`;
+}
+
+/**
+ * What did the NEWEST round say that its 57 predecessors did not?
+ *
+ * The instrument this exists to replace is a person reading 95K characters of
+ * trace. Measured on round 081: 512 entries, 44 distinct signatures, NONE of
+ * them new against every prior round. That is the ordinary case, and paying
+ * ~50k tokens to rediscover it is the waste — two rounds a night is ~100k tokens
+ * of reading to learn nothing.
+ *
+ * THIS DOES NOT REPLACE READING THE TRACE. It routes it. `docs/ROUNDS.md` is
+ * explicit that the headline is never all of a round says, and a summary that
+ * stood in for the trace would be that mistake with a script behind it. What
+ * this does is count, which a person reading 512 entries cannot do reliably —
+ * rounds 077 and 078 are the same two signatures at the same two counts, and
+ * establishing that by eye took an entire extra round.
+ *
+ * THREE BUCKETS, AND THE SPLIT IS THE POINT. A count that leaves a baseline it
+ * had is a different event from a shape the archive has barely produced, and
+ * that one from a shape it has never produced at all.
+ *
+ * The archive shows all three. At round 077 the `UnexpectedError` signatures
+ * were NOVEL — a first appearance, 18 of them — while `settle pass: repaired
+ * every config tag` beside them had been seen rarely and jumped to 14. At rounds
+ * 079 and 081 the only report is `re-reading the slide's shapes again after a
+ * settle delay`, 11 times against a median of 0: the re-read EXISTED before
+ * build 17a8204 and was rare, and `needsPreGroupRefresh` widened which charts
+ * reach it. That is a fix working, reported as such. Filing it under the same
+ * heading as round 077's errors would mean every fix this project lands
+ * announces itself as a fault on the night it starts working, and
+ * `docs/BACKLOG.md` records what happens to a report like that: it gets ignored,
+ * then switched off.
+ *
+ * It is the same mistake `profileDivergence` made on its first live outing —
+ * collapsing two causes into one worst-case reading — caught there by reading
+ * the output against the rounds it described. Split here from the start.
+ */
+export function traceNovelty(rounds, { minCount = 10, factor = 3 } = {}) {
+  const entriesOf = (r) => (Array.isArray(r?.trace?.entries) ? r.trace.entries : []);
+  const countsOf = (r) => {
+    const m = new Map();
+    for (const e of entriesOf(r)) {
+      const s = traceSignature(e);
+      m.set(s, (m.get(s) ?? 0) + 1);
+    }
+    return m;
+  };
+  if (!rounds?.length) return { build: null, novel: [], sinceBuild: [], spikes: [], priors: 0, vocabulary: 0 };
+  const newest = rounds[rounds.length - 1];
+  const priors = rounds.slice(0, -1).map(countsOf);
+  const vocabulary = new Set(priors.flatMap((m) => [...m.keys()]));
+  const seen = new Set(vocabulary);
+  const novel = [];
+  const sinceBuild = [];
+  const spikes = [];
+  // A BASELINE NEEDS ROUNDS TO BE A BASELINE. With three prior rounds a median
+  // is whatever the middle one happened to do, and every count looks like a
+  // spike against it. The archive has 57, so this only guards the fresh-clone
+  // case — but it guards it silently rather than reporting an alarm built on
+  // nothing.
+  const enough = priors.length >= 5;
+  for (const [sig, n] of countsOf(newest)) {
+    if (!seen.has(sig)) {
+      novel.push({ sig, n });
+      continue;
+    }
+    if (!enough || n < minCount) continue;
+    const vals = priors.map((m) => m.get(sig) ?? 0).sort((a, b) => a - b);
+    const median = vals[Math.floor(vals.length / 2)];
+    // The median is the honest centre for a host whose mood swings 4-of-5 to
+    // 1-of-5 with nothing changed; a mean would let one bad night set the
+    // baseline for every round after it.
+    if (median === 0) sinceBuild.push({ sig, n, median });
+    else if (n > factor * median) spikes.push({ sig, n, median });
+  }
+  const bySize = (a, b) => b.n - a.n;
+  return {
+    build: String(newest?.build ?? "").split(" ")[0] || null,
+    novel: novel.sort(bySize),
+    sinceBuild: sinceBuild.sort(bySize),
+    spikes: spikes.sort(bySize),
+    priors: priors.length,
+    vocabulary: vocabulary.size,
+  };
+}
+
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith("triage.mjs");
 if (invokedDirectly) {
   const args = process.argv.slice(2);

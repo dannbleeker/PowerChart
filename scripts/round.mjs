@@ -836,8 +836,8 @@ async function attempt(argv, deps, sh, healed = false) {
   // point — its evidence is in the pane either way, and a driver that turned a
   // good round into a non-zero exit over housekeeping would be worse than the
   // housekeeping.
-  await collectRound(sh, stamp, sleep);
-  return { code: 0, reason: "finished" };
+  const roundFile = await collectRound(sh, stamp, sleep);
+  return { code: 0, reason: "finished", roundFile, build: stamp, size };
 }
 
 /**
@@ -847,19 +847,26 @@ async function attempt(argv, deps, sh, healed = false) {
  * before anything is filed — see `archive`. That is what stops the previous
  * round's file being archived as a new one when a wedge left the download button
  * disabled and the click did nothing.
+ *
+ * Returns the name it filed, or null. The caller needs it for the outcome
+ * receipt: a cycle runner that has just been told a round finished has no other
+ * way to name WHICH round, and guessing "the newest file in rounds/" is the
+ * assumption that already produced one wrong overwrite diagnosis in this repo.
  */
 async function collectRound(sh, stamp, sleep) {
+  let filed = null;
   try {
     const dl = refFor(sh, "Download run log", /button "Download run log"/);
-    if (!dl) return;
+    if (!dl) return null;
     clickRef(sh, dl);
     await sleep(12000);
     const logPath = `${sh.dir ?? "."}/.playwright-cli/powerchart-run-log.json`;
     if (!existsSync(logPath)) {
       console.error("  the run log did not arrive — archive it by hand once it does");
-      return;
+      return null;
     }
-    console.log(`  archived as rounds/${archive(logPath, "rounds", readFileSync, writeFileSync, readdirSync, stamp)}`);
+    filed = archive(logPath, "rounds", readFileSync, writeFileSync, readdirSync, stamp);
+    console.log(`  archived as rounds/${filed}`);
   } catch (err) {
     // Named, never swallowed. A round whose log was not filed is a round that
     // will be filed by hand, and the person doing it needs to know why.
@@ -869,6 +876,7 @@ async function collectRound(sh, stamp, sleep) {
   // independent and coupling them would cost the next round for the sake of
   // this one's paperwork.
   if (sweepDeck(sh)) console.log("  deck swept — the next round starts clean");
+  return filed;
 }
 
 /**
@@ -1114,6 +1122,49 @@ export function sweepDeck(sh) {
   return true;
 }
 
+/** Where the driver leaves its account of how the round ended. */
+export const RECEIPT_PATH = ".round-outcome.json";
+
+/**
+ * What just happened, as structure rather than prose.
+ *
+ * The driver's exit code is BINARY — 0 for a round that finished, 1 for
+ * everything else — so anything downstream that wants to know WHY a round
+ * stopped has exactly two options: parse the console output, or be told. The
+ * console output is prose written for a person at 2am and edited whenever a
+ * message is improved, and `rounds-gate.mjs` already refused to parse prose once
+ * for the same reason: a gate that reads sentences is a gate that breaks when
+ * someone fixes a sentence.
+ *
+ * So the driver writes down what it knows. `reason` and `codes` are the same
+ * values `shouldRetry` judges, which means a reader can apply `RECOVERABLE_STOPS`
+ * itself rather than reimplementing the judgement — and there must only ever be
+ * one implementation of "is this worth another attempt".
+ *
+ * `roundFile` matters as much as the reason. A caller told only that a round
+ * finished would have to guess which file it produced, and "the newest file in
+ * rounds/" is precisely the assumption that produced a wrong overwrite
+ * diagnosis in this repo once already.
+ *
+ * Pure, and separate from the writing, so the shape can be tested without a
+ * filesystem.
+ */
+export function outcomeReceipt({ reason, codes, roundFile, build, size, at }) {
+  return {
+    reason: reason ?? null,
+    // Always an array. A reader doing `codes.includes(...)` on a `finished`
+    // round should get `false`, not a crash on undefined.
+    codes: Array.isArray(codes) ? codes : [],
+    roundFile: roundFile ?? null,
+    build: build ?? null,
+    size: size ? { width: size.width, height: size.height } : null,
+    // Whether the reason is one recovery ADDRESSES, decided here by the same set
+    // the driver retries on — never re-derived downstream.
+    recoverable: Array.isArray(codes) && codes.length > 0 && codes.every((c) => RECOVERABLE_STOPS.has(c)),
+    at: at ?? new Date().toISOString(),
+  };
+}
+
 async function main(argv, deps = {}) {
   const run = deps.run ?? spawnSync;
   const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -1122,10 +1173,26 @@ async function main(argv, deps = {}) {
   const retryArg = argv.indexOf("--retry");
   const max = retryArg === -1 ? 0 : Number(argv[retryArg + 1]) || 0;
 
+  const write = deps.write ?? writeFileSync;
+
   for (let n = 0; ; n++) {
     if (n) console.log(`\n  attempt ${n + 1} of ${max + 1}`);
-    const { code, reason, codes } = await attempt(argv, deps, sh);
-    if (!shouldRetry(reason, n, max, codes)) return code;
+    const { code, reason, codes, roundFile, build, size } = await attempt(argv, deps, sh);
+    if (!shouldRetry(reason, n, max, codes)) {
+      // ONLY THE OUTCOME THAT STANDS. Writing a receipt per attempt would leave
+      // a caller reading the state of a round that recovery went on to fix,
+      // which is the opposite of what the file is for.
+      //
+      // Best-effort, exactly like archiving: a round that ran is not undone by
+      // a failed write, and turning one into a non-zero exit would make the
+      // paperwork more important than the evidence.
+      try {
+        write(RECEIPT_PATH, JSON.stringify(outcomeReceipt({ reason, codes, roundFile, build, size }), null, 2));
+      } catch (err) {
+        console.error(`  (could not write ${RECEIPT_PATH}: ${err?.message ?? err})`);
+      }
+      return code;
+    }
     // NAMED FOR WHAT ACTUALLY HAPPENED. This said "clearing the crash" whatever
     // the reason was, and the moment the retry covered more than crashes it
     // started lying: round 047 refused on a dirty deck alone and was told a

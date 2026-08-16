@@ -20,7 +20,7 @@
  */
 import { readFileSync, readdirSync } from "fs";
 import { isMain } from "./is-main.mjs";
-import { scenarioRegressions, profileDivergence, roundProfile } from "./triage.mjs";
+import { scenarioRegressions, profileDivergence, roundProfile, traceNovelty } from "./triage.mjs";
 
 /** Every archived round, oldest first — the order `scenarioRegressions` expects. */
 export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSync) {
@@ -69,6 +69,38 @@ if (isMain(import.meta.url, process.argv[1])) {
       console.log(`    ${d.name} — passed and failed at ${d.unstableIn.join(", ")} on the same build (${d.build})`);
     console.log("  Treat that as a flaky scenario, not a property of the slide size.");
   }
+  // A THIRD QUESTION, and the cheapest of the three to answer wrongly. The two
+  // above ask about scenarios — thirteen named outcomes a person already reads.
+  // This asks about the TRACE, which is 95K characters nobody can count by eye,
+  // and its whole job is to say which parts of it are worth the reading.
+  //
+  // Never fatal, for the same reason divergence is not: it reports difference,
+  // and a build is not broken for being different. Exiting non-zero here would
+  // make every landed fix fail the gate on the night it starts working.
+  const nov = traceNovelty(rounds);
+  if (nov.novel.length) {
+    console.log(`  ${nov.novel.length} trace signature(s) NEVER SEEN in ${nov.priors} prior round(s):`);
+    for (const s of nov.novel.slice(0, 8)) console.log(`    ${String(s.n).padStart(4)}x  ${s.sig}`);
+    console.log("  Read the trace. A shape this archive has never produced is the reason to.");
+  }
+  if (nov.sinceBuild.length) {
+    console.log(`  ${nov.sinceBuild.length} signature(s) are NEW BEHAVIOUR, not a spike (rare before, common now):`);
+    for (const s of nov.sinceBuild.slice(0, 8)) console.log(`    ${String(s.n).padStart(4)}x  ${s.sig}`);
+    console.log(
+      `  The shape a mechanism makes when it starts working — check it is one build ${nov.build ?? "?"} widened.`,
+    );
+  }
+  if (nov.spikes.length) {
+    console.log(`  ${nov.spikes.length} signature(s) SPIKED against their own history:`);
+    for (const s of nov.spikes.slice(0, 8))
+      console.log(`    ${String(s.n).padStart(4)}x (usually ${s.median})  ${s.sig}`);
+    console.log("  These had a baseline and left it. Most likely to be the round's real story.");
+  }
+  if (!nov.novel.length && !nov.sinceBuild.length && !nov.spikes.length)
+    console.log(
+      `  nothing new in the trace — ${nov.vocabulary} known signature(s) across ${nov.priors} prior round(s).` +
+        " The trace is still the evidence; this only says where to start.",
+    );
   if (!gone.length) {
     console.log(
       `  no scenario regressed — checked the newest of ${rounds.length} archived round(s)` +

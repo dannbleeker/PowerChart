@@ -35,6 +35,8 @@ const {
   readSlideResolve,
   readSlideSize,
   slideSizeScript,
+  outcomeReceipt,
+  RECOVERABLE_STOPS,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -787,5 +789,49 @@ describe("archive housekeeping", () => {
     const out = stripImages(structuredClone(round));
     expect(out.deck.picture).toMatch(/^<image stripped/);
     expect(out.hostAnswers.answers[0].detail, "a short string is not an image").toBe("short");
+  });
+});
+
+/**
+ * The driver exits 0 or 1 and nothing else, so whatever runs the next round can
+ * either be told what happened or go parsing sentences. `rounds-gate.mjs`
+ * already refused to parse prose once; this is the same refusal with a file
+ * behind it.
+ */
+describe("the account the driver leaves of how a round ended", () => {
+  it("says which file the round produced, not merely that one was produced", () => {
+    // "The newest file in rounds/" is the obvious substitute and it is the
+    // assumption that produced a wrong overwrite diagnosis in this repo once.
+    const r = outcomeReceipt({ reason: "finished", codes: [], roundFile: "082-0f7eadc.json", build: "0f7eadc" });
+    expect(r.roundFile).toBe("082-0f7eadc.json");
+    expect(r.build).toBe("0f7eadc");
+    expect(r.reason).toBe("finished");
+  });
+
+  it("decides recoverability with the same set the driver retries on", () => {
+    // Two implementations of "is this worth another attempt" is one too many.
+    const one = [...RECOVERABLE_STOPS][0];
+    expect(outcomeReceipt({ reason: "not-ready", codes: [one] }).recoverable).toBe(true);
+    expect(outcomeReceipt({ reason: "not-ready", codes: [one, "wrong-size"] }).recoverable).toBe(false);
+    // `wrong-size` must never read as recoverable: recovery COULD set a slide
+    // size, and doing so would change what the round measures rather than
+    // restore it.
+    expect(RECOVERABLE_STOPS.has("wrong-size")).toBe(false);
+  });
+
+  it("hands back an array of codes even when there were none", () => {
+    // A reader doing `codes.includes(...)` on a finished round should get
+    // `false`, not a crash.
+    expect(outcomeReceipt({ reason: "finished" }).codes).toEqual([]);
+    expect(outcomeReceipt({ reason: "finished" }).recoverable).toBe(false);
+    expect(outcomeReceipt({ reason: "crashed", codes: undefined }).codes).toEqual([]);
+  });
+
+  it("records the slide size when a profile was asked for, and null when it was not", () => {
+    expect(outcomeReceipt({ reason: "finished", size: { width: 720, height: 540 } }).size).toEqual({
+      width: 720,
+      height: 540,
+    });
+    expect(outcomeReceipt({ reason: "finished" }).size).toBeNull();
   });
 });

@@ -352,8 +352,29 @@ nothing changed, so a claim needs two rounds that agree. **4:3 is validation, no
 measurement**: one round, asking only whether anything behaves differently at a
 slide size nothing else covers.
 
+    npm run cycle
+
+runs exactly that — two 16:9 legs then one 4:3, the gate after each round, and
+it stops the night at the round that caused a problem rather than three rounds
+later against a changed deck. By hand it is:
+
     PW_EXPECT_SIZE=16:9 node scripts/round.mjs --dir .pw-session --retry 6   # ×2, same build
     PW_DECK=<4:3 deck> PW_EXPECT_SIZE=4:3 node scripts/round.mjs --dir .pw-session --retry 6
+
+**What the cycle will not do.** It does not judge whether a round found
+something, it does not decide whether a divergence is real, and it never sets a
+slide size — that would change what the round measures rather than restore it,
+which is the one thing recovery is forbidden to do. It does not retry: by the
+time it sees a refusal the driver has already exhausted `--retry`, and a second
+implementation of "is this worth another attempt" is one too many. And it goes
+nowhere near sign-in, which needs a password.
+
+It stops on three things, and they want different responses: a **regression**
+(read it now — that is the one fatal check), a **refusal recovery does not
+address** (a hand on the machine), and **no receipt at all** (the driver did not
+reach the end of its own run). A round whose scenarios merely FAILED is not one
+of them — that is the measurement working, and stopping there would throw away
+the second half of the pair.
 
 **`PW_EXPECT_SIZE` is not optional in a cycle.** Without it the round does not
 check the deck's size, and a deck can be the wrong one silently: setting
@@ -363,7 +384,8 @@ profile is worse than a round not run.
 
 ### When 4:3 disagrees
 
-`npm run rounds:gate` reports two different things and they must not be confused:
+`npm run rounds:gate` answers several different questions and they must not be
+confused. **Exactly one of them is fatal.**
 
 - **A REGRESSION** — a scenario fell against its OWN profile's history. Fatal,
   exit 1. Judged only against rounds at the same slide size, because a 4:3 round
@@ -373,10 +395,38 @@ profile is worse than a round not run.
   on the same build. **Reported, never fatal.** The response is to run 4:3
   again, or as a pair, before treating the difference as a property of the slide
   size at all.
+- **UNSTABLE WITHIN** — a scenario passed AND failed at the same slide size on
+  the same build. Not divergence: a profile that disagrees with itself has said
+  nothing about its aspect ratio. Sending someone to investigate 4:3 for a
+  scenario that is merely flaky is how a useful report teaches people to ignore
+  it.
 
 That escalation is the whole point of 4:3 being a single round: it is cheap
 enough to run every night, and a disagreement buys a second round rather than a
 conclusion.
+
+### What the trace said that the archive has not
+
+The three above are about the thirteen named scenarios. The gate also reads the
+TRACE, which is ~95K characters per round and which nobody can count by eye —
+round 081 was 512 entries collapsing to 44 distinct shapes, **none of them new**
+against 57 prior rounds, and the archive's entire vocabulary is 81 signatures.
+Reading all of it to rediscover that is the cost this exists to cut.
+
+**It does not replace reading the trace.** It says where to start. Three buckets,
+none fatal:
+
+- **NOVEL** — a shape the archive has never produced. Read the trace; this is the
+  reason to.
+- **NEW BEHAVIOUR** — seen rarely before, common now. Usually a mechanism that
+  just started working: rounds 079 and 081 both report the settle-delay re-read
+  11 times against a median of 0, because `needsPreGroupRefresh` widened which
+  charts reach a re-read that already existed.
+- **A SPIKE** — a signature that had a baseline and left it.
+
+The split between the last two is load-bearing. Collapsing them would mean every
+fix this project lands announces itself as a fault on the night it works, which
+is precisely how a report gets ignored and then switched off.
 
 ### Every round before 2026-08-16 was 16:9
 
