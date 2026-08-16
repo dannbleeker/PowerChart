@@ -187,6 +187,25 @@ export const faults = {
    */
   readsMissingFirst: 0,
   /**
+   * Answer this many `items/id` reads with the slide's shapes listed under ids
+   * that match nothing, then answer honestly.
+   *
+   * The third way the pre-grouping re-read fails and the one no fault could
+   * express: not empty (`hollowReads`), not short (`readsMissing`), but a full
+   * list the join cannot use. Rounds 066 and 067 showed five of five
+   * single-batch charts declining this way, and the only visible sign was the
+   * ABSENCE of a settle-delay line beside the decline.
+   *
+   * A single-batch chart loads its shape ids in the very sync that creates them
+   * and re-reads on the next one, so this models a host that has listed the
+   * slide before those ids settled.
+   *
+   * A COUNT, like `hollowReads`: `1` is a slide that settles by the second look,
+   * a large number is a host that never joins up. Both are worth testing and
+   * they want opposite outcomes.
+   */
+  unmatchedIdReads: 0,
+  /**
    * The id a SELECTION reports for its slide, when that is not the deck's id.
    *
    * office-js#2474: a `SlideRange`'s id lacks the `#XYZ` suffix the same slide
@@ -1107,11 +1126,16 @@ let findShape: ((id: string) => FakeShape | undefined) | null = null;
  * tell "re-fetched the collection and used the new handle" apart from
  * "re-fetched the collection and went on using the old one".
  */
-function freshHandle(shape: FakeShape): FakeShape {
+function freshHandle(shape: FakeShape, override?: { id: string }): FakeShape {
   let own = trips.syncs;
   return new Proxy(shape, {
     get(target, prop, recv) {
       if (prop === "syncCreated") return own;
+      // An id the caller supplies instead of the shape's own — for a host that
+      // lists a slide under ids that have not settled yet. See
+      // `faults.unmatchedIdsFirst`. Deliberately only the id: it is still the
+      // same shape, and everything else about it must stay true.
+      if (prop === "id" && override) return override.id;
       // A LOAD THROUGH THIS HANDLE RESOLVES THIS HANDLE, and not the one that
       // drew the shape. `load` reads the flag off `this`, and `this` is the
       // proxy — the same trick `syncCreated` above already relies on. Without
@@ -1377,7 +1401,11 @@ export function makeSlide(id: string) {
               "| code=PropertyNotLoaded | errorLocation=ShapeCollection.items",
           );
         }
-        const live = created.filter((s) => !s.deleted).map(freshHandle);
+        // An arrow, not a bare `.map(freshHandle)`: `map` passes the INDEX as the
+        // second argument, which `freshHandle`'s id override would take as a
+        // config object. Typecheck catches it today; it would be a silent bug the
+        // moment that parameter took something more forgiving than an object.
+        const live = created.filter((s) => !s.deleted).map((s) => freshHandle(s));
         // The web host has been observed answering a shape-collection read
         // with FAR fewer shapes than it holds: one readback page asked about
         // 19 slides carrying 19 shapes and got 3 back. `faults.hollowReads` models
@@ -1415,6 +1443,13 @@ export function makeSlide(id: string) {
           const drop = faults.readsMissingFirst;
           faults.readsMissingFirst = 0;
           return live.slice(0, Math.max(0, live.length - drop));
+        }
+        // Lists everything, under ids nothing can be joined to — the THIRD way
+        // this re-read fails, and the one the fake could not express. See
+        // `unmatchedIdsFirst`.
+        if (faults.unmatchedIdReads > 0 && lastShapeLoad.startsWith("items/id")) {
+          faults.unmatchedIdReads--;
+          return live.map((sh) => freshHandle(sh, { id: `unsettled-${sh.id}` }));
         }
         // Any projection that asks for names, not the exact string `items/name`.
         // `slideShapeList` asks for `items/id,items/name` — it needs ids to tell

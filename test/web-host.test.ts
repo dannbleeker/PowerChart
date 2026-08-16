@@ -1392,6 +1392,84 @@ describe("what a group that SUCCEEDS leaves behind", () => {
     expect(needsPreGroupRefresh(shapes(1), { group: false } as never, true)).toBe(true);
   });
 
+  it("asks again when the re-read lists the slide under ids that match NOTHING", async () => {
+    // THE THIRD WAY THIS RE-READ FAILS, and the one the retry did not cover.
+    // Rounds 066 and 067 each showed five of five single-batch charts declining
+    // with `not grouping` and NO settle-delay line beside them: the read was not
+    // empty, so the empty branch never fired, and nothing matched, so the partial
+    // branch never fired either. It fell straight through to `use: "none"`.
+    //
+    // The only way to tell it from an empty read was the ABSENCE of a trace line,
+    // which is not a diagnosis anyone should have to make twice.
+    //
+    // A single-batch chart loads its shape ids in the very sync that creates them
+    // and re-reads on the next one, so this models the host listing the slide
+    // before those ids have settled.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    faults.unmatchedIdReads = 1;
+    _setReReadRetryDelayForTest(0);
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries;
+      expect(
+        said.filter((e) => e.message === "re-reading the slide's shapes again after a settle delay").length,
+        "a full list that matched nothing was accepted without being questioned",
+      ).toBe(1);
+      // THE GROUP, because that is what the retry is for. A chart that declines
+      // keeps neither its group nor, on this host, its config.
+      expect(
+        slide.created.some((s) => s.type === "group"),
+        "the settled re-read named every shape and the chart still was not grouped",
+      ).toBe(true);
+      // And the round must not be told a fault happened on a chart that came out
+      // fine — the counter is read as per-round friction.
+      expect(
+        said.some((e) => e.message === "the re-read named none of the chart's shapes"),
+        "a first answer the retry repaired was still reported as a fault",
+      ).toBe(false);
+    } finally {
+      faults.unmatchedIdReads = 0;
+      _setReReadRetryDelayForTest(1_500);
+      setTracing(false);
+    }
+  });
+
+  it("says so when a zero match survives the retry, instead of looking like an empty read", async () => {
+    // `not grouping … refreshed: 0` was the ONLY line a zero match produced, and
+    // it reads identically to an empty re-read. The two want different fixes —
+    // one is a host that lists nothing, the other a host that lists the slide
+    // quite happily under ids we cannot join to. This pins the distinction.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    // Every read, so the retry runs and still gets nothing it can use.
+    faults.unmatchedIdReads = 99;
+    _setReReadRetryDelayForTest(0);
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries;
+      const line = said.find((e) => e.message === "the re-read named none of the chart's shapes");
+      expect(line, "a zero match that survived the retry said nothing distinguishable").toBeDefined();
+      expect(line!.data?.listed, "did not say the host HAD listed the slide, which is the whole point").toBe(
+        Number(line!.data?.drew),
+      );
+      expect(line!.data?.afterRetry, "declared final without a second ask").toBe(true);
+      // And it is NOT reported as an empty read, which is the confusion this
+      // whole line exists to end.
+      expect(said.some((e) => e.message === "the re-read before grouping came back empty")).toBe(false);
+    } finally {
+      faults.unmatchedIdReads = 0;
+      _setReReadRetryDelayForTest(1_500);
+      setTracing(false);
+    }
+  });
+
   it("asks a settling slide again when the re-read comes back EMPTY, and the chart groups", async () => {
     const slide = makeSlide("s1");
     installHost([slide]);
