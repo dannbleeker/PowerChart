@@ -71,8 +71,21 @@ export function readReceipt(path = RECEIPT_PATH, exists = existsSync, read = rea
  * throw away the second half of the pair, which is the only thing that could
  * tell a real fault from this host's 1-in-5 mood.
  */
-export function nextStep({ exitCode, receipt, gateFailed }) {
-  if (gateFailed) {
+export function nextStep({ exitCode, receipt, gateStatus }) {
+  // TWO WAYS FOR THE GATE TO EXIT NON-ZERO, and they are opposite findings. 1 is
+  // the thing it exists to say: a scenario that was passing has stopped. 2 is
+  // the gate reporting that it could not judge at all — an unreadable archive,
+  // an empty one — and calling that a regression would send someone hunting a
+  // fall that never happened. Before the gate had its own code for this, an
+  // interrupted write to a round file did exactly that: node exited 1 on a
+  // SyntaxError and the night stopped blaming the build.
+  if (gateStatus === 2) {
+    return {
+      go: false,
+      why: "the gate could not judge this round — nothing was checked, and that is not a regression",
+    };
+  }
+  if (gateStatus !== 0) {
     return {
       go: false,
       why: "a scenario that WAS passing has stopped — that is the one fatal check, and it wants reading now",
@@ -130,7 +143,7 @@ if (isMain(import.meta.url, process.argv[1])) {
     // regression stops the night at the round that caused it instead of being
     // found three rounds later against a changed deck.
     const gate = spawnSync(process.execPath, ["scripts/rounds-gate.mjs"], { stdio: "inherit" });
-    const step = nextStep({ exitCode: r.status, receipt, gateFailed: gate.status !== 0 });
+    const step = nextStep({ exitCode: r.status, receipt, gateStatus: gate.status });
     if (receipt?.roundFile) ran++;
     if (!step.go) {
       console.error(`\n  CYCLE STOPPED after ${ran} archived round(s): ${step.why}`);

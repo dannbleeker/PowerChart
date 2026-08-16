@@ -7,6 +7,9 @@ import { poolEveryDraw } from "../scripts/triage.mjs";
 // the top of `triage.test.ts` and has now bitten twice.
 // @ts-expect-error — as above.
 import { poolRasteriseArms } from "../scripts/triage.mjs";
+// Its own line, same trap as every other single import in this file.
+// @ts-expect-error — as above.
+import { loadRounds } from "../scripts/rounds-gate.mjs";
 
 /**
  * The archive is evidence, so it has to stay readable and honestly labelled.
@@ -101,5 +104,30 @@ describe("the round archive", () => {
       // and base64-shaped means an unstripped round got committed.
       expect(/"[A-Za-z0-9+/=]{2000,}"/.test(raw), `${f} still carries an embedded image — strip it`).toBe(false);
     }
+  });
+});
+
+/**
+ * The gate reads this directory, and `archive` writes straight to the final
+ * path rather than writing-then-renaming — so an interrupted write leaves a
+ * truncated round behind, and the gate has to survive meeting one.
+ */
+describe("reading an archive with a bad file in it", () => {
+  const list = () => ["080-aaaaaaa.json", "081-bbbbbbb.json", "082-ccccccc.json"];
+  const read = (p: string) => (p.includes("081") ? '{"build":"bbbbbbb","selftest":[' : `{"build":"x","selftest":[]}`);
+
+  it("reads past a round that will not parse instead of dying on it", () => {
+    // Unguarded this threw a SyntaxError, node exited 1, and `cycle.mjs` reads
+    // ANY non-zero gate as a regression — so a corrupt file stopped the night
+    // reporting a fall that never happened.
+    const rounds = loadRounds("rounds", list as never, read as never);
+    expect(rounds).toHaveLength(2);
+  });
+
+  it("names the file it could not read, because a skipped round hides its own regression", () => {
+    // Silently reading past it would be the other half of the same mistake: a
+    // round left out of the comparison is a round whose fall cannot be seen.
+    const rounds = loadRounds("rounds", list as never, read as never) as unknown as { unreadable: string[] };
+    expect(rounds.unreadable).toEqual(["081-bbbbbbb.json"]);
   });
 });

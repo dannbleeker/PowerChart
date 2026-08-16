@@ -387,12 +387,22 @@ time it sees a refusal the driver has already exhausted `--retry`, and a second
 implementation of "is this worth another attempt" is one too many. And it goes
 nowhere near sign-in, which needs a password.
 
-It stops on three things, and they want different responses: a **regression**
+It stops on four things, and they want different responses: a **regression**
 (read it now — that is the one fatal check), a **refusal recovery does not
-address** (a hand on the machine), and **no receipt at all** (the driver did not
-reach the end of its own run). A round whose scenarios merely FAILED is not one
-of them — that is the measurement working, and stopping there would throw away
-the second half of the pair.
+address** (a hand on the machine), **no receipt at all** (the driver did not
+reach the end of its own run), and **a gate that could not judge** (an archive
+it cannot read — nothing was checked, and that is not a regression). A round
+whose scenarios merely FAILED is not one of them — that is the measurement
+working, and stopping there would throw away the second half of the pair.
+
+**The gate's exit code carries that distinction: 1 is a regression, 2 is the
+gate saying it could not do its job.** They must not be folded together. `archive`
+writes straight to the final path rather than writing-then-renaming, so an
+interrupted write leaves a truncated round behind — and before the gate had its
+own code, meeting one threw a `SyntaxError`, node exited 1, and the night
+stopped blaming the build for a fall that never happened. A round that will not
+parse is now named and read past, loudly, because a round left out of the
+comparison is a round whose regression cannot be seen.
 
 **`PW_EXPECT_SIZE` is not optional in a cycle.** Without it the round does not
 check the deck's size, and a deck can be the wrong one silently: setting

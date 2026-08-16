@@ -22,16 +22,69 @@ import { readFileSync, readdirSync } from "fs";
 import { isMain } from "./is-main.mjs";
 import { scenarioRegressions, profileDivergence, roundProfile, traceNovelty } from "./triage.mjs";
 
-/** Every archived round, oldest first — the order `scenarioRegressions` expects. */
+/**
+ * Every archived round, oldest first — the order `scenarioRegressions` expects.
+ *
+ * A FILE THAT WILL NOT PARSE IS NAMED, NOT THROWN OVER, and the difference
+ * decides what a night does next. `archive` writes straight to the final path
+ * rather than writing-then-renaming, so an interrupted write leaves a truncated
+ * round behind; unguarded, one of those took the whole gate down with a
+ * SyntaxError, node exited 1, and `cycle.mjs` reads any non-zero gate as a
+ * REGRESSION. A corrupt download would have stopped the night reporting a fall
+ * that never happened.
+ *
+ * Skipping it silently would be the other half of the same mistake: a round
+ * missing from the comparison is a round whose regression cannot be seen, so
+ * the caller is told which files were dropped and decides what that is worth.
+ * `triage.mjs` already takes exactly this line for the same reason.
+ */
 export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSync) {
-  return list(dir)
+  const unreadable = [];
+  const rounds = list(dir)
     .filter((f) => /^\d{3}-.*\.json$/.test(f))
     .sort()
-    .map((f) => JSON.parse(read(`${dir}/${f}`, "utf8")));
+    .map((f) => {
+      try {
+        return JSON.parse(read(`${dir}/${f}`, "utf8"));
+      } catch {
+        unreadable.push(f);
+        return null;
+      }
+    })
+    .filter(Boolean);
+  rounds.unreadable = unreadable;
+  return rounds;
 }
 
 if (isMain(import.meta.url, process.argv[1])) {
-  const rounds = loadRounds();
+  // EXIT 2 MEANS "I COULD NOT DO MY JOB", and it has to be its own code. This
+  // gate's whole value is that exit 1 means a scenario stopped passing — so a
+  // gate that fell over on its own reading, exiting 1 the way node does for any
+  // uncaught throw, is indistinguishable from the finding it exists to report.
+  // `cycle.mjs` acts on that difference: 1 stops the night saying a scenario
+  // regressed, 2 stops it saying the gate needs looking at. Same convention
+  // `triage.mjs` already uses for a file it cannot read.
+  let rounds;
+  try {
+    rounds = loadRounds();
+  } catch (err) {
+    console.error(`  the gate could not read rounds/: ${err?.message ?? err}`);
+    console.error("  Nothing was judged. This is not a regression — see docs/ROUNDS.md.");
+    process.exit(2);
+  }
+  if (rounds.unreadable?.length) {
+    // Loud, because a round missing from the comparison is a round whose
+    // regression cannot be seen. Not fatal: the rest of the archive still
+    // answers, and refusing to judge 57 good rounds over one bad file would be
+    // the worse trade.
+    console.error(`  ${rounds.unreadable.length} archived round(s) WOULD NOT PARSE and were left out:`);
+    for (const f of rounds.unreadable) console.error(`    rounds/${f}`);
+    console.error("  A regression inside one of those cannot be seen from here.");
+  }
+  if (!rounds.length) {
+    console.error("  no readable rounds to judge — nothing was checked");
+    process.exit(2);
+  }
   const gone = scenarioRegressions(rounds);
   // A SECOND, DIFFERENT QUESTION. The gate above asks whether a scenario fell
   // against its OWN history; this asks whether one slide size failed what
