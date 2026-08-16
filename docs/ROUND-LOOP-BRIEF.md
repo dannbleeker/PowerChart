@@ -186,6 +186,20 @@ Gate → commit → push → green CI → merge. Don't ask first.
 dead browser is not a lost sign-in**, and believing otherwise cost this loop five
 hours. Only a redirect to `login.live.com` needs the owner.
 
+**IGNORE the yellow bar that says `--disable-blink-features=AutomationControlled`
+— "Stability and security will suffer".** It is not ours and it is not a symptom.
+Nothing in this repo passes that flag; `playwright-core` sets it on every
+Chromium launch, and Chrome prints that same boilerplate for any flag outside its
+supported list. Every one of the archived rounds ran with it, the clean ones
+included.
+
+It is also doing something useful: the flag hides `navigator.webdriver`, and this
+host sniffs automation and silently skips sideloading when it sees it. Removing
+it would be a regression. It costs ~30px of viewport and nothing else — the
+driver works through refs and `eval`, never pixel coordinates. Dismissing it with
+the × is harmless and pointless, since `recover` relaunches the browser and it
+comes straight back.
+
 Then: click the deck (**it opens in a NEW TAB and the CLI stays on the old one** —
 `pw tab-list`, `pw tab-select <n>`), open the pane from Home ▸ Add-ins ▸ **Insert
 chart**, and click the **Automation** tab with
