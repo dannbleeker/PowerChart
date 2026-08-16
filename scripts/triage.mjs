@@ -868,9 +868,19 @@ export function poolFreshVsEstablished(logs) {
  */
 export function scenarioRegressions(rounds, window = 3) {
   if (!Array.isArray(rounds) || rounds.length < window + 1) return [];
+  // `true` passed, `false` failed, `null` DID NOT MEASURE. The third value is
+  // what the gate got wrong on its first live outing: round 073 flagged `explode
+  // a degraded picture` as having stopped passing, for a result whose own words
+  // were "proves nothing either way". A scenario declining to conclude is an
+  // absence of evidence, not a fall, and a gate that fires on one is a gate that
+  // gets switched off — which this repo has already watched happen once.
+  //
+  // Read from the `skipped` FLAG, never from the detail text. The prose is
+  // edited whenever a message is improved, and a gate keyed to it would go quiet
+  // the first time someone reworded a sentence.
   const scenariosOf = (r) => {
     const out = new Map();
-    for (const sc of r?.selftest ?? []) if (sc?.name) out.set(sc.name, !!sc.ok);
+    for (const sc of r?.selftest ?? []) if (sc?.name) out.set(sc.name, sc.skipped ? null : !!sc.ok);
     return out;
   };
   const newest = scenariosOf(rounds[rounds.length - 1]);
@@ -878,7 +888,8 @@ export function scenarioRegressions(rounds, window = 3) {
   const before = rounds.slice(-1 - window, -1).map(scenariosOf);
   const out = [];
   for (const [name, ok] of newest) {
-    if (ok) continue;
+    // Passed, or did not measure — neither is a regression.
+    if (ok !== false) continue;
     // Established: present AND passing in every one of the previous rounds.
     const established = before.every((r) => r.get(name) === true);
     if (established) out.push({ name, passedIn: window });

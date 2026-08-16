@@ -480,6 +480,53 @@ describe("triage — logs that are not inserts", () => {
     expect(scenarioRegressions([round(passing), round([["same scale", false]])])).toEqual([]);
   });
 
+  it("does not call a scenario that DID NOT MEASURE a regression", () => {
+    // THE GATE'S FIRST LIVE OUTING GOT THIS WRONG. Round 073 flagged `explode a
+    // degraded picture` as having stopped passing, for a result whose own words
+    // were "the slide not naming it proves nothing either way" — the host had
+    // refused ids mid-scenario, so nothing was measured either way.
+    //
+    // An absence of evidence is not a fall, and a gate that fires on a scenario
+    // declining to conclude is a gate that gets switched off. This repo has
+    // already watched that happen to one.
+    const skipped = (name: string) => ({ name, ok: false, skipped: true });
+    const passed = (name: string) => ({ name, ok: true });
+    const failed = (name: string) => ({ name, ok: false });
+
+    expect(
+      scenarioRegressions([
+        { selftest: [passed("explode")] },
+        { selftest: [passed("explode")] },
+        { selftest: [passed("explode")] },
+        { selftest: [skipped("explode")] },
+      ]),
+      "a scenario that measured nothing was reported as having fallen",
+    ).toEqual([]);
+
+    // A GENUINE failure after the same history still fires, or the fix would
+    // have bought quiet at the price of the gate.
+    expect(
+      scenarioRegressions([
+        { selftest: [passed("explode")] },
+        { selftest: [passed("explode")] },
+        { selftest: [passed("explode")] },
+        { selftest: [failed("explode")] },
+      ]).map((g: { name: string }) => g.name),
+    ).toEqual(["explode"]);
+
+    // And a scenario that SKIPPED earlier was never established, so its later
+    // failure is not a regression either — it has no passing run to fall from.
+    expect(
+      scenarioRegressions([
+        { selftest: [passed("explode")] },
+        { selftest: [skipped("explode")] },
+        { selftest: [passed("explode")] },
+        { selftest: [failed("explode")] },
+      ]),
+      "treated a skipped round as a passing one when establishing",
+    ).toEqual([]);
+  });
+
   it("splits grouping by whether the chart spanned batches, and counts a draw once", () => {
     // THE SHARPEST SEPARATION IN THE ARCHIVE: 353 of 452 multi-batch draws
     // grouped, against 49 of 214 single-batch. It is OURS — `refreshShapes` is
