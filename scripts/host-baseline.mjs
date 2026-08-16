@@ -367,12 +367,13 @@ export const PENDING_QUESTIONS = {
     "rule refusing the write, which is exactly what it means under the `strictTags` fake. " +
     "`tag-the-creation-proxy-a-sync-later: yes` on the real host is what excludes age and leaves the group implicated.",
   "which-end-a-short-read-drops":
-    "Added 2026-08-15, and it prices a trade already taken. The chart's config tag now lands on the LAST shape drawn, " +
-    "because that is the one handle no load() resolves and so the only one this host accepts a tag through " +
-    "(tagAnchorIndex) — it fixes a loss that hit every chart big enough to span batches, four rounds running, always " +
-    "`from: created×1`. The cost is that a deck scan reading the collection SHORT may not reach the last shape, and a " +
-    "chart it cannot see is one Same Scale cannot rescale. The old anchor, the first shape drawn, was safe from that " +
-    "— but only if a short read drops from the tail, and nobody knows whether it does. The fake truncates the tail, " +
+    "Added 2026-08-15 to price a trade that has since been un-taken, and kept because the question is about the HOST " +
+    "rather than about the change that prompted it. The config tag briefly landed on the LAST shape drawn — the one " +
+    "handle no load() resolves, and so the only one this host was expected to accept a tag through (tagAnchorIndex). " +
+    "That move measured no effect across five rounds and four builds and was reverted on 2026-08-16; the anchor is " +
+    "created[0] again. The cost it would have carried is that a deck scan reading the collection SHORT may not reach " +
+    "the last shape, and a chart it cannot see is one Same Scale cannot rescale. The head anchor is safe from that — " +
+    "but only if a short read drops from the tail, and nobody knows whether it does. The fake truncates the tail, " +
     "which is a modelling choice rather than evidence, and this host answers `shapes-items-count-honest: short-0`, " +
     "returning nothing at all and so saying nothing about which end. Asked by POSITION rather than by id, because " +
     "every question here that needs an id off a scratch shape spends its life answering no-scratch-shape. " +

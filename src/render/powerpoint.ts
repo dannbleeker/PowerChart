@@ -129,37 +129,39 @@ export const CHART_PARTS_TAG = "POWERCHART_PARTS";
 export const CHART_ORIGIN_TAG = "POWERCHART_ORIGIN";
 
 /**
- * Which of a chart's shapes carries its tags: the LAST one drawn.
+ * THE TAG ANCHOR IS `created[0]`, AND MOVING IT TO THE LAST SHAPE WAS TRIED AND
+ * MEASURED AT NO EFFECT. Recorded here because the reasoning is good enough that
+ * somebody will have it again — it took four rounds and a host probe to build.
  *
- * It was `created[0]` until 2026-08-15, and that is what made a chart on
- * PowerPoint for the web un-re-editable. The tag write goes through the handle
- * that DREW the shape, and this host refuses such a handle once a `load()` has
- * resolved it into `shapes.getItem(id)` — while the draw loop loaded every
- * shape's id as it went, the first one included and several batches before the
- * write. Four measured facts pin it, none of them guesses:
+ * The theory: the tag write goes through the handle that DREW the shape, and
+ * this host refuses such a handle once a `load()` has resolved it into
+ * `shapes.getItem(id)`. The draw loop loaded every shape's id as it went, the
+ * anchor included, several batches before the write. So `tagAnchorIndex` moved
+ * the anchor to the LAST shape drawn and ran the draw loop's `load("id")` one
+ * shape behind, leaving exactly that shape unresolved. Four measured facts
+ * supported it and none of them were guesses:
  *
  *   survives-8                                    an unresolved creation handle keeps taking
  *                                                 writes for at least eight syncs
  *   tag-through-refetched-shape: no-id            there is no id to re-fetch a fresh shape by
  *   collection-read-poisons-the-creation-handle:  the pre-grouping re-read does NOT resolve it,
- *     yes                                         so holding this one load back is enough
+ *     yes                                         so holding one load back is enough
  *   from: created×1, four rounds running          production's failures all went through it
  *
- * The LAST shape and not the first, because of the two other requirements that
- * make this a redesign rather than a reordering (`docs/BACKLOG.md`): the
- * pre-grouping re-read matches every other shape BY ID and throws away a partial
- * match on purpose, so only one shape may go unloaded; and nothing may be tagged
- * before the chart is complete, or a stopped draw leaves a tagged fragment
- * behind — which the self-test scenario `stop a run part-way` asserts against in
- * as many words.
+ * **It changed nothing on the host it was built for** — five rounds across four
+ * builds, with zero within-build spread, run as same-build pairs so the noise
+ * floor was known. It shipped a deferred id load in the draw loop and a
+ * contiguity deduction in the pre-grouping matcher for a difference this host
+ * does not pay.
  *
- * A function rather than a constant because three places have to agree on it —
- * the draw loop that holds the id back, this pass's tag target, and
- * `ungroupedFallback`'s parts list.
+ * What the archive says instead, and why this was aimed a level too low:
+ * **grouping is what saves a config, not the tag handle** — grouped charts lose
+ * it 2% of the time, ungrouped ones 66%. The anchor only ever affected the
+ * ungrouped fallback, i.e. the path a chart takes once it has already lost. See
+ * `docs/BACKLOG.md`; the fake still models the refusal
+ * (`refuseTagWritesOnResolvedProxy`), so a future attempt has its reproduction
+ * waiting.
  */
-export function tagAnchorIndex(count: number): number {
-  return Math.max(0, count - 1);
-}
 
 /**
  * A fingerprint of the scene this chart was DRAWN from.
@@ -6992,8 +6994,6 @@ async function renderShapesChunked(
    */
   let bankedHere = 0;
   let bankedUnder: string | undefined;
-  /** How far the per-batch `load("id")` has got. See the loop below. */
-  let idsLoadedTo = 0;
   while (s < steps.length) {
     // The stop check, and the only place it can honestly go: batches already
     // committed are on the slide and a sync in flight cannot be recalled, so
@@ -7019,16 +7019,12 @@ async function renderShapesChunked(
     // exact shapes again. Without ids the only way to identify a chart's shapes
     // in a fresh read is "the last N on the slide", which is true of a blank
     // slide this run added and false of the one the user is looking at.
-    // ONE SHAPE BEHIND, and that is the ordering fix. A `load()` is what makes
-    // Office.js rewrite a creation handle into `shapes.getItem(id)`, which this
-    // host refuses for a shape it has just created — so the tag write, which
-    // goes through a created handle, was refused on every chart big enough to
-    // span batches. Holding the most recent shape back one batch leaves the LAST
-    // shape of the whole draw never loaded, and that shape is the tag anchor
-    // (`tagAnchorIndex`). Every other shape still gets its id, one sync later
-    // than before and on a sync that was happening anyway, so the re-read match
-    // grouping depends on is unchanged.
-    for (; idsLoadedTo < created.length - 1; idsLoadedTo++) created[idsLoadedTo].load("id");
+    //
+    // EVERY shape, the anchor included. Running this one shape behind — to leave
+    // the anchor unresolved for the tag write — was built, shipped, and measured
+    // at no effect on the host it was for; see the note beside `CHART_ORIGIN_TAG`
+    // before rebuilding it.
+    for (let k = before; k < created.length; k++) created[k].load("id");
     // TRIED HERE AND REVERTED: writing the config tag on `created[0]` in this
     // same sync. Recorded because the reasoning behind it is sound and somebody
     // will have it again.
@@ -7329,7 +7325,7 @@ async function groupAndTagAll(
   context: PowerPoint.RequestContext,
   items: Grouping[],
 ): Promise<{ target?: TargetRef; partIds?: string[]; grouped?: boolean; tagged?: boolean }[]> {
-  const tagTargets = items.map((it) => it.created[tagAnchorIndex(it.created.length)] as PowerPoint.Shape | undefined);
+  const tagTargets = items.map((it) => it.created[0] as PowerPoint.Shape | undefined);
   /**
    * WHERE each tag target came from, which is the one thing the failure trace
    * could never say.
@@ -7456,48 +7452,10 @@ async function groupAndTagAll(
         // more than one batch.
         const byId = new Map<string, PowerPoint.Shape>();
         for (const sh of items) if (sh.id) byId.set(sh.id, sh);
-        // The anchor is deliberately unloaded and therefore deliberately
-        // unmatchable — see `tagAnchorIndex`. It is the LAST shape drawn, so on
-        // a collection in creation order it sits immediately after the last
-        // shape we did match, and that is the only place it is allowed to be.
-        //
-        // This is NOT the partial match the branch below throws away. There, an
-        // unknown subset matched and the rest were a mystery; here exactly one
-        // shape is unmatched, we know WHICH, and it is pinned by a real id on
-        // the side it is adjacent to. If the deduction does not land cleanly the
-        // chart falls through to that branch and is simply not grouped — the
-        // same safe outcome as before.
-        const anchorAt = tagAnchorIndex(it.created.length);
-        const others = it.created.filter((_, k) => k !== anchorAt);
-        const matched = others.map((sh) => (sh.id ? byId.get(sh.id) : undefined)).filter(Boolean);
-        const deduced =
-          matched.length === others.length && others.length
-            ? (() => {
-                const at = (matched as PowerPoint.Shape[]).map((s) => items.indexOf(s));
-                // CONTIGUOUS, and that is the evidence rather than a
-                // convenience. A chart's shapes are appended in one run, so ours
-                // sit in an unbroken block; if something of the user's is
-                // interleaved then this is not the block we drew and the anchor
-                // is not deducible from it.
-                if (!at.every((v, k) => k === 0 || v === at[k - 1] + 1)) return undefined;
-                const after = items[at[at.length - 1] + 1];
-                // Not a shape one of OUR matched ids already claimed. Checked
-                // against the matched set and not against `byId`, which holds
-                // every shape the re-read named — the anchor's fresh proxy
-                // included, since the re-read loads ids for the whole slide. The
-                // handle without an id is the CREATION proxy, never this one.
-                const claimed = new Set((matched as PowerPoint.Shape[]).map((s) => s.id));
-                return after && !claimed.has(after.id) ? after : undefined;
-              })()
-            : undefined;
-        if (deduced) {
-          // Anchor LAST, matching `created`'s own order, so `tagAnchorIndex`
-          // picks the same shape out of `freshMembers` as out of `created` and
-          // the parts list stays right.
-          freshMembers.set(i, [...(matched as PowerPoint.Shape[]), deduced]);
-        } else if (matched.length === it.created.length) {
-          // A host that named the anchor too — nothing was held back, so the
-          // plain rule still applies.
+        const matched = it.created.map((sh) => (sh.id ? byId.get(sh.id) : undefined)).filter(Boolean);
+        if (matched.length === it.created.length) {
+          // Same order as `created`, so index 0 stays the chart's anchor and
+          // `ungroupedFallback`'s "everything after it is a part" holds.
           freshMembers.set(i, matched as PowerPoint.Shape[]);
         } else if (matched.length) {
           // A PARTIAL match is thrown away, and this used to be kept.
@@ -7782,12 +7740,17 @@ async function groupAndTagAll(
       // repaired" over a failed origin write is a false alarm that sends a
       // reader looking for lost configs there are none of.
       //
-      // It became reachable rather than theoretical when the tag anchor moved to
-      // an unresolved handle (`tagAnchorIndex`): the config write now goes
-      // through before anything has resolved the shape, and the `load` queued
-      // beside it resolves the handle for the origin write a sync later — so on
-      // a host that refuses resolved handles, the good case is config-lands-
-      // origin-fails, and it must not read as a failure of the whole pass.
+      // The two writes are separate syncs, so either can fail without the other
+      // — and this is the pair that fails asymmetrically, because the config tag
+      // commits FIRST. A host that starts refusing mid-pass therefore produces
+      // config-lands-origin-fails as its good case, and the old shared catch
+      // reported it as "charts are not re-editable until repaired". That is the
+      // lie worth spending a try/catch to avoid: it is false, and it is the
+      // outcome a degrading host reaches most often.
+      //
+      // Arrived alongside the `tagAnchorIndex` experiment, which has since been
+      // reverted for want of any measured effect. This did not go with it: it
+      // describes the order of two writes, which the anchor never touched.
       try {
         for (const { it, target } of queued) {
           target!.tags.add(
@@ -7930,16 +7893,7 @@ async function ungroupedFallback(
    * the proxy pattern this host does honour — the same one `settleByCollection-
    * Read` relies on.
    */
-  const parts = (it: Grouping, i: number): PowerPoint.Shape[] => {
-    // Everything EXCEPT the anchor, which is the last shape now rather than the
-    // first (`tagAnchorIndex`). This read `.slice(1)` while the anchor was
-    // `created[0]`; leaving it would have put the anchor in its own parts list
-    // and dropped a real shape out of it, so the next update would delete the
-    // tagged shape and strand the first one drawn.
-    const all = freshMembers?.get(i) ?? it.created;
-    const anchor = tagAnchorIndex(all.length);
-    return all.filter((_, k) => k !== anchor);
-  };
+  const parts = (it: Grouping, i: number): PowerPoint.Shape[] => (freshMembers?.get(i) ?? it.created).slice(1);
   const siblings = items.map((it, i) => (hasTags && loose(i) && it.opts.tagData ? parts(it, i) : []));
   const alt = items.map((it, i) => ({ it, i })).filter(({ it, i }) => loose(i) && wantsAltText(it.opts));
   if (!alt.length && !siblings.some((s) => s.length)) return partsJson;

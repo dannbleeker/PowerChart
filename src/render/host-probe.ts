@@ -1911,17 +1911,20 @@ const PROBES: Probe[] = [
     id: "which-end-a-short-read-drops",
     resample: true,
     question: "When a shape collection reads short, which end of it survives?",
-    // THE COST OF THE ORDERING FIX, asked rather than assumed.
+    // ASKED FOR AN ORDERING FIX THAT HAS SINCE BEEN REVERTED, AND KEPT ANYWAY.
     //
-    // The chart's config tag moved onto the LAST shape drawn, because that is
-    // the one handle no `load()` resolves and therefore the one this host will
-    // accept a tag through (`tagAnchorIndex`). It fixed a loss that happened on
-    // every chart big enough to span batches, four rounds running.
+    // It was written when the chart's config tag moved onto the LAST shape
+    // drawn — the one handle no `load()` resolves, and therefore the one this
+    // host was expected to accept a tag through. That move measured no effect
+    // across five rounds and four builds and is gone; the anchor is `created[0]`
+    // again.
     //
-    // What it costs is this: a deck scan that reads the collection SHORT may not
-    // reach the last shape, and the chart it cannot see is a chart Same Scale
-    // cannot rescale. The old anchor — the first shape drawn — was accidentally
-    // safe from that, and only if a short read drops from the tail.
+    // The question outlives it because it is about the HOST, not about the fix:
+    // a deck scan that reads a collection SHORT sees some prefix or some suffix
+    // of it, and which one decides whether a tag is findable at all. Same Scale
+    // cannot rescale a chart its scan cannot see, wherever the tag sits. Any
+    // future attempt to move the anchor needs this answered first, which is
+    // exactly the position the reverted one was in.
     //
     // Nobody knows whether it does. The fake truncates the tail, which is a
     // modelling choice and not evidence, and this host's own

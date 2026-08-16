@@ -98,12 +98,12 @@ import {
 /**
  * The shape a chart's tags actually landed on — asked, never assumed.
  *
- * These assertions used to read `slide.created[0]`, which was true only while
- * the anchor was the FIRST shape drawn. It is the last one now
- * (`tagAnchorIndex`) so that it can reach the tag write unresolved, and a
- * hardcoded index would have had to be edited in six places and would go stale
- * again on the next change. Asking which shape carries the tag is what every one
- * of these tests meant in the first place.
+ * These assertions used to read `slide.created[0]` and were rewritten when the
+ * anchor moved to the last shape drawn. That move has since been reverted, and
+ * this helper deliberately did NOT go back with it: a hardcoded index had to be
+ * edited in six places to follow one experiment, and would need editing again
+ * for the next. Asking which shape carries the tag is what every one of these
+ * tests meant in the first place, and it is true wherever the anchor sits.
  */
 const taggedShape = (slide: FakeSlide, key = CHART_TAG) => slide.created.find((s) => s.tagStore.get(key));
 
@@ -187,12 +187,7 @@ describe("insertSceneIntoSlide", () => {
     setTracing(true);
     const slide = makeSlide("s1");
     installHost([slide]);
-    // A fault that still REFUSES the write, which since 2026-08-15 is no longer
-    // `refuseTagWritesOnResolvedProxy`: the tag anchor is an unresolved handle
-    // now (`tagAnchorIndex`), so that fault has nothing to refuse and this test
-    // would assert against a failure that never happens. The field under test is
-    // `from`, not the fault that provokes it — so provoke it with one that bites.
-    faults.refuseTagWrites = 99;
+    faults.refuseTagWritesOnResolvedProxy = true;
     try {
       await insertSceneIntoSlide(buildChart(config), {
         tagData: JSON.stringify(config),
@@ -220,7 +215,7 @@ describe("insertSceneIntoSlide", () => {
       // slides" becomes a join instead of an inference off a settle-pass line.
       expect(failed!.data!.slides, "the failure names no slide, so the #0 lead stays untestable").toBeTruthy();
     } finally {
-      faults.refuseTagWrites = 0;
+      faults.refuseTagWritesOnResolvedProxy = false;
       setTracing(false);
     }
   });
@@ -265,28 +260,36 @@ describe("insertSceneIntoSlide", () => {
       faults.refuseTagWritesOnResolvedProxy = false;
       setTracing(false);
     }
-    // THE WRITE ITSELF GOES THROUGH NOW, and that is the whole fix.
+    // The tag SURVIVES here, and the gap between this and the real host is the
+    // point. The drawing context's write is refused exactly as it is in a real
+    // round; the settle pass then repairs it, because the fake can resolve a
+    // shape by id. The real host cannot — `withId: 0` on every failure across
+    // six rounds — so there the chart stays nameless.
     //
-    // This asserted something weaker until 2026-08-15 and said so: the drawing
-    // context's write was refused exactly as in a real round, and the SETTLE
-    // pass repaired it because the fake can resolve a shape by id. The real host
-    // cannot — `withId: 0` on every failure across six rounds — so there the
-    // chart stayed nameless. The test pinned the first half of the reproduction
-    // and named the second as out of reach.
+    // So this pins the first half of the reproduction and names the second.
+    // Arming `refuseShapeIdLoads` alongside was tried and models something
+    // harsher than the host: it makes the insert throw outright, where a real
+    // round carries on and merely loses the tag.
     //
-    // It is in reach now. The tag anchor is the last shape drawn and its id is
-    // never loaded (`tagAnchorIndex`), so the handle the write goes through was
-    // never resolved and `refuseTagWritesOnResolvedProxy` has nothing to refuse.
+    // IT ASSERTED THE OPPOSITE BETWEEN 2026-08-15 AND 2026-08-16 — that the
+    // drawing context's own write landed with no repair — because the tag anchor
+    // had been moved to a shape no `load()` resolved, which left this fault
+    // nothing to refuse. That change measured no effect on the real host across
+    // five rounds and four builds and has been reverted, so the weaker claim is
+    // the true one again. The trace assertion below is what says which half is
+    // being pinned, and it is deliberately the pessimistic one.
     expect(traceLog().entries.length, "tracing was off, so the assertion below proves nothing").toBeGreaterThan(0);
     const tagged = slide.created.find((s) => s.tagStore.get(CHART_TAG));
-    expect(tagged, "the drawing context's own write should have landed").toBeTruthy();
+    expect(tagged, "the settle pass should have repaired what the drawing context lost").toBeTruthy();
     expect(tagged!.tagStore.get(CHART_TAG)).toBe(JSON.stringify(config));
-    // Landed first time, not repaired after the fact. A repair leaves the
-    // failure in the trace, and on the real host there is no repair to be had.
+    // REPAIRED, not landed first time — and the failure line is the evidence
+    // that the drawing context's write was refused at all. Without it this test
+    // would pass on a host that never refused anything, which is the one thing
+    // it is not for.
     expect(
       traceLog().entries.some((e) => e.message.startsWith("tagging failed")),
-      "the write was refused and only the fake's by-id repair saved it — the real host has no such repair",
-    ).toBe(false);
+      "the drawing context's write was supposed to be refused here, and the trace does not say it was",
+    ).toBe(true);
   });
 
   it("describes the chart group with accessible alt text", async () => {
