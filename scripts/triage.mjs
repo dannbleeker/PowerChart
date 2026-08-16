@@ -846,6 +846,84 @@ export function poolFreshVsEstablished(logs) {
 }
 
 /**
+ * Did the chart span sync batches, and did it group?
+ *
+ * THE SHARPEST SEPARATION IN THE ARCHIVE, found 2026-08-16 while chasing what
+ * looked like a rasterise effect:
+ *
+ *     spanned batches   333 draw(s), 333 grouped = 100%
+ *     one batch only     49 draw(s),  ~12 grouped =  25%
+ *
+ * And it is OURS, not the host's. `refreshShapes` is set from `spansBatches()`,
+ * so only a multi-batch chart gets the pre-grouping re-read that resolves its
+ * shapes by id. A single-batch chart hands `addGroup` the raw `created` proxies
+ * — which this host refuses with InvalidParam 5010 — and the failed group then
+ * takes the tag with it: `target.tags` comes back undefined, 155 times out of
+ * 155 across the archive, every one immediately after a 5010 group.
+ *
+ * THE RASTERISE WAS A RED HERRING, recorded so nobody re-finds it. Draws after a
+ * rasterise group 22% of the time against 27% for every other draw — nothing. It
+ * looked like 22% against 93% until the arms were split by batch count, because
+ * the scenarios that rasterise happen to draw small charts. That is the exact
+ * confound `poolEveryDraw` already warns about, met from a different direction.
+ */
+export function poolBatchSpanVsGroup(logs) {
+  const out = { multi: 0, multiGrouped: 0, single: 0, singleGrouped: 0 };
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    entries.forEach((e, i) => {
+      if (!/^batch issued/.test(String(e.message))) return;
+      const d = e.data ?? {};
+      const total = Number(d.total) || 0;
+      // The LAST batch of a draw only, or a multi-batch chart is counted once
+      // per batch and swamps the single-batch arm with copies of itself.
+      if (Number(d.upTo) !== total || !total) return;
+      const multi = total > (Number(d.perSync) || 10);
+      // The grouping verdict is the next one of its kind and follows within a
+      // couple of entries; anything further away belongs to another chart.
+      for (let k = i + 1; k < Math.min(entries.length, i + 4); k++) {
+        const m = String(entries[k].message);
+        const ok = /^grouped the chart/.test(m);
+        const bad = /grouping the chart/.test(m) && /5010/.test(JSON.stringify(entries[k].data ?? {}));
+        if (!ok && !bad) continue;
+        if (multi) {
+          out.multi++;
+          if (ok) out.multiGrouped++;
+        } else {
+          out.single++;
+          if (ok) out.singleGrouped++;
+        }
+        break;
+      }
+    });
+  }
+  return out;
+}
+
+/** The batch-span split, which is where grouping is really decided. */
+function reportBatchSpanVsGroup(logs) {
+  const b = poolBatchSpanVsGroup(logs);
+  if (!b.multi && !b.single) return;
+  const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "—");
+  console.log(`\n  DID THE CHART SPAN BATCHES — pooled over ${logs.length} round(s)`);
+  console.log(
+    `    spanned batches  ${String(b.multi).padStart(4)} draw(s), ${String(b.multiGrouped).padStart(4)} grouped = ${pct(b.multiGrouped, b.multi)}`,
+  );
+  console.log(
+    `    one batch only   ${String(b.single).padStart(4)} draw(s), ${String(b.singleGrouped).padStart(4)} grouped = ${pct(b.singleGrouped, b.single)}`,
+  );
+  console.log(
+    `    OURS, not the host's. refreshShapes is set from spansBatches(), so only a multi-batch\n` +
+      `    chart gets the pre-grouping re-read that resolves its shapes by id. A single-batch\n` +
+      `    chart hands addGroup the raw created proxies, which this host refuses with 5010 —\n` +
+      `    and the failed group takes the tag with it (target.tags undefined, 155 of 155).\n` +
+      `    A rasterise beforehand looked like the cause and is not: 22% vs 27% once the arms\n` +
+      `    are split by batch count. The scenarios that rasterise just draw small charts.`,
+  );
+}
+
+/**
  * Questions that produced NOTHING, round after round.
  *
  * Every round pays for the whole probe battery in host time and scratch slides,
@@ -1351,6 +1429,7 @@ if (invokedDirectly) {
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
+    reportBatchSpanVsGroup(pooled);
     reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
@@ -1396,6 +1475,7 @@ if (invokedDirectly) {
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
+    reportBatchSpanVsGroup(pooled);
     reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);

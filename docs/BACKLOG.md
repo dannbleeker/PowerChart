@@ -1241,3 +1241,58 @@ real path anyway.
 That is a real change to the instrument and wants its own session with a control
 — the archive records four reverted attempts at changing the probe's slide
 handling, every one of which changed what the probe measured.
+
+### A SINGLE-BATCH CHART CANNOT GROUP ON THIS HOST, AND THAT IS OUR BUG — 2026-08-16
+
+`npm run rounds` prints it under **DID THE CHART SPAN BATCHES**. Pooled over 41
+rounds and 537 draws:
+
+    spanned batches   333 draw(s),  333 grouped = 100%
+    one batch only    204 draw(s),   49 grouped =  24%
+
+**333 of 333 against 49 of 204.** The sharpest separation in the archive, and
+unlike the fresh-slide split it is not a fact about the host — it is a
+consequence of one line of ours.
+
+**The mechanism, end to end, every link measured:**
+
+1. `refreshShapes` is set from `spansBatches(created, opts)`, so **only a
+   multi-batch chart gets the pre-grouping re-read.**
+2. A single-batch chart therefore hands `addGroup` the raw `created` proxies.
+3. This host refuses those: `InvalidParam passed to GetItem(id)`, 5010, at
+   `grouping the chart's shapes`.
+4. The failed group takes the tag with it — `target.tags` comes back
+   **undefined**, and it is *always* this: **155 of 155 across the whole archive,
+   every one immediately after a 5010 group, zero exceptions.**
+
+So `tags-undefined` is not an independent fault and never was. It is the second
+half of a failed group, and the TAG FAULTS table's columns are not independent —
+one refused group produces `group-5010`, `tags-undefined`, `no-queue` and
+`tagging-failed`, four counts for one event.
+
+**THE RASTERISE WAS A RED HERRING.** It first looked like draws after a rasterise
+group 22% of the time against 93% for everything else. Splitting the arms by
+batch count collapses it to **22% against 27% — nothing**. The scenarios that
+rasterise simply draw small charts. This is the same confound `poolEveryDraw`
+already warns about, met from the other direction, and it is written down because
+it took a deliberate control to kill and would otherwise be re-found.
+
+**THE FIX, and why it is not in this commit.** Refresh before grouping for every
+groupable chart rather than only multi-batch ones. One line — `refreshShapes`
+stops being gated on `spansBatches()`.
+
+The original reason for the gate is in the code at the `needsRefresh` call site:
+asking for a re-read a chart does not need was "a way to LOSE a group, not gain
+one", because this host answers a re-read short or empty. **That objection is
+much weaker now the settled retry exists** — a short or empty answer is asked
+again after 1.5s before anything is decided.
+
+**Stake the prediction before the round that tests it:** single-batch grouping
+moves off 24% toward the multi-batch 100%, `tags-undefined` falls with it because
+it has no other cause, and `the chart is actually visible` starts reporting a
+chart that carries its config. **Run it as a pair**, and watch for the cost: an
+extra sync per single-batch chart on the live insert path, which is the path a
+user waits on.
+
+**Owner's call, because it changes every insert.** The evidence is as strong as
+this project gets, and the risk is a round-trip on the interactive path.

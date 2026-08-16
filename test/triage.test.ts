@@ -19,7 +19,7 @@ import { poolTagFaults } from "../scripts/triage.mjs";
 import { poolGroupVsTag } from "../scripts/triage.mjs";
 // Its own line, same reason as every other single import in this file.
 // @ts-expect-error — as above.
-import { poolFreshVsEstablished, poolStarvedQuestions } from "../scripts/triage.mjs";
+import { poolFreshVsEstablished, poolStarvedQuestions, poolBatchSpanVsGroup } from "../scripts/triage.mjs";
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -416,6 +416,46 @@ describe("triage — logs that are not inserts", () => {
     // A fault line that is not a tagging failure must not inflate the count that
     // a fix would be judged on.
     expect(byBuild.get("bbbbbbb")![0]["tagging-failed"]).toBe(5);
+  });
+
+  it("splits grouping by whether the chart spanned batches, and counts a draw once", () => {
+    // THE SHARPEST SEPARATION IN THE ARCHIVE: 333 of 333 multi-batch draws
+    // grouped, against 49 of 204 single-batch. It is OURS — `refreshShapes` is
+    // set from `spansBatches()`, so only a multi-batch chart gets the
+    // pre-grouping re-read that resolves its shapes by id; a single-batch chart
+    // hands addGroup the raw created proxies and this host refuses them.
+    //
+    // Found while chasing what looked like a RASTERISE effect (22% vs 93%).
+    // Splitting by batch count collapsed that to 22% vs 27% — nothing. The
+    // scenarios that rasterise just draw small charts. Counting only the LAST
+    // batch of a draw is what makes the two arms comparable at all.
+    const batch = (upTo: number, total: number) => ({ message: "batch issued", data: { upTo, total } });
+    const b = poolBatchSpanVsGroup([
+      {
+        trace: {
+          entries: [
+            // A 24-shape chart: three batches, ONE draw. Counting per batch
+            // would credit this arm three times for a single outcome.
+            batch(10, 24),
+            batch(20, 24),
+            batch(24, 24),
+            { message: "grouped the chart's shapes", data: {} },
+            // A single-batch chart whose group was refused.
+            batch(7, 7),
+            { message: "grouping the chart's shapes", data: { error: "InvalidParam ... code=5010" } },
+            // A single-batch chart that DID group — the arm is not all failure.
+            batch(9, 9),
+            { message: "grouped the chart's shapes", data: {} },
+            // A draw the round never resolved either way belongs to neither arm.
+            batch(6, 6),
+          ],
+        },
+      },
+    ]);
+    expect(b.multi, "a multi-batch draw was counted once per batch, not once per draw").toBe(1);
+    expect(b.multiGrouped).toBe(1);
+    expect(b.single).toBe(2);
+    expect(b.singleGrouped).toBe(1);
   });
 
   it("names the questions that have never once answered, and splits them by whose fault it is", () => {
