@@ -24,6 +24,7 @@ import {
   DEMO_SLOT_TAG,
   CHART_TAG,
   CHART_PARTS_TAG,
+  CHART_ORIGIN_TAG,
   _setBatchTimeoutForTest,
   _setReadbackTimeoutForTest,
   _setReReadRetryDelayForTest,
@@ -1384,6 +1385,46 @@ describe("what a group that SUCCEEDS leaves behind", () => {
    * wrong reason — with no group formed and no complaint — so both assert the
    * GROUP, which is the thing that actually saves a config.
    */
+  it("writes the ORIGIN tag through the binding, which is the only write that cannot dodge a resolved handle", async () => {
+    // WHERE THE FAILURES WENT. The config tag is queued BEFORE the
+    // `load("id,left,top")` and lands; the origin tag needs that loaded
+    // position, so it is written after the load has resolved the target into
+    // `shapes.getItem(id)` — the handle this host refuses.
+    //
+    // Not a theory: before the binding change the CONFIG tag took the 5010s and
+    // the origin tag none; after it the config tag takes none and the origin tag
+    // takes eight or nine a round, on roughly half the charts drawn (rounds
+    // 073/074: 9 of 19 and 8 of 17). The refusal moved to the only write still
+    // going through a resolved proxy.
+    //
+    // `refuseTagWritesOnResolvedProxy` models exactly that rule — resolution,
+    // not age — so a chart drawn under it loses its origin tag unless the write
+    // finds an unresolved handle. The binding is one by construction.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    faults.refuseTagWritesOnResolvedProxy = true;
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries.map((e) => e.message);
+      expect(
+        said.some((m) => m.startsWith("origin tag lost")),
+        "the origin write was refused — it did not use the binding",
+      ).toBe(false);
+      // THE TAG ITSELF, not just the absence of a complaint. A silent trace and
+      // a missing tag look identical from the log.
+      const tagged = slide.created.find((sh) => sh.tagStore.get(CHART_ORIGIN_TAG));
+      expect(tagged, "no shape carries the origin tag, so nothing was written").toBeTruthy();
+      // Four numbers, or an update cannot compute a drag delta from it.
+      expect(JSON.parse(tagged!.tagStore.get(CHART_ORIGIN_TAG)!)).toHaveLength(4);
+    } finally {
+      faults.refuseTagWritesOnResolvedProxy = false;
+      setTracing(false);
+    }
+  });
+
   it("re-reads before grouping for a SMALL chart too, not just one that spanned batches", async () => {
     // THE SHARPEST SEPARATION IN THE ARCHIVE, and it was ours. 41 rounds:
     //
