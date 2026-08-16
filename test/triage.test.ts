@@ -33,6 +33,8 @@ const {
   poolOriginTagLosses,
   roundProfile,
   profileDivergence,
+  traceNovelty,
+  traceSignature,
 } = pools;
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
@@ -1263,5 +1265,122 @@ describe("the two populations a draw batch falls into", () => {
     expect(batchPopulations(log([3000, 9000, 20000]))).toBeNull();
     expect(batchPopulations({ trace: { entries: [] } })).toBeNull();
     expect(batchPopulations(undefined)).toBeNull();
+  });
+});
+
+/**
+ * The trace is 95K characters a person cannot count, so the thing that counts it
+ * has to be right about WHICH KIND of difference it found.
+ */
+describe("what the newest round said that the archive has not", () => {
+  const entry = (scope: string, message: string, error?: string) => ({
+    scope,
+    message,
+    ...(error ? { data: { error } } : {}),
+  });
+  const round = (build: string, es: ReturnType<typeof entry>[]) => ({ build, trace: { entries: es } });
+  const times = (n: number, e: ReturnType<typeof entry>) => Array.from({ length: n }, () => e);
+  /** Enough prior rounds to earn a baseline, all saying the same quiet thing. */
+  const quietPriors = (n: number, per = 3) =>
+    Array.from({ length: n }, (_, i) => round(`old${i}`, times(per, entry("draw", "batch issued"))));
+
+  it("counts one event happening twice as one signature, not two", () => {
+    // Ids and counts are the noise. Without this the archive's vocabulary grows
+    // by one every time a slide gets a different id, and nothing ever has a
+    // history to be measured against.
+    expect(traceSignature(entry("group", "repaired 3 tags on slide 7f2a91c4"))).toBe(
+      traceSignature(entry("group", "repaired 5 tags on slide 0b41ee02")),
+    );
+  });
+
+  it("keeps the error class, because a failure is not its healthy twin", () => {
+    // The reading this was added for: round 077's 52 `UnexpectedError`s share a
+    // message with the successful writes and lived in `data.error`, so a
+    // signature over scope+message alone reported the loudest fact in that round
+    // as ordinary traffic.
+    expect(traceSignature(entry("error", "writing the chart's config tag", "UnexpectedError: nope"))).not.toBe(
+      traceSignature(entry("error", "writing the chart's config tag")),
+    );
+    // The class only. Error text carries ids and offsets, and hashing those
+    // would give every single failure its own signature.
+    expect(traceSignature(entry("error", "writing", "UnexpectedError: id 7f2a91c4 at 33"))).toBe(
+      traceSignature(entry("error", "writing", "UnexpectedError: id 0b41ee02 at 91")),
+    );
+  });
+
+  it("calls a shape the archive has never produced NOVEL", () => {
+    const rounds = [...quietPriors(6), round("new", [entry("group", "something nobody has traced before")])];
+    const out = traceNovelty(rounds);
+    expect(out.novel).toHaveLength(1);
+    expect(out.novel[0].sig).toContain("something nobody has traced before");
+    expect(out.spikes).toHaveLength(0);
+  });
+
+  // THE REGRESSION GUARD FOR THE COLLAPSE BUG. `profileDivergence` shipped
+  // reporting a flaky scenario as a slide-size difference because it kept one
+  // worst-case reading of two different causes. This is the same split, and
+  // getting it wrong here means every fix this project lands is reported as a
+  // fault on the night it starts working.
+  it("separates a mechanism that just shipped from a count that left its baseline", () => {
+    const reread = entry("group", "re-reading the slide's shapes again after a settle delay");
+    const tagWrite = entry("error", "writing the chart's config tag", "UnexpectedError: x");
+    const priors = Array.from({ length: 8 }, (_, i) =>
+      round(`old${i}`, [
+        ...times(3, tagWrite),
+        ...times(2, entry("draw", "batch issued")),
+        // RARE, NOT ABSENT — and modelling it as absent is what made the first
+        // version of this test fail against a correct implementation. The
+        // re-read existed before build 17a8204; `needsPreGroupRefresh` widened
+        // which charts reach it, so the count went from occasional to eleven.
+        // A signature nothing has EVER produced is a different report (NOVEL),
+        // and the archive proves the difference: at round 077 the
+        // `UnexpectedError` signatures were novel, while the settle-pass repair
+        // beside them was this bucket.
+        ...(i === 7 ? [reread] : []),
+      ]),
+    );
+    const newest = round("17a8204", [
+      // Present in the vocabulary, median 0 across the priors — the shape a
+      // mechanism makes on the night it starts working.
+      ...times(11, reread),
+      // Seen in every prior round, three at a time, now eighteen.
+      ...times(18, tagWrite),
+    ]);
+    const out = traceNovelty([...priors, newest]);
+    expect(out.sinceBuild.map((s: { sig: string }) => s.sig).join()).toContain("re-reading the slide's shapes");
+    expect(out.spikes.map((s: { sig: string }) => s.sig).join()).toContain("writing the chart's config tag");
+    // Neither may appear in the other's bucket — that is the whole point.
+    expect(out.spikes.map((s: { sig: string }) => s.sig).join()).not.toContain("re-reading");
+    expect(out.sinceBuild.map((s: { sig: string }) => s.sig).join()).not.toContain("config tag");
+    expect(out.spikes[0].median).toBe(3);
+  });
+
+  it("says nothing at all about a round that repeated the archive", () => {
+    // The quiet case has to be assertable, or "nothing new" is just the report
+    // failing to run and nobody can tell the difference.
+    const out = traceNovelty([...quietPriors(8), round("same", times(3, entry("draw", "batch issued")))]);
+    expect(out.novel).toHaveLength(0);
+    expect(out.sinceBuild).toHaveLength(0);
+    expect(out.spikes).toHaveLength(0);
+    expect(out.vocabulary).toBe(1);
+  });
+
+  it("will not build a baseline out of too few rounds", () => {
+    // With three priors a median is whichever one happened to be in the middle,
+    // and every count looks like a spike against it. A fresh clone should get
+    // silence, not an alarm resting on nothing.
+    const out = traceNovelty([...quietPriors(3), round("new", times(40, entry("draw", "batch issued")))]);
+    expect(out.spikes).toHaveLength(0);
+    expect(out.sinceBuild).toHaveLength(0);
+  });
+
+  it("ignores a difference too small to be a difference", () => {
+    const out = traceNovelty([...quietPriors(8), round("new", times(9, entry("draw", "batch issued")))]);
+    expect(out.spikes).toHaveLength(0);
+  });
+
+  it("survives a round with no trace at all", () => {
+    expect(() => traceNovelty([...quietPriors(6), { build: "x" }])).not.toThrow();
+    expect(traceNovelty([]).novel).toEqual([]);
   });
 });
