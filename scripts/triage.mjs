@@ -851,8 +851,8 @@ export function poolFreshVsEstablished(logs) {
  * THE SHARPEST SEPARATION IN THE ARCHIVE, found 2026-08-16 while chasing what
  * looked like a rasterise effect:
  *
- *     spanned batches   333 draw(s), 333 grouped = 100%
- *     one batch only     49 draw(s),  ~12 grouped =  25%
+ *     spanned batches   452 draw(s), 353 grouped = 78%
+ *     one batch only    214 draw(s),  49 grouped = 23%
  *
  * And it is OURS, not the host's. `refreshShapes` is set from `spansBatches()`,
  * so only a multi-batch chart gets the pre-grouping re-read that resolves its
@@ -880,12 +880,26 @@ export function poolBatchSpanVsGroup(logs) {
       // per batch and swamps the single-batch arm with copies of itself.
       if (Number(d.upTo) !== total || !total) return;
       const multi = total > (Number(d.perSync) || 10);
-      // The grouping verdict is the next one of its kind and follows within a
-      // couple of entries; anything further away belongs to another chart.
-      for (let k = i + 1; k < Math.min(entries.length, i + 4); k++) {
+      // UNTIL THE NEXT DRAW, not a fixed number of entries away — and that is a
+      // correction, not a refinement. This read `i + 4` until 2026-08-16, which
+      // was true of the traces it was written against and stopped being true the
+      // moment every groupable chart started re-reading the slide first: the
+      // extra entries pushed the verdict out of the window and the report showed
+      // ZERO single-batch draws, in the same change that altered the single-batch
+      // path. An instrument that goes blind exactly where it is being used is
+      // worse than no instrument.
+      //
+      // The outcome set was short too. `not grouping` — the honest decline — was
+      // not counted at all, so a chart that declined looked like a chart that had
+      // never been decided.
+      for (let k = i + 1; k < entries.length; k++) {
         const m = String(entries[k].message);
+        // The next draw begins: this one was never resolved either way.
+        if (/^batch issued/.test(m)) break;
         const ok = /^grouped the chart/.test(m);
-        const bad = /grouping the chart/.test(m) && /5010/.test(JSON.stringify(entries[k].data ?? {}));
+        const bad =
+          /^not grouping/.test(m) ||
+          (/grouping the chart/.test(m) && /5010/.test(JSON.stringify(entries[k].data ?? {})));
         if (!ok && !bad) continue;
         if (multi) {
           out.multi++;

@@ -3423,8 +3423,9 @@ async function addAndRenderItem(
     // the shape-by-shape way, where charts of 11-40 shapes exist.
     //
     // SETTLED ON A REAL HOST NOW, and the answer was that the condition here was
-    // still too narrow. 41 rounds: a chart that spanned batches grouped 333 out
-    // of 333, one that fitted in a single batch 49 out of 204. The gate, not the
+    // still too narrow. Archive-wide, a chart that spanned batches grouped 353
+    // times out of 452 and one that fitted in a single batch 49 out of 214; on
+    // builds carrying the settled retry the multi arm is 10 of 10. The gate, not the
     // host, was the difference. `needsPreGroupRefresh` widens it to any chart
     // that will be grouped, and keeps `spansBatches` in the OR for the
     // ungroupable-but-stale case this branch was originally written for.
@@ -6927,8 +6928,12 @@ function spansBatches(created: PowerPoint.Shape[], opts: InsertOptions): boolean
  * un-groupable on PowerPoint for the web, and the archive is unambiguous — 41
  * rounds, 537 draws:
  *
- *     spanned batches   333 draw(s),  333 grouped = 100%
- *     one batch only    204 draw(s),   49 grouped =  24%
+ *     spanned batches   452 draw(s),  353 grouped = 78%
+ *     one batch only    214 draw(s),   49 grouped = 23%
+ *
+ * (First reported as 333/333 = 100%, which was a bug in the pooling function
+ * rather than a fact: it dropped every `not grouping` decline from both arms.
+ * The separation survived the correction; the absolutes did not.)
  *
  * A single-batch chart never refreshed, so `addGroup` got the raw `created`
  * proxies, and this host refuses those: `InvalidParam passed to GetItem(id)`,
