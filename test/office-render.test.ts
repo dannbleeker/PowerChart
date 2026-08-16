@@ -1374,6 +1374,96 @@ describe("updateChartInSlide", () => {
     }
   });
 
+  /**
+   * The instrument for the last live `GetItem(id)` refusal.
+   *
+   * `reading back an ungrouped chart's shape ids` fires in 56 of 57 archived
+   * rounds, and each failure costs a chart its parts list — 9 to 12 per round in
+   * the six newest. The consequence written beside that read is that the update
+   * deletes the one shape it can name and redraws all of them, so the chart
+   * grows by a whole chart. Nobody has ever seen it happen, and no round records
+   * whether one of those charts was ever the one an update touched.
+   */
+  describe("counting what an update leaves behind", () => {
+    const orphanLine = () => traceLog().entries.find((e) => /shapes left on the slide/.test(e.message));
+
+    it("reports no orphans when the chart's parts list is intact", async () => {
+      // The control, and it has to come first: an instrument that cries orphan
+      // on a healthy update would say nothing about the sick one.
+      const slide = makeSlide("s1");
+      installHost([slide], [], slide, (v) => v !== "1.8");
+      const scene = buildChart(config);
+      await insertSceneIntoSlide(scene, { tagData: "cfg" });
+      expect(
+        slide.created.some((s) => s.type === "group"),
+        "this test needs an UNGROUPED chart",
+      ).toBe(false);
+      const found = (await listChartsInDeck()).charts;
+      expect(found).toHaveLength(1);
+      expect(found[0].target.partIds?.length, "the parts list is the thing being controlled for").toBeGreaterThan(0);
+      setTracing(true);
+      try {
+        await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
+        const line = orphanLine();
+        expect(line, "the instrument did not run").toBeTruthy();
+        const d = line?.data as { shortfall: number; unexplained: number; withParts: number };
+        expect(d.withParts).toBe(1);
+        expect(d.shortfall, "a faithful replacement takes out what it puts back").toBe(0);
+        expect(d.unexplained, "the slide moved by exactly what this update did to it").toBe(0);
+      } finally {
+        setTracing(false);
+      }
+    });
+
+    it("counts the shapes stranded when the chart has no parts list", async () => {
+      // THE READING THIS EXISTS FOR. A target with no `partIds` is exactly what
+      // a refused `reading back an ungrouped chart's shape ids` produces: the
+      // chart is whole on the slide and the update can name only its anchor.
+      const slide = makeSlide("s1");
+      installHost([slide], [], slide, (v) => v !== "1.8");
+      const scene = buildChart(config);
+      await insertSceneIntoSlide(scene, { tagData: "cfg" });
+      const drawn = slide.created.filter((s) => !s.deleted).length;
+      expect(drawn).toBeGreaterThan(1);
+      const found = (await listChartsInDeck()).charts;
+      // Strip it — the shapes stay exactly where they are, which is the point.
+      const blind = { ...found[0].target, partIds: undefined };
+      setTracing(true);
+      try {
+        await updateChartsInSlides([{ scene, target: blind, opts: { tagData: "cfg" } }]);
+        const d = orphanLine()?.data as { shortfall: number; unexplained: number; withParts: number; removed: number };
+        expect(d, "the instrument did not run").toBeTruthy();
+        expect(d.withParts, "no chart in this update had a parts list").toBe(0);
+        expect(d.removed, "only the anchor could be named").toBe(1);
+        // The number is the finding: every shape but the anchor is still there,
+        // underneath a full redraw.
+        expect(d.shortfall, "the growth this instrument exists to measure").toBe(drawn - 1);
+        expect(d.unexplained, "the host did exactly what it was asked — the fault is what we asked").toBe(0);
+        // And it is real, not just arithmetic — the slide really did grow.
+        expect(slide.created.filter((s) => !s.deleted).length).toBe(drawn - 1 + drawn);
+      } finally {
+        setTracing(false);
+      }
+    });
+
+    it("stays silent when nobody is tracing", async () => {
+      // It costs an extra context per update. That is a price a round pays and
+      // an ordinary edit must not.
+      const slide = makeSlide("s1");
+      installHost([slide], [], slide, (v) => v !== "1.8");
+      const scene = buildChart(config);
+      await insertSceneIntoSlide(scene, { tagData: "cfg" });
+      const found = (await listChartsInDeck()).charts;
+      await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
+      setTracing(true);
+      try {
+        expect(orphanLine(), "the instrument ran with tracing off").toBeFalsy();
+      } finally {
+        setTracing(false);
+      }
+    });
+  });
+
   it("does not resurrect a chart whose shape the user deleted", async () => {
     // The pane still holds an editTarget for a chart the user has since removed
     // from the slide. A stale SLIDE id is already treated as nothing to do; a

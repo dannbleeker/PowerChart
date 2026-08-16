@@ -18,7 +18,7 @@ import { planSceneUpdate, sceneFingerprint, worthUpdating } from "../core/scene-
 import { toHex6, alphaOf, isNamedColor } from "../core/color";
 import type { PolygonNode, Scene, SceneNode, TextNode, WedgeNode } from "../core/scene";
 import { NOT_COMPLETE_NAME, planReconcile } from "../core/reconcile";
-import { trace, traceAbout } from "../core/trace";
+import { trace, traceAbout, tracing } from "../core/trace";
 import type { Rect } from "../core/placement";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
 import { parseSlideSizeEmu, EMU_PER_POINT } from "./ooxml";
@@ -1263,6 +1263,111 @@ export async function updateChartInSlide(
 }
 
 /**
+ * What each slide's shape count is RIGHT NOW, settled, in a context of its own.
+ *
+ * Its own context on purpose, and the reason is written down twice already in
+ * this file: a `getCount()` queued in the same sync as the adds returns the
+ * count from BEFORE them. `insertSlidesFromPptx` takes its before-and-after the
+ * same way, for the same reason — "a host that silently drops the call reports
+ * no error, and the delta is the only evidence either way".
+ *
+ * Best-effort. A count that cannot be taken is `undefined` and the reading that
+ * needed it is simply not reported; nothing here may cost an update.
+ */
+async function slideShapeCounts(slideIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = [...new Set(slideIds)].filter(Boolean);
+  if (!ids.length) return out;
+  try {
+    await PowerPoint.run(async (context) => {
+      const asked = ids.map((id) => ({ id, c: context.presentation.slides.getItemOrNullObject(id).shapes.getCount() }));
+      await boundedSync(context, "counting a slide's shapes for the orphan check");
+      for (const { id, c } of asked) {
+        const n = loadedValue(() => c.value);
+        if (typeof n === "number") out.set(id, n);
+      }
+    });
+  } catch {
+    /* an instrument that fails is a reading not taken, never a failed update */
+  }
+  return out;
+}
+
+/**
+ * DOES AN UPDATE LEAVE THE REST OF AN UNGROUPED CHART BEHIND?
+ *
+ * The open question this exists to settle. PowerPoint on the web ungroups every
+ * chart it cannot group, so an ungrouped chart's identity is its
+ * CHART_PARTS_TAG — the list naming its other shapes. That list is built by
+ * `reading back an ungrouped chart's shape ids`, which is the ONE `GetItem(id)`
+ * refusal site still firing: 56 of 57 archived rounds carry it, round 081
+ * included, and the six newest rounds each report 9 to 12 charts left with no
+ * parts list at all.
+ *
+ * The consequence is written down beside that read — "the chart grows by a
+ * whole chart on every edit", because the update deletes the one shape it can
+ * name and redraws all of them. NOBODY HAS EVER SEEN IT HAPPEN. The scenario
+ * that would notice passes 57 of 57, and no round records whether one of those
+ * 9-to-12 charts was ever the one an update touched.
+ *
+ * TWO READINGS, and they must not be confused — the first draft of this had
+ * only one and it was worthless.
+ *
+ * **`shortfall = drew - removed`** is the stranding. A faithful replacement
+ * takes out what it puts back, so an unchanged chart gives zero; a chart whose
+ * parts list was refused can name only its anchor, so it removes 1, draws all
+ * of them, and the shortfall is the rest of the chart still sitting on the
+ * slide. It compares two independent measurements — what the host confirmed it
+ * deleted, and what this call drew.
+ *
+ * **`unexplained = (after - before) - (drew - removed)`** is a different
+ * question: did the host DO what it said? A slide obeys
+ * `after = before - removed + drew`, so this is zero whenever the host is
+ * honest, and non-zero when a delete was silently dropped or something else
+ * moved the slide underneath the update.
+ *
+ * The first draft reported only the second and called it "orphans". It is an
+ * identity — a rearrangement of numbers already known — so it read zero on the
+ * sick case and zero on the healthy one, and its control test passed vacuously.
+ * A reading that cannot come out any other way is not a measurement.
+ *
+ * `shortfall` is not proof on its own: a chart legitimately redrawn larger has
+ * one too. `withParts` is what separates them, which is why it is beside it.
+ */
+function reportOrphanedShapes(
+  before: Map<string, number>,
+  after: Map<string, number>,
+  churn: Map<string, { removed: number; drew: number; charts: number; withParts: number }>,
+): void {
+  for (const [slideId, c] of churn) {
+    const b = before.get(slideId);
+    const a = after.get(slideId);
+    // Both ends or no reading. A missing count is not a zero, and treating it as
+    // one would invent orphans on a slide nobody could count.
+    if (typeof b !== "number" || typeof a !== "number") continue;
+    trace("update", "shapes left on the slide after an in-place update", {
+      slideId,
+      before: b,
+      after: a,
+      // The stranding: what this update drew, less what it could actually name
+      // and delete. Zero for a faithful replacement of an unchanged chart.
+      shortfall: c.drew - c.removed,
+      // The host-honesty check. Zero whenever the slide moved by exactly what
+      // this call did to it; anything else means a delete was dropped or the
+      // slide changed under us.
+      unexplained: a - b - (c.drew - c.removed),
+      charts: c.charts,
+      // The discriminator. An orphan count that rises only where charts had no
+      // parts list is the refusal doing it; one that rises regardless is
+      // something else, and the fix would be somewhere else too.
+      withParts: c.withParts,
+      removed: c.removed,
+      drew: c.drew,
+    });
+  }
+}
+
+/**
  * Second chance for the shapes a by-id lookup would not resolve.
  *
  * PowerPoint on the web refuses `shapes.getItem(id)` for shapes a run has
@@ -1602,6 +1707,19 @@ export async function updateChartsInSlides(
    */
   const untargeted = new Set<number>();
   /**
+   * The orphan instrument's before-reading, and what each slide churned.
+   *
+   * Only under verbose tracing, which every round turns on and no ordinary user
+   * ever does — it costs one extra context, and an instrument that taxed every
+   * edit in the product to answer a question about the host would not deserve
+   * to ship. See `reportOrphanedShapes`.
+   */
+  const watching = tracing();
+  const countsBefore = watching
+    ? await slideShapeCounts(items.map((i) => i.target.slideId))
+    : new Map<string, number>();
+  const churn = new Map<string, { removed: number; drew: number; charts: number; withParts: number }>();
+  /**
    * Each returned target's own `tagData`, in the SAME index space as `updated`.
    *
    * `items` is not that space. See where this is filled, inside the map below.
@@ -1884,6 +2002,18 @@ export async function updateChartsInSlides(
         await step("deleting the chart being replaced", () => context.sync());
         // Committed gone, so the slide's count owes them back.
         forgetShapesDrawnOn(it.target.slideId, replacedShapeCount(removed, estimateOfficeShapes(it.scene)));
+        // RECORDED HERE because this is the only place that knows `removed` —
+        // the number the host actually confirmed and took, which is the whole
+        // point. A chart with no parts list removes exactly one shape however
+        // many it has, and that gap is what the reading is looking for.
+        if (watching) {
+          const c = churn.get(it.target.slideId) ?? { removed: 0, drew: 0, charts: 0, withParts: 0 };
+          c.removed += removed;
+          c.drew += estimateOfficeShapes(it.scene);
+          c.charts += 1;
+          if (it.target.partIds?.length) c.withParts += 1;
+          churn.set(it.target.slideId, c);
+        }
         // From here the old chart is committed GONE. Anything that throws below
         // leaves a hole, and the caller has to be told which chart it is.
         deleted = true;
@@ -2000,6 +2130,10 @@ export async function updateChartsInSlides(
       };
     });
   });
+  // OUTSIDE THE RUN, so the count is settled: one taken inside would be the
+  // context's own stale view of a slide it has just been adding to.
+  if (watching && churn.size) reportOrphanedShapes(countsBefore, await slideShapeCounts([...churn.keys()]), churn);
+
   // Outside the run, for the reason the insert path is: the context that could
   // not write the tag cannot write it now either.
   const wanted = updated
