@@ -4335,6 +4335,58 @@ function settle(): Promise<void> {
 }
 
 /**
+ * How long to wait before asking a slide for its shapes a SECOND time, when the
+ * first answer was short or empty.
+ *
+ * This is the same remedy as `SETTLE_MS` and `BLANK_REREAD_DELAY_MS` applied to
+ * the one read that had never had it — and it is the first thing here that came
+ * out of the office-js tracker rather than out of a round.
+ *
+ * **What the tracker says.** PowerPoint Online does not populate a slide's
+ * shapes collection immediately after the slide is added; the workaround
+ * everyone converges on is to wait a second or two before reading it
+ * (office-js#2903, echoed in #5022 — the same issue `SETTLE_MS` above already
+ * quotes for a different symptom).
+ *
+ * **Why it was not applied here sooner.** This repo had read #2903 and filed it
+ * as "upstream has nothing, `sleep(2000)` only". That was a fair reading while
+ * the failure looked like a TAG problem. It is the wrong reading now: the
+ * failure has been isolated to exactly the state the workaround addresses.
+ * Measured over the whole round archive on 2026-08-15:
+ *
+ *     slide already had shapes   82 chart(s), 81 grouped = 99%
+ *     freshly added, empty       74 chart(s),  1 grouped =  1%
+ *
+ * A chart drawn onto a slide this run has just added gets a pre-grouping re-read
+ * that comes back short or empty, so it is not grouped, so its tag falls back to
+ * a `created` handle — which this host refuses about seven times in ten.
+ *
+ * **1500ms, and the cost is bounded and rare.** It is paid per PASS and not per
+ * chart, because the whole batch re-reads in one sync — so a deck-wide update
+ * that loses five charts waits once, not five times. It is paid ONLY when the
+ * first read came back short or empty; a complete read costs nothing at all. And
+ * when the second read is short too, everything falls through to the behaviour
+ * that was there before, so the worst case is today plus a second and a half.
+ */
+let REREAD_RETRY_MS = 1_500;
+
+/** Test-only: a suite cannot spend a real 1.5s per short re-read. */
+export function _setReReadRetryDelayForTest(ms: number): void {
+  REREAD_RETRY_MS = ms;
+}
+
+/**
+ * How many EXTRA attempts the pre-grouping re-read gets. One.
+ *
+ * Deliberately not tunable and deliberately not more. A second ask tests the
+ * tracker's claim — that the collection fills in shortly after the slide is
+ * materialised — and a third would only be waiting on a host that has already
+ * answered the same way twice, at a second and a half a go, on the path a
+ * deck-wide update runs for every chart.
+ */
+const REREAD_ATTEMPTS = 1;
+
+/**
  * Fetch the slot tag value from a slide by position, in a settled sync. Absent
  * when the host lacks Slide.tags (pre-1.3) or the tag write itself was lost.
  */
@@ -7400,129 +7452,187 @@ async function groupAndTagAll(
       // work that was, on the slide, done. Everything this block does is a
       // best-effort refresh — the catch below already says so — so it all
       // belongs where the catch can reach it.
-      const collections = refresher.map(({ it }) => it.getSlide().shapes);
-      // A bare `items`, and it is the only collection load in this file that does
-      // not name its properties. That was changed to `items/id` on 2026-08-07 on
-      // the reasoning that `id` is the only property this block reads and
-      // Office.js populates what was asked for — and it was changed BACK, because
-      // the reasoning rests on a fact nobody here has: whether `load("items")`
-      // populates the items' scalar properties or only the collection.
+      // ASKED TWICE, and the second time after a pause. See `REREAD_RETRY_MS`:
+      // this host does not populate a freshly materialised slide's shape
+      // collection straight away, and a chart drawn onto a slide this run just
+      // added is grouped 1% of the time against 99% on a slide that already had
+      // shapes. `pending` carries the charts whose answer was short or empty;
+      // anything that matched is out of the loop after the first pass and pays
+      // nothing.
       //
-      // The suite answered a narrower question and answered it clearly. Under
-      // `applyWebProfile` the switch broke `still gets its degraded pictures
-      // tagged`: `hollowReads` models a short collection read and keys on
-      // `items/id`, so widening this projection pulled the grouping re-read into
-      // a blindness the bare form had been escaping — the re-read came back
-      // empty, the single-shape re-fetch below never ran, and the degraded
-      // picture's tag went through the stale proxy the host refuses. That is not
-      // the fake being unfair: a real host that reads short does not care which
-      // projection was asked for.
-      //
-      // So the change trades a guess about `load("items")` for a measured
-      // regression, which is the wrong way round. Ask the host instead — the
-      // three traces below now separate "came back empty" from "threw" from
-      // "matched nothing", and a run log that says which will settle it.
-      for (const c of collections) c.load("items/id");
-      await boundedSync(context, "re-reading the slide's shapes before grouping");
-      refresher.forEach(({ it, i }, k) => {
-        const items = collections[k].items;
-        // A slide we JUST drew onto cannot be empty, so an empty answer is the
-        // host reading short — the `hollowReads` behaviour, seen for real when
-        // one readback asked about 19 shapes and was told 3. Worth its own line
-        // because the alternative readings of `refreshed=0` want different
-        // fixes, and from a run log they are indistinguishable.
-        if (!items?.length && it.created.length) {
-          hostFriction.emptyReReads += 1;
-          trace("group", "the re-read before grouping came back empty", {
-            index: i,
-            drew: it.created.length,
-            // WHICH SYNC OF THIS CONTEXT. See `syncsPerContext`: the deck-wide
-            // update runs every chart through one context and the re-read decays
-            // chart by chart, so the count is the x-axis that says whether the
-            // context is what wears out.
-            contextSyncs: syncsOf(context),
+      // A FRESH slide handle per attempt, from `it.getSlide()` — not the
+      // collection from last time. Office.js will have rewritten the previous
+      // attempt's slide path to `slides.getItem(id)` by now, and this host
+      // refuses shapes hanging off that; the draw loop takes a fresh proxy per
+      // batch for the same reason (see SlideThunk).
+      let pending = refresher;
+      for (let attempt = 0; pending.length && attempt <= REREAD_ATTEMPTS; attempt++) {
+        const lastAttempt = attempt === REREAD_ATTEMPTS;
+        if (attempt > 0) {
+          trace("group", "re-reading the slide's shapes again after a settle delay", {
+            charts: pending.length,
+            waitedMs: REREAD_RETRY_MS,
+            slides: countBy(pending.map(({ it }) => slideKeyFor(it.opts, it.getSlide))),
           });
-          return;
+          if (REREAD_RETRY_MS > 0) await new Promise((r) => setTimeout(r, REREAD_RETRY_MS));
         }
-        // By ID, which is exact and works on any slide. The old rule was "the
-        // chart's shapes are the LAST N on the slide" — true of a blank slide
-        // this run added, and false of the slide the user is looking at, which
-        // is why the ordinary insert path could not use this at all and lost
-        // its grouping and its config tag on every chart big enough to need
-        // more than one batch.
-        const byId = new Map<string, PowerPoint.Shape>();
-        for (const sh of items) if (sh.id) byId.set(sh.id, sh);
-        const matched = it.created.map((sh) => (sh.id ? byId.get(sh.id) : undefined)).filter(Boolean);
-        if (matched.length === it.created.length) {
-          // Same order as `created`, so index 0 stays the chart's anchor and
-          // `ungroupedFallback`'s "everything after it is a part" holds.
-          freshMembers.set(i, matched as PowerPoint.Shape[]);
-        } else if (matched.length) {
-          // A PARTIAL match is thrown away, and this used to be kept.
-          //
-          // The argument for keeping it was that every shape in it is provably
-          // ours, where the positional rule below is a guess. True, and beside
-          // the point: what it produces is a chart split into a group plus a
-          // remainder that does not move with it. The user drags the chart and
-          // leaves its baseline behind — and it LOOKS like one object, so
-          // nothing warns them. `4feb5be` left exactly that on a real slide,
-          // `grouped the chart's shapes charts=1 partial=1 left=0:4`, with
-          // `label-1-3`, `baseline`, `series-label-0` and `series-label-1`
-          // stranded inside the chart's own box. The round before it left the
-          // same four, and neither round could say why until the success path
-          // learned to speak.
-          //
-          // Grouping nothing keeps the chart WHOLE. It is still deleted
-          // correctly on the next update — the parts tag, not the group, is what
-          // carries a chart's membership. Ugly beats silently destructible: the
-          // same reasoning this file already applies to a chart that loses its
-          // group but keeps its config, and the same conclusion
-          // `chooseGroupMembers` reaches when one member cannot be named at all.
-          //
-          // "IT IS STILL TAGGED, STILL RE-EDITABLE" USED TO BE THE NEXT WORDS,
-          // and on this host they are false. Measured 2026-08-15 over the whole
-          // round archive, joining each chart's grouping outcome to its tag:
-          //
-          //     grouped      64 chart(s),  1 lost the tag =  2%
-          //     NOT grouped  62 chart(s), 41 lost the tag = 66%
-          //
-          // A group is a handle made in the grouping batch and never resolved,
-          // so the config lands on it. Without one the tag falls back to a
-          // `created` handle and this host refuses it two times in three. So
-          // declining to group is not the free, conservative choice it reads as
-          // here — it is the choice that costs the chart its config most of the
-          // time.
-          //
-          // The branch is LEFT AS IT IS for now, deliberately: the alternative
-          // (group the subset) strands the unmatched shapes, which is the
-          // destructible failure this rule was written to prevent, and choosing
-          // between two harms is not a call to make from a trace. What the
-          // measurement changes is where to look — chart 4 of 8 matches 20 of
-          // its 24 shapes in EVERY round, which is a re-read problem with a
-          // fixed shape, not a coin toss. Fix the re-read and neither harm has
-          // to be chosen. See `docs/BACKLOG.md`.
-          //
-          // Deliberately NOT falling through to the positional rule below. That
-          // branch is safe only when NOTHING matched by id, because a slide
-          // holding the user's own shapes can satisfy `items.length >=
-          // created.length` while the chart itself read short — and "the last
-          // N" would then reach past the chart into the user's content and
-          // group it in, to be deleted with the chart on the next update.
-          trace("group", "the re-read matched only some of the chart's shapes", {
-            index: i,
-            drew: it.created.length,
-            matched: matched.length,
-            // See the empty-re-read line above: the sync count is what turns a
-            // decay curve into a measurement.
-            contextSyncs: syncsOf(context),
-          });
-        } else if (items.length >= it.created.length) {
-          // No ids to match on at all — a host that would not read them back.
-          // The positional rule is still right for a slide this run added
-          // blank, which is every slide the demo path draws on.
-          freshMembers.set(i, items.slice(items.length - it.created.length));
-        }
-      });
+        const collections = pending.map(({ it }) => it.getSlide().shapes);
+        const retry: typeof pending = [];
+        // A bare `items`, and it is the only collection load in this file that does
+        // not name its properties. That was changed to `items/id` on 2026-08-07 on
+        // the reasoning that `id` is the only property this block reads and
+        // Office.js populates what was asked for — and it was changed BACK, because
+        // the reasoning rests on a fact nobody here has: whether `load("items")`
+        // populates the items' scalar properties or only the collection.
+        //
+        // The suite answered a narrower question and answered it clearly. Under
+        // `applyWebProfile` the switch broke `still gets its degraded pictures
+        // tagged`: `hollowReads` models a short collection read and keys on
+        // `items/id`, so widening this projection pulled the grouping re-read into
+        // a blindness the bare form had been escaping — the re-read came back
+        // empty, the single-shape re-fetch below never ran, and the degraded
+        // picture's tag went through the stale proxy the host refuses. That is not
+        // the fake being unfair: a real host that reads short does not care which
+        // projection was asked for.
+        //
+        // So the change trades a guess about `load("items")` for a measured
+        // regression, which is the wrong way round. Ask the host instead — the
+        // three traces below now separate "came back empty" from "threw" from
+        // "matched nothing", and a run log that says which will settle it.
+        for (const c of collections) c.load("items/id");
+        await boundedSync(
+          context,
+          attempt === 0
+            ? "re-reading the slide's shapes before grouping"
+            : "re-reading the slide's shapes after a settle delay",
+        );
+        pending.forEach((entry, k) => {
+          const { it, i } = entry;
+          const items = collections[k].items;
+          // A slide we JUST drew onto cannot be empty, so an empty answer is the
+          // host reading short — the `hollowReads` behaviour, seen for real when
+          // one readback asked about 19 shapes and was told 3. Worth its own line
+          // because the alternative readings of `refreshed=0` want different
+          // fixes, and from a run log they are indistinguishable.
+          if (!items?.length && it.created.length) {
+            // COUNTED AND TRACED ONLY ONCE THE RETRY HAS RUN OUT. An empty first
+            // answer that a settled re-read then fills in is not a fault the
+            // round should carry — counting it would report the host as failing
+            // on a chart that came out fine, and `emptyReReads` is read as a
+            // per-round friction number.
+            if (!lastAttempt) {
+              retry.push(entry);
+              return;
+            }
+            hostFriction.emptyReReads += 1;
+            trace("group", "the re-read before grouping came back empty", {
+              index: i,
+              drew: it.created.length,
+              // WHICH SYNC OF THIS CONTEXT. See `syncsPerContext`: the deck-wide
+              // update runs every chart through one context and the re-read decays
+              // chart by chart, so the count is the x-axis that says whether the
+              // context is what wears out.
+              contextSyncs: syncsOf(context),
+              // AND THAT THE PAUSE DID NOT SAVE IT, which is the one thing the
+              // line could not say before. An empty read here has now survived a
+              // settle delay, so it is not the host still catching up.
+              afterRetry: true,
+            });
+            return;
+          }
+          // By ID, which is exact and works on any slide. The old rule was "the
+          // chart's shapes are the LAST N on the slide" — true of a blank slide
+          // this run added, and false of the slide the user is looking at, which
+          // is why the ordinary insert path could not use this at all and lost
+          // its grouping and its config tag on every chart big enough to need
+          // more than one batch.
+          const byId = new Map<string, PowerPoint.Shape>();
+          for (const sh of items) if (sh.id) byId.set(sh.id, sh);
+          const matched = it.created.map((sh) => (sh.id ? byId.get(sh.id) : undefined)).filter(Boolean);
+          if (matched.length === it.created.length) {
+            // Same order as `created`, so index 0 stays the chart's anchor and
+            // `ungroupedFallback`'s "everything after it is a part" holds.
+            freshMembers.set(i, matched as PowerPoint.Shape[]);
+          } else if (matched.length) {
+            // ASK AGAIN FIRST. A partial match is the OTHER shape of the same
+            // fault the empty read is — chart 4 of 8 matched 20 of its 24 shapes
+            // in every round for five rounds running, which is a read that has not
+            // finished rather than four shapes that are missing. Only once a
+            // settled re-read has said the same thing twice is the trade below a
+            // real trade.
+            if (!lastAttempt) {
+              retry.push(entry);
+              return;
+            }
+            // A PARTIAL match is thrown away, and this used to be kept.
+            //
+            // The argument for keeping it was that every shape in it is provably
+            // ours, where the positional rule below is a guess. True, and beside
+            // the point: what it produces is a chart split into a group plus a
+            // remainder that does not move with it. The user drags the chart and
+            // leaves its baseline behind — and it LOOKS like one object, so
+            // nothing warns them. `4feb5be` left exactly that on a real slide,
+            // `grouped the chart's shapes charts=1 partial=1 left=0:4`, with
+            // `label-1-3`, `baseline`, `series-label-0` and `series-label-1`
+            // stranded inside the chart's own box. The round before it left the
+            // same four, and neither round could say why until the success path
+            // learned to speak.
+            //
+            // Grouping nothing keeps the chart WHOLE. It is still deleted
+            // correctly on the next update — the parts tag, not the group, is what
+            // carries a chart's membership. Ugly beats silently destructible: the
+            // same reasoning this file already applies to a chart that loses its
+            // group but keeps its config, and the same conclusion
+            // `chooseGroupMembers` reaches when one member cannot be named at all.
+            //
+            // "IT IS STILL TAGGED, STILL RE-EDITABLE" USED TO BE THE NEXT WORDS,
+            // and on this host they are false. Measured 2026-08-15 over the whole
+            // round archive, joining each chart's grouping outcome to its tag:
+            //
+            //     grouped      64 chart(s),  1 lost the tag =  2%
+            //     NOT grouped  62 chart(s), 41 lost the tag = 66%
+            //
+            // A group is a handle made in the grouping batch and never resolved,
+            // so the config lands on it. Without one the tag falls back to a
+            // `created` handle and this host refuses it two times in three. So
+            // declining to group is not the free, conservative choice it reads as
+            // here — it is the choice that costs the chart its config most of the
+            // time.
+            //
+            // The branch is LEFT AS IT IS for now, deliberately: the alternative
+            // (group the subset) strands the unmatched shapes, which is the
+            // destructible failure this rule was written to prevent, and choosing
+            // between two harms is not a call to make from a trace. What the
+            // measurement changes is where to look — chart 4 of 8 matches 20 of
+            // its 24 shapes in EVERY round, which is a re-read problem with a
+            // fixed shape, not a coin toss. Fix the re-read and neither harm has
+            // to be chosen. See `docs/BACKLOG.md`.
+            //
+            // Deliberately NOT falling through to the positional rule below. That
+            // branch is safe only when NOTHING matched by id, because a slide
+            // holding the user's own shapes can satisfy `items.length >=
+            // created.length` while the chart itself read short — and "the last
+            // N" would then reach past the chart into the user's content and
+            // group it in, to be deleted with the chart on the next update.
+            trace("group", "the re-read matched only some of the chart's shapes", {
+              index: i,
+              drew: it.created.length,
+              matched: matched.length,
+              // See the empty-re-read line above: the sync count is what turns a
+              // decay curve into a measurement.
+              contextSyncs: syncsOf(context),
+              // Survived a settle delay, so this is not the host still catching up.
+              afterRetry: true,
+            });
+          } else if (items.length >= it.created.length) {
+            // No ids to match on at all — a host that would not read them back.
+            // The positional rule is still right for a slide this run added
+            // blank, which is every slide the demo path draws on.
+            freshMembers.set(i, items.slice(items.length - it.created.length));
+          }
+        });
+        pending = retry;
+      }
     } catch (err) {
       // Say so. This catch was silent, and silence here is the mistake this
       // project has now paid for twice: `refreshed=0` in a run log means

@@ -26,6 +26,7 @@ import {
   CHART_PARTS_TAG,
   _setBatchTimeoutForTest,
   _setReadbackTimeoutForTest,
+  _setReReadRetryDelayForTest,
   addScratchSlide,
   chooseGroupMembers,
   deckIdForSelectedSlide,
@@ -1308,6 +1309,101 @@ describe("what a group that SUCCEEDS leaves behind", () => {
     }
   });
 
+  /**
+   * THE SETTLING SLIDE, and the fix that came from the office-js tracker rather
+   * than from a round.
+   *
+   * Measured over the whole round archive on 2026-08-15, and it is a switch
+   * rather than a tendency:
+   *
+   *     slide already had shapes   82 chart(s), 81 grouped = 99%
+   *     freshly added, empty       74 chart(s),  1 grouped =  1%
+   *
+   * PowerPoint Online does not populate a freshly materialised slide's shape
+   * collection straight away (office-js#2903, #5022). The pre-grouping re-read
+   * therefore comes back short or empty, the chart is not grouped, its tag falls
+   * back to a `created` handle, and this host refuses that about seven times in
+   * ten. So it loses its config.
+   *
+   * These two pin the remedy: ask again, after a pause, and only when the first
+   * answer was bad. Both would have passed before the retry existed for the
+   * wrong reason — with no group formed and no complaint — so both assert the
+   * GROUP, which is the thing that actually saves a config.
+   */
+  it("asks a settling slide again when the re-read comes back EMPTY, and the chart groups", async () => {
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    // The first `items/id` read answers empty and every one after it answers
+    // honestly — a slide still catching up, not a host that is short for good.
+    faults.hollowReads = 1;
+    _setReReadRetryDelayForTest(0);
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries;
+      expect(
+        said.filter((e) => e.message === "re-reading the slide's shapes again after a settle delay").length,
+        "the empty answer was taken at face value and never questioned",
+      ).toBe(1);
+      // THE GROUP, which is the point. Grouped charts lose their config 2% of
+      // the time and ungrouped ones 66%, so this is the assertion that says the
+      // retry bought something rather than just costing a delay.
+      const live = slide.created.filter((s) => !s.deleted);
+      expect(
+        live.some((s) => s.type === "group"),
+        "the settled re-read named every shape and the chart still was not grouped",
+      ).toBe(true);
+      // And the round must not be told the host failed on a chart that came out
+      // fine — `emptyReReads` is read as a per-round friction number.
+      expect(
+        said.some((e) => e.message === "the re-read before grouping came back empty"),
+        "a first answer the retry repaired was still reported as a fault",
+      ).toBe(false);
+    } finally {
+      faults.hollowReads = 0;
+      _setReReadRetryDelayForTest(1_500);
+      setTracing(false);
+    }
+  });
+
+  it("asks a settling slide again when the re-read comes back SHORT, and the chart groups", async () => {
+    // The other half, and the commoner one: chart 4 of 8 matched 20 of its 24
+    // shapes in EVERY round for five rounds running. Four specific shapes are
+    // not four missing shapes — it is a read that has not finished.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    faults.readsMissingFirst = 4;
+    _setReReadRetryDelayForTest(0);
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries;
+      expect(
+        said.filter((e) => e.message === "re-reading the slide's shapes again after a settle delay").length,
+        "a partial answer was thrown away without being questioned",
+      ).toBe(1);
+      const live = slide.created.filter((s) => !s.deleted);
+      expect(
+        live.some((s) => s.type === "group"),
+        "the settled re-read named all 24 and the chart still was not grouped",
+      ).toBe(true);
+      // NOT the stranded-shape trade. The whole value of retrying is that
+      // neither harm has to be chosen — nothing is left loose inside the box.
+      expect(
+        said.some((e) => e.message === "the re-read matched only some of the chart's shapes"),
+        "the partial branch ran anyway, so the retry did not actually repair the read",
+      ).toBe(false);
+    } finally {
+      faults.readsMissingFirst = 0;
+      _setReReadRetryDelayForTest(1_500);
+      setTracing(false);
+    }
+  });
+
   it("keeps the chart WHOLE rather than grouping the part the host would name", async () => {
     // Short, not empty — the case `hollowReads` documents and does not do, and
     // the one this host really produces. An empty re-read makes
@@ -1340,6 +1436,12 @@ describe("what a group that SUCCEEDS leaves behind", () => {
       expect(short[0].data?.contextSyncs, "the re-read named no sync, so the decay curve loses its x-axis").toEqual(
         expect.any(Number),
       );
+      // AND THAT A SETTLE DELAY DID NOT SAVE IT. `readsMissing` is permanent, so
+      // this chart was asked twice and answered short both times — which is what
+      // makes the trade below a real trade rather than an impatient one. Without
+      // this the line could not be told apart from a first answer nobody waited
+      // on, and that is the reading a round log needs most.
+      expect(short[0].data?.afterRetry, "a short read was declared final without a second ask").toBe(true);
 
       // Nothing grouped, and specifically not the part the host could name.
       const groups = said.filter((e) => e.message === "grouped the chart's shapes");

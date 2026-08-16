@@ -310,10 +310,14 @@ pane's Insert draws on the slide the user is looking at, and Same Scale
 optimising the measurement rather than the thing measured, and this project has
 made that mistake before.
 
-#### 3. Retry a short or empty re-read once, after a delay — FROM THE TRACKER, NOT FROM A ROUND
+#### 3. Retry a short or empty re-read once, after a delay — BUILT 2026-08-16, AWAITING ITS ROUND
 
 **This did not come out of the archive. It came out of the office-js tracker on
 2026-08-16, and it reframes items 1 and 2 above.**
+
+**IT IS BUILT AND MERGED. What it has NOT had is a real host** — every claim
+below is a prediction until a round tests it, and the prediction is staked here
+on purpose so the round can refute it.
 
 PowerPoint Online has a **known settling delay on a slide that has just been
 materialised**: the shapes collection is not populated immediately after
@@ -350,6 +354,34 @@ of one round.
 **Stake the prediction before the round** (the method that earned itself
 overnight): charts 4 and 5 of `same scale across the deck` group, and the
 scenario stops failing at 34 of 34.
+
+**What shipped**, so the round is read against the right thing:
+
+- `REREAD_RETRY_MS = 1500`, `REREAD_ATTEMPTS = 1` in `powerpoint.ts`. The
+  pre-grouping re-read runs in an attempt loop over a `pending` list; a chart
+  whose answer was complete leaves the loop after the first pass and pays
+  nothing. A fresh slide handle is taken per attempt, because Office.js rewrites
+  the previous one to `slides.getItem(id)` and this host refuses shapes hanging
+  off that.
+- Two new trace readings. `re-reading the slide's shapes again after a settle
+  delay` says the retry ran, with the slides it ran for; and both failure lines
+  now carry `afterRetry: true`, so a round log distinguishes "short" from "short
+  even after a pause" — the second is a much stronger claim about the host and
+  the logs could not make it before.
+- `hostFriction.emptyReReads` counts only reads the retry failed to repair, so a
+  round is not told the host failed on a chart that came out fine.
+- `faults.readsMissingFirst` in the fake — short once, then honest. Neither
+  existing fault could express a slide that settles (`readsMissing` is permanent,
+  `hollowReads` heals but only from empty), so without it the suite could show
+  the retry costing a delay and never show it saving anything.
+
+Guarded by two tests that assert **the group**, not the absence of a complaint,
+and mutation-proven: `REREAD_ATTEMPTS = 0` turns both red.
+
+**If the round refutes it**, the thing to check first is whether 1500ms is simply
+too short — the tracker's reports say "one to two seconds" and this sits at the
+bottom of that range deliberately, because the cost is paid on the live insert
+path too.
 
 #### DONE — cleared 2026-08-16
 
