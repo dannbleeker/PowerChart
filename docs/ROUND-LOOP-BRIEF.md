@@ -1,62 +1,67 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **044** (`rounds/044-355a37c.json`, 10 of 12, 2026-08-15).
+Repeat. Last round **067** (`rounds/067-d8ba7df.json`, 10 of 12, 2026-08-16).
 
 **This file is the operating document.** A session that reads only this and
 `docs/ROUNDS.md` has everything it needs.
 
-## THE NEXT RUN HAS ONE JOB — read this before anything else
+## THE RETRY RAN — read this before staking another one
 
-**A five-hour run, prepared 2026-08-16, and it exists to test ONE change.**
+**The run this section used to brief has happened.** `REREAD_RETRY_MS` — the
+pre-grouping re-read asking a second time after 1.5s when the first answer is
+short or empty — was measured over **four rounds on two builds**: 064 and 065 on
+`bcd5773`, 066 and 067 on `d8ba7df`. Two pairs, which is the discipline below
+being honoured rather than a coincidence.
 
-The pre-grouping re-read now asks a second time, after 1.5s, when the first
-answer is short or empty (`REREAD_RETRY_MS` in `powerpoint.ts`). It came from the
-office-js tracker rather than from a round: PowerPoint Online does not populate a
-freshly materialised slide's shape collection straight away, and the workaround
-the reports converge on is to wait a second or two before reading it.
+**What the three staked claims did:**
 
-**The prediction, staked before the round so it can be refuted:**
+| staked | outcome |
+| --- | --- |
+| `freshly added, empty` moves off **1%** grouped | **held** |
+| charts 4 and 5 of `same scale` group and keep their configs | **partly** |
+| `same scale` stops failing at **34 of 34** | **held — but it still FAILS** |
 
-- `WHICH SLIDE THE CHART LANDED ON` moves `freshly added, empty` off **1%**
-  grouped.
-- Charts 4 and 5 of `same scale across the deck` group and keep their configs.
-- `same scale` stops failing at **34 of 34**.
+The refutation that was printed in advance — `repaired 0` — did not come. All
+four rounds report `the settled retry repaired 2`, the same number on both
+builds, which is what separates it from the noise floor. Pooled grouping is
+**8%** over 43 rounds, and `npm run rounds` says in as many words that 39 of them
+predate the retry, so that figure is a floor climbing rather than the rate.
 
-**The number that settles it** is on the scenario's own verdict line now — no log
-joining required:
+`same scale` moved regime instead of passing. All four rounds:
 
-    ; of the re-reads before grouping, N read short, N read empty,
-      the settled retry repaired N
+    4 of 8 charts carry the shared scale … 7 still re-editable;
+    the host flipped at chart 4 of 8, so the last 3 were not attempted
 
-`repaired 0` while the other two climb is the **refutation**, and it is printed
-explicitly for that reason. If it comes back 0, the first thing to check is
-whether 1500ms is simply too short — the reports say "one to two seconds" and
-this sits at the bottom of that range deliberately, because the cost is also paid
-on the live insert path.
+Against the recorded before-state — 5 of 8 drawing all 24 shapes and then
+unreachable — that is most of the way, and identical across two builds. It is
+**not** a pass, and the scenario should keep reporting FAIL until it is one.
 
-**Run it as a PAIR on the same build before believing either result.** See the
-discipline below; the noise floor on this project is 1-versus-5 for the same
-fault with nothing changed.
+**What is still broken is the TAG, not the grouping.** Those charts group now and
+lose their config anyway: the tag is refused through the GROUP handle, because
+the group hangs off a slide handle Office has rewritten to `slides.getItem(id)`,
+and a freshly added slide's id does not round-trip on this host. That is one
+level up from where the retry works, and no round has been spent on it yet.
 
-**What NOT to spend the run on.** The mechanism is settled and the questions
-listed under ANSWERED are answered. Three hypotheses died to archive queries in
-minutes where rounds would have cost hours, and the overnight audit found more
-than the rounds did. If the retry works, the next question is a product one
-(below) and no round can answer it.
+### Two bookkeeping debts this run left
 
-### Before it can start — one thing, and it needs a password
+**The retry prediction was never staked in the ledger.** It was written here, in
+prose, and `rounds/predictions.json` has no entry for it — so `npm run rounds`
+could not judge it and the judgement above had to be assembled by hand from four
+verdict lines. This file's own rule is that the ledger is what judges. Stake the
+next one there.
 
-`node scripts/round.mjs --check` on 2026-08-16 says:
+**`the-refused-group-is-what-kills-the-tag` (#520) is judged and unrecorded.**
+`npm run rounds` prints it `FAILED … .tags was undefined after the refused
+group`, and its ledger entry still reads `open`. Recording what happened is the
+half that is missing, and it wants the round mined rather than the verdict line
+copied.
 
-    Office has opened a sign-in prompt beside the deck — the deck tab is still
-    there, but the host is asking for credentials …
-
-Sign in on that prompt, confirm the add-in pane is still open, then
-**hard-reload the PowerPoint tab** — the pane was serving `e68147f` while the
-site had moved on, and a round on a stale pane measures the previous build while
-looking like it tested the new one. The deck was clean at 1 slide and both
-toggles were on, so nothing else needs setting up.
+**What NOT to spend a run on.** The mechanism is settled and the questions listed
+under ANSWERED are answered. Three hypotheses died to archive queries in minutes
+where rounds would have cost hours, and the overnight audit found more than the
+rounds did. The next question is the tag refusal above, or the product decision
+below — and no round answers the second one.
 
 ## The one discipline that matters this run
 
@@ -96,12 +101,20 @@ poll exit non-zero. That killed a healthy round that went on to pass 10 of 12.
 ## Where this stands — read before adding a round
 
 **The mechanism is settled.** A chart drawn onto a slide this run has just added
-gets a short or empty pre-grouping re-read, so it is not grouped; an ungrouped
-chart's tag falls back to a `created` handle and is refused about seven times in
-ten. Pooled over 32 rounds:
+USED to get a short or empty pre-grouping re-read, so it was not grouped; an
+ungrouped chart's tag falls back to a `created` handle and is refused about seven
+times in ten. Pooled over 43 rounds:
 
-    slide already had shapes   97 chart(s), 96 grouped = 99%
-    freshly added, empty       84 chart(s),  1 grouped =  1%
+    slide already had shapes  130 chart(s), 129 grouped = 99%
+    freshly added, empty      106 chart(s),   9 grouped =  8%
+
+**Read that 8% as a pooled figure, not the current rate** — 39 of the 43 rounds
+predate the settled retry (`REREAD_RETRY_MS`), so it climbs slowly. Since the
+retry those charts DO group: rounds 064 and 065, both, on the same two charts,
+and round 067's `same scale` verdict line reports `the settled retry repaired 2`.
+What such a chart still loses is the TAG, refused through the GROUP handle — the
+group hangs off a slide handle Office has rewritten to `slides.getItem(id)`, and
+a freshly added slide's id does not round-trip on this host.
 
 `npm run rounds` prints it. `same scale across the deck` fails for this reason,
 the same charts in the same order, every round — it is deterministic, and after
@@ -121,12 +134,15 @@ round:**
    `tagAnchorIndex` — question 2 here until 2026-08-16 — **has been reverted**.
    No measured effect across five rounds and four builds.
 
-   **And there is now a third route neither of those is**, from the office-js
-   tracker rather than from a round: PowerPoint Online has a known settling delay
-   on a slide that has just been materialised, and the community workaround is to
-   wait before reading its shapes. Retrying a short or empty pre-grouping re-read
-   once, after a delay, needs no ownership guarantee and strands no shapes. See
-   `docs/BACKLOG.md`.
+   **The third route — the settled retry — has SHIPPED and is measured**, so it
+   is no longer a proposal competing with the two above. It came from the
+   office-js tracker rather than from a round: PowerPoint Online has a known
+   settling delay on a slide that has just been materialised, and the community
+   workaround is to wait before reading its shapes. It needs no ownership
+   guarantee and strands no shapes, and over four rounds it repaired 2 re-reads
+   each time. **It does not close this decision** — the charts it rescues group
+   and still lose their tag, so the trade above is live for exactly the charts
+   the retry does not reach. See the top of this file and `docs/BACKLOG.md`.
 
 **ANSWERED — do not re-ask, and do not spend a round on any of them:**
 
