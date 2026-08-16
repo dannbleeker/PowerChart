@@ -1,7 +1,7 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **044** (`rounds/044-355a37c.json`, 10 of 12, 2026-08-15).
+Repeat. Last round **067** (`rounds/067-d8ba7df.json`, 10 of 12, 2026-08-16).
 
 **This file is the operating document.** A session that reads only this and
 `docs/ROUNDS.md` has everything it needs.
@@ -96,12 +96,20 @@ poll exit non-zero. That killed a healthy round that went on to pass 10 of 12.
 ## Where this stands — read before adding a round
 
 **The mechanism is settled.** A chart drawn onto a slide this run has just added
-gets a short or empty pre-grouping re-read, so it is not grouped; an ungrouped
-chart's tag falls back to a `created` handle and is refused about seven times in
-ten. Pooled over 32 rounds:
+USED to get a short or empty pre-grouping re-read, so it was not grouped; an
+ungrouped chart's tag falls back to a `created` handle and is refused about seven
+times in ten. Pooled over 43 rounds:
 
-    slide already had shapes   97 chart(s), 96 grouped = 99%
-    freshly added, empty       84 chart(s),  1 grouped =  1%
+    slide already had shapes  130 chart(s), 129 grouped = 99%
+    freshly added, empty      106 chart(s),   9 grouped =  8%
+
+**Read that 8% as a pooled figure, not the current rate** — 39 of the 43 rounds
+predate the settled retry (`REREAD_RETRY_MS`), so it climbs slowly. Since the
+retry those charts DO group: rounds 064 and 065, both, on the same two charts,
+and round 067's `same scale` verdict line reports `the settled retry repaired 2`.
+What such a chart still loses is the TAG, refused through the GROUP handle — the
+group hangs off a slide handle Office has rewritten to `slides.getItem(id)`, and
+a freshly added slide's id does not round-trip on this host.
 
 `npm run rounds` prints it. `same scale across the deck` fails for this reason,
 the same charts in the same order, every round — it is deterministic, and after
