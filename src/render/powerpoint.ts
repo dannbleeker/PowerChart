@@ -1130,9 +1130,10 @@ export async function insertSceneIntoSlide(
           getSlide,
           created,
           opts: { ...opts, altText: scene.desc, altTitle: scene.title },
-          // A chart that took more than one batch holds proxies from before the
-          // last sync, and the web host refuses those — see `refreshShapes`.
-          refreshShapes: spansBatches(created, opts),
+          // Any chart that will be GROUPED, not just one that crossed a sync
+          // boundary — this host refuses a creation proxy for addGroup whatever
+          // its age. See `needsPreGroupRefresh`.
+          refreshShapes: needsPreGroupRefresh(created, opts),
         },
       ]),
     );
@@ -1723,7 +1724,7 @@ export async function updateChartsInSlides(
         context,
         // An update redraws every shape, so the same multi-batch staleness that
         // costs a fresh insert its group costs an edit its group too.
-        rendered.map((r) => ({ ...r, refreshShapes: r.refreshShapes || spansBatches(r.created, r.opts) })),
+        rendered.map((r) => ({ ...r, refreshShapes: r.refreshShapes || needsPreGroupRefresh(r.created, r.opts) })),
       ),
     );
 
@@ -3420,7 +3421,14 @@ async function addAndRenderItem(
     // evidence: this host produces that chain intermittently and the fix was
     // never reached. What would settle it is a round that inserts a demo deck
     // the shape-by-shape way, where charts of 11-40 shapes exist.
-    const needsRefresh = spansBatches(drawn, opts) || !!item.pictureBase64;
+    //
+    // SETTLED ON A REAL HOST NOW, and the answer was that the condition here was
+    // still too narrow. 41 rounds: a chart that spanned batches grouped 333 out
+    // of 333, one that fitted in a single batch 49 out of 204. The gate, not the
+    // host, was the difference. `needsPreGroupRefresh` widens it to any chart
+    // that will be grouped, and keeps `spansBatches` in the OR for the
+    // ungroupable-but-stale case this branch was originally written for.
+    const needsRefresh = needsPreGroupRefresh(drawn, opts, !!item.pictureBase64);
     const [result] = await groupAndTagAll(context, [{ getSlide, created: drawn, opts, refreshShapes: needsRefresh }]);
     grouped = !!result?.grouped;
     tagged = !!result?.tagged;
@@ -6912,6 +6920,54 @@ function spansBatches(created: PowerPoint.Shape[], opts: InsertOptions): boolean
 }
 
 /**
+ * Should this chart re-read the slide's shapes before it is grouped and tagged?
+ *
+ * **YES FOR ANY CHART THAT WILL BE GROUPED**, and until 2026-08-16 it was yes
+ * only for a chart that spanned batches. That gate is what made a small chart
+ * un-groupable on PowerPoint for the web, and the archive is unambiguous — 41
+ * rounds, 537 draws:
+ *
+ *     spanned batches   333 draw(s),  333 grouped = 100%
+ *     one batch only    204 draw(s),   49 grouped =  24%
+ *
+ * A single-batch chart never refreshed, so `addGroup` got the raw `created`
+ * proxies, and this host refuses those: `InvalidParam passed to GetItem(id)`,
+ * 5010. The failed group then takes the tag with it — `target.tags` comes back
+ * undefined, 155 times out of 155 across the archive, every one immediately
+ * after a 5010 group.
+ *
+ * `spansBatches` was never wrong about its own case; it was too narrow. Its
+ * reasoning is about proxies aged across a sync boundary, and it missed that
+ * this host refuses a creation proxy for `addGroup` **whatever its age**.
+ *
+ * **WHY THE OLD GATE EXISTED, and why the objection has weakened.** Asking for a
+ * re-read a chart did not need was "a way to LOSE a group, not gain one",
+ * because this host answers a re-read short or empty and an empty answer used to
+ * mean "group nothing". Two things protect that now: a short or empty answer is
+ * asked AGAIN after a settle delay (`REREAD_RETRY_MS`), and if it is still empty
+ * a chart whose proxies never crossed a sync falls back to `created` rather than
+ * declining (`chooseGroupMembers`). The widening cannot leave a small chart
+ * worse off than it was.
+ *
+ * **The cost is a round trip per single-batch chart on the live insert path**,
+ * which is the path a user waits on. Taken deliberately: a chart that cannot be
+ * grouped loses its config three times in four, and an insert 0.1s slower beats
+ * one the pane cannot re-open.
+ *
+ * `spansBatches` stays in the OR for the chart that is NOT groupable but still
+ * crosses a sync boundary — a single degraded picture is the case — because the
+ * stale-proxy trap is a property of using a proxy across a sync, and tagging
+ * does that too.
+ */
+export function needsPreGroupRefresh(created: PowerPoint.Shape[], opts: InsertOptions, hasPicture = false): boolean {
+  // The same test `groupAndTagAll` uses to decide what is groupable, so the two
+  // cannot drift apart — a chart that will be grouped is exactly the chart that
+  // needs fresh handles to be grouped WITH.
+  const willGroup = opts.group !== false && created.length > 1;
+  return willGroup || spansBatches(created, opts) || hasPicture;
+}
+
+/**
  * Off-screen slides (appended by the demo deck or the agenda) don't repaint
  * mid-render, so the host swallows batches ~4-5x larger than the live canvas
  * tolerates. Measured against the real host: a stacked chart at 10 shapes
@@ -7391,6 +7447,23 @@ export function chooseGroupMembers(o: {
   // has just refused to list the slide's shapes at all — this one answered
   // `shapes-items-count-honest` with `short-0`, twenty-four drawn and none
   // reported — and it is exactly the host that will refuse `created` too.
+  //
+  // FALLING BACK TO `created` HERE WAS TRIED ON 2026-08-16 AND IS WRONG, twice
+  // over. Every groupable chart now asks for the refresh, so it seemed only fair
+  // that a small chart whose proxies never crossed a sync should drop back to
+  // what it used before rather than be made worse by asking.
+  //
+  // It cannot work, and it would hurt if it did. **The re-read itself costs a
+  // sync**, so by the time `addGroup` runs those proxies are a sync old and this
+  // host rejects them anyway — `strictGroup` in the fake models exactly that,
+  // and it is not a modelling artifact: on the real host a single-batch chart
+  // grouping through same-sync creation proxies succeeded 49 times in 204.
+  //
+  // And a doomed attempt is worse than none. A refused `addGroup` does not just
+  // fail — it takes the tag with it: `target.tags` comes back undefined 155
+  // times out of 155 across the archive, every one immediately after a 5010
+  // group. An ungrouped chart still gets a tag write attempted; a failed group
+  // loses the group AND the tag. So declining is strictly better than trying.
   return o.askedForRefresh ? { use: "none" } : { use: "created" };
 }
 
