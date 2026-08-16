@@ -1219,3 +1219,73 @@ instrument went blind in exactly the place it was being used to measure.
 It was caught because the number was implausible, not because anything failed.
 That is the same lesson as the starved-questions sweep, from the other side:
 **pool your instrument's own behaviour, and distrust a clean 100%.**
+
+## Rounds 068 + 069 (`2c7dcd8`, 2026-08-16) — the pair did NOT replicate, and that is the result
+
+**Reading 068 alone would have shipped a false conclusion**, and this pair is the
+case for the discipline added the same day.
+
+    round   1-batch draws  grouped  not-grouping  retries  unmatched(traced)
+    067           5           0          5           2           0
+    068           5           4          0           7           4
+    069           5           1          4           7           5
+
+**068 read as a clean win: 0 to 4 of 5.** 069, same build, no merge between,
+scored **1 of 5**. The retry fired identically in both (7), and the zero-match
+persisted in both (4 and 5) — what moved is whether the charts grouped at all.
+
+**One instrumented field explains the whole spread.** `listed` — how many shapes
+the host named — on the traces that survived the retry:
+
+    068    listed 10, 9, 16, 17     all >= drawn  ->  positional fallback fires  ->  4 grouped
+    069    listed  1, 1, 1, 1, 31   four short    ->  fallback cannot fire       ->  4 declined
+
+Four reads returned **ONE shape** for a slide holding seven to nine, and every
+one of them carries `afterRetry: true` — the host read that short *after* a
+1.5-second settle. More waiting is not the answer.
+
+**So the mechanism is now fully named, and it is not what the fix assumed:**
+
+1. The pre-grouping re-read **never matches our ids** on these charts.
+   `withOwnId` is 7 of 7 and 9 of 9, so our handles are fine — the host lists the
+   slide under ids that are not the ones it gave us at creation.
+2. Grouping therefore depends entirely on the **positional fallback**, which is a
+   guess ("the last N on the slide") and only legal when nothing matched.
+3. That fallback needs `listed >= drawn`, and whether the host lists enough is
+   **moody**: 9-17 one round, 1 the next.
+
+**What the change is actually worth.** The old build grouped these charts 0 times
+in two rounds (066, 067). The new build grouped them 4 and 1. That is a real
+improvement — it never happened before and now sometimes does — but it is
+unreliable, and it arrives through a positional guess rather than through the id
+match the retry was meant to repair. **Recorded as partial, not as a win.**
+
+Scenario level is unchanged in both: 10 of 12, `same scale` 4 of 8, and `the
+chart is actually visible` still ends "the host would not name the chart
+afterwards, so it carries no config". Grouping improved; the config did not
+follow, which is consistent with the earlier correction that grouping is not what
+saves it.
+
+### The web search, recorded including its null result
+
+No upstream issue reports this symptom — a collection listing shapes under ids
+that do not match the ones returned at creation. The near relatives are all
+already cited here: #5022 (sync hangs after add-then-read; delay workaround,
+applied), #2903 (applied), #6498 (inserts not reflected instantly), #6363
+(properties unavailable after sync, ten failed attempts). **Written down so the
+next session does not spend the same twenty minutes finding the same absence.**
+
+**The internal parallel is stronger than any of them.** This project already
+measured the SLIDE version: scratch slides came back as `4123571114#123571113`
+while the deck listed `287#62081387` — a freshly added slide reporting an id in a
+namespace the deck will not answer to. Round 068/069's shape traces are the same
+signature one level down.
+
+**And the search surfaced something worth reopening**: Microsoft's shape-BINDING
+documentation, unprompted, in two of three searches. `bindings.add` takes the
+live Shape proxy inside the batch that created it — no id round trip, no
+collection read, which is exactly the two things failing here. This repo parked
+that route as *unanswerable from the probe* (`binding-names-shape-later` asked
+eight times, never once reached its own question). That was a fact about the
+PROBE. The retry proved the other route: measure it in production, where the
+question can actually be asked.
