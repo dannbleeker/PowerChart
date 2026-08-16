@@ -1301,3 +1301,56 @@ user waits on.
 
 **Owner's call, because it changes every insert.** The evidence is as strong as
 this project gets, and the risk is a round-trip on the interactive path.
+
+
+### THE RE-READ NEVER MATCHES OUR IDS — named precisely by rounds 068/069
+
+**The clearest statement of the grouping defect this project has, and it took one
+instrumented field to get.**
+
+    withOwnId 7 of 7, 9 of 9   our handles are fine — the ids we hold are real
+    listed    9, 10, 16, 17    the host named plenty of shapes...
+              1, 1, 1, 1, 31   ...and in the next round, ONE
+    matched   0                none of them ours, in either round
+
+So the host lists a freshly drawn slide's shapes **under ids that are not the
+ones it returned at creation**, and how many it lists at all is moody. Every one
+of those traces carries `afterRetry: true`: it read that way *after* a
+1.5-second settle, so waiting longer is not the fix.
+
+**Consequence.** Grouping for these charts now rests entirely on the positional
+fallback — "the last N on the slide" — which is a guess, is only legal when
+nothing matched, and needs `listed >= drawn`. That is why the same build grouped
+4 of 5 in one round and 1 of 5 in the next.
+
+**The internal parallel says what kind of bug this is.** Scratch slides came back
+as `4123571114#123571113` while the deck listed `287#62081387` — a freshly added
+SLIDE reporting an id in a namespace the deck will not answer to. This is that,
+one level down, on shapes.
+
+#### The route worth reopening: a BINDING, measured in production
+
+`bindings.add` takes the live Shape proxy inside the batch that created it — **no
+id round trip and no collection read**, which are precisely the two things
+failing above. Microsoft's own shape-binding documentation surfaced unprompted in
+two of three web searches on this symptom.
+
+This repo parked bindings as **unanswerable, not refuted**: `binding-names-shape-
+later` was asked eight times in eight rounds and never once reached its own
+question, because a shape probe needs the scratch slide resolved more times than
+this host allows. **That is a fact about the probe, not about bindings** — and it
+is the same shape as the six questions found 0-for-41.
+
+The settled retry proved the alternative: ask in PRODUCTION. `repaired N` on a
+verdict line settled in one evening what twelve rounds of probing could not.
+
+**Plan it before building it** (the four points): the defect is that no durable
+handle survives from creation to grouping; the seam is `groupAndTagAll`'s member
+choice, beside `chooseGroupMembers`; what proves it is a `by: "binding"` reading
+on the grouping trace against today's `ids`/`created`/positional; and it must not
+touch the id path that already works for multi-batch charts, which group at 100%
+on current builds and must stay that way.
+
+**Owner-gated on cost, not on doubt**: bindings are PowerPointApi 1.8 against a
+manifest pinned at 1.4, so it needs a `supports("1.8")` gate like grouping
+already has, and it must degrade to today's behaviour on an older host.
