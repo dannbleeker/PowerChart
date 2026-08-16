@@ -570,6 +570,7 @@ describe("triage — logs that are not inserts", () => {
     expect(d.map((x: { name: string }) => x.name)).toEqual(["same scale"]);
     expect(d[0].passedIn).toEqual(["16:9"]);
     expect(d[0].failedIn).toEqual(["4:3"]);
+    expect(d[0].flaky, "a clean difference between profiles must not be called flaky").toBeFalsy();
 
     // FAILING IN BOTH is an ordinary bug, not divergence — reporting it here
     // would bury the one signal this exists for.
@@ -580,6 +581,24 @@ describe("triage — logs that are not inserts", () => {
       ]),
       "reported a plain bug as a slide-size difference",
     ).toEqual([]);
+
+    // A PROFILE THAT DISAGREES WITH ITSELF IS FLAKY, NOT DIFFERENT — and the
+    // check's first live outing got this wrong. `explode a degraded picture`
+    // passed at 4:3, then passed once and failed once at 16:9 on one build.
+    // Collapsing a profile to its worst outcome reported "diverged between
+    // slide sizes", which was true of the worst reading and wrong about the
+    // cause — and it would send someone to investigate an aspect ratio for a
+    // scenario that is simply unreliable.
+    const unstable = profileDivergence([
+      at("aaaaaaa", 720, 540, [["explode", true]]),
+      at("aaaaaaa", 960, 540, [["explode", true]]),
+      at("aaaaaaa", 960, 540, [["explode", false]]),
+    ]);
+    expect(unstable.map((x: { name: string }) => x.name)).toEqual(["explode"]);
+    expect(unstable[0].flaky, "reported a profile disagreeing with itself as a slide-size difference").toBe(true);
+    expect(unstable[0].unstableIn).toEqual(["16:9"]);
+    // And it must NOT claim the stable profile failed anything.
+    expect(unstable[0].failedIn).toEqual([]);
 
     // ACROSS BUILDS IS NOT A COMPARISON. Two rounds on different builds differ
     // for reasons that have nothing to do with slide size.

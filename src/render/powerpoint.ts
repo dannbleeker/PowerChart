@@ -1211,6 +1211,34 @@ export async function updateChartInSlide(
   opts: InsertOptions = {},
 ): Promise<EditTarget | null> {
   const [next] = await updateChartsInSlides([{ scene, target, opts }]);
+  // SAY SO WHEN NOTHING COMES BACK. `explode a degraded picture` fails by
+  // reaching exactly this null — and until 2026-08-16 the round said nothing at
+  // all between the deck scan and the verdict, so five failures across eight
+  // rounds produced no evidence about which of them was which.
+  //
+  // The scenario's own note can only report what it OBSERVED: the chart is
+  // still on the slide, and the update would not work. Whether the batch
+  // resolved the shape, whether the picture fill was the step that failed, and
+  // whether an id was refused on the way are all invisible from there.
+  //
+  // Upstream has no matching report. office-js#3698 is the nearest — image
+  // insertion refused while another shape is selected, still in backlog — but
+  // that is `setSelectedDataAsync`, not `ShapeFill.setImage`, and nothing here
+  // shows a selection. #225 (large base64 fails mid-insert) and #5022 (sync
+  // hangs after an image) are adjacent and neither matches either. So this is
+  // ours to characterise, and it cannot be characterised without a line.
+  if (!next)
+    trace("update", "the update produced no target for this chart", {
+      slideId: target.slideId,
+      shapeId: target.shapeId,
+      // The picture path is the one that fails intermittently, so whether this
+      // update was carrying one is the first thing a reader needs.
+      asPicture: !!opts.pictureBase64,
+      parts: target.partIds?.length ?? 0,
+      // Refusals are cumulative for the session; a reader differences them
+      // against the scenario's own start, exactly as `updateLossNote` does.
+      idRefusals: hostFrictionCounts().idRefusals,
+    });
   return next ?? null;
 }
 
