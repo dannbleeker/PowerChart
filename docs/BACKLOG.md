@@ -160,7 +160,21 @@ wedge is in PowerPoint rather than in how it is called. A Playwright click on
 the **canvas** is a real click and might dodge it entirely — the one thing worth
 trying first if this is ever built.
 
-### Take more than two draws per arm
+### ~~Take more than two draws per arm~~ — MOOT, the question it served is closed
+
+**Removed as an action 2026-08-16.** This existed to reach 60 draws an arm
+faster, because `does a rasterise poison the next draw` could not be answered at
+two per round. The rounds got there by accumulation: **60 per arm, 0 stalls in
+both**, and the question is closed. Building a faster instrument for a question
+already answered is optimising the measurement rather than the thing measured,
+which is the mistake this file records elsewhere.
+
+The rest is kept because the TRAP in it is general and still live — see below —
+and because a future question sampled per-round will meet it again.
+
+The original entry follows.
+
+---
 
 The rasterise question cannot be answered at the rate it is being sampled.
 `does a rasterise poison the next draw` collects FOUR draws a round — two per
