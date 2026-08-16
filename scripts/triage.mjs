@@ -846,6 +846,47 @@ export function poolFreshVsEstablished(logs) {
 }
 
 /**
+ * Scenarios that were passing and have stopped — the only automatic check this
+ * project has on a round's own result.
+ *
+ * WHY IT EXISTS. Rounds 070-072 took `same scale across the deck` from 35
+ * consecutive failures to three consecutive passes. Nothing protected that: a
+ * later build could take it back to 3 of 8 and no gate would fail, because every
+ * round result in this repo is read by a person and then filed. Three rounds of
+ * host time bought a result with no guard on it.
+ *
+ * ESTABLISHED MEANS PASSED IN ALL OF THE LAST `window` ROUNDS, and the threshold
+ * is the project's own: three is what `docs/ROUNDS.md` asks for "where a claim
+ * depends on it". This is what keeps the gate off the host's mood. A scenario
+ * that fails half the time was never established, so its next failure is not a
+ * regression and is not reported; one that has passed three times running and
+ * then fails is exactly the thing a person would want stopped at.
+ *
+ * A scenario absent from the older rounds is NEW, not regressed — it cannot have
+ * been established, and reporting it would make every added scenario look like a
+ * fault on its first bad round.
+ */
+export function scenarioRegressions(rounds, window = 3) {
+  if (!Array.isArray(rounds) || rounds.length < window + 1) return [];
+  const scenariosOf = (r) => {
+    const out = new Map();
+    for (const sc of r?.selftest ?? []) if (sc?.name) out.set(sc.name, !!sc.ok);
+    return out;
+  };
+  const newest = scenariosOf(rounds[rounds.length - 1]);
+  // The `window` rounds BEFORE the newest — the newest is what is being judged.
+  const before = rounds.slice(-1 - window, -1).map(scenariosOf);
+  const out = [];
+  for (const [name, ok] of newest) {
+    if (ok) continue;
+    // Established: present AND passing in every one of the previous rounds.
+    const established = before.every((r) => r.get(name) === true);
+    if (established) out.push({ name, passedIn: window });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * Did the chart span sync batches, and did it group?
  *
  * THE SHARPEST SEPARATION IN THE ARCHIVE, found 2026-08-16 while chasing what

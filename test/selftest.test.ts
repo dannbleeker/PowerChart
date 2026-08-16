@@ -126,6 +126,10 @@ describe("the host self-test battery", () => {
       "edit a chart on the visible slide",
       "insert onto a slide that already has content",
       "same scale across the deck",
+      // The drag round trip, in the only form that can be scripted. After the
+      // inserting scenarios because it needs a chart to move, and before the
+      // ladder because it must not run against a wedged host.
+      "an update follows a moved chart",
       "explode a degraded picture",
       // The ladder ahead of everything that selects a shape. Being the FIRST
       // `setSelectedShapes` in the run is the property that lets it be routine
