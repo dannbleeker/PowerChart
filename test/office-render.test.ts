@@ -3887,11 +3887,16 @@ describe("stopping work in flight", () => {
     const slide = makeSlide("s1");
     installHost([slide]);
     faults.strictTags = true;
-    // `.tags` undefined for the drawing context, the settle's by-id write, AND
-    // the settle's collection-read fallback. Three writers, so refusing "every
-    // tag write" now costs three — and the count going UP is the point of the
-    // case below it.
-    faults.tagsUndefinedOn = 3;
+    // `.tags` undefined for the drawing context, the settle's BINDING write, its
+    // by-id write, AND its collection-read fallback. Four writers, so refusing
+    // "every tag write" now costs four — and the count going UP is the point of
+    // the case below it.
+    //
+    // The binding joined them on 2026-08-16 and goes FIRST, because it is the
+    // one route that needs neither an id nor a collection read — the two things
+    // this host has been measured refusing. A chart that ends with no config
+    // now has to survive all four being refused, which is what this asserts.
+    faults.tagsUndefinedOn = 4;
     try {
       const target = await insertSceneIntoSlide(buildChart(config), { tagData: '{"a":1}' });
       // The chart IS there — this is not a failed insert, and reporting it as
