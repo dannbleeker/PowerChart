@@ -874,6 +874,22 @@ describe("the account the driver leaves of how a round ended", () => {
     expect(outcomeReceipt({ reason: "finished" }).size).toBeNull();
   });
 
+  it("numbers a round against every round ever filed, not just the working tree", () => {
+    // TWO ROUNDS WERE BOTH FILED AS 064 on 2026-08-16. `everyRoundEverFiled`
+    // was written for it and wired to the `--archive` subcommand — the path a
+    // person uses by hand. `collectRound`, which archives EVERY round, went on
+    // passing `readdirSync`: the working tree alone, blind to a round committed
+    // on a branch that is not checked out, which is the exact collision.
+    //
+    // Guarded at the DEFAULT rather than at a call site, so the next caller
+    // cannot repeat the omission. Read off the function itself because the
+    // behaviour is a default value, and a test that passed its own lister —
+    // as every other test here does — could never see it.
+    const src = String(driver.archive);
+    expect(src, "the automatic path can reuse a number again").toMatch(/list\s*=\s*everyRoundEverFiled/);
+    expect(src, "readdirSync as the default is what filed 064 twice").not.toMatch(/list\s*=\s*readdirSync/);
+  });
+
   it("names a round that threw where nothing expected it to", () => {
     // An unexpected exception used to kill the process outright: no receipt, no
     // retry, and a night that ended on its first surprise.

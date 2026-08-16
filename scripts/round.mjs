@@ -892,7 +892,7 @@ async function collectRound(sh, stamp, sleep) {
       console.error("  the run log did not arrive — archive it by hand once it does");
       return null;
     }
-    filed = archive(logPath, "rounds", readFileSync, writeFileSync, readdirSync, stamp);
+    filed = archive(logPath, "rounds", readFileSync, writeFileSync, everyRoundEverFiled, stamp);
     console.log(`  archived as rounds/${filed}`);
   } catch (err) {
     // Named, never swallowed. A round whose log was not filed is a round that
@@ -1310,7 +1310,18 @@ export function archive(
   dir = "rounds",
   read = readFileSync,
   write = writeFileSync,
-  list = readdirSync,
+  // THE DEFAULT, because the caller that mattered was passing the unsafe one.
+  // `everyRoundEverFiled` was written after two different rounds were both
+  // filed as 064, and it was wired to the `--archive` subcommand — the path a
+  // person uses by hand, occasionally. `collectRound`, which archives EVERY
+  // round automatically, went on passing `readdirSync`: the working tree alone,
+  // blind to any round committed on a branch that is not checked out. That is
+  // precisely the collision it was written to stop, on the path that runs a
+  // hundred times more often.
+  //
+  // Defaulted rather than fixed at the call site so the next caller cannot make
+  // the same omission. Tests pass their own lister and are unaffected.
+  list = everyRoundEverFiled,
   expectBuild = null,
 ) {
   const round = stripImages(JSON.parse(read(logPath, "utf8")));

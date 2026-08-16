@@ -33,20 +33,32 @@ describe("a night's cycle", () => {
   it("carries on after a round whose scenarios failed", () => {
     // A failing scenario is the measurement WORKING. Stopping here would throw
     // away the pair.
-    expect(nextStep({ exitCode: 0, receipt: receipt(), gateFailed: false }).go).toBe(true);
+    expect(nextStep({ exitCode: 0, receipt: receipt(), gateStatus: 0 }).go).toBe(true);
   });
 
   it("stops dead on a regression, which is the one fatal check", () => {
-    const step = nextStep({ exitCode: 0, receipt: receipt(), gateFailed: true });
+    const step = nextStep({ exitCode: 0, receipt: receipt(), gateStatus: 1 });
     expect(step.go).toBe(false);
     expect(step.why).toMatch(/WAS passing/);
+  });
+
+  it("does not call a gate that could not judge a regression", () => {
+    // The two non-zero exits are opposite findings. Exit 2 is the gate saying it
+    // could not read the archive at all, and reporting that as a fall sends
+    // someone hunting a regression that never happened — which is exactly what
+    // an interrupted write to a round file used to do, node exiting 1 on a
+    // SyntaxError with the night stopping to blame the build.
+    const step = nextStep({ exitCode: 0, receipt: receipt(), gateStatus: 2 });
+    expect(step.go).toBe(false);
+    expect(step.why).toMatch(/not a regression/);
+    expect(step.why, "sent the reader after a scenario that never fell").not.toMatch(/WAS passing/);
   });
 
   it("stops on a refusal recovery does not address, and says it needs a person", () => {
     const step = nextStep({
       exitCode: 1,
       receipt: receipt({ reason: "not-ready", codes: ["wrong-size"], recoverable: false, roundFile: null }),
-      gateFailed: false,
+      gateStatus: 0,
     });
     expect(step.go).toBe(false);
     expect(step.why).toMatch(/needs a person/);
@@ -60,14 +72,14 @@ describe("a night's cycle", () => {
     const step = nextStep({
       exitCode: 1,
       receipt: receipt({ reason: "not-ready", codes: ["pane-stale"], recoverable: true, roundFile: null }),
-      gateFailed: false,
+      gateStatus: 0,
     });
     expect(step.go).toBe(false);
     expect(step.why).toMatch(/retried and still could not clear/);
   });
 
   it("stops when the driver left no account of itself at all", () => {
-    const step = nextStep({ exitCode: 1, receipt: null, gateFailed: false });
+    const step = nextStep({ exitCode: 1, receipt: null, gateStatus: 0 });
     expect(step.go).toBe(false);
     expect(step.why).toMatch(/no \.round-outcome\.json/);
   });
