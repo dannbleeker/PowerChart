@@ -859,9 +859,15 @@ function reportFreshVsEstablished(logs) {
   );
   if (f.established && f.fresh)
     console.log(
-      `    A chart on a freshly added slide does not get grouped, and a chart that is not\n` +
-        `    grouped loses its config. The re-read comes back short or empty on a slide this\n` +
-        `    run has just added — see the #108-#111 saga and shape-add-held-slide-proxy.`,
+      `    A chart on a freshly added slide USED NOT TO GROUP: its pre-grouping re-read came\n` +
+        `    back short or empty, so it fell through ungrouped and lost its config. Since the\n` +
+        `    settled retry those charts DO group — rounds 064 and 065, both, on the same two\n` +
+        `    charts. The percentage above is pooled over 39 rounds that predate the retry, so\n` +
+        `    it will climb slowly and should not be read as the current rate.\n` +
+        `    What such a chart still loses is the TAG, refused through the GROUP handle: the\n` +
+        `    group hangs off a slide handle Office has rewritten to slides.getItem(id), and a\n` +
+        `    freshly added slide's id does not round-trip on this host.\n` +
+        `    See the #108-#111 saga and shape-add-held-slide-proxy.`,
     );
 }
 
