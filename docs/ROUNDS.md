@@ -352,8 +352,29 @@ nothing changed, so a claim needs two rounds that agree. **4:3 is validation, no
 measurement**: one round, asking only whether anything behaves differently at a
 slide size nothing else covers.
 
+    npm run cycle
+
+runs exactly that — two 16:9 legs then one 4:3, the gate after each round, and
+it stops the night at the round that caused a problem rather than three rounds
+later against a changed deck. By hand it is:
+
     PW_EXPECT_SIZE=16:9 node scripts/round.mjs --dir .pw-session --retry 6   # ×2, same build
     PW_DECK=<4:3 deck> PW_EXPECT_SIZE=4:3 node scripts/round.mjs --dir .pw-session --retry 6
+
+**What the cycle will not do.** It does not judge whether a round found
+something, it does not decide whether a divergence is real, and it never sets a
+slide size — that would change what the round measures rather than restore it,
+which is the one thing recovery is forbidden to do. It does not retry: by the
+time it sees a refusal the driver has already exhausted `--retry`, and a second
+implementation of "is this worth another attempt" is one too many. And it goes
+nowhere near sign-in, which needs a password.
+
+It stops on three things, and they want different responses: a **regression**
+(read it now — that is the one fatal check), a **refusal recovery does not
+address** (a hand on the machine), and **no receipt at all** (the driver did not
+reach the end of its own run). A round whose scenarios merely FAILED is not one
+of them — that is the measurement working, and stopping there would throw away
+the second half of the pair.
 
 **`PW_EXPECT_SIZE` is not optional in a cycle.** Without it the round does not
 check the deck's size, and a deck can be the wrong one silently: setting
