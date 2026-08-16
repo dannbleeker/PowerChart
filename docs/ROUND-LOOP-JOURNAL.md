@@ -1011,3 +1011,38 @@ fresh session and the parallel stream read first.
 Four documents now agree with the measurement — `CLAUDE.md`, `docs/BACKLOG.md`,
 this brief and `docs/ROUNDS.md` — where at the start of the night three of them
 described the tag writer as the problem.
+
+### Pair 10 — e68147f — round A archived as 063; round B stopped on SIGN-IN
+
+**The run ends here, on the one state that is the owner's.** Round B wedged at
+thirty minutes, the driver recovered as it now does, and attempt 3 found a
+`login.live.com` popup open beside the deck — the session's token had expired.
+The check named it exactly:
+
+    the browser is on a Microsoft sign-in page — there is no document to run a
+    round in. … None of that is the agent's to do: it needs a password.
+
+Nothing was touched: the popup is left exactly as Office opened it, because
+dismissing an authentication prompt is not a workaround and the owner may want to
+complete that prompt as it stands. **The readiness work paid for itself one last
+time** — this stopped in one attempt with the right diagnosis, where the same
+class of state cost seven attempts and an "is the add-in open?" earlier tonight.
+
+**A precision note for whoever reads this next:** `signedOut` fires on any tab
+matching `login.live.com`, and what actually happened was a POPUP beside a deck
+tab that was still open. Treating that as signed-out is the right call — if
+Office is asking for credentials, a round cannot be trusted — but the message
+says "the browser is on a sign-in page", which is not quite what a reader will
+see on screen.
+
+**Coverage the audit found, and it was mine.** Two of tonight's own fixes
+shipped without guards, on paths a green suite could not have covered because
+nothing tested them at all:
+
+- The `lastFailed` half of the crash-forensics fix — verified in production on
+  the 18:06 wedge and never pinned.
+- `syncsOf` / `contextSyncs` — the number that ruled out a 390-line restructure.
+
+Both guarded and mutation-proven now. That is the third class of defect this run
+produced, after round findings and doc drift: **fixes of mine, unguarded.** Worth
+checking for deliberately, because the suite was green before I looked.

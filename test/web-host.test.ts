@@ -1331,6 +1331,15 @@ describe("what a group that SUCCEEDS leaves behind", () => {
       const short = said.filter((e) => e.message === "the re-read matched only some of the chart's shapes");
       expect(short.length, "a short re-read passed without a word").toBe(1);
       expect(short[0].data?.matched).toBe(Number(short[0].data?.drew) - 4);
+      // AND WHICH SYNC OF ITS CONTEXT, which is the x-axis the decay curve had
+      // none of. `same scale` degrades chart by chart, and the question that
+      // could not be answered without this number was whether the CONTEXT wears
+      // out — it does not: the failing re-reads report sync 1, so the context is
+      // fresh and chunking the deck-wide update would change nothing. A number
+      // that ruled out a 390-line restructure is worth a guard.
+      expect(short[0].data?.contextSyncs, "the re-read named no sync, so the decay curve loses its x-axis").toEqual(
+        expect.any(Number),
+      );
 
       // Nothing grouped, and specifically not the part the host could name.
       const groups = said.filter((e) => e.message === "grouped the chart's shapes");
