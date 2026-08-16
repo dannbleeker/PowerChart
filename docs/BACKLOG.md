@@ -243,6 +243,104 @@ lie we can detect rather than obey. That is a contained change to the matcher
 rather than a restructure — but it is still surgery on the grouping path, which
 carries three shipped-broken fixes on record, and it wants a person awake.
 
+### THE WORK QUEUE that comes out of all this — 2026-08-16
+
+Stage 0 of the matcher fix was done first, deliberately, because it decides the
+shape of everything under it. **It dissolved the blocker it was meant to
+confirm**, and split one item into two with very different prospects.
+
+**What Stage 0 asked:** the fix wants to treat a short re-read on a slide we own
+as a host lie rather than an instruction. Who can honestly promise the slide is
+ours? `Grouping.refreshShapes` documents itself as exactly that guarantee — "the
+caller can guarantee the target N shapes are the last N on the slide" — but every
+call site sets it from `spansBatches()`, i.e. "this chart spanned sync batches".
+**The field's contract and its use have diverged** (see the separate item below).
+And the obvious substitute is unsafe: `onSlide === 0` means only that THIS RUN has
+not drawn there, which is equally true of the user's own slide full of content.
+
+**What Stage 0 found instead, and it is better news.** The ownership guarantee is
+not needed for the short-read case, because **the matcher already proves
+ownership by our own ids**. It matches `created[k].id` against the re-read's
+collection; the 20 of 24 that matched on chart 4 are provably ours, on any slide,
+without any new flag. Nothing has to be promised.
+
+So the two failures separate:
+
+| | chart 4 — short read | chart 5 — empty read |
+| --- | --- | --- |
+| what came back | 20 of 24, matched BY OUR IDS | nothing at all |
+| ownership | proven, no flag needed | nothing to prove it with |
+| what blocks it | a TRADE-OFF, not a signal | genuinely needs the guarantee |
+
+#### 1. Group a partial match rather than declining — OWNER'S CALL
+
+The 20 matched shapes are provably ours. Grouping them makes the chart
+re-editable, because the tag goes on the group. It also strands the 4 that did
+not come back — loose shapes inside the chart's box, which the next in-place
+update will not delete because the parts list cannot name them.
+
+That is the exact trade the partial branch already weighed and refused, and it
+refused it **on a premise the archive has since refuted**: it believed an
+ungrouped chart "is still tagged, still re-editable". It is not — 1 in 3 at best.
+So the comparison is now:
+
+    group the 20    chart re-editable, 4 shapes stranded in its box
+    group nothing   chart whole, and loses its config about 7 times in 10
+
+Neither is good and the choice is a product judgement, not a measurement. It
+needs no new signal and no new guarantee — only a decision about which harm the
+user should get. **Not to be taken by an agent unattended**; the stranded-shape
+failure is the silent one, and this file already records a real slide left with
+four loose shapes (`grouped … partial=1 left=0:4`).
+
+#### 2. The empty re-read (chart 5) — BLOCKED, and honestly so
+
+Nothing came back, so nothing is proven ours and the positional rule would be a
+guess on a user's slide. The only remaining route is `chooseGroupMembers`'
+`use: "created"`, which hands `addGroup` the drawing proxies — and this host
+throws on those, which takes the whole batch's tagging with it. So it needs
+per-chart isolation of the grouping loop FIRST (today one try/catch wraps every
+chart), and even then it is a gamble on a host that refuses those handles.
+
+**And the paths that matter cannot make the promise anyway.** Stage 0 checked the
+callers: only the self-test and the demo path add their own blank slides. The
+pane's Insert draws on the slide the user is looking at, and Same Scale
+(`updateChartsInSlides`) redraws onto the user's existing slides. **A fix gated on
+"we added this slide" would improve the self-test and not the product** — which is
+optimising the measurement rather than the thing measured, and this project has
+made that mistake before.
+
+#### 3. Revert `tagAnchorIndex` — small, mechanical, and now clearly right
+
+No measured effect across five rounds and four builds (`npm run rounds`, the
+per-build table). It adds a deferred id load to the draw loop and a contiguity
+deduction to the matcher for nothing this host rewards. Revert the anchor move,
+the `idsLoadedTo` hold-back, `parts()` back to `.slice(1)`, and the deduction.
+
+**KEEP three things that arrived with it and stand on their own:**
+
+- `origin tag lost` as its own trace line — config-lands-origin-fails is a real
+  and distinct outcome, and calling it "not re-editable" was about to be the
+  common lie.
+- the fake's `handleResolved` split — the HOST confirmed it
+  (`collection-read-poisons-the-creation-handle: yes`); reverting restores a
+  modelling error.
+- the `taggedShape` test helper — convention-independent and better either way.
+
+Two tests flip back: the resolved-proxy reproduction returns to "refused, then
+repaired by the settle", and `web-host.test.ts` returns to expecting a short scan
+to FIND the chart.
+
+#### 4. `Grouping.refreshShapes` says one thing and is set from another
+
+Found by Stage 0. Its doc comment promises "the caller can guarantee the target N
+shapes are the last N on the slide"; every call site sets it from
+`spansBatches(created, opts)`. Anyone reaching for a real ownership guarantee will
+find this field, read the comment, and be wrong. Either fix the comment to
+describe what it is, or introduce the guarantee the comment describes and let
+callers that can honestly make it set it. **Cheap, and it is a trap left in the
+path everything above touches.**
+
 ### Grouping is what saves a config, not the tag handle
 
 **Measured 2026-08-15 over the whole archive, and it had been sitting there for
@@ -760,6 +858,53 @@ bookkeeping is accurate, the deletes land where aimed. The pattern is worth more
 than any of them — reasoning from a full probe run was wrong every time, and
 asking a single component directly gave a clean answer in under a minute, every
 time.
+
+### Improvements the 2026-08-15/16 overnight run is owed — small, none blocking
+
+Nineteen rounds, ten pairs. These are the loose ends it left, kept here so they
+are not rediscovered.
+
+- **`signedOut` cannot tell a popup from a signed-out browser.** It fires on any
+  tab matching `login.live.com`, and what ended the run was an auth POPUP beside a
+  deck tab that was still open. Treating that as signed-out is the RIGHT call — if
+  Office is asking for credentials a round cannot be trusted — but the message
+  says "the browser is on a Microsoft sign-in page", which is not what the reader
+  sees on screen. Reword, or distinguish the popup case.
+- **Two of the run's own fixes shipped without guards**, found only by grepping
+  each new symbol in the test tree: the `lastFailed` half of the crash-forensics
+  fix (verified by hand on a real wedge, never pinned) and `syncsOf` /
+  `contextSyncs` (the number that ruled out a 390-line restructure). Both are
+  guarded now. **The check is the lesson**: a green suite proves nothing about a
+  path nothing tests, and "I watched it work in production" leaves no guard.
+- **`same scale`'s scenario summary counts what it carried, not why.** It reports
+  "3 of 8 charts carry the shared scale … the host flipped at chart 4 of 8" and
+  the per-chart reason (short re-read vs empty) only exists in the trace. Now that
+  the mechanism is known, the summary could name it and the round would read
+  itself.
+- **Rounds cost ~12 minutes and a pair costs a build.** Every pair after the
+  mechanism was settled produced an identical result, and the audit found more
+  than the rounds did. When a question is closed, say so and stop — the brief now
+  opens with what is settled for that reason.
+
+### Method that earned itself overnight, and should be kept
+
+- **Run the same build TWICE.** Nineteen archived rounds and almost every one on
+  its own build, so no two could be compared. The one exception, `cabb357` run
+  twice, is the only noise measurement this project owns — 1 and 5 for the same
+  fault with nothing changed. Pairs are what let `tagAnchorIndex` be called
+  no-effect rather than unproven.
+- **Judge a change on a count that did NOT move, or on a line that appears where
+  none did.** Those are the two readings that survived; every count that moved
+  moved with the host's mood.
+- **Ask the archive before spending a round.** Grouping-vs-config, the `#0` ids
+  and the fresh-slide split were all answered from rounds already filed. Three
+  hypotheses died for the price of a query.
+- **A question that cannot be asked is an answer about the harness.** Three
+  probes died on the scratch slide refusing to enumerate a collection; the
+  measurement moved into production and worked first time.
+- **Stake a prediction before the round that tests it**, especially against your
+  own work. The one staked on 2026-08-15 failed, and the failure is what
+  redirected the effort.
 
 ## 2. Rejected or already covered (do not re-propose)
 
