@@ -310,36 +310,62 @@ pane's Insert draws on the slide the user is looking at, and Same Scale
 optimising the measurement rather than the thing measured, and this project has
 made that mistake before.
 
-#### 3. Revert `tagAnchorIndex` — small, mechanical, and now clearly right
+#### 3. Retry a short or empty re-read once, after a delay — FROM THE TRACKER, NOT FROM A ROUND
 
-No measured effect across five rounds and four builds (`npm run rounds`, the
-per-build table). It adds a deferred id load to the draw loop and a contiguity
-deduction to the matcher for nothing this host rewards. Revert the anchor move,
-the `idsLoadedTo` hold-back, `parts()` back to `.slice(1)`, and the deduction.
+**This did not come out of the archive. It came out of the office-js tracker on
+2026-08-16, and it reframes items 1 and 2 above.**
 
-**KEEP three things that arrived with it and stand on their own:**
+PowerPoint Online has a **known settling delay on a slide that has just been
+materialised**: the shapes collection is not populated immediately after
+`slides.add()`, and the community workaround — in
+[#2903](https://github.com/OfficeDev/office-js/issues/2903), the very issue this
+project already cites, and echoed in
+[#5022](https://github.com/OfficeDev/office-js/issues/5022) — is to **wait one to
+two seconds before reading it.**
 
-- `origin tag lost` as its own trace line — config-lands-origin-fails is a real
-  and distinct outcome, and calling it "not re-editable" was about to be the
-  common lie.
-- the fake's `handleResolved` split — the HOST confirmed it
-  (`collection-read-poisons-the-creation-handle: yes`); reverting restores a
-  modelling error.
-- the `taggedShape` test helper — convention-independent and better either way.
+This repo had read #2903 and recorded "upstream has nothing, `sleep(2000)` only".
+That dismissal was reasonable when the failure looked like a tag problem. It is
+wrong now: the failure has been isolated to *exactly* the state the workaround
+addresses — a slide this run has just added. **We did not know that was our state
+when we read the issue.**
 
-Two tests flip back: the resolved-proxy reproduction returns to "refused, then
-repaired by the settle", and `web-host.test.ts` returns to expecting a short scan
-to FIND the chart.
+**The shape of it: retry, do not delay.** Not a blanket wait before every
+re-read — that taxes the 99% of charts whose read is already complete. Re-read
+once more, after ~1.5s, only when the first read came back short or empty. Then:
 
-#### 4. `Grouping.refreshShapes` says one thing and is set from another
+    complete first read   costs nothing at all, which is charts 1-3
+    short or empty        costs ~1.5s, on a chart that is otherwise losing its config
+    still short           falls through to today's exact behaviour, nothing lost
 
-Found by Stage 0. Its doc comment promises "the caller can guarantee the target N
-shapes are the last N on the slide"; every call site sets it from
-`spansBatches(created, opts)`. Anyone reaching for a real ownership guarantee will
-find this field, read the comment, and be wrong. Either fix the comment to
-describe what it is, or introduce the guarantee the comment describes and let
-callers that can honestly make it set it. **Cheap, and it is a trap left in the
-path everything above touches.**
+**Why it beats both items above.** It needs no ownership guarantee (item 2's
+blocker) and strands no shapes (item 1's trade). It is additive: every existing
+path is reachable and unchanged, and the worst case is the current behaviour plus
+a second and a half.
+
+**What would prove it:** one same-build pair. `WHICH SLIDE THE CHART LANDED ON`
+should move `freshly added, empty` off 1% grouped. If it does not move, the
+settling delay is not our mechanism and the tracker lead is spent for the price
+of one round.
+
+**Stake the prediction before the round** (the method that earned itself
+overnight): charts 4 and 5 of `same scale across the deck` group, and the
+scenario stops failing at 34 of 34.
+
+#### DONE — cleared 2026-08-16
+
+- **Revert `tagAnchorIndex`.** No measured effect across five rounds and four
+  builds. The anchor is `created[0]` again, the draw loop loads every id, the
+  matcher's contiguity deduction is gone, and `parts()` is `.slice(1)`. Kept, as
+  planned: the `origin tag lost` trace line, the fake's `handleResolved` split
+  (the host confirmed it), and the `taggedShape` test helper. The two assertions
+  that flip back are annotated with what they asserted in between and why, and
+  the reasoning behind the anchor move is preserved in full beside
+  `CHART_ORIGIN_TAG` rather than deleted — it was good reasoning that this host
+  does not reward.
+- **`Grouping.refreshShapes` says one thing and is set from another.** Fixed the
+  comment rather than introducing the guarantee, because the guarantee has no
+  honest caller. Two sibling comments in the same file carried the same stale
+  "last N on the slide" claim and were swept with it.
 
 ### Grouping is what saves a config, not the tag handle
 

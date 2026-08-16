@@ -55,17 +55,26 @@ ten. Pooled over 32 rounds:
 the same charts in the same order, every round — it is deterministic, and after
 twelve rounds of watching it, **more rounds do not add to it.**
 
-**What is left is two decisions, both the owner's, neither measurable by another
+**What is left is one decision, the owner's, and not measurable by another
 round:**
 
-1. **Teach the matcher that a short re-read on a slide THIS RUN added blank is a
-   host lie, not an instruction.** The code already knows the rule — "the
-   positional rule is still right for a slide this run added blank" — but that
-   branch is reachable only when NOTHING matched, so a chart matching 20 of 24
-   falls past it and declines to group. Contained to the matcher; still the
-   grouping path, which carries three shipped-broken fixes on record.
-2. **Revert `tagAnchorIndex`?** No measured effect across five rounds and four
-   builds. Harmless where it sits, so it can wait.
+1. **Group a partial match rather than declining.** The 20 of 24 that came back
+   are provably ours — the matcher proved it by our own ids, so no ownership
+   guarantee is needed (Stage 0 established this; the "slide this run added
+   blank" framing this entry used to carry was the wrong question). What is left
+   is a trade between two harms: group the 20 and the chart is re-editable with 4
+   shapes stranded in its box, or group nothing and it loses its config about 7
+   times in 10. A product judgement, not a measurement.
+
+   `tagAnchorIndex` — question 2 here until 2026-08-16 — **has been reverted**.
+   No measured effect across five rounds and four builds.
+
+   **And there is now a third route neither of those is**, from the office-js
+   tracker rather than from a round: PowerPoint Online has a known settling delay
+   on a slide that has just been materialised, and the community workaround is to
+   wait before reading its shapes. Retrying a short or empty pre-grouping re-read
+   once, after a delay, needs no ownership guarantee and strands no shapes. See
+   `docs/BACKLOG.md`.
 
 **ANSWERED — do not re-ask, and do not spend a round on any of them:**
 
