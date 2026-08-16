@@ -7187,13 +7187,27 @@ interface Grouping {
   created: PowerPoint.Shape[];
   opts: InsertOptions;
   /**
-   * Re-load the slide's shape collection right before addGroup, taking the LAST
-   * `created.length` shapes as the group's members. The Shape proxies returned
-   * by earlier syncs' add*() calls have their object paths rewritten to
-   * getItem(id) by the time this sync runs, and the web host can't
-   * round-trip those ids — addGroup(theseStaleProxies) silently drops the group.
-   * Set true whenever the caller can guarantee the target N shapes are the last
-   * N on the slide (a fresh demo slide is the canonical case).
+   * Re-load the slide's shape collection right before addGroup and re-resolve
+   * our shapes out of it BY ID. The Shape proxies returned by earlier syncs'
+   * add*() calls have their object paths rewritten to getItem(id) by the time
+   * this sync runs, and the web host can't round-trip those ids —
+   * addGroup(theseStaleProxies) silently drops the group.
+   *
+   * THIS IS NOT AN OWNERSHIP CLAIM, and it used to read as one. The doc here
+   * promised "the caller can guarantee the target N shapes are the last N on
+   * the slide", which described the ORIGINAL positional rule; the matcher has
+   * been id-based since, and no call site ever set this field from ownership —
+   * all three set it from `spansBatches()`, i.e. "this chart's proxies crossed
+   * a sync boundary". Contract and use had diverged, and anyone reaching for a
+   * real ownership guarantee would have found this field, read that sentence,
+   * and been wrong. The honest reading is the only one the code implements:
+   *
+   *   set it when the created proxies may be stale — nothing more.
+   *
+   * There is deliberately no ownership flag to reach for instead. Only the
+   * self-test and the demo path add their own blank slides; the pane's Insert
+   * and the deck-wide update both draw onto the USER's slides, so a rule gated
+   * on ownership would improve the measurement and not the product.
    */
   refreshShapes?: boolean;
 }
@@ -7352,8 +7366,9 @@ async function groupAndTagAll(
     .map((it, i) => ({ it, i }))
     .filter(({ it }) => it.opts.group !== false && it.created.length > 1);
   // Re-load shape collections for items that asked to refresh — one sync for
-  // all of them, then take the last N shapes as the group's members. See
-  // Grouping.refreshShapes: bypasses the stale-proxy trap the web host trips on.
+  // all of them, then re-resolve our own shapes out of each collection BY ID.
+  // See Grouping.refreshShapes: bypasses the stale-proxy trap the web host
+  // trips on.
   //
   // NOT just the groupable ones. A degraded picture is a single shape, so it is
   // not groupable, and it went to the tag step holding the proxy it was created
@@ -7368,9 +7383,14 @@ async function groupAndTagAll(
   // property of using a proxy across a sync boundary, and tagging does that
   // too.
   // Every item that ASKED to refresh, not just the groupable ones — but only
-  // those that asked, because "the last N shapes on the slide" is only true of
-  // a slide this run added blank. `insertSceneIntoSlide` draws onto whatever
-  // the user is looking at, and there the heuristic would tag the wrong shape.
+  // those that asked, because a re-read costs a round trip and this host answers
+  // it short or empty often enough that asking for one a chart does not need is
+  // a way to LOSE a group, not gain one (see the `needsRefresh` call site).
+  //
+  // This filter used to be justified by "the last N shapes on the slide is only
+  // true of a slide this run added blank" — the positional rule, gone since the
+  // matcher went id-based below. Matching by id is safe on any slide, so what
+  // remains is a cost argument, not a correctness one.
   const refresher = items.map((it, i) => ({ it, i })).filter(({ it }) => it.refreshShapes);
   const freshMembers = new Map<number, PowerPoint.Shape[]>();
   if (refresher.length) {
