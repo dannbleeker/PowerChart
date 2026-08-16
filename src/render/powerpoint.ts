@@ -294,6 +294,26 @@ function isLive(proxy: { isNullObject: boolean }): boolean {
 }
 
 /**
+ * Did the host ANSWER for this object at all — either way?
+ *
+ * The other half of `isLive`, and the distinction it deliberately throws away.
+ * `isLive` is right to fold silence in with absence wherever the next step is a
+ * delete. But an UPDATE that folds them together stops being conservative and
+ * starts being wrong: a chart the host merely would not resolve is still on the
+ * slide, in front of the user, and doing nothing to it is a silent no-op on
+ * something they can see.
+ *
+ * The archive says that is the common case rather than the exotic one. Forty-six
+ * of the forty-seven recorded `explode a degraded picture` failures carry
+ * `idRefusals > 0`, and the two that could report a verdict at all both said the
+ * same thing: "the host would not work on the chart again, but it is STILL ON
+ * THE SLIDE — nothing was lost".
+ */
+function hostAnswered(proxy: { isNullObject: boolean }): boolean {
+  return loadedValue(() => proxy.isNullObject) !== undefined;
+}
+
+/**
  * A tag's value, or undefined for "absent, or the host did not say".
  *
  * The `!tag.isNullObject && tag.value` pair was written out at eight call
@@ -1243,6 +1263,80 @@ export async function updateChartInSlide(
 }
 
 /**
+ * Second chance for the shapes a by-id lookup would not resolve.
+ *
+ * PowerPoint on the web refuses `shapes.getItem(id)` for shapes a run has
+ * recently created, and answers a collection read of the same slide perfectly
+ * well. Every other user of that asymmetry in this file recovered a TAG with it;
+ * this recovers the update itself, which is the one place the refusal was still
+ * being read as "the user deleted this chart".
+ *
+ * Returns the shapes it could re-acquire, keyed by the id that was asked for.
+ * A shape genuinely absent from its slide is absent from the collection too, so
+ * it is simply not in the map, and the caller drops it exactly as before.
+ *
+ * ONE EXTRA SYNC, and only when something went unanswered. Slides are read
+ * once each however many charts on them were refused, because the refusals
+ * arrive in batches — a whole update against a freshly added slide is the
+ * shape of it — and a read per chart would turn one bad slide into a dozen
+ * round trips.
+ *
+ * Best-effort throughout. A re-read that fails leaves the map empty and the
+ * caller behaving precisely as it did before this existed, which is the only
+ * safe way to add a step to a path whose other outcome is deleting someone's
+ * chart.
+ */
+async function reReadRefusedShapes(
+  context: PowerPoint.RequestContext,
+  entries: { it: { target: EditTarget }; old: PowerPoint.Shape }[],
+  wholeResolveRefused = false,
+): Promise<Map<string, PowerPoint.Shape>> {
+  const out = new Map<string, PowerPoint.Shape>();
+  // A refused sync resolved NOTHING, so every chart in the batch is a candidate
+  // — there is no way to tell from out here which lookup poisoned it, and the
+  // others' proxies are just as unloaded.
+  const refused = entries.filter((e) => (wholeResolveRefused || !hostAnswered(e.old)) && e.it.target.shapeId);
+  if (!refused.length) return out;
+  const bySlide = new Map<string, string[]>();
+  for (const e of refused) {
+    const ids = bySlide.get(e.it.target.slideId) ?? [];
+    ids.push(e.it.target.shapeId);
+    bySlide.set(e.it.target.slideId, ids);
+  }
+  trace("update", "a by-id lookup went unanswered — re-reading the slide instead", {
+    charts: refused.length,
+    slides: bySlide.size,
+  });
+  try {
+    const reads = [...bySlide.keys()].map((slideId) => {
+      const shapes = context.presentation.slides.getItemOrNullObject(slideId).shapes;
+      // `left,top` alongside the id, because the caller reads the live position
+      // off whatever proxy it ends up with — and a recovered shape that cannot
+      // say where it is costs that chart its drag delta for no reason.
+      shapes.load("items/id,left,top");
+      return { slideId, shapes };
+    });
+    await boundedSync(context, "re-reading a slide whose shape ids were refused");
+    for (const { slideId, shapes } of reads) {
+      const items = loadedValue(() => shapes.items);
+      if (!items?.length) continue;
+      for (const id of bySlide.get(slideId) ?? []) {
+        const hit = items.find((sh) => loadedValue(() => sh.id) === id);
+        if (hit) out.set(id, hit);
+      }
+    }
+  } catch (err) {
+    trace("update", "the re-read of a refused slide would not answer either", { error: errorText(err) });
+    return out;
+  }
+  trace("update", "re-read recovered shapes a by-id lookup had refused", {
+    asked: refused.length,
+    recovered: out.size,
+  });
+  return out;
+}
+
+/**
  * What an update hands back for a chart whose group-and-tag step produced no
  * target at all — three different situations that look identical from here.
  *
@@ -1584,15 +1678,72 @@ export async function updateChartsInSlides(
       for (const p of parts) queueNullCheck(p);
       return { it, old, parts, wasConfig, wasScene };
     });
-    await step("resolving the charts' shapes", () => context.sync());
+    // THE REFUSAL LANDS HERE, not on the proxies. A by-id lookup that this host
+    // will not honour poisons the SYNC it was queued in — `InvalidParam passed
+    // to GetItem(id)`, errorLocation `ShapeCollection.getItem` — so an
+    // unguarded sync took the whole update down with it, every chart in the
+    // batch included, and the caller saw only a null target.
+    //
+    // That is the common case rather than the exotic one: 46 of the 47 recorded
+    // `explode a degraded picture` failures carry `idRefusals > 0`, and the ones
+    // that could report a verdict said the chart was STILL ON THE SLIDE. An
+    // update that dies wholesale over a lookup is a silent no-op on a chart the
+    // user is looking at.
+    let refusedResolve = false;
+    try {
+      await step("resolving the charts' shapes", () => context.sync());
+    } catch (err) {
+      // Never swallowed — recorded, then recovered from. If the re-read below
+      // cannot save it either, `alive` empties and the caller behaves exactly
+      // as it did before this catch existed.
+      refusedResolve = true;
+      trace("update", "a by-id lookup refused the whole resolve — re-reading the slides instead", {
+        charts: withOld.length,
+        error: errorText(err),
+      });
+    }
+
+    // ASK AGAIN, before deciding anything is gone. A by-id lookup is the one
+    // thing PowerPoint on the web reliably refuses, and a collection read is the
+    // one thing it reliably honours — the same asymmetry the settle pass is
+    // built on, and the same one `faults.refuseShapeById` was written to model.
+    //
+    // Two ways in. The sync refused outright, in which case NOTHING in the batch
+    // resolved and every chart needs asking about; or it succeeded and left a
+    // proxy unanswered, which `hostAnswered` catches. Both used to end as "the
+    // user must have deleted it".
+    //
+    // Costs nothing on a healthy host: no refusal, nothing unanswered, no read.
+    const recovered = await reReadRefusedShapes(context, withOld, refusedResolve);
+    // MARKED, not merely swapped. A shape that came back from a collection read
+    // is not a null-object proxy at all, so `isNullObject` never populates on it
+    // and `isLive` — which reads exactly that — answers false. Substituting the
+    // handle without carrying this flag walks the recovered chart straight back
+    // into the predicate the re-read exists to get past, and the update goes on
+    // failing with the shape sitting in its hand. It did, on the first run of
+    // the test below: `recovered: 1 of 1` and a null target in the same trace.
+    //
+    // The flag is honest rather than a workaround: appearing in its slide's own
+    // shape collection is POSITIVE proof the shape exists, and a stronger one
+    // than a null-object check, which only ever reports what a by-id lookup
+    // thought.
+    const withOldSettled = withOld.map((e) => {
+      const again = recovered.get(e.it.target.shapeId);
+      return again ? { ...e, old: again, reacquired: true } : { ...e, reacquired: false };
+    });
 
     // A target whose SHAPE is gone gets the same treatment as one whose slide
     // is gone: nothing to do. Re-rendering it would resurrect a chart the user
     // deleted — an in-place update that inserts is not an update.
+    //
+    // STILL TRUE, and the re-read above does not weaken it: a shape the host
+    // said was gone is still dropped here, and one it would not answer for
+    // twice is dropped too. What changed is that silence alone no longer counts
+    // as a deletion.
     // Read the live positions off the proxies BEFORE the delete below detaches
     // them; from here on `at` is where each chart actually sits on the slide.
-    const alive = withOld
-      .filter(({ old }) => isLive(old))
+    const alive = withOldSettled
+      .filter(({ old, reacquired }) => reacquired || isLive(old))
       .map((e) => {
         // The live position, falling back to the caller's snapshot when the
         // host answered for the shape but not for where it is. The snapshot is

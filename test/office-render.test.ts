@@ -1316,6 +1316,64 @@ describe("updateChartInSlide", () => {
     }
   });
 
+  it("redraws a chart whose id the host refused, instead of treating it as deleted", async () => {
+    // THE ARCHIVE'S OLDEST LIVE FAULT. 46 of the 47 recorded `explode a
+    // degraded picture` failures carry `idRefusals > 0`, and the two that could
+    // report a verdict at all both said the same thing: "the host would not
+    // work on the chart again, but it is STILL ON THE SLIDE — nothing was
+    // lost". A by-id lookup poisons the sync it was queued in, the whole
+    // resolve died, and the caller got a null target — a silent no-op on a
+    // chart the user is looking at.
+    //
+    // The recovery is the asymmetry the rest of this file already leans on: the
+    // host refuses `shapes.getItem(id)` and answers `shapes.load("items/id")`.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: "cfg" });
+    const group = slide.created.find((s) => s.type === "group")!;
+    const before = slide.created.length;
+    faults.refuseShapeById = true;
+    try {
+      const next = await updateChartInSlide(buildChart(config), {
+        slideId: "s1",
+        shapeId: group.id,
+        left: 33,
+        top: 44,
+      });
+      expect(next, "the update gave up on a chart that is still on the slide").toBeTruthy();
+      expect(group.deleted, "the old chart was left behind under the redraw").toBe(true);
+      expect(slide.created.slice(before).length, "nothing was redrawn").toBeGreaterThan(0);
+    } finally {
+      faults.refuseShapeById = false;
+    }
+  });
+
+  it("still does not resurrect a deleted chart when the host is refusing ids", async () => {
+    // THE GUARD THE RECOVERY ABOVE MUST NOT COST. A re-read that finds the
+    // chart is the whole point; a re-read that resurrects one the user deleted
+    // would be strictly worse than the silent no-op it replaces, because an
+    // in-place update that inserts is not an update.
+    //
+    // Safe by construction rather than by care: a deleted shape is absent from
+    // the slide's collection too, so the re-read cannot find it. This is what
+    // holds that claim to it.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    await insertSceneIntoSlide(buildChart(config), { tagData: "cfg" });
+    const group = slide.created.find((s) => s.type === "group")!;
+    for (const s of slide.created) s.delete();
+    faults.refuseShapeById = true;
+    try {
+      await updateChartInSlide(buildChart(config), { slideId: "s1", shapeId: group.id, left: 10, top: 20 });
+      expect(
+        slide.created.filter((s) => !s.deleted),
+        "the update resurrected a chart the user deleted",
+      ).toHaveLength(0);
+    } finally {
+      faults.refuseShapeById = false;
+    }
+  });
+
   it("does not resurrect a chart whose shape the user deleted", async () => {
     // The pane still holds an editTarget for a chart the user has since removed
     // from the slide. A stale SLIDE id is already treated as nothing to do; a
