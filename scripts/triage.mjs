@@ -964,9 +964,13 @@ export function profileDivergence(logs) {
       // A scenario that DID NOT MEASURE says nothing about its profile — the
       // same rule the regression gate follows, for the same reason.
       if (sc.skipped) continue;
-      // Worst outcome wins within a profile: one failure in a paired profile is
-      // still a failure that profile produced.
-      seen.set(sc.name, (seen.get(sc.name) ?? true) && !!sc.ok);
+      // BOTH outcomes kept, not collapsed to the worst. A profile that
+      // disagrees with ITSELF is flaky, not different from another profile, and
+      // the two want opposite responses — see below.
+      const at = seen.get(sc.name) ?? { pass: 0, fail: 0 };
+      if (sc.ok) at.pass++;
+      else at.fail++;
+      seen.set(sc.name, at);
     }
   }
   const out = [];
@@ -976,11 +980,27 @@ export function profileDivergence(logs) {
     for (const name of names) {
       const passedIn = [];
       const failedIn = [];
+      const unstableIn = [];
       for (const [prof, m] of profs) {
-        if (!m.has(name)) continue;
-        (m.get(name) ? passedIn : failedIn).push(prof);
+        const at = m.get(name);
+        if (!at) continue;
+        // A profile that both passed and failed this scenario on one build has
+        // not told us anything about its slide size — it has told us the
+        // scenario is flaky. Reporting that as divergence sends someone to
+        // investigate an aspect ratio for a difference the profile produces on
+        // its own, which is worse than saying nothing.
+        if (at.pass && at.fail) unstableIn.push(prof);
+        else if (at.pass) passedIn.push(prof);
+        else failedIn.push(prof);
       }
-      if (passedIn.length && failedIn.length) out.push({ build, name, passedIn, failedIn });
+      if (passedIn.length && failedIn.length) out.push({ build, name, passedIn, failedIn, unstableIn });
+      else if (unstableIn.length && (passedIn.length || failedIn.length))
+        // Worth saying, and NOT as divergence. This is the shape the check's
+        // first live outing produced: `explode a degraded picture` passed at
+        // 4:3 and then passed once and failed once at 16:9, on build 17a8204.
+        // "Diverged between slide sizes" was true of the worst reading and
+        // misleading about the cause.
+        out.push({ build, name, passedIn, failedIn, unstableIn, flaky: true });
     }
   }
   return out.sort((a, b) => a.build.localeCompare(b.build) || a.name.localeCompare(b.name));

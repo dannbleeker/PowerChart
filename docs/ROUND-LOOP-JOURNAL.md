@@ -1484,3 +1484,62 @@ first test says it does not save this case.
 **Nothing has yet been learned about 4:3.** Round 077 measured a sick deck. The
 question needs a CLEAN 4:3 deck, which is now the first item of the nightly work
 below.
+
+## Rounds 079-081 (`17a8204`, 2026-08-16) — the first full cycle, and 4:3 is fine
+
+**One 4:3 validation round and a 16:9 pair, all on one build.**
+
+    round   deck             size      scenarios
+    079     Presentation66   720x540     13/13
+    080     Presentation64   960x540     12/13   explode a degraded picture
+    081     Presentation64   960x540     13/13
+
+**4:3 SCORED BETTER THAN 16:9 IN ITS OWN CYCLE.** Round 077's 52
+`UnexpectedError`s belonged entirely to `Presentation65`, a deck created during
+a browser crash — round 078 reproduced them at 16:9 on that same deck. On a
+clean 4:3 deck the failure does not exist. **Nothing about 4:3 is broken.**
+
+Both new mechanisms worked on their first real use: the size is recorded
+(`{"width":720,"height":540,"source":"pageSetup"}`) and readiness confirmed the
+profile before each round (`slide size 4:3 (want 4:3)`).
+
+### THE DIVERGENCE CHECK GOT ITS FIRST OUTING WRONG, and it is fixed
+
+It reported:
+
+    explode a degraded picture — passed at 4:3, failed at 16:9
+
+True of the worst reading and **wrong about the cause**. The 16:9 pair disagrees
+with ITSELF: 080 failed and 081 passed. Collapsing a profile to its worst
+outcome turned a flaky scenario into a slide-size difference, and would have sent
+someone to investigate an aspect ratio for a scenario that is simply unreliable.
+
+`profileDivergence` now keeps both outcomes per profile and separates them:
+
+    DIVERGED between slide sizes      one profile passed, the other failed
+    UNSTABLE WITHIN a slide size      one profile did both — flaky, not different
+
+The gate says the second in its own words and does not call it divergence.
+Mutation-proven.
+
+**Worth noting what caught it**: not a test, but reading the first real output
+and finding it did not match the rounds it was describing. A check built the same
+afternoon, wrong on its first live data, is the ordinary case rather than a
+surprise.
+
+### `explode a degraded picture` is now instrumented rather than guessed at
+
+Five failures across eight rounds and **no evidence**: the scenario reaches a
+null from `updateChartInSlide` and the trace held nothing between the deck scan
+and the verdict. There is a line now, carrying `asPicture` first because the
+picture path is the one that fails intermittently.
+
+**Upstream has no match.** office-js#3698 (image insertion refused while a shape
+is selected) is the nearest and is a different API — `setSelectedDataAsync`, not
+`ShapeFill.setImage` — with no evidence here of a selection. #225 (large base64
+fails mid-insert) leaves a half-inserted image where ours leaves the chart
+intact; #5022 hangs where ours returns. **A promising chain via #5443 was killed
+by reading it**: that issue is Excel on Mac, not PowerPoint shape selection.
+
+So no workaround was applied. Guessing one now would produce a change nothing
+could evaluate; the next round that reproduces this will say which step failed.

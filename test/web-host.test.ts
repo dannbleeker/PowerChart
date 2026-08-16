@@ -1385,6 +1385,42 @@ describe("what a group that SUCCEEDS leaves behind", () => {
    * wrong reason — with no group formed and no complaint — so both assert the
    * GROUP, which is the thing that actually saves a config.
    */
+  it("says so when an update produces no target, instead of failing silently", async () => {
+    // FIVE FAILURES ACROSS EIGHT ROUNDS AND NO EVIDENCE. `explode a degraded
+    // picture` fails by reaching a null from `updateChartInSlide`, and the round
+    // trace held nothing at all between the deck scan and the verdict — so
+    // whether the shape resolved, whether the PICTURE fill was the step that
+    // failed, and whether an id was refused were all invisible.
+    //
+    // The scenario's own note can only report what it observed from outside:
+    // the chart is still there, and the update would not work.
+    //
+    // Upstream has no matching report either. office-js#3698 (image insertion
+    // refused while a shape is selected) is the nearest and is a different API;
+    // #225 and #5022 are adjacent and match no better. Ours to characterise,
+    // and not characterisable without a line.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      // A target naming a shape that is not there: the update resolves nothing
+      // and hands back null, which is the shape of the real failure.
+      const gone = { slideId: "s1", shapeId: "no-such-shape", left: 60, top: 90 };
+      const out = await updateChartInSlide(buildChart(cfg), gone, { tagData: JSON.stringify(cfg) });
+      expect(out, "this test needs the null path, and the update returned a target").toBeNull();
+      const said = traceLog(mark).entries.find((e) => e.message === "the update produced no target for this chart");
+      expect(said, "the update returned nothing and the round said nothing").toBeDefined();
+      // The PICTURE flag is the first thing a reader needs, because that is the
+      // path that fails intermittently.
+      expect(said!.data).toHaveProperty("asPicture", false);
+      expect(said!.data).toHaveProperty("slideId", "s1");
+    } finally {
+      setTracing(false);
+    }
+  });
+
   it("writes the ORIGIN tag through the binding, which is the only write that cannot dodge a resolved handle", async () => {
     // WHERE THE FAILURES WENT. The config tag is queued BEFORE the
     // `load("id,left,top")` and lands; the origin tag needs that loaded
