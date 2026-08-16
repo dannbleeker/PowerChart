@@ -1197,3 +1197,47 @@ rounds that produced them.
   shape is an `addShape`/`addText` autoshape. There is no seam to write it
   through short of hand-patching the generated OOXML. Recorded as a documented
   limit in `skill/reference.md` (#197) alongside the fixed deck font.
+
+### The probe has been blind on GROUPS for the whole archive — found 2026-08-16
+
+`npm run rounds` prints it now, under **QUESTIONS THAT NEVER ANSWERED**. Six
+questions have produced nothing in **41 of 41 rounds**:
+
+    never asked — the harness could not set the question up (OURS to fix)
+      grouped-child-by-id-from-slide     41 round(s)  no-scratch-shape
+      shape-resolve-held-slide-proxy     41 round(s)  no-scratch-shape
+      tag-on-group-survives              41 round(s)  no-scratch-slide
+    asked, and the host would not answer (a fact ABOUT the host)
+      addgroup-returns-usable            41 round(s)  unreadable
+      group-children-via-getcount        41 round(s)  unreadable
+      shape-proxy-survives-one-sync      41 round(s)  unreadable
+
+**Four of the six are the group cluster**, and that is the cluster rounds 064 and
+065 just made urgent. `tag-on-group-survives` asks precisely what those two
+rounds discovered: whether a tag written on a group is honoured. It has never
+once been put — and **production answered it in one evening, twice**: no, refused
+5010, when the group sits on a freshly-added slide.
+
+**Why it stayed invisible.** The per-round report names what was "never put in
+this round", so a permanently dead question read as bad luck forty-one times
+running. Nothing pooled it. Every round paid a scratch slide and host time for
+each of these regardless.
+
+**The split is the actionable part.** `no-scratch-*` means the harness could not
+set the question up — ours, and the fix is to move the measurement into
+production or retire the question. `unreadable` means the question was put and
+the host declined, which is a finding and should be left alone. Pooling the two
+would hide exactly the distinction that decides what to do.
+
+**What this is evidence for, beyond the six.** The archive already records "a
+question that cannot be asked is an answer about the harness", and this is its
+largest instance: three questions the probe could never put, one of which was the
+most important open question in the repo, answered by a trace line in production
+the first evening anyone instrumented for it. **Prefer production instrumentation
+to a scratch-slide question** whenever the thing being asked about happens in the
+real path anyway.
+
+**Not done here:** retiring or relocating the three `no-scratch-*` questions.
+That is a real change to the instrument and wants its own session with a control
+— the archive records four reverted attempts at changing the probe's slide
+handling, every one of which changed what the probe measured.

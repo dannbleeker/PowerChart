@@ -845,6 +845,85 @@ export function poolFreshVsEstablished(logs) {
   return out;
 }
 
+/**
+ * Questions that produced NOTHING, round after round.
+ *
+ * Every round pays for the whole probe battery in host time and scratch slides,
+ * and a question that never answers costs exactly as much as one that does. The
+ * per-round report names the ones "never put" in that round; nothing said which
+ * ones have never been put in ANY round, so a permanently dead question read as
+ * bad luck twelve times running.
+ *
+ * It was found by hand on 2026-08-16 and the answer was worth the query: SIX
+ * questions were 0-for-12, and four of them are the group cluster —
+ * `addgroup-returns-usable`, `group-children-via-getcount`,
+ * `grouped-child-by-id-from-slide`, `tag-on-group-survives`. The probe has been
+ * blind on groups for twelve rounds, and rounds 064/065 then answered the most
+ * important of them FROM PRODUCTION, twice, in one evening.
+ *
+ * SPLIT BY KIND, because the two want opposite fixes and pooling them hides
+ * that:
+ *
+ *   never asked   `no-scratch-slide` / `no-scratch-shape` — the harness could
+ *                 not set the question up. A HARNESS problem, ours to fix.
+ *   unanswerable  `unreadable` — the question was put and the host would not
+ *                 answer. A HOST fact, and a real (if annoying) finding.
+ *
+ * A question in the first group for many rounds should be moved into production
+ * instrumentation or retired; the second is telling you something about the host
+ * and should be left alone.
+ */
+export function poolStarvedQuestions(logs) {
+  const NEVER = /^no-scratch/;
+  const UNANSWERABLE = /^unreadable/;
+  const seen = new Map();
+  for (const log of logs) {
+    for (const a of log?.hostAnswers?.answers ?? []) {
+      if (!a?.id) continue;
+      const v = a.answer == null ? "(none)" : String(a.answer);
+      const t = seen.get(a.id) ?? { rounds: 0, never: 0, unanswerable: 0, answered: 0, last: "" };
+      t.rounds++;
+      if (NEVER.test(v)) {
+        t.never++;
+        t.last = v;
+      } else if (UNANSWERABLE.test(v)) {
+        t.unanswerable++;
+        t.last = v;
+      } else t.answered++;
+      seen.set(a.id, t);
+    }
+  }
+  // Only the ones that have NEVER produced an answer. A question that answers
+  // sometimes is doing its job and does not belong in a report about waste.
+  return [...seen.entries()]
+    .filter(([, t]) => t.answered === 0 && t.rounds > 1)
+    .map(([id, t]) => ({ id, ...t }))
+    .sort((a, b) => b.rounds - a.rounds || a.id.localeCompare(b.id));
+}
+
+/** The dead questions, named, so a starved probe stops reading as bad luck. */
+function reportStarvedQuestions(logs) {
+  const dead = poolStarvedQuestions(logs);
+  if (!dead.length) return;
+  console.log(`\n  QUESTIONS THAT NEVER ANSWERED — pooled over ${logs.length} round(s)`);
+  const show = (title, rows, note) => {
+    if (!rows.length) return;
+    console.log(`    ${title}`);
+    for (const r of rows) console.log(`      ${r.id.padEnd(44)} ${String(r.rounds).padStart(3)} round(s)  ${r.last}`);
+    console.log(`      ${note}`);
+  };
+  show(
+    "never asked — the harness could not set the question up (OURS to fix)",
+    dead.filter((d) => d.never >= d.unanswerable),
+    "Move it into production instrumentation or retire it; it costs a scratch slide either way.",
+  );
+  show(
+    "asked, and the host would not answer (a fact ABOUT the host)",
+    dead.filter((d) => d.unanswerable > d.never),
+    "Leave it. An unanswerable question is a finding, not a failure.",
+  );
+}
+
 /** Fresh slide versus established — where a config is really decided. */
 function reportFreshVsEstablished(logs) {
   const f = poolFreshVsEstablished(logs);
@@ -1272,6 +1351,7 @@ if (invokedDirectly) {
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
+    reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     process.exit(failed ? 1 : 0);
@@ -1316,6 +1396,7 @@ if (invokedDirectly) {
     reportPredictions(pooled);
     reportFreshVsEstablished(pooled);
     reportGroupVsTag(pooled);
+    reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
     if (!results.length && !selftest.length && !log?.trace)

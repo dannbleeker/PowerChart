@@ -19,7 +19,7 @@ import { poolTagFaults } from "../scripts/triage.mjs";
 import { poolGroupVsTag } from "../scripts/triage.mjs";
 // Its own line, same reason as every other single import in this file.
 // @ts-expect-error — as above.
-import { poolFreshVsEstablished } from "../scripts/triage.mjs";
+import { poolFreshVsEstablished, poolStarvedQuestions } from "../scripts/triage.mjs";
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -416,6 +416,54 @@ describe("triage — logs that are not inserts", () => {
     // A fault line that is not a tagging failure must not inflate the count that
     // a fix would be judged on.
     expect(byBuild.get("bbbbbbb")![0]["tagging-failed"]).toBe(5);
+  });
+
+  it("names the questions that have never once answered, and splits them by whose fault it is", () => {
+    // SIX QUESTIONS WERE 0-FOR-41 and nothing said so. The per-round report
+    // names what was "never put" in THAT round, so a permanently dead question
+    // read as bad luck, forty-one times running — while costing a scratch slide
+    // and host time on every one of them.
+    //
+    // Four of the six were the group cluster. The probe has been blind on groups
+    // for the whole archive, and rounds 064/065 then answered the most important
+    // of them (`tag-on-group-survives`) from PRODUCTION, twice, in one evening.
+    //
+    // The split is the point. "Never asked" is a harness problem and ours to
+    // fix; "unreadable" is the host declining to answer, which is a finding.
+    // Pooling them would hide exactly the distinction that decides what to do.
+    const round = (answers: { id: string; answer: string }[]) => ({ hostAnswers: { answers } });
+    const dead = poolStarvedQuestions([
+      round([
+        { id: "tag-on-group-survives", answer: "no-scratch-slide" },
+        { id: "addgroup-returns-usable", answer: "unreadable" },
+        { id: "sometimes-answers", answer: "no-scratch-shape" },
+        { id: "always-answers", answer: "yes" },
+      ]),
+      round([
+        { id: "tag-on-group-survives", answer: "no-scratch-slide" },
+        { id: "addgroup-returns-usable", answer: "unreadable" },
+        { id: "sometimes-answers", answer: "survives-8" },
+        { id: "always-answers", answer: "yes" },
+      ]),
+    ]);
+    // Typed at the boundary: `triage.mjs` is plain JS behind a @ts-expect-error
+    // import, so everything out of it is `any` and an untyped callback param is
+    // an implicit-any typecheck error — green locally under vitest, red in CI.
+    type Dead = { id: string; rounds: number; never: number; unanswerable: number; answered: number };
+    const ids = (dead as Dead[]).map((d) => d.id);
+    expect(ids, "a question that answers SOMETIMES is doing its job, not waste").not.toContain("sometimes-answers");
+    expect(ids).not.toContain("always-answers");
+    expect([...ids].sort()).toEqual(["addgroup-returns-usable", "tag-on-group-survives"]);
+
+    const byId = Object.fromEntries((dead as Dead[]).map((d) => [d.id, d]));
+    // Never asked — the harness could not set it up.
+    expect(byId["tag-on-group-survives"]).toMatchObject({ never: 2, unanswerable: 0, answered: 0, rounds: 2 });
+    // Asked, and the host declined — a different problem with a different fix.
+    expect(byId["addgroup-returns-usable"]).toMatchObject({ never: 0, unanswerable: 2, answered: 0, rounds: 2 });
+
+    // A question seen only once is not yet a pattern, and calling it dead would
+    // put every newly-added probe into a report about waste on its first round.
+    expect(poolStarvedQuestions([round([{ id: "brand-new", answer: "no-scratch-slide" }])])).toEqual([]);
   });
 
   it("separates a chart on a fresh slide from one on a slide that already had shapes", () => {
