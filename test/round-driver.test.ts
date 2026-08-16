@@ -166,6 +166,38 @@ describe("talking to the browser at all", () => {
     expect(selectDeck(shWith(""), null)).toBe(true);
   });
 
+  it("stops on the first attempt when the document has no add-in to open", () => {
+    // SEVEN ATTEMPTS AND FIFTEEN MINUTES, on 2026-08-16. A 4:3 leg switched to a
+    // deck PowerChart was not registered for; `recover` reopens the pane from
+    // the ribbon's `Insert chart` control, that deck offers no such control, and
+    // the loop rediscovered this six more times. A refusal recovery cannot
+    // address must not be retried.
+    const r = readiness({ ...READY, stamp: null, canOpenPane: false });
+    expect(r.ok).toBe(false);
+    expect(r.codes).toContain("addin-missing");
+    expect(r.codes, "still reported as a merely-closed pane").not.toContain("pane-closed");
+    expect(shouldRetry("not-ready", 0, 6, r.codes), "retrying this cannot help").toBe(false);
+    // And a pane that is simply shut on a deck that CAN open one stays
+    // recoverable, or the loop stops doing the thing it is good at.
+    const shut = readiness({ ...READY, stamp: null, canOpenPane: true });
+    expect(shut.codes).toContain("pane-closed");
+    expect(shouldRetry("not-ready", 0, 6, shut.codes)).toBe(true);
+  });
+
+  it("will not call a tab that is merely mid-reload an absent add-in", () => {
+    // THE DANGEROUS HALF OF THE CHECK ABOVE. A reloading tab answers nothing to
+    // every read, so the ribbon looks as bare as a document with no add-in — and
+    // `addin-missing` is deliberately un-retryable, so getting this wrong ends a
+    // night on a state a reload would have cleared in twenty seconds.
+    //
+    // A readable slide list is the proof the document is actually up. The deck
+    // that motivated the check had one; a loading tab does not.
+    const loading = readiness({ ...READY, stamp: null, canOpenPane: false, slides: null });
+    expect(loading.codes, "condemned a tab that was only still loading").not.toContain("addin-missing");
+    expect(loading.codes).toContain("pane-closed");
+    expect(shouldRetry("not-ready", 0, 6, loading.codes), "a reload would have fixed this").toBe(true);
+  });
+
   it("names the missing DECK rather than blaming its slide size", () => {
     // The message matters as much as the refusal. "the deck is 16:9 and this
     // round was asked for 4:3" sends the owner to Design ▸ Slide Size for a

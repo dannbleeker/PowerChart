@@ -83,6 +83,7 @@ export function readiness({
   expectSize = null,
   wantDeck = null,
   deckFronted = true,
+  canOpenPane = true,
 }) {
   const stop = [];
   /**
@@ -191,7 +192,24 @@ export function readiness({
   if (!deployed) refuse("no-build", "the site did not answer with a build — is Pages up?");
   else if (head && deployed !== head)
     refuse("site-behind", `the site is serving ${deployed} but HEAD is ${head} — wait for Deploy Pages to finish`);
-  if (!stamp) refuse("pane-closed", "could not read the pane's build stamp — is the add-in open?");
+  // `slides !== null` is the proof the DOCUMENT is up. Without it this fires on
+  // a tab that is merely mid-reload — every `refFor` answers nothing there too —
+  // and it is a refusal recovery is forbidden to retry, so a transient state
+  // would end the night. Unknown is not the same as wrong; the 4:3 deck that
+  // motivated this read its slide list perfectly well and simply had no add-in.
+  if (!stamp && !canOpenPane && slides !== null)
+    // A DIFFERENT REFUSAL, because recovery cannot touch it. `recover` reopens
+    // the pane from the ribbon's `Insert chart` control; a document that does
+    // not offer that control has no add-in to open, and reloading it forever
+    // will not produce one. Deliberately absent from `RECOVERABLE_STOPS`, so
+    // this stops on the first attempt instead of the seventh.
+    refuse(
+      "addin-missing",
+      "this document has no PowerChart command in its ribbon — the add-in is not loaded here, " +
+        "and a reload will not bring it back. Sideload it into this deck (Add-ins ▸ Upload My Add-in), " +
+        "or run against a deck that already has it.",
+    );
+  else if (!stamp) refuse("pane-closed", "could not read the pane's build stamp — is the add-in open?");
   else if (deployed && stamp !== deployed)
     refuse(
       "pane-stale",
@@ -756,6 +774,15 @@ async function attempt(argv, deps, sh, healed = false) {
   // silently on a pane sitting anywhere else — and a skipped ping reads as
   // `ready`, which is the one answer this must never give without asking.
   const paneRef = refFor(sh, "Chart", /tab "Chart"/);
+  // CAN THE PANE BE OPENED AT ALL, if it is shut? `recover` reopens it from the
+  // ribbon's `Insert chart` control, so a document that does not offer that
+  // control is one recovery cannot help — and retrying it is pure waste.
+  //
+  // Measured on 2026-08-16: a 4:3 leg switched to a deck the add-in was not
+  // registered for and spent SEVEN attempts, about fifteen minutes, rediscovering
+  // that a pane it cannot open is not openable. Only asked when the pane is
+  // actually shut, so a healthy round pays nothing for it.
+  const canOpenPane = paneRef ? true : Boolean(refFor(sh, "Insert chart", /button "Insert chart"/));
   const ping = paneRef ? readPing(sh("eval", pingScript(8000), paneRef)) : null;
   // Only when the host is already answering: a slide resolve on a host that did
   // not survive `getCount` tells us nothing the ping has not, and costs 20s.
@@ -797,6 +824,7 @@ async function attempt(argv, deps, sh, healed = false) {
     expectSize,
     wantDeck,
     deckFronted,
+    canOpenPane,
   };
   const { ok, stop, codes } = readiness(state);
   console.log(
@@ -986,6 +1014,13 @@ async function collectRound(sh, stamp, sleep) {
  * THE ROUND MEASURES rather than restore it, which is the one thing recovery is
  * not allowed to do. A deck in the wrong profile is a setup error for a person,
  * not a transient state to clear.
+ *
+ * `addin-missing` is absent for the same kind of reason and was learned the same
+ * way. `recover` reopens the pane from the ribbon's `Insert chart` control, so a
+ * document that does not carry that control has nothing for recovery to click;
+ * on 2026-08-16 the driver spent seven attempts and about fifteen minutes
+ * proving that twice in one night. It is not transient either — a browser death
+ * takes the sideload with it, and only a person can put it back.
  *
  * Deliberately absent, and each for its own reason: `site-behind` and `no-build`
  * are waiting for Pages and a reload does not make it deploy faster;

@@ -209,6 +209,35 @@ not published yet, or a pane toggle someone deliberately turned off. Every refus
 and `RECOVERABLE_STOPS` in `scripts/round.mjs` is the list — derived from what `recover` actually
 does, not from a judgement about which refusals feel transient.
 
+## A browser death takes the sideload with it
+
+**This is the one failure a night cannot recover from, and it looks like an
+ordinary closed pane.** `recover` handles a dead browser well — the persistent
+profile keeps the sign-in, so it reopens the window, finds the deck by name and
+fronts it, all without a password. What it cannot restore is the ADD-IN. A web
+sideload does not survive the browser process, so the deck comes back with its
+slides intact, its ribbon showing `Add-ins`, and no PowerChart command anywhere.
+
+Observed on 2026-08-16: the browser died mid-round, recovery brought back
+`Presentation64` perfectly, and every subsequent attempt refused with "could not
+read the pane's build stamp — is the add-in open?" The add-in was not closed. It
+was gone.
+
+The driver now names it `addin-missing` and **stops on the first attempt**,
+because retrying is what the previous behaviour did seven times for nothing. It
+is deliberately outside `RECOVERABLE_STOPS`.
+
+Putting it back is a person's job: **Add-ins ▸ Upload My Add-in ▸ Browse** and
+the repo's manifest. Nothing in this driver will do it, and nothing should try
+unattended — the flow ends in a modal that a failed attempt would leave sitting
+over the document for the rest of the night.
+
+**The check requires a readable slide list before it fires.** A tab that is
+merely mid-reload answers nothing to every read, so its ribbon looks exactly as
+bare as a document with no add-in — and since this refusal is not retried,
+firing it on a loading tab would end a night on a state that clears itself in
+twenty seconds.
+
 ## What stops the driver hanging
 
 Three bounds, and they are not interchangeable. The round's 30-minute deadline is
