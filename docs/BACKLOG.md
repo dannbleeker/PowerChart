@@ -1451,3 +1451,43 @@ rediscovered.
 **No rate is printed, deliberately.** Only failures are traced — a successful
 origin write says nothing — so there is no honest denominator, and inventing one
 would be the kind of number this file has already had to correct once.
+
+### THE ORIGIN TAG IS FIXED — rounds 075/076, and the binding is proven
+
+    round   scenarios  origin5010  charts that cannot follow a drag
+    074        12/13        8                    8
+    075        13/13        0                    0
+    076        13/13        0                    0
+
+**Thirteen of thirteen, twice.** The item above — half the charts unable to
+follow a drag — is CLOSED. The pooled count is history now: 34 charts across 5
+rounds, all of them 072-074, and it will not climb again unless something
+regresses, which is what it is there to notice.
+
+**The fix, and why it is not what it looks like.** The origin tag was written
+after `load("id,left,top")` had resolved the target into `shapes.getItem(id)`.
+Routing that ONE write through the chart's binding — a handle taken from the live
+proxy in the drawing batch, which never becomes a resolved one — took it from
+eight or nine failures a round to zero, twice.
+
+**This also settles a question the probe could never reach.**
+`binding.getShape()` is NOT `shapes.getItem(id)` renamed. That was the staked
+alternative and it is refuted: the same write lands through the binding and is
+refused through the resolved proxy. `binding-names-shape-later` asked eight times
+across eight rounds and never once got to its own question — a fact about the
+PROBE, and the third time production has answered something the probe could not.
+
+#### What is left on this line
+
+- **`settledByBinding` is still 0 across seven rounds.** The settle-by-binding
+  route has never executed, because the settle only runs when the config tag
+  fails and the config tag stopped failing. Kept deliberately — it costs nothing
+  at rest and is the only route left if the config tag regresses — but it is
+  **untested in production** and must not be mistaken for exercised code.
+- **A real mouse drag is still owed.** `an update follows a moved chart` proves
+  the ARITHMETIC by moving a shape programmatically; test 4 of the standing run
+  is what proves a mouse. Nothing here substitutes for it.
+- **Desktop and 4:3 remain untested against a host.** Every one of the 52
+  archived rounds is PowerPoint on the web at 16:9. The capability exists — slide
+  size is read at runtime and unit-tested at 720x540, and `PW_DECK` points a
+  round at any deck — so this needs a decision about which deck, not new code.
