@@ -369,6 +369,34 @@ of one round.
 overnight): charts 4 and 5 of `same scale across the deck` group, and the
 scenario stops failing at 34 of 34.
 
+### ROUND 064 ANSWERED IT — half right, and the half that failed is the useful half
+
+**Charts 4 and 5 grouped**, both after the retry, both for the first time in five
+rounds of failing identically. `the settled retry repaired 2`. No chart in the
+round went ungrouped at all.
+
+**The scenario still failed**, because the tag write is refused *through the
+group*:
+
+    4/8   tagging failed   from: group×1   slide 258#4111159134   5010
+    5/8   tagging failed   from: group×1   slide 259#3844610554   5010
+
+**This refutes "grouping is what saves a config."** That 2%-vs-79% split was
+measured on a population that excluded freshly-added slides by construction —
+they could not group, so they could never be in the grouped column. Round 064's
+own split is `grouped 5, 2 lost = 40%`.
+
+**The next target is the SLIDE handle, and it is named rather than guessed.** A
+shape proxy carries its parent's object path; the group is made fresh in the
+grouping batch but hangs off a slide handle Office has rewritten to
+`slides.getItem(id)`, and a freshly-added slide's id does not round-trip here
+(`shape-add-held-slide-proxy: threw`). The round says it outright: *the host
+grouped through a slide handle two syncs old.* The members were never too old —
+the parent was.
+
+Keep the retry regardless: it is what turned an invisible failure into a named
+one, and it costs nothing on a healthy read.
+
 **What shipped**, so the round is read against the right thing:
 
 - `REREAD_RETRY_MS = 1500`, `REREAD_ATTEMPTS = 1` in `powerpoint.ts`. The
