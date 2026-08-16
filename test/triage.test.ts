@@ -25,7 +25,8 @@ import { poolGroupVsTag } from "../scripts/triage.mjs";
 // A namespace import is one line whatever is destructured off it.
 // @ts-expect-error — as above.
 import * as pools from "../scripts/triage.mjs";
-const { poolFreshVsEstablished, poolStarvedQuestions, poolBatchSpanVsGroup, scenarioRegressions } = pools;
+const { poolFreshVsEstablished, poolStarvedQuestions, poolBatchSpanVsGroup, scenarioRegressions, poolOriginTagLosses } =
+  pools;
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -478,6 +479,35 @@ describe("triage — logs that are not inserts", () => {
 
     // And too little history is no history: it must not judge from two rounds.
     expect(scenarioRegressions([round(passing), round([["same scale", false]])])).toEqual([]);
+  });
+
+  it("counts every chart that cannot follow a drag, which a passing scenario hides", () => {
+    // A GREEN VERDICT OVER A SAMPLE. `an update follows a moved chart` passes and
+    // tests ONE chart; rounds 073 and 074 lost the origin tag on 9 of 19 and 8 of
+    // 17 charts in those same rounds. Every one of those would snap back to where
+    // it was inserted instead of following the user's drag, while the scenario
+    // reported the round trip holding.
+    //
+    // Same shape as `does a rasterise poison the next draw` counting only its own
+    // four draws, and the fresh-slide split sitting unqueried for eleven rounds.
+    // A scenario samples; a pooled count does not.
+    const lost = (n: number) => ({ message: "origin tag lost — the chart is re-editable", data: { charts: n } });
+    const o = poolOriginTagLosses([
+      { trace: { entries: [lost(9), lost(1)] } },
+      { trace: { entries: [] } },
+      { trace: { entries: [lost(8)] } },
+    ]);
+    expect(o.charts, "did not total the charts across rounds").toBe(18);
+    expect(o.rounds, "counted a round that lost nothing").toBe(2);
+    // TEN, not nine: the first round lost 9 charts on one line and 1 on another,
+    // and a round's damage is the SUM of its lines. Getting this wrong first time
+    // is why it is asserted — a per-line maximum would under-report every round
+    // that failed in more than one batch.
+    expect(o.worst, "took the worst LINE rather than the worst ROUND").toBe(10);
+
+    // A round with no losses contributes nothing at all, so the report stays
+    // silent on an archive that never had the problem.
+    expect(poolOriginTagLosses([{ trace: { entries: [] } }])).toEqual({ rounds: 0, charts: 0, worst: 0 });
   });
 
   it("does not call a scenario that DID NOT MEASURE a regression", () => {
