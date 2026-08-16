@@ -20,6 +20,10 @@ reports/
 # The browser session the round driver drives (see scripts/pw.sh).
 .pw-session/
 
+# The driver's account of how the LAST round ended, for whatever runs the next
+# one. State, not evidence — the evidence is the archived round in rounds/.
+.round-outcome.json
+
 # Crash reports are forensic dumps from a LIVE, AUTHENTICATED session — request
 # URLs, session ids, the document name. This repo is public. The README stays;
 # the reports never leave the machine.
