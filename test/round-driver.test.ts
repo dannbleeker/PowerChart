@@ -33,6 +33,8 @@ const {
   DEAD_BROWSER_POLLS,
   slideResolveScript,
   readSlideResolve,
+  readSlideSize,
+  slideSizeScript,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -209,6 +211,50 @@ describe("talking to the browser at all", () => {
     // No codes is no evidence — the same rule `shouldRetry` already applies.
     expect(onlyDirtyDeck([])).toBe(false);
     expect(onlyDirtyDeck(undefined)).toBe(false);
+  });
+
+  it("refuses a deck that is not the slide size this round was asked for", () => {
+    // A CLICK THAT DID NOTHING. Setting Widescreen during the 2026-08-16 control
+    // run silently did not take — it landed while the document was in its greyed
+    // "Loading" state, the menu accepted it, and nothing changed. It was caught
+    // only by reopening the menu and reading which box was ticked.
+    //
+    // A round that believes it is 4:3 and is not proves nothing, which is the
+    // same harm as a round on a stale pane — already a hard stop. With a nightly
+    // cycle running 16:9 twice and 4:3 once, an unverified size files a round
+    // under the wrong profile, which is worse than not running it.
+    const r = readiness({ ...READY, size: "16:9", expectSize: "4:3" });
+    expect(r.ok).toBe(false);
+    expect(r.codes).toContain("wrong-size");
+    expect(r.stop.join(" "), "did not warn that a click can be accepted and do nothing").toMatch(/CHECK IT TOOK/);
+
+    // Matching is silent, and asking for nothing is silent — an ordinary 16:9
+    // round must read exactly as it always has.
+    expect(readiness({ ...READY, size: "4:3", expectSize: "4:3" }).ok).toBe(true);
+    expect(readiness({ ...READY, size: null, expectSize: null }).ok).toBe(true);
+    // AND A HOST THAT WOULD NOT ANSWER IS NOT A MISMATCH. Null is no evidence,
+    // and refusing on no evidence is the mistake `reachable` exists to prevent.
+    expect(readiness({ ...READY, size: null, expectSize: "4:3" }).ok, "refused on an unanswered question").toBe(true);
+
+    // NOT RECOVERABLE, and that is deliberate: `recover` could set the size in
+    // two clicks, and doing so would change what the round measures rather than
+    // restore it.
+    expect(shouldRetry("not-ready", 0, 3, ["wrong-size"]), "recovery tried to change the deck's slide size").toBe(
+      false,
+    );
+  });
+
+  it("reads a slide size the way the add-in does, and calls silence silence", () => {
+    expect(readSlideSize("size:960x540")).toBe("16:9");
+    expect(readSlideSize("size:720x540")).toBe("4:3");
+    // Anything else is its own profile, never folded into the nearest named one.
+    expect(readSlideSize("size:1000x500")).toBe("1000x500");
+    // A failure or a silence answers nothing — see the null case above.
+    expect(readSlideSize("size-failed:GeneralException")).toBe(null);
+    expect(readSlideSize("")).toBe(null);
+    // Points via pageSetup, which is what the add-in itself reads.
+    expect(slideSizeScript(15000)).toContain("slideWidth");
+    expect(slideSizeScript(15000), "no budget means a wedged host hangs the check").toContain("15000");
   });
 
   it("finds the CLI entry beside node, or says it cannot", () => {

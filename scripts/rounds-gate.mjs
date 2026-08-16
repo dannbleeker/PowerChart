@@ -20,7 +20,7 @@
  */
 import { readFileSync, readdirSync } from "fs";
 import { isMain } from "./is-main.mjs";
-import { scenarioRegressions } from "./triage.mjs";
+import { scenarioRegressions, profileDivergence, roundProfile } from "./triage.mjs";
 
 /** Every archived round, oldest first — the order `scenarioRegressions` expects. */
 export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSync) {
@@ -33,8 +33,30 @@ export function loadRounds(dir = "rounds", list = readdirSync, read = readFileSy
 if (isMain(import.meta.url, process.argv[1])) {
   const rounds = loadRounds();
   const gone = scenarioRegressions(rounds);
+  // A SECOND, DIFFERENT QUESTION. The gate above asks whether a scenario fell
+  // against its OWN history; this asks whether one slide size failed what
+  // another passed on the same build. Round 077 was exactly that — 10 of 13 at
+  // 4:3 against 13 of 13 at 16:9 — and nothing said so automatically.
+  //
+  // Reported, never fatal. A nightly cycle runs 16:9 twice and 4:3 once as
+  // VALIDATION, and the agreed response to divergence is to run 4:3 again or on
+  // its own, not to fail the build. Exiting non-zero here would turn a signal
+  // that means "look closer" into one that means "stop", which is how a useful
+  // report becomes an ignored one.
+  const diverged = profileDivergence(rounds);
+  if (diverged.length) {
+    console.log(`  ${diverged.length} scenario(s) DIVERGED between slide sizes on the same build:`);
+    for (const d of diverged)
+      console.log(
+        `    ${d.name} — passed at ${d.passedIn.join(", ")}, failed at ${d.failedIn.join(", ")} (${d.build})`,
+      );
+    console.log("  Run that profile again, or as a pair, before treating it as a property of the slide size.");
+  }
   if (!gone.length) {
-    console.log(`  no scenario regressed — checked the newest of ${rounds.length} archived round(s)`);
+    console.log(
+      `  no scenario regressed — checked the newest of ${rounds.length} archived round(s)` +
+        ` at ${roundProfile(rounds[rounds.length - 1])}`,
+    );
     process.exit(0);
   }
   console.error(`  ${gone.length} scenario(s) STOPPED PASSING in the newest round:`);

@@ -25,8 +25,15 @@ import { poolGroupVsTag } from "../scripts/triage.mjs";
 // A namespace import is one line whatever is destructured off it.
 // @ts-expect-error — as above.
 import * as pools from "../scripts/triage.mjs";
-const { poolFreshVsEstablished, poolStarvedQuestions, poolBatchSpanVsGroup, scenarioRegressions, poolOriginTagLosses } =
-  pools;
+const {
+  poolFreshVsEstablished,
+  poolStarvedQuestions,
+  poolBatchSpanVsGroup,
+  scenarioRegressions,
+  poolOriginTagLosses,
+  roundProfile,
+  profileDivergence,
+} = pools;
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
 // covers only the NEXT line — so the directive stopped reaching the `from`
@@ -508,6 +515,81 @@ describe("triage — logs that are not inserts", () => {
     // A round with no losses contributes nothing at all, so the report stays
     // silent on an archive that never had the problem.
     expect(poolOriginTagLosses([{ trace: { entries: [] } }])).toEqual({ rounds: 0, charts: 0, worst: 0 });
+  });
+
+  it("keeps 4:3 and 16:9 apart, and never judges one against the other", () => {
+    // A NIGHTLY CYCLE RUNS 16:9 TWICE AND 4:3 ONCE. Judged against three 16:9
+    // rounds, a 4:3 round would be flagged for scoring differently — which it
+    // does, by design: round 077 scored 10 of 13 where 16:9 scored 13 of 13
+    // twice. The gate would fire every night, and a gate that cries wolf gets
+    // switched off. This file has already watched that happen twice.
+    const at = (w: number, h: number, pairs: [string, boolean][]) => ({
+      build: "aaaaaaa · 2026-08-16",
+      slideSize: { width: w, height: h, source: "pageSetup" },
+      selftest: pairs.map(([name, ok]) => ({ name, ok })),
+    });
+    const wide = (pairs: [string, boolean][]) => at(960, 540, pairs);
+    const std = (pairs: [string, boolean][]) => at(720, 540, pairs);
+
+    expect(roundProfile(wide([]))).toBe("16:9");
+    expect(roundProfile(std([]))).toBe("4:3");
+    // A round with no size is one of the 53 filed before the field existed, and
+    // every one of those was 16:9 — a documented fact, not a guess.
+    expect(roundProfile({}), "an old round must not become its own profile").toBe("16:9");
+    // Anything else is visibly itself rather than folded into the nearest named.
+    expect(roundProfile(at(1000, 500, []))).toBe("1000x500");
+
+    // THE GATE: a 4:3 round after three passing 16:9 rounds is not a regression.
+    const ok: [string, boolean][] = [["same scale", true]];
+    expect(
+      scenarioRegressions([wide(ok), wide(ok), wide(ok), std([["same scale", false]])]),
+      "judged a 4:3 round against 16:9 history",
+    ).toEqual([]);
+  });
+
+  it("names a scenario that passes at one slide size and fails at another", () => {
+    // THE OTHER QUESTION, and it needs its own answer. The gate asks whether a
+    // scenario fell against its OWN history; this asks whether one profile
+    // failed what another passed on the SAME BUILD. Round 077 was exactly that
+    // — 10 of 13 at 4:3 against 13 of 13 at 16:9 — and nothing said so.
+    const at = (build: string, w: number, h: number, pairs: [string, boolean][]) => ({
+      build: `${build} · 2026-08-16`,
+      slideSize: { width: w, height: h, source: "pageSetup" },
+      selftest: pairs.map(([name, ok]) => ({ name, ok })),
+    });
+    const d = profileDivergence([
+      at("aaaaaaa", 960, 540, [
+        ["same scale", true],
+        ["visible", true],
+      ]),
+      at("aaaaaaa", 720, 540, [
+        ["same scale", false],
+        ["visible", true],
+      ]),
+    ]);
+    expect(d.map((x: { name: string }) => x.name)).toEqual(["same scale"]);
+    expect(d[0].passedIn).toEqual(["16:9"]);
+    expect(d[0].failedIn).toEqual(["4:3"]);
+
+    // FAILING IN BOTH is an ordinary bug, not divergence — reporting it here
+    // would bury the one signal this exists for.
+    expect(
+      profileDivergence([
+        at("aaaaaaa", 960, 540, [["same scale", false]]),
+        at("aaaaaaa", 720, 540, [["same scale", false]]),
+      ]),
+      "reported a plain bug as a slide-size difference",
+    ).toEqual([]);
+
+    // ACROSS BUILDS IS NOT A COMPARISON. Two rounds on different builds differ
+    // for reasons that have nothing to do with slide size.
+    expect(
+      profileDivergence([
+        at("aaaaaaa", 960, 540, [["same scale", true]]),
+        at("bbbbbbb", 720, 540, [["same scale", false]]),
+      ]),
+      "compared two builds and blamed the slide size",
+    ).toEqual([]);
   });
 
   it("does not call a scenario that DID NOT MEASURE a regression", () => {

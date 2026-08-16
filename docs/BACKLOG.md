@@ -1504,12 +1504,80 @@ PROBE, and the third time production has answered something the probe could not.
   failure rather than the specific `InvalidParam / 5010` that names a refused
   handle, which fits a sick document as well as it fits an aspect ratio.
 
-  **THE CONTROL, one round:** switch `Presentation65` back to 16:9 and run it
-  again. Back to 13/13 means the deck is fine and 4:3 is the cause; still ~10/13
-  means the deck is the cause and 4:3 is exonerated. Switching the proven
-  `Presentation64` to 4:3 answers the same question but risks the deck carrying
-  52 comparable rounds, which is not worth it while a cheaper control exists.
+  **THE CONTROL RAN, AND 4:3 IS EXONERATED.** Round 078 — same deck, same build,
+  16:9 instead of 4:3 — scored **10 of 13 with 52 `UnexpectedError` and 18
+  tagging failures, identical to 077 on every number**. The failure follows the
+  DECK. `Presentation65` was created during a browser crash, has greyed out
+  twice, and began round 078 holding 100 slides.
 
-  **Write nothing down about 4:3 support until that control has run.**
+  **Nothing has been learned about 4:3 yet** — round 077 measured a sick
+  document. The question needs a clean 4:3 deck, which is item 4 below.
 - **Desktop remains untested against a host.** Every archived round is
   PowerPoint on the web.
+
+### PUTTING 4:3 INTO THE NIGHTLY RUNS — four blockers, and the order to fix them
+
+Round 077 was driven by hand. Everything below is what stopped it being a
+command, found by doing it.
+
+#### 1. A ROUND DOES NOT RECORD ITS SLIDE SIZE — fix this first
+
+`077-357632b.json` carries `build`, `host`, `hostAnswers`, `selftest`, `deck`,
+`trace`, and **nothing that says it ran at 4:3**. So nothing downstream can tell
+the two apart, and `npm run rounds` pools them into one number: `WHICH SLIDE THE
+CHART LANDED ON`, `DID THE CHART SPAN BATCHES`, `CHARTS THAT CANNOT FOLLOW A
+DRAG` would each silently average two different experiments.
+
+That is the rounds 24-and-25 mistake — "differed only in this, and were compared
+as though they did not" — except automated and running every night.
+
+`slideSize()` already resolves it at runtime through three fallback rungs and is
+unit-tested at 720x540. Put `{ width, height, source }` in the run log beside
+`build` and `host`. **Everything else here depends on this one field.**
+
+#### 2. THE REGRESSION GATE WOULD CRY WOLF EVERY NIGHT
+
+`scenarioRegressions` establishes on the previous three rounds and judges the
+newest. Alternate profiles nightly and a 4:3 round is judged against three 16:9
+rounds — and round 077 scored 10 of 13 where 16:9 scored 13 of 13 twice.
+
+The gate fires, the fire is spurious, and someone switches it off. This file
+already records that happening to a gate that cried wolf, and the fix for the
+LAST false alarm shipped hours ago. **Segment establishment and comparison by
+profile**, so a 4:3 round is only ever measured against 4:3 rounds.
+
+#### 3. THE SLIDE SIZE IS NEVER VERIFIED, AND A SILENT MISS IS EASY
+
+Readiness checks the build stamp, the deck, both toggles and the host's
+liveness. It does not check the size.
+
+**This is not theoretical.** Setting Widescreen during the control run SILENTLY
+DID NOT TAKE — the click landed while the document was in its greyed "Loading"
+state, the menu accepted it, and nothing changed. It was caught only by
+reopening the menu and reading which box was checked. A round that believes it
+is 4:3 and is not proves exactly nothing, which is the same class of harm as a
+round on a stale pane — and that one is already a hard stop.
+
+Add a `wrong-size` refusal with its own code, against an expected profile
+(`PW_EXPECT_SIZE`), and let `recover` NOT try to fix it: changing a deck's slide
+size mid-run would change what the round measures.
+
+#### 4. THE DECK IS SET UP BY HAND, AND THIS ONE HAS A HISTORY
+
+Slide size is a ribbon click the driver cannot make, and a sideload is
+per-document. That is a one-time cost per deck and is fine — but the deck used
+for round 077 is not.
+
+`Presentation65` was created during a browser crash, and has now gone into a
+greyed, unusable ribbon state **twice**, each time needing a reload before it
+would accept input. A nightly series must not start on a document with that
+history. **Create a clean 4:3 deck for it**, sideload once, and point rounds at
+it with `PW_DECK` — which already exists.
+
+#### The order, and why
+
+**1 before everything.** Segmenting (2), verifying (3) and reporting all need a
+round to say what it was. Building any of them first means building on a guess
+about which rounds were which, and the archive has 53 rounds with no size on any
+of them — so the field also needs a documented default of 16:9 for everything
+already filed, stated once, rather than inferred per reader.
