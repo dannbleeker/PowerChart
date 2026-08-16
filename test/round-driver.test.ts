@@ -29,6 +29,7 @@ const {
   recoveryFor,
   noBrowser,
   browserDiedMidRound,
+  onlyDirtyDeck,
   DEAD_BROWSER_POLLS,
   slideResolveScript,
   readSlideResolve,
@@ -189,6 +190,25 @@ describe("talking to the browser at all", () => {
     );
     // Still bounded by the caller's --retry N, like every other reason.
     expect(shouldRetry("browser-gone", 3, 3, undefined)).toBe(false);
+  });
+
+  it("sweeps a dirty deck rather than refusing, but only when it is the ONLY thing wrong", () => {
+    // A dirty deck is not a fault — it is the last round's slides, and the
+    // driver already sweeps them on every recovery. Refusing over it made a
+    // person do by hand the one step the machine does better, and by hand is
+    // how a deck reached ZERO slides on 2026-08-16: a fixed count of deletes
+    // against a deck that held fewer, leaving `slide 1 REFUSED`, which is the
+    // state the 2s crash starts from.
+    expect(onlyDirtyDeck(["deck-dirty"]), "the one stop the driver can clear itself").toBe(true);
+
+    // ONLY, and that word is the whole guard. Dirty AND stale is a round that
+    // would measure the wrong build; healing the cheap half moves it closer to
+    // running while still being wrong.
+    expect(onlyDirtyDeck(["deck-dirty", "pane-stale"]), "healed its way into measuring the wrong build").toBe(false);
+    expect(onlyDirtyDeck(["pane-stale"])).toBe(false);
+    // No codes is no evidence — the same rule `shouldRetry` already applies.
+    expect(onlyDirtyDeck([])).toBe(false);
+    expect(onlyDirtyDeck(undefined)).toBe(false);
   });
 
   it("finds the CLI entry beside node, or says it cannot", () => {

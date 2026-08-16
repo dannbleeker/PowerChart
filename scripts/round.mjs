@@ -590,8 +590,9 @@ function clickRef(sh, ref) {
   return sh("eval", "el => { el.click(); return 'ok'; }", ref);
 }
 
-async function attempt(argv, deps, sh) {
+async function attempt(argv, deps, sh, healed = false) {
   const run = deps.run ?? spawnSync;
+  const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const fetchBuild = deps.fetchBuild ?? defaultFetchBuild;
   const checkOnly = argv.includes("--check");
   // This sweep's reachability is about THIS sweep. See `sh.startSweep`.
@@ -661,6 +662,17 @@ async function attempt(argv, deps, sh) {
       (slideOk === null ? "" : slideOk ? " · slide 1 resolved" : " · slide 1 REFUSED") +
       (state.crashed ? " · PowerPoint's crash dialog is up" : ""),
   );
+  // SWEEP IT RATHER THAN REFUSE, when the deck is the only thing wrong. See
+  // `onlyDirtyDeck` — this is the one stop the driver can clear better than a
+  // person, and the person doing it by hand is what emptied a deck entirely.
+  if (!ok && onlyDirtyDeck(codes) && !healed && sweepDeck(sh)) {
+    // ONCE, never in a loop. The re-check reads the deck through the same call,
+    // so a sweep that did not take refuses exactly as it would have — a failed
+    // heal cannot read as a successful one.
+    console.log("  the deck still holds the last round's slides — sweeping it rather than refusing");
+    await sleep(8000);
+    return attempt(argv, deps, sh, true);
+  }
   if (!ok) {
     console.error("\n  NOT READY — a round now would not prove anything:");
     for (const s of stop) console.error(`    - ${s}`);
@@ -839,6 +851,24 @@ export function browserDiedMidRound(failedStreak, listOutput) {
   return failedStreak >= DEAD_BROWSER_POLLS && noBrowser(listOutput);
 }
 
+/**
+ * Is a dirty deck the ONLY thing standing in the way?
+ *
+ * A dirty deck is not a fault — it is the last round's slides, and the driver
+ * already knows how to sweep them (`cleanDeckScript`, which `recover` runs every
+ * time it fires). Refusing over it makes a person do by hand the one step the
+ * machine does better: hand-clearing took a deck to ZERO slides on 2026-08-16
+ * and produced `slide 1 REFUSED`, the state the 2s crash starts from.
+ *
+ * ONLY, and that word is the whole guard. A deck that is dirty AND on a stale
+ * pane is a round that would measure the wrong build, and healing the cheap half
+ * moves it one step closer to running while still being wrong. Anything beyond a
+ * dirty deck refuses out loud, as before.
+ */
+export function onlyDirtyDeck(codes) {
+  return Array.isArray(codes) && codes.length === 1 && codes[0] === "deck-dirty";
+}
+
 export function shouldRetry(reason, attempt, max, codes) {
   if (attempt >= max) return false;
   // A WEDGE MID-ROUND IS RECOVERABLE, and leaving `timeout` out of this stopped
@@ -942,9 +972,23 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
   if (automation) clickRef(sh, automation);
   await sleep(5000);
 
-  const anchor = refFor(sh, "Chart", /tab "Chart"/);
-  if (anchor) sh("eval", cleanDeckScript(90000), anchor);
+  sweepDeck(sh);
   return Boolean(pane);
+}
+
+/**
+ * Delete every slide but the first, through the pane's own Office.js context.
+ *
+ * Pulled out of `recover` so the readiness check can use it without the reload
+ * and reopen that surround it there — see `onlyDirtyDeck`. Same call, same
+ * budget, ONE implementation: a second sweep written beside this one is how the
+ * hardcoded deck name and the three stale slogans in `triage.mjs` happened.
+ */
+export function sweepDeck(sh) {
+  const anchor = refFor(sh, "Chart", /tab "Chart"/);
+  if (!anchor) return false;
+  sh("eval", cleanDeckScript(90000), anchor);
+  return true;
 }
 
 async function main(argv, deps = {}) {
