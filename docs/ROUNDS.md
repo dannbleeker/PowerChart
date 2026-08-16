@@ -209,6 +209,24 @@ not published yet, or a pane toggle someone deliberately turned off. Every refus
 and `RECOVERABLE_STOPS` in `scripts/round.mjs` is the list — derived from what `recover` actually
 does, not from a judgement about which refusals feel transient.
 
+## What stops the driver hanging
+
+Three bounds, and they are not interchangeable. The round's 30-minute deadline is
+checked at the TOP of each poll, so it can only fire **between** calls — it
+bounds a slow round, never a stuck one. Each `playwright-cli` call therefore
+carries its own `timeout` (`PW_CLI_TIMEOUT_MS`, three minutes by default),
+because a CLI that never returns leaves that deadline permanently out of reach.
+And the page-side `budgetMs` inside an `eval` bounds only the *page*: it does
+nothing if the browser connection itself is gone.
+
+A timed-out call is `unreachable`, which is the truth — nothing was measured.
+
+**An unexpected exception is a reason like any other.** `attempt` used to throw
+straight out of the process: no receipt, no retry, and a night with six attempts
+left ending on its first surprise. It now comes back as `threw`, gets the same
+`--retry` a crash does, and lands in the receipt with its message. Retrying is
+bounded by `--retry`, so a deterministic bug fails that many times and stops.
+
 ## The wedge
 
 **The host's session is gone, and a reload brings it back.** Rounds 24, 25, 29 and 30 each died the

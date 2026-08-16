@@ -25,7 +25,7 @@
  * this reads the receipt the driver leaves and stops when the driver gave up.
  */
 import { spawnSync } from "child_process";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, rmSync } from "fs";
 import { isMain } from "./is-main.mjs";
 // Its own line: the grouped-import trap is documented in test/triage.test.ts and
 // has been paid for four times.
@@ -111,6 +111,16 @@ if (isMain(import.meta.url, process.argv[1])) {
     // A CHILD PROCESS PER ROUND, not an imported function. A round that wedges
     // its own process cannot then poison the next one, and the per-round
     // environment is the natural way to say which arm this is.
+    // CLEAR IT FIRST, or the check below reads the LAST round's outcome. A leg
+    // that dies before writing leaves the previous leg's receipt on disk, and
+    // nothing distinguishes the two — which made the "the driver left no
+    // receipt" branch, written for exactly this, unreachable from leg 2 onward.
+    // A stale `finished` would have been read as this round's success.
+    try {
+      rmSync(RECEIPT_PATH, { force: true });
+    } catch {
+      /* nothing to clear is the normal case on the first leg */
+    }
     const r = spawnSync(process.execPath, ["scripts/round.mjs", "--dir", dir, "--retry", retry], {
       stdio: "inherit",
       env: { ...process.env, PW_DECK: leg.deck, PW_EXPECT_SIZE: leg.size },

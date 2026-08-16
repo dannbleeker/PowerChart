@@ -120,6 +120,35 @@ describe("deciding whether a round is worth running", () => {
 });
 
 describe("talking to the browser at all", () => {
+  it("bounds every CLI call, because the round's own deadline cannot", () => {
+    // THE STALL THIS DRIVER COULD NOT SURVIVE. The poll loop checks a 30-minute
+    // limit at the TOP of each pass, so it only ever fires if the call below it
+    // returned. An unbounded spawn meant a wedged CLI — a browser that stopped
+    // answering, a tab mid-crash — hung the driver with that deadline sitting
+    // there unreachable and nothing printed since.
+    const seen: Record<string, unknown>[] = [];
+    const run = (_exe: string, _args: string[], opts: Record<string, unknown>) => {
+      seen.push(opts);
+      return { status: 0, stdout: "" };
+    };
+    cli(run, ".", "some-cli.js")("list");
+    expect(seen).toHaveLength(1);
+    expect(seen[0].timeout, "an unbounded call can hang the whole night").toBeGreaterThan(0);
+    // Generous, or it kills the slow calls that are legitimate: an `eval`
+    // carries a 20s page-side budget and `requests` can return tens of MB.
+    expect(seen[0].timeout).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it("treats a timed-out call as nothing measured, not as an answer", () => {
+    // A timeout arrives as `error`, which is the same shape as any other spawn
+    // failure — and the difference that matters is already drawn: nothing was
+    // measured, so the sweep must not trust anything it read.
+    const run = () => ({ error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }), status: null });
+    const sh = cli(run, ".", "some-cli.js");
+    expect(sh("list")).toBe("");
+    expect(sh.state.unreachable, "a wedged CLI must not read as a healthy empty answer").toBe(true);
+  });
+
   it("refuses everything, loudly, when the CLI could not be run", () => {
     // The failure this driver shipped with: every browser read came back empty
     // and it reported the pane as closed while the pane sat open on screen.
@@ -827,11 +856,43 @@ describe("the account the driver leaves of how a round ended", () => {
     expect(outcomeReceipt({ reason: "crashed", codes: undefined }).codes).toEqual([]);
   });
 
-  it("records the slide size when a profile was asked for, and null when it was not", () => {
-    expect(outcomeReceipt({ reason: "finished", size: { width: 720, height: 540 } }).size).toEqual({
-      width: 720,
-      height: 540,
-    });
+  it("records the slide size in the shape the driver actually produces", () => {
+    // THE PROFILE STRING, not an object. This test used to hand in
+    // `{ width, height }` and assert it came back — which tested the
+    // assumption, not the driver. `readSlideSize` returns "16:9", "4:3", or
+    // "960x540", so the receipt recorded `"size": {}` on every cycle leg and
+    // the field naming the arm a round belonged to said nothing at all.
+    for (const [raw, profile] of [
+      ["960x540", "16:9"],
+      ["720x540", "4:3"],
+      // Neither named ratio — a custom deck must be visibly its own profile
+      // rather than folded into whichever one it is nearest.
+      ["1000x500", "1000x500"],
+    ]) {
+      expect(outcomeReceipt({ reason: "finished", size: readSlideSize(`size:${raw}`) }).size).toBe(profile);
+    }
     expect(outcomeReceipt({ reason: "finished" }).size).toBeNull();
+  });
+
+  it("names a round that threw where nothing expected it to", () => {
+    // An unexpected exception used to kill the process outright: no receipt, no
+    // retry, and a night that ended on its first surprise.
+    const r = outcomeReceipt({ reason: "threw", codes: [], threw: "Cannot read properties of undefined" });
+    expect(r.reason).toBe("threw");
+    expect(r.threw).toMatch(/Cannot read properties/);
+    // NOT recoverable: `--retry` gives it another go inside the driver, but once
+    // those are spent an unknown crash wants a person, not another cycle leg.
+    expect(r.recoverable).toBe(false);
+  });
+
+  it("leaves `threw` off a round that did not throw", () => {
+    expect(outcomeReceipt({ reason: "finished" })).not.toHaveProperty("threw");
+  });
+
+  it("retries a round that threw, and stops once the retries are spent", () => {
+    // Bounded by the caller's own --retry, so a deterministic bug fails that
+    // many times and stops rather than spinning all night.
+    expect(shouldRetry("threw", 0, 3, [])).toBe(true);
+    expect(shouldRetry("threw", 3, 3, [])).toBe(false);
   });
 });
