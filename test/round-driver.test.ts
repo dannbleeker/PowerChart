@@ -21,6 +21,7 @@ const {
   quietStreak,
   archive,
   signedOut,
+  signInIsPopup,
   shouldRetry,
   recover,
   cli,
@@ -500,6 +501,40 @@ describe("asking the host whether it is awake", () => {
       false,
     );
     expect(signedOut(""), "no tabs is not a sign-in page").toBe(false);
+  });
+
+  it("knows a sign-in POPUP beside a live deck from a browser sitting on a login page", () => {
+    // What actually ended the overnight run of 2026-08-15/16. Office opened an
+    // auth prompt NEXT TO a deck tab that was still there, and the driver
+    // reported "the browser is on a Microsoft sign-in page" — while the screen
+    // showed PowerPoint with a small dialog over it.
+    //
+    // Stopping the round is right either way: if the host is asking for
+    // credentials, nothing measured past that point can be trusted. What was
+    // wrong is a message that does not match what the reader sees, which on an
+    // overnight run is the only account of the night they get.
+    const popup = [
+      "- 0: [Presentation63.pptx](https://onedrive.live.com/personal/x/doc.aspx)",
+      "- 1: (current) [Sign in](https://login.live.com/login.srf?wa=wsignin1)",
+    ].join("\n");
+    expect(signInIsPopup(popup), "a deck tab was still open and this called it a login page").toBe(true);
+    // The whole browser on a login page — no document tab anywhere.
+    expect(signInIsPopup("- 0: (current) [Sign in](https://login.live.com/login.srf)")).toBe(false);
+    // And it must not fire on a healthy deck with no prompt at all.
+    expect(signInIsPopup("- 0: (current) [Presentation63.pptx](https://onedrive.live.com/x)")).toBe(false);
+    expect(signInIsPopup("")).toBe(false);
+
+    // The messages are genuinely different, and each names what the reader can
+    // see. Both hand the job back — it needs a password either way.
+    const asPopup = readiness({ ...READY, stamp: null, slides: null, loggedOut: true, authPopup: true });
+    const asPage = readiness({ ...READY, stamp: null, slides: null, loggedOut: true });
+    expect(asPopup.stop[0], "the popup case still described a browser on a login page").toContain("beside the deck");
+    expect(asPage.stop[0]).toContain("sign-in page");
+    expect(asPopup.stop[0]).not.toBe(asPage.stop[0]);
+    for (const r of [asPopup, asPage]) {
+      expect(r.ok, "a host asking for credentials cannot be measured either way").toBe(false);
+      expect(r.stop[0], "the reader has to know this one is theirs").toContain("needs a password");
+    }
   });
 
   it("refuses a round when the host will not answer the cheapest call there is", () => {

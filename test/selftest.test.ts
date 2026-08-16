@@ -48,6 +48,7 @@ import {
   renderDifference,
   rescaleFlipIndex,
   rescaleLossNote,
+  reReadNote,
   updateLossNote,
   rescaleShouldStop,
   visibilityVerdict,
@@ -1670,6 +1671,42 @@ describe("when the deck-wide rescale has learned everything it will", () => {
 
     // And nothing at all to say when nothing was lost.
     expect(rescaleLossNote([undefined, undefined], 2)).toBe("");
+  });
+
+  it("says WHY the rescale lost charts, and whether the pause saved any", () => {
+    // Thirty-four rounds reported "3 of 8 charts carry the shared scale … the
+    // host flipped at chart 4 of 8" and never once said why, so reading a round
+    // meant opening the trace and joining it back by hand. The mechanism is
+    // settled now — a short or empty pre-grouping re-read on a slide the run has
+    // just added — so the verdict line can carry it.
+    const zero = { emptyReReads: 0, shortReReads: 0, reReadsRepaired: 0 };
+    const note = reReadNote(zero, { emptyReReads: 1, shortReReads: 1, reReadsRepaired: 2 });
+    expect(note, "the two failure modes drive different branches and must not be pooled").toMatch(/1 read short/);
+    expect(note).toMatch(/1 read empty/);
+    expect(note).toMatch(/repaired 2/);
+
+    // DIFFERENCED, not absolute. The counters are cumulative for the whole
+    // session, so a scenario that reported them raw would report every earlier
+    // scenario's friction as its own.
+    expect(
+      reReadNote(
+        { emptyReReads: 5, shortReReads: 5, reReadsRepaired: 5 },
+        { emptyReReads: 6, shortReReads: 5, reReadsRepaired: 5 },
+      ),
+      "read an absolute counter as this scenario's own",
+    ).toMatch(/1 read empty/);
+
+    // "REPAIRED NONE" IS THE FINDING THAT REFUTES THE FIX, so it must survive
+    // being zero. A clause that vanished at 0 would read identically to a round
+    // where the retry never ran at all, and those are opposite results.
+    expect(
+      reReadNote(zero, { emptyReReads: 2, shortReReads: 0, reReadsRepaired: 0 }),
+      "a pause that saved nothing said nothing, so the refutation is invisible",
+    ).toMatch(/repaired 0/);
+
+    // Silent when there is nothing to report — it must not add words to a clean
+    // round.
+    expect(reReadNote(zero, zero)).toBe("");
   });
 
   it("says FLIPPED only for the two-in-a-row the scenario stops on", () => {

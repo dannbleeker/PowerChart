@@ -160,7 +160,21 @@ wedge is in PowerPoint rather than in how it is called. A Playwright click on
 the **canvas** is a real click and might dodge it entirely — the one thing worth
 trying first if this is ever built.
 
-### Take more than two draws per arm
+### ~~Take more than two draws per arm~~ — MOOT, the question it served is closed
+
+**Removed as an action 2026-08-16.** This existed to reach 60 draws an arm
+faster, because `does a rasterise poison the next draw` could not be answered at
+two per round. The rounds got there by accumulation: **60 per arm, 0 stalls in
+both**, and the question is closed. Building a faster instrument for a question
+already answered is optimising the measurement rather than the thing measured,
+which is the mistake this file records elsewhere.
+
+The rest is kept because the TRAP in it is general and still live — see below —
+and because a future question sampled per-round will meet it again.
+
+The original entry follows.
+
+---
 
 The rasterise question cannot be answered at the rate it is being sampled.
 `does a rasterise poison the next draw` collects FOUR draws a round — two per
@@ -917,32 +931,36 @@ than any of them — reasoning from a full probe run was wrong every time, and
 asking a single component directly gave a clean answer in under a minute, every
 time.
 
-### Improvements the 2026-08-15/16 overnight run is owed — small, none blocking
+### Improvements the 2026-08-15/16 overnight run was owed — ALL CLEARED 2026-08-16
 
-Nineteen rounds, ten pairs. These are the loose ends it left, kept here so they
-are not rediscovered.
+Nineteen rounds, ten pairs. Kept as a record of what the run left and what was
+done about it, because two of the four turned out to be worth more than the
+rounds that produced them.
 
-- **`signedOut` cannot tell a popup from a signed-out browser.** It fires on any
-  tab matching `login.live.com`, and what ended the run was an auth POPUP beside a
-  deck tab that was still open. Treating that as signed-out is the RIGHT call — if
-  Office is asking for credentials a round cannot be trusted — but the message
-  says "the browser is on a Microsoft sign-in page", which is not what the reader
-  sees on screen. Reword, or distinguish the popup case.
-- **Two of the run's own fixes shipped without guards**, found only by grepping
-  each new symbol in the test tree: the `lastFailed` half of the crash-forensics
-  fix (verified by hand on a real wedge, never pinned) and `syncsOf` /
-  `contextSyncs` (the number that ruled out a 390-line restructure). Both are
-  guarded now. **The check is the lesson**: a green suite proves nothing about a
-  path nothing tests, and "I watched it work in production" leaves no guard.
-- **`same scale`'s scenario summary counts what it carried, not why.** It reports
-  "3 of 8 charts carry the shared scale … the host flipped at chart 4 of 8" and
-  the per-chart reason (short re-read vs empty) only exists in the trace. Now that
-  the mechanism is known, the summary could name it and the round would read
-  itself.
+- ~~**`signedOut` cannot tell a popup from a signed-out browser.**~~ **Done.**
+  `signInIsPopup` distinguishes them by whether a document tab is still open, and
+  the two messages now describe what the reader can actually see. Both still stop
+  the round and both still hand the job back — if Office is asking for
+  credentials, nothing measured past it can be trusted, and it needs a password
+  either way. Deliberately loose about which document: the driver's recovery
+  looks for `Presentation63` by name, and hard-coding one deck's name into a
+  diagnostic is how it goes quietly wrong for the next deck.
+- ~~**Two of the run's own fixes shipped without guards.**~~ **Done in the run
+  itself**, and **the check is the lesson**: a green suite proves nothing about a
+  path nothing tests, and "I watched it work in production" leaves no guard
+  behind. Both were found by grepping each new symbol in the test tree — a pass
+  now worth running at the end of any fixing session.
+- ~~**`same scale`'s scenario summary counts what it carried, not why.**~~
+  **Done.** `reReadNote` adds the cause to the verdict line: how many re-reads
+  read short, how many read empty, and how many the settled retry repaired. It is
+  silent on a clean round and it names `repaired 0` explicitly — that clause is
+  the one that would refute the retry, and a clause that vanished at zero would
+  read identically to a round where the retry never ran.
 - **Rounds cost ~12 minutes and a pair costs a build.** Every pair after the
   mechanism was settled produced an identical result, and the audit found more
   than the rounds did. When a question is closed, say so and stop — the brief now
-  opens with what is settled for that reason.
+  opens with what is settled for that reason. **Not a task**; kept because the
+  next long run should read it before spending its first hour.
 
 ### Method that earned itself overnight, and should be kept
 

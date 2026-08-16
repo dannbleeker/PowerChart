@@ -6,6 +6,58 @@ Repeat. Last round **044** (`rounds/044-355a37c.json`, 10 of 12, 2026-08-15).
 **This file is the operating document.** A session that reads only this and
 `docs/ROUNDS.md` has everything it needs.
 
+## THE NEXT RUN HAS ONE JOB — read this before anything else
+
+**A five-hour run, prepared 2026-08-16, and it exists to test ONE change.**
+
+The pre-grouping re-read now asks a second time, after 1.5s, when the first
+answer is short or empty (`REREAD_RETRY_MS` in `powerpoint.ts`). It came from the
+office-js tracker rather than from a round: PowerPoint Online does not populate a
+freshly materialised slide's shape collection straight away, and the workaround
+the reports converge on is to wait a second or two before reading it.
+
+**The prediction, staked before the round so it can be refuted:**
+
+- `WHICH SLIDE THE CHART LANDED ON` moves `freshly added, empty` off **1%**
+  grouped.
+- Charts 4 and 5 of `same scale across the deck` group and keep their configs.
+- `same scale` stops failing at **34 of 34**.
+
+**The number that settles it** is on the scenario's own verdict line now — no log
+joining required:
+
+    ; of the re-reads before grouping, N read short, N read empty,
+      the settled retry repaired N
+
+`repaired 0` while the other two climb is the **refutation**, and it is printed
+explicitly for that reason. If it comes back 0, the first thing to check is
+whether 1500ms is simply too short — the reports say "one to two seconds" and
+this sits at the bottom of that range deliberately, because the cost is also paid
+on the live insert path.
+
+**Run it as a PAIR on the same build before believing either result.** See the
+discipline below; the noise floor on this project is 1-versus-5 for the same
+fault with nothing changed.
+
+**What NOT to spend the run on.** The mechanism is settled and the questions
+listed under ANSWERED are answered. Three hypotheses died to archive queries in
+minutes where rounds would have cost hours, and the overnight audit found more
+than the rounds did. If the retry works, the next question is a product one
+(below) and no round can answer it.
+
+### Before it can start — one thing, and it needs a password
+
+`node scripts/round.mjs --check` on 2026-08-16 says:
+
+    Office has opened a sign-in prompt beside the deck — the deck tab is still
+    there, but the host is asking for credentials …
+
+Sign in on that prompt, confirm the add-in pane is still open, then
+**hard-reload the PowerPoint tab** — the pane was serving `e68147f` while the
+site had moved on, and a round on a stale pane measures the previous build while
+looking like it tested the new one. The deck was clean at 1 slide and both
+toggles were on, so nothing else needs setting up.
+
 ## The one discipline that matters this run
 
 **DO NOT MERGE BETWEEN EVERY ROUND. RUN THE SAME BUILD TWICE.**
