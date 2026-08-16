@@ -656,6 +656,18 @@ const hostFriction = {
    */
   shortReReads: 0,
   /**
+   * Re-reads that listed shapes but named NONE of ours, after the retry.
+   *
+   * The third way the pre-grouping re-read fails, and the one that hid behind
+   * the other two: it produced only `not grouping … refreshed: 0`, which reads
+   * exactly like an empty read. Rounds 066/067 could distinguish them only by
+   * the ABSENCE of a settle-delay line beside the decline.
+   *
+   * It is a different fault with a different fix — the host listed the slide
+   * quite happily, and the join to our own ids is what failed.
+   */
+  unmatchedReReads: 0,
+  /**
    * Charts whose re-read was short or empty FIRST and complete after a pause.
    *
    * The number that says whether `REREAD_RETRY_MS` is buying anything on the
@@ -7648,6 +7660,26 @@ async function groupAndTagAll(
           const byId = new Map<string, PowerPoint.Shape>();
           for (const sh of items) if (sh.id) byId.set(sh.id, sh);
           const matched = it.created.map((sh) => (sh.id ? byId.get(sh.id) : undefined)).filter(Boolean);
+          // A ZERO MATCH IS ALSO WORTH ASKING AGAIN, and it was the one case the
+          // retry did not cover. Rounds 066 and 067 both showed five of five
+          // single-batch charts declining with `not grouping` and NO settle-delay
+          // line beside them: the re-read was not empty, so the empty branch never
+          // fired, and nothing matched, so the partial branch never fired either.
+          // It fell straight through to `use: "none"`.
+          //
+          // The likely cause is the settling the retry already fixes for charts 4
+          // and 5. A single-batch chart loads its shape ids in the very sync that
+          // creates them and re-reads on the next one, so either side of the join
+          // can still be unresolved — `created[k].id` undefined, or the collection
+          // listing shapes under ids it has not settled on yet.
+          //
+          // Cheaper than it looks: the pause is spent only on a chart that was
+          // about to be declined anyway, and if the second look matches nothing
+          // either then everything below behaves exactly as it did before.
+          if (!matched.length && !lastAttempt) {
+            retry.push(entry);
+            return;
+          }
           if (matched.length === it.created.length) {
             // Same order as `created`, so index 0 stays the chart's anchor and
             // `ungroupedFallback`'s "everything after it is a part" holds.
@@ -7724,6 +7756,29 @@ async function groupAndTagAll(
               // Survived a settle delay, so this is not the host still catching up.
               afterRetry: true,
             });
+          } else if (!matched.length) {
+            // SAID OUT LOUD, because a zero match has been invisible. The only
+            // line it produced was `not grouping … refreshed: 0`, which reads
+            // identically to an empty re-read — and the two want different fixes,
+            // one being a host that lists nothing and the other a host that lists
+            // shapes under ids we cannot join to. Rounds 066/067 could only be
+            // told apart by hand, from the ABSENCE of a settle-delay line.
+            hostFriction.unmatchedReReads += 1;
+            trace("group", "the re-read named none of the chart's shapes", {
+              index: i,
+              drew: it.created.length,
+              listed: items.length,
+              // How many of OUR shapes could even offer an id to match on. If this
+              // is 0 the join failed on our side, not the host's, and the fix is a
+              // different one.
+              withOwnId: it.created.filter((sh) => loadedValue(() => sh.id)).length,
+              contextSyncs: syncsOf(context),
+              afterRetry: true,
+            });
+            // The positional rule below is deliberately still reachable: it is
+            // the honest last resort for a host that will not read ids back, and
+            // it is the branch that only fires when NOTHING matched.
+            if (items.length >= it.created.length) freshMembers.set(i, items.slice(items.length - it.created.length));
           } else if (items.length >= it.created.length) {
             // No ids to match on at all — a host that would not read them back.
             // The positional rule is still right for a slide this run added
