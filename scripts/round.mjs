@@ -988,11 +988,59 @@ export function archive(logPath, dir = "rounds", read = readFileSync, write = wr
       `that log is byte-identical to ${twin} — the pane never wrote a new one, ` +
         "which is what happens when the round did not finish. Nothing archived.",
     );
+  // THE NUMBER COMES FROM WHAT `list` CAN SEE, and on 2026-08-16 that was not
+  // everything. Round 064 was archived on `main`, its findings committed to a
+  // branch, and `git checkout main` then REMOVED the file from the working tree
+  // — it is tracked only on the branch. The next round was archived from `main`,
+  // where the directory ends at 063, and was numbered 064 as well.
+  //
+  // Nothing was overwritten (`nextRoundNumber` is max+1, so it never lands on a
+  // file it can see) and no evidence was lost. What it produces is two DIFFERENT
+  // rounds both called 064 in two git contexts, which collides the moment either
+  // is merged — and a pooled report that silently reads one of them twice, or
+  // not at all.
+  //
+  // So the caller passes what GIT knows as well as what is on disk; see the
+  // `--archive` branch below. `archive` itself stays pure and takes the union.
   const name = `${nextRoundNumber(list(dir))}-${build}.json`;
   // TWO spaces, because prettier checks this directory and every round archived
   // at one space failed the gate until someone reformatted it by hand.
   write(`${dir}/${name}`, JSON.stringify(round, null, 2) + "\n");
   return name;
+}
+
+/**
+ * Every round this repo has ever filed — on disk AND in git — so the next number
+ * cannot reuse one that is committed on a branch nobody has checked out.
+ *
+ * `readdirSync` alone sees the WORKING TREE, and a round's file lives on the
+ * branch its findings were committed to until that merges. Check out `main` and
+ * the file disappears; archive from there and the number is handed out twice.
+ * That happened on 2026-08-16 and produced two different rounds both called 064.
+ *
+ * `git ls-files` covers the current branch's index; `git log --all` covers every
+ * branch, which is what actually matters here — the collision is with a round
+ * committed somewhere else. Falls back to the directory alone if git is not
+ * available or the call fails, because refusing to archive a real round over a
+ * numbering nicety would be the worse trade.
+ */
+function everyRoundEverFiled(dir) {
+  const onDisk = readdirSync(dir);
+  try {
+    const inGit = spawnSync("git", ["log", "--all", "--name-only", "--pretty=format:", "--", dir], {
+      encoding: "utf8",
+      maxBuffer: 64e6,
+    });
+    if (inGit.status !== 0 || !inGit.stdout) return onDisk;
+    const names = inGit.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => l.slice(l.lastIndexOf("/") + 1));
+    return [...new Set([...onDisk, ...names])];
+  } catch {
+    return onDisk;
+  }
 }
 
 if (isMain(import.meta.url, process.argv[1])) {
@@ -1002,7 +1050,7 @@ if (isMain(import.meta.url, process.argv[1])) {
       console.error("usage: node scripts/round.mjs --archive <powerchart-round.json>");
       process.exit(2);
     }
-    console.log(`archived as rounds/${archive(argv[1])}`);
+    console.log(`archived as rounds/${archive(argv[1], "rounds", readFileSync, writeFileSync, everyRoundEverFiled)}`);
     process.exit(0);
   }
   process.exit(await main(argv));

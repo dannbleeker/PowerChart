@@ -1106,3 +1106,64 @@ five × `Cannot read properties of undefined (reading 'add')` on `262#3659873566
 enough to stand alone; the counts are not, and `40%` in particular is five
 charts. A same-build second round is what makes the tag-loss number mean
 anything.
+
+## Round 065 (`bcd5773`, 2026-08-16) — the pair, and it replicates exactly
+
+Second round on the same build, run without a merge between the two, which is
+what makes it a pair rather than two sheets. **It is structurally identical to
+064, chart for chart:**
+
+    1-3/8   grouped by=ids                             no retry needed
+    4/8     settle delay 1500ms → grouped by=ids        tagging failed  from: group×1
+    5/8     settle delay 1500ms → grouped by=ids        tagging failed  from: group×1
+    260     from: created×1, beside an empty settle re-read
+    262     5× no chart's tag could be queued
+
+`the settled retry repaired 2` in **both** rounds. The slide ids differ between
+them (`258#4111159134` vs `258#2150477121`), so what repeats is the POSITION and
+the freshness, not an id.
+
+**This is the strongest replication this project has.** The noise floor — 1
+versus 5 for the same fault with nothing changed — is about counts. These are not
+counts: the same two charts take the same retry, group, and are refused through
+the same handle kind, twice. Nothing here needs a third round.
+
+**What still moved between the two, and it is the downstream half:** `same scale`
+scored 4 of 8 then 3 of 8, and re-editable went 7 then 6. That is the part that
+was always noisy and it stays noisy. The mechanism is deterministic; the score is
+not, and reading the score as the result is the mistake this pair exists to
+prevent.
+
+**So both conclusions from 064 stand on two rounds now:**
+
+1. The settled retry works, deterministically, on exactly the charts it was built
+   for.
+2. `from: group×1` is refused on a freshly-added slide — so **grouping does not
+   save a config**, and the old 2%-vs-79% split was an artifact of a population
+   that could not contain these charts.
+
+**The next thing to build is the slide handle**, and it now has two witnesses
+naming it rather than one.
+
+### A numbering trap, found by walking into it
+
+The second round archived as `064` as well. **Nothing was overwritten and no
+evidence was lost** — `nextRoundNumber` is max+1, so it can never land on a file
+it can see. What happened is subtler: round 064's file was committed to a branch,
+`git checkout main` removed it from the working tree, and archiving from `main` —
+where the directory ends at 063 — reissued the number.
+
+The damage is not destruction, it is two different rounds both called 064 in two
+git contexts: a merge collision, and a pooled report that reads one of them twice
+or not at all. Every number in `npm run rounds` is a pool over that directory.
+
+`--archive` now numbers from the union of the working tree and `git log --all`,
+so a round committed on an unmerged branch still holds its number. Falling back
+to the directory alone when git is unavailable, because refusing to archive a
+real round over a numbering nicety is the worse trade.
+
+**Worth recording how the wrong diagnosis was caught:** the first guard written
+for this was "refuse to overwrite an existing file", and its test would not go
+red. That is what proved the overwrite theory wrong — `nextRoundNumber` cannot
+produce a colliding name. A guard that cannot fail is evidence about the
+diagnosis, not a spare safety net.
