@@ -688,6 +688,8 @@ async function attempt(argv, deps, sh) {
   // that was running perfectly and went on to finish 10 of 12 scenarios. The
   // report was worse than the loss: it named a crash that had not happened.
   let quiet = 0;
+  /** Consecutive polls whose CLI call could not be run — see `browserDiedMidRound`. */
+  let failedPolls = 0;
   for (;;) {
     if (Date.now() - started > limit) {
       console.error("  the round has not finished in 30 minutes — the host is wedged; see docs/ROUNDS.md");
@@ -716,6 +718,17 @@ async function attempt(argv, deps, sh) {
       // exists, and three separate hand passes were spent reaching it.
       await keepCrashEvidence(sh, `${secs}s into a round`);
       return { code: 1, reason: "crashed" };
+    }
+    // THE BROWSER, not just the pane. Checked before the quiet counter because
+    // the counter cannot see this state at all — see `browserDiedMidRound`.
+    failedPolls = sh.state.lastFailed ? failedPolls + 1 : 0;
+    if (failedPolls >= DEAD_BROWSER_POLLS && browserDiedMidRound(failedPolls, sh("list"))) {
+      const secs = Math.round((Date.now() - started) / 1000);
+      console.error(
+        `  the browser died ${secs}s into the round — the process is gone, taking the tab with it. ` +
+          "The persistent profile still holds the sign-in, so this is recoverable without a password.",
+      );
+      return { code: 1, reason: "browser-gone" };
     }
     quiet = quietStreak(quiet, dl, sh.state.lastFailed);
     if (quiet >= 2) {
@@ -801,6 +814,31 @@ export function recoveryFor(reason, codes) {
   return `recovering from ${named.map((c) => say[c] ?? c).join(" and ")}, then starting again`;
 }
 
+/**
+ * Has the BROWSER died under a round that is still polling?
+ *
+ * The hole this closes, and it cost 24 minutes on 2026-08-16. `quietStreak`
+ * resets to zero whenever a CLI call FAILED, deliberately: one failed call means
+ * nothing was measured, and treating it as "the pane is gone" once killed a
+ * healthy round that went on to pass 10 of 12. That protection is right and is
+ * left alone here.
+ *
+ * But a dead browser makes every call fail, permanently — so the quiet counter
+ * can never reach its threshold, the crash dialog cannot be read either, and the
+ * loop polls a corpse until the thirty-minute limit. `pw list` said
+ * `(no browsers)` outright while the driver sat there.
+ *
+ * Two conditions, and both are needed. A STREAK of failures, so ordinary
+ * contention (a second terminal, an agent reading the trace) cannot trigger it —
+ * three consecutive misses is a minute of silence, far past any blip. And then
+ * an affirmative `(no browsers)`, so the round is never ended on the absence of
+ * evidence. Either alone would re-make the mistake the other guards against.
+ */
+export const DEAD_BROWSER_POLLS = 3;
+export function browserDiedMidRound(failedStreak, listOutput) {
+  return failedStreak >= DEAD_BROWSER_POLLS && noBrowser(listOutput);
+}
+
 export function shouldRetry(reason, attempt, max, codes) {
   if (attempt >= max) return false;
   // A WEDGE MID-ROUND IS RECOVERABLE, and leaving `timeout` out of this stopped
@@ -811,7 +849,10 @@ export function shouldRetry(reason, attempt, max, codes) {
   // thirty more. But that cost is bounded by `--retry N`, which the caller chose,
   // and the alternative is a ten-hour run that ends at hour one with the host
   // sitting idle and recoverable.
-  if (reason === "crashed" || reason === "silent" || reason === "timeout") return true;
+  // `browser-gone` joins them: the profile keeps the sign-in, so reopening needs
+  // no password and `recover` already does it. A round that ends this way has
+  // burned a minute, not thirty — it is the cheapest of these to retry.
+  if (reason === "crashed" || reason === "silent" || reason === "timeout" || reason === "browser-gone") return true;
   if (reason !== "not-ready") return false;
   // An EMPTY list is not a licence. It means nothing was recorded about why the
   // check refused, and retrying on no evidence is how a loop spins.
