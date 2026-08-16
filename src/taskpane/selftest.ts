@@ -705,6 +705,27 @@ async function stillThere(target: { slideId: string; shapeId?: string }): Promis
   return shapes.some((s) => s.id === target.shapeId);
 }
 
+/**
+ * Did `updateLossNote` conclude anything, or did it say the round proves nothing?
+ *
+ * The note has always had one branch that DISCLAIMS its own evidence — the host
+ * refused ids during the scenario, so the slide failing to name the chart says
+ * nothing either way. That is not a failure, it is an absence of measurement,
+ * and reporting it as `ok: false` made the two indistinguishable.
+ *
+ * It cost the regression gate its credibility on its first live outing: round
+ * 073 flagged `explode a degraded picture` as having stopped passing when the
+ * scenario's own words were "proves nothing either way". A gate that fires on a
+ * scenario declining to conclude is a gate that gets switched off, which this
+ * repo has already watched happen once.
+ *
+ * Kept as a predicate over the same inputs rather than a flag threaded through
+ * the note, so the two can never disagree about which branch was taken.
+ */
+export function lossNoteIsInconclusive(refusalsDuring: number, stillOnSlide?: boolean): boolean {
+  return stillOnSlide === false && refusalsDuring > 0;
+}
+
 export function updateLossNote(what: string, refusalsDuring: number, stillOnSlide?: boolean): string {
   // AN ID REFUSAL ANYWHERE IN THIS SCENARIO MAKES EVERY ID IN IT SUSPECT, so a
   // missing shape stops being evidence of a missing shape.
@@ -944,11 +965,19 @@ const explodePicture: Scenario = async (prefix) => {
   if (!confirmed) trace("selftest", "the host would not confirm the picture is one shape", { slide: pictured.slideId });
   const asShapes: ChartConfig = { ...chart.cfg, render: "shapes" };
   const exploded = await updateChartInSlide(buildChart(asShapes), pictured, { tagData: JSON.stringify(asShapes) });
-  if (!exploded)
+  if (!exploded) {
+    const refusals = hostFrictionCounts().idRefusals - refusalsAtStart;
+    const onSlide = await stillThere(pictured);
     return {
       ok: false,
-      detail: updateLossNote("picture", hostFrictionCounts().idRefusals - refusalsAtStart, await stillThere(pictured)),
+      // SKIPPED, not failed, when the note disclaims its own evidence. See
+      // `lossNoteIsInconclusive` — the host refused ids mid-scenario, so the
+      // slide not naming the picture proves nothing, and a round that measured
+      // nothing must not read as a round that measured a loss.
+      skipped: lossNoteIsInconclusive(refusals, onSlide),
+      detail: updateLossNote("picture", refusals, onSlide),
     };
+  }
   // A blind READBACK is not a finding. Every scenario here guards its first
   // scan and then draws its loudest conclusion from a second one it never
   // checked — and on the web a short deck scan is routine, which is why
@@ -2850,6 +2879,10 @@ export async function runSelfTest(
       deckSlides: deckAfter ?? "unreadable",
       ...(deckBefore !== undefined && deckAfter !== undefined ? { deckGrew: deckAfter - deckBefore } : {}),
       friction: result.friction,
+      // Carried into the round log, because the regression gate cannot tell an
+      // absence of measurement from a fall without it — and inferring it from
+      // the detail TEXT would tie the gate to prose that gets edited.
+      ...(result.skipped ? { skipped: true } : {}),
     });
     const timedOut = deadlinesFired > deadlinesBefore;
     if (timedOut) trace("selftest", "the host missed a deadline in this scenario", { name, sick: sick + 1 });
