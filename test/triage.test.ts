@@ -35,6 +35,7 @@ const {
   profileDivergence,
   traceNovelty,
   traceSignature,
+  poolUpdateShortfalls,
 } = pools;
 // Its own line, for the reason spelled out below: adding it to the grouped
 // import above reflowed that statement across lines, and `@ts-expect-error`
@@ -1265,6 +1266,58 @@ describe("the two populations a draw batch falls into", () => {
     expect(batchPopulations(log([3000, 9000, 20000]))).toBeNull();
     expect(batchPopulations({ trace: { entries: [] } })).toBeNull();
     expect(batchPopulations(undefined)).toBeNull();
+  });
+});
+
+/**
+ * The pooled reading for the last `GetItem(id)` refusal still firing.
+ */
+describe("what an update left on the slide, pooled", () => {
+  const slide = (over: Record<string, number>) => ({
+    scope: "update",
+    message: "shapes left on the slide after an in-place update",
+    data: { shortfall: 0, unexplained: 0, charts: 1, withParts: 1, ...over },
+  });
+  const round = (...entries: ReturnType<typeof slide>[]) => ({ trace: { entries } });
+
+  it("keeps a chart with no parts list apart from one that merely grew", () => {
+    // THE ONLY DISTINCTION THIS EXISTS TO DRAW. A shortfall on a chart that had
+    // its parts list is an ordinary change of size; one on a chart without it is
+    // the stranding. Pooled together they are indistinguishable and the reading
+    // says nothing.
+    const o = poolUpdateShortfalls([
+      round(slide({ shortfall: 12, charts: 1, withParts: 0 }), slide({ shortfall: 4, charts: 1, withParts: 1 })),
+    ]);
+    expect(o.blind).toBe(1);
+    expect(o.blindShortfall).toBe(12);
+    expect(o.sightedShortfall).toBe(4);
+    expect(o.worst).toBe(12);
+    expect(o.updates).toBe(2);
+    expect(o.rounds).toBe(1);
+  });
+
+  it("will not attribute a mixed slide's shortfall to the blind charts on it", () => {
+    // A slide where some charts had a list and some did not cannot say which of
+    // them stranded anything, and guessing would inflate the one number the
+    // whole question turns on.
+    const o = poolUpdateShortfalls([round(slide({ shortfall: 9, charts: 3, withParts: 1 }))]);
+    expect(o.blind).toBe(0);
+    expect(o.blindShortfall).toBe(0);
+    expect(o.sightedShortfall).toBe(9);
+  });
+
+  it("counts a host that did not do what it was told separately", () => {
+    // `unexplained` is not about our arithmetic — it is the slide failing to
+    // move by what the update did to it, which is a different fault entirely.
+    const o = poolUpdateShortfalls([round(slide({ shortfall: 0, unexplained: 5, withParts: 0, charts: 1 }))]);
+    expect(o.unexplained).toBe(5);
+    expect(o.blindShortfall).toBe(0);
+  });
+
+  it("says nothing at all about rounds that never measured it", () => {
+    // Every round before this instrument shipped, which is all 57 of them.
+    expect(poolUpdateShortfalls([{ trace: { entries: [] } }, {}]).updates).toBe(0);
+    expect(poolUpdateShortfalls([]).rounds).toBe(0);
   });
 });
 

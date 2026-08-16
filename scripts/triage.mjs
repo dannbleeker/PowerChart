@@ -885,6 +885,34 @@ export function poolOriginTagLosses(logs) {
 }
 
 /** Charts that would not follow a drag, which no scenario counts. */
+function reportUpdateShortfalls(logs) {
+  const o = poolUpdateShortfalls(logs);
+  if (!o.updates) return;
+  console.log(`
+  WHAT AN UPDATE LEFT ON THE SLIDE — pooled over ${logs.length} round(s)`);
+  console.log(
+    `    ${o.updates} in-place update(s) measured across ${o.rounds} round(s); ${o.blind} touched only charts
+` +
+      `    with NO parts list, which is the state a refused \`reading back an ungrouped chart's
+` +
+      `    shape ids\` leaves behind.`,
+  );
+  console.log(
+    `    stranded on those    ${String(o.blindShortfall).padStart(5)} shape(s), worst single update ${o.worst}`,
+  );
+  console.log(`    on charts that HAD a list ${String(o.sightedShortfall).padStart(4)} — an ordinary change of size`);
+  if (o.blindShortfall === 0)
+    console.log(
+      `    ZERO is the interesting answer here: "the chart grows by a whole chart on every
+` + `    edit" is then a danger the code describes and not something happening.`,
+    );
+  if (o.unexplained)
+    console.log(
+      `    ${o.unexplained} shape(s) UNEXPLAINED — the slide did not move by what the update did to it,
+` + `    which is a different fault from stranding and wants its own look.`,
+    );
+}
+
 function reportOriginTagLosses(logs) {
   const o = poolOriginTagLosses(logs);
   if (!o.charts) return;
@@ -1534,6 +1562,55 @@ function reportDeckEvidence(deck) {
 }
 
 /**
+ * Did an in-place update leave the rest of an ungrouped chart on the slide?
+ *
+ * The pooled reading for `shapes left on the slide after an in-place update`.
+ * The question it settles has been open for 56 rounds: `reading back an
+ * ungrouped chart's shape ids` is the last `GetItem(id)` refusal still firing,
+ * each failure costs a chart its parts list, and the comment beside that read
+ * says such a chart "grows by a whole chart on every edit" — which nothing has
+ * ever observed, because no round recorded whether one of those charts was the
+ * one an update touched.
+ *
+ * SPLIT BY WHETHER THE CHART HAD ITS PARTS LIST, because that is the whole
+ * point. A shortfall on a chart WITH its list is an ordinary change of size and
+ * says nothing; one on a chart without it is the stranding. Pooling the two
+ * would destroy the only distinction the instrument was built to draw.
+ *
+ * `unexplained` is kept apart and summed on its own: it is not about our
+ * arithmetic at all, but about whether the host did what it was told, and a
+ * non-zero total there means something moved slides underneath an update.
+ */
+export function poolUpdateShortfalls(logs) {
+  const out = { rounds: 0, updates: 0, blind: 0, blindShortfall: 0, sightedShortfall: 0, unexplained: 0, worst: 0 };
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    let seen = false;
+    for (const e of entries) {
+      if (!/^shapes left on the slide/.test(String(e.message))) continue;
+      const d = e.data ?? {};
+      const short = Number(d.shortfall) || 0;
+      const charts = Number(d.charts) || 0;
+      const withParts = Number(d.withParts) || 0;
+      seen = true;
+      out.updates++;
+      out.unexplained += Number(d.unexplained) || 0;
+      // A slide where NO chart in the update carried a parts list. Mixed slides
+      // are counted as sighted: their shortfall cannot be attributed and
+      // claiming it would be the over-count this split exists to avoid.
+      if (charts > 0 && withParts === 0) {
+        out.blind++;
+        out.blindShortfall += short;
+        out.worst = Math.max(out.worst, short);
+      } else out.sightedShortfall += short;
+    }
+    if (seen) out.rounds++;
+  }
+  return out;
+}
+
+/**
  * One trace entry reduced to the SHAPE of the thing it says.
  *
  * Numbers and ids are the noise here: `repaired 3 tags on slide 7f2a91c4` and
@@ -1786,6 +1863,7 @@ if (invokedDirectly) {
     reportGroupVsTag(pooled);
     reportBatchSpanVsGroup(pooled);
     reportOriginTagLosses(pooled);
+    reportUpdateShortfalls(pooled);
     reportStarvedQuestions(pooled);
     reportTagFaults(pooled);
     reportPool(pooled);
