@@ -777,6 +777,20 @@ export function poolTagFaults(logs) {
  * reported as 100% because the window collecting it silently dropped every
  * declining case. The remedy is the same: print the denominator the reader would
  * otherwise assume.
+ *
+ * AND WIDENING IT IS NOT AVAILABLE, which is worth writing down so the next
+ * reader does not spend the evening finding out again. Closing the gap would
+ * mean joining each `grouped the chart` with the `tagging failed` for the SAME
+ * chart, and that second line is emitted per BATCH on purpose — its own comment
+ * says "the batch covers several charts, so one id would be a guess about
+ * which", because a tag write fails for a whole sync rather than for one chart
+ * in it. Attributing a batch failure to individual charts would manufacture
+ * precision the host never gave, which is a worse fault than a narrow number
+ * honestly labelled.
+ *
+ * Checked, not assumed: `data.charts` is 1 on every one of these entries across
+ * the archive, so entries and charts do coincide here and the fractions below
+ * compare like with like.
  */
 export function poolGroupVsTagCoverage(logs) {
   const out = { groupedSeen: 0, groupedTotal: 0, ungroupedSeen: 0, ungroupedTotal: 0 };
@@ -1647,14 +1661,20 @@ function reportDeckEvidence(deck) {
  * ever observed, because no round recorded whether one of those charts was the
  * one an update touched.
  *
- * SPLIT BY WHETHER THE CHART HAD ITS PARTS LIST, because that is the whole
- * point. A shortfall on a chart WITH its list is an ordinary change of size and
- * says nothing; one on a chart without it is the stranding. Pooling the two
- * would destroy the only distinction the instrument was built to draw.
+ * SPLIT BY WHETHER THE CHART COULD HAVE STRANDED ANYTHING, because that is the
+ * whole point. Growth on a chart that had its parts list is an ordinary change
+ * of size; growth on one that was UNGROUPED AND UNLISTED is the stranding.
+ * Pooling the two would destroy the only distinction the instrument draws.
  *
- * `unexplained` is kept apart and summed on its own: it is not about our
- * arithmetic at all, but about whether the host did what it was told, and a
- * non-zero total there means something moved slides underneath an update.
+ * `atRisk` is that population, counted from the host's own shape type, and the
+ * report refuses to call zero growth an all-clear when it is zero — a grouped
+ * chart is deleted whole and can strand nothing, so a round that grouped
+ * everything never put the question. Round 082 was exactly that: 20 of 20
+ * grouped, and it would have read as an all-clear.
+ *
+ * Readings from before 2026-08-16 carry `shortfall`/`unexplained` instead of
+ * `growth` — a subtraction across three different units that summed to zero on
+ * every line. They are counted as `unitMismatch` and never mixed in.
  */
 export function poolUpdateShortfalls(logs) {
   const out = {
