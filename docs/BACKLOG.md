@@ -1226,12 +1226,15 @@ rounds that produced them.
   too.
 - ~~Candlestick / OHLC~~ — shipped as the `candlestick` kind at owner request,
   despite the thin consulting-demand signal.
-- **Alt text in the headless pptx renderer** — the hunt flagged the missing
-  `descr=` as a break of the SVG/Office.js/pptx parity contract, but pptxgenjs
-  exposes alt text only on pictures and native charts, and every PowerChart
-  shape is an `addShape`/`addText` autoshape. There is no seam to write it
-  through short of hand-patching the generated OOXML. Recorded as a documented
-  limit in `skill/reference.md` (#197) alongside the fixed deck font.
+- ~~Alt text in the headless pptx renderer~~ — **shipped 2026-08-17.** The
+  rejection was right about pptxgenjs and stopped one step short: this project
+  already hand-patches the generated OOXML (`injectGroupsAndTags`), and it
+  writes the very element alt text lives on — the group's `<p:cNvPr>`. One
+  attribute, and `scene.desc` now reaches the deck. Image-mode charts take
+  pptxgenjs's own `altText`, which it does expose on a picture. Kept here as the
+  shape of the mistake rather than as a candidate: a limit of a DEPENDENCY is
+  not automatically a limit of the product when the product already
+  post-processes that dependency's output.
 
 ### The probe has been blind on GROUPS for the whole archive — found 2026-08-16
 

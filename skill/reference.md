@@ -482,8 +482,12 @@ after pptxgenjs is done — it can express neither — by the same code the add-
 runs, so the two outputs cannot drift apart. Image-mode charts get the tag on
 the picture, so they are re-editable too.
 
-Two known limits of the headless pptx: the chart's text alternative
-(`<title>`/`<desc>` in the SVG, alt text in the live add-in) is not carried —
-pptxgenjs exposes alt text on pictures and native charts only, not on the
-shapes this renderer draws; and the deck font is Segoe UI (no config field
-selects it — set the font in the deck's theme after inserting).
+The chart's text alternative travels too: the same one-line summary the SVG
+puts in `<desc>` is written as the group's alt text, so PowerPoint shows it
+under *Edit Alt Text* and a screen reader announces it. Image-mode charts carry
+it on the picture. (pptxgenjs itself exposes alt text on pictures and native
+charts only — the group's comes from the same OOXML post-pass that writes the
+config tag.)
+
+One known limit of the headless pptx: the deck font is Segoe UI (no config
+field selects it — set the font in the deck's theme after inserting).
