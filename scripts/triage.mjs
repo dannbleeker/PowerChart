@@ -1857,7 +1857,7 @@ export function traceSignature(entry) {
  * collapsing two causes into one worst-case reading — caught there by reading
  * the output against the rounds it described. Split here from the start.
  */
-export function traceNovelty(rounds, { minCount = 10, factor = 3 } = {}) {
+export function traceNovelty(rounds, { minCount = 10, factor = 3, window = 5 } = {}) {
   const entriesOf = (r) => (Array.isArray(r?.trace?.entries) ? r.trace.entries : []);
   const countsOf = (r) => {
     const m = new Map();
@@ -1887,13 +1887,37 @@ export function traceNovelty(rounds, { minCount = 10, factor = 3 } = {}) {
       continue;
     }
     if (!enough || n < minCount) continue;
-    const vals = priors.map((m) => m.get(sig) ?? 0).sort((a, b) => a - b);
+    // A RECENT WINDOW, not the whole archive. Taking the median over every
+    // prior round meant a signature stayed "new behaviour" until it had
+    // appeared in more than HALF the archive — so one that shipped twenty
+    // rounds ago was still being announced as new, and the denominator kept
+    // growing underneath it.
+    //
+    // Measured: `re-reading the slide's shapes again after a settle delay` first
+    // appeared in round 064 and has sat at 10-11 ever since. It was reported as
+    // NEW BEHAVIOUR in fifteen separate rounds and blamed on nine different
+    // builds, the last of them a commit that only changed a slide counter. That
+    // is the "cries wolf, gets switched off" failure this file's own header
+    // warns about, and it drowned the one signature round 086 had actually
+    // changed.
+    //
+    // Five rounds is the same order as this project's noise floor — 1-versus-5
+    // for the same fault with nothing changed — so a signature absent from all
+    // five and present now is genuinely new to recent history.
+    const recent = priors.slice(-window);
+    const vals = recent.map((m) => m.get(sig) ?? 0).sort((a, b) => a - b);
     const median = vals[Math.floor(vals.length / 2)];
     // The median is the honest centre for a host whose mood swings 4-of-5 to
     // 1-of-5 with nothing changed; a mean would let one bad night set the
     // baseline for every round after it.
-    if (median === 0) sinceBuild.push({ sig, n, median });
-    else if (n > factor * median) spikes.push({ sig, n, median });
+    if (median === 0) {
+      // THE BUILD IT STARTED IN, not the build being judged. This reported the
+      // newest round's build unconditionally, which is how nine innocent
+      // commits got named for one 064-era signature.
+      const at = priors.findIndex((m) => (m.get(sig) ?? 0) > 0);
+      const startedIn = at === -1 ? null : String(rounds[at]?.build ?? "").split(" ")[0] || null;
+      sinceBuild.push({ sig, n, median, startedIn });
+    } else if (n > factor * median) spikes.push({ sig, n, median });
   }
   const bySize = (a, b) => b.n - a.n;
   return {

@@ -42,6 +42,32 @@ describe("a night's cycle", () => {
     expect(step.why).toMatch(/WAS passing/);
   });
 
+  it("stops when a leg finished but filed nothing", () => {
+    // A ROUND THAT FINISHED IS NOT A ROUND THAT WAS FILED. `attempt` returns 0
+    // when the pane says the run is done; archiving happens after and is
+    // best-effort. Sailing past that costs the round twice: the gate re-judges
+    // the PREVIOUS round and passes, so the night reads healthy, and the next
+    // leg's download overwrites the only copy of the log.
+    //
+    // Exactly the state the archive-ENOENT bug produced. This is the layer that
+    // should have caught it and did not.
+    const step = nextStep({
+      exitCode: 0,
+      receipt: receipt({ reason: "finished", roundFile: null }),
+      gateStatus: 0,
+    });
+    expect(step.go).toBe(false);
+    expect(step.why).toMatch(/nothing was archived/);
+  });
+
+  it("does not mistake a --check for a round that lost its evidence", () => {
+    // `--check` exits 0 and archives nothing by design, so the stop above is
+    // keyed on the reason rather than on the exit code alone.
+    expect(nextStep({ exitCode: 0, receipt: receipt({ reason: "checked", roundFile: null }), gateStatus: 0 }).go).toBe(
+      true,
+    );
+  });
+
   it("does not call a gate that could not judge a regression", () => {
     // The two non-zero exits are opposite findings. Exit 2 is the gate saying it
     // could not read the archive at all, and reporting that as a fall sends

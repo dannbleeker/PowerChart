@@ -137,11 +137,15 @@ if (isMain(import.meta.url, process.argv[1])) {
     console.log("  Read the trace. A shape this archive has never produced is the reason to.");
   }
   if (nov.sinceBuild.length) {
-    console.log(`  ${nov.sinceBuild.length} signature(s) are NEW BEHAVIOUR, not a spike (rare before, common now):`);
-    for (const s of nov.sinceBuild.slice(0, 8)) console.log(`    ${String(s.n).padStart(4)}x  ${s.sig}`);
     console.log(
-      `  The shape a mechanism makes when it starts working — check it is one build ${nov.build ?? "?"} widened.`,
+      `  ${nov.sinceBuild.length} signature(s) are NEW BEHAVIOUR, not a spike (absent recently, common now):`,
     );
+    // THE BUILD IT STARTED IN, per signature. This printed the build being
+    // judged, for every entry — so one 064-era signature was blamed on nine
+    // consecutive innocent commits, the newest of them a slide-counter fix.
+    for (const s of nov.sinceBuild.slice(0, 8))
+      console.log(`    ${String(s.n).padStart(4)}x  ${s.sig}${s.startedIn ? `  (first seen in ${s.startedIn})` : ""}`);
+    console.log("  The shape a mechanism makes when it starts working — check it is one that build widened.");
   }
   if (nov.spikes.length) {
     console.log(`  ${nov.spikes.length} signature(s) SPIKED against their own history:`);

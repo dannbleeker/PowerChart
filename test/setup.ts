@@ -1,5 +1,5 @@
 import { beforeEach } from "vitest";
-import { _setReReadRetryDelayForTest } from "../src/render/powerpoint";
+import { _setReReadRetryDelayForTest, _setCountSettleDelayForTest } from "../src/render/powerpoint";
 
 /**
  * A fake host has no lag to settle, so no suite should pay for one.
@@ -23,4 +23,9 @@ import { _setReReadRetryDelayForTest } from "../src/render/powerpoint";
  */
 beforeEach(() => {
   _setReReadRetryDelayForTest(1);
+  // The orphan reading owns a separate, longer settle (COUNT_SETTLE_MS, 4s,
+  // sized from the archive). Same argument: the fake answers correctly the
+  // first time, so every one of those waits is dead time — and it is per
+  // UPDATE, which would put four seconds on each of a dozen updates.
+  _setCountSettleDelayForTest(1);
 });
