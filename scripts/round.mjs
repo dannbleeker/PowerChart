@@ -337,6 +337,127 @@ export function isOverflow(err) {
   return err.code === "ENOBUFS" || /ENOBUFS/.test(String(err.message ?? err));
 }
 
+/** Which manifest a re-sideload uploads. The PROD one — see `sideloadAddIn`. */
+export const MANIFEST_PATH = process.env.PW_MANIFEST ?? "C:/devtools/PowerChart/manifest-prod.xml";
+
+/**
+ * Has this process already tried to put the add-in back? One attempt, ever.
+ *
+ * A latch rather than a retry budget, because the failure it guards is not
+ * transient: if the ribbon walk did not work the first time, it is because
+ * Microsoft moved something, and walking it six more times finds the same
+ * missing control six more times. `addin-missing` stays out of
+ * `RECOVERABLE_STOPS`; this runs BEFORE readiness concludes, so a success is
+ * simply a round that starts and a failure is the refusal the driver already
+ * had. Per process, and the cycle runner spawns one per leg.
+ */
+let sideloadAttempted = false;
+
+/** Test-only: let a suite arm the latch more than once. */
+export function _resetSideloadLatchForTest() {
+  sideloadAttempted = false;
+}
+
+/**
+ * Put the add-in back after a browser death took the sideload with it.
+ *
+ * A web sideload does not survive the browser process. `recover` restores the
+ * window, the deck and its tab — and then finds no PowerChart command in the
+ * ribbon, because there is no add-in to open. On 2026-08-16 that ended a night
+ * twice, about fifteen minutes each time.
+ *
+ * THE WALK IS THE ONE VERIFIED BY HAND on 2026-08-17, and the first step is the
+ * one nobody would guess: the ribbon's `Add-ins` button ignores clicks until the
+ * document surface has focus. Three attempts failed on that alone, all of them
+ * reporting `aria-expanded=true` over a menu that was plainly shut in a
+ * screenshot. The accessibility tree lied; the pixels did not.
+ *
+ * `manifest-prod.xml`, never `manifest.xml`: the latter points at
+ * `https://localhost`, so it would sideload a pane that readiness then refuses
+ * for disagreeing with the deployed site — a worse outcome than no pane, because
+ * it looks like it worked.
+ *
+ * NO NATIVE FILE DIALOG EVER OPENS. Playwright intercepts the chooser, so
+ * `upload` hands the path over directly. That is the only reason this is
+ * automatable at all.
+ *
+ * Best-effort and self-cleaning. Every failure path dismisses whatever is open,
+ * because a modal left over the document makes every later round refuse for a
+ * reason that has nothing to do with the round.
+ */
+export async function sideloadAddIn(sh, sleep, manifest = MANIFEST_PATH) {
+  const click = (ref) => sh("eval", "el => { el.click(); return 'ok'; }", ref);
+  const step = (query, pattern) => refFor(sh, query, pattern);
+  const giveUp = (why) => {
+    console.error(`  could not put the add-in back: ${why}`);
+    // ALWAYS, even when nothing looks open. A half-walked dialog is invisible
+    // to `readiness` and fatal to every round after it.
+    const cancel = step("Cancel", /button "Cancel"/);
+    if (cancel) click(cancel);
+    const close = step("Close", /button "Close"/);
+    if (close) click(close);
+    return false;
+  };
+  console.log("  the add-in is gone from this document — putting it back");
+  // FIRST, and it is not optional: the ribbon will not open its menus while the
+  // document surface is unfocused.
+  const list = step("Slide List", /listbox "Slide List"/);
+  if (!list) return giveUp("the deck's slide list is not readable — the document is not up");
+  click(list);
+  await sleep(2000);
+
+  const addins = step("Add-ins", /button "Add-ins"/);
+  if (!addins) return giveUp("no Add-ins button in the ribbon");
+  click(addins);
+  await sleep(5000);
+
+  const seeAll = step("See all", /menuitem "See all installed add-ins"/);
+  if (!seeAll) return giveUp("the Add-ins menu did not open");
+  click(seeAll);
+  await sleep(6000);
+
+  const more = step("More Add-ins", /menuitem "More Add-ins"/);
+  if (!more) return giveUp("no `More Add-ins` entry");
+  click(more);
+  await sleep(9000);
+
+  const mine = step("MY ADD-INS", /tab "MY ADD-INS"/);
+  if (!mine) return giveUp("the Office Add-ins dialog did not open");
+  click(mine);
+  await sleep(5000);
+
+  const manage = step("Manage My Add-ins", /button "Manage My Add-ins"/);
+  if (!manage) return giveUp("no `Manage My Add-ins` control");
+  click(manage);
+  await sleep(5000);
+
+  const upload = step("Upload My Add-in", /menuitem "Upload My Add-in"/);
+  if (!upload) return giveUp("no `Upload My Add-in` entry");
+  click(upload);
+  await sleep(6000);
+
+  const browse = step("Browse", /button "Browse\.\.\."/);
+  if (!browse) return giveUp("the upload dialog has no Browse button");
+  click(browse);
+  await sleep(2000);
+  sh("upload", manifest);
+  await sleep(3000);
+
+  // THE BUTTON'S OWN STATE IS THE RECEIPT. It is disabled until a file is
+  // accepted, so finding it enabled is the host confirming it took the
+  // manifest — better evidence than the upload call not erroring.
+  const go = refFor(sh, "Upload", /button "Upload"(?! \[disabled\])/);
+  if (!go) return giveUp("the manifest was not accepted — Upload stayed disabled");
+  click(go);
+  await sleep(12000);
+
+  const open = step("Insert chart", /button "Insert chart"/);
+  if (!open) return giveUp("uploaded, but no PowerChart command appeared");
+  click(open);
+  await sleep(25000);
+  return true;
+}
+
 /**
  * Bring the named deck's tab to the front, and say whether it is there at all.
  *
@@ -756,7 +877,7 @@ async function attempt(argv, deps, sh, healed = false) {
 
   const head = String(run("git", ["rev-parse", "--short=7", "HEAD"], { encoding: "utf8" }).stdout ?? "").trim() || null;
   const deployed = buildOf(await fetchBuild());
-  const stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
+  let stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
 
   const listRef = refFor(sh, "Slide List", /listbox "Slide List"/);
   const slides = listRef ? (sh("snapshot", listRef).match(/option "Slide"/g) ?? []).length : null;
@@ -782,17 +903,39 @@ async function attempt(argv, deps, sh, healed = false) {
   // registered for and spent SEVEN attempts, about fifteen minutes, rediscovering
   // that a pane it cannot open is not openable. Only asked when the pane is
   // actually shut, so a healthy round pays nothing for it.
-  const canOpenPane = paneRef ? true : Boolean(refFor(sh, "Insert chart", /button "Insert chart"/));
-  const ping = paneRef ? readPing(sh("eval", pingScript(8000), paneRef)) : null;
+  let canOpenPane = paneRef ? true : Boolean(refFor(sh, "Insert chart", /button "Insert chart"/));
+  // PUT IT BACK, ONCE, rather than refuse a night over it. This is the state a
+  // browser death leaves: the deck is up and readable and there is no add-in in
+  // it, because a web sideload does not survive the process. `recover` restores
+  // everything except that.
+  //
+  // Guarded on `slides` for the same reason the refusal below is: a tab that is
+  // merely mid-reload answers nothing to every read and looks identical, and
+  // walking ten ribbon steps against a loading document would leave a dialog
+  // over it.
+  let pane = paneRef;
+  if (!pane && !canOpenPane && slides !== null && !sideloadAttempted) {
+    sideloadAttempted = true;
+    if (await sideloadAddIn(sh, sleep)) {
+      // RE-READ, because everything below was measured before the add-in
+      // existed. The stamp especially: it is what says the pane is serving the
+      // build under test, and a sideload that lands the wrong manifest must
+      // still be caught by the ordinary check rather than assumed good.
+      pane = refFor(sh, "Chart", /tab "Chart"/);
+      canOpenPane = Boolean(pane) || Boolean(refFor(sh, "Insert chart", /button "Insert chart"/));
+      stamp = buildOf(sh("find", "--regex", "/[0-9a-f]{7} ·/"));
+      console.log(`  the add-in is back — pane ${stamp ?? "still not readable"}`);
+    }
+  }
+  const ping = pane ? readPing(sh("eval", pingScript(8000), pane)) : null;
   // Only when the host is already answering: a slide resolve on a host that did
   // not survive `getCount` tells us nothing the ping has not, and costs 20s.
-  const slideOk = paneRef && ping?.answered ? readSlideResolve(sh("eval", slideResolveScript(20000), paneRef)) : null;
+  const slideOk = pane && ping?.answered ? readSlideResolve(sh("eval", slideResolveScript(20000), pane)) : null;
   // Only when a profile was asked for — an unasked question costs a round trip
   // and answers nothing. `PW_EXPECT_SIZE=4:3` is how a nightly cycle says which
   // arm this round belongs to.
   const expectSize = process.env.PW_EXPECT_SIZE || null;
-  const size =
-    expectSize && paneRef && ping?.answered ? readSlideSize(sh("eval", slideSizeScript(15000), paneRef)) : null;
+  const size = expectSize && pane && ping?.answered ? readSlideSize(sh("eval", slideSizeScript(15000), pane)) : null;
   // RE-READ, after the slide touch rather than only before it. If the touch is
   // what trips the host, the dialog appears in the seconds that follow — and
   // reading the dialog only at the top of the sweep is how a crash the check
