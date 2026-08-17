@@ -714,7 +714,10 @@ describe("a decoration does not push a chart out of its own frame", () => {
               `${kind} ${w}x${h} at ${fontSize}pt: ${after.node} ${after.pt.toFixed(1)}pt past the ${after.side}`,
             );
         }
-    expect(built, "nothing was built, so this proves nothing").toBeGreaterThan(50);
+    // Non-vacuous: every combination asked for was actually built and measured.
+    expect(built, "not every combination was built, so this proves less than it says").toBe(
+      kinds.length * FRAMES.length * FONTS.length,
+    );
     return bad;
   };
 
@@ -751,6 +754,23 @@ describe("a decoration does not push a chart out of its own frame", () => {
     const names = buildChart(cfg).nodes.map((n) => n.name ?? "");
     expect(names).toContain("variance-zero");
     expect(names.filter((n) => n.startsWith("variance-bar-")).length).toBeGreaterThan(0);
+  });
+
+  it("the butterfly's value-axis strip is dropped when it does not fit", () => {
+    // `fitPlot` grows the plot UP from the bottom edge it was given, so on a
+    // short frame `plot.y + plot.h` ran past where this strip starts and the
+    // ticks were drawn BELOW the chart — y 68-83 on a 60pt-tall frame.
+    expect(sweep("valueAxis", true, ["butterfly"])).toEqual([]);
+  });
+
+  it("the slope chart's end labels are fitted to the gutter they sit in", () => {
+    // Each gutter is sized from its own labels and then capped at a third of the
+    // chart's width, and the labels were drawn at the full chart font anyway —
+    // 16pt past an 80x60 frame at 18pt. The plot itself never went through
+    // `fitPlot` either, so the same frame gave it a NEGATIVE height: an inverted
+    // axis, and an end-label band whose bottom sat above its top.
+    const bad = sweep("slope", true, ["line"]).filter((row) => !/at 32pt/.test(row));
+    expect(bad).toEqual([]);
   });
 
   it("still writes the 100% note where there is one to write", () => {

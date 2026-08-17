@@ -5,7 +5,7 @@ import { formatNumber, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import { niceTicks } from "../format";
 import { legendRow, type LayoutResult, type LegendEntry } from "./column";
-import { bandFontSize, fitPlot, legendRowCount, titleHeight, titleNode } from "./frame";
+import { MIN_PLOT_SIDE, bandFontSize, fitPlot, legendRowCount, titleHeight, titleNode } from "./frame";
 
 /**
  * Butterfly (tornado) chart: think-cell models this as two bar charts placed
@@ -65,8 +65,23 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
         cfg.width - 4,
       ),
     );
-  // A value axis reserves a strip at the bottom for tick labels on both flanks.
-  const axisH = decor.valueAxis ? fs * 1.5 : 0;
+  /**
+   * A value axis reserves a strip at the bottom for tick labels on both flanks —
+   * and only when the frame can pay for it.
+   *
+   * `fitPlot` floors the plot's height and grows it back UP from the bottom edge
+   * it was given, so on a frame too short for its own chrome `plot.y + plot.h`
+   * runs past where this strip was meant to start, and the ticks were drawn
+   * BELOW the chart: y 68-83 on a 60pt-tall frame at an 18pt font, y 103-131 on
+   * a 90pt one at 32pt. Off the chart is off the slide's chart and onto whatever
+   * sits under it, since neither PowerPoint renderer clips.
+   *
+   * Dropped rather than squeezed, which is the answer every other reservation in
+   * this engine gives when it cannot be met. The draw below reads THIS value
+   * rather than `decor.valueAxis`, so the strip that is reserved and the strip
+   * that is drawn cannot come apart.
+   */
+  const axisH = decor.valueAxis && cfg.height - titleH - headerH - 6 - fs * 1.5 >= MIN_PLOT_SIDE ? fs * 1.5 : 0;
   const plot = fitPlot(cfg, {
     x: valueW,
     y: titleH + headerH + 2,
@@ -252,8 +267,10 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
     });
   }
 
-  // Value tick labels on both flanks, in the reserved bottom strip.
-  if (decor.valueAxis) {
+  // Value tick labels on both flanks, in the reserved bottom strip — gated on the
+  // reservation, not on the flag, so a frame that could not pay for the strip
+  // does not get the labels that live in it.
+  if (axisH > 0) {
     const ty = plot.y + plot.h + 1;
     for (const tk of ticks) {
       const q = qOf(tk);

@@ -4,12 +4,15 @@ import { formatNumber, parseDateToken, resolveFormat, segmentLabel } from "../fo
 import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
+import { clipToWidth } from "../elements";
 import {
+  MIN_LABEL_FS,
   baselineNode,
   categorySlots,
   chromeNodes,
   computeFrame,
   computeFrameHorizontal,
+  fitPlot,
   footnoteH,
   logFloor,
   titleHeight,
@@ -566,15 +569,42 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
     cfg.width * 0.34,
     Math.max(fs, ...data.series.map((s) => textWidth(endLabel(s, last), fs))) + 10,
   );
+  /**
+   * The size both gutters' labels are drawn at.
+   *
+   * Each gutter is sized from its own labels and then CAPPED at a third of the
+   * chart's width, and the labels were drawn at the full chart font regardless —
+   * so on a narrow chart a name-plus-value was wider than the room it had been
+   * given and ran off the edge of the chart: 16pt past an 80x60 frame at an 18pt
+   * font, 67pt at 32pt, and neither PowerPoint renderer clips a text box.
+   *
+   * Shrunk together and then clipped, for the reason the column chart's series
+   * names give: labels at differing sizes read as a hierarchy that is not there.
+   * Both sides take one size for the same reason. Where the cap does not bite —
+   * every comfortable chart — the gutter is the widest label plus 10, the loop
+   * does not run, and nothing moves.
+   */
+  const endFits = (f: number) =>
+    data.series.every(
+      (s) => textWidth(endLabel(s, 0), f) <= gutterL - 6 && textWidth(endLabel(s, last), f) <= gutterR - 6,
+    );
+  let endFs = fs;
+  while (endFs > MIN_LABEL_FS && !endFits(endFs)) endFs -= 0.5;
 
   const titleH = titleHeight(cfg, style);
   const headerH = fs * 1.5; // period labels above the rails
-  const plot = {
+  // Through `fitPlot`, like every other layout: this one subtracted its chrome
+  // and used the answer, so a frame too short to pay for a title, a period
+  // header and a footnote row gave it a NEGATIVE height — and a negative height
+  // is not a small plot, it is an inverted axis, with `toY` mapping larger
+  // values downward and the end labels placed by a band whose bottom sat above
+  // its top. An 80x60 slope chart at an 18pt font had exactly that.
+  const plot = fitPlot(cfg, {
     x: gutterL,
     y: titleH + headerH + 4,
     w: cfg.width - gutterL - gutterR,
     h: cfg.height - titleH - headerH - 4 - footnoteH(cfg, style, decor) - 6,
-  };
+  });
   const pad = plot.h * 0.08;
   const toY = (v: number) => plot.y + pad + (1 - (v - lo) / span) * (plot.h - pad * 2);
   const xs = data.categories.map((_, c) => plot.x + (n === 1 ? plot.w / 2 : (c / (n - 1)) * plot.w));
@@ -687,8 +717,8 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
         y: leftYs[si]! - fs * 0.75,
         w: gutterL - 6,
         h: fs * 1.5,
-        text: endLabel(s, 0),
-        fontSize: fs,
+        text: clipToWidth(endLabel(s, 0), endFs, gutterL - 6),
+        fontSize: endFs,
         color,
         align: "right",
         valign: "middle",
@@ -702,8 +732,8 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
         y: rightYs[si]! - fs * 0.75,
         w: gutterR - 6,
         h: fs * 1.5,
-        text: endLabel(s, last),
-        fontSize: fs,
+        text: clipToWidth(endLabel(s, last), endFs, gutterR - 6),
+        fontSize: endFs,
         color,
         align: "left",
         valign: "middle",
