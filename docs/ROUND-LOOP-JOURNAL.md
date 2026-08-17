@@ -1543,3 +1543,100 @@ by reading it**: that issue is Excel on Mac, not PowerPoint shape selection.
 
 So no workaround was applied. Guessing one now would produce a change nothing
 could evaluate; the next round that reproduces this will say which step failed.
+
+## Rounds 082-087 (`9f175a8` → `95170cf`, 2026-08-16/17) — six perfect rounds, and nine bugs in the instruments watching them
+
+    round   build      scenarios   note
+    082     9f175a8      13/13     first perfect round in the archive
+    083     9f175a8      13/13     the pair
+    084     600ea90      13/13     the orphan instrument's first non-zero reading — a phantom
+    085     fbdc49b      13/13     survived a real browser death, recovered unaided
+    086     2c2547f      13/13     settle guard caught two phantoms, missed a third
+    087     95170cf      13/13     4s settle held; zero contradicted by the deck
+
+**Six consecutive 13/13 rounds, zero `UnexpectedError` in any of them.** `explode
+a degraded picture` passed all six, having failed 47 of its first 57.
+
+### The product was fine. The instruments were not.
+
+Two product defects were found across the whole stretch — a blank slide shipping
+in the finished deck, and an update dying on a refused id. **Nine defects were in
+the reporting**, five of them introduced the same day they were found.
+
+### The orphan instrument was wrong four times, each differently
+
+1. **Mismatched units.** It subtracted inner chart shapes, delete CALLS and
+   top-level slide shapes from one another and reported "283 stranded" beside its
+   own `before: 3, after: 3`.
+2. **An algebraic identity.** `shortfall` and `unexplained` summed to zero on
+   every line, so the reading was the same on healthy and broken data — and its
+   control test passed vacuously.
+3. **One stale host read.** "92 shapes grew" was PowerPoint lagging an
+   `addGroup` our own sync had already resolved; the deck showed one grouped
+   chart per slide.
+4. **Two agreeing stale reads.** With a 1.5s settle added, both reads landed
+   inside one lag and agreed on the stale number, so the reading was marked
+   `settled` and was still wrong.
+
+**Every one was caught by the same second source** — `deck.inventory`, already in
+the round file, taken long after any lag. It has never been wrong. It is now
+cross-checked on every reading, and disagreements are counted rather than
+discarded, because an instrument's own error rate belongs in its report.
+
+The settle delay was then sized from data that had been in every round file for
+weeks: the gap from a group commit to the count that followed it is stale up to
+**3193ms**, so 1.5s was never enough. No new instrumentation was needed to learn
+that — the timestamps simply had not been differenced.
+
+### The gate spent fifteen rounds blaming nine innocent builds
+
+`traceNovelty`'s "NEW BEHAVIOUR" bucket took its median over EVERY prior round,
+so a signature stayed new until it appeared in more than half the archive — while
+the denominator grew. `re-reading the slide's shapes again after a settle delay`
+debuted in round 064 and has sat at 10-11 since; it was announced as new in
+fifteen rounds and attributed to nine different builds, the last a commit that
+only changed a slide counter. The signature round 086 had actually changed went
+unmentioned.
+
+Now a five-round window, and each entry names the build it first appeared in. On
+the real archive the bucket reports **nothing**, which is the truth.
+
+### A blank slide of ours was shipping in the finished deck
+
+One `slides.add()` can land TWO slides. The branch that fires when a landed slide
+cannot be named reported one — `after - before` is 2 in all ten archive
+occurrences, never 1 — so the sweep's clamp ran one short and left the remainder.
+Round 085's inventory carries it: `257#3837665135`, zero shapes, listed in
+`newSlides`. Nine rounds are affected and five of the last thirteen began their
+scenarios on a deck already dirty by one slide, invisible because the scenarios
+measure GROWTH.
+
+The comment above that branch cites a real 2026-08-11 measurement; what went
+stale was the inference drawn from it, contradicted ten times since by data
+nobody re-read.
+
+### The stranding question has three observations
+
+Round 087 finally failed to group something (15 grouped, 4 not). Pooled across
+every round that can answer: **three at-risk charts, all zero growth.** Three is
+not five. A round that groups everything cannot answer this either way, and the
+report now says so rather than reading zero as an all-clear.
+
+### The browser died three times, and the cause is not a crash
+
+`ERR_NETWORK_IO_SUSPENDED` in the console tail, and Windows Event 507 — entering
+connected standby — four times in one morning. The machine was sleeping. Recovery
+survives it, and did so unaided in round 085. **A sideload does not always
+survive** the browser process: once it was lost and once it was not, and an
+`Upload My Add-in` appears to register against the account rather than the
+session.
+
+### Six vacuous tests
+
+Written and caught in this stretch, all the same shape: built from what the
+author expected rather than from what the code does. A callback passed as a
+fourth argument to a three-parameter function; a fixture asserting a lookup
+happened rather than a click; `ref=rCancel` against a `[a-z0-9]+` matcher; a
+fixture modelling "rare" as "absent"; a control that could not fail; and a
+novelty fixture with the signature in every prior, where the old and new readings
+agree. **Mutation caught all six. Reading caught none.**
