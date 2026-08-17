@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
 import { sceneToSvg } from "../src/render/svg";
 import { valueScale } from "../src/core/layout/frame";
-import { formatDay, monthStarts, parseDateToken } from "../src/core/format";
+import { formatDay, formatDayRange, monthStarts, parseDateToken } from "../src/core/format";
 import { valueExtent } from "../src/core/chart";
 import { layoutColumns } from "../src/core/layout/column";
 import { layoutGantt } from "../src/core/layout/gantt";
@@ -293,5 +293,40 @@ describe("a date that does not exist", () => {
     expect(parseDateToken("Jan-24"), "the mmm-yy form stopped parsing").not.toBeNull();
     expect(parseDateToken("2024-01-15T10:00:00Z"), "an ISO date-time stopped parsing").not.toBeNull();
     expect(parseDateToken("15 Jan 2024")).toBe(parseDateToken("Jan 15 2024"));
+  });
+});
+
+/**
+ * A span's ends are two specific DAYS, and `formatDay` is not the way to say so.
+ *
+ * `formatDay` collapses the first of a month to the bare month name, which is
+ * right for the tick strip — a month gridline reads `Mar`, and a day number on
+ * every one of them would be noise. `spanLabel` in the Gantt reused it for a
+ * bar's date RANGE, where the day number is the whole point: a task running
+ * 1 Jan to 31 Mar was labelled `Jan–31 Mar`, one running 1 Jan to 1 Apr — the
+ * ordinary shape of a quarterly plan — was labelled `Jan–Apr`, and a roadmap
+ * whose phases ran whole years read `Jan–Jan`, carrying no dates at all.
+ */
+describe("a calendar span names both of its days", () => {
+  const d = (s: string) => parseDateToken(s)!;
+
+  it("keeps the day number on a month start", () => {
+    expect(formatDayRange(d("2026-01-01"), d("2026-03-31"))).toBe("1 Jan–31 Mar");
+    expect(formatDayRange(d("2026-03-01"), d("2026-03-08"))).toBe("1 Mar–8 Mar");
+    expect(formatDayRange(d("2026-01-01"), d("2026-04-01"))).toBe("1 Jan–1 Apr");
+  });
+
+  it("adds the year when the span crosses one", () => {
+    expect(formatDayRange(d("2000-01-01"), d("2030-01-01"))).toBe("1 Jan 00–1 Jan 30");
+    expect(formatDayRange(d("2026-12-20"), d("2027-01-10"))).toBe("20 Dec 26–10 Jan 27");
+    // …and leaves a within-year span alone, so an ordinary plan is unchanged.
+    expect(formatDayRange(d("2026-02-05"), d("2026-02-19"))).toBe("5 Feb–19 Feb");
+  });
+
+  it("says nothing it cannot compute", () => {
+    // Same answer `formatDay` gives a day number JS cannot make a Date of: a
+    // blank end rather than "NaN undefined" in the .pptx.
+    expect(formatDayRange(NaN, d("2026-01-01"))).toBe("–1 Jan");
+    expect(formatDayRange(d("2026-01-01"), Infinity)).toBe("1 Jan–");
   });
 });

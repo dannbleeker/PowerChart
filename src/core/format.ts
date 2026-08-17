@@ -391,13 +391,48 @@ export function parseDateToken(raw: string): number | null {
       return Math.floor(Date.UTC(yy < 30 ? 2000 + yy : 1900 + yy, m, 1) / DAY_MS);
     }
   }
+  /**
+   * An ISO token — a bare date, or a date-time with any zone or none — read for
+   * the CALENDAR DATE it names, rather than handed to `Date.parse`.
+   *
+   * `Date.parse` reads a bare ISO date as UTC and an offset-less ISO date-TIME
+   * as LOCAL, which is the one inconsistency this parser was still passing
+   * through. So `2026-01-15T20:00` became 2026-01-16T01:00Z for a reader in New
+   * York and `2026-01-15T02:00` became 2026-01-14T17:00Z for one in Tokyo — and
+   * the day check below then compared the 15 the token NAMES against the 16 or
+   * the 14 the instant landed on, decided the day did not exist, and returned
+   * null. The cell was not merely shifted: it silently stopped being a date,
+   * taking its Gantt row or its category spacing with it, and WHICH cells did
+   * that depended on the reader's timezone and the time of day in the cell. A
+   * pasted export carrying local timestamps is the ordinary way in.
+   *
+   * An explicit offset had the same ending by a different route: a legal
+   * `2026-01-15T20:00-05:00` is 16 January in UTC, so the day check refused it
+   * in every timezone on earth.
+   *
+   * The date a cell NAMES is the answer to both, and it is the honest one: this
+   * function returns whole days, a plan written as "15 Jan, 20:00" means the
+   * 15th to whoever wrote it, and the same config has to render the same chart
+   * on every machine. The time of day was already discarded by the floor at the
+   * end; only the day it was allowed to move was ever in question.
+   */
+  const iso = /^(\d{4})-(\d{2})(?:-(\d{2}))?(?:[T ][\d:.]+(?:[Zz]|[+-]\d{2}:?\d{2})?)?$/.exec(t);
+  // A month outside 1..12 is not a date, and `Date.UTC` normalises rather than
+  // refuses — so `2026-13-01` becomes 1 January 2027 and `15.13.2026` becomes
+  // 15 January 2027: a year out, silently, on a Gantt row. This is the month's
+  // half of the day-existence rule below, which has always refused `Apr 31`;
+  // the dotted form has been able to roll a year since it was written, and
+  // reading the ISO form ourselves would newly let it do the same (`Date.parse`
+  // simply returns NaN for a 13th month).
+  const month = dmy ? Number(dmy[2]) : iso ? Number(iso[2]) : null;
+  if (month != null && (month < 1 || month > 12)) return null;
   const ms = dmy
     ? Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
-    : // An ISO token (bare date OR a full date-time with T/offset) parses as-is;
-      // appending " UTC" to a date-time made Date.parse return NaN, so every task
-      // in a pasted ISO-8601 export was silently dropped. Other shapes ("Jan 2026")
-      // still need the UTC anchor to avoid local-timezone drift.
-      Date.parse(/^\d{4}-\d{2}(-\d{2})?([T ][\d:.]+([Zz]|[+-]\d{2}:?\d{2})?)?$/.test(t) ? t : `${t} UTC`);
+    : iso
+      ? Date.UTC(Number(iso[1]), Number(iso[2]) - 1, iso[3] ? Number(iso[3]) : 1)
+      : // Everything else ("Jan 2026", "Mon 5 Jan") still needs the UTC anchor
+        // to avoid the same local-timezone drift.
+        Date.parse(`${t} UTC`);
   if (!Number.isFinite(ms)) return null;
   // A day that does not EXIST in its month is not a date, and until now it
   // silently became one in the next month.
@@ -457,6 +492,39 @@ export function formatDay(days: number, withYear = false): string {
   return d.getUTCDate() === 1 ? m : `${d.getUTCDate()} ${m}`;
 }
 
+/**
+ * The two ends of a calendar SPAN, as one label.
+ *
+ * `formatDay` collapses the first of a month to the bare month name, which is
+ * right for the tick strip — a month gridline reads `Mar`, and the day number
+ * would be noise on every one of them. It is wrong for a span, where the day
+ * number IS the information: a task running 1 Jan to 31 Mar was labelled
+ * `Jan–31 Mar`, and one running 1 Jan to 1 Apr — the ordinary shape of a
+ * quarterly plan — was labelled `Jan–Apr`, carrying no dates at all. A 30-year
+ * roadmap whose phases began and ended on the 1st read `Jan–Jan`.
+ *
+ * The year is added when the two ends fall in different years, because without
+ * it `1 Jan–1 Jan` is the label for any span of whole years.
+ */
+export function formatDayRange(from: number, to: number): string {
+  const day = (v: number) => {
+    const d = new Date(v * DAY_MS);
+    if (!Number.isFinite(v) || Number.isNaN(d.getTime())) return "";
+    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+  };
+  const year = (v: number) => new Date(v * DAY_MS).getUTCFullYear();
+  const crossesYears =
+    Number.isFinite(from) &&
+    Number.isFinite(to) &&
+    !Number.isNaN(new Date(from * DAY_MS).getTime()) &&
+    !Number.isNaN(new Date(to * DAY_MS).getTime()) &&
+    year(from) !== year(to);
+  const yy = (v: number) => ` ${String(year(v)).slice(2)}`;
+  const a = day(from);
+  const b = day(to);
+  return `${a}${a && crossesYears ? yy(from) : ""}–${b}${b && crossesYears ? yy(to) : ""}`;
+}
+
 /** Epoch-day values of every Monday covering [minDay, maxDay]. */
 export function weekStarts(minDay: number, maxDay: number): number[] {
   // Day 0 (1970-01-01) was a Thursday; Monday ≡ 4 (mod 7).
@@ -466,19 +534,38 @@ export function weekStarts(minDay: number, maxDay: number): number[] {
   return out;
 }
 
-/** Epoch-day values of every month start covering [minDay, maxDay]. */
-export function monthStarts(minDay: number, maxDay: number): number[] {
+/**
+ * Epoch-day values of every `stepMonths`-th month start covering [minDay, maxDay].
+ *
+ * The step is what keeps a long span COVERED. The caller used to take every
+ * month and then filter the result down to quarters, and the guard below bounds
+ * the WALK — so on a span longer than the guard the walk stopped part-way and
+ * the filter thinned what was left of it. A 40-year Gantt drew its last
+ * gridline halfway across the plot and labelled it `Q4 18`, with bars running
+ * on past it to 2040 and no time reference under them at all: not a missing
+ * tick, an axis that stops and does not say so.
+ *
+ * Stepping instead of filtering makes the walk cost what the OUTPUT costs, so
+ * the same guard covers 20 years of months, 60 of quarters and 240 of years.
+ *
+ * The first tick is aligned DOWN to a multiple of the step within its year, so
+ * quarters land on Jan/Apr/Jul/Oct and years on January whatever month the data
+ * happens to start in — which is what the filter it replaces did, and why a
+ * quarterly span renders byte-identically.
+ */
+export function monthStarts(minDay: number, maxDay: number, stepMonths = 1): number[] {
+  const step = Math.max(1, Math.round(stepMonths));
   const start = new Date(minDay * DAY_MS);
   let y = start.getUTCFullYear();
-  let m = start.getUTCMonth();
+  let m = Math.floor(start.getUTCMonth() / step) * step;
   const out: number[] = [];
   for (let guard = 0; guard < 240; guard++) {
     const day = Date.UTC(y, m, 1) / DAY_MS;
     if (day > maxDay) break;
     if (day >= minDay) out.push(day);
-    m++;
-    if (m === 12) {
-      m = 0;
+    m += step;
+    while (m >= 12) {
+      m -= 12;
       y++;
     }
   }

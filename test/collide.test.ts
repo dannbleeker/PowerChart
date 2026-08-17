@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { resolveLabelCollisions } from "../src/core/collide";
+import { buildChart } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
+import type { ChartConfig } from "../src/core/types";
 import type { SceneNode, TextNode } from "../src/core/scene";
 
 /** Label collision resolution — which labels may move, and how far. */
@@ -196,5 +199,115 @@ describe("label collision resolution", () => {
     ];
     resolveLabelCollisions(nodes);
     expect((nodes[1] as TextNode).y).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * A combo chart's right-hand gutter carries two families of names: the column
+ * series' (`series-label-N`) and the LINE's (`combo-series-label-N`). They were
+ * in separate rank tiers, so the line's name settled after the column names had
+ * been fixed — and the nudge only goes up.
+ *
+ * On a 160x120 combo at the default font that pushed "Margin %" from the 58.5
+ * the layout gave it to 31.0, past "Services" at 48.6, and the gutter then read
+ * Margin % / Services / Product top to bottom against lines running the other
+ * way. That is the exact failure the settle order exists to prevent, and it is
+ * prevented WITHIN a rank only: same rank, sorted bottom-up, each nudge moves a
+ * label away from the one beneath it, so two of them cannot cross.
+ *
+ * Checked through `buildChart` rather than on hand-built nodes, because the
+ * defect is in which tier a real chart's two families land in.
+ */
+describe("a combo's gutter names its lines in the order they run", () => {
+  const gutterOrder = (w: number, h: number, fontSize: number) =>
+    buildChart({ ...sampleConfig("combo"), width: w, height: h, style: { fontSize } } as ChartConfig)
+      .nodes.filter((n): n is TextNode => n.kind === "text" && /^(?:combo-)?series-label-\d+$/.test(n.name ?? ""))
+      .sort((a, b) => a.y - b.y)
+      .map((n) => n.text);
+
+  it("keeps the line's name between the columns' names at every size", () => {
+    // The sample's own order: Services (columns), Margin % (line), Product
+    // (columns) — which is what every roomy frame already produced.
+    const want = ["Services", "Margin %", "Product"];
+    for (const [w, h] of [
+      [160, 120],
+      [200, 150],
+      [300, 200],
+      [480, 300],
+      [960, 540],
+    ] as [number, number][])
+      for (const fs of [8, 10, 14, 18]) {
+        const got = gutterOrder(w, h, fs);
+        expect(got.length, `${w}x${h} at ${fs}pt drew no gutter labels, so this proves nothing`).toBe(3);
+        expect(got, `${w}x${h} at ${fs}pt`).toEqual(want);
+      }
+  });
+});
+
+/**
+ * A label anchored to ONE mark may not be nudged so far that it stops being
+ * that mark's label.
+ *
+ * The nudge budget is ten steps of 0.55 em, so a combo point label could climb
+ * 5.5 times its own font size and the pass accepted it the moment it CLEARED —
+ * how far it now sat from its point was never asked. Measured over 25 kinds x 8
+ * frames x 7 fonts, 68 point labels moved and the worst went 123pt, five em,
+ * ending as a number floating in the title band with nothing under it. Every
+ * other family stayed within 1.7em, because a series label names a LINE and
+ * reads correctly anywhere along it, and a total names the column beneath it
+ * however high it sits.
+ *
+ * Capped at two em and restored past that, which is what the flip already does
+ * when it fails. Over that sweep: the overlapping-text-pair count is 591 before
+ * and 591 after, so nothing is traded for it, and 26 of 157 point labels are
+ * dropped by `unplaceableComboLabels` instead of being parked far from their
+ * marks — none of them at the default font on a frame of 200x150 or larger.
+ */
+describe("a label anchored to one mark stays near it", () => {
+  // Fixed labels packed 6pt apart, so nothing can step between them: `tightBox`
+  // clamps a box to the ink it carries, and a single tall label obstructs only
+  // `fontSize * 1.25` of its declared height.
+  const wall = (from: number, to: number): SceneNode[] =>
+    Array.from({ length: Math.ceil((to - from) / 6) + 1 }, (_, i) =>
+      label({ y: from + i * 6, text: "x", fontSize: 10, name: "segment-label-0-0" }),
+    );
+
+  /**
+   * Distance travelled upward by a label that CAN clear, but only past the cap.
+   *
+   * The band above is 30pt deep with open canvas beyond it, so an uncapped climb
+   * reaches clear air after about three em. The band below is what stops the
+   * flip rescuing the anchored ones — this has to measure the climb, and a label
+   * that goes below its mark has travelled zero upward and would pass the
+   * assertion without proving anything.
+   */
+  const nudged = (name: string) => {
+    const l = label({ y: 100, text: "42", fontSize: 10, name });
+    resolveLabelCollisions([...wall(70, 100), ...wall(112, 260), l], 300);
+    return 100 - l.y;
+  };
+
+  it("caps a combo point label's climb at two em", () => {
+    expect(nudged("combo-label-0-1")).toBeLessThanOrEqual(20.01);
+  });
+
+  it("caps the CAGR caption the same way", () => {
+    expect(nudged("cagr-label")).toBeLessThanOrEqual(20.01);
+  });
+
+  it("leaves a label that names a whole line free to climb", () => {
+    // The negative control: a series label reads correctly anywhere along its
+    // line, and a total names the column beneath it however high it sits, so
+    // neither is capped.
+    expect(nudged("series-label-0")).toBeGreaterThan(20);
+    expect(nudged("total-0")).toBeGreaterThan(20);
+  });
+
+  it("does not move a point label at all when the climb cannot clear", () => {
+    // Restored, not left where the budget ran out: a label that moved and still
+    // collides sits somewhere its author did not choose.
+    const l = label({ y: 100, text: "42", fontSize: 10, name: "combo-label-0-1" });
+    resolveLabelCollisions([...wall(0, 200), l], 300);
+    expect(l.y).toBe(100);
   });
 });

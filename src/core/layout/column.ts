@@ -1404,6 +1404,25 @@ export function seriesLabelNodes(
     const top = Math.min(titleHeight(cfg, style) + lineH / 2, bottom);
     if (entries[0].y < top) {
       const step = entries.length > 1 ? (bottom - top) / (entries.length - 1) : 0;
+      // The shrink below is floored at MIN_LABEL_FS, so a band too short to give
+      // every label a line of its own does not get one by shrinking — it gets
+      // labels pitched CLOSER than their own height, which is the overlap the
+      // shrink exists to prevent. At the limit the band has no height at all
+      // (`top === bottom`, a short frame whose title has eaten the gutter) and
+      // every label is placed at the SAME POINT: three series names drawn on
+      // top of one another, the reader seeing one of them and having no way to
+      // know which line it names. `collide.ts` cannot rescue them either — its
+      // nudge only goes up, all of them want the same place, and they exhaust
+      // the budget still stacked.
+      //
+      // So past that floor the labels are DROPPED, which is the answer every
+      // other reservation in this engine already gives when it cannot be paid
+      // for (the radar's ticks, the sunburst's ring, the pie's outside labels):
+      // a label that cannot be told apart from its neighbour is not a label,
+      // and a chart visibly missing its series names is honest where a stack of
+      // hidden ones is not. Only for two or more — a single label overlaps
+      // nothing, so the pitch says nothing about it.
+      if (entries.length > 1 && step < MIN_LABEL_FS * 1.25) return [];
       entries.forEach((e, i) => (e.y = top + i * step));
       // Spread AND shrunk, because a spread alone trades one defect for a worse
       // one. The step here is by definition below the gap the labels wanted, so
@@ -1414,7 +1433,7 @@ export function seriesLabelNodes(
       // small label is a bad chart; a legible label naming someone else's line
       // is a wrong one. Shrink to the step so nothing overlaps and the
       // de-collision pass has nothing to do.
-      labelFs = Math.max(5, Math.min(fs, step / 1.25));
+      labelFs = Math.max(MIN_LABEL_FS, Math.min(fs, step / 1.25));
     }
   }
   const x = frame.x + frame.w + 4;

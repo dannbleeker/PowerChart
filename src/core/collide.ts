@@ -21,8 +21,17 @@ interface Box {
 const MOVABLE = [
   /^total-/,
   /^value-line-label/,
-  /^series-label-/,
-  /^combo-series-label-/,
+  // The column series' names and the combo LINE's name share one gutter, so
+  // they share one rank. Separate tiers put the line's name in the later one,
+  // where it settled against names already fixed and could only move UP —
+  // so on a 160x120 combo at the default font it climbed from 58.5 to 31.0,
+  // past "Services" at 48.6, and the gutter read Margin % / Services / Product
+  // top to bottom against lines running the other way. A label that names
+  // someone else's line is the failure the settle order below exists to
+  // prevent, and it is prevented WITHIN a rank only: same rank, sorted
+  // bottom-up, each nudge moves a label away from the one beneath it, so two of
+  // them can never cross.
+  /^(?:combo-)?series-label-/,
   /^diff-label$/,
   /^cagr-label$/,
   // The combo line's point labels, LAST so they are the ones that move: the
@@ -60,6 +69,13 @@ const MOVABLE = [
  * 13 of the sweep's overlapping pairs against the earlier attempt's −3.
  */
 const FLIPPABLE = [/^combo-label-/, /^cagr-label$/];
+
+/**
+ * The furthest a label anchored to a single mark may be nudged, in multiples of
+ * its own font size. Past this it is restored to where the layout put it, and
+ * `unplaceableComboLabels` decides whether it survives at all.
+ */
+const MAX_ANCHORED_TRAVEL = 2;
 
 const canFlip = (name: string | undefined) => !!name && FLIPPABLE.some((re) => re.test(name));
 
@@ -111,7 +127,29 @@ export function resolveLabelCollisions(nodes: SceneNode[], canvasH?: number): vo
     let box = tightBox(node);
     let tries = 0;
     let clear = !settled.some(box, (s) => overlaps(box, s));
+    // How far a label anchored to a SINGLE MARK may travel before it stops being
+    // that mark's label. The budget below is ten steps of 0.55 em, so without a
+    // bound a combo point label could climb 5.5 times its own font size: measured
+    // over 25 kinds x 8 frames x 7 fonts, 68 of them moved and the worst went
+    // 123pt — five em — ending as a number floating in the title band with
+    // nothing under it, while every other family stayed within 1.7em. A label
+    // that far from its point is not labelling it, and the reader has no way to
+    // tell which point it came from.
+    //
+    // Restored rather than left where the climb ran out, which is what the flip
+    // below already does and for the same reason: a label that moved and did not
+    // clear collides somewhere its author did not choose.
+    //
+    // Only the anchored ones (`FLIPPABLE` — a combo's point labels and the CAGR
+    // caption). A series label names a LINE and reads correctly anywhere along
+    // it, and a total names the column beneath it however high it sits.
+    const cap = canFlip(node.name) ? node.fontSize * MAX_ANCHORED_TRAVEL : Infinity;
     while (!clear && tries < 10) {
+      if (startY - node.y + node.fontSize * 0.55 > cap) {
+        node.y = startY;
+        box = tightBox(node);
+        break;
+      }
       node.y -= node.fontSize * 0.55; // nudge upward
       box = tightBox(node);
       tries++;
@@ -189,9 +227,17 @@ export function unplaceableComboLabels(nodes: SceneNode[], priority: "columns" |
   if (!totals.length || !points.length) return drop;
   // The loser is dropped, the winner is left exactly as de-collision settled it.
   const [losers, keepers] = priority === "line" ? [totals, points] : [points, totals];
+  // The keeper family, plus every label that will not move for anyone: the
+  // title, the category names, the segment labels. A point label capped to two
+  // em of travel can no longer climb out from under those, and one left sitting
+  // on a category name is as unreadable as one sitting on a total. Movable
+  // labels are deliberately not in this list — they may still settle elsewhere,
+  // and dropping a label because of something that has not stopped moving is
+  // how a pass like this starts eating its own output.
+  const others = [...keepers, ...texts.filter((t) => movableRank(t.name) < 0)];
   for (const l of losers) {
     const lb = tightBox(l);
-    if (keepers.some((k) => overlaps(lb, tightBox(k)))) drop.add(l);
+    if (others.some((k) => overlaps(lb, tightBox(k)))) drop.add(l);
   }
   return drop;
 }

@@ -564,3 +564,118 @@ describe("the end of the timeline stays on the chart", () => {
     for (const d of dots) expect(d.cx + d.rx).toBeLessThanOrEqual(DEFAULT_SIZE.width);
   });
 });
+
+/**
+ * A long plan's timeline used to STOP part-way across the plot.
+ *
+ * The calendar tiers took every month start and then filtered the result down
+ * to quarters — but `monthStarts` bounds its own walk, so on a span longer than
+ * that bound the walk stopped and the filter thinned what was left. A 40-year
+ * roadmap on a 960pt frame drew its last gridline at x=495 and labelled it
+ * `Q4 18`, with bars running on to 2040 over bare plot. Not a missing tick: an
+ * axis that ends without saying so, under marks that keep going.
+ *
+ * `monthStarts` takes a step now instead of being filtered afterwards, so the
+ * walk costs what the output costs, and a years tier keeps the tick count
+ * readable past ~6 years. Quarterly spans are unchanged — the step aligns to
+ * Jan/Apr/Jul/Oct exactly as the filter selected.
+ */
+describe("the gantt timeline reaches the end of the plan", () => {
+  const day = (s: string) => Math.round(Date.parse(`${s}T00:00:00Z`) / 86400000);
+  const plan = (from: string, to: string): ChartConfig =>
+    cfg({
+      kind: "gantt",
+      width: 960,
+      height: 300,
+      data: {
+        dates: true,
+        categories: ["Phase A", "Phase B"],
+        series: [
+          { name: "Start", values: [day(from), day(from) + 10] },
+          { name: "End", values: [day(to) - 10, day(to)] },
+        ],
+      },
+    });
+
+  const gridXs = (c: ChartConfig) =>
+    buildChart(c)
+      .nodes.filter((n): n is LineNode => n.kind === "line" && n.name === "gridline")
+      .map((n) => n.x1);
+
+  for (const [from, to] of [
+    ["2024-01-01", "2024-04-01"],
+    ["2024-01-01", "2025-06-01"],
+    ["2024-01-01", "2029-01-01"],
+    ["2000-01-01", "2040-01-01"],
+    ["2000-01-01", "2060-01-01"],
+  ] as const) {
+    it(`covers ${from}..${to}`, () => {
+      const xs = gridXs(plan(from, to));
+      expect(xs.length, "no gridlines at all, so this proves nothing").toBeGreaterThan(2);
+      const bars = buildChart(plan(from, to)).nodes.filter(
+        (n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("bar-"),
+      );
+      const barsEnd = Math.max(...bars.map((b) => b.x + b.w));
+      // The last gridline must reach the end of the work it is meant to date.
+      expect(Math.max(...xs), `${from}..${to}: bars run to ${barsEnd.toFixed(0)}`).toBeGreaterThanOrEqual(barsEnd - 40);
+      // …and the axis must stay readable rather than paying for coverage in ticks.
+      expect(xs.length, `${from}..${to}`).toBeLessThanOrEqual(70);
+    });
+  }
+
+  it("labels a yearly tick with its year, not a quarter of one", () => {
+    const labels = buildChart(plan("2000-01-01", "2040-01-01"))
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("timeline"))
+      .map((n) => n.text);
+    expect(labels.length).toBeGreaterThan(2);
+    // Every tick is January, so a quarter label would read "Q1" on all of them.
+    expect(labels.filter((t) => /^Q\d/.test(t))).toEqual([]);
+    expect(labels[0]).toBe("2000");
+    expect(labels[labels.length - 1]).toBe("2040");
+  });
+
+  it("leaves a quarterly span exactly where it was", () => {
+    // The negative control: five years still steps by quarter, with the same
+    // Jan/Apr/Jul/Oct alignment the filter produced.
+    const labels = buildChart(plan("2024-01-01", "2029-01-01"))
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("timeline"))
+      .map((n) => n.text);
+    expect(labels[0]).toBe("Q1 24");
+    expect(labels).toContain("Q3 26");
+  });
+});
+
+/**
+ * The bar label a long plan actually carried. Found by looking at the render:
+ * a 2000–2040 roadmap drew two bars both labelled `Jan–Jan`.
+ */
+describe("a gantt bar names the days it spans", () => {
+  const day = (s: string) => Math.round(Date.parse(`${s}T00:00:00Z`) / 86400000);
+  const labels = (from: string, to: string) =>
+    buildChart(
+      cfg({
+        kind: "gantt",
+        width: 960,
+        height: 300,
+        data: {
+          dates: true,
+          categories: ["Phase A"],
+          series: [
+            { name: "Start", values: [day(from)] },
+            { name: "End", values: [day(to)] },
+          ],
+        },
+      }),
+    )
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("bar-label"))
+      .map((n) => n.text);
+
+  it("does not collapse a month-start end to its month name", () => {
+    expect(labels("2000-01-01", "2030-01-01")).toEqual(["1 Jan 00–1 Jan 30"]);
+    expect(labels("2026-01-01", "2026-03-31")).toEqual(["1 Jan–31 Mar"]);
+  });
+
+  it("leaves a mid-month span exactly as it was", () => {
+    expect(labels("2026-02-05", "2026-02-19")).toEqual(["5 Feb–19 Feb"]);
+  });
+});

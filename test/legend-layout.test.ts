@@ -387,3 +387,81 @@ describe("the horizontal mekko legend asks the same predicate the reservation do
     }
   });
 });
+
+/**
+ * A band with no room in it does not get a legend by shrinking.
+ *
+ * `seriesLabelNodes` spreads its labels over whatever vertical band is left
+ * once the title has taken its share, then shrinks them to the step it ended up
+ * with — and that shrink is FLOORED at 5pt. So past the floor the spread stops
+ * paying for itself: the labels are pitched closer together than their own
+ * height, which is exactly the overlap the shrink exists to prevent. At the
+ * limit the band has no height at all (`top === bottom`, a short frame whose
+ * title has eaten the gutter) and every label lands on the SAME POINT.
+ *
+ * Measured across 25 kinds × 8 frames × 7 fonts before the fix: 46 pairs of
+ * series labels drawn at identical coordinates, on mekko, line, area, combo and
+ * the column family. A reader sees the one drawn last and has no way to know
+ * which series it names — and `collide.ts` cannot rescue them, because its
+ * nudge only goes up, all of them want the same place, and they exhaust the
+ * budget still stacked.
+ *
+ * The answer is the one every other reservation in this engine gives when it
+ * cannot be paid for (the radar's ticks, the sunburst's ring, the pie's outside
+ * labels): drop them. The same sweep after the fix: 0 coincident pairs, and the
+ * total number of overlapping text pairs falls from 838 to 758 — so nothing is
+ * traded for it. The default font is untouched at every frame; the drop starts
+ * at 14pt.
+ */
+describe("series labels are dropped rather than stacked when the band cannot hold them", () => {
+  const FRAMES: [number, number][] = [
+    [60, 300],
+    [80, 60],
+    [120, 90],
+    [160, 120],
+    [200, 150],
+    [300, 60],
+    [480, 300],
+    [960, 540],
+  ];
+  const FONTS = [6, 8, 10, 14, 18, 24, 32];
+
+  const labelsOf = (kind: ChartConfig["kind"], w: number, h: number, fontSize: number) =>
+    buildChart({ ...sampleConfig(kind), width: w, height: h, style: { fontSize } } as ChartConfig).nodes.filter(
+      (n): n is TextNode => n.kind === "text" && /^series-label-\d+$/.test(n.name ?? ""),
+    );
+
+  it("never draws two series labels at the same point", () => {
+    const stacked: string[] = [];
+    let seen = 0;
+    for (const kind of ["mekko", "line", "area", "combo", "stacked", "clustered"] as ChartConfig["kind"][])
+      for (const [w, h] of FRAMES)
+        for (const fs of FONTS) {
+          const labels = labelsOf(kind, w, h, fs);
+          seen += labels.length;
+          for (let i = 0; i < labels.length; i++)
+            for (let j = i + 1; j < labels.length; j++)
+              if (Math.abs(labels[i].y - labels[j].y) < 0.01 && Math.abs(labels[i].x - labels[j].x) < 0.01)
+                stacked.push(`${kind} ${w}x${h} fs${fs}: "${labels[i].text}" under "${labels[j].text}"`);
+        }
+    expect(seen, "no series labels drawn at all, so this proves nothing").toBeGreaterThan(200);
+    expect(stacked).toEqual([]);
+  });
+
+  it("drops the whole set rather than keeping an unreadable subset", () => {
+    // The concrete case the sweep found: three series names at one point, on a
+    // frame whose title leaves the label gutter no height.
+    expect(labelsOf("mekko", 160, 120, 32)).toEqual([]);
+    expect(labelsOf("mekko", 300, 60, 24)).toEqual([]);
+  });
+
+  it("leaves every chart that has the room exactly as it was", () => {
+    // The negative control. At the default font no frame in the sweep loses a
+    // label, so an ordinary chart cannot be touched by this.
+    for (const [w, h] of FRAMES) {
+      const labels = labelsOf("mekko", w, h, 10);
+      expect(labels.length, `mekko ${w}x${h} at the default font lost its series labels`).toBe(3);
+      expect(new Set(labels.map((l) => Math.round(l.y * 10) / 10)).size, `mekko ${w}x${h}`).toBe(3);
+    }
+  });
+});

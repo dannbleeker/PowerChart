@@ -185,3 +185,64 @@ describe("niceTicks edge cases", () => {
     expect(niceTicksFn(0, 0.4, 5)).toContain(0.1);
   });
 });
+
+/**
+ * A point a log axis cannot place is a GAP, not a point on the floor.
+ *
+ * `valueScale`'s log `toY` clamps with `Math.max(v, min)`. That is right for a
+ * bar, which starts at the axis floor and so draws nothing for a value beneath
+ * it — and a lie for a line's point: zero and every negative landed exactly on
+ * the bottom decade line and were joined to their neighbours, so a series
+ * starting at 0 was drawn as one starting at the axis minimum, marker and all,
+ * with nothing anywhere to say otherwise.
+ *
+ * A series that starts at zero is an ordinary thing to log-scale, so this is
+ * reachable from the pane's log-scale toggle and from any agent-written config.
+ */
+describe("a log line chart does not draw an unplottable point on the axis floor", () => {
+  const logLine = (values: (number | null)[], extra: Partial<ChartConfig> = {}): ChartConfig =>
+    ({
+      kind: "line",
+      width: 480,
+      height: 300,
+      logScale: true,
+      decorations: { valueAxis: true, ...((extra.decorations as object) ?? {}) },
+      data: { categories: ["a", "b", "c", "d"], series: [{ name: "S", values }] },
+      ...extra,
+    }) as ChartConfig;
+
+  const markerIndices = (cfg: ChartConfig) =>
+    buildChart(cfg)
+      .nodes.filter((n): n is RectNode => n.kind === "rect" && !!n.name?.startsWith("marker-0-"))
+      .map((n) => Number(/-(\d+)$/.exec(n.name!)![1]))
+      .sort((a, b) => a - b);
+
+  it("leaves out a zero and a negative rather than stacking them on the bottom decade", () => {
+    expect(markerIndices(logLine([0, 10, 100, 1000]))).toEqual([1, 2, 3]);
+    expect(markerIndices(logLine([-5, 10, 100, 1000]))).toEqual([1, 2, 3]);
+    expect(markerIndices(logLine([10, 0, 100, 1000]))).toEqual([0, 2, 3]);
+  });
+
+  it("does not connect a line through the point it could not place", () => {
+    // The segment into category 1 is what would run down to the floor and back.
+    const segs = buildChart(logLine([0, 10, 100, 1000]))
+      .nodes.filter((n) => n.kind === "line" && /^line-0-/.test(n.name ?? ""))
+      .map((n) => n.name);
+    expect(segs).toEqual(["line-0-2", "line-0-3"]);
+  });
+
+  it("treats a smoothed line the same way", () => {
+    const segs = buildChart(logLine([0, 10, 100, 1000], { decorations: { smooth: true } }))
+      .nodes.filter((n) => /^line-0-/.test(n.name ?? ""))
+      .map((n) => Number(/^line-0-(\d+)/.exec(n.name!)![1]));
+    expect(Math.min(...segs), "a spline segment was drawn into the unplottable point").toBeGreaterThan(1);
+  });
+
+  it("leaves a chart whose values are all positive exactly where it was", () => {
+    // The negative control: nothing about an ordinary log chart may move.
+    expect(markerIndices(logLine([1, 10, 100, 1000]))).toEqual([0, 1, 2, 3]);
+    expect(markerIndices(logLine([3, 300, 30, 3000]))).toEqual([0, 1, 2, 3]);
+    // …and a LINEAR chart still plots its zero, which is a real position there.
+    expect(markerIndices(logLine([0, 10, 100, 1000], { logScale: false }))).toEqual([0, 1, 2, 3]);
+  });
+});

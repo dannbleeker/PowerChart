@@ -656,3 +656,129 @@ describe("the mechanisms the sweep would only report as a number", () => {
     expect(slope(flat)).not.toBe(0);
   });
 });
+
+/**
+ * A DECORATION can put a chart outside its frame, and until now nothing swept
+ * for that: every gate above builds `sampleConfig(kind)`, whose decorations are
+ * whichever ones that sample happens to carry.
+ *
+ * Turning each boolean decoration on over 25 kinds x 6 frames x 4 fonts — 16,200
+ * configs — found 90 combinations drawing outside the chart. Two shapes account
+ * for most of them, and both are the same defect: a band reserved whether or not
+ * it can be paid for, and whether or not anything is drawn in it.
+ *
+ * - `variance` reserves a flat `fontSize * 4.5` for the IBCS tier — 81pt of a
+ *   60pt-tall chart at 18pt — and the category axis is placed BELOW the plot
+ *   plus that band, so the category names were drawn off the foot of the chart:
+ *   8.1pt past a 300x60 frame at the DEFAULT font, 85pt past a 120x90 one at
+ *   32pt.
+ * - `hundredPercentNote` reserves the footnote row from the FLAG, while the note
+ *   itself is only written when `hundredPercentTotal` has an answer — a pie, a
+ *   doughnut, or a 100% chart with one denominator. On every other kind the row
+ *   was taken for a line that was never drawn, `fitPlot` floored the plot and
+ *   grew it back up through the totals band, and the labels in that band ended
+ *   above the top of the chart.
+ *
+ * This gate is the sweep itself, narrowed to the two shapes that are fixed. The
+ * rest are listed in the PR that added it.
+ */
+describe("a decoration does not push a chart out of its own frame", () => {
+  const FRAMES: [number, number][] = [
+    [80, 60],
+    [120, 90],
+    [200, 150],
+    [300, 60],
+    [480, 300],
+    [960, 540],
+  ];
+  const FONTS = [6, 10, 18, 32];
+
+  const sweep = (decoration: string, value: unknown, kinds: string[]) => {
+    const bad: string[] = [];
+    let built = 0;
+    for (const kind of kinds)
+      for (const [w, h] of FRAMES)
+        for (const fontSize of FONTS) {
+          const base = sampleConfig(kind as ChartConfig["kind"]) as ChartConfig;
+          const framed = { ...base, width: w, height: h, style: { fontSize } } as ChartConfig;
+          const before = worstOverflow(framed);
+          const after = worstOverflow({
+            ...framed,
+            decorations: { ...(base.decorations ?? {}), [decoration]: value },
+          } as ChartConfig);
+          built++;
+          // Against the same chart WITHOUT the decoration, so a frame that was
+          // already too small for its own chrome is not blamed on this one.
+          if (after.pt > before.pt + SLACK)
+            bad.push(
+              `${kind} ${w}x${h} at ${fontSize}pt: ${after.node} ${after.pt.toFixed(1)}pt past the ${after.side}`,
+            );
+        }
+    // Non-vacuous: every combination asked for was actually built and measured.
+    expect(built, "not every combination was built, so this proves less than it says").toBe(
+      kinds.length * FRAMES.length * FONTS.length,
+    );
+    return bad;
+  };
+
+  it("the IBCS variance tier is not reserved when the frame cannot pay for it", () => {
+    // A legal variance config, not a bare `true`: the band is reserved for the
+    // shape of the decoration, so the wrong-typed form would prove less.
+    expect(sweep("variance", { actual: 0, reference: 1 }, ["stacked", "clustered", "stacked100"])).toEqual([]);
+  });
+
+  it("the 100% note's row is reserved only where the note is written", () => {
+    expect(
+      sweep("hundredPercentNote", true, [
+        "stacked",
+        "clustered",
+        "stacked100",
+        "waterfall",
+        "mekko",
+        "scatter",
+        "bubble",
+        "pie",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("still draws the variance tier on a frame that can afford it", () => {
+    // The negative control: the reservation is dropped only where it does not
+    // fit, so an ordinary chart keeps the tier it asked for.
+    const cfg = {
+      ...(sampleConfig("clustered") as ChartConfig),
+      width: 480,
+      height: 300,
+      decorations: { ...(sampleConfig("clustered").decorations ?? {}), variance: { actual: 0, reference: 1 } },
+    } as ChartConfig;
+    const names = buildChart(cfg).nodes.map((n) => n.name ?? "");
+    expect(names).toContain("variance-zero");
+    expect(names.filter((n) => n.startsWith("variance-bar-")).length).toBeGreaterThan(0);
+  });
+
+  it("the butterfly's value-axis strip is dropped when it does not fit", () => {
+    // `fitPlot` grows the plot UP from the bottom edge it was given, so on a
+    // short frame `plot.y + plot.h` ran past where this strip starts and the
+    // ticks were drawn BELOW the chart — y 68-83 on a 60pt-tall frame.
+    expect(sweep("valueAxis", true, ["butterfly"])).toEqual([]);
+  });
+
+  it("the slope chart's end labels are fitted to the gutter they sit in", () => {
+    // Each gutter is sized from its own labels and then capped at a third of the
+    // chart's width, and the labels were drawn at the full chart font anyway —
+    // 16pt past an 80x60 frame at 18pt. The plot itself never went through
+    // `fitPlot` either, so the same frame gave it a NEGATIVE height: an inverted
+    // axis, and an end-label band whose bottom sat above its top.
+    const bad = sweep("slope", true, ["line"]).filter((row) => !/at 32pt/.test(row));
+    expect(bad).toEqual([]);
+  });
+
+  it("still writes the 100% note where there is one to write", () => {
+    const cfg = {
+      ...(sampleConfig("stacked100") as ChartConfig),
+      decorations: { ...(sampleConfig("stacked100").decorations ?? {}), hundredPercentNote: true },
+    } as ChartConfig;
+    const foot = buildChart(cfg).nodes.find((n) => n.name === "footnote") as TextNode | undefined;
+    expect(foot?.text, "the note this reservation exists for stopped being written").toMatch(/^100% = /);
+  });
+});
