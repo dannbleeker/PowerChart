@@ -1515,7 +1515,21 @@ PROBE, and the third time production has answered something the probe could not.
 - **Desktop remains untested against a host.** Every archived round is
   PowerPoint on the web.
 
-### PUTTING 4:3 INTO THE NIGHTLY RUNS — four blockers, and the order to fix them
+### PUTTING 4:3 INTO THE NIGHTLY RUNS — four blockers — ALL CLEARED 2026-08-16
+
+**All four shipped.** The run log carries `slideSize`; `scenarioRegressions` and
+`profileDivergence` are profile-scoped; readiness verifies the size and refuses
+`wrong-size`; and `npm run cycle` runs the agreed schedule. Rounds 079-081 were
+the first full cycle and 4:3 was exonerated — see the journal.
+
+**One blocker they did not anticipate**, found on 2026-08-17: `PW_DECK` reached
+only `recover`, so the 4:3 leg measured whichever deck the previous leg left open
+and refused with `wrong-size` every night. `selectDeck` now fronts the named deck
+before anything is measured, and refuses with `deck-missing` when no tab carries
+it. A deck the add-in is not registered for refuses with `addin-missing` instead
+of retrying seven times.
+
+The reasoning below is kept because it is the record of what each blocker cost.
 
 Round 077 was driven by hand. Everything below is what stopped it being a
 command, found by doing it.
@@ -1581,3 +1595,81 @@ round to say what it was. Building any of them first means building on a guess
 about which rounds were which, and the archive has 53 rounds with no size on any
 of them — so the field also needs a documented default of 16:9 for everything
 already filed, stated once, rather than inferred per reader.
+
+### THE INSTRUMENTS WERE THE PROBLEM — rounds 082-087, 2026-08-16/17
+
+Six consecutive 13/13 rounds, zero `UnexpectedError`. **Two product defects were
+found across the whole stretch. Nine were in the reporting**, five of them
+introduced the same day they were found.
+
+That ratio is the finding. The product has been stable for six rounds; nearly
+everything that went wrong was a number about the product rather than the product
+itself. **A report that lies is worse than a crash**, because a crash stops the
+night and a wrong number redirects a week.
+
+#### The four ways one instrument was wrong
+
+The orphan reading — "does an update strand the rest of an ungrouped chart" —
+produced four confident wrong answers in two days:
+
+| | what it reported | what was true |
+| --- | --- | --- |
+| mismatched units | 283 shapes stranded | its own line said `before: 3, after: 3` |
+| an identity | 0, always | the two terms summed to zero by construction |
+| one stale read | 92 shapes grew | the deck showed one grouped chart per slide |
+| two agreeing stale reads | growth 23, `settled` | both reads fell inside one lag |
+
+**Every one was caught by `deck.inventory`** — a second source already in the
+round file, taken at end of round, long after any host lag. It has never been
+wrong. It is now cross-checked on every reading and disagreements are COUNTED,
+because an instrument's own error rate belongs in its own report.
+
+**The rule that comes out of this**: never quote a number until a second,
+independent measurement in the same data agrees. Not a re-run of the same
+instrument — two reads of one lagging source agree perfectly.
+
+#### What is left open here
+
+- **The stranding question is at three observations, all zero growth.** Three is
+  not five. It needs rounds that fail to group something; 082-086 grouped
+  essentially everything and could not answer either way.
+- **`reading back an ungrouped chart's shape ids`** is still the one live
+  `GetItem(id)` refusal site, in 56 of 63 rounds. What it costs is now measured
+  rather than assumed: it denies a chart its parts list, and only a chart in that
+  state can strand anything.
+
+#### Two product defects, for the record
+
+- **A blank slide of ours shipped in the finished deck.** One `slides.add()` can
+  land two; the branch reporting un-nameable landings counted the event, not the
+  slides. Nine archived rounds affected; five of the last thirteen began on a
+  deck already dirty by one slide, invisible because the scenarios measure
+  GROWTH rather than absolute size.
+- **An update died on a refused id.** The resolve sync was unguarded, so one
+  by-id lookup this host would not honour took the whole update down. Guarded,
+  then re-asked through a collection read. **Still unexercised on a real host** —
+  it has not fired once in six rounds.
+
+#### Mechanics that earned themselves
+
+- Every `playwright-cli` call is bounded; the round's own 30-minute deadline
+  could never fire because it is checked between calls.
+- An unexpected throw is a `threw` reason rather than a dead process.
+- The cycle stops when a leg finished but archived nothing — the state that
+  otherwise lets the next leg overwrite the only copy of the evidence.
+- `sweepDeck` reads its own answer instead of always claiming success.
+- The gate's novelty bucket uses a five-round window and names the build a
+  signature FIRST appeared in. It had spent fifteen rounds blaming nine innocent
+  builds for one 064-era signature.
+
+#### Owner-only, unchanged
+
+Sign-in, a real mouse drag, and desktop PowerPoint. Re-sideloading an add-in into
+a document is drivable and now automated, but a **browser death does not always
+lose the sideload** — once it did, once it did not — so that path is written and
+tested and has not yet met the state it exists for.
+
+The browser deaths themselves are **connected standby**, not crashes: Windows
+Event 507 four times in a morning, `ERR_NETWORK_IO_SUSPENDED` in the console
+tail. Power settings on AC now prevent it; on battery the display still sleeps at
+four minutes, which on a Modern Standby machine is what triggers it.

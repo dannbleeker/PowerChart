@@ -116,9 +116,15 @@ What such a chart still loses is the TAG, refused through the GROUP handle — t
 group hangs off a slide handle Office has rewritten to `slides.getItem(id)`, and
 a freshly added slide's id does not round-trip on this host.
 
-`npm run rounds` prints it. `same scale across the deck` fails for this reason,
-the same charts in the same order, every round — it is deterministic, and after
-twelve rounds of watching it, **more rounds do not add to it.**
+`npm run rounds` prints it.
+
+**`same scale across the deck` NO LONGER FAILS.** This paragraph said it failed
+"the same charts in the same order, every round — it is deterministic" and that
+was true when written: it lost 47 of its first 57 rounds. It has now passed nine
+consecutive rounds (079-087), and every round since 082 has scored 13 of 13.
+The settled retry, the bindings and the origin tag through the binding each took
+a piece of it. **Do not read the 8% below as the current rate either** — see the
+paragraph above it.
 
 **What is left is one decision, the owner's, and not measurable by another
 round:**
@@ -200,7 +206,22 @@ Gate → commit → push → green CI → merge. Don't ask first.
 - **A skip is not a flip.** `npm run rounds` keeps sometimes-unmeasured and
   genuinely-contradictory apart; so should the reader.
 - **The deck is the authority where it and the log disagree**, and the conflict
-  is the finding.
+  is the finding. **This line was already here on 2026-08-17 and was not applied
+  four times running.** One instrument produced four confident wrong numbers in
+  two days — mismatched units, an algebraic identity, one stale host read, then
+  two agreeing stale reads — and `deck.inventory` contradicted every one of them,
+  sitting in the same file the whole time. Check it BEFORE quoting a number, not
+  after someone doubts it.
+- **Two reads of one source are not corroboration.** This host can answer with a
+  stale number for over three seconds after a commit your own sync resolved
+  (measured: stale at 3193ms), so two reads inside that window agree perfectly
+  and are both wrong. Corroboration means a DIFFERENT measurement.
+- **Check the units before subtracting.** Inner chart shapes, delete calls and
+  top-level slide shapes are three different things; an expression mixing them
+  produced "283 stranded" on a slide that had not changed size.
+- **A value that cannot come out any other way is not a measurement.** If the
+  terms cancel by construction, the reading is an identity and it will read the
+  same on healthy and broken data — including in its own control test.
 
 ## Starting from nothing
 

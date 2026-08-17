@@ -408,6 +408,14 @@ later against a changed deck. By hand it is:
     PW_EXPECT_SIZE=16:9 node scripts/round.mjs --dir .pw-session --retry 6   # ×2, same build
     PW_DECK=<4:3 deck> PW_EXPECT_SIZE=4:3 node scripts/round.mjs --dir .pw-session --retry 6
 
+**`PW_DECK` fronts that deck's tab before anything is measured**, and refuses with
+`deck-missing` if no open tab carries the name. Until 2026-08-17 it reached only
+`recover`, in the branch that reopens a dead browser — so a cycle setting it per
+leg was choosing which deck a RECOVERY would hunt for and nothing else. The
+ordinary path never selected a tab, so the 4:3 leg measured whichever document
+the previous leg left open and refused with `wrong-size` every night. Naming the
+missing deck is a far better message than naming its size.
+
 **What the cycle will not do.** It does not judge whether a round found
 something, it does not decide whether a divergence is real, and it never sets a
 slide size — that would change what the round measures rather than restore it,
@@ -475,15 +483,76 @@ none fatal:
 
 - **NOVEL** — a shape the archive has never produced. Read the trace; this is the
   reason to.
-- **NEW BEHAVIOUR** — seen rarely before, common now. Usually a mechanism that
-  just started working: rounds 079 and 081 both report the settle-delay re-read
-  11 times against a median of 0, because `needsPreGroupRefresh` widened which
-  charts reach a re-read that already existed.
+- **NEW BEHAVIOUR** — absent from the last five rounds, common now. Usually a
+  mechanism that just started working. Each entry names the build it FIRST
+  appeared in.
 - **A SPIKE** — a signature that had a baseline and left it.
 
 The split between the last two is load-bearing. Collapsing them would mean every
 fix this project lands announces itself as a fault on the night it works, which
 is precisely how a report gets ignored and then switched off.
+
+**The window is five rounds, and it was the whole archive until 2026-08-17.**
+Taking the median over every prior round meant a signature stayed "new" until it
+had appeared in more than HALF the archive — with the denominator growing
+underneath it. `re-reading the slide's shapes again after a settle delay` first
+appeared in round 064 and has sat at 10-11 ever since; it was announced as NEW
+BEHAVIOUR in **fifteen separate rounds and blamed on nine different builds**, the
+last of them a commit that only changed a slide counter. Meanwhile the one
+signature round 086 had actually changed went unmentioned. Five rounds is the
+same order as this project's noise floor, so "absent from all five and present
+now" is genuinely new to recent history.
+
+**And the build named is the signature's, not the round's.** It used to print the
+build being judged for every entry, which is how nine innocent commits were
+named for one 064-era signature.
+
+## Reading a number this host produced
+
+**`shapes.getCount()` can answer with a stale number for over three seconds after
+a commit your own sync has already resolved.** Everything below comes out of one
+instrument getting this wrong four times in two days.
+
+Timed across every round carrying both lines, the gap from a
+`grouped the chart's shapes` entry to the count that followed it:
+
+    consistent              n=49  min 1058ms  median 2403ms
+    stale, deck disagreed   n=10  min 1278ms  median 1395ms  MAX 3193ms
+
+The ranges **overlap**, so no fixed wait separates them. That is why the reading
+takes three precautions rather than one:
+
+1. **Two reads, `COUNT_SETTLE_MS` apart** (4s, sized from the table above). A
+   slide whose reads disagree is reported UNMEASURABLE, never as a number.
+2. **A cross-check against `deck.inventory`.** A round only ADDS shapes to the
+   slides it keeps, so a reading claiming more shapes than a slide finished with
+   is claiming shapes that never existed. Those readings are discarded and
+   COUNTED — an instrument's own error rate belongs in its report.
+3. **`settled` on every entry.** Readings from builds before this existed cannot
+   be told apart from good ones by their values, so they are quarantined.
+
+**Agreement between two reads is not correctness.** Round 086's chart 8/8 read 24
+twice, was marked settled, and the deck showed that slide holding one shape —
+both reads had landed inside the same lag. Round 087 then produced the lag in the
+opposite direction (`first: 0, second: 24`, the host not yet showing shapes it
+had drawn), which is why the guard tests for DISAGREEMENT rather than for a
+direction.
+
+**The deck inventory has never been wrong.** It is taken at end of round, long
+after any lag, and it caught all four false readings. Prefer it to any mid-round
+number when the two disagree.
+
+### What the stranding question needs
+
+Only an **ungrouped chart with no parts list** can strand anything — a group is
+deleted whole. That population is `atRisk` in the trace, read from the host's own
+shape type, and it is NOT the same as "no parts list": a grouped chart has none
+either, which is what made an earlier version of this report count every grouped
+chart as exposure.
+
+As of round 087 the count stands at **three at-risk charts, all with zero
+growth**. Three is not five. A round that groups everything cannot answer this
+either way, and the report says so rather than reading zero as an all-clear.
 
 ### Every round before 2026-08-16 was 16:9
 
