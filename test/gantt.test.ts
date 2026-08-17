@@ -646,3 +646,38 @@ describe("the gantt timeline reaches the end of the plan", () => {
     expect(labels).toContain("Q3 26");
   });
 });
+
+/**
+ * The bar label a long plan actually carried. Found by looking at the render:
+ * a 2000–2040 roadmap drew two bars both labelled `Jan–Jan`.
+ */
+describe("a gantt bar names the days it spans", () => {
+  const day = (s: string) => Math.round(Date.parse(`${s}T00:00:00Z`) / 86400000);
+  const labels = (from: string, to: string) =>
+    buildChart(
+      cfg({
+        kind: "gantt",
+        width: 960,
+        height: 300,
+        data: {
+          dates: true,
+          categories: ["Phase A"],
+          series: [
+            { name: "Start", values: [day(from)] },
+            { name: "End", values: [day(to)] },
+          ],
+        },
+      }),
+    )
+      .nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("bar-label"))
+      .map((n) => n.text);
+
+  it("does not collapse a month-start end to its month name", () => {
+    expect(labels("2000-01-01", "2030-01-01")).toEqual(["1 Jan 00–1 Jan 30"]);
+    expect(labels("2026-01-01", "2026-03-31")).toEqual(["1 Jan–31 Mar"]);
+  });
+
+  it("leaves a mid-month span exactly as it was", () => {
+    expect(labels("2026-02-05", "2026-02-19")).toEqual(["5 Feb–19 Feb"]);
+  });
+});

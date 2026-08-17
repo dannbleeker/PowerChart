@@ -1,6 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
-import { formatDay, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
+import { formatDay, formatDayRange, formatNumber, monthStarts, niceTicks, resolveFormat, weekStarts } from "../format";
 import { seriesColor } from "../style";
 import type { LayoutResult } from "./column";
 import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode, MIN_LABEL_FS } from "./frame";
@@ -295,8 +295,12 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     if (weeks) return formatDay(t);
     return formatDay(t, i === 0 || d.getUTCMonth() === 0);
   };
+  // `formatDayRange`, not two `formatDay`s: a span's ends are two specific days,
+  // and `formatDay`'s month-start shorthand belongs to the tick strip, where a
+  // lone month name IS the tick. Through it, a task running 1 Jan to 1 Apr was
+  // labelled `Jan–Apr` and one running whole years `Jan–Jan`.
   const spanLabel = (s: number, e: number) =>
-    dates ? `${formatDay(s)}–${formatDay(e)}` : `${formatNumber(s, fmt)}–${formatNumber(e, fmt)}`;
+    dates ? formatDayRange(s, e) : `${formatNumber(s, fmt)}–${formatNumber(e, fmt)}`;
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);

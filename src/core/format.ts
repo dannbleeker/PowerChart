@@ -457,6 +457,36 @@ export function formatDay(days: number, withYear = false): string {
   return d.getUTCDate() === 1 ? m : `${d.getUTCDate()} ${m}`;
 }
 
+/**
+ * The two ends of a calendar SPAN, as one label.
+ *
+ * `formatDay` collapses the first of a month to the bare month name, which is
+ * right for the tick strip — a month gridline reads `Mar`, and the day number
+ * would be noise on every one of them. It is wrong for a span, where the day
+ * number IS the information: a task running 1 Jan to 31 Mar was labelled
+ * `Jan–31 Mar`, and one running 1 Jan to 1 Apr — the ordinary shape of a
+ * quarterly plan — was labelled `Jan–Apr`, carrying no dates at all. A 30-year
+ * roadmap whose phases began and ended on the 1st read `Jan–Jan`.
+ *
+ * The year is added when the two ends fall in different years, because without
+ * it `1 Jan–1 Jan` is the label for any span of whole years.
+ */
+export function formatDayRange(from: number, to: number): string {
+  const day = (v: number) => {
+    const d = new Date(v * DAY_MS);
+    if (!Number.isFinite(v) || Number.isNaN(d.getTime())) return "";
+    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+  };
+  const year = (v: number) => new Date(v * DAY_MS).getUTCFullYear();
+  const crossesYears =
+    Number.isFinite(from) && Number.isFinite(to) && !Number.isNaN(new Date(from * DAY_MS).getTime()) &&
+    !Number.isNaN(new Date(to * DAY_MS).getTime()) && year(from) !== year(to);
+  const yy = (v: number) => ` ${String(year(v)).slice(2)}`;
+  const a = day(from);
+  const b = day(to);
+  return `${a}${a && crossesYears ? yy(from) : ""}–${b}${b && crossesYears ? yy(to) : ""}`;
+}
+
 /** Epoch-day values of every Monday covering [minDay, maxDay]. */
 export function weekStarts(minDay: number, maxDay: number): number[] {
   // Day 0 (1970-01-01) was a Thursday; Monday ≡ 4 (mod 7).
