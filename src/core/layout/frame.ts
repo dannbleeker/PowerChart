@@ -291,16 +291,56 @@ export interface FrameReservations {
 }
 
 /**
+ * Height of the band above the plot that carries the totals row, or the gap
+ * that stands in for it. Extracted so the frame and everything that has to
+ * measure the height budget against it read one number.
+ */
+export function totalsBandHeight(decor: Decorations, style: ChartStyle): number {
+  return decor.totals || decor.cagr || decor.difference || decor.grandTotal
+    ? style.fontSize * 1.5 + 4
+    : style.fontSize * 0.8;
+}
+
+/** Height of the category-name strip below the plot, or the gap that replaces it. */
+export function categoryAxisHeight(decor: Decorations, style: ChartStyle): number {
+  return decor.categoryAxis ? style.fontSize * 1.5 + 3 : 4;
+}
+
+/**
  * Height reserved below the plot for the IBCS variance tier. Only the vertical
  * column family (stacked/clustered/100%, drawn by layoutColumns) actually paints
  * it, so gate the reservation on that — otherwise a line/area/waterfall/boxplot/
  * violin/candlestick chart with `decorations.variance` lost 4.5×fontSize of plot
  * to a strip that drew nothing.
+ *
+ * And ZERO when the frame cannot pay for it, which is the rule every other
+ * reservation in this engine follows and this one did not. The band is a flat
+ * `fontSize * 4.5` however tall the chart is — 81pt of a 60pt-tall chart at an
+ * 18pt font — so on a small frame it took more height than existed. `fitPlot`
+ * floors the plot and grows it UP from the bottom edge it was given, but the
+ * category axis is placed BELOW that edge plus this band, so the names were
+ * drawn off the foot of the chart: 8.1pt past a 300x60 frame at the DEFAULT
+ * font, 85pt past a 120x90 one at 32pt, and on into whatever sits under the
+ * chart on the slide.
+ *
+ * The room it is measured against is what the frame has left once the bands
+ * that cannot be dropped have taken theirs, and it is computed from the same
+ * three helpers `computeFrame` reserves with, so the two cannot drift. Both
+ * call sites — the reservation and the category axis that sits under the band —
+ * ask this one function, which is what keeps them agreeing.
  */
 export function varianceBandHeight(cfg: ChartConfig, decor: Decorations, style: ChartStyle): number {
   const drawsTier =
     !cfg.horizontal && (cfg.kind === "stacked" || cfg.kind === "clustered" || cfg.kind === "stacked100");
-  return decor.variance && drawsTier ? style.fontSize * 4.5 : 0;
+  if (!decor.variance || !drawsTier) return 0;
+  const want = style.fontSize * 4.5;
+  const room =
+    cfg.height -
+    titleHeight(cfg, style) -
+    totalsBandHeight(decor, style) -
+    categoryAxisHeight(decor, style) -
+    footnoteH(cfg, style, decor);
+  return room - want >= MIN_PLOT_SIDE ? want : 0;
 }
 
 /** Height reserved above the plot for the chart title (0 when untitled). */
@@ -384,11 +424,46 @@ export function footnoteNode(cfg: ChartConfig, style: ChartStyle, text: string):
   };
 }
 
+/**
+ * The denominator behind a "100% = N" note: the series total for pies, the
+ * uniform per-category denominator for 100% charts (null when categories
+ * have different denominators — the note would be a lie then).
+ */
+export function hundredPercentTotal(cfg: ChartConfig): number | null {
+  const { data, kind } = cfg;
+  if (kind === "pie" || kind === "doughnut") {
+    const total = data.categories.reduce((a, _, c) => a + Math.max(0, data.series[0]?.values[c] ?? 0), 0);
+    return total > 0 ? total : null;
+  }
+  if (kind === "stacked100") {
+    const denominators = data.categories.map((_, c) => {
+      const d = data.hundredPercent?.[c];
+      return d != null && d > 0 ? d : data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0);
+    });
+    if (!denominators.length || denominators[0] <= 0) return null;
+    return denominators.every((d) => Math.abs(d - denominators[0]) < 1e-9) ? denominators[0] : null;
+  }
+  return null;
+}
+
 /** Height reserved at the bottom for the footnote / "100% =" line. */
 export function footnoteH(cfg: ChartConfig, style: ChartStyle, decor: Decorations): number {
   // scatter.spread prints its cap on the footnote line, so it needs the row
   // reserved even when the author wrote no footnote of their own.
-  return cfg.footnote || decor.hundredPercentNote || cfg.scatter?.spread ? style.fontSize * 1.3 : 0;
+  //
+  // `hundredPercentNote` asks for a note that only EXISTS for a pie, a doughnut
+  // or a 100% chart with one denominator — `hundredPercentTotal` answers null
+  // for everything else, and the note is then not drawn. The reservation asked
+  // the flag instead, so switching it on took a row off every other kind for a
+  // line that was never written: the plot lost `fontSize * 1.3`, `fitPlot`
+  // floored it and grew it back UP through the totals band, and the labels in
+  // that band were drawn above the top of the chart — 19.8pt above a mekko at
+  // 80x60, and the same on stacked, waterfall, scatter and bubble.
+  //
+  // The reservation and the draw ask one question now, which is the rule the
+  // horizontal legend already follows and the reason it stopped drifting.
+  const note = decor.hundredPercentNote && hundredPercentTotal(cfg) != null;
+  return cfg.footnote || note || cfg.scatter?.spread ? style.fontSize * 1.3 : 0;
 }
 
 /** One legend entry's placement: its top-left x and 0-based wrap row. */
@@ -451,8 +526,8 @@ export function computeFrame(
 ): { frame: Frame; res: FrameReservations } {
   const fs = style.fontSize;
   const titleH = titleHeight(cfg, style);
-  const totalsH = decor.totals || decor.cagr || decor.difference || decor.grandTotal ? fs * 1.5 + 4 : fs * 0.8;
-  const categoryAxisH = decor.categoryAxis ? fs * 1.5 + 3 : 4;
+  const totalsH = totalsBandHeight(decor, style);
+  const categoryAxisH = categoryAxisHeight(decor, style);
   const valueAxisW = decor.valueAxis ? 34 : 2;
   const seriesLabelsW = decor.seriesLabels
     ? Math.min(cfg.width * 0.3, Math.max(0, ...seriesNames.map((s) => textWidth(s, fs))) + 14)

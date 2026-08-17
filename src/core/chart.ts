@@ -21,7 +21,7 @@ import { layoutTreemap } from "./layout/treemap";
 import { layoutSunburst } from "./layout/sunburst";
 import { layoutViolin } from "./layout/violin";
 import { layoutCandlestick } from "./layout/candlestick";
-import { footnoteNode, titleHeight, titleNode } from "./layout/frame";
+import { footnoteNode, hundredPercentTotal, titleHeight, titleNode } from "./layout/frame";
 import { bandNodes, decorationNodes } from "./decor";
 import { resolveLabelCollisions, unplaceableComboLabels } from "./collide";
 import { formatNumber, niceTicks, parseDateToken, resolveFormat, GANTT_DATE_ROW } from "./format";
@@ -1112,28 +1112,6 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // PowerPoint renderers write a file, and a NaN coordinate makes it one
   // PowerPoint may refuse to open.
   return { width: cfg.width, height: cfg.height, nodes: clipTextToFrame(finiteNodes(nodes), cfg.width), ...a11y };
-}
-
-/**
- * The denominator behind a "100% = N" note: the series total for pies, the
- * uniform per-category denominator for 100% charts (null when categories
- * have different denominators — the note would be a lie then).
- */
-function hundredPercentTotal(cfg: ChartConfig): number | null {
-  const { data, kind } = cfg;
-  if (kind === "pie" || kind === "doughnut") {
-    const total = data.categories.reduce((a, _, c) => a + Math.max(0, data.series[0]?.values[c] ?? 0), 0);
-    return total > 0 ? total : null;
-  }
-  if (kind === "stacked100") {
-    const denominators = data.categories.map((_, c) => {
-      const d = data.hundredPercent?.[c];
-      return d != null && d > 0 ? d : data.series.reduce((a, s) => a + Math.max(0, s.values[c] ?? 0), 0);
-    });
-    if (!denominators.length || denominators[0] <= 0) return null;
-    return denominators.every((d) => Math.abs(d - denominators[0]) < 1e-9) ? denominators[0] : null;
-  }
-  return null;
 }
 
 /** The data's own range, ignoring the anatomy drawn on top of it. */
