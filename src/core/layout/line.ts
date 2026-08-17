@@ -130,8 +130,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
    * where a point on the floor is not. `bridgeGaps` still bridges it, which is
    * the caller saying they would rather have the connection.
    */
-  const plottable = (v: number | null | undefined): number | null =>
-    v == null || (logOn && v <= 0) ? null : v;
+  const plottable = (v: number | null | undefined): number | null => (v == null || (logOn && v <= 0) ? null : v);
 
   const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, slots.centers, scale);
   const lastSegMid: (number | null)[] = data.series.map(() => null);

@@ -479,8 +479,11 @@ export function formatDayRange(from: number, to: number): string {
   };
   const year = (v: number) => new Date(v * DAY_MS).getUTCFullYear();
   const crossesYears =
-    Number.isFinite(from) && Number.isFinite(to) && !Number.isNaN(new Date(from * DAY_MS).getTime()) &&
-    !Number.isNaN(new Date(to * DAY_MS).getTime()) && year(from) !== year(to);
+    Number.isFinite(from) &&
+    Number.isFinite(to) &&
+    !Number.isNaN(new Date(from * DAY_MS).getTime()) &&
+    !Number.isNaN(new Date(to * DAY_MS).getTime()) &&
+    year(from) !== year(to);
   const yy = (v: number) => ` ${String(year(v)).slice(2)}`;
   const a = day(from);
   const b = day(to);

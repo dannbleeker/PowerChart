@@ -202,15 +202,17 @@ describe("element text stays inside the element", () => {
   const worstOverflow = (s: Scene) =>
     Math.max(
       0,
-      ...s.nodes
-        .filter((n): n is TextNode => n.kind === "text")
-        .map((t) => Math.max(-ink(t).x0, ink(t).x1 - s.width)),
+      ...s.nodes.filter((n): n is TextNode => n.kind === "text").map((t) => Math.max(-ink(t).x0, ink(t).x1 - s.width)),
     );
 
   it("keeps a KPI tile's value, label and delta on the tile", () => {
     for (const opts of [
       { value: "a really long value string here", label: "and a long label to go over it too" },
-      { value: "1,234,567,890.12", label: "Revenue, trailing twelve months, all regions", delta: "+123.4% YoY vs plan" },
+      {
+        value: "1,234,567,890.12",
+        label: "Revenue, trailing twelve months, all regions",
+        delta: "+123.4% YoY vs plan",
+      },
       { value: "€1.2bn", delta: "▲ +12.3 percentage points against a very long plan name" },
     ]) {
       const tile = buildKpiTile(opts as never);

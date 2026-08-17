@@ -617,9 +617,7 @@ describe("the gantt timeline reaches the end of the plan", () => {
       );
       const barsEnd = Math.max(...bars.map((b) => b.x + b.w));
       // The last gridline must reach the end of the work it is meant to date.
-      expect(Math.max(...xs), `${from}..${to}: bars run to ${barsEnd.toFixed(0)}`).toBeGreaterThanOrEqual(
-        barsEnd - 40,
-      );
+      expect(Math.max(...xs), `${from}..${to}: bars run to ${barsEnd.toFixed(0)}`).toBeGreaterThanOrEqual(barsEnd - 40);
       // …and the axis must stay readable rather than paying for coverage in ticks.
       expect(xs.length, `${from}..${to}`).toBeLessThanOrEqual(70);
     });
