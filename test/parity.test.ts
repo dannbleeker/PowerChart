@@ -58,6 +58,54 @@ describe("clustered-stacked (grouped stacks)", () => {
     const back = sheetToData(dataToSheet(data));
     expect(back.series.map((s) => s.stack)).toEqual([0, 0, 1]);
   });
+
+  /**
+   * The separator was gated on the RAW `stack` values while `contiguousStacks`
+   * and `sheetToData` both normalise a missing one to group 0 — so a boundary
+   * next to a series carrying no `stack` was never written to the grid.
+   *
+   * That is the ordinary way to write a two-group clustered-stacked chart: the
+   * first group needs no marker. Round-tripped through the sheet, both stacks
+   * were lost and the chart drew ONE stacked column where the author had two
+   * side by side. The test above never saw it, because `sheetToData` gives its
+   * first group an explicit 0.
+   */
+  it("round-trips a first stack group that carries no stack marker", () => {
+    const data = {
+      categories: ["Q1", "Q2"],
+      series: [
+        { name: "Plan", values: [10, 20] },
+        { name: "Actual", values: [30, 40], stack: 1 },
+      ],
+    };
+    const sheet = dataToSheet(data);
+    expect(
+      sheet.cells.some((r) => r.every((c) => c === "")),
+      "no separator row written",
+    ).toBe(true);
+    expect(sheetToData(sheet).series.map((s) => s.stack)).toEqual([0, 1]);
+  });
+
+  /**
+   * A series with fewer values than there are categories rendered a SHORT row,
+   * because this walked the values while `numRow` beside it walks the
+   * categories. `mountDatasheet` draws one input per cell, so those categories
+   * had no cell at all — nothing to type in, and `handleNav`'s ArrowRight with
+   * nowhere to go. The unreachable data is exactly what someone opens the sheet
+   * to fill in.
+   */
+  it("gives every category a cell, even where a series is short", () => {
+    const sheet = dataToSheet({
+      categories: ["a", "b", "c"],
+      series: [
+        { name: "S1", values: [1, 2] },
+        { name: "S2", values: [3, 4, 5] },
+      ],
+    });
+    const width = sheet.cells[0].length;
+    for (const row of sheet.cells) expect(row.length, `row ${row[0]}`).toBe(width);
+    expect(sheet.cells[1]).toEqual(["S1", "1", "2", ""]);
+  });
 });
 
 describe("rotated waterfall & mekko", () => {

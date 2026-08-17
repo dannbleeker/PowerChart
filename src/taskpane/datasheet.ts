@@ -347,17 +347,37 @@ export function dataToSheet(input: ChartData): SheetModel {
   let prevStack: number | undefined;
   for (const s of data.series) {
     // Blank separator row between stack groups (clustered-stacked round trip).
-    if (s.stack != null && prevStack != null && s.stack !== prevStack) {
+    //
+    // Normalised with `?? 0`, which is what `contiguousStacks` above and
+    // `sheetToData` below both do. Comparing the RAW values instead meant a
+    // boundary next to a series with no `stack` was never written: a config of
+    // `[{name:"Plan"}, {name:"Actual", stack:1}]` — the ordinary way to write a
+    // two-group clustered-stacked chart, since the first group needs no marker
+    // — came back out of the grid with both stacks gone, and drew ONE stacked
+    // column where the author had two side by side.
+    const stack = s.stack ?? 0;
+    if (prevStack != null && stack !== prevStack) {
       cells.push(Array.from({ length: data.categories.length + 1 }, () => ""));
     }
-    prevStack = s.stack;
+    prevStack = stack;
     // Calendar Gantt round trip: show epoch-day values as ISO dates again.
     const asDate = data.dates && GANTT_DATE_ROW.test(s.name.trim());
     cells.push([
       s.name,
+      // One cell per CATEGORY, as `numRow` above already does. Walking the
+      // values instead produced a row shorter than the header whenever a series
+      // carried fewer values than there are categories — and `mountDatasheet`
+      // renders one input per cell, so those categories had no cell at all:
+      // nothing to type in, and `handleNav`'s ArrowRight with nowhere to go.
+      // The data a user could not reach was the data they most likely opened
+      // the sheet to fill in.
+      //
       // A date row cell that is not a representable day falls back to its raw
       // number, which round-trips as a number rather than taking the load down.
-      ...s.values.map((v) => (v == null ? "" : ((asDate ? isoDay(v) : null) ?? String(v)))),
+      ...data.categories.map((_, i) => {
+        const v = s.values[i];
+        return v == null ? "" : ((asDate ? isoDay(v) : null) ?? String(v));
+      }),
     ]);
   }
   return { cells };
