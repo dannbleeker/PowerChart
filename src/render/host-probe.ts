@@ -2551,6 +2551,13 @@ export async function runHostProbes(source: string, build: string): Promise<Host
    * They are still in the deck and still this run's. The sweep clamps at "no
    * more than this run added", so leaving them out of that total is the clamp
    * refusing to remove slides the run put there — measured at two per run.
+   *
+   * COUNTED PER SLIDE, not per event, and it was not always. The caller used to
+   * call this once however many slides had appeared, and one of those adds has
+   * never in the archive produced fewer than two: ten events across nine rounds,
+   * `after - before` equal to 2 every time. So the clamp ran one short per
+   * event and left a blank slide of ours in the finished deck — round 085's own
+   * inventory carries it, `257#3837665135`, zero shapes, listed in `newSlides`.
    */
   let unnamedLeftBehind = 0;
   const noteUnnamed = (): void => {
