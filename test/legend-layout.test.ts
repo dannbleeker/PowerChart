@@ -426,7 +426,7 @@ describe("series labels are dropped rather than stacked when the band cannot hol
   ];
   const FONTS = [6, 8, 10, 14, 18, 24, 32];
 
-  const labelsOf = (kind: string, w: number, h: number, fontSize: number) =>
+  const labelsOf = (kind: ChartConfig["kind"], w: number, h: number, fontSize: number) =>
     buildChart({ ...sampleConfig(kind), width: w, height: h, style: { fontSize } } as ChartConfig).nodes.filter(
       (n): n is TextNode => n.kind === "text" && /^series-label-\d+$/.test(n.name ?? ""),
     );
@@ -434,7 +434,7 @@ describe("series labels are dropped rather than stacked when the band cannot hol
   it("never draws two series labels at the same point", () => {
     const stacked: string[] = [];
     let seen = 0;
-    for (const kind of ["mekko", "line", "area", "combo", "stacked", "clustered"])
+    for (const kind of ["mekko", "line", "area", "combo", "stacked", "clustered"] as ChartConfig["kind"][])
       for (const [w, h] of FRAMES)
         for (const fs of FONTS) {
           const labels = labelsOf(kind, w, h, fs);

@@ -114,6 +114,24 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
   const logOn = !area && !!cfg.logScale;
   const scale = valueScale(frame, logOn ? logFloor(all, dataMin) : dataMin, dataMax, cfg.scale, undefined, logOn);
   const y0 = scale.toY(0);
+  /**
+   * A value a log axis has no place for, read as a gap.
+   *
+   * `valueScale`'s log `toY` clamps with `Math.max(v, min)`, which is right for
+   * a bar — it starts at the floor, so a value under the axis draws nothing —
+   * and a LIE for a point: zero and every negative landed exactly on the bottom
+   * decade line, drawn as a marker at `10` and joined to its neighbours by a
+   * line, indistinguishable from a genuine 10. A series that starts at zero is
+   * an ordinary thing to log-scale, and the chart said it started at the axis
+   * minimum instead.
+   *
+   * A gap rather than a clamp, because that is what this layout already does
+   * with a value it cannot place (`null`), and a break in the line is visible
+   * where a point on the floor is not. `bridgeGaps` still bridges it, which is
+   * the caller saying they would rather have the connection.
+   */
+  const plottable = (v: number | null | undefined): number | null =>
+    v == null || (logOn && v <= 0) ? null : v;
 
   const nodes: SceneNode[] = chromeNodes(cfg, style, decor, frame, slots.centers, scale);
   const lastSegMid: (number | null)[] = data.series.map(() => null);
@@ -252,7 +270,10 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       if (smooth) {
         // The sampler lives at the top of this file now, because the horizontal
         // layout needs the same curve from points built the other way round.
-        const pts = s.values.map((v, c) => (v == null ? null : { x: slots.centers[c], y: scale.toY(v), c }));
+        const pts = s.values.map((v, c) => {
+          const pv = plottable(v);
+          return pv == null ? null : { x: slots.centers[c], y: scale.toY(pv), c };
+        });
         for (const seg of splineSegments(pts)) {
           nodes.push({
             kind: "line",
@@ -269,7 +290,7 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
       }
       let prev: { x: number; y: number } | null = null;
       for (let c = 0; c < n; c++) {
-        const v = s.values[c];
+        const v = plottable(s.values[c]);
         if (v == null) {
           // Bridge gaps: keep the previous point so the next value connects
           // straight across the missing categories instead of breaking.

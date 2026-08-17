@@ -1350,12 +1350,6 @@ export function legendRow(
 }
 
 /**
- * The smallest a series label is drawn at, in points. Below this the name is
- * not readable, so a band that cannot hold a line of it holds no label at all.
- */
-const MIN_LABEL_FS = 5;
-
-/**
  * Right-hand series labels at the last column's segment midpoints,
  * greedily pushed apart so they never overlap (think-cell placement).
  */
