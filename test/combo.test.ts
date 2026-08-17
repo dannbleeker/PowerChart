@@ -638,3 +638,79 @@ describe("the combo line's series label uses the gutter it actually has", () => 
     }
   });
 });
+
+/**
+ * Sideways, the combo line's name is drawn at the line's LAST POINT, and the
+ * only bound it had was a floor at zero: `end.y` is wherever that point landed,
+ * so on a short frame the whole label was drawn past the foot of the chart —
+ * y 91.5 with a 14pt box on a 90pt canvas, and the same at 300x60 and 200x150,
+ * all at the DEFAULT font. Off the chart is onto whatever sits under it on the
+ * slide, because neither PowerPoint renderer clips a text box.
+ *
+ * Neither existing gate could see it. The overflow sweep in `frame-fit` never
+ * sets `horizontal`, and the overlap sweep cannot see ink that is off the canvas
+ * entirely.
+ */
+describe("a horizontal combo's line name stays on the chart", () => {
+  const FRAMES: [number, number][] = [
+    [80, 60],
+    [120, 90],
+    [160, 120],
+    [200, 150],
+    [300, 60],
+    [480, 300],
+    [960, 540],
+  ];
+  const FONTS = [6, 8, 10, 14, 18, 24, 32];
+
+  it("is inside the canvas at every frame and font", () => {
+    let seen = 0;
+    const bad: string[] = [];
+    for (const [w, h] of FRAMES)
+      for (const fontSize of FONTS) {
+        const scene = buildChart({
+          ...sampleConfig("combo"),
+          width: w,
+          height: h,
+          horizontal: true,
+          style: { fontSize },
+        } as ChartConfig);
+        for (const n of scene.nodes.filter(
+          (n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-series-label-"),
+        )) {
+          seen++;
+          if (n.y < -0.5 || n.y + n.h > h + 0.5)
+            bad.push(`${w}x${h} at ${fontSize}pt: y=${n.y.toFixed(1)}..${(n.y + n.h).toFixed(1)} on a ${h}pt canvas`);
+        }
+      }
+    expect(seen, "no line names drawn at all, so this proves nothing").toBeGreaterThan(20);
+    expect(bad).toEqual([]);
+  });
+
+  it("drops a point label the name has taken the room from", () => {
+    // `unplaceableComboLabels` used to be skipped for every horizontal chart
+    // (`skipDecor`), and to return early when there were no column TOTALS —
+    // which a horizontal combo does not draw. So sideways there was no pass at
+    // all, and a point label sat under the line's own name with nothing able to
+    // separate them. At 120x90 that is two of the four.
+    const labels = buildChart({
+      ...sampleConfig("combo"),
+      width: 120,
+      height: 90,
+      horizontal: true,
+    } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
+    expect(labels.length).toBeLessThan(4);
+    expect(labels.length, "every point label was dropped, which is not the trade").toBeGreaterThan(0);
+  });
+
+  it("keeps all four on a chart with the room for them", () => {
+    // The negative control: nothing is dropped where nothing collides.
+    const labels = buildChart({
+      ...sampleConfig("combo"),
+      width: 480,
+      height: 300,
+      horizontal: true,
+    } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
+    expect(labels.length).toBe(4);
+  });
+});

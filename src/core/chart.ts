@@ -1091,7 +1091,12 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // bottom of the canvas). Whichever `tightLabelPriority` does not favour is
   // dropped — but only where it is STILL colliding after every legal move above,
   // so a roomy chart keeps both.
-  if (!skipDecor) {
+  // Sideways too, which `skipDecor` used to exclude along with the rest of the
+  // decoration stage. This pass adds nothing to a scene — it only removes labels
+  // that are still unreadable after every legal move — and a horizontal combo
+  // needs it as much as an upright one: its line name sits at the line's last
+  // point, in the same few points of canvas the last point labels want.
+  {
     const drop = unplaceableComboLabels(nodes, decor.tightLabelPriority ?? "columns");
     // Spliced rather than reassigned: `nodes` is the scene array the whole
     // builder has been appending to, and later passes hold the same reference.

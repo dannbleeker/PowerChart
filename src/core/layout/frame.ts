@@ -235,7 +235,15 @@ export function valueScale(
         : v >= to
           ? belowFrac + gapFrac + (above ? (v - to) / above : 0) * aboveFrac
           : belowFrac + ((v - from) / (to - from)) * gapFrac;
-    toY = (v: number) => frame.y + frame.h - frac(v) * frame.h;
+    // Through the same `clip`. This branch REPLACES the clamped `toY` above, and
+    // replacing it threw the clamp away: `frac` extrapolates freely outside
+    // [min, max], and `min`/`max` are whatever the author pinned — so a manual
+    // scale narrower than the data put a bar at y = -21026 with a height of
+    // 21308 on a 300pt canvas, and the .pptx carried `<a:off y="-243779040"/>`.
+    // That is the exact blow-up the clamp was added to prevent, reachable by
+    // setting an axis break and an axis scale at the same time, both of them
+    // free-text boxes in the pane.
+    toY = (v: number) => clip(frame.y + frame.h - frac(v) * frame.h);
     ticks = ticks.filter((t) => t <= from + 1e-9 || t >= to - 1e-9);
     breakBand = { yLow: toY(from), yHigh: toY(to) };
   }
