@@ -243,3 +243,71 @@ describe("a combo's gutter names its lines in the order they run", () => {
       }
   });
 });
+
+/**
+ * A label anchored to ONE mark may not be nudged so far that it stops being
+ * that mark's label.
+ *
+ * The nudge budget is ten steps of 0.55 em, so a combo point label could climb
+ * 5.5 times its own font size and the pass accepted it the moment it CLEARED —
+ * how far it now sat from its point was never asked. Measured over 25 kinds x 8
+ * frames x 7 fonts, 68 point labels moved and the worst went 123pt, five em,
+ * ending as a number floating in the title band with nothing under it. Every
+ * other family stayed within 1.7em, because a series label names a LINE and
+ * reads correctly anywhere along it, and a total names the column beneath it
+ * however high it sits.
+ *
+ * Capped at two em and restored past that, which is what the flip already does
+ * when it fails. Over that sweep: the overlapping-text-pair count is 591 before
+ * and 591 after, so nothing is traded for it, and 26 of 157 point labels are
+ * dropped by `unplaceableComboLabels` instead of being parked far from their
+ * marks — none of them at the default font on a frame of 200x150 or larger.
+ */
+describe("a label anchored to one mark stays near it", () => {
+  // Fixed labels packed 6pt apart, so nothing can step between them: `tightBox`
+  // clamps a box to the ink it carries, and a single tall label obstructs only
+  // `fontSize * 1.25` of its declared height.
+  const wall = (from: number, to: number): SceneNode[] =>
+    Array.from({ length: Math.ceil((to - from) / 6) + 1 }, (_, i) =>
+      label({ y: from + i * 6, text: "x", fontSize: 10, name: "segment-label-0-0" }),
+    );
+
+  /**
+   * Distance travelled upward by a label that CAN clear, but only past the cap.
+   *
+   * The band above is 30pt deep with open canvas beyond it, so an uncapped climb
+   * reaches clear air after about three em. The band below is what stops the
+   * flip rescuing the anchored ones — this has to measure the climb, and a label
+   * that goes below its mark has travelled zero upward and would pass the
+   * assertion without proving anything.
+   */
+  const nudged = (name: string) => {
+    const l = label({ y: 100, text: "42", fontSize: 10, name });
+    resolveLabelCollisions([...wall(70, 100), ...wall(112, 260), l], 300);
+    return 100 - l.y;
+  };
+
+  it("caps a combo point label's climb at two em", () => {
+    expect(nudged("combo-label-0-1")).toBeLessThanOrEqual(20.01);
+  });
+
+  it("caps the CAGR caption the same way", () => {
+    expect(nudged("cagr-label")).toBeLessThanOrEqual(20.01);
+  });
+
+  it("leaves a label that names a whole line free to climb", () => {
+    // The negative control: a series label reads correctly anywhere along its
+    // line, and a total names the column beneath it however high it sits, so
+    // neither is capped.
+    expect(nudged("series-label-0")).toBeGreaterThan(20);
+    expect(nudged("total-0")).toBeGreaterThan(20);
+  });
+
+  it("does not move a point label at all when the climb cannot clear", () => {
+    // Restored, not left where the budget ran out: a label that moved and still
+    // collides sits somewhere its author did not choose.
+    const l = label({ y: 100, text: "42", fontSize: 10, name: "combo-label-0-1" });
+    resolveLabelCollisions([...wall(0, 200), l], 300);
+    expect(l.y).toBe(100);
+  });
+});
