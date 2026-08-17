@@ -1274,10 +1274,8 @@ export async function updateChartInSlide(
  * Best-effort. A count that cannot be taken is `undefined` and the reading that
  * needed it is simply not reported; nothing here may cost an update.
  */
-async function slideShapeCounts(slideIds: string[]): Promise<Map<string, number>> {
+async function countSlideShapesOnce(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  const ids = [...new Set(slideIds)].filter(Boolean);
-  if (!ids.length) return out;
   try {
     await PowerPoint.run(async (context) => {
       const asked = ids.map((id) => ({ id, c: context.presentation.slides.getItemOrNullObject(id).shapes.getCount() }));
@@ -1289,6 +1287,57 @@ async function slideShapeCounts(slideIds: string[]): Promise<Map<string, number>
     });
   } catch {
     /* an instrument that fails is a reading not taken, never a failed update */
+  }
+  return out;
+}
+
+/**
+ * TWICE, AND ONLY WHERE THE TWO AGREE — because one read of this host is not a
+ * measurement.
+ *
+ * Round 084 is the whole reason. Four slides reported growing by 23 shapes; the
+ * deck inventory taken at the end of that same round showed each of them holding
+ * ONE shape named `PowerChart`, which is what a group is called. Every one of
+ * them had logged `grouped the chart's shapes {partial:0, by:"ids"}` 1.3 seconds
+ * BEFORE the count was taken, in a sync that had already resolved, from a
+ * context that had already closed.
+ *
+ * The count was 24 — exactly `drewInner`, and 24 rather than 25. That single
+ * digit is the diagnosis: the host had caught up with the delete of the old
+ * group and with all three draw batches, and not with the `addGroup`. So
+ * `getCount()` can lag a commit this code has already awaited, and a single read
+ * inside that window invents a chart-sized leak that never happened.
+ *
+ * A phantom is worse than a gap here. The reading exists to answer whether an
+ * update strands shapes, and a false positive sends someone hunting a bug that
+ * is not there — which is what this instrument did on its first outing, in the
+ * one round it has ever produced a non-zero number.
+ *
+ * Two reads a settle-delay apart, and a slide whose reads disagree is reported
+ * as UNMEASURABLE rather than as a number. `REREAD_RETRY_MS` is the same delay
+ * `groupAndTagAll` already uses against this same class of host lag.
+ */
+async function slideShapeCounts(slideIds: string[], settle = false): Promise<Map<string, number>> {
+  const ids = [...new Set(slideIds)].filter(Boolean);
+  if (!ids.length) return new Map();
+  // The BEFORE reading needs no second opinion: nothing has just been committed
+  // for the host to be behind on. Only the after-reading follows an addGroup,
+  // and only it pays the delay.
+  if (!settle) return countSlideShapesOnce(ids);
+  const first = await countSlideShapesOnce(ids);
+  await new Promise((r) => setTimeout(r, REREAD_RETRY_MS));
+  const second = await countSlideShapesOnce(ids);
+  const out = new Map<string, number>();
+  for (const [id, n] of second) {
+    // Both ends, and agreeing. A slide only one read answered for has not
+    // settled either — there is no second opinion to hold it to.
+    if (first.get(id) === n) out.set(id, n);
+    else
+      trace("update", "a slide's shape count would not settle — not counting it", {
+        slideId: id,
+        first: first.get(id) ?? null,
+        second: n,
+      });
   }
   return out;
 }
@@ -1367,6 +1416,12 @@ function reportOrphanedShapes(
       // THE READING. Top-level shapes the slide gained across the update, host-
       // measured at both ends. Zero means the update replaced what it removed.
       growth: a - b,
+      // THE MARK OF A READING TWO HOST READS AGREED ON. Round 084 produced
+      // growth lines from a single read and every non-zero one was a phantom —
+      // the host lagging an addGroup it had already committed. Entries without
+      // this field come from that build and cannot be told apart from real
+      // growth by their values alone, so the pool quarantines them.
+      settled: true,
       charts: c.charts,
       // The discriminator. Growth on charts that HAD a parts list is an ordinary
       // change of size; growth on charts without one is the stranding.
@@ -2172,7 +2227,8 @@ export async function updateChartsInSlides(
   });
   // OUTSIDE THE RUN, so the count is settled: one taken inside would be the
   // context's own stale view of a slide it has just been adding to.
-  if (watching && churn.size) reportOrphanedShapes(countsBefore, await slideShapeCounts([...churn.keys()]), churn);
+  if (watching && churn.size)
+    reportOrphanedShapes(countsBefore, await slideShapeCounts([...churn.keys()], true), churn);
 
   // Outside the run, for the reason the insert path is: the context that could
   // not write the tag cannot write it now either.

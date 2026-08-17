@@ -984,11 +984,17 @@ function reportUpdateShortfalls(logs) {
   }
   if (o.unitMismatch)
     console.log(
-      `    ${o.unitMismatch} update(s) came from a build whose instrument subtracted mismatched
+      `    ${o.unitMismatch} update(s) are NOT counted above, from the two builds whose readings
 ` +
-        `    units (inner shapes minus delete calls) and are NOT counted above. Round 082 read
+        `    cannot be believed. Round 082 subtracted mismatched units — "23 stranded" beside
 ` +
-        `    "23 stranded" beside before:3 after:3 — nothing was left behind at all.`,
+        `    its own before:3 after:3. Round 084 measured in one unit but read the host ONCE,
+` +
+        `    and every non-zero number it produced was the host lagging an addGroup it had
+` +
+        `    already committed: four slides "grew" by 23 while the deck ended with one grouped
+` +
+        `    chart on each. A reading now carries \`settled\` only when two reads agreed.`,
     );
 }
 
@@ -1710,7 +1716,12 @@ export function poolUpdateShortfalls(logs) {
       // that summed to zero on every line and measured nothing. Counted, never
       // mixed in: pooling them with a real growth would resurrect the artifact
       // this pool was rewritten to stop reporting.
-      if (d.growth === undefined) {
+      // Two shapes of unusable reading, counted together because the
+      // response is the same: do not pool it. Pre-2026-08-16 entries speak the
+      // mismatched-unit language; round 084 speaks `growth` but from a single
+      // host read, and every non-zero number it produced was the host lagging a
+      // group it had already committed.
+      if (d.growth === undefined || d.settled !== true) {
         out.unitMismatch++;
         continue;
       }

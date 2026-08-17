@@ -8,6 +8,9 @@ export default defineConfig({
     // sandbox would make `npm test` run every file twice — once real, once from
     // a stale copy — and report failures against source nobody edited.
     exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**", "**/.stryker-tmp/**"],
+    // See test/setup.ts: a fake host has no lag to settle, so no suite pays the
+    // real host's settle delay.
+    setupFiles: ["test/setup.ts"],
     coverage: {
       provider: "v8",
       // src plus the one skill script that is pure and importable: pptx-paint.mjs

@@ -147,6 +147,10 @@ export const faults = {
    * where Office.js raises it.
    */
   refuseShapeById: false,
+  /** How many `getCount()` calls answer as though a just-committed group is not there — see the getCount body. */
+  shapeCountLag: 0,
+  /** How far off those stale counts are. A group of N inner shapes reads N-1 too high. */
+  shapeCountLagBy: 0,
   hollowReads: 0,
   /** Answer HONESTLY for this many `items/id` reads, then short forever. */
   hollowReadsAfter: null as number | null,
@@ -1641,7 +1645,18 @@ export function makeSlide(id: string) {
         // signals saying zero is the whole point: one of them telling the truth
         // is the case `slideShapeList` already survives.
         if (slideReadsEmptyNow()) return { value: 0 };
-        return { value: created.filter((s) => !s.deleted).length };
+        const live = created.filter((s) => !s.deleted).length;
+        // THE HOST LAGGING ITS OWN COMMIT — see `faults.shapeCountLag`. Round 084
+        // reported four slides growing by 23 shapes each while the deck they
+        // belonged to ended holding one grouped chart apiece; every count was
+        // taken 1.3s after an `addGroup` that had already synced, and answered
+        // as though the group were not there. One read of this number is not a
+        // measurement, and the fake could not say so until now.
+        if (faults.shapeCountLag > 0) {
+          faults.shapeCountLag--;
+          return { value: live + faults.shapeCountLagBy };
+        }
+        return { value: live };
       },
     },
   };
@@ -2467,6 +2482,8 @@ export function installHost(
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;
   faults.refuseShapeById = false;
+  faults.shapeCountLag = 0;
+  faults.shapeCountLagBy = 0;
   faults.strictIdLoads = false;
   faults.refuseShapeIdLoads = 0;
   refuseThisSync = false;
