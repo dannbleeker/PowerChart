@@ -42,6 +42,41 @@ it must be related from the presentation, not dropped at the root.
 a decision about precedence (deck style vs the user's own imported style) before
 any code.
 
+### Widen the frame gate to the full frame x font cross-product
+
+**Measured:** 2026-08-17, during the bug hunt behind PRs #576-#578.
+
+`test/frame-fit.test.ts` sweeps overflow two ways and neither is the whole
+grid: **8 frames at the default font**, and **7 fonts at 3 frames** (200x150,
+480x300, 960x540). The cross-product it never asks — a large font on a SMALL
+frame — is where every overflow those three PRs fixed was living, and it is
+still where the rest are.
+
+Sweeping every kind x 8 frames x 7 fonts today reports **42 nodes drawing
+outside their own chart, none of them at the default font**:
+
+    tilemap x6   mekko x5   butterfly x5   heatmap x5   combo x4
+    sunburst x4  waffle x4  waterfall x3   bubble x3    scatter x2
+
+**Shape of the fix:** give the existing font sweep the full `FRAMES` list. That
+is a one-line change and it turns those 42 red immediately, which is the whole
+decision — the work is the 42, not the gate.
+
+**Why it is a judgement call and not a chore.** Every one of them is chrome
+that genuinely does not fit: a 32pt font on an 80x60 chart cannot carry a
+title, an axis and a legend whatever the layout does. The fixes are therefore
+all of the same two kinds this engine already uses — shrink-then-drop, or clamp
+— and each one costs something a reader might want. The question to settle
+before starting is how small a chart PowerChart claims to draw at all. A
+`MIN_READABLE` frame-to-font ratio, below which the engine draws the marks and
+nothing else, would answer it once instead of 42 times.
+
+**Do not chase the tail without widening the gate.** The tail is only visible
+through a sweep nobody runs; fixing entries one at a time leaves the next one
+arriving exactly as these did. The decoration sweep is the counter-example
+worth copying — it went from 90 to 0 and is now gated per decoration, so a
+regression names itself.
+
 ### Report what this project has measured to the office-js tracker
 
 **Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the
