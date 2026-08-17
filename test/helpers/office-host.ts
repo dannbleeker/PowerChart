@@ -148,6 +148,8 @@ export const faults = {
    */
   refuseShapeById: false,
   /** How many `getCount()` calls answer as though a just-committed group is not there — see the getCount body. */
+  /** Extra slides ONE `add()` lands beyond the one asked for — see the add body. */
+  addLandsExtra: 0,
   shapeCountLag: 0,
   /** How far off those stale counts are. A group of N inner shapes reads N-1 too high. */
   shapeCountLagBy: 0,
@@ -2118,6 +2120,17 @@ export function installHost(
           }
           if (faults.addsAtFront) slides.unshift(made);
           else slides.push(made);
+          // ONE add, TWO slides — see `faults.addLandsExtra`. The real host does
+          // this: across the archive, every `scratch slide landed but could not
+          // be named` event has `after - before === 2`, ten for ten. The fake
+          // could only ever land one, so the branch that counts them was tested
+          // against a host that never produced the state it exists for.
+          for (let extra = 0; extra < faults.addLandsExtra; extra++) {
+            const twin = makeSlide(`slide-${slides.length + 1}`);
+            addedSlideOrder.set(twin.id, slideAddSeq++);
+            addedSlideIds.add(twin.id);
+            slides.push(twin);
+          }
         },
       },
       /**
@@ -2482,6 +2495,7 @@ export function installHost(
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;
   faults.refuseShapeById = false;
+  faults.addLandsExtra = 0;
   faults.shapeCountLag = 0;
   faults.shapeCountLagBy = 0;
   faults.strictIdLoads = false;

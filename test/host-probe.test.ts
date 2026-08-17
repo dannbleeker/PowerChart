@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installHost, makeSlide, applyWebProfile, faults } from "./helpers/office-host";
+import { addScratchSlide } from "../src/render/powerpoint";
 import {
   runHostProbes,
   PROBE_IDS,
@@ -2099,5 +2100,56 @@ describe("what a probe says when it could not set itself up", () => {
     const src = readFileSync("src/render/host-probe.ts", "utf8");
     for (const word of NEVER_ASKED)
       expect(src, `the probe never emits "${word}", so the gate's vocabulary has drifted`).toContain(`"${word}"`);
+  });
+});
+
+/**
+ * Counting the slides a single add leaves behind.
+ *
+ * `addScratchSlide` reports slides that landed and could not be named, and the
+ * sweep clamps at "no more than this run added" — so an undercount here is the
+ * clamp declining to remove a slide the run put in the deck.
+ */
+describe("a slide add that lands more than it was asked for", () => {
+  afterEach(() => {
+    faults.addLandsExtra = 0;
+    faults.newSlideResolvesTimes = 0;
+  });
+
+  it("reports every slide that landed, not one per add", async () => {
+    // TEN EVENTS ACROSS NINE ARCHIVED ROUNDS, and `after - before` is 2 in every
+    // one of them — never 1. This branch counted events, so the clamp ran one
+    // short each time and round 085 shipped the remainder: its own inventory
+    // carries `257#3837665135` with zero shapes, listed in `newSlides`.
+    //
+    // The fake could only ever land one slide per add, so the branch was tested
+    // against a host that never produced the state it exists for.
+    installHost([makeSlide("s1")]);
+    faults.addLandsExtra = 1; // one add, two slides — what the real host does
+    faults.newSlideResolvesTimes = 0; // and the new slide cannot be named
+    let unnamed = 0;
+    const id = await addScratchSlide(undefined, undefined, () => {
+      unnamed++;
+    });
+    expect(id, "this test needs the un-nameable branch").toBeNull();
+    expect(unnamed, "counted the add, not the slides it landed").toBe(2);
+  });
+
+  it("reports nothing when the slide it added could be named", async () => {
+    // The over-count guard. Trading an undercount for an over-count would have
+    // the sweep clamp permit deleting a slide the run did NOT add, which is the
+    // user's own deck.
+    //
+    // Note there is no "one landed and could not be named" case to test: with a
+    // single fresh slide the code names it, and the ambiguity that defeats
+    // naming is exactly what a second one creates. That is why the archive's
+    // ten events are all two-slide events.
+    installHost([makeSlide("s1")]);
+    let unnamed = 0;
+    const id = await addScratchSlide(undefined, undefined, () => {
+      unnamed++;
+    });
+    expect(id, "the ordinary path should name its slide").toBeTruthy();
+    expect(unnamed, "counted a slide it had just named").toBe(0);
   });
 });

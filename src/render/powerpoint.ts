@@ -6795,13 +6795,28 @@ export async function addScratchSlide(
       // null, and report nothing. It is very likely also the already-recorded
       // "the deck grew by 70 while the run could account for 68" — the clamp was
       // right, and the count it clamped was two short.
-      const landed = after.length > before.length;
-      trace("host", landed ? "scratch slide landed but could not be named" : "scratch slide did not land", {
+      // HOW MANY LANDED, not whether any did. This reported ONE per event, and
+      // the deck has never once grown by one here: across the archive the
+      // `after - before` histogram for this branch is `{2: 10}` — ten events in
+      // nine rounds, every one of them two slides.
+      //
+      // The comment above cites a 2026-08-11 measurement of "grow the deck by
+      // one", and the inference drawn from it — one event, one slide — is what
+      // went stale. `unnamedLeftBehind` feeds the sweep clamp, so an undercount
+      // there is the clamp declining to remove a slide this run added: round 085
+      // planned `count: 102` against a deck that had grown by 103, and shipped
+      // the remainder. Its own inventory carries `257#3837665135` with zero
+      // shapes, listed in `newSlides` — ours, blank, and left in the deck.
+      const landedCount = after.length - before.length;
+      trace("host", landedCount > 0 ? "scratch slide landed but could not be named" : "scratch slide did not land", {
         before: before.length,
         after: after.length,
         fresh: fresh.length,
+        // Named, because the whole defect was that this number existed and
+        // nothing carried it out of here.
+        landed: landedCount,
       });
-      if (landed) onLeftBehindUnnamed?.();
+      for (let i = 0; i < landedCount; i++) onLeftBehindUnnamed?.();
       return null;
     }
     // NO settle here, and the reason is measured rather than argued.
