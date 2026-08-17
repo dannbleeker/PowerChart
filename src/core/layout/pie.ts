@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, polar, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat, segmentLabel } from "../format";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { MIN_LABEL_FS, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -333,20 +333,41 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
 
   if (doughnut) {
     nodes.push({ kind: "ellipse", cx, cy, rx: r * 0.55, ry: r * 0.55, fill: style.background, name: "hole" });
-    nodes.push({
-      kind: "text",
-      x: cx - r * 0.5,
-      y: cy - fs * 0.9,
-      w: r,
-      h: fs * 1.8,
-      text: formatNumber(total, fmt),
-      fontSize: fs * 1.3,
-      bold: true,
-      color: style.text,
-      align: "center",
-      valign: "middle",
-      name: "hole-label",
-    });
+    /**
+     * The total in the middle, fitted to the HOLE it sits in.
+     *
+     * It was drawn at `fs * 1.3` whatever the ring's size, so on a small frame
+     * at a large font the number was taller than the whole chart — 22.3pt below
+     * the foot of an 80x60 doughnut at 32pt — and wider than the hole it is
+     * supposed to be inside at almost any cramped size. A label is fitted to the
+     * mark it sits on; here the mark is a circle of radius `r * 0.55`, so the
+     * bound is that circle's own box, and past the floor there is no number
+     * rather than one lying across the ring.
+     */
+    const holeBox = r * 0.55 * 2;
+    const text = formatNumber(total, fmt);
+    let holeFs = Math.min(fs * 1.3, holeBox / 1.8);
+    while (holeFs > MIN_LABEL_FS && textWidth(text, holeFs, true) > holeBox * 0.9) holeFs -= 0.5;
+    // The box moves with the font, and is `fs` ITSELF where the font was not
+    // shrunk: `holeFs / 1.3` is 9.999999999999998 for an `fs` of 10, which
+    // rounds to a different EMU and moved a showcase slide by a tenth of a
+    // point. A last resort that changes an ordinary chart is not one.
+    const holeUnit = holeFs === fs * 1.3 ? fs : holeFs / 1.3;
+    if (holeFs >= MIN_LABEL_FS && textWidth(text, holeFs, true) <= holeBox * 0.9)
+      nodes.push({
+        kind: "text",
+        x: cx - r * 0.5,
+        y: cy - holeUnit * 0.9,
+        w: r,
+        h: holeUnit * 1.8,
+        text,
+        fontSize: holeFs,
+        bold: true,
+        color: style.text,
+        align: "center",
+        valign: "middle",
+        name: "hole-label",
+      });
   }
 
   return {

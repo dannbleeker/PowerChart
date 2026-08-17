@@ -48,7 +48,13 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           cfg.width - 4,
         )
       : 0;
-  const legendH = legendRows * fs * 1.6;
+  // Zero when the band would not be ON the canvas. `legendH` both reserves the
+  // strip and gates the draw below (`if (legendH) drawLegend()`), so one number
+  // keeps the two in step — and it had no bound: two rows at a 32pt font want
+  // 102 points, so on a 300x60 chart the entries were drawn at y 68 and y 119,
+  // wholly below the foot of the chart. Chrome that cannot be paid for is not
+  // drawn, and the web itself is the chart.
+  const legendH = titleH + legendRows * fs * 1.6 <= cfg.height ? legendRows * fs * 1.6 : 0;
   // Fitted so the web's CENTRE and RADIUS are both derived from a positive box:
   // on a frame too short for title + legend + footnote the raw height goes
   // negative, which put the centre below the bottom of the chart and the
@@ -384,7 +390,13 @@ function layoutRadialBars(cfg: ChartConfig, style: ChartStyle, decor: Decoration
           cfg.width - 4,
         )
       : 0;
-  const legendH = legendRows * fs * 1.6;
+  // Zero when the band would not be ON the canvas. `legendH` both reserves the
+  // strip and gates the draw below (`if (legendH) drawLegend()`), so one number
+  // keeps the two in step — and it had no bound: two rows at a 32pt font want
+  // 102 points, so on a 300x60 chart the entries were drawn at y 68 and y 119,
+  // wholly below the foot of the chart. Chrome that cannot be paid for is not
+  // drawn, and the web itself is the chart.
+  const legendH = titleH + legendRows * fs * 1.6 <= cfg.height ? legendRows * fs * 1.6 : 0;
   // Fitted so the web's CENTRE and RADIUS are both derived from a positive box:
   // on a frame too short for title + legend + footnote the raw height goes
   // negative, which put the centre below the bottom of the chart and the

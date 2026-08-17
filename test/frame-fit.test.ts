@@ -63,10 +63,29 @@ function inkBox(n: SceneNode): { x0: number; y0: number; x1: number; y1: number 
   if (n.kind === "wedge") return { x0: a.cx - a.r, y0: a.cy - a.r, x1: a.cx + a.r, y1: a.cy + a.r };
   if (n.kind === "symbol") return { x0: a.cx - a.size, y0: a.cy - a.size, x1: a.cx + a.size, y1: a.cy + a.size };
   // An arrowhead's (x, y) is its TIP and its body runs 1.8*size back along
-  // `angle`; the angle is not read here, so this is the disc that bounds it at
-  // every rotation.
-  if (n.kind === "arrowhead")
-    return { x0: a.x - a.size * 1.8, y0: a.y - a.size * 1.8, x1: a.x + a.size * 1.8, y1: a.y + a.size * 1.8 };
+  // `angle`. Read the angle: the disc that bounds it at EVERY rotation is what
+  // this used to use, and a conservative bound does not merely miss defects, it
+  // invents them — it reported the scatter's trajectory glyphs as 4.2pt off the
+  // canvas while their actual triangles were inside it. The three vertices are
+  // the ones the SVG renderer draws, which is the shape the scene describes;
+  // both PowerPoint sinks name a slightly broader native preset, and that
+  // difference is declared in the parity contract in `src/core/scene.ts`.
+  if (n.kind === "arrowhead") {
+    const rad = (a.angle * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const vs = [
+      [0, 0],
+      [-1.8 * a.size, -0.7 * a.size],
+      [-1.8 * a.size, 0.7 * a.size],
+    ].map(([px, py]) => ({ x: a.x + px * cos - py * sin, y: a.y + px * sin + py * cos }));
+    return {
+      x0: Math.min(...vs.map((v) => v.x)),
+      y0: Math.min(...vs.map((v) => v.y)),
+      x1: Math.max(...vs.map((v) => v.x)),
+      y1: Math.max(...vs.map((v) => v.y)),
+    };
+  }
   if (n.kind === "polygon") {
     const p = (n as { points?: { x: number; y: number }[] }).points ?? [];
     if (!p.length) return null;
@@ -720,6 +739,56 @@ describe("a decoration does not push a chart out of its own frame", () => {
     );
     return bad;
   };
+
+  /**
+   * EVERY boolean decoration, on EVERY kind. The sweep reported 90 combinations
+   * drawing outside the chart when it was written and 0 now, so it asserts the
+   * whole cross-product rather than the handful of shapes that were fixed first
+   * — 16,200 configs, and a decoration that cannot pay for its own chrome has
+   * nowhere left to hide.
+   */
+  const BOOL_DECOR = [
+    "segmentLabels",
+    "seriesLabels",
+    "totals",
+    "grandTotal",
+    "variance",
+    "categoryAxis",
+    "valueAxis",
+    "gridlines",
+    "cagr",
+    "difference",
+    "connectors",
+    "callouts",
+    "bands",
+    "hundredPercentNote",
+    "quadrants",
+    "marginals",
+    "fillBetween",
+    "stepped",
+    "smooth",
+    "bridgeGaps",
+    "bump",
+    "slope",
+    "trajectory",
+    "summaryBars",
+    "criticalPath",
+    "sparkline",
+    "radarBand",
+  ];
+
+  it("no decoration on any kind draws outside the chart", () => {
+    const bad: string[] = [];
+    for (const d of BOOL_DECOR)
+      bad.push(
+        ...sweep(
+          d,
+          true,
+          CHART_KINDS.map((k) => k.kind),
+        ),
+      );
+    expect(bad).toEqual([]);
+  });
 
   it("the IBCS variance tier is not reserved when the frame cannot pay for it", () => {
     // A legal variance config, not a bare `true`: the band is reserved for the

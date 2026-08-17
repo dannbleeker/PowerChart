@@ -1,5 +1,5 @@
 import type { ChartConfig, ChartStyle, Decorations, MarkerSymbol } from "../types";
-import { markerScale, markerSymbolOf } from "../geometry";
+import { arrowheadFits, markerScale, markerSymbolOf } from "../geometry";
 import { textWidth, type SceneNode } from "../scene";
 import { formatNumber, formatP, histogramBins, niceTicks, polyTrend, resolveFormat, trendStats } from "../format";
 import { placeLabels, type Box, type LabelRequest } from "../labels";
@@ -970,15 +970,26 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         name: `trajectory-${i}`,
       });
       const angle = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
-      nodes.push({
-        kind: "arrowhead",
-        x: (ax + bx) / 2,
-        y: (ay + by) / 2,
-        angle,
-        size: 4,
-        fill: style.mutedText,
-        name: `trajectory-head-${i}`,
-      });
+      // The direction glyph, where it fits. Its tip is the segment's MIDPOINT
+      // and its body runs back along the segment, so a path along the top of the
+      // plot — markers already overhang that edge by design — pushed the
+      // triangle off the canvas, 4pt above an 80x60 chart at a 32pt font, onto
+      // whatever sits over it on the slide.
+      //
+      // Dropped rather than moved: the arrowhead's whole job is to say which way
+      // the path runs, so an arrowhead somewhere other than on its own segment
+      // says something false. The segment's LINE is drawn either way, so the
+      // path is still there — only the direction glyph on that one hop is not.
+      if (arrowheadFits((ax + bx) / 2, (ay + by) / 2, 4, angle, cfg.width, cfg.height))
+        nodes.push({
+          kind: "arrowhead",
+          x: (ax + bx) / 2,
+          y: (ay + by) / 2,
+          angle,
+          size: 4,
+          fill: style.mutedText,
+          name: `trajectory-head-${i}`,
+        });
     }
   }
 

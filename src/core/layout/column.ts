@@ -567,7 +567,15 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
           nodes.push({
             kind: "text",
             x: centers[c] - slotLen / 2,
-            y: frame.y + frame.h - topQ - tf * 1.45,
+            // Never above the canvas. The total sits `tf * 1.45` over its
+            // column's top, and on a frame whose columns reach the top of the
+            // plot that put it off the chart entirely — 31.6pt past the top of a
+            // 300x60 chart at a 32pt font. Clamped rather than dropped, which is
+            // the opposite call to the grand total below it and for a reason:
+            // this is the value of ITS column and appears nowhere else, where
+            // the grand total is a summary of numbers the chart already shows.
+            // An overlapping label still reads; an off-canvas one is lost.
+            y: Math.max(0, frame.y + frame.h - topQ - tf * 1.45),
             w: slotLen,
             h: tf * 1.4,
             text,
@@ -586,14 +594,22 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // every category total. A FIXED anchor in the de-collision pass, so a tall
   // right-hand column's own (movable) total nudges around it. Vertical only, and
   // never on a 100% chart, where every column totals the same 100%.
-  if (decor.grandTotal && !pct && !H && n > 0) {
+  // Drawn only where the band above the plot is ON the canvas. `frame.y` is the
+  // title plus the totals row, and this sits `fs * 1.5` above it with no floor —
+  // so at a 32pt font on a short frame the whole label was drawn above y=0,
+  // 35.8pt past the top of an 80x60 chart. Clamping it down instead would put it
+  // in the title, which is the move this engine already measured and reverted
+  // for the CAGR caption: a fixed anchor that lands on other text is worse than
+  // one that is not drawn. It is a summary of numbers the chart already shows.
+  const grandY = frame.y - fs * 1.5;
+  if (decor.grandTotal && !pct && !H && n > 0 && grandY >= 0) {
     const grand = signedTotals.reduce((a, b) => a + b, 0);
     const gtext = formatNumber(grand, fmt);
     const gw = Math.min(frame.w, textWidth(gtext, fs, true) + 8);
     nodes.push({
       kind: "text",
       x: frame.x + frame.w - gw,
-      y: frame.y - fs * 1.5,
+      y: grandY,
       w: gw,
       h: fs * 1.4,
       text: gtext,
