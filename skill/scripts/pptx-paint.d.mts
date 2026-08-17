@@ -34,6 +34,18 @@ export function fillOf(
  */
 export function lineOf(color: string | null | undefined): { color: string; transparency?: number };
 
+/**
+ * The TEXT twin of `fillOf`/`lineOf` — a pptxgenjs text colour carrying its
+ * alpha, which pptxgenjs takes on a run exactly as it does on a shape.
+ *
+ * Text was the one paint channel that dropped it: the mapping took a bare
+ * `hex()`, so a deliberately muted label was drawn faint by the SVG renderer and
+ * at full strength in the deck. Office.js cannot follow — `font.color` is a hex
+ * string with nowhere to put an alpha — and that divergence is declared in the
+ * parity contract at the top of `src/core/scene.ts`.
+ */
+export function textInk(color: string | null | undefined): { color: string; transparency?: number };
+
 /** Text with XML-illegal characters removed (C0 controls, unpaired surrogates). */
 export function xmlText(s: unknown): string;
 

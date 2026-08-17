@@ -25,6 +25,14 @@
  *    array carrying no positive finite length. Do not re-guard on `dash` being
  *    truthy at a call site: `[]` is truthy, and that divergence drew a solid line
  *    in the preview and a dotted one in both decks.
+ *  - TEXT alpha (text.color carrying one, e.g. `#0b0b0b80` or an `rgba()`):
+ *    SVG and pptx honour it — pptxgenjs takes the same 0-100 transparency on a
+ *    text run as on a shape — and Office.js cannot: `font.color` is a hex
+ *    string with nowhere to put an alpha, so the live add-in draws such a label
+ *    OPAQUE. Fills and strokes honour their alpha in all three, so this is the
+ *    one paint channel that does not, and it is a host limit rather than a
+ *    choice. Muted ink is how a chart de-emphasises a label, so a chart using
+ *    it reads as flatter in the add-in than in the preview or the skill's deck.
  *  - Chevron point depth and arrowhead proportions: SVG draws its own geometry;
  *    the PowerPoint renderers name a native preset whose default proportions
  *    differ slightly (see the notes on those kinds). Reproducing the preset
