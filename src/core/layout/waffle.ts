@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { textWidth, type SceneNode } from "../scene";
 import { formatPercent } from "../format";
 import { noDataFill } from "../color";
-import { footnoteH, titleHeight, titleNode } from "./frame";
+import { MIN_LABEL_FS, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -77,7 +77,12 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   const step = gridSize / 10;
   const cellSize = step * 0.86;
   const gx = 2;
-  const gy = titleH + 4 + (availH - gridSize) / 2;
+  // Kept on the canvas. The grid has a 20pt floor so it never collapses, and on
+  // a frame whose title and footnote leave less than that the centring put it
+  // partly below the foot of the chart — 8.3pt at a 32pt font on a 60pt-tall
+  // waffle. The grid IS the chart, so it is clamped rather than shrunk further
+  // or dropped.
+  const gy = Math.max(0, Math.min(titleH + 4 + (availH - gridSize) / 2, cfg.height - gridSize));
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
@@ -104,8 +109,26 @@ export function layoutWaffle(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     });
   }
 
+  /**
+   * The font the legend block is drawn at.
+   *
+   * `legendBandY` slides the block to keep it on the canvas, and sliding cannot
+   * help once the block is TALLER than the canvas: it is priced in the chart
+   * font — `fs * 4.8` for the big-number treatment, `entries * fs * 1.7` for the
+   * chip rows — with nothing bounding it against the height it has to live in.
+   * At a 32pt font on a 60pt-tall waffle the single-category block wants 154
+   * points of 60, and its name was drawn 87.8pt below the foot of the chart.
+   *
+   * Shrunk to the room, then dropped past the floor — the order every fit in
+   * this engine uses. Where the block already fits, which is every chart at an
+   * ordinary font, this is `fs` exactly and nothing moves.
+   */
+  const legendRoom = Math.max(0, cfg.height - footH - titleH);
+  const legendBlockEm = single ? 4.8 : legendEntries.length * 1.7;
+  const legendFs = Math.min(fs, legendRoom / (legendBlockEm || 1));
   // Legend: single category gets the big-number treatment, several get chips.
-  if (legendW > 0) {
+  if (legendW > 0 && legendFs >= MIN_LABEL_FS) {
+    const fs = legendFs;
     const lx = gx + gridSize + fs;
     if (single) {
       // The big-number block spans fs*2.4 either side of the grid's middle: the

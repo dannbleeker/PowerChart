@@ -352,7 +352,13 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
           nodes.push({
             kind: "text",
             x: pt.x - 30,
-            y: pt.y - fs * 1.65,
+            // Never above the canvas. The label sits `fs * 1.65` over its own
+            // point, so a series touching the top of the plot put it off the
+            // chart — 39.2pt past the top at a 32pt font. Clamped rather than
+            // dropped, on the same reasoning as a column total: this is the
+            // value of ITS point and appears nowhere else, and an overlapping
+            // label still reads where an off-canvas one is lost.
+            y: Math.max(0, pt.y - fs * 1.65),
             w: 60,
             h: fs * 1.4,
             text: segmentLabel(decor.labelContent ?? ["value"], {
@@ -612,7 +618,12 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
   if (titleN) nodes.push(titleN);
-  // Rails and period labels at the two ends only.
+  // Rails and period labels at the two ends only. The labels are drawn where
+  // their band is ON the canvas: `titleH + headerH` is priced in the font, so
+  // at a 32pt font on a 60pt-tall chart it ends below the foot of the chart and
+  // both were drawn there. Same call the bump chart's period headers take — the
+  // rails and the slopes are the chart, the period names are chrome.
+  const headerFits = titleH + headerH <= cfg.height;
   for (const c of [0, last]) {
     nodes.push({
       kind: "line",
@@ -624,19 +635,20 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
       strokeWidth: 1,
       name: `slope-rail-${c}`,
     });
-    nodes.push({
-      kind: "text",
-      x: xs[c] - 60,
-      y: titleH,
-      w: 120,
-      h: headerH,
-      text: data.categories[c],
-      fontSize: fs,
-      color: style.mutedText,
-      align: "center",
-      valign: "middle",
-      name: `category-${c}`,
-    });
+    if (headerFits)
+      nodes.push({
+        kind: "text",
+        x: xs[c] - 60,
+        y: titleH,
+        w: 120,
+        h: headerH,
+        text: data.categories[c],
+        fontSize: fs,
+        color: style.mutedText,
+        align: "center",
+        valign: "middle",
+        name: `category-${c}`,
+      });
   }
 
   // Per-side label placement: keep each label at its line end, then push
@@ -772,36 +784,59 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): L
     data.series.flatMap((s) => s.values.filter((v): v is number => v != null)),
     1,
   );
-  const nameW = Math.max(fs * 3, ...data.series.map((s) => textWidth(s.name, fs))) + fs;
-  const plot = {
+  /**
+   * The two name gutters, and the size the names in them are drawn at.
+   *
+   * `max(fs * 3, …widest name) + fs` was uncapped, and the plot is what is left
+   * after TWO of them — so at a 32pt font on an 80pt-wide chart the gutters
+   * wanted 256 points of 80 and the plot came out NEGATIVE. Every rank marker
+   * then landed to the right of the chart: 77pt past the edge, drawn onto
+   * whatever sits beside it on the slide.
+   *
+   * Capped at a third of the width each, as the slope chart's gutters already
+   * are, with the names shrunk to what the cap leaves and clipped past the
+   * floor. Where the cap does not bite — every comfortable chart — the gutter is
+   * the widest name plus `fs` and nothing moves.
+   */
+  const nameW = Math.min(cfg.width * 0.34, Math.max(fs * 3, ...data.series.map((s) => textWidth(s.name, fs))) + fs);
+  const nameRoom = Math.max(1, nameW - fs * 0.5);
+  let nameFs = fs;
+  while (nameFs > MIN_LABEL_FS && data.series.some((s) => textWidth(s.name, nameFs) > nameRoom)) nameFs -= 0.5;
+  const plot = fitPlot(cfg, {
     x: nameW,
     y: titleH + headerH,
     w: cfg.width - nameW * 2,
     h: cfg.height - titleH - headerH - fs * 1.6,
-  };
+  });
   const xs = data.categories.map((_, c) => plot.x + (n === 1 ? 0 : (c / (n - 1)) * plot.w));
   const toY = (rank: number) => plot.y + (maxRank === 1 ? plot.h / 2 : ((rank - 1) / (maxRank - 1)) * plot.h);
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
   if (titleN) nodes.push(titleN);
-  // Period headers along the top.
-  data.categories.forEach((cat, c) => {
-    nodes.push({
-      kind: "text",
-      x: xs[c] - 40,
-      y: titleH,
-      w: 80,
-      h: headerH,
-      text: cat,
-      fontSize: fs,
-      bold: true,
-      color: style.text,
-      align: "center",
-      valign: "middle",
-      name: `period-${c}`,
+  // Period headers along the top — where the band they sit in is ON the canvas.
+  // `titleH + headerH` is a fixed number of points priced in the font, so at a
+  // 32pt font on a 60pt-tall chart the header band alone ends 34pt below the
+  // foot of the chart and every header was drawn there. Chrome that cannot be
+  // paid for is not drawn; the ranks and their end labels are the chart.
+  const headerFits = titleH + headerH <= cfg.height;
+  if (headerFits)
+    data.categories.forEach((cat, c) => {
+      nodes.push({
+        kind: "text",
+        x: xs[c] - 40,
+        y: titleH,
+        w: 80,
+        h: headerH,
+        text: cat,
+        fontSize: fs,
+        bold: true,
+        color: style.text,
+        align: "center",
+        valign: "middle",
+        name: `period-${c}`,
+      });
     });
-  });
 
   data.series.forEach((s, si) => {
     const color = seriesColor(style, si, s.color);
@@ -849,11 +884,14 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): L
       nodes.push({
         kind: "text",
         x: 0,
-        y: y - fs * 0.75,
-        w: nameW - fs * 0.5,
+        // Clamped into the canvas: the label is centred on its line's rank, and
+        // the top rank sits at the plot's own top edge, so `- fs * 0.75` put it
+        // above the chart at a large font.
+        y: Math.max(0, Math.min(y - fs * 0.75, cfg.height - fs * 1.5)),
+        w: nameRoom,
         h: fs * 1.5,
-        text: s.name,
-        fontSize: fs,
+        text: clipToWidth(s.name, nameFs, nameRoom),
+        fontSize: nameFs,
         bold: true,
         color,
         align: "right",
@@ -866,11 +904,14 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): L
       nodes.push({
         kind: "text",
         x: plot.x + plot.w + fs * 0.5,
-        y: y - fs * 0.75,
-        w: nameW - fs * 0.5,
+        // Clamped into the canvas: the label is centred on its line's rank, and
+        // the top rank sits at the plot's own top edge, so `- fs * 0.75` put it
+        // above the chart at a large font.
+        y: Math.max(0, Math.min(y - fs * 0.75, cfg.height - fs * 1.5)),
+        w: nameRoom,
         h: fs * 1.5,
-        text: s.name,
-        fontSize: fs,
+        text: clipToWidth(s.name, nameFs, nameRoom),
+        fontSize: nameFs,
         bold: true,
         color,
         align: "left",

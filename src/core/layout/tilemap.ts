@@ -1,5 +1,6 @@
 import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
+import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat } from "../format";
 import { maxOf, minOf } from "../agg";
 import { lerpColor, noDataFill, sequentialScale } from "../color";
@@ -139,8 +140,15 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   const tile = Math.max(1, want);
   const gridW = (hex ? cols + 0.5 : cols) * tile + (cols - 1) * gutter;
   const x0 = (cfg.width - gridW) / 2;
-  const y0 = titleH + 2;
-  const rowsBottom = hex ? y0 + (rows - 1) * tile * 0.87 + tile : y0 + rows * (tile + gutter);
+  // The grid's own height, and a top edge that keeps it on the canvas. The tile
+  // floor above is deliberately allowed to overrun the height budget, and on a
+  // frame whose title and legend leave nothing it overran the CANVAS too: the
+  // bottom row was drawn up to 24.7pt below the foot of a 300x60 chart. Pushed
+  // up rather than shrunk further — the same call the comment above makes, since
+  // a tile over the title is still a tile and one off the chart is not there.
+  const gridH = hex ? (rows - 1) * tile * 0.87 + tile : rows * (tile + gutter);
+  const y0 = Math.max(0, Math.min(titleH + 2, cfg.height - gridH));
+  const rowsBottom = y0 + gridH;
   /**
    * Where the legend hangs from. Normally the bottom of the grid — but the tile
    * floor above is explicitly allowed to overrun `availH`, and when it does the
@@ -364,6 +372,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         },
       );
     if (values.size < Object.keys(layout).length) {
+      const noDataW = Math.min(fs * 6, Math.max(1, cfg.width - (x0 + lw + fs * 2.1) - 2));
       nodes.push(
         {
           kind: "rect",
@@ -378,9 +387,14 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           kind: "text",
           x: x0 + lw + fs * 2.1,
           y: ly - fs * 0.2,
-          w: fs * 6,
+          // Bounded by the room actually left to the right of the swatch. The
+          // flat `fs * 6` is 192 points wide at a 32pt font and starts 67 points
+          // in, so on a narrow chart the caption ran 37pt off the right edge.
+          // Last resort in both directions: where the flat box fits it is still
+          // the flat box, so no chart of an ordinary size moves.
+          w: noDataW,
           h: fs * 1.3,
-          text: "no data",
+          text: clipToWidth("no data", fs * 0.85, noDataW),
           fontSize: fs * 0.85,
           color: style.mutedText,
           align: "left",

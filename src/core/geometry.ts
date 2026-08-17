@@ -17,6 +17,42 @@ export function polar(cx: number, cy: number, r: number, angleDeg: number): { x:
 }
 
 /**
+ * Whether the triangle an `ArrowheadNode` draws lands entirely inside a canvas.
+ *
+ * The three vertices the SVG renderer uses — tip at (x, y), two corners
+ * `1.8 * size` back and `0.7 * size` to each side, rotated by `angle`. The
+ * PowerPoint sinks draw a slightly broader native preset in a `2 * size` box, so
+ * this is the reference shape rather than the widest one; the difference is
+ * declared in the parity contract at the top of `src/core/scene.ts`.
+ *
+ * Callers use it to decide whether to draw the glyph at all. Written here beside
+ * `arrowheadBox` so the two agree about what an arrowhead's geometry is, rather
+ * than each layout re-deriving it — the mistake this engine has made with a
+ * shared predicate more than once.
+ */
+export function arrowheadFits(
+  x: number,
+  y: number,
+  size: number,
+  angle: number,
+  canvasW: number,
+  canvasH: number,
+): boolean {
+  const rad = (angle * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return [
+    [0, 0],
+    [-1.8 * size, -0.7 * size],
+    [-1.8 * size, 0.7 * size],
+  ].every(([px, py]) => {
+    const vx = x + px * c - py * s;
+    const vy = y + px * s + py * c;
+    return vx >= 0 && vy >= 0 && vx <= canvasW && vy <= canvasH;
+  });
+}
+
+/**
  * Placement of an arrowhead drawn as a rotated geometric triangle whose tip
  * must land on the scene point (x, y). Office.js and PptxgenJS have no freeform
  * tip anchor, so each drops a `size*2`-square triangle (whose tip sits at the
