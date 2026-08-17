@@ -391,13 +391,48 @@ export function parseDateToken(raw: string): number | null {
       return Math.floor(Date.UTC(yy < 30 ? 2000 + yy : 1900 + yy, m, 1) / DAY_MS);
     }
   }
+  /**
+   * An ISO token — a bare date, or a date-time with any zone or none — read for
+   * the CALENDAR DATE it names, rather than handed to `Date.parse`.
+   *
+   * `Date.parse` reads a bare ISO date as UTC and an offset-less ISO date-TIME
+   * as LOCAL, which is the one inconsistency this parser was still passing
+   * through. So `2026-01-15T20:00` became 2026-01-16T01:00Z for a reader in New
+   * York and `2026-01-15T02:00` became 2026-01-14T17:00Z for one in Tokyo — and
+   * the day check below then compared the 15 the token NAMES against the 16 or
+   * the 14 the instant landed on, decided the day did not exist, and returned
+   * null. The cell was not merely shifted: it silently stopped being a date,
+   * taking its Gantt row or its category spacing with it, and WHICH cells did
+   * that depended on the reader's timezone and the time of day in the cell. A
+   * pasted export carrying local timestamps is the ordinary way in.
+   *
+   * An explicit offset had the same ending by a different route: a legal
+   * `2026-01-15T20:00-05:00` is 16 January in UTC, so the day check refused it
+   * in every timezone on earth.
+   *
+   * The date a cell NAMES is the answer to both, and it is the honest one: this
+   * function returns whole days, a plan written as "15 Jan, 20:00" means the
+   * 15th to whoever wrote it, and the same config has to render the same chart
+   * on every machine. The time of day was already discarded by the floor at the
+   * end; only the day it was allowed to move was ever in question.
+   */
+  const iso = /^(\d{4})-(\d{2})(?:-(\d{2}))?(?:[T ][\d:.]+(?:[Zz]|[+-]\d{2}:?\d{2})?)?$/.exec(t);
+  // A month outside 1..12 is not a date, and `Date.UTC` normalises rather than
+  // refuses — so `2026-13-01` becomes 1 January 2027 and `15.13.2026` becomes
+  // 15 January 2027: a year out, silently, on a Gantt row. This is the month's
+  // half of the day-existence rule below, which has always refused `Apr 31`;
+  // the dotted form has been able to roll a year since it was written, and
+  // reading the ISO form ourselves would newly let it do the same (`Date.parse`
+  // simply returns NaN for a 13th month).
+  const month = dmy ? Number(dmy[2]) : iso ? Number(iso[2]) : null;
+  if (month != null && (month < 1 || month > 12)) return null;
   const ms = dmy
     ? Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]))
-    : // An ISO token (bare date OR a full date-time with T/offset) parses as-is;
-      // appending " UTC" to a date-time made Date.parse return NaN, so every task
-      // in a pasted ISO-8601 export was silently dropped. Other shapes ("Jan 2026")
-      // still need the UTC anchor to avoid local-timezone drift.
-      Date.parse(/^\d{4}-\d{2}(-\d{2})?([T ][\d:.]+([Zz]|[+-]\d{2}:?\d{2})?)?$/.test(t) ? t : `${t} UTC`);
+    : iso
+      ? Date.UTC(Number(iso[1]), Number(iso[2]) - 1, iso[3] ? Number(iso[3]) : 1)
+      : // Everything else ("Jan 2026", "Mon 5 Jan") still needs the UTC anchor
+        // to avoid the same local-timezone drift.
+        Date.parse(`${t} UTC`);
   if (!Number.isFinite(ms)) return null;
   // A day that does not EXIST in its month is not a date, and until now it
   // silently became one in the next month.
