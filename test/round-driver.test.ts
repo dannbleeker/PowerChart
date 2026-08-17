@@ -38,6 +38,7 @@ const {
   outcomeReceipt,
   RECOVERABLE_STOPS,
   selectDeck,
+  sideloadAddIn,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -164,6 +165,93 @@ describe("talking to the browser at all", () => {
     expect(selectDeck(shWith('0: https://x/ "Presentation64"'), "Presentation66")).toBe(false);
     // No deck asked for is the behaviour this has always had.
     expect(selectDeck(shWith(""), null)).toBe(true);
+  });
+
+  /**
+   * Putting the add-in back after a browser death took the sideload with it.
+   *
+   * Ten steps of Office ribbon automation, which will break the day Microsoft
+   * moves a control. What these hold is not the walk but the two things that
+   * decide whether a breakage is survivable: it must never leave a dialog over
+   * the document, and it must never claim success it did not verify.
+   */
+  describe("putting the add-in back", () => {
+    /** A fake `sh` whose answers are keyed by the query it is given. */
+    const shWith = (answers: Record<string, string>, missing: string[] = []) => {
+      const calls: string[][] = [];
+      const sh = ((...args: string[]) => {
+        calls.push(args);
+        const q = args[1] ?? "";
+        // EXACT, not substring. `"Manage My Add-ins".includes("Add-ins")` is
+        // true, so a loose match hands three different queries the same answer
+        // and the walk "passes" having clicked the wrong control twice.
+        if (missing.includes(q)) return "";
+        return answers[q] ?? "";
+      }) as never as { (...a: string[]): string; calls: string[][] };
+      sh.calls = calls;
+      return sh;
+    };
+    // Every control the walk needs, each answering with a ref line `refFor` parses.
+    const ALL: Record<string, string> = {
+      "Slide List": 'listbox "Slide List" [ref=r1]',
+      "Add-ins": 'button "Add-ins" [ref=r2]',
+      "See all": 'menuitem "See all installed add-ins" [ref=r3]',
+      "More Add-ins": 'menuitem "More Add-ins" [ref=r4]',
+      "MY ADD-INS": 'tab "MY ADD-INS" [ref=r5]',
+      "Manage My Add-ins": 'button "Manage My Add-ins" [ref=r6]',
+      "Upload My Add-in": 'menuitem "Upload My Add-in" [ref=r7]',
+      Browse: 'button "Browse..." [ref=r8]',
+      Upload: 'button "Upload" [ref=r9]',
+      "Insert chart": 'button "Insert chart" [ref=r10]',
+    };
+    const now = () => Promise.resolve();
+
+    it("walks the whole flow and uploads the PROD manifest", async () => {
+      const sh = shWith(ALL);
+      expect(await sideloadAddIn(sh, now, "C:/x/manifest-prod.xml")).toBe(true);
+      const uploaded = sh.calls.find((c) => c[0] === "upload");
+      expect(uploaded?.[1], "sideloaded the dev manifest").toMatch(/manifest-prod\.xml$/);
+      // The document must be focused FIRST — the ribbon ignores clicks until it
+      // is, which cost three failed attempts to discover and reports itself as
+      // `aria-expanded=true` over a menu that is plainly shut.
+      const firstClick = sh.calls.findIndex((c) => c[0] === "eval");
+      const listLookup = sh.calls.findIndex((c) => (c[1] ?? "").includes("Slide List"));
+      expect(listLookup).toBeLessThan(firstClick);
+    });
+
+    it("never leaves a dialog over the document when a step is missing", async () => {
+      // THE RISK THAT MATTERS MOST. A half-walked dialog is invisible to
+      // `readiness` and fatal to every round after it — the deck reads fine and
+      // nothing can be clicked.
+      for (const step of ["More Add-ins", "Upload My Add-in", "Insert chart"]) {
+        // Cancel has to be FINDABLE, or this asserts nothing: looking for a
+        // dismiss control and clicking one are different acts, and the first
+        // version of this test checked only that the lookup happened — it
+        // passed with the clicks deleted.
+        const sh = shWith({ ...ALL, Cancel: 'button "Cancel" [ref=rcancel]' }, [step]);
+        expect(await sideloadAddIn(sh, now, "C:/x/m.xml"), `${step} should have failed`).toBe(false);
+        const clickedCancel = sh.calls.some((c) => c[0] === "eval" && c[2] === "rcancel");
+        expect(clickedCancel, `left a dialog open after failing at ${step}`).toBe(true);
+      }
+    });
+
+    it("will not call it done when the host never accepted the manifest", async () => {
+      // The Upload button is disabled until a file is accepted, so its enabled
+      // state is the host's own receipt — better evidence than the upload call
+      // not throwing.
+      const sh = shWith({ ...ALL, Upload: 'button "Upload" [disabled] [ref=r9]' });
+      expect(await sideloadAddIn(sh, now, "C:/x/m.xml")).toBe(false);
+    });
+
+    it("refuses to walk a document that is not up", async () => {
+      // Ten ribbon steps against a loading tab would leave a dialog on it.
+      const sh = shWith(ALL, ["Slide List"]);
+      expect(await sideloadAddIn(sh, now, "C:/x/m.xml")).toBe(false);
+      expect(
+        sh.calls.some((c) => (c[1] ?? "").includes("Add-ins")),
+        "started clicking anyway",
+      ).toBe(false);
+    });
   });
 
   it("stops on the first attempt when the document has no add-in to open", () => {
