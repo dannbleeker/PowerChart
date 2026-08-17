@@ -8,6 +8,9 @@ import { DEFAULT_STYLE, PALETTE } from "./style";
 
 const S = DEFAULT_STYLE;
 
+/** The smallest a table cell is drawn at before its text is ellipsized instead. */
+const MIN_TABLE_FS = 6;
+
 /**
  * Shorten `text` with an ellipsis until it fits `maxW`. Neither PowerPoint
  * renderer wraps or clips a text box (wrap/wordWrap are off), so a label wider
@@ -15,8 +18,14 @@ const S = DEFAULT_STYLE;
  * shrinking the font has hit its floor. Shared with the agenda slide.
  */
 export function clipToWidth(text: string, fs: number, maxW: number, bold = false): string {
-  if (textWidth(text, fs, bold) <= maxW) return text;
-  let t = text;
+  // Coerced for the reason `textWidth` gives just below it: the type says
+  // `string` and the value came out of a file someone pasted. A NUMBER made
+  // this quietly stop clipping — `(2024).length` is `undefined`, `undefined > 0`
+  // is false, so the walk never ran and the function returned its input with an
+  // ellipsis STUCK ON THE END, wider than what it was asked to fit. A KPI tile's
+  // value and a table cell are both routinely numeric.
+  let t = String(text ?? "");
+  if (textWidth(t, fs, bold) <= maxW) return t;
   while (t.length > 0 && textWidth(`${t}…`, fs, bold) > maxW) t = t.slice(0, -1);
   return t ? `${t}…` : "";
 }
@@ -213,7 +222,7 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
       y,
       w: width - pad * 2,
       h: labelFs * 1.3,
-      text: opts.label,
+      text: clipToWidth(opts.label, labelFs, width - pad * 2),
       fontSize: labelFs,
       color: S.mutedText,
       align: "left",
@@ -228,7 +237,12 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
     y,
     w: width - pad * 2,
     h: valueFs * 1.25,
-    text: opts.value,
+    // Shrunk above, then ellipsized here: the shrink stops at 11pt, because a
+    // KPI number smaller than that is not the thing this tile exists to show —
+    // so a long value ran straight off the tile and over whatever sat beside it
+    // on the slide (47pt past a 160pt tile), neither renderer clipping a text
+    // box. Same shrink-then-clip order as the process flow and the table.
+    text: clipToWidth(opts.value, valueFs, width - pad * 2, true),
     fontSize: valueFs,
     bold: true,
     color: S.text,
@@ -263,7 +277,7 @@ export function buildKpiTile(opts: KpiTileOptions, width = 160, height = 90): Sc
       y: dy - labelFs * 0.75,
       w: width - dx - pad,
       h: labelFs * 1.5,
-      text,
+      text: clipToWidth(text, labelFs, width - dx - pad, true),
       fontSize: labelFs,
       bold: true,
       color: deltaColor,
@@ -404,14 +418,48 @@ export function buildTableScene(cellsIn: string[][], width = 480, opts: TableOpt
   // the PowerPoint renderers). Nothing to draw.
   if (rows === 0) return { width, height: 0, nodes: [] };
   const cols = Math.max(1, ...cells.map((r) => r.length));
-  const fs = 10;
+  const parsed = cells.map((row) => row.map((c) => parseCell(c)));
+  const colWidths = (f: number) =>
+    Array.from({ length: cols }, (_, c) =>
+      Math.max(f * 3, ...parsed.map((r) => textWidth(r[c]?.text ?? "", f) + effectW(r[c] ?? { text: "" }, f) + 12)),
+    );
+  /**
+   * The font every cell is drawn at, shrunk until the row of them fits.
+   *
+   * Column widths are proportional to their longest content and then SCALED to
+   * the table's width, so a table whose content is wider than it is gets every
+   * column squeezed while the text in them stayed at 10pt: the cells ran into
+   * each other and the last one ran off the end — 685pt past a 480pt table for
+   * one long sentence, drawn over whatever sits beside it on the slide, because
+   * neither PowerPoint renderer clips a text box.
+   *
+   * Shrinking is the remedy that fits this layout rather than a generic one:
+   * the widths are computed FROM the font, so a smaller font narrows the text
+   * without narrowing the column it sits in. Bold costs more than regular, and
+   * the header and total rows are bold, so the fit asks at the weight each cell
+   * is actually drawn at.
+   *
+   * Floored at MIN_TABLE_FS and then ellipsized, which is the order every fit in
+   * this engine uses — shrink while shrinking still buys readable text, clip
+   * what is left. A table that already fits never enters the loop and is
+   * byte-identical.
+   */
+  const fits = (f: number): boolean => {
+    const ws = colWidths(f);
+    const sc = width / (ws.reduce((a, b) => a + b, 0) || 1);
+    return parsed.every((row, ri) =>
+      row.every((cell, c) => {
+        const bold = ri === 0 || (!!opts.totalRow && ri === rows - 1);
+        return textWidth(cell.text, f, bold) + effectW(cell, f) <= ws[c] * sc - 10;
+      }),
+    );
+  };
+  let fs = 10;
+  while (fs > MIN_TABLE_FS && !fits(fs)) fs -= 0.5;
   const rowH = fs * 2.1;
   const gapH = rowH * 0.4;
-  const parsed = cells.map((row) => row.map((c) => parseCell(c)));
   // Column widths proportional to their longest content (incl. effect glyphs).
-  const widths = Array.from({ length: cols }, (_, c) =>
-    Math.max(fs * 3, ...parsed.map((r) => textWidth(r[c]?.text ?? "", fs) + effectW(r[c] ?? { text: "" }, fs) + 12)),
-  );
+  const widths = colWidths(fs);
   const totalW = widths.reduce((a, b) => a + b, 0) || 1;
   const scale = width / totalW;
   const rules = styleMode === "rules";
@@ -469,7 +517,7 @@ export function buildTableScene(cellsIn: string[][], width = 480, opts: TableOpt
         y,
         w: w - 10 - ew,
         h: rowH,
-        text: cell.text,
+        text: clipToWidth(cell.text, fs, w - 10 - ew, bold),
         fontSize: fs,
         bold,
         color: cell.color ?? (!rules && header ? contrastInk(fill) : S.text),

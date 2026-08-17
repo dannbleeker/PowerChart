@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildKpiTile, buildProcessFlow, buildTableScene } from "../src/core/elements";
+import { buildKpiTile, buildProcessFlow, buildTableScene, clipToWidth } from "../src/core/elements";
 import { textWidth } from "../src/core/scene";
 import type { ArrowheadNode, Scene, TextNode } from "../src/core/scene";
 
@@ -172,5 +172,116 @@ describe("elements survive the JSON they are actually handed", () => {
     expect(textWidth(2024 as unknown as string, 10)).toBe(textWidth("2024", 10));
     expect(textWidth(null as unknown as string, 10)).toBe(0);
     expect(textWidth(undefined as unknown as string, 10)).toBe(0);
+  });
+});
+
+/**
+ * The two element builders whose text was never fitted to the box it is in.
+ *
+ * Every chart label in the engine is fitted to the mark it sits on, and neither
+ * PowerPoint renderer wraps or clips a text box — so anything wider than its
+ * shape is drawn straight over whatever sits beside the element on the slide.
+ * These two are public API (`src/index.ts`, and the skill's own element
+ * helpers), and both drew past their own frame:
+ *
+ * - `buildKpiTile` shrinks its big number, but stops at 11pt because a KPI
+ *   number below that is not the thing a tile exists to show. Past the floor it
+ *   simply overflowed — 47.8pt beyond a 160pt tile. Its label and its delta
+ *   were never fitted at all.
+ * - `buildTableScene` sizes columns in proportion to their content and then
+ *   SCALES them to the table's width, while the text in them stayed at 10pt. A
+ *   table whose content is wider than it is therefore ran its cells into each
+ *   other and its last cell 685pt off the end of a 480pt table.
+ */
+describe("element text stays inside the element", () => {
+  const ink = (t: TextNode) => {
+    const w = textWidth(t.text, t.fontSize, t.bold);
+    const x = t.align === "right" ? t.x + t.w - w : t.align === "center" ? t.x + (t.w - w) / 2 : t.x;
+    return { x0: x, x1: x + w };
+  };
+  const worstOverflow = (s: Scene) =>
+    Math.max(
+      0,
+      ...s.nodes
+        .filter((n): n is TextNode => n.kind === "text")
+        .map((t) => Math.max(-ink(t).x0, ink(t).x1 - s.width)),
+    );
+
+  it("keeps a KPI tile's value, label and delta on the tile", () => {
+    for (const opts of [
+      { value: "a really long value string here", label: "and a long label to go over it too" },
+      { value: "1,234,567,890.12", label: "Revenue, trailing twelve months, all regions", delta: "+123.4% YoY vs plan" },
+      { value: "€1.2bn", delta: "▲ +12.3 percentage points against a very long plan name" },
+    ]) {
+      const tile = buildKpiTile(opts as never);
+      expect(worstOverflow(tile), `${opts.value} overflowed its tile`).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it("keeps every table cell inside the table", () => {
+    for (const [cells, width] of [
+      [[["A sentence long enough that it cannot possibly fit in one column", "b"]], 480],
+      [
+        [
+          ["Region", "Commentary"],
+          ["North America", "Growth held up through the quarter despite the pricing change"],
+          ["Europe", "Soft, with the promotional calendar pulled forward into March"],
+        ],
+        480,
+      ],
+      [[["x".repeat(200), "y"]], 200],
+    ] as [string[][], number][]) {
+      const table = buildTableScene(cells, width);
+      expect(worstOverflow(table), "a cell ran off the table").toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it("does not let two cells' text run into each other", () => {
+    // Narrow enough that the columns are squeezed — the case where the text
+    // stayed at 10pt while its column did not.
+    const table = buildTableScene(
+      [
+        ["Region", "Commentary", "Value"],
+        ["North America", "Growth held up through the quarter despite the pricing change", "1,204"],
+      ],
+      200,
+    );
+    const row = table.nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("cell-text-1-"));
+    expect(row.length).toBe(3);
+    const boxes = row.map(ink).sort((a, b) => a.x0 - b.x0);
+    for (let i = 1; i < boxes.length; i++)
+      expect(boxes[i].x0, "two cells' text overlap").toBeGreaterThanOrEqual(boxes[i - 1].x1 - 0.5);
+  });
+
+  it("leaves an element that already fits exactly where it was", () => {
+    // The negative control. Neither fix may touch content with room to spare.
+    const tile = buildKpiTile({ value: "42", label: "Revenue", delta: "+3%" } as never);
+    expect((node(tile, "kpi-value") as TextNode).text).toBe("42");
+    expect((node(tile, "kpi-label") as TextNode).text).toBe("Revenue");
+    const table = buildTableScene(
+      [
+        ["Region", "Q1 revenue", "YoY"],
+        ["North America", "1,204", "+12%"],
+      ],
+      480,
+    );
+    expect(table.nodes.filter((n): n is TextNode => n.kind === "text").map((t) => t.text)).toEqual([
+      "Region",
+      "Q1 revenue",
+      "YoY",
+      "North America",
+      "1,204",
+      "+12%",
+    ]);
+    expect(table.height).toBe(42);
+  });
+
+  it("clips a numeric value instead of adding an ellipsis to it", () => {
+    // `clipToWidth` walked with `t.length`, which is `undefined` on a number —
+    // so the walk never ran and it returned its input with an ellipsis stuck on
+    // the end, WIDER than the box it was asked to fit.
+    const clipped = clipToWidth(123456789012345 as unknown as string, 10, 20);
+    expect(textWidth(clipped, 10)).toBeLessThanOrEqual(20);
+    expect(clipToWidth(null as unknown as string, 10, 20)).toBe("");
   });
 });
