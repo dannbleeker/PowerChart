@@ -943,13 +943,26 @@ function reportUpdateShortfalls(logs) {
   console.log(`
   WHAT AN UPDATE LEFT ON THE SLIDE — pooled over ${logs.length} round(s)`);
   console.log(
-    `    ${o.updates} in-place update(s) measured across ${o.rounds} round(s); ${o.blind} touched only charts
+    `    ${o.updates} in-place update(s) measured across ${o.rounds} round(s); ${o.blind} touched a chart
 ` +
-      `    with NO parts list, which is the state a refused \`reading back an ungrouped chart's
+      `    AT RISK — ungrouped and with no parts list, which is what a refused \`reading back
 ` +
-      `    shape ids\` leaves behind.`,
+      `    an ungrouped chart's shape ids\` leaves behind. Only those can strand anything.`,
   );
-  const usable = o.updates - o.unitMismatch;
+  // THE INSTRUMENT'S OWN ERROR RATE, which is a number worth printing: this
+  // reading has produced four false positives in two days, every one of them a
+  // host lag the deck later contradicted.
+  if (o.deckContradicted)
+    console.log(
+      `    ${o.deckContradicted} reading(s) DISCARDED because the deck disagreed — they claimed more shapes
+` +
+        `    on a slide than it finished the round holding, which a round that only adds
+` +
+        `    cannot do. Host lag outlasting the settle delay; two agreeing reads inside one
+` +
+        `    lag window agree on the stale number.`,
+    );
+  const usable = o.updates - o.unitMismatch - o.deckContradicted;
   if (usable > 0) {
     console.log(`    the slide GREW by ${String(o.blindGrowth).padStart(5)} shape(s), worst single update ${o.worst}`);
     console.log(`    on charts that HAD a list ${String(o.sightedGrowth).padStart(4)} — an ordinary change of size`);
@@ -1693,10 +1706,27 @@ export function poolUpdateShortfalls(logs) {
     unitMismatch: 0,
     ungroupedCharts: 0,
     atRisk: 0,
+    deckContradicted: 0,
   };
   for (const log of logs) {
     const entries = log?.trace?.entries;
     if (!Array.isArray(entries)) continue;
+    // THE DECK IS THE ONE SOURCE THAT HAS NEVER BEEN WRONG HERE. It is taken at
+    // the end of the round, long after any host lag has settled, and it has
+    // caught three phantom readings running — the 084 investigation and both of
+    // round 086's.
+    //
+    // A round only ADDS shapes to the slides it keeps, so a reading claiming
+    // MORE shapes than the slide finished with is claiming shapes that never
+    // existed. Round 086 read `after: 24` on a slide the inventory then showed
+    // holding 1, and both of its host reads agreed on the 24 — the lag outlasted
+    // the settle delay, so `settled` was true and wrong.
+    const finalCount = new Map();
+    for (const s of log?.deck?.inventory ?? []) {
+      const id = s.slideId ?? s.id;
+      const n = s.count ?? s.shapes?.length;
+      if (id && typeof n === "number") finalCount.set(id, n);
+    }
     // WHETHER THE QUESTION COULD BE PUT AT ALL. Stranding is only possible for
     // an UNGROUPED chart — a group is deleted whole, so there is nothing left
     // behind. A round that grouped everything cannot answer this either way, and
@@ -1707,8 +1737,12 @@ export function poolUpdateShortfalls(logs) {
     for (const e of entries) {
       if (!/^shapes left on the slide/.test(String(e.message))) continue;
       const d = e.data ?? {};
-      const charts = Number(d.charts) || 0;
-      const withParts = Number(d.withParts) || 0;
+      // `charts` and `withParts` are no longer read here. They said how many
+      // charts an update touched and how many carried a parts list, and this
+      // pool used the second as a stand-in for "could strand something" — which
+      // round 086 disproved, because a grouped chart has no parts list either.
+      // `atRisk` names the population directly. Both fields stay in the trace:
+      // they are still worth having when reading a line by hand.
       seen = true;
       out.updates++;
       // ROUND 082 AND EARLIER SPOKE A DIFFERENT LANGUAGE. Those entries carry
@@ -1725,12 +1759,28 @@ export function poolUpdateShortfalls(logs) {
         out.unitMismatch++;
         continue;
       }
-      out.atRisk += Number(d.atRisk) || 0;
+      // Checked BEFORE the reading is pooled, and counted rather than dropped
+      // silently: an instrument's own error rate is a number worth reporting,
+      // and this one has had four false readings in two days.
+      const ended = finalCount.get(d.slideId);
+      if (typeof ended === "number" && Number(d.after) > ended) {
+        out.deckContradicted++;
+        continue;
+      }
+      const atRisk = Number(d.atRisk) || 0;
+      out.atRisk += atRisk;
       const growth = Number(d.growth) || 0;
-      // A slide where NO chart in the update carried a parts list. Mixed slides
-      // count as sighted: their growth cannot be attributed to either kind, and
-      // claiming it would be the over-count this split exists to avoid.
-      if (charts > 0 && withParts === 0) {
+      // AT RISK, not merely list-less. This bucketed on `withParts === 0`, and a
+      // GROUPED chart has no parts list either — so every grouped chart landed
+      // in the stranding column, where by construction it cannot belong: a group
+      // is deleted whole and leaves nothing behind. Round 086 put a growth of 23
+      // there from a chart whose own line said `atRisk: 0`.
+      //
+      // `atRisk` is the population the question is about: ungrouped AND with no
+      // parts list, read from the host's own shape type. Growth anywhere else is
+      // an ordinary change of size or an instrument artifact, and either way it
+      // is not stranding.
+      if (atRisk > 0) {
         out.blind++;
         out.blindGrowth += growth;
         out.worst = Math.max(out.worst, growth);

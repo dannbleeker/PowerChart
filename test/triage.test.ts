@@ -1304,20 +1304,31 @@ describe("how much of a round the grouping comparison can see", () => {
  * The pooled reading for the last `GetItem(id)` refusal still firing.
  */
 describe("what an update left on the slide, pooled", () => {
-  const slide = (over: Record<string, number>) => ({
+  const slide = (over: Record<string, number | string>) => ({
     scope: "update",
     message: "shapes left on the slide after an in-place update",
-    data: { growth: 0, settled: true, charts: 1, withParts: 1, ...over },
+    // `slideId` and `after` are what the deck cross-check reads. `after: 1` is
+    // consistent with any slide that finished holding at least one shape, so a
+    // fixture that does not care about the deck is unaffected by it.
+    data: { slideId: "s1", before: 1, after: 1, growth: 0, settled: true, charts: 1, withParts: 1, ...over },
   });
   const round = (...entries: ReturnType<typeof slide>[]) => ({ trace: { entries } });
 
-  it("keeps a chart with no parts list apart from one that merely grew", () => {
-    // THE ONLY DISTINCTION THIS EXISTS TO DRAW. A shortfall on a chart that had
-    // its parts list is an ordinary change of size; one on a chart without it is
+  it("keeps a chart AT RISK apart from one that merely grew", () => {
+    // THE ONLY DISTINCTION THIS EXISTS TO DRAW. Growth on a chart that could not
+    // strand anything is an ordinary change of size; growth on one that could is
     // the stranding. Pooled together they are indistinguishable and the reading
     // says nothing.
+    //
+    // This fixture used `withParts: 0` as a stand-in for "at risk", which is
+    // what the pool itself did until round 086 showed the two are not the same:
+    // a GROUPED chart has no parts list either, and cannot strand. Both the
+    // fixture and the pool now name the population directly.
     const o = poolUpdateShortfalls([
-      round(slide({ growth: 12, charts: 1, withParts: 0 }), slide({ growth: 4, charts: 1, withParts: 1 })),
+      round(
+        slide({ growth: 12, charts: 1, withParts: 0, atRisk: 1 }),
+        slide({ growth: 4, charts: 1, withParts: 1, atRisk: 0 }),
+      ),
     ]);
     expect(o.blind).toBe(1);
     expect(o.blindGrowth).toBe(12);
@@ -1325,6 +1336,55 @@ describe("what an update left on the slide, pooled", () => {
     expect(o.worst).toBe(12);
     expect(o.updates).toBe(2);
     expect(o.rounds).toBe(1);
+  });
+
+  it("does not count a GROUPED chart's growth as stranding", () => {
+    // THE BUCKET WAS KEYED ON THE WRONG FIELD. It split on `withParts === 0`,
+    // and a grouped chart has no parts list either — so every grouped chart
+    // landed in the stranding column, where by construction it cannot belong: a
+    // group is deleted whole and leaves nothing behind.
+    //
+    // Round 086 put a growth of 23 there from a chart whose own line read
+    // `atRisk: 0`. `atRisk` is the population the question is about.
+    const o = poolUpdateShortfalls([
+      round(
+        slide({ growth: 23, charts: 1, withParts: 0, atRisk: 0 }),
+        slide({ growth: 0, charts: 1, withParts: 0, atRisk: 1 }),
+      ),
+    ]);
+    expect(o.blind, "counted a chart that cannot strand anything").toBe(1);
+    expect(o.blindGrowth, "credited a grouped chart's growth to stranding").toBe(0);
+    expect(o.sightedGrowth).toBe(23);
+  });
+
+  it("discards a reading the deck contradicts, and says how many", () => {
+    // A round only ADDS shapes to slides it keeps, so a reading claiming more
+    // shapes than the slide finished with is claiming shapes that never existed.
+    // Round 086 read `after: 24` on a slide the inventory showed holding 1 —
+    // and BOTH host reads agreed on the 24, so `settled` was true and wrong.
+    // The lag outlasted the settle delay; two reads inside one lag window agree
+    // on the stale number.
+    const log = {
+      trace: { entries: [slide({ growth: 23, after: 24, atRisk: 1, charts: 1, withParts: 0 })] },
+      deck: { inventory: [{ slideId: "s1", count: 1 }] },
+    };
+    const o = poolUpdateShortfalls([log]);
+    expect(o.deckContradicted).toBe(1);
+    expect(o.blindGrowth, "pooled a reading the deck had already disproved").toBe(0);
+    expect(o.atRisk, "counted an at-risk chart from a discarded reading").toBe(0);
+  });
+
+  it("keeps a reading the deck is consistent with", () => {
+    // The slide gained more charts later in the round, so the final count is
+    // HIGHER than this reading's `after`. That is the ordinary case and must not
+    // be mistaken for a contradiction.
+    const log = {
+      trace: { entries: [slide({ growth: 0, atRisk: 1, charts: 1, withParts: 0 })] },
+      deck: { inventory: [{ slideId: "s1", count: 9 }] },
+    };
+    const o = poolUpdateShortfalls([log]);
+    expect(o.deckContradicted).toBe(0);
+    expect(o.atRisk).toBe(1);
   });
 
   it("will not attribute a mixed slide's shortfall to the blind charts on it", () => {
