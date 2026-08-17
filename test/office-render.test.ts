@@ -50,6 +50,7 @@ import {
   isStopped,
   slideSize,
   _resetSlideSizeCache,
+  _setReReadRetryDelayForTest,
 } from "../src/render/powerpoint";
 
 /**
@@ -1486,6 +1487,50 @@ describe("updateChartInSlide", () => {
         expect(d.removedCalls, "a group goes in one delete").toBe(1);
       } finally {
         setTracing(false);
+      }
+    });
+
+    it("refuses to report growth the host has not settled on", async () => {
+      // ROUND 084, AND THE ONLY NON-ZERO NUMBER THIS INSTRUMENT HAS EVER
+      // PRODUCED. Four slides reported growing by 23 shapes each. The deck
+      // inventory taken at the end of that same round showed each of them
+      // holding ONE shape named `PowerChart` — a group. Every one had logged
+      // `grouped the chart's shapes {partial:0}` 1.3 seconds earlier, from a
+      // sync that had already resolved.
+      //
+      // The count was exactly `drewInner`, and 24 rather than 25: the host had
+      // caught up with the delete and all three draw batches, and not with the
+      // addGroup. A single read inside that window invents a chart-sized leak.
+      //
+      // A phantom is worse than a gap. The whole point of the reading is to say
+      // whether an update strands shapes, and a false positive sends someone
+      // hunting a bug that is not there.
+      const slide = makeSlide("s1");
+      installHost([slide]);
+      const scene = buildChart(config);
+      await insertSceneIntoSlide(scene, { tagData: "cfg" });
+      const found = (await listChartsInDeck()).charts;
+      _setReReadRetryDelayForTest(1);
+      setTracing(true);
+      try {
+        // Three counts happen for one slide: the before-reading, then the
+        // after-reading twice. Lagging the first TWO leaves the two
+        // after-reads disagreeing, which is the round-084 shape — the earlier
+        // one answering as though the group were still loose shapes.
+        faults.shapeCountLag = 2;
+        faults.shapeCountLagBy = 23;
+        await updateChartsInSlides([{ scene, target: found[0].target, opts: { tagData: "cfg" } }]);
+        const line = orphanLine();
+        expect(line, "reported a number the two reads never agreed on").toBeFalsy();
+        // And it must SAY it could not measure, or a dropped reading is
+        // indistinguishable from a round that never ran an update.
+        const unsettled = traceLog().entries.find((e) => /would not settle/.test(e.message));
+        expect(unsettled, "dropped the reading silently").toBeTruthy();
+      } finally {
+        setTracing(false);
+        faults.shapeCountLag = 0;
+        faults.shapeCountLagBy = 0;
+        _setReReadRetryDelayForTest(1500);
       }
     });
 

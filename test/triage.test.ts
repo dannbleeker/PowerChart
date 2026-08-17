@@ -1307,7 +1307,7 @@ describe("what an update left on the slide, pooled", () => {
   const slide = (over: Record<string, number>) => ({
     scope: "update",
     message: "shapes left on the slide after an in-place update",
-    data: { growth: 0, charts: 1, withParts: 1, ...over },
+    data: { growth: 0, settled: true, charts: 1, withParts: 1, ...over },
   });
   const round = (...entries: ReturnType<typeof slide>[]) => ({ trace: { entries } });
 
