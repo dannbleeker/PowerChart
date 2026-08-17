@@ -777,18 +777,19 @@ describe("a decoration does not push a chart out of its own frame", () => {
     "radarBand",
   ];
 
-  it("no decoration on any kind draws outside the chart", () => {
-    const bad: string[] = [];
-    for (const d of BOOL_DECOR)
-      bad.push(
-        ...sweep(
+  // One `it` per decoration rather than one for all 27: a failure then names the
+  // decoration in its own title, and no single case can run long enough to hit
+  // vitest's default timeout the way the combined one did on CI.
+  for (const d of BOOL_DECOR)
+    it(`${d} draws inside the chart on every kind`, () => {
+      expect(
+        sweep(
           d,
           true,
           CHART_KINDS.map((k) => k.kind),
         ),
-      );
-    expect(bad).toEqual([]);
-  });
+      ).toEqual([]);
+    });
 
   it("the IBCS variance tier is not reserved when the frame cannot pay for it", () => {
     // A legal variance config, not a bare `true`: the band is reserved for the
