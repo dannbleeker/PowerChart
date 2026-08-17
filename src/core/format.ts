@@ -466,19 +466,38 @@ export function weekStarts(minDay: number, maxDay: number): number[] {
   return out;
 }
 
-/** Epoch-day values of every month start covering [minDay, maxDay]. */
-export function monthStarts(minDay: number, maxDay: number): number[] {
+/**
+ * Epoch-day values of every `stepMonths`-th month start covering [minDay, maxDay].
+ *
+ * The step is what keeps a long span COVERED. The caller used to take every
+ * month and then filter the result down to quarters, and the guard below bounds
+ * the WALK — so on a span longer than the guard the walk stopped part-way and
+ * the filter thinned what was left of it. A 40-year Gantt drew its last
+ * gridline halfway across the plot and labelled it `Q4 18`, with bars running
+ * on past it to 2040 and no time reference under them at all: not a missing
+ * tick, an axis that stops and does not say so.
+ *
+ * Stepping instead of filtering makes the walk cost what the OUTPUT costs, so
+ * the same guard covers 20 years of months, 60 of quarters and 240 of years.
+ *
+ * The first tick is aligned DOWN to a multiple of the step within its year, so
+ * quarters land on Jan/Apr/Jul/Oct and years on January whatever month the data
+ * happens to start in — which is what the filter it replaces did, and why a
+ * quarterly span renders byte-identically.
+ */
+export function monthStarts(minDay: number, maxDay: number, stepMonths = 1): number[] {
+  const step = Math.max(1, Math.round(stepMonths));
   const start = new Date(minDay * DAY_MS);
   let y = start.getUTCFullYear();
-  let m = start.getUTCMonth();
+  let m = Math.floor(start.getUTCMonth() / step) * step;
   const out: number[] = [];
   for (let guard = 0; guard < 240; guard++) {
     const day = Date.UTC(y, m, 1) / DAY_MS;
     if (day > maxDay) break;
     if (day >= minDay) out.push(day);
-    m++;
-    if (m === 12) {
-      m = 0;
+    m += step;
+    while (m >= 12) {
+      m -= 12;
       y++;
     }
   }

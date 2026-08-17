@@ -212,13 +212,25 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   ].filter((v): v is number => v != null);
   const lo = Math.min(...(all.length ? all : [0]));
   const hi = Math.max(...(all.length ? all : [1]));
-  // Calendar granularity by span: weeks → months → quarters.
+  // Calendar granularity by span: weeks → months → quarters → years.
+  //
+  // The years tier is what keeps a long plan's axis under it. Quarters used to
+  // run to any span, taken by filtering a month walk that is itself bounded —
+  // so a 40-year roadmap got 80 gridlines covering its first 18 years and
+  // nothing at all across the remaining half of the plot. Even without the
+  // bound, 160 quarter ticks on one axis is not a timeline anybody reads.
+  //
+  // `monthStarts` takes the step now rather than being filtered afterwards, so
+  // the walk it does is the walk the ticks need. A quarterly span is unchanged:
+  // the step aligns to Jan/Apr/Jul/Oct exactly as the filter selected.
   const weeks = dates && hi - lo <= 130;
   const quarters = dates && hi - lo > 550;
+  // ~6 years, the point at which quarters pass two dozen ticks.
+  const years = dates && hi - lo > 2200;
   const ticks = dates
     ? weeks
       ? weekStarts(lo - 7, hi + 7)
-      : monthStarts(lo - 31, hi + 31).filter((d) => !quarters || new Date(d * 86400000).getUTCMonth() % 3 === 0)
+      : monthStarts(lo - 31, hi + 31, years ? 12 : quarters ? 3 : 1)
     : niceTicks(lo, hi, 6);
   const t0 = dates ? Math.min(lo, ticks[0] ?? lo) : ticks[0];
   const t1 = dates ? Math.max(hi, ticks[ticks.length - 1] ?? hi) : ticks[ticks.length - 1];
@@ -273,6 +285,12 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   const tickLabel = (t: number, i: number) => {
     if (!dates) return formatNumber(t, fmt);
     const d = new Date(t * 86400000);
+    // A yearly tick is a year, not "Q1" of one — every tick would carry the
+    // same quarter, which reads as a quarterly axis that has lost its other
+    // three quarters. Full four digits, because a 40-year span crossing a
+    // century is exactly the case this tier exists for and `00` does not say
+    // which one.
+    if (years) return String(d.getUTCFullYear());
     if (quarters) return `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${String(d.getUTCFullYear()).slice(2)}`;
     if (weeks) return formatDay(t);
     return formatDay(t, i === 0 || d.getUTCMonth() === 0);
