@@ -1138,7 +1138,11 @@ async function collectRound(sh, stamp, sleep) {
   // The deck last, so a failed archive still leaves it ready — the two are
   // independent and coupling them would cost the next round for the sake of
   // this one's paperwork.
+  // SAY WHICH, because the two lead to different mornings. A sweep that did not
+  // clean the deck leaves the next round to refuse with `deck-dirty`, and this
+  // line used to claim the opposite whatever happened.
   if (sweepDeck(sh)) console.log("  deck swept — the next round starts clean");
+  else console.error("  the deck was NOT swept — the next round will refuse until it is");
   return filed;
 }
 
@@ -1399,8 +1403,19 @@ export async function recover(sh, sleep, profile = PROFILE_DIR) {
 export function sweepDeck(sh) {
   const anchor = refFor(sh, "Chart", /tab "Chart"/);
   if (!anchor) return false;
-  sh("eval", cleanDeckScript(90000), anchor);
-  return true;
+  // READ WHAT IT ANSWERED. This threw the result away and returned `true`
+  // unconditionally, so "deck swept — the next round starts clean" printed
+  // whether the sweep had cleaned the deck, failed outright (`deck-failed`), or
+  // left slides behind — and the next round then refuses with `deck-dirty` for a
+  // reason the previous round's output said could not have happened.
+  //
+  // `cleanDeckScript` returns `deck:N`, the slides remaining. One is clean: the
+  // loop stops at index 1 on purpose, because a deck cannot have zero slides and
+  // a fixed-count delete once took one to exactly that.
+  const out = sh("eval", cleanDeckScript(90000), anchor);
+  const left = /deck:(\d+)/.exec(out)?.[1];
+  if (left === undefined) return false;
+  return Number(left) <= 1;
 }
 
 /** Where the driver leaves its account of how the round ended. */

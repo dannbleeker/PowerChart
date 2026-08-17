@@ -39,6 +39,7 @@ const {
   RECOVERABLE_STOPS,
   selectDeck,
   sideloadAddIn,
+  sweepDeck,
 } = driver;
 
 const READY = { head: "abc1234", deployed: "abc1234", stamp: "abc1234", slides: 1, verbose: true, pictures: true };
@@ -252,6 +253,22 @@ describe("talking to the browser at all", () => {
         "started clicking anyway",
       ).toBe(false);
     });
+  });
+
+  it("believes the sweep's own answer rather than that it was called", () => {
+    // "deck swept — the next round starts clean" printed whether the sweep had
+    // cleaned the deck, failed outright, or left slides on it. The next round
+    // then refuses with `deck-dirty` for a state the previous round's output
+    // said could not exist. A tool that exits in silence reads as a pass.
+    const shWith = (evalAnswer: string) =>
+      ((...args: string[]) => {
+        if (args[0] === "find") return 'tab "Chart" [ref=r1]';
+        return evalAnswer;
+      }) as never as (...a: string[]) => string;
+    expect(sweepDeck(shWith("deck:1")), "a deck down to its one slide is clean").toBe(true);
+    expect(sweepDeck(shWith("deck:7")), "seven slides left is not a swept deck").toBe(false);
+    expect(sweepDeck(shWith("deck-failed")), "the sweep said it failed").toBe(false);
+    expect(sweepDeck(shWith("")), "no answer is not a clean deck").toBe(false);
   });
 
   it("stops on the first attempt when the document has no add-in to open", () => {

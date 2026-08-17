@@ -71,6 +71,16 @@ export function readReceipt(path = RECEIPT_PATH, exists = existsSync, read = rea
  * throw away the second half of the pair, which is the only thing that could
  * tell a real fault from this host's 1-in-5 mood.
  */
+/**
+ * Did this receipt come from a round that RAN, as opposed to one that refused?
+ *
+ * `--check` also exits 0, and it archives nothing by design. Keying the
+ * archived-nothing stop on the reason keeps it aimed at the case that matters.
+ */
+function reasonFinished(receipt) {
+  return receipt?.reason === "finished";
+}
+
 export function nextStep({ exitCode, receipt, gateStatus }) {
   // TWO WAYS FOR THE GATE TO EXIT NON-ZERO, and they are opposite findings. 1 is
   // the thing it exists to say: a scenario that was passing has stopped. 2 is
@@ -94,6 +104,20 @@ export function nextStep({ exitCode, receipt, gateStatus }) {
   if (!receipt) {
     return { go: false, why: `the driver left no ${RECEIPT_PATH} — it did not reach the end of its own run` };
   }
+  // A ROUND THAT FINISHED IS NOT A ROUND THAT WAS FILED. `attempt` returns 0
+  // the moment the pane says the run is done; archiving happens after, is
+  // best-effort by design, and sets `roundFile` only when a file was written.
+  //
+  // Sailing past that costs the round twice over: the gate re-judges the
+  // PREVIOUS round and passes, so the night reads as healthy, and the next
+  // leg's download overwrites `.playwright-cli/powerchart-run-log.json` — the
+  // only copy of the evidence. That is exactly the state the archive-ENOENT
+  // bug produced, and this is the layer that should have caught it.
+  if (exitCode === 0 && reasonFinished(receipt) && !receipt.roundFile)
+    return {
+      go: false,
+      why: "the round finished but nothing was archived — its log is still in the session directory and the next leg would overwrite it",
+    };
   if (exitCode === 0) return { go: true, why: null };
   // The driver has ALREADY retried everything recovery addresses by this point.
   // A non-zero exit carrying recoverable codes means the retries ran out, not

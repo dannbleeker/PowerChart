@@ -1507,6 +1507,51 @@ describe("what the newest round said that the archive has not", () => {
     expect(out.spikes[0].median).toBe(3);
   });
 
+  it("stops calling a signature new once it has been around for a while", () => {
+    // THE BUCKET NEVER EMPTIED. The median ran over EVERY prior round, so a
+    // signature stayed "new behaviour" until it had appeared in more than half
+    // the whole archive — and the archive keeps growing underneath it.
+    //
+    // Measured on the real thing: `re-reading the slide's shapes again after a
+    // settle delay` first appeared in round 064 and sat at 10-11 ever after. It
+    // was reported as NEW BEHAVIOUR in fifteen separate rounds and blamed on
+    // nine different builds, the last a commit that only changed a slide
+    // counter. A signal that fires every night about a thing that has not
+    // changed is the "cries wolf" failure the gate's header warns about.
+    // THE ARCHIVE'S ACTUAL SHAPE, and a fixture that misses it proves nothing:
+    // the signature is in a MINORITY of all priors (so a whole-archive median
+    // reads 0 and files it as new) while being present in every recent one (so
+    // a windowed median reads 11 and does not). A first version of this test had
+    // it in all twelve priors, where both readings agree — it passed against the
+    // very bug it was written for.
+    const steady = entry("group", "a mechanism that shipped long ago");
+    const priors = [
+      ...Array.from({ length: 12 }, (_, i) => round(`ancient${i}`, [])),
+      ...Array.from({ length: 6 }, (_, i) => round(`recent${i}`, times(11, steady))),
+    ];
+    const out = traceNovelty([...priors, round("new", times(11, steady))]);
+    expect(out.sinceBuild, "still calling a settled signature new").toHaveLength(0);
+    expect(out.spikes, "11 against a median of 11 is not a spike either").toHaveLength(0);
+  });
+
+  it("names the build a signature actually started in, not the one being judged", () => {
+    // Nine innocent commits were named for one 064-era signature, because the
+    // report printed the newest round's build for every entry.
+    const late = entry("group", "arrived partway through");
+    const priors = [
+      round("aaaaaaa", []),
+      round("bbbbbbb", times(11, late)), // <- where it actually started
+      round("ccccccc", []),
+      round("ddddddd", []),
+      round("eeeeeee", []),
+      round("fffffff", []),
+      round("ggggggg", []),
+    ];
+    const out = traceNovelty([...priors, round("newbuild", times(11, late))]);
+    expect(out.sinceBuild).toHaveLength(1);
+    expect(out.sinceBuild[0].startedIn, "blamed the build being judged").toBe("bbbbbbb");
+  });
+
   it("says nothing at all about a round that repeated the archive", () => {
     // The quiet case has to be assertable, or "nothing new" is just the report
     // failing to run and nobody can tell the difference.

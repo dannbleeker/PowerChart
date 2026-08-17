@@ -1274,6 +1274,37 @@ export async function updateChartInSlide(
  * Best-effort. A count that cannot be taken is `undefined` and the reading that
  * needed it is simply not reported; nothing here may cost an update.
  */
+/**
+ * How long the shape count gets to settle between its two reads.
+ *
+ * ITS OWN CONSTANT, and measured rather than borrowed. This used
+ * `REREAD_RETRY_MS`, which is 1.5s and is tuned for a different question — how
+ * long a short collection read needs before it is worth asking again.
+ *
+ * Timing the archive says 1.5s is not enough here. Taking the gap between a
+ * `grouped the chart's shapes` line and the count that followed it, across every
+ * round that carries both:
+ *
+ *     consistent              n=49  min 1058ms  median 2403ms
+ *     stale, deck disagreed   n=10  min 1278ms  median 1395ms  MAX 3193ms
+ *
+ * A count taken 3.2 seconds after a group commit was still stale. Two reads
+ * 1.5s apart therefore both fit inside one lag, agree on the stale number, and
+ * the reading is marked settled — which is exactly what round 086's chart 8/8
+ * did.
+ *
+ * The two ranges OVERLAP, so no fixed wait separates them: a consistent read has
+ * been seen at 1058ms and a stale one at 3193ms. This delay is a cheap first
+ * filter, not the guarantee. The end-of-round deck inventory is the backstop,
+ * and it costs nothing because the round already collects it.
+ */
+let COUNT_SETTLE_MS = 4_000;
+
+/** Test-only: a suite cannot spend four real seconds per update. */
+export function _setCountSettleDelayForTest(ms: number): void {
+  COUNT_SETTLE_MS = ms;
+}
+
 async function countSlideShapesOnce(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   try {
@@ -1325,7 +1356,7 @@ async function slideShapeCounts(slideIds: string[], settle = false): Promise<Map
   // and only it pays the delay.
   if (!settle) return countSlideShapesOnce(ids);
   const first = await countSlideShapesOnce(ids);
-  await new Promise((r) => setTimeout(r, REREAD_RETRY_MS));
+  await new Promise((r) => setTimeout(r, COUNT_SETTLE_MS));
   const second = await countSlideShapesOnce(ids);
   const out = new Map<string, number>();
   for (const [id, n] of second) {
