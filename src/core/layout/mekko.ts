@@ -73,7 +73,26 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   // exists for the share suffix on the ROW labels and the legend does not carry
   // one — it has always been free to start where the reservation assumed.
   const grand = extents.reduce((a, b) => a + b, 0) || 1;
-  const gap = 2;
+  /**
+   * The gutter between columns, and the share of the axis it may take.
+   *
+   * A flat 2pt subtracted before the columns are sized is chrome charged
+   * whatever the chart can afford: at 230 categories on a 480pt frame the gaps
+   * alone want 458 of 458 points, so `catLen` reached zero and every segment
+   * came out with a NEGATIVE width — 460 of them, worst -0.012 — while the
+   * totals, the category names and the legend all still printed. A chart that
+   * has vanished under its own separators, with labels around the space where
+   * it was.
+   *
+   * The columns are the chart and the gaps are chrome for reading them apart, so
+   * the gaps are scaled into a budget when they cannot be paid for in full. Same
+   * trade the funnel's row gaps and the butterfly's centre gutter already make.
+   * Below the budget — every ordinary chart — this is exactly 2 and nothing
+   * moves.
+   */
+  const GAP_SHARE = 0.5;
+  const axisLen = H ? frame.h : frame.w;
+  const gap = n > 1 ? Math.min(2, (axisLen * GAP_SHARE) / (n - 1)) : 2;
 
   const nodes: SceneNode[] = [];
   const centers: number[] = [];

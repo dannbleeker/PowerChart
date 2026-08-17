@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildChart, describeChart } from "../src/core/chart";
+import type { TextNode } from "../src/core/scene";
 import { sceneToSvg } from "../src/render/svg";
 import type { ChartConfig } from "../src/core/types";
 
@@ -61,5 +62,54 @@ describe("SVG accessibility", () => {
       data: { categories: ["a", "b", "c", "d", "e", "f"], series: [{ name: "S", values: [1, 2, 3, 4, 5, 6] }] },
     });
     expect(many).toContain("and 2 more");
+  });
+});
+
+/**
+ * The description has to be of the chart that is DRAWN.
+ *
+ * `buildChart` described the config as it arrived, before the transforms that
+ * decide what a reader sees: `sortCategories` and `applyPareto` reorder the
+ * categories, `applyPareto` also turns a clustered chart into a combo and adds
+ * the cumulative line, and `collapseOther` buckets the tail into "Other".
+ *
+ * So a pareto announced itself as a "clustered column chart. 1 data series: V.
+ * 4 categories: C0, C1, C2, C3" while drawing a combo of two series with its
+ * categories in the order C1, C2, C0, C3. The one reader who cannot check the
+ * description against the picture got the wrong chart, the wrong series count
+ * and the wrong order — and this text is not only the SVG's `<desc>`, it is the
+ * alt text written onto every shape in the .pptx.
+ */
+describe("the accessible description matches the chart that was drawn", () => {
+  const cats = ["C0", "C1", "C2", "C3"];
+  const base = {
+    width: 480,
+    height: 300,
+    data: { categories: cats, series: [{ name: "V", values: [10, 40, 25, 5] }] },
+  };
+  const drawnCategories = (scene: { nodes: { name?: string; kind: string }[] }) =>
+    scene.nodes
+      .filter((n) => n.kind === "text" && /^category-\d+$/.test(n.name ?? ""))
+      .map((n) => (n as TextNode).text);
+
+  it("lists the categories in the order they are plotted", () => {
+    for (const extra of [{ categorySort: "descending" }, { pareto: true }] as Partial<ChartConfig>[]) {
+      const scene = buildChart({ ...base, kind: "clustered", ...extra } as ChartConfig);
+      const order = drawnCategories(scene);
+      expect(order.length, "no category labels drawn, so this proves nothing").toBe(4);
+      expect(scene.desc, JSON.stringify(extra)).toContain(order.join(", "));
+    }
+  });
+
+  it("names the kind and the series a pareto actually becomes", () => {
+    const scene = buildChart({ ...base, kind: "clustered", pareto: true } as ChartConfig);
+    expect(scene.desc).toMatch(/^combination chart/);
+    expect(scene.desc).toContain("2 data series");
+  });
+
+  it("leaves an untransformed chart's description exactly as it was", () => {
+    // The negative control: no sort, no pareto, no bucket — nothing may move.
+    const scene = buildChart({ ...base, kind: "clustered" } as ChartConfig);
+    expect(scene.desc).toBe("clustered column chart. 1 data series: V. 4 categories: C0, C1, C2, C3.");
   });
 });

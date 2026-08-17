@@ -224,9 +224,13 @@ export function unplaceableComboLabels(nodes: SceneNode[], priority: "columns" |
   const totals = texts.filter((t) => /^total-/.test(t.name ?? ""));
   const points = texts.filter((t) => /^combo-label-/.test(t.name ?? ""));
   const drop = new Set<SceneNode>();
-  if (!totals.length || !points.length) return drop;
   // The loser is dropped, the winner is left exactly as de-collision settled it.
   const [losers, keepers] = priority === "line" ? [totals, points] : [points, totals];
+  // Only "is there anything to drop". This used to also require the KEEPER
+  // family to exist, which is why a HORIZONTAL combo — which draws no column
+  // totals at all — got no drop pass whatever it collided with, and its point
+  // labels sat on the line's own name with nothing able to separate them.
+  if (!losers.length) return drop;
   // The keeper family, plus every label that will not move for anyone: the
   // title, the category names, the segment labels. A point label capped to two
   // em of travel can no longer climb out from under those, and one left sitting
@@ -234,7 +238,17 @@ export function unplaceableComboLabels(nodes: SceneNode[], priority: "columns" |
   // labels are deliberately not in this list — they may still settle elsewhere,
   // and dropping a label because of something that has not stopped moving is
   // how a pass like this starts eating its own output.
-  const others = [...keepers, ...texts.filter((t) => movableRank(t.name) < 0)];
+  const others = [
+    ...keepers,
+    ...texts.filter((t) => movableRank(t.name) < 0),
+    // The line's own NAME, which settles a rank ahead of these labels and so is
+    // fixed by the time they are placed — movable in principle, immovable in
+    // practice for them. Sideways it sits at the line's last point, in the same
+    // few points of canvas the last point labels want, and one label naming the
+    // series is worth more than one more number on a chart that already carries
+    // its column totals.
+    ...texts.filter((t) => /^combo-series-label-/.test(t.name ?? "")),
+  ];
   for (const l of losers) {
     const lb = tightBox(l);
     if (others.some((k) => overlaps(lb, tightBox(k)))) drop.add(l);

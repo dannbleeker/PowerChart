@@ -149,6 +149,22 @@ describe("no chart draws negative or unreadable geometry", () => {
       c.width = 14;
       c.height = 600;
     },
+    /**
+     * A long category list, which nothing here swept for — and which is what a
+     * pasted table looks like. Chrome charged per category is the risk: the
+     * mekko's 2pt inter-column gutter was subtracted from the axis BEFORE the
+     * columns were sized, so at 230 categories the gaps alone wanted 458 of 458
+     * points and every one of its 460 segments came out with a negative width,
+     * while the totals, the category names and the legend all still printed — a
+     * chart vanished under its own separators with labels around the space where
+     * it had been.
+     */
+    "a pasted table": (c) => {
+      const n = 230;
+      const cats = Array.from({ length: n }, (_, i) => `c${i}`);
+      c.data.categories = cats;
+      c.data.series.forEach((s, si) => (s.values = cats.map((_, i) => ((i * 7 + si * 13) % 40) + 1)));
+    },
   };
 
   const bad: string[] = [];

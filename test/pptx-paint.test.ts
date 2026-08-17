@@ -13,6 +13,7 @@ import {
   makeAddNode,
   xmlText,
   lineOf,
+  textInk,
 } from "../skill/scripts/pptx-paint.mjs";
 import type { SceneNode } from "../src/core/scene";
 
@@ -505,5 +506,56 @@ describe("hexOr — an unrecognised paint falls back to the caller's default", (
     for (const bad of ["off-white", "", null, undefined]) {
       expect(hex(bad as unknown as string)).toBe("000000");
     }
+  });
+});
+
+/**
+ * Text was the one paint channel that dropped its alpha.
+ *
+ * Every fill and stroke on a slide goes through `fillOf`/`lineOf` and carries
+ * its transparency into the OOXML; the text case took a bare `hex` and threw
+ * the alpha away. So a deliberately muted label — `#0b0b0b80`, an `rgba()`, an
+ * `hsla()` — was drawn faint by the SVG renderer and at FULL STRENGTH in the
+ * deck, and the two pictures disagreed about which labels mattered.
+ *
+ * Office.js cannot follow: `font.color` is a hex string with nowhere to put an
+ * alpha. That divergence is declared in the parity contract at the top of
+ * `src/core/scene.ts` rather than fixed, because it is a host limit.
+ */
+describe("a text run keeps the alpha its colour carries", () => {
+  it("maps alpha to the same 0-100 transparency a shape uses", () => {
+    expect(textInk("#0b0b0b80")).toEqual({ color: "0b0b0b", transparency: 50 });
+    expect(textInk("rgba(11, 11, 11, 0.5)")).toEqual({ color: "0b0b0b", transparency: 50 });
+    expect(textInk("hsla(0, 0%, 0%, 0.25)")).toEqual({ color: "000000", transparency: 75 });
+  });
+
+  it("writes an opaque colour exactly as it always did", () => {
+    // No `transparency` key at all, so an ordinary label's XML is unchanged.
+    expect(textInk("#0b0b0b")).toEqual({ color: "0b0b0b" });
+    expect(textInk("steelblue")).toEqual({ color: "4682b4" });
+  });
+
+  it("carries it through the node mapping, not just the helper", () => {
+    const slide = recorder();
+    addNode(
+      slide,
+      {
+        kind: "text",
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 12,
+        text: "muted",
+        fontSize: 10,
+        color: "#0b0b0b80",
+        align: "left",
+        valign: "top",
+      } as SceneNode,
+      0,
+      0,
+    );
+    expect(slide.texts).toHaveLength(1);
+    expect(slide.texts[0].opts.color).toBe("0b0b0b");
+    expect(slide.texts[0].opts.transparency).toBe(50);
   });
 });

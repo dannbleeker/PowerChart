@@ -223,6 +223,17 @@ export const lineOf = (color) => {
   return t > 0 ? { color: hex(color), transparency: t } : { color: hex(color) };
 };
 
+// A text run's colour, with any alpha the paint carries. The TEXT twin of
+// `fillOf`/`lineOf`, and the reason it exists: every fill and stroke on a slide
+// honoured its alpha and text alone did not, so a deliberately muted label came
+// out at full strength in the deck while the preview drew it faint. Zero
+// transparency is omitted, so an opaque colour is byte-identical to the bare
+// {color} this replaces.
+export const textInk = (color) => {
+  const t = Math.round((1 - alphaOf(color)) * 100);
+  return t > 0 ? { color: hex(color), transparency: t } : { color: hex(color) };
+};
+
 export const fillOf = (color, fillOpacity = 1) => {
   const t = Math.round((1 - alphaOf(color) * fillOpacity) * 100);
   // Fully clear: emit no fill rather than a colour. `color: "transparent"` is the
@@ -344,7 +355,14 @@ export function makeAddNode({ dashKind, annularSectorPoints, symbolPreset, arrow
           w: Math.max(0.05, n.w * IN),
           h: Math.max(0.05, n.h * IN),
           fontSize: fontPt(n.fontSize),
-          color: hex(n.color),
+          // Alpha too. A text colour carrying one — `#0b0b0b80`, an `rgba()`,
+          // an `hsla()` — was drawn translucent by the SVG renderer and OPAQUE
+          // here, because this took `hex` and threw the alpha away while every
+          // fill and stroke on the same slide went through `fillOf`/`lineOf`.
+          // Muted ink is how a chart de-emphasises a label, so the two pictures
+          // disagreed about which labels mattered. pptxgenjs takes the same
+          // 0-100 transparency on a text run as on a shape.
+          ...textInk(n.color),
           bold: !!n.bold,
           align: n.align,
           valign: n.valign,

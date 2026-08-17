@@ -833,11 +833,20 @@ export function describeChart(cfg: ChartConfig): string {
 /** Build a renderer-agnostic scene from a chart config. Pure and synchronous. */
 export function buildChart(rawCfg: ChartConfig): Scene {
   const cfg0 = normalizeConfig(rawCfg);
-  const a11y = { title: cfg0.title, desc: describeChart(cfg0) };
   const multiples = buildMultiples(cfg0);
-  if (multiples) return { ...multiples, ...a11y };
+  if (multiples) return { ...multiples, title: cfg0.title, desc: describeChart(cfg0) };
   const extracted = extractErrorRows(sortCategories(applyPareto(applyGanttLanes(cfg0))));
   let cfg = collapseOther(extracted.cfg);
+  // Described from the config the chart is DRAWN from, not the one it arrived
+  // as. Every transform above changes what a reader sees: `sortCategories` and
+  // `applyPareto` reorder the categories, `applyPareto` also turns a clustered
+  // chart into a combo and adds the cumulative line, and `collapseOther` buckets
+  // the tail into "Other". Described from `cfg0`, a pareto announced itself as a
+  // "clustered column chart. 1 data series: V. 4 categories: C0, C1, C2, C3"
+  // while drawing a combo with two series and the categories in the order
+  // C1, C2, C0, C3 — so the one reader who cannot check it against the picture
+  // got the wrong chart, the wrong series count and the wrong order.
+  const a11y = { title: cfg.title, desc: describeChart(cfg) };
   const errors = extracted.errors;
   const targets = extracted.targets;
   const style: ChartStyle = { ...DEFAULT_STYLE, ...cfg.style };
@@ -1091,7 +1100,12 @@ export function buildChart(rawCfg: ChartConfig): Scene {
   // bottom of the canvas). Whichever `tightLabelPriority` does not favour is
   // dropped — but only where it is STILL colliding after every legal move above,
   // so a roomy chart keeps both.
-  if (!skipDecor) {
+  // Sideways too, which `skipDecor` used to exclude along with the rest of the
+  // decoration stage. This pass adds nothing to a scene — it only removes labels
+  // that are still unreadable after every legal move — and a horizontal combo
+  // needs it as much as an upright one: its line name sits at the line's last
+  // point, in the same few points of canvas the last point labels want.
+  {
     const drop = unplaceableComboLabels(nodes, decor.tightLabelPriority ?? "columns");
     // Spliced rather than reassigned: `nodes` is the scene array the whole
     // builder has been appending to, and later passes hold the same reference.

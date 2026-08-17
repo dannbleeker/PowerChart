@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 import type { ChartConfig } from "../src/core/types";
-import { clampDim } from "../src/core/chart";
+import { buildChart, clampDim } from "../src/core/chart";
 import { placeChart } from "../src/core/placement";
 
 /**
@@ -272,6 +272,40 @@ describe("task pane — loading a chart config", () => {
     }
     expect(lost, "dropped on import — the next re-save destroys them").toEqual([]);
     expect(changed, "altered on the way through").toEqual([]);
+  });
+
+  /**
+   * The sweep above asks `waterfall` only of a WATERFALL, on the reasoning that
+   * its total columns are rebuilt from the sheet — and that reasoning has a
+   * hole. `combo` with `combo.columns: "waterfall"` reads the same field for its
+   * bridge's column bases, and the pane wrote `totalIndices` from the sheet
+   * unconditionally: the "e" tokens that fill it are only seeded for the
+   * waterfall kind, so every other kind had its list replaced with an EMPTY one.
+   *
+   * Slide 90 of the committed showcase is exactly that chart, and it was the
+   * only one of the 123 that did not round-trip through the pane. Opening it —
+   * from its POWERCHART_CONFIG tag, the JSON box or a template — and inserting
+   * again dropped the closing total column and the label on it.
+   */
+  it("keeps a combo's waterfall totals, which are not rebuilt from its sheet", () => {
+    const cfg = {
+      kind: "combo",
+      combo: { columns: "waterfall" },
+      waterfall: { totalIndices: [5] },
+      data: {
+        categories: ["Start", "Q1", "Q2", "Q3", "Q4", "End"],
+        series: [
+          { name: "Delta", values: [100, 20, -15, 25, -10, 0] },
+          { name: "Margin %", type: "line", values: [40, 42, 38, 44, 41, 43] },
+        ],
+      },
+    } as unknown as Partial<ChartConfig>;
+    importConfig(cfg);
+    const out = exportConfig();
+    expect(out.waterfall?.totalIndices).toEqual([5]);
+    // …and the bar it pays for is still drawn.
+    const bars = buildChart(out).nodes.filter((n) => /^bar-/.test(n.name ?? ""));
+    expect(bars.map((n) => n.name)).toContain("bar-5");
   });
 
   it('preserves render: "image" through import → export and the shape-tag re-save', () => {

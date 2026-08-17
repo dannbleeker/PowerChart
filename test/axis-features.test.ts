@@ -8,6 +8,7 @@ import { layoutColumns } from "../src/core/layout/column";
 import { layoutGantt } from "../src/core/layout/gantt";
 import { DEFAULT_DECOR, DEFAULT_STYLE } from "../src/core/style";
 import type { ChartConfig } from "../src/core/types";
+import type { RectNode } from "../src/core/scene";
 import type { TextNode } from "../src/core/scene";
 
 const frame = { x: 0, y: 0, w: 100, h: 100 };
@@ -36,6 +37,40 @@ describe("axis break", () => {
   it("drops ticks inside the break and exposes the band", () => {
     expect(scale.ticks.every((t) => t <= 10 || t >= 90)).toBe(true);
     expect(scale.breakBand).toBeTruthy();
+  });
+
+  /**
+   * The break branch REPLACES `valueScale`'s clamped `toY`, and replacing it
+   * threw the clamp away. `frac` extrapolates freely outside [min, max], and
+   * min/max are whatever the author pinned — so an axis break plus a manual
+   * scale narrower than the data put a bar at y = -21026 with a height of 21308
+   * on a 300pt canvas, and the .pptx carried `<a:off y="-243779040"/>`: the
+   * exact OOXML coordinate blow-up the clamp exists to prevent, which
+   * PowerPoint offers to repair.
+   *
+   * Both keys are free-text boxes in the pane and documented config, so setting
+   * them together needs no unusual input at all.
+   */
+  it("clamps a value above a pinned axis maximum, break or no break", () => {
+    const pinned = (extra: Partial<ChartConfig>) =>
+      buildChart({
+        kind: "clustered",
+        width: 480,
+        height: 300,
+        data: { categories: ["a", "b"], series: [{ name: "S", values: [10, 5000] }] },
+        scale: { min: 0, max: 100 },
+        ...extra,
+      } as ChartConfig).nodes.filter((n): n is RectNode => n.kind === "rect" && n.name === "seg-0-1");
+
+    for (const [what, extra] of [
+      ["no break", {}],
+      ["with a break", { axisBreak: { from: 20, to: 60 } }],
+    ] as [string, Partial<ChartConfig>][]) {
+      const [bar] = pinned(extra);
+      expect(bar, `${what}: no bar drawn, so this proves nothing`).toBeTruthy();
+      expect(bar.y, `${what}: bar top`).toBeGreaterThanOrEqual(-0.5);
+      expect(bar.y + bar.h, `${what}: bar bottom`).toBeLessThanOrEqual(300.5);
+    }
   });
 
   it("emits break markers in column charts", () => {

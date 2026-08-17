@@ -423,7 +423,20 @@ function currentConfig(): ChartConfig {
     ...size,
     title: state.title || undefined,
     decorations: { ...state.decorations, labelContent: labelParts },
-    waterfall: { ...(state.extras.waterfall ?? {}), totalIndices: [...totals] },
+    // Only the WATERFALL kind owns this field, because only its grid encodes the
+    // totals: `sheetToData` fills `totals` from the sheet's "e" tokens, and those
+    // are seeded only when `state.kind === "waterfall"`. Writing it
+    // unconditionally therefore replaced the author's list with an EMPTY one for
+    // every other kind — and `combo` with `combo.columns: "waterfall"` is a
+    // documented recipe that reads it (`src/core/layout/column.ts` uses it for
+    // the bridge's column bases). Slide 90 of the committed showcase is exactly
+    // that chart, and opening it in the pane and re-inserting dropped its
+    // closing total column and the label on it. It was the only one of the 123
+    // showcase configs that did not round-trip through the pane.
+    waterfall:
+      state.kind === "waterfall"
+        ? { ...(state.extras.waterfall ?? {}), totalIndices: [...totals] }
+        : state.extras.waterfall,
     segmentOrder: state.segmentOrder === "sheet" ? undefined : state.segmentOrder,
     axisBreak,
     scale:

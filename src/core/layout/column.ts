@@ -1113,7 +1113,15 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       nodes.push({
         kind: "text",
         x: lx,
-        y: H ? Math.max(0, end.y + fs * 0.9) : end.y - fs * 1.6,
+        // Sideways the name sits BELOW the line's last point, and the floor at 0
+        // was the only bound it had: `end.y` is wherever that point landed, so
+        // on a short frame the whole label was drawn past the foot of the chart
+        // — y 91.5 with a 14pt box on a 90pt canvas, and the same at 300x60 and
+        // 200x150, all at the DEFAULT font. Off the chart is onto whatever sits
+        // under it on the slide, since neither PowerPoint renderer clips.
+        // Bounded at both ends now; `combo-series-label-` is movable, so
+        // de-collision can still lift it off whatever it lands on.
+        y: H ? horizontalNameY(end.y, fs, cfg.height) : end.y - fs * 1.6,
         w: lw,
         h: fs * 1.4,
         text: clipToWidth(s.name, lf, lw),
@@ -1353,6 +1361,34 @@ export function legendRow(
  * Right-hand series labels at the last column's segment midpoints,
  * greedily pushed apart so they never overlap (think-cell placement).
  */
+/**
+ * Where a horizontal combo's line name sits relative to the line's last point.
+ *
+ * Below it by preference, which is where it has always gone — but the floor at
+ * 0 was the only bound it had, and `end.y` is wherever that point landed. On a
+ * short frame the whole label was therefore drawn past the foot of the chart:
+ * y 91.5 with a 14pt box on a 90pt canvas, the same at 300x60 and 200x150, all
+ * at the DEFAULT font, and off the chart is onto whatever sits under it on the
+ * slide since neither PowerPoint renderer clips.
+ *
+ * ABOVE the point when below does not fit, rather than clamped into the canvas:
+ * clamping was tried first and put the name straight onto the line's own last
+ * POINT LABEL on four frames — a trade the frame gate caught, and one nothing
+ * downstream can undo now that a point label may not travel more than two em
+ * from its mark. Above and below a point are equally true of it, which is the
+ * argument `collide.ts` already makes for flipping a point label.
+ *
+ * The clamp stays as the last resort for a frame too short for either.
+ */
+export function horizontalNameY(pointY: number, fs: number, canvasH: number): number {
+  const boxH = fs * 1.4;
+  const below = pointY + fs * 0.9;
+  if (below + boxH <= canvasH) return Math.max(0, below);
+  const above = pointY - fs * 0.9 - boxH;
+  if (above >= 0) return above;
+  return Math.max(0, Math.min(below, canvasH - boxH));
+}
+
 export function seriesLabelNodes(
   cfg: ChartConfig,
   style: ChartStyle,
