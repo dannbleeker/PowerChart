@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { resolveLabelCollisions } from "../src/core/collide";
+import { buildChart } from "../src/core/chart";
+import { sampleConfig } from "../src/core/samples";
+import type { ChartConfig } from "../src/core/types";
 import type { SceneNode, TextNode } from "../src/core/scene";
 
 /** Label collision resolution — which labels may move, and how far. */
@@ -196,5 +199,47 @@ describe("label collision resolution", () => {
     ];
     resolveLabelCollisions(nodes);
     expect((nodes[1] as TextNode).y).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * A combo chart's right-hand gutter carries two families of names: the column
+ * series' (`series-label-N`) and the LINE's (`combo-series-label-N`). They were
+ * in separate rank tiers, so the line's name settled after the column names had
+ * been fixed — and the nudge only goes up.
+ *
+ * On a 160x120 combo at the default font that pushed "Margin %" from the 58.5
+ * the layout gave it to 31.0, past "Services" at 48.6, and the gutter then read
+ * Margin % / Services / Product top to bottom against lines running the other
+ * way. That is the exact failure the settle order exists to prevent, and it is
+ * prevented WITHIN a rank only: same rank, sorted bottom-up, each nudge moves a
+ * label away from the one beneath it, so two of them cannot cross.
+ *
+ * Checked through `buildChart` rather than on hand-built nodes, because the
+ * defect is in which tier a real chart's two families land in.
+ */
+describe("a combo's gutter names its lines in the order they run", () => {
+  const gutterOrder = (w: number, h: number, fontSize: number) =>
+    buildChart({ ...sampleConfig("combo"), width: w, height: h, style: { fontSize } } as ChartConfig)
+      .nodes.filter((n): n is TextNode => n.kind === "text" && /^(?:combo-)?series-label-\d+$/.test(n.name ?? ""))
+      .sort((a, b) => a.y - b.y)
+      .map((n) => n.text);
+
+  it("keeps the line's name between the columns' names at every size", () => {
+    // The sample's own order: Services (columns), Margin % (line), Product
+    // (columns) — which is what every roomy frame already produced.
+    const want = ["Services", "Margin %", "Product"];
+    for (const [w, h] of [
+      [160, 120],
+      [200, 150],
+      [300, 200],
+      [480, 300],
+      [960, 540],
+    ] as [number, number][])
+      for (const fs of [8, 10, 14, 18]) {
+        const got = gutterOrder(w, h, fs);
+        expect(got.length, `${w}x${h} at ${fs}pt drew no gutter labels, so this proves nothing`).toBe(3);
+        expect(got, `${w}x${h} at ${fs}pt`).toEqual(want);
+      }
   });
 });

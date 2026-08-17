@@ -21,8 +21,17 @@ interface Box {
 const MOVABLE = [
   /^total-/,
   /^value-line-label/,
-  /^series-label-/,
-  /^combo-series-label-/,
+  // The column series' names and the combo LINE's name share one gutter, so
+  // they share one rank. Separate tiers put the line's name in the later one,
+  // where it settled against names already fixed and could only move UP —
+  // so on a 160x120 combo at the default font it climbed from 58.5 to 31.0,
+  // past "Services" at 48.6, and the gutter read Margin % / Services / Product
+  // top to bottom against lines running the other way. A label that names
+  // someone else's line is the failure the settle order below exists to
+  // prevent, and it is prevented WITHIN a rank only: same rank, sorted
+  // bottom-up, each nudge moves a label away from the one beneath it, so two of
+  // them can never cross.
+  /^(?:combo-)?series-label-/,
   /^diff-label$/,
   /^cagr-label$/,
   // The combo line's point labels, LAST so they are the ones that move: the
