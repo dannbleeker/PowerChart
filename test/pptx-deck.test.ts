@@ -113,6 +113,38 @@ describe("ooxml: grouping a slide's shapes", () => {
   });
 });
 
+/**
+ * The chart's text alternative, which the generated deck was the one output of
+ * the three not to carry.
+ *
+ * `skill/reference.md` recorded it as a limit on the grounds that pptxgenjs
+ * exposes alt text on pictures and native charts only — true of pptxgenjs, and
+ * one step short: this module hand-patches the slide XML and writes the very
+ * element alt text lives on, the group's `<p:cNvPr descr>`.
+ */
+describe("ooxml: the group carries the chart's alt text", () => {
+  const shapes = sp(2, 100, 200, 300, 400) + sp(3, 50, 900, 100, 100);
+
+  it("writes the description onto the group it creates", () => {
+    const xml = groupSlideShapes(slideXml(shapes), undefined, "clustered column chart. 2 categories: Q1, Q2.");
+    expect(xml).toContain(`name="PowerChart" descr="clustered column chart. 2 categories: Q1, Q2."`);
+  });
+
+  it("escapes it, because a chart title is user text", () => {
+    const xml = groupSlideShapes(slideXml(shapes), undefined, 'Sales < Plan & "growth"');
+    expect(xml).toContain(`descr="Sales &lt; Plan &amp; &quot;growth&quot;"`);
+    expect(xml).not.toContain('descr="Sales <');
+  });
+
+  it("omits the attribute entirely when there is nothing to say", () => {
+    // Not `descr=""`: an empty description is not "no alt text", it is alt text
+    // that says nothing, which reads to a screen-reader user as a described
+    // object whose description is blank.
+    expect(groupSlideShapes(slideXml(shapes))).not.toContain("descr=");
+    expect(groupSlideShapes(slideXml(shapes), undefined, "")).not.toContain("descr=");
+  });
+});
+
 describe("ooxml: tags and deck size", () => {
   it("escapes a config JSON payload into an attribute", () => {
     const part = tagPart([["POWERCHART_CONFIG", `{"title":"A & <B>"}`]]);

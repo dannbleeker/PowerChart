@@ -98,6 +98,19 @@ export interface SlideDressing {
   run?: string;
   /** Group the slide's shapes. Default true; false leaves them loose. */
   group?: boolean;
+  /**
+   * The chart's text alternative, written as the group's OOXML `descr` — what
+   * PowerPoint shows under "Edit Alt Text" and what a screen reader announces.
+   *
+   * `skill/reference.md` recorded this as a limit of the headless renderer on
+   * the grounds that pptxgenjs exposes alt text on pictures and native charts
+   * only. That is true OF PPTXGENJS and stopped one step short: this module
+   * already hand-patches the slide XML, and it writes the very element alt text
+   * lives on — the group's `<p:cNvPr>`. The SVG renderer emits `<title>`/`<desc>`
+   * and the Office.js renderer sets `altTextDescription`, so the generated deck
+   * was the one output of the three with no text alternative at all.
+   */
+  desc?: string;
 }
 
 /**
@@ -209,7 +222,7 @@ function nextRelId(relsXml: string): number {
  * Returns the XML unchanged when there is nothing to group (fewer than two
  * shapes, or no measurable frame among them).
  */
-export function groupSlideShapes(slideXml: string, groupTagRid?: string): string {
+export function groupSlideShapes(slideXml: string, groupTagRid?: string, descr?: string): string {
   const treeOpen = slideXml.indexOf("<p:spTree>");
   const treeClose = slideXml.indexOf("</p:spTree>");
   if (treeOpen < 0 || treeClose < 0) throw new Error("ooxml: slide has no <p:spTree>");
@@ -238,11 +251,17 @@ export function groupSlideShapes(slideXml: string, groupTagRid?: string): string
   const cy = most((f) => f.y + f.cy) - y;
 
   const id = maxShapeId(slideXml) + 1;
+  // `descr` is PowerPoint's alt text. Escaped through `xmlAttr` like every other
+  // attribute this module writes, and omitted entirely when there is nothing to
+  // say — an empty `descr=""` is not "no alt text", it is alt text that says
+  // nothing, which reads to a screen-reader user as a described object with an
+  // empty description.
+  const alt = descr ? ` descr="${xmlAttr(descr)}"` : "";
   const nvPr = groupTagRid
     ? `<p:nvPr><p:custDataLst><p:tags r:id="${groupTagRid}"/></p:custDataLst></p:nvPr>`
     : "<p:nvPr/>";
   const group =
-    `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${id}" name="${GROUP_NAME}"/><p:cNvGrpSpPr/>${nvPr}</p:nvGrpSpPr>` +
+    `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${id}" name="${GROUP_NAME}"${alt}/><p:cNvGrpSpPr/>${nvPr}</p:nvGrpSpPr>` +
     `<p:grpSpPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/>` +
     `<a:chOff x="${x}" y="${y}"/><a:chExt cx="${cx}" cy="${cy}"/></a:xfrm></p:grpSpPr>` +
     `${body}</p:grpSp>`;
@@ -451,7 +470,7 @@ export async function injectGroupsAndTags(
 
     shapesPerSlide.push(countSlideShapes(slide));
     if (item.group !== false) {
-      const grouped = groupSlideShapes(slide, groupRid);
+      const grouped = groupSlideShapes(slide, groupRid, item.desc);
       // A one-shape slide has nothing to group — an image-mode chart is a
       // single picture — but it still needs its config tag, or it is not
       // re-editable. Hang it on the shape itself.

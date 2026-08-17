@@ -246,6 +246,10 @@ for (let i = 0; i < configs.length; i++) {
         w: scene.width * IN,
         h: scene.height * IN,
         objectName: "PowerChart",
+        // A picture is the one object pptxgenjs WILL carry alt text on, and an
+        // image-mode chart is a single picture with no group to hang it from —
+        // so this is the only route to a text alternative on those slides.
+        altText: scene.desc,
       });
       imageSlides++;
     } else {
@@ -254,7 +258,15 @@ for (let i = 0; i < configs.length; i++) {
       for (const node of scene.nodes) addNode(slide, node, dx, dy);
     }
     // The chart's own config, so the add-in can re-open what this produced.
-    dressing.push({ configJson: JSON.stringify(cfg), title: cfg?.title ?? `Chart ${i + 1}` });
+    // `scene.desc` is the chart's text alternative — the same string the SVG
+    // renderer puts in `<desc>` and the add-in writes as the shape's alt text.
+    // `injectGroupsAndTags` hangs it on the group it creates, which is the one
+    // place in a generated deck that can carry one.
+    dressing.push({
+      configJson: JSON.stringify(cfg),
+      title: cfg?.title ?? `Chart ${i + 1}`,
+      desc: scene.desc,
+    });
   } catch (err) {
     failed++;
     // Exactly one slide per config, whichever half of the try failed.
