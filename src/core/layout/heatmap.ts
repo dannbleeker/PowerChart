@@ -8,6 +8,15 @@ import { bandFontSize, fitPlot, footnoteH, MIN_LABEL_FS, titleHeight, titleNode 
 import type { LayoutResult } from "./column";
 
 /**
+ * How far the gradient legend's ink reaches below its own top, in font sizes:
+ * the strip is `fs * 0.9`, the end labels sit at `fs * 0.95` under it in a box
+ * `fs * 1.2` tall, so the last ink is a shade over `fs * 2` down. Stated once
+ * because the clamp that keeps the legend inside the frame and the band the end
+ * labels are fitted to are both expressed in terms of it.
+ */
+const LEGEND_INK = 2.15;
+
+/**
  * Heatmap: series = rows, categories = columns, value → color on ONE global
  * scale (comparability across rows is the whole point). Sequential scale for
  * one-signed data; diverging through white, symmetric around zero, when the
@@ -136,8 +145,16 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // the column, then dropped as a set below the legibility floor. All three
     // are the answers this engine already gives elsewhere; what was missing was
     // any of them.
+    //
+    // The COLUMN was only half of it. `headerH` is `fs * 1.5` whatever the frame
+    // is, so on a 300x60 chart at 32pt the title and the header band together
+    // are taller than the chart and the header row was drawn 39pt below its own
+    // foot. A band that cannot be paid for is not drawn: the same rule the plot,
+    // the radar's ticks and the tilemap's scale ends follow.
     const widest = Math.max(0, ...data.categories.map((cat) => textWidth(cat, fs)));
-    const headerFs = widest > cw - 2 && widest > 0 ? fs * ((cw - 2) / widest) : fs;
+    const wide = widest > cw - 2 && widest > 0 ? fs * ((cw - 2) / widest) : fs;
+    const headerBand = Math.max(0, Math.min(headerH, cfg.height - titleH));
+    const headerFs = bandFontSize(wide, headerBand, 1.5);
     if (headerFs >= MIN_LABEL_FS)
       data.categories.forEach((cat, c) => {
         nodes.push({
@@ -145,7 +162,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           x: plot.x + c * cw,
           y: titleH,
           w: cw,
-          h: headerH,
+          h: headerBand,
           text: clipToWidth(cat, headerFs, cw - 2),
           fontSize: headerFs,
           color: style.text,
@@ -288,24 +305,36 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   }
 
   // Gradient legend: a strip of small steps with min/max (and 0) labels.
-  const ly = plot.y + plot.h + totalsH + fs * 0.6;
+  //
+  // The strip hangs off the bottom of the plot, and `fitPlot` grows the plot UP
+  // from the bottom edge it was given — so on a frame that cannot pay for its
+  // chrome the plot's foot is where the reservation put it and the legend below
+  // it lands outside the chart: the end labels were drawn 30pt under an 80x60
+  // chart at 32pt. Clamped to the last position its own ink allows, exactly as
+  // the tilemap's legend already is, and the labels are then fitted to whatever
+  // band is left and dropped below the legibility floor. An unlabelled gradient
+  // says less; a labelled one drawn off the chart says it somewhere else.
+  const foot = footnoteH(cfg, style, decor);
+  const ly = Math.max(0, Math.min(plot.y + plot.h + totalsH + fs * 0.6, cfg.height - foot - fs * LEGEND_INK));
   if (constant) {
-    nodes.push(
-      { kind: "rect", x: plot.x, y: ly, w: fs * 1.6, h: fs * 0.9, fill: colorOf(min), name: "legend-swatch" },
-      {
-        kind: "text",
-        x: plot.x + fs * 1.9,
-        y: ly - fs * 0.25,
-        w: fs * 8,
-        h: fs * 1.4,
-        text: all.length ? formatNumber(min, fmt) : "no data",
-        fontSize: fs * 0.9,
-        color: style.mutedText,
-        align: "left",
-        valign: "middle",
-        name: "legend-min",
-      },
-    );
+    const swatchFs = bandFontSize(fs * 0.9, cfg.height - foot - ly, 1.35);
+    if (swatchFs > 0)
+      nodes.push(
+        { kind: "rect", x: plot.x, y: ly, w: fs * 1.6, h: fs * 0.9, fill: colorOf(min), name: "legend-swatch" },
+        {
+          kind: "text",
+          x: plot.x + fs * 1.9,
+          y: ly - fs * 0.25,
+          w: fs * 8,
+          h: fs * 1.4,
+          text: all.length ? formatNumber(min, fmt) : "no data",
+          fontSize: swatchFs,
+          color: style.mutedText,
+          align: "left",
+          valign: "middle",
+          name: "legend-min",
+        },
+      );
   } else {
     const lw = Math.min(plot.w * 0.5, fs * 14);
     const steps = 24;
@@ -321,34 +350,39 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         name: `legend-step-${i}`,
       });
     }
-    nodes.push(
-      {
-        kind: "text",
-        x: plot.x,
-        y: ly + fs * 0.95,
-        w: lw / 2,
-        h: fs * 1.2,
-        text: formatNumber(min, fmt),
-        fontSize: fs * 0.85,
-        color: style.mutedText,
-        align: "left",
-        valign: "top",
-        name: "legend-min",
-      },
-      {
-        kind: "text",
-        x: plot.x + lw / 2,
-        y: ly + fs * 0.95,
-        w: lw / 2,
-        h: fs * 1.2,
-        text: formatNumber(max, fmt),
-        fontSize: fs * 0.85,
-        color: style.mutedText,
-        align: "right",
-        valign: "top",
-        name: "legend-max",
-      },
-    );
+    // Both ends or neither, for the reason the tilemap's pair gives: a gradient
+    // labelled at one end says the wrong thing.
+    const endBand = cfg.height - foot - (ly + fs * 0.95);
+    const endFs = bandFontSize(fs * 0.85, endBand, 1.21);
+    if (endFs > 0)
+      nodes.push(
+        {
+          kind: "text",
+          x: plot.x,
+          y: ly + fs * 0.95,
+          w: lw / 2,
+          h: Math.min(fs * 1.2, endBand),
+          text: formatNumber(min, fmt),
+          fontSize: endFs,
+          color: style.mutedText,
+          align: "left",
+          valign: "top",
+          name: "legend-min",
+        },
+        {
+          kind: "text",
+          x: plot.x + lw / 2,
+          y: ly + fs * 0.95,
+          w: lw / 2,
+          h: Math.min(fs * 1.2, endBand),
+          text: formatNumber(max, fmt),
+          fontSize: endFs,
+          color: style.mutedText,
+          align: "right",
+          valign: "top",
+          name: "legend-max",
+        },
+      );
     // Only mark zero when it actually lies inside the range. A FORCED diverging
     // mode over single-signed data (auto-diverging can't reach here) would place
     // the "0" tick off the end of the legend strip.

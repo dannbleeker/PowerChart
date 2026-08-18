@@ -372,36 +372,60 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
         },
       );
     if (values.size < Object.keys(layout).length) {
-      const noDataW = Math.min(fs * 6, Math.max(1, cfg.width - (x0 + lw + fs * 2.1) - 2));
-      nodes.push(
-        {
-          kind: "rect",
-          x: x0 + lw + fs,
-          y: ly,
-          w: fs * 0.9,
-          h: fs * 0.9,
-          fill: noDataFill(style.background),
-          name: "legend-nodata",
-        },
-        {
-          kind: "text",
-          x: x0 + lw + fs * 2.1,
-          y: ly - fs * 0.2,
-          // Bounded by the room actually left to the right of the swatch. The
-          // flat `fs * 6` is 192 points wide at a 32pt font and starts 67 points
-          // in, so on a narrow chart the caption ran 37pt off the right edge.
-          // Last resort in both directions: where the flat box fits it is still
-          // the flat box, so no chart of an ordinary size moves.
-          w: noDataW,
-          h: fs * 1.3,
-          text: clipToWidth("no data", fs * 0.85, noDataW),
-          fontSize: fs * 0.85,
-          color: style.mutedText,
-          align: "left",
-          valign: "middle",
-          name: "legend-nodata-label",
-        },
-      );
+      // The no-data key is a swatch and a caption, and BOTH have to fit to the
+      // right of the gradient bar. Bounding the caption's box was not enough:
+      // its box was clamped to a point wide and clipped to the empty string,
+      // and an empty text box still has an ORIGIN — 27pt past the right edge of
+      // an 80x60 chart at 24pt, with the swatch itself hanging 5pt over. A node
+      // that draws nothing is still a shape on the slide, and the overflow gate
+      // reads it as one.
+      //
+      // So this is the reservation answer the radar, sunburst, pie and the
+      // scale ends above already give: shrink the caption to the room it has,
+      // and where that room cannot carry a readable one, DROP THE PAIR. A
+      // swatch with no caption says nothing; the tiles it explains are still
+      // gray, and the reader loses a legend entry rather than gaining ink
+      // outside the chart.
+      const swatchX = x0 + lw + fs;
+      const textX = x0 + lw + fs * 2.1;
+      const room = cfg.width - textX - 2;
+      const capFs = (() => {
+        const base = fs * 0.85;
+        const w = textWidth("no data", base);
+        if (!(w > 0)) return base;
+        const f = Math.min(base, base * (room / w));
+        return f >= MIN_LABEL_FS ? f : 0;
+      })();
+      if (capFs > 0 && swatchX + fs * 0.9 <= cfg.width)
+        nodes.push(
+          {
+            kind: "rect",
+            x: swatchX,
+            y: ly,
+            w: fs * 0.9,
+            h: fs * 0.9,
+            fill: noDataFill(style.background),
+            name: "legend-nodata",
+          },
+          {
+            kind: "text",
+            x: textX,
+            y: ly - fs * 0.2,
+            // Bounded by the room actually left to the right of the swatch. The
+            // flat `fs * 6` is 192 points wide at a 32pt font and starts 67
+            // points in, so on a narrow chart the caption ran 37pt off the right
+            // edge. Last resort in both directions: where the flat box fits it
+            // is still the flat box, so no chart of an ordinary size moves.
+            w: Math.min(fs * 6, room),
+            h: fs * 1.3,
+            text: clipToWidth("no data", capFs, Math.min(fs * 6, room)),
+            fontSize: capFs,
+            color: style.mutedText,
+            align: "left",
+            valign: "middle",
+            name: "legend-nodata-label",
+          },
+        );
     }
   }
 

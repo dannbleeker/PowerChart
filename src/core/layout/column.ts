@@ -1056,7 +1056,14 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // lesson the CAGR caption already cost this repo — so the bound is the
       // room inside the plot, and a label that cannot fit there is not drawn.
       const comboLabelW = Math.max(0, Math.min(60, anchors.plot.x + anchors.plot.w - (pt.x + r + 2)));
-      if (labelOn && pointFs > 0 && (!H || comboLabelW >= textWidth(formatNumber(v, fmt), pointFs))) {
+      // Upright the label hangs above the mark, so the room it has is whatever
+      // is over the mark — `pt.y * (1 / 1.3)` is where its top ink lands.
+      const uprightPointFs = bandFontSize(fs, pt.y, 1.3);
+      if (
+        labelOn &&
+        pointFs > 0 &&
+        (H ? comboLabelW >= textWidth(formatNumber(v, fmt), pointFs) : uprightPointFs > 0)
+      ) {
         // Categories run down a bar chart, so a label ABOVE its point would sit
         // on the neighbouring category's row; put it beside the mark instead.
         nodes.push(
@@ -1083,11 +1090,17 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
             : {
                 kind: "text",
                 x: pt.x - 30,
-                y: pt.y - fs * 1.65,
+                // Upright, the label sits ABOVE its mark and the only thing over
+                // a mark near the top of the plot is the edge of the chart: at
+                // 32pt it was drawn 36pt above the top of an 80x60 chart. Fitted
+                // to the band the mark actually leaves, and not drawn at all
+                // below the legibility floor — `uprightPointFs` is 0 there, which
+                // is the same "no room" answer the row fit gives sideways.
+                y: pt.y - uprightPointFs * 1.65,
                 w: 60,
-                h: fs * 1.4,
+                h: uprightPointFs * 1.4,
                 text: formatNumber(v, fmt),
-                fontSize: fs,
+                fontSize: uprightPointFs,
                 color: independent ? color : style.text,
                 align: "center",
                 valign: "bottom",
@@ -1137,7 +1150,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
         // under it on the slide, since neither PowerPoint renderer clips.
         // Bounded at both ends now; `combo-series-label-` is movable, so
         // de-collision can still lift it off whatever it lands on.
-        y: H ? horizontalNameY(end.y, fs, cfg.height) : end.y - fs * 1.6,
+        y: H ? horizontalNameY(end.y, fs, cfg.height) : uprightNameY(end.y, fs, cfg.height),
         w: lw,
         h: fs * 1.4,
         text: clipToWidth(s.name, lf, lw),
@@ -1403,6 +1416,25 @@ export function horizontalNameY(pointY: number, fs: number, canvasH: number): nu
   const above = pointY - fs * 0.9 - boxH;
   if (above >= 0) return above;
   return Math.max(0, Math.min(below, canvasH - boxH));
+}
+
+/**
+ * Where an UPRIGHT combo's line name sits relative to the line's last point.
+ *
+ * Above it by preference, which is where it has always gone — and `end.y` is
+ * wherever that point landed, so a line ending near the top of the plot put the
+ * name outside the chart: 13pt above a 300x60 frame at 24pt. Below the point
+ * when above does not fit, for the reason `horizontalNameY` gives for flipping
+ * the other way, and clamped only as the last resort on a frame too short for
+ * either.
+ */
+export function uprightNameY(pointY: number, fs: number, canvasH: number): number {
+  const boxH = fs * 1.4;
+  const above = pointY - fs * 1.6;
+  if (above >= 0) return above;
+  const below = pointY + fs * 0.2;
+  if (below + boxH <= canvasH) return below;
+  return Math.max(0, Math.min(above, canvasH - boxH));
 }
 
 export function seriesLabelNodes(

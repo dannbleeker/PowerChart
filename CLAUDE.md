@@ -1020,6 +1020,49 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   overlapping its own text at the default font in EITHER orientation, at every
   one of those frames — 60x300, 80x60, 120x90, 160x120, 200x150, 300x60 and
   480x300. The overlap sweep and the overflow sweep finally cover the same list.
+
+  **That sentence was ASPIRATIONAL until 2026-08-18, and the cross-product it
+  described was the one thing nobody had run.** The overflow sweep asked eight
+  frames at the default font and seven fonts at THREE frames; a large font on a
+  SMALL frame — the corner where every overflow of the preceding three PRs had
+  been living — was never asked. Giving the font sweep the full frame list turned
+  up **42 nodes drawing outside their own chart**, over ten kinds, none of them
+  at the default font. All 42 are closed, and the shapes were the ones this file
+  already names: a band priced in font sizes on a frame that cannot pay for it
+  (heatmap and butterfly headers, the heatmap's gradient legend, the mekko's
+  upright totals, the bubble size key), and a label hung above its own mark with
+  nothing over it but the edge of the chart (combo, waterfall, boxplot).
+
+  Two of them are general enough to state on their own.
+
+  **An empty text node is not nothing.** `clipTextToFrame` used to answer `""`
+  for a label with no room and leave the node in place — and the only labels it
+  can empty are the ones whose anchor is ALREADY outside the frame, so the pass
+  that exists to keep ink inside the chart was the last thing putting a shape
+  outside it. Layouts do the same one level up: their own fits clip a category
+  name to nothing on a narrow chart, 203 such nodes across the kind/frame/font
+  sweep. Every one is a text box PowerPoint has to create, on a host whose draw
+  cost grows with the shapes already on the slide. They are dropped now, and
+  `emits no text node the clip has emptied` holds it.
+
+  That drop also caught a test asserting nothing: `a sunburst keeps its INSIDE
+labels when the outer ring will not fit` passed on three nodes carrying the
+  empty string. The node existed; no label was drawn. It went red the moment
+  empties were dropped, which is the only reason anyone found out — the same
+  vacuous-measurement shape this file records for the rasterise control and the
+  text-versus-mark sweep.
+
+  **A mark is drawn AROUND its position**, so a point at the very edge of a plot
+  puts half its marker outside it — harmless while chrome sits over the plot, and
+  not harmless once `fitPlot` brings the plot's edge up against the frame's. The
+  showcase's own overlap-relief slide had a bubble hanging 11.7pt past the right
+  edge of its box at 520x300, a perfectly ordinary size, and the deck diff is
+  what found it. Scatter and bubble hold a mark far enough inside the frame for
+  its GLYPH to fit (a star reaches 1.67x its data radius, so the bound is the
+  drawn extent, not `r`). It is a clamp and it moves data — the same trade
+  `fitPlot` makes for the plot itself — and it is the identity for any mark
+  already inside the chart, which is asserted rather than assumed.
+
   It measures
   INK, not boxes — a first version measured boxes and produced four false
   positives and one false negative in one run, because a label's box is routinely

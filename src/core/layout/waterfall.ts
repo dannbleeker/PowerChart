@@ -248,20 +248,28 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
         // adjacent boxes ABUT instead of overlapping. `r.x - 6` is exactly
         // `centers[c] - (r.w + 12) / 2`, so an uncapped slot is byte-identical.
         const boxW = H ? (fits ? r.w + 12 : fs * 4) : Math.min(r.w + 12, slotLen);
-        nodes.push({
-          kind: "text",
-          x: H ? (fits ? r.x - 6 : r.x + r.w + 2) : centers[c] - boxW / 2,
-          y: fits || H ? r.y + r.h / 2 - labelFs * 0.75 : r.y - labelFs * 1.45,
-          w: boxW,
-          h: labelFs * 1.5,
-          text: clipToWidth(label, labelFs, Math.max(1, boxW - 2)),
-          fontSize: labelFs,
-          color: fits ? contrastInk(fill) : style.text,
-          bold: b.isTotal,
-          align: fits ? "center" : H ? "left" : "center",
-          valign: "middle",
-          name: `label-${c}${stacked && !b.isTotal ? `-s${seg.series}` : ""}`,
-        });
+        // A label that does not fit INSIDE its bar is drawn above it, and the
+        // only thing above a bar that reaches the top of the plot is the edge of
+        // the chart — 30pt over the top of a 300x60 chart at 32pt. Fitted to the
+        // band the bar leaves, and dropped where that band cannot carry a
+        // readable number: the same answer `labelFs` itself gives for a row too
+        // thin to label.
+        const outsideFs = fits || H ? labelFs : bandFontSize(labelFs, r.y, 1.45);
+        if (outsideFs > 0)
+          nodes.push({
+            kind: "text",
+            x: H ? (fits ? r.x - 6 : r.x + r.w + 2) : centers[c] - boxW / 2,
+            y: fits || H ? r.y + r.h / 2 - outsideFs * 0.75 : r.y - outsideFs * 1.45,
+            w: boxW,
+            h: outsideFs * 1.5,
+            text: clipToWidth(label, outsideFs, Math.max(1, boxW - 2)),
+            fontSize: outsideFs,
+            color: fits ? contrastInk(fill) : style.text,
+            bold: b.isTotal,
+            align: fits ? "center" : H ? "left" : "center",
+            valign: "middle",
+            name: `label-${c}${stacked && !b.isTotal ? `-s${seg.series}` : ""}`,
+          });
       }
     });
     columnTop.push(b.segs.length ? (H ? frame.x + topQ : frame.y + frame.h - topQ) : y0);

@@ -188,20 +188,30 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           name: `total-${c}`,
         });
     } else {
-      nodes.push({
-        kind: "text",
-        x: pos - 4,
-        y: frame.y + frame.h - colLen - fs * 1.45,
-        w: ext + 8,
-        h: fs * 1.4,
-        text: formatNumber(totals[c], fmt),
-        fontSize: fs,
-        bold: true,
-        color: style.text,
-        align: "center",
-        valign: "bottom",
-        name: `total-${c}`,
-      });
+      // The upright total sits ABOVE the column, and on the %-variant every
+      // column fills the plot — so the only room it has is the band the frame
+      // reserved over the plot, `fs * 1.5 + 4`, which `fitPlot` spends when the
+      // frame cannot pay for its chrome. At 24pt on an 80x60 chart that put the
+      // number 34pt above the top of its own chart. Fitted to the band that is
+      // actually there and dropped when there is none, like the horizontal
+      // branch just above.
+      const colTop = frame.y + frame.h - colLen;
+      const totalFs = bandFontSize(fs, Math.max(0, colTop), 1.45);
+      if (totalFs > 0)
+        nodes.push({
+          kind: "text",
+          x: pos - 4,
+          y: colTop - totalFs * 1.45,
+          w: ext + 8,
+          h: totalFs * 1.4,
+          text: formatNumber(totals[c], fmt),
+          fontSize: totalFs,
+          bold: true,
+          color: style.text,
+          align: "center",
+          valign: "bottom",
+          name: `total-${c}`,
+        });
     }
 
     pos += ext + gap;

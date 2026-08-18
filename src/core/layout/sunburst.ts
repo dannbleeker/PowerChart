@@ -3,7 +3,7 @@ import { contrastInk, polar, textWidth, type SceneNode, type TextNode } from "..
 import { clipToWidth } from "../elements";
 import { formatNumber, resolveFormat } from "../format";
 import { lerpColor } from "../color";
-import { fitPlot, footnoteH, titleHeight, titleNode, MIN_LABEL_FS } from "./frame";
+import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode, MIN_LABEL_FS } from "./frame";
 import { PALETTE } from "../style";
 import type { LayoutResult } from "./column";
 
@@ -108,7 +108,25 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
     // its own radius, which is what separates it from its neighbours.
     const arc = (2 * Math.PI * rr * Math.min(360, Math.max(0, spanDeg))) / 360;
     const chord = 2 * rr * Math.sin((Math.min(spanDeg, 180) * Math.PI) / 360);
-    const lf = outside ? Math.min(fs * 0.85, arc / 1.4) : fs * 0.85;
+    // An inside label is bounded sideways by its own wedge and vertically by
+    // nothing at all, and it is centred on a point the ring's own geometry
+    // chose — so at 32pt on an 80x60 chart a group name reached 12pt below the
+    // foot of the chart. The room it has is what lies between its anchor and
+    // the nearer edge, doubled because the ink is centred on that anchor, and a
+    // band that cannot carry a readable name loses it: the answer the outer
+    // ring's own margin already gives. The ratio is the label's own ink, which
+    // hangs 0.57 of a font size below its anchor against 0.44 above — measured
+    // from the box this function builds, not guessed at: 1.05 left 0.7pt of a
+    // descender outside the chart.
+    //
+    // NOT the ring's thickness, which was tried and is wrong: an inside label
+    // may legitimately stand a little proud of its band — `a sunburst keeps its
+    // INSIDE labels when the outer ring will not fit` is that case, and the
+    // radial bound dropped exactly the labels that gate exists to protect.
+    const lf = outside
+      ? Math.min(fs * 0.85, arc / 1.4)
+      : bandFontSize(fs * 0.85, 2 * Math.min(p.y, cfg.height - p.y), 1.15);
+    if (lf <= 0) return;
     const room = outside ? Math.max(lf, (rightHalf ? cfg.width - p.x : p.x) - 2) : Math.max(1, chord);
     const lfScale = lf / (fs * 0.85);
     const shown = clipToWidth(text, lf, room);

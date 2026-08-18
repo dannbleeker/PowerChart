@@ -11,6 +11,11 @@ import type { LayoutResult } from "./column";
  * ordering left to the data (think-cell keeps sheet order too).
  * Labels sit inside the slice when it is wide enough, otherwise outside.
  */
+/** A point held inside the chart's own box — for chrome that hangs off the ring. */
+function clampToFrame(p: { x: number; y: number }, cfg: ChartConfig): { x: number; y: number } {
+  return { x: Math.min(Math.max(p.x, 0), cfg.width), y: Math.min(Math.max(p.y, 0), cfg.height) };
+}
+
 export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decorations): LayoutResult {
   const { data } = cfg;
   const fs = style.fontSize;
@@ -220,37 +225,50 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
       const room = inside ? insideChord(span) : Math.max(fs, (rightHalf ? cfg.width - p.x : p.x) - 4);
       const shown = clipToWidth(label, lf, room);
       const w = textWidth(shown, lf) + 4;
-      if (!inside) {
-        // Leader line from the arc edge toward the label.
-        const a = polar(ecx, ecy, rr + 1, mid);
-        const b = polar(ecx, ecy, rr + outerFs * 0.65, mid);
+      // `clipToWidth` answers the EMPTY STRING when not even one character and
+      // an ellipsis fit, and an empty text node is not nothing: it still has an
+      // origin, and that origin is computed from the label's own anchor out on
+      // the ring — 5pt left of a 60x300 doughnut, 2pt under an 80x60 pie. A node
+      // that draws no ink is still a shape on the slide, so it is not drawn at
+      // all, and the leader that would point at it goes with it.
+      if (shown) {
+        if (!inside) {
+          // Leader line from the arc edge toward the label. Both ends held inside
+          // the chart: the ring can sit against the frame's edge on a narrow one,
+          // and a leader that runs `outerFs * 0.65` further out then leaves it —
+          // 1.3pt to the left of a 60x300 doughnut. A leader is a pointer, so a
+          // shorter one still points; the alternative is a line on the slide
+          // beside the chart.
+          const a = clampToFrame(polar(ecx, ecy, rr + 1, mid), cfg);
+          const b = clampToFrame(polar(ecx, ecy, rr + outerFs * 0.65, mid), cfg);
+          nodes.push({
+            kind: "line",
+            x1: a.x,
+            y1: a.y,
+            x2: b.x,
+            y2: b.y,
+            stroke: style.mutedText,
+            strokeWidth: 0.75,
+            name: other ? "leader-other" : `leader-${c}`,
+          });
+        }
         nodes.push({
-          kind: "line",
-          x1: a.x,
-          y1: a.y,
-          x2: b.x,
-          y2: b.y,
-          stroke: style.mutedText,
-          strokeWidth: 0.75,
-          name: other ? "leader-other" : `leader-${c}`,
+          kind: "text",
+          x: inside ? p.x - w / 2 : rightHalf ? p.x : p.x - w,
+          y: p.y - lf * 0.75,
+          w,
+          h: lf * 1.5,
+          text: shown,
+          fontSize: lf,
+          // Inside a slice the ink must contrast with THAT slice: a pale fill (the
+          // default palette's #eda100, or any custom/per-point colour) printed white
+          // on light — invisible. Outside, the label sits on the canvas.
+          color: inside ? contrastInk(fill) : style.text,
+          align: inside ? "center" : rightHalf ? "left" : "right",
+          valign: "middle",
+          name: other ? "label-other" : `label-${c}`,
         });
       }
-      nodes.push({
-        kind: "text",
-        x: inside ? p.x - w / 2 : rightHalf ? p.x : p.x - w,
-        y: p.y - lf * 0.75,
-        w,
-        h: lf * 1.5,
-        text: shown,
-        fontSize: lf,
-        // Inside a slice the ink must contrast with THAT slice: a pale fill (the
-        // default palette's #eda100, or any custom/per-point colour) printed white
-        // on light — invisible. Outside, the label sits on the canvas.
-        color: inside ? contrastInk(fill) : style.text,
-        align: inside ? "center" : rightHalf ? "left" : "right",
-        valign: "middle",
-        name: other ? "label-other" : `label-${c}`,
-      });
     }
     angle += span;
   });
