@@ -88,6 +88,8 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
     outside: boolean,
     /** The wedge's angular span, which is the room this label actually has. */
     spanDeg: number,
+    /** For an inside label, the radial thickness of the ring it sits in. */
+    band = Infinity,
   ) => {
     if (!decor.segmentLabels) return;
     if (outside && !outerLabelsFit) return;
@@ -125,7 +127,15 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
     // radial bound dropped exactly the labels that gate exists to protect.
     const lf = outside
       ? Math.min(fs * 0.85, arc / 1.4)
-      : bandFontSize(fs * 0.85, 2 * Math.min(p.y, cfg.height - p.y), 1.15);
+      : Math.min(
+          bandFontSize(fs * 0.85, 2 * Math.min(p.y, cfg.height - p.y), 1.15),
+          // …and by the RING it sits in, which is what separates one inside
+          // label from the next: two group names on a 300x60 chart at 8pt sat
+          // 5.4pt apart with 5.9pt of ink. Measured on the ink rather than on
+          // the box (1.4 was tried and drops labels a roomier chart can carry —
+          // an inside label may stand a little proud of its band).
+          bandFontSize(fs * 0.85, band, 1.05),
+        );
     if (lf <= 0) return;
     const room = outside ? Math.max(lf, (rightHalf ? cfg.width - p.x : p.x) - 2) : Math.max(1, chord);
     const lfScale = lf / (fs * 0.85);
@@ -188,7 +198,16 @@ export function layoutSunburst(cfg: ChartConfig, style: ChartStyle, decor: Decor
         name: `group-${gi}`,
       });
       if (span >= 16)
-        label((rInner + rMid) / 2, angle + span / 2, g.name, contrastInk(gColor), `group-label-${gi}`, false, span);
+        label(
+          (rInner + rMid) / 2,
+          angle + span / 2,
+          g.name,
+          contrastInk(gColor),
+          `group-label-${gi}`,
+          false,
+          span,
+          rMid - rInner,
+        );
       let a2 = angle;
       g.members.forEach((m, mi) => {
         const mspan = (m.value / g.total) * span;

@@ -5,6 +5,8 @@ import { formatNumber, niceTicks, resolveFormat, segmentLabel, axisTickLabel } f
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import {
+  titleInkBottom,
+  aboveMarkFontSize,
   baselineNode,
   breakMarkerNodes,
   chromeNodes,
@@ -507,20 +509,31 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         const subX = centers[c] - colThick / 2 + sp * stackThick;
         const subTopQ = qOf(Math.max(0, ups[sp]));
         const total = data.series.reduce((a, s) => a + ((s.stack ?? 0) === id ? (s.values[c] ?? 0) : 0), 0);
-        nodes.push({
-          kind: "text",
-          x: subX - 4,
-          y: frame.y + frame.h - subTopQ - fs * 1.45,
-          w: stackThick + 8,
-          h: fs * 1.4,
-          text: formatNumber(total, fmt),
-          fontSize: fs * 0.95,
-          bold: true,
-          color: style.text,
-          align: "center",
-          valign: "bottom",
-          name: `total-${c}-s${sp}`,
-        });
+        // Same band as the per-category total below, for the same reason: this
+        // one sits over a sub-column, which reaches the top of the plot just as
+        // readily.
+        const subFs = aboveMarkFontSize(fs * 0.95, frame.y + frame.h - subTopQ, titleInkBottom(cfg, style), 1.53);
+        // As a RATIO of the unshrunk size, so the box and the font move together
+        // and a label that needed no shrinking is byte-identical. Written as
+        // `subFs * 1.53` first, and 0.95 * 1.53 is 1.4535 against the 1.45 that
+        // was there — four labels on a showcase slide moved three hundredths of
+        // a point, which is the radar's tick lesson repeated one file over.
+        const subScale = subFs / (fs * 0.95);
+        if (subFs > 0)
+          nodes.push({
+            kind: "text",
+            x: subX - 4,
+            y: frame.y + frame.h - subTopQ - fs * 1.45 * subScale,
+            w: stackThick + 8,
+            h: fs * 1.4 * subScale,
+            text: formatNumber(total, fmt),
+            fontSize: subFs,
+            bold: true,
+            color: style.text,
+            align: "center",
+            valign: "bottom",
+            name: `total-${c}-s${sp}`,
+          });
       });
     } else if (decor.totals && !pct) {
       if (H) {
@@ -558,24 +571,27 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // takes against its row pitch. Last resort — a total that already fits
         // keeps `fs` exactly, so no ordinary chart moves.
         const text = formatNumber(signedTotals[c], fmt);
-        let tf = fs;
+        // Two bounds, in order: the SLOT sideways, and the band between the
+        // title and the column's own top upright. The second used to be a clamp
+        // to y=0, which is where the TITLE is — so a total that could not fit
+        // over its column was drawn across the chart's own title instead of off
+        // the top of it. Both defects, and the clamp traded one for the other.
+        let tf = aboveMarkFontSize(fs, frame.y + frame.h - topQ, titleInkBottom(cfg, style), 1.45);
         while (tf > MIN_LABEL_FS && textWidth(text, tf, true) > slotLen) tf -= 0.5;
         // The box and the font move TOGETHER: `tf === fs` reproduces the old
         // geometry byte for byte, and a smaller label needs less clearance over
         // the bar it names.
-        if (textWidth(text, tf, true) <= slotLen)
+        if (tf >= MIN_LABEL_FS && textWidth(text, tf, true) <= slotLen)
           nodes.push({
             kind: "text",
             x: centers[c] - slotLen / 2,
-            // Never above the canvas. The total sits `tf * 1.45` over its
-            // column's top, and on a frame whose columns reach the top of the
-            // plot that put it off the chart entirely — 31.6pt past the top of a
-            // 300x60 chart at a 32pt font. Clamped rather than dropped, which is
-            // the opposite call to the grand total below it and for a reason:
-            // this is the value of ITS column and appears nowhere else, where
-            // the grand total is a summary of numbers the chart already shows.
-            // An overlapping label still reads; an off-canvas one is lost.
-            y: Math.max(0, frame.y + frame.h - topQ - tf * 1.45),
+            // `aboveMarkFontSize` has already guaranteed this lands under the
+            // title and inside the chart, so there is no clamp here any more.
+            // The total sits `tf * 1.45` over its column's top, and where that
+            // band cannot carry a readable number the total is not drawn — an
+            // overlapping label does not "still read" when what it overlaps is
+            // the title.
+            y: frame.y + frame.h - topQ - tf * 1.45,
             w: slotLen,
             h: tf * 1.4,
             text,
@@ -1058,7 +1074,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const comboLabelW = Math.max(0, Math.min(60, anchors.plot.x + anchors.plot.w - (pt.x + r + 2)));
       // Upright the label hangs above the mark, so the room it has is whatever
       // is over the mark — `pt.y * (1 / 1.3)` is where its top ink lands.
-      const uprightPointFs = bandFontSize(fs, pt.y, 1.3);
+      const uprightPointFs = aboveMarkFontSize(fs, pt.y, titleInkBottom(cfg, style), 1.3);
       if (
         labelOn &&
         pointFs > 0 &&
@@ -1137,29 +1153,46 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const lx = H
         ? Math.max(0, Math.min(end.x - 40, cfg.width - 80))
         : Math.max(0, Math.min(anchors.plot.x + anchors.plot.w + 4, cfg.width - lw));
-      let lf = fs;
+      // Sideways this name sits ON the plot beside the line's last point, and it
+      // was the one label there still drawn at the full chart font: at 18pt on a
+      // 120x90 bar chart every number around it had been fitted to the row and
+      // shrunk to 6.7pt while "Margin %" stayed at 18 and was drawn across four
+      // of them. It takes the same row bound as the point labels it sits among —
+      // `pointFs` — and is not drawn at all when the row cannot carry it.
+      // Upright it keeps `fs` exactly, so nothing there moves.
+      // Half the row, not the whole of it: the point labels own their rows, and
+      // this name sits BETWEEN two of them (`horizontalNameY` puts it under the
+      // line's last point, which is another category's row). At the full row
+      // bound it still met the neighbours' numbers on a 120x90 bar chart; at
+      // half it clears them, and where half a row is unreadable the name is not
+      // drawn — a line whose name cannot be read is still the line the legend
+      // names, and `collide.ts` has nowhere to move this one sideways: every row
+      // above it is occupied.
+      const nameFs = H ? bandFontSize(fs, rowPitch, 2.8) : fs;
+      let lf = nameFs;
       while (lf > 5 && textWidth(s.name, lf) > lw) lf -= 0.5;
-      nodes.push({
-        kind: "text",
-        x: lx,
-        // Sideways the name sits BELOW the line's last point, and the floor at 0
-        // was the only bound it had: `end.y` is wherever that point landed, so
-        // on a short frame the whole label was drawn past the foot of the chart
-        // — y 91.5 with a 14pt box on a 90pt canvas, and the same at 300x60 and
-        // 200x150, all at the DEFAULT font. Off the chart is onto whatever sits
-        // under it on the slide, since neither PowerPoint renderer clips.
-        // Bounded at both ends now; `combo-series-label-` is movable, so
-        // de-collision can still lift it off whatever it lands on.
-        y: H ? horizontalNameY(end.y, fs, cfg.height) : uprightNameY(end.y, fs, cfg.height),
-        w: lw,
-        h: fs * 1.4,
-        text: clipToWidth(s.name, lf, lw),
-        fontSize: lf,
-        color: style.text,
-        align: H ? "center" : "left",
-        valign: "middle",
-        name: `combo-series-label-${li}`,
-      });
+      if (nameFs > 0)
+        nodes.push({
+          kind: "text",
+          x: lx,
+          // Sideways the name sits BELOW the line's last point, and the floor at 0
+          // was the only bound it had: `end.y` is wherever that point landed, so
+          // on a short frame the whole label was drawn past the foot of the chart
+          // — y 91.5 with a 14pt box on a 90pt canvas, and the same at 300x60 and
+          // 200x150, all at the DEFAULT font. Off the chart is onto whatever sits
+          // under it on the slide, since neither PowerPoint renderer clips.
+          // Bounded at both ends now; `combo-series-label-` is movable, so
+          // de-collision can still lift it off whatever it lands on.
+          y: H ? horizontalNameY(end.y, nameFs, cfg.height) : uprightNameY(end.y, fs, cfg.height),
+          w: lw,
+          h: nameFs * 1.4,
+          text: clipToWidth(s.name, lf, lw),
+          fontSize: lf,
+          color: style.text,
+          align: H ? "center" : "left",
+          valign: "middle",
+          name: `combo-series-label-${li}`,
+        });
     }
   });
   return result;

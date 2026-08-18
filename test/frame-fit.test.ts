@@ -227,6 +227,16 @@ describe("labels are not drawn on top of each other", () => {
     return (tick(a) && point(b)) || (tick(b) && point(a));
   };
 
+  /**
+   * The fonts this gate sweeps: the default and the sizes either side of it.
+   *
+   * A chart's font is a number a caller types, and 6 to 18 is the range a deck
+   * actually uses — a thumbnail in a gallery, a chart on a slide, a chart on a
+   * poster. 24 and 32 are deliberately not here; see the block comment on the
+   * sweep below.
+   */
+  const FONTS_NEAR_DEFAULT = [6, 8, 10, 14, 18];
+
   /** The ink of a text node, as the frame sweep measures it. */
   const inkOf = (t: TextNode) => inkBox(t)!;
   const overlap = (a: ReturnType<typeof inkOf>, b: ReturnType<typeof inkOf>) => {
@@ -257,62 +267,79 @@ describe("labels are not drawn on top of each other", () => {
     expect(bad).toEqual([]);
   });
 
-  it("no chart overlaps its own text at the default font", () => {
+  it("no chart overlaps its own text at or below 18pt", () => {
     // The strongest form this file can assert today. A sweep of the text ink
     // boxes against each other found 237 overlapping pairs across the kinds and
     // fonts; fitting each label to the space it actually has took that to 76,
     // and to ZERO at the font every chart is drawn at unless someone changes it.
-    // The remainder are at 18pt and above and are listed in the PR that got the
-    // count here — do not widen this to those fonts without fixing them.
+    //
+    // The FONTS EITHER SIDE of the default came next, and they were not a
+    // formality: 98 pairs at 6, 8, 14 and 18pt, over eleven kinds. Most of them
+    // were one shape — a label drawn above a mark, clamped to y=0 when the mark
+    // reached the top of the plot, which is where the TITLE is (see
+    // `aboveMarkFontSize`). The rest were fits that stopped at 6pt whatever the
+    // band could hold (the funnel's rows), a legend clamped back into the grid
+    // it explains (the heatmap's), a size key pushed off one edge to clear the
+    // other (the bubble's), a tick fit measuring a gap the rings did not have
+    // (the radar's), and the two corner labels where the x axis meets the y.
+    //
+    // 24 and 32pt are still outside this gate: 282 pairs, and a different
+    // argument — at that size the chrome genuinely exceeds the frame, and the
+    // answer is a decision about how small a chart PowerChart claims to draw at
+    // all rather than another bound. Do not widen to them without taking it.
     const bad: string[] = [];
-    for (const [w, h] of [
-      // 160x120 was added after a sweep found this gate was checking TWO of the
-      // eight frames the overflow sweep uses, while its name claims the default
-      // font generally. See the block comment above.
-      //
-      // 60x300 followed: a tall sidebar is an ordinary shape for a chart on a
-      // slide, and it carried 16 overlapping pairs at the default font — a
-      // heatmap's column headers drawn across each other, a butterfly's two
-      // series names meeting in the middle, a combo point label pinned to x=0
-      // over the category names, a bubble size legend spilling onto the y axis.
-      //
-      // 120x90 followed once the sunburst's adjacent OUTSIDE labels were fitted
-      // to the vertical gap between neighbours instead of to each wedge's own
-      // arc. That one pair was the only thing left on this frame upright — it is
-      // NOT in the rotated sweep below, which still has four (see there).
-      //
-      // 300x60 and 80x60 closed last, and each needed a different bound rather
-      // than the de-collision work this comment used to predict: the upright
-      // column totals fitted to their category slot, the combo line's series
-      // name fitted to the gutter it actually has instead of a width floor it
-      // does not, and the CAGR caption shrunk-then-dropped against the TITLE's
-      // ink (clamping it to the title's bottom was tried and measured and is
-      // still refused — it moves the overlap onto the totals).
-      //
-      // Every frame in the overflow sweep is now covered here, in both
-      // orientations.
-      [60, 300],
-      [80, 60],
-      [120, 90],
-      [300, 60],
-      [160, 120],
-      [200, 150],
-      [480, 300],
-    ] as [number, number][]) {
-      for (const { kind } of CHART_KINDS) {
-        const ts = buildChart({ ...sampleConfig(kind), width: w, height: h } as ChartConfig).nodes.filter(
-          (n): n is TextNode => n.kind === "text" && !!n.text.trim(),
-        );
-        const boxes = ts.map((t) => inkBox(t)!);
-        for (let i = 0; i < boxes.length; i++) {
-          for (let j = i + 1; j < boxes.length; j++) {
-            if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name)) {
-              bad.push(`${kind} at ${w}x${h}: ${ts[i].name} over ${ts[j].name}`);
+    for (const fontSize of FONTS_NEAR_DEFAULT)
+      for (const [w, h] of [
+        // 160x120 was added after a sweep found this gate was checking TWO of the
+        // eight frames the overflow sweep uses, while its name claims the default
+        // font generally. See the block comment above.
+        //
+        // 60x300 followed: a tall sidebar is an ordinary shape for a chart on a
+        // slide, and it carried 16 overlapping pairs at the default font — a
+        // heatmap's column headers drawn across each other, a butterfly's two
+        // series names meeting in the middle, a combo point label pinned to x=0
+        // over the category names, a bubble size legend spilling onto the y axis.
+        //
+        // 120x90 followed once the sunburst's adjacent OUTSIDE labels were fitted
+        // to the vertical gap between neighbours instead of to each wedge's own
+        // arc. That one pair was the only thing left on this frame upright — it is
+        // NOT in the rotated sweep below, which still has four (see there).
+        //
+        // 300x60 and 80x60 closed last, and each needed a different bound rather
+        // than the de-collision work this comment used to predict: the upright
+        // column totals fitted to their category slot, the combo line's series
+        // name fitted to the gutter it actually has instead of a width floor it
+        // does not, and the CAGR caption shrunk-then-dropped against the TITLE's
+        // ink (clamping it to the title's bottom was tried and measured and is
+        // still refused — it moves the overlap onto the totals).
+        //
+        // Every frame in the overflow sweep is now covered here, in both
+        // orientations.
+        [60, 300],
+        [80, 60],
+        [120, 90],
+        [300, 60],
+        [160, 120],
+        [200, 150],
+        [480, 300],
+      ] as [number, number][]) {
+        for (const { kind } of CHART_KINDS) {
+          const ts = buildChart({
+            ...sampleConfig(kind),
+            width: w,
+            height: h,
+            style: { fontSize },
+          } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text.trim());
+          const boxes = ts.map((t) => inkBox(t)!);
+          for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+              if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name)) {
+                bad.push(`${kind} at ${w}x${h} ${fontSize}pt: ${ts[i].name} over ${ts[j].name}`);
+              }
             }
           }
         }
       }
-    }
     expect(bad).toEqual([]);
   });
 
@@ -390,54 +417,62 @@ describe("labels are not drawn on top of each other", () => {
    * in the x-axis strip, and the engine's own `textWidth` says they clear it.
    * Measure with the metric the layouts measure with.
    */
-  it("no horizontal chart overlaps its own text at the default font", () => {
+  it("no horizontal chart overlaps its own text at or below 18pt", () => {
+    // Widened with the upright sweep above, and it found ONE node: the combo
+    // line's series name, drawn at the full chart font while every label around
+    // it had been fitted to its row — 22 pairs across four fonts, all of them
+    // "Margin %" lying across the numbers of two or three categories. Sideways
+    // that name has nowhere to be nudged to (every row is occupied), so it takes
+    // half a row and is dropped below the floor.
     const bad: string[] = [];
-    for (const [w, h] of [
-      // 160x120 was added after a sweep found this gate was checking TWO of the
-      // eight frames the overflow sweep uses, while its name claims the default
-      // font generally. See the block comment above.
-      //
-      // 60x300 followed: a tall sidebar is an ordinary shape for a chart on a
-      // slide, and it carried 16 overlapping pairs at the default font — a
-      // heatmap's column headers drawn across each other, a butterfly's two
-      // series names meeting in the middle, a combo point label pinned to x=0
-      // over the category names, a bubble size legend spilling onto the y axis.
-      //
-      // 120x90, 300x60 and 80x60 all joined once the horizontal mekko's legend
-      // was gated on `horizontalLegendFits` — the predicate `computeFrameHorizontal`
-      // and `horizontalChrome` already shared, which the mekko's own draw never
-      // asked. On a frame the predicate refuses, the reservation was zero rows
-      // and the legend was drawn into it anyway; that is the state this repo
-      // measured as worse than not gating either side.
-      //
-      // Note this list is now WIDER than the upright one, which stops at 120x90.
-      // Rotating a chart rotates which side of a label is crowded, so the two
-      // sweeps are not expected to cover the same frames — what is left upright
-      // at 300x60 and 80x60 is de-collision work on other kinds entirely.
-      [60, 300],
-      [80, 60],
-      [120, 90],
-      [300, 60],
-      [160, 120],
-      [200, 150],
-      [480, 300],
-    ] as [number, number][]) {
-      for (const { kind } of CHART_KINDS) {
-        const ts = buildChart({
-          ...sampleConfig(kind),
-          width: w,
-          height: h,
-          horizontal: true,
-        } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text.trim());
-        const boxes = ts.map((t) => inkBox(t)!);
-        for (let i = 0; i < boxes.length; i++) {
-          for (let j = i + 1; j < boxes.length; j++) {
-            if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name))
-              bad.push(`${kind} at ${w}x${h}: ${ts[i].name} over ${ts[j].name}`);
+    for (const fontSize of FONTS_NEAR_DEFAULT)
+      for (const [w, h] of [
+        // 160x120 was added after a sweep found this gate was checking TWO of the
+        // eight frames the overflow sweep uses, while its name claims the default
+        // font generally. See the block comment above.
+        //
+        // 60x300 followed: a tall sidebar is an ordinary shape for a chart on a
+        // slide, and it carried 16 overlapping pairs at the default font — a
+        // heatmap's column headers drawn across each other, a butterfly's two
+        // series names meeting in the middle, a combo point label pinned to x=0
+        // over the category names, a bubble size legend spilling onto the y axis.
+        //
+        // 120x90, 300x60 and 80x60 all joined once the horizontal mekko's legend
+        // was gated on `horizontalLegendFits` — the predicate `computeFrameHorizontal`
+        // and `horizontalChrome` already shared, which the mekko's own draw never
+        // asked. On a frame the predicate refuses, the reservation was zero rows
+        // and the legend was drawn into it anyway; that is the state this repo
+        // measured as worse than not gating either side.
+        //
+        // Note this list is now WIDER than the upright one, which stops at 120x90.
+        // Rotating a chart rotates which side of a label is crowded, so the two
+        // sweeps are not expected to cover the same frames — what is left upright
+        // at 300x60 and 80x60 is de-collision work on other kinds entirely.
+        [60, 300],
+        [80, 60],
+        [120, 90],
+        [300, 60],
+        [160, 120],
+        [200, 150],
+        [480, 300],
+      ] as [number, number][]) {
+        for (const { kind } of CHART_KINDS) {
+          const ts = buildChart({
+            ...sampleConfig(kind),
+            width: w,
+            height: h,
+            horizontal: true,
+            style: { fontSize },
+          } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.text.trim());
+          const boxes = ts.map((t) => inkBox(t)!);
+          for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+              if (overlap(boxes[i], boxes[j]) > 1 && !acceptedTrade(kind, ts[i].name, ts[j].name))
+                bad.push(`${kind} at ${w}x${h} ${fontSize}pt: ${ts[i].name} over ${ts[j].name}`);
+            }
           }
         }
       }
-    }
     expect(bad).toEqual([]);
   });
 
@@ -612,6 +647,66 @@ describe("the mechanisms the sweep would only report as a number", () => {
 
   const atFont = (kind: string, w: number, h: number, fontSize: number) =>
     buildChart({ ...sampleConfig(kind as never), width: w, height: h, style: { fontSize } } as ChartConfig);
+
+  it("keeps a label that sits above a mark out of the title's band", () => {
+    // The shared rule behind most of the 6-18pt overlaps: a value drawn over a
+    // column, a box or a point used to be CLAMPED to y=0 when its mark reached
+    // the top of the plot, and y=0 is where the title is. Asserted on the ink of
+    // both, over the kinds that draw one, because the clamp was easy to
+    // reintroduce and reads as the safe option — it keeps the label on the
+    // canvas, and puts it on the one label that names the chart.
+    const bad: string[] = [];
+    for (const kind of ["stacked", "clustered", "combo", "waterfall", "boxplot", "mekko"] as const)
+      for (const fontSize of [14, 18]) {
+        const scene = buildChart({
+          ...sampleConfig(kind),
+          width: 300,
+          height: 60,
+          style: { fontSize },
+        } as ChartConfig);
+        const title = scene.nodes.find((n): n is TextNode => n.name === "title");
+        if (!title) continue;
+        const band = inkBox(title)!;
+        for (const n of scene.nodes) {
+          if (n.kind !== "text" || n === title) continue;
+          const box = inkBox(n)!;
+          if (box.y1 > band.y0 && box.y0 < band.y1 && box.x1 > band.x0 && box.x0 < band.x1)
+            bad.push(`${kind} at ${fontSize}pt: ${n.name} in the title's band`);
+        }
+      }
+    expect(bad).toEqual([]);
+  });
+
+  it("fits a radar's tick labels to the gap the rings actually have", () => {
+    // `r / rings.length` is not that gap — the rings are the ticks ABOVE the
+    // minimum, so the outermost radius is not one of them and the average
+    // overstated the space by a quarter. The labels were then fitted to a gap
+    // they did not have and drew through each other. Asserted as the property
+    // rather than as a number: consecutive tick labels do not touch.
+    const bad: string[] = [];
+    for (const [w, h] of FRAMES)
+      for (const fontSize of [6, 8, 10, 14, 18]) {
+        const ticks = buildChart({
+          ...sampleConfig("radar"),
+          width: w,
+          height: h,
+          style: { fontSize },
+        } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("tick-"));
+        for (let i = 1; i < ticks.length; i++) {
+          const a = inkBox(ticks[i - 1])!;
+          const b = inkBox(ticks[i])!;
+          // The overlapping AREA, the same rule the sweep uses. Written as "more
+          // than a point on each axis" first, and that passed against the
+          // unfixed file: these labels meet across their whole width by a third
+          // of a point, which is an area of nine and a height of 0.3.
+          const ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+          const oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+          if (ox > 0 && oy > 0 && ox * oy > 1)
+            bad.push(`${w}x${h} at ${fontSize}pt: ${ticks[i - 1].name} over ${ticks[i].name}`);
+        }
+      }
+    expect(bad).toEqual([]);
+  });
 
   it("emits no text node the clip has emptied, on any kind at any size", () => {
     // A label the frame-clip cannot fit at all used to be left in place carrying

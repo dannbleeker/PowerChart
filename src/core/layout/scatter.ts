@@ -7,6 +7,7 @@ import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
 import { lerpColor, sequentialScale, zoneFill } from "../color";
 import {
+  titleInkBottom,
   fitPlot,
   footnoteH,
   titleHeight,
@@ -493,9 +494,17 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   if (xTickScale > 0) {
     for (const t of xTicks) {
       const x = toX(t);
+      // A tick label is CENTRED on its tick, so the one at the axis's origin
+      // puts half its width to the LEFT of the plot — which is the strip the y
+      // axis writes its own numbers in, and at 18pt on a 480x300 chart the two
+      // corner labels met. Nudged right by exactly the overlap, the same move
+      // the gantt's last tick label makes at the other end of its axis: a label
+      // that already clears the gutter does not move at all.
+      const half = textWidth(formatNumber(t, xFmt), fs * 0.9 * xTickScale) / 2;
+      const at = Math.max(x, plot.x + half);
       nodes.push({
         kind: "text",
-        x: x - 24,
+        x: at - 24,
         y: plot.y + plot.h + 2,
         w: 48,
         h: fs * 1.4 * xTickScale,
@@ -753,6 +762,17 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // reserved as zero and the legend is drawn anyway, which is strictly worse
   // than drawing it with room. Measured: doing exactly that took the extreme-frame
   // overlap count from 55 to 63.
+  /**
+   * How far right the group legend's own ink reaches, or 0 when there is none.
+   *
+   * The bubble size key sits at the top-right of the plot and has to clear this
+   * legend — but clearing the whole BAND moves the key on charts where the two
+   * are nowhere near each other: an ordinary 480x300 bubble has "Group 1..3"
+   * ending around x=190 and the key starting past x=380, and shifting it there
+   * changed a chart with nothing wrong with it (the showcase's snapshot is what
+   * said so). What the key has to clear is the legend's INK.
+   */
+  let legendRight = 0;
   if (groupIds.length > 1 && showGroupLegend) {
     // Clear the gradient bar when both legends are up — they share this row and
     // both anchor at plot.x, so without the offset the chips land on the ramp.
@@ -856,6 +876,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
           name: `legend-${g}`,
         },
       );
+      legendRight = Math.max(legendRight, lx + drawn + 3 + textWidth(label, legendFs));
     });
   }
 
@@ -938,7 +959,7 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // the bound because the legend sits at the plot's right edge — a label
     // reaching past the midpoint is into the chart, not beside it.
     const widestRef = Math.max(...refs.map((v) => textWidth(formatNumber(v, sizeFmt), fs * 0.8)));
-    const sizeLegendFits = widestRef <= plot.w * 0.5;
+    let sizeLegendFits = widestRef <= plot.w * 0.5;
     // The numbers hang `fs * 1.35` above the tallest reference circle, and
     // nothing held them inside the chart: on a 300x60 frame at 32pt they were
     // drawn 33pt above its top edge while the circles themselves sat inside it.
@@ -948,7 +969,25 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // unreadable. Zero on any chart whose numbers already fit, so nothing that
     // fits moves.
     const refMaxR = Math.max(2.5, Math.sqrt(refMax / maxSize) * maxR);
-    const legendShift = Math.max(0, refMaxR + fs * 1.35 - fs * 0.36 - (plot.y + maxR * 1.1));
+    // Shifted clear of the TITLE, not merely onto the canvas. Holding the
+    // numbers at y >= 0 stopped them leaving the chart and left them lying
+    // across its title on a 120x90 frame at 18pt, which is the same trade the
+    // upright column totals used to make with their clamp.
+    // Clear of the TITLE always, and of the GROUP LEGEND only where the two
+    // actually meet: the legend fills its row from the left and the key sits at
+    // the right, so on a wide chart they never touch, and clearing the legend's
+    // whole band there moved a key that was perfectly well placed. On a narrow
+    // one the legend runs under the key and its numbers landed on "Group 3".
+    const keyLeft = plot.x + plot.w - 4 - 4 * refMaxR;
+    const clearTo = legendRight > keyLeft ? chromeTop : titleInkBottom(cfg, style);
+    const legendShift = Math.max(0, clearTo + refMaxR + fs * 1.35 - fs * 0.36 - (plot.y + maxR * 1.1));
+    // The shift has a floor as well as a ceiling. Pushed far enough to clear the
+    // group legend it ran off the foot of a 300x60 chart at 24pt, and then onto
+    // the x-axis tick labels at 14pt — one collision traded for the next. The
+    // key belongs INSIDE the plot, so that is what is asked: where the shifted
+    // circles do not fit between the plot's own top and bottom, the key is
+    // dropped, exactly as the width bound above drops it.
+    if (maxR * 1.1 + legendShift + refMaxR > plot.h) sizeLegendFits = false;
     let lx = plot.x + plot.w - 4;
     if (sizeLegendFits)
       refs.forEach((v, i) => {

@@ -53,6 +53,34 @@ export function bandFontSize(fs: number, band: number, boxRatio: number): number
 }
 
 /**
+ * The size a label drawn ABOVE a mark may take — the band between the bottom of
+ * the title and the top of the mark it names, or ZERO when that band cannot
+ * carry a readable one.
+ *
+ * Every kind that puts a number over a column, a box or a point had the same two
+ * bounds missing, in the same order. The first is the frame: a label hung
+ * `fs * 1.45` over a mark that reaches the top of the plot is drawn off the
+ * chart, and clamping it to y=0 — which is what the upright column totals did —
+ * only exchanges one defect for another, because y=0 is where the TITLE is. At
+ * 18pt on a 300x60 chart that put a total, a waterfall value, a boxplot median
+ * and a mekko total straight across the title of their own chart.
+ *
+ * So the room is measured from the title's own band, and where it cannot be met
+ * the label is not drawn: the answer the radar, sunburst, tilemap and pie
+ * reservations already give. A title is the one label on a chart that names what
+ * the reader is looking at, and it is drawn first — a value written over it
+ * costs both.
+ *
+ * `titleInk` is `titleInkBottom` — the title's ink, NOT the band reserved for
+ * it, which is eight points lower at the default font and shrinks labels that
+ * were never on the title. It is 0 on a chart with no title, so an untitled
+ * chart keeps the whole space above its marks.
+ */
+export function aboveMarkFontSize(fs: number, markTop: number, titleInk: number, boxRatio: number): number {
+  return bandFontSize(fs, markTop - titleInk, boxRatio);
+}
+
+/**
  * Clamp a plot rectangle into the chart frame.
  *
  * Every layout computes its plot by subtracting its chrome — title, legend,
@@ -356,6 +384,33 @@ export function titleHeight(cfg: ChartConfig, style: ChartStyle): number {
   return cfg.title ? style.fontSize * 1.6 + 6 : 0;
 }
 
+/** The size the title is actually drawn at, once it has been fitted to the width. */
+export function titleFontSize(cfg: ChartConfig, style: ChartStyle): number {
+  const text = String(cfg.title ?? "");
+  let tf = style.fontSize * 1.2;
+  while (tf > 6 && textWidth(text, tf, true) > cfg.width) tf -= 0.5;
+  return tf;
+}
+
+/**
+ * How far down the title's INK reaches — not the band reserved for it.
+ *
+ * The two differ by more than they look: `titleHeight` is `fs * 1.6 + 6` while
+ * the title is drawn at `fs * 1.2` from y=0, so the reservation runs some eight
+ * points below the last of the title's ink at the default font. Anything asking
+ * "would this label be drawn ON the title" has to ask about the ink, and the
+ * first version of `aboveMarkFontSize` asked about the band instead: it shrank a
+ * combo's top point label from 10pt to 6.2pt on two showcase slides where the
+ * label had never touched the title at all. The deck diff is what caught it —
+ * an ordinary chart at an ordinary size must not move.
+ *
+ * The reservation is still the right question for a plot or a band, which is
+ * why both exist.
+ */
+export function titleInkBottom(cfg: ChartConfig, style: ChartStyle): number {
+  return cfg.title ? titleFontSize(cfg, style) * 1.21 : 0;
+}
+
 /**
  * The chart-title text node, or null when the chart has no title. Every layout
  * that draws its own title emitted this exact node inline; sharing it keeps the
@@ -381,8 +436,7 @@ export function titleNode(cfg: ChartConfig, style: ChartStyle): SceneNode | null
   // anything off the frame, where reserving less could, and leaving it alone
   // means the plot below starts where it always did.
   const text = String(cfg.title ?? "");
-  let tf = fs * 1.2;
-  while (tf > 6 && textWidth(text, tf, true) > cfg.width) tf -= 0.5;
+  const tf = titleFontSize(cfg, style);
   return {
     kind: "text",
     x: 0,

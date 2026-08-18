@@ -692,11 +692,18 @@ describe("a horizontal combo's line name stays on the chart", () => {
     // (`skipDecor`), and to return early when there were no column TOTALS —
     // which a horizontal combo does not draw. So sideways there was no pass at
     // all, and a point label sat under the line's own name with nothing able to
-    // separate them. At 120x90 that is two of the four.
+    // separate them.
+    //
+    // Measured at 160x120, not at the 120x90 this used to use: sideways the
+    // name is now fitted to half a row and DROPPED where half a row cannot be
+    // read, so on the smaller frame there is no name to take anyone's room and
+    // all four point labels survive. The trade this asserts is still real one
+    // frame up — a name and three of the four labels — and a case where the
+    // name is gone proves nothing about a pass that runs when it is there.
     const labels = buildChart({
       ...sampleConfig("combo"),
-      width: 120,
-      height: 90,
+      width: 160,
+      height: 120,
       horizontal: true,
     } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
     expect(labels.length).toBeLessThan(4);

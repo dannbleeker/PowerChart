@@ -4,6 +4,9 @@ import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import {
+  MIN_LABEL_FS,
+  titleInkBottom,
+  aboveMarkFontSize,
   bandFontSize,
   chromeNodes,
   computeFrame,
@@ -196,15 +199,27 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // actually there and dropped when there is none, like the horizontal
       // branch just above.
       const colTop = frame.y + frame.h - colLen;
-      const totalFs = bandFontSize(fs, Math.max(0, colTop), 1.45);
-      if (totalFs > 0)
+      // Measured from the TITLE's ink rather than from the top of the chart:
+      // clamping a total to y=0 keeps it on the canvas and puts it on the title,
+      // which is the trade `aboveMarkFontSize` exists to refuse.
+      //
+      // And by the column's own WIDTH, which nothing bounded: a mekko's columns
+      // are proportional to their totals, so a narrow column gets a narrow slot
+      // and the number over it was drawn at the chart font whatever that slot
+      // came to — adjacent totals met on an 80x60 chart at 14pt. The room is the
+      // column, so neighbouring labels abut instead of overlapping, which is the
+      // rule this file's own legend already follows.
+      const totalText = formatNumber(totals[c], fmt);
+      let totalFs = aboveMarkFontSize(fs, colTop, titleInkBottom(cfg, style), 1.45);
+      while (totalFs > MIN_LABEL_FS && textWidth(totalText, totalFs, true) > ext) totalFs -= 0.5;
+      if (totalFs >= MIN_LABEL_FS && textWidth(totalText, totalFs, true) <= ext)
         nodes.push({
           kind: "text",
           x: pos - 4,
           y: colTop - totalFs * 1.45,
           w: ext + 8,
           h: totalFs * 1.4,
-          text: formatNumber(totals[c], fmt),
+          text: totalText,
           fontSize: totalFs,
           bold: true,
           color: style.text,

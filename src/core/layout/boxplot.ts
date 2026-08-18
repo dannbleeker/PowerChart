@@ -5,7 +5,8 @@ import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import {
-  bandFontSize,
+  titleInkBottom,
+  aboveMarkFontSize,
   baselineNode,
   chromeNodes,
   computeFrame,
@@ -387,7 +388,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // chart — 10pt over the top of a 300x60 frame at 24pt. Fitted to the
         // band the median leaves and dropped when that band cannot carry a
         // readable number, which is what `gBoxW` already does sideways.
-        const medFs = H ? fs * 0.9 : bandFontSize(fs * 0.9, qMed, 1.3);
+        const medFs = H ? fs * 0.9 : aboveMarkFontSize(fs * 0.9, qMed, titleInkBottom(cfg, style), 1.3);
         const medScale = medFs / (fs * 0.9);
         if (medFs > 0 && gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, medFs) + 4)) {
           nodes.push(

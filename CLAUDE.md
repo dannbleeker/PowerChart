@@ -1052,6 +1052,52 @@ labels when the outer ring will not fit` passed on three nodes carrying the
   vacuous-measurement shape this file records for the rasterise control and the
   text-versus-mark sweep.
 
+  **The OVERLAP half was widened the same day, to the fonts either side of the
+  default, and it found 98 pairs over eleven kinds.** Same shape as the overflow
+  sweep: the gate swept seven frames at ONE font while its name claimed the
+  default font generally. 6, 8, 14 and 18pt are in it now — the range a deck
+  actually uses — and 24 and 32pt deliberately are not (282 pairs, and at that
+  size the chrome genuinely exceeds the frame, which is a decision about how
+  small a chart PowerChart claims to draw rather than another bound).
+
+  **Half of the 98 were ONE mechanism, and it is the mirror of the marker
+  clamp.** A value drawn above a mark — a column total, a waterfall value, a
+  boxplot median, a mekko total, a combo point label — was CLAMPED to y=0 when
+  its mark reached the top of the plot. y=0 is where the TITLE is, so the clamp
+  did not fix the defect, it moved it onto the one label that names the chart.
+  `aboveMarkFontSize` in `layout/frame.ts` is the shared answer: the band between
+  the title and the mark, and no label where that band cannot carry one. A clamp
+  that keeps a label on the canvas is not automatically a fix — ask what is at
+  the destination.
+
+  The rest were bounds that measured the wrong thing, each worth one line:
+
+  - the funnel's row labels stopped shrinking at 6pt whatever the band held, so
+    a floor that ignores its own reservation put every row's name through its
+    neighbours' — dropped past `MIN_LABEL_FS` now, like every other fit here;
+  - the heatmap's column headers were anchored to `titleH` while `fitPlot` moved
+    the grid, so on a short frame the headers sat below their own columns and on
+    top of the legend. A header names the column under it and has to move with
+    it;
+  - the radar's tick fit divided `r` by the RING COUNT, and the rings drawn are
+    the ticks above the minimum — so the outermost radius is not one of them and
+    the "gap" was a quarter wider than the rings actually are;
+  - the bubble size key was pushed off one edge to clear the other (title, then
+    x-axis strip) until it was asked to fit INSIDE the plot or not be drawn, and
+    it clears the group legend only where the two actually meet — clearing the
+    legend's whole BAND moved the key on an ordinary 480x300 chart, which the
+    snapshot caught;
+  - the horizontal combo's series name was the last label drawn at the full
+    chart font while every number around it had been fitted to its row. It takes
+    half a row now, because `collide.ts` has nowhere to move it sideways: every
+    row is occupied.
+
+  **A gate can be widened into a test that was asserting nothing.** `drops a
+point label the name has taken the room from` measured 120x90, where the name
+  is now dropped outright — so the trade it names cannot happen there and the
+  test passed on an empty premise. It measures 160x120 now. Same failure mode as
+  the sunburst assertion that passed on empty text nodes, one round later.
+
   **A mark is drawn AROUND its position**, so a point at the very edge of a plot
   puts half its marker outside it — harmless while chrome sits over the plot, and
   not harmless once `fitPlot` brings the plot's edge up against the frame's. The
