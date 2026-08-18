@@ -259,9 +259,30 @@ export function finiteNodes(nodes: SceneNode[]): SceneNode[] {
  * untouched and byte-identical, which is why no snapshot moves.
  */
 export function clipTextToFrame<T extends SceneNode>(nodes: T[], width: number): T[] {
+  /**
+   * A label the clip empties is DROPPED, not left in place carrying "".
+   *
+   * An empty text node draws no ink and is still a shape: it keeps the origin
+   * the layout gave it, and the only labels this walk can empty are the ones
+   * whose anchor is already outside the frame — 5pt left of a 60x300 doughnut,
+   * 27pt right of an 80x60 tilemap. So the pass that exists to keep ink inside
+   * the chart was itself the last thing putting a node outside it, and the
+   * overflow gate reads that node exactly as it reads any other.
+   */
+  const dropped = new Set<T>();
   for (const n of nodes) {
     if (n.kind !== "text") continue;
     const t = n as unknown as TextNode;
+    // A label with no text at all goes the same way, whoever emptied it. The
+    // layouts clip to their own marks before this runs, so a category name on a
+    // narrow chart arrives here already reduced to "" — five of them on an
+    // 80x60 line chart, 203 across the kind/frame/font sweep. Each is a text
+    // box PowerPoint has to create, on a host where the cost of a draw grows
+    // with the shapes already on the slide.
+    if (!t.text) {
+      dropped.add(n);
+      continue;
+    }
     const ink = textWidth(t.text, t.fontSize, t.bold);
     const x = t.align === "right" ? t.x + t.w - ink : t.align === "center" ? t.x + (t.w - ink) / 2 : t.x;
     if (x >= -0.5 && x + ink <= width + 0.5) continue;
@@ -276,14 +297,15 @@ export function clipTextToFrame<T extends SceneNode>(nodes: T[], width: number):
     // here, so reaching back for it would put this file in an import cycle with
     // it for four lines of loop.
     if (room <= 0) {
-      t.text = "";
+      dropped.add(n);
       continue;
     }
     let cut = t.text;
     while (cut.length > 0 && textWidth(`${cut}…`, t.fontSize, t.bold) > room) cut = cut.slice(0, -1);
-    t.text = cut ? `${cut}…` : "";
+    if (cut) t.text = `${cut}…`;
+    else dropped.add(n);
   }
-  return nodes;
+  return dropped.size ? nodes.filter((n) => !dropped.has(n)) : nodes;
 }
 
 /**

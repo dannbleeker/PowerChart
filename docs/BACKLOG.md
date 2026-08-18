@@ -42,41 +42,6 @@ it must be related from the presentation, not dropped at the root.
 a decision about precedence (deck style vs the user's own imported style) before
 any code.
 
-### Widen the frame gate to the full frame x font cross-product
-
-**Measured:** 2026-08-17, during the bug hunt behind PRs #576-#578.
-
-`test/frame-fit.test.ts` sweeps overflow two ways and neither is the whole
-grid: **8 frames at the default font**, and **7 fonts at 3 frames** (200x150,
-480x300, 960x540). The cross-product it never asks — a large font on a SMALL
-frame — is where every overflow those three PRs fixed was living, and it is
-still where the rest are.
-
-Sweeping every kind x 8 frames x 7 fonts today reports **42 nodes drawing
-outside their own chart, none of them at the default font**:
-
-    tilemap x6   mekko x5   butterfly x5   heatmap x5   combo x4
-    sunburst x4  waffle x4  waterfall x3   bubble x3    scatter x2
-
-**Shape of the fix:** give the existing font sweep the full `FRAMES` list. That
-is a one-line change and it turns those 42 red immediately, which is the whole
-decision — the work is the 42, not the gate.
-
-**Why it is a judgement call and not a chore.** Every one of them is chrome
-that genuinely does not fit: a 32pt font on an 80x60 chart cannot carry a
-title, an axis and a legend whatever the layout does. The fixes are therefore
-all of the same two kinds this engine already uses — shrink-then-drop, or clamp
-— and each one costs something a reader might want. The question to settle
-before starting is how small a chart PowerChart claims to draw at all. A
-`MIN_READABLE` frame-to-font ratio, below which the engine draws the marks and
-nothing else, would answer it once instead of 42 times.
-
-**Do not chase the tail without widening the gate.** The tail is only visible
-through a sweep nobody runs; fixing entries one at a time leaves the next one
-arriving exactly as these did. The decoration sweep is the counter-example
-worth copying — it went from 90 to 0 and is now gated per decoration, so a
-regression names itself.
-
 ### Report what this project has measured to the office-js tracker
 
 **Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the
@@ -1426,13 +1391,22 @@ self-test scenario list plus `CHART_ORIGIN_TAG`'s read; proves it — a new
 scenario that moves and re-updates; must not touch — the selection scenarios or
 the existing origin write.
 
-#### 2. NOTHING ENFORCES A ROUND RESULT
+#### 2. ~~NOTHING ENFORCES A ROUND RESULT~~ — SHIPPED
 
-If a future build takes `same scale` from 8 of 8 back to 3 of 8, no gate fails —
-a person has to read it. Three rounds of evidence just bought a result that
-nothing protects. `rounds/predictions.json` exists but scenario SCORES are not
-checked against the archive. **A regression gate over the archived rounds** would
-make today's result stick, and it is the cheapest item here.
+`scripts/rounds-gate.mjs` (`npm run rounds:gate`) is that gate: it reads the
+archive, and exits 1 when a scenario that passed the previous three rounds of the
+SAME profile fails in the newest one. `scenarioRegressions` in `scripts/triage.mjs`
+is the decision, kept pure; a skipped scenario counts as "did not measure" rather
+than as a fall, and exit 2 means the gate could not do its job at all.
+
+Two limits worth knowing rather than re-proposing. It cannot be a CI check — CI
+has no rounds — so it runs after archiving, and `cycle.mjs` acts on its exit
+code. And it reads the pass/fail FLAG, so a scenario that goes on passing while
+its numbers drift is not what it watches; `npm run rounds` is still where a
+person reads the pooled counts.
+
+This entry stood for a day after the gate landed, claiming the result had no
+guard. Read the scripts before quoting a gap here.
 
 #### 3. THE LOOP STILL NEEDS SIX MANUAL BROWSER STEPS A ROUND
 

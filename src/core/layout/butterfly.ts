@@ -131,9 +131,19 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
       // middle. Shrunk to the room, floored at 5 the way this file's category
       // gutter already is, and dropped below that rather than drawn across the
       // other series' header.
+      //
+      // The HALF was only one axis of it. The band is `fs * 1.6` whatever the
+      // frame is, so a title and a header together outgrew a 60pt-tall chart at
+      // 24pt and the two names were drawn 41pt below its foot — centred in a box
+      // that starts inside the chart and ends outside it. Fitted to the band the
+      // frame actually leaves as well, and dropped when that band cannot carry a
+      // readable name: the same shrink-then-drop the heatmap's column headers
+      // and the tilemap's legend take.
       const half = Math.max(0, x1 - x0);
       const name = entry?.s.name ?? "";
-      let hf = fs;
+      const band = Math.max(0, Math.min(headerH, cfg.height - titleH));
+      let hf = bandFontSize(fs, band, 1.6);
+      if (!hf) return;
       while (hf > 5 && textWidth(name, hf) > half - 2) hf -= 0.5;
       if (textWidth(name, hf) > half - 2) return;
       nodes.push({
@@ -141,7 +151,7 @@ export function layoutButterfly(cfg: ChartConfig, style: ChartStyle, decor: Deco
         x: x0,
         y: titleH,
         w: half,
-        h: headerH,
+        h: band,
         text: name,
         fontSize: hf,
         bold: true,

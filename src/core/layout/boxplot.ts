@@ -5,6 +5,7 @@ import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import {
+  bandFontSize,
   baselineNode,
   chromeNodes,
   computeFrame,
@@ -381,7 +382,14 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
       }
       if (decor.segmentLabels && nG === 1) {
         const label = formatNumber(b.median, fmt);
-        if (gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, fs * 0.9) + 4)) {
+        // Upright the number sits ABOVE the median line, and a box whose median
+        // is near the top of the plot has nothing above it but the edge of the
+        // chart — 10pt over the top of a 300x60 frame at 24pt. Fitted to the
+        // band the median leaves and dropped when that band cannot carry a
+        // readable number, which is what `gBoxW` already does sideways.
+        const medFs = H ? fs * 0.9 : bandFontSize(fs * 0.9, qMed, 1.3);
+        const medScale = medFs / (fs * 0.9);
+        if (medFs > 0 && gBoxW >= fs * 1.2 && (H || gBoxW >= textWidth(label, medFs) + 4)) {
           nodes.push(
             H
               ? {
@@ -391,7 +399,7 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
                   w: 60,
                   h: fs * 1.3,
                   text: label,
-                  fontSize: fs * 0.9,
+                  fontSize: medFs,
                   color: style.text,
                   align: "center",
                   valign: "bottom",
@@ -400,11 +408,17 @@ export function layoutBoxplot(cfg: ChartConfig, style: ChartStyle, decor: Decora
               : {
                   kind: "text",
                   x: p - gBoxW / 2,
-                  y: qMed - fs * 1.5,
+                  // As a RATIO of the unshrunk size — exactly 1 where nothing
+                  // needed shrinking, so the box and the font move together and
+                  // the geometry is byte-identical on every chart that already
+                  // fits. Written as `medFs * 1.667` first, and that rounding
+                  // moved the boxplot's snapshot by a hundredth of a point on a
+                  // chart nothing was wrong with.
+                  y: qMed - fs * 1.5 * medScale,
                   w: gBoxW,
-                  h: fs * 1.3,
+                  h: fs * 1.3 * medScale,
                   text: label,
-                  fontSize: fs * 0.9,
+                  fontSize: medFs,
                   color: style.text,
                   align: "center",
                   valign: "bottom",

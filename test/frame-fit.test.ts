@@ -176,11 +176,7 @@ describe("no chart draws outside its own frame at any font", () => {
   for (const fontSize of FONTS) {
     it(`every kind at ${fontSize}pt`, () => {
       const bad: string[] = [];
-      for (const [w, h] of [
-        [200, 150],
-        [480, 300],
-        [960, 540],
-      ] as [number, number][]) {
+      for (const [w, h] of FRAMES) {
         for (const { kind } of CHART_KINDS) {
           const o = worstOverflow({ ...sampleConfig(kind), width: w, height: h, style: { fontSize } } as ChartConfig);
           if (o.pt > SLACK) bad.push(`${kind} at ${w}x${h}: ${o.node} ${o.pt.toFixed(1)}pt past the ${o.side}`);
@@ -614,6 +610,65 @@ describe("the mechanisms the sweep would only report as a number", () => {
   const at = (kind: string, w: number, h: number) =>
     buildChart({ ...sampleConfig(kind as never), width: w, height: h } as ChartConfig);
 
+  const atFont = (kind: string, w: number, h: number, fontSize: number) =>
+    buildChart({ ...sampleConfig(kind as never), width: w, height: h, style: { fontSize } } as ChartConfig);
+
+  it("emits no text node the clip has emptied, on any kind at any size", () => {
+    // A label the frame-clip cannot fit at all used to be left in place carrying
+    // "", and an empty text node is not nothing: it keeps the origin the layout
+    // gave it, which for these labels is already outside the chart — 27pt right
+    // of an 80x60 tilemap, 5pt left of a 60x300 doughnut. It draws no ink and is
+    // still a shape on the slide, and the sweep above reads it as one.
+    const bad: string[] = [];
+    for (const { kind } of CHART_KINDS)
+      for (const [w, h] of FRAMES)
+        for (const fontSize of [10, 24, 32])
+          for (const n of atFont(kind, w, h, fontSize).nodes)
+            if (n.kind === "text" && !(n as TextNode).text) bad.push(`${kind} at ${w}x${h} ${fontSize}pt: ${n.name}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("holds a bubble's mark inside the chart, and moves no mark that already fits", () => {
+    // A mark is drawn AROUND its position, so a point at the very edge of the
+    // plot puts half its marker outside — harmless while chrome sits over the
+    // plot, and not harmless once the frame cannot pay for that chrome. The
+    // showcase's own overlap-relief slide had a bubble hanging 11.7pt past the
+    // right edge of its box at a perfectly ordinary 520x300, which is what
+    // makes this a real defect rather than a thumbnail one.
+    //
+    // The clamp is by the glyph's drawn extent and against the frame, so it is
+    // the identity for every mark already inside the chart: that half is what
+    // stops it moving data on charts with nothing wrong with them, and it is
+    // asserted here rather than assumed.
+    const crowded = buildChart({
+      kind: "bubble",
+      width: 520,
+      height: 300,
+      data: {
+        categories: ["A", "B"],
+        series: [
+          { name: "X", values: [30, 70] },
+          { name: "Y", values: [40, 63] },
+          { name: "Size", values: [70, 80] },
+        ],
+      },
+    } as ChartConfig);
+    for (const n of crowded.nodes.filter((x) => x.name?.startsWith("point-"))) {
+      const b = inkBox(n)!;
+      expect(b.x1).toBeLessThanOrEqual(crowded.width + SLACK);
+      expect(b.x0).toBeGreaterThanOrEqual(-SLACK);
+      expect(b.y1).toBeLessThanOrEqual(crowded.height + SLACK);
+      expect(b.y0).toBeGreaterThanOrEqual(-SLACK);
+    }
+    const roomy = at("scatter", 480, 300).nodes.filter((n) => n.name?.startsWith("point-"));
+    expect(roomy.length).toBeGreaterThan(0);
+    for (const n of roomy) {
+      const b = inkBox(n)!;
+      expect(b.x0).toBeGreaterThan(SLACK);
+      expect(b.x1).toBeLessThan(480 - SLACK);
+    }
+  });
+
   it("a radar drops its perimeter labels rather than draw them off the web", () => {
     // The ring's radius reserves room for the labels on both axes; when the
     // radius floor has to override that reservation there is nowhere left for
@@ -624,12 +679,25 @@ describe("the mechanisms the sweep would only report as a number", () => {
     expect(roomy.length).toBeGreaterThan(0);
   });
 
-  it("a sunburst keeps its INSIDE labels when the outer ring will not fit", () => {
-    // Inside labels are bounded by the wedge they sit on, so the frame never
-    // takes them — only the ring that hangs outside the arc.
-    const nodes = at("sunburst", 90, 70).nodes.filter((n): n is TextNode => n.kind === "text");
-    expect(nodes.some((n) => n.name?.startsWith("group-label-"))).toBe(true);
-    expect(nodes.some((n) => n.name?.startsWith("label-"))).toBe(false);
+  it("a sunburst draws its labels where they can be read, and none where they cannot", () => {
+    // This used to assert that the INSIDE labels survive at 90x70 while the
+    // outer ring's do not — and it passed on nodes carrying the EMPTY STRING.
+    // At that frame the ring bottoms out at its floor, so the chord an inside
+    // label sits on is a point or two wide and its own fit clipped it away to
+    // nothing; the assertion was about a node existing, not about a label being
+    // drawn. Once empty text nodes are dropped it went red, which is the only
+    // reason anyone found out.
+    //
+    // What is worth holding is the property either way round: at a frame that
+    // can carry them both rings are labelled, and at one that cannot the chart
+    // draws no label rather than an invisible one.
+    const cramped = at("sunburst", 90, 70).nodes.filter((n): n is TextNode => n.kind === "text");
+    expect(cramped.some((n) => n.name?.startsWith("group-label-"))).toBe(false);
+    expect(cramped.some((n) => /^label-\d/.test(n.name ?? ""))).toBe(false);
+    const roomy = at("sunburst", 480, 300).nodes.filter((n): n is TextNode => n.kind === "text");
+    expect(roomy.filter((n) => n.name?.startsWith("group-label-")).every((n) => n.text.length > 0)).toBe(true);
+    expect(roomy.some((n) => n.name?.startsWith("group-label-"))).toBe(true);
+    expect(roomy.some((n) => /^label-\d/.test(n.name ?? ""))).toBe(true);
   });
 
   it("a tilemap's legend stays in the frame when the grid outgrows its budget", () => {

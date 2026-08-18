@@ -882,9 +882,35 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     );
     disp.forEach((d, i) => spread.set(i, d));
   }
-  /** Drawn position: the exact one, plus any disclosed nudge on the spread axis. */
-  const px = (p: (typeof pts)[number], i: number) => toX(p.x) + (cap?.axis === "x" ? (spread.get(i) ?? 0) : 0);
-  const py = (p: (typeof pts)[number], i: number) => toY(p.y) + (cap?.axis === "y" ? (spread.get(i) ?? 0) : 0);
+  /**
+   * Drawn position: the exact one, plus any disclosed nudge on the spread axis,
+   * held far enough inside the chart for the GLYPH to fit.
+   *
+   * A mark is drawn around its position, so a point at the very top of the plot
+   * puts half its marker above the plot — harmless while the plot has chrome
+   * over it, and not harmless when the frame cannot pay for that chrome and
+   * `fitPlot` brings the plot's top edge up against the frame's: 2.2pt of a
+   * point's disc outside an 80x60 chart at 32pt. The clamp is by the glyph's
+   * own drawn extent (a star reaches 1.67x its data radius) and against the
+   * FRAME, so a marker that already fits inside the chart does not move at all
+   * and no ordinary chart changes.
+   *
+   * A clamped mark is a point drawn a couple of points off its value, which is
+   * the same trade `fitPlot` makes for the plot itself; the alternative is a
+   * mark drawn onto whatever sits beside the chart on the slide, since neither
+   * PowerPoint renderer clips.
+   */
+  const inset = (p: (typeof pts)[number]) => markerExtent(markerFor(p.group), radius(p));
+  const px = (p: (typeof pts)[number], i: number) => {
+    const e = inset(p);
+    const at = toX(p.x) + (cap?.axis === "x" ? (spread.get(i) ?? 0) : 0);
+    return Math.min(Math.max(at, e), Math.max(e, cfg.width - e));
+  };
+  const py = (p: (typeof pts)[number], i: number) => {
+    const e = inset(p);
+    const at = toY(p.y) + (cap?.axis === "y" ? (spread.get(i) ?? 0) : 0);
+    return Math.min(Math.max(at, e), Math.max(e, cfg.height - e));
+  };
 
   // Bubble size legend: without a key, bubble AREA is unreadable. Two
   // outline reference circles (a nice maximum and its half), top-right.
@@ -913,12 +939,22 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // reaching past the midpoint is into the chart, not beside it.
     const widestRef = Math.max(...refs.map((v) => textWidth(formatNumber(v, sizeFmt), fs * 0.8)));
     const sizeLegendFits = widestRef <= plot.w * 0.5;
+    // The numbers hang `fs * 1.35` above the tallest reference circle, and
+    // nothing held them inside the chart: on a 300x60 frame at 32pt they were
+    // drawn 33pt above its top edge while the circles themselves sat inside it.
+    // The whole key moves down by the shortfall rather than being dropped — it
+    // already overlays the top of the plot by design, so a legend a few points
+    // lower is the same legend, where a dropped one leaves the bubble areas
+    // unreadable. Zero on any chart whose numbers already fit, so nothing that
+    // fits moves.
+    const refMaxR = Math.max(2.5, Math.sqrt(refMax / maxSize) * maxR);
+    const legendShift = Math.max(0, refMaxR + fs * 1.35 - fs * 0.36 - (plot.y + maxR * 1.1));
     let lx = plot.x + plot.w - 4;
     if (sizeLegendFits)
       refs.forEach((v, i) => {
         const r = Math.max(2.5, Math.sqrt(v / maxSize) * maxR);
         const cx = lx - r;
-        const cy = plot.y + maxR * 1.1 + (Math.sqrt(refMax / maxSize) * maxR - r); // bottom-aligned circles
+        const cy = plot.y + maxR * 1.1 + legendShift + (Math.sqrt(refMax / maxSize) * maxR - r); // bottom-aligned circles
         nodes.push(
           {
             kind: "ellipse",
