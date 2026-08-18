@@ -6,7 +6,7 @@ import { maxOf, minOf } from "../agg";
 import { lerpColor, noDataFill, sequentialScale } from "../color";
 import { seriesColor } from "../style";
 import { detectLayout, TILE_LAYOUTS } from "./tilemap-layouts";
-import { bandFontSize, fitPlot, footnoteH, MIN_LABEL_FS, titleHeight, titleNode } from "./frame";
+import { titleInkBottom, bandFontSize, fitPlot, footnoteH, MIN_LABEL_FS, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -158,6 +158,17 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
    * budget the first is always the smaller, so nothing of an ordinary size moves.
    */
   const legendTop = Math.max(0, Math.min(rowsBottom, cfg.height - LEGEND_INK * fs - footnoteH(cfg, style, decor)));
+  /**
+   * …and only where that position is clear of the TITLE.
+   *
+   * The clamp above keeps the legend on the canvas, and on a 300x60 frame at
+   * 18pt the only position left on the canvas is inside the title's band — so
+   * the "no data" caption was drawn across the chart's own title. A colour key
+   * explains the tiles; the title says what the tiles are. Where there is no
+   * room for both, the key is the one that goes, which is what every other
+   * reservation in this engine does when it cannot be met.
+   */
+  const legendClearOfTitle = legendTop >= titleInkBottom(cfg, style);
 
   const hexPts = (cx: number, cy: number, R: number) =>
     [90, 150, 210, 270, 330, 30].map((a) => ({
@@ -276,7 +287,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   }
 
   // Glyph mode: a series legend instead of the value gradient.
-  if (glyph) {
+  if (glyph && legendClearOfTitle) {
     let lx = x0;
     data.series.forEach((s, si) => {
       const chip = fs * 0.7;
@@ -308,7 +319,7 @@ export function layoutTilemap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     });
   }
   // Gradient legend + "no data" swatch.
-  if (!glyph && vals.length && min !== max) {
+  if (!glyph && vals.length && min !== max && legendClearOfTitle) {
     const ly = legendTop + fs * 0.5;
     const lw = Math.min(gridW * 0.5, fs * 12);
     const steps = 24;

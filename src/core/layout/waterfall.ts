@@ -5,6 +5,8 @@ import { formatNumber, resolveFormat } from "../format";
 import { maxOf, minOf } from "../agg";
 import { seriesColor } from "../style";
 import {
+  titleInkBottom,
+  aboveMarkFontSize,
   bandFontSize,
   baselineNode,
   breakMarkerNodes,
@@ -254,7 +256,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
         // band the bar leaves, and dropped where that band cannot carry a
         // readable number: the same answer `labelFs` itself gives for a row too
         // thin to label.
-        const outsideFs = fits || H ? labelFs : bandFontSize(labelFs, r.y, 1.45);
+        const outsideFs = fits || H ? labelFs : aboveMarkFontSize(labelFs, r.y, titleInkBottom(cfg, style), 1.45);
         if (outsideFs > 0)
           nodes.push({
             kind: "text",

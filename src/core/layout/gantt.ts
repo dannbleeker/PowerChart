@@ -158,6 +158,19 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
     h: cfg.height - titleH - bracketH - headerH - bottomH,
   });
   const plotH = plotBox.h;
+  /**
+   * The header strip above the plot — the timeline's tick labels and the gutter
+   * column headings — measured against the TITLE rather than taken as a flat
+   * `fs * 1.6`.
+   *
+   * `fitPlot` grows the plot up from its bottom edge on a frame that cannot pay
+   * for its chrome, so `plot.y - headerH` walked back into the title's band and
+   * the tick labels were drawn across the chart's own title at 18pt on a 300x60
+   * frame. Same rule the totals in `column.ts` take: fit the band that is
+   * actually there, and where it cannot carry a readable label, do not draw one.
+   */
+  const headBand = Math.max(0, Math.min(headerH, plotBox.y - titleH));
+  const headFs = bandFontSize(fs * 0.9, headBand, 1.2);
   // Row geometry is derived here rather than after the plot because the RIGHT
   // MARGIN depends on it (see `msR`). It reads `plotH` and the row count only —
   // neither depends on the plot's width — so hoisting it changes no value.
@@ -405,19 +418,20 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       const text = tickLabel(t, i);
       const half = textWidth(text, fs * 0.9) / 2;
       const at = Math.min(Math.max(x, half), Math.max(half, cfg.width - half));
-      nodes.push({
-        kind: "text",
-        x: at - 24,
-        y: plot.y - headerH,
-        w: 48,
-        h: headerH,
-        text,
-        fontSize: fs * 0.9,
-        color: style.mutedText,
-        align: "center",
-        valign: "middle",
-        name: "timeline",
-      });
+      if (headFs > 0)
+        nodes.push({
+          kind: "text",
+          x: at - 24,
+          y: plot.y - headBand,
+          w: 48,
+          h: headBand,
+          text,
+          fontSize: headFs,
+          color: style.mutedText,
+          align: "center",
+          valign: "middle",
+          name: "timeline",
+        });
       lastLabelX = x;
     }
   });
@@ -669,20 +683,21 @@ export function layoutGantt(cfg: ChartConfig, style: ChartStyle, decor: Decorati
   fitted.forEach((col, i) => {
     let cx = catW;
     for (let k = 0; k < i; k++) cx += fitted[k].w;
-    nodes.push({
-      kind: "text",
-      x: cx,
-      y: plot.y - headerH,
-      w: col.w - 6,
-      h: headerH,
-      text: col.label,
-      fontSize: fs * 0.9,
-      bold: true,
-      color: style.mutedText,
-      align: "right",
-      valign: "middle",
-      name: `col-head-${i}`,
-    });
+    if (headFs > 0)
+      nodes.push({
+        kind: "text",
+        x: cx,
+        y: plot.y - headBand,
+        w: col.w - 6,
+        h: headBand,
+        text: col.label,
+        fontSize: headFs,
+        bold: true,
+        color: style.mutedText,
+        align: "right",
+        valign: "middle",
+        name: `col-head-${i}`,
+      });
     data.categories.forEach((_, c) => {
       if (!col.cells[c]) return;
       const cy = plot.y + slotH * (c + 0.5);

@@ -153,14 +153,19 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // the radar's ticks and the tilemap's scale ends follow.
     const widest = Math.max(0, ...data.categories.map((cat) => textWidth(cat, fs)));
     const wide = widest > cw - 2 && widest > 0 ? fs * ((cw - 2) / widest) : fs;
-    const headerBand = Math.max(0, Math.min(headerH, cfg.height - titleH));
+    // Anchored to the PLOT, not to the title. The header row was drawn at
+    // `titleH` whatever `fitPlot` did with the grid, and on an 80x60 frame at
+    // 18pt the plot is pushed up ABOVE that — so the headers sat below their own
+    // columns, on top of the colour legend. A header names the column under it;
+    // it has to move with the column.
+    const headerBand = Math.max(0, Math.min(headerH, plot.y - titleH));
     const headerFs = bandFontSize(wide, headerBand, 1.5);
     if (headerFs >= MIN_LABEL_FS)
       data.categories.forEach((cat, c) => {
         nodes.push({
           kind: "text",
           x: plot.x + c * cw,
-          y: titleH,
+          y: plot.y - headerBand,
           w: cw,
           h: headerBand,
           text: clipToWidth(cat, headerFs, cw - 2),
@@ -316,7 +321,17 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
   // says less; a labelled one drawn off the chart says it somewhere else.
   const foot = footnoteH(cfg, style, decor);
   const ly = Math.max(0, Math.min(plot.y + plot.h + totalsH + fs * 0.6, cfg.height - foot - fs * LEGEND_INK));
-  if (constant) {
+  /**
+   * …and only while that clamp has not walked the legend back INTO the chart.
+   *
+   * On an 80x60 frame at 18pt the only position left on the canvas is above the
+   * plot's own top edge, so the end labels were drawn through the column headers
+   * — a colour key over the names of the columns it is meant to explain. The
+   * grid and its headers are the chart; the key is chrome, and chrome that
+   * cannot be paid for is not drawn.
+   */
+  const legendClearOfGrid = ly >= plot.y;
+  if (constant && legendClearOfGrid) {
     const swatchFs = bandFontSize(fs * 0.9, cfg.height - foot - ly, 1.35);
     if (swatchFs > 0)
       nodes.push(
@@ -335,7 +350,7 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
           name: "legend-min",
         },
       );
-  } else {
+  } else if (legendClearOfGrid) {
     const lw = Math.min(plot.w * 0.5, fs * 14);
     const steps = 24;
     for (let i = 0; i < steps; i++) {
@@ -352,9 +367,19 @@ export function layoutHeatmap(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
     // Both ends or neither, for the reason the tilemap's pair gives: a gradient
     // labelled at one end says the wrong thing.
+    //
+    // Fitted on BOTH axes, which the tilemap's pair has always been and this one
+    // was not: each end owns half the bar and is anchored to its outer edge, so
+    // two numbers wider than `lw / 2` meet in the middle — 60x300 at 18pt, where
+    // half the bar is ten points and the numbers are fifteen.
     const endBand = cfg.height - foot - (ly + fs * 0.95);
-    const endFs = bandFontSize(fs * 0.85, endBand, 1.21);
-    if (endFs > 0)
+    const ends = [formatNumber(min, fmt), formatNumber(max, fmt)];
+    const widestEnd = Math.max(...ends.map((t) => textWidth(t, fs * 0.85)));
+    const endFs = Math.min(
+      bandFontSize(fs * 0.85, endBand, 1.21),
+      widestEnd > 0 ? (fs * 0.85 * (lw / 2)) / widestEnd : fs * 0.85,
+    );
+    if (endFs >= MIN_LABEL_FS)
       nodes.push(
         {
           kind: "text",

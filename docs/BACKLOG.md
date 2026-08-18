@@ -42,6 +42,28 @@ it must be related from the presentation, not dropped at the root.
 a decision about precedence (deck style vs the user's own imported style) before
 any code.
 
+### Take the overlap sweep to 24 and 32pt
+
+**Measured:** 2026-08-18, when the gate was widened to 6-18pt (282 pairs at the
+two largest fonts, against 0 at everything from 6 to 18).
+
+`test/frame-fit.test.ts` now sweeps text-against-text over every kind x seven
+frames x **5 fonts** (6, 8, 10, 14, 18) in both orientations, and it is zero.
+24 and 32pt are outside it, deliberately: at those sizes the chrome genuinely
+exceeds the frame — a 32pt font on an 80x60 chart cannot carry a title, an axis
+and a legend whatever the layout does — so the remaining pairs are not bounds
+that were forgotten, they are a chart with more chrome than room.
+
+**What to decide before starting.** A `MIN_READABLE` frame-to-font ratio, below
+which the engine draws the marks and drops every optional label, would answer it
+once instead of 282 times. That question was raised for the overflow sweep and
+turned out not to be needed there — every one of those 42 could be fitted — so
+it is genuinely open here for the first time.
+
+**Priority:** low. Nobody puts a 32pt font on a thumbnail by choice, and the
+sizes a deck uses are covered. Worth doing when the answer to the ratio question
+is wanted for its own sake.
+
 ### Report what this project has measured to the office-js tracker
 
 **Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the
@@ -1375,21 +1397,20 @@ stops listing shapes under ids we cannot match, and the config tag write lands.
 mechanism, the settle-by-binding route is dead weight riding along with a
 one-line side effect. Worth deciding deliberately rather than leaving both.
 
-#### 1. THE ORIGIN TAG IS NOW THE TOP FAILURE, and nothing can check it
+#### 1. ~~THE ORIGIN TAG IS NOW THE TOP FAILURE, and nothing can check it~~ — SHIPPED
 
-`writing the chart's origin tag` 5010s 3-7 times a round. `POWERCHART_ORIGIN` is
-the drag-delta round trip, and `docs/PUBLISHING.md` says it "needs a real drag
-and so cannot be scripted at all". **The failures have migrated to exactly the
-feature no automated round reaches**, which is the worst place for them to be.
+Both halves are done and this entry outlived them by two days. The scenario is
+`an update follows a moved chart` (`dragThenUpdate` in `src/taskpane/selftest.ts`,
+in the battery's list): it moves a chart PROGRAMMATICALLY, confirms the move
+landed, updates it, and asserts the redraw follows the delta rather than snapping
+back to where the chart was inserted. No selection call anywhere in it.
 
-**A drag is only a shape whose `left`/`top` changed.** A scenario can move a
-shape PROGRAMMATICALLY, then update it and assert the redraw follows the delta.
-That needs no selection call, so it carries none of the `setSelectedShapes` wedge
-risk. It does not prove a mouse drag; it proves the origin ARITHMETIC, which is
-what is failing. **Plan:** defect — origin tag refused, unverifiable; seam — the
-self-test scenario list plus `CHART_ORIGIN_TAG`'s read; proves it — a new
-scenario that moves and re-updates; must not touch — the selection scenarios or
-the existing origin write.
+And the defect it was written for is closed — see **THE ORIGIN TAG IS FIXED**
+below: rounds 075/076, 13 of 13 scenarios twice, `origin5010` 0 both times, after
+routing that one tag write through the chart's binding.
+
+What is still owed is the part a scenario cannot do: a REAL mouse drag, by a
+human. That is in the owner-only list at the end of this file and nowhere else.
 
 #### 2. ~~NOTHING ENFORCES A ROUND RESULT~~ — SHIPPED
 

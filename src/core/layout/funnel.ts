@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { MIN_LABEL_FS, bandFontSize, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -63,13 +63,21 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   // until it fits, then clip the remainder. Shrunk TOGETHER so a row's name and
   // its number stay the same size, and last-resort — at any font that already
   // fits, `labelFs` is `fs` and nothing moves.
+  //
+  // The loop used to stop at 6 whether or not the band could hold a 6pt label,
+  // and a funnel's bands go to nothing long before its font does: at 14pt on an
+  // 80x60 frame the bands are three points tall and every row's name was drawn
+  // through the two either side of it, sixteen overlapping pairs across the
+  // sweep. A floor that ignores its own reservation is the thing putting labels
+  // where they cannot be read, so below `MIN_LABEL_FS` the whole set is dropped
+  // — the same answer the radar, sunburst, tilemap and pie reservations give,
+  // and the bands themselves still show the shape.
   const labelFs = (() => {
     const gutter = catW - 4;
-    const tooTall = (f: number) => f * 1.15 > bandH;
     const tooWide = (f: number) => decor.categoryAxis && data.categories.some((c) => textWidth(c, f) > gutter);
-    let f = fs;
-    while (f > 6 && (tooTall(f) || tooWide(f))) f -= 0.5;
-    return f;
+    let f = Math.min(fs, bandH / 1.15);
+    while (f > MIN_LABEL_FS && tooWide(f)) f -= 0.5;
+    return f >= MIN_LABEL_FS ? f : 0;
   })();
 
   const nodes: SceneNode[] = [];
@@ -84,7 +92,7 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
     const fill = data.series[0]?.colors?.[c] ?? style.palette[c % style.palette.length];
     nodes.push({ kind: "rect", x: cx - w / 2, y, w, h: bandH, fill, name: `stage-${c}` });
 
-    if (decor.categoryAxis) {
+    if (decor.categoryAxis && labelFs > 0) {
       nodes.push({
         kind: "text",
         x: 0,
@@ -99,7 +107,7 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
         name: `category-${c}`,
       });
     }
-    if (decor.segmentLabels) {
+    if (decor.segmentLabels && labelFs > 0) {
       const label = formatNumber(v, fmt);
       const labelW = textWidth(label, labelFs) + 6;
       // Outside means to the RIGHT of the band, and the widest band already

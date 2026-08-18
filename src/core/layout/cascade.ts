@@ -2,7 +2,7 @@ import type { ChartConfig, ChartStyle, Decorations } from "../types";
 import { contrastInk, textWidth, type SceneNode } from "../scene";
 import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
-import { fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
+import { titleInkBottom, fitPlot, footnoteH, titleHeight, titleNode } from "./frame";
 import type { LayoutResult } from "./column";
 
 /**
@@ -195,8 +195,18 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
           strokeWidth: 0.75,
           name: `drop-${c}`,
         });
-        // Labels adapt to the segment — never the other way around.
+        // Labels adapt to the segment — never the other way around, and none of
+        // them is drawn inside the TITLE's band.
+        //
+        // `fitPlot` grows the plot up from its bottom edge when the frame cannot
+        // pay for its chrome, and this chart's own comment calls that overlap
+        // "ugly and honest" — the bars end up over the title. What is neither is
+        // a CAPTION there: at 18pt on a 300x60 frame three of them were drawn
+        // across the title, at nearly the title's own size, over hairline blocks
+        // a point tall. The blocks stay (they are the data); the words that
+        // would be read as the title's do not.
         const fitsOneLine = textWidth(oneLine, fs * 0.9) <= barW - 6;
+        const clearOfTitle = segY >= titleInkBottom(cfg, style);
         // A label under the block, centred on it — so a caption wider than the
         // block spills equally both ways, off the LEFT of the chart for the
         // first column and off the right for the last (21pt and 62pt on a
@@ -224,7 +234,9 @@ export function layoutCascade(cfg: ChartConfig, style: ChartStyle, decor: Decora
             name,
           };
         };
-        if (segH >= fs * 2.9 && !fitsOneLine) {
+        if (!clearOfTitle) {
+          // nothing: the block is inside the title's band
+        } else if (segH >= fs * 2.9 && !fitsOneLine) {
           // Tall enough for two lines: caption over numbers, inside.
           nodes.push(
             {

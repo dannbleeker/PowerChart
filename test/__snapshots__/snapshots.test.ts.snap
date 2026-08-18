@@ -289,7 +289,7 @@ exports[`SVG snapshots > sample bubble 1`] = `
 <text x="30" y="96.84" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">60</text>
 <line x1="34" y1="46" x2="472" y2="46" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
 <text x="30" y="49.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">70</text>
-<text x="34" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">0</text>
+<text x="36.43" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">0</text>
 <text x="143.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">20</text>
 <text x="253" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">40</text>
 <text x="362.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">60</text>
@@ -831,7 +831,7 @@ exports[`SVG snapshots > sample scatter 1`] = `
 <text x="30" y="96.84" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">60</text>
 <line x1="34" y1="46" x2="472" y2="46" stroke="#e1e0d9" stroke-width="0.75" data-name="gridline-y"/>
 <text x="30" y="49.24" font-size="9" fill="#52514e" text-anchor="end" data-name="y-axis">70</text>
-<text x="34" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">0</text>
+<text x="36.43" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">0</text>
 <text x="143.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">20</text>
 <text x="253" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">40</text>
 <text x="362.5" y="295" font-size="9" fill="#52514e" text-anchor="middle" data-name="x-axis">60</text>

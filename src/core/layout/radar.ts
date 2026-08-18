@@ -157,7 +157,15 @@ export function layoutRadar(cfg: ChartConfig, style: ChartStyle, decor: Decorati
    * Last resort, like every other shrink here: at any font that already fits its
    * ring gap this is `fs * 0.85` and nothing moves.
    */
-  const tickGap = r / Math.max(1, rings.length);
+  //
+  // Measured from the rings THEMSELVES, not as `r / rings.length`. That average
+  // is not the gap: the rings drawn are the ticks above the minimum, so the
+  // outermost radius is not one of them and the division overstated the space
+  // by a quarter — 7.0 where the rings are 5.6 apart on a 120x90 web. The
+  // labels were then fitted to a gap they did not have and drew through each
+  // other at 8pt and at 14pt.
+  const ringGap = rings.length > 1 ? Math.min(...rings.slice(1).map((x, i) => x.rr - rings[i].rr)) : r;
+  const tickGap = Math.max(0, ringGap);
   const tickFs = Math.min(fs * 0.85, tickGap / 1.2);
   // The box is `fs * 1.2` for a font of `fs * 0.85` — deliberately taller than
   // the text — so the two must shrink TOGETHER or the label moves even when
