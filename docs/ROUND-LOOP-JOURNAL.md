@@ -2034,3 +2034,30 @@ reason is exactly what this pair shows.
   089-092 were four rounds on four builds and none of them can be compared with
   its neighbour. This pair took twenty minutes and produced the clearest result
   of the night.
+
+## Rounds 094 + 095 — ab5d730 — 13/13 and 13/13 — the blindness replicates
+
+A second pair, on a second build, run back to back with nothing landed between.
+
+      build      round   grouped  refused  deck inventory
+      0aa6f91     092      20        0     0,4,2,5,1,1,1
+      0aa6f91     093      15        4     0,4,2,17,24,24,24
+      ab5d730     094      20        0     0,4,2,5,1,1,1
+      ab5d730     095      19        1     0,4,2,5,1,1,24
+
+**Four rounds, two builds, every one 13/13 with a byte-identical verdict line** —
+and two of them left charts ungrouped as loose shapes on the deck. The finding
+from the first pair is not a one-off: `same scale` asks whether the config
+survived, which it does either way, so grouping is invisible to it.
+
+What the second pair adds is the SHAPE of the noise. Refusals are not rare and
+not constant: 0, 4, 0, 1 across four rounds on two builds. Any single round's
+refusal count is uninformative, and the difference between two rounds on one
+build is not evidence of anything about the build. `poolGroupingOutcome` prints
+it every round now precisely so nobody has to infer it from a verdict that cannot
+see it.
+
+**This is what pairing buys.** Four rounds run as two pairs answered a question
+that eight rounds run singly could not have, because the comparison a single
+round invites — against the previous round, on a different build — is exactly the
+comparison the noise floor forbids.
