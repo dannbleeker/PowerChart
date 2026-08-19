@@ -9944,16 +9944,37 @@ export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | nu
       const parts = (
         context.presentation as unknown as {
           customXmlParts: {
-            getByNamespace(ns: string): { getOnlyItemOrNullObject(): PowerPoint.CustomXmlPart };
+            getByNamespace(ns: string): {
+              getCount(): { value: number };
+              getOnlyItemOrNullObject(): PowerPoint.CustomXmlPart;
+            };
           };
         }
       ).customXmlParts;
-      const part = parts.getByNamespace(DECK_STYLE_NS).getOnlyItemOrNullObject();
+      const scoped = parts.getByNamespace(DECK_STYLE_NS);
+      // COUNT FIRST, AND DO NOT ASK FOR AN ITEM THAT IS NOT THERE.
+      //
+      // Rounds 096 and 097 — a pair on one build — both recorded the same thing
+      // through the failure probe: `getByNamespace(...).getCount()` ANSWERS,
+      // reports `parts: 0`, and it is `getOnlyItemOrNullObject` / `load` /
+      // `getXml` that then never returns. So the call that hangs on this host is
+      // the one asking for the only item of an EMPTY collection — which is the
+      // state every unbranded deck is in, i.e. every pane load in the wild.
+      //
+      // The empty case now never reaches that call. It costs one extra round
+      // trip on a deck that DOES carry a style, and buys not hanging on a deck
+      // that does not. The old comment argued the other way ("splitting them
+      // costs a round trip on every pane load") — correct about the cost, and it
+      // was paying it against a call that could hang for the whole budget.
+      //
+      // More than one part reads as "no style", which is the documented contract
+      // for `getOnlyItemOrNullObject` (`@types/office-js`: exactly one item, or
+      // null) and now does not depend on it: the count settles it here.
+      const count = scoped.getCount();
+      await boundedSync(context, "counting the deck's style parts", deckStyleTimeoutMs());
+      if (count.value !== 1) return { style: null, unreadable: false };
+      const part = scoped.getOnlyItemOrNullObject();
       part.load("id");
-      // The XML is queued in the SAME batch as the null check. Splitting them
-      // costs a round trip on every pane load, and `getXml` on a null object is
-      // harmless — the result simply never resolves to anything, which is the
-      // case the `isNullObject` branch below already handles.
       const xml = part.getXml();
       await boundedSync(context, "reading the deck's style", deckStyleTimeoutMs());
       if ((part as unknown as { isNullObject?: boolean }).isNullObject) return { style: null, unreadable: false };
