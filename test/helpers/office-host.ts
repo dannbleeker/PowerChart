@@ -42,6 +42,15 @@ const CHART_TAG_KEY = "POWERCHART_CONFIG";
  */
 export const faults = {
   failSyncOn: 0,
+  /**
+   * Refuse to store a custom XML part — the deck-style write path.
+   *
+   * A host below PowerPointApi 1.7 is modelled by `supported()`, which is a
+   * different thing: there the collection is never reached. This is the host
+   * that HAS the API and says no, which is the case `writeDeckStyle` reports as
+   * "the deck was not updated" rather than pretending it wrote.
+   */
+  refuseCustomXmlWrites: false,
   swallowAdds: 0,
   faultShapeGetCount: false,
   strictGroup: false,
@@ -2230,6 +2239,74 @@ export function installHost(
           },
         };
       })(),
+      /**
+       * The presentation-scoped custom XML parts, which is where a deck keeps
+       * its STYLE (`src/core/deck-style.ts`).
+       *
+       * Modelled with the two behaviours the readers actually depend on, both
+       * of which the typings state and neither of which is obvious:
+       * `getOnlyItemOrNullObject` answers a NULL OBJECT when the namespace holds
+       * nothing, and it REFUSES when the namespace holds more than one — it does
+       * not pick. `writeDeckStyle` deletes every part in the namespace before
+       * adding, and that second rule is why.
+       */
+      customXmlParts: (() => {
+        const parts: { id: string; namespaceUri: string; xml: string }[] = [];
+        let nextId = 1;
+        const partHandle = (p: { id: string; namespaceUri: string; xml: string }) => ({
+          id: p.id,
+          namespaceUri: p.namespaceUri,
+          isNullObject: false,
+          load() {},
+          getXml: () => ({
+            get value() {
+              return p.xml;
+            },
+          }),
+          setXml(xml: string) {
+            p.xml = xml;
+          },
+          delete() {
+            const i = parts.indexOf(p);
+            if (i >= 0) parts.splice(i, 1);
+          },
+        });
+        /** The namespace a part's XML declares, which is how a real host files it. */
+        const nsOf = (xml: string) => /xmlns="([^"]*)"/.exec(xml)?.[1] ?? "";
+        return {
+          add(xml: string) {
+            if (faults.refuseCustomXmlWrites) throw new Error("GeneralException | the host refused a custom XML part");
+            const p = { id: `xml-${nextId++}`, namespaceUri: nsOf(xml), xml };
+            parts.push(p);
+            return partHandle(p);
+          },
+          getByNamespace(ns: string) {
+            const inNs = () => parts.filter((p) => p.namespaceUri === ns);
+            return {
+              load() {},
+              get items() {
+                return inNs().map(partHandle);
+              },
+              getCount: () => ({ value: inNs().length }),
+              getOnlyItemOrNullObject() {
+                const hits = inNs();
+                // The real API refuses rather than choosing. A fake that picked
+                // the first would hide the case `writeDeckStyle`'s
+                // delete-then-add exists to prevent.
+                if (hits.length > 1) throw new Error("InvalidArgument | more than one part in that namespace");
+                return hits.length === 1
+                  ? partHandle(hits[0])
+                  : { isNullObject: true, load() {}, getXml: () => ({ value: undefined }) };
+              },
+            };
+          },
+          /** The raw store, for a test that wants to see what the deck now holds. */
+          get items() {
+            return parts.map(partHandle);
+          },
+          load() {},
+        };
+      })(),
       // A real deck's master carries several layouts; only one is blank, and
       // its NAME is localised — which is why the renderer matches on type.
       slideMasters: {
@@ -2491,6 +2568,7 @@ export function installHost(
   stallSyncOn.clear();
   faults.strictGroup = false;
   faults.strictTags = false;
+  faults.refuseCustomXmlWrites = false;
   faults.refuseTagWritesOnResolvedProxy = false;
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;

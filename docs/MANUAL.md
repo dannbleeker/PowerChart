@@ -398,7 +398,24 @@ count of how many of its options are currently on.
 - **Palette** presets, per-series color pickers, and **Use deck theme** —
   reads the presentation's Accent 1–6 theme colors (PowerPointApi 1.10).
 - **Export style / Import style**: a corporate style file (JSON: palette,
-  font, negative/total colors) applied to every chart you make.
+  font, negative/total colors) applied to every chart you make. Export gives you
+  the style the pane is currently drawing with — which is not always your own
+  (see below).
+- **Save style to deck / Use deck style**: the same style file, stored **in the
+  presentation** instead of in your browser. Your imported style follows the
+  browser, so a branded deck sent to a colleague used to arrive with none of it
+  and every chart they added drifted further; a style saved into the deck
+  travels with the file.
+  - The **deck's style wins** when it has one, so a colleague opening your deck
+    draws your brand without doing anything. The pane says which style is in
+    force whenever it changes.
+  - **Importing** a style in the pane overrides the deck for the rest of the
+    session — it is an explicit act, and the deck should not silently undo it.
+    **Use deck style** switches back.
+  - Needs PowerPointApi 1.7. On an older host the button says the deck could not
+    be updated rather than implying it was; your own style still applies.
+  - Chart *data* is unaffected: each chart's config stays in its own shape tag,
+    which is what lets a chart survive copy/paste into another deck.
 - **Templates** — the dropdown groups built-in **Starters** (polished, ready-to-
   edit presets: revenue bridge, growth columns + CAGR, channel mix, market
   share, KPI trend, bullet vs target, programme Gantt) with **My templates**.
