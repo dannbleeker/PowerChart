@@ -72,5 +72,18 @@
       "pattern": "InvalidParam|5010|GeneralException"
     },
     "outcome": "open"
+  },
+  {
+    "id": "grouping-the-part-the-host-names-carries-same-scale",
+    "madeIn": "#586",
+    "afterBuild": "b9fef69",
+    "because": "THE HONEST ONE — it is not known which way this goes, and the two outcomes send a maintainer to opposite ends of the codebase. `same scale across the deck` has failed 34 of 34 rounds. Rounds 064/065 narrowed why: the settled retry got charts 4 and 5 to GROUP, and they lost their config anyway because the tag is refused through the GROUP handle, which hangs off a slide handle Office has rewritten to `slides.getItem(id)`. #586 changes a different link in that chain on the owner's call: a partial re-read — chart 4 has matched 20 of its 24 shapes in every round on record — is now GROUPED rather than discarded, because the archive prices an ungrouped chart at a 66% chance of losing its config against a grouped one's 2%. So this round asks whether that 2% figure survives contact with a SUBSET group on a freshly added slide. HELD means the trade paid and the scenario passes for the first time. FAILED is the informative half: if chart 4 groups (look for `grouped the chart's shapes … partial=1 left=N:4`, the first time that field reports an intended outcome) and STILL loses its config, then the grouping half of #586 worked and the tag-through-the-group is the whole of what is left — rounds 064/065's finding, confirmed on a build where grouping is no longer the variable. The one outcome that would refute #586 itself is chart 4 not grouping at all.",
+    "claim": {
+      "kind": "scenario-passes",
+      "names": [
+        "same scale across the deck"
+      ]
+    },
+    "outcome": "open"
   }
 ]
