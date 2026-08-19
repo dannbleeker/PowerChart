@@ -126,29 +126,38 @@ The settled retry, the bindings and the origin tag through the binding each took
 a piece of it. **Do not read the 8% below as the current rate either** — see the
 paragraph above it.
 
-**What is left is one decision, the owner's, and not measurable by another
-round:**
+**THAT DECISION HAS BEEN TAKEN — 2026-08-19, by the owner: group the 20.**
 
-1. **Group a partial match rather than declining.** The 20 of 24 that came back
-   are provably ours — the matcher proved it by our own ids, so no ownership
-   guarantee is needed (Stage 0 established this; the "slide this run added
-   blank" framing this entry used to carry was the wrong question). What is left
-   is a trade between two harms: group the 20 and the chart is re-editable with 4
-   shapes stranded in its box, or group nothing and it loses its config about 7
-   times in 10. A product judgement, not a measurement.
+1. ~~**Group a partial match rather than declining.**~~ Shipped. The 20 of 24
+   that came back are provably ours — the matcher proved it by our own ids, so no
+   ownership guarantee was needed. The trade was between two harms: group the 20
+   and the chart is re-editable with 4 shapes stranded in its box, or group
+   nothing and it loses its config about 7 times in 10. The owner took the first.
+
+   **One thing to watch in the next round, because it is what the change buys and
+   what it costs:** `same scale`'s chart 4 is the 20-of-24 one, so it should now
+   group and keep its config, and `grouped the chart's shapes` should carry
+   `partial=1 left=N:4` — the first time that field reports an INTENDED outcome
+   rather than a defect. Four shapes will be loose inside that chart's box; that
+   is the price, not a regression. If chart 4 groups and still loses its config,
+   the tag is being refused through the GROUP, which is rounds 064/065's finding
+   and a different problem.
+
+   Only the subset is taken when it is a strict MAJORITY of the chart — a bound
+   the owner's call did not name, added so a host that lists one shape of
+   twenty-four cannot produce a "chart" whose drag moves a label.
 
    `tagAnchorIndex` — question 2 here until 2026-08-16 — **has been reverted**.
    No measured effect across five rounds and four builds.
 
-   **The third route — the settled retry — has SHIPPED and is measured**, so it
-   is no longer a proposal competing with the two above. It came from the
-   office-js tracker rather than from a round: PowerPoint Online has a known
-   settling delay on a slide that has just been materialised, and the community
-   workaround is to wait before reading its shapes. It needs no ownership
-   guarantee and strands no shapes, and over four rounds it repaired 2 re-reads
-   each time. **It does not close this decision** — the charts it rescues group
-   and still lose their tag, so the trade above is live for exactly the charts
-   the retry does not reach. See the top of this file and `docs/BACKLOG.md`.
+   **The third route — the settled retry — has SHIPPED and is measured.** It came
+   from the office-js tracker rather than from a round: PowerPoint Online has a
+   known settling delay on a slide that has just been materialised, and the
+   community workaround is to wait before reading its shapes. It needs no
+   ownership guarantee and strands no shapes, and over four rounds it repaired 2
+   re-reads each time. It did not close the decision above — the charts it
+   rescues group and still lose their tag — which is why the trade was taken for
+   exactly the charts the retry does not reach.
 
 **ANSWERED — do not re-ask, and do not spend a round on any of them:**
 

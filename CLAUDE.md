@@ -1509,8 +1509,11 @@ re-read came back empty`. So the fall-through to a collection read does not
   merely fail to group: it THROWS, and the throw takes the batch's tagging with
   it, so the chart loses its group AND its config. Five charts in one run.
   `chooseGroupMembers` is that decision — group by re-resolved ids, or group
-  nothing — and "group nothing" is strictly better, because an ungrouped chart
-  that carries its config is still re-editable. **It worked on 2026-08-07**
+  nothing — and "group nothing" is better because the THROW costs every chart in
+  the batch where declining costs one. Not because declining is cheap: the
+  archive says an ungrouped chart loses its config 66% of the time, which is why
+  a partial match is now grouped one level up rather than declined. **It worked
+  on 2026-08-07**
   (`not grouping: no member handle this host will accept index=0 refreshed=0`)
   and the chart lost its config anyway — for the reason in the next bullet, not
   this one.
@@ -2068,15 +2071,52 @@ to: "257#1897035307", shapes: 10}`. Ten shapes each time, which is the batch
   a re-read that matched 20 of 24 ids groups the 20 and leaves 4 on the slide.
   One round, no reasoning, because the success path finally spoke.
 
-  **A partial match is now thrown away, and the chart is left WHOLE.** The
-  argument for keeping it was that every shape in it is provably ours where the
-  positional rule is a guess — true, and beside the point. What it produces is a
-  chart that looks like one object and is not: drag it and the baseline stays
-  behind, with nothing said. Ungrouped is ugly and survivable; grouped-and-split
-  is silently destructible, and the parts tag rather than the group is what
-  carries a chart's membership, so an ungrouped chart is still tagged, still
-  re-editable and still deleted correctly on the next update. Same conclusion
-  `chooseGroupMembers` already reached for a member that cannot be named at all.
+  **A partial match is GROUPED, and the chart is split — the owner's call, taken
+  2026-08-19, reversing what this paragraph said for eight days.** The branch had
+  refused because a grouped-and-split chart looks like one object and is not:
+  drag it and the baseline stays behind, with nothing said. What refused it was
+  the belief that the alternative was free — "an ungrouped chart is still tagged,
+  still re-editable" — and the archive refutes exactly that:
+
+      grouped      64 chart(s),  1 lost the tag =  2%
+      NOT grouped  62 chart(s), 41 lost the tag = 66%
+
+  So the choice is between four loose shapes and a chart that is not a chart. The
+  config tag goes on the group, which is a handle made in the grouping batch and
+  never resolved; without a group it falls back to a `created` handle this host
+  refuses two times in three.
+
+  **One bound, and it is NOT in the call as the owner stated it.** He weighed 20
+  of 24, which is what every round on record produces; the code takes the subset
+  only when it is a strict MAJORITY of the chart. A group holding one shape while
+  twenty-three sit around it saves the config and destroys the object — dragging
+  the chart moves a label. Majority rather than a tuned share, because "more of
+  the chart is inside the group than outside it" is a statement about the object
+  and any other number would be invented.
+
+  **The stranded remainder is deliberately NOT written into the parts tag**, and
+  that was the first thing tried. It sounds strictly better — the next update
+  would take the loose shapes with the group — and it is how the trade becomes
+  data loss: the only ids we hold for those shapes are the ones CREATION
+  returned, and creation ids are precisely what this host has been seen not to
+  answer to (`withOwnId 7 of 7 … matched 0`, rounds 068/069). The parts tag is a
+  list the update path DELETES BY. A shape the host would not name is not a shape
+  we may delete.
+
+  **Two seams had to move with it, and the second is the one nothing would have
+  caught.** `freshMembers` now carries partial lists, and two readers must have
+  whole ones: `ungroupedFallback` builds the parts tag off that map — a short
+  parts tag is worse than none, because the next update deletes what it can name
+  and leaves the rest, so the chart grows on every edit — and the single-member
+  tag-target swap assumes `fresh[0]` is the anchor. `wholeMatch` is the set that
+  separates them, and the parts-tag case is reachable: grouping can still throw
+  after a subset was chosen.
+
+  `chooseGroupMembers` deliberately did NOT change. It is handed the re-read's
+  members and nothing else, so `["a", undefined]` could be two of a two-shape
+  chart or two of twenty-four — it cannot see `created.length`, so it cannot know
+  whether the group would still be the chart. The caller that can see both
+  numbers is the one that takes the trade.
 
   The partial branch does NOT fall through to the positional rule. That branch
   is safe only when nothing matched by id: a slide holding the user's own shapes
@@ -2084,16 +2124,10 @@ to: "257#1897035307", shapes: 10}`. Ten shapes each time, which is the batch
   short, and "the last N" would then reach past the chart into the user's
   content and group it in — to be deleted with the chart on the next update.
 
-  `partial` on the success line is an INVARIANT now rather than an outcome, and
-  is kept for that: it should read 0 forever, and it is the line that will say
-  so if a future change puts a short match back.
-
-  **It fired on live data and held on 2026-08-12 (`393e6e4`).** Chart 3 of 7 in
-  the rescale read back `the re-read matched only some of the chart's shapes
-drew=24 matched=10` and refused, leaving the chart whole and ungrouped — and
-  that chart KEPT its config, so the refusal cost nothing that mattered. Every
-  successful group in the round reports `partial: 0`, which is the invariant
-  above saying so out loud for the first time on a real host.
+  `partial` on the success line is an OUTCOME again rather than an invariant, and
+  it is the only line that reports what the call costs: `left=0:4` says chart 0
+  has four shapes loose inside its own box. A round archive spans both meanings
+  — `grouping:` on the short-read line is what dates a round.
 
 - **A trace may not be NAMED for an outcome it is written before knowing.** The
   per-batch draw line was called `batch committed` and is emitted one statement

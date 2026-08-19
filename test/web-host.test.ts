@@ -1674,17 +1674,24 @@ describe("what a group that SUCCEEDS leaves behind", () => {
     }
   });
 
-  it("keeps the chart WHOLE rather than grouping the part the host would name", async () => {
+  it("groups the part the host WILL name, and leaves the rest loose beside it", async () => {
     // Short, not empty — the case `hollowReads` documents and does not do, and
     // the one this host really produces. An empty re-read makes
-    // `chooseGroupMembers` say "group nothing"; a SHORT one used to be kept and
-    // grouped, which splits the chart into a group plus a remainder that does
-    // not move with it.
+    // `chooseGroupMembers` say "group nothing"; a SHORT one is grouped anyway,
+    // which is the owner's call of 2026-08-19 and the reverse of what this file
+    // asserted for the eight days before it.
     //
-    // `4feb5be` left exactly that on a real slide — `partial=1 left=0:4`, with
-    // `label-1-3`, `baseline`, `series-label-0` and `series-label-1` stranded
-    // inside the chart's own box. It looks like one object and is not, so the
-    // user drags the chart and leaves its baseline behind with nothing said.
+    // THE TRADE, both halves asserted below because both are real:
+    //
+    //     group the subset   the chart keeps its config and stays editable;
+    //                        the shapes the host withheld sit loose in its box
+    //     group nothing      the chart is whole, and loses its config about two
+    //                        times in three on this host (64 grouped, 1 lost;
+    //                        62 ungrouped, 41 lost — `npm run rounds`)
+    //
+    // `4feb5be` is the real slide it was measured on: `partial=1 left=0:4`, with
+    // `label-1-3`, `baseline`, `series-label-0` and `series-label-1` beside the
+    // group. That is now the intended outcome rather than the bug report.
     const slide = makeSlide("s1");
     installHost([slide]);
     setTracing(true);
@@ -1696,7 +1703,8 @@ describe("what a group that SUCCEEDS leaves behind", () => {
       const said = traceLog(mark).entries;
       const short = said.filter((e) => e.message === "the re-read matched only some of the chart's shapes");
       expect(short.length, "a short re-read passed without a word").toBe(1);
-      expect(short[0].data?.matched).toBe(Number(short[0].data?.drew) - 4);
+      const drew = Number(short[0].data?.drew);
+      expect(short[0].data?.matched).toBe(drew - 4);
       // AND WHICH SYNC OF ITS CONTEXT, which is the x-axis the decay curve had
       // none of. `same scale` degrades chart by chart, and the question that
       // could not be answered without this number was whether the CONTEXT wears
@@ -1708,47 +1716,129 @@ describe("what a group that SUCCEEDS leaves behind", () => {
       );
       // AND THAT A SETTLE DELAY DID NOT SAVE IT. `readsMissing` is permanent, so
       // this chart was asked twice and answered short both times — which is what
-      // makes the trade below a real trade rather than an impatient one. Without
-      // this the line could not be told apart from a first answer nobody waited
-      // on, and that is the reading a round log needs most.
+      // makes the trade a real trade rather than an impatient one. Without this
+      // the line could not be told apart from a first answer nobody waited on,
+      // and that is the reading a round log needs most.
       expect(short[0].data?.afterRetry, "a short read was declared final without a second ask").toBe(true);
-
-      // Nothing grouped, and specifically not the part the host could name.
+      // THE GROUP FORMED, and says how much of the chart it holds. `left=0:4` is
+      // the cost of the trade, reported rather than inferred from a deck.
       const groups = said.filter((e) => e.message === "grouped the chart's shapes");
-      expect(
-        groups.flatMap((g) => [g.data?.partial]),
-        `a partial group was formed anyway: ${JSON.stringify(groups.map((g) => g.data))}`,
-      ).not.toContain(1);
+      expect(groups.length, "the subset was not grouped").toBe(1);
+      expect(groups[0].data?.charts).toBe(1);
+      expect(groups[0].data?.partial, "a partial group formed without saying so").toBe(1);
+      expect(groups[0].data?.left).toBe(`0:${4}`);
+
       const live = slide.created.filter((s) => !s.deleted);
-      expect(
-        live.some((s) => s.type === "group"),
-        "the chart was split into a group plus a loose remainder",
-      ).toBe(false);
+      const group = live.find((s) => s.type === "group");
+      expect(group, "no group reached the slide").toBeTruthy();
+      expect(group!.grouped?.length, "the group did not take every shape the host named").toBe(drew - 4);
 
-      // Whole — which is the trade. An ugly chart the user can still open beats
-      // a tidy one that comes apart when dragged.
-      expect(live.length, "the chart lost shapes as well as its group").toBeGreaterThan(4);
+      // THE REMAINDER IS STILL THERE. Loose, inside the chart's box, and NOT
+      // deleted — a shape the host would not name is not a shape we may remove,
+      // and turning this trade into a cleanup is the one way it could become
+      // data loss.
+      // BY ID, not by identity: the members were re-resolved through
+      // `getItemOrNullObject(id)` in the grouping batch — that is the whole
+      // point of the re-resolve — so they are different handles onto the same
+      // shapes. Comparing the objects reports every shape as stranded.
+      const inGroup = new Set(((group!.grouped ?? []) as { id: string }[]).map((m) => m.id));
+      const stranded = live.filter((s) => s !== group && !inGroup.has(s.id));
+      expect(stranded.length, "the shapes the host withheld were not left on the slide").toBe(4);
 
-      // AND STILL FOUND BY A DECK SCAN THAT READS SHORT, because the tag sits on
-      // `created[0]` and `faults.readsMissing` drops shapes off the TAIL.
-      //
-      // This asserted the opposite between 2026-08-15 and 2026-08-16, when the
-      // anchor was moved to the last shape drawn so the tag write could go
-      // through an unresolved handle. A tail-anchored tag is invisible to a scan
-      // blinded this way, and that visibility cost was taken deliberately at the
-      // time. The anchor move measured no effect on the real host across five
-      // rounds and four builds and has been reverted, so the cost is not being
-      // paid and this asserts the head-anchored behaviour again.
-      //
-      // Note what the reversion does NOT restore: which end a real host drops is
-      // still unknown. `which-end-a-short-read-drops` answers `unreadable` — the
-      // collection would not list its items at all — so on this host the question
-      // has no answer either way, and nothing here should be read as one.
-      const found = (await listChartsInDeck()).charts;
-      expect(found.length, "a short scan should still see a head-anchored tag").toBe(1);
+      // AND THE CHART IS RE-EDITABLE, which is the whole reason for the trade.
+      // The config tag is on the GROUP now, not on `created[0]`.
+      const tagged = live.filter((sh) => sh.tagStore.has(CHART_TAG));
+      expect(tagged.length, "the chart is not re-editable").toBe(1);
+      expect(tagged[0], "the config landed somewhere other than the group").toBe(group);
+
+      // AND THE SHORT-READ LINE SAYS WHAT WAS DONE ABOUT IT. Asserted LAST on
+      // purpose: it is a trace field, and a guard whose first red is a missing
+      // label reads as proven while proving nothing about the behaviour. This
+      // one has to fail behind the group, not in front of it.
+      expect(short[0].data?.grouping, "the short-read line does not say what it did about it").toBe(
+        "the subset the host named",
+      );
     } finally {
       faults.readsMissing = 0;
       setTracing(false);
+    }
+  });
+
+  it("groups NOTHING when the host names too little of the chart to be it", async () => {
+    // THE BOUND ON THE TRADE ABOVE. Grouping a subset saves the chart's config
+    // at the price of a few loose shapes, and that is worth it at 20 of 24. It
+    // is not worth it at 1 of 24: the group would hold one label while
+    // twenty-three shapes sat around it, so dragging "the chart" would move a
+    // label and leave the chart. The config is saved and the object destroyed,
+    // which is not the trade that was taken.
+    //
+    // Strict majority — more of the chart inside the group than outside it —
+    // because that is a statement about the object rather than a tuned share.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    setTracing(true);
+    const mark = traceMark();
+    // Everything but one shape withheld, so the match is a minority however big
+    // the chart is.
+    faults.readsMissing = 23;
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const said = traceLog(mark).entries;
+      const short = said.filter((e) => e.message === "the re-read matched only some of the chart's shapes");
+      expect(short.length, "a short re-read passed without a word").toBe(1);
+      expect(Number(short[0].data?.matched)).toBeLessThan(Number(short[0].data?.drew) / 2);
+
+      const live = slide.created.filter((s) => !s.deleted);
+      expect(
+        live.some((s) => s.type === "group"),
+        "a minority of the chart was grouped anyway",
+      ).toBe(false);
+      // The chart is whole, which is the point of declining.
+      expect(live.length, "the chart lost shapes as well as its group").toBeGreaterThan(4);
+      expect(short[0].data?.grouping, "the line does not say the bound is why nothing grouped").toBe(
+        "nothing — the host named too little of the chart",
+      );
+    } finally {
+      faults.readsMissing = 0;
+      setTracing(false);
+    }
+  });
+
+  it("writes a parts tag naming the WHOLE chart when a partial group then fails", async () => {
+    // The other half of grouping a subset, and the one nothing would have
+    // noticed. `freshMembers` now carries partial lists, and
+    // `ungroupedFallback` builds the parts tag off that map — so a chart whose
+    // group THREW after a subset was chosen would get a parts tag naming only
+    // the shapes the host had listed.
+    //
+    // That is worse than no parts tag at all. The next update deletes the anchor
+    // and the parts it can name, redraws the whole chart, and leaves the rest
+    // behind: the chart grows by the unnamed shapes on every single edit. The
+    // `created` list may hold ids this host will not answer to, but it at least
+    // describes the whole chart, and a part the host cannot resolve is skipped
+    // rather than acted on.
+    const slide = makeSlide("s1");
+    installHost([slide]);
+    faults.readsMissing = 4;
+    faults.refuseGroups = 1;
+    try {
+      const cfg = { ...sampleConfig("clustered"), ...DEFAULT_SIZE };
+      await insertSceneIntoSlide(buildChart(cfg), { tagData: JSON.stringify(cfg) });
+      const live = slide.created.filter((s) => !s.deleted);
+      expect(
+        live.some((s) => s.type === "group"),
+        "the group was refused, so nothing should have grouped",
+      ).toBe(false);
+      const tagged = live.filter((sh) => sh.tagStore.has(CHART_TAG));
+      expect(tagged.length, "the chart is not re-editable").toBe(1);
+      const parts = JSON.parse(tagged[0].tagStore.get(CHART_PARTS_TAG) ?? "[]") as string[];
+      // Every shape but the anchor — not every shape the host was willing to
+      // name, which is four fewer.
+      expect(parts.length, "the parts tag names only the shapes the short read listed").toBe(live.length - 1);
+    } finally {
+      faults.readsMissing = 0;
+      faults.refuseGroups = 0;
     }
   });
 });
