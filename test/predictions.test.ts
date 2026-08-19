@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 // @ts-expect-error — plain .mjs tool, no types.
-import { judgePrediction } from "../scripts/triage.mjs";
+import { judgePrediction, roundToJudgeOn } from "../scripts/triage.mjs";
 // Its own line — see the grouped-import trap documented in `triage.test.ts`.
 // @ts-expect-error — as above.
 import { scenarioHistory } from "../scripts/triage.mjs";
@@ -77,6 +77,23 @@ describe("judging a prediction against a round", () => {
     expect(
       judgePrediction({ claim: { kind: "probe-detail-matches", id: "a", pattern: "slide stable" } }, changed).verdict,
     ).toBe("FAILED");
+  });
+
+  it("has NO round to judge on when the build it was staked on has never been rounded", () => {
+    // The false-HELD case, and it happened the first time a prediction was
+    // staked the moment a change landed. The rule is "the newest round taken
+    // AFTER the prompting build"; when that build is not in the archive at all
+    // the old code fell back to judging against EVERY round, i.e. the newest —
+    // which is older than the change. `same scale across the deck` passes in the
+    // recent archive, so a prediction about code that had never been run came
+    // out `held` on evidence recorded before it existed.
+    const logs = [{ build: "aaaaaaa" }, { build: "bbbbbbb" }];
+    const buildOf = (l: { build: string }) => l.build;
+    expect(roundToJudgeOn(logs, "ccccccc", buildOf), "judged on a round older than the change").toBeUndefined();
+    // And the ordinary cases still work: after the prompting round, never at or
+    // before it.
+    expect(roundToJudgeOn(logs, "aaaaaaa", buildOf)).toEqual({ build: "bbbbbbb" });
+    expect(roundToJudgeOn(logs, "bbbbbbb", buildOf)).toBeUndefined();
   });
 
   it("keeps the ledger honest: every entry is judgeable and carries its reasoning", () => {

@@ -578,6 +578,34 @@ export function judgePrediction(prediction, log) {
   return { verdict: "undetermined", why: `unknown claim kind ${String(c.kind)}` };
 }
 
+/**
+ * The round a prediction may be judged on: the newest one taken AFTER the build
+ * it was staked on, or nothing.
+ *
+ * The "nothing" is the half that was wrong, and it produced a false HELD the
+ * first time a prediction was staked on a build with no round yet. The old rule
+ * read "find the prompting build in the archive and take everything after it",
+ * and when that build was NOT in the archive — which is the normal state for a
+ * prediction written the moment a change lands — it fell back to judging against
+ * every round, i.e. the newest one, which is OLDER than the change. `same scale
+ * across the deck` passes in the recent archive, so a prediction about a change
+ * that has never been run came out `held` on evidence recorded before it
+ * existed.
+ *
+ * That is the same defect the comment below already describes ("round 27
+ * standing in for a round 29 that does not exist yet"), reached through the
+ * not-found branch instead of through inequality. A prediction whose build has
+ * not been rounded has NO round to judge on, and saying so is the whole answer.
+ */
+export function roundToJudgeOn(logs, afterBuild, buildOf) {
+  const madeAt = logs.findIndex((l) => buildOf(l) === afterBuild);
+  // Rounds are ordered oldest-first, so anything at or before the prompting
+  // round cannot test the change — and a build with no round at all is past the
+  // end of the archive, not the start of it.
+  const since = madeAt === -1 ? [] : logs.slice(madeAt + 1);
+  return since[since.length - 1];
+}
+
 /** Open predictions, judged against the newest round given. */
 function reportPredictions(logs, load = readFileSync) {
   let ledger;
@@ -603,9 +631,7 @@ function reportPredictions(logs, load = readFileSync) {
     // an OLDER one — round 27 standing in for a round 29 that does not exist
     // yet. Rounds are ordered oldest-first, so anything at or before the
     // prompting round cannot test the change.
-    const madeAt = logs.findIndex((l) => buildOf(l) === p.afterBuild);
-    const since = madeAt === -1 ? logs : logs.slice(madeAt + 1);
-    const judged = since[since.length - 1];
+    const judged = roundToJudgeOn(logs, p.afterBuild, buildOf);
     if (!judged) {
       console.log(`    no round yet   ${p.id}  (${p.madeIn}, made on ${p.afterBuild})`);
       continue;
