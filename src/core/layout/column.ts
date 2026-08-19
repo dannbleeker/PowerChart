@@ -5,6 +5,7 @@ import { formatNumber, niceTicks, resolveFormat, segmentLabel, axisTickLabel } f
 import { seriesColor } from "../style";
 import { lerpColor } from "../color";
 import {
+  printsOnTitle,
   titleInkBottom,
   aboveMarkFontSize,
   baselineNode,
@@ -1168,10 +1169,20 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // drawn — a line whose name cannot be read is still the line the legend
       // names, and `collide.ts` has nowhere to move this one sideways: every row
       // above it is occupied.
-      const nameFs = H ? bandFontSize(fs, rowPitch, 2.8) : fs;
+      // Sideways: the CLEAR AIR between two rows' own labels, not a share of the
+      // pitch. Every row carries a category name and a total, both centred on
+      // it, so what the line's name actually has is the pitch less the height of
+      // one of those labels — and where that is not a readable size, the name is
+      // not drawn. At 32pt on a 200x150 chart the rows are 16pt apart and their
+      // numbers are 12pt of that, which is the case this is measuring: there is
+      // no position for it, so no size for it either.
+      const nameFs = H ? bandFontSize(fs, Math.max(0, rowPitch - pointFs * 1.4), 1.05) : fs;
       let lf = nameFs;
       while (lf > 5 && textWidth(s.name, lf) > lw) lf -= 0.5;
-      if (nameFs > 0)
+      const nameY = H
+        ? horizontalNameY(end.y, nameFs, cfg.height, rowPitch)
+        : uprightNameY(end.y, fs, cfg.height, titleInkBottom(cfg, style));
+      if (nameFs > 0 && nameY != null)
         nodes.push({
           kind: "text",
           x: lx,
@@ -1183,7 +1194,7 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           // under it on the slide, since neither PowerPoint renderer clips.
           // Bounded at both ends now; `combo-series-label-` is movable, so
           // de-collision can still lift it off whatever it lands on.
-          y: H ? horizontalNameY(end.y, nameFs, cfg.height) : uprightNameY(end.y, fs, cfg.height),
+          y: nameY,
           w: lw,
           h: nameFs * 1.4,
           text: clipToWidth(s.name, lf, lw),
@@ -1258,7 +1269,12 @@ export function horizontalChrome(
     // leaves labels that still overlap — and a label too small to read is not
     // worth the collision. Dropped whole, gridlines kept, as on the other axes.
     const tickFits = scale.ticks.every((t) => textWidth(axisLabel(t), tickFs) <= room);
-    for (const t of tickFits ? scale.ticks : []) {
+    // …and only where the strip is not inside the TITLE. Sideways it hangs off
+    // the foot of the plot, and `fitPlot` grows a squeezed plot up from that
+    // foot, so on a 300x60 chart at 24pt the whole row of numbers was drawn
+    // across the chart's own name.
+    const stripClear = !printsOnTitle(cfg, style, frame.y + frame.h + 2);
+    for (const t of tickFits && stripClear ? scale.ticks : []) {
       const x = frame.x + qOf(t);
       nodes.push({
         kind: "text",
@@ -1441,14 +1457,23 @@ export function legendRow(
  * argument `collide.ts` already makes for flipping a point label.
  *
  * The clamp stays as the last resort for a frame too short for either.
+ *
+ * AIMED AT THE GUTTER BETWEEN ROWS when the row pitch is known, which is the
+ * correction 24 and 32pt forced. "Just below the point" is `fs * 0.9` away, and
+ * sideways every row carries a category name on the left and a total on the
+ * right, both CENTRED on the row — so a name a few points under its point is
+ * inside the next row's numbers however small it is shrunk. The clear air is
+ * the boundary between two rows, and that is a position rather than a size.
  */
-export function horizontalNameY(pointY: number, fs: number, canvasH: number): number {
+export function horizontalNameY(pointY: number, fs: number, canvasH: number, rowPitch = 0): number {
   const boxH = fs * 1.4;
-  const below = pointY + fs * 0.9;
-  if (below + boxH <= canvasH) return Math.max(0, below);
-  const above = pointY - fs * 0.9 - boxH;
+  // Half a row down lands on the boundary; without a pitch this is the old
+  // `fs * 0.9`, so a caller that does not know its rows behaves as before.
+  const below = pointY + (rowPitch > 0 ? rowPitch / 2 - boxH / 2 : fs * 0.9);
+  if (below >= 0 && below + boxH <= canvasH) return below;
+  const above = pointY - (rowPitch > 0 ? rowPitch / 2 + boxH / 2 : fs * 0.9 + boxH);
   if (above >= 0) return above;
-  return Math.max(0, Math.min(below, canvasH - boxH));
+  return Math.max(0, Math.min(Math.max(0, below), canvasH - boxH));
 }
 
 /**
@@ -1461,13 +1486,23 @@ export function horizontalNameY(pointY: number, fs: number, canvasH: number): nu
  * the other way, and clamped only as the last resort on a frame too short for
  * either.
  */
-export function uprightNameY(pointY: number, fs: number, canvasH: number): number {
+export function uprightNameY(pointY: number, fs: number, canvasH: number, titleInk = 0): number | null {
   const boxH = fs * 1.4;
   const above = pointY - fs * 1.6;
-  if (above >= 0) return above;
-  const below = pointY + fs * 0.2;
+  // Clear of the TITLE, not merely of the canvas. A line ending near the top of
+  // a squeezed plot has the title above it and nothing else, and "on the
+  // canvas" put the name across it — the same trade `aboveMarkFontSize` refuses
+  // for every value drawn over a mark.
+  if (above >= titleInk) return above;
+  // Below the point, and never higher than the title's own ink — a point near
+  // the top of a squeezed plot is itself inside the title's band, so "just
+  // below it" is too.
+  const below = Math.max(pointY + fs * 0.2, titleInk);
   if (below + boxH <= canvasH) return below;
-  return Math.max(0, Math.min(above, canvasH - boxH));
+  // NEITHER position is available, so there is nowhere to put it. Null rather
+  // than the old clamp: the clamp's destination on a frame this short is the
+  // title, and a name that reads as part of the chart's title names nothing.
+  return null;
 }
 
 export function seriesLabelNodes(

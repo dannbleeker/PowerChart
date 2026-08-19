@@ -18,28 +18,6 @@ patterns.
 
 ## 1. Open
 
-### Take the overlap sweep to 24 and 32pt
-
-**Measured:** 2026-08-18, when the gate was widened to 6-18pt (282 pairs at the
-two largest fonts, against 0 at everything from 6 to 18).
-
-`test/frame-fit.test.ts` now sweeps text-against-text over every kind x seven
-frames x **5 fonts** (6, 8, 10, 14, 18) in both orientations, and it is zero.
-24 and 32pt are outside it, deliberately: at those sizes the chrome genuinely
-exceeds the frame — a 32pt font on an 80x60 chart cannot carry a title, an axis
-and a legend whatever the layout does — so the remaining pairs are not bounds
-that were forgotten, they are a chart with more chrome than room.
-
-**What to decide before starting.** A `MIN_READABLE` frame-to-font ratio, below
-which the engine draws the marks and drops every optional label, would answer it
-once instead of 282 times. That question was raised for the overflow sweep and
-turned out not to be needed there — every one of those 42 could be fitted — so
-it is genuinely open here for the first time.
-
-**Priority:** low. Nobody puts a 32pt font on a thumbnail by choice, and the
-sizes a deck uses are covered. Worth doing when the answer to the ratio question
-is wanted for its own sake.
-
 ### Report what this project has measured to the office-js tracker
 
 **Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the

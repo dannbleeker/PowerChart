@@ -4,6 +4,7 @@ import { clipToWidth } from "../elements";
 import { formatNumber, formatPercent, resolveFormat } from "../format";
 import { seriesColor } from "../style";
 import {
+  printsOnTitle,
   MIN_LABEL_FS,
   titleInkBottom,
   aboveMarkFontSize,
@@ -298,7 +299,9 @@ export function layoutMekko(cfg: ChartConfig, style: ChartStyle, decor: Decorati
             valign: "middle",
             name: `category-${c}`,
           });
-      } else {
+      } else if (!printsOnTitle(cfg, style, frame.y + frame.h + 3)) {
+        // Same rule as the shared category axis: a strip squeezed into the
+        // title's band is not drawn at all.
         nodes.push({
           kind: "text",
           x: centers[c] - catRoom(c) / 2,

@@ -1124,6 +1124,33 @@ labels when the outer ring will not fit` passed on three nodes carrying the
     half a row now, because `collide.ts` has nowhere to move it sideways: every
     row is occupied.
 
+  **24 and 32pt joined the gate on 2026-08-19, and the entry that deferred them
+  was wrong about what they held.** It said the remaining pairs were a chart
+  with more chrome than room, and therefore a `MIN_READABLE` decision rather
+  than a bound. Measured: **185 pairs, 165 of them on ONE frame** (300x60), and
+  the mechanism was neither. `fitPlot` grows a squeezed plot UP from its bottom
+  edge, and the category strip, the axis ticks and the line's own name are all
+  placed FROM that edge — so they climb into the TITLE together. The category
+  axis alone asks for `fs * 1.5 + 3`, which is 51 of the 60 points a 300x60
+  chart has at 24pt.
+
+  `printsOnTitle` is the shared answer, and what it protects is the title:
+  chrome that cannot be paid for is not drawn, and the title is the one label
+  that says what the reader is looking at. Per-tick where the labels are
+  independent numbers, per-strip where they share a y. No ratio was needed, and
+  the `MIN_READABLE` question is still unasked — which is the better outcome,
+  because it was never a question about readability, it was a plot growing
+  through its own chrome.
+
+  Two smaller corrections came with it. The combo line's sideways name was
+  bounded to half a row, and half a row is not the room it has: every row
+  carries a category name and a total CENTRED on it, so the clear air is the
+  pitch less one of those labels, and the name is aimed at the boundary between
+  two rows rather than just under its point. And `uprightNameY`'s last-resort
+  clamp was removed in favour of drawing nothing — its destination on a frame
+  that short is the title, and a series name that reads as part of the title
+  names nothing.
+
   **A gate can be widened into a test that was asserting nothing.** `drops a
 point label the name has taken the room from` measured 120x90, where the name
   is now dropped outright — so the trade it names cannot happen there and the
