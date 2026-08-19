@@ -2126,9 +2126,22 @@ export async function updateChartsInSlides(
           if (it.target.partIds?.length) c.withParts += 1;
           // THE POPULATION THE QUESTION IS ABOUT. Ungrouped, and with no parts
           // list to delete by — so this update could name only its anchor and
-          // the rest of the chart is what might be left behind. A group is not
-          // at risk however many shapes it holds, and `partIds` alone cannot
-          // say which is which because a grouped chart has none either.
+          // the rest of the chart is what might be left behind. `partIds` alone
+          // cannot say which is which because a grouped chart has none either.
+          //
+          // "A GROUP IS NOT AT RISK HOWEVER MANY SHAPES IT HOLDS" was the rest
+          // of this sentence, and #586 ended it on 2026-08-19: a subset group
+          // holds the majority the host would name and leaves the remainder
+          // loose in the chart's own box, out of the parts tag on purpose. Such
+          // a chart IS at risk and this line calls it safe.
+          //
+          // Deliberately not fixed here. The host says `group` for both, so
+          // telling them apart costs a member-count load per chart on the update
+          // path — and the round file already carries the other half from the
+          // draw pass (`partial=N left=i:k`). `poolUpdateShortfalls` does that
+          // join and prints the loose shapes beside this count, so the number
+          // below is honest as long as it is never read alone. If the subset
+          // branch ever starts firing on this host, buy the load.
           //
           // Read from the host's own `type`, defaulting to NOT-at-risk when it
           // could not be read: inventing risk from an unread property would
@@ -9739,11 +9752,18 @@ export async function readDeckStyle(): Promise<DeckStyle | null> {
  * call. The pane-load caller is fired and forgotten and was unharmed; the button
  * would have reported an absence it had not established.
  *
- * `unreadable` covers the throw, the timeout, AND the several-parts-in-one-
- * namespace case the catch below already handled: two answers to "what is this
- * deck's style" is not the same as no answer, but it is equally not an absence.
- * A host too old to have the API is NOT unreadable — that deck genuinely carries
- * no style, and saying so is accurate rather than evasive.
+ * `unreadable` covers the throw and the timeout. A host too old to have the API
+ * is NOT unreadable — that deck genuinely carries no style, and saying so is
+ * accurate rather than evasive.
+ *
+ * IT DOES NOT COVER A DECK HOLDING TWO PARTS, and this comment claimed it did
+ * for one day. `@types/office-js` is explicit that `getOnlyItemOrNullObject`
+ * returns null for anything other than exactly one item — it is `getOnlyItem`
+ * that raises `GeneralException` on "no items or more than one". So a deck that
+ * has somehow accumulated two styles reads here as carrying NONE, quietly, and
+ * no branch in this function can tell that apart from an unbranded deck. The
+ * test fake used to throw for that case and the claim was written from the fake.
+ * `writeDeckStyle`'s delete-then-add is what keeps the state from arising.
  */
 export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | null; unreadable: boolean }> {
   if (!supports("1.7")) return { style: null, unreadable: false };

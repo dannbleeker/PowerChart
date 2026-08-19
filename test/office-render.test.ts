@@ -5125,11 +5125,18 @@ describe("the style a deck carries", () => {
   });
 
   it("REPLACES the style rather than adding a second part", async () => {
-    // `getOnlyItemOrNullObject` — how the read finds it — refuses a namespace
-    // holding two, so a deck that quietly accumulated three styles would have
-    // no style at all. The write deletes every part in the namespace first, and
-    // this is the test that says so: without it the second read throws and the
-    // caller sees `null` on a deck that has just been branded twice.
+    // `getOnlyItemOrNullObject` — how the read finds it — returns a NULL OBJECT
+    // for a namespace holding two, so a deck that quietly accumulated three
+    // styles would have no style at all. The write deletes every part in the
+    // namespace first, and this is the test that says so: without it the second
+    // read comes back empty on a deck that has just been branded twice.
+    //
+    // This comment said the read "refuses" and that the second read "throws".
+    // `@types/office-js` says otherwise — `getOnlyItem` raises on more than one,
+    // the OrNullObject variant we call returns null — and the fake had been
+    // throwing to match the comment rather than the contract. The corrected
+    // behaviour is WORSE for a user and better to model: a second part does not
+    // announce itself, it silently unbrands the deck.
     installHost([makeSlide("s1")]);
     await writeDeckStyle({ palette: ["#111111"] });
     await writeDeckStyle({ palette: ["#222222"] });
@@ -5152,6 +5159,27 @@ describe("the style a deck carries", () => {
     expect(await writeDeckStyle({ fontSize: 12 })).toBe(false);
     faults.refuseCustomXmlWrites = false;
     expect(await readDeckStyle()).toBeNull();
+  });
+
+  it("reads a DOUBLY-branded deck as carrying no style, silently — the contract, not the fake", async () => {
+    // The state `writeDeckStyle`'s delete-then-add exists to prevent, and which
+    // nothing could reach until now. Per `@types/office-js`,
+    // `getOnlyItemOrNullObject` returns null for anything but exactly one item;
+    // it is `getOnlyItem` that raises on "no items or more than one". So this is
+    // NOT a failed read and must not be reported as one — it is a branded deck
+    // that answers as unbranded, which is the quiet, worse outcome.
+    //
+    // NOT VERIFIED ON A REAL HOST: no round has put two parts in the namespace.
+    // This pins the documented contract so a future change cannot drift from it
+    // silently, and the fake no longer models a throw nobody has observed.
+    installHost([makeSlide("s1")]);
+    expect(await writeDeckStyle({ palette: ["#2a78d6"] })).toBe(true);
+    faults.duplicateCustomXmlPart = true;
+    expect(await readDeckStyleWithReason()).toEqual({ style: null, unreadable: false });
+    faults.duplicateCustomXmlPart = false;
+    // And with the duplicate gone the deck is branded again, so the fault is
+    // modelling a second PART and not a corrupted store.
+    expect(await readDeckStyle()).toEqual({ palette: ["#2a78d6"] });
   });
 
   it("says the read FAILED rather than reporting an absence", async () => {

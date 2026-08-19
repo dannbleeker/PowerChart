@@ -1340,11 +1340,47 @@ describe("what an update left on the slide, pooled", () => {
     expect(o.rounds).toBe(1);
   });
 
+  it("counts the shapes #586 leaves loose ON PURPOSE, which atRisk calls safe", () => {
+    // THE BLIND SPOT, and it is in the instrument rather than the code. #586
+    // groups the majority the host will name and leaves the remainder out of
+    // the parts tag deliberately. At update time the host says `group` for that
+    // chart exactly as it does for a whole one, so `atRisk` counts it SAFE —
+    // while four shapes sit loose in its own box and the next update walks past
+    // them. The draw pass records the other half (`partial=N left=i:k`), so the
+    // join happens here.
+    const grouped = (left: string) => ({
+      scope: "group",
+      message: "grouped the chart's shapes",
+      data: { charts: 4, partial: left ? left.split(",").length : 0, ...(left ? { left } : {}), by: "ids" },
+    });
+    const o = poolUpdateShortfalls([{ trace: { entries: [slide({ atRisk: 0 }), grouped("0:4,3:2")] } }]);
+    expect(o.atRisk, "the host calls a subset group a group").toBe(0);
+    expect(o.strandedByDesign, "four loose on chart 0, two on chart 3").toBe(6);
+    expect(o.subsetGroups).toBe(2);
+  });
+
+  it("reports no subset groups when every chart grouped whole", () => {
+    // The state this host has actually been in for every round on record: the
+    // settled retry repairs the re-read before the subset rule is reached, so
+    // `partial` is 0 and there is nothing left loose. A count that cannot come
+    // back zero is not measuring anything.
+    const whole = {
+      scope: "group",
+      message: "grouped the chart's shapes",
+      data: { charts: 4, partial: 0, by: "ids" },
+    };
+    const o = poolUpdateShortfalls([{ trace: { entries: [slide({ atRisk: 0 }), whole] } }]);
+    expect(o.strandedByDesign).toBe(0);
+    expect(o.subsetGroups).toBe(0);
+  });
+
   it("does not count a GROUPED chart's growth as stranding", () => {
     // THE BUCKET WAS KEYED ON THE WRONG FIELD. It split on `withParts === 0`,
     // and a grouped chart has no parts list either — so every grouped chart
-    // landed in the stranding column, where by construction it cannot belong: a
-    // group is deleted whole and leaves nothing behind.
+    // landed in the stranding column, where a WHOLE group cannot belong: it is
+    // deleted in one piece. (A SUBSET group can — see the #586 test below. That
+    // is why this reading is printed beside the loose-shape count and not
+    // alone.)
     //
     // Round 086 put a growth of 23 there from a chart whose own line read
     // `atRisk: 0`. `atRisk` is the population the question is about.

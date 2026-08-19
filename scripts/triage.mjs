@@ -1073,8 +1073,28 @@ function reportUpdateShortfalls(logs) {
 ` +
       `    AT RISK — ungrouped and with no parts list, which is what a refused \`reading back
 ` +
-      `    an ungrouped chart's shape ids\` leaves behind. Only those can strand anything.`,
+      `    an ungrouped chart's shape ids\` leaves behind.`,
   );
+  // THE POPULATION `atRisk` CANNOT SEE, printed beside it so a zero above is
+  // never read alone. #586 groups the majority the host names and leaves the
+  // remainder out of the parts tag on purpose; that chart reports `group` at
+  // update time, counts as safe, and still has loose shapes in its own box.
+  if (o.subsetGroups)
+    console.log(
+      `    PLUS ${o.strandedByDesign} shape(s) left loose ON PURPOSE across ${o.subsetGroups} subset group(s) — #586's
+` +
+        `    trade, not a fault, and invisible to \`atRisk\` because the host calls a subset
+` +
+        `    group a group. Count these before calling any zero above an all-clear.`,
+    );
+  else
+    console.log(
+      `    #586's subset branch has not run in this pool: 0 partially-grouped chart(s). It is
+` +
+        `    reached only by a re-read still SHORT after the settled retry, which has not
+` +
+        `    happened once since that retry shipped — so nothing here tests it either way.`,
+    );
   // THE INSTRUMENT'S OWN ERROR RATE, which is a number worth printing: this
   // reading has produced four false positives in two days, every one of them a
   // host lag the deck later contradicted.
@@ -1106,9 +1126,9 @@ function reportUpdateShortfalls(logs) {
         console.log(
           `    NOT AN ALL-CLEAR: no update here touched a chart that could strand anything
 ` +
-            `    (0 at risk — every one was grouped, or had its parts list). A group is deleted
+            `    (0 at risk — every one was grouped, or had its parts list). Zero growth over
 ` +
-            `    whole, so zero growth over zero at-risk charts is the question never being put.
+            `    zero at-risk charts is the question never being put.
 ` +
             `    The round held ${o.ungroupedCharts} ungrouped chart(s); wait for one an update actually edits.`,
         );
@@ -1832,6 +1852,9 @@ export function poolUpdateShortfalls(logs) {
     unitMismatch: 0,
     ungroupedCharts: 0,
     atRisk: 0,
+    /** Shapes #586 left loose ON PURPOSE, and the charts that left them. */
+    strandedByDesign: 0,
+    subsetGroups: 0,
     deckContradicted: 0,
   };
   for (const log of logs) {
@@ -1853,12 +1876,35 @@ export function poolUpdateShortfalls(logs) {
       const n = s.count ?? s.shapes?.length;
       if (id && typeof n === "number") finalCount.set(id, n);
     }
-    // WHETHER THE QUESTION COULD BE PUT AT ALL. Stranding is only possible for
-    // an UNGROUPED chart — a group is deleted whole, so there is nothing left
-    // behind. A round that grouped everything cannot answer this either way, and
-    // round 082 was exactly that: 20 grouped, 0 not. Without this the report
-    // would read "no growth" from such a round and sound like an all-clear.
+    // WHETHER THE QUESTION COULD BE PUT AT ALL. A round that grouped everything
+    // cannot answer this either way, and round 082 was exactly that: 20 grouped,
+    // 0 not. Without this the report would read "no growth" from such a round
+    // and sound like an all-clear.
     out.ungroupedCharts += entries.filter((e) => /^not grouping/.test(String(e.message))).length;
+    // AND "A GROUP IS DELETED WHOLE" STOPPED BEING TRUE ON 2026-08-19. This
+    // comment used to say stranding was possible only for an ungrouped chart.
+    // #586 groups the majority the host will name and, in its own words, leaves
+    // "the stranded remainder deliberately not written into the parts tag" —
+    // so a chart can now be GROUPED and still leave shapes loose inside its own
+    // box, and the next update deletes the group and walks past them.
+    //
+    // `atRisk` cannot see it. It is read from the host's own shape type at
+    // update time (`powerpoint.ts`), where a subset group and a whole one are
+    // the same word, and telling them apart there would cost a load per chart.
+    // The ROUND file has both halves though — the draw pass records
+    // `partial=N left=i:k` — so the join belongs here, and a zero from `atRisk`
+    // can no longer be read as an all-clear on its own.
+    for (const e of entries) {
+      if (String(e.message) !== "grouped the chart's shapes") continue;
+      // `left` is `index:count` per partially-grouped chart, comma-joined.
+      for (const pair of String(e.data?.left ?? "").split(",")) {
+        const k = Number(pair.split(":")[1]);
+        if (Number.isFinite(k) && k > 0) {
+          out.strandedByDesign += k;
+          out.subsetGroups += 1;
+        }
+      }
+    }
     let seen = false;
     for (const e of entries) {
       if (!/^shapes left on the slide/.test(String(e.message))) continue;
