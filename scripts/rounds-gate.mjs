@@ -20,7 +20,13 @@
  */
 import { readFileSync, readdirSync } from "fs";
 import { isMain } from "./is-main.mjs";
-import { scenarioRegressions, profileDivergence, roundProfile, traceNovelty } from "./triage.mjs";
+import {
+  scenarioRegressions,
+  profileDivergence,
+  roundProfile,
+  traceNovelty,
+  poolScenarioPopulations,
+} from "./triage.mjs";
 
 /**
  * Every archived round, oldest first — the order `scenarioRegressions` expects.
@@ -121,6 +127,28 @@ if (isMain(import.meta.url, process.argv[1])) {
     for (const d of flaky)
       console.log(`    ${d.name} — passed and failed at ${d.unstableIn.join(", ")} on the same build (${d.build})`);
     console.log("  Treat that as a flaky scenario, not a property of the slide size.");
+  }
+  // A SCENARIO CAN PASS ON LESS THAN IT USED TO, and none of the three questions
+  // around this one can see it. `scenarioRegressions` compares PASS to PASS;
+  // divergence compares slide sizes; novelty reads the trace. But `same scale
+  // across the deck` scores itself `scaled === charts.length` against a
+  // population it DISCOVERS — `probeCharts` returns whatever the deck scan finds
+  // — so round 088's `6 of 6` and every earlier round's `8 of 8` are both a pass
+  // and the gate said "no scenario regressed" between them.
+  //
+  // Reported, never fatal, for the same reason as the two above: round 088's six
+  // is downstream of a host stall that skipped the scenario seeding the probe
+  // charts, which is weather rather than a fault. It is a reason to read the
+  // round, and a reason not to quote the pass without its denominator.
+  const shrunk = poolScenarioPopulations(rounds);
+  if (shrunk.length) {
+    console.log(`  ${shrunk.length} scenario(s) PASSED ON A SMALLER POPULATION than they usually run:`);
+    for (const p of shrunk)
+      console.log(
+        `    ${p.name} — ${p.now} this round, usually ${p.usual} over ${p.rounds} prior round(s)` +
+          `${p.ok ? " (and it still reports PASS)" : ""}`,
+      );
+    console.log("  A ratio whose bottom half moved is not the same evidence. Read why before comparing it.");
   }
   // A THIRD QUESTION, and the cheapest of the three to answer wrongly. The two
   // above ask about scenarios — thirteen named outcomes a person already reads.

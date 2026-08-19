@@ -560,10 +560,23 @@ export function judgePrediction(prediction, log) {
   if (c.kind === "scenario-passes") {
     const st = log?.selftest ?? {};
     const all = Object.keys(st).map((k) => st[k]);
-    const wrong = (c.names ?? []).filter((n) => {
-      const s = all.find((x) => x?.name === n);
-      return !s || !s.ok;
-    });
+    const named = (c.names ?? []).map((n) => [n, all.find((x) => x?.name === n)]);
+    // A QUESTION THE HOST NEVER ANSWERED IS NOT A REFUTATION, and this branch
+    // called both of those FAILED until 2026-08-19 — while `probe-answers` and
+    // `probe-detail-matches` directly above already answered `undetermined` for
+    // exactly the same situation, and this file's own doctrine says "a skip is
+    // not a flip" and "a miss is not a failure" in as many words.
+    //
+    // Round 088 is what makes it live rather than theoretical: `insert onto a
+    // slide that already has content` came back `skipped: true, ok: false`
+    // because PowerPoint stopped answering mid-draw. Any prediction naming that
+    // scenario would have been recorded FAILED — the strongest verdict the
+    // ledger has — on a round where the host declined to be asked.
+    const missing = named.filter(([, s]) => !s).map(([n]) => n);
+    if (missing.length) return { verdict: "undetermined", why: `not on this sheet: ${missing.join(", ")}` };
+    const skipped = named.filter(([, s]) => s.skipped).map(([n]) => n);
+    if (skipped.length) return { verdict: "undetermined", why: `the host never ran: ${skipped.join(", ")}` };
+    const wrong = named.filter(([, s]) => !s.ok).map(([n]) => n);
     return wrong.length ? { verdict: "FAILED", why: wrong.join(", ") } : { verdict: "held", why: "" };
   }
   if (c.kind === "probe-detail-matches") {
@@ -598,7 +611,15 @@ export function judgePrediction(prediction, log) {
  * not been rounded has NO round to judge on, and saying so is the whole answer.
  */
 export function roundToJudgeOn(logs, afterBuild, buildOf, madeOn) {
-  const madeAt = logs.findIndex((l) => buildOf(l) === afterBuild);
+  // THE LAST ROUND ON THAT BUILD, NOT THE FIRST. `findIndex` stopped at the
+  // earliest one, and the cycle archives two rounds at 16:9 plus one at 4:3 on
+  // a single build — so `slice(madeAt + 1)` still held the prompting build's own
+  // siblings, and the newest of them could be handed back as the round that
+  // judges a change made after all three were taken. The discipline this loop is
+  // built on is "run the same build twice"; the judge has to know that a build
+  // can appear more than once or it quietly rules on its own control.
+  let madeAt = -1;
+  for (let i = 0; i < logs.length; i++) if (buildOf(logs[i]) === afterBuild) madeAt = i;
   // Rounds are ordered oldest-first, so anything at or before the prompting
   // round cannot test the change — and a build with no round at all is past the
   // end of the archive, not the start of it.
@@ -618,13 +639,71 @@ export function roundToJudgeOn(logs, afterBuild, buildOf, madeOn) {
   return since[since.length - 1];
 }
 
-/** The date out of a round's build stamp, or "" when it does not carry one. */
+/** When a round was taken, out of its build stamp, or "" when it does not carry one. */
 function stampDate(log, buildOf) {
   // `buildOf` yields the hash alone, so read the raw stamp — the date is the
   // half this needs and the half the hash throws away.
   void buildOf;
-  const m = /·\s*(\d{4}-\d{2}-\d{2})/.exec(String(log?.build ?? ""));
+  // THE TIME AS WELL AS THE DAY, because the comparison above is strict `>` and
+  // a prediction is nearly always judged by a round taken the SAME day it was
+  // staked. Date-only, `"2026-08-19" > "2026-08-19"` is false, so the round that
+  // exists is refused and the report says `no round yet` — which is precisely
+  // what round 088 did on 2026-08-19 to the #586 entry staked that morning.
+  //
+  // Lexicographic order does the rest with no extra branch: a stamp is
+  // `hash · YYYY-MM-DD HH:MMZ`, so `"2026-08-19 13:58Z" > "2026-08-19"` is true
+  // (same prefix, longer string), while `"2026-08-18 07:11Z" > "2026-08-19"` is
+  // still false. A `madeOn` carrying its own time compares by time; one carrying
+  // only a day means start of that day, which is what staking on a day means.
+  const m = /·\s*(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?)/.exec(String(log?.build ?? ""));
   return m ? m[1] : "";
+}
+
+/**
+ * A scenario whose verdict counts "N of M" — and what M was in the rounds before.
+ *
+ * ROUND 088 IS WHY THIS EXISTS. `same scale across the deck` passed with
+ * `6 of 6 charts carry the shared scale` where all 63 rounds before it had run
+ * EIGHT. Its verdict is `scaled === charts.length`, measured against a
+ * population it discovers rather than one it is given — `probeCharts(prefix)`
+ * returns whatever the deck scan finds, and the only guard is `< 2`. So a run
+ * that finds six charts and scales six reads exactly like one that found eight
+ * and scaled eight, and `scenarioRegressions` compares PASS to PASS and says
+ * "no scenario regressed".
+ *
+ * That is the same defect as the suite-size high-water mark: a guard that cannot
+ * see its own population shrink. A scenario could fall to `2 of 2` and every
+ * reading in this file would still be green.
+ *
+ * The denominator is not a fault on its own — round 088's six is downstream of a
+ * host stall that skipped the scenario which seeds the probe charts. It is a
+ * REASON TO READ, and quoting the pass without it is quoting a ratio whose
+ * bottom half moved.
+ */
+export function poolScenarioPopulations(logs) {
+  const seen = new Map();
+  for (const log of logs) {
+    const st = log?.selftest ?? [];
+    for (const s of Object.keys(st).map((k) => st[k])) {
+      if (!s?.name) continue;
+      // The verdict's own "N of M" — the shape every counting scenario here uses.
+      const m = /\b(\d+) of (\d+)\b/.exec(String(s.detail ?? ""));
+      if (!m) continue;
+      if (!seen.has(s.name)) seen.set(s.name, []);
+      seen.get(s.name).push({ build: String(log.build ?? ""), of: Number(m[2]), ok: Boolean(s.ok) });
+    }
+  }
+  const shrunk = [];
+  for (const [name, hist] of seen) {
+    if (hist.length < 2) continue;
+    const now = hist[hist.length - 1];
+    const priors = hist.slice(0, -1).map((h) => h.of);
+    // The population it has USUALLY had. Not the mean: a single small round
+    // would drag the bar down and hide the next one.
+    const usual = priors.sort((a, b) => b - a)[Math.floor(priors.length / 2)];
+    if (now.of < usual) shrunk.push({ name, now: now.of, usual, ok: now.ok, rounds: priors.length });
+  }
+  return shrunk;
 }
 
 /** Open predictions, judged against the newest round given. */

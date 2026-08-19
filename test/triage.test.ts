@@ -55,6 +55,8 @@ import { describeFinding } from "../scripts/triage.mjs";
 // reported. The suite stayed green and `tsc` went red.
 // @ts-expect-error — as above.
 import { batchPopulations } from "../scripts/triage.mjs";
+// @ts-expect-error — as above. One directive per import, one import per line.
+import { poolScenarioPopulations } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -1579,5 +1581,48 @@ describe("what the newest round said that the archive has not", () => {
   it("survives a round with no trace at all", () => {
     expect(() => traceNovelty([...quietPriors(6), { build: "x" }])).not.toThrow();
     expect(traceNovelty([]).novel).toEqual([]);
+  });
+});
+
+describe("a scenario that passes on a smaller population than it usually runs", () => {
+  const round = (build: string, of: number, ok = true) => ({
+    build,
+    selftest: [{ name: "same scale across the deck", ok, detail: `${of} of ${of} charts carry the shared scale` }],
+  });
+
+  it("names the scenario, the number now, and the number it usually runs", () => {
+    // Round 088 exactly: eight every round on record, then six — and the verdict
+    // is `scaled === charts.length`, so six of six is a PASS and every other
+    // reading in the gate stayed green.
+    const rounds = [round("a", 8), round("b", 8), round("c", 8), round("d", 6)];
+    expect(poolScenarioPopulations(rounds)).toEqual([
+      { name: "same scale across the deck", now: 6, usual: 8, ok: true, rounds: 3 },
+    ]);
+  });
+
+  it("says nothing when the population held", () => {
+    expect(poolScenarioPopulations([round("a", 8), round("b", 8), round("c", 8)])).toEqual([]);
+  });
+
+  it("says nothing when the population GREW — this is a floor, not a change detector", () => {
+    expect(poolScenarioPopulations([round("a", 6), round("b", 6), round("c", 8)])).toEqual([]);
+  });
+
+  it("takes the usual from the median, so one small round cannot lower the bar for the next", () => {
+    // A mean would be dragged down by the outlier and let the following round's
+    // shrink through — the failure mode that makes a guard quietly stop guarding.
+    const rounds = [round("a", 8), round("b", 8), round("c", 8), round("d", 2), round("e", 6)];
+    expect(poolScenarioPopulations(rounds)[0]).toMatchObject({ now: 6, usual: 8 });
+  });
+
+  it("ignores a scenario whose verdict carries no count, and a first-ever round", () => {
+    const noCount = { build: "a", selftest: [{ name: "stop a run part-way", ok: true, detail: "stopped cleanly" }] };
+    expect(poolScenarioPopulations([noCount, noCount])).toEqual([]);
+    expect(poolScenarioPopulations([round("a", 8)]), "one round is not a history").toEqual([]);
+  });
+
+  it("flags a shrunken population even when the scenario FAILED, and says which", () => {
+    const rounds = [round("a", 8), round("b", 8), round("c", 4, false)];
+    expect(poolScenarioPopulations(rounds)[0]).toMatchObject({ now: 4, usual: 8, ok: false });
   });
 });

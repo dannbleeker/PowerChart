@@ -17,13 +17,35 @@ document), `docs/ROUNDS.md` (what to do with a round once it exists), and the
 
 Three changes merged today and none has met a real host:
 
-- **#586 — a partial re-read is now GROUPED rather than discarded.** This is the
-  one a round can judge. `same scale across the deck` has failed 34 of 34 rounds;
-  chart 4 has matched 20 of its 24 shapes in every round on record, and that
-  match used to be thrown away. The claim is staked in
-  `rounds/predictions.json` as `grouping-the-part-the-host-names-carries-same-scale`
-  — read its `because` before you read the round, so the round cannot talk you
-  into a reading afterwards.
+- **#586 — a partial re-read is now GROUPED rather than discarded.** The claim is
+  staked in `rounds/predictions.json` as
+  `grouping-the-part-the-host-names-carries-same-scale` — read its `because`
+  before you read the round, so the round cannot talk you into a reading
+  afterwards. **Then read this paragraph, because that `because` rests on two
+  numbers the archive contradicts.**
+
+  It said `same scale across the deck` "has failed 34 of 34 rounds" and that
+  chart 4 "has matched 20 of its 24 shapes in every round on record". Both were
+  true when first written and neither is true now. `same scale` has PASSED the
+  last nine archived rounds (079-087; 16 pass / 47 fail over 63), and rounds
+  084-087 group every chart with `partial:0` — a complete match, nothing left
+  short. Cross-checked against a second reading in the same files: the verdict
+  line's own counter is `repaired=5, re-editable=8` in all nine, five builds,
+  identical.
+
+  **So a `held` on this entry is an artifact.** The scenario passed nine times
+  without #586, and #586's branch is entered only when a re-read comes back short
+  AFTER the settled retry — which has happened 0 times in 63 rounds (42 short
+  re-reads on record, `afterRetry: true` on none). The honest outcome to record
+  when the branch does not run is **not exercised**, never `held`.
+
+  What to look for instead, in order: does
+  `the re-read matched only some of the chart's shapes` appear with
+  `afterRetry: true` at all? If not, #586 is untested by the round and the round
+  says so. If it does, then `grouped the chart's shapes … partial=1 left=N:4` and
+  whether that chart keeps its config is the whole question. The failure still
+  observed — 3 zero-matches and 3 empty re-reads in round 087 — is the one
+  #586's strict-majority bound deliberately does not rescue.
 - **#587 / #588 — layout bounds** (decorations, top-level options, data shapes).
   Pure geometry, already judged by the suite and by rendered PNGs. A round says
   little about them; do not spend the mining on them.

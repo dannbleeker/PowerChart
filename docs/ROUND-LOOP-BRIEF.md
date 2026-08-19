@@ -1,7 +1,12 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **067** (`rounds/067-d8ba7df.json`, 10 of 12, 2026-08-16).
+Repeat. Last round **088** (`rounds/088-3056f91.json`, 12 of 13, 2026-08-19).
+
+**This line was twenty-one rounds and one suite-size out of date** — it read
+`067 … 10 of 12` while a paragraph further down this same file cited round 087 at
+13 of 13. Whoever moves the loop forward moves this line with it, or the header
+becomes the thing new sessions trust and the body becomes the thing that is true.
 
 **This file is the operating document.** A session that reads only this and
 `docs/ROUNDS.md` has everything it needs.
