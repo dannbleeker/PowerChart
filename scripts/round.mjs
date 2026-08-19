@@ -617,9 +617,17 @@ export function cli(run, dir, entry = cliEntry()) {
  * Is the control THERE, whatever state it is in?
  *
  * `refFor` answers null for two situations that are not the same thing: no such
- * control, and a control that is present but DISABLED — Playwright hands out a
- * `ref` only for something it could act on, so a greyed-out button matches the
- * line and carries no ref.
+ * control, and a control that is present but DISABLED — a greyed-out button can
+ * match the line and carry no ref.
+ *
+ * CAN, not does. "Playwright only issues a ref for something it could act on"
+ * was the first version of this sentence and it is too strong: the add-in pane's
+ * own `button "Use deck style" [disabled] [ref=f19e328]` has both, while the
+ * PowerPoint ribbon's `button "Insert chart" [disabled]` has neither. Native
+ * `disabled` and whatever Office marks its ribbon with are not treated alike.
+ *
+ * Which is the argument for asking the question directly rather than inferring
+ * it: the rule to rely on is never "no ref means gone", in either direction.
  *
  * On 2026-08-19 that cost a round. PowerPoint's document went `Disconnected`
  * (the network again, the same fault that crashed round 089), which greys the

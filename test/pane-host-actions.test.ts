@@ -21,6 +21,33 @@ import { sceneToSvg } from "../src/render/svg";
  */
 
 /** Shared mailbox the mocked renderer writes to; reset before each boot. */
+/**
+ * What `isPowerPointHost()` answers, and WHEN.
+ *
+ * Hoisted beside `host` because the `vi.mock` factory closes over it. Default
+ * `always: true` keeps every existing test unchanged; `lateOffice` reproduces
+ * the real ordering — false while app.ts is evaluating at module scope, true by
+ * the time `Office.onReady` fires.
+ */
+const hostReadiness = vi.hoisted(() => {
+  let mode: "always" | "late" = "always";
+  let ready = false;
+  return {
+    answer: () => (mode === "always" ? true : ready),
+    reset: () => {
+      mode = "always";
+      ready = false;
+    },
+    lateOffice: () => {
+      mode = "late";
+      ready = false;
+    },
+    officeArrives: () => {
+      ready = true;
+    },
+  };
+});
+
 const host = vi.hoisted(() => ({
   selectionBounds: null as null | { left: number; top: number; width: number; height: number },
   /** What is already on the slide the next insert would draw onto. */
@@ -169,7 +196,9 @@ const host = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/render/powerpoint", () => ({
-  isPowerPointHost: () => true,
+  // FLIPPABLE, to reproduce the ordering the real host has. app.ts asks this at
+  // MODULE SCOPE, long before `Office.context` exists, and asked it only once.
+  isPowerPointHost: () => hostReadiness.answer(),
   // The round-start line evaluates this as an argument, so a mock without it
   // throws and the line vanishes — which is how eight tests in this file went
   // red at once when it was added. Kept minimal on purpose: the pane must not
@@ -545,7 +574,12 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   document.body.innerHTML = parsed.body.innerHTML;
 
   vi.stubGlobal("Office", {
-    onReady: (cb: () => void) => cb(),
+    // OFFICE BECOMES AVAILABLE HERE, not before — which is the whole ordering
+    // the real host has and this harness used to paper over.
+    onReady: (cb: () => void) => {
+      hostReadiness.officeArrives();
+      cb();
+    },
     EventType: { DocumentSelectionChanged: "DocumentSelectionChanged" },
     context: {
       host: "PowerPoint",
@@ -2537,6 +2571,26 @@ describe("the style a deck carries", () => {
     // after that would be asserting the insert's message, not this button's.
     expect($("host-note").textContent).toMatch(/deck/i);
     expect(await insertedPalette()).toEqual(["#dd1122"]);
+  });
+
+  it("enables the deck-style buttons when Office arrives AFTER the module ran", async () => {
+    // PROVEN ON THE REAL HOST AFTER ROUND 091, in the live pane:
+    //
+    //     Office.context.host  "PowerPoint"     <- would answer true NOW
+    //     style-from-deck      disabled: true
+    //     style-to-deck        disabled: true
+    //
+    // app.ts asked `isPowerPointHost()` at MODULE SCOPE, where `Office.context`
+    // does not exist yet, so it answered false for every load inside PowerPoint
+    // and disabled both buttons for the whole session. Nothing asked again, so
+    // #583's entire user-facing feature was unreachable — and no round could see
+    // it, because the thirteen scenarios drive charts and none clicks these.
+    hostReadiness.lateOffice();
+    await bootHostPane();
+    await settle();
+    expect(($("style-from-deck") as HTMLButtonElement).disabled, "unreachable on a real host").toBe(false);
+    expect(($("style-to-deck") as HTMLButtonElement).disabled).toBe(false);
+    hostReadiness.reset();
   });
 
   it("does not claim the deck is unbranded when the read simply failed", async () => {

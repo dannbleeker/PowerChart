@@ -7549,6 +7549,9 @@ export function traceEnvironment(build: string): void {
       return undefined;
     }
   })();
+  // Anything the deck-style read concluded BEFORE tracing was on. See
+  // `replayDeckStyleVerdict` — without this the round file cannot see it at all.
+  replayDeckStyleVerdict();
   trace("host", "environment", {
     build,
     host: d?.host,
@@ -9852,6 +9855,32 @@ export async function readDeckStyle(): Promise<DeckStyle | null> {
  * short budget, and it can never throw out of here — a diagnostic that breaks
  * the path it is diagnosing is worse than no diagnostic.
  */
+let deckStyleVerdict: { message: string; data: Record<string, unknown> } | null = null;
+
+/**
+ * What the deck-style read last concluded, replayed when a round begins.
+ *
+ * THE READ HAPPENS BEFORE THE ROUND DOES. It fires from `Office.onReady`, and
+ * once its budget dropped from 90s to 10s its failure — and this probe's whole
+ * answer — landed during the driver's setup, BEFORE tracing is on. Round 091 is
+ * the proof: not one deck-style line in 529 entries, on a build where the probe
+ * exists, and the staked prediction came back `undetermined  neither line
+ * appeared`.
+ *
+ * That is a fix making its own subject invisible, which is worth more care than
+ * the fix was. So the conclusion is remembered and re-emitted verbatim at round
+ * start, where the archive can see it and the ledger can judge it.
+ */
+export function replayDeckStyleVerdict(): void {
+  if (!deckStyleVerdict) return;
+  trace("deck-style", deckStyleVerdict.message, { ...deckStyleVerdict.data, observedBeforeTheRound: true });
+}
+
+/** Test-only: forget what the last read concluded. */
+export function _resetDeckStyleVerdictForTest(): void {
+  deckStyleVerdict = null;
+}
+
 async function probeWhyDeckStyleFailed(): Promise<void> {
   try {
     await PowerPoint.run(async (context) => {
@@ -9862,16 +9891,24 @@ async function probeWhyDeckStyleFailed(): Promise<void> {
       ).customXmlParts;
       const count = parts.getByNamespace(DECK_STYLE_NS).getCount();
       await boundedSync(context, "counting the deck's style parts", deckStyleTimeoutMs());
-      trace("deck-style", "the namespace IS reachable — the fault is further in", {
-        parts: count.value,
-        meaning: "getByNamespace answered; getOnlyItemOrNullObject/load/getXml is what hung",
-      });
+      deckStyleVerdict = {
+        message: "the namespace IS reachable — the fault is further in",
+        data: {
+          parts: count.value,
+          meaning: "getByNamespace answered; getOnlyItemOrNullObject/load/getXml is what hung",
+        },
+      };
+      trace("deck-style", deckStyleVerdict.message, deckStyleVerdict.data);
     });
   } catch (err) {
-    trace("deck-style", "the namespace is unreachable too", {
-      error: errorText(err),
-      meaning: "the whole customXmlParts surface is not answering on this host, not one call in it",
-    });
+    deckStyleVerdict = {
+      message: "the namespace is unreachable too",
+      data: {
+        error: errorText(err),
+        meaning: "the whole customXmlParts surface is not answering on this host, not one call in it",
+      },
+    };
+    trace("deck-style", deckStyleVerdict.message, deckStyleVerdict.data);
   }
 }
 

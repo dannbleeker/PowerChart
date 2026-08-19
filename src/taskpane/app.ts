@@ -1332,6 +1332,13 @@ function renderOptions() {
   // Read the deck's theme accent colors (PowerPointApi 1.10) as a palette.
   const themeBtn = document.createElement("button");
   themeBtn.type = "button";
+  // THE SAME TRAP AS THE TWO DECK-STYLE BUTTONS, and found by sweeping for it:
+  // `renderOptions()` is called at module scope, so this gate is first evaluated
+  // before `Office.context` exists and answers false inside PowerPoint. It is
+  // less visible than those two only because an incidental re-render can undo
+  // it — which makes it worse to diagnose, not better. An id puts it under
+  // `syncHostOnlyButtons` with its siblings.
+  themeBtn.id = "style-deck-theme";
   themeBtn.textContent = "Use deck theme";
   themeBtn.disabled = !isPowerPointHost();
   themeBtn.addEventListener("click", async () => {
@@ -2416,9 +2423,27 @@ $("style-to-deck").addEventListener("click", async () => {
 // Host-only, like "Use deck theme" beside the palette: outside PowerPoint there
 // is no deck to store a style in, and a button that can only ever report its own
 // impossibility is worse than one that is visibly unavailable.
-for (const id of ["style-to-deck", "style-from-deck"]) {
-  ($(id) as HTMLButtonElement).disabled = !isPowerPointHost();
+//
+// AND IT HAS TO RUN AGAIN WHEN OFFICE IS READY. This line is at module scope, so
+// it runs while `Office.context` is still undefined — `isPowerPointHost()` reads
+// `!!Office.context?.host` and answers FALSE for every load inside PowerPoint.
+// Both buttons were then disabled forever, because nothing ever asked again.
+//
+// Measured in the pane after round 091, on the real host:
+//
+//     Office.context.host  "PowerPoint"     <- would answer true NOW
+//     style-from-deck      disabled: true
+//     style-to-deck        disabled: true
+//
+// So #583's whole user-facing feature was unreachable on PowerPoint web, and no
+// round could see it: thirteen scenarios drive charts, and none clicks these.
+export function syncHostOnlyButtons(): void {
+  for (const id of ["style-to-deck", "style-from-deck", "style-deck-theme"]) {
+    const el = document.getElementById(id) as HTMLButtonElement | null;
+    if (el) el.disabled = !isPowerPointHost();
+  }
 }
+syncHostOnlyButtons();
 
 /** Go back to whatever the deck says, after an import switched to the browser's copy. */
 $("style-from-deck").addEventListener("click", async () => {
@@ -4548,6 +4573,10 @@ chartHInput?.addEventListener("input", syncSizeFromInputs);
 if (typeof Office !== "undefined" && Office.onReady) {
   Office.onReady(() => {
     wireInsert();
+    // ASK AGAIN NOW THAT THERE IS AN ANSWER. See `syncHostOnlyButtons`: the
+    // module-scope call above ran before `Office.context` existed and disabled
+    // both deck-style buttons for the whole session.
+    syncHostOnlyButtons();
     // The deck's own style, if it carries one. Fired and forgotten: the pane is
     // usable before it answers, and a host that cannot store one (or a deck
     // that has none) simply leaves the browser's style in force. It re-renders
