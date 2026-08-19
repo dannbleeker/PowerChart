@@ -61,6 +61,16 @@ export const faults = {
    */
   refuseCustomXmlReads: false,
   /**
+   * Refuse the NEXT custom-XML read only, then behave.
+   *
+   * The shape the real host has: six rounds show the FIRST custom-XML call after
+   * a pane loads failing and the second answering, which is what the deck-style
+   * read now spends a retry on. A boolean cannot express "once", and without it
+   * the retry cannot be tested at all — every attempt would fail and the test
+   * could not tell a retry from a read that simply gave up.
+   */
+  refuseCustomXmlReadsOnce: false,
+  /**
    * Make the deck's style namespace hold TWO parts.
    *
    * `writeDeckStyle` deletes before it adds precisely so this cannot arise, and
@@ -2327,6 +2337,10 @@ export function installHost(
                 // could not be tested against a failure at all. `failSyncOn`
                 // reaches it only by guessing a global sync index, which the
                 // comment on that fault already calls fragile.
+                if (faults.refuseCustomXmlReadsOnce) {
+                  faults.refuseCustomXmlReadsOnce = false;
+                  throw new Error("GeneralException | the host did not answer the custom XML read");
+                }
                 if (faults.refuseCustomXmlReads)
                   throw new Error("GeneralException | the host did not answer the custom XML read");
                 const hits = inNs();
@@ -2628,6 +2642,7 @@ export function installHost(
   faults.strictTags = false;
   faults.refuseCustomXmlWrites = false;
   faults.refuseCustomXmlReads = false;
+  faults.refuseCustomXmlReadsOnce = false;
   faults.duplicateCustomXmlPart = false;
   faults.refuseTagWritesOnResolvedProxy = false;
   faults.refuseTagWrites = 0;

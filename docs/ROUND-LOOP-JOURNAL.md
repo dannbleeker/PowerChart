@@ -2164,3 +2164,53 @@ unattended loop can erase its own alarm by continuing, and the only durable reco
 of round 098's failure is this entry and the archive. Not changed — a gate that
 keeps firing about a round two back would be reporting history, and the pooled
 per-scenario view already carries it.
+
+## Rounds 100 + 101 — 504033c — the honest probe names the fault, and it is ONE call
+
+Both 12/13, both skipping `the chart is actually visible`, and both reporting the
+same thing byte for byte the first time the probe was allowed to measure rather
+than assert:
+
+    failedAt: "The value of the result object has not been loaded yet. Before reading the value"
+
+**That is not a timeout.** `boundedSync` rejects on timeout, so this says the sync
+RESOLVED and the value was still unloaded — a different fault from the 90-second
+hangs, on the same line of code.
+
+**Six rounds, three costumes, one fault.** Put side by side, what looked like two
+separate bugs is one:
+
+    089, 090   first call = getOnlyItemOrNullObject + load + getXml   hung, 90s
+    096, 097   same                                                  hung, 10s
+    098, 100, 101   first call = getCount (counting moved to front)  resolved,
+                                                                     value NOT loaded
+    the probe — always the SECOND call, fresh context                answered, always
+    round 092, manual clicks on a long-lived pane                    428ms
+
+**The first customXmlParts call after a pane loads does not work. The second
+does.** The failure takes the shape of whichever call happens to be first, which
+is exactly why moving `getCount` to the front changed the error message and not
+the outcome.
+
+And the diagnostic probe had been demonstrating the cure since the day it was
+written, without anyone reading it that way: it opens a fresh context, asks the
+same question, and has answered on every round it ran — immediately after the
+read it was diagnosing had just failed.
+
+So the read spends the bad call: attempt, and on failure attempt once more. Not a
+timeout to tune.
+
+- **Fix.** `attemptDeckStyleRead` twice. Guards proven red both ways — dropping
+  the retry, and retrying without preserving `unreadable`, which would turn a
+  genuinely dead read into a silent "no style" and is the exact lie that flag
+  exists to prevent. The fake gained `refuseCustomXmlReadsOnce`, because a
+  boolean cannot express "once" and without it a retry is indistinguishable from
+  a read that gave up.
+
+- **Instrument.** This is what the honest probe bought, on its first outing. The
+  hardcoded `meaning` had been printing a conclusion about `getOnlyItemOrNullObject`
+  on builds where that call no longer ran first.
+
+- **The visibility skip is now in both rounds** where 096/097 split one-each. The
+  control render's availability moves; the verdict reports which, which is all it
+  was ever supposed to do.

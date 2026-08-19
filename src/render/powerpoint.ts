@@ -9949,6 +9949,34 @@ async function probeWhyDeckStyleFailed(failedAt: string): Promise<void> {
 
 export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | null; unreadable: boolean }> {
   if (!supports("1.7")) return { style: null, unreadable: false };
+  // TWICE, BECAUSE THE FIRST CUSTOM-XML CALL AFTER A PANE LOADS DOES NOT WORK.
+  //
+  // Six rounds say so and the diagnostic probe has been demonstrating the cure
+  // the whole time without anyone noticing — it opens a FRESH context and asks
+  // the same question, and it has answered every single time it ran:
+  //
+  //   089, 090  first call = getOnlyItemOrNullObject+load+getXml   hung, 90s
+  //   096, 097  same                                               hung, 10s
+  //   098, 100  first call = getCount (after counting first)       sync resolved,
+  //                                                                value NOT loaded
+  //   the probe (always the SECOND call)                           answered, always
+  //   manual clicks with the pane long up (round 092)              428ms
+  //
+  // The failure changes shape with whatever the first call happens to be, which
+  // is why it read as two different bugs: a hang while the first call was the
+  // item read, and `The value of the result object has not been loaded yet` once
+  // counting moved to the front. Same fault, different victim.
+  //
+  // So this is not a timeout to be tuned. It is one bad call at pane start, and
+  // the answer is to spend it: attempt, and on any failure attempt once more in
+  // a new context. `attempt()` is the whole read, so the retry re-runs the
+  // count-first guard too.
+  const first = await attemptDeckStyleRead();
+  if (!first.unreadable) return first;
+  return await attemptDeckStyleRead();
+}
+
+async function attemptDeckStyleRead(): Promise<{ style: DeckStyle | null; unreadable: boolean }> {
   try {
     return await PowerPoint.run(async (context) => {
       const parts = (
