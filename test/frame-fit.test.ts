@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildChart } from "../src/core/chart";
 import { CHART_KINDS, sampleConfig } from "../src/core/samples";
 import { fitPlot } from "../src/core/layout/frame";
+import { polar } from "../src/core/geometry";
 import { textWidth } from "../src/core/scene";
 import type { SceneNode, TextNode } from "../src/core/scene";
 import type { ChartConfig } from "../src/core/types";
@@ -60,7 +61,30 @@ function inkBox(n: SceneNode): { x0: number; y0: number; x1: number; y1: number 
       y1: Math.max(a.y1, a.y2),
     };
   if (n.kind === "ellipse") return { x0: a.cx - a.rx, y0: a.cy - a.ry, x1: a.cx + a.rx, y1: a.cy + a.ry };
-  if (n.kind === "wedge") return { x0: a.cx - a.r, y0: a.cy - a.r, x1: a.cx + a.r, y1: a.cy + a.r };
+  if (n.kind === "wedge") {
+    // THE ARC, not the disc that contains it. A wedge's bounding circle is a
+    // conservative bound, and a conservative bound does not merely miss defects
+    // — it invents them, which is a lesson this file already carries about the
+    // arrowhead. A semi-doughnut gauge draws only the top half of its circle,
+    // so the disc reported 291 points of "overflow" past the bottom of a
+    // 960x540 chart where the ink stops at the centre line.
+    //
+    // The extremes of an arc are its two ends, the centre (a solid wedge is
+    // drawn from there), the inner arc's ends where there is a hole, and
+    // whichever of the four compass points the sweep happens to cross.
+    const from = a.startAngle;
+    const to = a.endAngle;
+    const pts = [polar(a.cx, a.cy, a.r, from), polar(a.cx, a.cy, a.r, to)];
+    if (a.innerR > 0) pts.push(polar(a.cx, a.cy, a.innerR, from), polar(a.cx, a.cy, a.innerR, to));
+    else pts.push({ x: a.cx, y: a.cy });
+    for (let q = -720; q <= 720; q += 90) if (q >= from && q <= to) pts.push(polar(a.cx, a.cy, a.r, q));
+    return {
+      x0: Math.min(...pts.map((p) => p.x)),
+      y0: Math.min(...pts.map((p) => p.y)),
+      x1: Math.max(...pts.map((p) => p.x)),
+      y1: Math.max(...pts.map((p) => p.y)),
+    };
+  }
   if (n.kind === "symbol") return { x0: a.cx - a.size, y0: a.cy - a.size, x1: a.cx + a.size, y1: a.cy + a.size };
   // An arrowhead's (x, y) is its TIP and its body runs 1.8*size back along
   // `angle`. Read the angle: the disc that bounds it at EVERY rotation is what
@@ -223,6 +247,224 @@ const DECORATIONS: Record<string, unknown> = {
   criticalPath: true,
   sparkline: true,
 };
+
+/**
+ * And the same over the TOP-LEVEL options, which are neither a decoration nor a
+ * font.
+ *
+ * `sampleConfig(kind)` sets a handful of them and the sweeps above inherit
+ * whatever it happens to switch on, so `axisBreak`, `multiples`, `pareto`,
+ * `pie.semi`, `pie.explode`, `logScale`, `secondaryAxis` and the rest were swept
+ * by nothing — the same hole the decorations were in, one level up. Seven more
+ * defect families, and the two largest are not small-frame corners:
+ *
+ *   - the SEMI-doughnut gauge drew its labels through a clamp that cannot place
+ *     a box wider than the frame, its leader lines past the arc's own edge, and
+ *     its headline total below the chart;
+ *   - an EXPLODED slice moves `r * 0.08` along its midline and takes its outside
+ *     label with it, past a band sized for the un-exploded ring — 9.6pt below a
+ *     960x540 doughnut;
+ *   - `axisBreak`'s zigzag overhangs the plot by a fixed 4 points, which is more
+ *     than the plot's own inset on a small chart;
+ *   - `pareto`'s secondary axis labels are centred on their ticks with nothing
+ *     stopping the topmost one leaving the chart;
+ *   - `multiples` divides the frame into one chart per series, so a titled
+ *     300x60 chart asks for a 150x25 panel — a size no sweep here had ever
+ *     asked for, whose own TITLE then overflowed, and at three panels a 7.6pt
+ *     one whose category axis was drawn 21.6pt below the chart;
+ *   - a `footnote` or an explicit `scale` squeezes the plot until a line's or a
+ *     combo's markers, drawn AROUND their points, cross the frame's edge.
+ *
+ * The wedge measurement had to be fixed before any of this could be read: see
+ * `inkBox`, which used to bound a wedge by the disc that contains it and
+ * therefore reported 291pt of "overflow" on a gauge that draws half a circle.
+ */
+const OPTIONS: Record<string, Record<string, unknown>> = {
+  scale: { scale: { min: -50, max: 500 } },
+  segmentOrder: { segmentOrder: "reverse" },
+  categorySort: { categorySort: "descending" },
+  secondaryAxis: { secondaryAxis: true },
+  axisBreak: { axisBreak: { from: 20, to: 60 } },
+  valueAxisTitle: { valueAxisTitle: "Revenue in millions of euro" },
+  logScale: { logScale: true },
+  gapWidth: { gapWidth: 0.8 },
+  overlap: { overlap: 0.5 },
+  footnote: { footnote: "Source: an internal model, restated for the 2024 perimeter" },
+  pareto: { pareto: true },
+  "multiples 2 columns": { multiples: { columns: 2 } },
+  "multiples 3 columns": { multiples: { columns: 3 } },
+  otherBucket: { otherBucket: { max: 3 } },
+  "pie.explode": { pie: { explode: [0, 1] } },
+  "pie.semi": { pie: { semi: true } },
+  "pie.variableRadius": { pie: { variableRadius: true } },
+  "tilemap.hex": { tilemap: { shape: "hex" } },
+  "tilemap.glyph": { tilemap: { glyph: "bars" } },
+  "butterfly.split": { butterfly: { split: 1 } },
+  boxplot: { boxplot: { notch: true, showMean: true, jitter: true } },
+  "render image": { render: "image" },
+  numberFormat: { numberFormat: { locale: "de-DE", currency: "EUR", decimals: 2 } },
+  title: { title: "A rather long chart title that names the measure and the period" },
+};
+
+/**
+ * And the third axis: the DATA, which every sweep here holds at whatever
+ * `sampleConfig` ships — four to six short category names, one to three series,
+ * two-digit values.
+ *
+ * A user's data is none of those things. This transforms the sample rather than
+ * replacing it, so each kind keeps the shape its layout requires (a scatter's
+ * points, a gantt's tasks, a heatmap's matrix) while the thing under test moves.
+ *
+ * It found ONE family, which is worth as much as a long list: a funnel with 24
+ * stages on a 60pt-tall chart drew its last stage 10.4pt below the chart,
+ * because `Math.max(1, …)` floored each band's height and 24 floored bands plus
+ * their gaps measured 36 points of a 24-point plot. The floor comes out of the
+ * GAP now — the bands are the chart, the gaps are chrome for a label — and where
+ * even hairlines will not fit, the floor is abandoned rather than the stages.
+ */
+const DATA_SHAPES: Record<string, (c: Record<string, any>) => Record<string, any>> = {
+  "long category names": (c) => ({
+    ...c,
+    data: { ...c.data, categories: c.data.categories.map((x: string, i: number) => `${x} enterprise segment ${i}`) },
+  }),
+  "long series names": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({ ...s, name: `${s.name} including allocations` })),
+    },
+  }),
+  "24 categories": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      categories: Array.from({ length: 24 }, (_, i) => `C${i + 1}`),
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: Array.from({ length: 24 }, (_, i) => (s.values[i % s.values.length] ?? 0) + i),
+      })),
+    },
+  }),
+  "10 series": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: Array.from({ length: 10 }, (_, i) => ({
+        ...c.data.series[i % c.data.series.length],
+        name: `Series ${i + 1}`,
+        values: c.data.series[i % c.data.series.length].values.map((v: number | null) => (v == null ? v : v + i)),
+      })),
+    },
+  }),
+  "one category": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      categories: c.data.categories.slice(0, 1),
+      series: c.data.series.map((s: Record<string, any>) => ({ ...s, values: s.values.slice(0, 1) })),
+    },
+  }),
+  "one series": (c) => ({ ...c, data: { ...c.data, series: c.data.series.slice(0, 1) } }),
+  "values in the billions": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null) => (v == null ? v : v * 1234567)),
+      })),
+    },
+  }),
+  "every value negative": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null) => (v == null ? v : -v)),
+      })),
+    },
+  }),
+  "mixed signs": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null, i: number) => (v == null ? v : i % 2 ? -v : v)),
+      })),
+    },
+  }),
+  "tiny fractions": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null) => (v == null ? v : v / 100000)),
+      })),
+    },
+  }),
+};
+
+describe("no data shape draws outside the chart's frame", () => {
+  for (const [key, shape] of Object.entries(DATA_SHAPES)) {
+    it(`${key} stays inside every frame`, () => {
+      const bad: string[] = [];
+      for (const [w, h] of FRAMES) {
+        for (const fontSize of [10, 18]) {
+          for (const horizontal of [false, true]) {
+            for (const { kind } of CHART_KINDS) {
+              const cfg = {
+                ...shape(sampleConfig(kind) as unknown as Record<string, any>),
+                width: w,
+                height: h,
+                horizontal,
+                style: { fontSize },
+              } as ChartConfig;
+              const o = worstOverflow(cfg);
+              if (o.pt > SLACK)
+                bad.push(
+                  `${kind} ${w}x${h}@${fontSize}${horizontal ? " rotated" : ""}: ${o.node} ${o.pt.toFixed(1)}pt past the ${o.side}`,
+                );
+            }
+          }
+        }
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+});
+
+describe("no top-level option draws outside the chart's frame", () => {
+  for (const [key, value] of Object.entries(OPTIONS)) {
+    it(`${key} stays inside every frame`, () => {
+      const bad: string[] = [];
+      for (const [w, h] of FRAMES) {
+        for (const fontSize of [10, 18]) {
+          for (const horizontal of [false, true]) {
+            for (const { kind } of CHART_KINDS) {
+              const cfg = {
+                ...sampleConfig(kind),
+                width: w,
+                height: h,
+                horizontal,
+                style: { fontSize },
+                ...value,
+              } as ChartConfig;
+              const o = worstOverflow(cfg);
+              if (o.pt > SLACK)
+                bad.push(
+                  `${kind} ${w}x${h}@${fontSize}${horizontal ? " rotated" : ""}: ${o.node} ${o.pt.toFixed(1)}pt past the ${o.side}`,
+                );
+            }
+          }
+        }
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+});
 
 describe("no decoration draws outside the chart's frame", () => {
   for (const [key, value] of Object.entries(DECORATIONS)) {
@@ -446,6 +688,40 @@ describe("labels are not drawn on top of each other", () => {
           }
         }
       }
+    expect(bad).toEqual([]);
+  });
+
+  it("fits the X axis to the WIDTH of its numbers, not to a line height", () => {
+    // The y axis and the x axis were fitted by one rule, and only one of them is
+    // about a line height. Down the Y the labels stack, so the gap between ticks
+    // has to hold `fs * 1.4`. Across the X they sit side by side, so what the gap
+    // has to hold is the WIDEST LABEL — and `1,234,567,890` is 60 points wide at
+    // the default font, which sails through a 14-point test and is then drawn
+    // straight through its neighbour.
+    //
+    // It arrives with the MAGNITUDE of the data rather than with the frame,
+    // which is why every sweep in this file missed it: `sampleConfig` deals in
+    // two-digit numbers.
+    const bad: string[] = [];
+    for (const kind of ["scatter", "bubble"] as const) {
+      const base = sampleConfig(kind) as unknown as Record<string, any>;
+      const cfg = {
+        ...base,
+        width: 200,
+        height: 150,
+        data: {
+          ...base.data,
+          series: base.data.series.map((s: Record<string, any>) => ({
+            ...s,
+            values: s.values.map((v: number | null) => (v == null ? v : v * 1234567)),
+            points: s.points?.map((p: Record<string, number>) => ({ ...p, x: p.x * 1234567 })),
+          })),
+        },
+      } as ChartConfig;
+      const ts = textsNamed(cfg, /^x-axis$/);
+      for (let i = 1; i < ts.length; i++)
+        if (overlap(inkOf(ts[i - 1]), inkOf(ts[i])) > 1) bad.push(`${kind}: x-axis pair ${i} (${ts[i].text})`);
+    }
     expect(bad).toEqual([]);
   });
 

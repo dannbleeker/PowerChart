@@ -43,8 +43,27 @@ export function layoutFunnel(cfg: ChartConfig, style: ChartStyle, decor: Decorat
   // originally for: a fixed gap on a short frame with many stages drove
   // `bandH + gap` per stage past the bottom and the last bands rendered
   // off-frame.
-  const gap = Math.max(0, Math.min(fs * 1.5, (plot.h * 0.5) / Math.max(1, n - 1)));
-  const bandH = Math.max(1, (plot.h - gap * (n - 1)) / Math.max(1, n));
+  //
+  // AND THE BAND'S OWN FLOOR COMES OUT OF THE GAP, not out of the plot. `Math.max(1, …)`
+  // is a floor that RAISES a height — the same shape as the quadrant label's
+  // width floor and the scatter legend's before it — so with 24 stages on a 60pt
+  // chart the 24 floored bands plus 23 gaps measured 36 points of a 24-point
+  // plot and the last stage was drawn 10.4pt below the chart. Solving the gap
+  // against the floored band keeps the pitch inside the plot: the chart's own
+  // marks win the argument with the chrome between them, which is what the
+  // paragraph above already says the split is for.
+  //
+  // Where even the hairlines do not fit — more stages than the plot has points —
+  // the floor is abandoned rather than the stages. A sub-point band is a thin
+  // line; a band drawn past the foot of the chart is on the slide.
+  const BAND_MIN = 1;
+  const gapWant = Math.min(fs * 1.5, (plot.h * 0.5) / Math.max(1, n - 1));
+  const gap = Math.max(0, Math.min(gapWant, (plot.h - n * BAND_MIN) / Math.max(1, n - 1)));
+  // No floor of its own: the gap above already leaves `BAND_MIN` per band
+  // wherever the plot can pay for it, and where it cannot the bands go thinner
+  // rather than off the chart. `Math.max(1, …)` here was the floor that raised a
+  // height past its own container.
+  const bandH = Math.max(0, plot.h - gap * (n - 1)) / Math.max(1, n);
   const cx = plot.x + plot.w / 2;
 
   // The BANDS are solved for the plot above, so they always fit. Their LABELS

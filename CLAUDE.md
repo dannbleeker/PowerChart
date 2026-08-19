@@ -1095,6 +1095,73 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   bounds missing outright rather than bounds that bit at a size — and the font
   axis is already swept in full.
 
+  **The TOP-LEVEL options were the third hole, and the largest defect in this
+  repo's layout code was sitting in it.** `axisBreak`, `multiples`, `pareto`,
+  `pie.semi`, `pie.explode`, `logScale`, `secondaryAxis` and the rest are neither
+  a decoration nor a font, so nothing swept them either. Seven more families, two
+  of them at ordinary sizes:
+
+  - the SEMI-doughnut gauge, three ways: its labels went through a clamp that
+    cannot place a box wider than the frame (60.6pt off a 60x300 chart, the
+    callout's bug in another layout), its leader lines ran past the arc's own
+    edge, and its headline total hung below the chart;
+  - an EXPLODED slice moves `r * 0.08` along its midline and takes its outside
+    label with it, past a band sized for the un-exploded ring — 9.6pt under a
+    960x540 doughnut. The offset comes out of the RADIUS now, so the moved slice
+    lands back inside the envelope the un-exploded one had;
+  - `axisBreak`'s zigzag overhangs the plot by a fixed 4 points, which is more
+    than the plot's own inset on a small chart;
+  - `pareto`'s secondary axis labels are centred on their ticks, with nothing
+    stopping the topmost one leaving the chart — the per-tick `printsOnTitle`
+    answer the primary axis already gives;
+  - `multiples` builds one CHART PER SERIES at `(height - chrome) / rows`, so a
+    titled 300x60 chart asks for a 150x25 panel and then a 7.6pt one. Two general
+    bounds came out of that: a TITLE is now bounded by the frame's height as well
+    as its width (its ink reaches `fontSize * 1.21` down from y=0, so a chart
+    shorter than that draws its own name off the bottom), and the category strip
+    yields at the FOOT of the chart the same way it already yielded to the title;
+  - a `footnote` or an explicit `scale` squeezes the plot until a line's or a
+    combo's markers cross the frame — **a mark is drawn AROUND its position**,
+    and only scatter and bubble had ever been given that. `markInFrame` is the
+    answer for a marker that sits on a LINE: moving it would detach it from its
+    own series, so it gives up size instead and is dropped below a point of it.
+
+  **The wedge measurement had to be fixed before any of this could be read.**
+  `inkBox` bounded a wedge by the disc that contains it, so a semi-doughnut —
+  which draws half a circle — reported 291pt of overflow past the bottom of a
+  960x540 chart where the ink stops at the centre line. A conservative bound does
+  not merely miss defects, it INVENTS them, which this file already records for
+  the arrowhead and for the text-width estimate. Read the arc, not the disc.
+
+  **And the CAGR arrow's bounds are now a clamp between two edges rather than a
+  floor at zero**, which is worth stating because the first version of it was
+  wrong in a way the suite could not see: it dropped the arrow with a bare
+  `return`, from inside `decorationNodes`, which builds ONE list for every
+  decoration — so the difference arrow, the callouts and the bands went with it.
+  A condition on the block, never an early return; the pie's slice loop already
+  carries that lesson one file over.
+
+  **The DATA is the third axis, and it found one thing — which is worth as much
+  as a long list.** Every sweep here holds `sampleConfig`'s own data: four to six
+  short category names, one to three series, two-digit values. Transforming it
+  (long names, 24 categories, 10 series, values in the billions, all-negative,
+  tiny fractions) turned up a single overflow family: a FUNNEL with 24 stages on
+  a 60pt chart drew its last stage 10.4pt below the chart, because `Math.max(1,
+…)` floored each band and 24 floored bands plus their gaps measured 36 points of
+  a 24-point plot. The floor comes out of the GAP now — the bands are the chart,
+  the gaps are chrome for a label, which is what that layout's own comment
+  already said — and where even hairlines will not fit, the floor is abandoned
+  rather than the stages.
+
+  **The one defect that arrives with the DATA rather than with the frame** is
+  worth its own line, because no sweep over sizes could ever have found it. The
+  scatter's x and y tick strips were fitted by one rule, `gap >= fs * 1.4`, and
+  only one of them is about a line height: down the Y the labels stack, across
+  the X they sit side by side, so what the gap has to hold there is the WIDEST
+  LABEL. `1,234,567,890` is 60 points wide at the default font, sails through a
+  14-point test, and is drawn straight through its neighbour. Fitted by width
+  now. Ordinary two-digit samples hide it completely.
+
   **The overlap half of the decoration sweep was measured and NOT gated**, which
   is the more interesting half. Thirty-three pairs, and after the callout fix
   every one that remains is a decoration doing its job: a callout is an OPAQUE

@@ -442,6 +442,17 @@ whose text is wider than the chart, a band label on a chart with no room below
 the plot, a quadrant label in a narrow zone: each is fitted or dropped by the
 same rules as any other label, rather than drawn over the slide.
 
+The options that change a chart's shape are swept the same way — a broken axis, a
+semi-circle gauge, an exploded slice, a Pareto's second axis, and small multiples,
+which divide the frame into one chart per series and can leave each of them very
+little. A panel too short to carry its own title or category names draws neither
+and keeps its marks.
+
+The data is swept too, because a chart's own numbers change what it has to draw:
+long category names, twenty-four of them, ten series, values in the billions, and
+values that are all negative. A funnel with more stages than the frame has points
+draws every stage thinner rather than dropping the last ones off the chart.
+
 **Labels shrink to the room they have, then are dropped.** A name is fitted to
 the mark it sits on — the column's slot, the row's pitch, the wedge's chord, the
 gap between two rings — and below about 5pt it is not drawn at all. A label too

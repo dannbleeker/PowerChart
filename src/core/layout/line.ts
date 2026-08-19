@@ -13,6 +13,7 @@ import {
   computeFrame,
   computeFrameHorizontal,
   fitPlot,
+  markInFrame,
   footnoteH,
   logFloor,
   titleHeight,
@@ -336,18 +337,21 @@ export function layoutLine(cfg: ChartConfig, style: ChartStyle, decor: Decoratio
         // A per-cell color override highlights the point (max/min/last…) with
         // a larger, recolored marker. Forecast points render hollow.
         const cellColor = s.colors?.[c];
-        const r = cellColor ? 3.4 : 2.4;
-        nodes.push({
-          kind: "rect",
-          x: pt.x - r,
-          y: pt.y - r,
-          w: r * 2,
-          h: r * 2,
-          fill: forecast && !cellColor ? style.background : (cellColor ?? color),
-          stroke: forecast && !cellColor ? color : style.background,
-          strokeWidth: 1,
-          name: `marker-${si}-${c}`,
-        });
+        // Shrunk where the frame's edge is closer than the marker's own half
+        // extent, and dropped below a point of it — see `markInFrame`.
+        const r = markInFrame(cfg, pt.x, pt.y, cellColor ? 3.4 : 2.4);
+        if (r > 0)
+          nodes.push({
+            kind: "rect",
+            x: pt.x - r,
+            y: pt.y - r,
+            w: r * 2,
+            h: r * 2,
+            fill: forecast && !cellColor ? style.background : (cellColor ?? color),
+            stroke: forecast && !cellColor ? color : style.background,
+            strokeWidth: 1,
+            name: `marker-${si}-${c}`,
+          });
         if (decor.segmentLabels) {
           nodes.push({
             kind: "text",
@@ -709,17 +713,19 @@ function layoutSlope(cfg: ChartConfig, style: ChartStyle, decor: Decorations): L
         });
       }
       const r = 2.4;
-      nodes.push({
-        kind: "rect",
-        x: pt.x - r,
-        y: pt.y - r,
-        w: r * 2,
-        h: r * 2,
-        fill: color,
-        stroke: style.background,
-        strokeWidth: 1,
-        name: `marker-${si}-${c}`,
-      });
+      const mr = markInFrame(cfg, pt.x, pt.y, r);
+      if (mr > 0)
+        nodes.push({
+          kind: "rect",
+          x: pt.x - mr,
+          y: pt.y - mr,
+          w: mr * 2,
+          h: mr * 2,
+          fill: color,
+          stroke: style.background,
+          strokeWidth: 1,
+          name: `marker-${si}-${c}`,
+        });
       prev = pt;
     }
     if (leftYs[si] != null) {
@@ -866,17 +872,19 @@ function layoutBump(cfg: ChartConfig, style: ChartStyle, _decor: Decorations): L
     });
     s.values.forEach((v, c) => {
       if (v == null) return;
-      nodes.push({
-        kind: "ellipse",
-        cx: xs[c],
-        cy: toY(v),
-        rx: 4,
-        ry: 4,
-        fill: color,
-        stroke: style.background,
-        strokeWidth: 1.5,
-        name: `bump-marker-${si}-${c}`,
-      });
+      const br = markInFrame(cfg, xs[c], toY(v), 4);
+      if (br > 0)
+        nodes.push({
+          kind: "ellipse",
+          cx: xs[c],
+          cy: toY(v),
+          rx: br,
+          ry: br,
+          fill: color,
+          stroke: style.background,
+          strokeWidth: 1.5,
+          name: `bump-marker-${si}-${c}`,
+        });
     });
     // "Name" labels at both ends of the line.
     if (firstC >= 0) {
@@ -1269,18 +1277,21 @@ function layoutLineHorizontal(cfg: ChartConfig, style: ChartStyle, decor: Decora
         // Forecast points render hollow, and a per-cell colour highlights one
         // (max/min/last) with a larger recoloured marker — both as vertical.
         const cellColor = s.colors?.[c];
-        const r = cellColor ? 3.4 : 2.4;
-        nodes.push({
-          kind: "rect",
-          x: pt.x - r,
-          y: pt.y - r,
-          w: r * 2,
-          h: r * 2,
-          fill: forecast && !cellColor ? style.background : (cellColor ?? color),
-          stroke: forecast && !cellColor ? color : style.background,
-          strokeWidth: 1,
-          name: `marker-${si}-${c}`,
-        });
+        // Shrunk where the frame's edge is closer than the marker's own half
+        // extent, and dropped below a point of it — see `markInFrame`.
+        const r = markInFrame(cfg, pt.x, pt.y, cellColor ? 3.4 : 2.4);
+        if (r > 0)
+          nodes.push({
+            kind: "rect",
+            x: pt.x - r,
+            y: pt.y - r,
+            w: r * 2,
+            h: r * 2,
+            fill: forecast && !cellColor ? style.background : (cellColor ?? color),
+            stroke: forecast && !cellColor ? color : style.background,
+            strokeWidth: 1,
+            name: `marker-${si}-${c}`,
+          });
         if (decor.segmentLabels) {
           nodes.push({
             kind: "text",

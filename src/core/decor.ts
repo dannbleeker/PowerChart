@@ -80,16 +80,41 @@ export function decorationNodes(
     // the same amount, so the slope and the anchors both survive. Letting it
     // stand put the arrowhead 4pt above the top of a 60pt-tall stacked column.
     const wantLift = fs * 1.6 + (decor.totals ? fs * 1.5 : 0) + (decor.difference ? fs * 1.2 : 0);
-    const lift = Math.max(0, Math.min(wantLift, Math.min(cagrY(from, vFrom), cagrY(to, vTo)) - ARROW * 1.8));
+    // BOUNDED AT BOTH ENDS, and dropped when the two bounds cross.
+    //
+    // The lift is subtracted, so a NEGATIVE one pushes the arrow down onto the
+    // columns — which is what a chart with no headroom needs. Floored at zero
+    // the arrow sat on a column top that was itself within the arrowhead's reach
+    // of the frame, and the head was drawn 1.4pt above the chart; a footnote is
+    // enough to squeeze a 300x60 one that far. Moving BOTH ends by the same
+    // amount is what this lift already does, and the comment above says why that
+    // is safe: the slope and the two anchors survive it.
+    //
+    // The floor that replaces zero is the FOOT of the chart, because a negative
+    // lift can only push the head down. Where the two bounds cross there is no
+    // height at which this arrow fits — a small-multiples panel a few points
+    // tall — and it is not drawn, like every other piece of chrome that cannot
+    // be paid for.
+    const highest = Math.min(cagrY(from, vFrom), cagrY(to, vTo));
+    const lowest = Math.max(cagrY(from, vFrom), cagrY(to, vTo));
+    const liftMax = highest - ARROW * 1.8;
+    const liftMin = lowest + ARROW * 1.8 - cfg.height;
+    // A CONDITION ON THE BLOCK, never an early return. `decorationNodes` builds
+    // one list for every decoration, so returning here would silently take the
+    // difference arrow, the callouts and the bands with it — the same trap the
+    // pie's slice loop records, one file over.
+    const arrowFits = liftMin <= liftMax;
+    const lift = Math.max(liftMin, Math.min(wantLift, liftMax));
     const x1 = a.categoryX[from];
     const y1 = cagrY(from, vFrom) - lift;
     const x2 = a.categoryX[to];
     const y2 = cagrY(to, vTo) - lift;
     const angle = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
-    nodes.push(
-      { kind: "line", x1, y1, x2, y2, stroke: style.text, strokeWidth: 1.25, name: "cagr-line" },
-      { kind: "arrowhead", x: x2, y: y2, angle, size: ARROW, fill: style.text, name: "cagr-head" },
-    );
+    if (arrowFits)
+      nodes.push(
+        { kind: "line", x1, y1, x2, y2, stroke: style.text, strokeWidth: 1.25, name: "cagr-line" },
+        { kind: "arrowhead", x: x2, y: y2, angle, size: ARROW, fill: style.text, name: "cagr-head" },
+      );
     // The arrow is lifted clear of the column tops and the caption sits above the
     // arrow, so on a frame with no headroom the caption meets the TITLE. Its y is
     // decorative — it captions the arrow, where the arrow's endpoints are anchored
@@ -128,7 +153,9 @@ export function decorationNodes(
     // with it however tall it is, so it keeps its full size.
     const clearOfTitleX = capX0 + (capW0 - textWidth(capText, fs, true)) / 2 >= titleInkRight;
     if (clearOfTitleX) cf = fs;
-    if (clearOfTitleX || capFits(cf)) {
+    // The caption goes with the arrow: it captions something that is not there
+    // otherwise.
+    if (arrowFits && (clearOfTitleX || capFits(cf))) {
       // Bounded by the frame, not a fixed 90pt box, and re-centred on the arrow
       // at whatever width it actually gets.
       const capW = capW0;
