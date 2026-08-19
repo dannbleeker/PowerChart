@@ -60,6 +60,16 @@ export const faults = {
    * a deck carrying no style at all.
    */
   refuseCustomXmlReads: false,
+  /**
+   * Make the deck's style namespace hold TWO parts.
+   *
+   * `writeDeckStyle` deletes before it adds precisely so this cannot arise, and
+   * that left the state its design exists to prevent with no way to reach it in
+   * a test. The real read answers a null object for it — the same answer as an
+   * unbranded deck — so the interesting assertion is that a doubly-branded deck
+   * reads as carrying NO style, silently.
+   */
+  duplicateCustomXmlPart: false,
   swallowAdds: 0,
   faultShapeGetCount: false,
   strictGroup: false,
@@ -2255,9 +2265,16 @@ export function installHost(
        * Modelled with the two behaviours the readers actually depend on, both
        * of which the typings state and neither of which is obvious:
        * `getOnlyItemOrNullObject` answers a NULL OBJECT when the namespace holds
-       * nothing, and it REFUSES when the namespace holds more than one — it does
-       * not pick. `writeDeckStyle` deletes every part in the namespace before
-       * adding, and that second rule is why.
+       * nothing, and it returns a NULL OBJECT when the namespace holds more than
+       * one — it does not pick, and it does not refuse either. `writeDeckStyle`
+       * deletes every part in the namespace before adding, and that second rule
+       * is why.
+       *
+       * This said "it REFUSES ... it does not pick" and the fake threw to match.
+       * `@types/office-js`: `getOnlyItem` raises `GeneralException` on "no items
+       * or more than one"; `getOnlyItemOrNullObject`, which is the one we call,
+       * "returns null" otherwise. Modelling the throw made a two-part deck look
+       * loud when the real thing is silent.
        */
       customXmlParts: (() => {
         const parts: { id: string; namespaceUri: string; xml: string }[] = [];
@@ -2290,7 +2307,12 @@ export function installHost(
             return partHandle(p);
           },
           getByNamespace(ns: string) {
-            const inNs = () => parts.filter((p) => p.namespaceUri === ns);
+            const inNs = () => {
+              const hits = parts.filter((p) => p.namespaceUri === ns);
+              // A second part nobody asked for, to reach the state the write
+              // path is built to prevent.
+              return faults.duplicateCustomXmlPart && hits.length === 1 ? [hits[0], { ...hits[0], id: "dup" }] : hits;
+            };
             return {
               load() {},
               get items() {
@@ -2308,10 +2330,28 @@ export function installHost(
                 if (faults.refuseCustomXmlReads)
                   throw new Error("GeneralException | the host did not answer the custom XML read");
                 const hits = inNs();
-                // The real API refuses rather than choosing. A fake that picked
-                // the first would hide the case `writeDeckStyle`'s
-                // delete-then-add exists to prevent.
-                if (hits.length > 1) throw new Error("InvalidArgument | more than one part in that namespace");
+                // MORE THAN ONE IS A NULL OBJECT, NOT A THROW — checked against
+                // `@types/office-js`, which is as close to the contract as this
+                // repo can get without a deck that carries two:
+                //
+                //   getOnlyItem()             no items OR more than one -> GeneralException
+                //   getOnlyItemOrNullObject() exactly one -> it; "Otherwise ... returns null"
+                //
+                // This fake threw `InvalidArgument` for the two-part case and
+                // said in a comment that the real API "refuses rather than
+                // choosing". It refuses in `getOnlyItem`; the OrNullObject
+                // variant we actually call does not. The difference is not
+                // cosmetic: on a real host a deck holding two style parts reads
+                // as CARRYING NO STYLE rather than as a failed read, which is
+                // the quieter and worse of the two outcomes.
+                //
+                // `writeDeckStyle`'s delete-then-add is still right, and for a
+                // better reason than the one written down: a second part does
+                // not announce itself at all, it silently unbrands the deck.
+                //
+                // NOT VERIFIED ON THE REAL HOST — no round has ever put two
+                // parts in this namespace, and the typings are documentation.
+                // Recorded as the documented contract, not as an observation.
                 return hits.length === 1
                   ? partHandle(hits[0])
                   : { isNullObject: true, load() {}, getXml: () => ({ value: undefined }) };
@@ -2588,6 +2628,7 @@ export function installHost(
   faults.strictTags = false;
   faults.refuseCustomXmlWrites = false;
   faults.refuseCustomXmlReads = false;
+  faults.duplicateCustomXmlPart = false;
   faults.refuseTagWritesOnResolvedProxy = false;
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;
