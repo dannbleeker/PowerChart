@@ -5182,6 +5182,30 @@ describe("the style a deck carries", () => {
     expect(await readDeckStyle()).toEqual({ palette: ["#2a78d6"] });
   });
 
+  it("gives the deck-style read its OWN budget, not the 90s readback one", async () => {
+    // ROUNDS 089 AND 090, BOTH: this read consumed its entire 90-second budget
+    // and never answered, ~50ms after the host had answered a slide listing. The
+    // pane-load caller is fire-and-forget, so that held a `PowerPoint.run`
+    // context open for a minute and a half on every load, for a call that was
+    // not going to answer.
+    //
+    // The assertion is that the read is bounded by `deckStyleTimeoutMs` — set
+    // absurdly low here — rather than by `readbackTimeoutMs`, which is left at
+    // its default. A wall-clock ceiling well under the readback budget is what
+    // separates the two; asserting a duration is not the point, asserting WHICH
+    // budget applies is.
+    installHost([makeSlide("s1")]);
+    process.env.PW_DECK_STYLE_TIMEOUT_MS = "30";
+    faults.wedgeAfterSyncs = 0; // every sync from here on never answers
+    const began = Date.now();
+    const r = await readDeckStyleWithReason();
+    const took = Date.now() - began;
+    faults.wedgeAfterSyncs = null;
+    delete process.env.PW_DECK_STYLE_TIMEOUT_MS;
+    expect(r).toEqual({ style: null, unreadable: true });
+    expect(took, "waited on the readback budget instead of its own").toBeLessThan(5_000);
+  });
+
   it("says the read FAILED rather than reporting an absence", async () => {
     // ROUND 089. `reading the deck's style` hung for its full 90s budget on the
     // real host and the catch turned that into `null` — the same value a deck

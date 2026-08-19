@@ -1789,3 +1789,62 @@ clean. That machinery had been built and never yet met the thing it was for.
   The round-089 population is the counter-example the brief needs beside round
   088's: a scenario's denominator moves with what ran before it, so quote the
   denominator or quote nothing.
+
+## Round 090 — f6cd580 — 13/13 — and the deck-style read fails every time
+
+Four attempts, and the driver drove all of it: a stale pane after the merge, then
+a browser death 51s into attempt 3, then a clean run. No password anywhere. The
+round before it never started at all — see the refusal below, which was the
+session's largest finding and was not in the round file.
+
+- **Mine.** 13 of 13, `same scale` 8 of 8, and the cleanest re-read round on
+  record: **0 short, 0 zero-match, 0 empty**, 20 grouped lines with `partial:0`.
+  Deck ended `0,4,2,5,1,1,1` — one shape per chart slide, everything grouped.
+  Nothing changed in the draw path between 089 and 090, so a clean round is
+  weather: 2 zero-matches to 0 is inside the noise floor and is not a result.
+
+  **#586 still not exercised — three rounds now.** 0 short re-reads after the
+  settled retry in 088, 089 and 090.
+
+- **THE DECK-STYLE READ FAILS ON THIS HOST, 2 FOR 2.** Round 089 flagged it as a
+  signature never seen in 64 rounds; round 090 reproduced it exactly:
+
+      089  afterMs 90000, afterAnswering "listing the deck's slides", 44ms earlier
+      090  afterMs 90000, afterAnswering "listing the deck's slides", 56ms earlier
+
+  Two rounds, both since #583 landed, which is every chance it has had. The host
+  is demonstrably alive ~50ms before and the read then never answers. **#583's
+  deck-style read has never once succeeded here.**
+
+- **Research — a null result, recorded as one.** No upstream issue describes a
+  PowerPoint-web custom-XML READ that hangs. office-js #2937 ("CustomXMLPart
+  can't sync") is Word on the desktop and bibliography-specific; #3936 is Excel
+  on iPad and needs an unsaved file. Neither is this. Worth reporting upstream —
+  the owner's call, not ours to post.
+
+- **Instrument.** The pooled report now says, in as many words, that #586's
+  subset branch has not run in the pool, instead of printing a zero at-risk count
+  that reads as an all-clear. The population check stayed quiet, correctly: 8 of
+  8 is the usual denominator.
+
+- **Fix.** The deck-style read gets its own 10s budget instead of the 90s
+  readback one. **The number is not sized from a successful read, because this
+  host has never produced one** — it bounds the damage rather than fitting a
+  distribution, and both callers degrade safely: the pane keeps the browser's
+  style, the button says it could not read. `PW_DECK_STYLE_TIMEOUT_MS` overrides.
+  What the 90s was costing: a `PowerPoint.run` context held open for a minute and
+  a half on EVERY pane load, and a person waiting that long before the button
+  admitted defeat.
+
+- **Doctrine — the refusal that stopped the round before it started.** `--check`
+  said this document had no add-in and that a reload would not bring it back: the
+  one stop recovery may not retry. The tree said `button "Insert chart"
+  [disabled]` and `status: Disconnected` the whole time. `refFor` returns the ref
+  on the matching line and Playwright issues refs only for actionable elements,
+  so ABSENT and DISABLED arrived as the same null and the driver chose the
+  permanent explanation for a transient state. Now `host-disconnected`, and
+  recoverable — proven on the same document, which then reloaded and came back.
+
+  **Fifth time this codebase has reported UNREADABLE as NEGATIVE**, after
+  `beforeUnknown`, "no history is not a spike", "a miss is not a failure", and
+  the deck style. It is the house defect.
