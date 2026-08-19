@@ -51,6 +51,8 @@ const host = vi.hoisted(() => ({
   selectionGate: null as null | Promise<void>,
   /** What `readDeckStyle` answers — the style this deck carries, or none. */
   deckStyle: null as null | Record<string, unknown>,
+  /** When true, the deck-style READ fails — not the same as a deck carrying none. */
+  deckStyleUnreadable: false,
   /** Every style handed to `writeDeckStyle`, in order. */
   deckStyleWrites: [] as unknown[],
   /** False for a host below PowerPointApi 1.7, which cannot store one at all. */
@@ -374,6 +376,13 @@ vi.mock("../src/render/powerpoint", () => ({
   // has branded — and the pane must be usable before this resolves, which is
   // what the startup read being fire-and-forget is for.
   readDeckStyle: vi.fn(async () => host.deckStyle),
+  // The same read, saying why it came back empty. The button awaits THIS one,
+  // because "the read failed" and "the deck carries none" send the person at
+  // the pane to opposite conclusions about their own document.
+  readDeckStyleWithReason: vi.fn(async () => ({
+    style: host.deckStyleUnreadable ? null : host.deckStyle,
+    unreadable: host.deckStyleUnreadable,
+  })),
   writeDeckStyle: vi.fn(async (style: unknown) => {
     host.deckStyleWrites.push(style);
     return host.deckStyleWritable;
@@ -491,6 +500,10 @@ async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null 
   host.deckStyle = opts?.deckStyle ?? null;
   host.deckStyleWrites = [];
   host.deckStyleWritable = true;
+  // Reset with its siblings, or the one test that sets it leaves every later
+  // test in this file reading a host that will not answer — an ordering-
+  // dependent failure, which is the worst kind to debug.
+  host.deckStyleUnreadable = false;
   host.demoRuns = 0;
   host.demoDeckCalls = [];
   host.demoDeckOpts = [];
@@ -2524,6 +2537,27 @@ describe("the style a deck carries", () => {
     // after that would be asserting the insert's message, not this button's.
     expect($("host-note").textContent).toMatch(/deck/i);
     expect(await insertedPalette()).toEqual(["#dd1122"]);
+  });
+
+  it("does not claim the deck is unbranded when the read simply failed", async () => {
+    // ROUND 089: `reading the deck's style` hung for its full 90s budget on the
+    // real host. The button reported that as "This deck carries no style" and
+    // switched the person to the browser's copy — an absence it had not
+    // established, about a deck that may well carry one.
+    await bootHostPane({ deckStyle: { palette: ["#dd1122"] } });
+    await settle();
+    ($("json-io") as HTMLTextAreaElement).value = JSON.stringify({ palette: ["#22aa33"] });
+    $("style-import").click();
+    expect(await insertedPalette()).toEqual(["#22aa33"]);
+
+    host.deckStyleUnreadable = true;
+    $("style-from-deck").click();
+    await settle();
+    expect($("host-note").textContent, "reported a failed read as an absence").not.toMatch(/carries no style/i);
+    expect($("host-note").textContent).toMatch(/could not read/i);
+    // AND IT LEFT THE PERSON'S OWN STYLE ALONE. Switching them to the deck on a
+    // read that never answered is the half of this that changes their chart.
+    expect(await insertedPalette(), "switched away from the imported style on a failed read").toEqual(["#22aa33"]);
   });
 
   it("saves the style the pane is actually drawing with", async () => {

@@ -9721,7 +9721,32 @@ function addWedgeFan(shapes: PowerPoint.ShapeCollection, n: WedgeNode, dx: numbe
  * never throws: a style is a preference, and losing one must not stop a draw.
  */
 export async function readDeckStyle(): Promise<DeckStyle | null> {
-  if (!supports("1.7")) return null;
+  return (await readDeckStyleWithReason()).style;
+}
+
+/**
+ * The same read, saying WHY it came back with nothing.
+ *
+ * `null` meant three different things and one of them is a lie. A deck that
+ * carries no style, a host too old to store one, and a read that FAILED all
+ * arrived as the same value — and `style-from-deck` awaits this, so a failed
+ * read told the user "This deck carries no style — using yours" about a deck
+ * that may well carry one.
+ *
+ * ROUND 089 IS WHY THIS EXISTS, on the day #583 merged: `reading the deck's
+ * style` hung for the full 90s budget on the real host — a trace signature never
+ * seen in the 64 rounds before it — 44ms after the host had answered a different
+ * call. The pane-load caller is fired and forgotten and was unharmed; the button
+ * would have reported an absence it had not established.
+ *
+ * `unreadable` covers the throw, the timeout, AND the several-parts-in-one-
+ * namespace case the catch below already handled: two answers to "what is this
+ * deck's style" is not the same as no answer, but it is equally not an absence.
+ * A host too old to have the API is NOT unreadable — that deck genuinely carries
+ * no style, and saying so is accurate rather than evasive.
+ */
+export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | null; unreadable: boolean }> {
+  if (!supports("1.7")) return { style: null, unreadable: false };
   try {
     return await PowerPoint.run(async (context) => {
       const parts = (
@@ -9739,15 +9764,18 @@ export async function readDeckStyle(): Promise<DeckStyle | null> {
       // case the `isNullObject` branch below already handles.
       const xml = part.getXml();
       await boundedSync(context, "reading the deck's style", READBACK_TIMEOUT_MS);
-      if ((part as unknown as { isNullObject?: boolean }).isNullObject) return null;
-      return styleFromXml(xml.value);
+      if ((part as unknown as { isNullObject?: boolean }).isNullObject) return { style: null, unreadable: false };
+      return { style: styleFromXml(xml.value), unreadable: false };
     });
   } catch {
     // A deck holding SEVERAL parts in our namespace lands here too:
     // `getOnlyItemOrNullObject` refuses rather than picking one, and picking one
     // is exactly what nothing here should do — two answers to "what is this
     // deck's style" is a question for a person.
-    return null;
+    //
+    // And so does the 90-second timeout round 089 recorded. Both are "we cannot
+    // tell you", which is the one thing this used to be unable to say.
+    return { style: null, unreadable: true };
   }
 }
 

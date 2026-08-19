@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   readDeckStyle,
+  readDeckStyleWithReason,
   writeDeckStyle,
   _setBatchTimeoutForTest,
   _setBlankReReadDelayForTest,
@@ -5151,6 +5152,34 @@ describe("the style a deck carries", () => {
     expect(await writeDeckStyle({ fontSize: 12 })).toBe(false);
     faults.refuseCustomXmlWrites = false;
     expect(await readDeckStyle()).toBeNull();
+  });
+
+  it("says the read FAILED rather than reporting an absence", async () => {
+    // ROUND 089. `reading the deck's style` hung for its full 90s budget on the
+    // real host and the catch turned that into `null` — the same value a deck
+    // carrying no style returns. `style-from-deck` AWAITS this, so the pane told
+    // the user their deck was unbranded and switched them to the browser's style
+    // on the strength of a read that never happened.
+    installHost([makeSlide("s1")]);
+    expect(await writeDeckStyle({ palette: ["#2a78d6"] })).toBe(true); // the deck DOES carry one
+    faults.refuseCustomXmlReads = true;
+    expect(await readDeckStyleWithReason()).toEqual({ style: null, unreadable: true });
+    faults.refuseCustomXmlReads = false;
+    // And the distinction is real: the same shape of answer, from a deck that
+    // genuinely has none, is NOT unreadable.
+    await writeDeckStyle(null);
+    expect(await readDeckStyleWithReason()).toEqual({ style: null, unreadable: false });
+  });
+
+  it("keeps the plain reader's contract, because one caller must not care", async () => {
+    // The pane-load caller is fired and forgotten and wants exactly this: a
+    // style or nothing, no branch. Widening its return would have made a
+    // failed read something that path had to handle, on a path whose whole
+    // design is that it does not.
+    installHost([makeSlide("s1")]);
+    faults.refuseCustomXmlReads = true;
+    expect(await readDeckStyle()).toBeNull();
+    faults.refuseCustomXmlReads = false;
   });
 
   it("neither reads nor writes on a host below PowerPointApi 1.7", async () => {

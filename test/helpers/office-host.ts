@@ -51,6 +51,15 @@ export const faults = {
    * "the deck was not updated" rather than pretending it wrote.
    */
   refuseCustomXmlWrites: false,
+  /**
+   * Refuse to ANSWER a custom XML read — the deck-style read path.
+   *
+   * The sibling of the switch above, and it was missing: a host that stores the
+   * part fine and will not hand it back. Round 089 is the case, and the defect
+   * it exposed was that `readDeckStyle` returned the same `null` for that as for
+   * a deck carrying no style at all.
+   */
+  refuseCustomXmlReads: false,
   swallowAdds: 0,
   faultShapeGetCount: false,
   strictGroup: false,
@@ -2289,6 +2298,15 @@ export function installHost(
               },
               getCount: () => ({ value: inNs().length }),
               getOnlyItemOrNullObject() {
+                // THE HOST THAT HAS THE API AND WILL NOT ANSWER THE READ. Round
+                // 089 recorded exactly that on the day #583 merged — `reading
+                // the deck's style` hung for its whole 90s budget — and nothing
+                // here could express it, so the one caller that AWAITS the read
+                // could not be tested against a failure at all. `failSyncOn`
+                // reaches it only by guessing a global sync index, which the
+                // comment on that fault already calls fragile.
+                if (faults.refuseCustomXmlReads)
+                  throw new Error("GeneralException | the host did not answer the custom XML read");
                 const hits = inNs();
                 // The real API refuses rather than choosing. A fake that picked
                 // the first would hide the case `writeDeckStyle`'s
@@ -2569,6 +2587,7 @@ export function installHost(
   faults.strictGroup = false;
   faults.strictTags = false;
   faults.refuseCustomXmlWrites = false;
+  faults.refuseCustomXmlReads = false;
   faults.refuseTagWritesOnResolvedProxy = false;
   faults.refuseTagWrites = 0;
   faults.refuseIdLeftTopLoads = 0;
