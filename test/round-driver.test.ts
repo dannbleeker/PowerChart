@@ -17,6 +17,7 @@ const {
   pingScript,
   readPing,
   refFor,
+  namePresent,
   sawCrashDialog,
   quietStreak,
   archive,
@@ -119,6 +120,30 @@ describe("deciding whether a round is worth running", () => {
     // was not open at that moment, and turning that into a hard stop would make
     // the driver unusable while telling nobody anything true.
     expect(readiness({ ...ready, verbose: null, pictures: null, slides: null }).ok).toBe(true);
+  });
+});
+
+describe("telling a control that is absent from one that is merely disabled", () => {
+  // Playwright hands out a `ref` only for something it could act on, so a
+  // greyed-out button matches its line and carries none. `refFor` answers null
+  // for both, and the driver read that single null as "the add-in is gone".
+  const findReturning = (out: string) => ((cmd: string) => (cmd === "find" ? out : "")) as never;
+
+  it("sees a disabled control that refFor cannot", () => {
+    const sh = findReturning('        - button "Insert chart" [disabled]');
+    expect(refFor(sh, "Insert chart", /button "Insert chart"/), "a disabled control has no ref").toBeNull();
+    expect(namePresent(sh, "Insert chart", /button "Insert chart"/), "but it IS in the ribbon").toBe(true);
+  });
+
+  it("still says absent when the ribbon really does not carry it", () => {
+    const sh = findReturning('        - button "Design Suggestions" [ref=f12e42]');
+    expect(namePresent(sh, "Insert chart", /button "Insert chart"/)).toBe(false);
+  });
+
+  it("agrees with refFor when the control is usable", () => {
+    const sh = findReturning('        - button "Insert chart" [ref=f12e99]');
+    expect(refFor(sh, "Insert chart", /button "Insert chart"/)).toBe("f12e99");
+    expect(namePresent(sh, "Insert chart", /button "Insert chart"/)).toBe(true);
   });
 });
 
@@ -277,11 +302,27 @@ describe("talking to the browser at all", () => {
     // the ribbon's `Insert chart` control, that deck offers no such control, and
     // the loop rediscovered this six more times. A refusal recovery cannot
     // address must not be retried.
-    const r = readiness({ ...READY, stamp: null, canOpenPane: false });
+    // `commandPresent: false` is what "no add-in here" actually means — the
+    // ribbon does not carry the control at all. Saying only `canOpenPane: false`
+    // is a weaker statement (it may be present and greyed out) and this fixture
+    // used to make it, which is how the two states got conflated in the driver.
+    const r = readiness({ ...READY, stamp: null, canOpenPane: false, commandPresent: false });
     expect(r.ok).toBe(false);
     expect(r.codes).toContain("addin-missing");
     expect(r.codes, "still reported as a merely-closed pane").not.toContain("pane-closed");
     expect(shouldRetry("not-ready", 0, 6, r.codes), "retrying this cannot help").toBe(false);
+    // A DISABLED CONTROL IS NOT AN ABSENT ONE, and this is the case that cost
+    // a round on 2026-08-19. PowerPoint's document went `Disconnected` — the
+    // network, the same fault that crashed round 089 — which greys the WHOLE
+    // ribbon. The accessibility tree still said `button "Insert chart"
+    // [disabled]`, the add-in was loaded and fine, and the driver called it
+    // `addin-missing`: the one refusal recovery may not retry, needing the
+    // owner, for a state a reload clears.
+    const greyed = readiness({ ...READY, stamp: null, canOpenPane: false, commandPresent: true });
+    expect(greyed.codes, "a greyed ribbon is not a missing add-in").not.toContain("addin-missing");
+    expect(greyed.codes).toContain("host-disconnected");
+    expect(shouldRetry("not-ready", 0, 6, greyed.codes), "a reload clears this — it must be retried").toBe(true);
+
     // And a pane that is simply shut on a deck that CAN open one stays
     // recoverable, or the loop stops doing the thing it is good at.
     const shut = readiness({ ...READY, stamp: null, canOpenPane: true });
