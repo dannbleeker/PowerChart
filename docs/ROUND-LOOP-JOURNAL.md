@@ -2061,3 +2061,53 @@ see it.
 that eight rounds run singly could not have, because the comparison a single
 round invites — against the previous round, on a different build — is exactly the
 comparison the noise floor forbids.
+
+## Rounds 096 + 097 — 9e81c14 — two staked claims held, and one of them closes a question
+
+The richest pair of the run. Both predictions were written down before the host
+was touched, and both came out.
+
+- **`the-round-file-can-finally-say-which-host-it-ran-on` — HELD, both rounds.**
+  The first two rounds in 71 to carry it:
+
+      host PowerPoint · platform OfficeOnline · version 0.0.0.0
+      requirementSets 1.1 … 1.10 · canInsertSlidesFromBase64 · canInsertPicture
+      slide size 960x540, source documentFile
+
+  So the trace mark was the whole story and there is no second slice. Seventy
+  rounds were archived without any of this.
+
+- **`the-deck-style-namespace-is-reachable` — HELD, both rounds, identically.**
+  `the namespace IS reachable — the fault is further in`, `parts: 0`,
+  `observedBeforeTheRound: true` — the replay carrying it across the mark, which
+  is the whole reason it exists.
+
+  **The expensive half is refuted**: `customXmlParts` is not dead on this host,
+  so #583 needs a fix rather than a product decision. `getCount()` answers; it is
+  `getOnlyItemOrNullObject` / `load` / `getXml` that hangs. And `parts: 0` names
+  the call precisely — **asking for the only item of an EMPTY collection**, which
+  is the state every unbranded deck is in, so every pane load in the wild.
+
+  Fixed by counting first and never making that call unless the count is 1. It
+  costs one round trip on a deck that carries a style and buys not hanging on a
+  deck that does not.
+
+  It also settles the intermittency from round 092: the manual clicks that
+  answered in 428ms hit the same empty namespace and did not hang, so this is a
+  RACE rather than a property of the empty case. The guard removes the call, not
+  the race — worth remembering if it ever hangs at `count === 1`.
+
+- **The honesty fixes are visible on the real host.** 096 came back **12/13**,
+  skipping `the chart is actually visible` — the first honest reading that
+  scenario has ever produced. 097 passed it. That difference is the fix working:
+  the control render is available sometimes and not others, and the verdict now
+  says which rather than reporting green either way. A lower score for a truer
+  reason.
+
+  `stallShape` also had its first outing, and correctly declined to over-read two
+  stalls: `issued immediately after the previous answer — an ordinary sequential
+  gap, says little`.
+
+- **Grouping, third pair running: 19/0 then 15/4.** Pooled across three pairs the
+  refusal counts are 0, 4, 0, 1, 0, 4. Neither rare nor constant, and invisible
+  to a verdict that reports 13/13 either way.

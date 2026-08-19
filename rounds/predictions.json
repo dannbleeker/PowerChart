@@ -100,7 +100,23 @@
       "message": "the namespace IS reachable — the fault is further in",
       "insteadOf": "the namespace is unreachable too"
     },
-    "outcome": "open",
-    "what-happened": "Rounds 091 AND 092 both came back `undetermined - neither line appeared`, and the second time the reason was different from the first. 091 could not ask because the 10s budget moved the failure out of the traced window; a replay was added for that. 092 did not ask because THE BUG DID NOT HAPPEN: zero deck-style entries, and the replay correctly stayed silent because there was no verdict to carry. Driving the pane's own button by hand on the real host after 092 returned `This deck carries no style - using yours` four times, the first in 428ms. SO THE EARLIER CLAIM THAT THIS READ HAS NEVER SUCCEEDED ON THIS HOST IS WRONG and is corrected in the journal and in powerpoint.ts. The read is INTERMITTENT: it hung for 90s in rounds 089 and 090, and answers in under half a second now. The two rounds that hung are also the two with a host crash and a browser death, which is a hypothesis at n=4, not a finding. The probe runs only on failure, so this entry can only be judged by a round in which the read fails again. Staying OPEN for that."
+    "outcome": "held",
+    "what-happened": "HELD, on the third round that could ask and replicated by its pair. Rounds 096 and 097 both record `the namespace IS reachable - the fault is further in` with `parts: 0` and `observedBeforeTheRound: true` — so the replay carried it across the trace mark exactly as intended. THE EXPENSIVE HALF IS REFUTED: the customXmlParts surface is NOT dead on this host, so #583 does not need a product decision. `getByNamespace(...).getCount()` answers reliably; it is getOnlyItemOrNullObject/load/getXml that hangs, and `parts: 0` says the call that hangs is the one asking for the only item of an EMPTY collection — the state every unbranded deck is in, i.e. every pane load in the wild. Fixed by counting first and never making that call unless the count is 1. This also explains the intermittency recorded after round 092: the manual button clicks that answered in 428ms hit the same empty namespace and did NOT hang, so the hang is a race rather than a property of the empty case — the guard removes the call rather than the race.",
+    "judgedOn": "096-9e81c14"
+  },
+  {
+    "id": "the-round-file-can-finally-say-which-host-it-ran-on",
+    "madeIn": "#599",
+    "afterBuild": "ab5d730",
+    "madeOn": "2026-08-19",
+    "because": "A CLAIM THAT CANNOT WRIGGLE. `traceEnvironment` emits `host`/`environment` unconditionally — no branch, no host call it depends on — and it appears in 0 of the 69 archived rounds, on an archive where every build contains the emitting line. The cause is established rather than guessed: it was called at pane-wiring time and the round's `traceLog(traceFrom)` slices off everything before its mark, a window measured at 48.2 seconds in round 092 (first entry ms 48245, dropped 0). #599 moves the call to just after `traceMark()`. HELD means the next round is the first in the project's history to record which host, platform and Office version it ran on, and the deck-style replay finally has a route into the archive. FAILED means the mark is not the whole story and there is a second slice nobody has found — which would be worth more than the fix. `insteadOf` is `round starting`, a line every round carries, so a round that simply did not run reads as undetermined rather than as a refutation.",
+    "claim": {
+      "kind": "trace-line-present",
+      "message": "environment",
+      "insteadOf": "round starting"
+    },
+    "outcome": "held",
+    "judgedOn": "096-9e81c14",
+    "what-happened": "HELD, and replicated in the pair. Rounds 096 and 097 both carry the line, the first two in 71 to do so: host PowerPoint, platform OfficeOnline, version 0.0.0.0, requirement sets 1.1 through 1.10, canInsertSlidesFromBase64 true, canInsertPicture true — and `slide size 960x540, source documentFile` beside it. So the mark WAS the whole story; no second slice exists. The archive can now say which host each round ran on, which it never could before."
   }
 ]

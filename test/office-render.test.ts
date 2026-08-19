@@ -5256,6 +5256,10 @@ describe("the style a deck carries", () => {
     // splits the two explanations. Here the read is refused and the count is
     // not, which is the "reachable, fault is further in" branch.
     installHost([makeSlide("s1")]);
+    // A deck that HAS a part, so the read reaches `getOnlyItemOrNullObject` at
+    // all: the count-first guard returns early on an empty namespace, which is
+    // the whole point of it — the empty case can no longer hang.
+    await writeDeckStyle({ palette: ["#2a78d6"] });
     const seen: { message: string }[] = [];
     setTracing(true);
     onTrace((e) => seen.push(e));
@@ -5280,6 +5284,7 @@ describe("the style a deck carries", () => {
     // A fix that hides its own subject is worse than the cost it removed, so the
     // conclusion is remembered and re-emitted verbatim when a round begins.
     installHost([makeSlide("s1")]);
+    await writeDeckStyle({ palette: ["#2a78d6"] }); // count 1, so the read gets past the guard
     _resetDeckStyleVerdictForTest();
     faults.refuseCustomXmlReads = true;
     await readDeckStyleWithReason(); // happens with tracing OFF, as on a real pane
@@ -5303,6 +5308,7 @@ describe("the style a deck carries", () => {
     // left the suite green. Mutation caught it. The round only ever reaches this
     // through `traceEnvironment`, so that is what has to be driven.
     installHost([makeSlide("s1")]);
+    await writeDeckStyle({ palette: ["#2a78d6"] }); // count 1, so the read gets past the guard
     _resetDeckStyleVerdictForTest();
     faults.refuseCustomXmlReads = true;
     await readDeckStyleWithReason();
@@ -5355,6 +5361,23 @@ describe("the style a deck carries", () => {
     delete process.env.PW_DECK_STYLE_TIMEOUT_MS;
     expect(r).toEqual({ style: null, unreadable: true });
     expect(took, "waited on the readback budget instead of its own").toBeLessThan(5_000);
+  });
+
+  it("never asks for the only item of an EMPTY namespace — the call that hangs on this host", async () => {
+    // ROUNDS 096 AND 097, a pair on one build, both recorded the same thing
+    // through the failure probe: `getCount()` ANSWERS and reports `parts: 0`,
+    // and it is `getOnlyItemOrNullObject` that then never returns. So the
+    // hanging call is the one asking for the only item of an EMPTY collection —
+    // which is the state every unbranded deck is in, i.e. every pane load.
+    //
+    // The fault here refuses exactly that call. An unbranded deck must now come
+    // back clean WITHOUT touching it, so this passes only if the count-first
+    // guard is doing its job.
+    installHost([makeSlide("s1")]);
+    faults.refuseCustomXmlReads = true;
+    const r = await readDeckStyleWithReason();
+    faults.refuseCustomXmlReads = false;
+    expect(r, "an unbranded deck reached the call that hangs").toEqual({ style: null, unreadable: false });
   });
 
   it("says the read FAILED rather than reporting an absence", async () => {
