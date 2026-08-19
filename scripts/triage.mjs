@@ -571,6 +571,16 @@ export function judgePrediction(prediction, log) {
     if (!Array.isArray(entries) || !entries.length)
       return { verdict: "undetermined", why: "the round carries no trace to look in" };
     const saw = (m) => entries.some((e) => String(e.message) === m);
+    // A CLAIM THAT A SYMPTOM IS GONE, which is what a fix predicts and what this
+    // kind could not say. `absent: true` inverts the reading: the named line
+    // must NOT appear, and `insteadOf` — a line every round carries — is what
+    // proves the round ran at all, so silence from a round that never started
+    // stays `undetermined` rather than counting as a cure.
+    if (c.absent) {
+      if (saw(c.message)) return { verdict: "FAILED", why: `the trace still carries \`${c.message}\`` };
+      if (c.insteadOf && saw(c.insteadOf)) return { verdict: "held", why: `no \`${c.message}\` in a round that ran` };
+      return { verdict: "undetermined", why: "the round did not run far enough to show the line is gone" };
+    }
     if (saw(c.message)) return { verdict: "held", why: `the trace carries \`${c.message}\`` };
     if (c.insteadOf && saw(c.insteadOf))
       return { verdict: "FAILED", why: `the trace carries \`${c.insteadOf}\` instead` };

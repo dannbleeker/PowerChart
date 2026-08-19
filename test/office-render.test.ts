@@ -5269,10 +5269,23 @@ describe("the style a deck carries", () => {
     onTrace(undefined);
     setTracing(false);
     expect(r).toEqual({ style: null, unreadable: true });
-    expect(
-      seen.filter((e) => /namespace IS reachable/.test(e.message)).length,
-      "failed without saying which half of the read broke",
-    ).toBe(1);
+    const said = seen.filter((e) => /namespace IS reachable/.test(e.message));
+    expect(said.length, "failed without saying which half of the read broke").toBe(1);
+    // WHICH CALL, MEASURED. This field was a hardcoded sentence naming
+    // getOnlyItemOrNullObject, and it kept printing that after the read gained a
+    // `getCount` of its own — round 098 shows it asserting the old answer on a
+    // build where the count runs first. It now carries the operation the bounded
+    // sync names, so it cannot describe a call that did not fail.
+    const failedAt = (said[0] as { data?: { failedAt?: string } }).data?.failedAt ?? "";
+    // Derived from the actual failure, whatever shape it takes. A synchronous
+    // refusal (this fake) carries the thrown message; a real-host TIMEOUT comes
+    // through `boundedSync`, whose text carries `at=<operation>` and is parsed
+    // to the operation name. Either way it describes what happened.
+    expect(failedAt, "the probe said nothing about which call failed").toBeTruthy();
+    expect(failedAt, "still asserting the old hardcoded conclusion").not.toMatch(
+      /getOnlyItemOrNullObject\/load\/getXml/,
+    );
+    expect(failedAt, "did not come from the failure").toMatch(/custom XML read/);
   });
 
   it("replays what the read concluded, because it happens BEFORE the round does", async () => {

@@ -118,5 +118,21 @@
     "outcome": "held",
     "judgedOn": "096-9e81c14",
     "what-happened": "HELD, and replicated in the pair. Rounds 096 and 097 both carry the line, the first two in 71 to do so: host PowerPoint, platform OfficeOnline, version 0.0.0.0, requirement sets 1.1 through 1.10, canInsertSlidesFromBase64 true, canInsertPicture true — and `slide size 960x540, source documentFile` beside it. So the mark WAS the whole story; no second slice exists. The archive can now say which host each round ran on, which it never could before."
+  },
+  {
+    "id": "counting-first-removes-the-hang",
+    "madeIn": "#600",
+    "afterBuild": "9e81c14",
+    "madeOn": "2026-08-20",
+    "because": "THE FIX'S OWN PREDICTION, staked before the round that tests it. Rounds 096 and 097 both recorded `the namespace IS reachable - the fault is further in` with `parts: 0`, which the probe only writes when the deck-style READ HAS ALREADY FAILED. #600 makes the read call `getCount()` first and never ask an empty namespace for its only item — the exact call the pair fingered. So on the next build the failure should not happen at all, and the probe line should DISAPPEAR. HELD means the hang is gone from the path every pane load takes. FAILED — the line still there — means the hang is not where the pair said it was, and the diagnosis rather than the fix is wrong, which is the more valuable outcome and the reason to stake it this way round. `insteadOf: round starting` keeps a round that never ran from reading as a cure. Note the residual: round 092's manual clicks answered in 428ms against the SAME empty namespace, so this is a race and the guard removes the call rather than the race. A hang at `count === 1` would still be possible and is not claimed here.",
+    "claim": {
+      "kind": "trace-line-present",
+      "message": "the namespace IS reachable — the fault is further in",
+      "insteadOf": "round starting",
+      "absent": true
+    },
+    "outcome": "failed",
+    "judgedOn": "098-3da2ef6",
+    "what-happened": "FAILED, which is the half this was staked to be useful for: the trace still carries the probe line, so the deck-style read STILL FAILED with the count-first guard in place. But the round cannot say WHICH call failed, because the probe was lying. Its `meaning` field was the fixed sentence 'getOnlyItemOrNullObject/load/getXml is what hung' — true while the read was one batch, and false the moment the read gained a getCount of its own. Round 098 printed that sentence on a build where the count runs FIRST, so it described a call it had not observed. A conclusion hardcoded into an instrument is not evidence. So this verdict refutes the PREDICTION and not the diagnosis: the diagnosis was never tested, because the instrument that was supposed to test it asserted its answer. The field now carries the operation the bounded sync names (`at=<what>`), read off the actual failure. The count-first change is KEPT rather than reverted: it removes one call from the hot path and costs a round trip only on a branded deck, and nothing here shows it made anything worse. Its premise is simply unconfirmed. The next round says which call hangs, and this should be re-staked then."
   }
 ]

@@ -1,8 +1,8 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **097** (`rounds/097-9e81c14.json`, 13 of 13, 2026-08-20),
-paired with 096 on the same build.
+Repeat. Last round **099** (`rounds/099-3da2ef6.json`, 13 of 13, 2026-08-20),
+paired with 098 on the same build.
 
 **Move that line with the loop.** It was once twenty-one rounds out of date —
 reading `067 … 10 of 12` while a paragraph further down this same file cited

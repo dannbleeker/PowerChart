@@ -9906,7 +9906,7 @@ export function _resetDeckStyleVerdictForTest(): void {
   deckStyleVerdict = null;
 }
 
-async function probeWhyDeckStyleFailed(): Promise<void> {
+async function probeWhyDeckStyleFailed(failedAt: string): Promise<void> {
   try {
     await PowerPoint.run(async (context) => {
       const parts = (
@@ -9920,7 +9920,16 @@ async function probeWhyDeckStyleFailed(): Promise<void> {
         message: "the namespace IS reachable — the fault is further in",
         data: {
           parts: count.value,
-          meaning: "getByNamespace answered; getOnlyItemOrNullObject/load/getXml is what hung",
+          // WHICH CALL, READ OFF THE FAILURE — not asserted. This field used to
+          // be the fixed string "getOnlyItemOrNullObject/load/getXml is what
+          // hung". That was true while the read was ONE batch, and became a LIE
+          // the moment the read gained a `getCount` of its own: round 098 still
+          // printed it on a build where the count runs first, so the sentence no
+          // longer described anything the instrument had observed.
+          //
+          // A conclusion hardcoded into an instrument is not evidence, and this
+          // one was mine.
+          failedAt,
         },
       };
       trace("deck-style", deckStyleVerdict.message, deckStyleVerdict.data);
@@ -9929,6 +9938,7 @@ async function probeWhyDeckStyleFailed(): Promise<void> {
     deckStyleVerdict = {
       message: "the namespace is unreachable too",
       data: {
+        failedAt,
         error: errorText(err),
         meaning: "the whole customXmlParts surface is not answering on this host, not one call in it",
       },
@@ -9980,7 +9990,7 @@ export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | nu
       if ((part as unknown as { isNullObject?: boolean }).isNullObject) return { style: null, unreadable: false };
       return { style: styleFromXml(xml.value), unreadable: false };
     });
-  } catch {
+  } catch (err) {
     // A deck holding SEVERAL parts in our namespace lands here too:
     // `getOnlyItemOrNullObject` refuses rather than picking one, and picking one
     // is exactly what nothing here should do — two answers to "what is this
@@ -9988,7 +9998,11 @@ export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | nu
     //
     // And so does the timeout rounds 089 and 090 recorded. Both are "we cannot
     // tell you", which is the one thing this used to be unable to say.
-    await probeWhyDeckStyleFailed();
+    // The operation the bounded sync names, so the probe reports WHICH call
+    // failed instead of asserting one. `boundedSync` puts it in the message as
+    // `at=<what>`; anything else is passed through verbatim rather than guessed.
+    const at = /at=([^|]+)/.exec(errorText(err))?.[1]?.trim() ?? errorText(err).slice(0, 80);
+    await probeWhyDeckStyleFailed(at);
     return { style: null, unreadable: true };
   }
 }
