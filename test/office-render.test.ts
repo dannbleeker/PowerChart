@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   readDeckStyle,
   readDeckStyleWithReason,
+  replayDeckStyleVerdict,
+  _resetDeckStyleVerdictForTest,
   stallShape,
+  traceEnvironment,
   writeDeckStyle,
   _setBatchTimeoutForTest,
   _setBlankReReadDelayForTest,
@@ -5234,6 +5237,68 @@ describe("the style a deck carries", () => {
       seen.filter((e) => /namespace IS reachable/.test(e.message)).length,
       "failed without saying which half of the read broke",
     ).toBe(1);
+  });
+
+  it("replays what the read concluded, because it happens BEFORE the round does", async () => {
+    // Round 091: not one deck-style line in 529 entries, on a build where the
+    // probe exists — because the read fires from `Office.onReady` and its 10s
+    // budget expires during the driver's setup, before tracing is on. The
+    // staked prediction came back `undetermined  neither line appeared`.
+    //
+    // A fix that hides its own subject is worse than the cost it removed, so the
+    // conclusion is remembered and re-emitted verbatim when a round begins.
+    installHost([makeSlide("s1")]);
+    _resetDeckStyleVerdictForTest();
+    faults.refuseCustomXmlReads = true;
+    await readDeckStyleWithReason(); // happens with tracing OFF, as on a real pane
+    faults.refuseCustomXmlReads = false;
+
+    const seen: { message: string }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    replayDeckStyleVerdict();
+    onTrace(undefined);
+    setTracing(false);
+    expect(
+      seen.filter((e) => /namespace IS reachable/.test(e.message)).length,
+      "the round could not see what the read concluded",
+    ).toBe(1);
+  });
+
+  it("is emitted BY the round-start line, not only by a direct call", async () => {
+    // The first draft tested `replayDeckStyleVerdict()` on its own, and deleting
+    // the call from `traceEnvironment` — the actual wiring, and the actual bug —
+    // left the suite green. Mutation caught it. The round only ever reaches this
+    // through `traceEnvironment`, so that is what has to be driven.
+    installHost([makeSlide("s1")]);
+    _resetDeckStyleVerdictForTest();
+    faults.refuseCustomXmlReads = true;
+    await readDeckStyleWithReason();
+    faults.refuseCustomXmlReads = false;
+
+    const seen: { message: string }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    traceEnvironment("deadbee");
+    onTrace(undefined);
+    setTracing(false);
+    expect(
+      seen.filter((e) => /namespace IS reachable/.test(e.message)).length,
+      "round start did not carry what the read concluded",
+    ).toBe(1);
+  });
+
+  it("says nothing at round start when the read never failed", async () => {
+    // A replay that fires on a healthy pane would put a deck-style line in every
+    // round file and make the ledger judge a question nobody asked.
+    _resetDeckStyleVerdictForTest();
+    const seen: { message: string }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    replayDeckStyleVerdict();
+    onTrace(undefined);
+    setTracing(false);
+    expect(seen.length).toBe(0);
   });
 
   it("gives the deck-style read its OWN budget, not the 90s readback one", async () => {

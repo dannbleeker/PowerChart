@@ -1889,3 +1889,52 @@ else, so its answer splits the two explanations:
                      cannot work on this host at all
 
 The next round decides it, which two rounds so far could not.
+
+## Round 091 — de76543 — 13/13 — and the feature nobody could click
+
+Two attempts. The driver cleared a silent host and a stale pane by itself, which
+is the pair the previous session left it: `8012ms silent` before, `3ms` after.
+
+- **Mine.** 13 of 13. The staked prediction came back **`undetermined — neither
+  line appeared`**, and the ledger was right to say so rather than call it a
+  refutation. That is what `insteadOf` was added for, one round earlier.
+
+  **The reason is my own fix.** The deck-style read fires from `Office.onReady`,
+  and dropping its budget from 90s to 10s moved its failure out of the round's
+  traced window: round 090 recorded it at entry 135 of 528, round 091 has not one
+  deck-style line in 529. The bug did not go away, the instrument stopped being
+  able to see it. **A fix that hides its own subject is worse than the cost it
+  removed.** The conclusion is remembered now and replayed at round start, so the
+  next round can judge the claim it was staked for.
+
+- **AND THE FEATURE WAS UNREACHABLE ANYWAY.** Chasing why the probe never ran, in
+  the live pane after the round:
+
+      Office.context.host  "PowerPoint"    <- isPowerPointHost() would say true NOW
+      style-from-deck      disabled: true
+      style-to-deck        disabled: true
+
+  `app.ts` asked `isPowerPointHost()` at MODULE SCOPE, where `Office.context`
+  does not exist yet, so it answered false on every load inside PowerPoint and
+  disabled both buttons for the whole session. Nothing ever asked again. **#583's
+  entire user-facing feature could not be clicked on PowerPoint web**, and
+  thirteen scenarios could not see it because none of them clicks a button.
+
+  Swept: `Use deck theme` has the same gate and `renderOptions()` is also called
+  at module scope, so it was disabled for the same reason — hidden only by
+  incidental re-renders, which makes it harder to diagnose, not safer. Both are
+  under one `syncHostOnlyButtons()` now, called again from `Office.onReady`.
+
+- **Research.** Nothing new to search: the question this round was staked to ask
+  was never put. Recorded rather than skipped.
+
+- **Instrument.** `stallShape` shipped this round and had nothing to describe —
+  no stalls. The replay above is the round's real instrument change.
+
+- **Doctrine — a correction to yesterday's correction.** "Playwright hands out a
+  ref only for something it could act on" was too strong. Same session, same
+  page: the ribbon's `button "Insert chart" [disabled]` has no ref, the pane's
+  `button "Use deck style" [disabled] [ref=f19e328]` has one. Native `disabled`
+  and whatever Office marks its ribbon with are not treated alike. The fix
+  (`namePresent`) stands; the explanation did not, and is corrected in
+  `round.mjs` and in memory.

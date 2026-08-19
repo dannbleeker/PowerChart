@@ -100,6 +100,7 @@
       "message": "the namespace IS reachable — the fault is further in",
       "insteadOf": "the namespace is unreachable too"
     },
-    "outcome": "open"
+    "outcome": "open",
+    "what-happened": "Round 091 could NOT ask it. The deck-style read fires from Office.onReady and its budget had just dropped from 90s to 10s, so its failure — and this probe with it — landed during the driver setup, before tracing is on: round 090 recorded the failure at entry 135 of 528, round 091 carries not one deck-style line in 529. The ledger said undetermined rather than treating that silence as a refutation, which is what insteadOf was added for. Left OPEN: the question is unanswered, not settled. The conclusion is now remembered and replayed at round start (replayDeckStyleVerdict), so the next round can put it. Separately, the feature was unreachable anyway — both deck-style buttons were disabled for the whole session because isPowerPointHost() was asked at module scope, before Office.context existed."
   }
 ]
