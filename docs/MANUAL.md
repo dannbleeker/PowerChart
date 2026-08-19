@@ -422,6 +422,48 @@ count of how many of its options are currently on.
   **Save as template** stores the whole current chart (data + options) locally
   under *My templates*; **Delete** removes a saved one (starters stay).
 
+## Small charts and big fonts
+
+A chart's size and its font size are both numbers you type, and the two together
+decide how much room the chart has for anything that is not a mark. PowerChart
+adapts rather than spilling, and it does so in a fixed order — so it is worth
+knowing what you will see when you shrink a chart onto a busy slide or raise the
+font for a poster.
+
+**Nothing a chart draws leaves its own box.** Neither PowerPoint renderer wraps
+or clips a text box, so a label wider than its frame would be drawn across
+whatever sits next to the chart on the slide. That cannot happen: every kind is
+swept against **8 frame sizes × 7 font sizes** (60x300 through 960x540, 6pt
+through 32pt) in CI, and nothing may put ink outside its own frame.
+
+**Labels shrink to the room they have, then are dropped.** A name is fitted to
+the mark it sits on — the column's slot, the row's pitch, the wedge's chord, the
+gap between two rings — and below about 5pt it is not drawn at all. A label too
+small to read is not a small label, it is ink; the marks it named are still
+there, and the chart still says what it says.
+
+**Text is never drawn on top of other text.** The same sweep runs a second way,
+comparing every label's ink against every other label's, across **7 frames × 7
+fonts in both orientations**, and it is zero. The one declared exception is a
+scatter or bubble point label touching an axis tick: a point's label is data and
+a tick label is chrome, and the alternatives were measured — both of them drop
+point labels on charts as roomy as 480x300, which is the worse trade.
+
+**Chrome yields to the title.** On a chart too small to carry a title, an axis
+and a legend at the font you have chosen, the axis strip, the legend or the
+colour key is dropped and the title stays: it is the one label that says what
+the reader is looking at. A 300x60 banner at 24pt therefore shows its title and
+its bars, and no category names — give it more height, or a smaller font, and
+they come back.
+
+**Marks stay inside the chart too.** A marker is drawn *around* its position, so
+a bubble at the very edge of the plot would put half its circle outside the
+chart. Scatter and bubble hold a mark far enough in for its whole glyph to fit,
+which moves it by a point or two only when it would otherwise overflow.
+
+None of this is triggered by a setting, and none of it changes an ordinary
+chart: at the default font on a slide-sized frame every fit is the identity.
+
 ## Elements
 
 - **Harvey ball** — fraction-filled circle, size slider.
