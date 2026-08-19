@@ -354,15 +354,36 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
         name: `quadrant-${i}`,
       });
       const label = labels?.[i];
-      if (label) {
+      /**
+       * FITTED TO ITS OWN ZONE, and dropped when the zone cannot carry it.
+       *
+       * The box was `Math.max(20, z.w - 8)` — a floor that RAISES a width, which
+       * this file has already been caught by once: `a conservative bound must
+       * stay conservative at the small end`, the scatter legend's own bug. A
+       * zone narrower than 28 points got a 20-point box starting 4 points inside
+       * it, so a right-aligned label's ink was placed past the zone's right edge
+       * and, on a narrow chart, past the chart's: 9.3 points off a 60x300 frame
+       * at every font size, which is the tell that no font-dependent bound was
+       * involved at all.
+       *
+       * A quadrant label names its quadrant, so the room it has is the zone —
+       * the same rule the pie's inside labels and the mekko's column labels
+       * follow. Shrink to it, and below `MIN_LABEL_FS` draw nothing: the tint
+       * still shows the four zones, and a two-point word in the corner of one
+       * names nothing.
+       */
+      const room = z.w - 8;
+      let qf = fs * 0.9;
+      if (label) while (qf > MIN_LABEL_FS && textWidth(label, qf, true) > room) qf -= 0.5;
+      if (label && room > 0 && textWidth(label, qf, true) <= room) {
         nodes.push({
           kind: "text",
           x: z.x + 4,
           y: z.y + 2,
-          w: Math.max(20, z.w - 8),
-          h: fs * 1.3,
+          w: room,
+          h: (fs * 1.3 * qf) / (fs * 0.9),
           text: label,
-          fontSize: fs * 0.9,
+          fontSize: qf,
           bold: true,
           color: style.mutedText,
           align: i === 1 || i === 3 ? "right" : "left",

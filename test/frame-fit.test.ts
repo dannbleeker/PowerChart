@@ -157,6 +157,105 @@ describe("no chart draws outside its own frame", () => {
 });
 
 /**
+ * The same property over the DECORATIONS, which both sweeps above hold at
+ * whatever the sample happens to switch on.
+ *
+ * This gate claims to cover charts and covered `sampleConfig(kind)` — so every
+ * decoration a sample does not use was swept by nothing at all, on a product
+ * whose whole selling point is think-cell's annotations. That is the mistake
+ * this file has already recorded twice under other names: a gate whose name is
+ * wider than its coverage.
+ *
+ * Turning each one on in turn found five defect families and one of them at an
+ * ORDINARY size, which is the part worth remembering — 480x300 is not a corner:
+ *
+ *   - a difference arrow on a kind with no category axis (`categoryX` is a
+ *     placeholder there, every category at the middle of the plot) put itself
+ *     ten points past the right edge and labelled a zero-length span;
+ *   - a callout whose text is wider than the chart was CENTRED by a clamp
+ *     written for the vertical case, so it hung off both edges at once;
+ *   - a quadrant label took `Math.max(20, zone - 8)` — a floor that RAISES a
+ *     width, the scatter legend's own bug in another layout;
+ *   - a band's label was priced in font sizes with nothing bounding it;
+ *   - a lollipop's value label never got the row-pitch bound the rest of the
+ *     horizontal labels were given.
+ *
+ * Every value below is a shape a caller can write today and the manual
+ * documents. The sweep is two fonts rather than seven: the defects it found
+ * were bounds that were missing outright, and the font axis is already swept in
+ * full above.
+ */
+const DECORATIONS: Record<string, unknown> = {
+  segmentLabels: true,
+  seriesLabels: true,
+  totals: true,
+  grandTotal: true,
+  variance: { actual: 1, reference: 0 },
+  categoryAxis: true,
+  valueAxis: true,
+  gridlines: true,
+  tickMode: "data",
+  gridShape: "circle",
+  fillOpacity: 0.5,
+  labelContent: ["value", "percent", "series", "category"],
+  cagr: { from: 0, to: 2 },
+  difference: { from: 0, to: 2 },
+  valueLines: [{ mode: "mean" }],
+  valueLine: { mode: "mean" },
+  connectors: true,
+  // A sentence somebody typed, which is what a callout is — and at the default
+  // font it is wider than three of the frames below.
+  callouts: [{ text: "A rather long callout label", category: 1 }],
+  bands: [{ axis: "y", from: 0, to: 50, label: "Target band" }],
+  hundredPercentNote: true,
+  forecastFrom: 1,
+  quadrants: { x: 50, y: 50, labels: ["Top left quadrant", "Top right", "Bottom left", "Bottom right"] },
+  marginals: "both",
+  barStyle: "lollipop",
+  fillBetween: [0, 1],
+  stepped: "after",
+  smooth: true,
+  bridgeGaps: true,
+  bump: true,
+  slope: true,
+  trajectory: true,
+  summaryBars: true,
+  criticalPath: true,
+  sparkline: true,
+};
+
+describe("no decoration draws outside the chart's frame", () => {
+  for (const [key, value] of Object.entries(DECORATIONS)) {
+    it(`${key} stays inside every frame`, () => {
+      const bad: string[] = [];
+      for (const [w, h] of FRAMES) {
+        for (const fontSize of [10, 18]) {
+          for (const horizontal of [false, true]) {
+            for (const { kind } of CHART_KINDS) {
+              const base = sampleConfig(kind) as unknown as Record<string, unknown>;
+              const cfg = {
+                ...base,
+                width: w,
+                height: h,
+                horizontal,
+                style: { fontSize },
+                decorations: { ...(base.decorations as object), [key]: value },
+              } as ChartConfig;
+              const o = worstOverflow(cfg);
+              if (o.pt > SLACK)
+                bad.push(
+                  `${kind} ${w}x${h}@${fontSize}${horizontal ? " rotated" : ""}: ${o.node} ${o.pt.toFixed(1)}pt past the ${o.side}`,
+                );
+            }
+          }
+        }
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+});
+
+/**
  * The same property over the FONT, which the sweep above holds fixed.
  *
  * Every layout prices its chrome in font sizes, so the font is the other axis a

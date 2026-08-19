@@ -1,7 +1,7 @@
 import type { ChartConfig, ChartStyle, Decorations, LayoutAnchors } from "./types";
 import { textWidth, type SceneNode } from "./scene";
 import { cagr, formatNumber, formatPercent } from "./format";
-import { MIN_LABEL_FS, titleNode } from "./layout/frame";
+import { MIN_LABEL_FS, titleInkBottom, titleNode } from "./layout/frame";
 
 /**
  * think-cell's signature annotations, computed from layout anchors so they
@@ -22,9 +22,43 @@ export function decorationNodes(
   // the decoration would emit NaN geometry. There is nothing to annotate.
   if (!a.categoryX.length) return nodes;
 
+  /**
+   * Do these two categories sit at DIFFERENT places on the chart?
+   *
+   * A CAGR arrow and a difference arrow both say "between here and there", and
+   * both are drawn from `categoryX`. Seven kinds — pie, doughnut, funnel,
+   * sunburst, tilemap, treemap, waffle — have no category axis to anchor to and
+   * publish a PLACEHOLDER instead: every category at the middle of the plot,
+   * `categoryWidth` the whole plot. The decorations that only need somewhere to
+   * point (callouts, bands) are fine with that; an arrow between two of them is
+   * not, because "here" and "there" are the same point.
+   *
+   * What it produced was worse than meaningless. The difference arrow puts
+   * itself at `categoryX[to] + categoryWidth[to] / 2 + 10`, which on a
+   * placeholder anchor is the middle of the plot plus half the plot plus ten —
+   * ten points past the RIGHT EDGE of the chart. On a 480x300 treemap, an
+   * entirely ordinary size, it drew a zero-length arrow at x=488 with its label
+   * clipped to `-5…`: a claim about growth, drawn off the chart, in a chart that
+   * has no such comparison to make.
+   *
+   * So the arrow is not drawn — the same answer every reservation in this engine
+   * gives when it cannot be met. It also covers `{ from: 1, to: 1 }` on a
+   * perfectly ordinary column chart, which is the same degenerate arrow reached
+   * by a different route.
+   *
+   * ONE ARROW LEGITIMATELY HAS BOTH ENDS ON ONE CATEGORY, and the test suite
+   * said so before this shipped: a difference arrow anchored at a VALUE LINE
+   * (`fromValueLine`) measures a single column against that line, so its two
+   * ends are the same x and different values. That is a real comparison drawn on
+   * a real anchor, and it is why the difference arrow asks a slightly different
+   * question from the CAGR arrow below rather than sharing one predicate.
+   */
+  const anchorsDiffer = (from: number, to: number) => a.categoryX[from] !== a.categoryX[to];
+
   // --- CAGR arrow: diagonal arrow between two column tops with "+x.x% p.a." ---
-  if (decor.cagr) {
-    const { from, to } = clampPair(decor.cagr, a);
+  const cagrPair = decor.cagr ? clampPair(decor.cagr, a) : null;
+  if (decor.cagr && cagrPair && anchorsDiffer(cagrPair.from, cagrPair.to)) {
+    const { from, to } = cagrPair;
     // Per-series CAGR when requested (think-cell computes on totals by default).
     const si = decor.cagr.series;
     const sVals = si != null ? cfg.data.series[si]?.values : undefined;
@@ -120,8 +154,14 @@ export function decorationNodes(
   // --- Difference arrow: dashed level line + vertical arrow ---
   // Total (column totals) by default; a level difference arrow when `series`
   // names a series — it compares the cumulative stack level at that series.
-  if (decor.difference) {
-    const { from, to } = clampPair(decor.difference, a);
+  const diffPair = decor.difference ? clampPair(decor.difference, a) : null;
+  /** A value-line anchor gives the arrow a second END without a second category. */
+  const spansValueLine =
+    decor.difference?.fromValueLine != null &&
+    !!a.valueToY &&
+    !!(decor.valueLines ?? (decor.valueLine ? [decor.valueLine] : []))[decor.difference.fromValueLine];
+  if (decor.difference && diffPair && (anchorsDiffer(diffPair.from, diffPair.to) || spansValueLine)) {
+    const { from, to } = diffPair;
     const si = decor.difference.series;
     const useLevel =
       si != null && a.seriesLevels != null && a.valueToY != null && si >= 0 && si < (a.seriesLevels[0]?.length ?? 0);
@@ -248,8 +288,29 @@ export function decorationNodes(
       co.series >= 0 &&
       co.series < (a.seriesLevels[c]?.length ?? 0);
     const ay = useLevel ? a.valueToY!(a.seriesLevels![c][co.series!]) : a.columnTop[c];
-    const w = textWidth(co.text, fs) + fs * 1.2;
-    const h = fs * 1.9;
+    /**
+     * FITTED TO THE CHART, then dropped — a callout's text is the one string on
+     * a chart that nothing else bounds.
+     *
+     * Its box is `textWidth(text) + fs * 1.2` wide, and a callout is a sentence
+     * somebody typed: "A rather long callout label" at the default font is 157
+     * points, which is wider than a 120-point chart. The clamp below was written
+     * for the vertical case and answers the CENTRE of the frame when the box
+     * cannot fit between its own bounds — so an oversized bubble was centred and
+     * hung off BOTH edges, 18.9 points each side on twelve kinds at 120x90.
+     * Nothing was clipped, because a box is not text: PowerPoint drew the border
+     * and the sentence straight across whatever the chart was sitting beside.
+     *
+     * The shrink-then-drop every other label in this engine gets. Below
+     * `MIN_LABEL_FS` the callout is not drawn at all — a bubble at four points
+     * is not a comment anyone can read, and the tail would point at a chart the
+     * reader cannot see the note for.
+     */
+    let cf = fs;
+    while (cf > MIN_LABEL_FS && textWidth(co.text, cf) + cf * 1.2 > cfg.width) cf -= 0.5;
+    if (textWidth(co.text, cf) + cf * 1.2 > cfg.width) return;
+    const w = textWidth(co.text, cf) + cf * 1.2;
+    const h = cf * 1.9;
     // Bubble center defaults to hovering above the anchor — but "above" is only
     // available when the anchor has room above it. A 100% or Mekko chart exposes
     // no valueToY, so EVERY callout falls back to columnTop, which on those kinds
@@ -260,7 +321,24 @@ export function decorationNodes(
     // still reads; one at y = -30 is simply lost.
     const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
     const bx = clamp(ax + (co.dx ?? 0), w / 2, cfg.width - w / 2);
-    const by = clamp(ay - fs * 4.2 + (co.dy ?? 0), h / 2, cfg.height - h / 2);
+    /**
+     * The ceiling is the TITLE's ink, not the top of the canvas.
+     *
+     * The clamp above keeps the bubble on the chart, and y=0 is where the title
+     * is — the same mistake the column totals made before `aboveMarkFontSize`,
+     * and the one the CAGR caption's floor was reverted for. It bites on exactly
+     * the kinds this decoration is hardest on: a 100% chart, a mekko, a treemap
+     * or a sunburst publishes no `valueToY`, so every callout anchors on the
+     * plot ceiling, lifts 4.2 font sizes from there, and lands on the chart's
+     * own name. Six kinds at 200x150, two of them at 480x300 as well.
+     *
+     * A bubble pushed DOWN is still a bubble with a tail pointing at its anchor;
+     * a title with a sentence across it is unreadable and takes the chart's name
+     * with it. Where the frame cannot hold the bubble under the title at all the
+     * clamp's own `lo > hi` arm centres it, which is the pre-existing behaviour
+     * for a bubble taller than its chart.
+     */
+    const by = clamp(ay - cf * 4.2 + (co.dy ?? 0), titleInkBottom(cfg, style) + h / 2, cfg.height - h / 2);
     nodes.push(
       {
         kind: "line",
@@ -290,7 +368,7 @@ export function decorationNodes(
         w,
         h,
         text: co.text,
-        fontSize: fs,
+        fontSize: cf,
         color: style.text,
         align: "center",
         valign: "middle",
@@ -348,19 +426,45 @@ export function bandNodes(cfg: ChartConfig, style: ChartStyle, decor: Decoration
     if (!r || r.w <= 0 || r.h <= 0) return;
     nodes.push({ kind: "rect", ...r, fill, name: `band-${i}` });
     if (band.label) {
-      nodes.push({
-        kind: "text",
-        x: r.x + 3,
-        y: r.y + 1,
-        w: Math.max(20, r.w - 6),
-        h: fs * 1.3,
-        text: band.label,
-        fontSize: fs * 0.9,
-        color: style.mutedText,
-        align: "left",
-        valign: "top",
-        name: `band-label-${i}`,
-      });
+      /**
+       * FITTED TO THE CHART, not to the band — and dropped when even that
+       * cannot be met.
+       *
+       * A band's label was the last string in `decor.ts` bounded by nothing. It
+       * is drawn at `fs * 0.9` in a box `fs * 1.3` tall from the top of the
+       * band, and `fitPlot` grows a squeezed plot UP from its bottom edge, so on
+       * a chart with no room the band starts near the foot of the frame and the
+       * label is drawn below it: 6.2 points under a 300x60 bar chart at 18pt,
+       * four kinds, both cramped frames.
+       *
+       * Bounded by the FRAME rather than by the band, deliberately. A band can
+       * legitimately be a sliver — two percent of a value axis — and fitting the
+       * label to that would drop the name of every thin band, where today it
+       * merely spills a little over its own edge onto the data it names. The
+       * frame is the bound that is not a matter of taste: ink outside it is
+       * drawn on the slide, over whatever the chart is sitting beside.
+       */
+      const room = cfg.width - (r.x + 3);
+      const below = cfg.height - (r.y + 1);
+      let bf = Math.min(fs * 0.9, below / 1.3);
+      while (bf > MIN_LABEL_FS && textWidth(band.label, bf) > room) bf -= 0.5;
+      if (bf >= MIN_LABEL_FS && room > 0 && textWidth(band.label, bf) <= room) {
+        nodes.push({
+          kind: "text",
+          x: r.x + 3,
+          y: r.y + 1,
+          // The box moves with the font, so a label that needed no shrinking
+          // lands exactly where it always did.
+          w: Math.max(20, r.w - 6),
+          h: bf * (1.3 / 0.9),
+          text: band.label,
+          fontSize: bf,
+          color: style.mutedText,
+          align: "left",
+          valign: "top",
+          name: `band-label-${i}`,
+        });
+      }
     }
   });
   return nodes;
