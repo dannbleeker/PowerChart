@@ -557,6 +557,30 @@ export function judgePrediction(prediction, log) {
       ? { verdict: "FAILED", why: `${wrong.map((id) => `${id}=${seen(id).answer}`).join(", ")}` }
       : { verdict: "held", why: (c.ids ?? []).map((id) => `${id}=${seen(id).answer}`).join(", ") };
   }
+  if (c.kind === "trace-line-present") {
+    // A CLAIM ABOUT WHAT THE TRACE SAYS, which the ledger could not express.
+    // Its four kinds were all about scenarios and probes, so a question whose
+    // whole answer is "does this line appear" had to live in prose — and prose
+    // is what this ledger exists to replace.
+    //
+    // `insteadOf` is what makes it judgeable rather than merely true-or-silent:
+    // a round where NEITHER line appears did not ask the question, and that is
+    // `undetermined`, not a refutation. Without it, a round that simply never
+    // reached the code would read as evidence against the claim.
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries) || !entries.length)
+      return { verdict: "undetermined", why: "the round carries no trace to look in" };
+    const saw = (m) => entries.some((e) => String(e.message) === m);
+    if (saw(c.message)) return { verdict: "held", why: `the trace carries \`${c.message}\`` };
+    if (c.insteadOf && saw(c.insteadOf))
+      return { verdict: "FAILED", why: `the trace carries \`${c.insteadOf}\` instead` };
+    return {
+      verdict: "undetermined",
+      why: c.insteadOf
+        ? `neither line appeared — the round never reached the code that writes them`
+        : `\`${c.message}\` did not appear, and no alternative was named to tell absence from silence`,
+    };
+  }
   if (c.kind === "scenario-passes") {
     const st = log?.selftest ?? {};
     const all = Object.keys(st).map((k) => st[k]);
