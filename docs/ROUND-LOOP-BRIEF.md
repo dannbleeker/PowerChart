@@ -1,13 +1,13 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **089** (`rounds/089-3056f91.json`, 13 of 13, 2026-08-19),
-paired with 088 on the same build.
+Repeat. Last round **090** (`rounds/090-f6cd580.json`, 13 of 13, 2026-08-19).
 
-**This line was twenty-one rounds and one suite-size out of date** — it read
-`067 … 10 of 12` while a paragraph further down this same file cited round 087 at
-13 of 13. Whoever moves the loop forward moves this line with it, or the header
-becomes the thing new sessions trust and the body becomes the thing that is true.
+**Move that line with the loop.** It was once twenty-one rounds out of date —
+reading `067 … 10 of 12` while a paragraph further down this same file cited
+round 087 at 13 of 13 — and a header is the thing a new session trusts first. A
+stale one makes the body the only true part of the document, which is the state
+this file exists to prevent.
 
 **This file is the operating document.** A session that reads only this and
 `docs/ROUNDS.md` has everything it needs.

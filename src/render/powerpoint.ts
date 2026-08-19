@@ -4495,6 +4495,32 @@ export function _setReadbackTimeoutForTest(ms: number): void {
 export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
 
 /**
+ * How long the deck-style READ is given, which is not the readback budget.
+ *
+ * ROUNDS 089 AND 090, BOTH: `reading the deck's style` consumed its entire
+ * 90-second budget and never answered, ~50ms after the host had answered
+ * `listing the deck's slides`. Two for two on the two rounds taken since #583
+ * landed — a pair, not weather, and the only two chances it has had.
+ *
+ * So the 90s buys nothing here and costs twice. The pane-load caller is
+ * fire-and-forget, and holds a `PowerPoint.run` context open for a minute and a
+ * half on EVERY load for a call that will not answer; `style-from-deck` makes a
+ * person wait that long before being told it could not be read.
+ *
+ * TEN SECONDS IS NOT SIZED FROM A SUCCESSFUL READ, because this host has never
+ * produced one — it bounds the damage rather than fitting the distribution, and
+ * saying that plainly matters more than the number. Both callers degrade safely
+ * when it expires: the pane keeps the browser's style, the button says it could
+ * not read and invites a retry. If a host ever answers this slowly-but-truly,
+ * the reading to make is a successful read's duration, and then this is sized
+ * from evidence instead of from harm.
+ *
+ * `PW_DECK_STYLE_TIMEOUT_MS` overrides, so a slow host can be given more without
+ * a rebuild.
+ */
+export const deckStyleTimeoutMs = (): number => Number(globalThis.process?.env?.PW_DECK_STYLE_TIMEOUT_MS) || 10_000;
+
+/**
  * How long to wait for the host to draw a slide, which is much less than how
  * long to wait for it to read one.
  *
@@ -9783,7 +9809,7 @@ export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | nu
       // harmless — the result simply never resolves to anything, which is the
       // case the `isNullObject` branch below already handles.
       const xml = part.getXml();
-      await boundedSync(context, "reading the deck's style", READBACK_TIMEOUT_MS);
+      await boundedSync(context, "reading the deck's style", deckStyleTimeoutMs());
       if ((part as unknown as { isNullObject?: boolean }).isNullObject) return { style: null, unreadable: false };
       return { style: styleFromXml(xml.value), unreadable: false };
     });
