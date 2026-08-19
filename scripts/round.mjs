@@ -90,6 +90,9 @@ export function readiness({
   wantDeck = null,
   deckFronted = true,
   canOpenPane = true,
+  // Whether the ribbon carries the command AT ALL, apart from whether it can be
+  // clicked. Defaults true so an absent argument cannot invent a missing add-in.
+  commandPresent = true,
 }) {
   const stop = [];
   /**
@@ -203,12 +206,27 @@ export function readiness({
   // and it is a refusal recovery is forbidden to retry, so a transient state
   // would end the night. Unknown is not the same as wrong; the 4:3 deck that
   // motivated this read its slide list perfectly well and simply had no add-in.
-  if (!stamp && !canOpenPane && slides !== null)
+  if (!stamp && !canOpenPane && slides !== null && commandPresent)
+    // PRESENT BUT UNUSABLE, which is the opposite conclusion from the one below
+    // and was reaching it. A `Disconnected` document greys its whole ribbon —
+    // `Insert chart`, `Add-ins`, everything — and that is transient: the tab
+    // reconnects, or a reload fixes it. Recoverable on purpose.
+    refuse(
+      "host-disconnected",
+      "the PowerChart command is in the ribbon but DISABLED — the document is not connected, " +
+        "so nothing in the ribbon can be clicked. This clears on its own or with a reload; " +
+        "it is not a missing add-in.",
+    );
+  else if (!stamp && !canOpenPane && slides !== null)
     // A DIFFERENT REFUSAL, because recovery cannot touch it. `recover` reopens
     // the pane from the ribbon's `Insert chart` control; a document that does
     // not offer that control has no add-in to open, and reloading it forever
     // will not produce one. Deliberately absent from `RECOVERABLE_STOPS`, so
     // this stops on the first attempt instead of the seventh.
+    //
+    // GUARDED ON THE NAME BEING ABSENT NOW, not merely on there being no ref.
+    // Those are different states and this fired on both, turning a disconnected
+    // document into a stop only the owner could clear.
     refuse(
       "addin-missing",
       "this document has no PowerChart command in its ribbon — the add-in is not loaded here, " +
@@ -595,6 +613,29 @@ export function cli(run, dir, entry = cliEntry()) {
 }
 
 /** A `ref_N` for the first element matching `pattern` in a `find` result. */
+/**
+ * Is the control THERE, whatever state it is in?
+ *
+ * `refFor` answers null for two situations that are not the same thing: no such
+ * control, and a control that is present but DISABLED — Playwright hands out a
+ * `ref` only for something it could act on, so a greyed-out button matches the
+ * line and carries no ref.
+ *
+ * On 2026-08-19 that cost a round. PowerPoint's document went `Disconnected`
+ * (the network again, the same fault that crashed round 089), which greys the
+ * WHOLE ribbon. `canOpenPane` looked for `button "Insert chart"`, got no ref,
+ * and concluded the add-in was gone — an un-retryable, owner-only refusal — for
+ * a state a reload clears. The accessibility tree said `button "Insert chart"
+ * [disabled]` the entire time, with the add-in loaded and fine.
+ *
+ * So: presence and usability are two questions, and the driver has to ask both.
+ */
+export function namePresent(sh, query, pattern) {
+  return sh("find", query)
+    .split("\n")
+    .some((l) => pattern.test(l));
+}
+
 export function refFor(sh, query, pattern) {
   const out = sh("find", query);
   const line = out.split("\n").find((l) => pattern.test(l));
@@ -910,6 +951,12 @@ async function attempt(argv, deps, sh, healed = false) {
   // that a pane it cannot open is not openable. Only asked when the pane is
   // actually shut, so a healthy round pays nothing for it.
   let canOpenPane = paneRef ? true : Boolean(refFor(sh, "Insert chart", /button "Insert chart"/));
+  // THE SAME CONTROL, ASKED THE OTHER WAY. `canOpenPane` is "could I click it";
+  // this is "is it there at all". A `Disconnected` document greys the whole
+  // ribbon, so the first is false and the second is true — and reading only the
+  // first turned a transient network state into `addin-missing`, which recovery
+  // is forbidden to retry. Cost the round on 2026-08-19.
+  const commandPresent = Boolean(paneRef) || canOpenPane || namePresent(sh, "Insert chart", /button "Insert chart"/);
   // PUT IT BACK, ONCE, rather than refuse a night over it. This is the state a
   // browser death leaves: the deck is up and readable and there is no add-in in
   // it, because a web sideload does not survive the process. `recover` restores
@@ -920,7 +967,13 @@ async function attempt(argv, deps, sh, healed = false) {
   // walking ten ribbon steps against a loading document would leave a dialog
   // over it.
   let pane = paneRef;
-  if (!pane && !canOpenPane && slides !== null && !sideloadAttempted) {
+  // NOT WHILE THE RIBBON IS GREYED OUT. The sideload walk needs to click the
+  // Add-ins button, and on a disconnected document that button is disabled like
+  // every other — so the walk fails at its first step and reports "no Add-ins
+  // button in the ribbon", which reads as Microsoft having moved something. It
+  // did exactly that on 2026-08-19, burning the one attempt the latch allows on
+  // a document that simply had to reconnect.
+  if (!pane && !canOpenPane && !commandPresent && slides !== null && !sideloadAttempted) {
     sideloadAttempted = true;
     if (await sideloadAddIn(sh, sleep)) {
       // RE-READ, because everything below was measured before the add-in
@@ -974,6 +1027,7 @@ async function attempt(argv, deps, sh, healed = false) {
     wantDeck,
     deckFronted,
     canOpenPane,
+    commandPresent,
   };
   const { ok, stop, codes } = readiness(state);
   console.log(
@@ -1189,6 +1243,10 @@ export const RECOVERABLE_STOPS = new Set([
   "pane-closed",
   "pane-stale",
   "deck-dirty",
+  // A greyed-out ribbon on a `Disconnected` document. Transient by nature — the
+  // tab reconnects or a reload clears it — and it used to be reported as
+  // `addin-missing`, which recovery is forbidden to retry.
+  "host-disconnected",
 ]);
 
 /**
