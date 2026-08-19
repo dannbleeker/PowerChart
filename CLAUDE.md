@@ -1053,6 +1053,57 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   one of those frames — 60x300, 80x60, 120x90, 160x120, 200x150, 300x60 and
   480x300. The overlap sweep and the overflow sweep finally cover the same list.
 
+  **And BOTH swept `sampleConfig(kind)`, so every decoration a sample does not
+  switch on was swept by nothing — on a product whose selling point is
+  think-cell's annotations.** Third time this file has recorded a gate whose name
+  is wider than its coverage, and this one was the widest. Turning each
+  decoration on in turn found five defect families, one of them at 480x300:
+
+  - a **difference arrow** on a kind with no category axis. Seven kinds — pie,
+    doughnut, funnel, sunburst, tilemap, treemap, waffle — publish a PLACEHOLDER
+    anchor, every category at the middle of the plot with `categoryWidth` the
+    whole plot, so that decorations which only need somewhere to POINT still
+    work. An arrow between two of them has the same "here" and "there": it drew
+    a zero-length arrow at `plot centre + plot width / 2 + 10` — ten points past
+    the right edge — labelled `-5…` by the frame clip. Not drawn now. **One arrow
+    legitimately shares a category with itself** and the suite said so before it
+    shipped: a difference arrow anchored at a VALUE LINE compares one column with
+    that line. That is why the CAGR arrow and the difference arrow ask slightly
+    different questions instead of sharing a predicate.
+  - a **callout** whose text is wider than the chart. Its clamp answers the
+    CENTRE of the frame when the box cannot fit between its own bounds — written
+    for the vertical case — so an oversized bubble hung off both edges at once,
+    18.9pt each side on twelve kinds. Shrink-then-drop, like every other label.
+  - a **callout on the TITLE.** The same clamp floors at `h / 2`, and y=0 is
+    where the title is: on a 100% chart, a mekko, a treemap or a sunburst —
+    which publish no `valueToY`, so every callout anchors on the plot ceiling —
+    the bubble landed on the chart's own name. The ceiling is `titleInkBottom`
+    now. Fourth appearance of "a clamp that keeps a label on the canvas is not
+    automatically a fix — ask what is at the destination".
+  - a **quadrant label** taking `Math.max(20, zone - 8)` — a floor that RAISES a
+    width, which is the scatter legend's own bug in another layout. Fitted to its
+    zone and dropped past the floor.
+  - a **band label** priced in font sizes with nothing bounding it, drawn below
+    the foot of a squeezed plot. Bounded by the FRAME rather than by the band,
+    deliberately: a band can legitimately be a sliver, and fitting the label to
+    that would drop the name of every thin band where today it merely spills over
+    its own edge onto the data it names.
+  - a **lollipop's value label**, the one horizontal label that never got the
+    row-pitch bound the other nine kinds were given.
+
+  The decoration sweep is two fonts rather than seven, because what it found were
+  bounds missing outright rather than bounds that bit at a size — and the font
+  axis is already swept in full.
+
+  **The overlap half of the decoration sweep was measured and NOT gated**, which
+  is the more interesting half. Thirty-three pairs, and after the callout fix
+  every one that remains is a decoration doing its job: a callout is an OPAQUE
+  bubble deliberately placed over the chart (the ink test cannot see a filled
+  box), a band label sits over the data it annotates, and the rest are the
+  scatter/bubble point-label trade this file already records as measured and
+  refused twice. A gate asserting zero there would be asserting that decorations
+  do not overlap the chart, which is what they are for.
+
   **That sentence was ASPIRATIONAL until 2026-08-18, and the cross-product it
   described was the one thing nobody had run.** The overflow sweep asked eight
   frames at the default font and seven fonts at THREE frames; a large font on a

@@ -412,20 +412,38 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
         if (c === n - 1) lastSegMid[si] = H ? cross : val;
         if (decor.segmentLabels) {
           const label = formatNumber(raw!, fmt);
-          nodes.push({
-            kind: "text",
-            // Clear of the dot along the value axis, centred on it across.
-            x: (H ? val : cross) + dotR + 2,
-            y: (H ? cross : val) - fs * 0.7,
-            w: textWidth(label, fs) + 4,
-            h: fs * 1.4,
-            text: label,
-            fontSize: fs,
-            color: style.text,
-            align: "left",
-            valign: "middle",
-            name: `label-${si}-${c}`,
-          });
+          /**
+           * BOUND BY THE ROW, sideways — the bound every other horizontal label
+           * in this file got and this one did not.
+           *
+           * The label is centred on its dot in a box `fs * 1.4` tall. Turned
+           * sideways that box sits on the category's row, so once the font
+           * outgrows the row the labels of adjacent categories are drawn through
+           * each other and the last one is drawn off the foot of the chart —
+           * 5.4pt below a 300x60 lollipop at 18pt, and the same on three other
+           * frames. Upright the label sits BESIDE its dot with the next category
+           * a column away, so nothing there wants this and `fs` stands.
+           *
+           * Dropped rather than clamped past the floor: `bandFontSize` answers 0
+           * below `MIN_LABEL_FS`, and a two-point number over a dot is ink, not
+           * a value anyone can read.
+           */
+          const dotFs = H ? bandFontSize(fs, r.h, 1.4) : fs;
+          if (dotFs > 0)
+            nodes.push({
+              kind: "text",
+              // Clear of the dot along the value axis, centred on it across.
+              x: (H ? val : cross) + dotR + 2,
+              y: (H ? cross : val) - dotFs * 0.7,
+              w: textWidth(label, dotFs) + 4,
+              h: dotFs * 1.4,
+              text: label,
+              fontSize: dotFs,
+              color: style.text,
+              align: "left",
+              valign: "middle",
+              name: `label-${si}-${c}`,
+            });
         }
         return;
       }

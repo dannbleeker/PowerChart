@@ -108,6 +108,37 @@ describe("decoration corners", () => {
     expect(label.text).toContain("+21.0%");
   });
 
+  it("keeps a callout's bubble clear of the chart's title", () => {
+    // A callout anchors on `columnTop` and hovers 4.2 font sizes above it. On a
+    // kind that publishes no `valueToY` — a 100% chart, a mekko, a treemap, a
+    // sunburst — `columnTop` IS the plot ceiling for every category, so the
+    // bubble is lifted past the top of the canvas and the clamp that keeps it on
+    // the chart used to put it at y = h/2: exactly where the title is.
+    //
+    // The same mistake as clamping a column total to y=0, and the same answer:
+    // the ceiling is the title's INK, not the canvas edge. Pushing a bubble down
+    // costs nothing — its tail still points at the anchor — and a sentence drawn
+    // across the chart's name costs the name.
+    for (const kind of ["stacked100", "mekko", "treemap", "sunburst", "boxplot"] as const) {
+      const scene = buildChart({
+        ...sampleConfig(kind),
+        width: 200,
+        height: 150,
+        title: "Revenue by region",
+        decorations: {
+          ...(sampleConfig(kind).decorations ?? {}),
+          callouts: [{ text: "Note", category: 1 }],
+        },
+      } as ChartConfig);
+      const title = scene.nodes.find((n) => n.name === "title") as TextNode | undefined;
+      const bubble = scene.nodes.find((n) => n.name === "callout-box-0") as RectNode | undefined;
+      expect(bubble, `${kind} drew no callout`).toBeTruthy();
+      // The title's own ink reaches `fontSize * 1.21` down from y=0; the bubble
+      // is a filled box, so its TOP edge is what may not reach into that band.
+      if (title) expect(bubble!.y, `${kind}: the callout sits on the title`).toBeGreaterThanOrEqual(title.fontSize);
+    }
+  });
+
   it("anchors difference arrows at a value line", () => {
     const scene = buildChart(
       cfg({

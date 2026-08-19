@@ -436,6 +436,12 @@ whatever sits next to the chart on the slide. That cannot happen: every kind is
 swept against **8 frame sizes × 7 font sizes** (60x300 through 960x540, 6pt
 through 32pt) in CI, and nothing may put ink outside its own frame.
 
+That sweep covers the decorations too — every annotation on the Decorations tab,
+switched on one at a time, across every kind, frame and orientation. A callout
+whose text is wider than the chart, a band label on a chart with no room below
+the plot, a quadrant label in a narrow zone: each is fitted or dropped by the
+same rules as any other label, rather than drawn over the slide.
+
 **Labels shrink to the room they have, then are dropped.** A name is fitted to
 the mark it sits on — the column's slot, the row's pitch, the wedge's chord, the
 gap between two rings — and below about 5pt it is not drawn at all. A label too
