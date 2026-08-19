@@ -134,5 +134,19 @@
     "outcome": "failed",
     "judgedOn": "098-3da2ef6",
     "what-happened": "FAILED, which is the half this was staked to be useful for: the trace still carries the probe line, so the deck-style read STILL FAILED with the count-first guard in place. But the round cannot say WHICH call failed, because the probe was lying. Its `meaning` field was the fixed sentence 'getOnlyItemOrNullObject/load/getXml is what hung' — true while the read was one batch, and false the moment the read gained a getCount of its own. Round 098 printed that sentence on a build where the count runs FIRST, so it described a call it had not observed. A conclusion hardcoded into an instrument is not evidence. So this verdict refutes the PREDICTION and not the diagnosis: the diagnosis was never tested, because the instrument that was supposed to test it asserted its answer. The field now carries the operation the bounded sync names (`at=<what>`), read off the actual failure. The count-first change is KEPT rather than reverted: it removes one call from the hot path and costs a round trip only on a branded deck, and nothing here shows it made anything worse. Its premise is simply unconfirmed. The next round says which call hangs, and this should be re-staked then."
+  },
+  {
+    "id": "spending-the-bad-first-call-cures-the-read",
+    "madeIn": "#602",
+    "afterBuild": "504033c",
+    "madeOn": "2026-08-20",
+    "because": "RE-STAKED ON A DIAGNOSIS THAT NOW HAS A PAIR. `counting-first-removes-the-hang` failed because the probe asserted its answer instead of measuring it. With the probe honest, rounds 100 and 101 report the SAME failure byte for byte: `The value of the result object has not been loaded yet`. That is not a timeout — boundedSync rejects on timeout — so the sync resolved and the value was still unloaded. Six rounds now say the same thing in three different costumes: the FIRST customXmlParts call after a pane loads does not work and the second does. 089/090 and 096/097 hung when the first call was the item read; 098/100/101 return an unloaded value now that counting is first. The probe — always the SECOND call, in a fresh context — has answered every single time it ran, and round 092's manual clicks on a long-lived pane answered in 428ms. So the read now attempts twice. HELD means the probe line is GONE, because the read no longer fails at all. FAILED means the second call fails too, which would refute 'first call only' and send this somewhere new. `insteadOf: round starting` keeps a round that never ran from reading as a cure.",
+    "claim": {
+      "kind": "trace-line-present",
+      "message": "the namespace IS reachable — the fault is further in",
+      "insteadOf": "round starting",
+      "absent": true
+    },
+    "outcome": "open"
   }
 ]

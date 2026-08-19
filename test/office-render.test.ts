@@ -5270,7 +5270,9 @@ describe("the style a deck carries", () => {
     setTracing(false);
     expect(r).toEqual({ style: null, unreadable: true });
     const said = seen.filter((e) => /namespace IS reachable/.test(e.message));
-    expect(said.length, "failed without saying which half of the read broke").toBe(1);
+    // Once per failed attempt, and the read attempts twice now — see the retry
+    // test below. What matters is that a failure is never silent.
+    expect(said.length, "failed without saying which half of the read broke").toBeGreaterThanOrEqual(1);
     // WHICH CALL, MEASURED. This field was a hardcoded sentence naming
     // getOnlyItemOrNullObject, and it kept printing that after the read gained a
     // `getCount` of its own — round 098 shows it asserting the old answer on a
@@ -5374,6 +5376,39 @@ describe("the style a deck carries", () => {
     delete process.env.PW_DECK_STYLE_TIMEOUT_MS;
     expect(r).toEqual({ style: null, unreadable: true });
     expect(took, "waited on the readback budget instead of its own").toBeLessThan(5_000);
+  });
+
+  it("spends the bad first call — one refused read is not a failed read", async () => {
+    // SIX ROUNDS SAY THE FIRST CUSTOM-XML CALL AFTER A PANE LOADS DOES NOT WORK,
+    // and the second does. The diagnostic probe had been demonstrating exactly
+    // that without anyone noticing: it opens a fresh context, asks the same
+    // question, and has answered every time it ran, immediately after the read
+    // it was diagnosing had failed.
+    //
+    // The failure changes shape with whatever the first call happens to be — a
+    // 90s hang while that was the item read, and "The value of the result object
+    // has not been loaded yet" once counting moved to the front (round 100).
+    // Same fault, different victim, which is why it read as two bugs.
+    installHost([makeSlide("s1")]);
+    await writeDeckStyle({ palette: ["#2a78d6"] });
+    faults.refuseCustomXmlReadsOnce = true;
+    const r = await readDeckStyleWithReason();
+    faults.refuseCustomXmlReadsOnce = false;
+    expect(r, "gave up on a host that answers the second time").toEqual({
+      style: { palette: ["#2a78d6"] },
+      unreadable: false,
+    });
+  });
+
+  it("still reports unreadable when BOTH attempts fail", async () => {
+    // Or the retry would turn a genuinely dead read into a silent "no style",
+    // which is the exact lie the `unreadable` flag was added to prevent.
+    installHost([makeSlide("s1")]);
+    await writeDeckStyle({ palette: ["#2a78d6"] });
+    faults.refuseCustomXmlReads = true;
+    const r = await readDeckStyleWithReason();
+    faults.refuseCustomXmlReads = false;
+    expect(r).toEqual({ style: null, unreadable: true });
   });
 
   it("never asks for the only item of an EMPTY namespace — the call that hangs on this host", async () => {
