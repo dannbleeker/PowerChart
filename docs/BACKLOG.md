@@ -537,9 +537,27 @@ moody — the same chart, the same numbers, five rounds running.
 
 **The comment in the partial branch has been corrected** (`powerpoint.ts`): it
 claimed an ungrouped chart "is still tagged, still re-editable", which the 66%
-above refutes. The branch itself is left alone deliberately — the alternative
-strands shapes, and choosing between two harms is not a call to make from a
-trace. **Fix the re-read and neither harm has to be chosen.**
+above refutes.
+
+**BOTH BULLETS ABOVE ARE HISTORY AS OF 2026-08-19, AND THIS SECTION ASSERTED THEM
+AS CURRENT UNTIL THEN.** They describe rounds 042-046. Two things have happened
+since, and the file said the opposite of each in another section while still
+saying this here:
+
+1. **The partial branch is no longer left alone.** #586 groups the majority the
+   host names. "The branch itself is left alone deliberately" was the rule for
+   eight days and is not the rule now.
+2. **The re-read WAS fixed, which is why neither harm is being chosen.** The
+   settled retry (`REREAD_RETRY_MS`) repairs it: rounds 079-087 report
+   `repaired=5, re-editable=8` every time, `same scale across the deck` passes,
+   and there have been 0 short re-reads since the retry shipped (42 in the whole
+   archive, `afterRetry: true` on none of them). "Fix the re-read and neither
+   harm has to be chosen" was the right instruction and it has been carried out.
+
+So chart 4 does NOT match 20 of 24 any more — 084-087 group every chart with
+`partial:0`. #586's subset branch is presently unreachable on this host, which is
+not an argument against it: it is the guard for a regime this host has left, and
+the round that would exercise it has not happened.
 
 **THE `NNN#0` SLIDE LEAD IS DEAD — refuted 2026-08-15 from the archive, before
 the instrument built for it had even deployed.** The draw trace already carried

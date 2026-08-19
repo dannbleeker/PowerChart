@@ -544,15 +544,41 @@ number when the two disagree.
 
 ### What the stranding question needs
 
-Only an **ungrouped chart with no parts list** can strand anything — a group is
-deleted whole. That population is `atRisk` in the trace, read from the host's own
-shape type, and it is NOT the same as "no parts list": a grouped chart has none
-either, which is what made an earlier version of this report count every grouped
-chart as exposure.
+**THIS SECTION SAID "a group is deleted whole" AND #586 ENDED THAT ON
+2026-08-19.** The sentence was true for every round in the archive and is false
+for every round after it, which is the shape of staleness this file exists to
+catch.
+
+There are now THREE populations, not one:
+
+1. An **ungrouped chart with no parts list** — the original case.
+2. A chart whose re-read named NONE of its shapes — untouched by #586, and the
+   only one still observed (3 zero-matches and 3 empty re-reads in round 087).
+3. **A chart that IS grouped, whose group holds only a SUBSET** — new, and
+   created deliberately. #586 groups the majority the host will name and, in its
+   own words, "the stranded remainder is deliberately not written into the parts
+   tag", because the only ids we hold for those shapes are creation ids this host
+   refuses. On `same scale`'s chart 4 that is four shapes loose inside the
+   chart's own box.
+
+**`atRisk` cannot see the third one.** It is read from the host's own shape type,
+so a subset group reports `group` and is counted SAFE — the instrument is blind
+to the only stranding the code now creates on purpose. Reading a zero from it
+after #586 is reading a floor, not an all-clear. The trace does carry the truth
+one line over: `grouped the chart's shapes` with `partial=N left=i:k`, and the
+short-read line's `grouping: the subset the host named`. Joining those to
+`atRisk` is the fix; until it is made, quote the trace, not the count.
 
 As of round 087 the count stands at **three at-risk charts, all with zero
 growth**. Three is not five. A round that groups everything cannot answer this
 either way, and the report says so rather than reading zero as an all-clear.
+
+**And the subset branch has not run yet.** Across 63 rounds there are 42 short
+re-reads and `afterRetry: true` on exactly none of them: every one predates the
+settled retry, and since the retry no re-read has come back short at all
+(0 in rounds 079-087, whose verdict line reads `repaired=5, re-editable=8` in all
+nine). So #586's branch is presently unreachable on this host, and a round that
+passes says nothing about it either way.
 
 ### Every round before 2026-08-16 was 16:9
 

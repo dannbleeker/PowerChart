@@ -22,7 +22,13 @@
  * than no round: it produces a file that looks like evidence.
  *
  *   node scripts/round.mjs --check     # preconditions only, nothing driven
- *   node scripts/round.mjs             # check, run, poll, archive, triage
+ *   node scripts/round.mjs             # check, run, poll, archive — then triage BY HAND
+ *
+ * It does NOT triage. This line said it did until 2026-08-19, and a session
+ * planned around it: reading the archived round is `node scripts/triage.mjs
+ * rounds/0NN-<build>.json` and `npm run rounds`, both separate commands. A
+ * usage block that claims a step nobody runs is the same defect class as the
+ * three stale slogans in `triage.mjs`.
  *
  * NOT part of any gate, and it cannot be. It needs a signed-in PowerPoint on
  * the web with the add-in sideloaded, which exists on the owner's machine and

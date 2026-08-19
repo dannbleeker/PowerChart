@@ -1640,3 +1640,93 @@ happened rather than a click; `ref=rCancel` against a `[a-z0-9]+` matcher; a
 fixture modelling "rare" as "absent"; a control that could not fail; and a
 novelty fixture with the signature in every prior, where the old and new readings
 agree. **Mutation caught all six. Reading caught none.**
+
+## Round 088 — 3056f91 — 12/13 — and a prediction that could not be answered
+
+First round after the 14-commit merge (#576-#590). Browser was dead at `--check`;
+the profile still held the sign-in, so it was reopened without a password and
+**the sideload survived** — see the doctrine note below, because this file said
+it would not. `HEAD 3056f91 · site 3056f91 · pane 3056f91 · deck 1 slide`.
+
+The reading was pre-registered before the host was touched, which is the only
+reason the round is legible. All three calls came out.
+
+- **Mine.** `same scale across the deck` PASSED — its tenth consecutive pass, not
+  its first. #586's branch was never entered: it runs only on a re-read that is
+  SHORT after the settled retry, and round 088 recorded none. Across all 64
+  rounds there are 42 short re-reads and `afterRetry: true` on **exactly none**
+  of them — every one predates `REREAD_RETRY_MS`. What the round did record is
+  the failure #586 deliberately does not rescue: 2 empty re-reads and 1
+  zero-match, all after the retry, on charts that then hit `not grouping: no
+  member handle this host will accept` and a 5010 on the id readback.
+
+  Those two charts kept their config anyway. Tempting, and not a finding: the
+  pooled table already prices an ungrouped chart at 32% keeping its tag, so
+  two-for-two is inside the noise. Recorded so the next session does not spend a
+  round on it.
+
+  **The one real finding is the denominator.** The scenario ran **6 charts, not
+  8** — the first time in 64 rounds. Its verdict is `scaled === charts.length`
+  against a population it DISCOVERS (`probeCharts`, guarded only at `< 2`), so
+  `6 of 6` is a pass and the gate compared PASS to PASS and said "no scenario
+  regressed". Cause, consistent with four fields and not proven by one round:
+  the upstream `insert onto a slide that already has content` stalled mid-draw
+  (`shapes 1-10 of 16, 45s`), so fewer probe charts existed to find. Deck slide
+  count was 7 — identical to nine rounds that found 8 — so deck size is NOT the
+  cause; that hypothesis was formed and refuted against the archive.
+
+- **Research.** office-js **#5022** (open, under investigation, product bug):
+  `context.sync()` hangs after delete-then-re-read on the web; the reported
+  workaround is "a timer of 1-2 seconds between the `shape.delete()` and the next
+  `await context.sync()`" and the reporter says it **remained unreliable**. That
+  is `REREAD_RETRY_MS` at 1500ms, independently corroborated as a mitigation
+  rather than a cure — which is exactly round 088's two empty re-reads surviving
+  it. **#6498** (open, needs attention, 2026-02-09): shapes inserted on the web
+  not reflected without a refresh; same family, no workaround offered. Nothing
+  upstream we are not already doing. Recorded so it is not rediscovered.
+
+- **Instrument.** `poolScenarioPopulations` in `triage.mjs`, printed by the gate:
+  it names a scenario passing on a smaller population than it usually runs. On
+  round 088 it prints `same scale across the deck — 6 this round, usually 8 over
+  63 prior round(s) (and it still reports PASS)`. Median, not mean, so one small
+  round cannot lower the bar for the next — the mutation that turns it into a
+  mean fails its own test.
+
+- **Fix.** Three defects in the judge, each with a test that goes red when the
+  fix is reverted:
+  1. `scenario-passes` recorded a SKIPPED scenario as `FAILED`, while
+     `probe-answers` and `probe-detail-matches` beside it already answered
+     `undetermined` — and this file's doctrine says "a skip is not a flip". Round
+     088 made it live: `insert onto a slide that already has content` came back
+     `skipped: true, ok: false`.
+  2. `roundToJudgeOn` took the FIRST round on a build, so with the cycle's three
+     rounds per build a prediction could be judged on a sibling of its own
+     control. Now the last.
+  3. `stampDate` read the stamp down to the DAY and compared with strict `>`, so
+     a round taken the same day a prediction was staked could not judge it. Round
+     088 is that case exactly. Reading `HH:MM` too makes it work by lexicographic
+     order with no extra branch.
+
+  **The first draft of test 2 was vacuous** and mutation caught it: the fixture
+  put a later build after the siblings, and both readings return that later
+  build. The siblings have to be the newest rounds or the test proves nothing.
+
+- **Doctrine.** Four documents asserted things this archive contradicts:
+  - `docs/ROUNDS.md` said "a group is deleted whole", so only an ungrouped chart
+    can strand shapes. #586 ended that: it groups a SUBSET and leaves the
+    remainder out of the parts tag on purpose. **`atRisk` reads the host's shape
+    type, so a subset group reports `group` and is counted SAFE** — the
+    instrument is blind to the only stranding the code now creates deliberately.
+    Latent today (the branch has never run), a landmine tomorrow.
+  - `docs/round-prompt.md` and the #586 ledger entry both stated "failed 34 of 34
+    rounds" and "chart 4 matched 20 of 24 in every round on record" as current
+    fact. Neither is true; both corrected in place with the archive numbers.
+  - `docs/BACKLOG.md` asserted the shipped change and its opposite, in two live
+    sections of one file.
+  - **A browser death does NOT always take the sideload.** It did on 2026-08-18
+    and did not on 2026-08-19; the ribbon group was intact after the relaunch.
+
+  The prediction is recorded `undetermined` on `088-3056f91`, not held. Once the
+  judge was fixed it began printing **held** — a false positive that two bugs had
+  been hiding between them: a claim that could not discriminate, behind a judge
+  that refused to judge. Fixing one without the other manufactures the artifact.
