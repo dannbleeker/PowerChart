@@ -2111,3 +2111,56 @@ was touched, and both came out.
 - **Grouping, third pair running: 19/0 then 15/4.** Pooled across three pairs the
   refusal counts are 0, 4, 0, 1, 0, 4. Neither rare nor constant, and invisible
   to a verdict that reports 13/13 either way.
+
+## Rounds 098 + 099 — 3da2ef6 — a first-ever failure that the pair dissolved
+
+      round  score  failed scenario                    scratch-unresolved  same scale  refused
+      098    12/13  edit a chart on the visible slide          14            7 of 7        0
+      099    13/13  —                                           0            8 of 8        4
+
+Same build, nothing landed between them, and **none of round 098 replicated**.
+
+`edit a chart on the visible slide` had passed 73 of 73 rounds and failed here for
+the first time. The gate caught it and exited 1 — `had passed the previous 3
+rounds running` — which is exactly its job. Then 099 passed it and the gate went
+quiet again.
+
+**The 14× spike is the round's real story, and it is weather.** `scratch slide
+landed but its id will not resolve` and `could not remove the unusable scratch
+slide` both ran 14 times against a baseline of 1, and both were 0 in the very next
+round. The 7-chart population is downstream of that same churn — the probe charts
+are discovered from a deck that fourteen unremovable scratch slides had polluted.
+
+**I had a live reason to suspect my own change**, since 098 was the first round on
+the count-first deck-style read. The pair says no: nothing in 099 differs except
+the host's mood. That is the whole argument for pairing, and it is the second time
+tonight a single round would have sent someone after a regression that does not
+exist.
+
+### The staked prediction failed, and the instrument was why
+
+`counting-first-removes-the-hang` — FAILED. The probe line is still there, so the
+read still fails with the guard in place.
+
+**But the probe was lying, and it was mine.** Its `meaning` field was the fixed
+sentence `getOnlyItemOrNullObject/load/getXml is what hung` — true while the read
+was one batch, false the moment the read gained a `getCount` of its own. Round 098
+printed it on a build where the count runs FIRST, describing a call it had not
+observed. So the verdict refutes the prediction and not the diagnosis: the
+diagnosis was never tested, because the instrument built to test it asserted its
+answer.
+
+The field now carries the operation the bounded sync names (`at=<what>`), read off
+the actual failure. The count-first change is kept rather than reverted — it takes
+one call off the path every pane load walks, costs a round trip only on a branded
+deck, and nothing here shows it made anything worse. Its premise is simply
+unconfirmed, and the next round can say.
+
+### A note on what the gate can and cannot do
+
+The gate judges the NEWEST round, so 098's alarm disappeared the moment 099
+passed. That is correct for a regression gate and worth writing down anyway: an
+unattended loop can erase its own alarm by continuing, and the only durable record
+of round 098's failure is this entry and the archive. Not changed — a gate that
+keeps firing about a round two back would be reporting history, and the pooled
+per-scenario view already carries it.

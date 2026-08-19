@@ -136,6 +136,28 @@ describe("judging a prediction against a round", () => {
     expect(judgePrediction(claim, {}).verdict, "no trace at all is not evidence either").toBe("undetermined");
   });
 
+  it("can claim a symptom is GONE, and knows that from a round that never ran", () => {
+    // What a fix predicts is an absence, and this kind could only claim a
+    // presence. `absent: true` inverts it; `insteadOf` — a line every round
+    // carries — is what separates "the symptom is gone" from "nothing happened".
+    const claim = {
+      claim: {
+        kind: "trace-line-present",
+        message: "the namespace IS reachable — the fault is further in",
+        insteadOf: "round starting",
+        absent: true,
+      },
+    };
+    const round = (...msgs: string[]) => ({ trace: { entries: msgs.map((m) => ({ message: m })) } });
+    expect(judgePrediction(claim, round("round starting")).verdict, "a cured round").toBe("held");
+    expect(
+      judgePrediction(claim, round("round starting", "the namespace IS reachable — the fault is further in")).verdict,
+    ).toBe("FAILED");
+    // THE HALF THAT MATTERS: a round that never ran is silent about everything,
+    // and silence must not read as a cure.
+    expect(judgePrediction(claim, round("something else")).verdict, "silence read as a cure").toBe("undetermined");
+  });
+
   it("judges a prediction on a round taken the SAME DAY it was staked", () => {
     // ROUND 088 IS THIS TEST. The #586 entry was staked on 2026-08-19 and round
     // 088 was taken at 13:58Z the same day — and the report still said `no round
