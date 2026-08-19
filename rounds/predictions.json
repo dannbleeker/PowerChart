@@ -88,5 +88,18 @@
     "madeOn": "2026-08-19",
     "judgedOn": "088-3056f91",
     "what-happened": "Round 088 passed `same scale across the deck` (6 of 6) — its tenth consecutive pass — and #586's branch was NEVER ENTERED. The branch runs only when a pre-grouping re-read comes back SHORT after the settled retry, and round 088 recorded 0 of those; across all 64 archived rounds there are 42 short re-reads and `afterRetry: true` on exactly none of them. Every one predates `REREAD_RETRY_MS`, which repairs the re-read before the subset rule is reached. What round 088 DID record is the failure #586 deliberately does not rescue: 2 empty re-reads and 1 zero-match, all `afterRetry: true`, on charts that then could not be grouped (`not grouping: no member handle this host will accept`) and whose id readback was refused with 5010. So this entry is undetermined rather than held: the round carries no information about the claim. #586 remains untested on a real host, and a round can only test it if this host starts returning SHORT re-reads after a 1.5s settle again — which it has not done once since the retry shipped. Judging this `held` would have been an artifact of a scenario that was already passing, which is why the entry is closed this way rather than counted as a win."
+  },
+  {
+    "id": "the-deck-style-namespace-is-reachable",
+    "madeIn": "#596",
+    "afterBuild": "f6cd580",
+    "madeOn": "2026-08-19",
+    "because": "GENUINELY OPEN, and the two outcomes send a maintainer to opposite ends of #583. `reading the deck's style` has consumed its entire 90-second budget and never answered in rounds 089 and 090 — both rounds #583 has ever had, so 2 of 2 with no counter-example. The host is NOT wedged while it happens: `idleMs: -89057` says PowerPoint answered `listing the deck's slides` in 44ms, 89 seconds INTO that wait. One call stuck, host fine. What no round can currently say is WHICH call, because the namespace lookup, `getOnlyItemOrNullObject`, the `load` and `getXml` are queued into ONE batch and a single sync covers all four. The new probe asks the one cheaper question — `getCount()` on the same scoped collection, which needs the namespace lookup and nothing else. HELD means the collection is reachable and the fault is narrow: `getOnlyItemOrNullObject`, `load` or `getXml`, and #583 is fixable by changing how it reads. FAILED is the expensive half: the whole customXmlParts surface is unreachable on PowerPoint web, and #583's deck-stored style cannot work on this host at all — which is a product decision for the owner, not a bug fix. UNDETERMINED means the read succeeded for once, which would itself be new information, since it never has here.",
+    "claim": {
+      "kind": "trace-line-present",
+      "message": "the namespace IS reachable — the fault is further in",
+      "insteadOf": "the namespace is unreachable too"
+    },
+    "outcome": "open"
   }
 ]

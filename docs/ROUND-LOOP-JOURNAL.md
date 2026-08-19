@@ -1771,8 +1771,9 @@ clean. That machinery had been built and never yet met the thing it was for.
   That is #583, merged the same morning and never before run against a host.
 
 - **Fix — a failed read was reporting an absence.** `reading the deck's style`
-  hung for its full 90s budget, 44ms after the host had answered a different
-  call. `readDeckStyle` caught that and returned `null` — the same value a deck
+  hung for its full 90s budget while the host kept answering other calls
+  throughout it (see the correction under round 090 — this line first had the
+  ordering backwards). `readDeckStyle` caught that and returned `null` — the same value a deck
   carrying no style returns — and `style-from-deck` AWAITS it, so the pane would
   tell the user their deck is unbranded and switch them to the browser's style on
   the strength of a read that never happened. `readDeckStyleWithReason` now
@@ -1809,8 +1810,14 @@ session's largest finding and was not in the round file.
 - **THE DECK-STYLE READ FAILS ON THIS HOST, 2 FOR 2.** Round 089 flagged it as a
   signature never seen in 64 rounds; round 090 reproduced it exactly:
 
-      089  afterMs 90000, afterAnswering "listing the deck's slides", 44ms earlier
-      090  afterMs 90000, afterAnswering "listing the deck's slides", 56ms earlier
+      089  afterMs 90000, idleMs -89057, "listing the deck's slides" answered in 44ms
+      090  afterMs 90000, idleMs -89xxx, "listing the deck's slides" answered in 56ms
+
+  **CORRECTED: those two lines were first read backwards, here and in #595.** The
+  44ms and 56ms are how long that OTHER call took, not how long before the stall
+  it ran. `idleMs` is `issued - lastAnswered` and `lastAnswered` is sampled when
+  the deadline fires, so a NEGATIVE value means the host answered something else
+  89 seconds INTO this call's wait — one second before it was abandoned.
 
   Two rounds, both since #583 landed, which is every chance it has had. The host
   is demonstrably alive ~50ms before and the read then never answers. **#583's
@@ -1848,3 +1855,37 @@ session's largest finding and was not in the round file.
   **Fifth time this codebase has reported UNREADABLE as NEGATIVE**, after
   `beforeUnknown`, "no history is not a spike", "a miss is not a failure", and
   the deck style. It is the house defect.
+
+### After round 090 — the number nobody could read was the answer
+
+Not a round. Mining round 090's own trace harder, before staking the next one.
+
+**`idleMs: -89057` is not a glitch, it is the finding.** It reads as nonsense, so
+two rounds carried it and nobody used it. `idleMs` is `issued - lastAnswered`,
+and `lastAnswered` is sampled when the DEADLINE fires — so a negative value means
+the host answered something else AFTER this call went out, while it was still
+waiting. PowerPoint answered `listing the deck's slides` in 44ms, **89 seconds
+into the deck-style read's 90-second wait**, one second before it was abandoned.
+
+So the deck-style stall is **one call stuck on a healthy host**, not a host that
+went quiet. Those are different faults wanting different fixes, and this project
+had no way to say which it was looking at.
+
+`stallShape` now says it in words on every stall, because the sign of a number is
+not something a reader notices — and the comment on `lastStall` had assumed
+sequential code, where a negative gap cannot happen. The pane's deck-style read
+is fire-and-forget, so it breaks that assumption, which is exactly why this is
+the call that exposed it.
+
+**A cheaper question, asked only after the read has already failed.** The
+namespace lookup, `getOnlyItemOrNullObject`, the `load` and `getXml` all go into
+ONE batch, so one sync covers four calls and the trace can only report the sync.
+`getCount()` on the same scoped collection needs the namespace lookup and nothing
+else, so its answer splits the two explanations:
+
+    it answers    -> the collection is reachable; the fault is in
+                     getOnlyItemOrNullObject / load / getXml
+    it also hangs -> the whole customXmlParts surface is dead here and #583
+                     cannot work on this host at all
+
+The next round decides it, which two rounds so far could not.

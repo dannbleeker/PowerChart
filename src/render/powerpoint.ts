@@ -743,6 +743,35 @@ export interface StallContext {
 export let lastStall: StallContext | null = null;
 
 /**
+ * The two stalls this project keeps confusing, told apart by the sign of a number.
+ *
+ * `idleMs` is `issued - lastAnswered`, and `lastAnswered` is sampled when the
+ * DEADLINE fires, not when the call went out. So a NEGATIVE value means the host
+ * answered something else AFTER this call was issued — while it was still
+ * waiting. The host is alive and one call is stuck, which is a completely
+ * different fault from a host that has gone quiet, and it wants a completely
+ * different fix.
+ *
+ * The comment on `lastStall` assumed sequential code, where that cannot happen.
+ * The pane's deck-style read is fire-and-forget (`void readDeckStyle()...`), so
+ * it runs alongside everything else and breaks the assumption — which is how
+ * rounds 089 and 090 came to report `idleMs: -89057` and `-89xxx`, a number
+ * nobody could read.
+ *
+ * That number was the answer. It says PowerPoint answered `listing the deck's
+ * slides` in 44ms, 89 SECONDS INTO the deck-style read's 90-second wait, a
+ * second before it was abandoned. Not a wedged host. One call that never
+ * completes while the host cheerfully serves others.
+ */
+export function stallShape(idleMs: number): string {
+  if (!Number.isFinite(idleMs)) return "the host had answered nothing at all yet this run";
+  if (idleMs < 0)
+    return `THIS CALL ALONE is stuck — the host answered something else ${Math.round(-idleMs)}ms AFTER this call was issued, while it was still waiting`;
+  if (idleMs < 250) return "issued immediately after the previous answer — an ordinary sequential gap, says little";
+  return `the host had already been quiet for ${Math.round(idleMs)}ms before this call went out`;
+}
+
+/**
  * How long the host has been idle — from its last answer to now.
  *
  * Exported because the stall record alone is not evidence. The first round to
@@ -888,6 +917,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
         afterAnswering: lastAnsweredCall ?? "nothing yet this run",
         afterAnsweringMs: lastAnsweredMs,
         idleMs: Math.round(lastStall.idleMs),
+        // WHICH OF THE TWO STALLS THIS IS, in words, because the sign of a
+        // number is not something a reader notices. See `stallShape`.
+        shape: stallShape(lastStall.idleMs),
       });
       reject(new Error(`PowerPoint did not respond while ${what} (${ms / 1000}s)`));
     }, ms);
@@ -4498,9 +4530,13 @@ export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
  * How long the deck-style READ is given, which is not the readback budget.
  *
  * ROUNDS 089 AND 090, BOTH: `reading the deck's style` consumed its entire
- * 90-second budget and never answered, ~50ms after the host had answered
- * `listing the deck's slides`. Two for two on the two rounds taken since #583
+ * 90-second budget and never answered, while the host went on serving other
+ * calls THROUGHOUT the wait. Two for two on the two rounds taken since #583
  * landed — a pair, not weather, and the only two chances it has had.
+ *
+ * (This comment first said the host answered "~50ms before" the stall. That read
+ * the fields backwards. `idleMs` was -89057: the host answered `listing the
+ * deck's slides`, in 44ms, 89 seconds INTO this call's wait. See `stallShape`.)
  *
  * So the 90s buys nothing here and costs twice. The pane-load caller is
  * fire-and-forget, and holds a `PowerPoint.run` context open for a minute and a
@@ -9774,9 +9810,11 @@ export async function readDeckStyle(): Promise<DeckStyle | null> {
  *
  * ROUND 089 IS WHY THIS EXISTS, on the day #583 merged: `reading the deck's
  * style` hung for the full 90s budget on the real host — a trace signature never
- * seen in the 64 rounds before it — 44ms after the host had answered a different
- * call. The pane-load caller is fired and forgotten and was unharmed; the button
- * would have reported an absence it had not established.
+ * seen in the 64 rounds before it. The host was NOT wedged: it answered
+ * `listing the deck's slides` in 44ms, 89 seconds into this call's own wait.
+ * One call stuck, the host fine — see `stallShape`. The pane-load caller is
+ * fired and forgotten and was unharmed; the button would have reported an
+ * absence it had not established.
  *
  * `unreadable` covers the throw and the timeout. A host too old to have the API
  * is NOT unreadable — that deck genuinely carries no style, and saying so is
@@ -9791,6 +9829,52 @@ export async function readDeckStyle(): Promise<DeckStyle | null> {
  * test fake used to throw for that case and the claim was written from the fake.
  * `writeDeckStyle`'s delete-then-add is what keeps the state from arising.
  */
+/**
+ * ONE CHEAPER QUESTION, asked only once the real read has already failed.
+ *
+ * Rounds 089 and 090 both show `reading the deck's style` using its whole budget
+ * and never answering, and the round file cannot say WHICH part of it hung: the
+ * namespace lookup, `getOnlyItemOrNullObject`, the `load`, and `getXml` are all
+ * queued into ONE batch, so one sync covers all four and the trace can only
+ * report the sync.
+ *
+ * `getCount()` on the same scoped collection needs the namespace lookup and
+ * nothing else. So:
+ *
+ *   it answers    -> the collection is reachable and the fault is in
+ *                    getOnlyItemOrNullObject / load / getXml
+ *   it also hangs -> the whole customXmlParts surface is unreachable here, and
+ *                    #583 cannot work on this host at all
+ *
+ * Either way the next round decides it, which two rounds so far could not.
+ *
+ * Costs nothing on a healthy pane: it runs only after a failure, on its own
+ * short budget, and it can never throw out of here — a diagnostic that breaks
+ * the path it is diagnosing is worse than no diagnostic.
+ */
+async function probeWhyDeckStyleFailed(): Promise<void> {
+  try {
+    await PowerPoint.run(async (context) => {
+      const parts = (
+        context.presentation as unknown as {
+          customXmlParts: { getByNamespace(ns: string): { getCount(): { value: number } } };
+        }
+      ).customXmlParts;
+      const count = parts.getByNamespace(DECK_STYLE_NS).getCount();
+      await boundedSync(context, "counting the deck's style parts", deckStyleTimeoutMs());
+      trace("deck-style", "the namespace IS reachable — the fault is further in", {
+        parts: count.value,
+        meaning: "getByNamespace answered; getOnlyItemOrNullObject/load/getXml is what hung",
+      });
+    });
+  } catch (err) {
+    trace("deck-style", "the namespace is unreachable too", {
+      error: errorText(err),
+      meaning: "the whole customXmlParts surface is not answering on this host, not one call in it",
+    });
+  }
+}
+
 export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | null; unreadable: boolean }> {
   if (!supports("1.7")) return { style: null, unreadable: false };
   try {
@@ -9819,8 +9903,9 @@ export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | nu
     // is exactly what nothing here should do — two answers to "what is this
     // deck's style" is a question for a person.
     //
-    // And so does the 90-second timeout round 089 recorded. Both are "we cannot
+    // And so does the timeout rounds 089 and 090 recorded. Both are "we cannot
     // tell you", which is the one thing this used to be unable to say.
+    await probeWhyDeckStyleFailed();
     return { style: null, unreadable: true };
   }
 }

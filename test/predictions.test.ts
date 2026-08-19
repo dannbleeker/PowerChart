@@ -114,6 +114,28 @@ describe("judging a prediction against a round", () => {
     expect(roundToJudgeOn(logs, "aaaaaaa", buildOf, "2026-01-01")).toEqual({ build: "bbbbbbb · 2026-08-20 07:11Z" });
   });
 
+  it("judges a claim about what the TRACE says, and knows silence from absence", () => {
+    // The ledger's four kinds were all about scenarios and probes, so a question
+    // whose whole answer is "does this line appear" had to live in prose — which
+    // is what this ledger exists to replace.
+    const claim = {
+      claim: {
+        kind: "trace-line-present",
+        message: "the namespace IS reachable — the fault is further in",
+        insteadOf: "the namespace is unreachable too",
+      },
+    };
+    const round = (...msgs: string[]) => ({ trace: { entries: msgs.map((m) => ({ message: m })) } });
+    expect(judgePrediction(claim, round("the namespace IS reachable — the fault is further in")).verdict).toBe("held");
+    expect(judgePrediction(claim, round("the namespace is unreachable too")).verdict).toBe("FAILED");
+    // NEITHER LINE IS NOT A REFUTATION. A round that never reached the code did
+    // not ask the question, and without `insteadOf` this kind could not tell
+    // that apart from an answer — every round that skipped the path would read
+    // as evidence against the claim.
+    expect(judgePrediction(claim, round("something else entirely")).verdict).toBe("undetermined");
+    expect(judgePrediction(claim, {}).verdict, "no trace at all is not evidence either").toBe("undetermined");
+  });
+
   it("judges a prediction on a round taken the SAME DAY it was staked", () => {
     // ROUND 088 IS THIS TEST. The #586 entry was staked on 2026-08-19 and round
     // 088 was taken at 13:58Z the same day — and the report still said `no round
@@ -194,7 +216,13 @@ describe("judging a prediction against a round", () => {
   it("keeps the ledger honest: every entry is judgeable and carries its reasoning", () => {
     const ledger = JSON.parse(readFileSync("rounds/predictions.json", "utf8"));
     expect(ledger.length, "the ledger is empty").toBeGreaterThan(0);
-    const kinds = new Set(["probe-answers", "probe-starves", "scenario-passes", "probe-detail-matches"]);
+    const kinds = new Set([
+      "probe-answers",
+      "probe-starves",
+      "scenario-passes",
+      "probe-detail-matches",
+      "trace-line-present",
+    ]);
     for (const p of ledger) {
       expect(p.id, "a prediction with no id").toBeTruthy();
       expect(p.because, `${p.id} states no reasoning — the prose is the half worth keeping`).toBeTruthy();

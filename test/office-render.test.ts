@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   readDeckStyle,
   readDeckStyleWithReason,
+  stallShape,
   writeDeckStyle,
   _setBatchTimeoutForTest,
   _setBlankReReadDelayForTest,
@@ -67,7 +68,7 @@ import {
  */
 const ADDS_TO_DEFEAT_ONE_SLIDE = 1 + MAX_ADD_RETRY_ROUNDS;
 import { readFileSync } from "fs";
-import { setTracing, traceLog } from "../src/core/trace";
+import { onTrace, setTracing, traceLog } from "../src/core/trace";
 import { planReconcile } from "../src/core/reconcile";
 import { buildChart, DEFAULT_SIZE } from "../src/core/chart";
 import { estimateOfficeShapes } from "../src/core/scene";
@@ -5116,6 +5117,34 @@ describe("the in-place applier and the adders it mirrors", () => {
   });
 });
 
+describe("telling a wedged host from a wedged call", () => {
+  // `idleMs` is `issued - lastAnswered`, and `lastAnswered` is sampled when the
+  // DEADLINE fires. So a negative value means the host answered something else
+  // AFTER this call went out, while it was still waiting — the host is alive and
+  // one call is stuck. Rounds 089 and 090 both reported `idleMs: -89057`-ish and
+  // nobody could read it; that number was the answer to the question the round
+  // was being run to settle.
+  it("says THIS CALL ALONE when the host answered during the wait", () => {
+    const said = stallShape(-89_057);
+    expect(said).toMatch(/THIS CALL ALONE/);
+    expect(said, "the reader has to be told how long after, not just that it happened").toMatch(/89057ms AFTER/);
+  });
+
+  it("says the host had gone quiet when the gap is real and positive", () => {
+    expect(stallShape(12_000)).toMatch(/already been quiet for 12000ms/);
+  });
+
+  it("refuses to read anything into a sequential gap", () => {
+    // A 1ms gap is true of every call in a healthy round — the trap this
+    // project already fell into once with `idleMs: 1` on a rasterise.
+    expect(stallShape(1)).toMatch(/says little/);
+  });
+
+  it("says so when the host has never answered at all", () => {
+    expect(stallShape(Infinity)).toMatch(/nothing at all yet/);
+  });
+});
+
 describe("the style a deck carries", () => {
   it("round-trips a style through the deck's own custom XML part", async () => {
     installHost([makeSlide("s1")]);
@@ -5180,6 +5209,31 @@ describe("the style a deck carries", () => {
     // And with the duplicate gone the deck is branded again, so the fault is
     // modelling a second PART and not a corrupted store.
     expect(await readDeckStyle()).toEqual({ palette: ["#2a78d6"] });
+  });
+
+  it("asks ONE cheaper question when the read fails, to say which half is broken", async () => {
+    // Rounds 089 and 090 both show the read using its whole budget and never
+    // answering, and the round file cannot say WHICH part hung — the namespace
+    // lookup, `getOnlyItemOrNullObject`, the `load` and `getXml` all go into one
+    // batch, so one sync covers all four.
+    //
+    // `getCount()` needs the namespace lookup and nothing else, so its answer
+    // splits the two explanations. Here the read is refused and the count is
+    // not, which is the "reachable, fault is further in" branch.
+    installHost([makeSlide("s1")]);
+    const seen: { message: string }[] = [];
+    setTracing(true);
+    onTrace((e) => seen.push(e));
+    faults.refuseCustomXmlReads = true; // getOnlyItemOrNullObject throws, getCount does not
+    const r = await readDeckStyleWithReason();
+    faults.refuseCustomXmlReads = false;
+    onTrace(undefined);
+    setTracing(false);
+    expect(r).toEqual({ style: null, unreadable: true });
+    expect(
+      seen.filter((e) => /namespace IS reachable/.test(e.message)).length,
+      "failed without saying which half of the read broke",
+    ).toBe(1);
   });
 
   it("gives the deck-style read its OWN budget, not the 90s readback one", async () => {
