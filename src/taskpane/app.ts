@@ -33,6 +33,7 @@ import {
   loadChartFromSelection,
   loadThemePalette,
   readDeckStyle,
+  readDeckStyleWithReason,
   writeDeckStyle,
   updateChartInSlide,
   updateChartsInSlides,
@@ -2421,7 +2422,18 @@ for (const id of ["style-to-deck", "style-from-deck"]) {
 
 /** Go back to whatever the deck says, after an import switched to the browser's copy. */
 $("style-from-deck").addEventListener("click", async () => {
-  deckStyle = await readDeckStyle();
+  const { style, unreadable } = await readDeckStyleWithReason();
+  // A READ THAT FAILED IS NOT AN ABSENCE. This said "This deck carries no style"
+  // whenever the read came back empty for ANY reason, and round 089 caught the
+  // reason that makes it a lie: `reading the deck's style` hung for the full 90s
+  // on the real host. Telling someone their deck is unbranded — and switching
+  // them to the browser's style — on the strength of a timeout is the same
+  // mistake as reading an unreadable deck scan as "these slides are new".
+  if (unreadable) {
+    note("Could not read this deck's style — leaving yours in place. Try again.", "err");
+    return;
+  }
+  deckStyle = style;
   stylePrefer = "deck";
   renderPreview();
   note(deckStyle ? "Using this deck's own style." : "This deck carries no style — using yours.", "ok");

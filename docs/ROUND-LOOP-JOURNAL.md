@@ -1730,3 +1730,62 @@ reason the round is legible. All three calls came out.
   judge was fixed it began printing **held** — a false positive that two bugs had
   been hiding between them: a claim that could not discriminate, behind a judge
   that refused to judge. Fixing one without the other manufactures the artifact.
+
+## Round 089 — 3056f91 — 13/13 — the pair, and what it took back
+
+Same build, no merge between, which is the discipline. **PowerPoint crashed 324s
+into attempt 1**; the driver caught the dialog, wrote the host's own account to
+`crashes/2026-08-19T14-46-31.md`, cleared it and ran again. Attempt 2 finished
+clean. That machinery had been built and never yet met the thing it was for.
+
+- **Mine — the pair takes back round 088's loudest reading.** 089 ran `same scale
+  across the deck` at **8 of 8**, not 6. So the shrunken population does NOT
+  replicate: it is what happens WHEN an upstream scenario is skipped, not a new
+  steady state. Reported alone, round 088 would have read as "the scenario
+  shrank". This is what pairs are for, and it is the second time the same
+  denominator has needed one.
+
+  The deck inventories say the same thing from the other side: 088 ended
+  `0,2,2,11,24,24,1` — two slides carrying 24 LOOSE shapes, the two charts whose
+  re-read came back empty — and 089 ended `0,4,2,11,1,1,1`, one shape per slide,
+  every chart grouped.
+
+  **#586 was not exercised in EITHER round.** 0 short re-reads in both. Two
+  observations now, on one build, and 42 short re-reads in the archive with
+  `afterRetry: true` on none of them.
+
+  **The zero-match is the live one:** 1 in 088, 2 in 089, 3 in 087. It is the
+  failure #586's strict-majority bound deliberately does not rescue, and it is
+  the only one still happening.
+
+- **Research — the crash was the network, not the host and not us.** The captured
+  console is `ERR_NETWORK_CHANGED`, `ERR_NAME_NOT_RESOLVED`, `ERR_HTTP2_PING_FAILED`,
+  `ERR_CONNECTION_CLOSED`, and a `wss://…augloop.office.com` that would not
+  resolve. Same family as the dead browser at the start of this session, and the
+  same window in which `gh` could not reach `api.github.com` and `curl` could not
+  resolve a host from this machine. Nothing to fix in this repo; recorded so the
+  next crash file is not read as a PowerPoint bug.
+
+- **Instrument — the novelty view earned its keep.** It named **one trace
+  signature never seen in 64 prior rounds**: `error|reading the deck's style`.
+  That is #583, merged the same morning and never before run against a host.
+
+- **Fix — a failed read was reporting an absence.** `reading the deck's style`
+  hung for its full 90s budget, 44ms after the host had answered a different
+  call. `readDeckStyle` caught that and returned `null` — the same value a deck
+  carrying no style returns — and `style-from-deck` AWAITS it, so the pane would
+  tell the user their deck is unbranded and switch them to the browser's style on
+  the strength of a read that never happened. `readDeckStyleWithReason` now
+  separates them; the fire-and-forget pane-load caller keeps the narrow contract
+  it wants. The fake could not express a host that has the API and will not
+  answer the READ — `refuseCustomXmlReads` closes that, beside the write switch
+  that already existed.
+
+  **This is the same defect this repo keeps finding in new places:** unreadable
+  reported as negative. `collectDeckEvidence`'s `beforeUnknown`, "no history is
+  not a spike", "a miss is not a failure", and now a deck style. Fourth time.
+
+- **Doctrine.** The crash-recovery path works on a real crash, first evidence.
+  The round-089 population is the counter-example the brief needs beside round
+  088's: a scenario's denominator moves with what ran before it, so quote the
+  denominator or quote nothing.
