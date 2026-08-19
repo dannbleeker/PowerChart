@@ -103,7 +103,18 @@ export function layoutPie(cfg: ChartConfig, style: ChartStyle, decor: Decoration
   // negative, which would mirror wedges through the centre and hand the doughnut
   // hole negative radii. Every sibling round chart (gauge, sunburst, radar)
   // clamps the same way.
-  const r = Math.max(1, Math.min(rWidth, rHeight));
+  /**
+   * AND THE EXPLODE OFFSET COMES OUT OF THE RADIUS, not out of the reservation.
+   *
+   * An exploded slice is pushed `rr * 0.08` along its own midline, and both its
+   * arc and its outside label go with it — so the label anchored on the moved
+   * centre sits 8% of the radius beyond the band `rHeight` reserved for it, and
+   * on a 960x540 doughnut that is 9.6pt below the chart. Shrinking the radius by
+   * the same 8% puts the moved slice back inside the envelope the un-exploded
+   * one had. A pie with no exploded slice is untouched.
+   */
+  const explodes = (cfg.pie?.explode?.length ?? 0) > 0;
+  const r = Math.max(1, Math.min(rWidth, rHeight) / (explodes ? 1.08 : 1));
 
   const nodes: SceneNode[] = [];
   const titleN = titleNode(cfg, style);
@@ -468,10 +479,33 @@ function layoutGauge(
       const mid = angle + span / 2;
       const label = sliceLabel(v, c);
       const p = polar(cx, cy, r + fs * 0.8, mid);
-      const w = textWidth(label, fs) + 4;
+      /**
+       * FITTED TO THE CHART, then dropped.
+       *
+       * The x below is clamped into the frame, and a clamp cannot place a box
+       * wider than the frame: `Math.min(cfg.width - w, …)` goes negative, the
+       * `Math.max(0, …)` pins it to the left edge, and the label runs off the
+       * right — 60.6pt past a 60x300 gauge, 40.6pt past an 80x60 one. The side
+       * margin above sizes the arc so the labels fit, but it cannot make room
+       * that a 60-point-wide chart does not have.
+       *
+       * Same shrink-then-drop as every other label here: a gauge with no room
+       * for its legends is still a gauge, and its total is drawn in the middle.
+       */
+      let lf = fs;
+      while (lf > MIN_LABEL_FS && textWidth(label, lf) + 4 > cfg.width) lf -= 0.5;
+      if (textWidth(label, lf) + 4 > cfg.width) {
+        angle += span;
+        return;
+      }
+      const w = textWidth(label, lf) + 4;
       const rightHalf = ((mid % 360) + 360) % 360 < 180;
-      const a = polar(cx, cy, r + 1, mid);
-      const b = polar(cx, cy, r + fs * 0.65, mid);
+      // Both ends held inside the chart, exactly as the pie's own leaders are:
+      // the arc can sit against the frame's edge on a narrow gauge, and a leader
+      // reaching `fs * 0.65` further out then leaves it. A pointer that is a
+      // little shorter still points.
+      const a = clampToFrame(polar(cx, cy, r + 1, mid), cfg);
+      const b = clampToFrame(polar(cx, cy, r + fs * 0.65, mid), cfg);
       nodes.push({
         kind: "line",
         x1: a.x,
@@ -488,11 +522,16 @@ function layoutGauge(
         // but on a chart too narrow to hold them at all the arc bottoms out at
         // its 20pt minimum and the label would still leave the canvas.
         x: Math.max(0, Math.min(cfg.width - w, rightHalf ? p.x : p.x - w)),
-        y: p.y - fs * 0.75,
+        // Clamped vertically too. A slice ending near the gauge's flat side puts
+        // its label level with the centre line, and on a short chart the centre
+        // line is close enough to the foot that the box hangs 6pt below it. The
+        // leader above says which slice this names, so a label nudged up off the
+        // edge still reads as that slice's.
+        y: Math.max(0, Math.min(cfg.height - lf * 1.5, p.y - lf * 0.75)),
         w,
-        h: fs * 1.5,
+        h: lf * 1.5,
         text: label,
-        fontSize: fs,
+        fontSize: lf,
         color: style.text,
         align: rightHalf ? "left" : "right",
         valign: "middle",
@@ -502,14 +541,26 @@ function layoutGauge(
     angle += span;
   });
   // Big total in the open centre of the arc.
+  const totalFs = fs * 1.7;
+  // `fs * 2` exactly, as it always was — the clamp below is the whole fix, and a
+  // box height derived from `totalFs` instead moved this box by 0.06pt on the
+  // showcase's own gauge. A change that touches an ordinary chart is not a last
+  // resort; the deck diff is what says so.
+  const totalH = fs * 2;
   nodes.push({
     kind: "text",
     x: cx - r,
-    y: cy - fs * 1.7,
+    // HELD INSIDE THE CHART. Hung from the centre line it is `fs * 1.7` tall at
+    // a font of the same size, so on a 60pt gauge at 18pt the box ends 5pt below
+    // the chart. Clamped rather than shrunk or dropped: this is the number the
+    // gauge exists to show, the centre is empty by construction so there is
+    // nothing for it to land on, and a gauge whose own total is a few points
+    // higher than the centre line still reads as that total.
+    y: Math.max(0, Math.min(cy - totalFs, cfg.height - totalH)),
     w: r * 2,
-    h: fs * 2,
+    h: totalH,
     text: formatNumber(total, fmt),
-    fontSize: fs * 1.7,
+    fontSize: totalFs,
     bold: true,
     color: style.text,
     align: "center",

@@ -348,7 +348,7 @@ export function layoutWaterfall(cfg: ChartConfig, style: ChartStyle, decor: Deco
     }
   });
 
-  if (!H) nodes.push(...breakMarkerNodes(frame, scale, style));
+  if (!H) nodes.push(...breakMarkerNodes(frame, scale, style, cfg.width));
   if (H) {
     nodes.push({
       kind: "line",

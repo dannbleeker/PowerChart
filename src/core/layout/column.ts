@@ -19,6 +19,7 @@ import {
   titleHeight,
   valueScale,
   bandFontSize,
+  markInFrame,
   MIN_LABEL_FS,
   type Frame,
   type ValueScale,
@@ -756,7 +757,7 @@ export function layoutColumns(cfg: ChartConfig, style: ChartStyle, decor: Decora
     }
   }
 
-  if (!H) nodes.push(...breakMarkerNodes(frame, scale, style));
+  if (!H) nodes.push(...breakMarkerNodes(frame, scale, style, cfg.width));
 
   // Zero baseline: horizontal line (vertical charts) or vertical line (bars).
   if (H) {
@@ -1002,6 +1003,14 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
       // the chrome left no room — an untitled one plots from y≈0, and
       // plot.y − 1.5em put the whole strip off the canvas.
       const q = lineToY(t);
+      // NOT ON THE TITLE, and not off the top of the chart. Upright this strip's
+      // labels are centred on their own tick, so the topmost one is drawn half a
+      // box above the plot's ceiling — and on a chart whose chrome has squeezed
+      // the plot to the frame's edge that is 7.1pt above the canvas at an 18pt
+      // font. The same per-tick answer the primary value axis already gives: a
+      // tick that cannot be labelled inside the chart keeps its gridline and
+      // loses its number.
+      if (!H && printsOnTitle(cfg, style, q - fs * 0.7)) continue;
       nodes.push({
         kind: "text",
         // Clamped on BOTH orientations for the same reason: no gutter is reserved
@@ -1067,18 +1076,21 @@ export function layoutCombo(cfg: ChartConfig, style: ChartStyle, decor: Decorati
           strokeWidth: 2,
           name: `combo-line-${li}-${c}`,
         });
-      const r = markersOnly ? 3.2 : 2.4;
-      nodes.push({
-        kind: "rect",
-        x: pt.x - r,
-        y: pt.y - r,
-        w: r * 2,
-        h: r * 2,
-        fill: color,
-        stroke: style.background,
-        strokeWidth: 1,
-        name: `combo-marker-${li}-${c}`,
-      });
+      // Shrunk where the frame's edge is closer than the marker's own half
+      // extent, and dropped below a point of it — see `markInFrame`.
+      const r = markInFrame(cfg, pt.x, pt.y, markersOnly ? 3.2 : 2.4);
+      if (r > 0)
+        nodes.push({
+          kind: "rect",
+          x: pt.x - r,
+          y: pt.y - r,
+          w: r * 2,
+          h: r * 2,
+          fill: color,
+          stroke: style.background,
+          strokeWidth: 1,
+          name: `combo-marker-${li}-${c}`,
+        });
       // `pointFs` is 0 when the row is too thin to carry a legible label, which
       // is the same "no room" answer the label placers give elsewhere — drawn
       // anyway it would be a zero-size font, which OOXML rejects.

@@ -106,6 +106,28 @@ export function aboveMarkFontSize(fs: number, markTop: number, titleInk: number,
  * A plot that already fits is returned with every field bit-identical, so this
  * is unreachable for any chart at a sane size.
  */
+/**
+ * The half-extent a mark centred at (cx, cy) may be drawn at, or 0.
+ *
+ * A MARK IS DRAWN AROUND ITS POSITION, so a point at the very edge of a plot
+ * puts half its marker outside — harmless while chrome sits between the plot
+ * and the frame, and not harmless once `fitPlot` brings the two together. A
+ * line's own markers were 1.6pt above an 80x60 chart with a footnote on it, and
+ * a combo's 1.2pt to the left of a 60x300 one with an explicit scale.
+ *
+ * Scatter and bubble answer this by moving the MARK inside (`markerExtent`), and
+ * that is not available here: these markers sit on a line drawn through the same
+ * points, so moving one detaches it from its own series. The mark keeps its
+ * position and gives up size instead — and below a point of it there is nothing
+ * worth drawing, so it is dropped and the line goes on saying where the point
+ * was.
+ */
+export function markInFrame(cfg: ChartConfig, cx: number, cy: number, r: number): number {
+  const room = Math.min(cx, cy, cfg.width - cx, cfg.height - cy);
+  const fit = Math.min(r, room);
+  return fit >= 1 ? fit : 0;
+}
+
 export function fitPlot<T extends Frame>(cfg: ChartConfig, plot: T): T {
   const w = Math.max(MIN_PLOT_SIDE, Math.min(plot.w, cfg.width));
   const h = Math.max(MIN_PLOT_SIDE, Math.min(plot.h, cfg.height));
@@ -279,25 +301,35 @@ export function valueScale(
 }
 
 /** Slanted-band break marker drawn across the plot (over the columns). */
-export function breakMarkerNodes(frame: Frame, scale: ValueScale, style: ChartStyle): SceneNode[] {
+export function breakMarkerNodes(frame: Frame, scale: ValueScale, style: ChartStyle, canvasW?: number): SceneNode[] {
   if (!scale.breakBand) return [];
   const { yLow, yHigh } = scale.breakBand;
   const skew = 2.5;
+  // The zigzag OVERHANGS the plot on purpose — that is the convention that says
+  // the axis is cut — but the overhang is a fixed 4 points and the plot's own
+  // left edge is only a few points in on a small chart, so the mark was drawn
+  // off the side of the CHART: 2pt past the left edge of an 80x60 or 120x90
+  // frame, on four kinds, at every font. Overhang what the frame can pay for.
+  //
+  // `canvasW` is optional so a caller that has no canvas to measure against
+  // keeps the old right-hand overhang; both callers in this engine pass it.
+  const left = Math.min(4, frame.x);
+  const right = canvasW == null ? 4 : Math.min(4, Math.max(0, canvasW - (frame.x + frame.w)));
   return [
     {
       kind: "rect",
-      x: frame.x - 2,
+      x: frame.x - Math.min(2, left),
       y: yHigh,
-      w: frame.w + 4,
+      w: frame.w + Math.min(2, left) + Math.min(2, right),
       h: yLow - yHigh,
       fill: style.background,
       name: "axis-break",
     },
     {
       kind: "line",
-      x1: frame.x - 4,
+      x1: frame.x - left,
       y1: yLow + skew,
-      x2: frame.x + frame.w + 4,
+      x2: frame.x + frame.w + right,
       y2: yLow - skew,
       stroke: style.mutedText,
       strokeWidth: 1,
@@ -305,9 +337,9 @@ export function breakMarkerNodes(frame: Frame, scale: ValueScale, style: ChartSt
     },
     {
       kind: "line",
-      x1: frame.x - 4,
+      x1: frame.x - left,
       y1: yHigh + skew,
-      x2: frame.x + frame.w + 4,
+      x2: frame.x + frame.w + right,
       y2: yHigh - skew,
       stroke: style.mutedText,
       strokeWidth: 1,
@@ -387,7 +419,16 @@ export function titleHeight(cfg: ChartConfig, style: ChartStyle): number {
 /** The size the title is actually drawn at, once it has been fitted to the width. */
 export function titleFontSize(cfg: ChartConfig, style: ChartStyle): number {
   const text = String(cfg.title ?? "");
-  let tf = style.fontSize * 1.2;
+  // The HEIGHT bounds it too, and only this bound is not about the text. A
+  // title is drawn from y=0 and its ink reaches `fontSize * 1.21` down, so a
+  // chart shorter than that draws its own name off the bottom. That is not a
+  // hypothetical frame: SMALL MULTIPLES build one chart per series at
+  // `(height - titleH - gaps) / rows`, so a 300x60 chart with a title and two
+  // panels asks for a 150x25 one, and its title overflowed by 0.9pt at an 18pt
+  // font. Bounded here rather than in `titleNode` so `titleInkBottom` and
+  // `printsOnTitle` — which decide what other chrome may be drawn — agree with
+  // what is actually drawn.
+  let tf = Math.min(style.fontSize * 1.2, cfg.height / 1.21);
   while (tf > 6 && textWidth(text, tf, true) > cfg.width) tf -= 0.5;
   return tf;
 }
@@ -808,7 +849,17 @@ export function chromeNodes(
   const catY = frame.y + frame.h + varianceBandHeight(cfg, decor, style) + 3;
   // The whole strip or none of it: these names share one y, so a chart short
   // enough to push them into the title pushes all of them.
-  if (decor.categoryAxis && !printsOnTitle(cfg, style, catY)) {
+  //
+  // AND THE SAME AT THE OTHER END. `fitPlot` floors the plot at
+  // `MIN_PLOT_SIDE`, so on a frame shorter than that floor the plot's own bottom
+  // edge — which is where this strip is placed from — is already past the foot
+  // of the chart. That is not a hypothetical size: SMALL MULTIPLES divide the
+  // frame into one chart per series, and a titled 300x60 chart with three of
+  // them asks for panels 7.6 points tall, whose category names were drawn 21.6
+  // points below the chart. A name printed under the chart is on the slide, not
+  // on the chart, which is the same reason it may not be printed on the title.
+  const catInk = catY + fs * 1.21;
+  if (decor.categoryAxis && !printsOnTitle(cfg, style, catY) && catInk <= cfg.height) {
     const slotW = centers.length > 1 ? centers[1] - centers[0] : frame.w;
     /**
      * One size for the whole axis, small enough that each name fits its slot.
