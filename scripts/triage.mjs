@@ -597,13 +597,34 @@ export function judgePrediction(prediction, log) {
  * not-found branch instead of through inequality. A prediction whose build has
  * not been rounded has NO round to judge on, and saying so is the whole answer.
  */
-export function roundToJudgeOn(logs, afterBuild, buildOf) {
+export function roundToJudgeOn(logs, afterBuild, buildOf, madeOn) {
   const madeAt = logs.findIndex((l) => buildOf(l) === afterBuild);
   // Rounds are ordered oldest-first, so anything at or before the prompting
   // round cannot test the change — and a build with no round at all is past the
   // end of the archive, not the start of it.
-  const since = madeAt === -1 ? [] : logs.slice(madeAt + 1);
+  //
+  // WHICH LEAVES A PREDICTION STAKED ON A BUILD NOBODY EVER ROUNDS, and that is
+  // the normal case rather than the exotic one: a claim is written the moment a
+  // change lands, and the next merge supersedes that commit before any round
+  // runs. Matching the build exactly would then answer `no round yet` forever —
+  // an entry that can never be judged, which is the same as no entry at all.
+  //
+  // A round's build stamp carries its DATE (`95170cf · 2026-08-17 09:03Z`), so
+  // an entry that says when it was made can be judged on any round taken after
+  // that day. The build match stays first: it is exact, and dates are only as
+  // good as the stamp.
+  const since =
+    madeAt !== -1 ? logs.slice(madeAt + 1) : madeOn ? logs.filter((l) => stampDate(l, buildOf) > madeOn) : [];
   return since[since.length - 1];
+}
+
+/** The date out of a round's build stamp, or "" when it does not carry one. */
+function stampDate(log, buildOf) {
+  // `buildOf` yields the hash alone, so read the raw stamp — the date is the
+  // half this needs and the half the hash throws away.
+  void buildOf;
+  const m = /·\s*(\d{4}-\d{2}-\d{2})/.exec(String(log?.build ?? ""));
+  return m ? m[1] : "";
 }
 
 /** Open predictions, judged against the newest round given. */
@@ -631,7 +652,7 @@ function reportPredictions(logs, load = readFileSync) {
     // an OLDER one — round 27 standing in for a round 29 that does not exist
     // yet. Rounds are ordered oldest-first, so anything at or before the
     // prompting round cannot test the change.
-    const judged = roundToJudgeOn(logs, p.afterBuild, buildOf);
+    const judged = roundToJudgeOn(logs, p.afterBuild, buildOf, p.madeOn);
     if (!judged) {
       console.log(`    no round yet   ${p.id}  (${p.madeIn}, made on ${p.afterBuild})`);
       continue;

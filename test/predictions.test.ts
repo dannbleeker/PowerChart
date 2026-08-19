@@ -96,6 +96,24 @@ describe("judging a prediction against a round", () => {
     expect(roundToJudgeOn(logs, "bbbbbbb", buildOf)).toBeUndefined();
   });
 
+  it("judges a prediction whose build nobody rounded on the rounds that came after it", () => {
+    // The normal case, not the exotic one: a claim is written the moment a
+    // change lands, and the next merge supersedes that commit before any round
+    // runs. Matching the build exactly would answer `no round yet` forever — an
+    // entry that can never be judged, which is the same as no entry at all.
+    //
+    // A round's build stamp carries its date, so a dated entry can be judged on
+    // any round taken after that day.
+    const logs = [{ build: "aaaaaaa · 2026-08-17 09:03Z" }, { build: "bbbbbbb · 2026-08-20 07:11Z" }];
+    const buildOf = (l: { build: string }) => l.build.split(" ")[0];
+    expect(roundToJudgeOn(logs, "ccccccc", buildOf, "2026-08-19")).toEqual({ build: "bbbbbbb · 2026-08-20 07:11Z" });
+    // And a round taken BEFORE the claim was made is still no evidence about it.
+    expect(roundToJudgeOn(logs, "ccccccc", buildOf, "2026-08-21")).toBeUndefined();
+    // The build match wins where it exists — it is exact, and a date is only as
+    // good as the stamp.
+    expect(roundToJudgeOn(logs, "aaaaaaa", buildOf, "2026-01-01")).toEqual({ build: "bbbbbbb · 2026-08-20 07:11Z" });
+  });
+
   it("keeps the ledger honest: every entry is judgeable and carries its reasoning", () => {
     const ledger = JSON.parse(readFileSync("rounds/predictions.json", "utf8"));
     expect(ledger.length, "the ledger is empty").toBeGreaterThan(0);
