@@ -228,14 +228,19 @@ describe("labels are not drawn on top of each other", () => {
   };
 
   /**
-   * The fonts this gate sweeps: the default and the sizes either side of it.
+   * Every font this engine claims to draw at, 6 to 32.
    *
-   * A chart's font is a number a caller types, and 6 to 18 is the range a deck
-   * actually uses — a thumbnail in a gallery, a chart on a slide, a chart on a
-   * poster. 24 and 32 are deliberately not here; see the block comment on the
-   * sweep below.
+   * 24 and 32 were outside this gate until 2026-08-19 on the argument that at
+   * that size the chrome genuinely exceeds the frame, so the remaining pairs
+   * were a decision about how small a chart PowerChart claims to draw rather
+   * than bounds anyone had forgotten. Measured, that turned out to be wrong:
+   * 185 pairs, 165 of them on ONE frame (300x60), and the shape was not a chart
+   * with more chrome than room — it was `fitPlot` growing a squeezed plot UP
+   * from its bottom edge and carrying every band placed from that edge into the
+   * title. The bands yield to the title now (`printsOnTitle`), and no
+   * `MIN_READABLE` ratio was needed.
    */
-  const FONTS_NEAR_DEFAULT = [6, 8, 10, 14, 18];
+  const FONTS_NEAR_DEFAULT = [6, 8, 10, 14, 18, 24, 32];
 
   /** The ink of a text node, as the frame sweep measures it. */
   const inkOf = (t: TextNode) => inkBox(t)!;
@@ -267,7 +272,7 @@ describe("labels are not drawn on top of each other", () => {
     expect(bad).toEqual([]);
   });
 
-  it("no chart overlaps its own text at or below 18pt", () => {
+  it("no chart overlaps its own text at any font it draws", () => {
     // The strongest form this file can assert today. A sweep of the text ink
     // boxes against each other found 237 overlapping pairs across the kinds and
     // fonts; fitting each label to the space it actually has took that to 76,
@@ -283,10 +288,12 @@ describe("labels are not drawn on top of each other", () => {
     // other (the bubble's), a tick fit measuring a gap the rings did not have
     // (the radar's), and the two corner labels where the x axis meets the y.
     //
-    // 24 and 32pt are still outside this gate: 282 pairs, and a different
-    // argument — at that size the chrome genuinely exceeds the frame, and the
-    // answer is a decision about how small a chart PowerChart claims to draw at
-    // all rather than another bound. Do not widen to them without taking it.
+    // 24 and 32pt joined it on 2026-08-19, and what they held was not what the
+    // note here predicted: 185 pairs, 165 of them at 300x60 alone, and nearly
+    // all of them one mechanism — the category strip, the axis ticks and the
+    // line's name climbing into the TITLE's band behind a plot `fitPlot` had
+    // squeezed. `printsOnTitle` is the shared answer; the title is what chrome
+    // yields to, because it is the one label that says what the chart is.
     const bad: string[] = [];
     for (const fontSize of FONTS_NEAR_DEFAULT)
       for (const [w, h] of [
@@ -417,7 +424,7 @@ describe("labels are not drawn on top of each other", () => {
    * in the x-axis strip, and the engine's own `textWidth` says they clear it.
    * Measure with the metric the layouts measure with.
    */
-  it("no horizontal chart overlaps its own text at or below 18pt", () => {
+  it("no horizontal chart overlaps its own text at any font it draws", () => {
     // Widened with the upright sweep above, and it found ONE node: the combo
     // line's series name, drawn at the full chart font while every label around
     // it had been fitted to its row — 22 pairs across four fonts, all of them
@@ -647,6 +654,40 @@ describe("the mechanisms the sweep would only report as a number", () => {
 
   const atFont = (kind: string, w: number, h: number, fontSize: number) =>
     buildChart({ ...sampleConfig(kind as never), width: w, height: h, style: { fontSize } } as ChartConfig);
+
+  it("keeps the axis strips out of the title's band", () => {
+    // `fitPlot` grows a squeezed plot UP from its bottom edge, and the category
+    // names and the axis ticks are placed FROM that edge — so on a frame that
+    // cannot pay for its chrome they climb into the title together. At 24pt on
+    // a 300x60 chart the category strip alone asks for 51 of the 60 points
+    // available. Chrome yields to the title; the title is what says what the
+    // chart is.
+    const bad: string[] = [];
+    for (const kind of ["stacked", "clustered", "line", "area", "scatter", "bubble", "mekko"] as const)
+      for (const fontSize of [24, 32])
+        for (const horizontal of [false, true]) {
+          const scene = buildChart({
+            ...sampleConfig(kind),
+            width: 300,
+            height: 60,
+            horizontal,
+            style: { fontSize },
+          } as ChartConfig);
+          const title = scene.nodes.find((n): n is TextNode => n.name === "title");
+          if (!title) continue;
+          const band = inkBox(title)!;
+          for (const n of scene.nodes) {
+            if (n.kind !== "text" || n === title) continue;
+            if (!/^(category-|value-axis$|x-axis$|y-axis$)/.test(n.name ?? "")) continue;
+            const box = inkBox(n)!;
+            const ox = Math.min(box.x1, band.x1) - Math.max(box.x0, band.x0);
+            const oy = Math.min(box.y1, band.y1) - Math.max(box.y0, band.y0);
+            if (ox > 0 && oy > 0 && ox * oy > 1)
+              bad.push(`${kind} at ${fontSize}pt${horizontal ? " rotated" : ""}: ${n.name} on the title`);
+          }
+        }
+    expect(bad).toEqual([]);
+  });
 
   it("keeps a label that sits above a mark out of the title's band", () => {
     // The shared rule behind most of the 6-18pt overlaps: a value drawn over a

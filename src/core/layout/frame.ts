@@ -407,6 +407,27 @@ export function titleFontSize(cfg: ChartConfig, style: ChartStyle): number {
  * The reservation is still the right question for a plot or a band, which is
  * why both exist.
  */
+/**
+ * Would a label whose ink starts at `inkTop` be printed ON the title?
+ *
+ * `fitPlot` grows a squeezed plot UP from its bottom edge, and the bands below
+ * the plot — the category names, the value axis's own ticks — are placed from
+ * that edge. So on a frame that cannot pay for its chrome they all climb into
+ * the title's band together: at 24pt on a 300x60 chart the category strip asks
+ * for 51 of the 60 points available, and every name was drawn across the title
+ * of its own chart. 165 of the 185 remaining text collisions were this, in one
+ * frame.
+ *
+ * The answer is the one every other reservation here gives — chrome that cannot
+ * be paid for is not drawn — and the title is what it yields to, because the
+ * title is the one label that says what the reader is looking at. Measured
+ * against the title's INK rather than its reserved band, so an ordinary chart,
+ * whose axis sits well below both, is untouched.
+ */
+export function printsOnTitle(cfg: ChartConfig, style: ChartStyle, inkTop: number): boolean {
+  return inkTop < titleInkBottom(cfg, style);
+}
+
 export function titleInkBottom(cfg: ChartConfig, style: ChartStyle): number {
   return cfg.title ? titleFontSize(cfg, style) * 1.21 : 0;
 }
@@ -750,6 +771,10 @@ export function chromeNodes(
         });
       }
       if (!tickLegible) continue;
+      // Per TICK, not per axis: a squeezed plot puts its topmost ticks in the
+      // title's band while the ones below it are still perfectly placed, and
+      // each tick is a number in its own right.
+      if (printsOnTitle(cfg, style, y - fs * 0.7 * tickScale)) continue;
       nodes.push({
         kind: "text",
         x: 0,
@@ -780,10 +805,11 @@ export function chromeNodes(
       name: "value-axis-title",
     });
   }
-  if (decor.categoryAxis) {
+  const catY = frame.y + frame.h + varianceBandHeight(cfg, decor, style) + 3;
+  // The whole strip or none of it: these names share one y, so a chart short
+  // enough to push them into the title pushes all of them.
+  if (decor.categoryAxis && !printsOnTitle(cfg, style, catY)) {
     const slotW = centers.length > 1 ? centers[1] - centers[0] : frame.w;
-    // Sit the category axis below the IBCS variance tier's reserved band (0 off).
-    const catY = frame.y + frame.h + varianceBandHeight(cfg, decor, style) + 3;
     /**
      * One size for the whole axis, small enough that each name fits its slot.
      *

@@ -694,18 +694,26 @@ describe("a horizontal combo's line name stays on the chart", () => {
     // all, and a point label sat under the line's own name with nothing able to
     // separate them.
     //
-    // Measured at 160x120, not at the 120x90 this used to use: sideways the
-    // name is now fitted to half a row and DROPPED where half a row cannot be
-    // read, so on the smaller frame there is no name to take anyone's room and
-    // all four point labels survive. The trade this asserts is still real one
-    // frame up — a name and three of the four labels — and a case where the
-    // name is gone proves nothing about a pass that runs when it is there.
-    const labels = buildChart({
-      ...sampleConfig("combo"),
-      width: 160,
-      height: 120,
-      horizontal: true,
-    } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
+    // The frame and font this is measured at have moved twice, because the
+    // sideways name has been bounded twice — first to half a row, then to the
+    // clear air between two rows' own labels — and each time the trade stopped
+    // happening where the test was looking. A case where the NAME is not drawn
+    // proves nothing about a pass that only runs when it is.
+    //
+    // 120x90 at 6pt is a frame where both exist and the trade is real, and it
+    // is checked rather than assumed: with `seriesLabels` off the same chart
+    // keeps three point labels, with the name on it keeps two.
+    const at = (decorations?: ChartConfig["decorations"]) =>
+      buildChart({
+        ...sampleConfig("combo"),
+        width: 120,
+        height: 90,
+        horizontal: true,
+        style: { fontSize: 6 },
+        ...(decorations ? { decorations } : {}),
+      } as ChartConfig).nodes.filter((n): n is TextNode => n.kind === "text" && !!n.name?.startsWith("combo-label-"));
+    const labels = at();
+    expect(at({ ...sampleConfig("combo").decorations, seriesLabels: false }).length).toBeGreaterThan(labels.length);
     expect(labels.length).toBeLessThan(4);
     expect(labels.length, "every point label was dropped, which is not the trade").toBeGreaterThan(0);
   });

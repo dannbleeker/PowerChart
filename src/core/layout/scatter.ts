@@ -7,6 +7,7 @@ import { spreadAlongAxis } from "../spread";
 import { PALETTE, paletteColor } from "../style";
 import { lerpColor, sequentialScale, zoneFill } from "../color";
 import {
+  printsOnTitle,
   titleInkBottom,
   fitPlot,
   footnoteH,
@@ -475,7 +476,11 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       strokeWidth: 0.75,
       name: "gridline-y",
     });
-    if (yTickScale > 0) {
+    // Not into the TITLE's band: `fitPlot` grows a squeezed plot up from its
+    // bottom edge, so on a 300x60 chart at 24pt the axis and its ticks are
+    // inside the title. Per tick, like the value axis in `frame.ts` — the ones
+    // lower down are still where they belong.
+    if (yTickScale > 0 && !printsOnTitle(cfg, style, y - fs * 0.7 * yTickScale)) {
       nodes.push({
         kind: "text",
         x: 0,
@@ -502,6 +507,9 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
       // that already clears the gutter does not move at all.
       const half = textWidth(formatNumber(t, xFmt), fs * 0.9 * xTickScale) / 2;
       const at = Math.max(x, plot.x + half);
+      // The x strip sits under the plot, and a plot squeezed into the title's
+      // band takes the strip with it — the whole row, since these share one y.
+      if (printsOnTitle(cfg, style, plot.y + plot.h + 2)) break;
       nodes.push({
         kind: "text",
         x: at - 24,
@@ -1206,7 +1214,15 @@ export function layoutScatter(cfg: ChartConfig, style: ChartStyle, decor: Decora
     // comfortable as 480x300. Same verdict as giving this placer the axis
     // labels as obstacles, and for the same reason — a point's label is DATA
     // and a tick label is chrome, so the chrome yields.
-    for (const placed of placeLabels(reqs, { x: 0, y: plot.y, w: cfg.width, h: plot.h + fs * 1.5 }, markerBoxes)) {
+    // The band starts BELOW the title's ink. Confining it to the plot was tried
+    // and measured and is refused (it drops 56 of 301 point labels on a
+    // comfortable 480x300 — a point's label is data, a tick label is chrome);
+    // this is the other bound, and it only bites when the plot itself has been
+    // squeezed into the title, where the alternative is a number printed across
+    // the chart's own name.
+    const bandTop = Math.max(plot.y, titleInkBottom(cfg, style));
+    const band = { x: 0, y: bandTop, w: cfg.width, h: plot.y + plot.h + fs * 1.5 - bandTop };
+    for (const placed of placeLabels(reqs, band, markerBoxes)) {
       const p = pts[order[placed.index]];
       nodes.push({
         kind: "text",
