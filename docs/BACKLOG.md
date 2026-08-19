@@ -749,9 +749,23 @@ satisfies all three:
    user's content in, to be deleted with the chart on the next update.
 3. **The tag must not land before the chart is complete.** Tagging `created[0]`
    in the first draw batch is the obvious way to get requirement 1, and it makes
-   a stalled or stopped draw leave a tagged partial chart behind. The self-test
-   scenario `stop a run part-way` asserts the opposite in as many words —
-   "nothing left claiming to be a chart" — and it passes today.
+   a stalled or stopped draw leave a tagged partial chart behind.
+
+   **DO NOT CITE `stop a run part-way` AS EVIDENCE FOR THIS — corrected
+   2026-08-19.** This entry rested on that scenario's pass ("nothing left
+   claiming to be a chart"), and the scenario has never drawn a shape: it calls
+   `requestStop()` BEFORE the insert, `throwIfStopped()` sits at the top of the
+   batch loop, and across all 69 archived rounds it has committed **zero**
+   batches. It tests that a stop asked for before a draw prevents it — a real
+   promise, but not this one. **Requirement 3 is currently untested**, and this
+   design constraint rests on reasoning alone.
+
+   The seam for a real test is `onPhase("commit", …)`, which fires once per
+   batch: requesting the stop from the first commit aborts a genuinely
+   half-drawn chart. It is not a change to slip in — a mid-draw abort leaves a
+   PARTIALLY DRAWN SLIDE, and `same scale across the deck` discovers its chart
+   population from that same deck, so it would contaminate every scenario after
+   it in the round. It wants its own pair.
 
 The two routes the earlier note proposed both die on requirement 3 or on cost:
 

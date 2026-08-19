@@ -3831,6 +3831,24 @@ function wireInsert() {
         ($("demo-log") as HTMLButtonElement).disabled = true;
         beginCrashLog({ build: buildStamp, host, label: "the whole round" });
         const traceFrom = traceMark();
+        // AFTER THE MARK, OR IT IS NOT IN THE ROUND. `traceEnvironment` has been
+        // called at pane-wiring time since #228 and its output has reached
+        // exactly ZERO of the 69 archived rounds — `traceLog(traceFrom)` slices
+        // off everything traced before the mark, so the host, the platform, the
+        // Office version, the slide size and (as of yesterday) the deck-style
+        // replay were all written into a window no round file ever sees.
+        //
+        // Measured, not reasoned: `host`/`environment` appears in 0 of 69 round
+        // files, and 0 of `slide size`, on an archive where every build contains
+        // the emitting line. The pre-mark window is real and large — round 092's
+        // first entry is at ms 48245 with `dropped: 0`, so 48 seconds of trace
+        // was sliced away.
+        //
+        // The replay had a second, earlier blocker of its own: `wireInsert()`
+        // runs synchronously BEFORE `void readDeckStyle()` in `Office.onReady`,
+        // so at wiring time no read has happened and `deckStyleVerdict` is null.
+        // Here it has, which is the other half of why this call belongs here.
+        traceEnvironment(buildStamp);
         // Read BEFORE the probe, because the probe adds scratch slides too — and
         // a slide the diagnostic created is exactly one worth a picture. An
         // unreadable deck here is not a reason to stop: it costs the id diff and

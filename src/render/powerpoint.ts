@@ -2183,7 +2183,21 @@ export async function updateChartsInSlides(
           // which would have made the reading say the whole deck was at risk on
           // a round where nothing was.
           const kind = String(loadedValue(() => (old as unknown as { type?: string }).type) ?? "").toLowerCase();
-          if (kind && kind !== "group" && !it.target.partIds?.length) c.atRisk += 1;
+          // AND IT HAS TO BE ABLE TO LEAVE SOMETHING BEHIND. Without this the
+          // count was a false positive in every non-zero reading it has ever
+          // produced: all NINE across 69 rounds came from `explode a degraded
+          // picture`, always `atRisk=1, charts=1`, and always the same thing —
+          // the second update replaces `pictured`, the single picture shape the
+          // collapse just made. One shape, deleted by its own id, with nothing
+          // behind it. Not `group`, no `partIds`, so it scored.
+          //
+          // `docs/ROUNDS.md` read those as "three at-risk charts, all with zero
+          // growth — three is not five", i.e. three real exposures sampled and
+          // found clean. Zero were. A chart that drew one shape cannot strand a
+          // second one, so the honest count over this archive is 0 and the
+          // stranding question is still waiting for its first sample.
+          const couldStrand = estimateOfficeShapes(it.scene) > 1;
+          if (kind && kind !== "group" && !it.target.partIds?.length && couldStrand) c.atRisk += 1;
           churn.set(it.target.slideId, c);
         }
         // From here the old chart is committed GONE. Anything that throws below

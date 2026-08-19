@@ -710,7 +710,12 @@ describe("the scenarios the selection API unlocked", () => {
     installHost([makeSlide("s1")]);
     const good = byName(await runSelfTest("probe"))["stop a run part-way"];
     expect(good.ok, good.detail).toBe(true);
-    expect(good.detail).toContain("stopped at a batch boundary");
+    // The wording changed because the old one was FALSE. "stopped at a batch
+    // boundary" implied it reached one; across 69 archived rounds this scenario
+    // has committed zero batches, because `requestStop()` runs before the insert
+    // and `throwIfStopped()` throws on iteration zero. The detail now counts the
+    // commits instead of describing them.
+    expect(good.detail).toContain("no shape was ever queued");
 
     // A chart already on the slide under the name a stopped insert would use.
     // The scenario must read that as "the stop left something behind" — if it
@@ -1370,7 +1375,9 @@ describe("scenarios that must not be able to pass without proving anything", () 
     // one threw during the draw itself, which is not the state at all. Same
     // reasoning as `targetWithNoTagResult`: the rule is what was wrong, so the
     // rule is what gets checked.
-    const unnamed = visibilityVerdict("PNG:before", "PNG:after-with-chart", false);
+    // With the control, because the subject here is the naming caveat, not the
+    // control — see "keeps the four visibility readings apart" for that.
+    const unnamed = visibilityVerdict("PNG:before", "PNG:after-with-chart", false, true);
     expect(unnamed.detail, "called a drawn chart undrawn").not.toMatch(/nothing was drawn/);
     // The image moved, so the chart IS visible — that is the verdict, and the
     // naming failure rides along as a caveat rather than replacing it.
@@ -1380,9 +1387,30 @@ describe("scenarios that must not be able to pass without proving anything", () 
 
   it("keeps the four visibility readings apart", () => {
     // The other three corners, so the rule cannot drift into always-passing.
-    const named = visibilityVerdict("PNG:before", "PNG:after", true);
+    //
+    // WITH THE CONTROL. This call used to omit `stable`, which made it the
+    // no-control case — and it asserted `ok: true` and called it "a clean pass".
+    // That is the vacuous pass this describe block is named after, written into
+    // the test that was supposed to prevent it. A pass needs the control render.
+    const named = visibilityVerdict("PNG:before", "PNG:after", true, true);
     expect(named.ok).toBe(true);
+    expect(named.skipped, "a real pass is not a skip").toBeUndefined();
     expect(named.detail, "a clean pass should carry no caveat").not.toMatch(/would not name/);
+
+    // NO CONTROL: the difference is real and means nothing, so it is blind
+    // rather than green. 23 of 69 archived rounds reported this scenario green
+    // in exactly this state.
+    const noControl = visibilityVerdict("PNG:before", "PNG:after", true);
+    expect(noControl.ok, "a difference without a control is not evidence").toBe(false);
+    expect(noControl.skipped, "blind is a skip, not a failure — the chart may be fine").toBe(true);
+    expect(noControl.detail).toMatch(/no control render/);
+
+    // CONTROL SAYS THE RASTERISER IS UNSTABLE: the verdict's own text already
+    // said this proves NOTHING, while returning ok.
+    const unstable = visibilityVerdict("PNG:before", "PNG:after", true, false);
+    expect(unstable.ok).toBe(false);
+    expect(unstable.skipped).toBe(true);
+    expect(unstable.detail).toMatch(/proves NOTHING/);
 
     // On the slide and invisible — the defect the scenario exists for.
     const invisible = visibilityVerdict("PNG:same", "PNG:same", true);
@@ -1446,7 +1474,8 @@ describe("scenarios that must not be able to pass without proving anything", () 
   });
 
   it("carries that reading into the verdict a reader actually sees", () => {
-    const v = visibilityVerdict("x".repeat(14856), "x".repeat(14856) + "y".repeat(108), true);
+    // Control passed: this test is about the SIZE wording in the detail.
+    const v = visibilityVerdict("x".repeat(14856), "x".repeat(14856) + "y".repeat(108), true, true);
     expect(v.ok).toBe(true);
     expect(v.detail, `the verdict says nothing about where they differ: ${v.detail}`).toMatch(
       /first differ at \d+% in/,
@@ -1460,13 +1489,13 @@ describe("scenarios that must not be able to pass without proving anything", () 
     // eight bytes. The gate asserts the two renders DIFFER, which a re-encode
     // satisfies on its own, and nothing in the verdict let a reader tell 0.7%
     // from 55% without opening the file.
-    const fat = visibilityVerdict("x".repeat(10064), "y".repeat(15652), true);
+    const fat = visibilityVerdict("x".repeat(10064), "y".repeat(15652), true, true);
     expect(fat.ok).toBe(true);
     expect(fat.detail, "a 55% change did not report its size").toMatch(/\+5588, 55\.5%/);
     expect(fat.detail, "a 55% change was called thin").not.toMatch(/THIN/);
 
     // The 2026-08-11 round, to the byte.
-    const thin = visibilityVerdict("x".repeat(14868), "y".repeat(14976), true);
+    const thin = visibilityVerdict("x".repeat(14868), "y".repeat(14976), true, true);
     expect(thin.ok, "a change is still a change — thinness is reported, not failed").toBe(true);
     expect(thin.detail, "a 0.7% change read exactly like a 55% one").toMatch(/\+108, 0\.7%/);
     expect(thin.detail).toMatch(/THIN margin/);
