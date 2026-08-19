@@ -1,6 +1,7 @@
 import { buildChart, clampDim, DEFAULT_SIZE, valueExtent } from "../core/chart";
 import { PALETTES } from "../core/style";
 import type { ChartConfig, ChartKind, Decorations, Series } from "../core/types";
+import { resolveStyleFile, isEmptyStyle, type DeckStyle, type StylePreference } from "../core/deck-style";
 import { CHART_KINDS, sampleConfig } from "../core/samples";
 import { sceneToSvg } from "../render/svg";
 import {
@@ -31,6 +32,8 @@ import {
   scanGap,
   loadChartFromSelection,
   loadThemePalette,
+  readDeckStyle,
+  writeDeckStyle,
   updateChartInSlide,
   updateChartsInSlides,
   onLateSync,
@@ -272,20 +275,38 @@ function stateFromConfig(cfg: ChartConfig): Omit<AppState, "editTarget"> {
   };
 }
 
-/** Corporate style file: persisted defaults merged into every chart. */
-interface StyleFile {
-  palette?: string[];
-  fontFamily?: string;
-  fontSize?: number;
-  negative?: string;
-  neutral?: string;
-}
+/**
+ * Corporate style file: persisted defaults merged into every chart.
+ *
+ * The same shape the DECK carries, deliberately — the pane's exported style
+ * file, the browser's copy and the deck's part are one format, so a user can
+ * paste between them and a second spelling cannot drift from the first.
+ */
+type StyleFile = DeckStyle;
 let styleFile: StyleFile = {};
 try {
   styleFile = JSON.parse(localStorage.getItem("powerchart-style") ?? "{}");
 } catch {
   /* corrupted style file — start fresh */
 }
+
+/**
+ * The style THIS DECK carries, read once on load from its custom XML part.
+ *
+ * `styleFile` above follows the browser; this follows the presentation. A deck
+ * sent to a colleague used to arrive with no style at all, so their charts drew
+ * with their defaults and every chart they added drifted further — the sharing
+ * gap `src/core/deck-style.ts` exists to close.
+ */
+let deckStyle: DeckStyle | null = null;
+/**
+ * Which of the two is in force. The deck by default, and the pane says so.
+ *
+ * Importing a style in the pane is an explicit act, so it flips this to "mine"
+ * for the session; "Use deck style" flips it back. The reasoning behind the
+ * default is in `resolveStyleFile`, which is where the decision belongs.
+ */
+let stylePrefer: StylePreference = "deck";
 
 /** Deck theme accents loaded via "Use deck theme" (session-scoped). */
 let themePalette: string[] | null = null;
@@ -294,7 +315,10 @@ let themePalette: string[] | null = null;
 function mergedStyle(): ChartConfig["style"] {
   // The loaded chart's own style beats the corporate defaults; an explicit
   // palette pick beats both.
-  const style = { ...styleFile, ...state.style } as NonNullable<ChartConfig["style"]>;
+  const style = {
+    ...resolveStyleFile(deckStyle, styleFile, stylePrefer).style,
+    ...state.style,
+  } as NonNullable<ChartConfig["style"]>;
   if (state.paletteName === "Theme" && themePalette) style.palette = themePalette;
   else if (state.paletteName !== "Default") style.palette = namedPalette(state.paletteName);
   return Object.keys(style).length ? style : undefined;
@@ -2338,7 +2362,11 @@ $("template-delete").addEventListener("click", () => {
 renderTemplateList();
 
 $("style-export").addEventListener("click", () => {
-  const current: StyleFile = { ...styleFile };
+  // What the pane is DRAWING with, which since decks carry their own style is
+  // not always the browser's copy. Exporting the copy while the preview shows
+  // the deck's would hand the user a file that does not describe what they can
+  // see — and this is the text they are about to send a colleague.
+  const current: StyleFile = { ...resolveStyleFile(deckStyle, styleFile, stylePrefer).style };
   if (state.paletteName === "Theme" && themePalette) current.palette = themePalette;
   else if (state.paletteName !== "Default") current.palette = namedPalette(state.paletteName);
   ($("json-io") as HTMLTextAreaElement).value = JSON.stringify(current, null, 2);
@@ -2350,11 +2378,53 @@ $("style-import").addEventListener("click", () => {
     if (parsed.kind) throw new Error("that is a chart config — use Import instead");
     styleFile = parsed;
     localStorage.setItem(STYLE_KEY, JSON.stringify(styleFile));
+    // An import is an explicit act by the person at the pane, so it wins over
+    // the deck's style for this session — otherwise the deck would silently
+    // undo what they just did, on the very chart they are looking at. "Use deck
+    // style" is the way back, which is why the flip needs no confirmation.
+    stylePrefer = "mine";
     renderPreview();
     note("Style imported — applied to every chart from this pane.", "ok");
   } catch (err) {
     note("Style import failed: {error}", "err", { error: err instanceof Error ? err.message : String(err) });
   }
+});
+
+/**
+ * Put the style in force into the DECK, where it travels with the file.
+ *
+ * Writes what the pane is actually drawing with — the resolved style, not the
+ * browser's copy — because the button is beside a preview and what it saves has
+ * to be what the user can see. On a host below PowerPointApi 1.7 the write
+ * cannot happen at all, and the note says which of the two it was: a style
+ * nobody stored and a style stored somewhere invisible fail the same way from
+ * the outside, and only one of them is worth retrying.
+ */
+$("style-to-deck").addEventListener("click", async () => {
+  const style = resolveStyleFile(deckStyle, styleFile, stylePrefer).style;
+  const ok = await writeDeckStyle(isEmptyStyle(style) ? null : style);
+  if (!ok) {
+    note("This host cannot store a deck style (needs PowerPoint API 1.7).", "err");
+    return;
+  }
+  deckStyle = isEmptyStyle(style) ? null : style;
+  stylePrefer = "deck";
+  note("Style saved into this deck — it travels with the file.", "ok");
+});
+
+// Host-only, like "Use deck theme" beside the palette: outside PowerPoint there
+// is no deck to store a style in, and a button that can only ever report its own
+// impossibility is worse than one that is visibly unavailable.
+for (const id of ["style-to-deck", "style-from-deck"]) {
+  ($(id) as HTMLButtonElement).disabled = !isPowerPointHost();
+}
+
+/** Go back to whatever the deck says, after an import switched to the browser's copy. */
+$("style-from-deck").addEventListener("click", async () => {
+  deckStyle = await readDeckStyle();
+  stylePrefer = "deck";
+  renderPreview();
+  note(deckStyle ? "Using this deck's own style." : "This deck carries no style — using yours.", "ok");
 });
 
 // --- Automation (JSON in / out, the open .ppttc idea) -------------------------
@@ -4466,6 +4536,15 @@ chartHInput?.addEventListener("input", syncSizeFromInputs);
 if (typeof Office !== "undefined" && Office.onReady) {
   Office.onReady(() => {
     wireInsert();
+    // The deck's own style, if it carries one. Fired and forgotten: the pane is
+    // usable before it answers, and a host that cannot store one (or a deck
+    // that has none) simply leaves the browser's style in force. It re-renders
+    // only when there is something to show, so an ordinary load does not flash.
+    void readDeckStyle().then((style) => {
+      if (!style) return;
+      deckStyle = style;
+      renderPreview();
+    });
     try {
       localizePane(Office.context.displayLanguage);
     } catch {

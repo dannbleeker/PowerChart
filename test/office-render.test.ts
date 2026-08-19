@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  readDeckStyle,
+  writeDeckStyle,
   _setBatchTimeoutForTest,
   _setBlankReReadDelayForTest,
   CHART_PARTS_TAG,
@@ -5110,5 +5112,50 @@ describe("the in-place applier and the adders it mirrors", () => {
     // A regex that stopped matching would make both tests above pass forever.
     expect(rectCase.size, "the rect scan found nothing to compare").toBeGreaterThan(3);
     expect(textAdder.size, "the text scan found nothing to compare").toBeGreaterThan(6);
+  });
+});
+
+describe("the style a deck carries", () => {
+  it("round-trips a style through the deck's own custom XML part", async () => {
+    installHost([makeSlide("s1")]);
+    expect(await readDeckStyle()).toBeNull(); // an unbranded deck says nothing
+    expect(await writeDeckStyle({ palette: ["#2a78d6"], fontSize: 11 })).toBe(true);
+    expect(await readDeckStyle()).toEqual({ palette: ["#2a78d6"], fontSize: 11 });
+  });
+
+  it("REPLACES the style rather than adding a second part", async () => {
+    // `getOnlyItemOrNullObject` — how the read finds it — refuses a namespace
+    // holding two, so a deck that quietly accumulated three styles would have
+    // no style at all. The write deletes every part in the namespace first, and
+    // this is the test that says so: without it the second read throws and the
+    // caller sees `null` on a deck that has just been branded twice.
+    installHost([makeSlide("s1")]);
+    await writeDeckStyle({ palette: ["#111111"] });
+    await writeDeckStyle({ palette: ["#222222"] });
+    expect(await readDeckStyle()).toEqual({ palette: ["#222222"] });
+  });
+
+  it("clears the deck's style when handed nothing", async () => {
+    installHost([makeSlide("s1")]);
+    await writeDeckStyle({ fontFamily: "Segoe UI" });
+    expect(await writeDeckStyle(null)).toBe(true);
+    expect(await readDeckStyle()).toBeNull();
+  });
+
+  it("says the write did not happen when the host refuses it", async () => {
+    // A style nobody stored and a style stored somewhere invisible fail the
+    // same way from the outside, and only one of them is worth retrying — so
+    // the pane is told, rather than shown a success it cannot verify.
+    installHost([makeSlide("s1")]);
+    faults.refuseCustomXmlWrites = true;
+    expect(await writeDeckStyle({ fontSize: 12 })).toBe(false);
+    faults.refuseCustomXmlWrites = false;
+    expect(await readDeckStyle()).toBeNull();
+  });
+
+  it("neither reads nor writes on a host below PowerPointApi 1.7", async () => {
+    installHost([makeSlide("s1")], [], undefined, (v) => Number(v) < 1.7);
+    expect(await writeDeckStyle({ fontSize: 12 })).toBe(false);
+    expect(await readDeckStyle()).toBeNull();
   });
 });

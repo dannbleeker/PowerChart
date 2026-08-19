@@ -125,6 +125,8 @@ describe("user manual coverage", () => {
       "Transpose",
       "Use deck theme",
       "Export style",
+      "Save style to deck",
+      "Use deck style",
       "Save as template",
       "Export current",
       "Import",

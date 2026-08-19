@@ -18,30 +18,6 @@ patterns.
 
 ## 1. Open
 
-### Deck-level style, so a shared deck keeps its branding
-
-**Researched:** 2026-08-01 (`docs/RESEARCH.md` §4b).
-
-The imported style file and saved templates live in `localStorage`
-(`powerchart-style`, `powerchart-templates`), so they follow the **browser**,
-not the deck. Send a branded deck to a colleague and their charts do not match
-yours — and every chart they add drifts further.
-
-**Shape of the fix:** a presentation-scoped custom XML part
-(`Presentation.customXmlParts`), which is the one thing it is genuinely the
-right tool for. Chart config stays in shape tags — it has to travel with the
-shape, through copy/paste into another deck and through PowerPoint's own
-Duplicate Slide, which a presentation-scoped part cannot do.
-
-**Known trap:** Office.js enumerates only parts related from
-`ppt/presentation.xml`. A part written at the package root
-(`/customXml/itemN.xml`) is invisible to it. If the generated deck writes one,
-it must be related from the presentation, not dropped at the root.
-
-**Priority:** low. Nothing is broken today; this is a sharing gap, and it needs
-a decision about precedence (deck style vs the user's own imported style) before
-any code.
-
 ### Take the overlap sweep to 24 and 32pt
 
 **Measured:** 2026-08-18, when the gate was widened to 6-18pt (282 pairs at the

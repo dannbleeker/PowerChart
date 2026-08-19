@@ -22,6 +22,7 @@ import { trace, traceAbout, tracing } from "../core/trace";
 import type { Rect } from "../core/placement";
 import type { ExpectedItem, ReconcileOptions, ReconcilePlan, SlideSnapshot } from "../core/reconcile";
 import { parseSlideSizeEmu, EMU_PER_POINT } from "./ooxml";
+import { DECK_STYLE_NS, isEmptyStyle, styleFromXml, styleToXml, type DeckStyle } from "../core/deck-style";
 
 /* global PowerPoint, Office */
 
@@ -9611,6 +9612,90 @@ function addWedgeFan(shapes: PowerPoint.ShapeCollection, n: WedgeNode, dx: numbe
     }
   }
   return created;
+}
+
+/**
+ * The style this DECK carries, or null when it carries none.
+ *
+ * The style file otherwise lives in `localStorage`, which follows the browser
+ * rather than the presentation — so a branded deck sent to a colleague drew
+ * with their defaults, and every chart they added drifted further. A
+ * presentation-scoped custom XML part travels with the file, which is what the
+ * sharing case needs and what a shape tag cannot do at deck scope.
+ *
+ * Requires PowerPointApi 1.7 (`customXmlParts`). Returns null on an older host,
+ * on a deck with no part of ours, and on any refusal — every caller treats null
+ * as "this deck says nothing", which leaves the user's own style in force. It
+ * never throws: a style is a preference, and losing one must not stop a draw.
+ */
+export async function readDeckStyle(): Promise<DeckStyle | null> {
+  if (!supports("1.7")) return null;
+  try {
+    return await PowerPoint.run(async (context) => {
+      const parts = (
+        context.presentation as unknown as {
+          customXmlParts: {
+            getByNamespace(ns: string): { getOnlyItemOrNullObject(): PowerPoint.CustomXmlPart };
+          };
+        }
+      ).customXmlParts;
+      const part = parts.getByNamespace(DECK_STYLE_NS).getOnlyItemOrNullObject();
+      part.load("id");
+      // The XML is queued in the SAME batch as the null check. Splitting them
+      // costs a round trip on every pane load, and `getXml` on a null object is
+      // harmless — the result simply never resolves to anything, which is the
+      // case the `isNullObject` branch below already handles.
+      const xml = part.getXml();
+      await boundedSync(context, "reading the deck's style", READBACK_TIMEOUT_MS);
+      if ((part as unknown as { isNullObject?: boolean }).isNullObject) return null;
+      return styleFromXml(xml.value);
+    });
+  } catch {
+    // A deck holding SEVERAL parts in our namespace lands here too:
+    // `getOnlyItemOrNullObject` refuses rather than picking one, and picking one
+    // is exactly what nothing here should do — two answers to "what is this
+    // deck's style" is a question for a person.
+    return null;
+  }
+}
+
+/**
+ * Write this deck's style, or clear it when handed nothing.
+ *
+ * Replaces the existing part rather than adding a second, because
+ * `getByNamespace(...).getOnlyItemOrNullObject()` — the read above — refuses a
+ * collection holding two, and a deck that has quietly accumulated three styles
+ * has no style at all.
+ *
+ * Returns false when the host is below PowerPointApi 1.7 or refuses the write,
+ * so the pane can say the deck was not updated rather than implying it was.
+ */
+export async function writeDeckStyle(style: DeckStyle | null): Promise<boolean> {
+  if (!supports("1.7")) return false;
+  try {
+    return await PowerPoint.run(async (context) => {
+      const parts = (
+        context.presentation as unknown as {
+          customXmlParts: {
+            getByNamespace(ns: string): { items: PowerPoint.CustomXmlPart[]; load(p: string): void };
+            add(xml: string): PowerPoint.CustomXmlPart;
+          };
+        }
+      ).customXmlParts;
+      const scoped = parts.getByNamespace(DECK_STYLE_NS);
+      scoped.load("items/id");
+      await boundedSync(context, "reading the deck's style parts", READBACK_TIMEOUT_MS);
+      // Every one of them, not just the first: a deck that already carries two
+      // is a deck the read above cannot answer for, and leaving one behind
+      // would keep it that way.
+      for (const p of scoped.items) p.delete();
+      if (!isEmptyStyle(style)) parts.add(styleToXml(style as DeckStyle));
+      await boundedSync(context, "writing the deck's style", READBACK_TIMEOUT_MS);
+      return true;
+    });
+  } catch {
+    return false;
+  }
 }
 
 /**

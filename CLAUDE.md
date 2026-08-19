@@ -571,6 +571,38 @@ picture` reports what became of a chart, and on this host every route to that
   Do not add a fifth mechanism. If a future round claims destruction, check the
   deck inventory before believing it — that is what caught all four.
 
+- **Two style stores, and the DECK wins — decided 2026-08-18 when deck-level
+  style shipped.** The imported style file and the saved templates live in
+  `localStorage`, so they follow the BROWSER; a deck's style lives in a
+  presentation-scoped custom XML part (`src/core/deck-style.ts`,
+  `readDeckStyle` / `writeDeckStyle`), so it follows the FILE. When both exist
+  the deck's wins, because the feature exists for the colleague who opens your
+  deck — and that colleague is exactly the person whose browser holds a
+  different style. Importing a style in the pane flips the session to the
+  browser's copy (an explicit act should not be silently undone) and `Use deck
+style` flips back. `resolveStyleFile` is the whole decision, and it never
+  MERGES the two: a deck's palette under a browser's font is a style neither
+  party chose.
+
+  **Chart config stays in shape tags and must.** A config has to travel with its
+  shape through copy/paste into another deck and through PowerPoint's own
+  Duplicate Slide; a presentation-scoped part follows neither. The two stores
+  answer different questions — "what is this shape" and "what does this deck
+  look like".
+
+  **The trap for anything that GENERATES a deck:** Office.js enumerates only
+  parts related from `ppt/presentation.xml`. A part written at the package root
+  (`/customXml/itemN.xml`) is invisible to the API, so a generated deck that
+  drops one there produces a style no add-in can ever read. Nothing in
+  `pptx-deck.ts` or `ooxml.ts` writes one today — the add-in's own write goes
+  through `customXmlParts.add`, which relates it correctly — and if that
+  changes, relate it from the presentation.
+
+  **`getOnlyItemOrNullObject` REFUSES a namespace holding two parts**, it does
+  not pick one, so the write deletes every part in the namespace before adding.
+  A deck that quietly accumulated three styles would otherwise have no style at
+  all, and the fake models the refusal so that stays true.
+
 - **A chart cut and pasted on the WEB loses its config, permanently and
   silently — office-js#3784, triaged 2026-08-12.** Shape tags do not survive
   cut/paste on PowerPoint web (desktop keeps them), and every chart's config

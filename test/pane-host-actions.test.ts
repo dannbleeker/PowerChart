@@ -49,6 +49,12 @@ const host = vi.hoisted(() => ({
   selectionBudgets: [] as (number | undefined)[],
   /** When set, loadChartFromSelection awaits this — holds a selection read open. */
   selectionGate: null as null | Promise<void>,
+  /** What `readDeckStyle` answers — the style this deck carries, or none. */
+  deckStyle: null as null | Record<string, unknown>,
+  /** Every style handed to `writeDeckStyle`, in order. */
+  deckStyleWrites: [] as unknown[],
+  /** False for a host below PowerPointApi 1.7, which cannot store one at all. */
+  deckStyleWritable: true,
   agendaSlides: [] as unknown[][],
   demoRuns: 0,
   demoDeckCalls: [] as unknown[][],
@@ -364,6 +370,14 @@ vi.mock("../src/render/powerpoint", () => ({
     },
   ),
   loadThemePalette: vi.fn(async () => null),
+  // The deck's own style file. `null` is the ordinary answer — a deck nobody
+  // has branded — and the pane must be usable before this resolves, which is
+  // what the startup read being fire-and-forget is for.
+  readDeckStyle: vi.fn(async () => host.deckStyle),
+  writeDeckStyle: vi.fn(async (style: unknown) => {
+    host.deckStyleWrites.push(style);
+    return host.deckStyleWritable;
+  }),
   onLateSync: vi.fn(),
   errorText: (e: unknown) => String(e),
   // The one-shot deck path. Off by default so the existing cases keep
@@ -447,7 +461,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
  * inside `Office.onReady`, so the stub must both look like a host (mocked
  * `isPowerPointHost`) and fire onReady synchronously at import.
  */
-async function bootHostPane() {
+async function bootHostPane(opts?: { deckStyle?: Record<string, unknown> | null }) {
   host.selectionBounds = null;
   host.slideShapes = [];
   host.deckCharts = [];
@@ -470,6 +484,13 @@ async function bootHostPane() {
   host.selectionBudgets = [];
   host.selectionGate = null;
   host.agendaSlides = [];
+  // Read at BOOT (the pane asks the deck on `Office.onReady`), so a test that
+  // wants a branded deck has to say so here rather than after the fact. The
+  // parameter is optional because `beforeEach(bootHostPane)` hands this a test
+  // context, which carries no `deckStyle` and so resets it like everything else.
+  host.deckStyle = opts?.deckStyle ?? null;
+  host.deckStyleWrites = [];
+  host.deckStyleWritable = true;
   host.demoRuns = 0;
   host.demoDeckCalls = [];
   host.demoDeckOpts = [];
@@ -2454,5 +2475,80 @@ describe("the live step list", () => {
     const head = section.querySelector(".steps-head")!;
     expect(head.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(head.compareDocumentPosition(rest[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("the style a deck carries", () => {
+  beforeEach(bootHostPane);
+
+  /**
+   * The palette the chart is actually INSERTED with — read off the config the
+   * pane hands the renderer, which is the thing that ends up in the deck.
+   *
+   * Not off `style-export`, which was the first version of this and measured
+   * nothing: that button reads the same resolver the chart does, so a test
+   * probing it passed with the chart's own wiring reverted. A probe that cannot
+   * fail is the shape this repo keeps finding in its own gates.
+   */
+  const insertedPalette = async () => {
+    host.calls.insertScene = [];
+    $("insert").click();
+    await settle();
+    const tag = (host.calls.insertScene[0] as { tagData?: string }).tagData ?? "{}";
+    return (JSON.parse(tag) as ChartConfig).style?.palette;
+  };
+  /** What `style-export` puts in the box — the file a user would send on. */
+  const exported = () => JSON.parse(($("json-io") as HTMLTextAreaElement).value) as { palette?: string[] };
+
+  it("draws with the DECK's style when the deck carries one", async () => {
+    await bootHostPane({ deckStyle: { palette: ["#dd1122", "#dd3344"] } });
+    await settle();
+    expect(await insertedPalette()).toEqual(["#dd1122", "#dd3344"]);
+    // …and the file the user would send on says the same thing.
+    $("style-export").click();
+    expect(exported().palette).toEqual(["#dd1122", "#dd3344"]);
+  });
+
+  it("hands the browser's style back when one is imported, and the deck's back on request", async () => {
+    await bootHostPane({ deckStyle: { palette: ["#dd1122"] } });
+    await settle();
+    ($("json-io") as HTMLTextAreaElement).value = JSON.stringify({ palette: ["#22aa33"] });
+    $("style-import").click();
+    // An import is an explicit act by the person at the pane; the deck must not
+    // silently undo it on the chart they are looking at.
+    expect(await insertedPalette()).toEqual(["#22aa33"]);
+
+    $("style-from-deck").click();
+    await settle();
+    // The note first: inserting a chart writes its own ("Done."), and asserting
+    // after that would be asserting the insert's message, not this button's.
+    expect($("host-note").textContent).toMatch(/deck/i);
+    expect(await insertedPalette()).toEqual(["#dd1122"]);
+  });
+
+  it("saves the style the pane is actually drawing with", async () => {
+    ($("json-io") as HTMLTextAreaElement).value = JSON.stringify({ palette: ["#22aa33"], fontSize: 12 });
+    $("style-import").click();
+    $("style-to-deck").click();
+    await settle();
+    expect(host.deckStyleWrites).toEqual([{ palette: ["#22aa33"], fontSize: 12 }]);
+    expect($("host-note").textContent).toMatch(/travels with the file/i);
+  });
+
+  it("says the deck was NOT updated on a host that cannot store one", async () => {
+    host.deckStyleWritable = false;
+    ($("json-io") as HTMLTextAreaElement).value = JSON.stringify({ palette: ["#22aa33"] });
+    $("style-import").click();
+    $("style-to-deck").click();
+    await settle();
+    expect($("host-note").textContent).toMatch(/cannot store a deck style/i);
+  });
+
+  it("leaves the browser's style in force when the deck carries none", async () => {
+    await bootHostPane({ deckStyle: null });
+    ($("json-io") as HTMLTextAreaElement).value = JSON.stringify({ palette: ["#22aa33"] });
+    $("style-import").click();
+    await settle();
+    expect(await insertedPalette()).toEqual(["#22aa33"]);
   });
 });

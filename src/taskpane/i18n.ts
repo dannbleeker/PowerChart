@@ -48,6 +48,8 @@ export const EN = {
   "Insert batch": "Insert batch",
   "Export style": "Export style",
   "Import style": "Import style",
+  "Save style to deck": "Save style to deck",
+  "Use deck style": "Use deck style",
   "Save as template": "Save as template",
   Delete: "Delete",
   Insert: "Insert",
@@ -102,6 +104,11 @@ export const EN = {
   "Style exported — share the JSON as your corporate style file.":
     "Style exported — share the JSON as your corporate style file.",
   "Style imported — applied to every chart from this pane.": "Style imported — applied to every chart from this pane.",
+  "Style saved into this deck — it travels with the file.": "Style saved into this deck — it travels with the file.",
+  "This host cannot store a deck style (needs PowerPoint API 1.7).":
+    "This host cannot store a deck style (needs PowerPoint API 1.7).",
+  "Using this deck's own style.": "Using this deck's own style.",
+  "This deck carries no style — using yours.": "This deck carries no style — using yours.",
   "The selection is not a PowerChart — select an inserted chart group first.":
     "The selection is not a PowerChart — select an inserted chart group first.",
   "Same scale needs at least two value-axis charts in the deck.":
