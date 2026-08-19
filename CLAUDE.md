@@ -1141,6 +1141,27 @@ emptyReReads: 0` — a pure logic bug of ours — while `same scale` failed with
   A condition on the block, never an early return; the pie's slice loop already
   carries that lesson one file over.
 
+  **The DATA is the third axis, and it found one thing — which is worth as much
+  as a long list.** Every sweep here holds `sampleConfig`'s own data: four to six
+  short category names, one to three series, two-digit values. Transforming it
+  (long names, 24 categories, 10 series, values in the billions, all-negative,
+  tiny fractions) turned up a single overflow family: a FUNNEL with 24 stages on
+  a 60pt chart drew its last stage 10.4pt below the chart, because `Math.max(1,
+…)` floored each band and 24 floored bands plus their gaps measured 36 points of
+  a 24-point plot. The floor comes out of the GAP now — the bands are the chart,
+  the gaps are chrome for a label, which is what that layout's own comment
+  already said — and where even hairlines will not fit, the floor is abandoned
+  rather than the stages.
+
+  **The one defect that arrives with the DATA rather than with the frame** is
+  worth its own line, because no sweep over sizes could ever have found it. The
+  scatter's x and y tick strips were fitted by one rule, `gap >= fs * 1.4`, and
+  only one of them is about a line height: down the Y the labels stack, across
+  the X they sit side by side, so what the gap has to hold there is the WIDEST
+  LABEL. `1,234,567,890` is 60 points wide at the default font, sails through a
+  14-point test, and is drawn straight through its neighbour. Fitted by width
+  now. Ordinary two-digit samples hide it completely.
+
   **The overlap half of the decoration sweep was measured and NOT gated**, which
   is the more interesting half. Thirty-three pairs, and after the callout fix
   every one that remains is a decoration doing its job: a callout is an OPAQUE

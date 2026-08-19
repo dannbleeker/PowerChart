@@ -306,6 +306,136 @@ const OPTIONS: Record<string, Record<string, unknown>> = {
   title: { title: "A rather long chart title that names the measure and the period" },
 };
 
+/**
+ * And the third axis: the DATA, which every sweep here holds at whatever
+ * `sampleConfig` ships — four to six short category names, one to three series,
+ * two-digit values.
+ *
+ * A user's data is none of those things. This transforms the sample rather than
+ * replacing it, so each kind keeps the shape its layout requires (a scatter's
+ * points, a gantt's tasks, a heatmap's matrix) while the thing under test moves.
+ *
+ * It found ONE family, which is worth as much as a long list: a funnel with 24
+ * stages on a 60pt-tall chart drew its last stage 10.4pt below the chart,
+ * because `Math.max(1, …)` floored each band's height and 24 floored bands plus
+ * their gaps measured 36 points of a 24-point plot. The floor comes out of the
+ * GAP now — the bands are the chart, the gaps are chrome for a label — and where
+ * even hairlines will not fit, the floor is abandoned rather than the stages.
+ */
+const DATA_SHAPES: Record<string, (c: Record<string, any>) => Record<string, any>> = {
+  "long category names": (c) => ({
+    ...c,
+    data: { ...c.data, categories: c.data.categories.map((x: string, i: number) => `${x} enterprise segment ${i}`) },
+  }),
+  "long series names": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({ ...s, name: `${s.name} including allocations` })),
+    },
+  }),
+  "24 categories": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      categories: Array.from({ length: 24 }, (_, i) => `C${i + 1}`),
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: Array.from({ length: 24 }, (_, i) => (s.values[i % s.values.length] ?? 0) + i),
+      })),
+    },
+  }),
+  "10 series": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: Array.from({ length: 10 }, (_, i) => ({
+        ...c.data.series[i % c.data.series.length],
+        name: `Series ${i + 1}`,
+        values: c.data.series[i % c.data.series.length].values.map((v: number | null) => (v == null ? v : v + i)),
+      })),
+    },
+  }),
+  "one category": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      categories: c.data.categories.slice(0, 1),
+      series: c.data.series.map((s: Record<string, any>) => ({ ...s, values: s.values.slice(0, 1) })),
+    },
+  }),
+  "one series": (c) => ({ ...c, data: { ...c.data, series: c.data.series.slice(0, 1) } }),
+  "values in the billions": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null) => (v == null ? v : v * 1234567)),
+      })),
+    },
+  }),
+  "every value negative": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null) => (v == null ? v : -v)),
+      })),
+    },
+  }),
+  "mixed signs": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null, i: number) => (v == null ? v : i % 2 ? -v : v)),
+      })),
+    },
+  }),
+  "tiny fractions": (c) => ({
+    ...c,
+    data: {
+      ...c.data,
+      series: c.data.series.map((s: Record<string, any>) => ({
+        ...s,
+        values: s.values.map((v: number | null) => (v == null ? v : v / 100000)),
+      })),
+    },
+  }),
+};
+
+describe("no data shape draws outside the chart's frame", () => {
+  for (const [key, shape] of Object.entries(DATA_SHAPES)) {
+    it(`${key} stays inside every frame`, () => {
+      const bad: string[] = [];
+      for (const [w, h] of FRAMES) {
+        for (const fontSize of [10, 18]) {
+          for (const horizontal of [false, true]) {
+            for (const { kind } of CHART_KINDS) {
+              const cfg = {
+                ...shape(sampleConfig(kind) as unknown as Record<string, any>),
+                width: w,
+                height: h,
+                horizontal,
+                style: { fontSize },
+              } as ChartConfig;
+              const o = worstOverflow(cfg);
+              if (o.pt > SLACK)
+                bad.push(
+                  `${kind} ${w}x${h}@${fontSize}${horizontal ? " rotated" : ""}: ${o.node} ${o.pt.toFixed(1)}pt past the ${o.side}`,
+                );
+            }
+          }
+        }
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+});
+
 describe("no top-level option draws outside the chart's frame", () => {
   for (const [key, value] of Object.entries(OPTIONS)) {
     it(`${key} stays inside every frame`, () => {
@@ -558,6 +688,40 @@ describe("labels are not drawn on top of each other", () => {
           }
         }
       }
+    expect(bad).toEqual([]);
+  });
+
+  it("fits the X axis to the WIDTH of its numbers, not to a line height", () => {
+    // The y axis and the x axis were fitted by one rule, and only one of them is
+    // about a line height. Down the Y the labels stack, so the gap between ticks
+    // has to hold `fs * 1.4`. Across the X they sit side by side, so what the gap
+    // has to hold is the WIDEST LABEL — and `1,234,567,890` is 60 points wide at
+    // the default font, which sails through a 14-point test and is then drawn
+    // straight through its neighbour.
+    //
+    // It arrives with the MAGNITUDE of the data rather than with the frame,
+    // which is why every sweep in this file missed it: `sampleConfig` deals in
+    // two-digit numbers.
+    const bad: string[] = [];
+    for (const kind of ["scatter", "bubble"] as const) {
+      const base = sampleConfig(kind) as unknown as Record<string, any>;
+      const cfg = {
+        ...base,
+        width: 200,
+        height: 150,
+        data: {
+          ...base.data,
+          series: base.data.series.map((s: Record<string, any>) => ({
+            ...s,
+            values: s.values.map((v: number | null) => (v == null ? v : v * 1234567)),
+            points: s.points?.map((p: Record<string, number>) => ({ ...p, x: p.x * 1234567 })),
+          })),
+        },
+      } as ChartConfig;
+      const ts = textsNamed(cfg, /^x-axis$/);
+      for (let i = 1; i < ts.length; i++)
+        if (overlap(inkOf(ts[i - 1]), inkOf(ts[i])) > 1) bad.push(`${kind}: x-axis pair ${i} (${ts[i].text})`);
+    }
     expect(bad).toEqual([]);
   });
 

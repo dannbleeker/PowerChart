@@ -832,6 +832,21 @@ export function chromeNodes(
     }
   }
   if (cfg.valueAxisTitle) {
+    // MEASURED AND LEFT ALONE, 2026-08-19. This label overlaps other text on
+    // eleven kind/frame pairs at an ordinary 200x150 — the column totals on a
+    // mekko and a combo, the topmost tick number on a line and an area — because
+    // its width is `Math.max(frame.x - 4, textWidth(…))`, a floor that RAISES a
+    // width, and its y is clamped at 0, which on a chart whose plot starts high
+    // is where the first tick is.
+    //
+    // Fitting it to the axis gutter was tried and REVERTED: `frame.x` is the
+    // value axis's own column, and a chart drawn without a value axis (the
+    // stacked sample among them) has no gutter at all — so the fit dropped the
+    // axis title from ordinary charts, which `keeps a numeric axis title` caught
+    // immediately. The room this label really has is "up to whatever else is in
+    // the band above the plot", and that is the totals row, which is a coupling
+    // rather than a bound. It wants a decision about where a unit belongs on a
+    // chart that has no axis column, not another clamp. See `docs/BACKLOG.md`.
     nodes.push({
       kind: "text",
       x: 0,

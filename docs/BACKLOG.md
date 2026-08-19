@@ -18,6 +18,44 @@ patterns.
 
 ## 1. Open
 
+### Text that overlaps text on data the samples do not carry — MEASURED 2026-08-19, not fixed
+
+The frame gate's overlap half sweeps `sampleConfig(kind)`, and a sweep of the
+same kinds under **option** and **data-shape** variants finds 75 overlapping text
+pairs it cannot see. The overflow half of both sweeps is closed and gated; this
+is what is left, measured, so nobody has to re-derive it.
+
+    46  24 categories        pie/doughnut adjacent outside labels, radar category names
+     8  10 series            legend rows against each other and against the plot
+     8  long category names  the shared category axis, already fitted, at its floor
+    11  valueAxisTitle       against the column totals and the topmost tick number
+     4  pareto               the secondary axis against the primary's numbers
+     2  secondaryAxis        same
+     2  every value negative
+     1  pie.semi
+
+**Why each is left rather than clamped.**
+
+- **24 categories** is the honest one: a 24-slice pie has more labels than it has
+  ring. The outside labels already shrink to the gap between NEIGHBOURS (the
+  sunburst rule), and at 24 slices that floor is reached and the labels are
+  dropped or collide. What is missing is a decision — drop every label past N, or
+  draw a legend instead — and that is a product call, not a bound.
+- **`valueAxisTitle` was attempted and REVERTED**, which is the useful record.
+  Its width is `Math.max(frame.x - 4, textWidth(…))`, a floor that raises a
+  width, so a long unit grows right over the totals. Fitting it to the axis
+  gutter drops it from every chart drawn WITHOUT a value axis — the stacked
+  sample among them, where `frame.x` is zero — and `keeps a numeric axis title`
+  caught that immediately. The room it really has is "whatever else is in the
+  band above the plot", i.e. the totals row, which is a coupling rather than a
+  bound. It wants a decision about where a unit belongs on a chart with no axis
+  column.
+- The rest are one shape: two independent numeric strips sharing a band.
+
+**Priority:** low. Every one is inside the frame, so nothing lands on the slide;
+they are legibility, not damage. Worth doing when someone is next in `frame.ts`
+with the totals row open in front of them.
+
 ### Report what this project has measured to the office-js tracker
 
 **Researched:** 2026-08-06. **Owner-gated — nothing may be filed without the
