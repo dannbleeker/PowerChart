@@ -262,26 +262,52 @@ So the two failures separate:
 | ownership | proven, no flag needed | nothing to prove it with |
 | what blocks it | a TRADE-OFF, not a signal | genuinely needs the guarantee |
 
-#### 1. Group a partial match rather than declining — OWNER'S CALL
+#### 1. ~~Group a partial match rather than declining~~ — CALLED AND SHIPPED 2026-08-19
 
-The 20 matched shapes are provably ours. Grouping them makes the chart
-re-editable, because the tag goes on the group. It also strands the 4 that did
-not come back — loose shapes inside the chart's box, which the next in-place
-update will not delete because the parts list cannot name them.
-
-That is the exact trade the partial branch already weighed and refused, and it
-refused it **on a premise the archive has since refuted**: it believed an
-ungrouped chart "is still tagged, still re-editable". It is not — 1 in 3 at best.
-So the comparison is now:
+**The owner took it: group the 20.** The comparison it was decided on:
 
     group the 20    chart re-editable, 4 shapes stranded in its box
     group nothing   chart whole, and loses its config about 7 times in 10
 
-Neither is good and the choice is a product judgement, not a measurement. It
-needs no new signal and no new guarantee — only a decision about which harm the
-user should get. **Not to be taken by an agent unattended**; the stranded-shape
-failure is the silent one, and this file already records a real slide left with
-four loose shapes (`grouped … partial=1 left=0:4`).
+**What shipped**, so a round is read against the right thing:
+
+- The matcher groups a partial match instead of discarding it, and the
+  short-read trace carries `grouping:` saying which — a round archive spans the
+  change, and the same line meant "so it was not grouped" before it.
+- **A bound the call did not name.** The subset is taken only when it is a strict
+  MAJORITY of the chart. 20 of 24 is what every round produces; 1 of 24 would be
+  a group holding one label with twenty-three shapes around it — the config saved
+  and the object destroyed. Majority rather than a tuned share, because "more of
+  the chart is inside the group than outside it" is a statement about the object.
+  **Worth the owner's eye**: it is the one part of the change he did not specify.
+- **`wholeMatch`**, because `freshMembers` now carries subsets and two readers
+  need whole lists. `ungroupedFallback` builds the parts tag off that map, and a
+  SHORT parts tag is worse than none — the next update deletes what it can name,
+  redraws everything and leaves the rest, so the chart grows on every edit. That
+  case is reachable: grouping can throw after a subset was chosen. The
+  single-member tag-target swap is the other reader.
+- **The stranded remainder is NOT recorded for the update to delete.** Tried
+  first, and it is how this trade would become data loss: the only ids we hold
+  for those shapes are the ones creation returned, and creation ids are what this
+  host has been seen not to answer to (`withOwnId 7 of 7 … matched 0`, rounds
+  068/069). The parts tag is a list the update path deletes BY.
+- `chooseGroupMembers` unchanged, deliberately: it sees the re-read's members and
+  not `created.length`, so it cannot tell two of two from two of twenty-four and
+  cannot judge whether the group would still be the chart.
+
+Three guards, each mutation-proven against the line it protects: the subset
+groups and says what it left behind, a minority does not group, and a partial
+group that then throws still writes a whole parts tag.
+
+**WHAT A ROUND SHOULD SAY.** Staked before it runs, per the method below.
+`same scale across the deck` fails at chart 4 in every round on record, and
+chart 4 is the 20-of-24 one — so it should now group, keep its config, and the
+scenario should reach chart 5 (the EMPTY read, item 2, which this does not
+touch). `grouped the chart's shapes` should carry `partial=1 left=N:4` for it,
+which is the first time that field reports an intended outcome. If chart 4 still
+loses its config after grouping, the tag write is refused THROUGH THE GROUP —
+which is what rounds 064/065 found on a freshly-added slide, and a different
+problem from this one.
 
 #### 2. The empty re-read (chart 5) — BLOCKED, and honestly so
 

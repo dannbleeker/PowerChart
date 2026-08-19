@@ -8079,6 +8079,13 @@ function targetRef(shape: PowerPoint.Shape | undefined): TargetRef | undefined {
  * takes the batch's tagging with it. Five charts in one run lost their group
  * AND their config that way, where grouping nothing loses at most one chart's.
  *
+ * "WHERE THEY CANNOT" MEANS THE MEMBER LIST IT IS GIVEN. Since 2026-08-19 the
+ * caller may hand over a SUBSET of the chart — the shapes the host was willing
+ * to name — and this function groups that subset like any other list, because
+ * every id in it is one the host has just answered for. What it will not do is
+ * silently drop a member of the list it was given; see the comment on that
+ * branch for why the two decisions differ.
+ *
  * THAT COMPARISON USED TO END "…than an ungrouped chart that is still
  * re-editable", and the archive refutes the second half: an ungrouped chart
  * keeps its config about one time in three, not as a rule (97 charts on an
@@ -8102,9 +8109,22 @@ export function chooseGroupMembers(o: {
 }): GroupMembers {
   if (o.refreshedIds) {
     const named = o.refreshedIds.filter((id): id is string => typeof id === "string" && !!id);
-    // Every member or none. A partial list would group part of the chart and
-    // leave the rest loose beside it, which is worse than not grouping at all —
-    // the loose remainder is then deleted by the next in-place update.
+    // Every member or none — and this is NOT the rule the matcher above now
+    // applies, which is worth a sentence because they look like the same
+    // decision.
+    //
+    // The matcher groups a subset the host named, on the owner's call of
+    // 2026-08-19: stranding a few shapes beats losing the chart's config. It can
+    // afford that because it knows both numbers — 20 matched of 24 drawn — so it
+    // knows the group will still BE the chart.
+    //
+    // This function is handed the re-read's members and nothing else. `["a",
+    // undefined]` could be two of a two-shape chart or two of twenty-four; there
+    // is no `created.length` here to say. Grouping the named ones would
+    // therefore be a trade made blind, and the bad end of it — a group holding
+    // one shape while twenty-three sit loose around it — is a chart whose drag
+    // moves a label. So it declines, and the caller that CAN see both numbers is
+    // the one that takes the trade.
     return named.length === o.refreshedIds.length && named.length > 0 ? { use: "ids", ids: named } : { use: "none" };
   }
   // Asked for a refresh and did not get one. That is the answer of a host which
@@ -8205,6 +8225,24 @@ async function groupAndTagAll(
   // remains is a cost argument, not a correctness one.
   const refresher = items.map((it, i) => ({ it, i })).filter(({ it }) => it.refreshShapes);
   const freshMembers = new Map<number, PowerPoint.Shape[]>();
+  /**
+   * The charts whose member list is the WHOLE chart, as against a subset the
+   * host named while withholding the rest.
+   *
+   * Needed because `freshMembers` now carries both. Grouping wants either — a
+   * subset is still provably ours and still worth a group (see the partial
+   * branch below) — but two other readers want only the whole list:
+   *
+   * - `ungroupedFallback` builds the parts tag off it, and a short parts tag on
+   *   a chart that ends up ungrouped is worse than none: the next update deletes
+   *   the anchor and the parts it names and redraws everything, leaving the
+   *   shapes nobody wrote down behind. That case is reachable — grouping can
+   *   still throw after a subset was chosen — so it is not theoretical.
+   * - the single-member tag-target swap below assumes `fresh[0]` is the chart's
+   *   anchor, which is true of a one-shape chart and false of a one-shape SUBSET
+   *   of a twenty-four-shape chart.
+   */
+  const wholeMatch = new Set<number>();
   if (refresher.length) {
     try {
       // Inside the try, all of it. Resolving the collections and queueing their
@@ -8337,6 +8375,7 @@ async function groupAndTagAll(
             // Same order as `created`, so index 0 stays the chart's anchor and
             // `ungroupedFallback`'s "everything after it is a part" holds.
             freshMembers.set(i, matched as PowerPoint.Shape[]);
+            wholeMatch.add(i);
           } else if (matched.length) {
             // ASK AGAIN FIRST. A partial match is the OTHER shape of the same
             // fault the empty read is — chart 4 of 8 matched 20 of its 24 shapes
@@ -8348,49 +8387,51 @@ async function groupAndTagAll(
               retry.push(entry);
               return;
             }
-            // A PARTIAL match is thrown away, and this used to be kept.
+            // A PARTIAL match is GROUPED — the owner's call, taken 2026-08-19,
+            // and it reverses what this branch did for the eight days before it.
             //
-            // The argument for keeping it was that every shape in it is provably
-            // ours, where the positional rule below is a guess. True, and beside
-            // the point: what it produces is a chart split into a group plus a
-            // remainder that does not move with it. The user drags the chart and
-            // leaves its baseline behind — and it LOOKS like one object, so
-            // nothing warns them. `4feb5be` left exactly that on a real slide,
-            // `grouped the chart's shapes charts=1 partial=1 left=0:4`, with
-            // `label-1-3`, `baseline`, `series-label-0` and `series-label-1`
-            // stranded inside the chart's own box. The round before it left the
-            // same four, and neither round could say why until the success path
-            // learned to speak.
+            // The two harms, both real, neither free:
             //
-            // Grouping nothing keeps the chart WHOLE. It is still deleted
-            // correctly on the next update — the parts tag, not the group, is what
-            // carries a chart's membership. Ugly beats silently destructible: the
-            // same reasoning this file already applies to a chart that loses its
-            // group but keeps its config, and the same conclusion
-            // `chooseGroupMembers` reaches when one member cannot be named at all.
+            //     group the subset   the chart is re-editable; the shapes the host
+            //                        withheld stay loose inside its own box
+            //     group nothing      the chart is whole, and loses its config about
+            //                        two times in three
             //
-            // "IT IS STILL TAGGED, STILL RE-EDITABLE" USED TO BE THE NEXT WORDS,
-            // and on this host they are false. Measured 2026-08-15 over the whole
-            // round archive, joining each chart's grouping outcome to its tag:
+            // The second number is what decided it. Measured 2026-08-15 over the
+            // whole round archive, joining each chart's grouping outcome to its
+            // tag:
             //
             //     grouped      64 chart(s),  1 lost the tag =  2%
             //     NOT grouped  62 chart(s), 41 lost the tag = 66%
             //
             // A group is a handle made in the grouping batch and never resolved,
-            // so the config lands on it. Without one the tag falls back to a
-            // `created` handle and this host refuses it two times in three. So
-            // declining to group is not the free, conservative choice it reads as
-            // here — it is the choice that costs the chart its config most of the
-            // time.
+            // so the config tag lands on it. Without one the tag falls back to a
+            // `created` handle and this host refuses it. So declining to group is
+            // not the free, conservative choice it used to read as here — it is
+            // the choice that costs the chart its config most of the time, and a
+            // chart that has lost its config is not a chart any more, it is
+            // twenty-four shapes.
             //
-            // The branch is LEFT AS IT IS for now, deliberately: the alternative
-            // (group the subset) strands the unmatched shapes, which is the
-            // destructible failure this rule was written to prevent, and choosing
-            // between two harms is not a call to make from a trace. What the
-            // measurement changes is where to look — chart 4 of 8 matches 20 of
-            // its 24 shapes in EVERY round, which is a re-read problem with a
-            // fixed shape, not a coin toss. Fix the re-read and neither harm has
-            // to be chosen. See `docs/BACKLOG.md`.
+            // WHAT IT COSTS, stated so nobody rediscovers it from a deck.
+            // `4feb5be` left this on a real slide — `grouped the chart's shapes
+            // charts=1 partial=1 left=0:4`, with `label-1-3`, `baseline`,
+            // `series-label-0` and `series-label-1` loose beside the group. Drag
+            // the chart and those four stay where they were. They are inside the
+            // chart's box, so they look like part of it, and nothing warns the
+            // user. That is the price, it is paid on this host only, and it is
+            // paid in exchange for the chart still being editable at all.
+            //
+            // THE REMAINDER IS NOT WRITTEN DOWN FOR THE NEXT UPDATE TO DELETE,
+            // and that was considered first. The parts tag would carry the
+            // stranded ids and the redraw would take them with the group, which
+            // sounds strictly better and is not: the only ids we hold for those
+            // shapes are the ones CREATION returned, and the ids creation returns
+            // are precisely the ones this host has been observed not to answer to
+            // (`withOwnId 7 of 7 … matched 0`, rounds 068/069 — the host lists a
+            // freshly drawn slide's shapes under ids it never handed us). Writing
+            // an unconfirmed id into a list the update path DELETES BY is how a
+            // cleanup becomes a data loss. A shape the host would not name is not
+            // a shape we may delete; that rule is older than this branch.
             //
             // Deliberately NOT falling through to the positional rule below. That
             // branch is safe only when NOTHING matched by id, because a slide
@@ -8398,11 +8439,32 @@ async function groupAndTagAll(
             // created.length` while the chart itself read short — and "the last
             // N" would then reach past the chart into the user's content and
             // group it in, to be deleted with the chart on the next update.
+            //
+            // ONE BOUND ON IT, and it is not in the call as the owner stated it —
+            // he weighed 20 of 24, which is what every round on record produces.
+            // The group has to be MOST of the chart. A group holding one shape
+            // while twenty-three sit loose around it is not a chart the user can
+            // drag; it saves the config and destroys the object, which is not
+            // the trade that was taken. Strict majority rather than a tuned
+            // share, because "more of the chart is inside the group than outside
+            // it" is a statement about the object, and any other number would be
+            // one somebody invented. Below it, the old behaviour exactly.
+            const majority = matched.length * 2 > it.created.length;
+            // NOT added to `wholeMatch`: this list is a subset, so the parts tag
+            // and the single-member tag swap must go on using `created`.
+            if (majority) freshMembers.set(i, matched as PowerPoint.Shape[]);
             hostFriction.shortReReads += 1;
             trace("group", "the re-read matched only some of the chart's shapes", {
               index: i,
               drew: it.created.length,
               matched: matched.length,
+              // AND WHAT WAS DONE ABOUT IT. The same line meant "so the chart was
+              // not grouped" until 2026-08-19 and means "so the chart was grouped
+              // without them" now, and a round archive spans both. A reader
+              // joining this to `grouped the chart's shapes` should not have to
+              // date the build to know which — nor to work out which side of the
+              // majority bound a chart fell.
+              grouping: majority ? "the subset the host named" : "nothing — the host named too little of the chart",
               // See the empty-re-read line above: the sync count is what turns a
               // decay curve into a measurement.
               contextSyncs: syncsOf(context),
@@ -8431,12 +8493,18 @@ async function groupAndTagAll(
             // The positional rule below is deliberately still reachable: it is
             // the honest last resort for a host that will not read ids back, and
             // it is the branch that only fires when NOTHING matched.
-            if (items.length >= it.created.length) freshMembers.set(i, items.slice(items.length - it.created.length));
+            if (items.length >= it.created.length) {
+              freshMembers.set(i, items.slice(items.length - it.created.length));
+              // A guess, but a WHOLE one: it is `created.length` shapes long, so
+              // the parts tag it feeds names as many shapes as the chart drew.
+              wholeMatch.add(i);
+            }
           } else if (items.length >= it.created.length) {
             // No ids to match on at all — a host that would not read them back.
             // The positional rule is still right for a slide this run added
             // blank, which is every slide the demo path draws on.
             freshMembers.set(i, items.slice(items.length - it.created.length));
+            wholeMatch.add(i);
           }
         });
         // WHAT THE PAUSE BOUGHT, counted in production. Everything that came
@@ -8464,8 +8532,18 @@ async function groupAndTagAll(
   }
   // A refreshed single shape is the tag target from here — the whole point of
   // refreshing it. Grouped items get their target replaced by the group below.
+  //
+  // WHOLE MATCHES ONLY. `fresh[0]` is the chart's anchor when the list is the
+  // chart; when it is a subset the host named, a one-member list would mean the
+  // host named ONE shape of a chart that may have twenty-four — whichever one it
+  // felt like naming, not the anchor. Tagging it would put the config on a bar.
+  //
+  // UNREACHABLE while the majority bound above stands, and said out loud rather
+  // than left to look like a live path: a one-member subset can only be a
+  // majority of a one-member chart, which is a whole match. This guards the
+  // bound moving, not a case that happens today.
   for (const [i, fresh] of freshMembers)
-    if (fresh.length === 1) {
+    if (fresh.length === 1 && wholeMatch.has(i)) {
       tagTargets[i] = fresh[0];
       targetFrom[i] = "refreshed";
     }
@@ -8549,14 +8627,16 @@ async function groupAndTagAll(
       // with lower ids than the group — and the log could not say whether the
       // group took a subset or four shapes from an earlier draw survived it.
       // It said so on its very next outing (`partial=1 left=0:4`), which is
-      // what got the partial match thrown away rather than kept.
+      // what got the partial match thrown away — for eight days, until the owner
+      // weighed it against the 66% of ungrouped charts that lose their config
+      // and called it the other way on 2026-08-19.
       //
-      // `partial` therefore reports an INVARIANT now, not an outcome: the
-      // re-read hands over whole matches only, so it should read 0 forever.
-      // Kept because a zero that is checked is worth more than a field that was
-      // removed once the bug it found was fixed — if a future change puts a
-      // short match back into `freshMembers`, this is the line that says so,
-      // and the alternative is finding out from someone's deck again.
+      // So `partial` is an OUTCOME again, and it is the only line that reports
+      // the cost of that call: `left=0:4` says chart 0 has four shapes loose
+      // inside its own box. It was briefly an invariant expected to read 0
+      // forever, and the field is unchanged either way — which is the argument
+      // for having kept it. A round archive spans both meanings; the matcher's
+      // `grouping:` field on the short-read line is what dates a round.
       if (took.length) {
         const partial = took.filter((t) => t.took < t.drew);
         trace("group", "grouped the chart's shapes", {
@@ -8594,7 +8674,7 @@ async function groupAndTagAll(
       grouped.clear();
     }
   }
-  const partsJson = await ungroupedFallback(context, items, tagTargets, grouped, freshMembers);
+  const partsJson = await ungroupedFallback(context, items, tagTargets, grouped, freshMembers, wholeMatch);
   // Tags are PowerPointApi 1.3+; keep the chart re-editable where supported.
   const taggable = items
     .map((it, i) => ({ it, i, target: tagTargets[i] }))
@@ -8828,6 +8908,7 @@ async function ungroupedFallback(
   tagTargets: (PowerPoint.Shape | undefined)[],
   grouped: Set<number>,
   freshMembers?: Map<number, PowerPoint.Shape[]>,
+  wholeMatch?: Set<number>,
 ): Promise<(string | undefined)[]> {
   const partsJson: (string | undefined)[] = items.map(() => undefined);
   const loose = (i: number) => !grouped.has(i) && tagTargets[i];
@@ -8856,8 +8937,19 @@ async function ungroupedFallback(
    * "everything after it is a part" still holds. A member of an `items` read is
    * the proxy pattern this host does honour — the same one `settleByCollection-
    * Read` relies on.
+   *
+   * WHOLE LISTS ONLY, since 2026-08-19. `freshMembers` also carries partial
+   * matches now — the subset a host named, which the grouping loop above is
+   * content to group — and a parts tag built from one of those NAMES FEWER
+   * SHAPES THAN THE CHART DREW. The next update deletes the anchor and the parts
+   * it can name, redraws all twenty-four, and leaves the unnamed ones behind, so
+   * the chart grows by a few shapes on every edit. That is strictly worse than
+   * the `created` list, whose ids may not resolve but at least describe the
+   * whole chart. Only reachable when grouping THREW after a subset was chosen,
+   * which is why it is a guard rather than an assertion.
    */
-  const parts = (it: Grouping, i: number): PowerPoint.Shape[] => (freshMembers?.get(i) ?? it.created).slice(1);
+  const parts = (it: Grouping, i: number): PowerPoint.Shape[] =>
+    ((wholeMatch?.has(i) ? freshMembers?.get(i) : undefined) ?? it.created).slice(1);
   const siblings = items.map((it, i) => (hasTags && loose(i) && it.opts.tagData ? parts(it, i) : []));
   const alt = items.map((it, i) => ({ it, i })).filter(({ it, i }) => loose(i) && wantsAltText(it.opts));
   if (!alt.length && !siblings.some((s) => s.length)) return partsJson;
