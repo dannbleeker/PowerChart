@@ -1819,9 +1819,12 @@ session's largest finding and was not in the round file.
   the deadline fires, so a NEGATIVE value means the host answered something else
   89 seconds INTO this call's wait — one second before it was abandoned.
 
-  Two rounds, both since #583 landed, which is every chance it has had. The host
-  is demonstrably alive ~50ms before and the read then never answers. **#583's
-  deck-style read has never once succeeded here.**
+  Two rounds, both since #583 landed, which is every chance it has had at that
+  point. The host is alive throughout and the read never answers.
+
+  **CORRECTED after round 092 — "has never once succeeded here" was wrong.** It
+  succeeds in 428ms. See the round 092 entry: the failure is INTERMITTENT, and
+  this line was written from the only two observations that existed.
 
 - **Research — a null result, recorded as one.** No upstream issue describes a
   PowerPoint-web custom-XML READ that hangs. office-js #2937 ("CustomXMLPart
@@ -1938,3 +1941,96 @@ is the pair the previous session left it: `8012ms silent` before, `3ms` after.
   and whatever Office marks its ribbon with are not treated alike. The fix
   (`namePresent`) stands; the explanation did not, and is corrected in
   `round.mjs` and in memory.
+
+## Round 092 — 0aa6f91 — 13/13 — the bug that stopped happening
+
+Second attempt again; the driver cleared a silent host and a stale pane by itself.
+
+- **Mine.** 13 of 13. The staked prediction came back `undetermined — neither
+  line appeared` for the SECOND round running, and the reason is different this
+  time. 091 could not ask because the 10s budget moved the failure out of the
+  traced window. **092 did not ask because the failure did not happen**: zero
+  deck-style entries, and the replay correctly stayed silent because there was no
+  verdict to carry — which is the behaviour its second test pins.
+
+- **THE READ WORKS. I said it never had, and that was wrong.** Driving the pane's
+  own button on the real host after the round:
+
+      click 1   428ms   "This deck carries no style — using yours."
+      click 2-4  <1s    same
+
+  That is the `isNullObject` path completing normally, not the timeout path. So
+  the deck-style read is **intermittent**, not broken: 90s and never in rounds 089
+  and 090, under half a second now. "#583's deck-style read has never once
+  succeeded on this host" was written from the only two observations that existed
+  and is corrected in the journal, in `powerpoint.ts` and in the ledger.
+
+  **The 10s budget is now sized from evidence rather than from harm** — 428ms
+  observed, so ten seconds is ~23x the success and still fails fast. Not tightened
+  further: one sample from a healthy host is not a distribution.
+
+  **A hypothesis at n=4, offered as one.** The two rounds that hung (089, 090) are
+  also the two with a host crash and a browser death. The two that did not (091,
+  092) booted cleanly. Four rounds is not an effect. The test is cheap though:
+  when it hangs again, look at whether that round had a crash.
+
+- **THE FEATURE IS REACHABLE FOR THE FIRST TIME, verified on the real host.**
+  Before the fix, `button "Use deck style" [disabled]`; after it,
+  `button "Use deck style" [ref=f25e328] [cursor=pointer]`, and clicking it
+  answers. Everything above was only measurable BECAUSE that fix landed — the
+  button could not be clicked at all until this round.
+
+- **Research.** None this round: the question the ledger is staked on was not put,
+  and inventing a search to fill the slot would be the padding this protocol
+  exists to prevent.
+
+- **Instrument.** The replay shipped and correctly emitted nothing. A test that
+  only ever fires is not a test; the silent case is pinned too.
+
+## Round 093 — 0aa6f91 — 13/13 — THE FIRST REAL PAIR, and it does not replicate
+
+First attempt, no recovery needed. **And the first time in this stretch that two
+rounds ran on ONE build** — 089 through 092 each had their own, because fixes
+were landed between every round. The brief says not to do that, in bold, and the
+reason is exactly what this pair shows.
+
+- **Mine — same build, nothing changed, and the internals swing hard:**
+
+      round   grouped  refused  errors  5010  deck inventory
+      092        20       0        2      5   0,4,2,5,1,1,1
+      093        15       4        9     11   0,4,2,17,24,24,24
+
+  Three slides ended holding **24 shapes each instead of one**: three charts that
+  did not group, **seventy-two shapes left loose on the deck**. And both rounds
+  report `13/13` and the byte-identical verdict line `8 of 8 charts carry the
+  shared scale (max=105 …); 8 still re-editable`.
+
+  The trace and the deck agree exactly — 15 grouped and 4 refused in the trace,
+  three big slides in the inventory — so both are trustworthy here. This is the
+  authority confirming the instrument rather than contradicting it, which is the
+  first time in this journal it has gone that way round.
+
+  **The scenario is not lying.** It asks whether the config survived, and it did:
+  the ungrouped fallback keeps the tag. It simply cannot see grouping — which is
+  what #586, #520 and most of the last month have been about. So
+  `scenarioRegressions` compares PASS to PASS across a round that left seventy-two
+  loose shapes and one that left none.
+
+  **Read as noise, not as a fall.** 0 and 4 refusals on the same build is inside
+  this project's own floor (1 vs 5, nothing changed). The finding is not "093 is
+  worse"; it is "the verdict cannot see the difference at all".
+
+- **Research.** None: the pair answered a question about our own instrument, not
+  about the host, and there is nothing to look up for it. Said rather than padded.
+
+- **Instrument.** `poolGroupingOutcome`, printed by the gate every round —
+  charts grouped, charts refused, the median refusals of the archive, and the
+  deck line beside it. Counted from the trace, which is exact; the deck is
+  printed as corroboration rather than used as the measure, because turning slide
+  shape-counts into "ungrouped" needs a threshold and a guard sized by guesswork
+  is how this instrument has been wrong before.
+
+- **Fix — process, not code.** Stop landing between the two rounds of a pair.
+  089-092 were four rounds on four builds and none of them can be compared with
+  its neighbour. This pair took twenty minutes and produced the clearest result
+  of the night.

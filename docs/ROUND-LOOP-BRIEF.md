@@ -1,7 +1,8 @@
 # PowerChart round loop — brief
 
 One round per cycle: run it, mine it, fix what it exposes, journal it, land it.
-Repeat. Last round **091** (`rounds/091-de76543.json`, 13 of 13, 2026-08-19).
+Repeat. Last round **093** (`rounds/093-0aa6f91.json`, 13 of 13, 2026-08-19),
+paired with 092 on the same build.
 
 **Move that line with the loop.** It was once twenty-one rounds out of date —
 reading `067 … 10 of 12` while a paragraph further down this same file cited
@@ -109,13 +110,15 @@ poll exit non-zero. That killed a healthy round that went on to pass 10 of 12.
 **The mechanism is settled.** A chart drawn onto a slide this run has just added
 USED to get a short or empty pre-grouping re-read, so it was not grouped; an
 ungrouped chart's tag falls back to a `created` handle and is refused about seven
-times in ten. Pooled over 43 rounds:
+times in ten. Pooled over 69 rounds:
 
-    slide already had shapes  130 chart(s), 129 grouped = 99%
-    freshly added, empty      106 chart(s),   9 grouped =  8%
+    slide already had shapes  205 chart(s), 204 grouped = 100%
+    freshly added, empty      227 chart(s), 109 grouped =  48%
 
-**Read that 8% as a pooled figure, not the current rate** — 39 of the 43 rounds
-predate the settled retry (`REREAD_RETRY_MS`), so it climbs slowly. Since the
+**Read that 48% as a pooled figure, not the current rate** — most of the archive
+predates the settled retry (`REREAD_RETRY_MS`), so it climbs slowly. (These read
+99% and 8% over 43 rounds when this paragraph was written; the numbers are
+recomputed from the archive, not edited by hand.) Since the
 retry those charts DO group: rounds 064 and 065, both, on the same two charts,
 and round 067's `same scale` verdict line reports `the settled retry repaired 2`.
 What such a chart still loses is the TAG, refused through the GROUP handle — the
@@ -126,11 +129,18 @@ a freshly added slide's id does not round-trip on this host.
 
 **`same scale across the deck` NO LONGER FAILS.** This paragraph said it failed
 "the same charts in the same order, every round — it is deterministic" and that
-was true when written: it lost 47 of its first 57 rounds. It has now passed nine
-consecutive rounds (079-087), and every round since 082 has scored 13 of 13.
+was true when written: it lost 47 of its first 57 rounds. It has now passed
+**fifteen consecutive rounds (079-093)**, and 18 rounds have scored full marks.
 The settled retry, the bindings and the origin tag through the binding each took
-a piece of it. **Do not read the 8% below as the current rate either** — see the
-paragraph above it.
+a piece of it. **Do not read the pooled figure below as the current rate either**
+— see the paragraph above it.
+
+**AND ITS PASS DOES NOT MEAN THE CHARTS GROUPED.** Rounds 092 and 093, one build
+run twice: 20 charts grouped and none refused, then 15 grouped and 4 refused with
+three slides left holding 24 shapes each — and both printed the identical verdict
+line and 13 of 13. The scenario asks whether the config survived, which it does
+either way, so it cannot see grouping at all. `npm run rounds:gate` prints
+grouping every round now; read that line beside the verdict, never instead of it.
 
 **THAT DECISION HAS BEEN TAKEN — 2026-08-19, by the owner: group the 20.**
 

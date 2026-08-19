@@ -4531,8 +4531,13 @@ export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
  *
  * ROUNDS 089 AND 090, BOTH: `reading the deck's style` consumed its entire
  * 90-second budget and never answered, while the host went on serving other
- * calls THROUGHOUT the wait. Two for two on the two rounds taken since #583
- * landed — a pair, not weather, and the only two chances it has had.
+ * calls THROUGHOUT the wait.
+ *
+ * NOT PERMANENT, THOUGH — corrected after rounds 091 and 092, which recorded no
+ * deck-style failure at all, and after driving the pane's button by hand: the
+ * read answers in 428ms. So it is INTERMITTENT, and the two rounds that hung are
+ * the two that also had a host crash and a browser death. That correlation is
+ * n=4 and is a hypothesis, not a finding.
  *
  * (This comment first said the host answered "~50ms before" the stall. That read
  * the fields backwards. `idleMs` was -89057: the host answered `listing the
@@ -4543,13 +4548,19 @@ export const readbackTimeoutMs = (): number => READBACK_TIMEOUT_MS;
  * half on EVERY load for a call that will not answer; `style-from-deck` makes a
  * person wait that long before being told it could not be read.
  *
- * TEN SECONDS IS NOT SIZED FROM A SUCCESSFUL READ, because this host has never
- * produced one — it bounds the damage rather than fitting the distribution, and
- * saying that plainly matters more than the number. Both callers degrade safely
- * when it expires: the pane keeps the browser's style, the button says it could
- * not read and invites a retry. If a host ever answers this slowly-but-truly,
- * the reading to make is a successful read's duration, and then this is sized
- * from evidence instead of from harm.
+ * SIZED FROM EVIDENCE NOW. This comment used to say no successful read had ever
+ * been observed here, so ten seconds bounded harm rather than fitting a
+ * distribution. Measured on the real host on 2026-08-19, after round 092, by
+ * driving the pane's own button four times: **428ms**, and three further clicks
+ * all answered well inside a second.
+ *
+ * So the distribution is bimodal — sub-second, or never — which is the shape
+ * that makes a timeout easy: ten seconds is ~23x the observed success and still
+ * fails fast against a hang. Not tightened further on one measurement; a single
+ * sample from a healthy host is not a distribution either.
+ *
+ * Both callers degrade safely when it expires: the pane keeps the browser's
+ * style, the button says it could not read and invites a retry.
  *
  * `PW_DECK_STYLE_TIMEOUT_MS` overrides, so a slow host can be given more without
  * a rebuild.

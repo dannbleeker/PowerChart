@@ -26,6 +26,7 @@ import {
   roundProfile,
   traceNovelty,
   poolScenarioPopulations,
+  poolGroupingOutcome,
 } from "./triage.mjs";
 
 /**
@@ -140,6 +141,32 @@ if (isMain(import.meta.url, process.argv[1])) {
   // is downstream of a host stall that skipped the scenario seeding the probe
   // charts, which is weather rather than a fault. It is a reason to read the
   // round, and a reason not to quote the pass without its denominator.
+  // WHAT THE VERDICT CANNOT SEE. Rounds 092 and 093, one build run twice: 20
+  // charts grouped and none refused, then 15 grouped and 4 refused with three
+  // slides ending on 24 shapes each — and both reported 13/13 with the identical
+  // verdict line. Reported every round, because a number only printed when it
+  // looks bad is a number nobody has a baseline for.
+  //
+  // NEVER A REGRESSION, and the pair above is exactly why: 0 and 4 on the same
+  // build is inside this project's own noise floor (1 vs 5, nothing changed). It
+  // is a reason to read the round, which is all this line claims.
+  const grouping = poolGroupingOutcome(rounds);
+  if (grouping) {
+    const { now, refusedMedian, rounds: priorRounds } = grouping;
+    console.log(
+      `  GROUPING, which no scenario verdict reports: ${now.grouped} chart(s) grouped, ` +
+        `${now.refused} refused (usually ${refusedMedian} over ${priorRounds} prior round(s))`,
+    );
+    console.log(`    the deck ended holding ${now.deck.join(",")} shape(s) per slide`);
+    if (now.refused > 0)
+      console.log(
+        [
+          "    A refused chart is left as loose shapes in its own box — it keeps its config",
+          "    and looks identical to the scenario, which is why 13/13 can hide it. Inside the",
+          "    noise floor unless a PAIR on one build agrees; read the deck line above.",
+        ].join("\n"),
+      );
+  }
   const shrunk = poolScenarioPopulations(rounds);
   if (shrunk.length) {
     console.log(`  ${shrunk.length} scenario(s) PASSED ON A SMALLER POPULATION than they usually run:`);

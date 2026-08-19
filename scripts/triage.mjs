@@ -730,6 +730,56 @@ export function poolScenarioPopulations(logs) {
   return shrunk;
 }
 
+/**
+ * Whether the charts this round drew ended up GROUPED, which no verdict reports.
+ *
+ * ROUNDS 092 AND 093 ARE WHY. One build, run twice, nothing changed between them:
+ *
+ *     092   20 charts grouped, 0 refusals, deck 0,4,2,5,1,1,1
+ *     093   15 charts grouped, 4 refusals, deck 0,4,2,17,24,24,24
+ *
+ * Three slides ended holding TWENTY-FOUR shapes each instead of one — three
+ * charts that did not group, seventy-two shapes loose on the deck — and both
+ * rounds reported `13/13` and the byte-identical verdict line `8 of 8 charts
+ * carry the shared scale ... 8 still re-editable`.
+ *
+ * The scenario is not lying. It asks whether the config survived, and it did:
+ * the ungrouped fallback keeps the tag. It simply cannot see grouping, which is
+ * what the last several changes here have been about — so `scenarioRegressions`
+ * compares PASS to PASS across a round that left seventy-two loose shapes and a
+ * round that left none.
+ *
+ * Counted from the TRACE, which is exact — `charts` on each `grouped the chart's
+ * shapes` line, and every `not grouping:` line — with the deck printed beside it
+ * as corroboration rather than as the measure. A slide's shape count needs a
+ * threshold to interpret, and a guard sized by guesswork is how this instrument
+ * has been wrong before.
+ */
+export function poolGroupingOutcome(logs) {
+  const per = [];
+  for (const log of logs) {
+    const entries = log?.trace?.entries;
+    if (!Array.isArray(entries)) continue;
+    let grouped = 0;
+    let refused = 0;
+    for (const e of entries) {
+      const m = String(e.message ?? "");
+      if (m === "grouped the chart's shapes") grouped += Number(e.data?.charts) || 0;
+      else if (/^not grouping/.test(m)) refused += 1;
+    }
+    if (!grouped && !refused) continue;
+    const deck = (log?.deck?.inventory ?? []).map((sl) => sl.count ?? sl.shapes?.length ?? 0);
+    per.push({ build: String(log.build ?? "").split(" ")[0], grouped, refused, deck });
+  }
+  if (!per.length) return null;
+  const now = per[per.length - 1];
+  const priors = per.slice(0, -1);
+  const refusedMedian = priors.length
+    ? priors.map((p) => p.refused).sort((a, b) => a - b)[Math.floor(priors.length / 2)]
+    : 0;
+  return { now, refusedMedian, rounds: priors.length };
+}
+
 /** Open predictions, judged against the newest round given. */
 function reportPredictions(logs, load = readFileSync) {
   let ledger;

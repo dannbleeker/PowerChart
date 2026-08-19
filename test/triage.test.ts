@@ -57,6 +57,8 @@ import { describeFinding } from "../scripts/triage.mjs";
 import { batchPopulations } from "../scripts/triage.mjs";
 // @ts-expect-error — as above. One directive per import, one import per line.
 import { poolScenarioPopulations } from "../scripts/triage.mjs";
+// @ts-expect-error — as above. One directive per import, one import per line.
+import { poolGroupingOutcome } from "../scripts/triage.mjs";
 import { buildDeckBase64 } from "../src/render/pptx-deck";
 import { buildChart } from "../src/core/chart";
 import { sampleConfig } from "../src/core/samples";
@@ -1660,5 +1662,55 @@ describe("a scenario that passes on a smaller population than it usually runs", 
   it("flags a shrunken population even when the scenario FAILED, and says which", () => {
     const rounds = [round("a", 8), round("b", 8), round("c", 4, false)];
     expect(poolScenarioPopulations(rounds)[0]).toMatchObject({ now: 4, usual: 8, ok: false });
+  });
+});
+
+describe("grouping, which no scenario verdict reports", () => {
+  const round = (build: string, grouped: number, refused: number, deck: number[]) => ({
+    build,
+    trace: {
+      entries: [
+        ...(grouped ? [{ message: "grouped the chart's shapes", data: { charts: grouped } }] : []),
+        ...Array.from({ length: refused }, () => ({
+          message: "not grouping: no member handle this host will accept",
+          data: {},
+        })),
+      ],
+    },
+    deck: { inventory: deck.map((count, i) => ({ slideId: `s${i}`, count })) },
+  });
+
+  it("reports the newest round's grouping against its own history", () => {
+    // Rounds 092 and 093, one build run twice, nothing changed between them: 20
+    // grouped / 0 refused, then 15 grouped / 4 refused with three slides ending
+    // on 24 shapes each. Both reported 13/13 and the identical verdict line.
+    const out = poolGroupingOutcome([
+      round("a", 20, 2, [1, 1, 1]),
+      round("a", 20, 0, [0, 4, 2, 5, 1, 1, 1]),
+      round("a", 15, 4, [0, 4, 2, 17, 24, 24, 24]),
+    ]);
+    // priors are [2, 0]; sorted [0, 2] and the median index lands on the upper,
+    // so the baseline is 2. The conservative direction: a higher baseline flags
+    // LESS, and this line is a reason to read rather than a verdict.
+    expect(out).toMatchObject({ now: { grouped: 15, refused: 4 }, refusedMedian: 2, rounds: 2 });
+    expect(out?.now.deck, "the deck is printed as corroboration, not derived from").toEqual([0, 4, 2, 17, 24, 24, 24]);
+  });
+
+  it("counts charts, not grouped-lines — one line can carry several", () => {
+    // `charts` is a count on the line. Counting lines instead would read a round
+    // that grouped twenty charts in one batch as having grouped one.
+    const out = poolGroupingOutcome([round("a", 4, 0, [1]), round("a", 20, 0, [1])]);
+    expect(out?.now.grouped).toBe(20);
+  });
+
+  it("skips a round that neither grouped nor refused anything", () => {
+    // A round that never reached the grouping path says nothing about it, and
+    // averaging its zero into the history would drag the baseline down.
+    const empty = { build: "a", trace: { entries: [{ message: "something else", data: {} }] } };
+    expect(poolGroupingOutcome([empty, empty])).toBeNull();
+  });
+
+  it("survives a round with no trace and no deck", () => {
+    expect(() => poolGroupingOutcome([{ build: "a" }, round("a", 1, 0, [1])])).not.toThrow();
   });
 });
