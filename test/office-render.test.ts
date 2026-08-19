@@ -1425,6 +1425,38 @@ describe("updateChartInSlide", () => {
       }
     });
 
+    it("does NOT count a chart that drew one shape — it can strand nothing", async () => {
+      // EVERY NON-ZERO `atRisk` IN THE ARCHIVE WAS THIS. All nine across 69
+      // rounds came from `explode a degraded picture`, always `atRisk=1,
+      // charts=1`: its second update replaces `pictured`, the single picture
+      // shape the collapse just made. One shape, deleted by its own id, nothing
+      // behind it. Not a group and with no parts list, so it scored — and
+      // `docs/ROUNDS.md` read those nine as three real exposures sampled clean.
+      //
+      // A one-shape chart is the control this counter never had.
+      const slide = makeSlide("s1");
+      installHost([slide], [], slide, (v) => v !== "1.8");
+      // A scene with literally one node. `buildChart` never makes one — the
+      // smallest config still renders five shapes, which the assertion below
+      // caught on the first draft of this test.
+      const full = buildChart(config);
+      const oneShape = { ...full, nodes: full.nodes.slice(0, 1) };
+      await insertSceneIntoSlide(oneShape, { tagData: "cfg" });
+      const found = (await listChartsInDeck()).charts;
+      const blind = { ...found[0].target, partIds: undefined };
+      setTracing(true);
+      try {
+        await updateChartsInSlides([{ scene: oneShape, target: blind, opts: { tagData: "cfg" } }]);
+        const d = orphanLine()?.data as { atRisk: number; charts: number };
+        // The scene must really be a single shape, or this test proves nothing
+        // about the guard and everything about the fixture.
+        expect(estimateOfficeShapes(oneShape), "fixture is not a one-shape chart").toBe(1);
+        expect(d?.atRisk, "a chart that drew one shape cannot strand a second").toBe(0);
+      } finally {
+        setTracing(false);
+      }
+    });
+
     it("counts the shapes stranded when the chart has no parts list", async () => {
       // THE READING THIS EXISTS FOR. A target with no `partIds` is exactly what
       // a refused `reading back an ungrouped chart's shape ids` produces: the

@@ -48,6 +48,11 @@ const hostReadiness = vi.hoisted(() => {
   };
 });
 
+/** Where the mocked `traceEnvironment` sends its line. Pointed at the real `trace`. */
+const traceRef = vi.hoisted(() => ({
+  fn: (_scope: string, _message: string, _data?: Record<string, unknown>) => {},
+}));
+
 const host = vi.hoisted(() => ({
   selectionBounds: null as null | { left: number; top: number; width: number; height: number },
   /** What is already on the slide the next insert would draw onto. */
@@ -421,7 +426,12 @@ vi.mock("../src/render/powerpoint", () => ({
   // The one-shot deck path. Off by default so the existing cases keep
   // exercising the shape-by-shape renderer they were written for.
   canInsertSlidesFromBase64: vi.fn(() => host.canInsertFile),
-  traceEnvironment: vi.fn(),
+  // EMITS, rather than doing nothing. A no-op here is why 69 rounds shipped with
+  // `traceEnvironment` on the wrong side of the round's trace mark and no test
+  // could see it: the defect is WHERE this is called, and a stub that traces
+  // nothing cannot express where. `traceRef.fn` is pointed at the real `trace`
+  // by the test that cares.
+  traceEnvironment: vi.fn((build: string) => traceRef.fn("host", "environment", { build })),
   wantsAutoPicture: vi.fn(() => host.autoPicture),
   // Selection juggling around an in-place redraw. The fake host has no view,
   // so it just runs the body — with `deselected` false, which is the honest
@@ -1965,6 +1975,38 @@ describe("demo-insert one-shot deck insert", () => {
     } finally {
       setTracing(false);
       host.deckSlideIds = undefined;
+    }
+  });
+
+  it("puts the environment INTO the round file, not into a window it slices off", async () => {
+    // ZERO OF 69 ARCHIVED ROUNDS carry a `host`/`environment` line, or a
+    // `slide size` line, on an archive where every single build contains the
+    // code that emits them. `traceEnvironment` was called at pane-wiring time,
+    // and the round's `traceLog(traceFrom)` slices off everything traced before
+    // its mark — so the host, the platform, the Office version and the slide
+    // size have never once reached a round file.
+    //
+    // The pre-mark window is not small: round 092's first entry sits at
+    // ms 48245 with `dropped: 0`, so 48 seconds of trace was cut away.
+    //
+    // Asserted against the DOWNLOADED BUNDLE rather than `traceLog()`, because
+    // the whole defect is the difference between the two. A test reading the
+    // live buffer would have passed for all 69 rounds.
+    const dl = captureDownloads();
+    const { setTracing, trace } = await import("../src/core/trace");
+    traceRef.fn = trace;
+    setTracing(true);
+    try {
+      $("demo-round").click();
+      await settle();
+      const bundle = (await dl.lastJson()) as { trace?: { entries?: { scope?: string; message?: string }[] } };
+      const entries = bundle?.trace?.entries ?? [];
+      expect(
+        entries.filter((e) => e.scope === "host" && e.message === "environment"),
+        "the round file cannot say which host it ran on",
+      ).toHaveLength(1);
+    } finally {
+      setTracing(false);
     }
   });
 

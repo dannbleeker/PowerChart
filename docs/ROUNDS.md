@@ -569,9 +569,21 @@ one line over: `grouped the chart's shapes` with `partial=N left=i:k`, and the
 short-read line's `grouping: the subset the host named`. Joining those to
 `atRisk` is the fix; until it is made, quote the trace, not the count.
 
-As of round 087 the count stands at **three at-risk charts, all with zero
-growth**. Three is not five. A round that groups everything cannot answer this
-either way, and the report says so rather than reading zero as an all-clear.
+**THE COUNT WAS THREE AND THE TRUE COUNT IS ZERO.** This section said "three
+at-risk charts, all with zero growth — three is not five", meaning three real
+exposures had been sampled and come back clean. None had.
+
+Every non-zero `atRisk` reading in the whole archive — all NINE of them, across
+69 rounds — comes from `explode a degraded picture`, always `atRisk=1,
+charts=1`. `atRisk` is read from the type of the shape being REPLACED, and that
+scenario's second update replaces `pictured`: the single picture shape the
+collapse just made. One shape, deleted by its own id, with nothing behind it to
+strand. Not a group, no parts list, so it scored — every time, for the same
+reason, and nobody looked at which scenario the readings came from.
+
+The counter now also requires the chart to have drawn more than one shape, which
+takes the archive's count to 0. **So the stranding question has never had a
+single sample**, and a round that groups everything still cannot answer it.
 
 **And the subset branch has not run yet.** Across 63 rounds there are 42 short
 re-reads and `afterRetry: true` on exactly none of them: every one predates the

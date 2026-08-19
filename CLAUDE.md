@@ -1785,7 +1785,9 @@ chart the user selected` passes at 459-514s, `the chart is actually visible`
     passes at 517-586s.
 
   What every stalled scenario had in common was its PREDECESSOR: the selection
-  ladder (×4), `stop a run part-way`, which aborts a draw mid-flight (×3), and
+  ladder (×4), `stop a run part-way`, which does NOT abort a draw mid-flight —
+  it asks for the stop BEFORE the insert, and across 69 archived rounds it has
+  committed zero batches, so no shape is ever queued (×3), and
   a scenario that itself selected and stalled (×1). That was 8 of 8.
 
   **RETRACTED on 2026-08-09 by round 7, which is why it was written down as a

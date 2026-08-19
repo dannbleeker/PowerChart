@@ -1283,8 +1283,28 @@ const stopPartWay: Scenario = async (prefix) => {
   const c = cfg(`${prefix} stopped`);
   requestStop();
   let outcome: string;
+  // HOW FAR IT ACTUALLY GOT, counted rather than described. The verdict below
+  // used to read "stopped at a batch boundary", and across 69 archived rounds
+  // this scenario has committed ZERO batches — `requestStop()` runs before the
+  // insert, and `throwIfStopped()` sits at the top of the batch loop, so it
+  // throws on iteration zero and no shape is ever queued.
+  //
+  // So the promise being tested is "a stop asked for BEFORE a draw prevents it",
+  // which is worth testing and is not what `CLAUDE.md` claimed this was ("aborts
+  // a draw mid-flight"). The mid-flight promise has never been exercised.
+  //
+  // THE SEAM FOR THE REAL TEST IS RIGHT HERE: `onPhase("commit", …)` fires once
+  // per batch, so calling `requestStop()` from the first commit would abort a
+  // genuinely half-drawn chart. Deliberately not done in passing — a mid-draw
+  // abort leaves a PARTIALLY DRAWN SLIDE in the deck, and `same scale across the
+  // deck` discovers its chart population from that same deck, so it would
+  // contaminate every scenario after it. It wants its own pair, not a slipped-in
+  // change.
+  let commits = 0;
   try {
-    const target = await insertSceneIntoSlide(buildChart(c), { tagData: JSON.stringify(c) });
+    const target = await insertSceneIntoSlide(buildChart(c), { tagData: JSON.stringify(c) }, (phase) => {
+      if (phase === "commit") commits += 1;
+    });
     outcome = target ? "the insert ran to completion and reported a chart" : "the insert finished without a chart";
   } catch (err) {
     outcome = isStopped(err) ? "stopped" : `threw something other than a stop: ${errorText(err)}`;
@@ -1312,7 +1332,8 @@ const stopPartWay: Scenario = async (prefix) => {
     ok: problems.length === 0,
     detail: problems.length
       ? problems.join("; ")
-      : "stopped at a batch boundary, nothing added, nothing left claiming to be a chart",
+      : `stopped before ${commits === 0 ? "the first batch — no shape was ever queued" : `batch ${commits + 1}, after ${commits} committed`}` +
+        ", nothing added, nothing left claiming to be a chart",
   };
 };
 
@@ -1490,7 +1511,7 @@ export function visibilityVerdict(
   after: string,
   named: boolean,
   stable?: boolean,
-): { ok: boolean; detail: string } {
+): { ok: boolean; detail: string; skipped?: true } {
   if (after !== before) {
     const delta = after.length - before.length;
     const share = before.length ? Math.abs(delta) / before.length : 1;
@@ -1510,7 +1531,19 @@ export function visibilityVerdict(
           ? " (no control render, so an unstable rasteriser cannot be ruled out)"
           : "";
     return {
-      ok: true,
+      // A DIFFERENCE WITHOUT A CONTROL IS NOT EVIDENCE, and this returned `ok:
+      // true` for both branches its own `noise` text disclaims. `stable ===
+      // false` means the host re-rendered an UNCHANGED slide differently, so a
+      // before/after difference means nothing; `stable === undefined` means the
+      // control was never taken. 23 of 69 archived rounds reported this scenario
+      // green with no control at all — a third of the project's only mechanical
+      // evidence that a drawn chart can be seen, resting on nothing.
+      //
+      // Skipped rather than failed: the chart may well be perfectly visible, and
+      // calling that a failure would be the opposite lie. "A skip is not a flip"
+      // is this repo's own rule, and the gate already honours it.
+      ok: stable === true,
+      ...(stable === true ? {} : { skipped: true as const }),
       detail:
         // "in PowerPoint's own render", not "on screen", and the distinction is
         // office-js#6498: on the web an inserted shape can appear in the slide
