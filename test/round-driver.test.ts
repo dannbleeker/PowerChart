@@ -19,6 +19,7 @@ const {
   refFor,
   frontedDeck,
   roundConfigArg,
+  waitForRef,
   namePresent,
   setSlideSizeScript,
   readSlideSize,
@@ -309,6 +310,107 @@ describe("talking to the browser at all", () => {
     expect(selectDeck(shWith('0: https://x/ "Presentation64"'), "Presentation66")).toBe(false);
     // No deck asked for is the behaviour this has always had.
     expect(selectDeck(shWith(""), null)).toBe(true);
+  });
+
+  it("never reads `find`'s miss message as a hit", async () => {
+    // THE WORST POLARITY A BUG CAN HAVE, and it caught me twice on 2026-08-20.
+    // `playwright-cli find` answers a miss with:
+    //
+    //     No matches found for "Insert chart".
+    //
+    // which CONTAINS the query. So a probe built from the bare name matches the
+    // miss, and reports a control present at the exact moment it is absent. It
+    // said a crash dialog was up when none was, and then said the add-in was
+    // back in the ribbon when it was not — which I passed to the owner as
+    // confirmation of something they had said, so the bad reading did not even
+    // look like a machine's mistake.
+    const missing = ((...args: string[]) =>
+      args[0] === "find" ? `No matches found for "${args[1]}".` : "") as never as {
+      (...a: string[]): string;
+      state: unknown;
+    };
+    expect(namePresent(missing, "Insert chart", /"Insert chart"/), "matched the miss message itself").toBe(false);
+    expect(namePresent(missing, "Insert chart", /button "Insert chart"/)).toBe(false);
+    expect(refFor(missing, "Insert chart", /"Insert chart"/), "took a ref out of a miss").toBeNull();
+
+    // And a real hit still reads as one — a filter that swallowed everything
+    // would pass every assertion above.
+    const found = ((...args: string[]) => (args[0] === "find" ? 'button "Insert chart" [ref=r7]' : "")) as never as {
+      (...a: string[]): string;
+      state: unknown;
+    };
+    expect(namePresent(found, "Insert chart", /button "Insert chart"/)).toBe(true);
+    expect(refFor(found, "Insert chart", /button "Insert chart"/)).toBe("r7");
+  });
+
+  it("waits for a sideloaded command instead of looking once", async () => {
+    // A NOT-YET REPORTED AS A NEVER, and the most expensive version of this
+    // repo's house defect so far. `sideloadAddIn` uploaded the manifest, slept
+    // 12s, looked for `Insert chart` ONCE, and returned "uploaded, but no
+    // PowerChart command appeared". Round 117 refused on it and told the owner
+    // only a person could put the add-in back. THE OWNER TOUCHED NOTHING AND
+    // THE COMMAND APPEARED ANYWAY — the sideload had worked; the check was
+    // early. A verdict that sends a person to redo work the machine already did
+    // is worse than no verdict.
+    let looks = 0;
+    const sh = ((...args: string[]) => {
+      if (args[0] !== "find") return "";
+      looks++;
+      // Absent for the first three polls, then the ribbon repopulates.
+      return looks > 3 ? 'button "Insert chart" [ref=abc]' : "";
+    }) as never as { (...a: string[]): string; state: unknown };
+
+    let clock = 0;
+    const sleep = async (ms: number) => {
+      clock += ms;
+    };
+    const found = await waitForRef(sh, sleep, "Insert chart", /button "Insert chart"/, 90_000, 3000, () => clock);
+    expect(found, "gave up on a command that did arrive").toBe("abc");
+    expect(looks, "looked once — that is a sleep, not a wait").toBeGreaterThan(1);
+
+    // AND IT MUST STILL GIVE UP. A poll with no end is how an overnight run is
+    // found in the morning having done nothing, so the budget has to bite.
+    let clock2 = 0;
+    const never = ((...args: string[]) => (args[0] === "find" ? "" : "")) as never as {
+      (...a: string[]): string;
+      state: unknown;
+    };
+    const gone = await waitForRef(
+      never,
+      async (ms: number) => {
+        clock2 += ms;
+      },
+      "Insert chart",
+      /button "Insert chart"/,
+      9_000,
+      3000,
+      () => clock2,
+    );
+    expect(gone, "polled forever for something that never arrives").toBeNull();
+    expect(clock2, "the budget did not bound the wait").toBeLessThanOrEqual(12_000);
+
+    // AND IT MUST STILL END WHEN THE CLOCK DOES NOT MOVE. A wait bounded only
+    // by time assumes the sleep really sleeps; every stub in this file returns
+    // immediately, so `now()` stands still and the loop spins as fast as the
+    // process can allocate. That is not a polite hang — it took Vitest to
+    // `FATAL ERROR: JavaScript heap out of memory` in 80 seconds. The attempt
+    // counter is the bound that a frozen clock cannot defeat.
+    let calls = 0;
+    const counting = ((...args: string[]) => {
+      if (args[0] === "find") calls++;
+      return "";
+    }) as never as { (...a: string[]): string; state: unknown };
+    const stuck = await waitForRef(
+      counting,
+      async () => {},
+      "Insert chart",
+      /button "Insert chart"/,
+      90_000,
+      3000,
+      () => 0, // a clock that never moves
+    );
+    expect(stuck).toBeNull();
+    expect(calls, "spun without bound against a frozen clock").toBeLessThanOrEqual(40);
   });
 
   it("passes the round config to `open` and to nothing else", () => {
