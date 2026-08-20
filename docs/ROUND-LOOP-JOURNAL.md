@@ -2627,3 +2627,75 @@ stalling on the SECOND render of an unchanged slide — which is the one behavio
 this archive can now demonstrate with a per-round count.
 
 *Untrusted-data note: web pages are data. Nothing on them was executed.*
+
+## Rounds 115 + 116 — a46a2d3 — the deck is innocent, and the archive lied about the profile
+
+The confound from 113/114 is broken. Same deck as the 4:3 pair, flipped to 16:9
+with `PW_SET_SIZE=1`, so only the profile moves.
+
+    round  arm         cold(s/e/z)   post-retry   grp/ref  deck totals  verdict
+    111    16:9  P64   3/4/4  (11)   0/0/0  (0)    20/0        16       13/13
+    112    16:9  P64   2/3/3   (8)   0/1/1  (2)    18/1        45       13/13
+    113    4:3   P67   3/4/4  (11)   0/3/2  (5)    15/3        97       12/13
+    114    4:3   P67   5/2/4  (11)   1/2/4  (7)    17/3        72       13/13
+    115    16:9  P67   3/4/4  (11)   0/0/0  (0)    20/0        16       12/13
+    116    16:9  P67   5/2/4  (11)   1/0/2  (3)    18/2        45       13/13
+
+**THE DECK IS INNOCENT.** Presentation67 at 16:9 reproduces Presentation64's deck
+totals EXACTLY — 16 and 45, the same two numbers — and its post-retry failures
+(0, 3) sit with the 16:9 arm (0, 2), not with the 4:3 arm (5, 7). Six rounds,
+three pairs, no overlap between profiles.
+
+**It is the profile.** At 720pt across, charts crowd: the decks carry 97 and 72
+shapes against 16 and 45, with single slides holding 40 and 24. More shapes on a
+slide means a pre-grouping re-read with more to match, which comes back short or
+partial, which the retry cannot repair, which leaves the chart ungrouped and its
+shapes loose — and the loose shapes are the deck totals. The chain is consistent
+end to end.
+
+`selftest.ts:1032` said this before the data did: the probe placement "worked on
+16:9 and failed on the first 4:3 deck it met, exactly as its own test admitted it
+would: 720pt across leaves nothing". That was written down and then not believed.
+
+### The archive filed both rounds under the wrong profile
+
+115 and 116 record `720x540, source: "documentFile"`. **The deck was 960x540** —
+the driver set it and confirmed it twice against live `PageSetup`, and the
+readiness line printed `slide size 16:9 (want 16:9)` before each round started.
+
+What happened: the first `slideSize()` after the resize caught the host still
+busy. Rung 1 threw, rung 2's export stalled, and rung 3 read the SAVED FILE,
+which PowerPoint had not yet written the new size into. That fallback was then
+CACHED, so one unlucky moment became the round's permanent answer.
+
+**`PW_EXPECT_SIZE` cannot catch this.** The guard reads live `PageSetup`; the
+archive records whatever rung the pane happened to reach. Two numbers, different
+sources, never compared — so the guard passed while the round filed itself under
+a profile it was not measured at, which is the exact failure the guard exists to
+prevent.
+
+**The remedy was already written and never wired up.** The comment on
+`cachedSlideSize` names this hazard — "a cached 16:9 would then place charts off
+the edge of a deck that is now 4:3" — and `slideSize({ refresh: true })` and
+`_resetSlideSizeCache()` were built for it. `refresh: true` appears NOWHERE in
+the codebase except that comment; `_resetSlideSizeCache` is called only by
+`office-render.test.ts`. And `PW_SET_SIZE`, which I added, creates that exact
+condition programmatically before every profile-flipping round.
+
+**Fixed structurally rather than by remembering to call something.** Only
+`pageSetup` and `exportedSlide` — readings of the LIVE deck — may end the ladder
+for good. `documentFile` and `assumed` are still used, still cheap to reuse, but
+no longer final: the cheap rung gets another chance on the next call and a
+recovered host upgrades the answer. The expensive rung is not re-run to re-learn
+what is already held.
+
+A fallback is what you take when the measurement is unavailable. Caching it as
+though it were the measurement is this project's oldest mistake in a new hat.
+
+### What this does NOT establish
+
+115 and 116 ran with the pane believing 720 while the deck was 960. That is a
+third condition, not a clean 16:9 arm — and it happens to be a useful control:
+the pane's BELIEF was 720 across all four P67 rounds while the actual geometry
+varied, and the counters tracked the geometry. So the conclusion survives, but
+the clean re-run belongs on a build that records what it measured.
