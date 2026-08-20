@@ -9971,8 +9971,34 @@ export async function readDeckStyleWithReason(): Promise<{ style: DeckStyle | nu
   // the answer is to spend it: attempt, and on any failure attempt once more in
   // a new context. `attempt()` is the whole read, so the retry re-runs the
   // count-first guard too.
-  const first = await attemptDeckStyleRead();
-  if (!first.unreadable) return first;
+  // REVERTED 2026-08-20, ON THE EVIDENCE THE RETRY ITSELF PRODUCED.
+  //
+  // The retry shipped in #602 and the very next pair took it back. Two rounds on
+  // each side of that one commit, and nothing else changed:
+  //
+  //     096-099  pre-retry            probe: the namespace IS reachable
+  //     100, 101 count-first, no retry probe: the namespace IS reachable
+  //     102, 103 WITH the retry        probe: the namespace is UNREACHABLE too
+  //
+  // The probe had answered on every round it ever ran — that was the whole
+  // evidence for "the second call works" — and it stopped answering the moment
+  // the read started making two calls of its own before it. The plain reading is
+  // that the read's retry SPENDS the good second call, and the probe, now third,
+  // gets the same nothing the first one did. A trace line appearing where none
+  // did is one of the two readings this project treats as real, and this one has
+  // a pair on each side.
+  //
+  // So the read attempts ONCE. The retry is not merely "not a cure": on this
+  // host it moved the failure from one call to the whole surface, and on the
+  // interactive path it made a person wait two budgets instead of one before
+  // being told.
+  //
+  // What survives from #602 is the diagnosis it was built on — the first
+  // customXmlParts call after a pane loads is the one that fails — and the
+  // instrument honest enough to show the retry backfiring. Spending the bad call
+  // is still the right shape; doing it INSIDE this read is not, because the read
+  // is what the probe measures. Somewhere earlier in pane start, once, is the
+  // version worth trying next.
   return await attemptDeckStyleRead();
 }
 

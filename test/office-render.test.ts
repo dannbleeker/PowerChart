@@ -5378,31 +5378,35 @@ describe("the style a deck carries", () => {
     expect(took, "waited on the readback budget instead of its own").toBeLessThan(5_000);
   });
 
-  it("spends the bad first call — one refused read is not a failed read", async () => {
-    // SIX ROUNDS SAY THE FIRST CUSTOM-XML CALL AFTER A PANE LOADS DOES NOT WORK,
-    // and the second does. The diagnostic probe had been demonstrating exactly
-    // that without anyone noticing: it opens a fresh context, asks the same
-    // question, and has answered every time it ran, immediately after the read
-    // it was diagnosing had failed.
+  it("attempts ONCE — the retry made this worse and the rounds took it back", async () => {
+    // #602 shipped a retry here and the very next pair reverted it. Two rounds
+    // on each side of that single commit, nothing else changed:
     //
-    // The failure changes shape with whatever the first call happens to be — a
-    // 90s hang while that was the item read, and "The value of the result object
-    // has not been loaded yet" once counting moved to the front (round 100).
-    // Same fault, different victim, which is why it read as two bugs.
+    //   096-099   pre-retry              probe: the namespace IS reachable
+    //   100, 101  count-first, no retry   probe: the namespace IS reachable
+    //   102, 103  WITH the retry          probe: the namespace is UNREACHABLE too
+    //
+    // The probe had answered on every round it ever ran — that WAS the evidence
+    // for "the second call works" — and it stopped the moment the read began
+    // making two calls of its own ahead of it. The read's retry spends the good
+    // second call and the probe, now third, gets the same nothing the first did.
+    //
+    // So one refused read is a failed read, and says so.
     installHost([makeSlide("s1")]);
     await writeDeckStyle({ palette: ["#2a78d6"] });
     faults.refuseCustomXmlReadsOnce = true;
     const r = await readDeckStyleWithReason();
     faults.refuseCustomXmlReadsOnce = false;
-    expect(r, "gave up on a host that answers the second time").toEqual({
-      style: { palette: ["#2a78d6"] },
-      unreadable: false,
+    expect(r, "retried, and the rounds say the retry costs the probe its answer").toEqual({
+      style: null,
+      unreadable: true,
     });
   });
 
-  it("still reports unreadable when BOTH attempts fail", async () => {
-    // Or the retry would turn a genuinely dead read into a silent "no style",
-    // which is the exact lie the `unreadable` flag was added to prevent.
+  it("reports unreadable rather than a silent absence when the read fails", async () => {
+    // The `unreadable` flag exists so a failed read is never reported as "this
+    // deck carries no style". That was true when the read attempted twice and
+    // stays true now that it attempts once.
     installHost([makeSlide("s1")]);
     await writeDeckStyle({ palette: ["#2a78d6"] });
     faults.refuseCustomXmlReads = true;

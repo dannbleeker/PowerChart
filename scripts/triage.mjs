@@ -570,7 +570,19 @@ export function judgePrediction(prediction, log) {
     const entries = log?.trace?.entries;
     if (!Array.isArray(entries) || !entries.length)
       return { verdict: "undetermined", why: "the round carries no trace to look in" };
+    // BY SCOPE AS WELL AS BY MESSAGE, because a claim naming one message is only
+    // as good as the number of messages the thing can produce. Round 102: the
+    // deck-style probe has TWO failure lines, `spending-the-bad-first-call-cures-
+    // the-read` named one, the round produced the other — and the ledger read
+    // that as a cure. A false HELD from a malformed claim, which is the same
+    // defect this file keeps finding elsewhere.
+    //
+    // `scope` claims the whole family: no entry from that scope at all.
     const saw = (m) => entries.some((e) => String(e.message) === m);
+    // What actually matched, so the verdict names the right reason. Reporting
+    // `still carries <message>` for a SCOPE match would be a report describing
+    // evidence it did not use.
+    const sawScope = () => (c.scope ? entries.find((e) => String(e.scope) === c.scope) : undefined);
     // A CLAIM THAT A SYMPTOM IS GONE, which is what a fix predicts and what this
     // kind could not say. `absent: true` inverts the reading: the named line
     // must NOT appear, and `insteadOf` — a line every round carries — is what
@@ -578,6 +590,12 @@ export function judgePrediction(prediction, log) {
     // stays `undetermined` rather than counting as a cure.
     if (c.absent) {
       if (saw(c.message)) return { verdict: "FAILED", why: `the trace still carries \`${c.message}\`` };
+      const other = sawScope();
+      if (other)
+        return {
+          verdict: "FAILED",
+          why: `the \`${c.scope}\` scope is still there, as \`${String(other.message)}\``,
+        };
       if (c.insteadOf && saw(c.insteadOf)) return { verdict: "held", why: `no \`${c.message}\` in a round that ran` };
       return { verdict: "undetermined", why: "the round did not run far enough to show the line is gone" };
     }
